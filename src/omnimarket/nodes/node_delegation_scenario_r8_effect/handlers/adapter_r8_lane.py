@@ -14,7 +14,6 @@ is a typed ``LaneReadError``, never a default of zero.
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 import urllib.error
 import urllib.request
@@ -102,6 +101,8 @@ class ModelBusSettings(_Frozen):
     delegations_node: str = Field(min_length=1)
     workspace_env: str = Field(min_length=1)
     tenant_env: str = Field(min_length=1)
+    #: The command the delegate command is started through so the tenant variable is set for it alone.
+    env_command: str = Field(min_length=1)
 
 
 class ModelLaneSettings(_Frozen):
@@ -214,24 +215,21 @@ def _subprocess_run(argv: Sequence[str], timeout: float) -> tuple[int, str]:
     return done.returncode, done.stdout
 
 
-def _subprocess_run_as(extra_environment: Mapping[str, str]) -> CommandRunner:
-    """A runner that passes the host environment plus ``extra_environment`` to the delegate command."""
+def _subprocess_run_as(
+    env_command: str, extra_environment: Mapping[str, str]
+) -> CommandRunner:
+    """A runner that starts the delegate command through ``env_command`` with ``extra_environment`` set.
+
+    The command is prefixed with the contract's environment command and one ``NAME=value`` per setting, so the host
+    environment is inherited by the child as it is and this module reads no process environment.
+    """
+    prefix = [
+        env_command,
+        *(f"{name}={value}" for name, value in extra_environment.items()),
+    ]
 
     def run(argv: Sequence[str], timeout: float) -> tuple[int, str]:
-        try:
-            done = subprocess.run(
-                list(argv),
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-                check=False,
-                env={**os.environ, **extra_environment},
-            )
-        except (OSError, subprocess.TimeoutExpired) as exc:
-            raise LaneReadError(
-                f"{argv[0]} did not finish: {type(exc).__name__}"
-            ) from exc
-        return done.returncode, done.stdout
+        return _subprocess_run([*prefix, *argv], timeout)
 
     return run
 
@@ -425,7 +423,8 @@ class BusLane:
             run_command
             if run_command is not None
             else _subprocess_run_as(
-                {settings.bus.tenant_env: str(overlay.probe_tenant_id)}
+                settings.bus.env_command,
+                {settings.bus.tenant_env: str(overlay.probe_tenant_id)},
             )
         )
 

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import subprocess
 from collections.abc import Sequence
 from uuid import UUID
@@ -66,7 +67,6 @@ def test_golden_chain_probe_tenant_every_send_carries_the_overlay_tenant(
 ) -> None:
     """Every send carries the overlay's probe tenant in the delegate command's environment."""
     assert SETTINGS.bus is not None
-    monkeypatch.setenv("MARKER_ENV", "marker-value")
     lane = handler_scenario_r8._build_bus_lane(
         SETTINGS, {SETTINGS.bus.workspace_env: "/workspace"}, KAFKA_OVERLAY
     )
@@ -83,10 +83,11 @@ def test_golden_chain_probe_tenant_every_send_carries_the_overlay_tenant(
     lane.send(ModelSendRequest(task_type="summarization", prompt="p"))
 
     assert len(recorded) == 2
-    for _argv, kwargs in recorded:
-        env = kwargs["env"]
-        assert env[SETTINGS.bus.tenant_env] == str(TENANT)
-        assert env["MARKER_ENV"] == "marker-value"
+    n = len(SETTINGS.delegate_command)
+    for argv, _kwargs in recorded:
+        assert argv[0] == SETTINGS.bus.env_command
+        assert argv[1] == f"{SETTINGS.bus.tenant_env}={TENANT}"
+        assert argv[2 : 2 + n] == list(SETTINGS.delegate_command)
 
 
 def test_control_route_pins_only_the_organic_control(
@@ -168,6 +169,15 @@ def test_error_chain_settings_without_tenant_env_are_refused() -> None:
         ModelBusSettings.model_validate(bus_dict)
 
 
+def test_error_chain_settings_without_env_command_are_refused() -> None:
+    """A bus settings block without the environment command is refused."""
+    assert SETTINGS.bus is not None
+    bus_dict = SETTINGS.bus.model_dump()
+    del bus_dict["env_command"]
+    with pytest.raises(ValidationError):
+        ModelBusSettings.model_validate(bus_dict)
+
+
 def test_seam_the_pin_flag_is_an_option_of_the_delegate_command() -> None:
     """The pin flag the lane sends is an option of the delegate command."""
     result = CliRunner().invoke(cli, ["delegate", "--help"])
@@ -181,3 +191,4 @@ def test_seam_the_tenant_variable_is_the_one_the_delegate_command_reads() -> Non
 
     assert SETTINGS.bus is not None
     assert SETTINGS.bus.tenant_env == TENANT_OVERLAY_ENV
+    assert shutil.which(SETTINGS.bus.env_command) is not None

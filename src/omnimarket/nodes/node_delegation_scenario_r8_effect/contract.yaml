@@ -94,6 +94,7 @@ lane:
     delegations_node: omnimarket.nodes.node_tenant_delegations_read_effect
     workspace_env: ONEX_WORKSPACE_CONFIG_ROOT
     tenant_env: ONEX_TENANT_ID
+    env_command: env
   base_url_env: R8_PROBE_API_BASE_URL
   api_key_env: R8_PROBE_TENANT_API_KEY
   api_key_header: x-api-key
