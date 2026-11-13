@@ -5152,6 +5152,7 @@
   "tests/unit/nodes/node_work_ledger_append_effect/test_join_j5_terminal.py": 1.07,
   "tests/unit/nodes/node_work_ledger_append_effect/test_join_j5_window.py": 2.3,
   "tests/unit/nodes/node_work_ledger_append_effect/test_local_ledger_append_command.py": 0.03,
+  "tests/unit/nodes/node_work_ledger_append_effect/test_via_stamp.py": 2.36,
   "tests/unit/nodes/node_work_ledger_bus_mirror/test_delegation_terminal.py": 0.02,
   "tests/unit/nodes/node_work_ledger_bus_mirror/test_lab_work_receipt_mapping.py": 0.16,
   "tests/unit/nodes/node_work_ledger_copy_effect/test_adapters_work_ledger_copy_effect.py": 0.04,
