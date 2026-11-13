@@ -58,3 +58,10 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24122 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/test_overlay_event_bus_omn_eval_nodes.py -q --no-cov -p no:cacheprovider
+- id: dod-omn24122-role-placeholder-test
+  description: The role-placeholder tests name the placeholder the GPU power caps contract declares today (ONEX_ACL_RUNTIME_PRINCIPAL), so the broker ACL reconcile tests pass.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_broker_acl_reconcile_effect/test_role_placeholders.py -q -p no:randomly --no-cov
+    cwd: .
