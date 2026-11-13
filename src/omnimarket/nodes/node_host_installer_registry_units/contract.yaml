@@ -463,6 +463,12 @@ units:
       # The node's overlay (overlays repository, node_capture_silence_watch_effect) holds the secret_store block the password
       # reference is resolved through: the overlays clone the host's lab_hosts row declares, and nothing else.
       ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}"
+      # The Slack channel the watch's alarms are delivered to: the alert channel the other lab alarms post to
+      # (#omninode-notifications, the id node_consumer_flow_stall_alert_effect's contract declares for its SLACK_CHANNEL_ID).
+      # A channel id is configuration, not a secret. The node resolves its contract's secrets.SLACK_CHANNEL_ID through the
+      # environment store; unbound, every tick exited 3 with its alarm deliveries unpublished. The seam test pins this
+      # value to the stall alert's declaration, so the two cannot drift apart.
+      SLACK_CHANNEL_ID: "C08PRL6BRQE"
     # OMN-24325: the database address (no password) and the reference of the login's password are request inputs persisted in the unit, so no
     # environment file has to hold them; the node reads the reference through its overlay's secret store block (reads_source.password_ref_env).
     # A unit installed without either ends INDETERMINATE (exit 3) every tick, so both are required.

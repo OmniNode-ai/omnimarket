@@ -673,6 +673,7 @@
   "tests/nodes/node_capsule_effectiveness_feedback_reducer/test_golden_chain_capsule_effectiveness_feedback.py": 0.02,
   "tests/nodes/node_capsule_effectiveness_feedback_reducer/test_observational_row_cannot_claim_effectiveness.py": 0.06,
   "tests/nodes/node_capture_silence_watch_effect/test_capture_silence_watch_password_ref_seam.py": 2.5,
+  "tests/nodes/node_capture_silence_watch_effect/test_capture_silence_watch_slack_channel_seam.py": 2.5,
   "tests/nodes/node_capture_silence_watch_effect/test_capture_silence_watch_schedule.py": 2.66,
   "tests/nodes/node_cause_claim_ownership_effect/test_cause_claim_lane_work_lease_omn21428.py": 0.02,
   "tests/nodes/node_cause_claim_ownership_effect/test_cause_claim_ownership_node.py": 0.01,
