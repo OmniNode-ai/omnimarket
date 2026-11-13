@@ -20,6 +20,9 @@ from omnimarket.nodes.node_ci_checkout_effect.models.model_ci_checkout import (
     ModelCiCheckoutRequest,
     ModelCiCheckoutResult,
 )
+from omnimarket.nodes.node_ci_checkout_effect.models.model_ci_checkout_deployment import (
+    ModelCiCheckoutDeployment,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -116,32 +119,35 @@ def test_failing_control_a_renamed_cli_option_is_caught() -> None:
 
 
 def test_the_sync_on_miss_command_formats_the_clone_sync_argv(tmp_path: Path) -> None:
-    """The seam to the host's clone sync: the overlay's argv template, formatted for a repo and ref, is run as is."""
+    """The seam to the host's mirror sync: the example overlay's argv template, resolved for one host, is run as is."""
     recorded = tmp_path / "argv.txt"
     script = tmp_path / "sync.sh"
-    script.write_text(f'#!/bin/sh\nprintf "%s\\n" "$@" > {recorded}\n')
+    script.write_text(
+        f'#!/bin/sh\nprintf "%s\\n" "$OMNI_GIT_MIRROR_ROOT" "$@" > {recorded}\n'
+    )
     script.chmod(0o755)
-    overlay = yaml.safe_load(
+    document = yaml.safe_load(
         resources.files("omnimarket.nodes.node_ci_checkout_effect")
         .joinpath("overlay.example.yaml")
         .read_text()
     )
-    template = tuple(overlay["sync_command"])
-    assert "{repo}" in template
-    assert "{ref}" in template
-    swapped = (str(script), *template[1:])
+    deployment = ModelCiCheckoutDeployment.model_validate(document)
+    host = deployment.hosts[0]
+    overlay = deployment.resolve(host.name, home=str(tmp_path))
+    # The example names the mirror root through the placeholder and runs the script under `env`.
+    assert overlay.sync_command[:2] == (
+        "env",
+        f"OMNI_GIT_MIRROR_ROOT={host.mirror_root}",
+    )
+    swapped = (*overlay.sync_command[:-1], str(script))
     assert CommandCloneSync(swapped, 10.0).sync("OmniNode-ai/omnimarket", "dev")
-    assert recorded.read_text().split() == [
-        "refresh",
-        "OmniNode-ai/omnimarket",
-        "--branch",
-        "dev",
-        "--wait",
-    ]
-    # A request with no ref drops the branch flag, so the sync refreshes the default branch.
-    assert CommandCloneSync(swapped, 10.0).sync("OmniNode-ai/omnimarket", None)
-    assert recorded.read_text().split() == [
-        "refresh",
-        "OmniNode-ai/omnimarket",
-        "--wait",
-    ]
+    assert recorded.read_text().split() == [host.mirror_root]
+    # Resolution fills the serve address and mirror root into the source templates, and only for the declared host.
+    source = overlay.sources[0]
+    assert source.path_template == f"{host.mirror_root}/{{repo_name}}.git"
+    assert (
+        source.serve_url_template
+        == f"git://{host.serve_address}:9418/{{repo_name}}.git"
+    )
+    with pytest.raises(ValueError, match="not in the overlay's hosts"):
+        deployment.resolve("another-host", home=str(tmp_path))

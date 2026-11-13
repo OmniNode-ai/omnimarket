@@ -36,6 +36,7 @@ from omnimarket.nodes.node_ci_checkout_effect.models.model_ci_checkout import (
     ModelCiCheckoutRequest,
     ModelCiCheckoutResult,
 )
+from tests.nodes.node_ci_checkout_effect.planted import HOST, deployment_document
 
 pytestmark = pytest.mark.unit
 BOOTSTRAP_ENV = "CI_CHECKOUT_REDPANDA_BOOTSTRAP"
@@ -51,8 +52,9 @@ def test_the_contract_names_the_handler_topics_and_overlay() -> None:
     assert topics.failure == "onex.evt.omnimarket.ci-checkout-failed.v1"
     assert contract["handler"]["class"] == "HandlerCiCheckout"
     example = yaml.safe_load(node.joinpath("overlay.example.yaml").read_text())
-    assert "host_name" in example
+    assert "hosts" in example
     assert "sources" in example
+    assert "unit" in example
 
 
 def _git(*argv: str, cwd: Path) -> str:
@@ -99,33 +101,12 @@ def _plant_deployment(
     )
     if with_overlay:
         overlay_file = tmp_path / "ci-checkout-overlay.yaml"
-        overlay_file.write_text(
-            yaml.safe_dump(
-                {
-                    "host_name": "test-host",
-                    "github_owner": "OmniNode-ai",
-                    "sources": [
-                        {
-                            "name": "bare-mirror",
-                            "path_template": str(mirrors) + "/{repo_name}.git",
-                            "serve_url_template": "file://"
-                            + str(mirrors)
-                            + "/{repo_name}.git",
-                        }
-                    ],
-                    "sync_on_miss": False,
-                    "sync_command": [],
-                    "sync_timeout_seconds": 5,
-                    "git_timeout_seconds": 10,
-                    "reply_timeout_seconds": 20,
-                    "default_profile": "inmemory",
-                    "profiles": {"inmemory": {"kind": "inmemory"}},
-                }
-            )
-        )
+        overlay_file.write_text(yaml.safe_dump(deployment_document(mirrors)))
         monkeypatch.setenv(hch.OVERLAY_FILE_ENV, str(overlay_file))
+        monkeypatch.setenv(hch.HOST_NAME_ENV, HOST)
     else:
         monkeypatch.delenv(hch.OVERLAY_FILE_ENV, raising=False)
+        monkeypatch.setenv(hch.HOST_NAME_ENV, HOST)
         monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path / "no-overlays"))
     return sha
 
@@ -164,7 +145,7 @@ async def _chain(
                 sha=held_sha if sha_held else "b" * 40,
                 ref=None,
                 requested_by_lane="test-lane",
-                host="test-host",
+                host=HOST,
             )
             terminal = await ScmBusCaller(bus).call_topics(
                 topics=load_topics(),

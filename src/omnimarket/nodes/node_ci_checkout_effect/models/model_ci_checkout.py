@@ -24,6 +24,8 @@ from pydantic import (
 
 OVERLAY_ID = "node_ci_checkout_effect"
 OVERLAY_FILE_ENV = "ONEX_CI_CHECKOUT_OVERLAY"
+#: The host the handler answers for when the runtime builds it with no arguments (the serve passes its own).
+HOST_NAME_ENV = "ONEX_CI_CHECKOUT_HOST_NAME"
 
 
 class ModelCiCheckoutBusProfile(BaseModel):
@@ -33,6 +35,10 @@ class ModelCiCheckoutBusProfile(BaseModel):
 
     kind: Literal["inmemory", "kafka"]
     lane: str | None = Field(default=None, min_length=1)
+    #: The environment variable naming the broker address when the lane declaration does not supply it.
+    kafka_bootstrap_env: str | None = Field(default=None, min_length=1)
+    #: The environment variable naming the workspace root the lane declaration is read from.
+    workspace_root_env: str | None = Field(default=None, min_length=1)
 
 
 class ModelCiCheckoutSource(BaseModel):
@@ -148,6 +154,7 @@ class ModelCiCheckoutResult(BaseModel):
 
 
 __all__ = [
+    "HOST_NAME_ENV",
     "OVERLAY_FILE_ENV",
     "OVERLAY_ID",
     "EnumCiCheckoutStatus",

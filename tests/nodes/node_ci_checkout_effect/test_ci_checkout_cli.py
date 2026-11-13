@@ -37,8 +37,10 @@ from omnimarket.nodes.node_ci_checkout_effect.handlers.handler_ci_checkout impor
 from omnimarket.nodes.node_ci_checkout_effect.models.model_ci_checkout import (
     ModelCiCheckoutRequest,
 )
+from tests.nodes.node_ci_checkout_effect.planted import deployment_document
 
 pytestmark = pytest.mark.unit
+
 HOST = "runner-host"
 
 
@@ -84,29 +86,8 @@ def mirror(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> str:
         cwd=tmp_path,
     )
     overlay = tmp_path / "overlay.yaml"
-    overlay.write_text(
-        yaml.safe_dump(
-            {
-                "host_name": HOST,
-                "github_owner": "OmniNode-ai",
-                "sources": [
-                    {
-                        "name": "bare-mirror",
-                        "path_template": f"{mirrors}/{{repo_name}}.git",
-                        "serve_url_template": f"file://{mirrors}/{{repo_name}}.git",
-                    }
-                ],
-                "sync_on_miss": False,
-                "sync_command": [],
-                "sync_timeout_seconds": 5,
-                "git_timeout_seconds": 10,
-                "reply_timeout_seconds": 20,
-                "default_profile": "inmemory",
-                "profiles": {"inmemory": {"kind": "inmemory"}},
-            }
-        )
-    )
-    handler = HandlerCiCheckout(overlay=load_overlay(overlay))
+    overlay.write_text(yaml.safe_dump(deployment_document(mirrors, host=HOST)))
+    handler = HandlerCiCheckout(overlay=load_overlay(overlay, host_name=HOST))
 
     @contextlib.asynccontextmanager
     async def fake_bus(_opts: object) -> AsyncIterator[object]:

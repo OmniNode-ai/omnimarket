@@ -2,33 +2,46 @@
 # SPDX-License-Identifier: MIT
 # Synthetic values. The deployment's overlay lives at <root>/node_ci_checkout_effect/overlay.yaml
 # under a root named in ONEX_SKILL_OVERLAY_ROOTS, or the file ONEX_CI_CHECKOUT_OVERLAY names.
-# No key has a default.
-host_name: example-host
+# No key has a default. One document serves every host: the host rows hold what only that host knows, and
+# {mirror_root} and {serve_address} in a source or in the sync command are filled from the serving host's row.
 github_owner: example-owner
 sources:
   - name: bare-mirror
-    path_template: "/srv/git/mirrors/{repo_name}.git"
-    serve_url_template: "file:///srv/git/mirrors/{repo_name}.git"
-  - name: canonical-clone
-    path_template: "/srv/git/clones/{repo_name}"
-    serve_url_template: "file:///srv/git/clones/{repo_name}"
+    path_template: "{mirror_root}/{repo_name}.git"
+    serve_url_template: "git://{serve_address}:9418/{repo_name}.git"
 sync_on_miss: true
 # argv template, run with no shell: {repo} is owner/name, {ref} the request's branch hint (the element and a
-# preceding --branch are dropped when the request names none). The deployment names its host's clone sync here.
+# preceding --branch are dropped when the request names none), {mirror_root} the serving host's mirror root. The
+# deployment names its host's own mirror sync here; this one refreshes every mirror once and exits 0 at once
+# when another refresh holds the lock.
 sync_command:
-  - /usr/local/bin/clone-sync
-  - refresh
-  - "{repo}"
-  - "--branch"
-  - "{ref}"
-  - "--wait"
+  - env
+  - "OMNI_GIT_MIRROR_ROOT={mirror_root}"
+  - $HOME/mirror-refresh.sh
 sync_timeout_seconds: 120
 git_timeout_seconds: 30
 reply_timeout_seconds: 60
-default_profile: inmemory
+default_profile: dev
 profiles:
   inmemory:
     kind: inmemory
-  redpanda:
+  dev:
     kind: kafka
     lane: example-lane
+# The systemd user unit the serve runs under on every host below ($OMNI_HOME and $HOME are filled by the installing host).
+unit:
+  unit_name: example-ci-checkout-serve
+  description: Example CI checkout serve process
+  bus_profile: dev
+  python: $OMNI_HOME/example/.venv/bin/python
+  pythonpath: []
+  restart_seconds: 15
+  stop_timeout_seconds: 60
+  log_file: $OMNI_HOME/.onex_state/example-ci-checkout-serve/serve.log
+  environment:
+    PATH: $HOME/.local/bin:/usr/local/bin:/usr/bin:/bin
+hosts:
+  - name: example-host
+    scheduler: systemd-user
+    mirror_root: /srv/git/mirrors
+    serve_address: 192.0.2.1

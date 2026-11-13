@@ -9,15 +9,20 @@ clone sync runs once and every source is re-checked. Never a GitHub fetch from t
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Literal
 
-from omnimarket.handlers.node_overlay_reader import load_structured_overlay
+from omnimarket.handlers.node_overlay_reader import (
+    NodeOverlayError,
+    load_structured_overlay,
+)
 from omnimarket.nodes.node_ci_checkout_effect.handlers.adapter_ci_checkout_git import (
     CommandCloneSync,
     SubprocessCheckoutGit,
 )
 from omnimarket.nodes.node_ci_checkout_effect.models.model_ci_checkout import (
+    HOST_NAME_ENV,
     OVERLAY_FILE_ENV,
     OVERLAY_ID,
     EnumCiCheckoutStatus,
@@ -25,6 +30,9 @@ from omnimarket.nodes.node_ci_checkout_effect.models.model_ci_checkout import (
     ModelCiCheckoutRequest,
     ModelCiCheckoutResult,
     ModelCiCheckoutSource,
+)
+from omnimarket.nodes.node_ci_checkout_effect.models.model_ci_checkout_deployment import (
+    ModelCiCheckoutDeployment,
 )
 from omnimarket.nodes.node_ci_checkout_effect.protocols.protocol_ci_checkout import (
     ProtocolCheckoutGit,
@@ -34,16 +42,32 @@ from omnimarket.nodes.node_ci_checkout_effect.protocols.protocol_ci_checkout imp
 _HANDLER_ID = "node_ci_checkout_effect"
 
 
-def load_overlay(path: Path | None = None) -> ModelCiCheckoutOverlay:
+def load_deployment(path: Path | None = None) -> ModelCiCheckoutDeployment:
+    """The deployed overlay document: the explicit file, else ONEX_CI_CHECKOUT_OVERLAY, else the roots."""
     import yaml
 
     explicit = yaml.safe_load(path.read_text(encoding="utf-8")) if path else None
     return load_structured_overlay(
         OVERLAY_ID,
-        ModelCiCheckoutOverlay,
+        ModelCiCheckoutDeployment,
         explicit=explicit,
         file_env=OVERLAY_FILE_ENV,
     )
+
+
+def load_overlay(
+    path: Path | None = None,
+    *,
+    host_name: str | None = None,
+    home: Path | None = None,
+) -> ModelCiCheckoutOverlay:
+    """One host's overlay; the host is the argument, else the environment variable the contract names."""
+    name = host_name or os.environ.get(HOST_NAME_ENV, "").strip()
+    if not name:
+        raise NodeOverlayError(
+            f"no host to answer for: pass host_name or set {HOST_NAME_ENV}"
+        )
+    return load_deployment(path).resolve(name, home=str(home or Path.home()))
 
 
 class HandlerCiCheckout:
