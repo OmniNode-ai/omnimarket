@@ -77,13 +77,6 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # so a host timer runs it from the command line; it publishes events but
     # subscribes to no topic and has no onex.nodes entry point.
     "node_worktree_reconcile_effect",
-    # OMN-23213: the C32 auth-boundary probe is run by a daily host timer unit
-    # through its own tick module; it subscribes to no topic and has no
-    # onex.nodes entry point.
-    "node_c32_auth_boundary_probe_effect",
-    # The host-reconcile effect is likewise run from the command line by a host
-    # timer; it subscribes to no topic and has no onex.nodes entry point.
-    "node_host_reconcile_effect",
     # OMN-19998: the lab daemon sync effect installs on the host's own
     # filesystem, so a host timer runs it with python -m; it publishes events
     # but subscribes to no topic and has no onex.nodes entry point.
@@ -155,11 +148,6 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # its console script runs it from the command line; it subscribes to no
     # topic and has no onex.nodes entry point.
     "node_legacy_worktree_audit_effect",
-    # OMN-23529: the landing liveness read takes its overlay, reader and
-    # publisher as constructor parameters and the landing snapshot step
-    # composes it; it subscribes to no topic, so it has no onex.nodes entry
-    # point.
-    "node_pr_landing_liveness_read_effect",
     # OMN-23606: the factory floor unresolved rows effect runs as a step of the
     # floor publisher through its own `python -m` module, about every six hours;
     # it publishes nothing and subscribes to no topic, so it has no onex.nodes
