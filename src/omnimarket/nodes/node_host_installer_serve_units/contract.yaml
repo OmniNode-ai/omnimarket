@@ -55,8 +55,9 @@ execution:
   side_effects: true
 # This node's own overlay (`<root>/node_host_installer_serve_units/overlay.yaml` under ONEX_SKILL_OVERLAY_ROOTS, model
 # ModelServeUnitsOverlay) holds the private values: the unit names, env files and log directories, the clones the lane
-# variables derive from, the knowledge base clone and the overlay roots each host's serve reads. A host it does not list
-# is refused unless the request names roots.
+# variables derive from, the knowledge base clone and the overlay roots each host's serve reads, and optionally lane_serves:
+# extra serve units of the same lab-work serve on other bus lanes (each with its own bus lane and work directory; an overlay
+# without the key installs the two units it always did). A host it does not list is refused unless the request names roots.
 overlay:
   id: node_host_installer_serve_units
 # The unit declaration, moved from the private host installer contract.

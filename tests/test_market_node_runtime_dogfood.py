@@ -85,6 +85,13 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # still registered; called in process by its host scheduler, so it subscribes
     # to no topic and has no onex.nodes entry point until the registration
     # hand-over (nodes-to-market plan step B).
+    #
+    # OMN-24073: the lab fill selection compute has handler_routing and no bus
+    # topic, and its request and result models are frozen dataclasses, not typed
+    # pydantic models, so the typed local invocation check (a typed request and
+    # result on handle) cannot accept it and registering it fails the runtime
+    # dogfood with "Contract lacks command/terminal topics". It stays host-only
+    # (called in process by the lab fill step) until its models are pydantic.
     "node_lab_fill_selection_compute",
     # OMN-20712: hosted from the operator tooling repository, whose copy is
     # still registered; called in process by its host scheduler, so it subscribes
@@ -108,24 +115,10 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # consumer's own identity; it returns the value as a SecretStr, publishes
     # nothing and subscribes to no topic, so it has no onex.nodes entry point.
     "node_captured_secret_resolve_effect",
-    # OMN-20926: the captured secret store effect is called in-process by the
-    # content-capture producer for each secret its scrub detects; it returns a
-    # reference, publishes nothing and subscribes to no topic.
-    "node_captured_secret_store_effect",
     # OMN-20817: the model setup effect runs from `onex models`; it returns its
     # status and test results to the CLI shim and subscribes to no topic, so it
     # has no onex.nodes entry point.
     "node_model_setup_effect",
-    # OMN-22809: the host table copies drift compute takes its overlay, copy
-    # source, appender and clock as constructor parameters and runs through its
-    # own `python -m` CLI; it subscribes to no topic, so it has no onex.nodes
-    # entry point.
-    "node_host_table_copies_drift_compute",
-    # OMN-23150: the overlay consumer join compute takes its overlay, file
-    # source, environment, appender and clock as constructor parameters and
-    # runs through its own `python -m` CLI; it subscribes to no topic, so it
-    # has no onex.nodes entry point.
-    "node_overlay_drift_compute",
     # OMN-19988: the local alert compute is called in process by the local
     # environment projection on every report it stores; it subscribes to no
     # topic and publishes none, so it has no onex.nodes entry point.
@@ -134,11 +127,6 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # local environment writer around each write it makes; it subscribes to no
     # topic, so it has no onex.nodes entry point.
     "node_local_alert_transition_compute",
-    # OMN-17427: the Claude token pool runs as `python -m` on the lab host whose
-    # pool it is (the remote-lane runner at lane start, the operator adding a
-    # token); it publishes nothing and subscribes to no topic, so it has no
-    # onex.nodes entry point.
-    "node_claude_token_pool_effect",
     # OMN-17427: the lab secret-store override edits an ephemeral render copy on
     # the caller's own filesystem, so the lab apply script runs it in process
     # from its console script; it subscribes to no topic and has no onex.nodes
