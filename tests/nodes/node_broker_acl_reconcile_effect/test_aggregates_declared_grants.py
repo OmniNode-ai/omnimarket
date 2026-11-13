@@ -40,6 +40,8 @@ ENV = {
     "ONEX_ACL_DEV_ROLL_CAPTURE_PRINCIPAL": "User:dev-roll-capture",
     "ONEX_ACL_BRANCH_DEPLOY_PRINCIPAL": "User:branch-deploy",
     "ONEX_ACL_RUNTIME_PRINCIPAL": "User:runtime",
+    "ONEX_ACL_CI_CHECKOUT_CALLER_PRINCIPAL": "User:ci-checkout-caller",
+    "ONEX_ACL_CI_CHECKOUT_SERVE_PRINCIPAL": "User:ci-checkout-serve",
 }
 HEADER = (
     "PRINCIPAL HOST RESOURCE-TYPE RESOURCE-NAME RESOURCE-PATTERN-TYPE "
