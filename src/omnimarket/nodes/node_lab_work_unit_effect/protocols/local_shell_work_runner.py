@@ -15,15 +15,21 @@ placing a private-repository unit asks for the ``gh`` tool.
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import signal
 import subprocess
 import time
+import uuid
 from pathlib import Path
 from typing import Protocol
 
 from omnimarket.config.service_endpoints import service_endpoint_url
+from omnimarket.models.model_delegated_code_edit import (
+    ModelCodeEditResult,
+    ModelDelegatedCodeEditRequest,
+)
 from omnimarket.nodes.node_lab_work_unit_effect.models.model_lab_work_unit import (
     MAX_TAIL_CHARS,
     EnumLabWorkUnitStatus,
@@ -70,6 +76,11 @@ def _tail(path: Path) -> str:
     return text[-MAX_TAIL_CHARS:]
 
 
+def draft_correlation_id(work_unit_id: str) -> uuid.UUID:
+    """The loop's correlation id for one unit: the same on every read of it."""
+    return uuid.uuid5(uuid.NAMESPACE_URL, f"lab-work-unit:{work_unit_id}")
+
+
 class LocalShellLabWorkExecutor:
     """Fetch, worktree, run, clean up; all local to this host."""
 
@@ -93,6 +104,78 @@ class LocalShellLabWorkExecutor:
             env=env,
         )
 
+    def _staged_diff(
+        self, tree: Path, commit_sha: str, cap: int, env: dict[str, str]
+    ) -> tuple[str, bool]:
+        """The worktree's edits against ``commit_sha``, cut to ``cap`` bytes."""
+        if not tree.is_dir():
+            return "", False
+        self._git("-C", str(tree), "add", "-A", env=env)
+        diff = subprocess.run(
+            ["git", "-C", str(tree), "diff", "--cached", "--no-color", commit_sha],
+            capture_output=True,
+            timeout=_GIT_TIMEOUT_SECONDS,
+            check=False,
+            env=env,
+        ).stdout
+        if len(diff) <= cap:
+            return diff.decode("utf-8", errors="replace"), False
+        return diff[:cap].decode("utf-8", errors="replace"), True
+
+    @staticmethod
+    def _loop_result(state_dir: Path, work_unit_id: str) -> ModelCodeEditResult | None:
+        """The loop receipt's ``result``, when the loop wrote one."""
+        path = (
+            state_dir
+            / "runs"
+            / str(draft_correlation_id(work_unit_id))
+            / "loop_receipt.json"
+        )
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+            return ModelCodeEditResult.model_validate(raw["result"])
+        except (OSError, ValueError, KeyError, TypeError):
+            return None
+
+    def _draft_argv(
+        self, request: ModelLabWorkUnitRequest, tree: Path, state_dir: Path
+    ) -> list[str]:
+        """The caller's argv plus the loop request file, an outside state root
+        and the pinned backend, for a ``code_draft`` unit."""
+        draft = request.code_draft
+        if draft is None:
+            return list(request.argv)
+        loop_request = ModelDelegatedCodeEditRequest(
+            correlation_id=str(draft_correlation_id(request.work_unit_id)),
+            task=draft.task,
+            workspace_root=str(tree),
+            writable_globs=draft.writable_globs,
+            context_paths=draft.context_paths,
+            file_list=draft.file_list,
+            checks=draft.checks,
+            formatter=draft.formatter,
+            max_turns=draft.max_turns,
+            caller_lane=draft.caller_lane,
+            ticket=draft.ticket,
+            traffic_class=draft.traffic_class,
+            source_surface=draft.source_surface,
+        )
+        request_file = self._root / "requests" / f"{request.work_unit_id}.json"
+        request_file.parent.mkdir(parents=True, exist_ok=True)
+        request_file.write_text(
+            loop_request.model_dump_json(exclude_none=True), encoding="utf-8"
+        )
+        state_dir.mkdir(parents=True, exist_ok=True)
+        return [
+            *request.argv,
+            "--request",
+            str(request_file),
+            "--state-root",
+            str(state_dir),
+            "--backend-id",
+            draft.backend_id,
+        ]
+
     def run(
         self, request: ModelLabWorkUnitRequest, host_name: str
     ) -> ModelLabWorkUnitReceipt:
@@ -101,6 +184,7 @@ class LocalShellLabWorkExecutor:
         bare = self._root / "repos" / f"{name}.git"
         tree = self._root / "runs" / request.work_unit_id
         log = self._root / "logs" / f"{request.work_unit_id}.log"
+        state_dir = self._root / "state" / request.work_unit_id
         log.parent.mkdir(parents=True, exist_ok=True)
         tree.parent.mkdir(parents=True, exist_ok=True)
 
@@ -111,7 +195,18 @@ class LocalShellLabWorkExecutor:
             duration: float = 0.0,
             detail: str = "",
         ) -> ModelLabWorkUnitReceipt:
+            diff, truncated, loop_result = "", False, None
+            if request.code_draft is not None:
+                # Taken now, while the worktree exists: the finally below only
+                # removes it, and a killed loop's edits are still in it.
+                diff, truncated = self._staged_diff(
+                    tree, request.commit_sha, request.code_draft.max_diff_bytes, env
+                )
+                loop_result = self._loop_result(state_dir, request.work_unit_id)
             return ModelLabWorkUnitReceipt(
+                diff=diff,
+                diff_truncated=truncated,
+                code_edit_result=loop_result,
                 work_unit_id=request.work_unit_id,
                 target_host=request.target_host,
                 host=host_name,
@@ -194,10 +289,11 @@ class LocalShellLabWorkExecutor:
                 LAB_WORK_REPO=request.repo,
                 LAB_WORK_LANE=request.lane,
             )
+            argv = self._draft_argv(request, tree, state_dir)
             started = time.monotonic()
             with log.open("wb") as out:
                 process = subprocess.Popen(
-                    [exe, *request.argv[1:]],
+                    [exe, *argv[1:]],
                     cwd=tree,
                     stdout=out,
                     stderr=subprocess.STDOUT,

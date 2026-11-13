@@ -18,6 +18,10 @@ from uuid import UUID
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
+from omnimarket.models.work_ledger_query.model_work_ledger_latest import (
+    EnumWorkLedgerLatestSubject,
+    ModelWorkLedgerLatestEntry,
+)
 from omnimarket.models.work_ledger_query.model_work_ledger_refusal import (
     ModelWorkLedgerRefusal,
 )
@@ -37,6 +41,7 @@ class EnumWorkLedgerQueryKind(StrEnum):
     NEWEST_PER_LANE = "newest-per-lane"
     RULINGS = "rulings"
     OPEN_RULINGS = "open-rulings"
+    LATEST_STATE = "latest-state"
 
 
 #: The queries answered from ``work_ledger_state`` (OMN-21948): a page of the
@@ -130,6 +135,13 @@ class ModelWorkLedgerQueryRequest(BaseModel):
     history: ModelWorkLedgerHistoryRange | None = None
     cursor: str | None = Field(default=None, min_length=1, max_length=4096)
     page_size: int | None = Field(default=None, ge=1, le=MAX_POINT_PAGE_SIZE)
+    # A paged rows answer carries lines and no typed rows; the reader prints lines only.
+    lines_only: bool = False
+    # latest-state (OMN-23606): which kind of subject to read (a lane or a ticket), the tickets to read
+    # (``tickets``; a lane filter is ``lanes``), and the row types (``kinds``) and the newest-at start
+    # (``since``) the entries are narrowed to.
+    subject_kind: EnumWorkLedgerLatestSubject | None = None
+    tickets: tuple[Annotated[str, Field(pattern=_TICKET)], ...] = ()
 
     @model_validator(mode="after")
     def _history_boundary(self) -> ModelWorkLedgerQueryRequest:
@@ -139,13 +151,25 @@ class ModelWorkLedgerQueryRequest(BaseModel):
             self.lane or self.lanes
         ):
             raise ValueError("inbox requires a lane or lanes")
+        if self.query is not EnumWorkLedgerQueryKind.LATEST_STATE and (
+            self.subject_kind is not None or self.tickets
+        ):
+            raise ValueError("subject_kind and tickets apply to latest-state only")
+        if (
+            self.query is EnumWorkLedgerQueryKind.LATEST_STATE
+            and self.history is not None
+        ):
+            raise ValueError("latest-state reads the state table, not a history range")
         paged_rows = (
             self.query is EnumWorkLedgerQueryKind.ROWS and self.page_size is not None
         )
+        if self.lines_only and not paged_rows:
+            raise ValueError("lines_only applies to a paged rows query only")
         if (
             self.page_size is not None
             and self.query not in POINT_QUERY_KINDS
-            and self.query is not EnumWorkLedgerQueryKind.ROWS
+            and self.query
+            not in {EnumWorkLedgerQueryKind.ROWS, EnumWorkLedgerQueryKind.LATEST_STATE}
         ):
             raise ValueError("page_size applies to the point queries and to rows only")
         if self.page_size is not None and self.history is not None:
@@ -166,6 +190,7 @@ class ModelWorkLedgerQueryRequest(BaseModel):
         elif (
             self.cursor is not None
             and self.query not in POINT_QUERY_KINDS
+            and self.query is not EnumWorkLedgerQueryKind.LATEST_STATE
             and not paged_rows
         ):
             raise ValueError("cursor requires a history range or a paged query")
@@ -302,6 +327,15 @@ class ModelWorkLedgerQueryResult(BaseModel):
     page_size: int | None = None
     watermark: AwareDatetime | None = None
     lines: tuple[str, ...] = ()
+    # A rows query with no since reads a bounded window (OMN-23541): ``bounded``
+    # is True exactly when the answer was cut to ``until - window`` and
+    # ``bounded_window_days`` is the window's days (the overlay's or the
+    # contract's), so a caller can see the answer is not the whole table.
+    bounded: bool = False
+    bounded_window_days: int | None = None
+    # latest-state (OMN-23606): one keyset page of newest-row-per-subject entries; ``watermark`` and
+    # ``page_size`` and ``next_cursor`` are the point queries' own fields.
+    latest: tuple[ModelWorkLedgerLatestEntry, ...] = ()
 
 
 __all__ = [

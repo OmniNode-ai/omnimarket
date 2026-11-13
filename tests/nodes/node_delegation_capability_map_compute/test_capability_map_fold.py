@@ -36,6 +36,9 @@ from omnimarket.models.delegation_capability_map.model_capability_grid import (
 from omnimarket.models.delegation_capability_map.model_capability_identity import (
     ModelCapabilityIdentity,
 )
+from omnimarket.models.delegation_capability_map.model_capability_line import (
+    ModelCapabilityLine,
+)
 from omnimarket.models.delegation_capability_map.model_capability_map_fold import (
     ModelCapabilityMapFoldRequest,
 )
@@ -130,6 +133,9 @@ def _fold(
             map_run_id="run-1",
             rows=tuple(rows),
             assignments=tuple(_assignment(c) for c in configurations),
+            line=ModelCapabilityLine(
+                floor=0.9, margin=0.07, confidence=0.95, power=0.8
+            ),
         )
     )
 

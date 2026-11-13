@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: MIT
 """Command line of the watermark node: ``run`` one reading, or a ``schedule`` verb.
 
-``run`` exits 0 at ``ok`` and ``warn``, 2 at ``page`` (the service fails, the journal holds a PAGE line)
-and 3 when the overlay or request is unusable.
+``run`` exits 0 at ``ok`` and ``warn``, 2 at ``page`` (the service fails, the journal holds a PAGE line),
+3 when the overlay or request is unusable and 4 when the host disk reading ended in its typed failure event (the
+reading file is already written, and the journal holds a READING-FAILED line naming the reason).
 """
 
 from __future__ import annotations
@@ -18,6 +19,9 @@ import yaml
 from pydantic import ValidationError
 
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
+from omnimarket.models.model_host_disk_reading import (
+    ModelHostDiskReadFailed,
+)
 from omnimarket.nodes.node_lab_disk_watermark_effect.handlers.handler_lab_disk_watermark import (
     HandlerLabDiskWatermark,
     WatermarkRefusalError,
@@ -35,6 +39,7 @@ from omnimarket.nodes.node_lab_disk_watermark_effect.watermark_schedule import (
 
 EXIT_PAGE = 2
 EXIT_INDETERMINATE = 3
+EXIT_READING_FAILED = 4
 
 
 class _Parser(argparse.ArgumentParser):
@@ -60,6 +65,8 @@ def _parser() -> argparse.ArgumentParser:
     install.add_argument("--python", type=Path, default=Path(sys.executable))
     install.add_argument("--source-root", required=True, type=Path)
     install.add_argument("--overlay", required=True, type=Path)
+    install.add_argument("--workspace-root", required=True, type=Path)
+    install.add_argument("--workspace-config-root", required=True, type=Path)
     install.add_argument("--dry-run", action="store_true")
     for verb in ("status", "run-now", "uninstall"):
         verbs.add_parser(verb)
@@ -98,6 +105,12 @@ def _run(args: argparse.Namespace) -> int:
             f"page mark {worst.page_percent}%, {worst.free_bytes} bytes free\n"
         )
         return EXIT_PAGE
+    if isinstance(reading.host_disk, ModelHostDiskReadFailed):
+        failed = reading.host_disk
+        sys.stderr.write(
+            f"READING-FAILED {failed.host_name}: {failed.reason}: {failed.detail}\n"
+        )
+        return EXIT_READING_FAILED
     return 0
 
 
@@ -108,15 +121,25 @@ def _schedule(args: argparse.Namespace) -> int:
             host_row(overlay, row.name)
         sys.stdout.write(f"OK {len(overlay.hosts)} hosts, each with a watermark row\n")
         return 0
-    scheduler = WatermarkScheduler(schedule=load_schedule(), home=Path.home())
+    schedule = load_schedule()
+    if args.verb == "install":
+        overlay = load_overlay(str(args.overlay))
+        host_row(overlay, args.host)
+        if overlay.reading is not None:
+            # the reading's interval is the overlay's: a value of the host's reading, never of the node
+            schedule = schedule.model_copy(
+                update={"interval_seconds": overlay.reading.interval_seconds}
+            )
+    scheduler = WatermarkScheduler(schedule=schedule, home=Path.home())
     result: ModelLabDiskWatermarkScheduleResult
     if args.verb == "install":
-        host_row(load_overlay(str(args.overlay)), args.host)
         result = scheduler.install(
             args.host,
             python=args.python,
             source_root=args.source_root,
             overlay_file=args.overlay,
+            workspace_root=args.workspace_root,
+            workspace_config_root=args.workspace_config_root,
             dry_run=args.dry_run,
         )
     elif args.verb == "status":

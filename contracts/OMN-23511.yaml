@@ -1,0 +1,53 @@
+schema_version: 1.0.0
+ticket_id: OMN-23511
+title: The fourth delegation check can declare a step with no access key
+summary: A probe rung had no credential field, so the fourth readiness scenario's credential-absent leg was declared not runnable and failed one of its 25 assertions on every run. A probe rung now declares its credential state as a typed enum (not_required, declared_absent); the local dispatch port never attempts a rung that declares it absent (no provider call, the skip production takes), names it under skipped rungs and moves to the next rung; the scenario's leg runs from its ladder file.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23511-probe-rung-credential
+  statement: A probe rung can declare its credential absent; the port skips it with no provider call and the fourth scenario's credential-absent leg holds.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a probe rung can declare, as a typed enum field, that its credential is absent, and a probe run skips such a rung with no provider call and names it under skipped rungs -- falsifier: the new rung-model and dispatch tests fail at the merge base'
+  - id: AC2
+    statement: 'AC2: the R4 credential-absent leg runs from the committed ladder file and its assertion holds, with the rungs before and after it walked as declared -- falsifier: the R4 golden chain test fails at the merge base on the credential_absent_leg assertion'
+  - id: AC3
+    statement: 'AC3: a ladder whose every rung declares an absent credential is refused with a typed error and no provider call -- falsifier: the error chain test fails at the merge base'
+  - id: AC4
+    statement: 'AC4: integrated: the R4 unit on h201 installed from the merged revision runs once and its heartbeat reads 25 of 25 -- falsifier: the R4 STATUS row and heartbeat read on h201 after one kickstart'
+evidence_requirements:
+- kind: tests
+  description: The probe rung credential tests (golden skip, first-rung skip, all-absent refusal, the injected break without the declaration), the probe ladder wire-field test and the R4 inputs, golden chain and error chain tests.
+  command: uv run pytest tests/unit/delegation/test_probe_rung_credential.py tests/unit/delegation/test_probe_ladder.py tests/nodes/node_delegation_scenario_r4_effect -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23511-ac1
+  description: The tests pass on the branch. With the src files as origin/dev holds them, the rung model refuses the credential field and the port walks the rung.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_probe_rung_credential.py -q
+- id: dod-omn23511-ac2
+  description: The R4 golden chain tests pass on the branch with 25 of 25 assertions held, in memory and against real loopback stub servers; the heartbeat reading of AC4 is the same 25 of 25 assertions read after the unit runs on h201, recorded on the ticket. At origin/dev the credential_absent_leg assertion fails by design.
+  source: manual
+  binds_ac:
+  - AC2
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_scenario_r4_effect -q
+- id: dod-omn23511-integration-proof
+  description: Run the R4 and probe rung tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23511 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/delegation/test_probe_rung_credential.py tests/nodes/node_delegation_scenario_r4_effect -q --no-cov

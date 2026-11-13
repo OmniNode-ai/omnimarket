@@ -4,15 +4,26 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from enum import StrEnum
 from typing import Any, Literal
 
+from omnibase_spi.contracts.services import ModelLanePluginTree
 from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
     ValidationError,
     model_validator,
+)
+
+from omnimarket.models.engine_login import LABEL_PATTERN
+from omnimarket.models.model_lane_host_pool_unreadable import (
+    LaneHostPoolUnreadableError,
+)
+from omnimarket.nodes.node_remote_lane_start_orchestrator.models.model_remote_lane_provisioning import (
+    ModelLaneProvisioningPlan,
+    ModelLaneProvisioningRecord,
 )
 
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
@@ -23,6 +34,8 @@ class EnumRemoteLaneStartOutcome(StrEnum):
 
     UNSUPPORTED_SHAPE = "unsupported-shape"
     NO_HOST = "no-host"
+    POOL_UNREADABLE = "pool-unreadable"
+    LOGIN_REFUSED = "login-refused"
     CLAIM_REFUSED = "claim-refused"
     ALREADY_CLAIMED = "already-claimed"
     START_FAILED = "start-failed"
@@ -30,18 +43,24 @@ class EnumRemoteLaneStartOutcome(StrEnum):
     ENDED = "ended"
     STOPPED = "stopped"
     STOP_REFUSED = "stop-refused"
+    #: ``start_mode: observe``: the start was placed and computed in full and published as an event; nothing was written.
+    OBSERVED = "observed"
 
 
 #: The leader's exit code per outcome; ``ended`` passes the close decision through instead.
 EXIT_CODES: dict[EnumRemoteLaneStartOutcome, int] = {
     EnumRemoteLaneStartOutcome.UNSUPPORTED_SHAPE: 64,
     EnumRemoteLaneStartOutcome.NO_HOST: 75,
+    EnumRemoteLaneStartOutcome.POOL_UNREADABLE: 75,
+    # The token pool refused the start (the lanes-per-label cap): a later start may be served, as with no host.
+    EnumRemoteLaneStartOutcome.LOGIN_REFUSED: 75,
     EnumRemoteLaneStartOutcome.CLAIM_REFUSED: 70,
     EnumRemoteLaneStartOutcome.ALREADY_CLAIMED: 70,
     EnumRemoteLaneStartOutcome.START_FAILED: 1,
     EnumRemoteLaneStartOutcome.START_UNRESOLVED: 1,
     EnumRemoteLaneStartOutcome.STOPPED: 143,
     EnumRemoteLaneStartOutcome.STOP_REFUSED: 143,
+    EnumRemoteLaneStartOutcome.OBSERVED: 0,
 }
 
 
@@ -80,6 +99,9 @@ class ModelRemoteLaneStartSettings(BaseModel):
     # The plugin store on the host (path characters, optionally under $HOME): a tree is installed there from its archive;
     # "" leaves the step to the runner script.
     plugin_store: str = ""
+    # The provisioning steps around the engine, in the runner's order, with the phase of each and whether its
+    # failure ends the start (OMN-23528). The overlay states the section (an empty ``steps`` runs none).
+    provisioning: ModelLaneProvisioningPlan
     ssh_argv: tuple[str, ...]
     detach_argv: tuple[str, ...] = Field(min_length=1)
     # Put before the host's PATH in every host script (a non-interactive ssh shell has no user bin
@@ -101,6 +123,9 @@ class ModelRemoteLaneStartSettings(BaseModel):
     est_hours: int = Field(ge=1)
     priority: str = Field(min_length=1)
     claim_text: str = Field(min_length=1)
+    # OMN-22847: "act" makes the start; "observe" places the lane and computes the whole start, publishes it as an
+    # event and writes nothing else: no CLAIM, no receipt, no host call (so no ssh, no login draw, no process).
+    start_mode: Literal["act", "observe"]
 
     @model_validator(mode="after")
     def _templates_are_fillable(self) -> ModelRemoteLaneStartSettings:
@@ -191,6 +216,9 @@ class ModelRemoteLaneStartRequest(BaseModel):
     #: Per host, the hosts it reached over ssh, read by the caller beside the pool snapshot. A host with no entry
     #: was not tried and takes no repair lane.
     host_ssh_reach: dict[str, tuple[str, ...]] = Field(default_factory=dict)
+    #: The plugin trees the engine loads, as archives on the launching host (``ship_plugin_trees`` step); none
+    #: leaves that step skipped, as the runner skips it for a lane with no plugin sources.
+    plugin_trees: tuple[ModelLanePluginTree, ...] = ()
 
 
 class ModelRemoteLaneStartReceipt(BaseModel):
@@ -208,6 +236,8 @@ class ModelRemoteLaneStartReceipt(BaseModel):
     claim_request_id: str | None = None
     claim_row: str | None = None
     session_id: str | None = None
+    #: The pool label the lane's engine login was drawn under (OMN-23550); None when the pool drew nothing.
+    login: str | None = Field(default=None, pattern=LABEL_PATTERN)
     workdir: str | None = None
     log_lines: int = 0
     engine_rc: int | None = None
@@ -217,6 +247,43 @@ class ModelRemoteLaneStartReceipt(BaseModel):
     final: bool = False
     error: str | None = None
     states: list[str] = Field(default_factory=list)
+    #: Each provisioning step's result, in the order the steps ran (OMN-23528).
+    provisioning: list[ModelLaneProvisioningRecord] = Field(default_factory=list)
+
+
+class ModelRemoteLaneStartObserved(BaseModel):
+    """The whole start the node would make, computed in ``observe`` mode and published as an event (OMN-22847).
+
+    Everything a real start would decide and nothing it would do: the placed host, the CLAIM cells it would write, the
+    engine command (the brief replaced by a reference to it, so the event stays small and holds no brief text), the
+    engine environment's variable names (never the values) and the run directory. ``account_label`` is the pool label
+    the engine's login would be drawn under; the draw runs on the placed host over ssh, so an observe-mode start leaves
+    it empty and says why in ``account_label_source``.
+    """
+
+    model_config = _FROZEN
+
+    lane: str
+    key: str | None = None
+    ticket: str
+    attempt: int
+    run_id: str
+    engine: str
+    model: str
+    host: str
+    host_target: str | None = None
+    host_local: bool = False
+    account_label: str | None = None
+    account_label_source: str
+    claim_cells: tuple[str, ...]
+    engine_argv: tuple[str, ...]
+    engine_environment_names: tuple[str, ...]
+    workdir: str
+    brief_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    brief_bytes: int = Field(ge=1)
+    #: Every other host's reason for not taking the lane, as the placement node gave it.
+    refused_hosts: tuple[str, ...] = ()
+    observed_at: datetime
 
 
 class ModelRemoteLaneStartResult(BaseModel):
@@ -229,12 +296,16 @@ class ModelRemoteLaneStartResult(BaseModel):
     host: str | None = None
     lines: tuple[str, ...] = ()
     receipt: ModelRemoteLaneStartReceipt
+    #: Set when ``start_mode`` is ``observe`` and the lane was placed: the start that would have been made.
+    observed: ModelRemoteLaneStartObserved | None = None
 
 
 __all__ = [
     "EXIT_CODES",
     "EnumRemoteLaneStartOutcome",
+    "LaneHostPoolUnreadableError",
     "ModelRemoteLaneStartFloorFill",
+    "ModelRemoteLaneStartObserved",
     "ModelRemoteLaneStartOverlay",
     "ModelRemoteLaneStartReceipt",
     "ModelRemoteLaneStartRequest",

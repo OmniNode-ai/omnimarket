@@ -68,7 +68,12 @@ class SlowReader:
         self.fills: list[int] = []
 
     def read(
-        self, repo: str, job_id: int, *, cache_only: bool
+        self,
+        repo: str,
+        job_id: int,
+        *,
+        cache_only: bool,
+        tail_bytes: int | None = None,
     ) -> ModelJobLogTailResult:
         if cache_only:
             self._clock.spend(PROBE_S)

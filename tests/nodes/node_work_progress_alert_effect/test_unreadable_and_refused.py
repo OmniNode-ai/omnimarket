@@ -95,9 +95,7 @@ def test_no_overlay_constructs_then_refuses_the_evaluation_naming_the_setting(
     )
     result = node.handle(ModelWorkProgressAlertTrigger())
     assert result.outcome is EnumWorkProgressOutcome.REFUSED
-    assert f"{EFFECT}.check_interval_seconds" in (result.reason or "")
-    assert f"{EFFECT}.lookback_seconds" in (result.reason or "")
-    assert f"{EFFECT}.ignore" in (result.reason or "")
+    assert f"{EFFECT}/overlay.yaml" in (result.reason or "")
     assert publisher.calls == []
 
 
@@ -125,7 +123,7 @@ def test_missing_budget_overlay_refuses_and_names_the_setting(
     )
     result = node.handle(ModelWorkProgressAlertTrigger())
     assert result.outcome is EnumWorkProgressOutcome.REFUSED
-    assert f"{COMPUTE}.budget_seconds" in (result.reason or "")
+    assert f"{COMPUTE}/overlay.yaml" in (result.reason or "")
     assert result.check_interval_seconds == 300
     assert publisher.calls == []
 

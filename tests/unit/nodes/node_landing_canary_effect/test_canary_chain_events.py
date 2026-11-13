@@ -93,7 +93,7 @@ def assert_golden_chain(events: list[tuple[str, dict[str, object]]]) -> None:
         TOPICS["landing_canary_run_completed"],
     ], topics
     assert {body["correlation_id"] for _, body in events} == {CORRELATION}
-    assert events[0][1]["verdict"] == "WORKING"
+    assert events[0][1]["verdict"] == "UNKNOWN"
     assert events[0][1]["ending"] == "merged"
     assert events[0][1]["ledger"] == "written"
     assert events[-1][1]["failed"] == 0
@@ -121,7 +121,7 @@ def test_golden_chain_ends_in_success_and_writes_one_working_row() -> None:
     assert len(ledger.lines) == 1
     row = ledger.lines[0]
     assert "lane=landing-canary" in row
-    assert "verdict=WORKING" in row
+    assert "verdict=UNKNOWN" in row
     assert "elapsed_s=300" in row
 
 
@@ -172,7 +172,7 @@ def test_error_chain_append_that_does_not_land_is_a_failure_event() -> None:
     ledger = InMemoryLedger()
     ledger.append_status = "refused"
     events = asyncio.run(_publish(World(), ledger, PAYLOAD))
-    assert_failed_chain(events, verdict="WORKING", outcome="read")
+    assert_failed_chain(events, verdict="UNKNOWN", outcome="read")
     assert events[0][1]["ledger"] == "append-failed:refused"
     assert ledger.lines == []
 

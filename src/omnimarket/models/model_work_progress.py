@@ -17,6 +17,8 @@ from pydantic import (
     model_validator,
 )
 
+from omnimarket.models.bus_binding.model_node_event_bus import ModelNodeEventBus
+
 
 class ModelWorkProgressPhase(BaseModel):
     """An ordered phase and optional explanation from the contract."""
@@ -33,6 +35,7 @@ class ModelWorkProgressBudgets(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid", strict=True)
 
     budget_seconds: dict[str, PositiveInt]
+    event_bus: ModelNodeEventBus | None = Field(default=None, strict=False)
 
 
 class ModelWorkProgressSubject(BaseModel):

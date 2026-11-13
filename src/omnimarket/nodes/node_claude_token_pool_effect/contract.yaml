@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: MIT
 # ONEX Node Contract - Claude Token Pool Effect (OMN-17427)
 #
-# CLI-run effect, like node_local_secret_store_effect: no subscription and no
-# onex.nodes entry point, invoked as `python -m
+# CLI-run effect, like node_local_secret_store_effect: it has an onex.nodes
+# entry point and is invoked locally, with no subscription, as `python -m
 # omnimarket.nodes.node_claude_token_pool_effect` on the lab host whose pool it
 # is (the remote-lane runner at lane start, the operator adding a token). It also
 # owns its schedule (OMN-23000): the `tick` verb, run by the timer
@@ -30,7 +30,30 @@ description: >
   the source's, so a stale mark is cleared. The scheduled tick (OMN-23000) reads
   the one source's marks (refusing an unreadable or stale source), draws a
   different first token on every host, and swaps the host's login to a usable token
-  when the one in use is limited or revoked, appending one event per rotation.
+  when the one in use is limited or revoked, appending one event per rotation. When
+  the overlay declares a spread rule, a usable login that has been in use longer than
+  the bound, under which the host's lanes have already started, is spread onto a token
+  no host's lanes have used yet. assign installs the pool token an operator names on
+  the host's login, refusing one that is not in the pool, limited or revoked, and
+  records one event per assignment. For a NEW lane start, resolve also takes drain_labels (the usage
+  verdict's labels close to their limit: skipped while another label is usable, used when nothing else
+  is, and a limited or revoked label is never returned) and lane_counts (the lanes running under each
+  label), which it holds against the overlay's steering.max_lanes_per_label; at the cap it answers a
+  typed refusal and no token. The lane start passes both only when the overlay's steering.enabled is
+  true; off, which is how it ships, a draw is what it was.
+  Inside the tick's mark sync (OMN-23887), when the overlay carries a stale_revoke block, the tick asks the
+  node_claude_pool_revoke_staleness_compute node whether each revoked label's revoke is stale (the same fingerprint
+  was limited after the revoke stamp plus the margin) and sends the pool one typed clear_revokes command per stale
+  label; the pool clears a mark only while it still holds that fingerprint and that exact revoke stamp. A revoke with
+  no later success stays; an overlay without the block keeps every revoke, as before.
+  Inside the same tick on the marks-source host (OMN-23895), when the overlay carries a limit_recheck block, the tick asks
+  node_claude_pool_limit_recheck_compute which limited labels are due for a re-test, runs the pool's own headless probe
+  (an injected port) on each, asks the compute node what the answer means and sends the pool one apply_limit_rechecks
+  command: an ok answer clears the mark, a limited answer naming a newer reset replaces the stamp (even an earlier one),
+  a limited answer without one keeps it, an error answer proves nothing; the pool executes a command only while it holds
+  that fingerprint and that exact stamp. mark-limited takes --exact for a notice that names its own reset, which replaces
+  the stamp; an estimate never shortens one. export --label L --name KEY writes KEY=value to a pipe (never a terminal) so
+  the refill's adopt step can move a host-held label into the secret store through the secret seed node.
 
 output_model: omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_pool.ModelClaudeTokenPoolResult
 
@@ -38,6 +61,7 @@ handler:
   module: omnimarket.nodes.node_claude_token_pool_effect.handlers.handler_claude_token_pool
   class: HandlerClaudeTokenPool
   input_model: omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_pool.ModelClaudeTokenPoolRequest
+  output_model: omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_pool.ModelClaudeTokenPoolResult
 
 handler_routing:
   default_handler: omnimarket.nodes.node_claude_token_pool_effect.handlers.handler_claude_token_pool:HandlerClaudeTokenPool
@@ -49,14 +73,27 @@ handler_routing:
         module: omnimarket.nodes.node_claude_token_pool_effect.handlers.handler_claude_token_rotation_tick
       input_model: omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_rotation.ModelClaudeTokenRotationRequest
       output_model: omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_rotation.ModelClaudeTokenRotationResult
+    - operation: assign
+      handler:
+        name: HandlerClaudeTokenAssignOperation
+        module: omnimarket.nodes.node_claude_token_pool_effect.handlers.handler_claude_token_rotation_tick
+      input_model: omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_rotation.ModelClaudeTokenAssignRequest
+      output_model: omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_rotation.ModelClaudeTokenAssignResult
+    # Read by the lane start in process (lane_start_steer), not routed through the runtime:
+    # the entry binds the handler to this node for the canonical-file-shape ratchet. The handler
+    # builds from no arguments (steering off) so the boot resolver can instantiate it.
+    - operation: steer
+      handler:
+        name: HandlerPoolSteering
+        module: omnimarket.nodes.node_claude_token_pool_effect.handlers.handler_pool_steering
+      output_model: omnimarket.models.engine_login.ModelEngineLoginSteer
 
 descriptor:
   node_archetype: effect
   purity: impure
   idempotent: false  # resolve records the token chosen; mark_limited moves a limit
   timeout_ms: 10000
-  runtime_profiles:
-    - effects
+  runtime_profiles: []
 
 # The node publishes nothing: it runs on the host that holds the tokens and
 # returns its result to the runner's shell. Declaring topics would claim a
@@ -64,6 +101,9 @@ descriptor:
 event_bus:
   subscribe_topics: []
   publish_topics: []
+
+runtime_dispatch:
+  external_trigger: "python -m omnimarket.nodes.node_claude_token_pool_effect on the lab host whose pool it is (the remote-lane runner at lane start, the operator adding a token) and its scheduled tick timer."
 
 # The node's own timer, installed by `schedule install --host <name>` as the scheduler the overlay
 # names for that host (a systemd user timer on a lab host, a launchd agent on the Mac), removed by
@@ -81,6 +121,16 @@ overlay:
   node: node_claude_token_pool_effect
   roots_env: ONEX_SKILL_OVERLAY_ROOTS
 
+# The other side of the usage verdict node's pool_resolve seam: the field its result carries and this
+# node's resolve request takes. tests/nodes/node_claude_token_pool_effect/test_seam_drain_labels.py
+# fails when either side changes the name or the element type.
+seams:
+  usage_verdict:
+    node: node_pool_usage_verdict_compute
+    operation: resolve
+    field: drain_labels
+    element_type: str
+
 metadata:
   ticket: OMN-23000
-  transport_type: kafka
+  transport_type: local

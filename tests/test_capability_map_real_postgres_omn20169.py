@@ -25,12 +25,23 @@ from omnimarket.nodes.node_projection_delegation_capability_map.handlers import 
 from omnimarket.nodes.node_projection_delegation_capability_map.lab_run import (
     build_map_run,
 )
+from tests.node_overlay_support import CAPABILITY_MAP_OVERLAY, install_node_overlay
 
 _MIGRATIONS = (
     Path(__file__).resolve().parents[1]
     / "src/omnimarket/nodes/node_projection_delegation_capability_map/migrations"
 )
 _OBSERVED = datetime(2026, 10, 1, tzinfo=UTC)
+
+
+@pytest.fixture(autouse=True)
+def _capability_map_overlay(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    install_node_overlay(
+        monkeypatch,
+        tmp_path / "capability_map_overlay_root",
+        "node_projection_delegation_capability_map",
+        CAPABILITY_MAP_OVERLAY,
+    )
 
 
 def _dsn(database: str, user: str, password: str) -> str:
@@ -179,6 +190,35 @@ async def test_capability_cells_round_trip_and_ordering_on_real_postgres() -> No
             )
             == newer
         )
+
+
+@pytest.mark.integration
+async def test_a_run_without_the_line_writes_no_cell_on_real_postgres() -> None:
+    """A run with no class line writes no cell and says so; the same run with a line writes one."""
+    tenant = uuid4()
+    payload = _payload(tenant)
+    del payload["line"]
+    async with _migrated_writer() as (writer, reader):
+        result = await asyncio.to_thread(writer.handle, payload)
+        assert result["rows_upserted"] == 0
+        assert result["rows_handled"] == 0
+        assert result["cells"] == 0
+        assert result["line_not_configured"] is True
+        assert result["folded_rows"] == 8
+        assert (
+            await reader.execute(
+                "SELECT * FROM public.delegation_capability_cells", tenant=str(tenant)
+            )
+            == []
+        )
+        original = _payload(tenant)
+        result = await asyncio.to_thread(writer.handle, original)
+        assert result["rows_upserted"] == 1
+        assert result["line_not_configured"] is False
+        rows = await reader.execute(
+            "SELECT * FROM public.delegation_capability_cells", tenant=str(tenant)
+        )
+        assert len(rows) == 1
 
 
 @pytest.mark.integration

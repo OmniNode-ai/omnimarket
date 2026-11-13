@@ -195,6 +195,7 @@ class HandlerFixInstallJoinJ9:
                     "emitted_at": self._clock(),
                     "backend": self._backend,
                     "drill": False,
+                    "origin": "probe",
                     **extra,
                 }
             )

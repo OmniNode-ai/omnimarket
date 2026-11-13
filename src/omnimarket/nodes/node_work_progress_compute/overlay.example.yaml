@@ -3,3 +3,7 @@ budget_seconds:
   placed: 600
   claimed: 1800
   pr_open: 3600
+# The bus the node's client reaches it on, read by onex run-node.
+event_bus:
+  type: kafka
+  lane: example-lane

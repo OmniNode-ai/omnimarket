@@ -21,7 +21,9 @@ class ModelRegistryUnitsRequest(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     unit: str
-    mode: Literal["dry-run", "install", "status", "kickstart", "uninstall"] = "dry-run"
+    mode: Literal[
+        "dry-run", "install", "status", "kickstart", "uninstall", "rollback"
+    ] = "dry-run"
     home: str
     registry_root: str
     workspace_config_root: str = ""
@@ -51,12 +53,38 @@ class ModelRegistryUnitsRequest(BaseModel):
     ledger_host_name: str = Field(
         default="", pattern=r"^(?:[A-Za-z0-9][A-Za-z0-9_.-]*)?$"
     )
+    # The lab_hosts row this install is for; names the declared overlays clone. Empty defers to
+    # ledger_host_name, then to the installing shell's ONEX_LEDGER_HOST_NAME.
+    host_name: str = Field(default="", pattern=r"^(?:[A-Za-z0-9][A-Za-z0-9_.-]*)?$")
     # The remote-lane runner script the alarm starts for each episode it opens. Optional: a configuration that has no
     # value for it carries no dispatch_command, and the alarm sends no lane (it says so in its row).
     remote_lane_runner: str = Field(default="", pattern=r"^(?:/[^\s]+)?$")
     # The path of the operator's bootstrap env file the lab-state alarm reads two named keys from (the Slack bot token
     # and the alert channel id) when the unit's environment does not hold them. Only the path is persisted, never a value.
     alert_env_file: str = Field(default="", pattern=r"^(?:/[^\s]+)?$")
+    # The ledger read command a unit that declares this input persists in place of the read command its contract renders
+    # (OMN-23606): an absolute executable followed by plain words, no shell metacharacters. The factory floor's 14-day
+    # window read took 23.5 s through the rendered command and 15.9 s through the internal ledger source on the launching
+    # Mac (load 12 to 16), which put its 30 s step over the limit. Empty defers to the installing shell, then to the
+    # contract's rendered command.
+    ledger_read_command: str = Field(
+        default="", pattern=r"^(?:/[^\s;&|`$<>()'\"\\]+(?: [^\s;&|`$<>()'\"\\]+)*)?$"
+    )
+    # The address of the Valkey the board's source read cache keeps its answers in (OMN-24050). Empty defers to the installing shell;
+    # unset in both, the cache is off and each step reads its sources as it did. No password is a request input: a rendered unit is
+    # printed by a dry run, so a secret never goes into it.
+    source_cache_valkey_host: str = Field(
+        default="", pattern=r"^(?:[A-Za-z0-9][A-Za-z0-9_.-]*)?$"
+    )
+    source_cache_valkey_port: str = Field(default="", pattern=r"^(?:[0-9]{1,5})?$")
+    # The reference of the Valkey password the board's source read cache uses (OMN-24112): a store path
+    # (secret://onex/<folder>/<KEY>) naming where the password is kept, never the password. A dry run prints the
+    # rendered unit, so a value must never be a request input. Empty defers to the installing shell; unset in both,
+    # the cache connects with no password.
+    source_cache_valkey_password_ref: str = Field(
+        default="",
+        pattern=r"^(?:secret://onex/(?:[A-Za-z0-9][A-Za-z0-9_.-]*/)*[A-Za-z0-9][A-Za-z0-9_.-]*)?$",
+    )
 
 
 class ModelRegistryUnitsResult(BaseModel):

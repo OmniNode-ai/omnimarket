@@ -98,6 +98,21 @@ class HandlerLandingCanary:
             )
         started = self._clock().astimezone(UTC)
         result = self._run(command.correlation_id, started)
+        if (
+            self._overlay.target.backend not in _OPERATIONAL_BACKENDS
+            and result.verdict is EnumReadingVerdict.WORKING
+        ):
+            result = result.model_copy(
+                update={
+                    "verdict": EnumReadingVerdict.UNKNOWN,
+                    "reasons": (
+                        *result.reasons,
+                        reason_token(
+                            f"backend-{self._overlay.target.backend}-is-a-fixture-not-a-landing-reading"
+                        ),
+                    ),
+                }
+            )
         return self._publish(result, started, command.write)
 
     def _result(
