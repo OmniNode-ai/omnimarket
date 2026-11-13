@@ -443,10 +443,11 @@ async def test_shortcuts_lead_the_palette_like_coding_agent_tuis() -> None:
     async with app.run_test() as pilot:
         await pilot.press("slash")
         shown = [str(option.prompt) for option in app.query_one("#palette").options]
-        assert [text.split()[0] for text in shown[:4]] == [
+        assert [text.split()[0] for text in shown[:5]] == [
             "/config",
             "/model",
             "/delegation",
+            "/dashboard",
             "/clear",
         ]
         assert not any(text.split()[0] == "/setup" for text in shown)
@@ -1308,6 +1309,7 @@ async def test_tab_and_shift_tab_cycle_the_three_screens_and_a_click_opens_one()
 ):
     """T1."""
     from omnimarket.nodes.node_onex_setup_effect.cli_tui import (
+        DashboardScreen,
         DelegationScreen,
         ModelPickScreen,
         SetupScreen,
@@ -1317,16 +1319,22 @@ async def test_tab_and_shift_tab_cycle_the_three_screens_and_a_click_opens_one()
     async with app.run_test(size=(140, 44)) as pilot:
         await _open_config(pilot, app)
         seen = [type(app.screen)]
-        for _ in range(3):
+        for _ in range(4):  # four tabs, then round to the first again
             await pilot.press("tab")
-            await pilot.pause()
-            await pilot.pause()
+            for _ in range(4):
+                await pilot.pause()
             seen.append(type(app.screen))
-        assert seen == [SetupScreen, ModelPickScreen, DelegationScreen, SetupScreen]
-        await pilot.press("shift+tab")
-        await pilot.pause()
-        await pilot.pause()
-        assert isinstance(app.screen, DelegationScreen)
+        assert seen == [
+            SetupScreen,
+            ModelPickScreen,
+            DelegationScreen,
+            DashboardScreen,
+            SetupScreen,
+        ]
+        await pilot.press("shift+tab")  # back from the first is the last
+        for _ in range(4):
+            await pilot.pause()
+        assert isinstance(app.screen, DashboardScreen)
         await pilot.click("#tab-model")
         await pilot.pause()
         await pilot.pause()

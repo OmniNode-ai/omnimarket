@@ -19,7 +19,9 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 _COLOUR = re.compile(r"^#[0-9a-fA-F]{6}$")
 
-EnumTuiAction = Literal["config", "model", "delegation", "clear", "help", "quit"]
+EnumTuiAction = Literal[
+    "config", "model", "delegation", "dashboard", "clear", "help", "quit"
+]
 
 
 def _colour(value: str) -> str:
@@ -190,6 +192,25 @@ class ModelTuiDelegation(BaseModel):
     gateway_marker: str
 
 
+class ModelTuiDashboard(BaseModel):
+    """/dashboard (OMN-23413): the local dashboard's state and the onex commands
+    that start, open and stop it; the screen holds none of them."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    title: str
+    status: tuple[str, ...] = Field(min_length=1)
+    start: tuple[str, ...] = Field(min_length=1)
+    open: tuple[str, ...] = Field(min_length=1)
+    stop: tuple[str, ...] = Field(min_length=1)
+    running: str
+    not_running: str
+    started: str
+    opened: str
+    stopped: str
+    failed: str
+
+
 class ModelTuiTabSpec(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -210,6 +231,7 @@ class ModelTuiDesign(BaseModel):
     replaced_commands: tuple[tuple[str, ...], ...] = ()
     model_table: ModelTuiModelTable
     delegation: ModelTuiDelegation
+    dashboard: ModelTuiDashboard
     tabs: tuple[ModelTuiTabSpec, ...] = Field(min_length=1)
     #: The model screens' sentences, by name; ``{name}`` parts are filled in.
     words: dict[str, str]

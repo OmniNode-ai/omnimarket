@@ -1363,6 +1363,120 @@ class ModelPickScreen(_TabbedScreen[None]):
         self._close()
 
 
+class DashboardScreen(_TabbedScreen[None]):
+    """The local dashboard: its real state, and Start, Open and Stop (OMN-23413)."""
+
+    TAB = "dashboard"
+    NOTE = "#bnote"
+
+    CSS = """
+    DashboardScreen { align: center middle; }
+    #board { width: 92%; max-width: 160; height: 92%; border: round $primary; padding: 0 2; background: $panel; }
+    #board .summary { height: 1; margin: 0 0 1 0; }
+    #bstate { height: auto; margin: 1 0; }
+    #bnote { height: auto; }
+    #bkeys { color: $text-muted; height: 1; }
+    #bbuttons { height: 3; dock: bottom; align-horizontal: right; }
+    """
+    BINDINGS = [
+        Binding("escape", "cancel", _say("button_cancel")),
+        Binding("s", "start", _say("button_start"), show=False),
+        Binding("enter", "open", _say("button_open"), show=False),
+        Binding("x", "stop", _say("button_stop"), show=False),
+    ]
+
+    def __init__(self, selection: ModelTuiSelection) -> None:
+        super().__init__()
+        self._selection = selection
+
+    def compose(self) -> ComposeResult:
+        words = tui_design().dashboard
+        with Vertical(id="board"):
+            yield _tab_strip(self.TAB)
+            yield _summary(self._selection)
+            yield Label(Text(words.title, style=_style("primary", "bold")))
+            yield Static(
+                Text(_say("status_reading"), style=_style("muted")), id="bstate"
+            )
+            yield Static("", id="bnote")
+            yield Static(
+                keycaps(tui_design().model_table.help["dashboard"]), id="bkeys"
+            )
+            with Horizontal(id="bbuttons"):
+                # The keys are S, Enter and X; a focused button would take Enter
+                # for itself and start instead of open. They stay clickable.
+                for label, button_id in (
+                    ("button_start", "bstart"),
+                    ("button_open", "bopen"),
+                    ("button_stop", "bstop"),
+                    ("button_cancel", "bcancel"),
+                ):
+                    button = Button(
+                        _say(label),
+                        variant="primary" if button_id == "bstart" else "default",
+                        id=button_id,
+                    )
+                    button.can_focus = False
+                    yield button
+
+    def on_mount(self) -> None:
+        self._read_state()
+
+    def _read_state(self) -> None:
+        app = self.app
+        if not isinstance(app, OnexTui):
+            return
+
+        async def go() -> None:
+            self._show_state(await app.dashboard_state())
+
+        self.run_worker(go(), exclusive=True, group="dashboard-state")
+
+    def _show_state(self, state: Mapping[str, object]) -> None:
+        words = tui_design().dashboard
+        evidence = state.get("evidence")
+        found = evidence if isinstance(evidence, Mapping) else {}
+        if state.get("status") == "success" and found.get("url"):
+            line = Text(
+                f"{tui_design().model_table.status_pill} "
+                + words.running.format(url=found.get("url"), pid=found.get("pid", "")),
+                style=_style("success", "bold"),
+            )
+        else:
+            line = Text(
+                f"{tui_design().model_table.status_pill} "
+                + words.not_running.format(fix=state.get("fix") or ""),
+                style=_style("warning"),
+            )
+        self.query_one("#bstate", Static).update(line)
+
+    def _show_selection(self) -> None:
+        super()._show_selection()
+        self._read_state()
+
+    def action_start(self) -> None:
+        self._run(lambda app: app.dashboard_action("start"))
+
+    def action_open(self) -> None:
+        self._run(lambda app: app.dashboard_action("open"))
+
+    def action_stop(self) -> None:
+        self._run(lambda app: app.dashboard_action("stop"))
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        pressed = {
+            "bstart": self.action_start,
+            "bopen": self.action_open,
+            "bstop": self.action_stop,
+            "bcancel": self.action_cancel,
+        }.get(event.button.id or "")
+        if pressed is not None:
+            pressed()
+
+    def action_cancel(self) -> None:
+        self._close()
+
+
 def _big_word(word: str, gradient: tuple[str, ...]) -> Text:
     """``word`` in the design font, coloured left to right along ``gradient``."""
     font = tui_design().font
@@ -1814,6 +1928,8 @@ class OnexTui(App[int]):
             return cast(
                 Screen[object], DelegationScreen(selection, self._status.gateway)
             )
+        if name == "dashboard":
+            return cast(Screen[object], DashboardScreen(selection))
         return cast(Screen[object], ModelPickScreen(selection))
 
     async def switch_tab(self, name: str) -> None:
@@ -1829,7 +1945,7 @@ class OnexTui(App[int]):
             self._write(Text(tui_design().help, style=_style("foreground")))
         elif action == "clear":
             self.query_one("#output", RichLog).clear()
-        elif action in ("config", "model", "delegation"):
+        elif action in ("config", "model", "delegation", "dashboard"):
             # A tab stays open until Esc; its actions run while it is open.
             await self.push_screen(await self.tab_screen(action))
 
@@ -2018,6 +2134,36 @@ class OnexTui(App[int]):
         if outcome is not None:
             self._toast(outcome, ok=not failed)
         return outcome
+
+    async def dashboard_state(self) -> dict[str, object]:
+        """`onex dashboard status --json`: the dashboard's real state."""
+        _, out, _ = await self._runner.capture(tuple(tui_design().dashboard.status))
+        return _last_json_object(out) or {}
+
+    async def dashboard_action(self, name: str) -> Text:
+        """Start, open or stop the dashboard; the outcome is returned and pops up."""
+        words = tui_design().dashboard
+        argv = {"start": words.start, "open": words.open, "stop": words.stop}[name]
+        code, out, err = await self._runner.capture(tuple(argv))
+        document = _last_json_object(out) or {}
+        evidence = document.get("evidence")
+        found = evidence if isinstance(evidence, Mapping) else {}
+        ok = not code and document.get("status") == "success"
+        glyphs = tui_design().glyphs
+        if ok:
+            done = {"start": words.started, "open": words.opened, "stop": words.stopped}
+            line = Text(
+                f"{glyphs.done} " + done[name].format(url=found.get("url", "")),
+                style=_style("success"),
+            )
+        else:
+            reason = document.get("fix") or _last_line(out, err)
+            line = Text(
+                f"{glyphs.failed} " + words.failed.format(action=name, reason=reason),
+                style=_style("error"),
+            )
+        self._toast(line, ok=ok)
+        return line
 
     async def remove_model(self, entry: ModelCatalogEntry) -> Text | str:
         """Remove one model through the CLI; the outcome goes to the log and is returned."""

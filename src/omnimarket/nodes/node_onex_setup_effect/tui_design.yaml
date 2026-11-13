@@ -63,6 +63,7 @@ shortcuts:
   - {path: [config], action: config, help: "Providers, keys and models for delegation."}
   - {path: [model], action: model, help: Pick the model every task tries first.}
   - {path: [delegation], action: delegation, help: Turn delegation on or off for Claude Code.}
+  - {path: [dashboard], action: dashboard, help: "Start, open or stop the local dashboard."}
   - {path: [clear], action: clear, help: Clear the output.}
   - {path: [help], action: help, help: Show keys and how commands work.}
   - {path: [quit], action: quit, help: Leave the TUI.}
@@ -76,6 +77,8 @@ aliases:
 # not a second way in (operator decision 2026-11-12). The CLI command itself stays.
 replaced_commands:
   - [setup]
+  # /dashboard is a tab: it starts, opens and stops the dashboard.
+  - [dashboard]
 
 # Marks used in the output pane.
 glyphs:
@@ -176,6 +179,7 @@ model_table:
     config: "Tab next screen · Space ticks · Enter moves on · I details · / search · F filter · S sort · Ctrl+S saves · Esc back"
     model: "Tab next screen · Enter selects · A auto · R remove · I details · / search · F filter · S sort · Esc back"
     delegation: "Tab next screen · Space switches · M mode · I details · Ctrl+S saves · Esc back"
+    dashboard: "Tab next screen · S start · Enter opens · X stop · Esc back"
 
 # /delegation (OMN-23413 AC25, AC26): nothing is typed. Each mode names the onex
 # commands it runs; "{connection}" and "{model}" are filled from the selected
@@ -213,12 +217,28 @@ delegation:
   no_gateway_model: "None of your selected models' servers answers Anthropic Messages, which the gateway needs. Use the delegation hook, or select a model on such a server (Ollama does) with /config."
   gateway_marker: Gateway
 
+# /dashboard (OMN-23413): the local dashboard as the fourth tab. Its state is
+# read from the CLI's own JSON; each button runs the onex command named here.
+dashboard:
+  title: Local dashboard
+  status: [dashboard, status, --json]
+  start: [dashboard, start, --json]
+  open: [dashboard, open, --json]
+  stop: [dashboard, stop, --json]
+  running: "Running at {url} (process {pid})"
+  not_running: "Not running. {fix}"
+  started: "Dashboard running at {url}"
+  opened: "Opened {url} in your browser"
+  stopped: "Dashboard stopped"
+  failed: "Dashboard {action} did not work: {reason}"
+
 # /config, /model and /delegation are three tabs of one place: Tab and
 # Shift+Tab move between them, and a click on a tab opens it.
 tabs:
   - {id: config, label: "  Config  "}
   - {id: model, label: "  Model  "}
   - {id: delegation, label: "  Delegation  "}
+  - {id: dashboard, label: "  Dashboard  "}
 
 # Every word the /config, /model and /delegation screens show; {name} parts
 # are filled in. The screens hold no sentence of their own (OMN-23413 AC27).
@@ -288,6 +308,9 @@ words:
   button_add: Add
   button_save: Save
   button_cancel: Cancel
+  button_start: Start
+  button_open: Open
+  button_stop: Stop
   # A task typed on the main screen.
   delegating: "delegating…"
   delegation_failed: "delegation failed: {reason}"
