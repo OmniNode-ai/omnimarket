@@ -280,12 +280,19 @@ def _fingerprint(path: Path) -> tuple[int, int, int, int, str]:
 
 
 def _remove_verified(
-    unit: _Unit, snapshots: dict[Path, tuple[int, int, int, int, str]]
+    unit: _Unit,
+    snapshots: dict[Path, tuple[int, int, int, int, str]],
+    whole_tree: bool = False,
 ) -> Iterator[Path]:
     # Validate the whole unit before the first unlink. A new file invalidates the
     # archive's coverage; a changed file needs another archive on a later run.
     if unit.path.is_dir() and any(unit.path.rglob(".git")):
         raise OSError("source acquired git metadata")
+    if whole_tree:
+        for dirpath, dirnames, filenames in os.walk(unit.path, followlinks=False):
+            for name in dirnames + filenames:
+                if _is_protected(Path(dirpath) / name):
+                    raise OSError("whole tree holds a protected name")
     if set(_walk(unit.path)) != set(unit.files) or any(
         _fingerprint(file) != snapshots[file] for file in unit.files
     ):
@@ -302,6 +309,10 @@ def _remove_verified(
         while parent == unit.path or unit.path in parent.parents:
             parents.add(parent)
             parent = parent.parent
+    if whole_tree:
+        if not unit.path.is_symlink():
+            shutil.rmtree(unit.path)
+        return
     # Empty directories only: protected files, symlinks and newly arrived files
     # survive even if a writer changes the tree after the last verification.
     for parent in sorted(parents, key=lambda path: len(path.parts), reverse=True):
@@ -460,7 +471,7 @@ class NodeFileRetention:
                                 expected_snapshot=references.snapshot,
                             )
                         )
-                    for file in _remove_verified(unit, snapshots):
+                    for file in _remove_verified(unit, snapshots, entry.whole_tree):
                         counts["files"] += 1
                         counts["bytes"] += snapshots[file][2]
                     counts["units"] += 1

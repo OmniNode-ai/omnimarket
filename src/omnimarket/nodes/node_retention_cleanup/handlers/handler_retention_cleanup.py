@@ -413,7 +413,7 @@ class NodeRetentionCleanup:
             FileRetentionRequest(
                 entries=request.file_entries
                 if request.file_entries is not None
-                else policy.entries,
+                else [*policy.entries, *policy.cache_entries],
                 now=request.file_now or dt.datetime.now(dt.UTC),
                 dry_run=request.dry_run,
                 host=request.file_host,
