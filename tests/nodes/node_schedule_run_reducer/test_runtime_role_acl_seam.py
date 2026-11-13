@@ -1,10 +1,10 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The dev runtime's broker login runs the five schedule nodes: the grant block each contract declares and the rows the principals overlay's runtime role derives must agree (OMN-24029).
+"""The dev runtime's broker login runs the schedule nodes: the grant block each contract declares and the rows the principals overlay's runtime role derives must agree (OMN-24029).
 
-Seam: the five schedule nodes' contracts (the real src/omnimarket/nodes tree) -> HandlerBrokerAclDerive, with a
+Seam: the schedule nodes' contracts (the real src/omnimarket/nodes tree) -> HandlerBrokerAclDerive, with a
 ModelBrokerAclPrincipalsOverlay holding one role named runtime_schedule (principals overlay, overlays repository, pull request
-pending) whose principals is an example login (the real one is the dev runtime's, in the overlays repository) and whose nodes are those five. The merge gate reads the contract grant block;
+pending) whose principals is an example login (the real one is the dev runtime's, in the overlays repository) and whose nodes are those. The merge gate reads the contract grant block;
 the apply reads the derivation; a topic added to one side only fails here.
 Exemplar followed: tests/nodes/node_broker_acl_overlay_render_compute/test_derive_roles.py (the same request builder).
 """
@@ -34,16 +34,31 @@ from omnimarket.nodes.node_broker_acl_reconcile_effect.handlers.contract_topics 
 
 pytestmark = pytest.mark.unit
 
-_NODES = (
-    "node_schedule_run_reducer",
-    "node_schedule_verdict_compute",
-    "node_schedule_verdict_effect",
-    "node_lab_state_alarm_scheduled_effect",
-    "node_floor_fill_scheduled_effect",
-)
 _LOGIN = "User:example-runtime-login"
 _PLACEHOLDER = "${ONEX_ACL_RUNTIME_PRINCIPAL}"
 _ROOT = Path(__file__).resolve().parents[3]
+_SCHEDULE_CORE = (
+    "node_schedule_run_reducer",
+    "node_schedule_verdict_compute",
+    "node_schedule_verdict_effect",
+)
+
+
+def _scheduled_job_nodes() -> tuple[str, ...]:
+    """Every scheduled job node whose contract grants the runtime login: found in the tree, so a new job is covered the day it lands."""
+    found: list[str] = []
+    for contract in sorted(
+        (_ROOT / "src/omnimarket/nodes").glob("node_*_scheduled_effect/contract.yaml")
+    ):
+        grants = yaml.safe_load(contract.read_text(encoding="utf-8")).get(
+            "broker_acl_grants", []
+        )
+        if any(block.get("principal") == _PLACEHOLDER for block in grants):
+            found.append(contract.parent.name)
+    return tuple(found)
+
+
+_NODES = (*_SCHEDULE_CORE, *_scheduled_job_nodes())
 
 
 def _overlay(nodes: list[str]) -> ModelBrokerAclPrincipalsOverlay:
@@ -51,7 +66,7 @@ def _overlay(nodes: list[str]) -> ModelBrokerAclPrincipalsOverlay:
         {
             "scope": "broker_acl_principals",
             "ticket": "OMN-19998",
-            "why": "the dev runtime's broker login runs the five schedule nodes",
+            "why": "the dev runtime's broker login runs the schedule nodes",
             "roles": [
                 {
                     "name": "runtime_schedule",
@@ -78,7 +93,17 @@ def _derive(
     )
 
 
-def test_the_runtime_role_derives_every_topic_of_the_five_nodes() -> None:
+def test_the_job_nodes_include_the_ones_this_seam_names() -> None:
+    """Positive control: the tree walk finds the lab alarm's broker lag job, the lab state alarm, the floor fill and the commitment check jobs, so an empty walk cannot pass."""
+    assert {
+        "node_lab_alarm_scheduled_effect",
+        "node_lab_state_alarm_scheduled_effect",
+        "node_floor_fill_scheduled_effect",
+        "node_commitment_check_scheduled_effect",
+    } <= set(_scheduled_job_nodes())
+
+
+def test_the_runtime_role_derives_every_topic_of_the_schedule_nodes() -> None:
     """Per node: derived with no finding, every declared topic covered by a row of the login (publish WRITE and DESCRIBE,
     subscribe READ and DESCRIBE), and a GROUP PREFIXED row for each node that subscribes."""
     uses = load_topic_uses(_ROOT / "src/omnimarket/nodes")

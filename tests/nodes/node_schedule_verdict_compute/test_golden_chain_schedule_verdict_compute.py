@@ -12,6 +12,7 @@ import pytest
 from omnimarket.models.schedule_trigger.model_schedule_trigger import (
     ModelScheduleDeclaration,
     ModelScheduleJobState,
+    ModelScheduleUnreadableJob,
     ModelScheduleVerdictRequest,
 )
 from omnimarket.nodes.node_schedule_verdict_compute.handlers.handler_schedule_verdict import (
@@ -138,3 +139,19 @@ def test_error_two_jobs_one_firing_one_overdue_gives_red_naming_the_overdue_one(
     assert states["job_b"] == "OVERDUE"
     assert "job_b" in result.reason
     assert "job_a" not in result.reason
+
+
+def test_error_an_unreadable_job_overlay_reads_unreadable_and_red_naming_it() -> None:
+    request = ModelScheduleVerdictRequest(
+        now=T0,
+        observed_since=T0,
+        declared=(_decl("job_a"),),
+        states=(),
+        unreadable=(ModelScheduleUnreadableJob(overlay_id="job_x", detail="bad"),),
+    )
+    result = HandlerScheduleVerdict().handle(request)
+    assert result.red is True
+    assert "job_x" in result.reason
+    by_job = {v.job_id: v for v in result.verdicts}
+    assert by_job["job_x"].state == "UNREADABLE"
+    assert by_job["job_a"].state == "PENDING"
