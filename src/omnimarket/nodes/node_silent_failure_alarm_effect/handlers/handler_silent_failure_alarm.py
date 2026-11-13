@@ -55,12 +55,16 @@ from omnimarket.models.silent_failure_alarm.model_closer_staleness_alarm import 
 from omnimarket.nodes.node_silent_failure_alarm_compute import (
     HandlerCloserStalenessAlarm,
     HandlerDrainerAlarm,
+    HandlerInstallFailureAlarm,
     HandlerJobExitAlarm,
     HandlerPlacementShareAlarm,
     HandlerQuietHostAlarm,
     HandlerThroughputResultsAlarm,
     HandlerTickLivenessAlarm,
     host_id,
+)
+from omnimarket.nodes.node_silent_failure_alarm_compute.models import (
+    ModelInstallFailureAlarmRequest,
 )
 
 from ..host_table import read_unavailable_hosts
@@ -78,6 +82,7 @@ from .closer_record_reader import (
 )
 from .command_drainer_watch import CommandDrainerWatchProbe
 from .drainer_watch import DrainerWatchProbe
+from .install_failure_io import read_failures, read_state, write_state
 from .lab_fill_lane_reading import LabFillRunRow, parse_lanes, settle_run
 from .quiet_host_repair import QuietHostRepairPlanner
 
@@ -101,6 +106,7 @@ RESULTS = "throughput-results"
 HOUR = timedelta(hours=1)
 DRAINER = "drainer-dead"
 JOB_EXIT = "job-exit"
+INSTALL_FAILURE = "install-failure"
 CLOSER = "closer-staleness"
 _EPISODE = re.compile(r"ep-\d{8}T\d{4}Z-[a-z0-9.-]+")
 _JOB_RUNS = re.compile(r"^\s*runs\s*=\s*(\d+)\s*$", re.MULTILINE)
@@ -243,6 +249,7 @@ class HandlerSilentFailureAlarm:
         self._quiet = HandlerQuietHostAlarm()
         self._results = HandlerThroughputResultsAlarm()
         self._job_exit = HandlerJobExitAlarm()
+        self._install_failure = HandlerInstallFailureAlarm()
         watches: dict[str, ProtocolDrainerWatch] = {
             host: CommandDrainerWatchProbe(host, target)
             for host, target in options.host_drainers.items()
@@ -608,6 +615,7 @@ class HandlerSilentFailureAlarm:
                 cooldown_minutes=options.job_cooldown_minutes,
                 max_opened=options.job_max_opened,
                 dispatch_configured=options.dispatch_command is not None,
+                reraise_after_minutes=options.job_reraise_after_minutes,
             )
         )
         job_streaks = {item.label: item for item in jobs.streaks}
@@ -682,6 +690,43 @@ class HandlerSilentFailureAlarm:
                 warnings.append(
                     f"silent_failure_alarm: delivery state could not be written: {delivery_problem}"
                 )
+        install_verdict = "UNCONFIGURED"
+        if options.install_failures_file is not None:
+            failures, readable_failures, failure_warnings = read_failures(
+                options.install_failures_file
+            )
+            warnings.extend(
+                f"silent_failure_alarm: {item}" for item in failure_warnings
+            )
+            installs = self._install_failure.handle(
+                ModelInstallFailureAlarmRequest(
+                    now=now,
+                    readable=readable_failures,
+                    failures=failures,
+                    threshold=options.install_failure_threshold,
+                    window_minutes=options.install_failure_window_minutes,
+                    reraise_after_minutes=options.install_failure_reraise_minutes,
+                    previous=read_state(options.install_failure_state_file),
+                )
+            )
+            install_verdict = installs.verdict
+            if installs.verdict == "RAISE":
+                alarms.append(INSTALL_FAILURE)
+            if request.apply:
+                for alert in installs.alert_text:
+                    delivered, detail, _ = self._deliver("install_failure_alarm", alert)
+                    if not delivered:
+                        warnings.append(
+                            f"silent_failure_alarm: install-failure alert not delivered: {detail}"
+                        )
+                if installs.verdict != "UNREADABLE":
+                    problem = write_state(
+                        options.install_failure_state_file, installs.state
+                    )
+                    if problem:
+                        warnings.append(
+                            f"silent_failure_alarm: install-failure state could not be written: {problem}"
+                        )
         job_state = "UNCONFIGURED" if unconfigured else jobs.state
         summary = (
             f"silent_failure_alarm: {_stamp(now)} placement={verdicts[PLACEMENT]} "
@@ -693,6 +738,7 @@ class HandlerSilentFailureAlarm:
             f"trend_age={_minutes(now, trend_at)} "
             f"job_exit={job_state} failing={','.join(jobs.failing) or 'none'} "
             f"episodes_opened={len(jobs.opened)} pushed={len(jobs.push)} "
+            f"reraised={len(jobs.reraised)} install_failures={install_verdict} "
             f"held={','.join(jobs.suppressed) or 'none'} "
             f"alarms={','.join([*alarms, *open_notes]) or 'none'} "
             f"resolved={','.join(resolved) or 'none'} friction={friction} "
