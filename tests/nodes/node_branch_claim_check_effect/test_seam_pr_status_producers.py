@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: MIT
 """Pin the two producer shapes on onex.evt.github.pr-status.v1 against the branch-claim consumer.
 
-This is a pin, not a fix. The topic onex.evt.github.pr-status.v1 has two
+This pins the two producer shapes; the poller shape has its own consumer route
+(see test_seam_pr_status_route_coverage.py). The topic onex.evt.github.pr-status.v1 has two
 producers: node_github_webhook_ingress_effect publishes
 omnimarket.models.model_github_pr_state_observation.ModelGitHubPrStateObservation
 and node_github_pr_poller_effect publishes

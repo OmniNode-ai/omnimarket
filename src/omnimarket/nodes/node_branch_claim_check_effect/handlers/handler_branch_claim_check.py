@@ -52,6 +52,9 @@ from omnimarket.nodes.node_branch_claim_check_effect.models import (
     ModelBranchClaimPolicy,
     load_branch_claim_policy,
 )
+from omnimarket.nodes.node_github_pr_poller_effect.models.model_github_pr_status_poll_event import (
+    ModelGitHubPrStatusPollEvent,
+)
 
 logger = logging.getLogger(__name__)
 _CONTRACT_PATH = Path(__file__).parent.parent / "contract.yaml"
@@ -107,10 +110,17 @@ class HandlerBranchClaimCheck:
         self, request: ModelGitHubPrStateObservation
     ) -> ModelBranchClaimCheckResult: ...
 
-    def handle(self, request: BaseModel) -> ModelBranchClaimCheckResult:
+    @overload
+    def handle(self, request: ModelGitHubPrStatusPollEvent) -> None: ...
+
+    def handle(self, request: BaseModel) -> ModelBranchClaimCheckResult | None:
         # The runtime selects the typed def-B arm from a BaseModel class, not
         # a union annotation. Each topic's event_model supplies its concrete
-        # payload; overloads keep the two accepted inputs explicit to callers.
+        # payload; overloads keep the accepted inputs explicit to callers.
+        if isinstance(request, ModelGitHubPrStatusPollEvent):
+            # The poller's pr-status shape carries no head sha, head ref or CI
+            # verdict, so the claim check has nothing to decide on it: no result.
+            return None
         if not isinstance(
             request, (ModelBranchClaimCheckRequest, ModelGitHubPrStateObservation)
         ):

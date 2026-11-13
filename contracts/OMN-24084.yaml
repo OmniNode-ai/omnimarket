@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-24084
 title: Shared message shapes and seam tests for lab health, prompt intent and PR status
-summary: A reading of 40 producer and consumer contract pairs flagged three that looked like real declared mismatches. The lab health board and alert nodes subscribed to the evaluate node's topic but validated the payload into a wrapped request model (evaluation plus state) that the topic never carries, so every delivery would raise; their routes now declare the evaluate node's batch model as event_model and the handlers carry the projection and alert state between batches. The prompt intent producer typed its correlation id and emission time loosely (any string, optional) while the omnimemory consumer needs a UUID and a datetime; the producer model and handler now refuse what the consumer would refuse. The pull request status topic has two producer shapes and the branch-claim consumer accepts one; that pair is pinned by a test and not changed because the poller publishes nothing with its default config. The lane's broker login has no read permission on these topics, so the live read was unreadable and each pair is proven in process and on the in-memory bus.
+summary: A reading of 40 producer and consumer contract pairs flagged three that looked like real declared mismatches. The lab health board and alert nodes subscribed to the evaluate node's topic but validated the payload into a wrapped request model (evaluation plus state) that the topic never carries, so every delivery would raise; their routes now declare the evaluate node's batch model as event_model and the handlers carry the projection and alert state between batches. The prompt intent producer typed its correlation id and emission time loosely (any string, optional) while the omnimemory consumer needs a UUID and a datetime; the producer model and handler now refuse what the consumer would refuse. The pull request status topic has two producer shapes and the branch-claim consumer accepts one; the consumer gains a route for the own shape of the poller that decides nothing, so the events of the poller are no longer dead-lettered if it is ever configured; a test pins both shapes. The lane's broker login has no read permission on these topics, so the live read was unreadable and each pair is proven in process and on the in-memory bus.
 is_seam_ticket: true
 interface_change: true
 interfaces_touched:
@@ -46,7 +46,7 @@ dod_evidence:
         check_value: env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_prompt_intent_classify_compute -q -p no:cacheprovider
         cwd: .
   - id: dod-omn24084-ac3
-    description: 'AC3: the pin test passes: the webhook observation validates in the consumer model read from the consumer contract, the poller event is refused naming entity_id, delivery_id, github_event and as_of, the poller default config names no repository, and the consumer contract declares its dead-letter topic.'
+    description: 'AC3: the pin test passes (the webhook observation validates in the consumer model read from the consumer contract, the poller event is refused by it naming entity_id, delivery_id, github_event and as_of, the poller default config names no repository, the contract declares its dead-letter topic) and the route coverage test passes (each producer shape has exactly one consumer route and the poller shape route returns no result); the route coverage test fails at the merge base where the poller shape has no route.'
     source: manual
     binds_ac:
       - AC3
