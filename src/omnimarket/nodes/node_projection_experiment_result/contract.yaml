@@ -153,8 +153,8 @@ broker_acl_grants:
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.experiment-arm-result-recorded.v1, operation: DESCRIBE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.projection-experiment-result-applied.v1, operation: WRITE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.projection-experiment-result-applied.v1, operation: DESCRIBE}
-      - {resource_type: TOPIC, pattern: LITERAL, name: onex.snapshot.projection.eval.experiment-results.v1, operation: WRITE}
-      - {resource_type: TOPIC, pattern: LITERAL, name: onex.snapshot.projection.eval.experiment-results.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.snapshot.projection.eval.experiment-results.v1, operation: WRITE}  # onex-topic-allow: projection snapshot topic
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.snapshot.projection.eval.experiment-results.v1, operation: DESCRIBE}  # onex-topic-allow: projection snapshot topic
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.dlq.omnimarket.projection-experiment-result-malformed.v1, operation: WRITE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.dlq.omnimarket.projection-experiment-result-malformed.v1, operation: DESCRIBE}
       - {resource_type: GROUP, pattern: PREFIXED, name: local.omnimarket.node_projection_experiment_result.consume.v1., operation: READ}
