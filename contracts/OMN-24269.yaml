@@ -1,0 +1,49 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-24269"
+title: "Acceptance-eval results page reads under the request's tenant when its first page is cut short"
+summary: "A ranked projection page that is cut short advertises the origin of an ascending walk. That origin read ran on a pooled connection without the transaction-local tenant setting, so a tenant-isolated relation (delegation_eval_results) raised an invalid uuid error on the empty setting and the projection API answered 503 projection_database_unavailable. The origin read now runs in a read-only transaction that sets the tenant first, as the row read and the readiness probe already do."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-walk-origin-reads-under-tenant"
+    statement: "The walk origin read of a tenant-bound exposure sets the tenant setting for its own transaction and leaves none behind. The criterion below is labeled AC1 so the binding item can claim it through binds_ac."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: a ranked projection page that is cut short and must report where an ascending walk starts reads the relation under the request's tenant setting, so a tenant-isolated table no longer fails with an empty tenant value -- falsifier: uv run pytest tests/unit/projection/test_walk_origin_reused_tenant_context.py -q in omnimarket fails at the merge base with projection_database_unavailable"
+      - id: "AC2"
+        statement: "AC2: integrated: after the change runs on the dev runtime, a read of the acceptance-eval projection topic on the dev projection API returns HTTP 200 with one false-pass row per task class of the latest run -- falsifier: curl of the acceptance-eval topic on the dev projection API for the dev tenant returns 503 projection_database_unavailable or fewer rows than select count(distinct task_class) for the latest run"
+evidence_requirements:
+  - kind: "tests"
+    description: "AC1 hosted probe. The walk origin regression passes at the head."
+    command: "env -u PYTHONPATH uv run pytest tests/unit/projection/test_walk_origin_reused_tenant_context.py -q"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn24269-ac1-walk-origin-tenant"
+    description: "AC1 hosted probe. The walk origin regression passes at the head."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/projection/test_walk_origin_reused_tenant_context.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn24269-integration-proof"
+    description: "The pushed head ran the walk origin regression on a lab host through the lab work node and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-24269 -- uv run --frozen pytest tests/unit/projection/test_walk_origin_reused_tenant_context.py -q --no-cov"
+        cwd: "."
+  - id: "dod-omn24269-ac2-live-read"
+    description: "AC2 live read. The dev projection API answers the acceptance-eval topic with HTTP 200 and rows; curl fails on the 503 the topic returned before the change."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "command"
+        check_value: "curl -fsS \"$OMNIDASH_API_URL/projection/onex.snapshot.projection.delegation.acceptance-eval.v1?limit=5\""
+        cwd: "."

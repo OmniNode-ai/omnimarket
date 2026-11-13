@@ -1003,7 +1003,14 @@ class TableRowSource:
             params.append(tenant_id)
             where = f" WHERE {quote_identifier(cfg.tenant_column)}::text = $1"
         try:
-            async with pool.acquire() as connection:
+            async with (
+                pool.acquire() as connection,
+                connection.transaction(readonly=True),
+            ):
+                if tenant_id is not None:
+                    await connection.execute(
+                        "SELECT set_config($1, $2, true)", TENANT_GUC, tenant_id
+                    )
                 smallest = await connection.fetchval(
                     f"SELECT min({quote_identifier(cfg.cursor_column)}) "
                     f"FROM {relation}{where}",

@@ -5362,6 +5362,7 @@
   "tests/unit/projection/test_tenant_uuid_identity_mapping_omn15356.py": 0.07,
   "tests/unit/projection/test_topic_namespace_parity_omn18891.py": 0.33,
   "tests/unit/projection/test_topic_namespace_projection_seams_omn18891.py": 0.03,
+  "tests/unit/projection/test_walk_origin_reused_tenant_context.py": 10.31,
   "tests/unit/review/test_compact_strict_parser.py": 0.26,
   "tests/unit/review/test_github_diff_target_snapshot.py": 0.12,
   "tests/unit/review/test_hostile_reviewer_records_provenance.py": 0.35,
