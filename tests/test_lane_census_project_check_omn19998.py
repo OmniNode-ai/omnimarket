@@ -221,7 +221,7 @@ def run_main(
                 ModelComposeProjectCheckResult,
             )
 
-            return ModelComposeProjectCheckResult(outcome=outcome)  # type: ignore[arg-type]
+            return ModelComposeProjectCheckResult.model_validate({"outcome": outcome})
 
     monkeypatch.setattr(node_main, "HandlerLaneCensusEffect", FakeCensus)
     monkeypatch.setattr(node_main, "_project_handler", lambda: FakeStep())
