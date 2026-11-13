@@ -225,18 +225,16 @@ retention_policy:
         enabled: false
         readers: [codex resume]
 
-    # Rebuildable caches (OMN-19998). Not history, so they are never archived: a unit goes whole (symlinks inside
-    # it are removed, never followed) once every file in it is older than keep_days, and its owner rebuilds it
-    # from a lockfile on the next use. `entries` above stays archive-only; a cache entry must be delete + whole_tree.
-    cache_entries:
-      # Owner: node_dod_verify (`_hermetic_venv_root`), which prunes only when a check builds on the host: a host
-      # that stopped building kept 92 environments (37 GB on h101, 2026-11-13). Reader: the next dod-verify check.
+    # Rebuildable caches (OMN-19998): deleted whole, never archived; the owner rebuilds a unit from a lockfile on next use.
+    # A unit goes only when every file in it is older than keep_days (floor 7). Read by NodeCacheTreeRetention.
+  cache_tree_retention:
+    entries:
+      # Owner: node_dod_verify (`_hermetic_venv_root`) prunes only when a check builds on its own host; a host that stopped
+      # building kept 92 environments (34 GB on h101, 2026-11-13). Reader: the next dod-verify check.
       - name: dod-verify-venvs
         path: ~/.cache/onex/dod-verify-venvs
         pattern: "*"
         keep_days: 7
-        action: delete
-        whole_tree: true
         readers: [node_dod_verify hermetic environments, rebuilt from uv.lock on the next check]
 
 metadata:

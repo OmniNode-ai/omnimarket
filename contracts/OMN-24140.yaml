@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-24140
 title: Remove old unused check environments from lab host disks
-summary: The file retention pass of node_retention_cleanup removed only the regular files of an aged unit and never a symlink, so a Python environment left a hollow directory of symlinks that the dod-verify code would reuse as an environment; and nothing declared the dod-verify environment folder at all. On lab host h101 that folder held 92 environments (about 37 GiB) because dod-verify prunes only when a check builds on its own host. This adds a whole_tree flag to a file-retention entry, a cache_entries list in the retention policy (delete-only, whole tree, kept apart from the archive-only entries) and the dod-verify-venvs cache entry at seven days.
+summary: The file retention pass of node_retention_cleanup removes regular files of an aged unit and never a symlink, so a Python environment left a hollow directory of symlinks that the dod-verify code would reuse as an environment; and nothing declared the dod-verify environment folder at all. On lab host h101 that folder held 92 environments (about 34 GB) because dod-verify prunes only when a check builds on its own host. This adds NodeCacheTreeRetention (a new handler and models beside the file pass, because the file shape ratchet baselines the file handler), a retention_policy.cache_tree_retention contract block with the dod-verify-venvs entry at seven days, and the cleanup node's file pass runs it.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -12,7 +12,7 @@ requirements:
   - id: AC1
     statement: 'AC1: the file retention pass removes an aged dod-verify environment whole (symlinks inside it removed, never followed) and keeps a recent one, and its cleanup-node run reads the declared cache entry without the caller naming it -- falsifier: uv run pytest tests/nodes/test_omn19998_venv_cache_retention.py -q fails at the merge base'
   - id: AC2
-    statement: 'AC2: an aged environment holding a protected name, or one with a recent file, is kept whole (error status for the first), and a cache entry that archives or lacks whole_tree is refused -- falsifier: uv run pytest tests/nodes/test_omn19998_venv_cache_retention.py -q -k ''protected or recent or refused'' fails at the merge base'
+    statement: 'AC2: an aged environment holding a protected name, or one with a recent file, is kept whole (error status for the first), and a window under seven days is refused -- falsifier: uv run pytest tests/nodes/test_omn19998_venv_cache_retention.py -q -k ''protected or recent or refused'' fails at the merge base'
   - id: AC3
     statement: 'AC3: the contract''s cache entry path equals the dod-verify hermetic environment root -- falsifier: uv run pytest tests/nodes/test_omn19998_venv_cache_retention.py -q -k seam fails at the merge base'
   - id: AC4
@@ -27,7 +27,7 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn24140-ac1
-  description: 'AC1: the test file passes at the head; at the merge base FileRetentionEntry refuses whole_tree (extra fields forbidden) so the test file cannot pass.'
+  description: 'AC1: the test file passes at the head; at the merge base the cache tree handler module does not exist, so the test file cannot import it.'
   source: manual
   binds_ac:
   - AC1
@@ -36,7 +36,7 @@ dod_evidence:
     check_value: uv run pytest tests/nodes/test_omn19998_venv_cache_retention.py -q -p no:randomly --no-cov
     cwd: .
 - id: dod-omn24140-ac2
-  description: 'AC2: the test file passes at the head; at the merge base FileRetentionEntry refuses whole_tree (extra fields forbidden) so the test file cannot pass.'
+  description: 'AC2: the test file passes at the head; at the merge base the cache tree handler module does not exist so the test file cannot pass.'
   source: manual
   binds_ac:
   - AC2
@@ -45,7 +45,7 @@ dod_evidence:
     check_value: uv run pytest tests/nodes/test_omn19998_venv_cache_retention.py -q -k 'protected or recent or refused' -p no:randomly --no-cov
     cwd: .
 - id: dod-omn24140-ac3
-  description: 'AC3: the test file passes at the head; at the merge base FileRetentionEntry refuses whole_tree (extra fields forbidden) so the test file cannot pass.'
+  description: 'AC3: the test file passes at the head; at the merge base the cache tree handler module does not exist so the test file cannot pass.'
   source: manual
   binds_ac:
   - AC3

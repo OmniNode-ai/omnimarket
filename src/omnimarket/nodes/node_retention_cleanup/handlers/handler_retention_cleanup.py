@@ -83,12 +83,21 @@ import yaml
 from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.nodes.node_retention_cleanup.handlers.handler_cache_tree_retention import (
+    NodeCacheTreeRetention,
+    load_cache_tree_policy,
+)
 from omnimarket.nodes.node_retention_cleanup.handlers.handler_file_retention import (
     FileRetentionEntry,
     FileRetentionRequest,
     FileRetentionResult,
     NodeFileRetention,
     load_file_policy,
+)
+from omnimarket.nodes.node_retention_cleanup.models.model_cache_tree_retention import (
+    CacheTreeItemResult,
+    CacheTreeRequest,
+    CacheTreeResult,
 )
 from omnimarket.projection.tenant_isolation import (
     TENANT_GUC,
@@ -309,6 +318,7 @@ class RetentionCleanupResult(BaseModel):
         default=False, description="Any table ended its run on a full batch"
     )
     files: FileRetentionResult | None = None
+    cache_trees: CacheTreeResult | None = None
     files_removed: int = Field(default=0)
     bytes_removed: int = Field(default=0)
     files_archived: int = Field(default=0)
@@ -413,7 +423,7 @@ class NodeRetentionCleanup:
             FileRetentionRequest(
                 entries=request.file_entries
                 if request.file_entries is not None
-                else [*policy.entries, *policy.cache_entries],
+                else policy.entries,
                 now=request.file_now or dt.datetime.now(dt.UTC),
                 dry_run=request.dry_run,
                 host=request.file_host,
@@ -425,12 +435,24 @@ class NodeRetentionCleanup:
         failed = [
             i for i in files.items if i.status in {"error", "archive_unavailable"}
         ]
+        trees = None
+        tree_failed: list[CacheTreeItemResult] = []
+        if request.file_entries is None:
+            trees = NodeCacheTreeRetention().handle(
+                CacheTreeRequest(
+                    entries=load_cache_tree_policy().entries,
+                    now=request.file_now or dt.datetime.now(dt.UTC),
+                    dry_run=request.dry_run,
+                    only=request.file_only,
+                )
+            )
+            tree_failed = [i for i in trees.items if i.status == "error"]
         status = result.status
         if status == EnumCleanupStatus.NO_DB:
             status = (
                 EnumCleanupStatus.DRY_RUN if request.dry_run else EnumCleanupStatus.OK
             )
-        if failed:
+        if failed or tree_failed:
             status = EnumCleanupStatus.ERROR
         verb = "eligible" if request.dry_run else "retired"
         report_files = files.files_eligible if request.dry_run else files.files_removed
@@ -443,14 +465,28 @@ class NodeRetentionCleanup:
             update={
                 "status": status,
                 "files": files,
-                "files_removed": files.files_removed,
-                "bytes_removed": files.bytes_removed,
+                "cache_trees": trees,
+                "files_removed": files.files_removed
+                + (trees.files_removed if trees else 0),
+                "bytes_removed": files.bytes_removed
+                + (trees.bytes_removed if trees else 0),
                 "files_archived": files.files_archived,
                 "bytes_archived": files.bytes_archived,
                 "message": (
                     f"{result.message}; files: {verb} {report_files} files, "
                     f"{report_bytes} bytes, archived {files.bytes_archived} bytes"
-                    + (f"; {len(failed)} entries failed" if failed else "")
+                    + (
+                        f"; cache trees: {verb} "
+                        f"{sum(i.units_eligible if request.dry_run else i.units_removed for i in trees.items)} units, "
+                        f"{sum(i.bytes_eligible if request.dry_run else i.bytes_removed for i in trees.items)} bytes"
+                        if trees
+                        else ""
+                    )
+                    + (
+                        f"; {len(failed) + len(tree_failed)} entries failed"
+                        if failed or tree_failed
+                        else ""
+                    )
                 ),
             }
         )

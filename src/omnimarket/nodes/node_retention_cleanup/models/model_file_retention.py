@@ -5,9 +5,9 @@
 from __future__ import annotations
 
 import datetime as dt
-from typing import Literal, Self
+from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 MIN_KEEP_DAYS = 7
 
@@ -28,8 +28,6 @@ class FileRetentionEntry(BaseModel):
     )
     enabled: bool = True
     consent_ref: str = ""
-    # Remove the whole aged unit directory, symlinks inside it included (never followed).
-    whole_tree: bool = False
 
     @field_validator("keep_days")
     @classmethod
@@ -39,13 +37,6 @@ class FileRetentionEntry(BaseModel):
             raise ValueError(msg)
         return value
 
-    @model_validator(mode="after")
-    def _whole_tree_not_archive(self) -> Self:
-        if self.whole_tree and self.action == "archive":
-            msg = "whole_tree cannot be combined with action 'archive'"
-            raise ValueError(msg)
-        return self
-
 
 class FileRetentionPolicy(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -53,16 +44,6 @@ class FileRetentionPolicy(BaseModel):
     archive_root_env: str
     synced_marker_xattr: str = ""
     entries: list[FileRetentionEntry]
-    # Rebuildable caches: delete-only, removed whole. Kept apart so `entries` stays archive-only.
-    cache_entries: list[FileRetentionEntry] = Field(default_factory=list)
-
-    @model_validator(mode="after")
-    def _cache_entries_are_whole_tree_deletes(self) -> Self:
-        for entry in self.cache_entries:
-            if entry.action != "delete" or not entry.whole_tree:
-                msg = f"cache entry {entry.name} must be action delete with whole_tree"
-                raise ValueError(msg)
-        return self
 
 
 class FileRetentionRequest(BaseModel):
