@@ -4,6 +4,9 @@
 
 from __future__ import annotations
 
+from omnimarket.models.model_source_read_cache import (
+    ModelSourceCacheKey,
+)
 from omnimarket.nodes.node_source_read_cache_effect.handlers.backend_memory import (
     BackendMemorySourceReadCache,
 )
@@ -12,9 +15,6 @@ from omnimarket.nodes.node_source_read_cache_effect.handlers.cached_source_reade
 )
 from omnimarket.nodes.node_source_read_cache_effect.handlers.handler_source_read_cache import (
     HandlerSourceReadCache,
-)
-from omnimarket.nodes.node_source_read_cache_effect.models.model_source_read_cache import (
-    ModelSourceCacheKey,
 )
 from omnimarket.nodes.node_source_read_cache_effect.protocols.protocol_source_read_cache_backend import (
     SourceCacheUnavailableError,

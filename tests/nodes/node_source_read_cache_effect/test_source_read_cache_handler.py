@@ -13,14 +13,14 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from omnimarket.nodes.node_source_read_cache_effect.handlers.handler_source_read_cache import (
-    HandlerSourceReadCache,
-)
-from omnimarket.nodes.node_source_read_cache_effect.models.model_source_read_cache import (
+from omnimarket.models.model_source_read_cache import (
     EnumSourceCacheOutcome,
     ModelSourceCacheKey,
     ModelSourceCacheRequest,
     ModelSourceCacheResult,
+)
+from omnimarket.nodes.node_source_read_cache_effect.handlers.handler_source_read_cache import (
+    HandlerSourceReadCache,
 )
 from tests.nodes.node_source_read_cache_effect.support import (
     PREFIX,

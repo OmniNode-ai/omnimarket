@@ -22,7 +22,7 @@ description: >
 handler:
   module: omnimarket.nodes.node_source_read_cache_effect.handlers.handler_source_read_cache
   class: HandlerSourceReadCache
-  input_model: omnimarket.nodes.node_source_read_cache_effect.models.model_source_read_cache.ModelSourceCacheRequest
+  input_model: omnimarket.models.model_source_read_cache.ModelSourceCacheRequest
 
 # Not a runtime-dispatched handler: HandlerSourceReadCache takes the backend, the key prefix and the ttl backstop
 # as constructor parameters, so the node runs through its own CLI and the board's steps.
@@ -37,11 +37,11 @@ descriptor:
 
 input_model:
   name: ModelSourceCacheRequest
-  module: omnimarket.nodes.node_source_read_cache_effect.models.model_source_read_cache
+  module: omnimarket.models.model_source_read_cache
   description: A lookup or a store of one source read, keyed by source id, params digest and revision.
 output_model:
   name: ModelSourceCacheResult
-  module: omnimarket.nodes.node_source_read_cache_effect.models.model_source_read_cache
+  module: omnimarket.models.model_source_read_cache
   description: The outcome of the request and, on a hit, the payload.
 
 runtime_dispatch:

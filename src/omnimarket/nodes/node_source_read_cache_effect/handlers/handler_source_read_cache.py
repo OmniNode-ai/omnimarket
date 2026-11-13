@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from omnimarket.nodes.node_source_read_cache_effect.models.model_source_read_cache import (
+from omnimarket.models.model_source_read_cache import (
     EnumSourceCacheOutcome,
     ModelSourceCacheRequest,
     ModelSourceCacheResult,

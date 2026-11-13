@@ -19,6 +19,9 @@ from typing import Any
 import pytest
 
 from omnimarket.models.model_factory_floor_input import ModelFloorLedgerRow
+from omnimarket.models.model_source_read_cache import (
+    ModelSourceCacheKey,
+)
 from omnimarket.nodes.node_factory_floor_effect.handlers.ledger_window_by_archive import (
     decode_rows,
     encode_rows,
@@ -38,9 +41,6 @@ from omnimarket.nodes.node_source_read_cache_effect.handlers.cached_source_reade
 )
 from omnimarket.nodes.node_source_read_cache_effect.handlers.handler_source_read_cache import (
     HandlerSourceReadCache,
-)
-from omnimarket.nodes.node_source_read_cache_effect.models.model_source_read_cache import (
-    ModelSourceCacheKey,
 )
 from tests.nodes.node_source_read_cache_effect.support import (
     PREFIX,

@@ -28,6 +28,10 @@ from omnimarket.models.floor_17a.model_mvp_launch_reads import (
     ModelMvpReads,
     ModelMvpSourceRead,
 )
+from omnimarket.models.model_source_read_cache import (
+    EnumSourceCacheOutcome,
+    ModelSourceCacheKey,
+)
 from omnimarket.nodes.node_source_read_cache_effect.handlers.cached_source_reader import (
     CachedSourceReader,
 )
@@ -37,10 +41,6 @@ from omnimarket.nodes.node_source_read_cache_effect.handlers.repo_revision impor
 from omnimarket.nodes.node_source_read_cache_effect.handlers.schedule_revision import (
     SLOT_STAMP,
     schedule_slot,
-)
-from omnimarket.nodes.node_source_read_cache_effect.models.model_source_read_cache import (
-    EnumSourceCacheOutcome,
-    ModelSourceCacheKey,
 )
 
 # Runs a command and returns (exit code, stdout, stderr). The tests replace it.

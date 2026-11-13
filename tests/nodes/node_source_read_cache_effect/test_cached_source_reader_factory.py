@@ -14,15 +14,15 @@ from pathlib import Path
 import pytest
 import yaml
 
+from omnimarket.models.model_source_read_cache import (
+    EnumSourceCacheOutcome,
+    ModelSourceCacheOverlay,
+)
 from omnimarket.nodes.node_source_read_cache_effect.handlers import (
     cached_source_reader_factory as factory,
 )
 from omnimarket.nodes.node_source_read_cache_effect.handlers.cached_source_reader_factory import (
     build_cached_source_reader,
-)
-from omnimarket.nodes.node_source_read_cache_effect.models.model_source_read_cache import (
-    EnumSourceCacheOutcome,
-    ModelSourceCacheOverlay,
 )
 from tests.nodes.node_source_read_cache_effect.support import Clock, key
 

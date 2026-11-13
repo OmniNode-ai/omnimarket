@@ -15,14 +15,14 @@ from typing import Any
 
 import pytest
 
+from omnimarket.models.model_source_read_cache import (
+    EnumSourceCacheOutcome,
+)
 from omnimarket.nodes.node_source_read_cache_effect.handlers.cached_source_reader import (
     CachedSourceReader,
 )
 from omnimarket.nodes.node_source_read_cache_effect.handlers.handler_source_read_cache import (
     HandlerSourceReadCache,
-)
-from omnimarket.nodes.node_source_read_cache_effect.models.model_source_read_cache import (
-    EnumSourceCacheOutcome,
 )
 from tests.nodes.node_source_read_cache_effect.support import (
     PREFIX,
