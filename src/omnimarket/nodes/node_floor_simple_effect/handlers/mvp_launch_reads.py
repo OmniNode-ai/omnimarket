@@ -28,6 +28,17 @@ from omnimarket.models.floor_17a.model_mvp_launch_reads import (
     ModelMvpReads,
     ModelMvpSourceRead,
 )
+from omnimarket.nodes.node_source_read_cache_effect.handlers.cached_source_reader import (
+    CachedSourceReader,
+)
+from omnimarket.nodes.node_source_read_cache_effect.handlers.schedule_revision import (
+    SLOT_STAMP,
+    schedule_slot,
+)
+from omnimarket.nodes.node_source_read_cache_effect.models.model_source_read_cache import (
+    EnumSourceCacheOutcome,
+    ModelSourceCacheKey,
+)
 
 # Runs a command and returns (exit code, stdout, stderr). The tests replace it.
 CommandRunner = Callable[[Sequence[str], int], tuple[int, str, str]]
@@ -67,6 +78,31 @@ def declared_sources(
             events | {"schedule", *spec.admitted_triggers},
         )
     return {k: (r, w, n, tuple(sorted(e))) for k, (r, w, n, e) in found.items()}
+
+
+def declared_schedules(overlay: ModelMvpLaunchOverlay) -> dict[str, tuple[str, ...]]:
+    """Each producer workflow's key to the distinct cron texts of the scheduled readings that name it."""
+    found: dict[str, set[str]] = {}
+    for spec in (*overlay.readings, *overlay.scenarios):
+        if spec.kind != "scheduled" or spec.source is None or spec.cron is None:
+            continue
+        found.setdefault(read_key(spec.source.repo, spec.source.workflow), set()).add(
+            spec.cron
+        )
+    return {k: tuple(sorted(v)) for k, v in found.items()}
+
+
+def list_is_current(read: ModelMvpSourceRead, slot: datetime) -> bool:
+    """True when the list needs no new read for ``slot``: no error, nothing still running, and the slot's run has appeared."""
+    return (
+        read.error is None
+        and all(r.status == "completed" for r in read.runs)
+        and any(r.created_at >= slot for r in read.runs)
+    )
+
+
+def _encode_read(read: ModelMvpSourceRead) -> str:
+    return read.model_dump_json()
 
 
 def _run_from(raw: Mapping[str, Any]) -> ModelMvpRun:
@@ -176,14 +212,17 @@ def refresh(
     refresh_seconds: int,
     run: CommandRunner,
     clock: Callable[[], datetime],
+    cache: CachedSourceReader | None = None,
 ) -> ModelMvpReads:
     """Re-read the stalest workflows inside the stage deadline, keep the others as they are, write the record and return it.
 
     A workflow read within ``refresh_seconds`` is not read again; one the deadline left no time for keeps its previous read, which
-    the command route draws stale once it is older than its bound. A workflow the overlay no longer names is dropped.
+    the command route draws stale once it is older than its bound. A workflow the overlay no longer names is dropped. With a
+    ``cache``, a workflow whose list the cache holds for the current schedule slot is not read from the source at all.
     """
     path = home / reads_relpath
     sources = declared_sources(overlay)
+    schedules = declared_schedules(overlay)
     previous = load_reads(path)
     kept = {read_key(r.repo, r.workflow): r for r in previous.reads} if previous else {}
     result = {k: v for k, v in kept.items() if k in sources}
@@ -204,15 +243,51 @@ def refresh(
         if elapsed + read_timeout_seconds > stage_deadline_seconds:
             break
         repo, workflow, limit, events = sources[key]
-        result[key] = read_workflow(
-            home / onex_relpath,
-            repo,
-            workflow,
-            limit,
-            events,
-            read_timeout_seconds,
-            run,
-            clock(),
+
+        def fetch(
+            repo: str = repo,
+            workflow: str = workflow,
+            limit: int = limit,
+            events: tuple[str, ...] = events,
+        ) -> ModelMvpSourceRead:
+            return read_workflow(
+                home / onex_relpath,
+                repo,
+                workflow,
+                limit,
+                events,
+                read_timeout_seconds,
+                run,
+                clock(),
+            )
+
+        slot = schedule_slot(schedules.get(key, ()), clock())
+        if cache is None or slot is None:
+            result[key] = fetch()
+            continue
+
+        def current(read: ModelMvpSourceRead, slot: datetime = slot) -> bool:
+            return list_is_current(read, slot)
+
+        listed, outcome = cache.read(
+            ModelSourceCacheKey(
+                source_id=f"mvp-runs:{repo}:{workflow}",
+                params_digest=ModelSourceCacheKey.digest(
+                    {"limit": limit, "events": list(events)}
+                ),
+                revision=slot.strftime(SLOT_STAMP),
+            ),
+            fetch,
+            _encode_read,
+            ModelMvpSourceRead.model_validate_json,
+            usable=current,
+            store_if=current,
+        )
+        # A hit is current by its key (the same slot, nothing running, the slot's run seen): it carries this cycle's read time.
+        result[key] = (
+            listed.model_copy(update={"read_at": clock()})
+            if outcome == EnumSourceCacheOutcome.HIT
+            else listed
         )
     record = ModelMvpReads(
         updated_at=clock(), reads=tuple(result[k] for k in sources if k in result)

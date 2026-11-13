@@ -11,7 +11,7 @@ import runpy
 import subprocess
 import sys
 import tempfile
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
@@ -192,16 +192,10 @@ def contract_ledger_kinds() -> frozenset[str]:
     return frozenset(load_contract(OWN_CONTRACT_PATH).runtime.ledger_kinds)
 
 
-def parse_ledger_text(
-    text: str, kinds: frozenset[str] | None = None
-) -> tuple[ModelFloorLedgerRow, ...]:
-    """The rows of one reader answer. ``kinds`` (default: the contract's ``ledger_kinds``) are kept whole; of the other
-    kinds only each lane's newest row is kept."""
-    if kinds is None:
-        kinds = contract_ledger_kinds()
-    kept: list[tuple[int, ModelFloorLedgerRow]] = []
-    latest: dict[str, tuple[int, ModelFloorLedgerRow]] = {}
-    for order, line in enumerate(text.splitlines()):
+def parse_ledger_rows(text: str) -> tuple[ModelFloorLedgerRow, ...]:
+    """Every row of one reader answer, in the answer's order: no kind is dropped and no lane is reduced (``reduce_ledger_rows`` does that)."""
+    rows: list[ModelFloorLedgerRow] = []
+    for line in text.splitlines():
         match = ROW_RE.match(line)
         if line.startswith("ROWS ") or match is None:
             continue
@@ -268,6 +262,18 @@ def parse_ledger_text(
             needs=fields.get("needs", ""),
             report=fields.get("report", ""),
         )
+        rows.append(row)
+    return tuple(rows)
+
+
+def reduce_ledger_rows(
+    rows: Sequence[ModelFloorLedgerRow], kinds: frozenset[str]
+) -> tuple[ModelFloorLedgerRow, ...]:
+    """The rows the floor reads: ``kinds`` are kept whole; of the other kinds only each lane's newest row is kept."""
+    kept: list[tuple[int, ModelFloorLedgerRow]] = []
+    latest: dict[str, tuple[int, ModelFloorLedgerRow]] = {}
+    for order, row in enumerate(rows):
+        ts = row.ts
         core = row.kind in kinds
         if core:
             kept.append((order, row))
@@ -286,6 +292,16 @@ def parse_ledger_text(
         key=lambda pair: (pair[1].ts, pair[0]),
     )
     return tuple(row for _, row in ordered)
+
+
+def parse_ledger_text(
+    text: str, kinds: frozenset[str] | None = None
+) -> tuple[ModelFloorLedgerRow, ...]:
+    """The rows of one reader answer. ``kinds`` (default: the contract's ``ledger_kinds``) are kept whole; of the other
+    kinds only each lane's newest row is kept."""
+    if kinds is None:
+        kinds = contract_ledger_kinds()
+    return reduce_ledger_rows(parse_ledger_rows(text), kinds)
 
 
 def _run_ledger_reader(

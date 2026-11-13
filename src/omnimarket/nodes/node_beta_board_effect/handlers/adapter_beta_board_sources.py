@@ -26,6 +26,17 @@ from omnimarket.nodes.node_reading_writer_effect.protocols import (
     ModelLedgerQuery,
     ProtocolLedgerRowSource,
 )
+from omnimarket.nodes.node_source_read_cache_effect.handlers.cached_source_reader import (
+    CachedSourceReader,
+)
+from omnimarket.nodes.node_source_read_cache_effect.handlers.schedule_revision import (
+    SLOT_STAMP,
+    schedule_slot,
+)
+from omnimarket.nodes.node_source_read_cache_effect.models.model_source_read_cache import (
+    EnumSourceCacheOutcome,
+    ModelSourceCacheKey,
+)
 
 CommandRunner = Callable[[Sequence[str], int], tuple[int, str, str]]
 CopyRunner = Callable[[Sequence[str], bytes, int], tuple[int, str]]
@@ -231,17 +242,57 @@ def load_previous_reads(path: Path) -> dict[str, ModelSourceRead]:
         return {}
 
 
+def probe_read_is_current(read: ModelSourceRead, slot: datetime) -> bool:
+    """True when a cached probe read needs no new read for ``slot``: it was read, and a run finished at or after the slot (a run still
+    in flight is not a point, so the read stays a miss until it ends)."""
+    return read.read == "read" and any(p.at >= slot for p in read.points)
+
+
+def _read_probe_through_cache(
+    probe: ModelBetaProbe,
+    rt: ModelBetaBoardRuntime,
+    onex: Path,
+    run: CommandRunner,
+    clock: Callable[[], datetime],
+    cache: CachedSourceReader | None,
+) -> ModelSourceRead:
+    """One probe's read: from the cache when it holds the read for the probe's current schedule slot, else from the source."""
+    slot = schedule_slot([probe.cron], clock()) if probe.cron is not None else None
+    if cache is None or slot is None:
+        return read_probe(probe, rt, onex, run, clock())
+    read, outcome = cache.read(
+        ModelSourceCacheKey(
+            source_id=f"beta-probe:{probe.repository}:{probe.workflow}",
+            params_digest=ModelSourceCacheKey.digest(
+                {"limit": rt.probe_run_limit, "events": list(probe.events)}
+            ),
+            revision=slot.strftime(SLOT_STAMP),
+        ),
+        lambda: read_probe(probe, rt, onex, run, clock()),
+        lambda value: value.model_dump_json(),
+        ModelSourceRead.model_validate_json,
+        usable=lambda value: probe_read_is_current(value, slot),
+        store_if=lambda value: probe_read_is_current(value, slot),
+    )
+    # A hit is current by its key (the same slot, the slot's run finished): it carries this cycle's read time.
+    if outcome == EnumSourceCacheOutcome.HIT:
+        return read.model_copy(update={"read_at": clock()})
+    return read
+
+
 def refresh_probes(
     rt: ModelBetaBoardRuntime,
     home: Path,
     now: datetime,
     run: CommandRunner,
     clock: Callable[[], datetime],
+    cache: CachedSourceReader | None = None,
 ) -> ModelSourceReads:
     """Refresh the probe reads one at a time, the least recently read first, inside the stage deadline.
 
     A probe read within ``probe_refresh_seconds`` is kept as it is; one the deadline left no time for keeps its previous read,
-    which the board then draws stale or unread by that probe's own bound.
+    which the board then draws stale or unread by that probe's own bound. With a ``cache``, a probe that declares its schedule is read
+    from the source only when the cache holds no read for its current slot.
     """
     kept = load_previous_reads(home / rt.reads_relpath)
     onex = home / rt.onex_relpath
@@ -263,7 +314,7 @@ def refresh_probes(
             continue
         if (clock() - started).total_seconds() >= rt.stage_deadline_seconds:
             break
-        fresh = read_probe(probe, rt, onex, run, clock())
+        fresh = _read_probe_through_cache(probe, rt, onex, run, clock, cache)
         # A failed read does not erase a good earlier one: the board ages it by the probe's own bound.
         if fresh.read == "unread" and previous is not None and previous.read == "read":
             continue
