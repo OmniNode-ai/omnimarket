@@ -14,6 +14,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from omnimarket.models.bus_binding.model_node_event_bus import ModelNodeEventBus
 from omnimarket.models.model_claude_pool_limit_recheck import (
     ModelLimitRecheckPolicy,
 )
@@ -260,6 +261,10 @@ class ModelRotationOverlay(BaseModel):
     #: present => on the marks-source host the tick probes a revoked label every ``policy.interval_seconds``
     #: with the probe the limit recheck declares, so ``limit_recheck`` must be set when this is.
     revoke_recheck: ModelRevokeRecheckSettings | None = None
+    #: The bus ``onex run-node`` reaches this node on (OMN-24328). Absent => the node declares no bus and a run-node
+    #: call is refused at broker resolution; present => the same typed block every other node overlay carries.
+    #: The tick itself never reads it.
+    event_bus: ModelNodeEventBus | None = None
 
     @model_validator(mode="after")
     def _shape(self) -> ModelRotationOverlay:
