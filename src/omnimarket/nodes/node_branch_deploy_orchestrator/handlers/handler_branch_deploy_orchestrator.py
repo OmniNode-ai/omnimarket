@@ -26,15 +26,15 @@ from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutpu
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from pydantic import BaseModel
 
-from omnimarket.events.branch_deploy_command import (
+from omnimarket.models.branch_deploy_command import (
     ModelBranchDeployCommandRequest,
     ModelBranchDeployCommandResult,
 )
-from omnimarket.events.branch_deploy_probe import (
+from omnimarket.models.branch_deploy_probe import (
     ModelBranchDeployProbeRequest,
     ModelBranchDeployProbeResult,
 )
-from omnimarket.events.host_install_state import (
+from omnimarket.models.host_install_state import (
     EnumHostInstallOutcome,
     EnumHostInstallState,
     EnumHostInstallStep,
