@@ -26,8 +26,15 @@ from omnimarket.nodes.node_gpu_power_caps_effect.handlers.backend_in_memory impo
 from omnimarket.nodes.node_gpu_power_caps_effect.handlers.backend_subprocess import (
     BackendGpuPowerCapsSubprocess,
 )
+from omnimarket.nodes.node_gpu_power_caps_effect.handlers.dispatch_lab_work import (
+    DispatchGpuPowerCapsLabWork,
+)
 from omnimarket.nodes.node_gpu_power_caps_effect.handlers.protocols import (
     ProtocolGpuPowerCapsBackend,
+    ProtocolLabWorkSender,
+)
+from omnimarket.nodes.node_gpu_power_caps_effect.handlers.sender_lab_work_bus import (
+    SenderLabWorkBus,
 )
 from omnimarket.nodes.node_gpu_power_caps_effect.models.model_gpu_power_caps import (
     EnumGpuPowerCapsBackend,
@@ -48,9 +55,13 @@ from omnimarket.nodes.node_gpu_power_caps_effect.models.model_gpu_power_caps_ove
 
 
 def select_backend(overlay: ModelGpuPowerCapsOverlay) -> ProtocolGpuPowerCapsBackend:
-    """The backend the overlay names."""
+    """The backend the overlay names. The lab_work backend has none of its own: its host runs this node's command line."""
     if overlay.backend is EnumGpuPowerCapsBackend.IN_MEMORY:
         return BackendGpuPowerCapsInMemory(overlay)
+    if overlay.backend is EnumGpuPowerCapsBackend.LAB_WORK:
+        raise ValueError(
+            "the lab_work backend sends the run to the host; it has no local backend"
+        )
     return BackendGpuPowerCapsSubprocess(
         overlay.read_argv,
         overlay.set_argv,
@@ -94,19 +105,22 @@ def caps_of_unit(
 
 
 class HandlerGpuPowerCaps:
-    """All three parts are injected by tests and the CLI; the runtime boots it bare and the
+    """All four parts are injected by tests and the CLI; the runtime boots it bare and the
     handler reads the overlay and builds the backend it names on the first request. The caps
-    settings are re-read on EVERY request, so a changed value applies without a restart."""
+    settings are re-read on EVERY request, so a changed value applies without a restart. With
+    the lab_work backend the run is sent to the host and nothing is read or written here."""
 
     def __init__(
         self,
         overlay: ModelGpuPowerCapsOverlay | None = None,
         backend: ProtocolGpuPowerCapsBackend | None = None,
         caps_loader: Callable[[], ModelNetUnitsOverlay] | None = None,
+        sender: ProtocolLabWorkSender | None = None,
     ) -> None:
         self._overlay_value = overlay
         self._backend_value = backend
         self._caps_loader_value = caps_loader
+        self._sender_value = sender
 
     @property
     def _overlay(self) -> ModelGpuPowerCapsOverlay:
@@ -134,8 +148,21 @@ class HandlerGpuPowerCaps:
             self._caps_loader_value = load_caps
         return self._caps_loader_value
 
+    @property
+    def _sender(self) -> ProtocolLabWorkSender:
+        if self._sender_value is None:
+            lab_work = self._overlay.lab_work
+            if lab_work is None:
+                raise ValueError("the overlay has no lab_work block")
+            self._sender_value = SenderLabWorkBus(
+                lab_work.bus_lane, lab_work.workspace_root
+            )
+        return self._sender_value
+
     def handle(self, request: ModelGpuPowerCapsRequest) -> ModelGpuPowerCapsResult:
         overlay = self._overlay
+        if overlay.backend is EnumGpuPowerCapsBackend.LAB_WORK:
+            return DispatchGpuPowerCapsLabWork(overlay, self._sender).dispatch(request)
         host = overlay.host(request.host)
         if host is None:
             return self._refused(
