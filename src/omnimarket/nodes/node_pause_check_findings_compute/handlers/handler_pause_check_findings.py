@@ -14,7 +14,7 @@ from __future__ import annotations
 import re
 from collections.abc import Sequence
 
-from omnimarket.merge_control.hold_marker import HOLD_MARKER_RE
+from omnimarket.merge_control.hold_marker import match_hold_token
 from omnimarket.nodes.node_pause_check_findings_compute.models import (
     EnumFindingKind,
     EnumPauseVerdict,
@@ -40,7 +40,8 @@ _ISROW_RE = re.compile(r"^20[0-9][0-9]-[01][0-9]-[0-3][0-9]T[0-2][0-9]:[0-5][0-9
 _UNTIL_RE = re.compile(r"^20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]Z$")
 # The awk until= stamp prefix (a 20xx- date).
 _UNTIL_PREFIX_RE = re.compile(r"^20[0-9][0-9]-")
-# The awk label pause-family regex.
+# The awk label pause-family regex, minus the merge-hold tokens (do-not-merge,
+# dnm, wip), which come from the canonical hold vocabulary.
 _LABEL_RE = re.compile(
     r"(^|[^a-z])(hold|on-hold|blocked|block|pause|paused|freeze|frozen)([^a-z]|$)"
 )
@@ -290,9 +291,7 @@ class HandlerPauseCheckFindings:
                         text=lab,
                     )
                 )
-            elif _LABEL_RE.search(lab.translate(_ASCII_LOWER)) or HOLD_MARKER_RE.search(
-                lab
-            ):
+            elif match_hold_token(lab) or _LABEL_RE.search(lab.translate(_ASCII_LOWER)):
                 found.append(ModelFinding(kind=EnumFindingKind.LABEL, text=lab))
 
         # b. the line prefilter (split the ledger once; do not re-decode per PR).
@@ -403,7 +402,7 @@ class HandlerPauseCheckFindings:
                 if _is_notice(typ, fields, row_low):
                     s = ""
                 if typ not in report_type and (
-                    self._pause_re.search(s) or HOLD_MARKER_RE.search(s)
+                    self._pause_re.search(s) or match_hold_token(s)
                 ):
                     pr_pause[ln] = _short(row, self._overlay.snippet_bytes)
                 elif self._order_re.search(s):
