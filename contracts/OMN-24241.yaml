@@ -1,0 +1,57 @@
+schema_version: 1.0.0
+ticket_id: OMN-24241
+title: One owner per background job on each lab machine, with a check that reports a second copy
+summary: node_host_job_claim_compute reads the unit files installed on a lab host and, against a declared host job table (per role, each job with one owner unit, the substring its ExecStart must carry and every unit name that has done the job), reports a second unit and a second implementation of the owner by name. The table is an overlay value in the overlays repository; the node writes nothing.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24241-job-claim-check
+  statement: A lab host's background jobs each have one declared owner, and a second copy of a job is reported by name with the job, the owner and the extra unit.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the host drift check reports a duplicate-job finding naming the job, its declared owner and the extra unit when two installed units claim one job on a host -- falsifier: pytest tests/nodes/node_host_job_claim_compute/test_handler_host_job_claim.py -q fails when the check is removed'
+  - id: AC2
+    statement: 'AC2: the job table is read from an overlay value and a missing or empty table is refused with a typed error -- falsifier: pytest tests/nodes/node_host_job_claim_compute -k error -q'
+  - id: AC3
+    statement: 'AC3: the shared finding shape between the job check and the drift check holds on the in-memory bus and the real broker -- falsifier: pytest tests/nodes/node_host_job_claim_compute/test_seam_host_drift_findings.py -q'
+  - id: AC4
+    statement: 'AC4: integrated: on a lab host running the branch, the drift check run prints a duplicate-job finding for a known duplicate and the unit journal shows it -- falsifier: run the check on h051 and read its output for the job named in the table'
+evidence_requirements:
+- kind: tests
+  description: The host job claim node tests, golden and error chains, overlay refusals and the failing control.
+  command: uv run --frozen pytest tests/nodes/node_host_job_claim_compute -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24241-ac1-ac2
+  description: The handler tests (duplicate unit, second implementation, failing control) and the error chain and overlay refusal tests pass.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_job_claim_compute -q --no-cov
+    cwd: .
+- id: dod-omn24241-ac3
+  description: The seam test holds the finding shape the job check shares with the host drift check.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_job_claim_compute/test_seam_host_drift_findings.py -q --no-cov
+    cwd: .
+- id: dod-omn24241-integration-proof
+  description: Run this pull request's own tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24241 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_host_job_claim_compute -q --no-cov
+    cwd: .
