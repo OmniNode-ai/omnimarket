@@ -20,6 +20,7 @@ import hashlib
 import re
 from datetime import UTC, datetime
 from typing import Any, Literal
+from urllib.parse import quote
 
 from pydantic import BaseModel
 
@@ -35,7 +36,6 @@ from omnimarket.github_landing.github_landing_requests import (
     pull_request_request,
     pull_requests_request,
     releases_request,
-    repo_file_request,
     review_threads_request,
     run_artifacts_request,
     run_jobs_request,
@@ -901,7 +901,11 @@ def read_repo_file(
     file_path = request.file_path
     if head_sha is None or file_path is None:  # defensive; the validator enforces it
         raise ValueError("this operation requires head_sha and file_path.")
-    req = repo_file_request(request.repo, head_sha, file_path)
+    quoted_path = quote(file_path, safe="/")
+    req = ModelGithubHttpRequest(
+        method="GET",
+        path=f"/repos/{request.repo}/contents/{quoted_path}?ref={quote(head_sha)}",
+    )
     response = transport.send_sync(req)
     if response.status == 404:
         return ModelRepoFileResult(

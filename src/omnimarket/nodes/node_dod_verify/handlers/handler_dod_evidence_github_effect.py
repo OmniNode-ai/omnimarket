@@ -89,7 +89,6 @@ from omnimarket.models.model_github_gateway_io import (
 from omnimarket.nodes.node_dod_verify.handlers.dod_evidence_local_source import (
     DodEvidenceLocalSource,
     canonical_clone,
-    parse_repo_contract,
 )
 from omnimarket.nodes.node_dod_verify.handlers.release_index_source import (
     PACKAGE_INDEX_JSON_URL as PACKAGE_INDEX_JSON_URL,
@@ -107,7 +106,6 @@ from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
     EnumEvidenceUnverifiableCause,
 )
 from omnimarket.nodes.node_dod_verify.models.model_durable_evidence_gate import (
-    EnumRepoContractReadStatus,
     ModelDurableEvidenceGateRun,
     ModelDurableEvidenceGateRunCommand,
     ModelRepoContractRead,
@@ -117,6 +115,9 @@ from omnimarket.nodes.node_dod_verify.models.model_durable_evidence_gate import 
 from omnimarket.nodes.node_dod_verify.services.durable_evidence_gate import (
     REPO_EVIDENCE_CHECK_NAME,
     DurableEvidenceGate,
+)
+from omnimarket.nodes.node_dod_verify.services.repo_contract_from_gateway import (
+    repo_contract_from_gateway,
 )
 
 logger = logging.getLogger(__name__)
@@ -1350,17 +1351,10 @@ class HandlerDodEvidenceGithubEffect:
         ticket_id = command.ticket_id or ""
         read = self._local.repo_contract_at(repo, sha, ticket_id)
         if read is None:
-            # A squash-merged PR's own head is no commit the clone holds, and a
-            # lane may not read GitHub, so the gateway reads the file there.
-            fetched = self.gateway_repo_file(repo, sha, f"contracts/{ticket_id}.yaml")
-            if isinstance(fetched, str):
-                read = ModelRepoContractRead(
-                    status=EnumRepoContractReadStatus.ERROR, error=fetched
-                )
-            elif not fetched.found or fetched.text is None:
-                read = ModelRepoContractRead(status=EnumRepoContractReadStatus.ABSENT)
-            else:
-                read = parse_repo_contract(fetched.text)
+            # The PR's own head is no commit the clone holds; a lane may not read
+            # GitHub, so the gateway reads the file there.
+            path = f"contracts/{ticket_id}.yaml"
+            read = repo_contract_from_gateway(self.gateway_repo_file(repo, sha, path))
         return ModelDodEvidenceGithubLookupResultEvent(
             correlation_id=command.correlation_id,
             operation=command.operation,
