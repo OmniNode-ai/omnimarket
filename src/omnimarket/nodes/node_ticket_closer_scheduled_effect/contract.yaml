@@ -85,7 +85,8 @@ externally_consumed_topics:
   - onex.evt.omnimarket.ticket-closer-result.v1
 
 # The bound profile's node-side ticket calls (OMN-24301) publish the ticket write node's command and read its two terminal topics
-# ungrouped, so the runtime principal's grants below carry no group rows.
+# ungrouped on the declared lane's login; those rows are the overlays repository's scope broker_acls_ticket_closer_dev_runtime, and
+# the grants below stay the rows the runtime role derives from this contract's event_bus topics.
 # Where the schedule reads its settings. The overlays are found under ONEX_SKILL_OVERLAY_ROOTS or the file the env var names.
 runtime:
   schedule_overlay: {overlay_id: node_ticket_closer_scheduled_effect, file_env: ONEX_TICKET_CLOSER_SCHEDULE_OVERLAY, model: omnimarket.models.ticket_closer.model_ticket_closer.ModelTicketCloserScheduleOverlay}
@@ -97,12 +98,6 @@ broker_acl_grants:
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.ticket-closer-result.v1, operation: DESCRIBE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.intent.platform.runtime-tick.v1, operation: READ}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.intent.platform.runtime-tick.v1, operation: DESCRIBE}
-      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.linear-ticket-write-requested.v1, operation: WRITE}
-      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.linear-ticket-write-requested.v1, operation: DESCRIBE}
-      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.linear-ticket-write-completed.v1, operation: READ}
-      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.linear-ticket-write-completed.v1, operation: DESCRIBE}
-      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.linear-ticket-write-failed.v1, operation: READ}
-      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.linear-ticket-write-failed.v1, operation: DESCRIBE}
 
 metadata:
   ticket: OMN-24138

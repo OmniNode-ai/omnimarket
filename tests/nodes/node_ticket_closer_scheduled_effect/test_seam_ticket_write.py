@@ -3,8 +3,8 @@
 """The seam between the scheduled ticket closer and the ticket write node (OMN-24301).
 
 Three crossings, each failing when either side changes shape: the reader reads the ticket write node's own
-completed and failed answer models (not a hand-written dict), the closer's contract holds the broker grants
-for exactly the topics the ticket call uses, and the ticket call's topics are the write node's declared ones.
+completed and failed answer models (not a hand-written dict), the lane login's broker rows (spelled here,
+declared in the overlays repository) are exactly the topics the ticket call uses, and the ticket call's topics are the write node's declared ones.
 """
 
 from __future__ import annotations
@@ -33,7 +33,6 @@ from omnimarket.nodes.node_ticket_closer_scheduled_effect.handlers.ticket_reader
 pytestmark = pytest.mark.unit
 
 NODES = Path(__file__).resolve().parents[3] / "src/omnimarket/nodes"
-CLOSER_CONTRACT = NODES / "node_ticket_closer_scheduled_effect/contract.yaml"
 WRITE_CONTRACT = NODES / "node_linear_ticket_write_effect/contract.yaml"
 BODY = "- [ ] AC1: it works -- falsifier: a test\n"
 
@@ -96,31 +95,39 @@ def test_the_reader_reads_the_write_nodes_own_failed_model_as_unread() -> None:
     assert reader.read("OMN-1") is None
 
 
-def grants_of(contract: Path) -> set[tuple[str, str]]:
-    loaded = yaml.safe_load(contract.read_text(encoding="utf-8"))
+# The rows the lane bus login needs for the ticket call, as the overlays repository declares them in the scope
+# broker_acls_ticket_closer_dev_runtime (the node-side ticket calls ride the declared lane's login, not the runtime role
+# whose rows the contract derives from its event_bus topics).
+LANE_LOGIN_ROWS = {
+    ("onex.cmd.omnimarket.linear-ticket-write-requested.v1", "WRITE"),
+    ("onex.cmd.omnimarket.linear-ticket-write-requested.v1", "DESCRIBE"),
+    ("onex.evt.omnimarket.linear-ticket-write-completed.v1", "READ"),
+    ("onex.evt.omnimarket.linear-ticket-write-completed.v1", "DESCRIBE"),
+    ("onex.evt.omnimarket.linear-ticket-write-failed.v1", "READ"),
+    ("onex.evt.omnimarket.linear-ticket-write-failed.v1", "DESCRIBE"),
+}
+
+
+def rows_the_call_needs(
+    command: str, success: str, failure: str
+) -> set[tuple[str, str]]:
     return {
-        (grant["name"], grant["operation"])
-        for entry in loaded["broker_acl_grants"]
-        for grant in entry["grants"]
+        (command, "WRITE"),
+        (command, "DESCRIBE"),
+        (success, "READ"),
+        (success, "DESCRIBE"),
+        (failure, "READ"),
+        (failure, "DESCRIBE"),
     }
 
 
-def missing_grants(held: set[tuple[str, str]]) -> set[tuple[str, str]]:
+def test_the_lane_login_rows_are_the_topics_the_call_uses() -> None:
     topics = load_ticket_topics()
     assert topics.failure is not None
-    needed = {
-        (topics.command, "WRITE"),
-        (topics.command, "DESCRIBE"),
-        (topics.success, "READ"),
-        (topics.success, "DESCRIBE"),
-        (topics.failure, "READ"),
-        (topics.failure, "DESCRIBE"),
-    }
-    return needed - held
-
-
-def test_the_closer_contract_grants_the_ticket_topics_the_call_uses() -> None:
-    assert missing_grants(grants_of(CLOSER_CONTRACT)) == set()
+    assert (
+        rows_the_call_needs(topics.command, topics.success, topics.failure)
+        == LANE_LOGIN_ROWS
+    )
 
 
 def test_the_calls_topics_are_the_write_nodes_declared_ones() -> None:
@@ -133,6 +140,12 @@ def test_the_calls_topics_are_the_write_nodes_declared_ones() -> None:
     assert topics.failure == dispatch["terminal_events"]["failure"]
 
 
-def test_failing_control_a_contract_without_the_command_grant_is_caught() -> None:
-    held = grants_of(CLOSER_CONTRACT) - {(load_ticket_topics().command, "WRITE")}
-    assert missing_grants(held) == {(load_ticket_topics().command, "WRITE")}
+def test_failing_control_a_renamed_command_topic_is_caught() -> None:
+    topics = load_ticket_topics()
+    assert topics.failure is not None
+    renamed = rows_the_call_needs(
+        "onex.cmd.omnimarket.linear-ticket-write-renamed.v1",
+        topics.success,
+        topics.failure,
+    )
+    assert renamed != LANE_LOGIN_ROWS

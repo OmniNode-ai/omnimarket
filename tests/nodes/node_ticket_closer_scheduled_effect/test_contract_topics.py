@@ -32,24 +32,3 @@ def test_input_tick_topic_is_subscribed() -> None:
         "onex.intent.platform.runtime-tick.v1"
         in loaded["event_bus"]["subscribe_topics"]
     )
-
-
-TICKET_WRITE_ROWS = {
-    ("onex.cmd.omnimarket.linear-ticket-write-requested.v1", "WRITE"),
-    ("onex.cmd.omnimarket.linear-ticket-write-requested.v1", "DESCRIBE"),
-    ("onex.evt.omnimarket.linear-ticket-write-completed.v1", "READ"),
-    ("onex.evt.omnimarket.linear-ticket-write-completed.v1", "DESCRIBE"),
-    ("onex.evt.omnimarket.linear-ticket-write-failed.v1", "READ"),
-    ("onex.evt.omnimarket.linear-ticket-write-failed.v1", "DESCRIBE"),
-}
-
-
-def test_runtime_principal_holds_the_ticket_write_rows_the_bound_profile_uses() -> None:
-    """The bound profile publishes the ticket write command and reads both terminals (OMN-24301)."""
-    loaded = yaml.safe_load(CONTRACT.read_text(encoding="utf-8"))
-    rows = {
-        (grant["name"], grant["operation"])
-        for entry in loaded["broker_acl_grants"]
-        for grant in entry["grants"]
-    }
-    assert rows >= TICKET_WRITE_ROWS
