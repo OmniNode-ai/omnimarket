@@ -18,6 +18,7 @@ capabilities:
   side_effect_class: effectful
 dependencies:
 - pydantic>=2.0
+- omnibase-infra>=0.38.3
 license: MIT
 authors:
 - OmniNode Team
