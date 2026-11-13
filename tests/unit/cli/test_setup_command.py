@@ -31,7 +31,7 @@ import pytest
 from click.testing import CliRunner, Result
 from omnibase_core.cli.cli_commands import cli
 
-from omnimarket.handlers import handler_model_keys
+from omnimarket.handlers import handler_model_keys, setup_model_connections
 from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_result import (
     ModelModelStatus,
     ModelModelTestResult,
@@ -118,6 +118,14 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
         )
 
     monkeypatch.setattr(handler_model_keys, "list_providers", fixture_statuses)
+    # Since 0e2529429 the models step reads status through
+    # setup_model_connections.provider_status, not list_providers, so the
+    # fixture model is answered there too (OMN-23413).
+    monkeypatch.setattr(
+        setup_model_connections,
+        "provider_status",
+        lambda _provider, _url, _models: fixture_statuses(),
+    )
     return fake_home
 
 
@@ -170,7 +178,7 @@ class TestSetupWalk:
 
         assert result.exit_code == 0, result.output
         assert "Workspace root" not in result.output, "prompted for a derivable value"
-        runtime = workspace / "config/onex/runtime/runtime_config.yaml"
+        runtime = workspace / handler_onex_setup.RUNTIME_CONFIG_RELPATH
         assert runtime.read_text().splitlines()[0] == handler_onex_setup.SETUP_MARKER
         assert 'type: "inmemory"' in runtime.read_text()
         assert (home / ".onex/config.yaml").is_file()
@@ -183,7 +191,7 @@ class TestSetupWalk:
         workspace = tmp_path / "bridge"
         result = _run(["--no-interactive"], OMNI_HOME=str(workspace))
         assert result.exit_code == 0, result.output
-        assert (workspace / "config/onex/runtime/runtime_config.yaml").is_file()
+        assert (workspace / handler_onex_setup.RUNTIME_CONFIG_RELPATH).is_file()
 
     def test_scripted_empty_environment_prompts_once_for_the_workspace(
         self, home: Path, tmp_path: Path
@@ -197,7 +205,7 @@ class TestSetupWalk:
         ]
         assert len(prompts) == 1, result.output
         assert "Install path" not in result.output, "prompted for a defaulted value"
-        assert (workspace / "config/onex/runtime/runtime_config.yaml").is_file()
+        assert (workspace / handler_onex_setup.RUNTIME_CONFIG_RELPATH).is_file()
 
     def test_empty_environment_without_a_terminal_stops_and_names_the_fix(
         self, home: Path
@@ -350,7 +358,7 @@ def _fix_user_config(home: Path, workspace: Path, mp: pytest.MonkeyPatch) -> Non
 def _break_runtime_config(
     home: Path, workspace: Path, mp: pytest.MonkeyPatch
 ) -> list[str]:
-    runtime = workspace / "config/onex/runtime/runtime_config.yaml"
+    runtime = workspace / handler_onex_setup.RUNTIME_CONFIG_RELPATH
     runtime.parent.mkdir(parents=True, exist_ok=True)
     (workspace / ".onex-setup-workspace").write_text("onex setup\n")
     runtime.write_text("name: hand-written\n")
@@ -358,7 +366,7 @@ def _break_runtime_config(
 
 
 def _fix_runtime_config(home: Path, workspace: Path, mp: pytest.MonkeyPatch) -> None:
-    runtime = workspace / "config/onex/runtime/runtime_config.yaml"
+    runtime = workspace / handler_onex_setup.RUNTIME_CONFIG_RELPATH
     runtime.rename(runtime.with_suffix(".yaml.bak"))
 
 
@@ -417,7 +425,7 @@ class TestSetupFailureAndResume:
         fix(home, workspace, monkeypatch)
         resumed = _run(retry_args)
         assert resumed.exit_code == 0, resumed.output
-        assert (workspace / "config/onex/runtime/runtime_config.yaml").is_file()
+        assert (workspace / handler_onex_setup.RUNTIME_CONFIG_RELPATH).is_file()
         assert (home / ".onex/setup.json").is_file()
 
 

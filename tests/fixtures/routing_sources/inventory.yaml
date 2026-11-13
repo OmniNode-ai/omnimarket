@@ -257,6 +257,8 @@ not_routing_resolution_sites:
   - site: "src/omnimarket/handlers/delegation_eval_read_binding.py:resolve_setting(OVERLAY_ID)"
     reason: the name of the environment variable that holds the read connection string for the delegation eval label and event tables; a database address for tenant-scoped reads, and it chooses no backend, model, tier or provider
 not_routing_configs:
+  - path: src/omnimarket/configs/model_catalog.yaml
+    reason: what the onex TUI's model table shows (the models.dev catalogue address and cache, provider id map, capability columns, context fields, and how long a local server's answer is remembered); it displays models and chooses no backend, model, tier or provider (OMN-23413)
   - path: src/omnimarket/configs/extraction_rung_windows.v1.yaml
     reason: measured windows and the chunk-size rule of the extraction harness, which chooses no route
   - path: src/omnimarket/configs/adk_invoke.yaml
