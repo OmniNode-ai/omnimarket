@@ -130,8 +130,17 @@ def test_golden_chain_publications_keep_overlay_topic_order() -> None:
 def test_error_chain_the_first_failing_topic_in_overlay_order_is_named_and_nothing_is_published() -> (
     None
 ):
+    """Every read waits at a barrier that only opens when all topics are read at once, then two of them fail."""
+    barrier_size = len(OVERLAY.emission_topics)
+
     class TwoDown:
+        def __init__(self) -> None:
+            self._barrier: asyncio.Barrier | None = None
+
         async def publications(self, topic: str) -> list[bytes]:
+            if self._barrier is None:
+                self._barrier = asyncio.Barrier(barrier_size)
+            await self._barrier.wait()
             if topic == SUCCEEDED:
                 raise ConnectionError(topic)
             if topic == FAILED:
@@ -139,7 +148,9 @@ def test_error_chain_the_first_failing_topic_in_overlay_order_is_named_and_nothi
             return []
 
     publisher = InMemoryEnvelopePublisher()
-    result = asyncio.run(handler(TwoDown(), publisher).handle())
+    result = asyncio.run(
+        asyncio.wait_for(handler(TwoDown(), publisher).handle(), timeout=2)
+    )
     assert not result.published
     assert SUCCEEDED in result.reason
     assert "ConnectionError" in result.reason
@@ -147,14 +158,25 @@ def test_error_chain_the_first_failing_topic_in_overlay_order_is_named_and_nothi
 
 
 def test_error_chain_cancellation_is_not_swallowed() -> None:
+    """The cancellation is raised only once every topic is being read; a sequential handler never gets there and times out instead."""
+    barrier_size = len(OVERLAY.emission_topics)
+
     class CancellingSource:
+        def __init__(self) -> None:
+            self._barrier: asyncio.Barrier | None = None
+
         async def publications(self, topic: str) -> list[bytes]:
+            if self._barrier is None:
+                self._barrier = asyncio.Barrier(barrier_size)
+            await self._barrier.wait()
             raise asyncio.CancelledError()
 
     publisher = InMemoryEnvelopePublisher()
 
     async def go() -> None:
-        await handler(CancellingSource(), publisher).handle()
+        await asyncio.wait_for(
+            handler(CancellingSource(), publisher).handle(), timeout=2
+        )
 
     with pytest.raises(asyncio.CancelledError):
         asyncio.run(go())
