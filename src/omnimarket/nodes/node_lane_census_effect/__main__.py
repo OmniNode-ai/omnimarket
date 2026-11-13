@@ -21,11 +21,11 @@ from omnimarket.nodes.node_compose_project_census_compute.overlay import (
 )
 from omnimarket.nodes.node_compose_project_census_compute.overlay import load_policy
 
-from .handlers.adapter_lane_census_schedule import load_schedule
-from .handlers.handler_compose_project_check import (
-    HandlerComposeProjectCheck,
+from .handlers.adapter_compose_project_check import (
+    ComposeProjectCheckStep,
     ModelComposeProjectCheckCommand,
 )
+from .handlers.adapter_lane_census_schedule import load_schedule
 from .handlers.handler_lane_census_effect import HandlerLaneCensusEffect
 
 # What the census exit code says when the per-project step found drift or could not read.
@@ -34,8 +34,8 @@ HOST_UNDECLARED_EXIT = 5
 INVENTORY_UNOBSERVABLE_EXIT = 4
 
 
-def _project_handler() -> HandlerComposeProjectCheck:
-    return HandlerComposeProjectCheck()
+def _project_handler() -> ComposeProjectCheckStep:
+    return ComposeProjectCheckStep()
 
 
 def _combined_exit(census_exit: int, outcome: str) -> int:

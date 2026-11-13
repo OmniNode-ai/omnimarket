@@ -32,9 +32,9 @@ from omnimarket.nodes.node_lane_census_effect import __main__ as node_main
 from omnimarket.nodes.node_lane_census_effect.handlers import (
     adapter_lane_census_schedule as schedule_module,
 )
-from omnimarket.nodes.node_lane_census_effect.handlers.handler_compose_project_check import (
+from omnimarket.nodes.node_lane_census_effect.handlers.adapter_compose_project_check import (
     FORMAT,
-    HandlerComposeProjectCheck,
+    ComposeProjectCheckStep,
     ModelComposeProjectCheckCommand,
 )
 
@@ -106,7 +106,7 @@ def docker(
 
 def handler(stdout: str = "", code: int = 0, stderr: str = "", dirs: bool = True):
     calls, run = docker(stdout, code, stderr)
-    return calls, HandlerComposeProjectCheck(run=run, is_dir=lambda _p: dirs)
+    return calls, ComposeProjectCheckStep(run=run, is_dir=lambda _p: dirs)
 
 
 def test_golden_clean_inventory_is_read_once_with_a_field_format() -> None:

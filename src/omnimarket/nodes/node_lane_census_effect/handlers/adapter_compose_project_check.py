@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The per-project compose check, run as a step of the lane census on the host it reads.
+"""The per-project compose check, run as a step of the lane census on the host it reads (glue called from __main__, shaped like the schedule adapter beside it).
 
 The census collector judges lanes; this step reads the same host's docker inventory once and hands it to
 ``node_compose_project_census_compute``, which judges every compose project against the policy overlay. The
@@ -76,7 +76,7 @@ def _alias_key(name: str) -> str:
     return name.strip().lower().split(".", 1)[0]
 
 
-class HandlerComposeProjectCheck:
+class ComposeProjectCheckStep:
     """handle(ModelComposeProjectCheckCommand) -> ModelComposeProjectCheckResult."""
 
     def __init__(
