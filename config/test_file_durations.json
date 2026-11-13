@@ -1521,6 +1521,7 @@
   "tests/nodes/node_host_installer_registry_units/test_overlay_roots_store_first.py": 2.5,
   "tests/nodes/node_host_installer_registry_units/test_overlay_store_load_unit.py": 0.17,
   "tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_roots.py": 2.27,
+  "tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_workspace_root.py": 3.47,
   "tests/nodes/node_host_installer_registry_units/test_process_type.py": 0.74,
   "tests/nodes/node_host_installer_registry_units/test_publisher_ledger_environment.py": 10.59,
   "tests/nodes/node_host_installer_registry_units/test_registry_units.py": 0.47,
