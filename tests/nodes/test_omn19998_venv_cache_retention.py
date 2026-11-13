@@ -210,7 +210,7 @@ def test_absent_root_is_reported_not_an_error(tmp_path: Path) -> None:
     assert _only(_run(_entry(tmp_path / "nope"))).status == "absent"
 
 
-def test_contract_cache_tree_entry_matches_the_dod_verify_root(
+def test_contract_cache_tree_entry_seam_matches_the_dod_verify_root(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # seam: the declared path expanded equals node_dod_verify's environment root, and the window is the declared 7 days
