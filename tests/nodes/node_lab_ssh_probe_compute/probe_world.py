@@ -81,7 +81,7 @@ def home(answers: tuple[str, ...]) -> tuple[Path, dict[str, str]]:
 
 
 def run_probe(script: str, top: Path, env: dict[str, str]) -> str:
-    """The PARITY-CAP line the second run prints, once the detached refresh of the first run wrote its verdict."""
+    """The PARITY-CAP line the second run prints, once the detached refresh of the first run wrote its verdict; the first run may already read the verdict when the refresh wins the race."""
     first = subprocess.run(
         ["/bin/sh", "-c", script],
         env=env,
@@ -90,7 +90,7 @@ def run_probe(script: str, top: Path, env: dict[str, str]) -> str:
         timeout=30,
         check=True,
     )
-    assert first.stdout.strip().endswith("unknown not-read")
+    assert first.stdout.strip().startswith("PARITY-CAP lab-ssh ")
     cache = top / CACHE_DIR
     deadline = time.monotonic() + 20
     while time.monotonic() < deadline:
