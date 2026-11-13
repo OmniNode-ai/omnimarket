@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class ModelRegistryUnitsRequest(BaseModel):
@@ -21,7 +21,9 @@ class ModelRegistryUnitsRequest(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     unit: str
-    mode: Literal["dry-run", "install", "status", "kickstart", "uninstall"] = "dry-run"
+    mode: Literal[
+        "dry-run", "install", "status", "kickstart", "uninstall", "rollback"
+    ] = "dry-run"
     home: str
     registry_root: str
     workspace_config_root: str = ""
@@ -75,6 +77,24 @@ class ModelRegistryUnitsRequest(BaseModel):
         default="", pattern=r"^(?:[A-Za-z0-9][A-Za-z0-9_.-]*)?$"
     )
     source_cache_valkey_port: str = Field(default="", pattern=r"^(?:[0-9]{1,5})?$")
+    # The reference of the Valkey password the board's source read cache uses (OMN-24112): a store path
+    # (secret://onex/<folder>/<KEY>) naming where the password is kept, never the password. A dry run prints the
+    # rendered unit, so a value must never be a request input. Empty defers to the installing shell; unset in both,
+    # the cache connects with no password.
+    source_cache_valkey_password_ref: str = Field(
+        default="",
+        pattern=r"^(?:secret://onex/(?:[A-Za-z0-9][A-Za-z0-9_.-]*/)*[A-Za-z0-9][A-Za-z0-9_.-]*)?$",
+    )
+    # Set only with mode "dry-run": the verb the dry run was asked about; the handler returns its plan and touches nothing.
+    plan_verb: Literal["kickstart", "uninstall", "rollback"] | None = None
+
+    @model_validator(mode="after")
+    def _refuse_plan_verb_outside_dry_run(self) -> ModelRegistryUnitsRequest:
+        if self.plan_verb is not None and self.mode != "dry-run":
+            raise ValueError(
+                f"plan_verb {self.plan_verb!r} is only valid with mode 'dry-run', not {self.mode!r}"
+            )
+        return self
 
 
 class ModelRegistryUnitsResult(BaseModel):

@@ -155,7 +155,9 @@ class HandlerGpuPowerCaps:
             if lab_work is None:
                 raise ValueError("the overlay has no lab_work block")
             self._sender_value = SenderLabWorkBus(
-                lab_work.bus_lane, lab_work.workspace_root
+                lab_work.bus_lane,
+                lab_work.workspace_root,
+                kafka_bootstrap=lab_work.kafka_bootstrap,
             )
         return self._sender_value
 
