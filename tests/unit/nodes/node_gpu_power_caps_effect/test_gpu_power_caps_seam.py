@@ -10,15 +10,25 @@ transport. Shape followed: tests/unit/nodes/node_host_storage_effect/test_host_s
 from __future__ import annotations
 
 import copy
+import sys
+from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 from pydantic import ValidationError
 
+from omnimarket.lab_work.bus import load_lab_work_topics
+from omnimarket.models.model_lab_work_unit import (
+    EnumLabWorkUnitStatus,
+    ModelLabWorkUnitReceipt,
+    ModelLabWorkUnitRequest,
+)
 from omnimarket.models.model_net_units_overlay import (
     ModelNetUnitDeclaration,
     ModelNetUnitsOverlay,
 )
+from omnimarket.nodes.node_gpu_power_caps_effect import runtime_gpu_power_caps
 from omnimarket.nodes.node_gpu_power_caps_effect.handlers import (
     backend_subprocess,
     handler_gpu_power_caps,
@@ -28,14 +38,31 @@ from omnimarket.nodes.node_gpu_power_caps_effect.handlers.handler_gpu_power_caps
     caps_of_unit,
 )
 from omnimarket.nodes.node_gpu_power_caps_effect.models.model_gpu_power_caps import (
+    RESULT_LINE_PREFIX,
+    EnumGpuPowerCapsOutcome,
     ModelGpuPowerCapsRequest,
+)
+from omnimarket.nodes.node_gpu_power_caps_effect.models.model_gpu_power_caps_overlay import (
+    ModelGpuPowerCapsOverlay,
 )
 from omnimarket.nodes.node_host_storage_effect.handlers import (
     backend_subprocess as storage_transport,
 )
 from tests.unit.nodes.node_gpu_power_caps_effect.fixtures import (
+    BIG,
+    NODE_DIR,
+    SMALL,
+    caps_document,
+    fake_smi,
     in_memory_overlay,
+    state_limits,
+    subprocess_overlay,
     unit_entry,
+)
+from tests.unit.nodes.node_gpu_power_caps_effect.test_gpu_power_caps_lab_work import (
+    FakeSender,
+    lab_work_overlay,
+    overlay_document,
 )
 
 pytestmark = pytest.mark.unit
@@ -145,3 +172,133 @@ def test_seam_unit_declaration_type_is_the_installers() -> None:
         unit_entry("h", {"GPU_NAME_0": "A", "WATTS_0": "1"})
     )
     assert caps_of_unit(declared, *prefixes())[0].watts == 1
+
+
+def test_seam_lab_work_unit_the_nodes_unit_is_the_lab_work_request_shape() -> None:
+    sender = FakeSender()
+    sender.receipt = ModelLabWorkUnitReceipt(
+        work_unit_id="gpc-seam0001",
+        target_host="sim-host-a",
+        host="",
+        repo="o/r",
+        commit_sha="0" * 40,
+        status=EnumLabWorkUnitStatus.INFRA_ERROR,
+    )
+    handler_gpu_power_caps.HandlerGpuPowerCaps(
+        overlay=lab_work_overlay(), sender=sender
+    ).handle(ModelGpuPowerCapsRequest(host="sim-host-a", requested_by="lane-a"))
+    wire = sender.calls[0].model_dump(mode="json", exclude_none=True)
+    assert set(wire) <= set(ModelLabWorkUnitRequest.model_fields)
+    assert ModelLabWorkUnitRequest.model_validate(wire) == sender.calls[0]
+
+
+def grants_of_the_contract() -> set[tuple[str, str]]:
+    contract = yaml.safe_load((NODE_DIR / "contract.yaml").read_text(encoding="utf-8"))
+    (block,) = contract["broker_acl_grants"]
+    assert block["principal"] == "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    return {
+        (row["name"], row["operation"])
+        for row in block["grants"]
+        if row["resource_type"] == "TOPIC"
+    }
+
+
+def test_seam_lab_work_topics_the_contract_grants_the_lab_work_callers_topics() -> None:
+    topics = load_lab_work_topics()
+    granted = grants_of_the_contract()
+    assert (topics.command, "WRITE") in granted
+    for read_topic in (topics.success, topics.failure, topics.capacity):
+        assert (read_topic, "READ") in granted
+    for topic in (topics.command, topics.success, topics.failure, topics.capacity):
+        assert (topic, "DESCRIBE") in granted
+
+
+def test_seam_lab_work_topics_a_renamed_topic_breaks_the_grant_reading() -> None:
+    granted = grants_of_the_contract()
+    topics = load_lab_work_topics()
+    renamed = topics.command.replace("requested", "asked")
+    assert (renamed, "WRITE") not in granted
+
+
+def run_host_command(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    words: list[str],
+    smi: Path,
+) -> tuple[int, str]:
+    """What the host's lab-work serve does with the unit's words: run the node's command line there."""
+    doc = overlay_document()
+    local = subprocess_overlay(smi).model_dump(mode="json")
+    local.update(backend="lab_work", lab_work=doc["lab_work"], hosts=doc["hosts"])
+    overlay = ModelGpuPowerCapsOverlay.model_validate(local)
+    caps = ModelNetUnitsOverlay.model_validate(caps_document())
+    monkeypatch.setattr(
+        runtime_gpu_power_caps,
+        "load_structured_overlay",
+        lambda *_args, **_kwargs: overlay,
+    )
+    monkeypatch.setattr(
+        handler_gpu_power_caps,
+        "load_structured_overlay",
+        lambda *_args, **_kwargs: caps,
+    )
+    module_at = words.index("-m")
+    assert words[module_at + 1] == runtime_gpu_power_caps.__name__
+    code = runtime_gpu_power_caps.main(words[module_at + 2 :])
+    return code, capsys.readouterr().out
+
+
+def test_seam_lab_work_host_command_the_overlays_argv_runs_the_nodes_command_line(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    smi = fake_smi(tmp_path)
+    unit_words = [
+        word.replace("{host}", "sim-host-a").replace("{requested_by}", "lane-a")
+        for word in overlay_document()["lab_work"]["host_argv"]
+    ]
+    code, out = run_host_command(monkeypatch, capsys, unit_words, smi)
+    assert code == 0
+    # The host's own limits moved to the caps; the dispatcher reads the same result the host printed.
+    assert state_limits(smi) == {0: 500.0, 1: 300.0}
+    sender = FakeSender(
+        ModelLabWorkUnitReceipt(
+            work_unit_id="gpc-seam0002",
+            target_host="sim-host-a",
+            host="sim-host-a",
+            repo="o/r",
+            commit_sha="0" * 40,
+            status=EnumLabWorkUnitStatus.COMPLETED,
+            exit_code=code,
+            output_tail=out,
+        )
+    )
+    result = handler_gpu_power_caps.HandlerGpuPowerCaps(
+        overlay=lab_work_overlay(), sender=sender
+    ).handle(ModelGpuPowerCapsRequest(host="sim-host-a", requested_by="lane-a"))
+    assert result.outcome is EnumGpuPowerCapsOutcome.OK
+    assert [c.after_watts for c in result.cards] == [500, 300]
+    assert [c.name for c in result.cards] == [BIG, SMALL]
+    assert out.startswith(RESULT_LINE_PREFIX)
+    assert out.count("\n") == 1
+
+
+def test_seam_lab_work_host_command_without_local_the_lab_work_overlay_has_no_backend(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    smi = fake_smi(tmp_path)
+    words = [
+        "uv",
+        "-m",
+        runtime_gpu_power_caps.__name__,
+        "--host",
+        "sim-host-a",
+        "--requested-by",
+        "lane-a",
+    ]
+    with pytest.raises(ValueError, match="no local backend"):
+        run_host_command(monkeypatch, capsys, words, smi)
+    assert sys.executable

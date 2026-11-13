@@ -102,6 +102,7 @@ def test_rendered_unit_text_carries_the_clone_before_the_plugin(tmp_path: Path) 
         # Only the host name is overridden; the overlay roots keep the unit's new default.
         path_overrides={"LAB_WORK_HOST_NAME": "lab-host"},
         marketplace_root=str(tmp_path / "market"),
+        workspace_config_root=str(tmp_path / "config-root"),
     )
     result = HandlerRegistryUnits(base.Recorder()).handle(request)
     assert result.status == "success", result.stderr
