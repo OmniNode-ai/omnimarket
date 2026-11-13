@@ -2569,6 +2569,7 @@
   "tests/nodes/test_omn15797_retention_cleanup_tenant_seam.py": 0.04,
   "tests/nodes/test_omn17427_file_retention.py": 0.26,
   "tests/nodes/test_omn17427_retention_cleanup_batched.py": 0.53,
+  "tests/nodes/test_omn19998_venv_cache_retention.py": 3.53,
   "tests/nodes/test_omn_13708_adapter_di_local_defaults.py": 0.19,
   "tests/nodes/test_omn_13919_runtime_sweep_default_input.py": 0.04,
   "tests/nodes/test_omn_14528_runtime_sweep_consumer_liveness.py": 0.05,
