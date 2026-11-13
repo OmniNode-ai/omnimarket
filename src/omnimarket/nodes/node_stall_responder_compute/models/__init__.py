@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """Models of the stall responder (OMN-22885)."""
 
-from omnimarket.events.stall_cause import (
+from omnimarket.models.model_stall_cause import (
     ModelCauseDispatch,
     ModelCauseSkip,
     ModelRowRefusal,

@@ -20,12 +20,12 @@ import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from omnimarket.events.stall_cause import (
+from omnimarket.handlers.ledger_row_grammar import parse_row
+from omnimarket.models.model_stall_cause import (
     ModelCauseDispatch,
     ModelCauseSkip,
     ModelRowRefusal,
 )
-from omnimarket.handlers.ledger_row_grammar import parse_row
 from omnimarket.nodes.node_alarm_owner_responder_compute.models.model_alarm_owner_responder import (
     ModelAlarmOwnerRequest,
     ModelAlarmOwnerResult,
