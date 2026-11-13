@@ -1,0 +1,63 @@
+schema_version: 1.0.0
+ticket_id: OMN-24249
+title: Page containers on h051 and h053 are kept attached and recreated by their installer
+summary: 'The container unit installer refused a running container that had lost its network attachment, naming no way to repair it, and no deploy agent runs on h051 or h053. A unit may now declare a recreate
+  block (compose file, env file, project, service); when the container''s network or published port is wrong at install the installer recreates that one compose service and reads the container again before
+  it writes the unit. A healthy container is never touched. The overlay settings for the two page containers are in the overlays repository. Not in this change: moving h051''s compose copy to the path h053
+  uses.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24249-recreate
+  statement: An installer unit can recreate its compose-managed container when the container's network attachment or published port is wrong.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a unit that declares a recreate block has its one compose service recreated at install when the container''s network attachment or published port is wrong, and the container is read
+      again before the unit is written; a healthy container is never recreated; a failed or ineffective recreate writes nothing -- falsifier: pytest tests/nodes/node_host_installer_container_units/test_container_unit_recreate.py
+      -q (the golden and both error cases fail when the recreate branch is removed)'
+  - id: AC2
+    statement: 'AC2: the overlays repository declares the page container of h051 and of h053 as installer units with their network and published port, and h053''s with its recreate block, and its checks
+      load the overlay through the node''s own model at the revision the pin line names -- falsifier: pytest tests/test_factory_floor_web_units_overlay.py -q (each control removes one declared value and
+      is caught)'
+  - id: AC3
+    statement: 'AC3: integrated: after the branch is installed on h053 through the installer, the page answers on port 8088 on h053, the installer status on h053 and on h051 reads loaded, answering and
+      attached, and both machines serve the same files with every data file the page asks for answering 200 and younger than one publish cycle -- falsifier: curl of the page and its data files on each machine
+      and the installer status output on each machine, read after the install'
+evidence_requirements:
+- kind: tests
+  description: The container unit installer tests pass at the pushed head.
+  command: uv run pytest tests/nodes/node_host_installer_container_units -q -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24249-ac1
+  description: 'AC1: the golden chain recreates a detached container and writes the unit, the healthy container is never recreated, and a failed or ineffective recreate writes nothing; with the recreate
+    branch disabled three of the nine tests fail.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_container_units/test_container_unit_recreate.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn24249-ac2
+  description: 'AC2: hosted proxy: the node''s overlay model refuses a recreate block without a network and any unknown key; the overlays repository''s own test loads the declared units through that model.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_container_units/test_container_unit_recreate.py -q -p no:randomly --no-cov -k model_refuses
+    cwd: .
+- id: dod-omn24249-ac3
+  description: 'AC3: hosted proxy: the installer tests pass; the install on h053 and the readings of both machines are named in the pull request after the install.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_container_units -q -p no:randomly --no-cov
+    cwd: .
