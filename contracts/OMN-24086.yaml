@@ -1,0 +1,50 @@
+schema_version: 1.0.0
+ticket_id: OMN-24086
+title: The lane GitHub read guard check is loaded by the dev runtime
+summary: The node node_lane_gh_read_guard_effect, which refuses a lane's GitHub reads that go around the gh shim, lived only in the omniclaude package, which the dev runtime image does not install. The node (contract, handlers, models, enums, protocols, runtime module, the bare gh route table) and its 82 tests are copied into omnimarket with imports rewritten, the two runner placement models move into the node's models package, and the onex.nodes entry point is added. Topic names are unchanged. The omniclaude copy is removed in a separate paired draft pull request after the dev runtime shows the node.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24086-guard-node
+  statement: The lane GitHub read guard node is discovered by the omnimarket runtime image build and behaves as the omniclaude copy does.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the lane GitHub read guard node lives in omnimarket with its contract, handlers, models and tests, and its entry point is listed -- falsifier: with the entry removed from pyproject.toml, uv run pytest tests/nodes/node_lane_gh_read_guard_effect/test_entry_point_and_contract.py -n 0 --no-cov fails'
+  - id: AC2
+    statement: 'AC2: integrated: after the dev runtime rolls to a tag at or past the merge, its node registry lists node_lane_gh_read_guard_effect -- falsifier: the dev runtime registry read, taken after the roll, lacks the name'
+evidence_requirements:
+- kind: tests
+  description: The moved node tests pass at the pushed head.
+  command: uv run pytest tests/nodes/node_lane_gh_read_guard_effect -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24086-ac1
+  description: 'AC1: the moved node tests pass at the head and the entry point test fails on the pre-change pyproject.toml.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lane_gh_read_guard_effect -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24086-ac2
+  description: 'hosted proxy for AC2: the moved node tests pass; the dev runtime registry reading is taken after the roll and posted as a comment on the pull request.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lane_gh_read_guard_effect -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24086-integration-proof
+  description: 'The moved node tests run on a lab host from this branch head through the lab work node; hosted CI cannot reach the lab, so only the local Done gate runs this unbound item and the hosted proxy above binds AC2. The dev runtime registry reading after the roll is posted as a comment on the pull request.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24086 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_lane_gh_read_guard_effect -q --no-cov
+    cwd: .

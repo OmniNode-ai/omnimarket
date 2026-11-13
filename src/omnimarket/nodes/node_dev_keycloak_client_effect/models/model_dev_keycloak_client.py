@@ -27,6 +27,9 @@ class EnumDevKeycloakClientOutcome(StrEnum):
     CLIENT_WRITE_FAILED = "client_write_failed"
     ROLE_GRANT_FAILED = "role_grant_failed"
     CLIENT_TOKEN_REFUSED = "client_token_refused"
+    REFUSED_MAPPER_CLIENT_NOT_ALLOWED = "refused_mapper_client_not_allowed"
+    MAPPER_CLIENT_NOT_FOUND = "mapper_client_not_found"
+    MAPPER_WRITE_FAILED = "mapper_write_failed"
 
 
 class ModelDevKeycloakClientCommand(BaseModel):
@@ -51,6 +54,7 @@ class ModelDevKeycloakClientResult(BaseModel):
     client_id: str | None = None
     token_status: int | None = None
     expected_location: str | None = None
+    mappers_ensured: int | None = None
 
 
 __all__ = [
