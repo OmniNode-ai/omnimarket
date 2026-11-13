@@ -1,0 +1,72 @@
+schema_version: 1.0.0
+ticket_id: OMN-24283
+title: The routing order reader asks the routing order node over the bus
+summary: read_engine_order answered from the routing order handler in its own process, so the node's command topic saw no request (the integration ledger read 0 requests since 10:22Z on 2026-11-13). The reader now publishes the node's command and awaits its terminal event when the node's overlay declares a kafka event_bus, dials the lane the overlay names, takes its timeout from the node contract, and refuses plainly when the node does not answer, the bus cannot be opened or the answer is malformed.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- topics
+requirements:
+- id: req-omn24283-reader-over-the-bus
+  statement: The reader's engine order is asked of node_delegation_routing_order_compute over the bus, with every value from the node's overlay and contract and no default order on any failure.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: read_engine_order asks node_delegation_routing_order_compute over the bus (one command on its command topic, the answer read from its terminal topic) when the node overlay declares a kafka event_bus, and the answer equals the handler own answer -- falsifier: uv run pytest tests/unit/handlers/test_delegation_routing_order_reader_bus.py -q -n 0 --no-cov fails when the reader answers in process instead'
+  - id: AC2
+    statement: 'AC2: a node that does not answer, a bus that cannot be opened and a malformed answer are each a typed refusal with no default order -- falsifier: uv run pytest tests/unit/handlers/test_delegation_routing_order_reader_bus.py -q -n 0 --no-cov -k "no_consumer or unopenable or malformed"'
+  - id: AC3
+    statement: 'AC3: the lane dialled and the timeout come from the node overlay and contract, with no literal lane, topic or number in the reader -- falsifier: uv run pytest tests/unit/handlers/test_delegation_routing_order_reader_bus.py -q -n 0 --no-cov -k "kafka_overlay or topics_and_timeout"'
+  - id: AC4
+    statement: 'AC4: integrated: on the dev lane from the branch, the reader called with the house overlay prints an order that opens with ladder, and the dev runtime log shows one request on the routing order command topic -- falsifier: no such request line in the runtime log after the call, or the order does not open with ladder'
+evidence_requirements:
+- kind: tests
+  description: The reader bus tests and the existing reader tests pass at the pushed head.
+  command: uv run pytest tests/unit/handlers/test_delegation_routing_order_reader_bus.py tests/unit/handlers/test_delegation_routing_order_reader.py -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24283-ac1
+  description: 'AC1: the golden and parity tests pass; with the reader forced to answer in process the golden test fails because no command reaches the topic (injected break, 8 of 12 cases fail).'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/handlers/test_delegation_routing_order_reader_bus.py -q -n 0 --no-cov -p no:cacheprovider -k "golden or equals_the_nodes_own or changed_overlay"
+    cwd: .
+- id: dod-omn24283-ac2
+  description: 'AC2: the error chain tests pass: no node, no bus, a malformed answer, an invalid overlay and a chain not opening on the lab tier.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/handlers/test_delegation_routing_order_reader_bus.py -q -n 0 --no-cov -p no:cacheprovider -k "no_consumer or unopenable or malformed or invalid_overlay or not_lab_first"
+    cwd: .
+- id: dod-omn24283-ac3
+  description: 'AC3: the declared lane reaches the bus opener and the topics and timeout equal the node contract.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/handlers/test_delegation_routing_order_reader_bus.py -q -n 0 --no-cov -p no:cacheprovider -k "kafka_overlay or topics_and_timeout"
+    cwd: .
+- id: dod-omn24283-ac4
+  description: 'hosted proxy for AC4: the reader bus tests pass; the reading on the dev lane (the reader call and the runtime log line) is recorded on the ticket and the pull request.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/handlers/test_delegation_routing_order_reader_bus.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24283-integration-proof
+  description: the reader tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24283 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/handlers/test_delegation_routing_order_reader_bus.py tests/unit/handlers/test_delegation_routing_order_reader.py -q --no-cov
