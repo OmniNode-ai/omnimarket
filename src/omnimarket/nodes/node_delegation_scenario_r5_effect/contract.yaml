@@ -10,8 +10,7 @@
 # faults file makes the run answer on B with no attempt on A. Every assertion is a typed field of a registry listing or a
 # delegation terminal; no model judges a pass.
 #
-# The market ingress does not yet accept a per-call `model` (OMN-20844 step 2), so the two pinned legs are red with
-# assertions named `pinned_model_accepted_a|b` until that ticket lands: a red scenario is the expected colour, never a skip.
+# The delegation request declares a per-call `model` (OMN-20844 step 2); the two pinned legs run on it.
 name: node_delegation_scenario_r5_effect
 contract_name: node_delegation_scenario_r5_effect
 node_name: node_delegation_scenario_r5_effect
@@ -92,6 +91,8 @@ runtime:
   loopback_host: 127.0.0.1
   probe_tenant_slug: readiness-probe
   inputs_relpath: inputs/r5_legs.yaml
+  # Where each run variable is found, by existing names (OMN-23602): the environment, the host environment file, the store.
+  settings_overlay_relpath: inputs/settings_overlay.yaml
   # The variable that carries the one paid OpenRouter probe key. The value is read at run time only and is never printed,
   # logged, put in an event or a ledger row; an empty variable in the real backend makes the run red, never skipped.
   openrouter_probe_key_env: ONEX_SCENARIO_R5_OPENROUTER_PROBE_KEY
@@ -100,7 +101,7 @@ schedule:
   unit_name: onex-delegation-scenario-r5
   state_directory: .onex_state/delegation-scenario-r5
   timeout_seconds: 900
-  unit_environment: [ONEX_LEDGER_BUS_APPEND_COMMAND, ONEX_HOST_NAME, ONEX_BUS_EMIT_COMMAND]
+  unit_environment: [ONEX_LEDGER_BUS_APPEND_COMMAND, ONEX_HOST_NAME, ONEX_WORKSPACE_CONFIG_ROOT, ONEX_BUS_EMIT_COMMAND]
   # The key variable is loaded from this file under the home directory when it exists; it never sits in the unit.
   environment_file: .config/onex/scenario-r5.env
   cadence:

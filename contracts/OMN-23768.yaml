@@ -1,0 +1,90 @@
+schema_version: 1.0.0
+ticket_id: OMN-23768
+title: Record the PR-claim release model, its checker runs and verdict in the market repository
+summary: docs/formal/claim_release is a TLA+ model of releasing a lane's PR claims when the lane ends (child of OMN-23737, task C0). Instances i1 and i2 share a lane name; the claim file names its holder by lane, run and session; the closeout inspects then deletes the inspected file for the exact identity of an ended instance; the reaper expires inactive claims. The base config checks NeverReleaseLiveHolder, ReleasedOnlyAfterExitSeen, ClosesOwnOnly and DeletesWhatItInspected and the liveness NoStrandedClaim; six mutation configs each violate the one property they check; three witnesses show the states reachable. The TLC outputs, a reading of one lab host's live claim directory against the model and the design-review verdict are checked in. Model files, results and one test, tests/formal/test_claim_release_model.py; no node or script.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23768-base-passes
+  statement: TLC exits 0 on the base config with the four safety properties and NoStrandedClaim.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the model checker passes the invariants that a claim is released only after its lane ended and never while a live lane holds it, and the no-stranded-claim liveness -- falsifier: TLC over Model.cfg prints a violated invariant or property, or the recorded Model.out lacks "No error has been found"'
+- id: req-omn23768-planted-release-and-verdict
+  statement: A planted release of a live lane's claim ends in a TLC violation naming NeverReleaseLiveHolder, and a verdict is recorded.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: a planted release of a live lane''s claim makes the checker report the violated invariant NeverReleaseLiveHolder, and a design-review verdict is recorded -- falsifier: mut_no_exit_check.out does not name NeverReleaseLiveHolder, or VERDICT.txt has no verdict line'
+- id: req-omn23768-lab-mapping
+  statement: The model's states are mapped to one lab host's live claim directory and lane records.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: integrated: the model''s claim and lane states are mapped to one lab host''s live claim directory and lane records, read in the running runtime -- falsifier: results/lab_reading_h053.txt lacks the host''s claim-directory count, or a re-read of that host''s claim directory disagrees with its counts'
+evidence_requirements:
+- kind: tests
+  description: The checked-in TLC results, the configs, the verdict and the lab reading agree (AC1 to AC3).
+  command: uv run --frozen pytest tests/formal/test_claim_release_model.py -q -n 0 -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23768-ac1
+  description: AC1 reads the checked-in TLC output of Model.cfg (exit 0, no error found) and the config's own list of the invariants and the liveness property.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: command
+    check_value: |
+      set -eu
+      cd docs/formal/claim_release
+      grep -q '^exit=0$' results/Model.out
+      grep -q 'Model checking completed. No error has been found.' results/Model.out
+      for p in NeverReleaseLiveHolder ReleasedOnlyAfterExitSeen ClosesOwnOnly DeletesWhatItInspected; do grep -q "^INVARIANTS .*$p" Model.cfg; done
+      grep -q '^PROPERTIES NoStrandedClaim$' Model.cfg
+      grep -q '^Model .*result=PASS' results/SUMMARY.txt
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/formal/test_claim_release_model.py -q -n 0 -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn23768-ac2
+  description: AC2 reads the planted-release mutant's TLC output naming NeverReleaseLiveHolder, the other mutants naming their own property, and the verdict line.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: command
+    check_value: |
+      set -eu
+      cd docs/formal/claim_release
+      grep -q '^Error: Invariant NeverReleaseLiveHolder is violated' results/mut_no_exit_check.out
+      grep -q '^Error: Invariant ReleasedOnlyAfterExitSeen is violated' results/mut_no_exit_evidence.out
+      grep -q '^Error: Invariant ClosesOwnOnly is violated' results/mut_lane_name_match.out
+      grep -q '^Error: Invariant DeletesWhatItInspected is violated' results/mut_delete_without_compare.out
+      grep -q '^Error: Invariant NeverReleaseLiveHolder is violated' results/mut_no_live_heartbeat.out
+      grep -q '^Error: Temporal properties were violated' results/mut_closeout_never_runs.out
+      grep -q '^Verdict: ' VERDICT.txt
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/formal/test_claim_release_model.py -q -n 0 -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn23768-ac3
+  description: AC3 reads the lab reading of h053's claim directory, the mapping table in the README and the host-side counts; a re-read of the host's directory is the lab step and is named in the pull request's Lab comment.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: command
+    check_value: |
+      set -eu
+      cd docs/formal/claim_release
+      grep -q '^host: h053' results/lab_reading_h053.txt
+      grep -q 'claim files' results/lab_reading_h053.txt
+      grep -q '^Mapping: the model against one lab host' README.txt
+      grep -q 'heartbeat_written = False' results/lab_reading_h053.txt
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/formal/test_claim_release_model.py -q -n 0 -p no:randomly --no-cov
+    cwd: .

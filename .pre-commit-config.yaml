@@ -461,6 +461,8 @@ repos:
         exclude: "^(src/omnimarket/nodes/node_emit_daemon/registries/claude_code\\.yaml|scripts/lint_no_hardcoded_topics\\.py|scripts/ci/check_no_hardcoded_topics\\.py|scripts/publish_pr_merged_event\\.py|src/omnimarket/logging/structured_logger\\.py|src/omnimarket/nodes/node_.*/handlers/handler_.*\\.py|src/omnimarket/nodes/node_.*/handlers/overseer_tick\\.py|src/omnimarket/nodes/node_.*/models/model_.*\\.py|src/omnimarket/nodes/node_.*/__main__\\.py|src/omnimarket/nodes/node_.*/contracts/.*\\.yaml|src/omnimarket/nodes/node_compliance_sweep/data/compliance_sweep_baseline\\.yaml|src/omnimarket/validators/no_baseline_refreeze\\.py|src/omnimarket/validators/no_literal_event_type_in_tests\\.py|src/omnimarket/validators/contract_topic_graph\\.py|src/dep_health_allowlist\\.yaml|src/omnimarket/cli/.*)$"
 
   # KB doc gate (OMN-16589) — blocks new/regrown non-KB markdown docs.
+  # OMN-23542: rev moved to omniclaude#3251's merge commit, the same commit the CI
+  # caller's dev-merge tag names.
   #
   # OMN-16613 bumped this pin from 82a3394c (omniclaude#2047, the OMN-16589
   # pilot) to omniclaude dev 6bfba15f. The pilot validator's config parser
@@ -472,7 +474,7 @@ repos:
   # (.github/workflows/kb-doc-gate.yml) is pinned to the same commit so the
   # local and CI verdicts cannot diverge.
   - repo: https://github.com/OmniNode-ai/omniclaude
-    rev: 6bfba15f7d103ddaa9e949c459e95153b1ca6a94  # pragma: allowlist secret
+    rev: 6f8f3646a88e12f6577a7989ceec3c3504889be6  # pragma: allowlist secret
     hooks:
       - id: kb-doc-gate
         require_serial: true
@@ -751,6 +753,19 @@ repos:
         language: system
         entry: env -u PYTHONPATH uv run --frozen python -m omnimarket.nodes.node_handwritten_event_payload_check_effect.runtime_handwritten_event_payload_check
         files: ^(tests/.*\.py|src/omnimarket/nodes/node_projection_[^/]+/tests/.*\.py|src/omnimarket/nodes/node_handwritten_event_payload_check_effect/.*\.py)$
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # OMN-23560: a change that adds a test file records its time in
+      # config/test_file_durations.json in the same change, so the shard planner's record cannot
+      # drift from the tree. The refusal prints the exact command that times and records the file.
+      # The CI twin is the "Added test files are in the durations record" step of the lint job;
+      # test_committed_record_leaves_fewer_than_fifty_test_files_unrecorded stays as the backstop.
+      - id: test-duration-record-check
+        name: Added test files are in the durations record (OMN-23560)
+        language: system
+        entry: env -u PYTHONPATH uv run --frozen python -m omnimarket.nodes.node_test_duration_record_check_effect.runtime_test_duration_record_check --staged
+        files: ^(tests/.*\.py|config/test_file_durations\.json|src/omnimarket/nodes/node_test_duration_record_check_effect/.*)$
         pass_filenames: false
         stages: [pre-commit]
 
@@ -1053,6 +1068,26 @@ repos:
         entry: uv run pytest src/omnimarket/nodes/node_delegation_routing_overlay_check_compute -q -n 0 -p no:randomly --no-cov
         pass_filenames: false
         files: ^(src/omnimarket/configs/(task_class_bars|task_class_contracts)\.v1\.yaml|src/omnimarket/nodes/node_delegation_routing_overlay_check_compute/.*)$
+        stages: [pre-commit]
+
+      # OMN-24005: a topic use a change adds to a node contract needs a declared broker grant; uses the base branch already
+      # declares are not judged and no exception list exists. SYNC with ci.yml step "Broker permission coverage gate (OMN-24005)".
+      - id: broker-acl-coverage-gate
+        name: A topic a contract change adds has a broker permission row (OMN-24005)
+        language: system
+        entry: uv run python -m omnimarket.nodes.node_broker_acl_reconcile_effect.runtime_broker_acl_coverage_gate --base-ref origin/dev
+        pass_filenames: false
+        files: ^(src/omnimarket/nodes/[^/]+/contract\.yaml|src/omnimarket/nodes/node_broker_acl_(overlay_render_compute|reconcile_effect)/.*)$
+        stages: [pre-commit]
+
+      # OMN-24121: a producer-consumer pair a change adds or reshapes must match in declared message shape; differences the base
+      # branch already has are not judged and no exception list exists. SYNC with ci.yml step "Seam field diff gate (OMN-24121)".
+      - id: seam-field-diff-gate
+        name: A producer-consumer pair a change adds matches in message shape (OMN-24121)
+        language: system
+        entry: env -u PYTHONPATH uv run python -m omnimarket.nodes.node_seam_field_diff_check_effect.runtime_seam_field_diff_check --base-ref origin/dev
+        pass_filenames: false
+        files: ^(src/omnimarket/nodes/[^/]+/contract\.yaml|src/omnimarket/nodes/node_seam_field_diff_(compute|check_effect)/.*|src/omnimarket/models/.*\.py)$
         stages: [pre-commit]
 
       # OMN-18311 (release criterion C12, third clause). A customer catalogue

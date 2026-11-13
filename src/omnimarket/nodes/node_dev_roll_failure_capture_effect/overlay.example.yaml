@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. A deployment's real overlay lives in the overlays repository.
+store:
+  backend: file
+  home_env: EXAMPLE_STATE_DIR
+  relpath: dev-roll-capture
+max_log_bytes: 262144

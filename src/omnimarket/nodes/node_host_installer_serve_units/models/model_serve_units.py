@@ -4,9 +4,10 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class ModelServeUnitsRequest(BaseModel):
@@ -71,6 +72,13 @@ class ModelDeclaredClone(BaseModel):
     inside: str = ""
 
 
+class ModelLaneServeUnit(ModelUnitDeclaration):
+    """An extra serve unit on the same lab-work serve, on another bus lane with its own work directory."""
+
+    bus_lane: str = Field(min_length=1)
+    work_directory: str = Field(min_length=1)
+
+
 class ModelServeUnitsOverlay(BaseModel):
     """This node's overlay: the private names of the units and clones, and the overlay roots of each host's serve.
 
@@ -82,7 +90,22 @@ class ModelServeUnitsOverlay(BaseModel):
 
     serve: ModelUnitDeclaration
     clone_refresh: ModelUnitDeclaration
+    lane_serves: tuple[ModelLaneServeUnit, ...] = ()
     lane_environment: dict[str, ModelDeclaredClone]
     knowledge_base: ModelDeclaredClone
     knowledge_base_variable: str = Field(min_length=1)
     skill_overlay_roots: dict[str, tuple[str, ...]]
+
+    @model_validator(mode="after")
+    def _no_repeated_unit_names(self) -> ModelServeUnitsOverlay:
+        units = [self.serve, self.clone_refresh, *self.lane_serves]
+        names = [u.name for u in units]
+        if len(names) != len(set(names)):
+            raise ValueError("a unit name is declared more than once")
+        envs = [Path(u.env_file).name for u in units]
+        if len(envs) != len(set(envs)):
+            raise ValueError("an environment file base name is declared more than once")
+        logs = [u.log_directory for u in units]
+        if len(logs) != len(set(logs)):
+            raise ValueError("a log directory is declared more than once")
+        return self

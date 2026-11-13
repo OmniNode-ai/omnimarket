@@ -46,6 +46,9 @@ class EnumScmLocalRead(StrEnum):
     FILE_CONTENTS = "file_contents"
     COMMIT_VIEW = "commit_view"
     COMMIT_CHECKS = "commit_checks"
+    # The failing step and digest lines of a red head, from the filler's
+    # record store.
+    RED_FACTS = "red_facts"
 
 
 class ModelScmVerb(BaseModel):

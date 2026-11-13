@@ -1,0 +1,53 @@
+schema_version: "1.0.0"
+ticket_id: OMN-23954
+title: "Make the local-model coding step run on every route"
+summary: >-
+  The delegated code edit command refused the check name that lane briefs emit (NAME=COMMAND with a name in capitals,
+  as in the brief template), because a declared check's name takes lowercase letters, digits, '_' and '-' only
+  (measured on h053: the code-edit node route failed on a check named PYTEST). The command now normalises the name
+  (lowercase, other character runs become one '-') and still refuses a name empty after that or over 48 characters.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn23954-check-name
+    statement: The code edit command accepts the check format a lane brief emits.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: the draft-editing node accepts a check given as NAME=COMMAND with an uppercase name, and a test spelling the lane instructions'' format fails against the node''s name rule -- falsifier: uv run --frozen pytest tests/unit/cli/test_cli_code_edit_check_format.py -q --no-cov with parse_check from the base branch'
+      - id: AC4
+        statement: 'AC4: integrated: one lane-shaped code task is run through the fixed code route on h053 from the branches and the report names the engine that answered and whether the change passed its own check -- falsifier: the delegation receipt names an engine other than the one reported, or the check result differs from a rerun'
+evidence_requirements:
+  - kind: tests
+    description: The code edit CLI tests, including the lane-brief check format tests.
+    command: uv run --frozen pytest tests/unit/cli/test_cli_code_edit_check_format.py tests/unit/cli/test_cli_code_edit.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn23954-check-format
+    description: The lane-brief check format tests pass with the change; with parse_check from the base branch five of them fail.
+    source: manual
+    execution_scope: hosted_and_local
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/cli/test_cli_code_edit_check_format.py tests/unit/cli/test_cli_code_edit.py -q --no-cov
+        cwd: .
+  - id: dod-omn23954-integration-proof
+    description: The lane-shaped code task run through the fixed code route on h053 from the branch, read in the delegation receipt (named in the pull request's Lab line). Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check; it binds no criterion for the hosted check.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23954 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/cli/test_cli_code_edit_check_format.py -q --no-cov'
+        cwd: .
+  - id: dod-omn23954-ac4
+    description: The tests that stand behind the integrated reading pass at the head and fail at the merge base. The reading itself (the lane-shaped task on h053 and its delegation receipt) is taken from the branch by the local Done gate item above.
+    source: manual
+    binds_ac: [AC4]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/cli/test_cli_code_edit_check_format.py -q --no-cov
+        cwd: .

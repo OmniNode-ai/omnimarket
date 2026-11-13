@@ -28,9 +28,6 @@ from omnimarket.events.pr_landing_github.enum_pr_landing_github_operation import
 from omnimarket.events.pr_landing_github.model_github_check_run_fact import (
     ModelGithubCheckRunFact,
 )
-from omnimarket.events.pr_landing_github.model_github_pr_state_fact import (
-    ModelGithubPrStateFact,
-)
 from omnimarket.events.pr_landing_github.model_github_quota_reading import (
     ModelGithubQuotaReading,
 )
@@ -39,6 +36,9 @@ from omnimarket.events.pr_landing_github.model_github_run_attempt import (
 )
 from omnimarket.github_landing.model_github_http_exchange import (
     ModelGithubHttpRequest,
+)
+from omnimarket.models.model_github_pr_merge_state_fact import (
+    GithubPrMergeStateField,
 )
 
 _CONDITIONAL_READS = frozenset(
@@ -78,7 +78,7 @@ class ModelPrLandingGithubCompleted(BaseModel):
     etag: str | None = None
     check_runs: tuple[ModelGithubCheckRunFact, ...] = ()
     required_contexts: tuple[str, ...] | None = None
-    pr_state: ModelGithubPrStateFact | None = None
+    pr_state: GithubPrMergeStateField | None = None
     started_attempts: tuple[ModelGithubRunAttempt, ...] = ()
     quota: ModelGithubQuotaReading | None
 

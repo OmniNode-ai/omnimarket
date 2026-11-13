@@ -14,7 +14,10 @@ This effect keeps several tokens per host instead:
 * ``resolve`` hands the runner the first unrevoked token whose limit has passed,
   so the host stays placeable while any token has room, and ``mark_limited``
   marks the token a lane used, not the host; ``mark_revoked`` skips a token
-  whose OAuth login was revoked until it is re-added;
+  whose OAuth login was revoked until it is re-added, with the mark naming
+  whether the login was revoked or only answered a 403 challenge page
+  (``challenged``: out of rotation like a revoke, and the pool tick re-tests
+  it and clears the mark when it answers);
 * every operation rewrites a one-line status mirror (labels and limit times,
   never a value) that the placement probe reads, so the pool status line shows
   the tokens per host, how many are limited and the next reset, with an alarm
@@ -44,6 +47,7 @@ from pydantic import SecretStr
 from omnimarket.inference.local_byok_credential_adapter import LocalByokCredentialStore
 from omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_pool import (
     ModelClaudeTokenPoolEntry,
+    ModelClaudeTokenPoolRefusal,
     ModelClaudeTokenPoolRequest,
     ModelClaudeTokenPoolResult,
 )
@@ -128,7 +132,13 @@ class HandlerClaudeTokenPool:
         status_path: Path | None = None,
         host: str | None = None,
         now: Callable[[], datetime] = _utc_now,
+        lane_cap: int | None = None,
+        lane_cap_read: bool = True,
     ) -> None:
+        #: The overlay's lanes-per-label cap (``None``: no cap), and whether the overlay holding it was read
+        #: on this host. The runtime reads both from the overlay; no cap is spelled here.
+        self._lane_cap = lane_cap
+        self._lane_cap_read = lane_cap_read
         self._store = store or LocalByokCredentialStore()
         self._pool_path = pool_path or self._store.db_path.parent / POOL_FILE_NAME
         self._status_path = status_path or STATUS_MIRROR
@@ -140,6 +150,17 @@ class HandlerClaudeTokenPool:
     ) -> ModelClaudeTokenPoolResult:
         with self._locked() as pool:
             alert = None
+            cleared: tuple[str, ...] = ()
+            limit_effect: tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]] = (
+                (),
+                (),
+                (),
+            )
+            revoke_effect: tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]] = (
+                (),
+                (),
+                (),
+            )
             if request.operation == "add":
                 self._add(pool, request)
             elif request.operation == "mark_limited":
@@ -155,15 +176,38 @@ class HandlerClaudeTokenPool:
             elif request.operation == "release":
                 pool.pop("pinned", None)
                 pool.pop("pinned_by", None)
+            elif request.operation == "clear_revokes":
+                cleared = self._clear_revokes(pool, request)
+            elif request.operation == "apply_limit_rechecks":
+                limit_effect = self._apply_limit_rechecks(pool, request)
+            elif request.operation == "apply_revoke_rechecks":
+                revoke_effect = self._apply_revoke_rechecks(pool, request)
             synced: tuple[str, ...] = ()
             if request.operation == "sync_marks":
                 synced = self._sync_marks(pool, request)
             chosen, token = (None, None)
+            refusal: ModelClaudeTokenPoolRefusal | None = None
+            fallback = False
             if request.operation == "resolve":
-                chosen, token = self._resolve(pool)
+                chosen, token, refusal, fallback = self._resolve(pool, request)
             if request.operation != "status" and not request.dry_run:
                 _write_private(self._pool_path, pool)
-            result = self._result(request.operation, pool, chosen, token, alert, synced)
+            if request.operation == "export":
+                token = self._export(pool, request)
+            result = self._result(
+                request.operation, pool, chosen, token, alert, synced, cleared
+            ).model_copy(
+                update={
+                    "refusal": refusal,
+                    "drained_fallback": fallback,
+                    "limits_cleared": limit_effect[0],
+                    "limits_replaced": limit_effect[1],
+                    "limits_kept": limit_effect[2],
+                    "revoke_rechecks_cleared": revoke_effect[0],
+                    "revoke_rechecks_confirmed": revoke_effect[1],
+                    "revoke_rechecks_kept": revoke_effect[2],
+                }
+            )
             if not request.dry_run:
                 _write_private(
                     self._status_path,
@@ -171,7 +215,16 @@ class HandlerClaudeTokenPool:
                         "host": self._host,
                         "at": _stamp(self._now()),
                         "tokens": [
-                            {"label": e.label, "until": e.until, "revoked": e.revoked}
+                            {
+                                "label": e.label,
+                                "until": e.until,
+                                "revoked": e.revoked,
+                                "fingerprint": e.fingerprint,
+                                "revoked_at": e.revoked_at,
+                                "limited_at": e.limited_at,
+                                "probed_at": e.probed_at,
+                                "revoke_cause": e.revoke_cause,
+                            }
                             for e in result.tokens
                         ],
                     },
@@ -239,6 +292,7 @@ class HandlerClaudeTokenPool:
             "until": None,
             "revoked_at": None,
             "limited_at": None,
+            "revoke_cause": None,
         }
         if known is not None:
             known.update(entry)
@@ -255,8 +309,15 @@ class HandlerClaudeTokenPool:
         if entry is None:
             raise ClaudeTokenPoolRefusedError(f"{label} is not in this host's pool")
         until = _stamp(self._now() + timedelta(seconds=request.seconds))
-        entry["until"] = max(until, entry.get("until") or "")
+        # A notice that names its own reset (``exact``) is newer than any stamp the entry holds and replaces it, even
+        # with an earlier time, so a stamp taken from a wrong or since-moved reset cannot outlast the account's real
+        # one. A backoff estimate (no reset named) still never shortens a stamp.
+        entry["until"] = (
+            until if request.exact else max(until, entry.get("until") or "")
+        )
         entry["limited_at"] = _stamp(self._now())
+        if request.exact:
+            entry["probed_at"] = None
 
     def _record_use(
         self, pool: dict[str, Any], request: ModelClaudeTokenPoolRequest
@@ -355,11 +416,133 @@ class HandlerClaudeTokenPool:
                 changed.append(mark.label)
             entry["until"] = until
             if until is not None and until != was_until:
-                entry["limited_at"] = max(observed, entry.get("limited_at") or "")
+                entry["limited_at"] = max(
+                    mark.limited_at or observed, entry.get("limited_at") or ""
+                )
             entry["revoked_at"] = (
-                (entry.get("revoked_at") or observed) if revoked else None
+                (entry.get("revoked_at") or mark.revoked_at or observed)
+                if revoked
+                else None
             )
+            # The mark's cause travels with it. A local revoke newer than the snapshot keeps the
+            # cause it was marked with (an entry without one, from before the field, stays without:
+            # it reads as revoked); when revoked ends, so does the cause.
+            mark_cause = getattr(mark, "revoke_cause", None)
+            if revoked:
+                if not local_revoke_newer:
+                    entry["revoke_cause"] = mark_cause or "revoked"
+            else:
+                entry["revoke_cause"] = None
         return tuple(changed)
+
+    def _clear_revokes(
+        self, pool: dict[str, Any], request: ModelClaudeTokenPoolRequest
+    ) -> tuple[str, ...]:
+        """Execute the staleness compute's typed clear commands; return the labels whose revoked mark was cleared.
+
+        A command is executed only when the pool still holds the command's fingerprint under the label and the
+        revoked stamp it holds is exactly the one the decision was made on, so a newer revoke, a re-added token
+        or an already cleared mark is left alone.
+        """
+        by_label = {t["label"]: t for t in pool["tokens"]}
+        cleared: list[str] = []
+        for command in request.clear_commands:
+            entry = by_label.get(command.label)
+            if (
+                entry is None
+                or entry.get("fingerprint") != command.fingerprint
+                or entry.get("revoked_at") != _stamp(command.expected_revoked_at)
+            ):
+                continue
+            entry["revoked_at"] = None
+            entry["revoke_cause"] = None
+            cleared.append(command.label)
+        return tuple(cleared)
+
+    def _apply_limit_rechecks(
+        self, pool: dict[str, Any], request: ModelClaudeTokenPoolRequest
+    ) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]]:
+        """Execute the limit recheck compute's typed commands; return the labels cleared, replaced and kept.
+
+        A command is executed only when the pool still holds the command's fingerprint under the label and the
+        limited-until stamp it holds is exactly the one the decision was made on, so a newer limit notice, a
+        re-added token or an already cleared mark is left alone (and is in none of the three results).
+        """
+        by_label = {t["label"]: t for t in pool["tokens"]}
+        cleared: list[str] = []
+        replaced: list[str] = []
+        kept: list[str] = []
+        for command in request.limit_commands:
+            entry = by_label.get(command.label)
+            if (
+                entry is None
+                or entry.get("fingerprint") != command.fingerprint
+                or entry.get("until") != _stamp(command.expected_until)
+            ):
+                continue
+            entry["probed_at"] = _stamp(command.probed_at)
+            if command.action == "clear":
+                entry["until"] = None
+                entry["limited_at"] = None
+                cleared.append(command.label)
+            elif command.action == "replace" and command.new_until is not None:
+                entry["until"] = _stamp(command.new_until)
+                entry["limited_at"] = _stamp(command.probed_at)
+                replaced.append(command.label)
+            else:
+                kept.append(command.label)
+        return tuple(cleared), tuple(replaced), tuple(kept)
+
+    def _apply_revoke_rechecks(
+        self, pool: dict[str, Any], request: ModelClaudeTokenPoolRequest
+    ) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]]:
+        """Execute the revoke recheck compute's typed commands; return the labels cleared, confirmed and kept.
+
+        A command is executed only when the pool still holds the command's fingerprint under the label and the
+        revoked stamp it holds is exactly the one the decision was made on, so a newer revoke, a re-added token
+        or an already cleared mark is left alone (and is in none of the three results).
+        """
+        by_label = {t["label"]: t for t in pool["tokens"]}
+        cleared: list[str] = []
+        confirmed: list[str] = []
+        kept: list[str] = []
+        for command in request.revoke_commands:
+            entry = by_label.get(command.label)
+            if (
+                entry is None
+                or entry.get("fingerprint") != command.fingerprint
+                or entry.get("revoked_at") != _stamp(command.expected_revoked_at)
+            ):
+                continue
+            entry["probed_at"] = _stamp(command.probed_at)
+            if command.action == "clear":
+                entry["revoked_at"] = None
+                entry["revoke_cause"] = None
+                if command.new_until is not None:
+                    # the probe answered ok but found the account limited: out until that reset
+                    entry["until"] = _stamp(command.new_until)
+                    entry["limited_at"] = _stamp(command.probed_at)
+                cleared.append(command.label)
+            elif command.action == "confirm":
+                entry["revoke_cause"] = "revoked"
+                confirmed.append(command.label)
+            else:
+                kept.append(command.label)
+        return tuple(cleared), tuple(confirmed), tuple(kept)
+
+    def _export(
+        self, pool: dict[str, Any], request: ModelClaudeTokenPoolRequest
+    ) -> SecretStr:
+        """The stored token of ``request.label`` for the caller's pipe; refused for a label this pool does not hold."""
+        label = self._label(request)
+        if not any(t["label"] == label for t in pool["tokens"]):
+            raise ClaudeTokenPoolRefusedError(f"{label} is not in this host's pool")
+        value = self.secret(label)
+        if value is None:
+            raise ClaudeTokenPoolRefusedError(
+                f"{label} is in this host's pool but its stored token is missing"
+            )
+        return value
 
     def secret(self, label: str) -> SecretStr | None:
         """The stored token of ``label`` for the rotation tick to write to the host's login, never to a result."""
@@ -374,19 +557,82 @@ class HandlerClaudeTokenPool:
         if entry is None:
             raise ClaudeTokenPoolRefusedError(f"{label} is not in this host's pool")
         if entry.get("revoked_at"):
+            # A mark whose cause reads challenged (absent reads revoked) is a 403 challenge page,
+            # not a real revoke: a later real revoke upgrades the cause and keeps the mark's time.
+            if entry.get("revoke_cause") == "challenged" and request.cause == "revoked":
+                entry["revoke_cause"] = "revoked"
+                return self._revoked_alert(label)
             return None
         entry["revoked_at"] = _stamp(self._now())
+        entry["revoke_cause"] = request.cause
+        if request.cause == "challenged":
+            return (
+                f"ALERT claude-pool host={self._host} challenged={label}: a 403 challenge "
+                "ended a lane on it; the pool tick re-tests it and clears the mark "
+                "when it answers"
+            )
+        return self._revoked_alert(label)
+
+    def _revoked_alert(self, label: str) -> str:
         return (
             f"ALERT claude-pool host={self._host} revoked={label}: its OAuth token "
             "was revoked; re-add it with `python -m "
             f"omnimarket.nodes.node_claude_token_pool_effect add --label {label} --force`"
         )
 
-    def _resolve(self, pool: dict[str, Any]) -> tuple[str | None, SecretStr | None]:
+    def _resolve(
+        self, pool: dict[str, Any], request: ModelClaudeTokenPoolRequest
+    ) -> tuple[str | None, SecretStr | None, ModelClaudeTokenPoolRefusal | None, bool]:
+        """The token a NEW lane start runs on: the label, its value, a refusal, and whether it is a drained fallback.
+
+        A limited or revoked label is never returned. Of the rest, a label at the overlay's lane cap is
+        out; a label in ``drain_labels`` is skipped while another label is left and is used (as a
+        fallback) when it is the only one. Draw order decides among equals, as before.
+        """
         now = _stamp(self._now())
-        for entry in pool["tokens"]:
-            if entry.get("revoked_at") or (entry.get("until") or "") > now:
-                continue
+        usable = [
+            entry
+            for entry in pool["tokens"]
+            if not entry.get("revoked_at") and (entry.get("until") or "") <= now
+        ]
+        if not usable:
+            # Nothing usable is the answer it always was (an empty pool, or every token limited or
+            # revoked), never a refusal: a refusal says a usable token exists.
+            return None, None, None, False
+        counted = request.lane_counts
+        if counted is not None and not self._lane_cap_read:
+            return (
+                None,
+                None,
+                ModelClaudeTokenPoolRefusal(
+                    code="lane_cap_unread",
+                    detail="the caller passed lane counts and this host's pool overlay, which holds the lane cap, was not read",
+                ),
+                False,
+            )
+        cap = self._lane_cap
+        if cap is not None and counted is None:
+            return (
+                None,
+                None,
+                ModelClaudeTokenPoolRefusal(
+                    code="lane_counts_missing",
+                    cap=cap,
+                    detail=f"the overlay caps a label at {cap} lanes and the caller passed no lane counts",
+                ),
+                False,
+            )
+        lanes = {row.label: row.lanes for row in counted or ()}
+        open_labels = [
+            entry
+            for entry in usable
+            if cap is None or lanes.get(entry["label"], 0) < cap
+        ]
+        drained = frozenset(request.drain_labels)
+        ordered = [e for e in open_labels if e["label"] not in drained] + [
+            e for e in open_labels if e["label"] in drained
+        ]
+        for entry in ordered:
             value = asyncio.run(
                 self._store.get_secret(SECRET_REF_PREFIX + entry["label"])
             )
@@ -394,8 +640,26 @@ class HandlerClaudeTokenPool:
                 pool["current"] = entry["label"]
                 # every draw is a lane about to start under the token: count it, so "unused" means undrawn
                 self._count_use(entry)
-                return entry["label"], SecretStr(value)
-        return None, None
+                return (
+                    entry["label"],
+                    SecretStr(value),
+                    None,
+                    entry["label"] in drained,
+                )
+        if not open_labels and cap is not None:
+            at_cap = tuple(e["label"] for e in usable)
+            return (
+                None,
+                None,
+                ModelClaudeTokenPoolRefusal(
+                    code="label_lane_cap",
+                    cap=cap,
+                    labels=at_cap,
+                    detail=f"every usable label already runs {cap} lanes or more: {', '.join(at_cap)}",
+                ),
+                False,
+            )
+        return None, None, None, False
 
     def _result(
         self,
@@ -405,6 +669,7 @@ class HandlerClaudeTokenPool:
         token: SecretStr | None,
         alert: str | None = None,
         synced: tuple[str, ...] = (),
+        cleared: tuple[str, ...] = (),
     ) -> ModelClaudeTokenPoolResult:
         now = _stamp(self._now())
         entries = tuple(
@@ -417,10 +682,20 @@ class HandlerClaudeTokenPool:
                 revoked=bool(t.get("revoked_at")),
                 uses=t.get("uses", 0),
                 last_used_at=t.get("last_used_at"),
+                revoked_at=t.get("revoked_at"),
+                limited_at=t.get("limited_at"),
+                probed_at=t.get("probed_at"),
+                # an entry without a cause, from before the field, reads as revoked
+                revoke_cause=(t.get("revoke_cause") or "revoked")
+                if t.get("revoked_at")
+                else None,
             )
             for t in pool["tokens"]
         )
         revoked = tuple(e.label for e in entries if e.revoked)
+        challenged = tuple(
+            e.label for e in entries if e.revoked and e.revoke_cause == "challenged"
+        )
         return ModelClaudeTokenPoolResult(
             operation=operation,
             host=self._host,
@@ -430,10 +705,21 @@ class HandlerClaudeTokenPool:
             pinned_by=pool.get("pinned_by"),
             token=token,
             revoked=revoked,
+            challenged=challenged,
             synced=synced,
+            cleared=cleared,
             alert=alert,
             **pool_summary(
-                self._host, [(e.label, e.until) for e in entries], now, revoked=revoked
+                self._host,
+                [(e.label, e.until) for e in entries],
+                now,
+                # the line names only the real revokes; the challenged labels follow separately
+                revoked=tuple(
+                    e.label
+                    for e in entries
+                    if e.revoked and e.revoke_cause == "revoked"
+                ),
+                challenged=challenged,
             ),
         )
 
@@ -444,13 +730,16 @@ def pool_summary(
     now: str,
     *,
     revoked: Sequence[str] = (),
+    challenged: Sequence[str] = (),
 ) -> dict[str, Any]:
-    """Tokens, limits at ``now``, the next reset and the status line, including revoked labels.
+    """Tokens, limits at ``now``, the next reset and the status line, including out-of-rotation labels.
 
     A revoked token is out of rotation for good, not until a reset, so it is named in ``revoked`` and is
     neither counted in ``limited`` nor offered as the ``next_reset``, even when it still carries a limit time.
+    A challenged one (a 403 challenge page) is out the same way until the recheck clears it: it is named in
+    ``challenged``, after ``revoked``, and is excluded from the limited counts and the ``next_reset`` alike.
     """
-    gone = frozenset(revoked)
+    gone = frozenset(revoked) | frozenset(challenged)
     untils = sorted(u for label, u in tokens if u and u > now and label not in gone)
     total, limited = len(tokens), len(untils)
     every = total > 0 and all((u or "") > now or label in gone for label, u in tokens)
@@ -460,8 +749,12 @@ def pool_summary(
     )
     if revoked:
         line += f" revoked={','.join(revoked)}"
+    if challenged:
+        line += f" challenged={','.join(challenged)}"
     if every:
-        line = f"ALARM {line} every token limited{' or revoked' if revoked else ''}"
+        # a challenged label is out of rotation exactly like a revoked one
+        tail = " or revoked" if revoked or challenged else ""
+        line = f"ALARM {line} every token limited{tail}"
     return {
         "limited": limited,
         "all_limited": every,

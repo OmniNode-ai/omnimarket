@@ -413,6 +413,16 @@ jobs:
         run: uv run --frozen python -m omnimarket.nodes.node_handwritten_event_payload_check_effect.runtime_handwritten_event_payload_check
       - name: Handwritten event-payload negative controls
         run: uv run pytest tests/ci/test_handwritten_event_payload_check.py tests/test_golden_chain_handwritten_event_payload_check_effect.py -q --no-cov
+      # OMN-23560: the CI twin of the test-duration-record-check pre-commit hook. A pull request
+      # that adds a test file must add its time to config/test_file_durations.json in the same
+      # change; the refusal prints the command that does it.
+      - name: Added test files are in the durations record (OMN-23560)
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: origin/${{ github.base_ref }}
+        run: uv run --frozen python -m omnimarket.nodes.node_test_duration_record_check_effect.runtime_test_duration_record_check --base-ref "$BASE_REF"
+      - name: Test duration record check negative controls (OMN-23560)
+        run: uv run pytest tests/nodes/node_test_duration_record_check_effect -q --no-cov -n 0 -p no:randomly
       - name: Queue full-suite admission policy (OMN-19998)
         run: uv run pytest tests/ci/test_queue_run_once_omn19998.py -q -n 0 -p no:randomly --no-cov
       - name: Lane census alias parity (OMN-19998)
@@ -647,6 +657,34 @@ jobs:
       # frozen under a sha256 hash. SYNC with pre-commit hook 'delegation-routing-overlay-bars'.
       - name: Routing overlay bars gate (OMN-22976)
         run: uv run pytest src/omnimarket/nodes/node_delegation_routing_overlay_check_compute -q -n 0 -p no:randomly --no-cov
+      # OMN-24005: a topic use this change adds to a node contract needs a declared broker grant. SYNC with pre-commit hook
+      # 'broker-acl-coverage-gate'. The tests that hold the check (the added use refuses, the unchanged tree passes) run here first.
+      - name: Broker permission coverage gate (OMN-24005)
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          uv run pytest tests/nodes/node_broker_acl_overlay_render_compute/test_coverage_gate.py -q -n 0 -p no:randomly --no-cov
+          if [ -n "$BASE_REF" ]; then
+            git fetch origin "$BASE_REF" --no-tags
+            REF="origin/$BASE_REF"
+          else
+            REF="HEAD~1"
+          fi
+          uv run python -m omnimarket.nodes.node_broker_acl_reconcile_effect.runtime_broker_acl_coverage_gate --base-ref "$REF"
+      # OMN-24121: a producer-consumer pair this change adds or reshapes must match in declared message shape; differences the base
+      # already has are not judged. SYNC with pre-commit hook 'seam-field-diff-gate'. The tests that hold the check run here first.
+      - name: Seam field diff gate (OMN-24121)
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          uv run pytest tests/nodes/node_seam_field_diff_compute tests/nodes/node_seam_field_diff_check_effect -q -n 0 -p no:randomly --no-cov
+          if [ -n "$BASE_REF" ]; then
+            git fetch origin "$BASE_REF" --no-tags
+            REF="origin/$BASE_REF"
+          else
+            REF="HEAD~1"
+          fi
+          env -u PYTHONPATH uv run python -m omnimarket.nodes.node_seam_field_diff_check_effect.runtime_seam_field_diff_check --base-ref "$REF"
       # OMN-17104: SYNC with pre-commit hook 'delegation-wire-public-models'.
       - name: Delegation public models match loader and inference contract
         run: uv run --frozen pytest tests/unit/models/delegation/wire/test_public_exports.py -q -n 0 -p no:randomly --no-cov
@@ -1449,7 +1487,11 @@ jobs:
         env:
           COVERAGE_FILE: ${{ github.workspace }}/.coverage.${{ matrix.split }}
           OMN20025_POSTGRES_BACKEND: ci
+          PYTHONFAULTHANDLER: "1"
+          PYTHONUNBUFFERED: "1"
         run: |
+          set -o pipefail
+          rc=0
           paths=$(echo '${{ needs.detect-changes.outputs.selected_paths }}' | python -c "import json,sys; print(' '.join(json.load(sys.stdin)))")
           uv run pytest $paths \
             --splits ${{ needs.detect-changes.outputs.split_count }} \
@@ -1457,7 +1499,10 @@ jobs:
             --cov=src --cov-report= \
             -v --tb=short -m "not kafka" \
             --timeout=300 --timeout-method=thread \
-            --junitxml=junit-${{ matrix.split }}.xml
+            --junitxml=junit-${{ matrix.split }}.xml 2>&1 \
+            | tee "$RUNNER_TEMP/pytest-${{ matrix.split }}.log" || rc=$?
+          echo "$rc" > "$RUNNER_TEMP/pytest-${{ matrix.split }}.rc"
+          exit "$rc"
 
       # OMN-19684: the full-suite shards are planned, not split by pytest-split.
       # Live PR runs after the first duration-cache fix still spread 1.75-2.10x
@@ -1484,7 +1529,11 @@ jobs:
         env:
           COVERAGE_FILE: ${{ github.workspace }}/.coverage.${{ matrix.split }}
           OMN20025_POSTGRES_BACKEND: ci
+          PYTHONFAULTHANDLER: "1"
+          PYTHONUNBUFFERED: "1"
         run: |
+          set -o pipefail
+          rc=0
           mapfile -t shard_files < .shard_test_files
           test "${#shard_files[@]}" -gt 0
           uv run pytest "${shard_files[@]}" \
@@ -1494,7 +1543,88 @@ jobs:
             --cov=src --cov-report= \
             -v --tb=short -m "not kafka" \
             --timeout=300 --timeout-method=thread \
-            --junitxml=junit-${{ matrix.split }}.xml
+            --junitxml=junit-${{ matrix.split }}.xml 2>&1 \
+            | tee "$RUNNER_TEMP/pytest-${{ matrix.split }}.log" || rc=$?
+          echo "$rc" > "$RUNNER_TEMP/pytest-${{ matrix.split }}.rc"
+          exit "$rc"
+
+      # OMN-23625: DIAGNOSTIC ONLY. Some shards die with exit 139 (or exit 1)
+      # mid-test and print no pytest summary, so no log names the faulting frame
+      # (omnimarket cause-omnimarket-exit139 reading, 2026-11-10: 8 of 26 failed
+      # Tests splits). The two pytest steps above now run with Python's fault
+      # handler on and keep their output in $RUNNER_TEMP while still printing it
+      # and still exiting with pytest's own status. This step runs only after a
+      # failure, reads that log, and when it holds no pytest summary line prints
+      # the last test started, any Python fatal-error block with every thread's
+      # stack, and the kernel's own segfault/OOM lines (which name the shared
+      # library). It changes no test, drops no check and always exits 0; the
+      # failed pytest step stays the job's failure.
+      - name: Name the crashed test (OMN-23625)
+        if: failure()
+        env:
+          SPLIT: ${{ matrix.split }}
+        run: |
+          log="$RUNNER_TEMP/pytest-${SPLIT}.log"
+          if ! test -s "$log"; then
+            echo "no pytest log for split ${SPLIT}: pytest did not start or an earlier step failed"
+            exit 0
+          fi
+          if grep -aEq '^=+ .* in [0-9.]+s' "$log"; then
+            echo "pytest printed a summary for split ${SPLIT}: an ordinary test failure, not a crash"
+            exit 0
+          fi
+          echo "::group::split ${SPLIT}: pytest ended with no summary line"
+          echo "--- how the pytest process ended ---"
+          rcfile="$RUNNER_TEMP/pytest-${SPLIT}.rc"
+          if test -s "$rcfile"; then
+            rc=$(cat "$rcfile")
+            echo "exit status: $rc"
+            case "$rc" in
+              '' | *[!0-9]*)
+                ;;
+              *)
+                if test "$rc" -gt 128; then
+                  sig=$((rc - 128))
+                  name=$(kill -l "$sig" 2>/dev/null) || name=""
+                  echo "ended by signal $sig (${name:-unknown})"
+                elif test "$rc" -eq 1; then
+                  echo "exit 1 is not a signal: the process ended itself (an _exit, a sys.exit, or a process-ending timer such as faulthandler dump_traceback_later with exit=True); a timer's stack dump goes to pytest's captured stderr and is not in this log"
+                else
+                  echo "exit status is not 1 and not a signal"
+                fi
+                ;;
+            esac
+          else
+            echo "exit status: unknown"
+          fi
+          cg="${CGROUP_DIR:-/sys/fs/cgroup$(sed -n 's/^0:://p' /proc/self/cgroup)}"
+          if test -r "$cg/memory.peak"; then
+            echo "memory high-water: $(( $(cat "$cg/memory.peak") / 1048576 )) MB"
+            if test -r "$cg/memory.events"; then
+              echo "memory kill events: $(awk '$1 == "oom_kill" { print $2 }' "$cg/memory.events")"
+            fi
+          else
+            echo "memory high-water: unavailable (no readable cgroup v2 memory.peak)"
+          fi
+          echo "last test started: $(grep -aE '^[^[:space:]]+\.py::' "$log" | tail -n 1 | awk '{print $1}')"
+          echo "last three test lines:"
+          grep -aE '^[^[:space:]]+\.py::' "$log" | tail -n 3 || true
+          echo "--- Python fatal-error block (every thread's stack), if printed ---"
+          grep -an -A60 -E 'Fatal Python error|^Timeout \(' "$log" | head -n 120 || true
+          echo "--- kernel log: segfault, oom and kill lines ---"
+          if kernel=$(sudo -n dmesg 2>&1); then
+            matches=$(echo "$kernel" | grep -aEi 'segfault|general protection|out of memory|oom-kill|killed process' | tail -n 20)
+            if test -n "$matches"; then
+              echo "$matches"
+            else
+              echo "kernel log read: no segfault, oom or kill line"
+            fi
+          else
+            echo "kernel log not readable without privilege: $(echo "$kernel" | head -n 1)"
+          fi
+          echo "--- memory ---"
+          free -m || true
+          echo "::endgroup::"
 
       # OMN-14680: stamp a versioned metadata sidecar (head SHA, environment,
       # test-scope, schema) so the shadow aggregator can validate the artifact
@@ -1689,26 +1819,54 @@ jobs:
       # softly and trying again. The artifact service flakes, but a gate whose
       # input fetch is allowed to fail softly is a gate that passes when it
       # could not read anything -- the whole failure class this job refuses.
-      # Three attempts, then red. This job carries no advisory setting at job
-      # or step level, deliberately and by test.
+      # OMN-23527: six attempts spanning 450 seconds (30+60+90+120+150), then red.
+      # The earlier three attempts inside two minutes were all spent within one
+      # 6.5 minute GitHub rate-limit burst (2026-11-10 10:50Z to 10:56Z). A download
+      # that is still refused by a rate limit or a 5xx is named as such in the job
+      # summary, because that red is not a finding about the tests. The step stays
+      # blocking: it exits 0 only when the reports were downloaded. This job carries
+      # no advisory setting at job or step level, deliberately and by test.
       - name: Download this run's JUnit reports
         if: steps.decide.outputs.ratchet == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.run_id }}
+          REPO: ${{ github.repository }}
+          DOWNLOAD_ATTEMPTS: "6"
+          DOWNLOAD_BACKOFF_SECONDS: "30"
         run: |
-          for attempt in 1 2 3; do
-            if gh run download "${{ github.run_id }}" \
-                 --repo "${{ github.repository }}" \
+          set -uo pipefail
+          attempt=1
+          while :; do
+            log="$(mktemp)"
+            if gh run download "$RUN_ID" \
+                 --repo "$REPO" \
                  --pattern 'test-results-*' \
-                 --dir junit-reports; then
+                 --dir junit-reports >"$log" 2>&1; then
               echo "JUnit reports downloaded on attempt ${attempt}."
               exit 0
             fi
-            echo "Artifact download attempt ${attempt} failed."
+            cat "$log"
             rm -rf junit-reports
-            sleep $((attempt * 10))
+            if [ "$attempt" -ge "$DOWNLOAD_ATTEMPTS" ]; then
+              break
+            fi
+            wait_seconds=$((DOWNLOAD_BACKOFF_SECONDS * attempt))
+            echo "::warning::artifact download attempt ${attempt}/${DOWNLOAD_ATTEMPTS} failed; retrying in ${wait_seconds}s"
+            sleep "$wait_seconds"
+            attempt=$((attempt + 1))
           done
-          echo "::error::could not download this run's JUnit reports after 3 attempts."
+          if grep -qiE 'rate limit|HTTP (429|5[0-9][0-9])|error: (429|5[0-9][0-9])' "$log"; then
+            {
+              echo "### Skip Count Ratchet did not run: GitHub rate limit or server error"
+              echo
+              echo "The JUnit reports could not be downloaded after ${attempt} attempts."
+              echo "The ratchet did not run. This red is NOT a finding about the tests in this pull request; rerun the check once GitHub accepts requests again."
+            } >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+            echo "::error::could not download this run's JUnit reports after ${attempt} attempts: still refused by a GitHub rate limit or server error; the ratchet did not run (not a finding about the tests)."
+          else
+            echo "::error::could not download this run's JUnit reports after ${attempt} attempts."
+          fi
           echo "Failing closed: a gate that cannot read its input has not passed."
           exit 1
 
@@ -4082,6 +4240,75 @@ jobs:
         run: uv run pytest tests/unit/validators/test_ledger_file_census.py tests/unit/nodes/node_work_ledger_file_census_effect -q --no-cov -p no:cacheprovider
       - name: The seven no-file readings turn red on their planted breaks (OMN-22917)
         run: uv run pytest tests/unit/nodes/node_work_ledger_reader_effect/test_no_file_readings.py tests/unit/nodes/node_work_ledger_no_file_readings_effect -q --no-cov -p no:cacheprovider
+
+  # OMN-23963: every document on overlays main loads through THIS pull request's own node models. omnimarket 5915 made the key
+  # `limits` required for node_factory_floor_publish_effect while overlays main had none: it merged at about 22:39Z on 2026-11-12 and
+  # the Mac board publisher refused every cycle until the overlays change merged at 23:34Z. The overlays repository's own overlay-load
+  # step runs only on overlays pull requests, so nothing checked this direction. The check is node_overlay_main_load_check_effect:
+  # it reads the overlays repository's pins file with node_overlay_drift_effect's parser and judges each document with that node's
+  # validator (one implementation, two callers), through the models of the tree under review, and the floor overlays through the floor
+  # node's own check. The planted-break tests run first so a check that cannot refuse is red here. Unconditional (no needs/if): a
+  # failure here fails CI Summary through its default-deny sweep. It is not in STRICT_GATE_JOBS: adding a row there changes the
+  # report bytes the recorded-head replay (tests/unit/scripts/ci/test_ci_summary_rules_replay_omn23079.py) pins, which is a
+  # follow-up with its own fixture re-record.
+  overlay-main-load:
+    name: Overlay Main Load (OMN-23963)
+    # A pull request from a fork holds no secrets and cannot read the private overlays repository; its job is skipped, not green-washed
+    # (a skipped job is not a failure to the CI Summary sweep, and the maintainers' own branch run of the same head reads the overlays).
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      OVERLAYS_REPOSITORY_NAME: overlays
+      OVERLAYS_REF: main
+      OVERLAYS_CHECKOUT: .overlays-main
+      OVERLAYS_DOCUMENTS_DIR: overlays
+      OVERLAYS_PINS_FILE: .omnimarket-node-pins
+    steps:
+      - name: Checkout this pull request
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+        with:
+          persist-credentials: false
+      # The overlays repository is private and this one is public: the workflow token and OMNI_GITHUB_TOKEN cannot read it (measured
+      # on this job's first run: "Repository not found"). A read-only installation token of the CI GitHub App, scoped to that one
+      # repository and to contents read, is the pattern hostile-reviewer.yml uses for its private CI overlay.
+      - name: Mint a read-only overlays token
+        id: overlays-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.ONEXBOT_APP_ID }}
+          private-key: ${{ secrets.ONEXBOT_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ env.OVERLAYS_REPOSITORY_NAME }}
+          permission-contents: read
+      - name: Checkout the overlays repository at its main branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+        with:
+          repository: ${{ github.repository_owner }}/${{ env.OVERLAYS_REPOSITORY_NAME }}
+          ref: ${{ env.OVERLAYS_REF }}
+          path: ${{ env.OVERLAYS_CHECKOUT }}
+          token: ${{ steps.overlays-token.outputs.token }}
+          persist-credentials: false
+      - name: Assert the overlays checkout holds the pins file and documents
+        run: |
+          set -euo pipefail
+          # A silently empty checkout would turn this job into a green no-op that compared nothing.
+          test -s "$OVERLAYS_CHECKOUT/$OVERLAYS_PINS_FILE" || { echo "::error::$OVERLAYS_CHECKOUT/$OVERLAYS_PINS_FILE is missing or empty"; exit 1; }
+          test -n "$(find "$OVERLAYS_CHECKOUT/$OVERLAYS_DOCUMENTS_DIR" -name overlay.yaml -print -quit)" || { echo "::error::no overlay document under $OVERLAYS_CHECKOUT/$OVERLAYS_DOCUMENTS_DIR"; exit 1; }
+          echo "overlays revision: $(git -C "$OVERLAYS_CHECKOUT" rev-parse HEAD)"
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7
+        with:
+          version: "0.8.3"
+      - name: Sync the environment
+        run: uv sync --locked
+      - name: The planted breaks turn the check red (a required key missing from a document is refused)
+        run: uv run pytest tests/unit/nodes/node_overlay_main_load_check_effect tests/nodes/node_overlay_main_load_check_effect -q --no-cov -p no:cacheprovider
+      - name: Every overlays-main document loads through this pull request's node models
+        run: |
+          uv run python -m omnimarket.nodes.node_overlay_main_load_check_effect \
+            --overlays-root "$OVERLAYS_CHECKOUT/$OVERLAYS_DOCUMENTS_DIR" \
+            --pins-file "$OVERLAYS_CHECKOUT/$OVERLAYS_PINS_FILE"
 
   # OMN-19998: public-repository runner placement (RULING 2026-10-16T07:07:09Z,
   # "Ci runners should be for private repos only"). omnibase_core's check refuses

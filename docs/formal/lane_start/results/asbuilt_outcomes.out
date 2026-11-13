@@ -1,0 +1,88 @@
+Parsing file LaneStart.tla
+Parsing file Integers.tla
+Parsing file FiniteSets.tla
+Parsing file Naturals.tla
+Parsing file Sequences.tla
+Semantic processing of module Naturals
+Semantic processing of module Integers
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module LaneStart
+Implied-temporal checking--satisfiability problem has 6 branches.
+Computing initial states...
+Error: Invariant StartedAtMostOnce is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ lp = <<"requested", "none", "none">>
+/\ dec = <<"none", "none", "none">>
+/\ claims = {}
+/\ eng = <<"none", "none", "none">>
+/\ terms = {}
+
+State 2: <Next line 275, col 14 to line 278, col 46 of module LaneStart>
+/\ lp = <<"claimed", "none", "none">>
+/\ dec = <<"none", "none", "none">>
+/\ claims = {1}
+/\ eng = <<"none", "none", "none">>
+/\ terms = {}
+
+State 3: <Next line 275, col 14 to line 278, col 46 of module LaneStart>
+/\ lp = <<"running", "none", "none">>
+/\ dec = <<"none", "none", "none">>
+/\ claims = {1}
+/\ eng = <<"running", "none", "none">>
+/\ terms = {}
+
+State 4: <Next line 275, col 14 to line 278, col 46 of module LaneStart>
+/\ lp = <<"running", "none", "none">>
+/\ dec = <<"none", "none", "none">>
+/\ claims = {1}
+/\ eng = <<"exited", "none", "none">>
+/\ terms = {}
+
+State 5: <Next line 275, col 14 to line 278, col 46 of module LaneStart>
+/\ lp = <<"exited_seen", "none", "none">>
+/\ dec = <<"none", "none", "none">>
+/\ claims = {1}
+/\ eng = <<"exited", "none", "none">>
+/\ terms = {}
+
+State 6: <LeaderClose line 228, col 3 to line 236, col 30 of module LaneStart>
+/\ lp = <<"exited_seen", "none", "none">>
+/\ dec = <<"terminal", "none", "none">>
+/\ claims = {1}
+/\ eng = <<"exited", "none", "none">>
+/\ terms = {}
+
+State 7: <LeaderClose line 228, col 3 to line 236, col 30 of module LaneStart>
+/\ lp = <<"done", "none", "none">>
+/\ dec = <<"terminal", "none", "none">>
+/\ claims = {1}
+/\ eng = <<"exited", "none", "none">>
+/\ terms = {<<1, "leader", "failed">>}
+
+State 8: <Next line 275, col 14 to line 278, col 46 of module LaneStart>
+/\ lp = <<"done", "requested", "none">>
+/\ dec = <<"terminal", "none", "none">>
+/\ claims = {1}
+/\ eng = <<"exited", "none", "none">>
+/\ terms = {<<1, "leader", "failed">>}
+
+State 9: <Next line 275, col 14 to line 278, col 46 of module LaneStart>
+/\ lp = <<"done", "claimed", "none">>
+/\ dec = <<"terminal", "none", "none">>
+/\ claims = {1, 2}
+/\ eng = <<"exited", "none", "none">>
+/\ terms = {<<1, "leader", "failed">>}
+
+State 10: <Next line 275, col 14 to line 278, col 46 of module LaneStart>
+/\ lp = <<"done", "running", "none">>
+/\ dec = <<"terminal", "none", "none">>
+/\ claims = {1, 2}
+/\ eng = <<"exited", "running", "none">>
+/\ terms = {<<1, "leader", "failed">>}
+
+316 states generated, 191 distinct states found, 38 states left on queue.
+The depth of the complete state graph search is 10.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 6 and the 95th percentile is 5).
+exit=12

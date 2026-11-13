@@ -42,6 +42,10 @@ capture_watch_policy:
 reads_source:
   binding_ref: omninode_runtime_service
   dsn_env: OMNINODE_INTERNAL_DB_URL
+  # OMN-24325: the NAME of the variable the host installer sets to the database login's password reference (a store path, never the
+  # password). The DSN in dsn_env then carries no password; the reader resolves the reference through the secret_store block of this
+  # node's overlay, and a reference that does not resolve makes the read UNKNOWN (fail closed). A DSN that carries a password is used as given.
+  password_ref_env: ONEX_CAPTURE_WATCH_DB_PASSWORD_REF
 
 capture_sources:
   - source_id: ledger_rows

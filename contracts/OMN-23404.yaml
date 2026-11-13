@@ -1,0 +1,55 @@
+schema_version: 1.0.0
+ticket_id: OMN-23404
+title: The lane closeout sweep is installed on every lab host and the old closeout is moved and deleted
+summary: >-
+  Child of the lane closeout plan. omnimarket pull request 5664 adds node_lane_closeout_sweep_effect and declares its systemd user unit
+  onex-lane-closeout-sweep in node_host_installer_registry_units. This contract binds the pull request's own evidence: the sweep and
+  unit tests run on the hosted runner, and the installed unit on each lab host is read by the local Done gate.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- events
+- topics
+- public_api
+requirements:
+- id: req-omn23404-sweep-installed
+  statement: The pull request carries this ticket's contract, merges green, and the sweep unit is installed through the host installer on every lab host, each unit having run.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: omnimarket pull request 5664 carries this ticket''s contract, merges green, and the sweep unit is installed through onex-host-install on every lab host including h101 and h106 -- falsifier: systemctl status onex-lane-closeout-sweep on each lab host and the unit''s last run exit code'
+evidence_requirements:
+- kind: tests
+  description: The sweep tests (fill-launched, landing and remote-lane fixtures, dirty salvage, kept-and-retried, orphan, live process, the named record-write break), the lane closeout salvage tests and the unit declaration tests.
+  command: uv run --frozen pytest tests/nodes/node_lane_closeout_sweep_effect tests/nodes/node_lane_closeout_effect tests/nodes/node_host_installer_registry_units/test_lane_closeout_sweep_unit.py tests/nodes/node_host_installer_registry_units/test_lane_closeout_sweep_launchd_unit.py -q --no-cov -m "not kafka"
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23404-sweep-and-unit-tests
+  description: >-
+    Hosted CI runs the sweep tests, including the lsof working-directory reading a macOS host needs, and the systemd and launchd unit declaration tests. The sweep node does not exist at the merge base, so the import fails
+    there (the failing control). The unit declaration test pins the unit name onex-lane-closeout-sweep, its 300 s tick and its 240 s limit,
+    the settings the installer writes to each host.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_lane_closeout_sweep_effect tests/nodes/node_host_installer_registry_units/test_lane_closeout_sweep_unit.py tests/nodes/node_host_installer_registry_units/test_lane_closeout_sweep_launchd_unit.py -q --no-cov -m "not kafka"
+    cwd: .
+- id: dod-omn23404-integration-proof-installed-units
+  description: >-
+    The first check runs the sweep and salvage tests on a lab host at the pushed head through the lab work runner. The second, after the
+    branch is installed through onex-host-install on a lab host, reads systemctl --user show onex-lane-closeout-sweep.service on that host
+    and requires the unit's last run result to be success. Hosted CI cannot reach the lab hosts, so only the local Done gate runs this
+    unbound item. The failing control is a host without the unit, where the show read finds no Result=success.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23404 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_lane_closeout_sweep_effect tests/nodes/node_lane_closeout_effect -q --no-cov -m "not kafka"
+    cwd: .
+  - check_type: command
+    check_value: sh -c 'systemctl --user show onex-lane-closeout-sweep.service -p Result -p ExecMainStatus | grep -x "Result=success"'
+    cwd: .

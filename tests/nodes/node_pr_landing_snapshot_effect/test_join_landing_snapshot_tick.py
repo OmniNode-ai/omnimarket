@@ -149,6 +149,10 @@ def _tick_overlay(
             "consumer_group": group,
             "snapshot_topic": topic,
             "poll_timeout_s": 5.0,
+            "host_env": "ONEX_HOST_NAME",
+            "join_timeout_s": 5.0,
+            "run_limit_s": 60,
+            "run_margin_s": 5.0,
         }
     )
 
@@ -295,17 +299,20 @@ def test_join_the_bus_payload_is_the_shared_record_model_field_for_field() -> No
         assert set(json.loads(line)) == set(ModelLandingTickRecord.model_fields)
 
 
-def test_join_control_a_record_missing_its_facts_is_refused_by_the_reader() -> None:
+def test_join_control_a_record_missing_its_facts_is_skipped_by_the_reader() -> None:
     _, raw, topic = _over_inmemory_bus()
     broken = [
         json.dumps({k: v for k, v in json.loads(line).items() if k != "facts"})
         for line in raw
     ]
-    with pytest.raises(ValueError, match="facts"):
-        _read_by_the_tick_orchestrator(broken, topic).snapshots()
+    source = _read_by_the_tick_orchestrator(broken, topic)
+    # the shared topic may hold other shapes: the reader skips each with a typed row, it reads no tick
+    assert source.snapshots() == ()
+    assert [row.position for row in source.skipped()] == list(range(len(TICKS)))
+    assert all("facts: missing" in row.detail for row in source.skipped())
 
 
-def test_join_control_a_renamed_record_field_is_refused_by_the_reader() -> None:
+def test_join_control_a_renamed_record_field_is_skipped_by_the_reader() -> None:
     """A producer that renames provenance, or a consumer that forbids it, breaks the seam."""
     _, raw, topic = _over_inmemory_bus()
     renamed = []
@@ -313,8 +320,9 @@ def test_join_control_a_renamed_record_field_is_refused_by_the_reader() -> None:
         record = json.loads(line)
         record["source"] = record.pop("provenance")
         renamed.append(json.dumps(record))
-    with pytest.raises(ValueError, match="provenance"):
-        _read_by_the_tick_orchestrator(renamed, topic).snapshots()
+    source = _read_by_the_tick_orchestrator(renamed, topic)
+    assert source.snapshots() == ()
+    assert all("source: extra_forbidden" in row.detail for row in source.skipped())
 
 
 @pytest.mark.kafka

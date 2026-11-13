@@ -1,0 +1,36 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Default profile (OMN-23707): the in-memory sender answers every unit itself and nothing reaches a host or a broker. Synthetic values
+# only. A deployment's overlay lives at <root>/node_host_hygiene_orchestrator/overlay.yaml under a root named in ONEX_SKILL_OVERLAY_ROOTS.
+job_id: host_hygiene
+run_interval_seconds: 3600
+grace_seconds: 600
+backend: in_memory
+max_reading_age_seconds: 900
+max_parallel_units: 4
+lab_work:
+  repo: example-owner/example-repo
+  commit_sha: "0000000000000000000000000000000000000000"
+  lane: example-lane
+  unit_id_prefix: hh
+  bus_lane: example-lane
+cleanups:
+  - cleanup_id: docker_hygiene
+    min_used_fraction: 0.80
+    min_interval_seconds: 21600
+    when_unread: dispatch
+    timeout_seconds: 1800
+    kind: other
+    argv: [uv, run, --frozen, python, -m, omnimarket.nodes.node_lab_disk_hygiene_effect, --omni-home, "{registry_root}"]
+  - cleanup_id: file_retention
+    min_used_fraction: 0.70
+    min_interval_seconds: 43200
+    when_unread: skip
+    timeout_seconds: 1800
+    kind: other
+    argv: [uv, run, --frozen, python, -m, omnimarket.nodes.node_retention_cleanup, --files]
+hosts:
+  - name: example-host-a
+    registry_root: /example/registry
+    pressure_volume: /
+    cleanup_ids: [docker_hygiene, file_retention]

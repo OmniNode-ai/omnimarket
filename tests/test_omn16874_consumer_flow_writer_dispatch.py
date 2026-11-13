@@ -422,6 +422,10 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # AgentActionsProjectionWriter (OMN-21920) is node_projection_agent_actions'
     # only DB writer, dispatched once per consumed event by runtime auto-wiring
     # through the shared RuntimeProjectionWriter base.
+    # SkillLifecycleProjectionWriter is the only writer of skill_executions,
+    # dispatched once per consumed skill-started or skill-completed event by
+    # runtime auto-wiring; its pure fold, HandlerProjectionSkillLifecycle, does
+    # NOT declare the capability.
     # OverlayStoreProjectionWriter is node_projection_overlay_store's only
     # routed handler: it composes HandlerOverlayStoreProjectionRunner once per
     # delivery, and the runner itself does not declare the capability.
@@ -431,6 +435,8 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # OverlayStoreProjectionWriter is node_projection_overlay_store's only DB
     # writer, dispatched once per consumed overlay event by runtime
     # auto-wiring; its pure fold does NOT declare the capability.
+    # HostDiskProjectionWriter is node_projection_host_disk's only DB writer,
+    # dispatched once per consumed reading by runtime auto-wiring.
     assert declared == {
         "AgentActionsProjectionWriter",
         "AlertChannelLivenessProjectionWriter",
@@ -451,6 +457,7 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
         "ProviderQuotaProjectionWriter",
         "DodVerdictProjectionWriter",
         "FleetLivenessProjectionWriter",
+        "HostDiskProjectionWriter",
         "InfraRoutingDecisionsProjectionWriter",
         "LabContainerMemoryProjectionWriter",
         "LabLaneHealthProjectionWriter",
@@ -461,6 +468,7 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
         "ProdPromotionGateProjectionWriter",
         "RuntimeErrorFingerprintProjectionWriter",
         "SessionContentProjectionWriter",
+        "SkillLifecycleProjectionWriter",
         "TopicActivityProjectionWriter",
         "WorkLedgerProjectionWriter",
         "WorktreeReconcileProjectionWriter",

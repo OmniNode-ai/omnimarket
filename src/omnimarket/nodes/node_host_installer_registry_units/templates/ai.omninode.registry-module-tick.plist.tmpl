@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- Registry module tick, rendered by node_host_installer_registry_units from its contract.
      Placeholders (written in the body between double underscores; never spelled that way in this comment, because the renderer
-     replaces every occurrence of one, and a value holding two hyphens in a row is not legal inside an XML comment): LABEL UNIT UV PYTHON PROJECT MODULE OMNI_HOME EVIDENCE_DIR
+     replaces every occurrence of one, and a value holding two hyphens in a row is not legal inside an XML comment): LABEL UNIT UV PYTHON PROJECT MODULE OMNI_HOME TICK_OMNI_HOME EVIDENCE_DIR
                    HOME USER STATE_DIR START_INTERVAL RUN_AT_LOAD PROCESS_TYPE ENVIRONMENT
                    TIMEOUT_ARGS (the run-limit wrapper's arguments when the unit declares run_timeout_s, else empty)
      PROJECT is the canonical registry clone, or the project path override the install named. The agent
@@ -31,7 +31,7 @@
     <string>-m</string>
     <string>__MODULE__</string>
     <string>--omni-home</string>
-    <string>__OMNI_HOME__</string>
+    <string>__TICK_OMNI_HOME__</string>
     <string>--state-dir</string>
     <string>__EVIDENCE_DIR__</string>
   </array>

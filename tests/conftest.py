@@ -27,6 +27,7 @@ from omnimarket.config.env_flags import env_flag
 from omnimarket.handlers.routing.task_class_contract_path import (
     TASK_CLASS_CONTRACT_PACKAGED_DEFAULT_PATH,
 )
+from omnimarket.handlers.runtime_delivery_host import RuntimeDeliveryHost
 
 # OMN-19987: the --refuse-skips option, for evidence checks that must not pass
 # when their proof skipped. Importing the hooks here loads them for every run.
@@ -478,6 +479,30 @@ def _isolate_unit_env(
     # is set (OMN-21099); a lane shell exports the host's live journal, which
     # the resident drainer publishes, so a test falls back to ONEX_STATE_DIR.
     monkeypatch.delenv("ONEX_HOOK_EMIT_JOURNAL_DIR", raising=False)
+
+
+@pytest.fixture(autouse=True)
+def _close_runtime_delivery_hosts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> Generator[None, None, None]:
+    """OMN-24114: close every RuntimeDeliveryHost a test constructs.
+
+    A projection writer starts a daemon loop thread on its first delivery and
+    nothing ends it; the leftover threads (two with a retry task that never
+    ends) reach tests that patch time or asyncio process-wide, so every test
+    closes the hosts it made.
+    """
+    hosts: list[RuntimeDeliveryHost] = []
+    original_init = RuntimeDeliveryHost.__init__
+
+    def _record_init(self: RuntimeDeliveryHost, *args: Any, **kwargs: Any) -> None:
+        original_init(self, *args, **kwargs)
+        hosts.append(self)
+
+    monkeypatch.setattr(RuntimeDeliveryHost, "__init__", _record_init)
+    yield
+    for host in hosts:
+        host.close()
 
 
 @pytest.fixture(autouse=True)
@@ -1145,6 +1170,48 @@ def _isolate_local_secret_store(
         "omnibase_infra.doctor.delegation_doctor_support.default_onex_home",
         lambda: _local_secret_store_root / "onex-home",
     )
+
+
+# OMN-23631: the input ceilings are an overlay value of node_delegation_code_budget_compute and routing refuses
+# when no root holds that overlay (no packaged value, no fallback). Every test therefore starts with a root that holds
+# the node's test fixture overlay, put in front of the roots the environment already names; a test that sets its own
+# ONEX_SKILL_OVERLAY_ROOTS after this fixture replaces it and brings its own overlay.
+_CODE_BUDGET_FIXTURE_OVERLAY = (
+    Path(__file__).resolve().parent
+    / "nodes"
+    / "node_delegation_code_budget_compute"
+    / "fixtures"
+    / "overlays"
+    / "node_delegation_code_budget_compute"
+    / "overlay.yaml"
+)
+
+
+@pytest.fixture(scope="session")
+def code_budget_overlay_root(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    root = tmp_path_factory.mktemp("omn23631-code-budget-overlay")
+    target = root / "node_delegation_code_budget_compute" / "overlay.yaml"
+    target.parent.mkdir(parents=True)
+    target.write_text(
+        _CODE_BUDGET_FIXTURE_OVERLAY.read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    return root
+
+
+@pytest.fixture(autouse=True)
+def _code_budget_overlay_in_roots(
+    monkeypatch: pytest.MonkeyPatch, code_budget_overlay_root: Path
+) -> None:
+    # OMN-23826: load_delegation_routing_overlay reads the delegation_routing document under these roots before the
+    # DELEGATION_ROUTING_OVERLAY_PATH pin, so a host whose roots hold the house document would route every test through
+    # it; the ambient roots that hold one are left out. A test that wants one names its own root.
+    ambient = [
+        root
+        for root in os.environ.get("ONEX_SKILL_OVERLAY_ROOTS", "").split(os.pathsep)
+        if root and not (Path(root) / "delegation_routing" / "overlay.yaml").is_file()
+    ]
+    roots = [str(code_budget_overlay_root), *ambient]
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", os.pathsep.join(roots))
 
 
 @pytest.fixture

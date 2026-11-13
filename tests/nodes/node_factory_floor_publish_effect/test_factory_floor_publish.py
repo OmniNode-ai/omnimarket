@@ -35,6 +35,7 @@ from omnimarket.nodes.node_factory_floor_publish_effect.models.model_factory_flo
 from omnimarket.nodes.node_factory_floor_publish_effect.runtime_factory_floor_publish import (
     main,
 )
+from tests.nodes.node_factory_floor_publish_effect.limits_support import TEST_LIMITS
 
 pytestmark = pytest.mark.unit
 
@@ -88,6 +89,7 @@ def _home(tmp_path: Path) -> Path:
 
 def _overlay(tmp_path: Path) -> ModelFactoryFloorPublishOverlay:
     return ModelFactoryFloorPublishOverlay(
+        limits=TEST_LIMITS,
         ssh_target="lab-web",
         remote_dir=str(tmp_path / "site"),
         serve_url="http://example.invalid:8088/",
@@ -148,6 +150,7 @@ def test_overlay_or_missing_key_home_unset_refuses(tmp_path: Path) -> None:
 def test_overlay_or_missing_key_ssh_target_must_be_a_plain_host(target: str) -> None:
     with pytest.raises(ValueError, match="ssh_target"):
         ModelFactoryFloorPublishOverlay(
+            limits=TEST_LIMITS,
             bus_lane="dev",
             ssh_target=target,
             remote_dir="/srv/site",
@@ -161,6 +164,7 @@ def test_overlay_or_missing_key_ssh_target_must_be_a_plain_host(target: str) -> 
 def test_overlay_or_missing_key_remote_dir_must_be_absolute(path: str) -> None:
     with pytest.raises(ValueError, match="remote_dir"):
         ModelFactoryFloorPublishOverlay(
+            limits=TEST_LIMITS,
             bus_lane="dev",
             ssh_target="lab-web",
             remote_dir=path,
@@ -343,7 +347,12 @@ FLOOR_DELEGATION = "omnimarket.nodes.node_floor_delegation_effect"
 BETA_BOARD = "omnimarket.nodes.node_beta_board_effect"
 JOIN_REFUSAL = "omnimarket.nodes.node_join_refusal_effect"
 FLOOR_PROJECTIONS = "omnimarket.nodes.node_floor_projection_read_effect"
+FLOOR_EMISSIONS = "omnimarket.nodes.node_floor_emissions_publish_effect"
+FLOOR_OWNER_MAP = "omnimarket.nodes.node_floor_owner_map_publish_effect"
+FLOOR_WORK_STATE = "omnimarket.nodes.node_work_state_projection_effect"
 JOIN_J16 = "omnimarket.nodes.node_join_j16_effect"
+JOIN_J0 = "omnimarket.nodes.node_join_j0_effect"
+UNRESOLVED = "omnimarket.nodes.node_factory_floor_unresolved_effect"
 JOIN_J2 = "omnimarket.nodes.node_host_reading_effect.runtime_host_reading"
 HEALTH_MODULE = "omnimarket.nodes.node_process_health_effect.runtime_process_health"
 JOIN_J5 = "omnimarket.nodes.node_work_ledger_append_effect.runtime_join_j5"
@@ -361,15 +370,25 @@ def _refresh_request(tmp_path: Path) -> ModelFactoryFloorPublishRequest:
 PLUGIN = {"CLAUDE_PLUGIN_ROOT": "/plugin-root"}
 
 
+def _without_step_environment(argv: Sequence[str]) -> list[str]:
+    """The program's own argv: a step that names variables runs through env(1) with them first (OMN-23606)."""
+    words = list(argv)
+    if words and words[0] == "/usr/bin/env":
+        words = words[1:]
+        while words and "=" in words[0] and not words[0].startswith("/"):
+            words = words[1:]
+    return words
+
+
 def _program_calls(runner: LocalSsh) -> list[str]:
+    calls = [_without_step_environment(c[0]) for c in runner.calls if c[0][0] != "ssh"]
     return [
-        c[0][2]
-        if c[0][1] == "-m"
+        argv[2]
+        if argv[1] == "-m"
         else "pool"
-        if any("onex_lab_run.py" in word for word in c[0])
+        if any("onex_lab_run.py" in word for word in argv)
         else "hosts"
-        for c in runner.calls
-        if c[0][0] != "ssh"
+        for argv in calls
     ]
 
 
@@ -398,9 +417,14 @@ def test_refresh_steps_run_the_independent_inputs_together_with_the_factory_floo
             JOIN_J7,
             FLOOR_DELEGATION,
             FLOOR_PROJECTIONS,
+            FLOOR_EMISSIONS,
+            FLOOR_OWNER_MAP,
+            FLOOR_WORK_STATE,
             BETA_BOARD,
             FLOOR_SIMPLE,
             JOIN_J16,
+            JOIN_J0,
+            UNRESOLVED,
         ]
     )
     assert calls[-2] == FACTORY
@@ -427,7 +451,7 @@ def test_refresh_steps_run_the_independent_inputs_together_with_the_factory_floo
 def test_refresh_the_input_steps_are_declared_concurrent_and_the_record_step_is_not() -> (
     None
 ):
-    steps = {s.name: s for s in load_runtime().steps}
+    steps = {s.name: s for s in load_runtime().with_limits(TEST_LIMITS).steps}
     assert [n for n, s in steps.items() if s.concurrent] == [
         "hosts",
         "pool",
@@ -443,8 +467,13 @@ def test_refresh_the_input_steps_are_declared_concurrent_and_the_record_step_is_
         "delegation_tracker",
         "beta_board",
         "mvp_launch_reads",
+        "floor_owner_map",
+        "floor_work_state",
         "floor_projections",
+        "floor_emissions",
         "join_j16",
+        "join_j0",
+        "factory_floor_unresolved",
     ]
     assert steps["factory_floor"].concurrent is False
 
@@ -469,11 +498,16 @@ def test_refresh_concurrent_steps_overlap_and_report_in_contract_order(
                 and BETA_BOARD not in argv
                 and JOIN_REFUSAL not in argv
                 and JOIN_J16 not in argv
+                and JOIN_J0 not in argv
                 and JOIN_J2 not in argv
                 and JOIN_J5 not in argv
                 and FLOOR_PROJECTIONS not in argv
+                and FLOOR_EMISSIONS not in argv
+                and FLOOR_OWNER_MAP not in argv
+                and FLOOR_WORK_STATE not in argv
                 and JOIN_J6 not in argv
                 and JOIN_J7 not in argv
+                and UNRESOLVED not in argv
             ):
                 barrier.wait()
             return super().__call__(argv, stdin, timeout)
@@ -482,7 +516,9 @@ def test_refresh_concurrent_steps_overlap_and_report_in_contract_order(
     result = HandlerFactoryFloorPublish(
         Overlapping({"--json": (0, b"[]", b"")})
     ).handle(request, environ=PLUGIN)
-    assert [s.name for s in result.steps] == [s.name for s in load_runtime().steps]
+    assert [s.name for s in result.steps] == [
+        s.name for s in load_runtime().with_limits(TEST_LIMITS).steps
+    ]
     # This home has neither the friction report nor the runtime read overlay, and PLUGIN names no ledger path, so the
     # classed friction rollup refuses with no default.
     assert [s.name for s in result.steps if s.status != "ok"] == [
@@ -1905,9 +1941,12 @@ def test_canary_is_published_after_the_last_file_of_the_page_is_served(
 
 
 def test_the_floor_step_defers_the_canary_to_the_publish() -> None:
-    steps = {step.name: step for step in load_runtime().steps}
+    steps = {step.name: step for step in load_runtime().with_limits(TEST_LIMITS).steps}
     assert "--defer-canary" in steps["floor_simple"].args
-    after = {step.name: step for step in load_runtime().after_publish_steps}
+    after = {
+        step.name: step
+        for step in load_runtime().with_limits(TEST_LIMITS).after_publish_steps
+    }
     assert after["floor_canary"].required
     assert "--publish-canary" in after["floor_canary"].args
 

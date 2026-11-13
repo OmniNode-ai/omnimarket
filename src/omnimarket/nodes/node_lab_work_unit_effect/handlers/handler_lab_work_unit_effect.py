@@ -60,6 +60,7 @@ DEFAULT_ALLOWED_EXECUTABLES: frozenset[str] = frozenset(
         "cargo",
         "crush",
         "claude",
+        "onex",
     }
 )
 

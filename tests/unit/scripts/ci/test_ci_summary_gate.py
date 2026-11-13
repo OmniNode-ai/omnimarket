@@ -903,13 +903,6 @@ EXEMPT_CONTEXTS: dict[tuple[str, str], str] = {
         "and lab-pass receipt live in the called workflow and report on the "
         "post-merge run, not on any PR."
     ),
-    ("runtime-rebuild-trigger.yml", "notify-omniclaude-pin"): (
-        "post-merge automation (if: pull_request.merged == true) — "
-        "structurally cannot gate the merge that already happened. It sends "
-        "one omnimarket-dev-moved repository_dispatch so omniclaude's git pin "
-        "follows omnimarket dev (OMN-19998); omniclaude's hourly schedule is "
-        "the fallback when the dispatch is lost."
-    ),
     # --- self-declared staged / deliberately-deferred promotion.
     ("dep-health-gate.yml", "dep-health"): (
         "Phase 1 advisory by explicit design (file header: 'Phase 1 "
@@ -1013,6 +1006,11 @@ _CI_YML_STRUCTURALLY_COVERED_KEYS: frozenset[str] = frozenset(
         # would be wrong: it legitimately reports `skipped` on every non-docs
         # PR, which is exactly the state the gates are built to reject.
         "docs-only-marker",
+        # Overlay Main Load: unconditional, no skip path other than the fork
+        # guard; covered by the L3 default-deny sweep, not individually named
+        # (naming it in STRICT_GATE_JOBS changes the bytes the recorded-head
+        # replay pins).
+        "overlay-main-load",
     }
 )
 

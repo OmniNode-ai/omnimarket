@@ -11,10 +11,10 @@ import runpy
 import subprocess
 import sys
 import tempfile
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from functools import partial
 from pathlib import Path
 from typing import Any, Literal
@@ -64,6 +64,9 @@ from omnimarket.models.model_lane_container_budget import (
     ModelLaneContainerBudgetDeclaration,
     ModelLaneContainerBudgetRequest,
     ModelLaneContainerBudgetVerdict,
+)
+from omnimarket.models.model_unresolved_rows_record import (
+    ModelUnresolvedRowsRecord,
 )
 from omnimarket.nodes.node_factory_floor_effect.handlers.plan_task_tickets import (
     merge_task_links,
@@ -143,6 +146,9 @@ _TS_SHAPE = re.compile(r"\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):\d{2}:\d{2}Z", re.A
 def _ledger_ts(value: str) -> datetime | None:
     """A ledger row's UTC stamp. A zero-padded ``TS_FMT`` stamp is read by the C parser (strptime is the cost of a 14-day
     read: one call per row, about 250,000 rows); anything else takes the strict parse and so keeps its old answer."""
+    if not value:
+        # An absent cell (most rows carry no ``until=``) is no stamp; strptime would raise on it, one raise per row.
+        return None
     if _TS_SHAPE.fullmatch(value):
         try:
             return datetime.fromisoformat(value[:-1]).replace(tzinfo=UTC)
@@ -160,6 +166,8 @@ def _tickets(*values: str) -> tuple[str, ...]:
 
 
 def _csv(*values: str) -> tuple[str, ...]:
+    if not any(values):
+        return ()
     return tuple(
         dict.fromkeys(part for value in values for part in value.split(",") if part)
     )
@@ -189,16 +197,10 @@ def contract_ledger_kinds() -> frozenset[str]:
     return frozenset(load_contract(OWN_CONTRACT_PATH).runtime.ledger_kinds)
 
 
-def parse_ledger_text(
-    text: str, kinds: frozenset[str] | None = None
-) -> tuple[ModelFloorLedgerRow, ...]:
-    """The rows of one reader answer. ``kinds`` (default: the contract's ``ledger_kinds``) are kept whole; of the other
-    kinds only each lane's newest row is kept."""
-    if kinds is None:
-        kinds = contract_ledger_kinds()
-    kept: list[tuple[int, ModelFloorLedgerRow]] = []
-    latest: dict[str, tuple[int, ModelFloorLedgerRow]] = {}
-    for order, line in enumerate(text.splitlines()):
+def parse_ledger_rows(text: str) -> tuple[ModelFloorLedgerRow, ...]:
+    """Every row of one reader answer, in the answer's order: no kind is dropped and no lane is reduced (``reduce_ledger_rows`` does that)."""
+    rows: list[ModelFloorLedgerRow] = []
+    for line in text.splitlines():
         match = ROW_RE.match(line)
         if line.startswith("ROWS ") or match is None:
             continue
@@ -265,6 +267,18 @@ def parse_ledger_text(
             needs=fields.get("needs", ""),
             report=fields.get("report", ""),
         )
+        rows.append(row)
+    return tuple(rows)
+
+
+def reduce_ledger_rows(
+    rows: Sequence[ModelFloorLedgerRow], kinds: frozenset[str]
+) -> tuple[ModelFloorLedgerRow, ...]:
+    """The rows the floor reads: ``kinds`` are kept whole; of the other kinds only each lane's newest row is kept."""
+    kept: list[tuple[int, ModelFloorLedgerRow]] = []
+    latest: dict[str, tuple[int, ModelFloorLedgerRow]] = {}
+    for order, row in enumerate(rows):
+        ts = row.ts
         core = row.kind in kinds
         if core:
             kept.append((order, row))
@@ -283,6 +297,16 @@ def parse_ledger_text(
         key=lambda pair: (pair[1].ts, pair[0]),
     )
     return tuple(row for _, row in ordered)
+
+
+def parse_ledger_text(
+    text: str, kinds: frozenset[str] | None = None
+) -> tuple[ModelFloorLedgerRow, ...]:
+    """The rows of one reader answer. ``kinds`` (default: the contract's ``ledger_kinds``) are kept whole; of the other
+    kinds only each lane's newest row is kept."""
+    if kinds is None:
+        kinds = contract_ledger_kinds()
+    return reduce_ledger_rows(parse_ledger_rows(text), kinds)
 
 
 def _run_ledger_reader(
@@ -308,11 +332,17 @@ def _run_ledger_reader(
         return parse_ledger_text(result.stdout, kinds)
 
 
+def _source_args(source: str | None) -> list[str]:
+    """The reader's ``--source`` argument for the row source a deployment's overlay names; none named leaves the reader its own default."""
+    return [] if source is None else ["--source", source]
+
+
 def read_ledger_rows(
     *,
     window_days: int,
     cut_chars: int,
     timeout_seconds: int,
+    source: str | None,
     plugin_root: Path | None,
     plugin_root_env: str,
     ledger_rows_file: Path | None,
@@ -329,7 +359,7 @@ def read_ledger_rows(
             f"{plugin_root_env} is not set: export the plugin root or supply ledger_rows_file"
         )
     reader = plugin_root / "scripts" / "onex_ledger.py"
-    query = ["query", "--since", f"{window_days}d", "--archives"]
+    query = ["query", *_source_args(source), "--since", f"{window_days}d", "--archives"]
     query += ["--limit", "1000000", "--cut", str(cut_chars)]
     return _run_ledger_reader(reader, query, timeout_seconds, kinds)
 
@@ -339,17 +369,21 @@ def read_unresolved_rows(
     reads: tuple[tuple[str, str], ...],
     cut_chars: int,
     timeout_seconds: int,
+    source: str | None,
     plugin_root: Path | None,
     plugin_root_env: str,
     stand_in_file: Path | None,
     kinds: frozenset[str],
     older_than: datetime,
+    max_workers: int | None,
 ) -> tuple[ModelFloorLedgerRow, ...]:
     """Rows of the live ledger and every archive roll, with no age limit, that the window read did not bring.
 
     Each ``(kind, text)`` read is one query of the same ledger reader over the live ledger and the archive rolls. The
     window's own rows are already in the request; only rows older than ``older_than`` are returned, and a row is
     returned once however many reads match it. Which of them a later row resolved is the compute's call.
+    ``max_workers`` is how many reads run together (OMN-19998: four reads in series took 207 s of a 231 s step); ``None``
+    reads them one after the other.
     """
     if stand_in_file is not None:
         # A rows file stands in for the live ledger and the archive rolls (tests and replays): the same kind and text
@@ -368,19 +402,51 @@ def read_unresolved_rows(
             f"{plugin_root_env} is not set: export the plugin root or supply a rows file"
         )
     reader = plugin_root / "scripts" / "onex_ledger.py"
-    found: dict[tuple[datetime, str, str], ModelFloorLedgerRow] = {}
-    for kind, grep in reads:
-        query = ["query", "--archives", "--kind", kind, "--grep", grep]
+    all_kinds = kinds | {kind for kind, _ in reads}
+
+    def one(read: tuple[str, str]) -> tuple[ModelFloorLedgerRow, ...]:
+        kind, grep = read
+        query = ["query", *_source_args(source), "--archives"]
+        query += ["--kind", kind, "--grep", grep]
         query += ["--limit", "1000000", "--cut", str(cut_chars)]
-        for row in _run_ledger_reader(
-            reader, query, timeout_seconds, kinds | {kind for kind, _ in reads}
-        ):
+        return _run_ledger_reader(reader, query, timeout_seconds, all_kinds)
+
+    if max_workers is None:
+        answers = [one(read) for read in reads]
+    else:
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            answers = list(pool.map(one, reads))
+    found: dict[tuple[datetime, str, str], ModelFloorLedgerRow] = {}
+    for rows in answers:
+        for row in rows:
             found.setdefault((row.ts, row.kind, row.lane), row)
     return tuple(
         row
         for _, row in sorted(found.items(), key=lambda pair: pair[0])
         if row.ts < older_than
     )
+
+
+def load_unresolved_rows(
+    path: Path, *, now: datetime, window_days: int, max_age_hours: int
+) -> tuple[ModelFloorLedgerRow, ...]:
+    """The unresolved rows the unresolved step wrote: those older than the window, from a record not older than its bound.
+
+    The step reads a margin of ``valid_hours`` past the window's edge, so the rows that cross the edge after it wrote are in the
+    file already; a row now inside the window is the window read's, never read twice. A record older than ``max_age_hours`` (or
+    than the margin it declares) is refused: a stop kept only in an archive roll is then unread, never reported absent.
+    """
+    with _source(path):
+        record = ModelUnresolvedRowsRecord.model_validate_json(
+            path.read_text(encoding="utf-8")
+        )
+    bound = timedelta(hours=min(max_age_hours, record.valid_hours))
+    if now - record.read_at > bound:
+        raise SourceRefusedError(
+            f"{path} was read at {record.read_at.isoformat()}, more than {bound} ago: rerun the unresolved step"
+        )
+    edge = now - timedelta(days=window_days)
+    return tuple(row for row in record.rows if row.ts < edge)
 
 
 def _ci_note(ci: dict[str, Any]) -> str:
@@ -503,6 +569,12 @@ def load_linear(path: Path | None) -> tuple[ModelFloorLinearIssue, ...]:
                             "",
                         ),
                         title=" ".join(str(issue.get("title") or "").split()),
+                        children=tuple(
+                            child
+                            for child in (issue.get("children") or ())
+                            if isinstance(child, str)
+                            and TICKET_RE.fullmatch(child) is not None
+                        ),
                     )
                 )
         return tuple(sorted(issues, key=lambda issue: issue.id))
@@ -514,8 +586,14 @@ def merge_linear_titles(
 ) -> tuple[ModelFloorLinearIssue, ...]:
     """The status text file gives each issue its status type; the JSON snapshot gives its title (and any issue only it holds)."""
     titles = {issue.id: issue.title for issue in titled if issue.title}
+    children = {issue.id: issue.children for issue in titled if issue.children}
     merged = {
-        issue.id: issue.model_copy(update={"title": titles.get(issue.id, issue.title)})
+        issue.id: issue.model_copy(
+            update={
+                "title": titles.get(issue.id, issue.title),
+                "children": children.get(issue.id, issue.children),
+            }
+        )
         for issue in issues
     }
     for issue in titled:

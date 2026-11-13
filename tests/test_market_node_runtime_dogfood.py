@@ -77,31 +77,22 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # so a host timer runs it from the command line; it publishes events but
     # subscribes to no topic and has no onex.nodes entry point.
     "node_worktree_reconcile_effect",
-    # OMN-23213: the C32 auth-boundary probe is run by a daily host timer unit
-    # through its own tick module; it subscribes to no topic and has no
-    # onex.nodes entry point.
-    "node_c32_auth_boundary_probe_effect",
-    # The host-reconcile effect is likewise run from the command line by a host
-    # timer; it subscribes to no topic and has no onex.nodes entry point.
-    "node_host_reconcile_effect",
+    # OMN-24121: the PR lifecycle triage compute is called in process by the
+    # PR lifecycle orchestrator since its inventory subscription was removed, and
+    # the seam field diff compute and its check effect run from the merge check's
+    # own command line; none subscribes to a command topic with a terminal event,
+    # so none has an onex.nodes entry point.
+    "node_pr_lifecycle_triage_compute",
+    "node_seam_field_diff_check_effect",
+    "node_seam_field_diff_compute",
     # OMN-19998: the lab daemon sync effect installs on the host's own
     # filesystem, so a host timer runs it with python -m; it publishes events
     # but subscribes to no topic and has no onex.nodes entry point.
     "node_lab_daemon_sync_effect",
-    # OMN-22341: the hook-events by-correlation read is reached only through its
-    # contract-declared HTTP mount, so it subscribes to no topic and has no
-    # onex.nodes entry point.
-    "node_hook_events_by_correlation_read_effect",
-    # OMN-22339: the tenant savings and delegations reads are reached only
-    # through their contract-declared HTTP mounts, so they subscribe to no topic
-    # and have no onex.nodes entry point.
-    "node_tenant_savings_read_effect",
-    "node_tenant_delegations_read_effect",
     # OMN-20712: hosted from the operator tooling repository, whose copy is
     # still registered; called in process by its host scheduler, so it subscribes
     # to no topic and has no onex.nodes entry point until the registration
     # hand-over (nodes-to-market plan step B).
-    "node_lab_fill_selection_compute",
     # OMN-20712: hosted from the operator tooling repository, whose copy is
     # still registered; called in process by its host scheduler, so it subscribes
     # to no topic and has no onex.nodes entry point until the registration
@@ -124,24 +115,10 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # consumer's own identity; it returns the value as a SecretStr, publishes
     # nothing and subscribes to no topic, so it has no onex.nodes entry point.
     "node_captured_secret_resolve_effect",
-    # OMN-20926: the captured secret store effect is called in-process by the
-    # content-capture producer for each secret its scrub detects; it returns a
-    # reference, publishes nothing and subscribes to no topic.
-    "node_captured_secret_store_effect",
     # OMN-20817: the model setup effect runs from `onex models`; it returns its
     # status and test results to the CLI shim and subscribes to no topic, so it
     # has no onex.nodes entry point.
     "node_model_setup_effect",
-    # OMN-22809: the host table copies drift compute takes its overlay, copy
-    # source, appender and clock as constructor parameters and runs through its
-    # own `python -m` CLI; it subscribes to no topic, so it has no onex.nodes
-    # entry point.
-    "node_host_table_copies_drift_compute",
-    # OMN-23150: the overlay consumer join compute takes its overlay, file
-    # source, environment, appender and clock as constructor parameters and
-    # runs through its own `python -m` CLI; it subscribes to no topic, so it
-    # has no onex.nodes entry point.
-    "node_overlay_drift_compute",
     # OMN-19988: the local alert compute is called in process by the local
     # environment projection on every report it stores; it subscribes to no
     # topic and publishes none, so it has no onex.nodes entry point.
@@ -150,11 +127,6 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # local environment writer around each write it makes; it subscribes to no
     # topic, so it has no onex.nodes entry point.
     "node_local_alert_transition_compute",
-    # OMN-17427: the Claude token pool runs as `python -m` on the lab host whose
-    # pool it is (the remote-lane runner at lane start, the operator adding a
-    # token); it publishes nothing and subscribes to no topic, so it has no
-    # onex.nodes entry point.
-    "node_claude_token_pool_effect",
     # OMN-17427: the lab secret-store override edits an ephemeral render copy on
     # the caller's own filesystem, so the lab apply script runs it in process
     # from its console script; it subscribes to no topic and has no onex.nodes
@@ -164,6 +136,11 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # its console script runs it from the command line; it subscribes to no
     # topic and has no onex.nodes entry point.
     "node_legacy_worktree_audit_effect",
+    # OMN-23606: the factory floor unresolved rows effect runs as a step of the
+    # floor publisher through its own `python -m` module, about every six hours;
+    # it publishes nothing and subscribes to no topic, so it has no onex.nodes
+    # entry point.
+    "node_factory_floor_unresolved_effect",
 }
 
 # Node directories that hold migrations and no contract.yaml yet. Each entry
@@ -687,3 +664,74 @@ def test_inventory_accounts_for_local_invocation_and_refuses_broken_handler(
     assert report["summary"]["local_invokable"] == 0
     assert report["summary"]["failed"] == 1
     assert report["summary"]["failure_buckets"] == {"invalid_local_invocation": 1}
+
+
+def _declared_entry_point_nodes_that_subscribe_without_registration() -> list[str]:
+    """Nodes whose contract subscribes to a bus topic and whose metadata.yaml
+    declares an onex.nodes entry point, yet pyproject.toml has no such line.
+
+    The runtime finds nodes only through the onex.nodes table, so such a node
+    is never loaded: its command topic is never subscribed and its result topic
+    is never created (OMN-18925). An EXPECTED_MISSING_ENTRY_POINTS reason that
+    says "subscribes to no topic" cannot be true for it.
+    """
+    with _PYPROJECT.open("rb") as f:
+        registered = set(
+            tomllib.load(f)["project"]["entry-points"]["onex.nodes"].keys()
+        )
+    offenders: list[str] = []
+    for meta_path in sorted(_NODES_DIR.glob("*/metadata.yaml")):
+        node_dir = meta_path.parent
+        meta = yaml.safe_load(meta_path.read_text(encoding="utf-8")) or {}
+        declared = (meta.get("entry_points") or {}).get("onex.nodes") or {}
+        contract_path = node_dir / "contract.yaml"
+        if not declared or not contract_path.exists():
+            continue
+        contract = yaml.safe_load(contract_path.read_text(encoding="utf-8")) or {}
+        topics = (contract.get("event_bus") or {}).get("subscribe_topics") or []
+        if topics and any(name not in registered for name in declared):
+            offenders.append(node_dir.name)
+    return offenders
+
+
+def test_declared_subscribing_node_entry_points_are_registered() -> None:
+    offenders = _declared_entry_point_nodes_that_subscribe_without_registration()
+
+    assert offenders == [], (
+        "these nodes declare an onex.nodes entry point and subscribe to a bus topic, "
+        "but pyproject.toml's onex.nodes table has no line for them, so the runtime "
+        "never loads them: " + ", ".join(offenders)
+    )
+
+
+def _http_mounted_nodes_without_registration() -> list[str]:
+    """Nodes whose contract declares an http_mount but whose pyproject.toml
+    onex.nodes table has no entry point for them (OMN-22341).
+
+    The runtime mounts a contract's http_mount only for a contract it
+    discovered through the onex.nodes table, so such a node's HTTP route is
+    never discovered and never mounted.
+    """
+    with _PYPROJECT.open("rb") as f:
+        registered = set(
+            tomllib.load(f)["project"]["entry-points"]["onex.nodes"].keys()
+        )
+    offenders: list[str] = []
+    for contract_path in sorted(_NODES_DIR.glob("*/contract.yaml")):
+        contract = yaml.safe_load(contract_path.read_text(encoding="utf-8")) or {}
+        if not isinstance(contract, dict) or not contract.get("http_mount"):
+            continue
+        if contract_path.parent.name not in registered:
+            offenders.append(contract_path.parent.name)
+    return offenders
+
+
+def test_http_mounted_node_entry_points_are_registered() -> None:
+    offenders = _http_mounted_nodes_without_registration()
+
+    assert offenders == [], (
+        "these nodes declare an http_mount in their contract, "
+        "but pyproject.toml's onex.nodes table has no line for them, so the runtime "
+        "never discovers their contract and never mounts them (OMN-22341): "
+        + ", ".join(offenders)
+    )

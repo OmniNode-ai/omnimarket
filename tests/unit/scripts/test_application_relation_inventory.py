@@ -640,7 +640,11 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # +6 for the agent observability projection's node-owned tables = 120.
     # +1 for OMN-23152's work_ledger_seq_conflicts, declared and created in the same PR = 121.
     # +4 for OMN-23055's gate store relations, declared and created in the same PR = 125.
-    assert census["source_created_tables"] == 125
+    # +1 for OMN-23694's work_ledger_latest, declared and created in the same PR = 126.
+    # +4 net for the merge-override alarm effect tables (declared and created in this PR) and the CREATE for code_eval_trial_state = 130.
+    # +2 for OMN-23865's host_disk_class and host_disk_volume, declared and created in the same PR = 132.
+    # +1 for skill_executions, created by node_projection_skill_lifecycle = 133.
+    assert census["source_created_tables"] == 133
     # 63 as of OMN-15631 (rebased onto OMN-16316/OMN-16293): 59 as of
     # OMN-16146, +2 for OMN-16293's two omnibase_infra#2818 catalog
     # declarations (savings_injection_signals, savings_validator_catch_signals)
@@ -828,7 +832,13 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # +2 for OMN-20034's goal_trace_events and goal_traces: ownership is declared
     # before infra vendors the migration = 133.
     # +1 for OMN-23152's work_ledger_seq_conflicts = 134.
-    assert census["source_declared_tables"] == 138
+    # +1 for OMN-23694's work_ledger_latest (same PR as its CREATE) (total below includes it).
+    # +1 for OMN-23888's code_eval_trial_state: ownership is declared before the
+    # driver node lands; the CREATE is in omnibase_infra migration 114.
+    # +1 for OMN-24118's branch_deploy_state: ownership is declared before the
+    # omnibase_infra migration 116 that creates it.
+    # +1 for skill_executions, declared with its CREATE in the same change = 148.
+    assert census["source_declared_tables"] == 148
     # 27 as of OMN-15631. This figure is arithmetic, not an observation:
     # the generator computes max(0, 86 - source_created_tables), so each
     # newly source-created table (tenant_inference_credentials, then

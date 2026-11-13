@@ -16,13 +16,20 @@ from datetime import UTC, datetime, timedelta
 
 from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 
-from omnimarket.handlers.node_overlay_reader import load_structured_overlay
+from omnimarket.handlers.node_overlay_reader import (
+    NodeOverlayNotFoundError,
+    load_structured_overlay,
+)
+from omnimarket.handlers.scheduled_overlay_refusal import ScheduledOverlayRefusalLatch
 from omnimarket.models.work_state_projection import (
     EnumSourceReading,
     EnumWorkStateProjectorProfile,
     ModelWorkStateProjectedEvent,
     ModelWorkStateResult,
     ModelWorkStateScheduleOverlay,
+)
+from omnimarket.nodes.node_reading_writer_effect.overlay import (
+    ModelCommandLedgerReadRoute,
 )
 from omnimarket.nodes.node_work_state_projection_scheduled_effect.protocols.adapter_file_sources_projector import (
     FileSourcesWorkStateProjector,
@@ -37,11 +44,14 @@ SCHEDULE_OVERLAY_FILE_ENV = "ONEX_WORK_STATE_SCHEDULE_OVERLAY"
 
 
 def projector_for(
-    profile: EnumWorkStateProjectorProfile, environ: Mapping[str, str] | None
+    profile: EnumWorkStateProjectorProfile,
+    environ: Mapping[str, str] | None,
+    state_home: str | None = None,
+    ledger_read: ModelCommandLedgerReadRoute | None = None,
 ) -> ProtocolWorkStateProjector:
     """The projector a schedule overlay's profile binds: the in-memory default or the file sources."""
     if profile is EnumWorkStateProjectorProfile.FILE_SOURCES:
-        return FileSourcesWorkStateProjector(environ)
+        return FileSourcesWorkStateProjector(environ, state_home, ledger_read)
     return UnreadWorkStateProjector()
 
 
@@ -84,6 +94,7 @@ class HandlerWorkStateProjectionScheduled:
         self._projector = projector
         self._environ = environ
         self._last_run: datetime | None = None
+        self._refusals = ScheduledOverlayRefusalLatch(SCHEDULE_OVERLAY_ID)
 
     def _env(self) -> Mapping[str, str]:
         return os.environ if self._environ is None else self._environ
@@ -99,16 +110,30 @@ class HandlerWorkStateProjectionScheduled:
         return self._schedule
 
     def handle(self, request: ModelRuntimeTick) -> ModelWorkStateProjectedEvent | None:
-        schedule = self._schedule_overlay()
+        try:
+            schedule = self._schedule_overlay()
+        except NodeOverlayNotFoundError as exc:
+            self._refusals.refuse(exc)
+            return None
         now = request.now.astimezone(UTC)
         last = self._last_run
         if last is not None and (now - last) < timedelta(
             seconds=schedule.run_interval_seconds
         ):
             return None
-        projector = self._projector or projector_for(schedule.projector, self._environ)
-        result = projector.project(now)
+        projector = self._projector or projector_for(
+            schedule.projector,
+            self._environ,
+            schedule.state_home,
+            schedule.ledger_read,
+        )
+        try:
+            result = projector.project(now)
+        except NodeOverlayNotFoundError as exc:
+            self._refusals.refuse(exc)
+            return None
         self._last_run = now
+        self._refusals.recovered()
         return summarize(
             result,
             computed_at=now,

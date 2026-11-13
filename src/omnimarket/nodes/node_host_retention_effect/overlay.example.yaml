@@ -1,0 +1,145 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# A root written `~/...` or `$OMNI_HOME/...` is expanded where the pass runs; an unset variable leaves it relative and the pass refuses it.
+# Example host retention declaration (OMN-22290), with one placeholder host row. The lab's real rows live in the overlays repository at
+# node_host_retention_effect/overlay.yaml under ONEX_SKILL_OVERLAY_ROOTS. Read by `node_host_retention_effect`; nothing in the node names a host,
+# a path or a number. Every number is the keep window or size of one path class, set from the 2026-11-13 census of h053's root
+# disk (546G, 75 percent used): the uv cache 99G, runner work and cache folders about 120G, lane scratch 40G.
+#
+# lane_run_roots / receipt_roots: where the node reads which lanes are live (a run directory whose run.pid names a running process,
+#   or a receipt whose final flag is false). An entry that a live lane names is never removed.
+# unit_roots: installed unit files; an entry whose path a unit file names (an install tree a unit runs from) is never removed.
+# docker_mount_guard: an entry that a running container bind-mounts (or holds a mount inside) is never removed.
+# age_classes: a direct entry of `root` goes when nothing under it changed inside keep_days and no process, lane or container holds it.
+# runner_groups: per runner, only while its container runs no job; the entries matching disposable_patterns of each mount are
+#   evicted largest first down to keep_gib. The work folder's `_actions`, `_temp` and `_PipelineMapping` are never evicted
+#   (the contract's protected names).
+# uv_caches: `uv cache prune` once the cache holds min_gib; `uv cache size` walks every file, so its timeout is minutes.
+# docker_timeout_seconds: the most one docker call may take; past it the runner state or the container mounts read as unreadable.
+hosts:
+  - name: pool-a
+    docker_timeout_seconds: 120
+    lane_run_roots: [/data/lab-run/runs]
+    receipt_roots: [~/.local/state/omni/remote-lanes]
+    unit_roots: [/etc/systemd/system, ~/.config/systemd/user]
+    docker_mount_guard: true
+    age_classes:
+      - name: lane-scratch
+        kind: lane_scratch
+        root: /data/omninode/scratch
+        keep_days: 3
+      - name: lane-reports
+        kind: lane_results
+        root: $OMNI_HOME/.claude_scratch/reports
+        keep_days: 7
+      - name: delegation-receipts
+        kind: lane_results
+        root: $OMNI_HOME/.claude_scratch/delegation-receipts
+        keep_days: 7
+      - name: delegation-runs
+        kind: lane_results
+        root: $OMNI_HOME/.onex_state/runs
+        keep_days: 7
+      - name: harness-delegate-runs
+        kind: lane_results
+        root: $OMNI_HOME/.onex_state/harness-delegate
+        keep_days: 7
+      - name: remote-lane-receipts
+        kind: lane_results
+        root: ~/.local/state/omni/remote-lanes
+        keep_days: 7
+    runner_groups:
+      - ids: ["1", "2", "3", "4", "5"]
+        container_template: hp053-ci-runner-{id}
+        container_user: runner
+        mounts:
+          - host_root_template: /data/scratch/runners/{id}/work
+            container_root: actions-runner/_work
+            disposable_patterns: [".uv-cache", ".pnpm-store", "omni*", overlays, "knowledge*"]
+            keep_gib: 4
+          - host_root_template: /data/scratch/runners/{id}/tmp
+            container_root: tmp
+            disposable_patterns: ["*"]
+            keep_gib: 1
+          - host_root_template: /data/scratch/cache/runners/{id}/pre-commit
+            container_root: .cache/pre-commit
+            disposable_patterns: ["*"]
+            keep_gib: 2
+          - host_root_template: /data/scratch/cache/runners/{id}/npm
+            container_root: .npm
+            disposable_patterns: ["*"]
+            keep_gib: 1
+          - host_root_template: /data/scratch/cache/runners/{id}/pnpm
+            container_root: .cache/pnpm
+            disposable_patterns: ["*"]
+            keep_gib: 1
+          - host_root_template: /data/scratch/cache/runners/{id}/pip
+            container_root: .cache/pip
+            disposable_patterns: ["*"]
+            keep_gib: 1
+          - host_root_template: /data/scratch/cache/runners/{id}/ci-envs
+            container_root: .cache/omni/ci-envs
+            disposable_patterns: ["*"]
+            keep_gib: 2
+      - ids: ["1", "2", "3", "4"]
+        container_template: hp053-ci-mq-runner-{id}
+        container_user: runner
+        mounts:
+          - host_root_template: /data/scratch/runners/mq-{id}/work
+            container_root: actions-runner/_work
+            disposable_patterns: [".uv-cache", ".pnpm-store", "omni*", overlays, "knowledge*"]
+            keep_gib: 4
+          - host_root_template: /data/scratch/runners/mq-{id}/tmp
+            container_root: tmp
+            disposable_patterns: ["*"]
+            keep_gib: 1
+          - host_root_template: /data/scratch/cache/runners/mq-{id}/pre-commit
+            container_root: .cache/pre-commit
+            disposable_patterns: ["*"]
+            keep_gib: 2
+          - host_root_template: /data/scratch/cache/runners/mq-{id}/npm
+            container_root: .npm
+            disposable_patterns: ["*"]
+            keep_gib: 1
+          - host_root_template: /data/scratch/cache/runners/mq-{id}/pnpm
+            container_root: .cache/pnpm
+            disposable_patterns: ["*"]
+            keep_gib: 1
+          - host_root_template: /data/scratch/cache/runners/mq-{id}/pip
+            container_root: .cache/pip
+            disposable_patterns: ["*"]
+            keep_gib: 1
+          - host_root_template: /data/scratch/cache/runners/mq-{id}/ci-envs
+            container_root: .cache/omni/ci-envs
+            disposable_patterns: ["*"]
+            keep_gib: 2
+    uv_caches:
+      - path: $OMNI_HOME/.onex_state/uv-cache
+        uv_binary: uv
+        min_gib: 20
+        ci_prune: false
+        timeout_seconds: 1800
+        # After the prune, if the cache still holds more than cap_gib, evict whole entries of the listed
+        # buckets (the contract names the allowed ones) oldest-first until the cache is at or under cap_gib.
+        # An entry is kept when it is hardlinked into a virtual environment, changed within keep_days,
+        # named by a live process, or is not a plain folder.
+        cap:
+          cap_gib: 40
+          buckets: [archive-v0, git-v0/checkouts]
+          keep_days: 7
+  # macOS host with uv cache and pre-commit store
+  - name: pool-mac
+    docker_timeout_seconds: 5
+    docker_mount_guard: false
+    age_classes:
+      - name: pre-commit-store
+        kind: pre_commit_store
+        root: ~/.cache/pre-commit
+        index_db: ~/.cache/pre-commit/db.db
+        keep_days: 7
+    uv_caches:
+      - path: ~/.cache/uv
+        uv_binary: ~/.local/bin/uv
+        min_gib: 10
+        ci_prune: false
+        timeout_seconds: 1800
