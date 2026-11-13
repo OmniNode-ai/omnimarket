@@ -1,0 +1,41 @@
+schema_version: 1.0.0
+ticket_id: OMN-24137
+title: Test that the Mac overlay store refresh job carries its workspace root
+summary: The launchd unit overlay-store-refresh declares OMNIBASE_PATH and ONEX_WORKSPACE_CONFIG_ROOT since OMN-24052, but only the declaration was tested. A new test renders the real plist the installer writes and reads the workspace root from it the way the store read does, with a failing control for a unit without the key. No running code changes.
+is_seam_ticket: false
+interface_change: false
+requirements:
+- id: req-omn24137-rendered-plist-workspace-root
+  statement: The rendered launchd plist of overlay-store-refresh carries the registry root as OMNIBASE_PATH and the overlay store reader finds it.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the rendered launchd plist of overlay-store-refresh carries the registry root as OMNIBASE_PATH, not its job root, and the overlay store''s workspace reader finds it -- falsifier: uv run pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_workspace_root.py -q -n 0 --no-cov fails when OMNIBASE_PATH is removed from the unit''s environment in the installer contract'
+  - id: AC2
+    statement: 'AC2: integrated: after the Mac reinstall, ai.omninode.overlay-store-refresh exits 0 on its next tick and the Mac overlay store copy of lab_hosts is under 21600 s old -- falsifier: launchctl list shows a last exit status other than 0, or the lab_hosts copy is older than 21600 s, read on the Mac after one tick'
+evidence_requirements:
+- kind: tests
+  description: The rendered-plist workspace root tests pass at the pushed head.
+  command: uv run pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_workspace_root.py -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24137-ac1
+  description: 'AC1: the rendered-plist tests pass at the head; with OMNIBASE_PATH removed from the unit in the contract two of three fail (measured).'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_workspace_root.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24137-ac2
+  description: 'hosted proxy for AC2: the installer unit tests pass; the Mac launchd exit status and lab_hosts copy age are read after the reinstall and named in a pull request comment.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_load_unit.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
