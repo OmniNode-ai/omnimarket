@@ -52,3 +52,10 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_lab_host_key_distribution_effect/test_lab_host_declared_host_keys_install.py -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
+- id: dod-omn24128-integration-proof
+  description: the host key node tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24128 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_lab_host_key_distribution_effect -q --no-cov
