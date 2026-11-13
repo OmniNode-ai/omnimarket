@@ -642,6 +642,7 @@ node_dev_cause_lane_receiver_effect = "omnimarket.nodes.node_dev_cause_lane_rece
 node_dev_deploy_reading_compute = "omnimarket.nodes.node_dev_deploy_reading_compute"
 node_dev_deploy_reading_effect = "omnimarket.nodes.node_dev_deploy_reading_effect"
 node_dev_identity_provision_effect = "omnimarket.nodes.node_dev_identity_provision_effect"
+node_dev_keycloak_client_effect = "omnimarket.nodes.node_dev_keycloak_client_effect"
 node_dev_merge_redeploy_trigger_effect = "omnimarket.nodes.node_dev_merge_redeploy_trigger_effect"
 node_dev_roll_failure_capture_effect = "omnimarket.nodes.node_dev_roll_failure_capture_effect"
 node_dev_roll_request_compute = "omnimarket.nodes.node_dev_roll_request_compute"
