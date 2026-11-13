@@ -1508,6 +1508,7 @@ onex-legacy-worktree-audit = "omnimarket.nodes.node_legacy_worktree_audit_effect
 onex-claude-pool-refill = "omnimarket.nodes.node_claude_pool_refill_effect.runtime_claude_pool_refill:main"
 onex-host-key-distribution = "omnimarket.nodes.node_lab_host_key_distribution_effect.runtime_lab_host_key_distribution:main"
 onex-read-only-principal = "omnimarket.nodes.node_read_only_principal_effect.runtime_read_only_principal:main"
+onex-service-principal-mint = "omnimarket.nodes.node_service_principal_mint_effect.runtime_service_principal_mint:main"
 onex-host-install-units = "omnimarket.nodes.node_host_installer_registry_units.runtime_registry_units_cli:main"
 onex-branch-prune = "omnimarket.nodes.node_branch_prune_effect.runtime_branch_prune_cli:main"
 onex-handoff-check = "omnimarket.nodes.node_handoff_check_effect.runtime_handoff_check_cli:main"
