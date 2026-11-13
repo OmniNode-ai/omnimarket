@@ -16,10 +16,10 @@ description: >
   records do not survive restart. Read results are always fresh.
 input_model:
   name: ModelTicketWriteRequest
-  module: omnimarket.nodes.node_linear_ticket_write_effect.models.model_ticket_write_io
+  module: omnimarket.events.ticket_write_io
 output_model:
   name: ModelTicketWriteCompleted
-  module: omnimarket.nodes.node_linear_ticket_write_effect.models.model_ticket_write_io
+  module: omnimarket.events.ticket_write_io
 operations:
   - name: create
     description: Guard the exact caller payload, create in Backlog without project.
@@ -63,7 +63,7 @@ handler_routing:
         module: omnimarket.nodes.node_linear_ticket_write_effect.handlers.handler_linear_ticket_write
       event_model:
         name: ModelTicketWriteRequest
-        module: omnimarket.nodes.node_linear_ticket_write_effect.models.model_ticket_write_io
+        module: omnimarket.events.ticket_write_io
       topic: onex.cmd.omnimarket.linear-ticket-write-requested.v1
 terminal_event: onex.evt.omnimarket.linear-ticket-write-completed.v1
 runtime_dispatch:

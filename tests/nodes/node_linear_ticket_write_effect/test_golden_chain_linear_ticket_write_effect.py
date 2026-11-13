@@ -20,6 +20,9 @@ from omnibase_infra.runtime.auto_wiring.discovery import discover_contracts_from
 from omnibase_infra.runtime.core_runtime.dlq_resolver import derive_canonical_dlq_topic
 from omnibase_infra.runtime.core_runtime.routing_map_builder import build_routing_map
 
+from omnimarket.events.ticket_write_io import (
+    ModelTicketWriteRequest,
+)
 from omnimarket.handlers.ticket.ticket_cli import ticket_group
 from omnimarket.inference.secret_store_resolver import SecretStoreConfigurationError
 from omnimarket.models.secret_store.model_secret_resolution_error import (
@@ -32,9 +35,6 @@ from omnimarket.nodes.node_create_ticket.handlers.handler_create_ticket import (
 )
 from omnimarket.nodes.node_linear_ticket_write_effect.handlers.handler_linear_ticket_write import (
     HandlerLinearTicketWriteEffect,
-)
-from omnimarket.nodes.node_linear_ticket_write_effect.models.model_ticket_write_io import (
-    ModelTicketWriteRequest,
 )
 
 pytestmark = pytest.mark.unit

@@ -22,12 +22,12 @@ from typing import Any, Protocol
 
 from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
 
-from omnimarket.handlers.closeout_boundary_reads import read_text_file
-from omnimarket.nodes.node_dod_closeout_sweep_compute.models.model_closeout_scope_overlay import (
+from omnimarket.events.closeout_scope_overlay import (
     EnumCloneLocation,
     ModelCloseoutScopeOverlay,
     ModelPrRepository,
 )
+from omnimarket.handlers.closeout_boundary_reads import read_text_file
 
 _STAMP = "%Y-%m-%dT%H:%M:%SZ"
 WATCHER_STATE_ENV = "ONEX_PR_WATCHER_STATE"

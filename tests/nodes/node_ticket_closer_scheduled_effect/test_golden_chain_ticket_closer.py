@@ -17,6 +17,10 @@ import yaml
 from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
 from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 
+from omnimarket.events.dod_closeout_sweep import (
+    EnumCloseoutAction,
+    ModelDodCloseoutDecisionResult,
+)
 from omnimarket.models.runtime_proof.model_runtime_proof_close import (
     ModelProofCloseRequest,
 )
@@ -27,10 +31,6 @@ from omnimarket.models.ticket_closer import (
     ModelCloserWriteReceipt,
     ModelTicketCloserResult,
     ModelTicketCloserScheduleOverlay,
-)
-from omnimarket.nodes.node_dod_closeout_sweep_compute.models.model_dod_closeout_sweep import (
-    EnumCloseoutAction,
-    ModelDodCloseoutDecisionResult,
 )
 from omnimarket.nodes.node_ticket_closer_scheduled_effect.handlers import (
     handler_ticket_closer_scheduled as closer_module,

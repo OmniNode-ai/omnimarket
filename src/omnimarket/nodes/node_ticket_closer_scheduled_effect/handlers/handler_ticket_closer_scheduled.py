@@ -19,6 +19,11 @@ from typing import Protocol, runtime_checkable
 
 from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 
+from omnimarket.events.dod_closeout_sweep import (
+    EnumCloseoutAction,
+    EnumCloseoutDecisionKind,
+    ModelDodCloseoutDecisionRequest,
+)
 from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayNotFoundError,
     load_structured_overlay,
@@ -40,11 +45,6 @@ from omnimarket.models.ticket_closer import (
 )
 from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.handler_dod_closeout_sweep import (
     flip_decision,
-)
-from omnimarket.nodes.node_dod_closeout_sweep_compute.models.model_dod_closeout_sweep import (
-    EnumCloseoutAction,
-    EnumCloseoutDecisionKind,
-    ModelDodCloseoutDecisionRequest,
 )
 
 SCHEDULE_OVERLAY_ID = "node_ticket_closer_scheduled_effect"

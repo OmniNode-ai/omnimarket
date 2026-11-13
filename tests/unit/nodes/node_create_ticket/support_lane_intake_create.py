@@ -14,6 +14,9 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
+from omnimarket.events.ticket_write_io import (
+    ModelTicketWriteRequest,
+)
 from omnimarket.handlers.handler_lane_intake_create import (
     HandlerLaneIntakeCreate,
     derive_idempotency_key,
@@ -35,9 +38,6 @@ from omnimarket.nodes.node_create_ticket.handlers.handler_create_ticket import (
 )
 from omnimarket.nodes.node_linear_ticket_write_effect.handlers.handler_linear_ticket_write import (
     HandlerLinearTicketWriteEffect,
-)
-from omnimarket.nodes.node_linear_ticket_write_effect.models.model_ticket_write_io import (
-    ModelTicketWriteRequest,
 )
 
 TICKET_ID = "OMN-9001"

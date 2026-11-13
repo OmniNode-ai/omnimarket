@@ -18,6 +18,11 @@ from collections.abc import Callable
 from typing import Protocol, TypedDict
 from uuid import UUID
 
+from omnimarket.events.ticket_write_io import (
+    ModelTicketWriteCompleted,
+    ModelTicketWriteFailed,
+    ModelTicketWriteRequest,
+)
 from omnimarket.handlers.handler_lane_intake import LaneIntakeRefusedError
 from omnimarket.inference.secret_store_resolver import SecretStoreConfigurationError
 from omnimarket.models.model_ticket_io import (
@@ -32,11 +37,6 @@ from omnimarket.nodes.node_create_ticket import (
     HandlerCreateTicket,
     TicketGuardRefusedError,
     TicketGuardUnavailableError,
-)
-from omnimarket.nodes.node_linear_ticket_write_effect.models.model_ticket_write_io import (
-    ModelTicketWriteCompleted,
-    ModelTicketWriteFailed,
-    ModelTicketWriteRequest,
 )
 
 Result = ModelTicketWriteCompleted | ModelTicketWriteFailed

@@ -24,6 +24,14 @@ import pytest
 from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
 
 import omnimarket.nodes.node_dod_closeout_sweep_compute as node_package
+from omnimarket.events.closeout_scope_overlay import (
+    EnumRankRule,
+    ModelCloseoutScopeOverlay,
+)
+from omnimarket.events.dod_closeout_sweep import (
+    ModelDodCloseoutDecisionRequest,
+    ModelDodCloseoutDecisionResult,
+)
 from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_contract_index import (
     GitCloneContractIndex,
     InMemoryContractIndex,
@@ -38,14 +46,6 @@ from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_scope_rule
 )
 from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.handler_dod_closeout_sweep import (
     HandlerDodCloseoutSweep,
-)
-from omnimarket.nodes.node_dod_closeout_sweep_compute.models.model_closeout_scope_overlay import (
-    EnumRankRule,
-    ModelCloseoutScopeOverlay,
-)
-from omnimarket.nodes.node_dod_closeout_sweep_compute.models.model_dod_closeout_sweep import (
-    ModelDodCloseoutDecisionRequest,
-    ModelDodCloseoutDecisionResult,
 )
 from tests.runtime_local_compat import RuntimeLocal
 

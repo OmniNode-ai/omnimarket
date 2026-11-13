@@ -22,6 +22,9 @@ from typing import Protocol
 
 from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
 
+from omnimarket.events.closeout_scope_overlay import (
+    ModelCloseoutScopeOverlay,
+)
 from omnimarket.handlers.rules_lab_fill_tickets import parse_criteria
 from omnimarket.models.runtime_proof.model_runtime_proof_close import (
     ModelProofCloseRequest,
@@ -32,9 +35,6 @@ from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_contract_i
 )
 from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_pr_sources import (
     clone_path,
-)
-from omnimarket.nodes.node_dod_closeout_sweep_compute.models.model_closeout_scope_overlay import (
-    ModelCloseoutScopeOverlay,
 )
 
 

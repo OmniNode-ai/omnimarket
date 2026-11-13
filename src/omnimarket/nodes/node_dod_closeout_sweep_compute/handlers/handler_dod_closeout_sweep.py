@@ -16,6 +16,26 @@ import re
 from collections import Counter
 from datetime import datetime, timedelta
 
+from omnimarket.events.dod_closeout_sweep import (
+    CLOCK_FORMAT,
+    UUID_PATTERN,
+    EnumCloseoutAction,
+    EnumCloseoutDecisionKind,
+    EnumPrecheckVerdict,
+    EnumReleasedState,
+    EnumTicketDecision,
+    ModelBoxTick,
+    ModelChunkResult,
+    ModelCloseoutCounts,
+    ModelDodCloseoutDecisionRequest,
+    ModelDodCloseoutDecisionResult,
+    ModelHistogramRow,
+    ModelNonCandidate,
+    ModelScopeCounts,
+    ModelScopeTicket,
+    ModelSprintProject,
+    ModelTicketResult,
+)
 from omnimarket.handlers.runtime_proof_close_rules import (
     MERGED_NOT_PROVEN_RUNNING,
     evaluate_proof_close,
@@ -55,26 +75,6 @@ from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_ticket_rul
     read_dod_verify,
     select_candidates,
     tick_comment,
-)
-from omnimarket.nodes.node_dod_closeout_sweep_compute.models.model_dod_closeout_sweep import (
-    CLOCK_FORMAT,
-    UUID_PATTERN,
-    EnumCloseoutAction,
-    EnumCloseoutDecisionKind,
-    EnumPrecheckVerdict,
-    EnumReleasedState,
-    EnumTicketDecision,
-    ModelBoxTick,
-    ModelChunkResult,
-    ModelCloseoutCounts,
-    ModelDodCloseoutDecisionRequest,
-    ModelDodCloseoutDecisionResult,
-    ModelHistogramRow,
-    ModelNonCandidate,
-    ModelScopeCounts,
-    ModelScopeTicket,
-    ModelSprintProject,
-    ModelTicketResult,
 )
 
 LANE = "dod-closeout-sweep"

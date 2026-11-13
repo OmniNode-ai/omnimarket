@@ -32,6 +32,15 @@ import yaml
 from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
 
 import omnimarket.nodes.node_dod_closeout_sweep_compute as node_package
+from omnimarket.events.closeout_scope_overlay import (
+    ModelCloseoutScopeOverlay,
+)
+from omnimarket.events.dod_closeout_sweep import (
+    EnumCloseoutDecisionKind,
+    ModelBindingCheck,
+    ModelDodCloseoutDecisionRequest,
+    ModelDodCloseoutDecisionResult,
+)
 from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_binding_rules import (
     refusal_of,
 )
@@ -57,15 +66,6 @@ from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_scope_rule
 )
 from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.handler_dod_closeout_sweep import (
     HandlerDodCloseoutSweep,
-)
-from omnimarket.nodes.node_dod_closeout_sweep_compute.models.model_closeout_scope_overlay import (
-    ModelCloseoutScopeOverlay,
-)
-from omnimarket.nodes.node_dod_closeout_sweep_compute.models.model_dod_closeout_sweep import (
-    EnumCloseoutDecisionKind,
-    ModelBindingCheck,
-    ModelDodCloseoutDecisionRequest,
-    ModelDodCloseoutDecisionResult,
 )
 from tests.runtime_local_compat import RuntimeLocal
 

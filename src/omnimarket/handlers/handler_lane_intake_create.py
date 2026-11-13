@@ -21,6 +21,11 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ValidationError
 
+from omnimarket.events.ticket_write_io import (
+    ModelTicketWriteCompleted,
+    ModelTicketWriteFailed,
+    ModelTicketWriteRequest,
+)
 from omnimarket.models.model_lane_intake_create import (
     EnumLaneIntakeFailure,
     ModelLaneIntakeCreated,
@@ -30,11 +35,6 @@ from omnimarket.models.model_lane_intake_create import (
     ModelLaneIntakeCreateSettings,
 )
 from omnimarket.models.scm import ModelScmTerminal, ModelScmTopics
-from omnimarket.nodes.node_linear_ticket_write_effect.models.model_ticket_write_io import (
-    ModelTicketWriteCompleted,
-    ModelTicketWriteFailed,
-    ModelTicketWriteRequest,
-)
 
 _KNOWN_REASONS = {reason.value: reason for reason in EnumLaneIntakeFailure}
 

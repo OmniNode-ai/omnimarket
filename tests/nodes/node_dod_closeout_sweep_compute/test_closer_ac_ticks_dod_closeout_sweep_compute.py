@@ -17,13 +17,13 @@ from typing import Any
 
 import pytest
 
-from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.handler_dod_closeout_sweep import (
-    HandlerDodCloseoutSweep,
-)
-from omnimarket.nodes.node_dod_closeout_sweep_compute.models.model_dod_closeout_sweep import (
+from omnimarket.events.dod_closeout_sweep import (
     EnumTicketDecision,
     ModelDodCloseoutDecisionRequest,
     ModelDodCloseoutDecisionResult,
+)
+from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.handler_dod_closeout_sweep import (
+    HandlerDodCloseoutSweep,
 )
 
 pytestmark = pytest.mark.unit

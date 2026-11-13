@@ -18,11 +18,11 @@ from pydantic import (
     model_validator,
 )
 
+from omnimarket.events.closeout_scope_overlay import (
+    ModelCloseoutScopeOverlay,
+)
 from omnimarket.models.runtime_proof.model_runtime_proof_close import (
     ModelProofCloseRequest,
-)
-from omnimarket.nodes.node_dod_closeout_sweep_compute.models.model_closeout_scope_overlay import (
-    ModelCloseoutScopeOverlay,
 )
 
 UUID_PATTERN = re.compile(

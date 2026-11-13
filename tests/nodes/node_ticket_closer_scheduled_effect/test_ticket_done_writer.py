@@ -11,12 +11,12 @@ import pytest
 import yaml
 from pydantic import JsonValue
 
+from omnimarket.events.ticket_write_io import (
+    ModelTicketWriteRequest,
+)
 from omnimarket.handlers.ticket.ticket_cli import load_ticket_topics
 from omnimarket.models.scm import ModelScmBusReceipt, ModelScmTerminal
 from omnimarket.models.ticket_closer import ModelCloserWriteReceipt
-from omnimarket.nodes.node_linear_ticket_write_effect.models.model_ticket_write_io import (
-    ModelTicketWriteRequest,
-)
 from omnimarket.nodes.node_ticket_closer_scheduled_effect.handlers.ticket_done_writer import (
     BusTicketDoneWriter,
 )
