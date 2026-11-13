@@ -746,6 +746,7 @@
   "tests/nodes/node_code_eval_suite_census_compute/test_failing_controls.py": 2.0,
   "tests/nodes/node_code_eval_suite_census_compute/test_golden_chain_code_eval_suite_census.py": 2.0,
   "tests/nodes/node_code_eval_suite_census_compute/test_overlay_keys.py": 2.0,
+  "tests/nodes/node_code_eval_suite_census_compute/test_packaged_suite.py": 2.05,
   "tests/nodes/node_code_eval_suite_census_compute/test_seam_scorer_verdict.py": 2.0,
   "tests/nodes/node_code_eval_suite_census_compute/test_seam_trial_driver_candidate.py": 2.0,
   "tests/nodes/node_code_eval_trial_orchestrator/test_budget_counting.py": 2.94,
