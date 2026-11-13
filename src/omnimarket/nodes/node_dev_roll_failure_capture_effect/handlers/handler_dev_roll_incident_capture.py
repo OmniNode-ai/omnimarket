@@ -5,7 +5,9 @@
 One dev roll incident in, one typed terminal out. The terminal's outcome is
 never success-like: an unreadable incident, a missing issuer, an unwritable
 artifact store or an unreadable overlay all yield ``unknown`` with a typed
-reason. Never raises out of ``handle``.
+reason. Never raises out of ``handle``. The handler holds no producer: the
+runtime publishes the returned terminal on the contract's ``published_events``
+topic through its event_bus.
 """
 
 from __future__ import annotations

@@ -5,7 +5,9 @@
 Records the dev roll manifest the deploy agent published, as UTF-8 JSON, into
 the injected artifact store. Never raises out of ``handle``: a missing or
 invalid job id or issuer, an unreadable overlay, or a store that cannot write
-all come back as a typed ``recorded=False`` result.
+all come back as a typed ``recorded=False`` result. The handler holds no
+producer: the runtime publishes the returned model on the contract's
+``published_events`` topic through its event_bus.
 """
 
 from __future__ import annotations
