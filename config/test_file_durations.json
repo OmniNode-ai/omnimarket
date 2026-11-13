@@ -4399,6 +4399,10 @@
   "tests/unit/nodes/node_deployment_fact_gate_effect/test_routing_in_code_omn20601.py": 11.13,
   "tests/unit/nodes/node_deployment_fact_gate_effect/test_shrink_caps_declared_omn20172.py": 1.61,
   "tests/unit/nodes/node_design_to_plan/test_kafka_bootstrap.py": 0.08,
+  "tests/unit/nodes/node_dev_roll_failure_capture_effect/test_error_chain_dev_roll_failure_capture.py": 3.1,
+  "tests/unit/nodes/node_dev_roll_failure_capture_effect/test_golden_chain_dev_roll_failure_capture.py": 3.1,
+  "tests/unit/nodes/node_dev_roll_failure_capture_effect/test_handler_dev_roll_failure_capture.py": 2.5,
+  "tests/unit/nodes/node_dev_roll_failure_capture_effect/test_seam_agent_events.py": 2.5,
   "tests/unit/nodes/node_dev_roll_request_compute/test_error_chain_dev_roll_request.py": 0.04,
   "tests/unit/nodes/node_dev_roll_request_compute/test_golden_chain_dev_roll_request.py": 0.04,
   "tests/unit/nodes/node_dev_roll_request_compute/test_handler_dev_roll_request.py": 0.14,
@@ -5431,9 +5435,5 @@
   "tests/validators/test_provider_model_catalogue.py": 1.25,
   "tests/validators/test_publisher_fixture_one_copy_omn17427.py": 16.05,
   "tests/validators/test_routing_input_model_fit_effective_model.py": 7.47,
-  "tests/validators/test_topic_graph_closure_gates.py": 11.85,
-  "tests/unit/nodes/node_dev_roll_failure_capture_effect/test_error_chain_dev_roll_failure_capture.py": 3.1,
-  "tests/unit/nodes/node_dev_roll_failure_capture_effect/test_golden_chain_dev_roll_failure_capture.py": 3.1,
-  "tests/unit/nodes/node_dev_roll_failure_capture_effect/test_handler_dev_roll_failure_capture.py": 2.5,
-  "tests/unit/nodes/node_dev_roll_failure_capture_effect/test_seam_agent_events.py": 2.5
+  "tests/validators/test_topic_graph_closure_gates.py": 11.85
 }
