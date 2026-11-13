@@ -419,6 +419,8 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # DelegationProjectionWriter (OMN-21288) is node_projection_delegation's
     # only routed handler: it composes DelegationProjectionRunner once per
     # delivery, and the runner itself does not declare the capability.
+    # GoalTraceProjectionWriter (OMN-20034) is node_projection_goal_trace's only DB
+    # writer, dispatched once per consumed message by runtime auto-wiring.
     # AgentActionsProjectionWriter (OMN-21920) is node_projection_agent_actions'
     # only DB writer, dispatched once per consumed event by runtime auto-wiring
     # through the shared RuntimeProjectionWriter base.
@@ -457,6 +459,7 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
         "ProviderQuotaProjectionWriter",
         "DodVerdictProjectionWriter",
         "FleetLivenessProjectionWriter",
+        "GoalTraceProjectionWriter",
         "HostDiskProjectionWriter",
         "InfraRoutingDecisionsProjectionWriter",
         "LabContainerMemoryProjectionWriter",
