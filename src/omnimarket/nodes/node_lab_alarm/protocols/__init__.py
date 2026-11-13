@@ -8,6 +8,10 @@ from collections.abc import Mapping
 from datetime import datetime
 from typing import Any, Protocol
 
+from omnimarket.models.lab_alarm_delivery import (
+    ModelLabAlarmDeliveryRequest,
+    ModelLabAlarmDeliveryResult,
+)
 from omnimarket.nodes.node_lab_alarm.models.model_lab_alarm_effects_held import (
     ModelEffectsGroupReading,
     ModelEscalationBrief,
@@ -66,6 +70,14 @@ class ProtocolSampleStore(Protocol):
     def save(self, sample: Mapping[str, int]) -> None: ...
 
 
+class ProtocolGrowthStreakStore(Protocol):
+    def load(self) -> dict[str, int]:
+        """Each group's count of consecutive growth samples, empty when there is none."""
+        ...
+
+    def save(self, streaks: Mapping[str, int]) -> None: ...
+
+
 class ProtocolRunRecordStore(Protocol):
     def append(self, record: Mapping[str, Any]) -> None:
         """Add one finished run to the record the floor reads, or raise RunRecordUnwritableError."""
@@ -99,17 +111,44 @@ class ProtocolLaneDispatcher(Protocol):
         ...
 
 
+class ListenerUnresolvableError(Exception):
+    """The address's name cannot be resolved: the alarm host's fault, not evidence about the broker."""
+
+
+class ListenerRefusedError(Exception):
+    """The address refused, timed out, closed before answering, or answered with a foreign correlation id."""
+
+
+class ProtocolListenerProbe(Protocol):
+    def probe(self, host: str, port: int, timeout: float) -> None:
+        """Return when ``host:port`` answers a Kafka ApiVersions request, or raise one of the two errors above."""
+        ...
+
+
+class ProtocolAlarmDelivery(Protocol):
+    def handle(
+        self, request: ModelLabAlarmDeliveryRequest
+    ) -> ModelLabAlarmDeliveryResult:
+        """Deliver the alarms one condition read (node_lab_alarm_deliver_effect), or raise ValueError or OSError."""
+        ...
+
+
 __all__ = [
     "EffectsGroupReadError",
     "GroupNeverCommittedError",
     "GroupUnreadableError",
     "LaneDispatchError",
+    "ListenerRefusedError",
+    "ListenerUnresolvableError",
     "ManifestUnreachableError",
     "ManifestUnreadableError",
+    "ProtocolAlarmDelivery",
     "ProtocolEffectsGroupReader",
     "ProtocolGroupLagReader",
+    "ProtocolGrowthStreakStore",
     "ProtocolHeldStateStore",
     "ProtocolLaneDispatcher",
+    "ProtocolListenerProbe",
     "ProtocolManifestCache",
     "ProtocolManifestSource",
     "ProtocolRunRecordStore",

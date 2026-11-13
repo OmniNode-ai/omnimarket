@@ -36,9 +36,24 @@ thresholds:
 # change to one node narrowed to that node's tests, the dev push skips the
 # suite (OMN-19998), and a cross-node import merged green and failed every PR
 # synced with dev afterwards.
+# OMN-23649: tests/ci/test_repo_evidence_caller_workflow.py reads every
+# contracts/OMN-*.yaml, so a change that adds one contract narrowed to its own
+# node's tests and merged a contract the repo-wide binding check refuses; the
+# dev suite then failed on every open change that took dev in.
 always_selected_paths:
   - tests/gates/
   - tests/test_no_cross_node_reach_in.py
+  - tests/ci/test_repo_evidence_caller_workflow.py
+
+# OMN-23719: modules made of node packages. A change reaching one of these
+# (directly, or through reverse_deps) selects the tests of the nodes it can
+# affect by the import graph, not the whole tests/<module>/ tree. tests/nodes/
+# alone summed to 1800.75 recorded seconds on dev against the selector's 1800 s
+# bound, so every node change ran the full suite. See
+# ModelAdjacencyMap.node_scoped_modules for what is selected and when it falls
+# back to the whole directory.
+node_scoped_modules:
+  - nodes
 
 # Test infrastructure — any change forces the full suite.
 test_infrastructure_paths:

@@ -15,3 +15,11 @@ projections:
     topic: onex.snapshot.projection.floor-owner-map.v1
     # The controller's host publishes the map every tick of its unit; a map older than this reads unknown and the board's work list is unread.
     max_age_s: 900
+  work_state:
+    topic: onex.snapshot.projection.floor-work-state.v1
+    # The work-state projection is rebuilt by the publish tick and the fill pass; one older than this reads unknown and the floor draws no lane from it.
+    max_age_s: 900
+  integration:
+    topic: onex.snapshot.projection.floor-integration.v1
+    # The hourly integration pass publishes its readings once an hour; a list older than two passes reads unknown on the floor.
+    max_age_s: 7800

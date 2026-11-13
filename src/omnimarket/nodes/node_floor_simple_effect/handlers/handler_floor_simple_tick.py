@@ -29,7 +29,9 @@ from omnimarket.handlers.emission_sink import (
     ProtocolEmissionSink,
 )
 from omnimarket.handlers.floor_projection import (
+    emissions_from_payload,
     load_bundle,
+    merge_emissions,
     owners_from_payload,
     projection_payload,
 )
@@ -85,6 +87,9 @@ from omnimarket.nodes.node_floor_simple_compute.handlers.handler_lab_state impor
 from omnimarket.nodes.node_floor_simple_effect.handlers.abandoned_starts import (
     abandoned_starts,
 )
+from omnimarket.nodes.node_floor_simple_effect.handlers.integration_source import (
+    read_integration,
+)
 from omnimarket.nodes.node_floor_simple_effect.handlers.ledger_reads import (
     ModelLedgerFloorRead,
     read_ledger_facts,
@@ -115,11 +120,12 @@ from omnimarket.nodes.node_floor_simple_effect.handlers.sources import (
     read_queue_age,
     read_runner_groups,
     read_watcher,
-    read_work_state,
     record_lanes,
     record_slots,
     record_stoppages,
+    work_state_from_payload,
     work_state_lanes,
+    work_state_unticketed_prs,
 )
 from omnimarket.nodes.node_floor_simple_effect.handlers.sources_deploy_agent import (
     deploy_agent_events,
@@ -197,7 +203,7 @@ class ModelSourcePaths(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     record_relpath: str
-    work_state_relpath: str
+    work_state_projection: str
     watcher_relpath: str
     controller_state_dir_env: str
     controller_state_dir_fallback: str
@@ -211,6 +217,9 @@ class ModelSourcePaths(BaseModel):
     broker_lag_condition: str
     projection_reads_relpath: str
     overlay_store_projection: str
+    emissions_projection: str
+    # The integration projection (OMN-23899); ``None`` is a contract that names none and the cycle reads none.
+    integration_projection: str | None = None
     deploy_agent_relpath: str
     readings_relpath: str
     harness_result_relpath: str
@@ -434,6 +443,7 @@ class HandlerFloorSimpleTick:
                         "emitted_at": now,
                         "backend": "real",
                         "drill": extra.pop("drill", drill),
+                        "origin": "probe",
                         **extra,
                     }
                 )
@@ -769,7 +779,17 @@ class HandlerFloorSimpleTick:
         go = ledger.facts.go_given_through if ledger.facts is not None else None
         go_pieces = ledger.facts.go_pieces if ledger.facts is not None else ()
         ledger_events = ledger.facts.events if ledger.facts is not None else ()
-        pre = self._receipts(sink, floor_ov, now, rt, go, ledger_events, go_pieces)
+        # The chains the readiness rule counts as real come from the floor emissions projection on the bus (OMN-23877); the journal
+        # file is read as health only. A projection that reads unknown (never published, older than its bound) holds no chain.
+        emissions_read = projection_payload(
+            load_bundle(home / rt.sources.projection_reads_relpath),
+            rt.sources.emissions_projection,
+            now,
+        )
+        projected = emissions_from_payload(emissions_read.payload or {})
+        pre = self._receipts(
+            sink, floor_ov, now, rt, go, ledger_events, go_pieces, projected
+        )
         row = next(p for p in pre.pieces if p.piece == piece)
         if (
             request.drill_error
@@ -778,14 +798,25 @@ class HandlerFloorSimpleTick:
         ):
             self._drill(step)
             pre = self._receipts(
-                sink, floor_ov, self._clock(), rt, go, ledger_events, go_pieces
+                sink,
+                floor_ov,
+                self._clock(),
+                rt,
+                go,
+                ledger_events,
+                go_pieces,
+                projected,
             )
         if request.drill_error:
             raise FloorSourceError("drill_completed", "the drill ran its defined fault")
 
         record_path = home / rt.sources.record_relpath
-        work_state = read_work_state(home / rt.sources.work_state_relpath)
         projections = load_bundle(home / rt.sources.projection_reads_relpath)
+        work_state = work_state_from_payload(
+            projection_payload(
+                projections, rt.sources.work_state_projection, now
+            ).payload
+        )
         controller_dir = Path(
             env.get(rt.sources.controller_state_dir_env, "").strip()
             or Path.home() / rt.sources.controller_state_dir_fallback
@@ -925,7 +956,7 @@ class HandlerFloorSimpleTick:
         receipts = step(
             "node_floor_emission_compute:compute_floor_receipts",
             lambda: self._receipts(
-                sink, floor_ov, now, rt, go, ledger_events, go_pieces
+                sink, floor_ov, now, rt, go, ledger_events, go_pieces, projected
             ),
             lambda out: {
                 "chains": len(out.chains),
@@ -959,6 +990,11 @@ class HandlerFloorSimpleTick:
             if delegation_spec is not None
             else None
         )
+        integration = (
+            read_integration(projections, rt.sources.integration_projection, now)
+            if rt.sources.integration_projection is not None
+            else None
+        )
         floor_input = ModelFloorSimpleInput(
             now=now,
             overlay=floor_ov,
@@ -975,6 +1011,7 @@ class HandlerFloorSimpleTick:
             pr_class_counts=watcher.class_counts if watcher else {},
             pr_class_tickets=watcher.class_tickets if watcher else {},
             pr_class_prs=watcher.class_prs if watcher else {},
+            unticketed_prs=work_state_unticketed_prs(work_state) if work_state else (),
             friction_as_of=self._friction_as_of(
                 home / rt.sources.friction_report_relpath
             ),
@@ -1012,8 +1049,14 @@ class HandlerFloorSimpleTick:
                     if delegation_spec is not None
                     else {}
                 ),
+                **(
+                    {"integration_projection": integration.status == "read"}
+                    if integration is not None
+                    else {}
+                ),
             },
             worklist=worklist,
+            integration=integration,
             delegation_tickets=delegation_tickets,
             alarm_heartbeat_at=outcome.state.heartbeat_at,
             outside_goal=self._outside_goal(goal_scope, watcher),
@@ -1224,12 +1267,15 @@ class HandlerFloorSimpleTick:
         go: int | None,
         ledger_events: tuple[ModelNodeEmission, ...],
         go_pieces: tuple[int, ...] = (),
+        projected: tuple[ModelNodeEmission, ...] = (),
     ) -> ModelFloorReceipts:
         since = now - timedelta(hours=rt.state.emission_window_hours)
         # A chain is read whole: the closing failure of an abandoned start is stamped the bound after the start, so
         # at the window edge it is inside the window while its start is not. Read back one bound further and keep
         # every chain that has an event inside the window.
-        read = sink.read(since - timedelta(seconds=rt.abandon_after_seconds))
+        read = merge_emissions(
+            sink.read(since - timedelta(seconds=rt.abandon_after_seconds)), projected
+        )
         in_window = {
             (e.piece, e.node, e.correlation_id) for e in read if e.emitted_at >= since
         }
@@ -1266,6 +1312,7 @@ class HandlerFloorSimpleTick:
                     ),
                 ),
                 join_ends=rt.join_ends,
+                real_origins=ov.readiness.real_origins,
             )
         )
 

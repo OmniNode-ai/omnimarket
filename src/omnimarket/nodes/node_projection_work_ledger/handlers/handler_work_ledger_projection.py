@@ -51,6 +51,7 @@ from omnimarket.handlers.work_ledger_fold import (
     fold_row,
     rows_for_records,
 )
+from omnimarket.handlers.work_ledger_latest_fold import latest_entries_for_row
 from omnimarket.models.model_projection_request import ModelProjectionRequest
 from omnimarket.models.model_work_ledger_fold_request import (
     ModelWorkLedgerFoldRequest,
@@ -58,6 +59,9 @@ from omnimarket.models.model_work_ledger_fold_request import (
 from omnimarket.models.model_work_ledger_fold_result import (
     ModelWorkLedgerFoldResult,
     ModelWorkLedgerStateOp,
+)
+from omnimarket.models.work_ledger_query.model_work_ledger_latest import (
+    ModelWorkLedgerLatestEntry,
 )
 from omnimarket.nodes.node_projection_work_ledger.contract_topics import (
     ALL_SUBSCRIBE_TOPICS,
@@ -74,6 +78,7 @@ from omnimarket.nodes.node_projection_work_ledger.models.model_work_ledger_proje
     ModelWorkLedgerProjectionResult,
 )
 from omnimarket.projection.envelope import strip_runner_injected_keys
+from omnimarket.projection.error_classification import PoisonEventError
 from omnimarket.projection.runner import (
     BaseProjectionRunner,
     MessageMeta,
@@ -81,6 +86,8 @@ from omnimarket.projection.runner import (
 
 ROWS_TABLE = "omninode_internal.work_ledger_rows"
 STATE_TABLE = "omninode_internal.work_ledger_state"
+CONFLICTS_TABLE = "omninode_internal.work_ledger_seq_conflicts"
+SEQ_CONFLICT_REASON = "ledger_seq already held by another row"
 
 # A row first projected by an older emitter or the emit backfill gains its seq
 # when the sequenced event arrives. A stored seq is immutable, never overwritten.
@@ -91,6 +98,21 @@ _INSERT_ROW = f"""
     VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10)
     ON CONFLICT (row_id) DO UPDATE SET ledger_seq = EXCLUDED.ledger_seq
     WHERE {ROWS_TABLE}.ledger_seq IS NULL AND EXCLUDED.ledger_seq IS NOT NULL
+"""
+
+# OMN-23152: the unique index on (ledger_id, ledger_seq) refuses a second row for a held sequence.
+# The writer judges the collision first, under the ledger's advisory lock, so a refusal is a recorded
+# conflict and never a poison message that stalls the consumer.
+_SEQ_HOLDER = f"""
+    SELECT row_id FROM {ROWS_TABLE}
+    WHERE ledger_id = $1 AND ledger_seq = $2 AND row_id <> $3
+"""
+
+_INSERT_SEQ_CONFLICT = f"""
+    INSERT INTO {CONFLICTS_TABLE}
+        (row_id, ledger_id, ledger_seq, held_row_id, raw_row, source, reason)
+    VALUES ($1, $2, $3, $4, $5, $6, $7)
+    ON CONFLICT (row_id) DO NOTHING
 """
 
 _ADVISORY_LOCK = "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))"
@@ -120,6 +142,21 @@ _CLOSE_ENTITY = f"""
     WHERE {STATE_TABLE}.closed_at IS NULL
        OR ({STATE_TABLE}.closed_at, {STATE_TABLE}.closed_row_id)
           <= (EXCLUDED.closed_at, EXCLUDED.closed_row_id)
+"""
+
+LATEST_TABLE = "omninode_internal.work_ledger_latest"
+
+# OMN-23606: the newest row per (subject kind, subject, row type), guarded on (at, row_id) like the state ops, so a
+# redelivered or reordered row cannot move an entry backwards.
+_UPSERT_LATEST = f"""
+    INSERT INTO {LATEST_TABLE}
+        (subject_kind, subject, row_type, row_id, at, lane, ticket, pr, outcome, to_cell, projected_at)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+    ON CONFLICT (subject_kind, subject, row_type) DO UPDATE SET
+        row_id = EXCLUDED.row_id, at = EXCLUDED.at, lane = EXCLUDED.lane, ticket = EXCLUDED.ticket,
+        pr = EXCLUDED.pr, outcome = EXCLUDED.outcome, to_cell = EXCLUDED.to_cell,
+        projected_at = EXCLUDED.projected_at
+    WHERE ({LATEST_TABLE}.at, {LATEST_TABLE}.row_id) <= (EXCLUDED.at, EXCLUDED.row_id)
 """
 
 _READ_ROWS = f"SELECT row_id, ledger_id, raw_row, event_id, record, provenance_kind FROM {ROWS_TABLE} ORDER BY row_id"
@@ -161,6 +198,17 @@ _UPSERT_QUESTION = f"""
 _T = TypeVar("_T")
 
 
+class UnsequencedLiveRowError(PoisonEventError, WorkLedgerFoldError):
+    """A live dual-write source row arrived with no ledger_seq (OMN-23488).
+
+    A row of a source listed in ``sequence_required_sources`` that carries no
+    ``ledger_seq`` is a write to a ledger file that is not the canonical one.
+    Refused before any database statement, so the runtime classifies it POISON
+    and routes it to the poison DLQ topic instead of projecting it. The backfill
+    source (ledger-emit) is not listed and still projects unsequenced.
+    """
+
+
 class HandlerProjectionWorkLedger:
     """The PURE half: one row event in, its log record and state ops out."""
 
@@ -200,6 +248,22 @@ def _op_args(op: ModelWorkLedgerStateOp, now: datetime) -> tuple[str, tuple[Any,
     return _CLOSE_ENTITY, (op.entity_key, op.kind.value, op.at, op.row_id, now)
 
 
+def latest_args(entry: ModelWorkLedgerLatestEntry, now: datetime) -> tuple[Any, ...]:
+    return (
+        entry.subject_kind.value,
+        entry.subject,
+        entry.row_type,
+        entry.row_id,
+        entry.at,
+        entry.lane,
+        entry.ticket,
+        entry.pr,
+        entry.outcome,
+        entry.to,
+        now,
+    )
+
+
 class WorkLedgerProjectionWriter(BaseProjectionRunner):
     """The DURABLE half: calls the fold and persists its result."""
 
@@ -216,6 +280,21 @@ class WorkLedgerProjectionWriter(BaseProjectionRunner):
             self._contract["work_ledger"]
         )
         self._dispatch_lock = threading.Lock()
+
+    @property
+    def poison_dlq_topics(self) -> list[str]:
+        """OMN-23488: an escaped POISON row (an unsequenced live row) goes to the contract's DLQ."""
+        return list(self._contract["event_bus"]["dlq_topics"])
+
+    async def publish_dlq(self, topic: str, value: bytes) -> None:
+        """Supply the runtime-owned publisher to the base-class DLQ path (as node_projection_hook_ledger does)."""
+        publish = await self.get_publish_fn()
+        if publish is None:
+            raise RuntimeError(
+                f"node_projection_work_ledger: no publisher for POISON DLQ topic {topic}"
+                " -- the record cannot be quarantined"
+            )
+        await publish(topic, value)
 
     @property
     def topics(self) -> list[str]:
@@ -283,6 +362,14 @@ class WorkLedgerProjectionWriter(BaseProjectionRunner):
         if request.ledger_id != self._config.ledger_id:
             raise WorkLedgerFoldError("configured ledger_id mismatch")
         result = fold_row(request)
+        if (
+            result.row.ledger_seq is None
+            and result.row.source in self._config.sequence_required_sources
+        ):
+            raise UnsequencedLiveRowError(
+                f"unsequenced-live-row: source {result.row.source!r} requires a "
+                f"ledger_seq; row_id {result.row.row_id}"
+            )
         expected_id = str(work_ledger_event_id(result.row.ledger_id, result.row.row_id))
         if data.get("event_id") is not None and str(data["event_id"]) not in {
             expected_id,
@@ -295,6 +382,22 @@ class WorkLedgerProjectionWriter(BaseProjectionRunner):
         row = result.row
         async with self._db.pool.acquire() as conn, conn.transaction():
             await conn.execute(_ADVISORY_LOCK, f"work-ledger:{request.ledger_id}")
+            if row.ledger_seq is not None:
+                holder = await conn.fetchval(
+                    _SEQ_HOLDER, row.ledger_id, row.ledger_seq, row.row_id
+                )
+                if holder is not None:
+                    await conn.execute(
+                        _INSERT_SEQ_CONFLICT,
+                        row.row_id,
+                        row.ledger_id,
+                        row.ledger_seq,
+                        holder,
+                        row.raw_row,
+                        row.source,
+                        SEQ_CONFLICT_REASON,
+                    )
+                    return 0
             await conn.execute(
                 _INSERT_ROW,
                 row.row_id,
@@ -311,6 +414,9 @@ class WorkLedgerProjectionWriter(BaseProjectionRunner):
             for op in result.ops:
                 sql, args = _op_args(op, now)
                 await conn.execute(sql, *args)
+            # The latest-state table is derived from the row; the count stays the log row plus its state ops.
+            for entry in latest_entries_for_row(row, self._config.latest_row_types):
+                await conn.execute(_UPSERT_LATEST, *latest_args(entry, now))
         return 1 + len(result.ops)
 
     def _validated_rows(
@@ -424,4 +530,8 @@ class WorkLedgerProjectionWriter(BaseProjectionRunner):
         return len(returned) + len(state.questions)
 
 
-__all__: list[str] = ["HandlerProjectionWorkLedger", "WorkLedgerProjectionWriter"]
+__all__: list[str] = [
+    "HandlerProjectionWorkLedger",
+    "UnsequencedLiveRowError",
+    "WorkLedgerProjectionWriter",
+]

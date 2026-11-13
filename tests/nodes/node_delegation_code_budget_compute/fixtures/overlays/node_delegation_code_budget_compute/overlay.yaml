@@ -1,0 +1,16 @@
+# Test fixture overlay of node_delegation_code_budget_compute (the shape of overlays/node_delegation_code_budget_compute/overlay.yaml
+# in the overlays repository; the values here belong to the tests, not to the lab).
+class_budgets_s:
+  code_generation: 480
+  test: 480
+  code_review: 600
+sizing_margin: 1.5
+round_up_to_s: 60
+min_completed_samples: 3
+ceiling_s: 600
+input_ceilings:
+  local-coder:
+    code_generation: 8169
+  fixture-backend:
+    code_generation: 1000
+    test: 2000

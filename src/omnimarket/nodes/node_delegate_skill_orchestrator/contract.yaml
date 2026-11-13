@@ -270,6 +270,12 @@ inputs:
     description: >
       Optional explicit backend pin (e.g. 'local-coder-mlx'). None resolves
       the backend via the normal cheapest-first tier_order selection.
+  model:
+    type: str
+    required: false
+    description: >
+      Optional per-call model name the customer's own provider key runs for
+      this one call (OMN-20844). Omit to run the stored model.
   no_escalation:
     type: bool
     required: false
@@ -690,3 +696,19 @@ budget_readback:
     over_budget_plus_grace: 1
     nothing_measured: 2
     unrunnable: 3
+
+# OMN-20172: the ladder a rubric failure climbs on the in-process path: one
+# configuration swap on the same model and backend, then shrink (split, run the
+# units on the same model and backend, recombine, check the whole), then the next
+# responder in the class chain. The handler settles one failed whole attempt and
+# calls the policy node, the split node and the recombine node; the model calls
+# are ports the dispatch injects. The caps are read from the class contract's
+# escalation_policy (max_config_swaps, max_split_depth, unit_attempts_per_unit,
+# shrink_unit_prompt); a class that declares none neither swaps nor shrinks.
+shrink_retry:
+  handler:
+    name: HandlerShrinkRetry
+    module: omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_shrink_retry
+  policy_node: node_delegation_shrink_retry_compute
+  caps_source: configs/task_class_contracts.v1.yaml
+  formal_model: formal/delegation_shrink_retry

@@ -185,6 +185,19 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_alert_channel_liveness/migrations/0000_create_alert_channel_liveness_verdicts.sql
       access: write
       role: alert_channel_liveness
+    # OMN-23865: newest host disk reading per host and class, and per host and volume.
+    - name: host_disk_class
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_host_disk/migrations/0000_create_host_disk.sql
+      access: read_write
+      role: host_disk_class
+    - name: host_disk_volume
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_host_disk/migrations/0000_create_host_disk.sql
+      access: read_write
+      role: host_disk_volume
     # Context-integrity audit events, written by node_projection_context_audit in
     # place of the omnibase_infra context-audit consumer. Rows carry a
     # deterministic event_key; the table's natural id is a BIGSERIAL.
@@ -310,6 +323,33 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_lab_job/migrations/0000_create_lab_job.sql
       access: read_write
       role: lab_job_transitions
+    # OMN-23055 (rebuild plan section 7.5, step 0 row 3): the four relations of the gate
+    # store's Postgres backend. Declared here for the same OMN-15361 SQL gate reason as the
+    # lab job read models above. Created directly in omninode_internal.
+    - name: gate_store_state
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_gate_store_effect/migrations/0000_create_gate_store.sql
+      access: read_write
+      role: gate_store_state
+    - name: gate_store_reservations
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_gate_store_effect/migrations/0000_create_gate_store.sql
+      access: read_write
+      role: gate_store_reservations
+    - name: gate_store_safety
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_gate_store_effect/migrations/0000_create_gate_store.sql
+      access: read_write
+      role: gate_store_safety
+    - name: gate_store_steps
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_gate_store_effect/migrations/0000_create_gate_store.sql
+      access: read_write
+      role: gate_store_steps
     # OMN-17427: durable execution claims and the ordered transition outbox of
     # node_llm_delegation_call_effect's lab-job handler. Declared here for the
     # same OMN-15361 SQL gate reason as the lab job read models above. Created
@@ -342,6 +382,15 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_work_ledger/migrations/0000_create_work_ledger.sql
       access: write
       role: work_ledger_state
+    # OMN-23694: the newest row per lane and per ticket and row type, derived from the
+    # same row events by node_projection_work_ledger and read by the work ledger query
+    # node's latest-state query.
+    - name: work_ledger_latest
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_work_ledger/migrations/0011_work_ledger_latest.sql
+      access: write
+      role: work_ledger_latest
     # OMN-19399: register this repository as the CATALOG owner of the physical
     # relation `worktree_reconcile_hosts`, one row per host carrying the latest
     # worktree-reconcile run's counts, created by
@@ -1157,8 +1206,31 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_delegation_budget_readings/migrations/0000_create_delegation_budget_readings.sql
       access: read_write
       role: delegation_budget_readings
+    # OMN-23888: the durable per-run state of the code eval trial orchestrator
+    # (the eval driver, omnimarket 5867), keyed by correlation_id. The CREATE
+    # lives in the omnibase_infra migration stream (docker/migrations/forward/114),
+    # like live_events above; this entry registers this repository as the
+    # catalog owner so the OMN-15361 SQL ownership gate can resolve it. Declared
+    # ahead of the driver node, the way the goal-trace tables were.
+    - name: code_eval_trial_state
+      database_ref: application
+      schema: public
+      migration: docker/migrations/forward/114_create_code_eval_trial_state.sql
+      access: read_write
+      role: code_eval_trial_orchestrator_state
 
 database_objects:
+  # OMN-23888: the trigger helper migration 114 creates for code_eval_trial_state.
+  # The gate treats a function a migration creates, and one a trigger names, as
+  # an application target needing exactly one owner; a table row does not cover it.
+  - name: refresh_code_eval_trial_state_updated_at
+    kind: function
+    database_ref: application
+    schema: public
+    domain: OMNINODE_INTERNAL
+    owner_declaration: service:omnimarket_projection_migration_runner
+    function_signature: ()
+    writers: []
   # OMN-17447: the OMN-15361 SQL ownership gate resolves changed deployable
   # SEQUENCE grants against exact physical catalog identities. These sequences
   # are PostgreSQL-owned objects created implicitly by the node table DDL above,
@@ -1294,6 +1366,22 @@ database_objects:
     writers: []
   # OMN-20578: the BIGSERIAL paging cursor owned by alert_channel_liveness_verdicts.
   - name: alert_channel_liveness_verdicts_projection_cursor_seq
+    kind: sequence
+    database_ref: application
+    schema: omninode_internal
+    domain: OMNINODE_INTERNAL
+    owner_declaration: service:omnimarket_projection_migration_runner
+    writers: []
+  # OMN-23865: the BIGSERIAL paging cursor owned by host_disk_class.
+  - name: host_disk_class_projection_cursor_seq
+    kind: sequence
+    database_ref: application
+    schema: omninode_internal
+    domain: OMNINODE_INTERNAL
+    owner_declaration: service:omnimarket_projection_migration_runner
+    writers: []
+  # OMN-23865: the BIGSERIAL paging cursor owned by host_disk_volume.
+  - name: host_disk_volume_projection_cursor_seq
     kind: sequence
     database_ref: application
     schema: omninode_internal

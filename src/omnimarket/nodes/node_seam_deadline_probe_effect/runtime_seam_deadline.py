@@ -3,6 +3,8 @@
 """``python -m omnimarket.nodes.node_seam_deadline_probe_effect <verb>``.
 
 ``read``   demand every declared seam and append the row (what a schedule runs).
+``read --recheck`` the re-read timer's verb: reads only while the last real run read red and the
+           contract's re-reads are not used up, else prints why it did not and exits 0 (OMN-23201).
 ``probe``  the same demands, appending nothing.
 ``schedule`` install | uninstall | status | run-now, for a host in the overlay's schedule_hosts.
 
@@ -25,6 +27,11 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError, find_node_overlay
+from omnimarket.handlers.rules_overlay_root_declared import (
+    OverlayRootRefusedError,
+    refuse_undeclared_overlay_root,
+)
+from omnimarket.models.model_reading import EnumReadingVerdict
 from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
     LedgerRouteError,
     build_appender,
@@ -38,6 +45,11 @@ from omnimarket.nodes.node_seam_deadline_probe_effect.adapters.kafka_seam_bus im
 from omnimarket.nodes.node_seam_deadline_probe_effect.handlers.handler_seam_deadline import (
     HandlerSeamDeadline,
     reply_state,
+)
+from omnimarket.nodes.node_seam_deadline_probe_effect.handlers.recheck import (
+    EnumRecheckDecision,
+    decide_recheck,
+    record_run,
 )
 from omnimarket.nodes.node_seam_deadline_probe_effect.handlers.schedule import (
     SeamDeadlineScheduler,
@@ -62,7 +74,20 @@ _SEAM_BUSES: dict[str, Callable[[str], ProtocolSeamBus]] = {
 }
 
 
+def _state_directory() -> Path:
+    root = os.environ.get("OMNI_HOME", "").strip()
+    if not root:
+        raise ValueError("OMNI_HOME is not set; the recorded last run lives under it")
+    return Path(root) / load_schedule().state_directory
+
+
 def _run(arguments: argparse.Namespace, write: bool) -> int:
+    recheck = bool(getattr(arguments, "recheck", False))
+    if recheck:
+        decision = decide_recheck(_state_directory(), load_schedule().recheck)
+        if decision is not EnumRecheckDecision.RUN:
+            sys.stdout.write(f"RECHECK skipped reason={decision.value}\n")
+            return 0
     overlay = load_overlay()
     host = os.environ.get(overlay.ledger_append.host_env, "").strip()
     if not host:
@@ -115,6 +140,13 @@ def _run(arguments: argparse.Namespace, write: bool) -> int:
     if result.ledger.startswith("append-failed") or not result.seams:
         sys.stderr.write(f"SEAM-DEADLINE-FAILED {result.failure}\n")
         return 1
+    if write and result.ledger == "written" and result.fault is EnumSeamFault.NONE:
+        # The row landed: the next recheck tick reads this verdict. A drill never records.
+        record_run(
+            _state_directory(),
+            working=result.verdict is EnumReadingVerdict.WORKING,
+            recheck=recheck,
+        )
     return 0
 
 
@@ -143,6 +175,15 @@ def _schedule(arguments: Sequence[str]) -> int:
             raise NodeOverlayError(
                 "the overlay file cannot be found to pin its root in the unit"
             )
+        try:
+            refuse_undeclared_overlay_root(
+                found.parent.parent,
+                host=args.host,
+                omni_root=Path(args.workspace_root),
+            )
+        except OverlayRootRefusedError as exc:
+            sys.stderr.write(f"{exc}\n")
+            return 1
         result = scheduler.install(
             args.host,
             omni_root=Path(args.workspace_root),
@@ -167,6 +208,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _schedule(arguments[1:])
         parser = argparse.ArgumentParser(prog=NODE_NAME, description=__doc__)
         parser.add_argument("verb", choices=("read", "probe"))
+        parser.add_argument(
+            "--recheck",
+            action="store_true",
+            help="read only while the last real run read red (the re-read timer's verb)",
+        )
         parser.add_argument("--seam", action="append")
         parser.add_argument(
             "--fault",
@@ -174,6 +220,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             default=EnumSeamFault.NONE.value,
         )
         args = parser.parse_args(arguments)
+        if args.recheck and args.verb != "read":
+            parser.error("--recheck belongs to the read verb")
         return _run(args, write=args.verb == "read")
     except (
         NodeOverlayError,

@@ -28,9 +28,11 @@ from omnimarket.models.floor_17a import (
     ModelFloorLane,
     ModelFloorNumber,
     ModelFloorPieceRow,
+    ModelFloorReadiness,
     ModelFloorShadowLine,
     ModelFloorSimple,
     ModelFloorSimpleInput,
+    ModelJoinDef,
     ModelJoinReceipt,
     ModelLabSourceVerdict,
     ModelOwnerInputs,
@@ -45,6 +47,17 @@ from omnimarket.models.floor_17a.model_worklist import (
     ModelWorklistItemIn,
     WorklistKind,
 )
+from omnimarket.nodes.node_floor_simple_compute.handlers.integration_section import (
+    build_integration_section,
+)
+
+# The one row that names the open pull requests citing no ticket; the overlay's `causes.titles` may reword it.
+UNTICKETED_PRS_ID = "prs:no-ticket"
+
+
+def _join_order(join_id: str) -> int:
+    """Joins in number order, ``J-cycle`` last."""
+    return int(join_id[1:]) if join_id[1:].isdigit() else 99
 
 
 def _ago(seconds: int | None) -> str:
@@ -418,6 +431,38 @@ def check_red_rule(
             violations.append(
                 f"{cause.id} draws quiet though it is occurring, needs you or has a lane on it"
             )
+    # Readiness (OMN-23081), read again from the finished document: a piece reads ready only when its own reading works and
+    # every counted join at either end passes, and a counted join that does not pass is a listed row with an owner ticket.
+    all_joins = {j.id: j for p in document.pieces for j in p.joins}
+    for piece in document.pieces:
+        if not piece.ready:
+            continue
+        if piece.status != "working":
+            violations.append(
+                f"piece {piece.piece} reads ready while its own reading is {piece.status.replace('_', ' ')}"
+            )
+        violations.extend(
+            f"piece {piece.piece} reads ready while join {j.id} reads {j.state.replace('_', ' ')}"
+            for j in all_joins.values()
+            if j.counted and not j.passes and piece.piece in (j.from_piece, j.to_piece)
+        )
+        violations.extend(
+            f"piece {piece.piece} reads ready while join {j.id} saw no real work"
+            for j in all_joins.values()
+            if j.counted
+            and not j.real_passes
+            and piece.piece in (j.from_piece, j.to_piece)
+        )
+    for join in all_joins.values():
+        if not join.counted or join.passes or join.state == "unread":
+            continue
+        row = known.get(f"join:{join.id}")
+        if row is None or not row.listed:
+            violations.append(
+                f"join {join.id} reads {join.state.replace('_', ' ')} and has no row"
+            )
+        elif not row.owners:
+            violations.append(f"join {join.id} has a row and no owner ticket")
     rows: list[tuple[str, str | None, str]] = [
         *((f"piece {p.piece}", p.cause_id, p.draw) for p in document.pieces),
         *((f"lab {line.id}", line.cause_id, line.draw) for line in document.lab_state),
@@ -484,10 +529,23 @@ class HandlerFloorSimple:
                 )
             )
         by_id = {c.id: c for c in causes}
-        pieces = tuple(self._row_draw(r, by_id) for r in rows)
+        pieces = self._integrate(
+            request, tuple(self._row_draw(r, by_id) for r in rows), by_id
+        )
+        readiness = self._readiness(request, pieces)
         lines = tuple(self._lab_line(v, by_id) for v in lab)
         level = self._level(causes)
         sentence, subline = self._words(causes)
+        subline = " ".join(
+            part
+            for part in (
+                subline,
+                readiness.text,
+                readiness.probe_health_text,
+                readiness.real_work_notice,
+            )
+            if part
+        )
         document = ModelFloorSimple.model_validate(
             {
                 "generated_at": now,
@@ -498,7 +556,7 @@ class HandlerFloorSimple:
                 "numbers": self._numbers(request),
                 "causes": causes,
                 "causes_shown": ov.causes.max_shown,
-                "rebuild": self._rebuild(request, rows),
+                "rebuild": self._rebuild(request, list(pieces)),
                 "pieces": pieces,
                 "lab_state": lines,
                 "alarms": request.alarms,
@@ -515,7 +573,11 @@ class HandlerFloorSimple:
                 "alarm_heartbeat_at": request.alarm_heartbeat_at,
                 "outside_goal": request.outside_goal,
                 "worklist": worklist,
+                "readiness": readiness,
                 "owner_inputs": inputs,
+                "integration": build_integration_section(
+                    ov.integration, request.integration
+                ),
             }
         )
         return document.model_copy(
@@ -709,7 +771,7 @@ class HandlerFloorSimple:
                             r, n, "error", ov.rebuild.event_window_s
                         ),
                         "joins": tuple(
-                            self._join_row(j, joins.get(j.id), r.now)
+                            self._join_row(r, j, joins.get(j.id))
                             for j in ov.joins
                             if j.from_piece == n
                         ),
@@ -851,12 +913,15 @@ class HandlerFloorSimple:
 
     @staticmethod
     def _join_row(
-        definition: object, receipt: ModelJoinReceipt | None, now: datetime
+        r: ModelFloorSimpleInput,
+        definition: ModelJoinDef,
+        receipt: ModelJoinReceipt | None,
     ) -> ModelFloorJoinRow:
-        jid = getattr(definition, "id", "")
-        label = getattr(definition, "label", "")
-        to_piece = getattr(definition, "to_piece", 0)
-        golden = error = None
+        """One join as drawn: the receipt's state, whether it counts toward READY and whether it passes (OMN-23081)."""
+        now = r.now
+        rd = r.overlay.readiness
+        names = {p.piece: p.name for p in r.overlay.pieces}
+        golden = error = last_run = None
         state = "unread"
         if receipt is not None:
             state = receipt.state
@@ -864,15 +929,306 @@ class HandlerFloorSimple:
                 golden = max(int((now - receipt.golden_at).total_seconds()), 0)
             if receipt.error_at:
                 error = max(int((now - receipt.error_at).total_seconds()), 0)
+            ran = [x for x in (golden, error) if x is not None]
+            last_run = min(ran) if ran else None
+        scope = set(rd.in_scope_pieces)
+        # Real work (OMN-23862): the golden chain that came from real work, inside the window the receipts cover (the
+        # emission window; the overlay's event window when the receipts say none).
+        window_s = r.receipts_covered_s or r.overlay.rebuild.event_window_s
+        real_golden = (
+            max(int((now - receipt.real_golden_at).total_seconds()), 0)
+            if receipt is not None and receipt.real_golden_at
+            else None
+        )
         return ModelFloorJoinRow.model_validate(
             {
-                "id": jid,
-                "label": label,
-                "to_piece": to_piece,
+                "id": definition.id,
+                "label": definition.label,
+                "to_piece": definition.to_piece,
                 "state": state,
                 "golden_age_s": golden,
                 "error_age_s": error,
+                "from_piece": definition.from_piece,
+                "counted": definition.from_piece in scope
+                and definition.to_piece in scope,
+                "passes": state in rd.passing_join_states,
+                "definition": (
+                    f"{definition.label}: piece {definition.from_piece}, "
+                    f"{names[definition.from_piece].lower()}, to piece {definition.to_piece}, "
+                    f"{names[definition.to_piece].lower()}"
+                ),
+                "last_run_age_s": last_run,
+                "real_golden_age_s": real_golden,
+                # Real work is not configured (the overlay names no real_origins): the old rule applies and a join that
+                # passes counts as it did before OMN-23862.
+                "real_passes": state in rd.passing_join_states
+                and (
+                    not rd.real_work_configured
+                    or (real_golden is not None and real_golden <= window_s)
+                ),
             }
+        )
+
+    @staticmethod
+    def _join_failure(
+        r: ModelFloorSimpleInput,
+        join: ModelFloorJoinRow,
+        rows: list[ModelFloorPieceRow],
+    ) -> tuple[str, str]:
+        """Which side of a join failed, and why: the chain finding that names it, else the piece that does not work, else neither.
+
+        ``from`` is the upstream piece of the join and ``to`` the downstream one. A chain finding blames the side the
+        overlay's ``finding_sides`` gives its code. With no finding the join never ran or ran halfway: the side is the
+        piece whose own reading is not WORKING, and ``neither`` when both read WORKING and no cycle ran the join.
+        """
+        rd = r.overlay.readiness
+        subject = f"{join.id} piece "
+        findings = [
+            f
+            for f in (r.receipts.findings if r.receipts is not None else ())
+            if f.subject.startswith(subject)
+        ]
+        if findings:
+            side = rd.finding_sides.get(findings[0].code, "to")
+            # One line per distinct finding, with how many chains it was found in.
+            counts: dict[str, int] = {}
+            for f in findings:
+                line = f"{f.code}: {f.detail}"
+                counts[line] = counts.get(line, 0) + 1
+            return side, "; ".join(
+                f"{line} (in {n} chains)" if n > 1 else line
+                for line, n in list(counts.items())[:3]
+            )
+        if r.receipts is None:
+            return "neither", "the join receipts could not be read"
+        by_piece = {x.piece: x for x in rows}
+        what = {
+            "not_run": "no golden and no error chain of this join has run",
+            "golden_only": "the golden chain ran and no error chain has",
+            "error_only": "the error chain ran and no golden chain has",
+        }.get(join.state, f"the join reads {join.state}")
+        for side, piece in (("from", join.from_piece), ("to", join.to_piece)):
+            row = by_piece[piece]
+            if row.status != "working":
+                return (
+                    side,
+                    f"{what}; piece {piece}, {row.name.lower()}, is {row.status.replace('_', ' ')}",
+                )
+        return "neither", f"{what}; both pieces read WORKING and no cycle has run both"
+
+    # --- readiness (OMN-23081) ----------------------------------------------------------------------------------------
+
+    def _integrate(
+        self,
+        r: ModelFloorSimpleInput,
+        pieces: tuple[ModelFloorPieceRow, ...],
+        by_id: dict[str, ModelFloorCause],
+    ) -> tuple[ModelFloorPieceRow, ...]:
+        """Add what each join owes the board and say which pieces are READY.
+
+        A piece is READY only when it is in scope, its own reading is WORKING, at least ``min_joins`` joins count for it and
+        every counted join at either of its ends passes. A piece that works and is not ready draws amber and says
+        ``working, not integrated``. Each counted join that does not pass gets its owner tickets, the lanes on it, the side
+        that failed and the reason from its red row.
+        """
+        rd = r.overlay.readiness
+        scope = set(rd.in_scope_pieces)
+        rows = list(pieces)
+        status = {row.piece: row.status for row in rows}
+        window_h = (r.receipts_covered_s or r.overlay.rebuild.event_window_s) // 3600
+        joins: dict[str, ModelFloorJoinRow] = {}
+        for row in rows:
+            for join in row.joins:
+                joins[join.id] = self._join_owed(r, join, rows, by_id)
+        out: list[ModelFloorPieceRow] = []
+        for row in rows:
+            counted = sorted(
+                (
+                    j
+                    for j in joins.values()
+                    if j.counted and row.piece in (j.from_piece, j.to_piece)
+                ),
+                key=lambda j: _join_order(j.id),
+            )
+            blocking = tuple(j.id for j in counted if not j.passes)
+            # A join that passes on probe chains alone is health, never integration (OMN-23862).
+            probe_only = tuple(j.id for j in counted if j.passes and not j.real_passes)
+            neighbours = tuple(
+                sorted(
+                    {
+                        other
+                        for j in counted
+                        for other in (j.from_piece, j.to_piece)
+                        if other != row.piece
+                        and status.get(other) in rd.blocking_neighbour_statuses
+                    }
+                )
+            )
+            in_scope = row.piece in scope
+            working = row.status == "working"
+            ready = (
+                in_scope
+                and working
+                and len(counted) >= rd.min_joins
+                and not blocking
+                and not probe_only
+                and not neighbours
+            )
+            if ready:
+                integration = "ready"
+            elif working:
+                integration = "working_not_integrated"
+            elif row.status == "not_started":
+                integration = "not_started"
+            else:
+                integration = "not_working"
+            update: dict[str, object] = {
+                "joins": tuple(joins[j.id] for j in row.joins),
+                "ready": ready,
+                "in_scope": in_scope,
+                "integration": integration,
+                "blocking_joins": blocking,
+                "counted_joins": len(counted),
+                "probe_only_joins": probe_only,
+                "blocking_neighbours": neighbours,
+            }
+            if integration == "working_not_integrated":
+                reasons: list[str] = []
+                if blocking:
+                    reasons.append(
+                        ", ".join(
+                            f"{j} {joins[j].state.replace('_', ' ')}" for j in blocking
+                        )
+                    )
+                if probe_only:
+                    reasons.append(
+                        "green on probes only: no real work crossed "
+                        + ("this join" if len(probe_only) == 1 else "these joins")
+                        + f" in {window_h} hours ({', '.join(probe_only)})"
+                    )
+                if neighbours:
+                    reasons.append(
+                        "; ".join(
+                            f"neighbour piece {n} reads "
+                            f"{status[n].replace('_', ' ').upper()}"
+                            for n in neighbours
+                        )
+                    )
+                if not reasons and not in_scope:
+                    reasons.append("outside the pieces in scope")
+                elif not reasons:
+                    reasons.append(
+                        f"fewer than {rd.min_joins} join to a piece in scope"
+                    )
+                why = "; ".join(reasons)
+                update["draw"] = "amber"
+                update["text"] = f"working, not integrated ({why}) · {row.text}"
+                update["cause_id"] = f"join:{blocking[0]}" if blocking else None
+            elif ready:
+                update["text"] = (
+                    "READY: reading WORKING and "
+                    + ", ".join(sorted(j.id for j in counted))
+                    + f" pass on real work · {row.text}"
+                )
+            out.append(row.model_copy(update=update))
+        return tuple(out)
+
+    def _join_owed(
+        self,
+        r: ModelFloorSimpleInput,
+        join: ModelFloorJoinRow,
+        rows: list[ModelFloorPieceRow],
+        by_id: dict[str, ModelFloorCause],
+    ) -> ModelFloorJoinRow:
+        cause = by_id.get(f"join:{join.id}")
+        if cause is None:
+            return join
+        side, reason = self._join_failure(r, join, rows)
+        return join.model_copy(
+            update={
+                "cause_id": cause.id,
+                "failed_side": side,
+                "failed_reason": reason,
+                "owners": cause.owners,
+                "lanes": cause.lanes,
+            }
+        )
+
+    @staticmethod
+    def _readiness(
+        r: ModelFloorSimpleInput, pieces: tuple[ModelFloorPieceRow, ...]
+    ) -> ModelFloorReadiness:
+        """The count the board reports: ready pieces, not working ones."""
+        scope = tuple(sorted(r.overlay.readiness.in_scope_pieces))
+        in_scope = [p for p in pieces if p.in_scope]
+        ready = tuple(p.piece for p in in_scope if p.ready)
+        wni = tuple(
+            p.piece for p in in_scope if p.integration == "working_not_integrated"
+        )
+        down = tuple(
+            p.piece for p in in_scope if p.integration in ("not_working", "not_started")
+        )
+        broken = tuple(
+            sorted(
+                {j.id for p in pieces for j in p.joins if j.counted and not j.passes},
+                key=_join_order,
+            )
+        )
+        by_piece = {p.piece: p for p in pieces}
+        text = (
+            f"{len(ready)} of {len(scope)} pieces in scope are ready"
+            + (f" (pieces {', '.join(map(str, ready))})" if ready else "")
+            + f"; {len(wni)} work but are not integrated"
+            + (f" (pieces {', '.join(map(str, wni))})" if wni else "")
+            # Every in-scope piece is named (OMN-23862): the ones that do not work, each with its state.
+            + f"; {len(down)} do not work"
+            + (
+                " ("
+                + ", ".join(
+                    f"piece {n} {by_piece[n].status.replace('_', ' ')}" for n in down
+                )
+                + ")"
+                if down
+                else ""
+            )
+            + f"; {len(broken)} joins do not pass"
+            + (f" ({', '.join(broken)})" if broken else "")
+            + "."
+        )
+        # Probe health, apart from integration (OMN-23862): what the probe chains say, which never counts toward READY.
+        counted_joins = {j.id: j for p in pieces for j in p.joins if j.counted}
+        health = tuple(
+            sorted((i for i, j in counted_joins.items() if j.passes), key=_join_order)
+        )
+        probe_only = tuple(i for i in health if not counted_joins[i].real_passes)
+        configured = r.overlay.readiness.real_work_configured
+        probe_text = (
+            f"Probe health: {len(health)} of {len(counted_joins)} counted joins pass on probe chains"
+            f"; {len(probe_only)} of them saw no real work in the window"
+            + (f" ({', '.join(probe_only)})" if probe_only else "")
+            + ". Probe chains never count toward ready."
+            if configured
+            else ""
+        )
+        # One typed line when the overlay carries no real_origins: the old rule applies (OMN-23862), never silence.
+        notice = (
+            ""
+            if configured
+            else "Real-work rule not configured (the readiness overlay names no real_origins): the old rule applies and a join "
+            "counts on its probe chains."
+        )
+        return ModelFloorReadiness(
+            in_scope=scope,
+            ready=ready,
+            working_not_integrated=wni,
+            not_working=down,
+            broken_joins=broken,
+            text=text,
+            probe_health_joins=health,
+            probe_only_joins=probe_only,
+            probe_health_text=probe_text,
+            real_work_rule="configured" if configured else "not_configured",
+            real_work_notice=notice,
         )
 
     # --- causes -------------------------------------------------------------------------------------------------------
@@ -930,6 +1286,16 @@ class HandlerFloorSimple:
                     r.pr_class_tickets.get(cls, ()),
                     prs=r.pr_class_prs.get(cls, ()),
                 )
+        if r.unticketed_prs:
+            add(
+                UNTICKETED_PRS_ID,
+                "Pull requests cite no ticket",
+                f"{len(r.unticketed_prs)} open pull requests name no ticket in the title or a Ticket line of the body.",
+                len(r.unticketed_prs),
+                "pull requests",
+                (),
+                prs=r.unticketed_prs,
+            )
         for item in r.stoppages:
             if item.id in ov.ignore_stoppages:
                 continue
@@ -979,6 +1345,40 @@ class HandlerFloorSimple:
                 "broken chains",
                 (),
             )
+        for row in rows:
+            for join in row.joins:
+                if not join.counted or join.passes or r.receipts is None:
+                    continue
+                side, reason = self._join_failure(r, join, rows)
+                names = {p.piece: p.name.lower() for p in r.overlay.pieces}
+                side_piece = {
+                    "from": join.from_piece,
+                    "to": join.to_piece,
+                }.get(side)
+                where = (
+                    f"the {side} side, piece {side_piece}, {names[side_piece]}"
+                    if side_piece
+                    else "neither side alone"
+                )
+                state_words = {
+                    "not_run": "has never run",
+                    "golden_only": "has only half run",
+                    "error_only": "has only half run",
+                    "broken": "is broken",
+                }.get(join.state, f"reads {join.state}")
+                ran = (
+                    _ago(join.last_run_age_s)
+                    if join.last_run_age_s is not None
+                    else "never run"
+                )
+                add(
+                    f"join:{join.id}",
+                    f"Join {join.id} {state_words}: {join.label}",
+                    f"{join.definition}. Failed: {where}. {reason}. Last run: {ran}.",
+                    1,
+                    "joins",
+                    (),
+                )
         undelivered = [a for a in r.alarms if a.delivery == "undelivered"]
         if undelivered:
             add(
@@ -1260,6 +1660,11 @@ class HandlerFloorSimple:
         return "Nothing is holding things up.", subline
 
     @staticmethod
+    def _finished(row: ModelFloorPieceRow) -> bool:
+        """A piece the rebuild is done with: ready when it is in scope, working when it is not."""
+        return row.ready if row.in_scope else row.status == "working"
+
+    @staticmethod
     def _rebuild(
         r: ModelFloorSimpleInput, rows: list[ModelFloorPieceRow]
     ) -> ModelRebuild:
@@ -1275,7 +1680,7 @@ class HandlerFloorSimple:
                     for x in rows
                     if (x.piece <= go or x.piece in r.go_pieces)
                     and x.piece not in ov.rebuild.step0_pieces
-                    and x.status != "working"
+                    and not HandlerFloorSimple._finished(x)
                 ),
                 min(go + 1, max(x.piece for x in rows)),
             )
@@ -1288,7 +1693,11 @@ class HandlerFloorSimple:
         else:
             gate = ""
         status = (
-            "not started"
+            "working, not integrated"
+            if row.integration == "working_not_integrated"
+            else "ready"
+            if row.ready
+            else "not started"
             if row.status == "not_started"
             else row.status.replace("_", " ")
         )

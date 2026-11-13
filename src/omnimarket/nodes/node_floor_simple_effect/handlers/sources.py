@@ -18,6 +18,8 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
+from pydantic import JsonValue, ValidationError
+
 from omnimarket.handlers.floor_projection import ProjectionPayload
 from omnimarket.models.floor_17a import (
     ModelFloorCauseIn,
@@ -132,11 +134,15 @@ _LIVENESS_OF_STATE = {
 }
 
 
-def read_work_state(path: Path) -> ModelWorkStateResult | None:
-    """The work-state projection as the projection node wrote it, or None when it is absent or not a projection."""
+def work_state_from_payload(
+    payload: dict[str, JsonValue] | None,
+) -> ModelWorkStateResult | None:
+    """The work-state projection from the payload of the ``work_state`` floor projection, or None when it is unknown or not a projection."""
+    if payload is None:
+        return None
     try:
-        return ModelWorkStateResult.model_validate_json(path.read_bytes())
-    except (OSError, ValueError):
+        return ModelWorkStateResult.model_validate(payload)
+    except ValidationError:
         return None
 
 
@@ -238,6 +244,15 @@ def work_state_lanes(projection: ModelWorkStateResult) -> tuple[ModelFloorLane, 
             )
         )
     return tuple(lanes)
+
+
+def work_state_unticketed_prs(projection: ModelWorkStateResult) -> tuple[str, ...]:
+    """The pull requests ("repo#number") the projection flags as needing a ticket, in the projection's key order."""
+    return tuple(
+        item.key.removeprefix(_PR_PREFIX)
+        for item in projection.items
+        if item.kind is EnumWorkItemKind.PULL_REQUEST and item.needs_ticket
+    )
 
 
 def merge_lanes(
@@ -945,12 +960,21 @@ def read_deploy_lag(
     # the row, so a red that means "not placed" is not read as "not deployed".
     unread = [str(u) for u in merged.get("evidence_unread") or [] if str(u)]
     unread_note = f"; evidence unread: {unread[0][:110]}" if unread else ""
+    ceiling = overlay.deploy_lag_ceiling_minutes
     subjects = [
         ModelLabSubject(
             name=key,
-            ok=lag <= limit,
+            ok=lag <= limit and (ceiling is None or lag <= ceiling),
             value=float(lag),
-            note=f"merged, not running, {lag} min{'' if lag <= limit else f', over the {limit:g} min limit'}{unread_note}",
+            note=f"merged, not running, {lag} min"
+            + (
+                f", over the {ceiling} min ceiling"
+                if ceiling is not None and lag > ceiling
+                else f", over the {limit:g} min limit"
+                if lag > limit
+                else ""
+            )
+            + unread_note,
         )
         for key, lag in lags[:3]
     ]
@@ -1120,6 +1144,7 @@ def overlay_store_events(
         correlation_id=correlation_id,
         phase="start",
         emitted_at=now,
+        origin="probe",
     )
     if read.status != "read":
         code, detail = "overlay_store_unread", read.reason

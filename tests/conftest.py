@@ -1147,6 +1147,48 @@ def _isolate_local_secret_store(
     )
 
 
+# OMN-23631: the input ceilings are an overlay value of node_delegation_code_budget_compute and routing refuses
+# when no root holds that overlay (no packaged value, no fallback). Every test therefore starts with a root that holds
+# the node's test fixture overlay, put in front of the roots the environment already names; a test that sets its own
+# ONEX_SKILL_OVERLAY_ROOTS after this fixture replaces it and brings its own overlay.
+_CODE_BUDGET_FIXTURE_OVERLAY = (
+    Path(__file__).resolve().parent
+    / "nodes"
+    / "node_delegation_code_budget_compute"
+    / "fixtures"
+    / "overlays"
+    / "node_delegation_code_budget_compute"
+    / "overlay.yaml"
+)
+
+
+@pytest.fixture(scope="session")
+def code_budget_overlay_root(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    root = tmp_path_factory.mktemp("omn23631-code-budget-overlay")
+    target = root / "node_delegation_code_budget_compute" / "overlay.yaml"
+    target.parent.mkdir(parents=True)
+    target.write_text(
+        _CODE_BUDGET_FIXTURE_OVERLAY.read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    return root
+
+
+@pytest.fixture(autouse=True)
+def _code_budget_overlay_in_roots(
+    monkeypatch: pytest.MonkeyPatch, code_budget_overlay_root: Path
+) -> None:
+    # OMN-23826: load_delegation_routing_overlay reads the delegation_routing document under these roots before the
+    # DELEGATION_ROUTING_OVERLAY_PATH pin, so a host whose roots hold the house document would route every test through
+    # it; the ambient roots that hold one are left out. A test that wants one names its own root.
+    ambient = [
+        root
+        for root in os.environ.get("ONEX_SKILL_OVERLAY_ROOTS", "").split(os.pathsep)
+        if root and not (Path(root) / "delegation_routing" / "overlay.yaml").is_file()
+    ]
+    roots = [str(code_budget_overlay_root), *ambient]
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", os.pathsep.join(roots))
+
+
 @pytest.fixture
 def register_local_secret() -> Callable[[str, str], None]:
     """Register a provider credential in the isolated local store.

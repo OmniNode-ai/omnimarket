@@ -38,7 +38,14 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 # beb08a83c93e: omnibase_infra#5602 (OMN-19986, OMN-19991), same core pin.
 # 33b470fda2b8: omnibase_infra#5768 (OMN-22899, vendors view_seam_readings and its grant), core b002ec3ceab1.
 # 8b4382a1606d: omnibase_infra#5818 vendors node_projection_delegation 0068; core pin unchanged.
+# 0ddea3131fd0: omnibase_infra#5833 vendors the gate store migrations (OMN-23055); core is unchanged.
+# 25ae57b628a4: omnibase_infra#5890 (OMN-23705) vendors the work ledger latest-state migrations 0011 and 0012 and the runtime grant; core is unchanged.
 # 440ae9e031dc: omnibase_infra#5815 (OMN-18595, OMN-23424) moves infra to core cd128b790ec6, which carries the ticket validator (omnibase_core#2281).
+# 6e29faa59eeb: omnibase_infra#5883 adds tenant_id to ModelCiBusLane; core is unchanged.
+# a349fbf4478e: omnibase_infra#5894 (OMN-23838) moves infra to core 6cbe67b216fe, which carries the delegation routing order models (omnibase_core#2309).
+# df3f14f5e6b9: omnibase_infra#5896 (OMN-23858) grants the runtime account the four merge override tables; core is unchanged.
+# aa87c2dd6abe: omnibase_infra#5901 (OMN-23896) grants the runtime account the two host disk tables; core is unchanged.
+# b0b00a52dd57: omnibase_infra#5906 (OMN-23932) moves infra to core a85cb916d4c1, which carries ModelDevTagLineageFacts.version_derived the moved dev-tag lineage handler fills.
 INFRA_CORE_TAGS: tuple[tuple[str, str], ...] = (
     ("091013fd7adb", "dev-20261030152335-66d35d2283c3"),
     ("4284f5bf5587", "dev-20261031000524-fc6159b98026"),
@@ -49,6 +56,13 @@ INFRA_CORE_TAGS: tuple[tuple[str, str], ...] = (
     ("e64fe3502b45", "dev-20261108014124-2fe30fd9dc47"),
     ("8b4382a1606d", "dev-20261108014124-2fe30fd9dc47"),
     ("440ae9e031dc", "dev-20261109065232-cd128b790ec6"),
+    ("0ddea3131fd0", "dev-20261109065232-cd128b790ec6"),
+    ("6e29faa59eeb", "dev-20261109065232-cd128b790ec6"),
+    ("25ae57b628a4", "dev-20261109065232-cd128b790ec6"),
+    ("a349fbf4478e", "dev-20261111160725-6cbe67b216fe"),
+    ("df3f14f5e6b9", "dev-20261111160725-6cbe67b216fe"),
+    ("aa87c2dd6abe", "dev-20261111160725-6cbe67b216fe"),
+    ("b0b00a52dd57", "dev-20261111183916-a85cb916d4c1"),
 )
 
 _GIT_SOURCE = re.compile(
@@ -118,8 +132,8 @@ def test_the_core_pin_is_the_one_the_infra_pin_names() -> None:
 
 
 def test_omnimarket_pins_the_newest_recorded_infra_and_core_pair() -> None:
-    """The lock moves with the newest recorded row: infra 440ae9e031dc and core cd128b790ec6."""
+    """The lock moves with the newest recorded row: infra b0b00a52dd57 and core a85cb916d4c1."""
     infra_tag, infra_sha = _locked_dev_tag("omnibase-infra")
     core_tag, _ = _locked_dev_tag("omnibase-core")
     assert (infra_sha[:12], core_tag) == INFRA_CORE_TAGS[-1]
-    assert infra_tag == "dev-20261110042858-440ae9e031dc"
+    assert infra_tag == "dev-20261112083258-b0b00a52dd57"

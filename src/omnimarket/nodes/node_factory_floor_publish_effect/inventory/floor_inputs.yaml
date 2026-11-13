@@ -50,11 +50,12 @@ inputs:
     class: file
     where: .onex_state/work-state/work-state.json; .onex_state/work-state/snapshots (the projection's last good read of each of its sources)
     read_by: [node_floor_simple_effect]
-    steps: [floor_simple]
+    steps: [floor_simple, floor_projections]
     producer: node_work_state_projection_effect, run by the publish tick and the fill orchestrator on the Mac
     replacement: {node: node_work_state_projection_effect, topic: onex.snapshot.projection.floor-work-state.v1, status: new}
-    ticket: NEED-CHILD-TICKET:floor-lane-list-projection
-    notes: The lanes the floor draws (attributed from their CLAIM cells), the tickets a lane left stopped, the pull requests the goal's ticket rule keeps in scope, and the delegation tickets.
+    ticket: OMN-23391
+    pr: omnimarket branch omn-23391-floor-lane-list-projection
+    notes: The lanes the floor draws (attributed from their CLAIM cells), the tickets a lane left stopped, the pull requests the goal's ticket rule keeps in scope, and the delegation tickets. The projection is refused over 900000 bytes with its size, never cut. The file stays for the lab fill, which reads it too (row lab_fill_work_state_file).
   # ---- file inputs, in the order they move after those -------------------------------------------------------------------------------
   - id: pr_watcher_state
     order: 3
@@ -69,9 +70,9 @@ inputs:
   - id: ledger_rows_file_and_query
     order: 4
     class: command
-    where: python $CLAUDE_PLUGIN_ROOT/scripts/onex_ledger.py query --since 14d --archives (factory floor record); contract ledger route file with the ledger path variable and its archive/ (floor simple, work state, process health, join_j5, join_refusal)
-    read_by: [node_factory_floor_effect, node_floor_simple_effect, node_work_state_projection_effect, node_process_health_effect, node_work_ledger_append_effect, node_join_refusal_effect]
-    steps: [factory_floor, floor_simple, process_health, join_j5, join_refusal]
+    where: python $CLAUDE_PLUGIN_ROOT/scripts/onex_ledger.py query --since 14d --archives (factory floor record; the unresolved step reads its four unresolved reads into .onex_state/factory-floor/unresolved-rows.json); contract ledger route file with the ledger path variable and its archive/ (floor simple, work state, process health, join_j5, join_refusal)
+    read_by: [node_factory_floor_effect, node_factory_floor_unresolved_effect, node_floor_simple_effect, node_work_state_projection_effect, node_process_health_effect, node_work_ledger_append_effect, node_join_refusal_effect]
+    steps: [factory_floor, factory_floor_unresolved, floor_simple, process_health, join_j5, join_refusal]
     producer: the rolling work ledger file on the Mac
     replacement: {node: node_projection_work_ledger, topic: onex.snapshot.projection.work-ledger-rows.v1, status: new}
     ticket: NEED-CHILD-TICKET:floor-ledger-route-bus
@@ -194,6 +195,16 @@ inputs:
     producer: node_host_drift_fleet (its persisted fold)
     replacement: {node: node_host_drift_fleet, topic: onex.snapshot.projection.host-drift-fleet.v1, status: new}
     ticket: NEED-CHILD-TICKET:floor-host-drift-projection
+  - id: lab_fill_work_state_file
+    order: 14
+    class: file
+    where: .onex_state/work-state/work-state.json (read by the lab fill's local adapters, not by the floor publish)
+    read_by: [node_lab_fill_effect]
+    steps: []
+    producer: node_work_state_projection_effect
+    replacement: {node: node_work_state_projection_effect, topic: onex.snapshot.projection.floor-work-state.v1, status: new}
+    ticket: NEED-CHILD-TICKET:floor-lab-fill-work-state-projection
+    notes: Another reader of the file the lane list came from; it moves to the same projection after the floor does, so the file can then be retired.
   - id: lab_alarm_runs
     order: 15
     class: jsonl
@@ -217,7 +228,7 @@ inputs:
     class: jsonl
     where: .onex_state/floor-simple/emissions.jsonl
     read_by: [node_floor_simple_effect, node_floor_compare_effect, node_host_reading_effect, node_work_ledger_append_effect, node_join_refusal_effect]
-    steps: [floor_simple, floor_compare, join_j2, join_j5, join_refusal]
+    steps: [floor_simple, floor_compare, join_j2, join_j5, join_refusal, floor_emissions]
     producer: every node of the floor's emission contract, through the JSONL sink
     replacement: {node: node_floor_emission_compute, topic: onex.snapshot.projection.floor-emissions.v1, status: new}
     ticket: NEED-CHILD-TICKET:floor-emission-journal-projection
@@ -253,10 +264,10 @@ inputs:
   - id: delegation_scenario_reads
     order: 20
     class: file
-    where: .onex_state/floor-delegation/scenario-runs.json
+    where: .onex_state/floor-delegation/scenario-runs.json; .onex_state/floor-delegation/route-reads.json (the routes stage's delegations per hour by route)
     read_by: [node_floor_delegation_effect]
     steps: [delegation_tracker]
-    producer: node_floor_delegation_effect itself (scm run-list, kept between cycles)
+    producer: node_floor_delegation_effect itself (scm run-list and the delegation routes stage, kept between cycles)
     replacement: {node: node_floor_delegation_effect, topic: onex.snapshot.projection.delegation-scenario-reads.v1, status: new}
     ticket: NEED-CHILD-TICKET:floor-mvp-launch-projection
   - id: delegation_route_reads
@@ -295,6 +306,24 @@ inputs:
     producer: the lab check run overlay and the ledger's golden stop drill readings
     replacement: {node: node_lab_check_run_effect, topic: onex.snapshot.projection.join-j7.v1, status: new}
     ticket: OMN-23420
+  - id: join_j16_ledger_reads
+    order: 21
+    class: command
+    where: python -m omnimarket.nodes.node_join_j16_effect run (reads the newest eval reading of piece 16 on the ledger and the floor record, writes the chains to the emission journal)
+    read_by: [node_join_j16_effect]
+    steps: [join_j16]
+    producer: the ledger's eval readings and the floor record
+    replacement: {node: node_join_j16_effect, topic: onex.snapshot.projection.join-j16.v1, status: new}
+    ticket: NEED-CHILD-TICKET:floor-join-j7-j16-projection
+  - id: join_j0_floor_record_reads
+    order: 21
+    class: file
+    where: python -m omnimarket.nodes.node_join_j0_effect run (reads the floor record the previous cycle wrote, the served floor-simple.json source, and writes the join's chains to the emission journal)
+    read_by: [node_join_j0_effect]
+    steps: [join_j0]
+    producer: the floor simple node's floor record
+    replacement: {node: node_join_j0_effect, topic: onex.snapshot.projection.join-j0.v1, status: new}
+    ticket: OMN-23747
   - id: network_reads
     order: 21
     class: http
@@ -368,11 +397,20 @@ inputs:
     class: config
     where: ONEX_FACTORY_FLOOR_PUBLISH_OVERLAY; ONEX_FACTORY_FLOOR_OVERLAY; ONEX_FLOOR_SIMPLE_OVERLAY; ONEX_LAB_STATE_OVERLAY; ONEX_LAB_STATE_ALARM_OVERLAY; ONEX_PRODUCT_FLOOR_VERDICT_OVERLAY; ONEX_MVP_LAUNCH_OVERLAY; ONEX_GOAL_SCOPE_OVERLAY; ONEX_GOAL_SCOPE_TICKET_RULE_OVERLAY; ONEX_FLOOR_DELEGATION_OVERLAY; ONEX_FLOOR_PIECE_MEASURES_OVERLAY (default node_floor_compare_effect/overlay.example.yaml); ONEX_FRICTION_CLASS_OVERLAY; ONEX_WORK_STATE_OVERLAY; ONEX_FLOOR_PROJECTION_OVERLAY; ONEX_LAB_RUN_HOSTS; DELEGATION_HEALTH_OVERLAY_PATH; RUNTIME_HOST_READS_OVERLAY_PATH; each node's contract.yaml
     read_by: [every floor node]
-    steps: [publish, factory_floor, floor_simple, floor_compare, delegation_tracker, floor_projections, join_j2, join_j5, join_refusal, friction_classed, runner_fleet, process_health, mvp_launch_reads, floor_canary, hosts, pool, friction]
+    steps: [publish, factory_floor, floor_simple, floor_compare, delegation_tracker, floor_projections, join_j2, join_j5, join_refusal, join_j7, friction_classed, runner_fleet, process_health, mvp_launch_reads, floor_canary, hosts, pool, friction]
     producer: the overlays repository, delivered through node_overlay_store_load_effect and node_projection_overlay_store
     replacement: {node: node_overlay_store_read_effect, topic: onex.snapshot.projection.overlay-store.v1, status: exists}
     ticket: OMN-22478
     notes: Already on the bus with a stamped local snapshot (RULING 2026-11-06T00:23:28Z); the floor's row for the store's freshness is the overlay_store_fleet row above.
+  - id: repository_names_overlay
+    order: 25
+    class: config
+    where: ONEX_FLOOR_REPOSITORY_NAMES_OVERLAY; .onex_state/floor-compare/repository-names.yaml; node_floor_compare_effect/overlay.repository_names.yaml
+    read_by: [node_floor_compare_effect]
+    steps: [floor_compare]
+    producer: the overlays repository, delivered through node_overlay_store_load_effect and node_projection_overlay_store; a host's own file under the state directory takes precedence when it exists
+    replacement: {node: node_overlay_store_read_effect, topic: onex.snapshot.projection.overlay-store.v1, status: exists}
+    ticket: OMN-23134
   - id: packaged_pages
     order: 26
     class: static_asset

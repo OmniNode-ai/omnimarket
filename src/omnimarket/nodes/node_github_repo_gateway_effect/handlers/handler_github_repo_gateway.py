@@ -39,6 +39,7 @@ from omnimarket.handlers.node_overlay_reader import (
     find_node_overlay,
     load_structured_overlay,
 )
+from omnimarket.models.github_landing.model_transport_error import GitHubTransportError
 from omnimarket.models.model_github_gateway_io import (
     DEFAULT_LOG_TAIL_BYTES,
     EnumGithubGatewayOperation,
@@ -50,6 +51,10 @@ from omnimarket.models.model_github_gateway_io import (
 )
 from omnimarket.models.model_job_log_cache_miss import JOB_LOG_CACHE_MISS
 from omnimarket.nodes.node_github_repo_gateway_effect.dispatcher import dispatch
+from omnimarket.nodes.node_github_repo_gateway_effect.handlers.miss_fill_budget import (
+    MissFillBudget,
+    MissFillBudgetSpentError,
+)
 from omnimarket.nodes.node_github_repo_gateway_effect.models.model_job_log_cache import (
     ModelCachedJobLog,
     ModelJobLogCachePolicy,
@@ -65,7 +70,6 @@ from omnimarket.nodes.node_github_repo_gateway_effect.transport import (
     GitHubReadTransportProtocol,
     RealGitHubReadTransport,
 )
-from omnimarket.nodes.node_merge_sweep_compute.protocols import GitHubTransportError
 
 _HANDLER_ID = "node_github_repo_gateway_effect"
 _JOB_LOG_OPERATIONS = frozenset(
@@ -89,6 +93,14 @@ def declared_cache_policy() -> ModelJobLogCachePolicy:
 def lane_reads_cache_only() -> bool:
     """Whether a lane's ``job-log`` read answers from the cache only (declared, never coded)."""
     return declared_cache_policy().lane_reads_cache_only
+
+
+def lane_job_log_flag() -> str | None:
+    """The request flag a lane's ``job-log`` read carries, from the declared policy."""
+    policy = declared_cache_policy()
+    if not policy.lane_reads_cache_only:
+        return None
+    return "fill_on_miss" if policy.lane_miss_fill_max > 0 else "cache_only"
 
 
 def cache_policy() -> ModelJobLogCachePolicy:
@@ -127,8 +139,11 @@ class JobLogCacheTransport:
         transport: GitHubReadTransportProtocol | None,
         *,
         ttl_seconds: int = 86400,
+        miss_budget: MissFillBudget | None = None,
     ) -> None:
         self.root, self.transport, self.ttl_seconds = root, transport, ttl_seconds
+        self.miss_budget = miss_budget
+        self._miss_spent = False
 
     def handle(
         self, request: ModelGithubGatewayRequest
@@ -136,6 +151,7 @@ class JobLogCacheTransport:
         if request.job_id is None:
             raise ValueError("job log requires job_id")
         self.request = request
+        self._miss_spent = False
         # A fill wants the whole log in the shared cache, so it never settles for a runner's
         # partial copy of the window.
         legacy = (
@@ -233,6 +249,23 @@ class JobLogCacheTransport:
                 f"{self.root} (entry {self.raw.name}); node_job_log_filler_effect "
                 f"fills that cache from merge-relevant runs"
             )
+        if (
+            self.request.fill_on_miss
+            and self.miss_budget is not None
+            and not self._miss_spent
+        ):
+            try:
+                self.miss_budget.spend()
+            except MissFillBudgetSpentError:
+                raise GitHubTransportError(
+                    f"{JOB_LOG_CACHE_MISS}: no GitHub call made; the lane miss-fill "
+                    f"budget ({self.miss_budget.max_fills} fills per "
+                    f"{self.miss_budget.window_seconds} s) is spent; job "
+                    f"{self.request.job_id} of {self.request.repo} is not under "
+                    f"the job-log cache path {self.root} (entry {self.raw.name}); "
+                    f"node_job_log_filler_effect fills that cache from merge-relevant runs"
+                ) from None
+            self._miss_spent = True
         return self.transport
 
     def _metadata(self) -> ModelCachedJobLog | None:
@@ -364,9 +397,23 @@ class HandlerGithubRepoGatewayEffect:
             and request.operation is not EnumGithubGatewayOperation.JOB_LOG_TAIL
         ):
             raise ValueError("cache_only is supported only for job_log_tail")
+        if (
+            request.fill_on_miss
+            and request.operation is not EnumGithubGatewayOperation.JOB_LOG_TAIL
+        ):
+            raise ValueError("fill_on_miss is supported only for job_log_tail")
+        policy = cache_policy()
+        assert policy.root is not None
+        cache_only = request.cache_only
+        if (
+            request.fill_on_miss
+            and request.operation is EnumGithubGatewayOperation.JOB_LOG_TAIL
+            and policy.lane_miss_fill_max == 0
+        ):
+            cache_only = True
         transport = (
             None
-            if request.cache_only
+            if cache_only
             else RealGitHubReadTransport(await resolve_github_token_async())
         )
         result: GithubGatewayResult
@@ -374,11 +421,21 @@ class HandlerGithubRepoGatewayEffect:
             # job_log_fill and an uncached job_log_tail share one path: a hit is served from
             # the host-shared cache, and a miss downloads that one job's log (the transport
             # above is None only for a cache_only tail, which refuses the miss instead).
-            policy = cache_policy()
-            assert policy.root is not None
+            miss_budget = (
+                MissFillBudget(
+                    policy.root,
+                    max_fills=policy.lane_miss_fill_max,
+                    window_seconds=policy.lane_miss_fill_window_seconds,
+                )
+                if request.fill_on_miss and policy.lane_miss_fill_max > 0
+                else None
+            )
             result = await asyncio.to_thread(
                 JobLogCacheTransport(
-                    policy.root, transport, ttl_seconds=policy.ttl_seconds
+                    policy.root,
+                    transport,
+                    ttl_seconds=policy.ttl_seconds,
+                    miss_budget=miss_budget,
                 ).handle,
                 request,
             )
@@ -398,4 +455,7 @@ class HandlerGithubRepoGatewayEffect:
         )
 
 
-__all__: list[str] = ["HandlerGithubRepoGatewayEffect"]
+__all__: list[str] = [
+    "HandlerGithubRepoGatewayEffect",
+    "lane_job_log_flag",
+]

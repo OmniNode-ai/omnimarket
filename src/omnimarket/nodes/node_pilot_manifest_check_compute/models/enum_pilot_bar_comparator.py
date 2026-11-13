@@ -1,13 +1,9 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""How a measured value is held against a bar criterion's threshold."""
+"""Re-export: EnumPilotBarComparator lives in omnimarket.models.pilot_manifest, shared by the manifest check and the pilot measurement node."""
 
-from __future__ import annotations
+from omnimarket.models.pilot_manifest.enum_pilot_bar_comparator import (
+    EnumPilotBarComparator,
+)
 
-from enum import StrEnum
-
-
-class EnumPilotBarComparator(StrEnum):
-    GE = "ge"
-    LE = "le"
-    EQ = "eq"
+__all__ = ["EnumPilotBarComparator"]

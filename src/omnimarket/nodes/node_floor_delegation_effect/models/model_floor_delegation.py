@@ -23,7 +23,7 @@ class _Frozen(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
 
-ScenarioState = Literal["pass", "fail", "no_run", "no_workflow", "unread"]
+ScenarioState = Literal["pass", "fail", "no_run", "no_workflow", "unread", "stale"]
 ScenarioReadKind = Literal["read", "no_workflow", "unread"]
 ScenarioSource = Literal["workflow", "lab_node"]
 TicketGroup = Literal[
@@ -103,6 +103,7 @@ class ModelDelegationContractRuntime(_Frozen):
     scenario_read_timeout_seconds: int = Field(gt=0)
     scenario_stage_deadline_seconds: int = Field(gt=0)
     scenario_refresh_seconds: int = Field(gt=0)
+    scenario_missing_refresh_seconds: int = Field(gt=0)
     scenario_reads_max_age_seconds: int = Field(gt=0)
     ledger_read_command_env: str = Field(min_length=1)
     ledger_read_timeout_seconds: int = Field(gt=0)
@@ -164,6 +165,7 @@ class ModelScenarioRead(_Frozen):
     read_at: str
     runs: tuple[ModelScenarioRun, ...] = ()
     reason: str = ""
+    read_seconds: float | None = None
 
 
 class ModelScenarioReads(_Frozen):
@@ -241,6 +243,7 @@ class ModelScenarioResult(_Frozen):
     latest_at: str = ""
     latest_url: str = ""
     latest_conclusion: str = ""
+    stale_since: str = ""
     age_seconds: int | None = None
     overdue: bool = False
     in_progress: bool = False
@@ -249,6 +252,7 @@ class ModelScenarioResult(_Frozen):
     builder_ticket: str | None = None
     builder_group: TicketGroup | None = None
     workflow_url: str = ""
+    read_seconds: float | None = None
 
 
 class ModelStartPart(_Frozen):
@@ -298,6 +302,7 @@ class ModelDelegationCounts(_Frozen):
     scenarios_not_built: int
     scenarios_no_run: int
     scenarios_unread: int
+    scenarios_stale: int = 0
     tickets_total: int
     groups: tuple[ModelGroupCount, ...]
     pr_open_red: int

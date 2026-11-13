@@ -532,7 +532,7 @@ def test_cause_scenario_s21_cluster_of_three_gets_one_lease_and_no_per_pr_dispat
     assert action.cause_brief is not None
     assert action.cause_brief.brief_class.value == "shared_cause"
     assert action.cause_brief.attempt == 1
-    assert action.cause_brief.engine.value == "codex_high"
+    assert action.cause_brief.engine.value == "claude_sonnet"
     assert member_prs(action) == [f"{REPO}#1", f"{REPO}#2", f"{REPO}#3"]
     lease = world.lease(key)
     assert lease.deadline_at - lease.dispatched_at == timedelta(seconds=5400)
@@ -751,7 +751,7 @@ def test_cause_scenario_s27_cause_not_shared_returns_members_to_per_pr_rung_zero
     assert sorted(a.subject for a in per_pr) == [p.key for p in prs]
     for action in per_pr:
         assert action.brief is not None
-        assert action.brief.engine.value == "codex_high"
+        assert action.brief.engine.value == "claude_sonnet"
         assert action.brief.brief_class.value == "real_red"
     records = {r.pr: r for r in world.state.records}
     assert all(records[p.key].ladder_index == 0 for p in prs)
@@ -1360,7 +1360,7 @@ def _assert_fallback_once(
     assert sorted(per_pr_dispatched(park)) == members
     for action in actions_of(park, "dispatch_worker"):
         assert action.brief is not None
-        assert action.brief.engine.value == "codex_high"
+        assert action.brief.engine.value == "claude_sonnet"
         assert action.brief.brief_class.value == "real_red"
     assert world.cause(key).parked_until is not None
     for _ in range(3):  # parked, members working: no cause worker, no second ticket
@@ -1585,7 +1585,7 @@ def test_park_default_third_attempt_is_one_opus_diagnosis_with_no_operator_msg()
     assert brief.engine.value == "claude_sonnet"
     assert brief.brief_class.value == "cause_diagnosis"
     assert [a.engine.value for a in brief.prior_attempts] == [
-        "codex_high",
+        "claude_sonnet",
         "claude_sonnet",
     ]
     assert {a.outcome.value for a in brief.prior_attempts} == {"external_blocker"}
@@ -1627,7 +1627,7 @@ def test_park_default_files_ticket_after_a_third_failure_and_asks_nobody() -> No
     assert ticket.dedupe_key == f"{key}@{rec.parked_until.isoformat()}"
     assert [m.pr for m in ticket.members] == [p.key for p in three()]
     assert [a.engine.value for a in ticket.attempts] == [
-        "codex_high",
+        "claude_sonnet",
         "claude_sonnet",
         "claude_sonnet",
     ]

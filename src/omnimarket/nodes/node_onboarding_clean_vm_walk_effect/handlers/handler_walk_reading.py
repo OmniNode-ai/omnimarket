@@ -88,10 +88,11 @@ class HandlerWalkReading:
         if published is None:
             reasons.append(REASON_TIME_UNREADABLE)
         else:
-            age = int((request.now - published).total_seconds())
-            if age < 0:
+            elapsed = (request.now - published).total_seconds()
+            age = int(elapsed)
+            if elapsed < 0:
                 reasons.append(REASON_FINISHED_AFTER_NOW)
-            elif age > request.max_age_seconds:
+            elif elapsed > request.max_age_seconds:
                 reasons.append(REASON_STALE)
         return ModelWalkReading(
             verdict=(

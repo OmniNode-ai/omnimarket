@@ -642,6 +642,19 @@ def test_error_the_control_is_a_typed_failure_of_the_host_stage_that_never_start
     assert [e.phase for e in graph] == ["start", "failure"]
 
 
+def test_error_the_failing_control_chains_say_control_and_the_graph_run_chains_say_probe(
+    world: JoinWorld,
+) -> None:
+    sink = InMemoryEmissionSink()
+    run_with_control(world, sink)
+    control = [e for e in sink.events if e.correlation_id == "graph-run-control-real"]
+    assert control
+    assert all(e.origin == "control" for e in control)
+    graph = [e for e in sink.events if e.correlation_id == "graph-run-real"]
+    assert graph
+    assert all(e.origin == "probe" for e in graph)
+
+
 def test_control_without_the_control_run_the_join_reads_golden_only_not_passed(
     world: JoinWorld,
 ) -> None:

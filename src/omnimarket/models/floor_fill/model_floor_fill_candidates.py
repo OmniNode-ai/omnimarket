@@ -19,6 +19,7 @@ from omnimarket.models.floor_fill.model_start_criterion import (
     M0Verdict,
     ModelFloorStartCriterion,
 )
+from omnimarket.models.model_factory_floor_input import ItemState
 
 OVERLAY_KEYS = (
     "max_age_minutes",
@@ -40,6 +41,8 @@ LineVerdict = Literal[
     "STARTABLE", "NEEDS-TICKET", "UNTICKETABLE", "AT-CAPACITY", "NO-STARTABLE"
 ]
 StoppedVerdict = Literal["STARTABLE", "AT-CAPACITY", "NO-STOPPED"]
+# The value the writer's closing row carries in its ``needs`` cell when the cell could not be read: it names no ask.
+NEEDS_UNPARSED = "unparsed"
 # The line id a stopped lane's entry-ticket verdict and state entries are keyed under: ``stopped:<lane>``.
 STOPPED_LINE = "stopped"
 STOPPED_KEY_PREFIX = "stopped:"
@@ -280,7 +283,7 @@ class ModelRecordItem(BaseModel):
 
     id: str
     kind: str
-    state: Literal["done", "active", "prep", "wait", "stop"]
+    state: ItemState
     note: str = ""
     prs: tuple[str, ...] = ()
 
@@ -337,6 +340,8 @@ class ModelRecordStopped(BaseModel):
     branch: str = ""
     head: str = ""
     prs: tuple[str, ...] = ()
+    # The closing row's typed ask as the floor compute writes it: ``<action>:<target>``, ``unparsed`` or empty.
+    needs: str = ""
     rows: tuple[str, ...] = ()
     report_path: str = ""
 

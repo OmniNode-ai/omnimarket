@@ -41,6 +41,7 @@ from omnibase_core.models.delegation.wire import ModelDelegationProvenance
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
+from omnimarket.enums.enum_probe_rung_credential import EnumProbeRungCredential
 from omnimarket.enums.enum_usage_source import EnumUsageSource
 from omnimarket.handlers.execution_budget_overlay import EXECUTION_BUDGET_OVERLAY_ID
 from omnimarket.handlers.node_overlay_reader import (
@@ -55,8 +56,10 @@ from omnimarket.models.delegation.wire.model_delegate_skill_request import (
 )
 from omnimarket.models.delegation.wire.model_probe_ladder import (
     READINESS_PROBE_SOURCE_SURFACE,
-    ModelProbeLadder,
-    ModelProbeRung,
+)
+from omnimarket.models.delegation.wire.model_probe_ladder_credentialed import (
+    ModelProbeLadderCredentialed,
+    ModelProbeRungCredentialed,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill import (
     HandlerDelegateSkill,
@@ -93,6 +96,8 @@ class ModelRungScript(BaseModel):
     max_tokens: int | None = Field(default=None, ge=1)
     #: What the in-memory backend books for an answered call on this rung (a paid rung's scripted, measured cost).
     scripted_cost_usd: Decimal = Field(default=Decimal("0"), ge=0)
+    #: The state the rung declares for its provider credential; absent rungs are never attempted (OMN-23511).
+    credential: EnumProbeRungCredential = EnumProbeRungCredential.NOT_REQUIRED
 
 
 class ModelLegSpec(BaseModel):
@@ -127,6 +132,8 @@ class ModelAttemptFact(BaseModel):
     acceptance_detail: str = ""
     http_status: int | None = None
     size_band: str | None = None
+    #: The host that served the attempt, from the attempt record's lineage; None when the record names none.
+    host: str | None = None
 
 
 class ModelLegOutcome(BaseModel):
@@ -380,15 +387,13 @@ def _stub_handler(rung: ModelRungScript, answer: str) -> type[BaseHTTPRequestHan
 
 def seed_probe_tenant(db_path: Path, slug: str) -> None:
     """Mirror the probe tenant into the evidence store the run writes to, as the registry projection does."""
-    from omnimarket.local_deployment.tenant_identity import (
-        _ensure_tables_on,
-        _write_mirror_row,
-    )
+    from omnimarket.handlers.local_identity_mirror import write_mirror_row
+    from omnimarket.local_deployment.tenant_identity import _ensure_tables_on
     from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
 
     adapter = SqliteDatabaseAdapter(db_path)
     _ensure_tables_on(adapter)
-    _write_mirror_row(
+    write_mirror_row(
         adapter,
         tenant_uuid=uuid5(UUID(int=0), slug),
         tenant_slug=slug,
@@ -410,14 +415,15 @@ def run_leg(
     db_path = work_dir / f"{leg.name}.sqlite"
     seed_probe_tenant(db_path, tenant_slug)
     urls = transport.endpoints(leg)
-    ladder = ModelProbeLadder(
+    ladder = ModelProbeLadderCredentialed(
         rungs=tuple(
-            ModelProbeRung(
+            ModelProbeRungCredentialed(
                 backend_id=rung.backend_id,
                 model_id=rung.model_id,
                 endpoint_ref=urls[rung.backend_id],
                 tier=rung.tier,
                 timeout_ms=rung.timeout_ms,
+                credential=rung.credential,
                 **({"max_tokens": rung.max_tokens} if rung.max_tokens else {}),
             )
             for rung in leg.rungs
@@ -481,6 +487,7 @@ def run_leg(
                     if attempt.size_band is not None
                     else None
                 ),
+                host=attempt.host,
             )
             for attempt in response.attempts
         ),

@@ -12,6 +12,7 @@ renders a user service and timer for a Linux pool host instead of a plist (OMN-2
 
 from __future__ import annotations
 
+import difflib
 import fcntl
 import hashlib
 import json
@@ -32,7 +33,11 @@ from xml.sax.saxutils import escape
 
 import yaml
 
+from omnimarket.handlers.node_overlay_reader import NodeOverlayError
+from omnimarket.handlers.overlay_keys import resolve_lab_hosts_table
+from omnimarket.handlers.rules_overlay_root_declared import declared_overlay_root
 from omnimarket.handlers.rules_unit_roots import UnitRootRefusedError, under_worktrees
+from omnimarket.models.overlay_keys import ModelLabHostsTable
 from omnimarket.nodes.node_host_installer_registry_units.models.model_registry_units import (
     ModelCopiedUnitPayload,
     ModelRegistryUnitsRequest,
@@ -96,6 +101,8 @@ TIMEOUT_PROGRAM = (
     "exit($? & 127 ? 128 + ($? & 127) : $? >> 8)"
 )
 TIMEOUT_INTERPRETER = "/usr/bin/perl"
+# The start check of a unit that declares no probe_argv: the module's own help request (what every unit was checked with).
+DEFAULT_START_CHECK_ARGV = ("--help",)
 
 
 def load_units(contract_path: Path | None = None) -> dict[str, dict[str, Any]]:
@@ -108,14 +115,44 @@ def load_units(contract_path: Path | None = None) -> dict[str, dict[str, Any]]:
     }
 
 
+def default_hosts() -> ModelLabHostsTable:
+    """The lab host table the installing shell's overlay roots serve (looked up at call time)."""
+    return resolve_lab_hosts_table()
+
+
 class HandlerRegistryUnits:
     """``handle(request) -> result``. ``run`` runs one command; tests inject it."""
 
     def __init__(
-        self, run: Runner = run_command, units: dict[str, dict[str, Any]] | None = None
+        self,
+        run: Runner = run_command,
+        units: dict[str, dict[str, Any]] | None = None,
+        hosts: Callable[[], ModelLabHostsTable] | None = None,
     ) -> None:
         self.run = run
         self.units = units if units is not None else load_units()
+        self.hosts = hosts if hosts is not None else default_hosts
+
+    def overlays_root(self, request: ModelRegistryUnitsRequest) -> str:
+        host = (
+            request.host_name
+            or request.ledger_host_name
+            or os.environ.get("ONEX_LEDGER_HOST_NAME", "").strip()
+        )
+        if not host:
+            raise ValueError(
+                "{overlays_root}: the install needs host_name (or ledger_host_name / ONEX_LEDGER_HOST_NAME) "
+                "to resolve it, or a path override of the variable"
+            )
+        try:
+            table = self.hosts()
+        except NodeOverlayError as exc:
+            raise ValueError(
+                f"{{overlays_root}}: the lab host table cannot be read: {exc}"
+            ) from exc
+        document = table.model_dump(mode="json")
+        declared = declared_overlay_root(document, host, Path(request.registry_root))
+        return os.path.normpath(str(declared))
 
     def handle(self, request: ModelRegistryUnitsRequest) -> ModelRegistryUnitsResult:
         unit = self.units.get(request.unit)
@@ -302,6 +339,12 @@ class HandlerRegistryUnits:
         for key in ("plans_path", "marketplace_root"):
             if getattr(request, key):
                 values[key] = getattr(request, key)
+        needs = any(
+            "{overlays_root}" in str(t) and name not in request.path_overrides
+            for name, t in declared.items()
+        )
+        if needs:
+            values["overlays_root"] = self.overlays_root(request)
         allowed = {str(n) for n in unit.get("environment_path_overrides") or []}
         for name in request.path_overrides:
             if name not in allowed:
@@ -345,6 +388,77 @@ class HandlerRegistryUnits:
                         f"{name} is unset: supply the unit's declared request input or export it before installing"
                     )
         return filled
+
+    @staticmethod
+    def probe_argv(unit: dict[str, Any]) -> list[str]:
+        """The arguments the start check passes to the unit's module: the unit's declared ``probe_argv``.
+
+        A module whose ``--help`` runs a real pass (the landing mains) declares a probe its main honours without a
+        pass, a bus read or a write (OMN-23604). A unit declaring none is checked with the help request, as before.
+        """
+        if "probe_argv" not in unit:
+            return list(DEFAULT_START_CHECK_ARGV)
+        declared = unit["probe_argv"]
+        if (
+            not isinstance(declared, list)
+            or not declared
+            or not all(isinstance(word, str) and word for word in declared)
+        ):
+            raise ValueError(
+                f"{unit['module']} declares a probe_argv that is not a non-empty list of non-empty words: {declared!r}"
+            )
+        return list(declared)
+
+    def tick_arguments(
+        self, request: ModelRegistryUnitsRequest, unit: dict[str, Any]
+    ) -> list[str]:
+        """The arguments the rendered unit passes to its module at every tick, so the start check runs the real argv."""
+        root = Path(request.registry_root)
+        evidence_dir = str((Path(request.home) / str(unit["evidence_file"])).parent)
+        tick_root = str(root)
+        if (
+            unit.get("platform") != "systemd"
+            and unit.get("tick_omni_home") != "registry_root"
+            and unit.get("launchd_root")
+        ):
+            tick_root = str(Path(request.home) / str(unit["launchd_root"]))
+        return ["--omni-home", tick_root, "--state-dir", evidence_dir]
+
+    def start_check(
+        self,
+        request: ModelRegistryUnitsRequest,
+        unit: dict[str, Any],
+        uv: str,
+        python: str,
+        project: Path,
+    ) -> subprocess.CompletedProcess[str]:
+        """Run ``<module> <probe_argv>`` with the environment the rendered unit carries (OMN-23514 child).
+
+        The check is what the unit will do at its first tick, so the rendered environment, the request's path overrides
+        included, is applied over the installing shell's: an overlay root that only the request names is then present.
+        ``env`` carries the assignments so the injected runner keeps its one-argument shape.
+        """
+        rendered = [
+            f"{name}={value}" for name, value in self.environment(request, unit).items()
+        ]
+        return self.run(
+            [
+                "env",
+                *rendered,
+                uv,
+                "run",
+                "--frozen",
+                "--python",
+                python,
+                "--project",
+                str(project),
+                "python",
+                "-m",
+                str(unit["module"]),
+                *self.tick_arguments(request, unit),
+                *self.probe_argv(unit),
+            ]
+        )
 
     def config_target(
         self, request: ModelRegistryUnitsRequest, unit: dict[str, Any]
@@ -491,6 +605,11 @@ class HandlerRegistryUnits:
         uv: str,
         python: str,
     ) -> str:
+        if unit.get("environment_file"):
+            raise ValueError(
+                f"{unit['label']} declares environment_file {unit['environment_file']!r}; "
+                "launchd units do not support an environment file, declare the variables instead"
+            )
         text = (NODE_DIR / str(unit["template"])).read_text(encoding="utf-8")
         process_type = str(unit.get("process_type") or DEFAULT_PROCESS_TYPE)
         if process_type not in PROCESS_TYPES:
@@ -521,6 +640,11 @@ class HandlerRegistryUnits:
             # in for the registry root in the job (working directory, OMNI_HOME, the tick's --omni-home); undeclared, the
             # job keeps the registry root.
             "OMNI_HOME": str(job_root),
+            # A unit whose tick reads the registry root itself (the lane closeout sweep reads its worktrees) declares
+            # tick_omni_home: registry_root; the job still stands in job_root, only the tick's --omni-home is the real root.
+            "TICK_OMNI_HOME": str(root)
+            if unit.get("tick_omni_home") == "registry_root"
+            else str(job_root),
             "EVIDENCE_DIR": str(evidence.parent),
             "HOME": str(home),
             "USER": user,
@@ -612,24 +736,10 @@ class HandlerRegistryUnits:
                 config=config,
                 config_path=str(config_path or ""),
             )
-        proof = self.run(
-            [
-                uv,
-                "run",
-                "--frozen",
-                "--python",
-                python,
-                "--project",
-                str(project),
-                "python",
-                "-m",
-                str(unit["module"]),
-                "--help",
-            ]
-        )
+        proof = self.start_check(request, unit, uv, python, project)
         if proof.returncode:
             raise ValueError(
-                f"{unit['module']} does not start from {project}; {label} was not loaded:\n{proof.stdout}{proof.stderr}"
+                f"{unit['module']} does not start from {project} (start check: {' '.join([*self.tick_arguments(request, unit), *self.probe_argv(unit)])}); {label} was not loaded:\n{proof.stdout}{proof.stderr}"
             )
         state.mkdir(parents=True, exist_ok=True)
         if unit.get("launchd_root"):
@@ -714,6 +824,31 @@ class HandlerRegistryUnits:
             )
         return value.replace("%", "%%")
 
+    def environment_file(
+        self, request: ModelRegistryUnitsRequest, unit: dict[str, Any]
+    ) -> str:
+        """The EnvironmentFile line of a systemd unit that declares one, else an empty line.
+
+        The declaration is a path relative to the home, and the line carries a leading dash, so a host that has no
+        such file still runs the unit. A path that is absolute, climbs out of the home, or holds a character an
+        unquoted systemd word cannot carry is refused: the line is never quoted, so whitespace, a quote or a
+        backslash in it would not be the path the contract declared.
+        """
+        declared = str(unit.get("environment_file") or "")
+        if not declared:
+            return ""
+        relative = Path(declared)
+        if relative.is_absolute() or ".." in relative.parts:
+            raise ValueError(
+                f"{unit['label']} declares environment_file {declared!r}; it must be a path relative to the home"
+            )
+        path = f"{request.home}/{declared}"
+        if any(character.isspace() or character in '"\\' for character in path):
+            raise ValueError(
+                f"{path!r} holds whitespace, a quote or a backslash a systemd EnvironmentFile cannot carry"
+            )
+        return f"EnvironmentFile=-{self.systemd_value(path)}"
+
     def render_systemd(
         self,
         request: ModelRegistryUnitsRequest,
@@ -755,6 +890,9 @@ class HandlerRegistryUnits:
             timer = timer.replace(f"__{key}__", self.systemd_value(value))
         service = service.replace(
             "__ENVIRONMENT__", f"Environment={environment}" if environment else ""
+        )
+        service = service.replace(
+            "__ENVIRONMENT_FILE__", self.environment_file(request, unit)
         )
         service = service.replace(
             "__TICK_SYNC_ARGS__", '"--no-sync"' if unit.get("tick_no_sync") else ""
@@ -830,24 +968,10 @@ class HandlerRegistryUnits:
                 revision=revision,
                 canonical=canonical,
             )
-        proof = self.run(
-            [
-                uv,
-                "run",
-                "--frozen",
-                "--python",
-                python,
-                "--project",
-                str(project),
-                "python",
-                "-m",
-                str(unit["module"]),
-                "--help",
-            ]
-        )
+        proof = self.start_check(request, unit, uv, python, project)
         if proof.returncode:
             raise ValueError(
-                f"{unit['module']} does not start from {project}; {label} was not loaded:\n{proof.stdout}{proof.stderr}"
+                f"{unit['module']} does not start from {project} (start check: {' '.join([*self.tick_arguments(request, unit), *self.probe_argv(unit)])}); {label} was not loaded:\n{proof.stdout}{proof.stderr}"
             )
         state.mkdir(parents=True, exist_ok=True)
         unit_dir.mkdir(parents=True, exist_ok=True)
@@ -949,7 +1073,61 @@ class HandlerRegistryUnits:
             out += f"installed revision {recorded.get('revision')} of {recorded.get('project')}\n"
         except (OSError, ValueError):
             out += f"no install record at {record}\n"
+        text, differs = self.unit_text_lines(request, unit, record)
+        out += text
+        if differs:
+            failed = 1
         return self.result(request, failed, out=out)
+
+    def unit_text_lines(
+        self, request: ModelRegistryUnitsRequest, unit: dict[str, Any], record: Path
+    ) -> tuple[str, bool]:
+        """Compare the installed service and timer files with the text the installer renders now.
+
+        One line per file: IN SYNC, DIFFERS FROM RENDER (then every differing line) or NOT COMPARED with its reason.
+        The project the render names is the request's override, else the one the install record names (a unit
+        installed from a branch is judged against that branch), else the canonical clone.
+        """
+        label = str(unit["label"])
+        unit_dir = Path(request.home) / ".config/systemd/user"
+        project = self.project_for(request, unit)[0]
+        if not request.project_path:
+            try:
+                recorded = json.loads(record.read_text(encoding="utf-8")).get("project")
+            except (OSError, ValueError):
+                recorded = None
+            if recorded:
+                project = Path(str(recorded))
+        try:
+            uv = shutil.which("uv")
+            if uv is None:
+                raise ValueError("uv is not on PATH")
+            service, timer = self.render_systemd(
+                request, unit, project, uv, self.interpreter_for(unit)
+            )
+        except (OSError, ValueError) as exc:
+            return f"UNIT TEXT NOT COMPARED {label}: {exc}\n", False
+        out, differs = "", False
+        for suffix, rendered in ((".service", service), (".timer", timer)):
+            path = unit_dir / f"{label}{suffix}"
+            try:
+                installed = path.read_text(encoding="utf-8")
+            except OSError:
+                out += f"UNIT TEXT NOT COMPARED {path}: unreadable\n"
+                continue
+            if installed == rendered:
+                out += f"UNIT TEXT IN SYNC {path}\n"
+                continue
+            differs = True
+            out += f"UNIT DIFFERS FROM RENDER {path}\n"
+            for line in difflib.unified_diff(
+                installed.splitlines(), rendered.splitlines(), lineterm="", n=0
+            ):
+                if line.startswith(("---", "+++", "@@")):
+                    continue
+                kind = "installed" if line.startswith("-") else "rendered"
+                out += f"  {kind}: {line[1:]}\n"
+        return out, differs
 
     def head_of(self, project: Path) -> str:
         head = self.run(["git", "-C", str(project), "rev-parse", "HEAD"])

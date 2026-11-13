@@ -11,9 +11,14 @@ floor_fill:
   url: https://floor.example.invalid/factory-floor.json
   # Where the plan texts the floor's lines name are read.
   plans_root: /srv/example/plans
-  # The argv of the lane start node's entry; {lane} {key} {ticket} {attempt} are filled per start. It must not
-  # name the script runner.
-  runner_command: [example-node-entry, --lane, "{lane}", --key, "{key}", --ticket, "{ticket}", --attempt, "{attempt}"]
+  # The argv of the lane start node's entry; {lane} {key} {ticket} {attempt} and {brief} (the path of the brief file the
+  # fill writes from line_brief_text) are filled per start. The entry requires --overlay, --ledger, --pool-snapshot,
+  # --model, --brief and --run-id, so the command carries them (the run id is the lane name, which carries the attempt).
+  # It must not name the script runner.
+  runner_command: [example-node-entry, --overlay, /srv/example/lane-start-overlay.yaml, --ledger, /srv/example/ledger.md, --pool-snapshot, /srv/example/pool-snapshot.json, --model, example-model, --lane, "{lane}", --key, "{key}", --ticket, "{ticket}", --attempt, "{attempt}", --brief, "{brief}", --run-id, "{lane}"]
+  # The text of the brief a floor-line start hands the entry through {brief}; {lane} {key} {ticket} {line_id} {task_id}
+  # and {plans_root} are filled per start: the entry requires --brief, and a line has no predecessor to continue.
+  line_brief_text: "Work task {task_id} of floor line {line_id} on ticket {ticket} as lane {lane} (key {key}). Read the line's plan under {plans_root} and do the task's work; do not widen it."
   # Above the start node's placement and start timeouts; the entry's own deadline is below it.
   reserved_timeout_seconds: 600
   # How long a started key is held (read from the idle_slot_fill window, not a second value).
@@ -47,3 +52,20 @@ floor_fill:
   stopped_reports_root: /srv/example/registry
   # Where the fill writes each continuation's brief file (<lane>.md; the lane name carries the attempt).
   stopped_brief_directory: /srv/example/briefs
+# The live profile (``--profile live``) reads this second section. Every key is required and none has a default.
+# The pool, tickets, brake and stop-signal seams have no live source yet and carry no key here: they fail closed
+# naming what is unbound.
+floor_fill_live:
+  # The NAME of the environment variable that holds the state store DSN (the DSN itself is never in an overlay).
+  store_dsn_env: EXAMPLE_FLOOR_FILL_DSN
+  store_schema_name: public
+  store_table_name: floor_fill_state
+  store_connect_timeout_seconds: 5
+  # How long the floor record read may take.
+  floor_fetch_timeout_seconds: 10.0
+  # The plan file of a floor line under floor_fill.plans_root; {line_id} is the line's id.
+  plan_file_pattern: "{line_id}.md"
+  # The rolling ledger file the CLAIM and liveness reads scan.
+  ledger_path: /srv/example/ledger/work-ledger.md
+  # Where a started lane's log is written.
+  process_output_dir: /srv/example/work/lane-logs

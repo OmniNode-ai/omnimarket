@@ -15,12 +15,15 @@ description: >-
   beside its state directory, so the installed unit records the revision it runs. A unit may also declare
   environment variables whose value is a path the request may override (the installed overlay tree, for the factory
   floor publisher); an override of any other variable is refused. Declared environment inputs are persisted in
-  the unit. A unit may declare a config_file: a document rendered from the request (refused when a placeholder is left
+  the unit. A systemd unit may declare an environment_file: a path relative to the home holding further variables,
+  where a missing file is not an error and an absolute path, one that climbs out of the home, or one holding a
+  character an unquoted systemd word cannot carry is refused (a launchd unit declaring one is refused too). A unit may declare a config_file: a document rendered from the request (refused when a placeholder is left
   unfilled) and written at the path of the environment variable it names, mode 0600, keeping the differing file it
   replaces. A unit with tick_no_sync prepares its environment at installation and reuses it on each timer tick. A unit that declares
   run_timeout_s runs under a wrapper that ends a hung run and exits 124, because launchd has no run limit for a timer job, and ends its run
   on TERM, INT and HUP, so an unload ends it too. A unit that declares tick_lock_file has a tick that holds that file in its evidence directory
   while it runs: an install or uninstall waits for a running tick to end after the unload, then stops it, and refuses the install of one it cannot stop.
+  Before loading a unit the installer runs its module with the arguments of the unit's declared probe_argv (the help request when none is declared) under the rendered environment; a module whose help request would run a real pass declares a probe its main honours without a pass, a bus read or a write, and a probe that is not a non-empty list of words is refused. The status mode of a systemd unit also compares the installed service and timer files with the text the installer renders now, prints one UNIT TEXT line per file (IN SYNC, DIFFERS FROM RENDER with the differing lines, or NOT COMPARED with the reason) and fails when a file differs.
 input_model:
   name: ModelRegistryUnitsRequest
   module: omnimarket.nodes.node_host_installer_registry_units.models.model_registry_units
@@ -48,8 +51,19 @@ runtime_dispatch:
   command_topic: onex.cmd.omnimarket.host-registry-unit-requested.v1
 event_bus:
   subscribe_topics: [onex.cmd.omnimarket.host-registry-unit-requested.v1]
-  publish_topics: [onex.evt.omnimarket.host-registry-unit-completed.v1]
-externally_consumed_topics: [onex.evt.omnimarket.host-registry-unit-completed.v1]
+  # OMN-23991: the serve command topics, so boot provisioning creates them. `node_repo_state_query_effect` and
+  # `node_canonical_clone_refresh_effect` (host serve processes) read these two command topics and declare no event_bus
+  # block, so nothing created them; they are listed here, as node_pr_landing_snapshot_effect lists the tick-facts topic,
+  # and never as a subscription: a subscription would make the runtime wire a handler to every request under its own
+  # group. The host installer itself publishes nothing on them.
+  publish_topics:
+    - onex.evt.omnimarket.host-registry-unit-completed.v1
+    - onex.cmd.omnimarket.repo-state-query-requested.v1
+    - onex.cmd.omnimarket.declared-clone-refresh-requested.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.host-registry-unit-completed.v1
+  - onex.cmd.omnimarket.repo-state-query-requested.v1
+  - onex.cmd.omnimarket.declared-clone-refresh-requested.v1
 descriptor:
   node_archetype: effect
   purity: effectful
@@ -62,7 +76,11 @@ execution:
   deterministic: false
   side_effects: true
 # The registry_module_tick units this node renders. Placeholders in `environment` values: {home}, {registry_root},
-# {workspace_config_root}, {plans_path}, {marketplace_root} (request inputs, refused when named and not given).
+# {workspace_config_root}, {plans_path}, {marketplace_root} (request inputs, refused when named and not given), and
+# {overlays_root}: the overlays directory of the clone the lab_hosts overlay declares for the host the request names
+# (`host_name`), never a path built under the registry root (the clone sits beside it on the operator Mac). It is read
+# only when a unit's environment names it and no path override replaces that variable; a host row that declares no
+# overlays clone refuses the install with the host named.
 units:
   floor-alarm:
     platform: launchd
@@ -112,6 +130,11 @@ units:
       # friction rollup reads the ledger over the bus; both name the host that writes. The J5 overlay names this variable as
       # its ledger host_env. Required: a unit installed without it ran the J5 step to INDETERMINATE (exit 3) every tick.
       ONEX_LEDGER_HOST_NAME: ledger_host_name
+      # The ledger read command (OMN-23606): a request (or the installing shell) may name the command this host reads the
+      # ledger with, in place of the default under `environment` below. On the launching Mac the floor's window read took
+      # 23.5 s through that default and 15.9 s through the internal ledger source, which put the 30 s factory_floor step
+      # over its limit on every cycle. Not required: unset, the default stands.
+      ONEX_LEDGER_BUS_READ_COMMAND: ledger_read_command
     required_environment_inputs: [ONEX_RUNTIME_SSH_HOST, ONEX_LEDGER_HOST_NAME]
     # The interpreter the unit runs on: the first of these that exists on the host (Apple Silicon, then Intel), passed to
     # uv as `--python`. macOS grants Local Network access per binary, and the uv-managed CPython that `uv run` would
@@ -136,7 +159,7 @@ units:
     environment:
       # The overlays canonical clone first (the floor's owners map and sources live there), then the plugin's overlays
       # (OMN-23323: the owners map was read from a worktree that worktree triage removed).
-      ONEX_SKILL_OVERLAY_ROOTS: "{registry_root}/overlays/overlays:{marketplace_root}/plugins/onex-overlays/overlays"
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
       ONEX_LAB_RUN_HOSTS: ""
       ONEX_LAB_HOST_TABLE_ROOTS: ""
       ONEX_PLANS_KB_PATH: "{plans_path}"
@@ -149,6 +172,9 @@ units:
       ONEX_LEDGER_BUS_READ_COMMAND: "{registry_root}/omnibase_infra/.venv/bin/onex ledger query --stdin"
       ONEX_STATE_DIR: "{registry_root}/.onex_state"
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+      # The workspace root the floor_emissions step's emission mirror opens its lane's bus with (OMN-23877): the mirror
+      # reads it from $OMNIBASE_PATH alone, and without it every mirror was refused with "no workspace root is set".
+      OMNIBASE_PATH: "{registry_root}"
       # The landing controller's state directory: the floor's running comparison reads its decisions file (OMN-23018).
       LANDING_STATE_DIR: "{home}/.local/state/omni/landing"
     evidence_file: .local/state/omni/factory-floor-publish/last-run.json
@@ -180,7 +206,9 @@ units:
     # OMN-23323: an overlay root is never a worktree; the installer refuses one, in a default or an override.
     environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
     environment:
-      ONEX_SKILL_OVERLAY_ROOTS: "{marketplace_root}/plugins/onex-overlays/overlays"
+      # The overlay store reader takes the list of overlays it keeps from the overlay store read under these
+      # roots, so the overlays clone comes first and the plugin copy is the fallback (OMN-23844).
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
       LAB_WORK_HOST_NAME: "{host_name}"
     evidence_file: .local/state/omni/overlay-store-refresh/last-run.json
     state_directory: .onex_state/overlay-store-refresh
@@ -189,6 +217,44 @@ units:
     # The same volume bars launchd from the working directory: uv ended up in getcwd for good (measured on h101, sample of the
     # stalled process). The job runs from, and passes the tick as its omni home, a directory under the home.
     launchd_root: .local/state/omni/overlay-store-refresh
+  # OMN-23557: one tick refreshes the clone this host's lab_hosts row declares for the knowledge base, which the registry-root
+  # scan cannot list. The overlay of node_canonical_clone_refresh_effect holds every value this unit does not declare.
+  declared-clone-refresh:
+    platform: launchd
+    kind: registry_module_tick
+    label: ai.omninode.declared-clone-refresh
+    template: templates/ai.omninode.registry-module-tick.plist.tmpl
+    schedule:
+      start_interval: 300
+      run_at_load: true
+      description: every 300 s and at load
+    registry_project: omnimarket
+    run_timeout_s: 270
+    tick_no_sync: true
+    interpreter_candidates:
+      - /opt/homebrew/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_canonical_clone_refresh_effect.runtime_declared_clone_tick
+    entry_file: src/omnimarket/nodes/node_canonical_clone_refresh_effect/runtime_declared_clone_tick.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+      - LAB_WORK_HOST_NAME
+    # OMN-23323: an overlay root is never a worktree; the installer refuses one, in a default or an override.
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
+    environment:
+      # The third root holds the `repos` overlay whose knowledge_base key names the clone's directory (it has not moved to the overlays repository yet).
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays:{workspace_config_root}/config/onex/overlays"
+      LAB_WORK_HOST_NAME: "{host_name}"
+      OMNIBASE_PATH: "{registry_root}"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    evidence_file: .local/state/omni/declared-clone-refresh/last-run.json
+    state_directory: .onex_state/declared-clone-refresh
+    log_directory: .local/state/omni/declared-clone-refresh
+    launchd_root: .local/state/omni/declared-clone-refresh
   # The same reader on a Linux pool host (OMN-22878): a systemd user service and timer, so every lab host keeps the
   # host-list projection the lab tools, serve units and host drift read (RULING 2026-11-07T15:59:02Z).
   overlay-store-refresh-systemd:
@@ -219,10 +285,80 @@ units:
     # OMN-23323: an overlay root is never a worktree; the installer refuses one, in a default or an override.
     environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
     environment:
-      ONEX_SKILL_OVERLAY_ROOTS: "{marketplace_root}/plugins/onex-overlays/overlays"
+      # The overlay store reader takes the list of overlays it keeps from the overlay store read under these
+      # roots, so the overlays clone comes first and the plugin copy is the fallback (OMN-23844).
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
       LAB_WORK_HOST_NAME: "{host_name}"
     evidence_file: .local/state/omni/overlay-store-refresh/last-run.json
     state_directory: .onex_state/overlay-store-refresh
+  # The same sweep on a macOS lab host (OMN-23404): a launchd tick. The registry root of such a host links to an external
+  # volume launchd cannot stand in, so the job runs from a directory under the home (launchd_root) while the tick reads
+  # the real registry root for the lanes' worktrees (tick_omni_home).
+  lane-closeout-sweep:
+    platform: launchd
+    kind: registry_module_tick
+    label: ai.omninode.lane-closeout-sweep
+    template: templates/ai.omninode.registry-module-tick.plist.tmpl
+    schedule:
+      start_interval: 300
+      run_at_load: true
+      description: every 300 s and at load
+    registry_project: omnimarket
+    # A run that outlives this many seconds is ended with its process group and exits 124 (run_timeout_s, OMN-22881).
+    run_timeout_s: 240
+    tick_no_sync: true
+    interpreter_candidates:
+      - /opt/homebrew/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_lane_closeout_sweep_effect.runtime_lane_closeout_sweep
+    entry_file: src/omnimarket/nodes/node_lane_closeout_sweep_effect/runtime_lane_closeout_sweep.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+      - LAB_WORK_HOST_NAME
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}"
+      LAB_WORK_HOST_NAME: "{host_name}"
+    evidence_file: .local/state/omni/lane-closeout-sweep/last-run.json
+    state_directory: .onex_state/lane-closeout-sweep
+    log_directory: .local/state/omni/lane-closeout-sweep
+    launchd_root: .local/state/omni/lane-closeout-sweep
+    tick_omni_home: registry_root
+  # The host-local lane closeout sweep (node_lane_closeout_sweep_effect, OMN-23375): every lab host closes out the lanes that
+  # ended on it, whichever launcher started them. The paths, ages and branch prefix are the node's overlay, found under
+  # ONEX_SKILL_OVERLAY_ROOTS; this unit holds none of them. The 240 s limit is under the 300 s interval.
+  lane-closeout-sweep-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-lane-closeout-sweep
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 300
+      run_timeout_s: 240
+      run_at_load: true
+      description: every 300 s and at load
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_lane_closeout_sweep_effect.runtime_lane_closeout_sweep
+    entry_file: src/omnimarket/nodes/node_lane_closeout_sweep_effect/runtime_lane_closeout_sweep.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+      - LAB_WORK_HOST_NAME
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}"
+      LAB_WORK_HOST_NAME: "{host_name}"
+    evidence_file: .local/state/omni/lane-closeout-sweep/last-run.json
+    state_directory: .onex_state/lane-closeout-sweep
   # Lane context ledger archive dedupe (OMN-23297, node_lane_ctx_ledger_dedupe_effect): every lab host links the ledger archive
   # rolls of its lane context directories to one shared copy, so the rolls stop filling the runs mount. The runs root, the
   # store directory and the settle window are the node's overlay in the overlays repository; this unit holds none of them. A
@@ -253,8 +389,10 @@ units:
       requires: clean git checkout that carries entry_file
     environment_path_overrides:
       - ONEX_SKILL_OVERLAY_ROOTS
+    # OMN-23323: an overlay root is never a worktree; the installer refuses one, in a default or an override.
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
     environment:
-      ONEX_SKILL_OVERLAY_ROOTS: "{marketplace_root}/plugins/onex-overlays/overlays"
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
     evidence_file: .local/state/omni/lane-ctx-ledger-dedupe/last-run.json
     state_directory: .onex_state/lane-ctx-ledger-dedupe
   # The C32 local auth-boundary probe (node_c32_auth_boundary_probe_effect, OMN-23213, MVP launch plan task M17), once a day on
@@ -287,8 +425,10 @@ units:
       requires: clean git checkout that carries entry_file
     environment_path_overrides:
       - ONEX_SKILL_OVERLAY_ROOTS
+    # OMN-23323: an overlay root is never a worktree; the installer refuses one, in a default or an override.
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
     environment:
-      ONEX_SKILL_OVERLAY_ROOTS: "{marketplace_root}/plugins/onex-overlays/overlays"
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
       ONEX_STATE_DIR: "{registry_root}/.onex_state"
     evidence_file: .local/state/omni/c32-auth-boundary-probe/last-run.json
     state_directory: .onex_state/c32-auth-boundary-probe
@@ -321,9 +461,345 @@ units:
     environment_path_overrides:
       - ONEX_SKILL_OVERLAY_ROOTS
     environment:
-      ONEX_SKILL_OVERLAY_ROOTS: "{registry_root}/overlays/overlays"
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}"
     evidence_file: .local/state/omni/overlay-store-load/last-run.json
     state_directory: .onex_state/overlay-store-load
+  # The daily memory pilot run (node_memory_pilot_effect, OMN-23619): once a day one pass runs the pilot and writes
+  # the result file the pilot measurement node reads. The pilot's overlay (run settings, lab endpoints, frozen hash)
+  # is found under ONEX_SKILL_OVERLAY_ROOTS; this unit holds none of it.
+  memory-pilot-daily-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-memory-pilot-daily
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      # The systemd handler has no calendar form: start_interval only, and run_at_load false renders OnActiveSec=<interval>, so the first fire comes one interval after the timer starts.
+      start_interval: 86400
+      # The run lasts up to about an hour; a hung run is ended at 3 h and exits 124, under the 86400 s interval.
+      run_timeout_s: 10800
+      run_at_load: false
+      description: every 86400 s
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_memory_pilot_effect.runtime_memory_pilot_run
+    entry_file: src/omnimarket/nodes/node_memory_pilot_effect/runtime_memory_pilot_run.py
+    # The start check runs the main with this probe, which the main honours with no pass, no bus read and no write (OMN-23604).
+    probe_argv: ["--probe"]
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    environment:
+      # A lab host without a launchd marketplace keeps the overlays checkout under the registry root, as overlay-store-load-systemd does.
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+    evidence_file: .local/state/omni/memory-pilot-daily/last-run.json
+    state_directory: .onex_state/memory-pilot-daily
+  # The hourly pilot measurement reading (node_pilot_measurement_effect, OMN-23619): once an hour one pass compares each
+  # declared pilot's measured result with its frozen bar and appends the piece 16 row. The pilots, the bar and the row's
+  # lane and source are in the node's overlay (found under ONEX_SKILL_OVERLAY_ROOTS); this unit holds none of them, only
+  # where the result file, the appender and the emission journal are on this host. The unit is the node's own declared
+  # schedule (contract schedule: onex-pilot-measurement-hourly), installed through this installer so that it may run from
+  # a branch checkout; the node's own `schedule install` refuses a unit that names a worktree.
+  pilot-measurement-hourly-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-pilot-measurement-hourly
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 3600
+      run_timeout_s: 300
+      run_at_load: false
+      description: every 3600 s
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_pilot_measurement_effect.runtime_pilot_measurement_tick
+    entry_file: src/omnimarket/nodes/node_pilot_measurement_effect/runtime_pilot_measurement_tick.py
+    probe_argv: ["--probe"]
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+      ONEX_MEMORY_PILOT_RESULT_FILE: "{registry_root}/.onex_state/memory-pilot-daily/result.json"
+      ONEX_FLOOR_EMISSION_JOURNAL: "{registry_root}/.onex_state/floor-simple/emissions.jsonl"
+      ONEX_LEDGER_BUS_APPEND_COMMAND: "{registry_root}/.onex_state/installed-units/dev-deploy-reading/omnimarket/.venv/bin/python -m omnimarket.work_ledger_bus.cli append --bus-lane dev --omnibase-path {registry_root}"
+      # The ledger append opens the lane's bus: the lane declaration table (config/lab/ci_bus_lanes.yaml) is found under this root.
+      # Without it the append ended append-failed and the row never landed (measured on h053, 2026-11-11).
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    # The name the ledger knows this host by: the reading's row names the host that wrote it (the node's overlay names this
+    # variable as its ledger host_env). Required: a unit installed without it ends INDETERMINATE (exit 3) every tick.
+    environment_inputs:
+      ONEX_LEDGER_HOST_NAME: ledger_host_name
+    required_environment_inputs: [ONEX_LEDGER_HOST_NAME]
+    evidence_file: .local/state/omni/pilot-measurement/last-run.json
+    state_directory: .onex_state/pilot-measurement
+  # The R2 delegation scenario's tick: the scenario's settings are not in the unit (the tick reads them from the
+  # secret store through the host's machine identity), and the optional environment file may hold overrides.
+  scenario-r2-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-delegation-scenario-r2
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 3600
+      run_timeout_s: 900
+      run_at_load: true
+      description: every 3600 s and at load
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_delegation_scenario_r2_effect.runtime_scenario_r2_tick
+    entry_file: src/omnimarket/nodes/node_delegation_scenario_r2_effect/runtime_scenario_r2_tick.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_file: .config/onex/scenario-r2.env
+    environment:
+      # The scenario runs the onex command line by name: the registry's own launcher directory leads the search path.
+      PATH: "{registry_root}/omnibase_infra/scripts:{home}/.local/bin:/usr/local/bin:/usr/bin:/bin"
+      ONEX_LEDGER_BUS_APPEND_COMMAND: "{registry_root}/omnimarket/.venv/bin/python -m omnimarket.work_ledger_bus.cli append --bus-lane dev --omnibase-path {registry_root}"
+      # The ledger append opens the lane's bus: the lane declaration table (config/lab/ci_bus_lanes.yaml) is found under this root.
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    environment_inputs:
+      ONEX_HOST_NAME: ledger_host_name
+    required_environment_inputs: [ONEX_HOST_NAME]
+    evidence_file: .local/state/omni/delegation-scenario-r2/last-run.json
+    state_directory: .onex_state/delegation-scenario-r2
+  # The R3 delegation scenario's tick: the probe key is found by the tick through the node's settings overlay; the
+  # optional environment file may hold overrides.
+  scenario-r3-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-delegation-scenario-r3
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 21600
+      run_timeout_s: 900
+      run_at_load: true
+      description: every 21600 s and at load
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_delegation_scenario_r3_effect.runtime_scenario_r3_tick
+    entry_file: src/omnimarket/nodes/node_delegation_scenario_r3_effect/runtime_scenario_r3_tick.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_file: .config/onex/scenario-r3.env
+    environment:
+      # The scenario runs the onex command line by name: the registry's own launcher directory leads the search path.
+      PATH: "{registry_root}/omnibase_infra/scripts:{home}/.local/bin:/usr/local/bin:/usr/bin:/bin"
+      ONEX_LEDGER_BUS_APPEND_COMMAND: "{registry_root}/omnimarket/.venv/bin/python -m omnimarket.work_ledger_bus.cli append --bus-lane dev --omnibase-path {registry_root}"
+      # The ledger append opens the lane's bus: the lane declaration table (config/lab/ci_bus_lanes.yaml) is found under this root.
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    environment_inputs:
+      ONEX_HOST_NAME: ledger_host_name
+    required_environment_inputs: [ONEX_HOST_NAME]
+    evidence_file: .local/state/omni/delegation-scenario-r3/last-run.json
+    state_directory: .onex_state/delegation-scenario-r3
+  # The R5 delegation scenario's tick: the probe key is found by the tick through the node's settings overlay; the
+  # optional environment file may hold overrides.
+  scenario-r5-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-delegation-scenario-r5
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 3600
+      run_timeout_s: 900
+      run_at_load: true
+      description: every 3600 s and at load
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_delegation_scenario_r5_effect.runtime_scenario_r5_tick
+    entry_file: src/omnimarket/nodes/node_delegation_scenario_r5_effect/runtime_scenario_r5_tick.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_file: .config/onex/scenario-r5.env
+    environment:
+      # The scenario runs the onex command line by name: the registry's own launcher directory leads the search path.
+      PATH: "{registry_root}/omnibase_infra/scripts:{home}/.local/bin:/usr/local/bin:/usr/bin:/bin"
+      ONEX_LEDGER_BUS_APPEND_COMMAND: "{registry_root}/omnimarket/.venv/bin/python -m omnimarket.work_ledger_bus.cli append --bus-lane dev --omnibase-path {registry_root}"
+      # The ledger append opens the lane's bus: the lane declaration table (config/lab/ci_bus_lanes.yaml) is found under this root.
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    environment_inputs:
+      ONEX_HOST_NAME: ledger_host_name
+    required_environment_inputs: [ONEX_HOST_NAME]
+    evidence_file: .local/state/omni/delegation-scenario-r5/last-run.json
+    state_directory: .onex_state/delegation-scenario-r5
+  # The R8 delegation scenario's tick: the probe tenant's address is read by the node from its environment file and its
+  # key from the secret store named by the node's overlay document; none is in the unit.
+  scenario-r8-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-delegation-scenario-r8
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 21600
+      run_timeout_s: 900
+      run_at_load: true
+      description: every 21600 s and at load
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_delegation_scenario_r8_effect.runtime_scenario_r8_tick
+    entry_file: src/omnimarket/nodes/node_delegation_scenario_r8_effect/runtime_scenario_r8_tick.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_file: .config/onex/scenario-r8.env
+    # The node finds its secret store block in its overlay document (OMN-23746): the overlays canonical clone is the root.
+    # An overlay root is never a worktree; the installer refuses one, in a default or an override.
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}"
+      # The scenario runs the onex command line by name: the registry's own launcher directory leads the search path.
+      PATH: "{registry_root}/omnibase_infra/scripts:{home}/.local/bin:/usr/local/bin:/usr/bin:/bin"
+      ONEX_LEDGER_BUS_APPEND_COMMAND: "{registry_root}/omnimarket/.venv/bin/python -m omnimarket.work_ledger_bus.cli append --bus-lane dev --omnibase-path {registry_root}"
+      # The ledger append opens the lane's bus: the lane declaration table (config/lab/ci_bus_lanes.yaml) is found under this root.
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    environment_inputs:
+      ONEX_HOST_NAME: ledger_host_name
+    required_environment_inputs: [ONEX_HOST_NAME]
+    evidence_file: .local/state/omni/delegation-scenario-r8/last-run.json
+    state_directory: .onex_state/delegation-scenario-r8
+  # The R4 delegation scenario's tick: loopback stubs, so the unit holds no secret setting and no environment file.
+  scenario-r4-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-delegation-scenario-r4
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 21600
+      run_timeout_s: 900
+      run_at_load: true
+      description: every 21600 s and at load
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_delegation_scenario_r4_effect.runtime_scenario_r4_tick
+    entry_file: src/omnimarket/nodes/node_delegation_scenario_r4_effect/runtime_scenario_r4_tick.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment:
+      # The scenario runs the onex command line by name: the registry's own launcher directory leads the search path.
+      PATH: "{registry_root}/omnibase_infra/scripts:{home}/.local/bin:/usr/local/bin:/usr/bin:/bin"
+      ONEX_LEDGER_BUS_APPEND_COMMAND: "{registry_root}/omnimarket/.venv/bin/python -m omnimarket.work_ledger_bus.cli append --bus-lane dev --omnibase-path {registry_root}"
+      # The ledger append opens the lane's bus: the lane declaration table (config/lab/ci_bus_lanes.yaml) is found under this root.
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    environment_inputs:
+      ONEX_HOST_NAME: ledger_host_name
+    required_environment_inputs: [ONEX_HOST_NAME]
+    evidence_file: .local/state/omni/delegation-scenario-r4/last-run.json
+    state_directory: .onex_state/delegation-scenario-r4
+  # The R6 delegation scenario's tick: loopback stubs, so the unit holds no secret setting and no environment file.
+  scenario-r6-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-delegation-scenario-r6
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 86400
+      run_timeout_s: 900
+      run_at_load: true
+      description: every 86400 s and at load
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_delegation_scenario_r6_effect.runtime_scenario_r6_tick
+    entry_file: src/omnimarket/nodes/node_delegation_scenario_r6_effect/runtime_scenario_r6_tick.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment:
+      # The scenario runs the onex command line by name: the registry's own launcher directory leads the search path.
+      PATH: "{registry_root}/omnibase_infra/scripts:{home}/.local/bin:/usr/local/bin:/usr/bin:/bin"
+      ONEX_LEDGER_BUS_APPEND_COMMAND: "{registry_root}/omnimarket/.venv/bin/python -m omnimarket.work_ledger_bus.cli append --bus-lane dev --omnibase-path {registry_root}"
+      # The ledger append opens the lane's bus: the lane declaration table (config/lab/ci_bus_lanes.yaml) is found under this root.
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    environment_inputs:
+      ONEX_HOST_NAME: ledger_host_name
+    required_environment_inputs: [ONEX_HOST_NAME]
+    evidence_file: .local/state/omni/delegation-scenario-r6/last-run.json
+    state_directory: .onex_state/delegation-scenario-r6
+  # The R7 delegation scenario's tick: loopback stubs, so the unit holds no secret setting and no environment file.
+  scenario-r7-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-delegation-scenario-r7
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 21600
+      run_timeout_s: 900
+      run_at_load: true
+      description: every 21600 s and at load
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_delegation_scenario_r7_effect.runtime_scenario_r7_tick
+    entry_file: src/omnimarket/nodes/node_delegation_scenario_r7_effect/runtime_scenario_r7_tick.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment:
+      # The scenario runs the onex command line by name: the registry's own launcher directory leads the search path.
+      PATH: "{registry_root}/omnibase_infra/scripts:{home}/.local/bin:/usr/local/bin:/usr/bin:/bin"
+      ONEX_LEDGER_BUS_APPEND_COMMAND: "{registry_root}/omnimarket/.venv/bin/python -m omnimarket.work_ledger_bus.cli append --bus-lane dev --omnibase-path {registry_root}"
+      # The ledger append opens the lane's bus: the lane declaration table (config/lab/ci_bus_lanes.yaml) is found under this root.
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    environment_inputs:
+      ONEX_HOST_NAME: ledger_host_name
+    required_environment_inputs: [ONEX_HOST_NAME]
+    evidence_file: .local/state/omni/delegation-scenario-r7/last-run.json
+    state_directory: .onex_state/delegation-scenario-r7
   # The central test harness (node_lab_test_harness_effect): every golden and error case once an hour, its reading
   # written where the floor reads it. The cases, hosts, pinned commits and bus lane are the harness overlay's, found
   # under ONEX_SKILL_OVERLAY_ROOTS; this unit holds none of them.
@@ -354,7 +830,7 @@ units:
     # OMN-23323: an overlay root is never a worktree; the installer refuses one, in a default or an override.
     environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
     environment:
-      ONEX_SKILL_OVERLAY_ROOTS: "{marketplace_root}/plugins/onex-overlays/overlays"
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
       ONEX_STATE_DIR: "{registry_root}/.onex_state"
       OMNIBASE_PATH: "{registry_root}"
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
@@ -395,7 +871,7 @@ units:
     # OMN-23323: an overlay root is never a worktree; the installer refuses one, in a default or an override.
     environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
     environment:
-      ONEX_SKILL_OVERLAY_ROOTS: "{marketplace_root}/plugins/onex-overlays/overlays"
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
       ONEX_STATE_DIR: "{registry_root}/.onex_state"
       OMNIBASE_PATH: "{registry_root}"
       ONEX_PR_WATCHER_STATE: "{registry_root}/.claude_scratch/pr-watcher/state.json"
@@ -471,12 +947,433 @@ units:
       requires: clean git checkout that carries entry_file
     environment_path_overrides:
       - ONEX_SKILL_OVERLAY_ROOTS
+    # OMN-23323: an overlay root is never a worktree; the installer refuses one, in a default or an override.
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
     environment:
-      ONEX_SKILL_OVERLAY_ROOTS: "{marketplace_root}/plugins/onex-overlays/overlays"
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
       ONEX_STATE_DIR: "{registry_root}/.onex_state"
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
     evidence_file: .local/state/omni/landing-join-j8/last-run.json
     state_directory: .onex_state/landing-join-j8
+  # The landing snapshot step (OMN-23458; node_pr_landing_snapshot_effect of OMN-23409): every 60 s one pass takes the tick
+  # the landing controller's facts file holds and, when that tick is not recorded yet, fills it and records it on the dev
+  # bus lane. It runs on the host that holds the controller's facts (its last-facts.json and the PR watcher state). The
+  # overlay (node_pr_landing_snapshot_effect in the overlays repository) names every path, the lane and the topics; this
+  # unit holds none of it.
+  landing-snapshot:
+    platform: launchd
+    kind: registry_module_tick
+    label: ai.omninode.landing-snapshot
+    template: templates/ai.omninode.registry-module-tick.plist.tmpl
+    schedule:
+      start_interval: 60
+      run_at_load: true
+      description: every 60 s and at load
+    registry_project: omnimarket
+    # A pass reads two files and publishes at most two events: it ends in seconds, so 50 s, under the 60 s interval, is a hung run.
+    run_timeout_s: 50
+    tick_no_sync: true
+    interpreter_candidates:
+      - /opt/homebrew/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_pr_landing_snapshot_effect
+    entry_file: src/omnimarket/nodes/node_pr_landing_snapshot_effect/__main__.py
+    # The start check runs the main with this probe, which the main honours with no pass, no bus read and no write (OMN-23604).
+    probe_argv: ["--probe"]
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
+    environment:
+      # The overlays canonical clone first (the step's overlay lives there), then the plugin's overlays.
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
+      # The overlay's paths and its bus lane's workspace_root are under $OMNIBASE_PATH.
+      OMNIBASE_PATH: "{registry_root}"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    evidence_file: .local/state/omni/landing-snapshot/last-run.json
+    state_directory: .onex_state/landing-snapshot
+  # The lane host pool snapshot writer on a Linux pool host (OMN-23664; node_lane_host_pool_snapshot_effect): every 60 s one pass
+  # reads the lab hosts' capacity advertisements, the lab host table, the open lane claims and each host's token pool, writes the
+  # snapshot file the lane start and the fill read with its read-time record, and publishes the record on the dev bus lane. The
+  # overlay (node_lane_host_pool_snapshot_effect in the overlays repository) names every path, route, bound and topic; this unit
+  # holds none of it.
+  lane-host-pool-snapshot-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-lane-host-pool-snapshot
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 60
+      run_timeout_s: 50
+      run_at_load: true
+      description: every 60 s and at load
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_lane_host_pool_snapshot_effect
+    entry_file: src/omnimarket/nodes/node_lane_host_pool_snapshot_effect/__main__.py
+    # The start check runs the main with this probe, which the main honours with no pass, no bus read and no write (OMN-23604).
+    probe_argv: ["--probe"]
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}"
+      # The overlay's paths and its bus lane's workspace_root are under $OMNIBASE_PATH.
+      OMNIBASE_PATH: "{registry_root}"
+      # The advertisement command runs the onex command line by name: the registry's own launcher directory leads the search path.
+      PATH: "{registry_root}/omnibase_infra/scripts:{home}/.local/bin:/usr/local/bin:/usr/bin:/bin"
+      # The open lane claims are read over the bus, never from the ledger file: the overlay's ledger_read names this variable.
+      ONEX_LEDGER_BUS_READ_COMMAND: "{registry_root}/.onex-dispatch-venv/bin/onex ledger query --stdin"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    evidence_file: .local/state/omni/lane-host-pool-snapshot/last-run.json
+    state_directory: .onex_state/lane-host-pool-snapshot
+  # The cutover repositories' landing facts (OMN-23514; node_pr_landing_watcher_facts_effect of OMN-23507): every 60 s
+  # one pass reads the PR watcher state and writes the overlay's repositories' open pull requests (omnimemory only) to
+  # the facts file the cutover snapshot unit reads. It reads and writes local files only: no GitHub call, no bus.
+  # A pass reads one file and writes one: 50 s, under the 60 s interval, is a hung run.
+  landing-watcher-facts:
+    platform: launchd
+    kind: registry_module_tick
+    label: ai.omninode.landing-watcher-facts
+    template: templates/ai.omninode.registry-module-tick.plist.tmpl
+    schedule:
+      start_interval: 60
+      run_at_load: true
+      description: every 60 s and at load
+    registry_project: omnimarket
+    run_timeout_s: 50
+    tick_no_sync: true
+    interpreter_candidates:
+      - /opt/homebrew/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_pr_landing_watcher_facts_effect
+    entry_file: src/omnimarket/nodes/node_pr_landing_watcher_facts_effect/__main__.py
+    # The start check runs the main with this probe, which the main honours with no pass, no bus read and no write (OMN-23604).
+    probe_argv: ["--probe"]
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
+    environment:
+      # The overlays canonical clone first (the node's overlay lives there), then the plugin's overlays.
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
+      OMNIBASE_PATH: "{registry_root}"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    evidence_file: .local/state/omni/landing-watcher-facts/last-run.json
+    state_directory: .onex_state/landing-watcher-facts
+  # The landing snapshot step for cutover repositories (OMN-23514): the same node as landing-snapshot, a second
+  # instance whose overlay (node_pr_landing_snapshot_effect_cutover in the overlays repository, pinned by
+  # ONEX_LANDING_SNAPSHOT_OVERLAY_FILE) reads landing-watcher-facts' output in place of the controller's facts file,
+  # so the controller's facts stay untouched and the new path is measured beside them.
+  landing-snapshot-cutover:
+    platform: launchd
+    kind: registry_module_tick
+    label: ai.omninode.landing-snapshot-cutover
+    template: templates/ai.omninode.registry-module-tick.plist.tmpl
+    schedule:
+      start_interval: 60
+      run_at_load: true
+      description: every 60 s and at load
+    registry_project: omnimarket
+    run_timeout_s: 50
+    tick_no_sync: true
+    interpreter_candidates:
+      - /opt/homebrew/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_pr_landing_snapshot_effect
+    entry_file: src/omnimarket/nodes/node_pr_landing_snapshot_effect/__main__.py
+    # The start check runs the main with this probe, which the main honours with no pass, no bus read and no write (OMN-23604).
+    probe_argv: ["--probe"]
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    # The cutover overlay file is overridable like the overlay roots: the overlays clone is not under every registry root.
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+      - ONEX_LANDING_SNAPSHOT_OVERLAY_FILE
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS, ONEX_LANDING_SNAPSHOT_OVERLAY_FILE]
+    environment:
+      # The overlays canonical clone first (the node's overlay lives there), then the plugin's overlays.
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
+      ONEX_LANDING_SNAPSHOT_OVERLAY_FILE: "{overlays_root}/node_pr_landing_snapshot_effect_cutover/overlay.yaml"
+      OMNIBASE_PATH: "{registry_root}"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    evidence_file: .local/state/omni/landing-snapshot-cutover/last-run.json
+    state_directory: .onex_state/landing-snapshot-cutover
+  # The landing tick orchestrator in observe mode (OMN-23514): every 60 s one pass reads the snapshot records on the
+  # overlay's topic and bus lane, compares each through the node path and prints one line. The runtime refuses an
+  # overlay that enables act mode and never constructs a writer: nothing is written to GitHub.
+  # A pass polls the topic for the overlay's poll_timeout_s: 50 s, under the 60 s interval, is a hung run.
+  landing-tick-orchestrator:
+    platform: launchd
+    kind: registry_module_tick
+    label: ai.omninode.landing-tick-orchestrator
+    template: templates/ai.omninode.registry-module-tick.plist.tmpl
+    schedule:
+      start_interval: 60
+      run_at_load: true
+      description: every 60 s and at load
+    registry_project: omnimarket
+    run_timeout_s: 50
+    tick_no_sync: true
+    interpreter_candidates:
+      - /opt/homebrew/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_pr_landing_tick_orchestrator
+    entry_file: src/omnimarket/nodes/node_pr_landing_tick_orchestrator/__main__.py
+    # The start check runs the main with this probe, which the main honours with no pass, no bus read and no write (OMN-23604).
+    probe_argv: ["--probe"]
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
+    environment:
+      # The overlays canonical clone first (the node's overlay lives there), then the plugin's overlays.
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
+      OMNIBASE_PATH: "{registry_root}"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    # The consumer group carries this instance's host identity (OMN-22921): two orchestrators on one topic never share a group.
+    environment_inputs:
+      ONEX_HOST_NAME: ledger_host_name
+    required_environment_inputs: [ONEX_HOST_NAME]
+    evidence_file: .local/state/omni/landing-tick-orchestrator/last-run.json
+    state_directory: .onex_state/landing-tick-orchestrator
+  # The host disk and container run of a Linux pool host (OMN-23707): omnimarket's lab disk hygiene node on a six-hour timer,
+  # in place of the retired host collectors unit. The lane census comes from the node's overlay, never from this unit.
+  lab-disk-hygiene-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-host-disk-hygiene
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 21600
+      run_timeout_s: 3600
+      run_at_load: false
+      description: every 6 hours
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_lab_disk_hygiene_effect
+    entry_file: src/omnimarket/nodes/node_lab_disk_hygiene_effect/__main__.py
+    probe_argv: ["--probe"]
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}"
+    evidence_file: .local/state/omni/lab-disk-hygiene/last-run.json
+    state_directory: .onex_state/lab-disk-hygiene
+  # The three landing units on a Linux pool host (OMN-23662): the same modules, overlays, probes and environment as the
+  # launchd units above, as a systemd user service and timer, so the new landing workflow runs in observe mode on a lab host
+  # beside the controller. Each start check runs the unit with its rendered --omni-home and --state-dir plus --probe.
+  landing-watcher-facts-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-landing-watcher-facts
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 60
+      run_timeout_s: 50
+      run_at_load: true
+      description: every 60 s and at load
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_pr_landing_watcher_facts_effect
+    entry_file: src/omnimarket/nodes/node_pr_landing_watcher_facts_effect/__main__.py
+    probe_argv: ["--probe"]
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
+      OMNIBASE_PATH: "{registry_root}"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    evidence_file: .local/state/omni/landing-watcher-facts/last-run.json
+    state_directory: .onex_state/landing-watcher-facts
+  landing-snapshot-cutover-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-landing-snapshot-cutover
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 60
+      run_timeout_s: 50
+      run_at_load: true
+      description: every 60 s and at load
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_pr_landing_snapshot_effect
+    entry_file: src/omnimarket/nodes/node_pr_landing_snapshot_effect/__main__.py
+    probe_argv: ["--probe"]
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+      - ONEX_LANDING_SNAPSHOT_OVERLAY_FILE
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS, ONEX_LANDING_SNAPSHOT_OVERLAY_FILE]
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
+      ONEX_LANDING_SNAPSHOT_OVERLAY_FILE: "{overlays_root}/node_pr_landing_snapshot_effect_cutover/overlay.yaml"
+      OMNIBASE_PATH: "{registry_root}"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    evidence_file: .local/state/omni/landing-snapshot-cutover/last-run.json
+    state_directory: .onex_state/landing-snapshot-cutover
+  landing-tick-orchestrator-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-landing-tick-orchestrator
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 60
+      run_timeout_s: 50
+      run_at_load: true
+      description: every 60 s and at load
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_pr_landing_tick_orchestrator
+    entry_file: src/omnimarket/nodes/node_pr_landing_tick_orchestrator/__main__.py
+    probe_argv: ["--probe"]
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
+      OMNIBASE_PATH: "{registry_root}"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    # The consumer group carries this instance's host identity (OMN-22921): two orchestrators on one topic never share a group.
+    environment_inputs:
+      ONEX_HOST_NAME: ledger_host_name
+    required_environment_inputs: [ONEX_HOST_NAME]
+    evidence_file: .local/state/omni/landing-tick-orchestrator/last-run.json
+    state_directory: .onex_state/landing-tick-orchestrator
+  # The Claude token pool rotation tick (OMN-23887), installed the declared way on every host the pool overlay lists: a
+  # unit here, with its own project path and expected revision (the request's project_path and expected_revision), and
+  # its own environment, in place of the pool's own `schedule install` (which ran a hand-built venv). One unit per
+  # platform: systemd hosts take claude-pool-rotation-tick-systemd, a launchd host takes claude-pool-rotation-tick. The host's
+  # name in the overlay is the request's ledger_host_name.
+  claude-pool-rotation-tick-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-claude-pool-rotation-tick
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 300
+      run_timeout_s: 120
+      run_at_load: true
+      description: every 300 s and at load
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_claude_token_pool_effect.runtime_claude_pool_tick
+    entry_file: src/omnimarket/nodes/node_claude_token_pool_effect/runtime_claude_pool_tick.py
+    probe_argv: ["--probe"]
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
+      OMNIBASE_PATH: "{registry_root}"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    # The tick names its host by this variable (the host's row in the pool overlay); the request's ledger_host_name fills it.
+    environment_inputs:
+      ONEX_HOST_NAME: ledger_host_name
+    required_environment_inputs: [ONEX_HOST_NAME]
+    evidence_file: .local/state/omni/claude-pool-rotation-tick/last-run.json
+    state_directory: .onex_state/claude-pool-rotation-tick
+  claude-pool-rotation-tick:
+    platform: launchd
+    kind: registry_module_tick
+    label: ai.omninode.claude-pool-rotation-tick
+    template: templates/ai.omninode.registry-module-tick.plist.tmpl
+    schedule:
+      start_interval: 300
+      run_at_load: true
+      description: every 300 s and at load
+    run_timeout_s: 120
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /opt/homebrew/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_claude_token_pool_effect.runtime_claude_pool_tick
+    entry_file: src/omnimarket/nodes/node_claude_token_pool_effect/runtime_claude_pool_tick.py
+    probe_argv: ["--probe"]
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
+      OMNIBASE_PATH: "{registry_root}"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    # The tick names its host by this variable (the host's row in the pool overlay); the request's ledger_host_name fills it.
+    environment_inputs:
+      ONEX_HOST_NAME: ledger_host_name
+    required_environment_inputs: [ONEX_HOST_NAME]
+    evidence_file: .local/state/omni/claude-pool-rotation-tick/last-run.json
+    state_directory: .onex_state/claude-pool-rotation-tick
   silent-failure-alarm:
     platform: launchd
     kind: registry_module_tick
@@ -500,9 +1397,15 @@ units:
       requires: clean git checkout that carries entry_file
     environment_path_overrides:
       - ONEX_SILENT_FAILURE_ALARM_CONFIG
+      - ONEX_SKILL_OVERLAY_ROOTS
+    # OMN-23323: an overlay root is never a worktree; the installer refuses one, in a default or an override.
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
     environment:
       ONEX_SILENT_FAILURE_ALARM_CONFIG: "{home}/.local/state/omni/silent-failure-alarm/config.json"
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+      # The alarm reads the lab host table (which hosts are unavailable) through the overlay roots alone; the config
+      # owner's copy is no longer a source (OMN-23950), so the unit names the overlays clone first, then the plugin copy.
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
     # The configuration the alarm reads from ONEX_SILENT_FAILURE_ALARM_CONFIG (OMN-22778), written by the installer so a
     # reinstall reproduces it and nobody writes it by hand. Built-in placeholders: {home}, {registry_root} and {ledger_path}
     # (the request's, else the registry's own ledger file). Each input is a request field, else the installing shell's

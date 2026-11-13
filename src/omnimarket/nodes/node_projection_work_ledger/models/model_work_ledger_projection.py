@@ -50,6 +50,10 @@ class ModelWorkLedgerProjectionConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
     ledger_id: str = Field(min_length=1)
+    #: Sources whose rows must carry a ledger_seq to be projected (OMN-23488).
+    sequence_required_sources: tuple[str, ...]
+    #: The row types work_ledger_latest keeps the newest row of per lane and per ticket (OMN-23606).
+    latest_row_types: frozenset[str] = Field(min_length=1)
 
     _canonical_ledger_id = field_validator("ledger_id")(validate_work_ledger_id)
 

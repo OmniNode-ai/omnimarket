@@ -16,6 +16,7 @@ from omnimarket.events.model_ledger_row_event import (
 from omnimarket.nodes.node_projection_work_ledger.models import (
     ModelWorkLedgerProjectionInbound,
 )
+from tests.helpers.work_ledger_open_gate import OPEN_JUDGE_GATE
 from tests.nodes.work_ledger_fixtures import records_for_all_ledger_row_types
 
 RAW_ROW = "2026-09-28T11:00:00Z | CLAIM | lane=acceptance-lane | ticket=OMN-20001 | est ~1 lane-hours; displaces none; (OMN-20001) | paired source"
@@ -120,10 +121,12 @@ async def source_database(monkeypatch):
     schema = "m3_" + uuid4().hex
     migration_root = Path(module.__file__).parents[1] / "migrations"
     await conn.execute(f'CREATE SCHEMA "{schema}"')
+    # OMN-23694: the writer also maintains work_ledger_latest (0011); its grant (0012) names the runtime role, so it is not applied.
     for name in (
         "0000_create_work_ledger.sql",
         "0002_work_ledger_typed_records.sql",
         "0003_work_ledger_seq.sql",
+        "0011_work_ledger_latest.sql",
     ):
         await conn.execute(
             (migration_root / name).read_text().replace("omninode_internal", schema)
@@ -184,9 +187,10 @@ async def test_real_markdown_and_typed_pair_reconcile_one_immutable_row(
 
     adapter = _Adapter()
     producer = HandlerWorkLedgerEmit(
+        judge_gate=OPEN_JUDGE_GATE,
         emitter=HandlerEventEmitEffect(
             spool=SpoolOutbox(tmp_path / "spool"), publish_adapter=adapter
-        )
+        ),
     )
     inbound = paired_inbound()
     legacy_result = producer.handle(ModelWorkLedgerEmitRequest(row=RAW_ROW))
@@ -211,7 +215,8 @@ async def test_real_markdown_and_typed_pair_reconcile_one_immutable_row(
     assert rows[0]["row_id"] == ROW_ID
     assert rows[0]["event_id"] == EVENT_ID
     assert rows[0]["raw_row"] == RAW_ROW
-    assert rows[0]["source"] == "onex-ledger"
+    # The emit node defaults to the ledger-emit source (OMN-23488); onex-ledger rows carry a ledger_seq.
+    assert rows[0]["source"] == "ledger-emit"
     assert rows[0]["record"] == dump_work_ledger_line(inbound.to_record())
 
 
@@ -438,7 +443,9 @@ async def test_simultaneous_legacy_and_typed_delivery_has_one_safe_identity(
         "raw_row": RAW_ROW,
         "row_id": ROW_ID,
         "event_id": ROW_ID,
-        "source": "onex-ledger",
+        # A legacy delivery with no ledger_seq comes from the backfill source; the
+        # projection refuses a live onex-ledger row without one (OMN-23488).
+        "source": "ledger-emit",
     }
     for seed in range(6):
         await conn.execute(
@@ -489,9 +496,10 @@ def test_registered_v2_producer_routes_all_eleven_core_row_types(tmp_path):
 
     adapter = _Adapter()
     producer = HandlerWorkLedgerEmit(
+        judge_gate=OPEN_JUDGE_GATE,
         emitter=HandlerEventEmitEffect(
             spool=SpoolOutbox(tmp_path / "spool"), publish_adapter=adapter
-        )
+        ),
     )
     records = records_for_all_ledger_row_types()
     index = {record.event.event_id: record.event for record in records}
@@ -552,7 +560,9 @@ def test_noncanonical_config_and_typed_inbound_refuse_before_database(
 
     monkeypatch.setattr(AsyncpgAdapter, "connect", unexpected_connect)
     with pytest.raises(ValidationError):
-        ModelWorkLedgerProjectionConfig(ledger_id=ledger_id)
+        ModelWorkLedgerProjectionConfig(
+            ledger_id=ledger_id, sequence_required_sources=()
+        )
     data = paired_inbound().model_dump()
     data["ledger_id"] = ledger_id
     data["provenance_kind"] = "typed"
@@ -633,3 +643,37 @@ async def test_distinct_legacy_arrival_cannot_race_typed_reconciliation(
         )
         == 0
     )
+
+
+@pytest.mark.integration
+async def test_unsequenced_live_row_is_refused_and_projects_no_row_in_a_real_database(
+    source_database,
+):
+    from omnimarket.events.enum_ledger_row_type import EnumLedgerRowType
+    from omnimarket.nodes.node_projection_work_ledger.handlers.handler_work_ledger_projection import (
+        UnsequencedLiveRowError,
+        WorkLedgerProjectionWriter,
+    )
+    from omnimarket.projection.runner import MessageMeta
+
+    db, conn, schema = source_database
+    writer = WorkLedgerProjectionWriter()
+    writer._db = db
+    # The refusal is judged on the live dual-write path: the legacy raw_row topic,
+    # which carries ledger_seq. The typed inbound model has no ledger_seq field.
+    payload = {"raw_row": RAW_ROW, "source": "onex-ledger", "ledger_seq": None}
+    meta = MessageMeta(
+        partition=0, offset=1, fallback_id="", topic=EnumLedgerRowType.CLAIM.topic
+    )
+    with pytest.raises(UnsequencedLiveRowError):
+        await writer._project_and_report(meta.topic, payload, meta)
+    unsequenced = await conn.fetch(
+        f"SELECT 1 FROM {schema}.work_ledger_rows "
+        "WHERE source = 'onex-ledger' AND ledger_seq IS NULL"
+    )
+    assert len(unsequenced) == 0
+    await writer._project_and_report(meta.topic, {**payload, "ledger_seq": 9}, meta)
+    sequenced = await conn.fetch(
+        f"SELECT ledger_seq FROM {schema}.work_ledger_rows WHERE source = 'onex-ledger'"
+    )
+    assert [row["ledger_seq"] for row in sequenced] == [9]

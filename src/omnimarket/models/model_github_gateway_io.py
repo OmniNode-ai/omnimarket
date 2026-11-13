@@ -125,6 +125,10 @@ class ModelGithubGatewayRequest(BaseModel):
         default=False,
         description="job_log_tail: refuse a cache miss without resolving credentials or making HTTP calls.",
     )
+    fill_on_miss: bool = Field(
+        default=False,
+        description="job_log_tail: on a cache miss, download that one job's log inside the gateway's declared miss-fill budget instead of refusing.",
+    )
     artifact_id: int | None = Field(
         default=None,
         gt=0,
@@ -224,6 +228,11 @@ class ModelGithubGatewayRequest(BaseModel):
             raise ValueError(
                 "operation 'job_log_fill' downloads on a miss and cannot be cache_only."
             )
+        if self.fill_on_miss:
+            if self.operation is not EnumGithubGatewayOperation.JOB_LOG_TAIL:
+                raise ValueError("fill_on_miss is supported only for job_log_tail.")
+            if self.cache_only:
+                raise ValueError("fill_on_miss and cache_only are exclusive.")
         if (
             self.operation is EnumGithubGatewayOperation.COMMIT_CHECK_RUNS
             and self.head_sha is None
@@ -439,6 +448,13 @@ class ModelWorkflowRunsResult(_ModelBoundedList):
     operation: Literal["workflow_runs"] = "workflow_runs"
     repo: str
     runs: list[ModelWorkflowRunSummary] = Field(default_factory=list)
+
+    def succeeded_at(self, head_sha: str) -> bool:
+        """True when a run on ``head_sha`` concluded ``success``."""
+        return any(
+            run.head_sha == head_sha and run.conclusion == "success"
+            for run in self.runs
+        )
 
 
 class ModelJobStep(BaseModel):
