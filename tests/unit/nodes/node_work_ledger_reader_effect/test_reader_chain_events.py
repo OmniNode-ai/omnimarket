@@ -317,6 +317,56 @@ def test_command_route_failures_are_errors_never_empty_answers(
     assert answer.lines == ()
 
 
+_ANSWERING = """
+    import json, sys
+    req = json.loads(sys.stdin.read())
+    print(json.dumps({"correlation_id": req["correlation_id"], "status": "ok",
+                      "matched": 1, "lines": ["inbox lane-x: 1 open"],
+                      "watermark": "2026-11-02T02:59:40Z"}))
+    """
+_NEVER_ANSWERING = """
+    import sys, time
+    sys.stdin.read()
+    time.sleep(60)
+    """
+
+
+def test_error_chain_query_node_timeout_emits_refused_not_answered(
+    tmp_path: Path,
+) -> None:
+    """The named break: the bus read command outlives its timeout (OMN-22728, AC3)."""
+    sink = InMemoryEventSink()
+    broken = CommandPointRead(_fake_command(tmp_path, _NEVER_ANSWERING), 1)
+    result = HandlerWorkLedgerReader(overlay(), broken, sink, clock=lambda: NOW).handle(
+        inbox()
+    )
+    assert result.status is EnumReaderStatus.UNREADABLE
+    assert result.reason == "node-read-failed-read-command-failed-timeoutexpired"
+    assert result.lines == ()
+    assert result.source == "none"
+    assert result.file_read is False
+    [event] = sink.events
+    assert event.kind is EnumReaderEventKind.REFUSED
+    assert event.topic == TOPICS["reader_refused"]
+    assert EnumReaderEventKind.ANSWERED not in {e.kind for e in sink.events}
+
+
+def test_golden_chain_command_route_in_time_emits_answered_control(
+    tmp_path: Path,
+) -> None:
+    """Control for the timeout break: the same route, answering in time, is the golden event."""
+    sink = InMemoryEventSink()
+    working = CommandPointRead(_fake_command(tmp_path, _ANSWERING), 30)
+    result = HandlerWorkLedgerReader(
+        overlay(), working, sink, clock=lambda: NOW
+    ).handle(inbox())
+    assert result.status is EnumReaderStatus.OK
+    assert result.lines[0] == "inbox lane-x: 1 open"
+    [event] = sink.events
+    assert event.kind is EnumReaderEventKind.ANSWERED
+    assert event.topic == TOPICS["reader_answered"]
+
+
 def test_cli_moved_reader_never_reads_the_file_even_when_it_holds_the_answer(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

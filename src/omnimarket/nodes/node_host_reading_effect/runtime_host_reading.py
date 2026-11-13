@@ -20,6 +20,7 @@ import argparse
 import asyncio
 import inspect
 import os
+import signal
 import sys
 from collections.abc import Sequence
 from datetime import UTC, datetime
@@ -60,6 +61,11 @@ from omnimarket.nodes.node_host_reading_effect.handlers.handler_host_reading imp
 )
 from omnimarket.nodes.node_host_reading_effect.handlers.join_j2 import (
     JoinJ2,
+)
+from omnimarket.nodes.node_host_reading_effect.handlers.join_j2_hosts import (
+    failure_report,
+    parked_line,
+    split_probed_and_parked,
 )
 from omnimarket.nodes.node_host_reading_effect.handlers.schedule import (
     HostReadingScheduler,
@@ -217,6 +223,12 @@ def _join_j2(arguments: Sequence[str]) -> int:
     parser.add_argument("--kafka-bootstrap", default=None)
     parser.add_argument("--workspace-root", default=os.environ.get("OMNI_HOME"))
     parser.add_argument("--host", action="append", default=None)
+    parser.add_argument(
+        "--deadline-seconds",
+        type=float,
+        default=None,
+        help="the bound on the hosts' runs, inside the step's own time limit: a host still open at it closes its chains typed",
+    )
     args = parser.parse_args(list(arguments))
     if args.bus == "inmemory":
         sys.stderr.write(
@@ -238,8 +250,20 @@ def _join_j2(arguments: Sequence[str]) -> int:
             host.name for host in HostTableInventory(os.environ).hosts() if host.pooled
         )
     )
+    skipped_lines: list[str] = []
+    if not args.host:
+        hosts, parked, warning = split_probed_and_parked(
+            hosts, HostTableInventory(os.environ)
+        )
+        skipped_lines = [parked_line(host, reason) for host, reason in parked]
+        if warning:
+            sys.stderr.write(warning + "\n")
 
-    async def main() -> tuple[bool, list[str]]:
+    async def main() -> tuple[bool, list[str], str | None]:
+        # A terminate cancels the run, so every host closes its open chains typed before the process ends.
+        run = asyncio.current_task()
+        if run is not None:
+            asyncio.get_running_loop().add_signal_handler(signal.SIGTERM, run.cancel)
         async with open_lab_run_bus(
             bus=cast(BusKind, args.bus),
             lane=args.bus_lane,
@@ -261,28 +285,38 @@ def _join_j2(arguments: Sequence[str]) -> int:
                     caller=caller,
                     sink=JsonlEmissionSink(Path(home) / join.emission_journal_relpath),
                     backend="real" if args.bus == "kafka" else "in_memory",
-                ).run_hosts(hosts)
+                ).run_hosts(hosts, deadline_seconds=args.deadline_seconds)
             finally:
                 await caller.stop()
         lines = [
-            f"J2 host={r.host} outcome={r.outcome.value} failure={r.failure_code or 'none'} "
-            f"correlation={r.correlation_id} unit={r.work_unit_id or 'none'} "
-            f"receipt_host={r.receipt_host or 'none'} advert_age_s={r.advert_age_seconds} "
-            f"detail={r.detail!r}"
-            for r in results
+            *skipped_lines,
+            *(
+                f"J2 host={r.host} outcome={r.outcome.value} failure={r.failure_code or 'none'} "
+                f"correlation={r.correlation_id} unit={r.work_unit_id or 'none'} "
+                f"receipt_host={r.receipt_host or 'none'} advert_age_s={r.advert_age_seconds} "
+                f"detail={r.detail!r}"
+                for r in results
+            ),
         ]
         golden = sum(r.ok for r in results)
         lines.append(
             f"RUN-J2 hosts={len(results)} golden={golden} failed={len(results) - golden}"
         )
-        return all_hosts_golden(results), lines
+        return all_hosts_golden(results), lines, failure_report(results)
 
     try:
-        ok, lines = asyncio.run(main())
+        ok, lines, report = asyncio.run(main())
     except LabRunBusError as exc:
         sys.stderr.write(f"J2-BUS-FAILED {exc}\n")
         return 1
+    except asyncio.CancelledError:
+        sys.stderr.write(
+            "J2-TERMINATED the run was cancelled; its open chains were closed typed\n"
+        )
+        return 1
     sys.stdout.write("\n".join(lines) + "\n")
+    if report is not None:
+        sys.stderr.write(report + "\n")
     return 0 if ok else 1
 
 

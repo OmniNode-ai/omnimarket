@@ -16,9 +16,15 @@ import re
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from omnimarket.nodes.node_dod_closeout_sweep_compute.models.model_closeout_scope_overlay import (
+from omnimarket.models.closeout_scope_overlay import (
     EnumRankRule,
     ModelCloseoutScopeOverlay,
+)
+from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_examined_rules import (
+    examined_update,
+    held_for_unchanged_rejection,
+    next_memory,
+    with_examined_state,
 )
 
 _TEXT_SHA = re.compile(r"^[0-9a-f]{16}$")
@@ -211,10 +217,10 @@ def _rule_applies(rule: EnumRankRule, row: Mapping[str, Any]) -> bool:
 def rank_key(
     row: Mapping[str, Any], overlay: ModelCloseoutScopeOverlay
 ) -> tuple[Any, ...]:
-    """One 0-or-1 entry per overlay rule, in the overlay's order, then the oldest closeout
-    comment, then the id. A ticket waiting on a post-merge condition is one group: the rules
-    after waiting_on do not reorder it, so rules [waiting_on, merged_in_review] rank
-    exactly as the script's three tiers."""
+    """One 0-or-1 entry per overlay rule, in the overlay's order, then the time the ticket was
+    last examined (never examined first; OMN-23282), then the id. A ticket waiting on a
+    post-merge condition is one group: the rules after waiting_on do not reorder it, so rules
+    [waiting_on, merged_in_review] rank exactly as the script's three tiers."""
     parts: list[int] = []
     decided = False
     for rule in overlay.rank_rules:
@@ -224,7 +230,8 @@ def rank_key(
         hit = _rule_applies(rule, row)
         parts.append(0 if hit else 1)
         decided = hit and rule is EnumRankRule.WAITING_ON
-    at = row.get("last_closeout_comment_at")
+    # A row that carries no examination read ranks on its newest closer comment, as before.
+    at = row.get("last_examined_at", row.get("last_closeout_comment_at"))
     return (*parts, at if isinstance(at, str) else "", row["id"])
 
 
@@ -247,12 +254,20 @@ def select_candidates(
         key=lambda w: w["id"],
     )
     eligible = [r for r in rows if not pr_gate(r, overlay)]
-    held = sorted(r["id"] for r in eligible if held_for_amendment(r))
+    on_hold = [
+        r
+        for r in eligible
+        if held_for_amendment(r) or held_for_unchanged_rejection(r, overlay)
+    ]
+    held = sorted(r["id"] for r in on_hold)
+    held_ids = set(held)
     ranked = sorted(
-        (r for r in eligible if not held_for_amendment(r)),
+        (r for r in eligible if r["id"] not in held_ids),
         key=lambda r: rank_key(r, overlay),
     )
-    ids = _apply_reserve(ranked, limit, overlay.no_contract_reserve)
+    ids = _apply_reserve(
+        ranked, limit, overlay.no_contract_reserve, overlay.no_contract_only_by_reserve
+    )
     chosen = set(ids)
     return {
         "selected": ids,
@@ -264,12 +279,32 @@ def select_candidates(
     }
 
 
+def _is_contractless(row: Mapping[str, Any]) -> bool:
+    """No contract on a default branch and no recorded post-merge condition: a ticket
+    dod_verify cannot run for and no earlier adjudication is waiting to re-check."""
+    return row.get("has_contract") is False and not _rule_applies(
+        EnumRankRule.WAITING_ON, row
+    )
+
+
 def _apply_reserve(
-    ranked: Sequence[dict[str, Any]], limit: int, reserve: int
+    ranked: Sequence[dict[str, Any]],
+    limit: int,
+    reserve: int,
+    only_by_reserve: bool = False,
 ) -> list[str]:
     """The top ``limit`` of the ranking, except that up to ``reserve`` of those slots go to
     the best-ranked tickets with no contract, so the binder can still author a contract
-    for them and the has_contract rule cannot starve them. Order stays the ranking's."""
+    for them and the has_contract rule cannot starve them. Order stays the ranking's.
+    With ``only_by_reserve`` a ticket with no contract takes no other slot: the run holds the
+    verifiable tickets and the reserve, and is smaller when fewer than ``limit`` can verify."""
+    position = {r["id"]: n for n, r in enumerate(ranked)}
+    if only_by_reserve:
+        kept = [r for r in ranked if not _is_contractless(r)]
+        reserved = [r for r in ranked if _is_contractless(r)][:reserve]
+        base = kept[: max(limit - len(reserved), 0)]
+        picked = [*base, *reserved][:limit]
+        return sorted((r["id"] for r in picked), key=lambda i: position[i])
     head = [r["id"] for r in ranked[:limit]]
     if not reserve or limit <= reserve or not ranked:
         return head
@@ -277,20 +312,57 @@ def _apply_reserve(
     if not without:
         return head
     keep = limit - min(reserve, len(without))
-    base = [r["id"] for r in ranked[:keep]]
-    taken = set(base)
-    slots = limit - len(base)
+    base_ids = [r["id"] for r in ranked[:keep]]
+    taken = set(base_ids)
+    slots = limit - len(base_ids)
     extra = [i for i in without if i not in taken][:slots]
     if len(extra) < slots:
         extra += [r["id"] for r in ranked[keep:] if r["id"] not in extra][
             : slots - len(extra)
         ]
-    position = {r["id"]: n for n, r in enumerate(ranked)}
-    return sorted([*base, *extra], key=lambda i: position[i])
+    return sorted([*base_ids, *extra], key=lambda i: position[i])
 
 
 def _encoded(obj: Mapping[str, Any]) -> str:
     return json.dumps(obj, separators=(",", ":"), ensure_ascii=False)
+
+
+def _scope_rows(
+    candidates: Sequence[Any],
+    pr_state: Sequence[Any],
+    text_state: Sequence[Any],
+    contract_state: Sequence[Any] | None,
+    examined: Mapping[str, Mapping[str, Any]] | None,
+) -> list[dict[str, Any]]:
+    """Every candidate with its text, PR, contract and examination state read."""
+    contract_rows = None if contract_state is None else parse_rows(contract_state)
+    rows = with_contract_state(
+        with_pr_state(
+            with_text_state(candidates, parse_rows(text_state)),
+            parse_pr_state(pr_state),
+        ),
+        contract_rows,
+    )
+    return with_examined_state(rows, examined or {})
+
+
+def scope_examined_memory(
+    candidates: Sequence[Any],
+    pr_state: Sequence[Any],
+    text_state: Sequence[Any],
+    contract_state: Sequence[Any] | None,
+    limit: int,
+    overlay: ModelCloseoutScopeOverlay,
+    examined: Mapping[str, Mapping[str, Any]],
+    now: str,
+) -> dict[str, dict[str, Any]]:
+    """The memory after this selection: each selected ticket examined ``now`` over what was
+    recorded, for the tickets in scope only (OMN-23282)."""
+    merged = _scope_rows(candidates, pr_state, text_state, contract_state, examined)
+    picked = select_candidates(merged, limit, overlay)["selected"]
+    by_id = {r["id"]: r for r in merged}
+    update = examined_update([by_id[i] for i in picked], now)
+    return next_memory(examined, [r["id"] for r in merged], update)
 
 
 def scope_bundle(
@@ -303,16 +375,12 @@ def scope_bundle(
     *,
     held_cap: int | None = None,
     waiting_cap: int | None = None,
+    examined: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """The bounded scope: the top ``limit`` tickets' rows, held, waiting and totals."""
     held_cap = overlay.held_cap if held_cap is None else held_cap
     waiting_cap = overlay.waiting_cap if waiting_cap is None else waiting_cap
-    pr_rows = parse_pr_state(pr_state)
-    text_rows = parse_rows(text_state)
-    contract_rows = None if contract_state is None else parse_rows(contract_state)
-    merged = with_contract_state(
-        with_pr_state(with_text_state(candidates, text_rows), pr_rows), contract_rows
-    )
+    merged = _scope_rows(candidates, pr_state, text_state, contract_state, examined)
     picked = select_candidates(merged, limit, overlay)
     first: dict[str, Any] = {}
     for c in candidates:
@@ -356,6 +424,7 @@ def bundle_text(
     contract_state: Sequence[Any] | None,
     limit: int,
     overlay: ModelCloseoutScopeOverlay,
+    examined: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> str:
     """The bundle as printed: the listed held and waiting ids shrink before it may pass the
     overlay's byte cap (their counts stay exact); the selected rows never do."""
@@ -371,6 +440,7 @@ def bundle_text(
                 overlay,
                 held_cap=held_cap,
                 waiting_cap=waiting_cap,
+                examined=examined,
             )
         )
         if len(text.encode("utf-8")) <= overlay.bundle_max_bytes:

@@ -10,7 +10,8 @@ lane only once the stop is confirmed. The exit code is diagnostic only; the ledg
     python -m omnimarket.nodes.node_remote_lane_start_orchestrator.runtime_remote_lane_start --overlay <overlay.yaml> \\
         --ledger <ledger.md> --pool-snapshot <pool.json> --lane <lane> --key <key> \\
         --ticket OMN-<n> --model <model> --brief <brief.md> --run-id <run> [--attempt N] \\
-        [--engine claude] [--placement lab] [--parent <lane>] [--repo R --owner O --sha S]
+        [--engine claude] [--placement lab] [--parent <lane>] [--repo R --owner O --sha S] \\
+        [--repair-target <host> --ssh-reach-file <reach.json>]
 
 There is no default ledger and no environment read: a missing ``--ledger`` refuses, and every
 setting is a ``remote_lane_start.*`` key of the overlay (a missing key refuses naming it).
@@ -19,12 +20,14 @@ setting is a ``remote_lane_start.*`` key of the overlay (a missing key refuses n
 from __future__ import annotations
 
 import argparse
+import json
 import signal
 import sys
 import time
 from pathlib import Path
 
 import yaml
+from omnibase_spi.contracts.services import ModelLanePluginTree
 
 from omnimarket.nodes.node_remote_lane_start_orchestrator.handlers.adapter_host_pool import (
     SnapshotFileLaneHostPool,
@@ -66,16 +69,37 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--placement", default="lab")
     p.add_argument("--parent")
     p.add_argument("--pinned-host")
+    p.add_argument(
+        "--repair-target",
+        help="the host this lane repairs: the lane runs on another host that reached it over ssh (OMN-23389)",
+    )
+    p.add_argument(
+        "--ssh-reach-file",
+        help="JSON {host: [hosts it reached over ssh]} read beside the pool snapshot; a host absent from it takes no repair lane",
+    )
     p.add_argument("--escalation-reason")
     p.add_argument("--repo")
     p.add_argument("--owner")
     p.add_argument("--sha")
+    p.add_argument(
+        "--plugin-tree",
+        action="append",
+        default=[],
+        metavar="NAME:DIGEST:ARCHIVE",
+        help="a plugin tree to ship to the host: its name, the digest naming the installed copy and its archive on this host; repeat per tree",
+    )
     p.add_argument(
         "--timeout-min",
         type=int,
         help="the lane's runtime limit; the CLAIM's est hours follow it",
     )
     return p
+
+
+def plugin_tree(spec: str) -> ModelLanePluginTree:
+    """One ``--plugin-tree NAME:DIGEST:ARCHIVE`` value; the archive path may itself hold colons."""
+    name, digest, archive = [*spec.split(":", 2), "", ""][:3]
+    return ModelLanePluginTree(name=name, source_digest=digest, archive_path=archive)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -96,11 +120,18 @@ def main(argv: list[str] | None = None) -> int:
             run_id=args.run_id,
             attempt=args.attempt,
             pinned_host=args.pinned_host,
+            repair_target=args.repair_target,
+            host_ssh_reach=(
+                json.loads(Path(args.ssh_reach_file).read_text(encoding="utf-8"))
+                if args.ssh_reach_file
+                else {}
+            ),
             escalation_reason=args.escalation_reason,
             repo=args.repo,
             owner=args.owner,
             sha=args.sha,
             timeout_min=args.timeout_min,
+            plugin_trees=tuple(plugin_tree(spec) for spec in args.plugin_tree),
         )
     except (OSError, KeyError, ValueError) as exc:
         sys.stderr.write(f"node_remote_lane_start_orchestrator: refused: {exc}\n")

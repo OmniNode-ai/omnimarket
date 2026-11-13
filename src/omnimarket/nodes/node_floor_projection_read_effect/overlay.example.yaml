@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# The projections the floor takes from the bus. A host names its own copy with ONEX_FLOOR_PROJECTION_OVERLAY. The in-memory
+# bus is the default and holds no publication, so every projection reads unknown; the real backend is the broker.
+bus: inmemory
+bus_lane: null
+kafka_bootstrap: null
+read_window_s: 4.0
+projections:
+  overlay_store_fleet:
+    topic: onex.snapshot.projection.floor-overlay-store-fleet.v1
+    # Each host's reader publishes its view of the fleet every tick; a view older than this reads unknown on the floor.
+    max_age_s: 900
+  owner_map:
+    topic: onex.snapshot.projection.floor-owner-map.v1
+    # The controller's host publishes the map every tick of its unit; a map older than this reads unknown and the board's work list is unread.
+    max_age_s: 900
+  work_state:
+    topic: onex.snapshot.projection.floor-work-state.v1
+    # The work-state projection is rebuilt by the publish tick and the fill pass; one older than this reads unknown and the floor draws no lane from it.
+    max_age_s: 900
+  integration:
+    topic: onex.snapshot.projection.floor-integration.v1
+    # The hourly integration pass publishes its readings once an hour; a list older than two passes reads unknown on the floor.
+    max_age_s: 7800

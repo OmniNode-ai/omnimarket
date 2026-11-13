@@ -2,8 +2,10 @@
 # SPDX-License-Identifier: MIT
 # ONEX Node Contract - Floor Delegation Tracker Effect (OMN-23081)
 #
-# Two stages, run as steps of the factory floor publish. "scenarios" reads the latest scheduled runs of each delegation
-# scenario's workflow through the source-control node. "build" reads the ticket mirror, the pull request watcher and the
+# Three stages, run as steps of the factory floor publish. "scenarios" reads the latest scheduled result of each delegation
+# scenario from the source its overlay entry names: a hosted workflow's runs through the source-control node, or a lab node's
+# STATUS rows from the bus ledger read (OMN-23407). "routes" (OMN-23381) reads the delegations per hour by route (local, GLM,
+# other) from the lab's database over ssh in a read only transaction. "build" reads the ticket mirror, the pull request watcher and the
 # factory floor record, and writes the tracker the floor's Delegation tab shows: a shippable line (every scenario passes on
 # its latest scheduled run), and the delegation readiness plan's tickets grouped by where they stand. A source that cannot be
 # read is unread and is never counted as a pass. Paths are relative to the registry home (OMNI_HOME).
@@ -18,7 +20,8 @@ runtime_profiles: []
 
 description: >
   Reads the delegation scenarios' latest scheduled runs and the delegation readiness plan's ticket states, and writes the
-  delegation tracker: whether delegation is shippable, each scenario's latest result, and each plan ticket's group.
+  delegation tracker: whether delegation is shippable, each scenario's latest result, each plan ticket's group, and the delegations
+  per hour by route with the local share.
 
 handler:
   module: omnimarket.nodes.node_floor_delegation_effect.handlers.handler_floor_delegation
@@ -43,8 +46,9 @@ descriptor:
   idempotent: true
   timeout_ms: 60000
   side_effects:
-    - runs the registry's onex source-control read (run-list) once per scenario workflow, in parallel, and writes the answers to the node's state file
+    - runs the registry's onex source-control read (run-list) once per scenario workflow, and reads the ledger rows of each lab-node scenario over the bus read command, and writes the answers to the node's state file
     - reads the ticket mirror, the pull request watcher state and the factory floor record under the registry home
+    - reads the delegation events table of the lab's database over ssh in a read only transaction and writes the hour counts to the node's state file
     - writes the tracker file the publish copies to the serving host
 
 input_model:
@@ -57,7 +61,7 @@ output_model:
   description: Whether the stage wrote its file, and for the build stage whether delegation is shippable.
 
 runtime_dispatch:
-  external_trigger: python -m omnimarket.nodes.node_floor_delegation_effect scenarios|build|run, as a step of python -m omnimarket.nodes.node_factory_floor_publish_effect, from the registry module tick that the host installer contract declares.
+  external_trigger: python -m omnimarket.nodes.node_floor_delegation_effect scenarios|routes|build|run, as a step of python -m omnimarket.nodes.node_factory_floor_publish_effect, from the registry module tick that the host installer contract declares.
 
 event_bus:
   subscribe_topics: []
@@ -76,6 +80,14 @@ runtime:
   ticket_mirror_relpath: .onex_state/ticket-mirror
   scenario_reads_relpath: .onex_state/floor-delegation/scenario-runs.json
   output_relpath: .claude_scratch/factory-floor/delegation-tracker.json
+  # OMN-23381: the delegations per hour by route. The routes stage writes the hour counts here; the tracker's routes block shows
+  # them only while the read is newer than routes_max_age_min, else it is stale (or unread) and shows no number and no share.
+  # Which backend names are local and GLM, how many hours are read and where the database is are the overlay's routes block.
+  route_reads_relpath: .onex_state/floor-delegation/route-reads.json
+  routes_max_age_min: 90
+  routes_read_timeout_seconds: 12
+  routes_table: delegation_events
+  routes_data_source: real
   # A scenario's result is its latest finished run of this event. One read lists this many runs, newest first.
   scenario_event: schedule
   scenario_run_limit: 10
@@ -86,8 +98,23 @@ runtime:
   # read within scenario_refresh_seconds is not read again, so a run refreshes about half of them and none waits longer than two runs.
   scenario_stage_deadline_seconds: 70
   scenario_refresh_seconds: 420
+  # OMN-23176: a workflow the repository does not have yet (its builder has not merged) answers the same 404 on every read, and a
+  # read can take longer than scenario_read_timeout_seconds under load (R5 drew Unread at the 25 s bound). Its cached "not built"
+  # read is therefore asked again only after this many seconds, which is below scenario_reads_max_age_seconds so the cached
+  # answer never goes unread between two asks. The 25 s bound is unchanged.
+  # A read that failed is asked again on the next run (it is not held back for scenario_refresh_seconds like a read that worked), and
+  # every read records read_seconds, so the floor shows how long a read took where it used to show only the timeout.
+  scenario_missing_refresh_seconds: 1500
   # A scenario read older than this is drawn unread instead of reading old state as current.
   scenario_reads_max_age_seconds: 1800
+  # A scenario whose overlay entry names the lab_node source is read from the ledger over the bus: its node writes one STATUS row
+  # per scheduled slot under its lane, the rows node_delegation_scenario_days_effect reads. The read command is named by this
+  # variable (the deployment sets it); the latest scheduled row within the window is the result, and a read that stops early is unread.
+  ledger_read_command_env: ONEX_LEDGER_BUS_READ_COMMAND
+  ledger_read_timeout_seconds: 25
+  lab_node_window_days: 3
+  lab_node_rows_page_size: 500
+  lab_node_max_pages: 20
   # The tracker runs in the publish's first input group, before the factory floor record of this cycle is written, so the lanes
   # come from the record of the cycle before; a record older than this is not trusted and no ticket is shown as running a lane.
   record_max_age_seconds: 900

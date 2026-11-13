@@ -1,0 +1,88 @@
+Verdict: FAIL
+
+# Design review: LaneStart.tla (the lane start: CLAIM, engine start, one TERMINAL)
+
+Reviewer: an independent agent. I did not write the model. I edited no repository file and ran no git write command.
+Model reviewed: `model/LaneStart.tla`, sha256 `78b2c932d92410cf73b1c2dca8662675a6a007f4cc03d32701fd48938fc91a78`. My copy in `review/model/` has the same hash.
+
+## Why FAIL
+
+The model checks cleanly, and its mutants and witnesses do what they say. But two of the four claims hold only in the model, not in the code, and the design config makes two assumptions about the code that the code does not meet:
+
+- **Claim 1: a key is started at most once.** This holds only under `RetryGuard = "closed_unstarted"`. The model says plainly that nothing in the code enforces that guard. The guard is also written in terms the ledger cannot answer: it reads the true engine state (`eng`) and a TERMINAL outcome `start-failed` that the code never writes. Today a second attempt is claimed and started even when the first attempt's start is unresolved and its CLAIM is still open.
+- **Claim 2: every started lane reaches exactly one TERMINAL.**
+  - "At most one" comes entirely from the ledger refusing a second TERMINAL (`SingleCloser`). The leader's write path in the code dedupes only by the `req=` cell.
+  - "At least one" comes from a reaper that the fairness condition guarantees will eventually act (`Reaper` with `WF_vars(StopperClose)`). The only stopper I could find, the stop node, refuses to close exactly the CLAIMs this property needs it to close.
+- **The stopper wait is assumed, not present.** The design sets `StopperWaitsLeader = TRUE`. The real stop node does not wait for a live leader. It behaves like the mutant `mut_stopper_closes_prestart`, which breaks `LeaderTerminalAfterExit`.
+
+Claims 3 (no TERMINAL without a CLAIM) and 4 (observe mode writes nothing) are established at this level of abstraction and match the code. Claim 4 holds by construction, so the model adds little evidence beyond `core.py:664-665`.
+
+## Conditions to reach PASS
+
+1. **Model the stopper that exists.**
+   - The stop node closes a CLAIM whose receipt `status` is empty, and that includes a live leader still provisioning. It refuses `start-unresolved`, `stop-refused` and `ledger-refused`.
+   - Either change the code (the stop node waits for or fences against a live leader, and something closes the refused cases), or make Model.cfg the code's behaviour and list the hazard.
+   - Name the reaper behind `WF_vars(StopperClose)`, or drop the fairness condition and weaken claim 2 to match.
+2. **Make the retry fence implementable and place it.**
+   - Write RetryGuard over observable state: the ledger plus the receipt. Name the cell that marks "closed and the engine never started". Today the TERMINAL says `outcome=failed` for both a start failure and an engine that ran and failed. The only incidental marker is `delegation_reason=not-attempted:start-failed`.
+   - Name the component that enforces the fence: the node, keyed on `key` or on lane plus open CLAIM, or the fill. Until that exists, claim 1 should read "conditional on an unbuilt caller fence".
+3. **Prove the single-closer rule on the leader's write path,** or model without it.
+   - `HandlerWorkLedgerAppendEffect` checks only `req=` and the append-if-absent id.
+   - The leader's second TERMINAL is refused only if the external `ledger_append_argv --append` command refuses it. I could not find that command on this host.
+   - Add a mutant for `LeaderChecksSelfClose`, or remove the knob. Today it changes nothing.
+4. **Add the missing paths** (table rows F6 to F9): a closing append that does not land, a CLAIM refusal whose row lands later, a leader that dies during the start call with the start landing late, and the STATUS-vs-TERMINAL read made against a stale copy of the ledger or across attempts.
+5. **Separate `lane` from `key`.** The model says "one lane KEY". The CLAIM id is `uuid5(lane, attempt)` and does not include `key`. A retry under a new lane name, or a reused `run_id`, is outside both the model and the dedupe.
+
+## Findings
+
+| # | Sev | Finding | Evidence |
+|---|-----|---------|----------|
+| F1 | High | **The design's stopper wait does not exist in the code.** <br>• Between the CLAIM and the engine start, the leader runs the `before_engine` provisioning steps. Their timeouts in the example overlay add up to 1440 s. <br>• During that window the receipt has `state=claimed` and `status=None`, with `final=False`. <br>• The stop node treats an empty status as not final. It reads the CLAIM, signals a process tree that does not exist yet, finds no survivor and writes TERMINAL `stopped`. <br>• The leader does not read the ledger again before `START_ENGINE_DETACHED`, so the engine then starts on a closed CLAIM. When the engine exits, the leader writes a STATUS. <br>• This is `mut_stopper_closes_prestart`, not Model.cfg. My code-faithful stopper reproduces it. | core.py:723,727-733,781-792,962; model_remote_lane_start.py:247 (`final: bool = False`); handler_remote_lane_stop.py:45,151,229,242; overlay.example.yaml:47-54; LaneStart.tla:153-156; review out/r_code_stopper.out (LeaderTerminalAfterExit violated: Claim, StopperClose, StartEngine) |
+| F2 | High | **Liveness rests on a reaper that the code does not provide.** <br>• `StartedReachesTerminal` holds only because of `WF_vars(StopperClose(a))`; `mut_no_reaper` shows the trace "unresolved, engine ran and exited, no closer". <br>• The stop node runs on request, not as a reaper. For receipt status `start-unresolved`, `stop-refused` or `ledger-refused` (all `final=False`), it returns `already-ended`, sends no signal and writes no TERMINAL. <br>• So the unresolved, timeout-stop-refused and failed-close CLAIMs are never closed by any code I read. <br>• With the code's stopper, `StartedReachesTerminal` fails on the same trace as `mut_no_reaper`. | LaneStart.tla:183-185,212; core.py:289-295,794-804,896-906; handler_remote_lane_stop.py:45-46,151-155; model out/mut_no_reaper.out; review out/r_code_stopper_live.out |
+| F3 | High | **The retry fence is required but not enforced, and it cannot be checked from the ledger.** <br>• The CLAIM id is `uuid5("lane-claim:<lane>:<attempt>")`, so attempt 2 gets a fresh id. `_request_seen` finds nothing, and the node claims and starts again while attempt 1's CLAIM is still open. Nothing in the node reads the earlier attempt or `key`. <br>• `RetryOK` checks `eng[b] = "none"` (the true process state) and a TERMINAL outcome `"start-failed"`. <br>• The code writes `outcome=failed` (`FAILED_OUTCOME`, engine_rc=1) for a start failure, and the same value for an engine that ran and exited non-zero. Only the receipt's `state` says `start-failed`. <br>• Under a ledger-only guard over the outcomes the code actually writes, `StartedAtMostOnce` fails: attempt 1 runs and fails, its TERMINAL says `failed`, the retry starts a second engine. <br>• The `eng` conjunct is redundant (dropping it still passes), so a ledger-visible marker is all the fence needs. | core.py:118-119,668-677,739-747,806-814,942-946; handler_remote_lane_result.py:215-216; model_remote_lane_result.py:29; LaneStart.tla:24-26,164-169; review out/r_code_outcomes_ledger_guard.out (StartedAtMostOnce violated), out/r_guard_ledger_only.out (passes) |
+| F4 | High | **What the code does today for attempt 2 after an unresolved attempt 1.** <br>• CLAIM 2 is accepted, provisioning runs and engine 2 starts. If engine 1 had launched, two engines run for the lane. <br>• If `run_id` is reused, both share `host_run_root/<run_id>`: the pid, exit and log files and the workdir. <br>• `_lane_closed_itself` for attempt 2 matches any TERMINAL with `lane=<lane>` after CLAIM 2, including engine 1's own closeout. Leader 2 then writes a STATUS, and CLAIM 2 is left open. Afterwards the stop node sees a final receipt and returns `already-ended`. <br>• The model's per-attempt `HasT(a)` cannot express this cross-attempt match. | core.py:447-463,550-552,750,962-963; adapter_ssh_transport.py:487-499; runtime_remote_lane_start.py:67 (`--attempt` default 1); LaneStart.tla:71,144 |
+| F5 | High | **`AtMostOneTerminal` rests on an unverified single closer, and `LeaderChecksSelfClose` has no effect.** <br>• `Appended` drops any second TERMINAL whenever `SingleCloser` is set. <br>• The leader writes through `HandlerWorkLedgerAppendEffect`, which refuses only a replayed `req=` with different rows. The TERMINAL's `closes-CLAIM=` cell is never checked for an existing closer. <br>• The stop node writes through a different command (`row TERMINAL --closes-claim`). The stop-side verdict's condition ("the ledger refuses a second TERMINAL") is therefore not shown for the leader's `--append` path. <br>• Turning `LeaderChecksSelfClose` off still passes everything. Without `SingleCloser`, a lane-and-leader double TERMINAL appears with or without the self-close check and with no stopper involved. <br>• The model makes `_lane_closed_itself` and the append one atomic step; the code reads first (line 962) and appends later (line 996). | LaneStart.tla:74,142-149; handler_work_ledger_append_effect.py:264,319-389; core.py:962,977,996-1006; handler_remote_lane_stop.py:394 and its adapter `row TERMINAL`; review out/r_no_selfclose_check.out (passes), out/r_atomic_no_single_noreaper.out and out/r_split_no_single.out (AtMostOneTerminal violated) |
+| F6 | Med | **The leader's close is assumed always to land.** <br>• A refused or error close sets `durable=False`, leaves the CLAIM open and writes receipt status `ledger-refused`. <br>• The model's `LeaderClose` always appends, and `StopperClose` excludes `lp="done"`. So even the author's reaper would not close this CLAIM. <br>• With a failing close added, `ClaimReachesTerminal` fails. | core.py:1003-1031; LaneStart.tla:142-160; review out/r_close_can_fail.out |
+| F7 | Med | **A CLAIM refusal is modelled as "nothing written".** <br>• A CLAIM append that returns ERROR (a lock timeout, or exit 124 from the 150 s command timeout) is reported as `claim-refused`, and no engine starts. <br>• With `ledger_write_via: bus` the row can still land afterwards, leaving an orphan open CLAIM whose receipt is final. <br>• `DUPLICATE` is handled correctly as already-claimed. A concurrent same-attempt leader with a different stamp gets REFUSED, which is also safe on a single local ledger. | core.py:704-719; handler_work_ledger_append_effect.py:372-389; local_ledger_append_command.py:96,124-138; LaneStart.tla:83-88 |
+| F8 | Med | **The ledger is treated as one atomic shared store, but the leader reads a local file.** <br>• The leader reads `LocalLedgerFile(request.ledger_path)` for `_request_seen` and `_lane_closed_itself`. The example overlay sets `ledger_write_via: bus`, where the bus is the ledger of record. <br>• The flock is beside the local file. The handler's comment, that two leaders cannot both be told ACCEPTED, holds only if every leader of a lane uses the same file and that file is the ledger of record. <br>• Unverified. The model has no stale reads. | handler_remote_lane_start.py:103-115,146; overlay.example.yaml:75-76; core.py:440-463 |
+| F9 | Med | **The late-start hazard is wider than the model says.** <br>• `LateStartLands` fires only from `lp="unresolved"`. <br>• A leader that dies during the start call leaves receipt status empty. The stop node then closes as soon as no process tree is visible, which is the same hazard with no "unresolved" step involved. <br>• Through the stop node, the `unresolved` case itself never gets closed at all (F2). So the hazard config covers a path the code does not take and misses one it does. | LaneStart.tla:114-117,129-132; adapter_ssh_transport.py:497-510; handler_remote_lane_stop.py:151 |
+| F10 | Low | **Redundant or by-construction properties.** <br>• `StartedTerminalPerKey` follows from `StartedAtMostOnce` plus `AtMostOneTerminal` and has no mutant of its own. <br>• `ObserveWritesNothing` holds by construction, because `ObserveGuard` gates `Claim`. `StartEngine` has no mode guard, so the property also leans on `ClaimFirst`. <br>• `Refuse` is disabled in observe mode, though the code refuses there too (core.py:561-654). | LaneStart.tla:85-97,102-103,197-210 |
+| F11 | Low | **Mutant and witness hygiene.** <br>• Each mutant flips one knob and reports its own property. The exception is `mut_observe_claims`, which flips Mode and ObserveGuard against Model.cfg; it is one flip against obs_model.cfg. <br>• `wit_NeverUnresolvedRan` runs with `LateStart=TRUE`, although the state is reachable under the design config (I checked). <br>• There was no witness for the leader's STATUS path, for a retry after a refusal, or for a stopper closing after a dead leader's engine ran. I added all three and each is reachable. <br>• A retry after `unresolved` is unreachable under the design: a key whose start went unresolved is dead for good. That is acceptable for safety but should be stated. | model/*.cfg; review out/r_wit_*.out |
+| F12 | Info | **State space is adequate.** <br>• MaxAttempts 1, 3, 4 and 5 give 32, 224, 480 and 992 distinct states, and all pass. <br>• A third attempt does start (witness). Because the guard forbids retrying after any start, attempts beyond 2 add little. 3 is enough. | review out/r_Model_M*.out, out/r_wit_third_started.out |
+| F13 | Info | **The abstractions that hold.** <br>• CLAIM comes before any engine host call. <br>• The `failed` start result really means the engine was not launched: it is returned only for the mkdir refusal or an unavailable host command, before `setsid`. <br>• The timeout and stop paths close only on a confirmed stop. <br>• The leader writes only after an ACCEPTED CLAIM. <br>• Observe mode returns before any ledger read, ledger write or host call. | core.py:664-723,794-814,869-876,887-915; adapter_ssh_transport.py:493-510 |
+
+## What I ran (TLC2 2.19, tla2tools.jar from run_tlc.sh)
+
+- **The author's configs**, re-run in `review/model/`, all reproduced exactly: Model and obs_model (no error); haz_late_start (LeaderTerminalAfterExit); each mut_* (its named property); each wit_* (its invariant). Outputs are in `review/model/out/*.out`.
+- **A reviewer variant, `review/model/LaneStartR.tla`.** It is LaneStart plus the knobs StopperCode, CloseCanFail, CodeOutcomes and SplitClose, the guards `ledger_failed` and `closed_unstarted_ledger`, the properties ClaimReachesTerminal and NoStartAfterTerminal, and five witnesses. Run with `run_r.sh`, configs `r_*.cfg`:
+  - **Design settings** (r_Model_equiv): no error, 224 states, identical to the author's run. ClaimReachesTerminal and NoStartAfterTerminal also hold.
+  - **Pass:** r_Model_M1, r_Model_M4, r_Model_M5, r_no_selfclose_check, r_guard_ledger_only.
+  - **Witnesses no longer upheld, so the state is reachable:** r_wit_unresolved_ran_design, r_wit_leader_status, r_wit_retry_after_refused, r_wit_third_started, r_wit_stopper_dead_leader_ran.
+  - **Pass, so the state is unreachable:** r_wit_retry_after_unresolved.
+  - **Violated:**
+    - r_code_stopper: LeaderTerminalAfterExit.
+    - r_code_stopper_live: StartedReachesTerminal.
+    - r_close_can_fail: ClaimReachesTerminal.
+    - r_code_outcomes_ledger_guard: StartedAtMostOnce.
+    - r_atomic_no_single_noreaper and r_split_no_single: AtMostOneTerminal.
+    - r_late_start_noafter: NoStartAfterTerminal.
+
+## What I read
+
+- `.claude_scratch/reports/start-model-4160/model/`: LaneStart.tla, every *.cfg, every out/*.out, run_tlc.sh.
+- `omnimarket/src/omnimarket/nodes/node_remote_lane_start_orchestrator/`:
+  - orchestration/core.py (all of it)
+  - handlers/handler_remote_lane_start.py
+  - contract.yaml
+  - overlay.example.yaml
+  - models/model_remote_lane_start.py (the outcome enum, exit codes, request and receipt)
+  - orchestration/provisioning.py (header and run_phase)
+  - runtime_remote_lane_start.py (the SIGTERM and attempt lines)
+  - tests/test_remote_lane_start_provisioning.py:290-320
+- `node_work_ledger_append_effect`: handlers/handler_work_ledger_append_effect.py, protocols/local_ledger_append_command.py, local_serve.py (local_serve_handler).
+- `node_remote_lane_stop_effect`: handlers/handler_remote_lane_stop.py (header, handle, _claim_and_closer, _stop, _stop_process, _close), and the LocalStopLedger class in protocols/local_remote_lane_stop_adapters.py.
+- `node_remote_lane_close_compute/handlers/handler_remote_lane_result.py` (header and handle), and FAILED_OUTCOME in models/remote_lane_close/model_remote_lane_result.py.
+- `node_remote_lane_start_effect/adapters/adapter_ssh_transport.py:470-510` (start_engine_detached).
+- `node_onex_ledger_admission_compute/handlers/handler_onex_ledger_admission.py`: searched it for TERMINAL rules and found no single-closer rule.
+- `omnimarket/docs/formal/remote_lane_stop/`: RemoteLaneStop.tla, results/design_review_verdict.txt, results/SUMMARY.txt.
+- **Not found on this host:** the source of the external ledger writer behind `ledger_append_argv` (`onex-ledger --append`), and any automatic reaper for open lane CLAIMs. Findings F5 and F2 are therefore stated as unverified and absent in the code I read, respectively.

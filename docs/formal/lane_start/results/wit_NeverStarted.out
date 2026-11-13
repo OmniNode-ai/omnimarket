@@ -1,0 +1,38 @@
+Parsing file LaneStart.tla
+Parsing file Integers.tla
+Parsing file FiniteSets.tla
+Parsing file Naturals.tla
+Parsing file Sequences.tla
+Semantic processing of module Naturals
+Semantic processing of module Integers
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module LaneStart
+Computing initial states...
+Error: Invariant NeverStarted is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ lp = <<"requested", "none", "none">>
+/\ dec = <<"none", "none", "none">>
+/\ claims = {}
+/\ eng = <<"none", "none", "none">>
+/\ terms = {}
+
+State 2: <Next line 275, col 14 to line 278, col 46 of module LaneStart>
+/\ lp = <<"claimed", "none", "none">>
+/\ dec = <<"none", "none", "none">>
+/\ claims = {1}
+/\ eng = <<"none", "none", "none">>
+/\ terms = {}
+
+State 3: <Next line 275, col 14 to line 278, col 46 of module LaneStart>
+/\ lp = <<"running", "none", "none">>
+/\ dec = <<"none", "none", "none">>
+/\ claims = {1}
+/\ eng = <<"running", "none", "none">>
+/\ terms = {}
+
+9 states generated, 9 distinct states found, 1 states left on queue.
+The depth of the complete state graph search is 5.
+The average outdegree of the complete state graph is 2 (minimum is 1, the maximum 2 and the 95th percentile is 2).
+exit=12

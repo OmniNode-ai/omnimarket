@@ -1,10 +1,10 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The in-memory backend, the default: fixtures for the manifest, the broker's lag and the sample."""
+"""The in-memory backend, the default: fixtures for the manifest, the broker's lag, the sample and the listener probe."""
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from datetime import datetime
 from typing import Any
 
@@ -17,6 +17,8 @@ from omnimarket.nodes.node_lab_alarm.protocols import (
     GroupNeverCommittedError,
     GroupUnreadableError,
     LaneDispatchError,
+    ListenerRefusedError,
+    ListenerUnresolvableError,
     ManifestUnreachableError,
     ManifestUnreadableError,
     RunRecordUnwritableError,
@@ -79,6 +81,17 @@ class InMemorySamples:
         self.sample = dict(sample)
 
 
+class InMemoryGrowthStreaks:
+    def __init__(self, streaks: Mapping[str, int] | None = None) -> None:
+        self.streaks: dict[str, int] = dict(streaks or {})
+
+    def load(self) -> dict[str, int]:
+        return dict(self.streaks)
+
+    def save(self, streaks: Mapping[str, int]) -> None:
+        self.streaks = dict(streaks)
+
+
 class InMemoryRunRecords:
     """Keeps the appended run records in a list; ``unwritable`` makes the next append refuse."""
 
@@ -129,11 +142,33 @@ class InMemoryDispatcher:
         self.briefs.append(brief)
 
 
+class InMemoryListenerProbe:
+    """Answers the addresses in ``answering``; a listed failure raises its typed error, any other address refuses."""
+
+    def __init__(self, answering: Collection[str] = ()) -> None:
+        self.answering = set(answering)
+        self.unresolvable: dict[str, str] = {}
+        self.refused: dict[str, str] = {}
+        self.calls: list[str] = []
+
+    def probe(self, host: str, port: int, timeout: float) -> None:
+        address = f"{host}:{port}"
+        self.calls.append(address)
+        if address in self.unresolvable:
+            raise ListenerUnresolvableError(self.unresolvable[address])
+        if address in self.refused:
+            raise ListenerRefusedError(self.refused[address])
+        if address not in self.answering:
+            raise ListenerRefusedError(f"{address} is not a fixture address")
+
+
 __all__ = [
     "InMemoryDispatcher",
     "InMemoryEffectsGroups",
+    "InMemoryGrowthStreaks",
     "InMemoryHeldState",
     "InMemoryLag",
+    "InMemoryListenerProbe",
     "InMemoryManifest",
     "InMemoryManifestCache",
     "InMemoryRunRecords",

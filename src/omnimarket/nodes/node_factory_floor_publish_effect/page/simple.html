@@ -120,6 +120,28 @@ function healthRow(hl){
   const note = stale ? `This line is itself ${ago(hAge)}, limit ${Math.floor(hl.max_age_s / 60)} min: do not trust it.` : `Computed ${ago(hAge)}, limit ${Math.floor(hl.max_age_s / 60)} min. Oldest reading ${hl.oldest_age_s == null ? "none" : ago(hl.oldest_age_s)}.`;
   return `<div class="row" id="health-line"><span class="dot ${dot}"></span><div><b>${esc(hl.line)}</b><small>${note}</small></div></div>`;
 }
+// Merged work that is not running (OMN-23899), from the integration projection: the counts, then each group (the overlay's
+// heading) with its changes oldest merge first. An unread or stale projection says so with the reason; never an empty list.
+function integrationSection(s){
+  if (!s) return "";
+  if (s.status === "not_configured") return `<div class="rule bad" id="integration">Merged work not running: ${esc(s.reason)}.</div>`;
+  let h = `<h2 id="integration">${esc(s.title)}</h2>`;
+  if (s.status !== "read") return h + `<div class="row"><span class="dot red"></span><div><b>The list is not readable now.</b><small>${esc(s.reason)}${s.age_s == null ? "" : "; last published " + ago(s.age_s)}.</small></div></div>`;
+  const c = s.counts, o = c.oldest_unintegrated;
+  h += `<div class="piece"><b>${c.unintegrated} of ${c.merged} merged changes are not running.</b> ${c.seen_running} seen running, ${c.reading_owed} in place with no run seen yet, ${c.settled_elsewhere} run nowhere by design (CI or library).${o ? " Oldest not running: " + esc(o.key) + ", merged " + ago(Math.max(0, Math.floor((Date.now() - Date.parse(o.merged_at)) / 1000))) + "." : ""} List published ${ago(s.age_s)}.</div>`;
+  const byKey = {}; for (const r of s.rows) byKey[r.key] = r;
+  for (const g of s.groups) {
+    h += `<div class="line amber"><span class="n">${g.count}</span><span class="t"><b>${esc(g.title)}</b></span><span class="a"></span></div>`;
+    for (const k of g.keys) {
+      const r = byKey[k];
+      if (!r) continue;
+      const who = r.owner ? r.owner : "nobody named";
+      h += `<div class="line grey"><span class="n">&#8627;</span><span class="t"><b>${esc(r.key)}${r.companions.length ? " with " + r.companions.map(esc).join(", ") : ""}: ${esc(r.title)}</b> <small>Runs in ${esc(r.target)}. ${esc(r.gap)}. Next: ${esc(r.step)}. Owner: ${esc(who)}.</small></span><span class="a">merged ${ago(Math.max(0, Math.floor((Date.now() - Date.parse(r.merged_at)) / 1000)))}</span></div>`;
+    }
+  }
+  if (s.rows_total > s.rows.length) h += `<div class="piece">${s.rows_total - s.rows.length} more not-running changes are in the record.</div>`;
+  return h;
+}
 // The warning a refresh failure or an expired record calls for; the open panel shows it too, since it sits over the page.
 function recordWarning(age, limit){
   if (failure) return `<div class="frozen">The last refresh failed (${esc(failure)}); this is the record from ${ago(age)}.</div>`;
@@ -138,9 +160,10 @@ function draw(){
   const cur = doc.rebuild.current_piece;
   // The rebuild is the first section of the page (OMN-23135). Each tile draws its own state colour; the current piece is
   // marked by an outline and aria-current, never by a colour of its own, and a one-line legend names the colours and the outline.
-  h += `<section class="rebuild"><h2>The rebuild</h2><div class="strip">` + doc.pieces.map(p => `<a class="p ${p.status === "not_started" ? "grey" : esc(p.draw)}${p.piece === cur ? " cur" : ""}"${p.piece === cur ? ' aria-current="true"' : ""} href="#piece-${p.piece}" data-piece="${p.piece}" data-fk="s${p.piece}" aria-label="${esc("Piece " + p.piece + ", " + p.name + ", " + (STATUS_WORD[p.status] || p.status).toLowerCase() + (p.piece === cur ? ", the piece the rebuild is on now" : "") + ". Opens its details.")}">${p.piece}</a>`).join("") + `</div>`;
+  h += `<section class="rebuild"><h2>The rebuild</h2><div class="strip">` + doc.pieces.map(p => `<a class="p ${p.status === "not_started" ? "grey" : esc(p.draw)}${p.piece === cur ? " cur" : ""}"${p.piece === cur ? ' aria-current="true"' : ""} href="#piece-${p.piece}" data-piece="${p.piece}" data-fk="s${p.piece}" aria-label="${esc("Piece " + p.piece + ", " + p.name + ", " + pieceWord(p).toLowerCase() + (p.piece === cur ? ", the piece the rebuild is on now" : "") + ". Opens its details.")}">${p.piece}</a>`).join("") + `</div>`;
   h += `<div class="legend" id="strip-legend"><span><i class="sw green"></i>Green: working</span><span><i class="sw amber"></i>Amber: held up, a lane is on it</span><span><i class="sw red"></i>Red: held up, nobody on it or it needs you</span><span><i class="sw"></i>Grey: not started</span><span><i class="sw cur"></i>Outline: the piece the rebuild is on now</span></div>`;
   h += `<div class="piece"><b>${esc(doc.rebuild.headline)}</b> ${esc(doc.rebuild.next_text)}</div></section>`;
+  if (doc.readiness) h += `<div class="piece"><b>Ready, not just working:</b> ${esc(doc.readiness.text)}</div>`;
   h += `<section class="now ${esc(doc.level)}"><h1>${esc(doc.sentence)}</h1><p>${esc(doc.subline)}</p><p class="age${age > limit ? " old" : ""}">Record read ${ago(age)}, limit ${Math.floor(limit / 60)} min.</p></section>`;
   h += healthRow(doc.health);
   h += `<div class="nums">` + doc.numbers.map(n => `<div class="num${n.read ? "" : " unread"}" title="${esc(n.basis)}"><b>${esc(n.value)}</b><span>${esc(n.label)}</span></div>`).join("") + `</div>`;
@@ -150,21 +173,23 @@ function draw(){
   h += `<h2>What's holding things up, biggest first</h2>`;
   if (!listed.length) h += `<div class="row"><span class="dot green"></span><div><b>Nothing is holding things up.</b></div></div>`;
   for (const c of listed.slice(0, doc.causes_shown)) {
-    const who = c.state === "red" ? (c.needs_operator ? "It needs you." : "Nobody is on it.") : c.state === "quiet" ? "Not occurring since it was last seen; nothing is needed from you." : "A lane is on it: " + c.lanes.slice(0, 2).join(", ") + ".";
+    const who = c.state === "red" ? (c.needs_operator ? "It needs you." : c.owner_state === "unknown" ? "Owner unknown: " + c.owner_note + "." : "Nobody is on it.") : c.state === "quiet" ? "Not occurring since it was last seen; nothing is needed from you." : "A lane is on it: " + c.lanes.slice(0, 2).join(", ") + ".";
     h += `<div class="row"><span class="dot ${esc(c.state)}"></span><div><b>${esc(c.title)}</b><small>${esc(c.detail)} ${esc(who)}</small></div></div>`;
   }
   if (listed.length > doc.causes_shown) h += `<div class="piece">${listed.length - doc.causes_shown} more holdups are in the details.</div>`;
+  h += integrationSection(doc.integration);
   h += `<h2>The lab, read ${ago(Math.max(0, ...doc.lab_state.map(l => l.reading_age_s || 0)))} at the oldest</h2>`;
   for (const l of doc.lab_state) h += `<div class="line ${esc(l.draw)}"><span class="n"><span class="dot ${esc(l.draw)}" style="display:inline-block"></span></span><span class="t"><b>${esc(l.title)}</b> <small>${esc(l.text)}</small></span><span class="a">${l.reading_age_s == null ? "not read" : "read " + ago(l.reading_age_s)}, max ${Math.floor(l.max_age_s / 60)} min</span></div>`;
   h += `<h2>The 18 pieces, with their joins</h2>`;
   for (const p of doc.pieces) {
-    const joins = p.joins.map(j => `${esc(j.id)} ${esc(j.state.replace("_", " "))}${j.golden_age_s == null ? "" : ", golden " + ago(j.golden_age_s)}${j.error_age_s == null ? "" : ", error " + ago(j.error_age_s)}`).join("; ");
+    const joins = p.joins.map(j => `${esc(j.id)} ${esc(j.state.replace("_", " "))}${j.golden_age_s == null ? "" : ", golden " + ago(j.golden_age_s)}${j.error_age_s == null ? "" : ", error " + ago(j.error_age_s)}${j.counted ? "" : " (outside the scope)"}`).join("; ");
     h += `<div class="line ${p.status === "not_started" ? "grey" : esc(p.draw)}"><span class="n"><a href="#piece-${p.piece}" data-piece="${p.piece}" data-fk="l${p.piece}" aria-label="${esc("Piece " + p.piece + ", " + p.name + ". Opens its details.")}">${p.piece}</a></span><span class="t"><b>${esc(p.name)}</b> <small>${esc(p.text)}${joins ? " · join " + joins : ""}</small></span><span class="a">${p.reading_age_s == null ? "no reading" : "read " + ago(p.reading_age_s)}</span></div>`;
     for (const s of p.shadows || []) h += `<div class="line grey"><span class="n">&#8627;</span><span class="t"><b>${esc(s.label)}</b> <small>${esc(s.text)}${s.stale ? " (stale)" : ""}; it holds no merge</small></span><span class="a">read ${ago(s.age_s)}, max ${Math.floor(s.max_age_s / 60)} min</span></div>`;
   }
   const r = doc.red_rule;
   h += `<div class="rule${r.state === "WORKING" ? "" : " bad"}">Colour rule ${esc(r.state)}: ${r.red_rows} red rows, ${r.red_with_work_under_way} with work under way${r.violations.length ? " (" + esc(r.violations[0]) + ")" : ""}. Read ${ago(age)}.</div>`;
   if ((r.unowned_red || []).length) h += `<div class="rule bad">${r.unowned_red.length} red with no declared owner: ${r.unowned_red.map(esc).join(", ")}.</div>`;
+  if ((r.owner_unknown_red || []).length) h += `<div class="rule bad">${r.owner_unknown_red.length} red with owner unknown: ${r.owner_unknown_red.map(esc).join(", ")}. ${doc.owner_inputs ? esc(doc.owner_inputs.reason) : ""}</div>`;
   if ((r.uncarried_red || []).length) h += `<div class="rule bad">${r.uncarried_red.length} red with no live lane on it: ${r.uncarried_red.map(esc).join(", ")}.</div>`;
   if (doc.chain_findings.length) h += `<div class="rule bad">${doc.chain_findings.length} emission chains break the contract: ${esc(doc.chain_findings[0].subject)} ${esc(doc.chain_findings[0].code)}.</div>`;
   if (doc.outside_goal) h += `<div class="rule${doc.outside_goal.read ? "" : " bad"}">${esc(doc.outside_goal.text)}</div>`;
@@ -178,6 +203,9 @@ function draw(){
 // ---- The rebuild strip: a tooltip on hover or focus, and a side panel on click or tap. Everything is read from the record
 // the page already loads (doc.pieces, doc.causes); the address carries #piece-N, so a piece can be linked and Back closes it.
 const STATUS_WORD = {working: "Working", not_working: "Not working", unknown: "Unknown", started: "Started, no reading yet", not_started: "Not started"};
+// READY means integrated (OMN-23081): a piece that works and has a join that does not pass is "Working, not integrated".
+const INTEGRATION_WORD = {ready: "Ready", working_not_integrated: "Working, not integrated"};
+const pieceWord = p => INTEGRATION_WORD[p.integration] || STATUS_WORD[p.status] || p.status;
 const STATUS_DRAW = p => p.status === "not_started" ? "grey" : p.draw;
 let hashApplied = false, openPiece = null, returnFocus = null, quiet = false;
 const pieceOf = n => doc && doc.pieces ? doc.pieces.find(p => p.piece === n) : null;
@@ -185,13 +213,16 @@ function whoIsOn(p){
   const ids = [p.cause_id, "piece:" + p.piece].filter(Boolean);
   const cs = (doc.causes || []).filter(c => ids.includes(c.id));
   const uniq = xs => [...new Set(xs)];
-  return {lanes: uniq(cs.flatMap(c => c.lanes || [])), prs: uniq(cs.flatMap(c => c.prs || [])), tickets: uniq(cs.flatMap(c => c.tickets || []))};
+  return {lanes: uniq(cs.flatMap(c => c.lanes || [])), prs: uniq(cs.flatMap(c => c.prs || [])), tickets: uniq(cs.flatMap(c => c.tickets || [])), unknown: (cs.find(c => c.owner_state === "unknown") || {}).owner_note || ""};
 }
 const prWords = r => { const m = /^(.+)#(\d+)$/.exec(r); return m ? m[1] + " pull request " + m[2] : r; };
 function whoLine(p){
   if (p.status === "not_started") return "Not started.";
   const w = whoIsOn(p);
   if (w.lanes.length) return "On it: " + w.lanes.slice(0, 2).join(", ") + (w.lanes.length > 2 ? " and " + (w.lanes.length - 2) + " more" : "") + ".";
+  if (w.unknown && p.status !== "working") return "Owner unknown: " + w.unknown + ".";
+  if (p.integration === "working_not_integrated") return (p.blocking_joins || []).length ? "Not integrated: " + p.blocking_joins.join(", ") + " do not pass." : "Not integrated: no join to a piece in scope.";
+  if (p.ready) return "Ready: its reading works and its joins pass.";
   return p.status === "working" ? "No lane needed: it reads working." : "Nobody is on it.";
 }
 function readAge(p){ return p.reading_age_s == null ? "No reading yet." : "Read " + ago(p.reading_age_s) + "."; }
@@ -200,7 +231,7 @@ tip.id = "tip"; tip.setAttribute("role", "tooltip"); tip.hidden = true;
 function showTip(a){
   const p = pieceOf(Number(a.getAttribute("data-piece")));
   if (!p || openPiece != null || quiet) return;
-  tip.innerHTML = `<b>${p.piece} · ${esc(p.name)}</b><span>${esc(STATUS_WORD[p.status] || p.status)}</span><span>${esc(p.reason || p.text)}</span><span>${esc(readAge(p))}</span><span>${esc(whoLine(p))}</span>`;
+  tip.innerHTML = `<b>${p.piece} · ${esc(p.name)}</b><span>${esc(pieceWord(p))}</span><span>${esc(p.integration === "working_not_integrated" ? p.text : (p.reason || p.text))}</span><span>${esc(readAge(p))}</span><span>${esc(whoLine(p))}</span>`;
   tip.hidden = false;
   const r = a.getBoundingClientRect(), t = tip.getBoundingClientRect();
   const left = Math.min(Math.max(8, r.left + r.width / 2 - t.width / 2), document.documentElement.clientWidth - t.width - 8);
@@ -233,14 +264,14 @@ function eventsSection(p){
 }
 function panelBody(p){
   const w = whoIsOn(p);
-  let h = `<span class="pst ${esc(STATUS_DRAW(p))}">${esc(STATUS_WORD[p.status] || p.status)}</span>`;
+  let h = `<span class="pst ${esc(STATUS_DRAW(p))}">${esc(pieceWord(p))}</span>`;
   h += `<h3>What it is</h3><p>${p.what ? esc(p.what) : `<span class="mute">No description is declared for this piece.</span>`}</p>`;
   if (p.status === "not_started") return h + (hasEvents(p) ? `<h3>State</h3><p>Not started. It has no reading yet, and its events do not yet include both a golden and an error one.</p>` + eventsSection(p) : `<h3>State</h3><p>Not started. It has no reading and no events yet.</p>`) + `<h3>Next</h3><p>${esc(p.next_text || "")}</p>`;
   h += `<h3>Reading now</h3><p>${esc(p.reason || p.text)}</p><p class="mute">${esc(readAge(p))}${p.reading_max_age_s ? " It may be at most " + esc(ageLimit(p.reading_max_age_s)) + " old." : ""}</p>`;
   h += eventsSection(p);
   h += `<h3>Against the old way, 7 days</h3>` + measureSection(p);
   h += `<h3>Who is on it</h3>`;
-  h += w.lanes.length ? `<p>${esc(w.lanes.join(", "))}</p>` : `<p>${p.status === "working" ? "No lane needed: it reads working." : "Nobody is on it."}</p>`;
+  h += w.lanes.length ? `<p>${esc(w.lanes.join(", "))}</p>` : `<p>${p.status === "working" ? "No lane needed: it reads working." : w.unknown ? "Owner unknown: " + esc(w.unknown) + "." : "Nobody is on it."}</p>`;
   h += w.prs.length ? `<p class="mute">Open pull requests: ${esc(w.prs.map(prWords).join("; "))}.</p>` : `<p class="mute">No open pull request is tied to it on the floor.</p>`;
   const joins = (p.joins || []).map(j => `${esc(j.id)}, ${esc(j.label)}: ${esc(j.state.replace("_", " "))}`);
   if (joins.length) h += `<h3>Joins</h3><p>${joins.join("<br>")}</p>`;
@@ -250,15 +281,15 @@ function panelBody(p){
 // the words and numbers are the comparison record's own; a missing record or piece says so.
 const VERDICT_WORD = {better: "Better than the old way", worse: "Worse than the old way", unread: "Unread: not enough history to say", pending: "Trial running, no verdict yet"};
 const VERDICT_DRAW = {better: "green", worse: "red", unread: "amber", pending: "grey"};
-const num = (v, u) => v == null ? "unread" : (Math.round(v * 100) / 100) + " " + u;
+const measureNum = (v, u) => v == null ? "unread" : (Math.round(v * 100) / 100) + " " + u;
 function measureSection(p){
   const pm = pieceMeasures[p.piece];
   if (!pm) return measuresFailure ? `<p class="mute">The comparison record cannot be read (${esc(measuresFailure)}).</p>` : `<p class="mute">No measure against the old way is declared for this piece.</p>`;
   let h = `<p><span class="pst ${esc(VERDICT_DRAW[pm.verdict] || "grey")}" id="pm-verdict-${pm.piece}">${esc(VERDICT_WORD[pm.verdict] || pm.verdict)}</span></p>`;
   h += `<p class="mute">Call: ${esc(pm.call)}. Live ${esc(pm.live_at.slice(0, 16).replace("T", " "))}Z (${esc(pm.live_source)}). Day ${esc(String(pm.day))} of ${esc(String(pm.trial_days))}; verdict ${pm.recorded ? "recorded" : "due"} ${esc((pm.verdict_at || pm.verdict_due).slice(0, 16).replace("T", " "))}Z. ${esc(pm.reason)}</p>`;
   for (const m of pm.measures) {
-    h += `<p><b>${esc(m.label)}</b> <small>${esc(m.polarity === "higher_is_better" ? "higher is better" : "lower is better")}${m.verdict ? " · " + esc(m.verdict) : ""}</small><br>Baseline ${esc(num(m.baseline, m.unit))} <small>(${m.baseline_points} points, ${esc(m.baseline_from.slice(0, 10))} to ${esc(m.baseline_to.slice(0, 10))})</small><br>Since live ${esc(num(m.trial, m.unit))} <small>(${m.trial_points} points)</small></p>`;
-    if (m.days.length) h += `<p class="mute">` + m.days.map(d => `day ${d.day}: ${esc(num(d.value, m.unit))} (${d.points})`).join(" · ") + `</p>`;
+    h += `<p><b>${esc(m.label)}</b> <small>${esc(m.polarity === "higher_is_better" ? "higher is better" : "lower is better")}${m.verdict ? " · " + esc(m.verdict) : ""}</small><br>Baseline ${esc(measureNum(m.baseline, m.unit))} <small>(${m.baseline_points} points, ${esc(m.baseline_from.slice(0, 10))} to ${esc(m.baseline_to.slice(0, 10))})</small><br>Since live ${esc(measureNum(m.trial, m.unit))} <small>(${m.trial_points} points)</small></p>`;
+    if (m.days.length) h += `<p class="mute">` + m.days.map(d => `day ${d.day}: ${esc(measureNum(d.value, m.unit))} (${d.points})`).join(" · ") + `</p>`;
     h += `<p class="mute">Source: ${esc(m.source)}</p>`;
   }
   return h;

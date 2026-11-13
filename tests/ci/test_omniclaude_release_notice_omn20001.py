@@ -6,16 +6,22 @@
 Operator ruling 2026-10-01T21:43:10Z (3): a producer change that extends a
 cross-repo contract notifies its consumer, and the consumer's update is raised as
 a PR that lands through the consumer's own checks. omniclaude's release workflow
-dispatches ``omniclaude-release``; ``omniclaude-pin-bump.yml`` receives it and
-moves the one omniclaude pin in ci.yml through node_omniclaude_pin_bump_compute.
+dispatched ``omniclaude-release``; ``omniclaude-pin-bump.yml`` moved the one
+omniclaude pin in ci.yml through node_omniclaude_pin_bump_compute.
+
+RULING 2026-11-09T21:54:25Z lane=orchestrator-31d9 (OMN-18594): downstream pins
+move only when the downstream needs something new. The ``repository_dispatch``
+trigger is therefore gone and the workflow runs by ``workflow_dispatch`` only,
+with the released version as its input.
 
 Three properties, each with its own ``-k`` falsifier:
 
 * ``bump_refuses``: the bump moves every omniclaude read to the new tag, and
   refuses a planted violation: a release candidate, a branch name, a version that
   is not ahead, disagreeing pins, a loose pin, no pin. A refusal changes nothing.
-* ``workflow_receives_notice``: the workflow runs on the dispatch the producer
-  sends, calls the node, and opens a PR against dev under the App identity.
+* ``workflow_receives_notice``: the workflow runs by ``workflow_dispatch`` only
+  (no ``repository_dispatch``), calls the node, and opens a PR against dev under
+  the App identity.
 * ``notice_wired``: this file runs in the lint job and a pre-commit hook.
 """
 
@@ -187,7 +193,7 @@ def test_bump_refuses_cli_rewrites_the_file_on_accept_and_leaves_it_on_refuse(
 
 
 # =============================================================================
-# AC2: the workflow runs on the producer's dispatch and opens the PR
+# AC2: the workflow runs by hand dispatch only and opens the PR
 # =============================================================================
 
 
@@ -198,11 +204,14 @@ def _load(path: Path) -> dict[str, Any]:
 def notice_workflow_violations(doc: dict[str, Any]) -> list[str]:
     violations: list[str] = []
     triggers = doc.get(True) or doc.get("on") or {}
-    dispatch = triggers.get("repository_dispatch") or {}
-    if dispatch.get("types") != ["omniclaude-release"]:
-        violations.append("does not run on repository_dispatch omniclaude-release")
+    if "repository_dispatch" in triggers:
+        violations.append("still runs on repository_dispatch")
+    if set(triggers) != {"workflow_dispatch"}:
+        violations.append("has a trigger other than workflow_dispatch")
     if "workflow_dispatch" not in triggers:
-        violations.append("has no workflow_dispatch to replay a missed notice")
+        violations.append("has no workflow_dispatch to run a needed bump by hand")
+    elif not (triggers["workflow_dispatch"] or {}).get("inputs", {}).get("version"):
+        violations.append("workflow_dispatch has no version input")
     jobs = doc.get("jobs") or {}
     steps = [s for job in jobs.values() for s in job.get("steps", [])]
     runs = "\n".join(str(s.get("run", "")) for s in steps)
@@ -227,12 +236,24 @@ def test_workflow_receives_notice_holds_on_the_live_workflow() -> None:
     assert notice_workflow_violations(_load(NOTICE_WORKFLOW)) == []
 
 
-def test_workflow_receives_notice_flags_a_missing_dispatch_trigger() -> None:
+def test_workflow_receives_notice_flags_a_restored_repository_dispatch() -> None:
     doc = copy.deepcopy(_load(NOTICE_WORKFLOW))
-    del doc[True]["repository_dispatch"]
-    assert "does not run on repository_dispatch omniclaude-release" in (
+    doc[True]["repository_dispatch"] = {"types": ["omniclaude-release"]}
+    assert "still runs on repository_dispatch" in notice_workflow_violations(doc)
+
+
+def test_workflow_receives_notice_flags_a_missing_workflow_dispatch() -> None:
+    doc = copy.deepcopy(_load(NOTICE_WORKFLOW))
+    del doc[True]["workflow_dispatch"]
+    assert "has no workflow_dispatch to run a needed bump by hand" in (
         notice_workflow_violations(doc)
     )
+
+
+def test_workflow_receives_notice_cites_the_ruling_above_the_trigger_block() -> None:
+    text = NOTICE_WORKFLOW.read_text()
+    head, _, _ = text.partition("\non:\n")
+    assert "RULING 2026-11-09T21:54:25Z lane=orchestrator-31d9 (OMN-18594)" in head
 
 
 def test_workflow_receives_notice_flags_a_workflow_that_skips_the_bump_node() -> None:

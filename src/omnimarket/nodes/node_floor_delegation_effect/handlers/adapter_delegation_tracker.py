@@ -12,6 +12,9 @@ from __future__ import annotations
 import re
 from datetime import UTC, datetime
 
+from omnimarket.nodes.node_floor_delegation_effect.models.model_delegation_routes import (
+    ModelRoutesBlock,
+)
 from omnimarket.nodes.node_floor_delegation_effect.models.model_floor_delegation import (
     ModelDelegationCounts,
     ModelDelegationInputs,
@@ -253,12 +256,19 @@ def _scenario_result(
     base = {
         "id": decl.id,
         "title": decl.title,
+        "source": decl.source,
         "repo": decl.repo,
         "workflow": decl.workflow,
+        "lane": decl.lane,
         "cadence_hours": decl.cadence_hours,
         "builder_ticket": decl.builder_ticket,
         "builder_group": builder_group,
-        "workflow_url": f"{rt.github_url}/{decl.repo}/actions/workflows/{decl.workflow}",
+        "workflow_url": (
+            f"{rt.github_url}/{decl.repo}/actions/workflows/{decl.workflow}"
+            if decl.source == "workflow"
+            else ""
+        ),
+        "read_seconds": read.read_seconds if read is not None else None,
     }
     if read is None:
         return ModelScenarioResult(
@@ -268,7 +278,7 @@ def _scenario_result(
             reason=reads_reason or "The scenario runs were not read.",
         )
     read_age = _age_seconds(read.read_at, now)
-    if read_age is None or read_age > rt.scenario_reads_max_age_seconds:
+    if read_age is None:
         return ModelScenarioResult(
             **base,
             state="unread",
@@ -277,6 +287,42 @@ def _scenario_result(
                 f"The workflow was last read {_ago(read_age)} ago, longer than the "
                 f"{_ago(rt.scenario_reads_max_age_seconds)} limit, so its last result is not shown as current."
             ),
+        )
+    if read_age > rt.scenario_reads_max_age_seconds:
+        last = ""
+        latest_at = ""
+        latest_url = ""
+        latest_conclusion = ""
+        if read.read == "read":
+            ordered = sorted(read.runs, key=lambda r: r.created_at, reverse=True)
+            finished = [r for r in ordered if r.status == "completed"]
+            if finished:
+                latest = finished[0]
+                latest_at = latest.updated_at or latest.created_at
+                latest_url = latest.url
+                latest_conclusion = latest.conclusion
+                last = (
+                    "last result: Passed"
+                    if latest_conclusion == "success"
+                    else f"last result: Failed ({latest_conclusion or 'no conclusion'})"
+                )
+        reason = (
+            f"The read is {_ago(read_age)} old, longer than the "
+            f"{_ago(rt.scenario_reads_max_age_seconds)} limit, so the scenario is stale "
+            f"and its last result is not shown as current"
+            + (f"; {last}." if last else ".")
+        )
+        if read.read == "unread" and read.reason:
+            reason += f" The last read failed: {read.reason}"
+        return ModelScenarioResult(
+            **base,
+            state="stale",
+            result_text=f"Stale since {read.read_at}",
+            stale_since=read.read_at,
+            latest_at=latest_at,
+            latest_url=latest_url,
+            latest_conclusion=latest_conclusion,
+            reason=reason,
         )
     if read.read == "no_workflow":
         built = (
@@ -304,7 +350,11 @@ def _scenario_result(
             **base,
             state="no_run",
             result_text="No scheduled run has finished",
-            reason=f"The workflow has no finished {rt.scenario_event} run.",
+            reason=(
+                f"The workflow has no finished {rt.scenario_event} run."
+                if decl.source == "workflow"
+                else f"The lab node has no {rt.scenario_event} result in the last {rt.lab_node_window_days} days."
+            ),
             in_progress=bool(ordered),
         )
     latest = finished[0]
@@ -463,6 +513,7 @@ def build_tracker(
         scenarios_not_built=sum(1 for s in scenarios if s.state == "no_workflow"),
         scenarios_no_run=sum(1 for s in scenarios if s.state == "no_run"),
         scenarios_unread=sum(1 for s in scenarios if s.state == "unread"),
+        scenarios_stale=sum(1 for s in scenarios if s.state == "stale"),
         tickets_total=len(tickets),
         groups=group_counts,
         pr_open_red=sum(1 for t in pr_open if t.pr_ci == "red"),
@@ -484,4 +535,10 @@ def build_tracker(
         tickets=tuple(tickets),
         sources=inputs.sources,
         details_page_size=rt.details_page_size,
+        routes=inputs.routes
+        or ModelRoutesBlock(
+            state="unread",
+            reason="the routes were not read",
+            max_age_min=rt.routes_max_age_min,
+        ),
     )

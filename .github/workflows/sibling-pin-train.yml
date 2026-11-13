@@ -20,7 +20,7 @@
 # updates the one PR. When no tag set co-resolves it opens nothing, prints the
 # conflicting URLs and exits 0 with a SKIPPED row in the job summary.
 #
-# This workflow is schedule and workflow_dispatch only: it mints no pull_request
+# This workflow is workflow_dispatch only (OMN-18594): it mints no pull_request
 # check context and changes no required context. The selection, the resolve and
 # the publish are node_dev_tag_pin_mover_compute (python -m ...runtime_dev_tag_pin_train); this
 # file only clones the siblings and calls it.
@@ -29,11 +29,10 @@
 
 name: Sibling pin train
 
+# RULING 2026-11-09T21:54:25Z lane=orchestrator-31d9 (OMN-18594): downstream pins
+# move only when the downstream needs something new; run by workflow_dispatch.
+# The daily schedule (cron "41 6 * * *") is removed.
 on:
-  schedule:
-    # Daily at 06:41 UTC, after the siblings' overnight dev merges and beside
-    # omniclaude's 06:17 train.
-    - cron: "41 6 * * *"
   workflow_dispatch:
     inputs:
       dry_run:

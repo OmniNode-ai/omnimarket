@@ -14,12 +14,19 @@ from omnibase_spi.contracts.services import (
     ModelLaneHostPoolSnapshot,
 )
 
+from omnimarket.nodes.node_remote_lane_compute.handlers.handler_remote_lane_placement import (
+    HandlerRemoteLanePlacement,
+)
 from omnimarket.nodes.node_remote_lane_start_effect.adapters.adapter_scripted_transport import (
     ModelScriptedTransportScript,
     ScriptedLaneHostTransport,
+    ScriptedLoginDraw,
 )
 from omnimarket.nodes.node_remote_lane_start_effect.handlers.handler_remote_lane_start_effect import (
     HandlerRemoteLaneStartEffect,
+)
+from omnimarket.nodes.node_remote_lane_start_orchestrator.handlers.adapter_host_availability import (
+    HostAvailability,
 )
 from omnimarket.nodes.node_remote_lane_start_orchestrator.handlers.adapter_host_pool import (
     InMemoryLaneHostPool,
@@ -62,8 +69,14 @@ def settings(**overrides: Any) -> ModelRemoteLaneStartSettings:
         "receipt_dir": "/unused",
         "host_run_root": "/runs",
         "registry_root_candidates": ["/registry"],
+        "registry_marker": "example_marker_dir",
+        "provisioning": {},
         "ssh_argv": ["ssh"],
         "detach_argv": ["setsid"],
+        "host_path_prefix": "",
+        "login_pool_module": "example.token_pool_node",
+        "login_pool_python_relative": ".example-venv/bin/python",
+        "login_draw_timeout_seconds": 5,
         "ledger_append_argv": ["fixture-ledger"],
         "ledger_write_via": "bus",
         "ledger_writer_principal": PRINCIPAL,
@@ -72,6 +85,7 @@ def settings(**overrides: Any) -> ModelRemoteLaneStartSettings:
         "est_hours": 2,
         "priority": "other",
         "claim_text": "remote lane on {host} via node_remote_lane_start_orchestrator",
+        "start_mode": "act",
     }
     return ModelRemoteLaneStartSettings.model_validate(values | overrides)
 
@@ -170,6 +184,9 @@ class Rig:
         cfg: ModelRemoteLaneStartSettings | None = None,
         calls: list[str] | None = None,
         now: datetime = T0,
+        login_labels: tuple[str | None, ...] | None = None,
+        placement: HandlerRemoteLanePlacement | None = None,
+        host_availability: HostAvailability | None = None,
     ) -> None:
         self.calls: list[str] = calls if calls is not None else []
         self.ledger_path = tmp / "ledger.md"
@@ -198,6 +215,11 @@ class Rig:
             ),
             ledger_reader=LocalLedgerFile(self.ledger_path),
             host=HandlerRemoteLaneStartEffect(self.transport),
+            login=None
+            if login_labels is None
+            else ScriptedLoginDraw(login_labels, self.calls),
+            placement=placement,
+            host_availability=host_availability,
             receipts=self.receipts,
             echo=self.printed.append,
             clock=lambda: now,

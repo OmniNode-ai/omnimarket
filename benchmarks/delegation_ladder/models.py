@@ -60,6 +60,7 @@ class EnumScorerKind(StrEnum):
     PATCH_APPLY_AND_TEST = "patch_apply_and_test"
     MULTI_FILE_EDIT_AND_TEST = "multi_file_edit_and_test"
     LITERAL_EQUALS = "literal_equals"
+    WORKFLOW_REQUEST = "workflow_request"
 
 
 class EnumOutcome(StrEnum):
@@ -153,11 +154,9 @@ class ModelRunRecord(BaseModel):
     model_id: str | None
     input_tokens: int | None
     output_tokens: int | None
-    total_tokens: int | None = Field(
-        default=None,
-        description="Present on both paths. The gateway reports only a total, so "
-        "the split is None there rather than a guess.",
-    )
+    # Present on both paths. The gateway reports only a total, so the split is
+    # None there rather than a guess.
+    total_tokens: int | None = None
     cost_usd: float | None
     model_latency_ms: int | None = Field(
         default=None,

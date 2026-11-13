@@ -33,6 +33,21 @@ class StoreIdentityUnresolvedError(LookupError):
     """The store holds no identity for the reference, or could not be read."""
 
 
+class RunDeadlineExceededError(Exception):
+    """The run's own time limit passed while a call was open; the run deadline raises it, the join closes its chain."""
+
+
+class ProjectionReadFailedError(Exception):
+    """The join read the projection and it could not be read; the message carries the last read error."""
+
+    def __init__(self, *, error: str, attempts: int) -> None:
+        self.error = error
+        self.attempts = attempts
+        super().__init__(
+            f"the projection read failed on its last of {attempts} attempts: {error}"
+        )
+
+
 class ProtocolStoreIdentities(Protocol):
     """Piece 5's side of the join: the store gives the broker principal an append runs under."""
 
@@ -65,7 +80,9 @@ class ProtocolProjectedRows(Protocol):
     ) -> ModelWorkLedgerRowRecord | None:
         """The projected row at the position. ``raw_row`` is the durable row the caller expects there; a backend that
         cannot be asked by position (a read command over rows by text) finds the row by it. ``correlation_id`` is the join
-        run's: a backend that reads over a command sends it, because the reader's request requires one."""
+        run's: a backend that reads over a command sends it, because the reader's request requires one. A read the backend
+        cannot make raises ``ProjectionReadFailedError``; ``None`` is only a read the backend answered, in which the
+        projection does not hold the row yet."""
         ...
 
 
@@ -116,16 +133,53 @@ class InMemoryProjectedRows:
         return tuple(self._rows.values())
 
 
+def _is_row_header(line: str) -> bool:
+    return bool(line.strip()) and not line.startswith((" ", "\t"))
+
+
+def row_blocks(text: str) -> list[tuple[int, str]]:
+    """Each row of ``text`` as ``(1-based line number of its header, header plus continuation lines)``.
+
+    A row is its header line and the lines after it up to the next header; trailing blank lines are not part of it.
+    """
+    lines = text.splitlines()
+    blocks: list[tuple[int, str]] = []
+    start: int | None = None
+    for index, line in enumerate([*lines, "x"]):
+        if index == len(lines) or _is_row_header(line):
+            if start is not None:
+                block = lines[start:index]
+                while block and not block[-1].strip():
+                    block.pop()
+                blocks.append((start + 1, "\n".join(block)))
+            start = index
+    return blocks
+
+
+def durable_row(text: str, ledger_seq: int) -> str:
+    """The whole durable row whose header is at ``ledger_seq``: continuation lines included."""
+    for seq, block in row_blocks(text):
+        if seq == ledger_seq:
+            return block
+    lines = text.splitlines()
+    return lines[ledger_seq - 1] if 0 < ledger_seq <= len(lines) else ""
+
+
+def _terminated(text: str) -> str:
+    """``text`` ends in a newline, so the next row opens its own line."""
+    return text if not text or text.endswith("\n") else text + "\n"
+
+
 def _project_appended(
     projection: InMemoryProjectedRows, ledger_id: str, text: str, rows: str
 ) -> None:
-    """Tell the projection each appended row at its position, as the row event would."""
-    first = len(text.splitlines()) - len(rows.splitlines()) + 1
-    for offset, line in enumerate(rows.splitlines()):
-        if line.strip() and not line.startswith((" ", "\t")):
-            projection.project(
-                raw_row=line, ledger_id=ledger_id, ledger_seq=first + offset
-            )
+    """Tell the projection each appended row, continuation lines included, at its position, as the row event would."""
+    appended = rows if rows.endswith("\n") else rows + "\n"
+    first = len(text.splitlines()) - len(appended.splitlines()) + 1
+    for offset, block in row_blocks(appended):
+        projection.project(
+            raw_row=block, ledger_id=ledger_id, ledger_seq=first + offset - 1
+        )
 
 
 class InMemoryJoinLedger:
@@ -148,7 +202,7 @@ class InMemoryJoinLedger:
 
     def append(self, rows: str) -> ModelAppendCommandResult:
         self.append_calls.append(rows)
-        self._text += rows if rows.endswith("\n") else rows + "\n"
+        self._text = _terminated(self._text) + _terminated(rows)
         _project_appended(self._projection, self._ledger_id, self._text, rows)
         return ModelAppendCommandResult(exit_code=0)
 
@@ -163,10 +217,12 @@ class ScratchFileJoinLedger:
         projection: InMemoryProjectedRows,
         ledger_id: str = "rolling-work-ledger",
     ) -> None:
-        if path.name in LIVE_LEDGER_FILE_NAMES:
-            raise ValueError(
-                f"{path.name} is the live ledger file: a scratch lane never appends to it"
-            )
+        # The name is checked as given and after links are followed: a scratch-named link to the live file is the live file.
+        for name in (path.name, path.resolve().name):
+            if name in LIVE_LEDGER_FILE_NAMES:
+                raise ValueError(
+                    f"{name} is the live ledger file: a scratch lane never appends to it"
+                )
         self._path = path
         self._projection = projection
         self._ledger_id = ledger_id
@@ -178,8 +234,11 @@ class ScratchFileJoinLedger:
         return self._path.read_text(encoding="utf-8")
 
     def append(self, rows: str) -> ModelAppendCommandResult:
+        before = self.read_text()
         with self._path.open("a", encoding="utf-8") as stream:
-            stream.write(rows if rows.endswith("\n") else rows + "\n")
+            stream.write(
+                ("" if before == _terminated(before) else "\n") + _terminated(rows)
+            )
         _project_appended(self._projection, self._ledger_id, self.read_text(), rows)
         return ModelAppendCommandResult(exit_code=0)
 
@@ -189,9 +248,11 @@ __all__ = [
     "InMemoryJoinLedger",
     "InMemoryProjectedRows",
     "InMemoryStoreIdentities",
+    "ProjectionReadFailedError",
     "ProtocolJoinAppend",
     "ProtocolProjectedRows",
     "ProtocolStoreIdentities",
+    "RunDeadlineExceededError",
     "ScratchFileJoinLedger",
     "StoreIdentityUnresolvedError",
 ]

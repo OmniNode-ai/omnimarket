@@ -1,0 +1,72 @@
+schema_version: 1.0.0
+ticket_id: OMN-23616
+title: Install proof for host-changing PRs reads its path lists from an overlay and skips the CI-only script folders
+summary: The install-first decision of the pr-handoff skill moves into an omnimarket compute node that reads its host_install declaration (paths, repo paths, excluded paths, prod paths, observation words) from an overlay value and refuses when the overlay cannot be read. scripts/ci and scripts/validation are excluded; every other previous path is kept.
+is_seam_ticket: true
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23616-install-proof-overlay
+  statement: A changed file under scripts/ci or scripts/validation needs no install proof, any other scripts file and a host unit file still do, and an unreadable overlay refuses the decision.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a changed file under scripts/ci or scripts/validation needs no install proof, a file elsewhere under scripts/ and a host unit file still do, with a failing control where the same scripts/ci file needs proof against a declaration without the four patterns -- falsifier: uv run pytest tests/nodes/node_pr_handoff_install_proof_compute/test_install_files_overlay.py fails when the patterns are dropped'
+  - id: AC2
+    statement: 'AC2: an overlay that is missing, unreadable or carries an unknown key makes the install-proof decision refuse and never pass -- falsifier: uv run pytest tests/nodes/node_pr_handoff_install_proof_compute/test_install_proof_refusal.py'
+  - id: AC3
+    statement: 'AC3: the seam between the overlay file and the node model fails when either side changes shape, and the ancestry chain never passes a revision that does not contain the head -- falsifier: uv run pytest tests/nodes/node_pr_handoff_install_proof_compute/test_install_proof_ancestry_and_seam.py with a planted extra overlay key'
+  - id: AC4
+    statement: 'AC4: integrated: the node answers a scripts/ci change as not needing install proof and a scripts/ change as needing it, read in the running dev runtime from the merged revision -- falsifier: the node receipt on the dev runtime shows NA for the first change and NO for the second'
+evidence_requirements:
+- kind: tests
+  description: The install-proof node tests (golden chain, error chain, ancestry, overlay seam)
+  command: uv run --frozen pytest tests/nodes/node_pr_handoff_install_proof_compute -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23616-files-overlay
+  description: Runs the golden chain of the changed-file verdicts; the module the tests import is absent at the merge base, so the file fails to import there.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_pr_handoff_install_proof_compute/test_install_files_overlay.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23616-refusal
+  description: Runs the error chain of an overlay that cannot be read; every request, a scripts/ci one included, reads REFUSED.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_pr_handoff_install_proof_compute/test_install_proof_refusal.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23616-ancestry-seam
+  description: Runs the ancestry chain and the seam of the example overlay with the model fields.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_pr_handoff_install_proof_compute/test_install_proof_ancestry_and_seam.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23616-integration-proof-lab
+  description: Runs the node's tests at the pushed head on a lab host through the lab work runner. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. The read in the running dev runtime is recorded in the pull request's Lab line once the merged revision runs there.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23616 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_pr_handoff_install_proof_compute -q --no-cov -p no:randomly'
+    cwd: .
+- id: dod-omn23616-node-answer
+  description: Runs the node handler on a scripts/ci change (NA) and a scripts/ change (NO) through the same request model the runtime seeds; the live read in the dev runtime is recorded in the pull request's Lab line once the merged revision runs there.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_pr_handoff_install_proof_compute/test_install_files_overlay.py -k "test_ci_script_is_na or test_tool_script_is_no" -q --no-cov -p no:randomly
+    cwd: .

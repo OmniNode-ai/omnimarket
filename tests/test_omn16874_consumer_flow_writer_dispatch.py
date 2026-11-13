@@ -395,6 +395,10 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # local_alerts, dispatched once per consumed alert transition by runtime
     # auto-wiring; its pure fold plan, HandlerProjectionLocalAlerts, does NOT
     # declare the capability.
+    # LocalIdentityProjectionWriter (OMN-19986) is the only writer of
+    # local_identity: it composes HandlerLocalIdentityProjectionRunner once per
+    # consumed mint through the shared RuntimeProjectionWriter base; neither
+    # that runner nor the pure plan, HandlerProjectionLocalIdentity, declares it.
     # CompactionReceiptsProjectionWriter (OMN-21336) is the only writer of
     # compaction_receipts, dispatched once per consumed install-confirm-completed event by
     # runtime auto-wiring; its pure fold, HandlerProjectionCompactionReceipts,
@@ -427,6 +431,8 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # OverlayStoreProjectionWriter is node_projection_overlay_store's only DB
     # writer, dispatched once per consumed overlay event by runtime
     # auto-wiring; its pure fold does NOT declare the capability.
+    # HostDiskProjectionWriter is node_projection_host_disk's only DB writer,
+    # dispatched once per consumed reading by runtime auto-wiring.
     assert declared == {
         "AgentActionsProjectionWriter",
         "AlertChannelLivenessProjectionWriter",
@@ -440,12 +446,14 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
         "ConsumerFlowProjectionWriter",
         "LocalEnvironmentProjectionWriter",
         "LocalAlertsProjectionWriter",
+        "LocalIdentityProjectionWriter",
         "DelegationEvalProjectionWriter",
         "HandlerDelegationDispositionWriter",
         "HandlerDelegationCapabilityMapWriter",
         "ProviderQuotaProjectionWriter",
         "DodVerdictProjectionWriter",
         "FleetLivenessProjectionWriter",
+        "HostDiskProjectionWriter",
         "InfraRoutingDecisionsProjectionWriter",
         "LabContainerMemoryProjectionWriter",
         "LabLaneHealthProjectionWriter",

@@ -20,6 +20,26 @@ from omnimarket.handlers.runtime_proof_close_rules import (
     MERGED_NOT_PROVEN_RUNNING,
     evaluate_proof_close,
 )
+from omnimarket.models.dod_closeout_sweep import (
+    CLOCK_FORMAT,
+    UUID_PATTERN,
+    EnumCloseoutAction,
+    EnumCloseoutDecisionKind,
+    EnumPrecheckVerdict,
+    EnumReleasedState,
+    EnumTicketDecision,
+    ModelBoxTick,
+    ModelChunkResult,
+    ModelCloseoutCounts,
+    ModelDodCloseoutDecisionRequest,
+    ModelDodCloseoutDecisionResult,
+    ModelHistogramRow,
+    ModelNonCandidate,
+    ModelScopeCounts,
+    ModelScopeTicket,
+    ModelSprintProject,
+    ModelTicketResult,
+)
 from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_binding_rules import (
     merged_branch,
     refusal_of,
@@ -43,6 +63,7 @@ from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_scope_over
 )
 from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_scope_rules import (
     bundle_text,
+    scope_examined_memory,
 )
 from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_ticket_rules import (
     box_ticks,
@@ -54,26 +75,6 @@ from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_ticket_rul
     read_dod_verify,
     select_candidates,
     tick_comment,
-)
-from omnimarket.nodes.node_dod_closeout_sweep_compute.models.model_dod_closeout_sweep import (
-    CLOCK_FORMAT,
-    UUID_PATTERN,
-    EnumCloseoutAction,
-    EnumCloseoutDecisionKind,
-    EnumPrecheckVerdict,
-    EnumReleasedState,
-    EnumTicketDecision,
-    ModelBoxTick,
-    ModelChunkResult,
-    ModelCloseoutCounts,
-    ModelDodCloseoutDecisionRequest,
-    ModelDodCloseoutDecisionResult,
-    ModelHistogramRow,
-    ModelNonCandidate,
-    ModelScopeCounts,
-    ModelScopeTicket,
-    ModelSprintProject,
-    ModelTicketResult,
 )
 
 LANE = "dod-closeout-sweep"
@@ -885,10 +886,26 @@ def bundle_scope(
         request.scope_contract_state,
         request.max_candidates,
         overlay,
+        request.scope_examined,
+    )
+    examined_next = (
+        None
+        if request.scope_now is None
+        else scope_examined_memory(
+            request.scope_candidates,
+            request.scope_pr_state,
+            request.scope_text_state,
+            request.scope_contract_state,
+            request.max_candidates,
+            overlay,
+            request.scope_examined or {},
+            request.scope_now,
+        )
     )
     return ModelDodCloseoutDecisionResult(
         kind=EnumCloseoutDecisionKind.SCOPE_BUNDLE,
         scope_bundle=json.loads(text),
+        scope_examined_next=examined_next,
     )
 
 

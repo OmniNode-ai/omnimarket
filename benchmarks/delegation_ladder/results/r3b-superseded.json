@@ -1,0 +1,15 @@
+{
+  "ticket": "OMN-18339",
+  "superseded_files": [
+    "local-r3b-20260913.json",
+    "cloud-r3b-20260913.json",
+    "cloud-r3b-final-20260913.json"
+  ],
+  "also_superseded": "the R3b cells of the other 2026-09-13 result files",
+  "measured": "workflow-name selection plus substring presence of two parameter values (the retired exact_match scorer)",
+  "not_measured": "that a parameter object validates against the request schema, or that a patch applies",
+  "disposition": "kept, not deleted; not citable as evidence that a model fills catalogue parameters",
+  "rerun_local": "local-r3b-workflow-request-20261109.json",
+  "rerun_cloud": null,
+  "rerun_cloud_status": "not run: no cloud API key or gateway origin is available on the lab; no R3b figure is cited until it is"
+}

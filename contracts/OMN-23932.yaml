@@ -1,0 +1,60 @@
+schema_version: 1.0.0
+ticket_id: OMN-23932
+title: The dev-tag lineage and effect-backends tools move from the shared core library into the market repository
+summary: node_dev_tag_lineage_effect and node_effect_backends_check_compute move into omnimarket with their contracts, handlers, models and tests, gain their lines in the pyproject onex.nodes table, and the omnibase-core pin moves to the tag that carries the model field the moved handler fills. The core half is a separate draft.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23932-moved
+  statement: A node the runtime must register lives in omnimarket and is listed in the onex.nodes table, because the runtime discovers a contract only through that table and refuses nodes registered from core.
+  acceptance:
+  - id: AC1
+    statement: "AC1: node_dev_tag_lineage_effect and node_effect_backends_check_compute are declared under onex.nodes in omnimarket -- falsifier: uv run pytest tests/test_core_move_node_registration.py -q --no-cov fails when either pyproject line is removed"
+  - id: AC2
+    statement: "AC2: the moved handlers behave as they did in core, with the core tests moved with them -- falsifier: uv run pytest tests/nodes/node_dev_tag_lineage_effect tests/nodes/node_effect_backends_check_compute -q --no-cov -m \"not integration\" fails at origin/dev, where neither node exists"
+  - id: AC3
+    statement: "AC3: integrated: on the dev runtime rebuilt from the merged change both nodes are registered -- falsifier: a read of the running dev runtime's node registrations (read only) lacks node_dev_tag_lineage_effect or node_effect_backends_check_compute"
+evidence_requirements:
+- kind: tests
+  description: The registration test and the moved node tests pass at the pushed head.
+  command: uv run pytest tests/test_core_move_node_registration.py tests/nodes/node_effect_backends_check_compute -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23932-ac1
+  description: 'AC1: the registration test passes with both lines present; with the effect-backends line removed it fails on the entry-point assertion.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_core_move_node_registration.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23932-ac2
+  description: 'AC2: the moved effect-backends tests and the golden and error chain tests pass at the head; none of them exists at the merge base.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_effect_backends_check_compute -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23932-ac3
+  description: 'hosted proxy for AC3: the registration test that stands in for the runtime discovering the contracts passes here; the reading of the rebuilt dev runtime is posted as a pull request comment naming the head.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_core_move_node_registration.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23932-integration-proof
+  description: the registration test and the moved effect-backends tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23932 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/test_core_move_node_registration.py tests/nodes/node_effect_backends_check_compute -q --no-cov -p no:randomly

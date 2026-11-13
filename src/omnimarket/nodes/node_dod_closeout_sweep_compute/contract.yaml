@@ -33,15 +33,15 @@ description: >-
   it saw.
 input_model:
   name: ModelDodCloseoutDecisionRequest
-  module: omnimarket.nodes.node_dod_closeout_sweep_compute.models.model_dod_closeout_sweep
+  module: omnimarket.models.dod_closeout_sweep
 output_model:
   name: ModelDodCloseoutDecisionResult
-  module: omnimarket.nodes.node_dod_closeout_sweep_compute.models.model_dod_closeout_sweep
+  module: omnimarket.models.dod_closeout_sweep
 handler:
   module: omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.handler_dod_closeout_sweep
   class: HandlerDodCloseoutSweep
-  input_model: omnimarket.nodes.node_dod_closeout_sweep_compute.models.model_dod_closeout_sweep.ModelDodCloseoutDecisionRequest
-  output_model: omnimarket.nodes.node_dod_closeout_sweep_compute.models.model_dod_closeout_sweep.ModelDodCloseoutDecisionResult
+  input_model: omnimarket.models.dod_closeout_sweep.ModelDodCloseoutDecisionRequest
+  output_model: omnimarket.models.dod_closeout_sweep.ModelDodCloseoutDecisionResult
 handler_routing:
   routing_strategy: operation_match
   default_handler: omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.handler_dod_closeout_sweep:HandlerDodCloseoutSweep
@@ -113,6 +113,8 @@ inputs:
   scope_text_state: {type: list, required: false, description: "scope_bundle: the text-state row of each candidate ({id, last_closeout_comment_at, text_sha, held_text_sha, waiting_on})."}
   scope_contract_state: {type: list, required: false, description: "scope_bundle: {id, has_contract} per candidate; absent ranks every ticket as having a contract, so the script's own ranking holds."}
   scope_overlay: {type: object, required: false, description: "scope_bundle, pr_rows, refuse_binding: the overlay (rank rules, no-contract reserve, caps, eligible states, the PR repositories with their default branches); absent loads this node's overlay.yaml."}
+  scope_examined: {type: object, required: false, description: "scope_bundle: what was recorded of each ticket's last selection ({id: {examined_at, key, streak}}); the ranking uses the time, and a ticket whose recorded key reads unchanged for the overlay's number of selections is held (OMN-23282)."}
+  scope_now: {type: str, required: false, description: "scope_bundle: the instant of this selection; given, the result returns scope_examined_next, the memory after it (OMN-23282)."}
   pr_tickets: {type: list, required: false, description: "pr_rows: the ticket ids to report on."}
   pr_subjects: {type: object, required: false, description: "pr_rows: repository name -> the squash-merge subjects on its own default branch (the overlay's pr_repositories); a repository the caller could not read is absent, and is named in unread_repositories."}
   pr_watcher_state: {type: object, required: false, description: "pr_rows: the PR watcher's state, read fresh; absent means it was not read and every row carries pr_watcher_error."}
@@ -160,6 +162,7 @@ outputs:
   deferred: {type: list}
   held: {type: list}
   scope_bundle: {type: object, description: "scope_bundle: the bounded scope: the top tickets' rows, held, waiting, the selected tickets with no contract, and the totals."}
+  scope_examined_next: {type: object, description: "scope_bundle: the memory after this selection, for the tickets in scope only; absent when scope_now was not given (OMN-23282)."}
   pr_rows: {type: list, description: "pr_rows: one {id, merged, open, error} per ticket, input order."}
   unread_repositories: {type: list, description: "pr_rows: overlay repositories whose merge subjects were not given."}
   decision: {type: str, enum: [done, open]}

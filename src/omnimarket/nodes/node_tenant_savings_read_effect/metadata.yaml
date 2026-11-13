@@ -1,0 +1,34 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_tenant_savings_read_effect
+version: 0.1.0
+description: "Serves GET /v1/tenants/me/savings from the runtime: the caller tenant's delegation savings headline."
+pack: delegation_savings
+node_role: effect
+display_name: Tenant Savings Read Effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_tenant_savings_read_effect: omnimarket.nodes.node_tenant_savings_read_effect
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: read
+dependencies:
+- omnibase-core>=0.39.0,<1.0.0
+- fastapi>=0.115.0
+- pydantic>=2.0
+- pyyaml>=6.0
+- psycopg2-binary>=2.9.10
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- http
+- delegation
+- tenant

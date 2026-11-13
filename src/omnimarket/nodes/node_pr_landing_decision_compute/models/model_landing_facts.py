@@ -53,6 +53,9 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_exha
 from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_lab_check import (
     ModelLandingLabCheckFacts,
 )
+from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_liveness import (
+    ModelLandingLivenessFacts,
+)
 from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_state import (
     CAUSE_KEY_PATTERN,
     KEY_PATTERN,
@@ -83,6 +86,27 @@ class ModelLandingBlockerRef(BaseModel):
     ref: str = Field(..., min_length=1)
     state: str = Field(..., min_length=1)
     head_sha: str | None = Field(default=None, pattern=SHA_PATTERN)
+
+
+class ModelLandingExternalJudged(BaseModel):
+    """An external blocker a worker judged for this PR at one head (OMN-22921).
+
+    The controller's own memory of it (its sidecar's ``external_judged``): the ref the worker named,
+    the blocker kind, the head it judged at and when. The decision holds the PR from a worker while
+    the judgement stands: same head, a declared kind, the ref still open in ``blocker_refs`` and, for
+    a kind that is not unbounded, inside the policy's ``external_gate_hours``.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    ref: str = Field(..., min_length=1, description="The blocking ref, repo#n.")
+    kind: str = Field(
+        ..., min_length=1, description="The blocker kind the worker named."
+    )
+    head_sha: str = Field(
+        ..., pattern=SHA_PATTERN, description="The head the worker judged it at."
+    )
+    judged_at: datetime
 
 
 class ModelLandingRefUpdate(BaseModel):
@@ -205,12 +229,37 @@ class ModelLandingPrFacts(BaseModel):
         default=(), description="The subset of parents still open this tick."
     )
     blocker_refs: tuple[ModelLandingBlockerRef, ...] = ()
+    external_judged: tuple[ModelLandingExternalJudged, ...] = Field(
+        default=(),
+        description=(
+            "External blockers a worker judged at a head, from the controller's memory of them "
+            "(OMN-22921): a standing one holds the PR from a worker, as the controller's external "
+            "worker gate does."
+        ),
+    )
     ref_updates: tuple[ModelLandingRefUpdate, ...] = ()
     rerun_runs: tuple[ModelLandingRerunRun, ...] = ()
     auto_merge_head: str | None = Field(
         default=None,
         pattern=SHA_PATTERN,
         description="The head auto-merge is armed on, if armed.",
+    )
+    pr_node_id: str | None = Field(
+        default=None,
+        min_length=1,
+        description=(
+            "The PR's GraphQL node id, which the GitHub landing effect's arm and "
+            "enqueue need (OMN-23405). Unread: the act-mode writer refuses the "
+            "merge as no_node_id. The decision never reads it."
+        ),
+    )
+    failed_run_ids: tuple[int, ...] = Field(
+        default=(),
+        description=(
+            "This head's failed workflow run ids, which the GitHub landing "
+            "effect's rerun needs (OMN-23405). Empty: the act-mode writer refuses "
+            "a rerun as no_run_ids. The decision never reads it."
+        ),
     )
     red_annotations: dict[str, str] = Field(
         default_factory=dict,
@@ -227,6 +276,15 @@ class ModelLandingPrFacts(BaseModel):
             "Only a run on this exact head carrying the current attempt's identity "
             "counts; a pass lets the head merge, a failing, running, missing or "
             "superseded one holds it with its own reason. Absent: decided as before."
+        ),
+    )
+    liveness: ModelLandingLivenessFacts | None = Field(
+        default=None,
+        description=(
+            "The automation-liveness read of this head (OMN-23529): a read that names "
+            "an undeclared installer source holds the head with the file named; an "
+            "unreadable read holds nothing and is listed as not made. Absent: decided "
+            "as before, and listed as not made when the policy expects the read."
         ),
     )
     gate_since: datetime | None = Field(
@@ -356,6 +414,21 @@ class ModelLandingCauseOwner(BaseModel):
         return self
 
 
+class ModelLandingCrossRepoCause(BaseModel):
+    """A red check the controller has named as caused by a change in another repository.
+
+    ``check`` is the red check's name as the PR watcher reads it; ``owner`` is the
+    change, as ``repo#n``, whose merge clears it. Read from the controller's own
+    earlier messages and the declared order of the change (OMN-23345): a worker
+    leased on a PR that is not the cause's repository cannot push the fix.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    check: str = Field(..., min_length=1)
+    owner: str = Field(..., pattern=PR_KEY_PATTERN)
+
+
 class ModelLandingCauseRelease(BaseModel):
     """A RELEASE row naming a parked cause; it ends a park that began before it."""
 
@@ -410,14 +483,16 @@ class ModelLandingRebuildAck(BaseModel):
 
 
 def _worker_ladder(attempts: int = 3) -> tuple[EnumLandingEngine, ...]:
-    adapters = {
-        "codex": EnumLandingEngine.CODEX_HIGH,
-        "sonnet": EnumLandingEngine.CLAUDE_SONNET,
-    }
+    """The fix worker's rungs, from the lane routing policy's order (Sonnet; Opus only on a declared reason).
+
+    The delegated models (the lab models and GLM) draft inside a Claude worker and Codex is a reviewer, never a lane-work
+    engine (operator ruling 2026-11-05), so only the policy's Claude models are rungs here.
+    """
+    policy = load_policy()
     allowed = tuple(
-        adapters[model]
-        for model in load_policy().order
-        if model in adapters
+        EnumLandingEngine(f"claude_{model}")
+        for model in policy.order
+        if policy.engines[model] == "claude"
         and lane_model_refusal(model, lane_kind="landing-worker") is None
     )
     # Keep the controller's existing attempt budget; the ceiling applies on each attempt.
@@ -470,6 +545,13 @@ class ModelLandingPolicy(BaseModel):
         ge=1,
         description="Backoff after an update-branch 422 no-new-commits response.",
     )
+    liveness_read_expected: bool = Field(
+        default=False,
+        description=(
+            "OMN-23529: the snapshot step runs the liveness read for every PR, so a PR "
+            "with no liveness fact is listed as a read not made (it is never held)."
+        ),
+    )
     lab_check_wait_seconds: int = Field(
         default=900,
         ge=1,
@@ -477,6 +559,28 @@ class ModelLandingPolicy(BaseModel):
             "J8: how long a lab-bound check may take to post after its dispatch; a "
             "check not posted inside it is pending, past it missing."
         ),
+    )
+    external_blocker_kinds: tuple[str, ...] = Field(
+        default=(
+            "upstream_open",
+            "operator_decision",
+            "production_gate",
+            "collaborator",
+            "hold_row",
+        ),
+        description=(
+            "The blocker kinds a worker may judge that hold a PR from a worker while the ref stands "
+            "(the controller's KNOWN_EXTERNAL_KINDS, OMN-22921). The snapshot step fills it from its overlay."
+        ),
+    )
+    external_blocker_unbounded_kinds: tuple[str, ...] = Field(
+        default=("upstream_open",),
+        description="The kinds that hold with no time bound while the ref is open (UNBOUNDED_KINDS).",
+    )
+    external_gate_hours: float = Field(
+        default=1.0,
+        gt=0,
+        description="How long any other judged kind holds a PR from a worker (WORKER_GATE_HOURS).",
     )
     stale_gate_seconds: int = Field(
         default=600,
@@ -577,7 +681,6 @@ class ModelLandingFacts(BaseModel):
     available_engines: tuple[EnumLandingEngine, ...] = (
         EnumLandingEngine.CLAUDE_SONNET,
         EnumLandingEngine.CLAUDE_OPUS,
-        EnumLandingEngine.CODEX_HIGH,
     )
     fixer_hold: tuple[str, ...] = Field(
         default=(),
@@ -597,6 +700,13 @@ class ModelLandingFacts(BaseModel):
         default=(), description="Repos under their landing floor (the floor alarm)."
     )
     cause_owners: tuple[ModelLandingCauseOwner, ...] = ()
+    cross_repo_causes: tuple[ModelLandingCrossRepoCause, ...] = Field(
+        default=(),
+        description=(
+            "Red checks already named as caused by an open change in another "
+            "repository: a PR red only on these gets no worker (OMN-23345)."
+        ),
+    )
     cause_releases: tuple[ModelLandingCauseRelease, ...] = ()
     cause_escalations: tuple[ModelLandingCauseEscalation, ...] = Field(
         default=(),
@@ -661,6 +771,7 @@ __all__: list[str] = [
     "ModelLandingCauseOwner",
     "ModelLandingCauseRelease",
     "ModelLandingCompanionFacts",
+    "ModelLandingCrossRepoCause",
     "ModelLandingFacts",
     "ModelLandingPolicy",
     "ModelLandingPrFacts",

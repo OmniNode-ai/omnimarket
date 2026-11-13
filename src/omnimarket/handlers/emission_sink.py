@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: MIT
 """Where emission events go (OMN-19998, 17a): in memory by default, an append-only JSON-lines journal as the real backend.
 
-The journal is the durable record the receipts are read from. Publishing the same events on the bus topics the
-emission compute node declares is the runtime's job once the node is attached; this sink does not publish.
+The journal is the durable record the receipts are read from. The journal sink also mirrors each event onto the bus topic of its
+phase when the host's overlay names a mirror (OMN-23877, ``handlers/emission_mirror.py``): the floor emissions projection folds
+those topics, and the file is health only. The mirror is best effort and never blocks the journal write.
 
 Shared by every node that emits under the floor's emission contract (OMN-22566): the floor's own cycle and the
 read-only principal's probe write to the same journal, so one receipt fold counts both. ``ChainEmitter`` is the
@@ -13,6 +14,8 @@ contract for one chain: a start, then a success or a typed failure, all under on
 from __future__ import annotations
 
 import json
+import os
+import sys
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -21,7 +24,14 @@ from uuid import uuid4
 
 from pydantic import ValidationError
 
+from omnimarket.handlers.emission_mirror import (
+    EmissionMirrorRefusedError,
+    MirrorState,
+    ProtocolEmissionMirror,
+    mirror_from_environment,
+)
 from omnimarket.models.floor_17a import ModelNodeEmission
+from omnimarket.models.floor_17a.model_floor_17a import ChainOrigin
 
 # The floor's join fold reads a failure with no start as a refusal only with this prefix.
 UPSTREAM_PREFIX = "upstream_"
@@ -45,17 +55,59 @@ class InMemoryEmissionSink:
 
 
 class JsonlEmissionSink:
-    """Append-only journal. A line that does not parse is skipped and counted, never silently fixed."""
+    """Append-only journal, mirrored onto the bus when the host's overlay names a mirror. A line that does not parse is skipped and counted, never silently fixed.
 
-    def __init__(self, path: Path) -> None:
+    ``mirror`` is the mirror to use; left ``None`` the sink reads the host's overlay at its first emit (``mirror_state`` says
+    ``mirroring``, ``not_configured`` or ``unreadable``). A mirror that fails is counted in ``mirror_failures`` and the journal
+    write, which comes first, stands. A mirror that refuses is written once per distinct line to the process error output.
+    """
+
+    def __init__(
+        self, path: Path, mirror: ProtocolEmissionMirror | None = None
+    ) -> None:
         self._path = path
         self.skipped_lines = 0
+        self._mirror = mirror
+        self._mirror_resolved = mirror is not None
+        self.mirror_state: MirrorState = (
+            "mirroring" if mirror is not None else "not_configured"
+        )
+        self.mirror_failures = 0
+        self.mirrored = 0
+        self._refusals_reported: set[str] = set()
+
+    def _mirror_of(self) -> ProtocolEmissionMirror | None:
+        if not self._mirror_resolved:
+            self._mirror, self.mirror_state = mirror_from_environment(os.environ)
+            self._mirror_resolved = True
+        return self._mirror
 
     def emit(self, event: ModelNodeEmission) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)
         line = event.model_dump_json() + "\n"
         with self._path.open("a", encoding="utf-8") as handle:
             handle.write(line)
+        mirror = self._mirror_of()
+        if mirror is None:
+            return
+        try:
+            mirror.publish(event)
+            self.mirrored += 1
+        except Exception as exc:
+            self.mirror_failures += 1
+            self._report_refusal(exc)
+
+    def _report_refusal(self, exc: Exception) -> None:
+        if isinstance(exc, EmissionMirrorRefusedError):
+            line = "emission mirror refused: " + str(exc)
+        else:
+            line = (
+                "emission mirror refused: "
+                f"error={type(exc).__name__} detail={str(exc)[:200]}"
+            )
+        if line not in self._refusals_reported:
+            self._refusals_reported.add(line)
+            sys.stderr.write(line + "\n")
 
     def read(self, since: datetime) -> tuple[ModelNodeEmission, ...]:
         try:
@@ -94,6 +146,7 @@ class ChainEmitter:
         correlation_id: str | None = None,
         backend: str = "real",
         drill: bool = False,
+        origin: ChainOrigin | None = None,
     ) -> None:
         self._sink = sink
         self._node = node
@@ -102,6 +155,9 @@ class ChainEmitter:
         self.correlation_id = correlation_id or uuid4().hex
         self._backend = backend
         self._drill = drill
+        # The kind of work the chain is (OMN-23862). A caller that says nothing is ``unknown``, which never counts as real
+        # work; a drill is a drill. Only a caller that knows its chain came from a real unit of work says ``real``.
+        self._origin: ChainOrigin = origin or ("drill" if drill else "unknown")
         self._started = False
         self._closed = False
 
@@ -115,6 +171,12 @@ class ChainEmitter:
             raise RuntimeError("a chain starts once")
         self._started = True
         self._emit("start")
+
+    def resume(self) -> None:
+        """Continue a chain whose start is already in the journal: no second start is emitted."""
+        if self._started:
+            raise RuntimeError("a chain starts once")
+        self._started = True
 
     def success(self, counters: dict[str, int] | None = None) -> None:
         self._close()
@@ -158,6 +220,7 @@ class ChainEmitter:
                     "emitted_at": self._clock(),
                     "backend": self._backend,
                     "drill": self._drill,
+                    "origin": self._origin,
                     **extra,
                 }
             )

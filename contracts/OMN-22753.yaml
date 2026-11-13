@@ -43,3 +43,12 @@ dod_evidence:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22753 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_sibling_pin_hook_revs_compute -q --no-cov
     cwd: .
+- id: dod-omn22753-cli-untouched-config
+  description: Runs the command line test that applies a plan which changes no hook block, over an LF and a CRLF config, and checks the file's bytes and mtime are unchanged.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_sibling_pin_hook_revs_compute -k test_cli_apply_plans_the_pin_alone_and_leaves_a_config_with_no_block_untouched -q --no-cov
+    cwd: .

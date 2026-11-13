@@ -84,6 +84,7 @@ from omnimarket.nodes.node_work_ledger_append_effect.overlay_join_j5 import (
 from omnimarket.nodes.node_work_ledger_append_effect.protocols.join_j5 import (
     InMemoryJoinLedger,
     InMemoryProjectedRows,
+    ProjectionReadFailedError,
     StoreIdentityUnresolvedError,
 )
 
@@ -247,6 +248,7 @@ def _fold(emissions: list[ModelNodeEmission], now: datetime) -> tuple[str, list[
                     from_piece=POLICY.from_piece,
                     to_piece=POLICY.to_piece,
                     label="secrets to ledger",
+                    names_failed_answers=True,
                 ),
             ),
             freshness_max_age_s=86400,
@@ -439,8 +441,12 @@ def test_control_a_projection_that_never_hears_the_row_leaves_the_join_not_passe
     assert result.items[0].failure_code == POLICY.projected_row_missing_failure_code
     # The projection was asked again for the attempts the overlay sets, waiting between them.
     assert rig.sleeps == [0.5, 0.5]
-    state, _ = _floor_read(rig, NOW + timedelta(minutes=5))
-    assert state == "error_only"
+    # A piece 5 success answered by a piece 6 typed failure reads broken, never the silent "error_only" (OMN-23086).
+    state, findings = _floor_read(rig, NOW + timedelta(minutes=5))
+    assert (state, findings) == (
+        "broken",
+        ["downstream_failed_after_upstream_succeeded"],
+    )
 
 
 def test_control_a_store_without_the_identity_key_leaves_the_join_not_passed() -> None:
@@ -452,8 +458,12 @@ def test_control_a_store_without_the_identity_key_leaves_the_join_not_passed() -
         EnumJoinJ5Outcome.REFUSED_IDENTITY_UNRESOLVED
     ]
     assert rig.ledger.append_calls == []
-    state, _ = _floor_read(rig, NOW + timedelta(minutes=5))
-    assert state == "not_run"
+    # The refusal answers a piece 5 success, so the join reads broken, never the silent "not_run" (OMN-23086).
+    state, findings = _floor_read(rig, NOW + timedelta(minutes=5))
+    assert (state, findings) == (
+        "broken",
+        ["downstream_failed_after_upstream_succeeded"],
+    )
 
 
 # --- the real ports ----------------------------------------------------------------------------------------------------
@@ -474,7 +484,7 @@ def test_store_identities_resolve_only_when_the_store_resolves_the_key() -> None
         StoreProbeIdentities(store, (BINDING,)).resolve(BINDING.ref)
 
 
-def test_projected_rows_read_by_text_and_an_error_reads_as_no_row() -> None:
+def test_projected_rows_read_by_text_and_an_error_raises_the_read_failure() -> None:
     row = _reading_row(GOLDEN_AT, "WORKING")
     found = SourceProjectedRows(
         InMemoryLedger([row]),
@@ -488,7 +498,7 @@ def test_projected_rows_read_by_text_and_an_error_reads_as_no_row() -> None:
 
     broken = InMemoryLedger([row])
     broken.read_error = "read-command-exit-1"
-    assert (
+    with pytest.raises(ProjectionReadFailedError) as exc_info:
         SourceProjectedRows(
             broken,
             attempts=2,
@@ -497,8 +507,7 @@ def test_projected_rows_read_by_text_and_an_error_reads_as_no_row() -> None:
             sleep=lambda _s: None,
             clock=lambda: NOW,
         ).read_row(ledger_id=LEDGER_ID, ledger_seq=7, raw_row=row)
-        is None
-    )
+    assert (exc_info.value.error, exc_info.value.attempts) == ("read-command-exit-1", 2)
     assert (
         SourceProjectedRows(
             InMemoryLedger([row]),
@@ -692,8 +701,11 @@ def test_control_a_ledger_that_holds_another_row_at_the_receipt_position_is_not_
     result = runner.handle(ModelJoinJ5RunCommand())
 
     assert [i.outcome for i in result.items] == [EnumJoinJ5Outcome.APPEND_NOT_ACCEPTED]
-    state, _ = _floor_read(rig, NOW + timedelta(minutes=5))
-    assert state == "not_run"
+    state, findings = _floor_read(rig, NOW + timedelta(minutes=5))
+    assert (state, findings) == (
+        "broken",
+        ["downstream_failed_after_upstream_succeeded"],
+    )
 
 
 # --- the reader's contract: the projection read carries the join run's correlation id (OMN-23086) ----------------------

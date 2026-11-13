@@ -46,6 +46,13 @@ class FileTokenFile:
             return None
         return hashlib.sha256(value.encode("utf-8")).hexdigest()[:8] if value else None
 
+    def since(self) -> datetime | None:
+        """When the login now on the host was written, ``None`` when there is no login."""
+        try:
+            return datetime.fromtimestamp(self._path.stat().st_mtime, UTC)
+        except FileNotFoundError:
+            return None
+
     @staticmethod
     def _private_handle(path: Path) -> TextIO:
         """Open ``path`` for writing with mode 0600 set before any secret is written.
@@ -110,6 +117,11 @@ class MirrorMarksSource:
                     label=row["label"],
                     until=row.get("until"),
                     revoked=bool(row.get("revoked")),
+                    fingerprint=row.get("fingerprint"),
+                    revoked_at=row.get("revoked_at"),
+                    limited_at=row.get("limited_at"),
+                    revoke_cause=row.get("revoke_cause"),
+                    probed_at=row.get("probed_at"),
                 )
                 for row in body["tokens"]
             )

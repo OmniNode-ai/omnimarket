@@ -70,6 +70,34 @@ def test_hourly_writes_one_row_per_piece_for_a_window_through_the_configured_rou
     assert len(sink.read_text(encoding="utf-8").splitlines()) == 3
 
 
+def test_hourly_window_with_every_piece_written_reports_failed_zero_and_no_append_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """OMN-22733 AC3 on a hosted runner: the hourly verb writes one reading row per declared piece, and its
+    WINDOW line reads failed=0 write=yes with no append-failed line. The lab reading of the h053 unit
+    log is a comment on the contract item, not the check.
+    """
+    sink = _deployment(tmp_path, monkeypatch)
+    start = START.strftime("%Y-%m-%dT%H:%M:%SZ")
+    code = main(["hourly", "--window-start", start])
+    out = capsys.readouterr().out
+    # the window under test holds the healthy fixture's rows: every declared piece reads, writes and exits 0
+    pieces = len(overlay_document()["pieces"])
+    assert code == 0, out
+    assert out.count("READING piece=") == pieces
+    assert out.count("ledger=written") == pieces
+    assert "append-failed" not in out
+    window = next(
+        line
+        for line in out.splitlines()
+        if line.startswith("WINDOW") and f"pieces={pieces}" in line
+    )
+    assert "failed=0 write=yes" in window
+    assert len(sink.read_text(encoding="utf-8").splitlines()) == pieces
+
+
 def test_probe_writes_nothing(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -91,6 +119,42 @@ def test_a_missing_deployment_fact_is_indeterminate_not_a_pass(
     monkeypatch.delenv("READING_TEST_LEDGER")
     assert main(["probe"]) == 3
     assert "READING_TEST_LEDGER" in capsys.readouterr().err
+
+
+def test_a_missing_read_command_interpreter_fails_every_piece_and_exits_one(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """OMN-22733 AC4: a read command naming a missing interpreter is a failed run, never a quiet one.
+
+    The deployed unit reads the ledger through ONEX_LEDGER_BUS_READ_COMMAND. A path that is not there
+    (the way the h053 unit's venv vanished on 2026-11-06) must report every piece as failed and exit 1,
+    and never read as a pass.
+    """
+    sink = _deployment(tmp_path, monkeypatch)
+    root = tmp_path / "overlays"
+    overlay_file = root / "node_reading_writer_effect" / "overlay.yaml"
+    document = yaml.safe_load(overlay_file.read_text(encoding="utf-8"))
+    document["ledger_read"] = {
+        "route": "command",
+        "command_env": "READING_TEST_READ",
+        "timeout_seconds": 30,
+        "row_limit": 1000,
+    }
+    overlay_file.write_text(yaml.safe_dump(document), encoding="utf-8")
+    monkeypatch.setenv("READING_TEST_READ", str(tmp_path / "missing" / "bin" / "onex"))
+    start = (START - timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    code = main(["hourly", "--window-start", start])
+    out = capsys.readouterr().out
+    pieces = len(document["pieces"])
+    assert code == 1, out
+    assert out.count("READING piece=") == pieces
+    assert f"failed={pieces} " in out
+    # no piece reads as a pass: a row that was written says the source was unreadable
+    assert "verdict=WORKING" not in out
+    if sink.exists():
+        assert "verdict=WORKING" not in sink.read_text(encoding="utf-8")
 
 
 def test_a_window_still_open_exits_nonzero(

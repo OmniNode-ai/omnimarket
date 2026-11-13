@@ -64,6 +64,9 @@ from omnimarket.handlers.routing.byok_provider_backends import (
     resolve_byok_backend_by_endpoint,
     token_limit_field_for_endpoint,
 )
+from omnimarket.handlers.routing.routing_tiers_path import (
+    load_delegation_routing_overlay,
+)
 from omnimarket.inference.local_byok_credential_adapter import (
     MODEL_CHOSEN_BY_CATALOGUE,
     record_local_byok_model,
@@ -324,6 +327,23 @@ def _extract_usage(response_json: dict[str, Any]) -> tuple[int, int]:
     return tokens_in, tokens_out
 
 
+def _provider_reported_cost(response_json: dict[str, Any]) -> Decimal | None:
+    """The cost the provider reported in its own usage accounting, or ``None``.
+
+    OMN-23756: OpenRouter states each call's charge as ``usage.cost`` (USD).
+    A missing, non-numeric or negative figure is ``None``, never zero.
+    """
+    usage = response_json.get("usage") or {}
+    raw = usage.get("cost") if isinstance(usage, dict) else None
+    if raw is None or isinstance(raw, bool):
+        return None
+    try:
+        value = Decimal(str(raw))
+    except InvalidOperation:
+        return None
+    return value if value.is_finite() and value >= 0 else None
+
+
 def _compute_cost(
     model_id: str,
     tokens_in: int,
@@ -344,6 +364,8 @@ def _compute_cost(
       0. a price the BYOK catalogue declares for this endpoint and model (OMN-20154:
          a free model inside a metered tier is booked at its own zero, never at
          the tier's rate)
+      0b. the price the routing overlay declares for a paid rung (OMN-23756) or an
+         eval arm (OMN-23751) on this endpoint and model
       1. routing_tiers.yaml registry lookup by tier name (authoritative)
       2. _FALLBACK_PRICE_PER_1M[tier_name] (hardcoded mirror of registry values)
       3. _FALLBACK_PRICE_PER_1M["default"] (generic catch-all)
@@ -354,10 +376,22 @@ def _compute_cost(
     if byok_backend_provider(provider) is not None:
         model_price = byok_model_price_per_1m(provider, endpoint_url, model_id)
         if model_price is None:
+            # OMN-23751: an eval arm on the registered key keeps the arm's model
+            # and is booked at the arm's declared price.
+            model_price = load_delegation_routing_overlay().eval_arm_price_per_1m(
+                endpoint_url, model_id
+            )
+        if model_price is None:
             return Decimal("0"), Decimal("0"), Decimal("0"), EnumCostBasis.UNKNOWN
         declared_price: tuple[Decimal, Decimal] | None = model_price
     else:
         declared_price = byok_declared_price_per_1m(endpoint_url, model_id)
+        if declared_price is None:
+            # OMN-23751 / OMN-23756: a paid rung or an eval arm is booked at its own
+            # declared price, never at the rate of the ladder tier it ran in.
+            declared_price = load_delegation_routing_overlay().declared_price_per_1m(
+                endpoint_url, model_id
+            )
     registry_price = (
         declared_price
         if declared_price is not None
@@ -584,6 +618,14 @@ class HandlerLlmDelegationCall:
         if not result.success:
             return result
         return self._build_completed_event(request, result)
+
+    def call_endpoint(
+        self,
+        request: ModelLlmDelegationCallRequest,
+        endpoint_url: str,
+    ) -> ModelLlmDelegationCallResult:
+        """Post, classify and price one call against ``endpoint_url`` without the loopback ``/health`` probe."""
+        return self._execute_call(request, endpoint_url, None)
 
     def _execute_call(
         self,
@@ -1353,6 +1395,7 @@ class HandlerLlmDelegationCall:
             savings_usd=savings,
             usage_source=_cost_usage_source(cost_basis),
             cost_basis=cost_basis,
+            provider_reported_cost_usd=_provider_reported_cost(response_json),
             quality_gate_passed=True,
             endpoint_healthy=True,
             served_model_id=served_model_id,
@@ -1492,6 +1535,7 @@ class HandlerLlmDelegationCall:
             actual_cost_usd=result.actual_cost_usd,
             opus_equivalent_cost_usd=result.opus_equivalent_cost_usd,
             savings_usd=result.savings_usd,
+            provider_reported_cost_usd=result.provider_reported_cost_usd,
             usage_source=result.usage_source,
             cost_basis=result.cost_basis,
             pricing_manifest_version=request.pricing_manifest_version,

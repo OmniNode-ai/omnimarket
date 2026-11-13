@@ -14,7 +14,14 @@ from enum import StrEnum
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializerFunctionWrapHandler,
+    model_serializer,
+    model_validator,
+)
 
 
 class EnumGithubGatewayOperation(StrEnum):
@@ -52,6 +59,8 @@ class EnumGithubGatewayOperation(StrEnum):
     # OMN-22654: every open PR's head, base, title and fix markers, the read the
     # duplicate-fix guard makes on a host that has no PR watcher state.
     OPEN_PR_FACTS = "open_pr_facts"
+    # OMN-24187: one file's text at one commit (the contents API); dod_verify's read of a contract at a PR head the clone does not hold.
+    REPO_FILE = "repo_file"
 
 
 # Operations that read one job's log and take its window fields.
@@ -124,6 +133,10 @@ class ModelGithubGatewayRequest(BaseModel):
     cache_only: bool = Field(
         default=False,
         description="job_log_tail: refuse a cache miss without resolving credentials or making HTTP calls.",
+    )
+    fill_on_miss: bool = Field(
+        default=False,
+        description="job_log_tail: on a cache miss, download that one job's log inside the gateway's declared miss-fill budget instead of refusing.",
     )
     artifact_id: int | None = Field(
         default=None,
@@ -198,10 +211,30 @@ class ModelGithubGatewayRequest(BaseModel):
         le=MAX_ARTIFACT_MAX_BYTES,
         description="artifacts only: largest archive fetched; larger is refused.",
     )
+    file_path: str | None = Field(
+        default=None,
+        max_length=512,
+        description="repo_file only: the repo-relative path of the file to read.",
+    )
     correlation_id: UUID = Field(
         default_factory=uuid4,
         description="Correlation ID flowing through the pipeline (auto if omitted).",
     )
+
+    @model_serializer(mode="wrap")
+    def _omit_unset_file_path(
+        self, handler: SerializerFunctionWrapHandler
+    ) -> dict[str, object]:
+        """Send ``file_path`` only when a read names one (OMN-24187).
+
+        A node that predates the field refuses every request that carries it
+        (``extra_forbid``), so a null ``file_path`` on each other read would
+        break all of them until the node is redeployed.
+        """
+        data: dict[str, object] = handler(self)
+        if data.get("file_path") is None:
+            data.pop("file_path", None)
+        return data
 
     @model_validator(mode="after")
     def _require_scope_fields(self) -> ModelGithubGatewayRequest:
@@ -224,6 +257,11 @@ class ModelGithubGatewayRequest(BaseModel):
             raise ValueError(
                 "operation 'job_log_fill' downloads on a miss and cannot be cache_only."
             )
+        if self.fill_on_miss:
+            if self.operation is not EnumGithubGatewayOperation.JOB_LOG_TAIL:
+                raise ValueError("fill_on_miss is supported only for job_log_tail.")
+            if self.cache_only:
+                raise ValueError("fill_on_miss and cache_only are exclusive.")
         if (
             self.operation is EnumGithubGatewayOperation.COMMIT_CHECK_RUNS
             and self.head_sha is None
@@ -236,6 +274,17 @@ class ModelGithubGatewayRequest(BaseModel):
             and self.operation is not EnumGithubGatewayOperation.ARTIFACTS
         ):
             raise ValueError("artifact_id is read only by the artifacts operation.")
+        if self.operation is EnumGithubGatewayOperation.REPO_FILE:
+            if self.head_sha is None or self.file_path is None:
+                raise ValueError(
+                    "operation 'repo_file' requires head_sha and file_path to be set."
+                )
+            if self.file_path.startswith("/") or ".." in self.file_path.split("/"):
+                raise ValueError(
+                    "file_path must be a repo-relative path with no '..' segment."
+                )
+        elif self.file_path is not None:
+            raise ValueError("file_path is read only by the repo_file operation.")
         window = {
             "offset_bytes": self.offset_bytes,
             "length_bytes": self.length_bytes,
@@ -439,6 +488,13 @@ class ModelWorkflowRunsResult(_ModelBoundedList):
     operation: Literal["workflow_runs"] = "workflow_runs"
     repo: str
     runs: list[ModelWorkflowRunSummary] = Field(default_factory=list)
+
+    def succeeded_at(self, head_sha: str) -> bool:
+        """True when a run on ``head_sha`` concluded ``success``."""
+        return any(
+            run.head_sha == head_sha and run.conclusion == "success"
+            for run in self.runs
+        )
 
 
 class ModelJobStep(BaseModel):
@@ -728,6 +784,27 @@ class ModelCommitCheckRunsResult(_ModelBoundedList):
     check_runs: list[ModelCheckRun] = Field(default_factory=list)
 
 
+class ModelRepoFileResult(BaseModel):
+    """One file's text at one commit, read through the contents API."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    operation: Literal["repo_file"] = "repo_file"
+    repo: str
+    head_sha: str
+    file_path: str
+    found: bool
+    text: str | None = None
+
+    @model_validator(mode="after")
+    def _found_matches_text(self) -> ModelRepoFileResult:
+        if self.found and self.text is None:
+            raise ValueError("a found repo_file result must carry its text.")
+        if not self.found and self.text is not None:
+            raise ValueError("a missing repo_file result must not carry text.")
+        return self
+
+
 class ModelMergedPrResult(BaseModel):
     """PR state, head refs and merge details (replaces ``gh pr view --json``)."""
 
@@ -840,6 +917,7 @@ GithubGatewayResult = Annotated[
     | ModelPrHeadsResult
     | ModelCommitCheckRunsResult
     | ModelMergedPrResult
+    | ModelRepoFileResult
     | ModelPrReviewThreadsResult
     | ModelOpenPrFactsResult,
     Field(discriminator="operation"),
@@ -899,6 +977,7 @@ __all__: list[str] = [
     "ModelPrTextResult",
     "ModelRelease",
     "ModelReleasesResult",
+    "ModelRepoFileResult",
     "ModelReviewGateResult",
     "ModelRunJob",
     "ModelRunJobsResult",

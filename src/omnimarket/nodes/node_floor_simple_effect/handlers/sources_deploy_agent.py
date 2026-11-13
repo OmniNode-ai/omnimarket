@@ -178,7 +178,7 @@ def read_deploy_agent(
     note = (
         f"last success {last_ok}"
         if last_ok
-        else f"no success among the {len(jobs)} results this floor has recorded (its record starts at its first read)"
+        else f"no success among the newest {len(jobs)} results (the record keeps only the newest {overlay.deploy_agent_history}; an older success is not shown)"
     )
     if last_bad is not None:
         note += (
@@ -213,6 +213,7 @@ def deploy_agent_events(
         correlation_id=correlation_id,
         phase="start",
         emitted_at=now,
+        origin="probe",
     )
     if read.status != "read":
         code, detail = "deploy_agent_unread", read.reason

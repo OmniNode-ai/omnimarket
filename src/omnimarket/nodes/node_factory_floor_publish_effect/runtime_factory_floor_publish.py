@@ -100,11 +100,13 @@ def main(argv: list[str] | None = None) -> int:
     # The operator-only gate comes first: no file is published to a server that does not carry it. A refusal there
     # withdraws the operator-only reports, is reported, and does not hold the shared pages back (the exit code stays 2).
     gate_refused = False
+    # The serving hosts whose connection did not open: the three steps share the list, so a down host costs one connect timeout (OMN-23081).
+    unreachable: set[str] = set()
     run_start = time.monotonic()
     access_start = run_start
     access_seconds = 0.0
     try:
-        access = HandlerOperatorAccess().handle(
+        access = HandlerOperatorAccess(unreachable=unreachable).handle(
             ModelOperatorAccessRequest(
                 home=a.registry_home, skip_reports=a.skip_reports
             )
@@ -123,6 +125,8 @@ def main(argv: list[str] | None = None) -> int:
             f"published={len(access.published)} files unread={','.join(access.unread) or 'none'} "
             f"seconds={access_seconds:.0f}\n"
         )
+        for host, reason in access.failed_targets.items():
+            sys.stderr.write(f"operator-access: host {host} not served: {reason}\n")
     request = ModelFactoryFloorPublishRequest(
         home=a.registry_home,
         state_dir=a.state_dir,
@@ -130,7 +134,7 @@ def main(argv: list[str] | None = None) -> int:
         refresh_delegation=a.refresh_delegation,
     )
     floor_refused = False
-    publisher = HandlerFactoryFloorPublish()
+    publisher = HandlerFactoryFloorPublish(unreachable=unreachable)
     publish_seconds = 0.0
     publish_start = time.monotonic()
     try:
@@ -150,6 +154,8 @@ def main(argv: list[str] | None = None) -> int:
             f"record={result.generated_at} sha256={result.data_sha256[:12]} "
             f"steps={','.join(f'{s.name}:{s.status}:{s.seconds:.0f}s' for s in result.steps) or 'skipped'} "
             f"after_publish={','.join(f'{s.name}:{s.status}:{s.seconds:.0f}s' for s in result.after_publish) or 'none'} "
+            f"served_to={','.join(result.served_to) or 'none'} "
+            f"failed_targets={','.join(result.failed_targets) or 'none'} "
             f"cycle_seconds={result.cycle_seconds:.0f} "
             f"phases={','.join(f'{k}:{v:.0f}s' for k, v in result.phase_seconds.items())}\n"
         )
@@ -173,7 +179,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2 if gate_refused or floor_refused else 0
     reports_start = time.monotonic()
     try:
-        reports = HandlerReportsPublish().handle(
+        reports = HandlerReportsPublish(unreachable=unreachable).handle(
             ModelReportsPublishRequest(home=a.registry_home)
         )
     except (PublishRefusedError, NodeOverlayError) as exc:

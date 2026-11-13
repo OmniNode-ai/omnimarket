@@ -288,6 +288,15 @@ backends:
   # A GLM rung may return later on a general-API (pay-as-you-go) key if the
   # operator chooses; it is not added here. Enforced by
   # tests/unit/delegation/test_omn20173_no_coding_plan_rung.py.
+  #
+  # OMN-19127: the 401 the dev lane's endpoint prober read on this rung came
+  # from a direct call to the Coding Plan (a probe carrying the plan's key),
+  # not from a bad key: a completion call returned 200 (OMN-19129). It is not
+  # fixed by restoring the rung; the prober now never requests the Coding Plan
+  # (omnibase_infra ServiceLlmEndpointHealth). The model spelling here
+  # ("glm-5.3-flash") differs from node_model_names.v1.yaml's thread-reply
+  # alias "glm-4.5" on purpose: that key only names this backend for
+  # thread-reply and is never sent to the plan; the ladder reads this one.
   - backend_id: cloud-glm
     provider: glm
     endpoint_url_env: BIFROST_CLOUD_GLM_ENDPOINT_URL
@@ -477,9 +486,21 @@ backends:
   #   2. ITS ROLE IS ALREADY FILLED, DIRECTLY. task_class_contracts.v1.yaml
   #      records that the former openrouter-glm-flash override was repointed to
   #      the direct z.ai GLM backend: we hold a direct GLM key, so GLM routes
-  #      direct rather than paying aggregator markup — OpenRouter is for FREE
-  #      models only. Re-adding a GLM-through-OpenRouter rung would walk that
-  #      routing-cost decision back.
+  #      direct rather than paying aggregator markup. Re-adding a
+  #      GLM-through-OpenRouter rung would walk that routing-cost decision back.
+  #      That half STANDS.
+  #
+  # OMN-23751: the other half of this rule, "OpenRouter is for FREE models
+  # only", is LIFTED. Operator, RULING 2026-11-11T12:33:37Z: "Yeah, OpenRouter
+  # is for free models only. That was initially. So, yes, lift that." (after
+  # RULING 2026-11-11T12:25:24Z asking for a new OpenRouter overlay, tiered and
+  # tested). Paid OpenRouter models are admitted, but not into this packaged
+  # contract and not onto the ladder: a deployment declares them as eval arms
+  # in the delegation routing overlay (DELEGATION_ROUTING_OVERLAY_PATH,
+  # `eval_arms`), every one `explicit_pin_only`, internal surface, house tenant,
+  # with its price and an eval spend cap, and the bifrost loaders append them
+  # (append_eval_arm_backends) so only a backend-id pin reaches them until the
+  # code eval scores them. GLM still never goes through OpenRouter.
   #
   # A rung whose slug 404s is not free capacity, it is a burned escalation
   # attempt: task classes order free-before-paid (OMN-14225), so a dead rung
@@ -487,11 +508,11 @@ backends:
   # every escalation that leaves the local tier. That is why this is a deletion
   # and not a TODO.
   #
-  # Do NOT restore this backend_id against another OpenRouter GLM slug. If a
-  # cheap_cloud OpenRouter rung is ever wanted again, add it against a slug
-  # confirmed present in a live GET /v1/models readback AND wire it into
-  # routing_tiers.yaml in the same change, so it cannot land as another
-  # definition nothing selects.
+  # Do NOT restore this backend_id against another OpenRouter GLM slug. Any
+  # new OpenRouter rung or eval arm is added against a slug confirmed present
+  # in a live GET /v1/models readback AND wired where something selects it in
+  # the same change (a tier, or the eval's explicit pin), so it cannot land as
+  # another definition nothing selects.
   # OpenRouter cheap-frontier-direct — free frontier-class model (OMN-12492;
   # slug repointed OMN-15638).
   #
@@ -510,6 +531,8 @@ backends:
     #
     # Repointed to the strongest FREE model live in the catalog on 2026-08-01,
     # per operator ruling R9-amended: stay free, do NOT adopt the paid slug.
+    # (The free-only rule was lifted on 2026-11-11, OMN-23751: the paid
+    # qwen/qwen3-coder is now an eval arm in the routing overlay, not here.)
     # NVIDIA Nemotron 3 Ultra — 550B total / 55B active hybrid Mamba-Transformer
     # MoE, self-described open frontier-reasoning + orchestration model, 1M
     # context, native tool-calling. Closest capability analog to the retired
@@ -1121,7 +1144,10 @@ shadow_mode:
 # memory size. The HOST is deliberately not declared here -- the onboarding
 # script chooses host.docker.internal from inside Docker and localhost otherwise.
 # The first entry whose min_memory_gb <= the Mac's memory wins; entries are
-# ordered by min_memory_gb strictly descending and the last one is 0.
+# ordered by min_memory_gb strictly descending and the last one is 0. Each row also
+# declares the parameter_count, context_window and max_tokens the developer model
+# overlay states for it (OMN-20330, ruling G4), so onboarding writes no number of
+# its own.
 ollama:
   port: 11434
   chat_path: /v1/chat/completions
@@ -1129,6 +1155,12 @@ ollama:
     - min_memory_gb: 16
       model: qwen2.5-coder:7b
       download_gb: 5
+      parameter_count: "7B"
+      context_window: 32768
+      max_tokens: 8192
     - min_memory_gb: 0
       model: qwen2.5-coder:1.5b
       download_gb: 1
+      parameter_count: "1.5B"
+      context_window: 32768
+      max_tokens: 8192

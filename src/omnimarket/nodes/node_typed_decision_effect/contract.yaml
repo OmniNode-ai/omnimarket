@@ -65,11 +65,23 @@ event_bus:
     - onex.cmd.omnimarket.typed-decision-shadow-requested.v1
   publish_topics:
     - onex.evt.omnimarket.typed-decision-shadow-completed.v1
+    # OMN-23334: each decision's delegation terminal, folded by the existing
+    # delegation projection into one delegation_events row.
+    - onex.evt.omnimarket.delegate-skill-completed.v1
+    - onex.evt.omnimarket.delegate-skill-failed.v1
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.typed-decision-shadow-requested.v1
 externally_consumed_topics:
   - onex.evt.omnimarket.typed-decision-shadow-completed.v1
 
+# The decision ENGINE is a site setting, not a contract value: the overlay
+# <root>/node_typed_decision_effect/overlay.yaml (ModelTypedDecisionEngineOverlay) names
+# engine: jev | local, and for local the routing-contract backend id of the model
+# server (which local model) and its abstention threshold. A site with no overlay
+# keeps the engine pinned below; an invalid overlay refuses and never decides by a
+# default. The local engine asks the server with guided decoding constrained to the
+# offered options and returns per-option probabilities from the first token's
+# logprobs, in the result shape the Jev engine returns.
 decision_routing:
   # The routing contract's typed-decision backend. Swapping the provider or
   # the model is a change to that backend (or an overlay), not to this node.
@@ -79,6 +91,22 @@ decision_routing:
   # A starting value, to be replaced by one calibrated from the arm's own
   # first decisions; it is applied before any model answer is used.
   abstain_below_probability: 0.8
+
+delegation_event:
+  # OMN-23334. The terminal each decision writes so the delegation census can
+  # count a typed decision beside every other delegation. The backend, outcome
+  # and correlation id ride in the payload; the prompt and state never do.
+  completed_topic: onex.evt.omnimarket.delegate-skill-completed.v1
+  failed_topic: onex.evt.omnimarket.delegate-skill-failed.v1
+  event_type: task.delegated
+  task_type: typed_decision
+  provider: typesafe
+  # The label of a decision the site's local engine answered (overlay engine: local).
+  local_provider: local
+  # The house tenant slug: typed decisions serve the operator's own work. The slug
+  # resolves through the closed legacy mapping; the house UUID would need a row in
+  # tenant_registry_mirror, which the lab evidence target does not hold.
+  tenant_id: omninode
 
 work_unit_scoping:
   # The decision backend is a third party. RULING 2026-10-13T18:34:53Z lifted
@@ -116,3 +144,5 @@ metadata:
     - "routing"
   related_tickets:
     - "OMN-19432"
+    - "OMN-23334"
+    - "OMN-18850"

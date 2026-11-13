@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import functools
 import re
 from collections import Counter
 from collections.abc import Mapping
@@ -109,6 +110,7 @@ def _engine(model: str, request: ModelFactoryFloorRequest) -> str:
 DOTTED_TASK_RE = re.compile(r"[A-Za-z]+\.\d+")
 
 
+@functools.lru_cache(maxsize=65536)
 def name_tokens(text: str) -> tuple[str, ...]:
     """The lower-case alphanumeric words of a lane name or a task id (``one-rt-t10-x`` is one, rt, t10, x)."""
     return tuple(part for part in re.split(r"[^0-9a-z]+", text.casefold()) if part)
@@ -127,6 +129,21 @@ def names_task(task_id: str, lane_tokens: tuple[str, ...]) -> bool:
             for i in range(len(lane_tokens) - width + 1)
         )
     )
+
+
+def lanes_naming_task(
+    task_id: str,
+    lanes_by_token: Mapping[str, tuple[str, ...]],
+    lane_words: Mapping[str, tuple[str, ...]],
+) -> tuple[str, ...]:
+    """The lanes whose name tokens can carry the task id's words, so a task row scan tests only those lanes."""
+    wanted = name_tokens(task_id)
+    if not wanted:
+        return ()
+    candidates = set(lanes_by_token.get(wanted[0], ()))
+    if DOTTED_TASK_RE.fullmatch(task_id):
+        candidates |= set(lanes_by_token.get("".join(wanted), ()))
+    return tuple(lane for lane in candidates if names_task(task_id, lane_words[lane]))
 
 
 def _station(

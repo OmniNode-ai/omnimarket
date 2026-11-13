@@ -80,6 +80,25 @@ schedule:
     randomized_delay: 60s
     persistent: true
     description: hourly, thirty-five minutes past
+  # A red hourly run is read again on its own short timer while the seam stays unanswered, so a
+  # redeploy that lands just before the hourly run does not hold piece 3 red for the whole hour
+  # (OMN-23201). The seam's deadline and the reading's freshness bound are unchanged.
+  recheck:
+    unit_name: onex-seam-deadline-recheck
+    interval: 5min
+    attempts: 6
+    description: every five minutes, re-reads only while the last hourly run read red, six times at most
+  # The error event of piece 3 comes from a drill: a run with an injected fault writes a row with
+  # drill=yes which the reading never reads. Twice a day keeps the newest error event under 12
+  # hours old, inside the floor's 24 hour window.
+  drill:
+    unit_name: onex-seam-deadline-drill
+    fault: deadline-zero
+    cadence:
+      on_calendar: "*-*-* 00,12:50:00"
+      randomized_delay: 60s
+      persistent: true
+      description: twice a day at 00:50 and 12:50, a run that waits no time for the result so the error event stays fresh
 
 overlay:
   node: node_seam_deadline_probe_effect

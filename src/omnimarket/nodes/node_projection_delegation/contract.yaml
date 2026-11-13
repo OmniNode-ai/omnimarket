@@ -157,7 +157,9 @@ terminal_event: onex.evt.omnimarket.projection-delegation-applied.v1
 # group lag and raised the lab lag alarm. In the consume loop the republish is
 # marked dirty per tenant and flushed once per window, off the commit path; the
 # snapshot is latest-wins, so what a reader loses is at most this window of
-# freshness. The per-delivery runtime path keeps the inline republish.
+# freshness. The runtime delivery path coalesces the same way: its runner is kept
+# for the process, so the republish deferred to the window survives the delivery
+# that marked it, and the runner drains it when the runtime closes the writer.
 aggregate_republish:
   coalesce_window_ms: 3000
 
@@ -1215,6 +1217,12 @@ projection_api:
         - snapshot_grain
         - tenant_id
       tenant_column: tenant_id
+      consumers: none
+      consumers_reason: >-
+        No Omnidash component placed on a shipped dashboard layout and no typed
+        status-page backend reader reads this daily aggregate yet. The change
+        that adds that reader deletes this opt-out and the
+        exposure-reader-coverage gate then checks the reader.
 
 metadata:
   transport_type: kafka

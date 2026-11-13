@@ -52,6 +52,10 @@ h3{font-size:16px;margin:18px 0 8px}
 .pager button{font-size:14px;font-weight:650;padding:6px 14px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink)}
 .pager button[disabled]{color:var(--grey);cursor:default}.pager span{font-size:13px;color:var(--mute)}
 .empty{padding:14px;color:var(--mute)}
+.rt{width:100%;border-collapse:collapse;font-size:14px;background:var(--card);border:1px solid var(--line);border-radius:8px}
+.rt caption{text-align:left;padding:0 0 6px;color:var(--mute);font-size:13px}
+.rt th,.rt td{padding:6px 10px;border-bottom:1px solid var(--line);text-align:right}.rt th:first-child,.rt td:first-child{text-align:left}
+.rt th{font-size:12px;color:var(--mute);font-weight:650}.rt tr:last-child td{border-bottom:0}.rt tr.now td{font-weight:650}
 dialog{border:1px solid var(--line);border-radius:10px;padding:0;max-width:640px;width:calc(100% - 24px);color:var(--ink)}
 dialog::backdrop{background:rgba(20,24,28,.45)}
 .dh{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;padding:14px 16px 8px}
@@ -69,6 +73,8 @@ dialog::backdrop{background:rgba(20,24,28,.45)}
 <div id="alert"><div class="frozen">Reading the delegation tracker...</div></div>
 <div id="ship"></div>
 <div id="cards" class="cards"></div>
+<h3>Delegations by route <small id="rsum"></small></h3>
+<div id="routes"></div>
 <h3>Scenarios <small id="ssum"></small></h3>
 <ul id="scn" class="list"></ul>
 <h3>Plan tickets <small id="tsum"></small></h3>
@@ -97,7 +103,7 @@ const $ = id => document.getElementById(id);
 let doc = null, failure = "";
 const st = {q: "", grp: "", page: 0};
 const GROUPS = {done: "Done", merged_awaiting_closer: "Merged, awaiting the closer", pr_open: "Pull request open", lane_running: "Lane running", not_started: "Not started", unread: "Not readable"};
-const SCN = {pass: ["Passing", "green"], fail: ["Failing", "red"], no_workflow: ["Not built", "amber"], no_run: ["No finished run", "amber"], unread: ["Unread", "grey"]};
+const SCN = {pass: ["Passing", "green"], fail: ["Failing", "red"], no_workflow: ["Not built", "amber"], no_run: ["No finished run", "amber"], unread: ["Unread", "grey"], stale: ["Stale", "amber"]};
 const TONE = {done: "green", merged_awaiting_closer: "green", pr_open: "amber", lane_running: "amber", not_started: "grey", unread: "grey"};
 
 const renderable = d => !!d && typeof d === "object" && Number.isFinite(Date.parse(d.generated_at)) && Array.isArray(d.scenarios) && Array.isArray(d.tickets) && !!d.counts && Array.isArray(d.counts.groups);
@@ -126,6 +132,7 @@ function drawCards(){
     + tile(c.scenarios_not_built, "not built", "scs:no_workflow", c.scenarios_not_built ? "a" : "z")
     + tile(c.scenarios_no_run, "no finished run", "scs:no_run", c.scenarios_no_run ? "a" : "z")
     + tile(c.scenarios_unread, "unread", "scs:unread", c.scenarios_unread ? "a" : "z")
+    + tile(c.scenarios_stale || 0, "stale", "scs:stale", c.scenarios_stale ? "a" : "z")
     + `</ul><p>Each scenario passes on its latest scheduled run. Tap a number to see which.</p></section>`;
   const tk = `<section class="card"><h2>Plan tickets <small>(${esc(c.tickets_total)})</small></h2><ul class="cnt">`
     + ["done", "merged_awaiting_closer", "pr_open", "lane_running", "not_started"].map(id => tile(g[id] ? g[id].count : 0, GROUPS[id].toLowerCase(), "grp:" + id, id === "done" || id === "merged_awaiting_closer" ? "g" : id === "not_started" ? "z" : "a")).join("")
@@ -134,6 +141,19 @@ function drawCards(){
     + `<span>Not started:</span><button type="button" data-open="start:true">${esc(c.start_true)} can start</button><button type="button" data-open="start:false">${esc(c.start_false)} waiting</button>${c.start_unread ? `<button type="button" data-open="start:null">${esc(c.start_unread)} unread</button>` : ""}</div>`
     + `<p>The delegation readiness plan, grouped by where each ticket stands now.</p></section>`;
   $("cards").innerHTML = scn + tk;
+}
+
+// ---- delegations per hour by route: local, GLM, other and the local share; only a fresh reading is drawn as numbers -------------
+const pct = x => x == null ? "no delegations" : (x * 100).toFixed(1) + " %";
+const hourText = iso => { const t = new Date(iso); return Number.isFinite(t.getTime()) ? t.toISOString().slice(5, 13).replace("T", " ") + ":00Z" : String(iso); };
+function drawRoutes(){
+  const r = doc.routes || {state: "unread", reason: "this tracker has no routes block", hours: [], max_age_min: null};
+  const tone = r.state === "fresh" ? "green" : r.state === "stale" ? "amber" : "red", limit = r.max_age_min == null ? "" : ", limit " + r.max_age_min + " min";
+  $("rsum").innerHTML = chip(r.state, tone) + (r.read_at ? ` <small>read ${esc(ago(since(r.read_at)))}${esc(limit)}</small>` : "");
+  if (r.state !== "fresh") { $("routes").innerHTML = `<p class="empty">${r.state === "stale" ? "Stale" : "Unread"}: ${esc(r.reason || "no reading")}. No number is drawn, and no share.</p>`; return; }
+  const last = r.last_hour, rows = (r.hours || []).slice().reverse();
+  const body = rows.map(h => `<tr${last && h.hour === last.hour ? ' class="now"' : ""}><td>${esc(hourText(h.hour))}</td><td>${esc(h.local)}</td><td>${esc(h.glm)}</td><td>${esc(h.other)}</td><td>${esc(h.total)}</td><td>${esc(pct(h.local_share))}</td></tr>`).join("");
+  $("routes").innerHTML = `<table class="rt"><caption>${last ? "This hour: " + esc(last.local) + " local, " + esc(last.glm) + " GLM, " + esc(last.other) + " other; local share " + esc(pct(last.local_share)) + "." : ""} Hours are UTC; the first row is the newest.</caption><thead><tr><th>Hour</th><th>Local</th><th>GLM</th><th>Other</th><th>Total</th><th>Local share</th></tr></thead><tbody>${body || `<tr><td colspan="6">No delegations in the window.</td></tr>`}</tbody></table>`;
 }
 
 // ---- rows -------------------------------------------------------------------------------------------------------------------
@@ -243,8 +263,8 @@ function drawAlert(){
 }
 function draw(){
   drawAlert();
-  if (!doc) { for (const id of ["ship", "cards", "scn", "tk", "pg", "src"]) $(id).innerHTML = ""; return; }
-  drawShip(); drawCards();
+  if (!doc) { for (const id of ["ship", "cards", "routes", "rsum", "scn", "tk", "pg", "src"]) $(id).innerHTML = ""; return; }
+  drawShip(); drawCards(); drawRoutes();
   $("ssum").textContent = `${doc.counts.scenarios_passing} of ${doc.counts.scenarios_total} passing`;
   $("scn").innerHTML = doc.scenarios.map(scnRow).join("");
   $("tsum").textContent = `${doc.counts.tickets_total} tickets`;

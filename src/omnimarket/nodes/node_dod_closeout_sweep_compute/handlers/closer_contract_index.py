@@ -17,7 +17,7 @@ from typing import Protocol
 
 from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
 
-from omnimarket.nodes.node_dod_closeout_sweep_compute.models.model_closeout_scope_overlay import (
+from omnimarket.models.closeout_scope_overlay import (
     ModelCloseoutScopeOverlay,
 )
 

@@ -21,6 +21,8 @@ from pydantic import (
     model_validator,
 )
 
+from omnimarket.models.lab_host_key import public_key_parts
+
 # A registry root as a probe script quotes it: no quote, backtick, space or ``$(``.
 RegistryRoot = Annotated[
     str, StringConstraints(min_length=1, pattern=r"^[A-Za-z0-9_$/.~-]+$")
@@ -83,6 +85,28 @@ VolumesRoot = Annotated[
     AfterValidator(_volumes_root),
 ]
 
+# The address of a host's iLO management processor (OMN-22870): a bare IPv4, IPv6 or DNS name, as the iLO setup verb of
+# ``node_ilo_redfish_effect`` takes it. No scheme, path, port, space or leading dash; the port and the pinned certificate live
+# in that node's own overlay.
+IloAddress = Annotated[
+    str, StringConstraints(min_length=1, pattern=r"^[A-Za-z0-9][A-Za-z0-9.:-]*$")
+]
+
+
+def _host_public_key(value: str) -> str:
+    parts = value.split()
+    if len(parts) != 2:
+        raise ValueError(
+            "a host key is exactly two whitespace-separated tokens: "
+            "key type and base64 key, no comment"
+        )
+    public_key_parts(value)
+    return value
+
+
+HostPublicKey = Annotated[str, AfterValidator(_host_public_key)]
+
+
 RepoRole = Literal["plugin_source", "private_data", "deploy", "knowledge_base"]
 
 
@@ -105,10 +129,13 @@ class ModelLabHostRow(_ModelOverlayBase):
     target: NonEmptyStr
     # The address of the host's iLO (HPE management processor), for the hosts that have one. The iLO setup
     # verb of node_ilo_redfish_effect reads it, so a host is set up from its table row (OMN-22870).
-    ilo_address: NonEmptyStr | None = None
+    ilo_address: IloAddress | None = None
     # Further ssh destinations of the same machine, tried after ``target`` in order: nonempty names,
     # none equal to ``target``, none repeated (the rule of the launcher's ``_fallback_targets``).
     fallback_targets: tuple[NonEmptyStr, ...] = ()
+    # The public ssh host keys this machine's sshd presents, declared so another host
+    # can write them to its known_hosts (never trust on first use).
+    host_keys: tuple[HostPublicKey, ...] = ()
     # The names the machine's own hook events carry as their host (its native hostname), for a row whose ``target`` or
     # ``fallback_targets`` do not give it. The quiet-host alarm attributes a hook event to the row it names, so a host
     # whose native name is none of its destinations (an ssh alias, an address, a tailnet name) declares it here (OMN-22778).
@@ -126,6 +153,10 @@ class ModelLabHostRow(_ModelOverlayBase):
     fallback_ssh_identity: SshIdentity | None = None
     local: bool = False
     codex: bool = False
+    # The host is admitted as a Tart VM host of the clean-VM walk (OMN-23204): its admission receipt names the tart version,
+    # the image digest and the probe results. Omitted means not admitted. Independent of ``roles``, whose declaration makes the
+    # table require one desired-publisher.
+    tart: bool = False
     available: bool = True
     roles: (
         tuple[Literal["lab-proof", "lab", "launcher", "desired-publisher"], ...] | None
@@ -218,6 +249,13 @@ class ModelLabHostRow(_ModelOverlayBase):
             raise ValueError(
                 f"lab host {self.name!r}: fallback_targets repeats target or itself: {list(names)}"
             )
+        return self
+
+    @model_validator(mode="after")
+    def _host_keys_are_distinct(self) -> "ModelLabHostRow":
+        """No public host key repeats within the row's ``host_keys``."""
+        if len(set(self.host_keys)) != len(self.host_keys):
+            raise ValueError(f"lab host {self.name!r}: host_keys repeats a public key")
         return self
 
 

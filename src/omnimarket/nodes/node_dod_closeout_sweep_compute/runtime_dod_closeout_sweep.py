@@ -4,7 +4,7 @@
 
     python -m omnimarket.nodes.node_dod_closeout_sweep_compute.runtime_dod_closeout_sweep bundle \\
         --candidates C.json --pr-state P.json --text-state T.json --max 12 \\
-        [--contract-state K.json] [--overlay overlay.yaml]
+        [--contract-state K.json] [--overlay overlay.yaml] [--examined-memory PATH] [--no-record]
     python -m omnimarket.nodes.node_dod_closeout_sweep_compute.runtime_dod_closeout_sweep prs OMN-1 OMN-2 \\
         [--wait-s 60] [--deadline ISO8601] [--overlay overlay.yaml]
 
@@ -19,6 +19,11 @@ each overlay repository's own default branch (every repository the overlay lists
 open PRs from the PR watcher's state; an unread repository is named on stderr and an unread or
 stale watcher state is an error on every row.
 
+The bundle ranks tickets by when each was last examined and holds one whose rejection is unchanged
+(OMN-23282): the selection reads the examination memory (the overlay's examined_memory_path under
+OMNI_HOME, or --examined-memory), and writes it back with each ticket it picked, examined now.
+--no-record reads the memory and leaves it as it is, for a probe that is not a closer run.
+
 Without --contract-state the contract index reads contracts/ on each overlay repository's
 default branch under OMNI_HOME (the real backend); the handler itself reads nothing. Prints
 the bounded bundle as one JSON object, or exits 2 naming what was unreadable; an input the
@@ -30,12 +35,25 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 from omnimarket.handlers.closeout_boundary_reads import (
     read_text_file,
     registry_root_from_environment,
+)
+from omnimarket.handlers.closeout_examined_memory import (
+    read_examined_memory,
+    write_examined_memory,
+)
+from omnimarket.models.closeout_scope_overlay import (
+    ModelCloseoutScopeOverlay,
+)
+from omnimarket.models.dod_closeout_sweep import (
+    STAMP_PATTERN,
+    EnumCloseoutDecisionKind,
+    ModelDodCloseoutDecisionRequest,
+    ModelRunSummary,
 )
 from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_completion_rules import (
     zero_flip_reading,
@@ -57,12 +75,6 @@ from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_scope_rule
 )
 from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.handler_dod_closeout_sweep import (
     HandlerDodCloseoutSweep,
-)
-from omnimarket.nodes.node_dod_closeout_sweep_compute.models.model_dod_closeout_sweep import (
-    STAMP_PATTERN,
-    EnumCloseoutDecisionKind,
-    ModelDodCloseoutDecisionRequest,
-    ModelRunSummary,
 )
 
 
@@ -143,6 +155,20 @@ def run_zero_flip(args: argparse.Namespace) -> int:
     return 0
 
 
+def _clock_now() -> str:
+    """The instant in the format Linear stamps a comment (millisecond UTC), so the two compare."""
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+
+
+def _examined_memory_path(overlay: ModelCloseoutScopeOverlay) -> Path:
+    home = registry_root_from_environment()
+    if not home:
+        raise ScopeInputUnreadableError(
+            "OMNI_HOME is not set and --examined-memory was not given"
+        )
+    return Path(home) / overlay.examined_memory_path
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=(__doc__ or "").split("\n\n")[0])
     sub = parser.add_subparsers(dest="mode", required=True)
@@ -155,6 +181,11 @@ def main(argv: list[str] | None = None) -> int:
     bundle.add_argument("--max", type=int, required=True, dest="limit")
     bundle.add_argument("--contract-state", type=Path)
     bundle.add_argument("--overlay", type=Path)
+    bundle.add_argument("--examined-memory", type=Path)
+    bundle.add_argument("--no-record", action="store_true")
+    bundle.add_argument(
+        "--now", help="the instant of the selection, ISO 8601 UTC; default the clock"
+    )
     bundle.add_argument(
         "--extra-clone-root",
         type=Path,
@@ -206,17 +237,31 @@ def main(argv: list[str] | None = None) -> int:
                 for c in candidates
                 if isinstance(c.get("id"), str)
             ]
+        pr_state = read_array(args.pr_state, "--pr-state")
+        if candidates and not pr_state:
+            raise ScopeInputUnreadableError(
+                f"--pr-state {args.pr_state}: an empty array for {len(candidates)} candidate(s); "
+                "the prs command prints a row for every ticket it is given, so the PR reader "
+                "failed and every ticket would read as waiting on PR state"
+            )
+        memory_path = args.examined_memory or _examined_memory_path(overlay)
+        examined = read_examined_memory(memory_path)
+        now = args.now or _clock_now()
         request = ModelDodCloseoutDecisionRequest(
             kind=EnumCloseoutDecisionKind.SCOPE_BUNDLE,
             date="1970-01-01",
             scope_candidates=candidates,
-            scope_pr_state=read_array(args.pr_state, "--pr-state"),
+            scope_pr_state=pr_state,
             scope_text_state=read_array(args.text_state, "--text-state"),
             scope_contract_state=contract_state,
             scope_overlay=overlay,
             max_candidates=args.limit,
+            scope_examined=examined,
+            scope_now=now,
         )
         result = HandlerDodCloseoutSweep().handle(request)
+        if result.scope_examined_next is not None and not args.no_record:
+            write_examined_memory(memory_path, dict(result.scope_examined_next))
     except (ScopeInputUnreadableError, OSError, ValueError) as exc:
         sys.stderr.write(f"closeout-scope: REFUSED: {exc}\n")
         return 2

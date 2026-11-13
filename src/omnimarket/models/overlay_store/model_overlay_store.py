@@ -139,6 +139,12 @@ class ModelOverlayStoreLoadOverlay(_Frozen):
     # A broker named directly, when this deployment's store is not on a declared lane; it wins over bus_lane.
     kafka_bootstrap: str | None = None
     loaded_by: str = Field(min_length=1)
+    # The unit's tick (runtime_overlay_store_load_tick) reads these three: the clone of the overlay home
+    # (relative to the registry root), the branch that clone must sit at the head of, and the overlays it
+    # loads on each run. Unset, the command line is the only way to run the loader.
+    clone_relpath: str | None = Field(default=None, min_length=1)
+    clone_branch: str | None = Field(default=None, min_length=1)
+    overlay_ids: tuple[str, ...] = ()
 
 
 class ModelOverlayReadPolicy(_Frozen):
@@ -167,6 +173,11 @@ class ModelOverlayStoreReadOverlay(_Frozen):
     overlays: dict[OverlayId, ModelOverlayReadPolicy] = Field(min_length=1)
     # Where a tick writes the newest reading of each host and overlay, under the registry home. Unset writes none.
     fleet_record_relpath: str | None = None
+    # The id this host's view of the fleet is published under as a floor projection (OMN-23391); unset publishes none.
+    fleet_projection_id: OverlayId | None = None
+    # The declared bus lane the projection's snapshot topic is read from, when the projection runs in that
+    # lane's runtime; the readings, the fleet and the fleet projection stay on the broker above.
+    snapshot_bus_lane: str | None = Field(default=None, min_length=1)
 
     @model_validator(mode="after")
     def _backend_names_what_it_needs(self) -> ModelOverlayStoreReadOverlay:
@@ -178,5 +189,17 @@ class ModelOverlayStoreReadOverlay(_Frozen):
         if missing:
             raise ValueError(
                 f"the {self.backend} backend needs the broker or database it reads"
+            )
+        # Only a host that reads the broker has a bus to publish its view of the fleet on (OMN-23391).
+        no_bus = {"in_memory": True, "postgres": True, "bus_snapshot": False}[
+            self.backend
+        ]
+        if self.fleet_projection_id is not None and no_bus:
+            raise ValueError(
+                f"the {self.backend} backend has no bus to publish the fleet projection on"
+            )
+        if self.snapshot_bus_lane is not None and no_bus:
+            raise ValueError(
+                f"the {self.backend} backend has no bus to read a snapshot from"
             )
         return self

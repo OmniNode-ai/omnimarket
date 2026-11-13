@@ -116,9 +116,27 @@ def _bus_snapshot_store(
             root=workspace_root(env),
         )
 
+    if kafka_bootstrap is not None:
+        snapshot_bootstrap: str | None = kafka_bootstrap
+        snapshot_lane: str | None = None
+    elif overlay.snapshot_bus_lane is not None:
+        snapshot_bootstrap = None
+        snapshot_lane = overlay.snapshot_bus_lane
+    else:
+        snapshot_bootstrap = bootstrap
+        snapshot_lane = None if bootstrap else overlay.bus_lane
+
+    def open_snapshot_bus() -> Any:
+        return open_lane_bus(
+            bus="kafka",
+            lane=snapshot_lane,
+            kafka_bootstrap=snapshot_bootstrap,
+            root=workspace_root(env),
+        )
+
     return (
         BusSnapshotOverlayStore(
-            open_bus=open_bus,
+            open_bus=open_snapshot_bus,
             topic=contract["snapshot_read"]["topic"],
             group_prefix=f"{NODE}.{host}",
             window_s=overlay.read_window_s,
@@ -186,8 +204,16 @@ async def fleet(
     overlay: ModelOverlayStoreReadOverlay,
     env: Mapping[str, str],
     kafka_bootstrap: str | None,
+    group: str | None = None,
 ) -> dict[str, Any]:
-    """The newest reading of each host and overlay on the bus: the floor row's source."""
+    """The newest reading of each host and overlay on the bus: the floor row's source.
+
+    Without ``group`` the topic is read from its earliest offset under a fresh consumer group, so a window
+    that ends before the log does answers with a frozen past: the topic gains a reading per host every tick
+    and a slow link read the first 2,730 of 3,526 in the window (measured), leaving every host's newest
+    reading stuck at the same offset. With ``group`` the consumer group is stable and its position is
+    committed on the broker, so a window that ends early resumes at the next tick and the answer holds the
+    readings published since the last one; the caller folds that over the record it already holds."""
     newest: dict[str, dict[str, Any]] = {}
 
     async def on_message(message: Any) -> None:
@@ -207,7 +233,7 @@ async def fleet(
         stop = await bus.subscribe(
             _contract()["event_bus"]["publish_topics"][0],
             on_message=on_message,
-            group_id=f"{NODE}.fleet.{uuid.uuid4().hex}",
+            group_id=f"{NODE}.fleet.{group or uuid.uuid4().hex}",
             auto_offset_reset="earliest",
         )
         try:

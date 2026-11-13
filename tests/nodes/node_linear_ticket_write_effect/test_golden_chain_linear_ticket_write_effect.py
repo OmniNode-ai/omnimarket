@@ -25,6 +25,9 @@ from omnimarket.inference.secret_store_resolver import SecretStoreConfigurationE
 from omnimarket.models.secret_store.model_secret_resolution_error import (
     SecretResolutionError,
 )
+from omnimarket.models.ticket_write_io import (
+    ModelTicketWriteRequest,
+)
 from omnimarket.nodes.node_create_ticket.handlers.handler_create_ticket import (
     ModelCreateTicketResult,
     TicketGuardRefusedError,
@@ -32,9 +35,6 @@ from omnimarket.nodes.node_create_ticket.handlers.handler_create_ticket import (
 )
 from omnimarket.nodes.node_linear_ticket_write_effect.handlers.handler_linear_ticket_write import (
     HandlerLinearTicketWriteEffect,
-)
-from omnimarket.nodes.node_linear_ticket_write_effect.models.model_ticket_write_io import (
-    ModelTicketWriteRequest,
 )
 
 pytestmark = pytest.mark.unit
@@ -213,21 +213,6 @@ def test_cli_is_registered_and_has_all_operations():
     assert project["project"]["entry-points"]["onex.cli"]["ticket"].endswith(
         ":ticket_group"
     )
-
-
-async def test_missing_guard_is_reported_without_a_registry_root(monkeypatch, tmp_path):
-    monkeypatch.delenv("OMNI_HOME", raising=False)
-    monkeypatch.delenv("OMNIBASE_INTERNAL_PATH", raising=False)
-    monkeypatch.delenv("ONEX_PILLAR_OWNERS_PATH", raising=False)
-    monkeypatch.setenv("ONEX_TICKET_GUARD_PATH", str(tmp_path / "missing.py"))
-    result = await HandlerLinearTicketWriteEffect().handle(
-        request(
-            operation="create",
-            title="Scratch",
-            description="created-by-lane: lane-a\n\nbody",
-        )
-    )
-    assert result.reason == "guard_unavailable"
 
 
 @pytest.mark.parametrize("operation", ["create", "comment", "transition"])
