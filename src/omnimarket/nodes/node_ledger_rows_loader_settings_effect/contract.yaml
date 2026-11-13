@@ -35,7 +35,18 @@ handler:
 
 # HandlerLoaderSettings takes the two overlay sources, the event sink and the clock as constructor
 # parameters (HandlerLoaderRun takes the settings handler and the subprocess runner), so a reader runs
-# it through its own CLI, not handler_routing.
+# them through the node's own CLI; handler_routing binds both handlers to the node.
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: resolve_loader_settings
+      handler:
+        name: HandlerLoaderSettings
+        module: omnimarket.nodes.node_ledger_rows_loader_settings_effect.handlers.handler_loader_settings
+    - operation: run_loader
+      handler:
+        name: HandlerLoaderRun
+        module: omnimarket.nodes.node_ledger_rows_loader_settings_effect.handlers.handler_loader_run
 
 descriptor:
   node_archetype: effect

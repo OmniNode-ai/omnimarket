@@ -15,11 +15,11 @@ from datetime import UTC, datetime
 
 import pytest
 
-from omnimarket.events.ledger_rows_loader_overlay import ModelRowsLoaderOverlay
 from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
     NodeOverlayNotFoundError,
 )
+from omnimarket.models.ledger_rows_loader_overlay import ModelRowsLoaderOverlay
 from omnimarket.models.model_work_ledger_reader import EnumReaderEventKind
 from omnimarket.nodes.node_ledger_rows_loader_settings_effect.adapters import (
     InMemoryLoaderSettingsSink,
