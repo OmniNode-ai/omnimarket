@@ -437,6 +437,8 @@ node_claude_code_history_read_effect = "omnimarket.nodes.node_claude_code_histor
 node_claude_code_hook_adapter_effect = "omnimarket.nodes.node_claude_code_hook_adapter_effect"
 node_claude_pool_limit_recheck_compute = "omnimarket.nodes.node_claude_pool_limit_recheck_compute"
 node_claude_pool_refill_effect = "omnimarket.nodes.node_claude_pool_refill_effect"
+node_claude_pool_revoke_cause_compute = "omnimarket.nodes.node_claude_pool_revoke_cause_compute"
+node_claude_pool_revoke_recheck_compute = "omnimarket.nodes.node_claude_pool_revoke_recheck_compute"
 node_claude_pool_revoke_staleness_compute = "omnimarket.nodes.node_claude_pool_revoke_staleness_compute"
 node_claude_pool_store_adopt_compute = "omnimarket.nodes.node_claude_pool_store_adopt_compute"
 node_claude_review_batch_effect = "omnimarket.nodes.node_claude_review_batch_effect"
@@ -1392,6 +1394,7 @@ node_test_selector_reading_compute = "omnimarket.nodes.node_test_selector_readin
 node_thread_reply_effect = "omnimarket.nodes.node_thread_reply_effect"
 node_throughput_tick_decision_compute = "omnimarket.nodes.node_throughput_tick_decision_compute"
 node_ticket_classify_compute = "omnimarket.nodes.node_ticket_classify_compute"
+node_ticket_closer_scheduled_effect = "omnimarket.nodes.node_ticket_closer_scheduled_effect"
 node_ticket_compiler = "omnimarket.nodes.node_ticket_compiler"
 node_ticket_contract_merge_compute = "omnimarket.nodes.node_ticket_contract_merge_compute"
 node_ticket_contract_prerequisite_effect = "omnimarket.nodes.node_ticket_contract_prerequisite_effect"
@@ -1937,6 +1940,14 @@ force-include = { "config/ci_bus_lanes.yaml" = "omnimarket/config/ci_bus_lanes.y
 # To move the pin: bump `version`, download the new asset, compute its sha256
 # locally, and paste it. A mismatch is refused, never repaired -- re-downloading
 # on mismatch would turn an attack into a cache miss.
+#
+# The pinned archive also ships INSIDE the package, so a first run needs no
+# network: src/omnimarket/nodes/node_local_dashboard_serve_effect/packaged_bundle/
+# holds it as `<asset>.part-NN` files (each under the repository's 1000 KB
+# large-file limit), reassembled and checked against `sha256` before use. Moving
+# the pin means replacing those parts too: delete the old ones, then run
+# `split -b 720000 -d <asset> <asset>.part-` in that directory. A test names the
+# pin and the parts that disagree.
 version = "v1.1.12"
 sha256 = "ec9b3f16c53b7cf77d53111bef587dbec40cdc837afb8cdc6e2be53353868de7"
 asset = "omnidash-bundle-v1.1.12.tar.gz"

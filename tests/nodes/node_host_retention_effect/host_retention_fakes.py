@@ -8,7 +8,7 @@ import os
 import shutil
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 
@@ -109,6 +109,27 @@ class FakeUnits:
         return self.texts
 
 
+class FakePreCommitStore:
+    """Remembers every ``forget`` call; ``fail`` raises OSError, else the declared result."""
+
+    def __init__(
+        self,
+        result: Literal["forgotten", "unreferenced", "locked"] = "forgotten",
+        fail: bool = False,
+    ) -> None:
+        self.result = result
+        self.fail = fail
+        self.calls: list[tuple[str, str]] = []
+
+    def forget(
+        self, index_db: str, repo_path: str
+    ) -> Literal["forgotten", "unreferenced", "locked"]:
+        self.calls.append((index_db, repo_path))
+        if self.fail:
+            raise OSError("index refused")
+        return self.result
+
+
 class FakeDisk:
     def __init__(self) -> None:
         self.reads = 0
@@ -129,6 +150,7 @@ def make_ports(
     lanes: Any = None,
     mounts: Any = None,
     units: Any = None,
+    pre_commit: Any = None,
 ) -> HostRetentionPorts:
     return HostRetentionPorts(
         runner_state=runner_state or FakeRunnerState(),
@@ -138,6 +160,7 @@ def make_ports(
         container_mounts=mounts or FakeMounts(set()),
         unit_files=units or FakeUnits([]),
         disk=FakeDisk(),
+        pre_commit_store=pre_commit or FakePreCommitStore(),
     )
 
 
@@ -165,6 +188,17 @@ def scratch_class(root: Path, keep_days: float = 3, **fields: Any) -> dict[str, 
         "name": "scratch-a",
         "kind": "lane_scratch",
         "root": str(root),
+        "keep_days": keep_days,
+        **fields,
+    }
+
+
+def precommit_class(root: Path, keep_days: float = 7, **fields: Any) -> dict[str, Any]:
+    return {
+        "name": "pc-store",
+        "kind": "pre_commit_store",
+        "root": str(root),
+        "index_db": str(root / "db.db"),
         "keep_days": keep_days,
         **fields,
     }
