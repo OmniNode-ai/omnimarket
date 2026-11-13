@@ -50,19 +50,6 @@ output_model:
   module: "omnimarket.nodes.node_workflow_contract_catalog_effect.models.model_workflow_contract_catalog"
   description: "The status and JSON body the HTTP adapter renders."
 
-handler_routing:
-  routing_strategy: "operation_match"
-  handlers:
-    - operation: "workflow_contract_catalog.list"
-      handler:
-        name: "HandlerWorkflowContractCatalog"
-        module: "omnimarket.nodes.node_workflow_contract_catalog_effect.handlers.handler_workflow_contract_catalog"
-      supported_operations:
-        - "workflow_contract_catalog.list"
-      description: "Resolve the caller, then advertise the servable catalog."
-  execution_mode: "single"
-  max_timeout_seconds: 10
-
 # The narrowest prefix, equal to the route path: private sibling routes under
 # /v1/workflows can be mounted later without an overlap. The mounted app sees
 # the request path unchanged.
