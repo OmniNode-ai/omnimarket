@@ -14,6 +14,9 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field
 
+# The host-side command prints one line: this prefix then the result as compact JSON.
+RESULT_LINE_PREFIX: str = "GPU_POWER_CAPS_RESULT "
+
 
 @unique
 class EnumGpuPowerCapsBackend(StrEnum):
@@ -21,6 +24,8 @@ class EnumGpuPowerCapsBackend(StrEnum):
 
     IN_MEMORY = "in_memory"
     SUBPROCESS = "subprocess"
+    # The node sends one lab work unit to the host over the bus and the host runs this node's command line locally.
+    LAB_WORK = "lab_work"
 
 
 @unique
@@ -43,6 +48,8 @@ class EnumGpuPowerCapsRefusal(StrEnum):
     CARD_AMBIGUOUS = "card_ambiguous"
     # The wanted watts are outside the card's [min, max] limits; nothing was written.
     WATTS_OUT_OF_RANGE = "watts_out_of_range"
+    # The lab work unit could not be sent, was refused, or no usable receipt came back; nothing is known to have been written.
+    TRANSPORT_UNAVAILABLE = "transport_unavailable"
 
 
 @unique
