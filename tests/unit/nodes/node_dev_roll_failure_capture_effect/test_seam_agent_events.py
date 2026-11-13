@@ -38,6 +38,7 @@ from tests.unit.nodes.node_dev_roll_failure_capture_effect.conftest import (
 pytestmark = pytest.mark.unit
 
 INCIDENT_FIELDS = {
+    "failed_phase",
     "event_id",
     "job_id",
     "issuer",
