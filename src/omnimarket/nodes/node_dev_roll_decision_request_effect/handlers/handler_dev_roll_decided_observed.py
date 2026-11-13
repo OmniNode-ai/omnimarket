@@ -18,6 +18,10 @@ import os
 from collections.abc import Mapping
 from uuid import UUID
 
+from omnimarket.events.dev_roll import (
+    EnumDevRollAction,
+    ModelDevRollDecided,
+)
 from omnimarket.nodes.node_dev_roll_decision_request_effect.handlers.store_dev_roll_observation import (
     store_from_policy,
 )
@@ -31,10 +35,6 @@ from omnimarket.nodes.node_dev_roll_decision_request_effect.overlay import (
 )
 from omnimarket.nodes.node_dev_roll_decision_request_effect.protocols import (
     ProtocolDevRollObservationStore,
-)
-from omnimarket.nodes.node_dev_roll_request_compute.models import (
-    EnumDevRollAction,
-    ModelDevRollDecided,
 )
 
 

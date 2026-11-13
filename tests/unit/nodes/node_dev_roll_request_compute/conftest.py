@@ -11,12 +11,14 @@ from uuid import UUID, uuid4
 import pytest
 import yaml
 
-from omnimarket.nodes.node_dev_roll_request_compute.models import (
+from omnimarket.events.dev_roll import (
     EnumDevRollHealth,
     ModelDevRollFacts,
-    ModelDevRollPolicy,
     ModelDevRollRecord,
     ModelDevTipChanged,
+)
+from omnimarket.nodes.node_dev_roll_request_compute.models import (
+    ModelDevRollPolicy,
 )
 from omnimarket.nodes.node_dev_roll_request_compute.overlay import (
     NODE_NAME,

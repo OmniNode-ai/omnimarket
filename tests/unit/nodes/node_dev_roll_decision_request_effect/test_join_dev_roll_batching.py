@@ -13,6 +13,13 @@ from pathlib import Path
 
 import pytest
 
+from omnimarket.events.dev_roll import (
+    EnumDevRollAction,
+    EnumDevRollEventRefusal,
+    EnumDevRollHoldReason,
+    ModelDevRollDecided,
+    ModelDevRollFacts,
+)
 from omnimarket.nodes.node_dev_roll_decision_request_effect.handlers import (
     HandlerDevRollQueuedRoll,
 )
@@ -26,13 +33,6 @@ from omnimarket.nodes.node_dev_roll_decision_request_effect.models import (
 )
 from omnimarket.nodes.node_dev_roll_request_compute.handlers import (
     HandlerDevRollRequest,
-)
-from omnimarket.nodes.node_dev_roll_request_compute.models import (
-    EnumDevRollAction,
-    EnumDevRollEventRefusal,
-    EnumDevRollHoldReason,
-    ModelDevRollDecided,
-    ModelDevRollFacts,
 )
 from omnimarket.nodes.node_dev_roll_request_compute.overlay import load_dev_roll_policy
 from tests.unit.nodes.node_dev_roll_decision_request_effect.chain_support import (
@@ -195,7 +195,5 @@ async def test_failing_control_a_silent_queued_handler_yields_no_decision(
     )
 
 
-def test_the_facts_model_is_the_compute_nodes_own() -> None:
-    assert ModelDevRollFacts.__module__.startswith(
-        "omnimarket.nodes.node_dev_roll_request_compute"
-    )
+def test_the_facts_model_is_the_shared_dev_roll_model() -> None:
+    assert ModelDevRollFacts.__module__.startswith("omnimarket.events.dev_roll")

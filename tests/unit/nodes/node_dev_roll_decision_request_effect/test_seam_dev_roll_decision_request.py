@@ -14,6 +14,12 @@ import pytest
 import yaml
 from omnibase_infra.models.model_dev_roll_manifest import ModelDevRollManifest
 
+from omnimarket.events.dev_roll import (
+    ModelDevRollDecided,
+    ModelDevRollFacts,
+    ModelDevRollRecord,
+    ModelDevTipChanged,
+)
 from omnimarket.nodes.node_dev_roll_decision_request_effect.handlers import (
     HandlerDevRollQueuedRoll,
 )
@@ -25,11 +31,7 @@ from omnimarket.nodes.node_dev_roll_decision_request_effect.models import (
 )
 from omnimarket.nodes.node_dev_roll_request_compute.handlers import decide_dev_roll
 from omnimarket.nodes.node_dev_roll_request_compute.models import (
-    ModelDevRollDecided,
-    ModelDevRollFacts,
     ModelDevRollPolicy,
-    ModelDevRollRecord,
-    ModelDevTipChanged,
 )
 from tests.unit.nodes.node_dev_roll_decision_request_effect.chain_support import (
     COMPUTE_CONTRACT,

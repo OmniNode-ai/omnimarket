@@ -14,11 +14,13 @@ from uuid import uuid4
 
 import pytest
 
-from omnimarket.nodes.node_dev_roll_request_compute.models import (
+from omnimarket.events.dev_roll import (
     EnumDevRollAction,
     EnumDevRollHealth,
     EnumDevRollHoldReason,
     ModelDevRollDecided,
+)
+from omnimarket.nodes.node_dev_roll_request_compute.models import (
     ModelDevRollPolicy,
 )
 from tests.unit.nodes.node_dev_roll_request_compute.chain_support import (

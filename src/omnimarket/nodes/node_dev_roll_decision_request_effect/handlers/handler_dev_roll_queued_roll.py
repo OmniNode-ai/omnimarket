@@ -22,6 +22,12 @@ from collections.abc import Callable, Mapping
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid5
 
+from omnimarket.events.dev_roll import (
+    EnumDevRollHealth,
+    ModelDevRollFacts,
+    ModelDevRollRecord,
+    ModelDevTipChanged,
+)
 from omnimarket.nodes.node_dev_roll_decision_request_effect.handlers.store_dev_roll_observation import (
     store_from_policy,
 )
@@ -37,12 +43,6 @@ from omnimarket.nodes.node_dev_roll_decision_request_effect.overlay import (
 )
 from omnimarket.nodes.node_dev_roll_decision_request_effect.protocols import (
     ProtocolDevRollObservationStore,
-)
-from omnimarket.nodes.node_dev_roll_request_compute.models import (
-    EnumDevRollHealth,
-    ModelDevRollFacts,
-    ModelDevRollRecord,
-    ModelDevTipChanged,
 )
 
 # The shadow plan's identifier namespace (parent OMN-23532): the compute node's

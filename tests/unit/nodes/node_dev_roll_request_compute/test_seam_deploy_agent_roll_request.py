@@ -17,12 +17,14 @@ from typing import Any
 
 import pytest
 
-from omnimarket.nodes.node_dev_roll_request_compute.handlers import decide_dev_roll
-from omnimarket.nodes.node_dev_roll_request_compute.models import (
+from omnimarket.events.dev_roll import (
     ModelDevRollDecided,
-    ModelDevRollPolicy,
     ModelDevRollRequest,
     ModelDevTipChanged,
+)
+from omnimarket.nodes.node_dev_roll_request_compute.handlers import decide_dev_roll
+from omnimarket.nodes.node_dev_roll_request_compute.models import (
+    ModelDevRollPolicy,
 )
 from tests.unit.nodes.node_dev_roll_request_compute.conftest import facts, tip
 

@@ -20,7 +20,7 @@ from typing import Any
 import pytest
 import yaml
 
-from omnimarket.nodes.node_dev_roll_request_compute.models import (
+from omnimarket.events.dev_roll import (
     EnumDevRollHealth,
     ModelDevRollRecord,
 )

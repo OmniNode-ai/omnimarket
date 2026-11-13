@@ -14,6 +14,10 @@ from pathlib import Path
 
 import pytest
 
+from omnimarket.events.dev_roll import (
+    EnumDevRollAction,
+    ModelDevRollDecided,
+)
 from omnimarket.nodes.node_dev_roll_decision_request_effect.handlers import (
     HandlerDevRollDecidedObserved,
     HandlerDevRollQueuedRoll,
@@ -26,8 +30,6 @@ from omnimarket.nodes.node_dev_roll_decision_request_effect.models import (
 )
 from omnimarket.nodes.node_dev_roll_request_compute.handlers import decide_dev_roll
 from omnimarket.nodes.node_dev_roll_request_compute.models import (
-    EnumDevRollAction,
-    ModelDevRollDecided,
     ModelDevRollPolicy,
 )
 from omnimarket.nodes.node_dev_roll_request_compute.overlay import load_dev_roll_policy

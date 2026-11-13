@@ -17,6 +17,15 @@ from uuid import UUID, uuid4, uuid5
 
 import pytest
 
+from omnimarket.events.dev_roll import (
+    EnumDevRollAction,
+    EnumDevRollHealth,
+    EnumDevRollHoldReason,
+    ModelDevRollDecided,
+    ModelDevRollFacts,
+    ModelDevRollRequest,
+    ModelDevTipChanged,
+)
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.nodes.node_dev_roll_decision_request_effect.handlers import (
     FileDevRollObservationStore,
@@ -33,15 +42,6 @@ from omnimarket.nodes.node_dev_roll_decision_request_effect.models import (
     ModelDevRollFileObservationStore,
     ModelDevRollManifestEvent,
     ModelDevRollObservationState,
-)
-from omnimarket.nodes.node_dev_roll_request_compute.models import (
-    EnumDevRollAction,
-    EnumDevRollHealth,
-    EnumDevRollHoldReason,
-    ModelDevRollDecided,
-    ModelDevRollFacts,
-    ModelDevRollRequest,
-    ModelDevTipChanged,
 )
 from tests.unit.nodes.node_dev_roll_decision_request_effect.conftest import (
     NOW,
