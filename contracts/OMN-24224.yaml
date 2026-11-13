@@ -1,0 +1,45 @@
+schema_version: 1.0.0
+ticket_id: OMN-24224
+title: The Runs page shows $0 for a run with no recorded cost, because the local savings view turns a NULL cost into 0
+summary: 'The local delegation.savings.v1 view served each session''s local_cost_usd as COALESCE(cost_usd, 0), so a run stored with no cost read as a measured free run and the dashboard Runs page showed $0 for it. A new one-time SQLite store step, omn24224_delegation_savings_null_cost_view, re-creates the view with local_cost_usd null when no cost was stored; a measured 0 stays 0 and the measured cumulative totals are unchanged. Not in this change: the Runs page wording (the omnidash pull request for this ticket) and the Postgres column (OMN-21023).'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24224-null-session-cost
+  statement: A run with no stored cost is served with a null session cost on the local savings exposure and shown as Not measured on the Runs page.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a run whose stored cost_usd is NULL shows Not measured in the Runs Cost column and the run detail, never $0 -- falsifier: npx playwright test -g unmeasured_run_cost, seeding one NULL-cost run and asserting its Cost cell reads Not measured'
+  - id: AC2
+    statement: 'AC2: a run with a measured cost of exactly 0 still shows the muted $0 -- falsifier: the same Playwright test seeds a measured 0 run and fails if it reads Not measured'
+  - id: AC3
+    statement: 'AC3: the local delegation.savings.v1 exposure serves local_cost_usd as null, or flags the row unpriced, for an event with no measured cost, and cumulative totals over measured rows are unchanged -- falsifier: uv run pytest -k savings_view_null_cost in node_projection_savings, writing one NULL-cost and one priced event and failing if the NULL row reads 0 or the priced total changes'
+evidence_requirements:
+- kind: tests
+  description: The local savings view null-cost tests pass at the pushed head.
+  command: uv run pytest tests/unit/projection/test_omn24224_sqlite_savings_null_cost.py tests/unit/projection/test_sqlite_delegation_savings_view_omn20008.py tests/unit/projection/test_omn21206_sqlite_savings_population.py -q -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24224-ac3
+  description: 'AC3: a run stored with no cost is served with a null local_cost_usd, a measured 0 and a priced run keep their cost, the measured totals equal those of the same store without the unmeasured run, and a store already on the previous view step gains the new view; fails on the COALESCE view.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/projection/test_omn24224_sqlite_savings_null_cost.py -q -p no:randomly --no-cov -k savings_view_null_cost
+    cwd: .
+- id: dod-omn24224-ac1-ac2
+  description: 'hosted proxy for AC1 and AC2: the page assertions run in the omnidash pull request for this ticket (tests/e2e/runs-unmeasured-cost.omn24224.spec.ts); here, the served null for an unmeasured run and the served 0 for a measured free run that the page reads are checked.'
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/projection/test_omn24224_sqlite_savings_null_cost.py -q -p no:randomly --no-cov -k "unmeasured_run_serves_a_null_cost or measured_zero_and_a_priced_run"
+    cwd: .
