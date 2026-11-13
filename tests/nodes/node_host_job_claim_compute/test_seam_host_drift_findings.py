@@ -157,6 +157,8 @@ def test_failing_control_a_line_without_the_host_is_not_read(
     """Injected break: the job check prints its finding without the host field."""
     line = job_check_lines(monkeypatch, tmp_path, capsys)[0]
     broken = line.replace(" seam-host", "", 1)
-    assert DRIFT_LINE.match(line)["kind"] == "second_unit"  # type: ignore[index]
+    good = DRIFT_LINE.match(line)
+    assert good is not None
+    assert good["kind"] == "second_unit"
     match = DRIFT_LINE.match(broken)
     assert match is None or match["host"] != "seam-host"
