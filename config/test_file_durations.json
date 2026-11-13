@@ -4718,6 +4718,7 @@
   "tests/unit/nodes/node_llm_delegation_routing_compute/test_defb_flip_omn14834.py": 0.12,
   "tests/unit/nodes/node_llm_delegation_routing_compute/test_handler_delegation_routing.py": 0.15,
   "tests/unit/nodes/node_merge_override_alarm_effect/test_contract.py": 3.3,
+  "tests/unit/nodes/node_merge_override_alarm_effect/test_entries_return_no_result.py": 9.1,
   "tests/unit/nodes/node_merge_override_alarm_effect/test_error_chain_detector_unreadable.py": 2.52,
   "tests/unit/nodes/node_merge_override_alarm_effect/test_golden_chain_merge_override.py": 1.91,
   "tests/unit/nodes/node_merge_override_alarm_effect/test_landing_merge_needs_receipt_and_app.py": 2.5,
