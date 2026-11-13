@@ -62,7 +62,7 @@ def _run(args: argparse.Namespace) -> int:
         f"outcome={result.outcome.value} ok={result.ok} realm={result.realm} "
         f"lane={result.lane} client_id={result.client_id or ''} "
         f"token_status={result.token_status if result.token_status is not None else ''} "
-        f"expected_secret={result.expected_secret or ''} detail={result.detail}\n"
+        f"expected_location={result.expected_location or ''} detail={result.detail}\n"
     )
     return 0 if result.ok else 1
 

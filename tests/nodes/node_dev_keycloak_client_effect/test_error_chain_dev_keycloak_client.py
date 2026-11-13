@@ -131,8 +131,8 @@ def test_bootstrap_credential_missing_names_the_env_file_and_both_names() -> Non
 
     assert result.ok is False
     assert result.outcome.value == "bootstrap_credential_missing"
-    # The detail and expected_secret name the env file and the variable NAMES the node wanted.
-    assert result.expected_secret == ".example/.env:ADMIN_USERNAME,ADMIN_PASSWORD"
+    # The detail and expected_location name the env file and the variable NAMES the node wanted.
+    assert result.expected_location == ".example/.env:ADMIN_USERNAME,ADMIN_PASSWORD"
     assert ".example/.env" in result.detail
     assert "ADMIN_USERNAME" in result.detail
     assert "ADMIN_PASSWORD" in result.detail
@@ -215,7 +215,7 @@ def test_client_secret_read_none_is_client_secret_unavailable() -> None:
 
     assert result.ok is False
     assert result.outcome.value == "client_secret_unavailable"
-    assert result.expected_secret == "/shared/env/KEYCLOAK_DEV_CLIENT_SECRET"
+    assert result.expected_location == "/shared/env/KEYCLOAK_DEV_CLIENT_SECRET"
     assert "/shared/env" in result.detail
     assert "KEYCLOAK_DEV_CLIENT_SECRET" in result.detail
     # The generator ran; only the admin token call reached Keycloak.

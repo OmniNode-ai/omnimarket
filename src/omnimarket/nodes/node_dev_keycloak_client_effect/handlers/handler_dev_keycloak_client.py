@@ -79,19 +79,18 @@ class HandlerDevKeycloakClient:
         detail: str,
         client_id: str | None = None,
         token_status: int | None = None,
-        expected_secret: str | None = None,
+        expected_location: str | None = None,
     ) -> ModelDevKeycloakClientResult:
         ok = outcome in (
             EnumDevKeycloakClientOutcome.ENSURED,
             EnumDevKeycloakClientOutcome.READY,
         )
         logger.info(
-            "dev keycloak client outcome=%s realm=%s lane=%s client=%s detail=%s",
+            "dev keycloak client outcome=%s realm=%s lane=%s client=%s",
             outcome.value,
             self._overlay.keycloak.realm,
             self._overlay.lane,
             client_id,
-            detail,
         )
         return ModelDevKeycloakClientResult(
             ok=ok,
@@ -101,7 +100,7 @@ class HandlerDevKeycloakClient:
             lane=self._overlay.lane,
             client_id=client_id,
             token_status=token_status,
-            expected_secret=expected_secret,
+            expected_location=expected_location,
         )
 
     def _dev_guard(
@@ -160,7 +159,7 @@ class HandlerDevKeycloakClient:
                     f"the bootstrap credential {bootstrap.env_file} does not hold "
                     f"{bootstrap.username_name} and {bootstrap.password_name}"
                 ),
-                expected_secret=(
+                expected_location=(
                     f"{bootstrap.env_file}:{bootstrap.username_name},{bootstrap.password_name}"
                 ),
             )
@@ -206,7 +205,7 @@ class HandlerDevKeycloakClient:
                     f"the generated client secret {client.secret_folder}/{client.secret_key} "
                     "is not in the store"
                 ),
-                expected_secret=f"{client.secret_folder}/{client.secret_key}",
+                expected_location=f"{client.secret_folder}/{client.secret_key}",
             )
 
         ensured = await self._ensure_client(admin_token, secret)

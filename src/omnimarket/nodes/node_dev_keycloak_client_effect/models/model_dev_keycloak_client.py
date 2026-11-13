@@ -50,7 +50,7 @@ class ModelDevKeycloakClientResult(BaseModel):
     lane: str
     client_id: str | None = None
     token_status: int | None = None
-    expected_secret: str | None = None
+    expected_location: str | None = None
 
 
 __all__ = [
