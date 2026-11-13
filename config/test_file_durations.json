@@ -5150,6 +5150,7 @@
   "tests/unit/nodes/node_work_ledger_render_effect/test_partition.py": 0.04,
   "tests/unit/nodes/node_work_ledger_seq_gap_effect/test_golden_chain_work_ledger_seq_gap_effect.py": 0.04,
   "tests/unit/nodes/node_work_ledger_seq_gap_effect/test_work_ledger_seq_gap.py": 2.01,
+  "tests/unit/nodes/node_work_progress_compute/test_overlay_event_bus_omn19998.py": 0.5,
   "tests/unit/nodes/node_worktree_lease_compute/test_handler_worktree_lease.py": 0.1,
   "tests/unit/nodes/test_canonical_handler_routing_migration.py": 7.33,
   "tests/unit/nodes/test_cdi_inmemory_binding_sites_c5.py": 3.05,
