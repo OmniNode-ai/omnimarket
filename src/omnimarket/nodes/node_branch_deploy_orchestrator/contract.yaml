@@ -5,10 +5,12 @@
 # Composes one branch deploy over the bus: deploy the PR head through the deploy agent, record the hot patch in the
 # install reducer, verify build provenance and health, and roll back on a failed verification. Each step is a typed
 # step event the reducer folds into the install record; the orchestrator sends nothing further for a deploy until the
-# reducer's record for the step comes back. No I/O, no clock of its own.
+# reducer's record for the step comes back. The deploy context is one stored row (table branch_deploy_state, keyed by
+# correlation id) the node reads and writes through the state_io seam, keeping no memory between messages, so a
+# runtime recreated mid-deploy resumes the deploy from its row.
 ---
 name: node_branch_deploy_orchestrator
-contract_version: {major: 1, minor: 0, patch: 0}
+contract_version: {major: 1, minor: 1, patch: 0}
 node_type: orchestrator
 node_version: {major: 1, minor: 0, patch: 0}
 
@@ -16,8 +18,10 @@ description: >
   Branch deploy orchestrator. On a deploy request it sends the deploy command to the deploy agent, waits for the job
   to complete, probes the runtime for health and provenance, and rolls back on a failed verification. Every step is
   published as a reducer command carrying the last record the reducer returned; the deploy ends with one terminal
-  event naming the final state and the digests. A result or record for a deploy it does not know, or in the wrong
-  phase, is ignored. Every setting comes from the node overlay.
+  event naming the final state and the digests. The deploy context is a stored row (table branch_deploy_state, keyed
+  by correlation id) read and written through the state_io seam, so the node keeps no deploy context in memory and a
+  runtime recreated mid-deploy resumes the deploy. A result or record for a deploy it does not know, for a finished
+  deploy, or in the wrong phase, is ignored. Every setting comes from the node overlay.
 
 handler_routing:
   routing_strategy: topic_match
@@ -126,6 +130,13 @@ broker_acl_grants:
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-install-step.v1, operation: DESCRIBE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.branch-deploy-completed.v1, operation: WRITE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.branch-deploy-completed.v1, operation: DESCRIBE}
+state_io:
+  database: "omnibase_infra"
+  table: "branch_deploy_state"
+  key: "correlation_id"
+  codec:
+    module: "omnimarket.nodes.node_branch_deploy_orchestrator.state_codec"
+    name: "StateIoCodec"
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.branch-deploy-requested.v1
@@ -139,6 +150,20 @@ event_bus:
     - onex.cmd.omnimarket.branch-deploy-probe-requested.v1
     - onex.evt.omnimarket.host-install-step.v1
     - onex.evt.omnimarket.branch-deploy-completed.v1
+
+published_events:
+  - event_type: "BranchDeployCommandRequest"
+    topic: onex.cmd.omnimarket.branch-deploy-command-requested.v1
+    description: "One rebuild the deploy agent runs: the PR head to deploy, or the image to roll back to."
+  - event_type: "BranchDeployProbeRequest"
+    topic: onex.cmd.omnimarket.branch-deploy-probe-requested.v1
+    description: "A probe of the runtime's health and build provenance at the expected head."
+  - event_type: "HostInstallReduceCommand"
+    topic: onex.evt.omnimarket.host-install-step.v1
+    description: "One install step event with the prior record, folded by the install state reducer."
+  - event_type: "BranchDeployCompleted"
+    topic: onex.evt.omnimarket.branch-deploy-completed.v1
+    description: "Terminal: how the deploy ended, with the final state and the digests."
 
 externally_produced_topics:
   - topic: onex.evt.deploy.rebuild-completed.v1
