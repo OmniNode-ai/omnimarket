@@ -1,0 +1,105 @@
+schema_version: 1.0.0
+ticket_id: OMN-21933
+title: The skill_lifecycle consumer runs as a projection node writing skill_executions on replayed events, committed with its commit hooks passing
+summary: node_projection_skill_lifecycle replaces the omnibase_infra skill lifecycle consumer. It folds each skill-started and skill-completed event into one skill_executions row keyed on the event id (a content-derived key when the producer sent none) and inserts it ON CONFLICT (event_id) DO NOTHING, so replaying a topic leaves the row count unchanged. The node carries byte-identical copies of the two migrations omnibase_infra vendors for it, is declared in the application relation ownership manifest, and wires into the runtime from its contract once the pinned omnibase-infra carries the tenant_projection_writer grant on skill_executions.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn21933-skill-lifecycle-node
+    statement: The skill lifecycle consumer's write path is a contract-declared projection node, proven by replay, by a real Postgres write and by the commit hooks.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: node_projection_skill_lifecycle is committed with the repository commit hooks passing and pushed, with no hook bypassed -- falsifier: git log on the pushed branch plus pre-commit run --all-files exit 0 on the branch'
+      - id: AC2
+        statement: 'AC2: the node writes the same skill_executions rows as the consumer module on replayed events with a deterministic key and UPSERT, and two replays leave the row count unchanged -- falsifier: uv run pytest tests/test_golden_chain_projection_skill_lifecycle.py -q, red when the key derivation is mutated back to a random uuid'
+      - id: AC3
+        statement: 'AC3: the node writes skill_executions on real Postgres from a pre-PR slot on the pushed branch -- falsifier: uv run pytest tests/test_omn21288_skill_lifecycle_real_postgres.py -q with INTEGRATION_POSTGRES_* set through /omni:lab-run'
+      - id: AC4
+        statement: 'AC4: uv.lock and pyproject.toml pin an omnibase-infra dev tag at or after dev-20261102114311-d4aa14ddcca1 (omnibase_infra#5565, the tenant_projection_writer grant on public.skill_executions) -- falsifier: uv run pytest tests/ci/test_infra_skill_executions_grant_pin_omn21933.py -q, red at the merge base whose lock pins infra 3f93a2cc6f6c'
+evidence_requirements:
+  - kind: tests
+    description: The replay golden chain and the writer's statement on real Postgres.
+    command: uv run pytest tests/test_golden_chain_projection_skill_lifecycle.py tests/test_omn21288_skill_lifecycle_real_postgres.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn21933-ac1-hooks
+    description: AC1 runs every repository commit hook over the whole tree at the pushed head and expects exit 0. Hosted CI runs the same hooks in its lint job; this unbound check is the local Done gate's.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: uv run pre-commit run --all-files
+        cwd: .
+  - id: dod-omn21933-ac1-lint
+    description: AC1 hosted check lints and format-checks the node package with the repository ruff configuration; the package is absent at the merge base, so ruff refuses the missing path there. The whole-tree hook run stays with the local Done gate.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: command
+        check_value: uv run ruff check src/omnimarket/nodes/node_projection_skill_lifecycle
+        cwd: .
+      - check_type: command
+        check_value: uv run ruff format --check src/omnimarket/nodes/node_projection_skill_lifecycle
+        cwd: .
+      - check_type: test_passes
+        check_value: uv run pytest tests/validators/test_projection_writer_contract_omn19833.py tests/unit/projection/test_tenant_isolation_migrations_grant_app_dashboard_select_omn14894.py -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn21933-ac2-replay
+    description: AC2 folds started and completed events with and without an event id, delivers the stream three times through the writer and expects the row count to stay at four; the same file holds the random-key case that doubles the rows.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/test_golden_chain_projection_skill_lifecycle.py -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn21933-ac3-real-postgres
+    description: AC3 applies the node's migrations to a scratch schema on a throwaway Postgres, runs the writer's own INSERT through the fold, replays it twice, and reads the rows back including a non-superuser writer under the enforced tenant policy. Without INTEGRATION_POSTGRES_* the file skips, so the lab run carries the proof.
+    source: manual
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/test_omn21288_skill_lifecycle_real_postgres.py -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn21933-ac3-runtime-wiring
+    description: The real contract wires into the runtime with zero failures and dispatches an event through the real db_io callback. It fails until the pinned omnibase-infra carries the tenant_projection_writer grant on skill_executions.
+    source: manual
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/test_omn21288_skill_lifecycle_in_runtime.py -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn21933-integration-proof
+    description: The pushed head ran the skill lifecycle suites, including the real-Postgres file against a throwaway Postgres, on a lab host and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-21933 -- uv run --frozen pytest tests/test_golden_chain_projection_skill_lifecycle.py tests/test_omn21288_skill_lifecycle_real_postgres.py -q --no-cov
+        cwd: .
+  - id: dod-omn21933-deploy-probe-node
+    description: 'Deploy probe: the node contract GitHub serves at the checked-out commit routes SkillLifecycleProjectionWriter, and the checked-out writer carries the conflict rule. The contract is absent at the merge base, so the content read fails there.'
+    source: manual
+    checks:
+      - check_type: command
+        check_value: bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_skill_lifecycle/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "SkillLifecycleProjectionWriter" > /dev/null'
+        cwd: .
+      - check_type: command
+        check_value: grep -F 'ON CONFLICT (event_id) DO NOTHING' src/omnimarket/nodes/node_projection_skill_lifecycle/handlers/handler_skill_lifecycle_writer.py
+        cwd: .
+  - id: dod-omn21933-ac4-infra-pin
+    description: AC4 reads the lock and pyproject for an omnibase_infra tag at or after the commit carrying the skill_executions grant and expects the previous infra not to be the locked one; dev now carries that pin, so the same file also reads the grant migration this node ships (absent at the merge base) for the writer's and the dashboard reader's privileges on public.skill_executions.
+    source: manual
+    binds_ac:
+      - AC4
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/ci/test_infra_skill_executions_grant_pin_omn21933.py -q --no-cov --tb=line
+        cwd: .
