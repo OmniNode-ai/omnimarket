@@ -1627,6 +1627,7 @@
   "tests/nodes/node_host_retention_effect/test_host_retention.py": 2.85,
   "tests/nodes/node_host_retention_effect/test_host_retention_precommit.py": 3.3,
   "tests/nodes/node_host_retention_effect/test_host_retention_seams.py": 2.13,
+  "tests/nodes/node_host_retention_effect/test_host_retention_uv_cap.py": 10.75,
   "tests/nodes/node_host_table_copies_drift_compute/test_error_chain_host_table_copies_drift.py": 0.03,
   "tests/nodes/node_host_table_copies_drift_compute/test_golden_chain_host_table_copies_drift.py": 0.02,
   "tests/nodes/node_host_table_copies_drift_compute/test_h202_rows_omn22900.py": 0.039,
