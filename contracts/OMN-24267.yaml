@@ -1,0 +1,56 @@
+schema_version: 1.0.0
+ticket_id: OMN-24267
+title: Pin the coding draft time limit read and its sizing ceiling with tests
+summary: 'Two tests in tests/unit/handlers/test_delegation_call_budget_reader.py. One plants the code_generation call budget at 180, reads 180, rewrites the overlay to 600 and reads 600. The other
+  sizes drafts whose slowest completed time is 593.6 seconds and expects node_delegation_code_budget_compute to refuse with over_ceiling and no budget.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24267-budget-read-and-ceiling-pinned
+  statement: The code_generation call budget follows the overlay on every read, and a sizing over the overlay ceiling is refused.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a test plants the settings value 180 for code_generation, reads 180, rewrites it to 600 and reads 600 -- falsifier: the test goes red when the budget reader returns a fixed value'
+  - id: AC2
+    statement: 'AC2: a test sizes drafts whose slowest completed time is 593.6 seconds and the node refuses with over_ceiling and no budget -- falsifier: the test goes red when the node''s ceiling check
+      is removed'
+  - id: AC3
+    statement: 'AC3: integrated: one code_generation draft run through the lane delegation step on a lab host records call_budget_s 600 with call_budget_source overlay in its harness receipt --
+      falsifier: the receipt shows 180 or source default'
+evidence_requirements:
+- kind: tests
+  description: The reader tests pass at the pushed head.
+  command: uv run pytest tests/unit/handlers/test_delegation_call_budget_reader.py -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24267-ac1
+  description: 'AC1: the planted 180 then 600 reads follow the overlay.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/handlers/test_delegation_call_budget_reader.py -q -n 0 --no-cov -p no:cacheprovider -k planted_180
+    cwd: .
+- id: dod-omn24267-ac2
+  description: 'AC2: sizing from a 593.6 s slowest completed draft refuses over_ceiling.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/handlers/test_delegation_call_budget_reader.py -q -n 0 --no-cov -p no:cacheprovider -k size_over_ceiling
+    cwd: .
+- id: dod-omn24267-ac3
+  description: 'hosted proxy for AC3: the reader tests pass; the harness receipt reading (call_budget_s 600, call_budget_source overlay) is taken on a lab host and named in the pull request.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/handlers/test_delegation_call_budget_reader.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
