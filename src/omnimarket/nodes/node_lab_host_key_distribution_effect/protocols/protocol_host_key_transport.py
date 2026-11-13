@@ -6,11 +6,10 @@ from __future__ import annotations
 
 from typing import Protocol
 
+from omnimarket.models.lab_host_key import EnumKeyFile, EnumLineState
 from omnimarket.models.overlay_keys import ModelLabHostRow
 
 from ..models.model_lab_host_key_distribution import (
-    EnumKeyFile,
-    EnumLineState,
     ModelHostKeyMaterial,
     ModelLabHostKeyDistributionRequest,
 )

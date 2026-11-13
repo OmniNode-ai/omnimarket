@@ -17,15 +17,25 @@ from typing import Any
 
 import yaml
 
+from omnimarket.handlers.node_overlay_reader import (
+    NodeOverlayError,
+    load_structured_overlay,
+)
 from omnimarket.models.model_merged_running_count import (
     ModelMergedRunningCountResult,
     ModelMrcConfig,
+    ModelMrcEvidenceRead,
 )
+from omnimarket.models.model_runtime_host_reads import ModelRuntimeHostReadOverlay
 from omnimarket.nodes.node_merged_running_count_effect.handlers.handler_merged_running_count_effect import (
     HandlerMergedRunningCountEffect,
 )
 from omnimarket.nodes.node_merged_running_count_effect.models.model_merged_running_count_run import (
     ModelMergedRunningCountRunRequest,
+)
+from omnimarket.nodes.node_merged_running_count_effect.sources.source_deployed_provenance import (
+    ModelProvenanceLabels,
+    SourceDeployedProvenance,
 )
 from omnimarket.nodes.node_merged_running_count_effect.sources.source_lab_pass_receipts import (
     build_lab_pass_source,
@@ -60,15 +70,49 @@ def _required_env(name: str) -> str:
     return value
 
 
+def build_provenance_source(
+    declared: dict[str, Any], environ: Any, home: Path, now: datetime
+) -> tuple[SourceDeployedProvenance | None, str]:
+    """The build-provenance reader from the contract's block and the overlay it names, or None and why not."""
+    try:
+        overlay = load_structured_overlay(
+            declared["overlay_id"],
+            ModelRuntimeHostReadOverlay,
+            environ,
+            file_env=declared["overlay_file_env"],
+        )
+    except NodeOverlayError as exc:
+        return None, str(exc)[:200]
+    return (
+        SourceDeployedProvenance(
+            overlay=overlay,
+            labels=ModelProvenanceLabels(
+                kind=declared["kind"],
+                source_template=declared["source_template"],
+                git_timeout_seconds=declared["git_timeout_seconds"],
+            ),
+            environ=environ,
+            home=home,
+            now=now,
+        ),
+        "",
+    )
+
+
 def build_sources(
     now: datetime, *, hosts_table: Path | None = None
 ) -> SourceLocalFiles:
     rt = yaml.safe_load(OWN_CONTRACT.read_text(encoding="utf-8"))["runtime"]
     home = Path(_required_env(rt["home_env"]))
     lab_pass, lab_pass_cause = build_lab_pass_source(rt["lab_pass"], os.environ)
+    provenance, provenance_cause = build_provenance_source(
+        rt["deployed_provenance"], os.environ, home, now
+    )
     return SourceLocalFiles(
         lab_pass=lab_pass,
         lab_pass_cause=lab_pass_cause,
+        provenance=provenance,
+        provenance_cause=provenance_cause,
         watcher_state=Path(
             os.environ.get(rt["watcher_state_env"]) or home / rt["watcher_relpath"]
         ),
@@ -97,6 +141,20 @@ class MergedRunningCountReader:
             ModelMergedRunningCountRunRequest(now=now)
         )
         return run.count
+
+    def read_evidence(
+        self, now: datetime, *, hosts_table: Path | None = None
+    ) -> ModelMrcEvidenceRead:
+        """The evidence the count is computed from (``ProtocolMergedRunningEvidenceReader``): adoption rows and deploy receipts."""
+        try:
+            sources = build_sources(now, hosts_table=hosts_table)
+        except SystemExit as exc:
+            raise RuntimeError(str(exc)) from exc
+        deployed = sources.read_deployed_evidence()
+        return ModelMrcEvidenceRead(
+            evidence=(*sources.read_evidence(), *deployed.evidence),
+            unread_cause=deployed.unread_cause,
+        )
 
 
 def main(argv: list[str] | None = None) -> int:

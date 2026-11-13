@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Copy to <root>/node_floor_task_ticket_effect/overlay.yaml. All values here are synthetic; supply your
+# deployment's facts. Every key is required and none has a default: a missing key refuses naming it.
+floor_fill:
+  # The deadline of each call of the ticket store (search, create, read, read-back), in seconds. A call past it
+  # ends the mint for the tick and the next tick searches first again.
+  mint_timeout_seconds: 30
+  # The ticket store the bus handler binds when it is asked for a ticket: inmemory (a store that lives in the process, for a
+  # profile that must not reach the tracker) or linear (the real tracker, whose key the secret store supplies).
+  ticket_store: inmemory

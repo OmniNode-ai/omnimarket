@@ -182,6 +182,13 @@ def _pr(request: ModelGithubGatewayRequest) -> dict[str, Any]:
 
 
 _GATEWAY_RESULTS: dict[str, Callable[[ModelGithubGatewayRequest], dict[str, Any]]] = {
+    "open_pr_facts": lambda r: {
+        "operation": "open_pr_facts",
+        "repo": r.repo,
+        "total_count": 0,
+        "truncated": False,
+        "prs": [],
+    },
     "pr_text": lambda r: {
         "operation": "pr_text",
         **_pr(r),
@@ -249,6 +256,14 @@ _GATEWAY_RESULTS: dict[str, Callable[[ModelGithubGatewayRequest], dict[str, Any]
     },
     "job_log_tail": lambda r: {
         "operation": "job_log_tail",
+        "repo": r.repo,
+        "job_id": r.job_id,
+        "total_bytes": 4,
+        "truncated": False,
+        "text": "done",
+    },
+    "job_log_fill": lambda r: {
+        "operation": "job_log_fill",
         "repo": r.repo,
         "job_id": r.job_id,
         "total_bytes": 4,
@@ -448,6 +463,7 @@ _READ_ARGS: dict[str, list[str]] = {
     "pr-status": [f"{REPO}#77", "--source", "bus"],
     "pr-checks": [f"{REPO}#77", "--source", "bus"],
     "pr-list": [REPO, "--source", "bus"],
+    "open-pr-facts": [REPO, "--source", "bus"],
     "pr-merge-commit": [f"{REPO}#77", "--source", "bus"],
     "pr-review": [f"{REPO}#77"],
     "pr-ticket": [f"{REPO}#77"],
@@ -455,6 +471,7 @@ _READ_ARGS: dict[str, list[str]] = {
     "run-list": [REPO, "--branch", "dev", "--limit", "5"],
     "run-view": [REPO, "--run-id", "11"],
     "job-log": [REPO, "--job-id", "12", "--tail-bytes", "1024"],
+    "job-log-fill": [REPO, "--job-id", "12", "--tail-bytes", "1024"],
     "run-download": [REPO, "--run-id", "11"],
     "release-list": [REPO],
     "pr-heads": [REPO, "--source", "bus"],
@@ -516,6 +533,9 @@ _WRITE_ARGS: dict[str, list[str]] = {
         "--output-summary",
         "Passed.",
     ],
+    "pr-label": [f"{REPO}#77", "--add", "ci:ready", "--head-sha", HEAD],
+    "variable-set": [REPO, "--variable", "LAB_VAR_ONE"],
+    "variable-get": [REPO, "--variable", "LAB_VAR_ONE"],
 }
 
 
@@ -643,7 +663,7 @@ def test_run_view_returns_step_timestamps_without_an_additional_read(
     transport.assert_drained()
     assert transport.sent == [get(path)]
     declared = sorted(contract_operations(EnumScmNode.GATEWAY))
-    assert len(declared) == 17
+    assert len(declared) == 19
     assert declared == sorted(
         spec.operation for spec in SCM_VERBS if spec.node is EnumScmNode.GATEWAY
     )
@@ -720,7 +740,15 @@ def _contract_1_2_0_request() -> type[BaseModel]:
     "verb_name",
     sorted(
         set(_WRITE_ARGS)
-        - {"check-run-create", "pr-thread-reply", "pr-thread-resolve", "pr-review-post"}
+        - {
+            "check-run-create",
+            "pr-thread-reply",
+            "pr-thread-resolve",
+            "pr-review-post",
+            "pr-label",
+            "variable-set",
+            "variable-get",
+        }
     ),
 )
 def test_older_write_envelopes_validate_against_the_deployed_contract(
@@ -788,6 +816,57 @@ def test_pr_thread_reply_carries_the_thread_id_as_an_integer(
     assert (sent.pr_number, sent.thread_comment_id) == (77, 2410010001)
     assert sent.body == "Fixed in the head commit.\n"
     assert sent.expected_head_sha is None
+
+
+def test_pr_label_carries_the_labels(monkeypatch: pytest.MonkeyPatch) -> None:
+    bus = FakeBus()
+    _install(monkeypatch, bus)
+    result = _run(["pr-label", *_WRITE_ARGS["pr-label"], "--lane", "lane-x"])
+    assert result.exit_code == 0, result.output
+    payload = bus.published[0][1]["payload"]
+    assert payload["operation"] == "pr_label"
+    assert payload["add_labels"] == ["ci:ready"]
+    assert payload["remove_labels"] is None
+    assert "review_thread_id" not in payload
+    assert payload["pr_number"] == 77
+    assert payload["expected_head_sha"] == HEAD
+
+
+@pytest.mark.parametrize("verb_name", ["variable-set", "variable-get"])
+def test_variable_verbs_carry_the_name_and_never_a_value(
+    monkeypatch: pytest.MonkeyPatch, verb_name: str
+) -> None:
+    bus = FakeBus()
+    _install(monkeypatch, bus)
+    result = _run([verb_name, *_WRITE_ARGS[verb_name], "--lane", "lane-x"])
+    assert result.exit_code == 0, result.output
+    payload = bus.published[0][1]["payload"]
+    assert payload["variable_name"] == "LAB_VAR_ONE"
+    assert payload["operation"] == "repo_" + verb_name.replace("-", "_")
+    assert payload["pr_number"] is None
+    assert "value" not in payload
+    assert payload["expected_head_sha"] is None
+
+
+@pytest.mark.parametrize("verb_name", ["variable-set", "variable-get"])
+def test_variable_verbs_refuse_a_typed_value_and_a_missing_name(
+    monkeypatch: pytest.MonkeyPatch, verb_name: str
+) -> None:
+    bus = FakeBus()
+    _install(monkeypatch, bus)
+    typed = _run([verb_name, REPO, "--variable", "LAB_VAR_ONE", "--value", "x"])
+    assert typed.exit_code != 0
+    missing = _run([verb_name, REPO, "--lane", "lane-x"])
+    assert missing.exit_code != 0
+    assert bus.published == []
+
+
+def test_pr_label_needs_a_label(monkeypatch: pytest.MonkeyPatch) -> None:
+    bus = FakeBus()
+    _install(monkeypatch, bus)
+    result = _run(["pr-label", f"{REPO}#77", "--head-sha", HEAD, "--lane", "lane-x"])
+    assert result.exit_code != 0
+    assert bus.published == []
 
 
 @pytest.mark.parametrize(
@@ -1404,6 +1483,56 @@ def test_a_bus_refusal_exits_69_without_a_traceback(
     assert result.exception is None or isinstance(result.exception, SystemExit)
 
 
+@pytest.mark.parametrize("stage", ["open", "subscribe", "publish", "timeout_then_open"])
+def test_job_log_dispatch_receipt_marks_only_possible_gateway_calls(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    retry_pauses: list[float],
+    stage: str,
+) -> None:
+    marker = tmp_path / "dispatch.json"
+    marker.write_text('{"command_may_have_run":false}')
+
+    class FailingBus(FakeBus):
+        async def subscribe_ungrouped(self, topic, on_message):
+            if stage == "subscribe":
+                raise InfraConnectionError("subscription refused before publication")
+            return await super().subscribe_ungrouped(topic, on_message)
+
+        async def publish(self, *args, **kwargs):
+            # Publication is the first point where the gateway might run, including
+            # a broker failure whose acknowledgement leaves its outcome unknown.
+            assert json.loads(marker.read_text()) == {"command_may_have_run": True}
+            if stage == "publish":
+                raise InfraConnectionError("publish acknowledgement lost")
+            return await super().publish(*args, **kwargs)
+
+    unavailable = InfraConnectionError("bus unavailable")
+    if stage == "open":
+        attempts = [unavailable] * 3
+    elif stage == "timeout_then_open":
+        attempts = [FailingBus(answer=False), unavailable, unavailable]
+    else:
+        attempts = [FailingBus()] * 3
+    _install_bus_attempts(monkeypatch, attempts)
+    result = _run(
+        [
+            "job-log",
+            REPO,
+            "--job-id",
+            "77",
+            "--timeout-s",
+            "0.01",
+            "--dispatch-receipt",
+            str(marker),
+        ]
+    )
+    assert result.exit_code == scm_cli.EXIT_BUS_UNAVAILABLE, result.output
+    assert json.loads(marker.read_text()) == {
+        "command_may_have_run": stage in {"publish", "timeout_then_open"}
+    }
+
+
 def test_write_expected_head_comes_from_the_watcher(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -2001,3 +2130,19 @@ def test_gateway_boundary_failure_is_reported_as_failed(
     assert answer["outcome"] == "failed"
     assert answer["result"]["status"] == "failed"
     assert answer["bus"]["terminal_envelope_id"]
+
+
+def test_node_owned_dispatch_tracking_refuses_before_publish_when_receipt_cannot_write(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from omnimarket.nodes.node_lane_github_budget_effect import track_gateway_dispatch
+
+    bus = FakeBus()
+    marker = tmp_path / "missing-parent" / "dispatch.json"
+    tracked = track_gateway_dispatch(bus, marker)
+    _install(monkeypatch, tracked)
+    with pytest.raises(FileNotFoundError):
+        _run(["job-log", REPO, "--job-id", "77"])
+
+    assert bus.published == []
+    assert not marker.exists()

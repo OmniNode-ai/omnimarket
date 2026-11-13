@@ -9,6 +9,19 @@ import sys
 from fnmatch import fnmatchcase
 from pathlib import Path
 
+from omnimarket.handlers.adapter_test_selection_policy_file import load_policy
+from omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_test_path_resolution import (
+    HandlerTestPathResolution,
+)
+from omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_test_selection_selector import (
+    HandlerTestSelectionSelector,
+)
+from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_path_resolution import (
+    ModelPathResolutionRequest,
+)
+from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_selection_selector import (
+    ModelSelectorRequest,
+)
 from scripts.ci.test_selection_loader import ModelAdjacencyMap, load_adjacency_map
 from scripts.ci.test_selection_models import (
     EnumFullSuiteReason,
@@ -31,7 +44,10 @@ def resolve_test_paths(
     """Map changed file paths to deterministic test directories.
 
     Behavior:
-      - Source changes under src/omnimarket/<module>: include tests/<module>/.
+      - Source changes under src/omnimarket/<module>: include tests/<module>/,
+        except for a module in node_scoped_modules, where the tests of the
+        nodes the change can reach by the import graph are selected instead
+        (OMN-23719; see ModelAdjacencyMap.node_scoped_modules).
       - Test-only changes under tests/: include the changed test directory.
       - Files outside src/ and tests/: no contribution.
       - Mapped paths that do not exist on disk are dropped, so pytest never
@@ -74,44 +90,14 @@ def _resolve(
     config: ModelAdjacencyMap,
     repo_root: Path,
 ) -> list[str]:
-    direct_modules: set[str] = set()
-    selected: set[str] = set()
-
-    for path in changed_files:
-        if path.startswith(SRC_PREFIX):
-            module = path[len(SRC_PREFIX) :].split("/", 1)[0]
-            if module in config.adjacency:
-                direct_modules.add(module)
-        elif path.startswith(TEST_PREFIX):
-            parts = path.split("/")
-            if len(parts) == 2 and path.endswith(".py"):
-                # OMN-15277: a root-level test file (no subdirectory) has no
-                # containing directory below tests/ itself. Constructing
-                # tests/<file>.py/ here would produce a pseudo-directory that
-                # is either silently dropped by the on-disk filter below
-                # (file absent at resolution time) or a file-shaped TestPath
-                # value that only "works" via an accidental pathlib
-                # trailing-slash normalization (file present). This function
-                # has no full-suite-escalation concept of its own (that lives
-                # in compute_selection()'s CHANGED_TEST_UNNARROWABLE check,
-                # which short-circuits before ever reaching this function) --
-                # contribute the real containing scope, tests/ itself,
-                # instead of a malformed pseudo-path. CodeRabbit-flagged gap:
-                # this direct resolve_test_paths() API has no equivalent
-                # escalation of its own, so it must never emit the malformed
-                # shape either.
-                selected.add(TEST_PREFIX)
-            elif len(parts) >= 2:
-                selected.add(f"{TEST_PREFIX}{parts[1]}/")
-
-    expanded: set[str] = set(direct_modules)
-    for module in direct_modules:
-        expanded.update(config.adjacency[module].reverse_deps)
-
-    for module in expanded:
-        selected.add(f"{TEST_PREFIX}{module}/")
-
-    return sorted(p for p in selected if (repo_root / p).exists())
+    result = HandlerTestPathResolution().handle(
+        ModelPathResolutionRequest(
+            changed_files=tuple(changed_files),
+            adjacency=config,
+            repo_root=str(repo_root),
+        )
+    )
+    return list(result.selected_paths)
 
 
 def compute_selection(
@@ -191,14 +177,19 @@ def compute_selection(
     # docstring on ModelAdjacencyMap.always_selected_paths.
     if not any(path == TEST_PREFIX for path in selected):
         selected = sorted(set(selected) | set(config.always_selected_paths))
-    split_count = _split_count_for(selected)
+    # OMN-23296: shard count and weight bound come from estimated test time.
+    decision = HandlerTestSelectionSelector(None, load_policy()).handle(
+        ModelSelectorRequest(selected_paths=tuple(selected), repo_root=str(root))
+    )
+    if decision.split_count is None:
+        return _full_suite(EnumFullSuiteReason.NARROWED_SELECTION_TOO_HEAVY)
 
     return ModelTestSelection(
         selected_paths=selected,
-        split_count=split_count,
+        split_count=decision.split_count,
         is_full_suite=False,
         full_suite_reason=None,
-        matrix=list(range(1, split_count + 1)),
+        matrix=list(range(1, decision.split_count + 1)),
     )
 
 
@@ -210,19 +201,6 @@ def _full_suite(reason: EnumFullSuiteReason) -> ModelTestSelection:
         full_suite_reason=reason,
         matrix=list(range(1, 21)),
     )
-
-
-def _split_count_for(selected_paths: list[str]) -> int:
-    n = len(selected_paths)
-    if n <= 2:
-        return 1
-    if n <= 5:
-        return 2
-    if n <= 10:
-        return 3
-    if n <= 16:
-        return 4
-    return 5
 
 
 def main(argv: list[str] | None = None) -> int:

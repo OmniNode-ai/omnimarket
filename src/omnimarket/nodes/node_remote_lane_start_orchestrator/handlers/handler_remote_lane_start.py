@@ -1,0 +1,160 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+"""Start one lab lane: the node's handler over the orchestration core (OMN-22848).
+
+``handle(request) -> result`` runs the whole sequence with the collaborators the handler was
+built with. ``build_real`` wires the real backends from the overlay: the ssh transport, the
+ledger append effect over the ledger writer command and the ledger file, the receipt file.
+"""
+
+from __future__ import annotations
+
+import socket
+from collections.abc import Callable
+from pathlib import Path
+from typing import Literal
+
+from omnibase_spi.protocols.lane import ProtocolLaneHostPool
+
+from omnimarket.models.engine_login import (
+    ModelEngineLoginPool,
+)
+from omnimarket.nodes.node_claude_token_pool_effect.handlers.handler_pool_steering import (
+    lane_start_steer,
+)
+from omnimarket.nodes.node_lane_guard_unit_effect.lane_guard_host_source import (
+    lane_guard_host_source,
+)
+from omnimarket.nodes.node_remote_lane_start_effect.adapters.adapter_ssh_transport import (
+    ProtocolHostCommandRunner,
+    SshLaneHostTransport,
+)
+from omnimarket.nodes.node_remote_lane_start_effect.handlers.handler_remote_lane_start_effect import (
+    HandlerRemoteLaneStartEffect,
+)
+from omnimarket.nodes.node_remote_lane_start_orchestrator.handlers.adapter_host_availability import (
+    HostAvailability,
+    lab_host_table_unavailable,
+)
+from omnimarket.nodes.node_remote_lane_start_orchestrator.models.model_remote_lane_start import (
+    ModelRemoteLaneStartRequest,
+    ModelRemoteLaneStartResult,
+    ModelRemoteLaneStartSettings,
+)
+from omnimarket.nodes.node_remote_lane_start_orchestrator.orchestration.core import (
+    FileReceiptSink,
+    RemoteLaneStartOrchestrator,
+)
+from omnimarket.nodes.node_work_ledger_append_effect.local_serve import (
+    local_serve_handler,
+)
+from omnimarket.nodes.node_work_ledger_append_effect.protocols.local_ledger_append_command import (
+    LocalLedgerAppendCommand,
+    LocalLedgerFile,
+)
+
+
+class HandlerRemoteLaneStart:
+    """Run the lane start sequence for one request."""
+
+    def __init__(
+        self,
+        build: Callable[[ModelRemoteLaneStartRequest], RemoteLaneStartOrchestrator]
+        | None = None,
+    ) -> None:
+        self._build = build
+
+    @property
+    def handler_type(self) -> Literal["NODE_HANDLER"]:
+        return "NODE_HANDLER"
+
+    @property
+    def handler_category(self) -> Literal["ORCHESTRATOR"]:
+        return "ORCHESTRATOR"
+
+    def handle(
+        self, request: ModelRemoteLaneStartRequest
+    ) -> ModelRemoteLaneStartResult:
+        if self._build is None:
+            raise RuntimeError(
+                "remote-lane start handler has no collaborators; build it with build_real"
+            )
+        return self._build(request).run(request)
+
+
+def build_real(
+    settings: ModelRemoteLaneStartSettings,
+    host_pool: ProtocolLaneHostPool,
+    *,
+    stop_requested: Callable[[], bool],
+    sleep: Callable[[float], None],
+    echo: Callable[[str], None] = print,
+    host_availability: HostAvailability = lab_host_table_unavailable,
+    host_runner: ProtocolHostCommandRunner | None = None,
+) -> HandlerRemoteLaneStart:
+    """The real-backend wiring; every value comes from the overlay or the request.
+
+    ``host_availability`` reads which hosts the lab host table keeps out of placement (the real table by default; a
+    test names its own). ``host_runner`` is the command runner under the ssh transport (the real subprocess runner by
+    default; a test injects a spy to read that ``start_mode: observe`` never reaches it).
+    """
+
+    def build(request: ModelRemoteLaneStartRequest) -> RemoteLaneStartOrchestrator:
+        ledger_file = LocalLedgerFile(Path(request.ledger_path))
+        # The check-then-append step runs under a flock beside the ledger, so two leaders
+        # (processes) for one lane and attempt cannot both be told ACCEPTED for the CLAIM.
+        ledger = local_serve_handler(
+            LocalLedgerAppendCommand(
+                [*settings.ledger_append_argv, request.ledger_path],
+                write_via=settings.ledger_write_via,
+            ),
+            Path(request.ledger_path),
+            socket.gethostname().split(".", 1)[0],
+            [settings.ledger_writer_principal],
+            None,
+        )
+        transport = SshLaneHostTransport(
+            ssh_argv=settings.ssh_argv,
+            host_run_root=settings.host_run_root,
+            call_timeout_seconds=settings.host_call_timeout_seconds,
+            detach_argv=settings.detach_argv,
+            path_prefix=settings.host_path_prefix,
+            registry_root_candidates=settings.registry_root_candidates,
+            registry_marker=settings.registry_marker,
+            closeout_tool_repo=settings.closeout_tool_repo,
+            closeout_ledger_env=settings.closeout_ledger_env,
+            closeout_registry_env=settings.closeout_registry_env,
+            plugin_store=settings.plugin_store,
+            runner=host_runner,
+            runtime_config_text=settings.provisioning.runtime_config_text,
+            runtime_config_target=settings.provisioning.runtime_config_target,
+            ledger_write_via=settings.ledger_write_via,
+            guard_host_source=lane_guard_host_source(),
+            login_pool=ModelEngineLoginPool(
+                module=settings.login_pool_module,
+                python_relative=settings.login_pool_python_relative,
+                roots=settings.registry_root_candidates,
+                draw_timeout_seconds=settings.login_draw_timeout_seconds,
+            ),
+            # Account steering (OMN-23636): off unless the pool node's overlay switches it on.
+            login_steer=lane_start_steer(ledger_file),
+        )
+        return RemoteLaneStartOrchestrator(
+            settings=settings,
+            host_pool=host_pool,
+            ledger=ledger,
+            ledger_reader=ledger_file,
+            host=HandlerRemoteLaneStartEffect(transport),
+            login=transport,
+            receipts=FileReceiptSink(settings.receipt_dir),
+            echo=echo,
+            sleep=sleep,
+            stop_requested=stop_requested,
+            requesting_host=socket.gethostname().split(".", 1)[0],
+            host_availability=host_availability,
+        )
+
+    return HandlerRemoteLaneStart(build)
+
+
+__all__ = ["HandlerRemoteLaneStart", "build_real"]

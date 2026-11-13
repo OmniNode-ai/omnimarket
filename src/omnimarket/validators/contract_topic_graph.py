@@ -947,13 +947,6 @@ SCOPE_FENCE: tuple[tuple[str, str, str | None, str, str], ...] = (
     # --- owned by the redeploy-FSM lane, live in its own worktree. Two lanes
     # editing the same FSM contract is how a merge silently drops a handler branch.
     (
-        "ORPHANED_CONSUMER",
-        "node_redeploy_deploy_effect",
-        "onex.evt.deploy.rebuild-completed.v1",  # onex-topic-allow: the fence IS the pin; resolving it through a constant would let the pinned pair drift
-        _PEER_LANE,
-        "redeploy-FSM contract under concurrent edit by the owning lane",
-    ),
-    (
         "ORPHANED_PRODUCER",
         "node_redeploy_deploy_effect",
         "onex.evt.omnimarket.redeploy-deploy-refused.v1",  # onex-topic-allow: the fence IS the pin; resolving it through a constant would let the pinned pair drift

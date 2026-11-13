@@ -1,0 +1,104 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Lab Check-Run Effect (OMN-22950, rebuild plan 3.6 row 8 and J8)
+#
+# Posts the required check of a lab-bound job on the exact head, carrying the identity of the attempt that ran it
+# (the check run's external_id), and reads a head's runs back. The check-run API (in-memory or the GitHub REST API),
+# the wait bound, the lab repository list, the titles and the emission journal all come from the overlay; this
+# contract holds no setting. A post from a superseded attempt posts nothing and invalidates that attempt's counting
+# runs; a head with no run of the current attempt reads missing, never passing.
+name: node_lab_check_run_effect
+contract_name: node_lab_check_run_effect
+node_name: node_lab_check_run_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Posts a lab-bound job's check run on the exact head within the wait bound, carrying the attempt identity, and
+  invalidates the runs of superseded attempts. Reads a head's runs back: a head with no run of the current attempt
+  reads missing or superseded, never passing. Every call is one chain on the floor's emission contract: a start,
+  then a success or a typed failure.
+
+handler:
+  module: omnimarket.nodes.node_lab_check_run_effect.handlers.handler_lab_check_run_effect
+  class: HandlerLabCheckRunEffect
+  input_model: omnimarket.nodes.node_lab_check_run_effect.models.model_lab_check_run.ModelLabCheckRunRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: lab_check_run
+      handler:
+        name: HandlerLabCheckRunEffect
+        module: omnimarket.nodes.node_lab_check_run_effect.handlers.handler_lab_check_run_effect
+
+# Not a runtime-dispatched handler: the J7 run (OMN-23420) takes the ledger source, the emission sink, the rule, the
+# overlay and the twin rigs as constructor parameters, so handler_routing would quarantine it at boot. It is the join's
+# caller: it runs from the publish cycle's join_j7 step (runtime_join_j7), in process, and answers each piece 7 golden
+# reading with a send past a stop whose lab check posts on a test head. Bound here so the contract owns it (the J6 run
+# in node_gate_store_effect is bound the same way). Join J7's error side is the run's failing control (OMN-23699): a piece 7
+# failure on purpose, written as non-drill chains once per overlay window.
+cli_handlers:
+  - operation: join_j7_run
+    handler:
+      name: HandlerLabCheckRunJoinJ7Run
+      module: omnimarket.nodes.node_lab_check_run_effect.handlers.handler_lab_check_run_join_j7_run
+
+# HandlerLabCheckRunEffect takes the overlay, the check-run API, the emission sink, an http transport and a clock as
+# constructor parameters; each defaults to the backend the overlay names.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [network-write, emission-append]
+  timeout_ms: 60000
+
+input_model:
+  name: ModelLabCheckRunRequest
+  module: omnimarket.nodes.node_lab_check_run_effect.models.model_lab_check_run
+  description: One post or read for a head, with the attempt identity and the dispatch time.
+output_model:
+  name: ModelLabCheckRunResult
+  module: omnimarket.nodes.node_lab_check_run_effect.models.model_lab_check_run
+  description: The outcome, the run read back, the runs invalidated and the head's verdict.
+
+terminal_event: onex.evt.omnimarket.lab-check-run-completed.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.lab-check-run-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.lab-check-run-completed.v1
+    failure: onex.evt.omnimarket.lab-check-run-failed.v1
+  external_trigger: true
+
+topics:
+  check_run_requested: onex.cmd.omnimarket.lab-check-run-requested.v1
+  check_run_completed: onex.evt.omnimarket.lab-check-run-completed.v1
+  check_run_failed: onex.evt.omnimarket.lab-check-run-failed.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.lab-check-run-completed.v1
+  - onex.evt.omnimarket.lab-check-run-failed.v1
+
+overlay:
+  node: node_lab_check_run_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+dod_evidence:
+  - test: tests/nodes/node_lab_check_run_effect/test_golden_chain_lab_check_run_effect.py::test_post_on_exact_head_golden_chain
+    description: "AC1 a lab-bound job posts its check on the exact head carrying the attempt identity, inside the wait bound, with the chain's start and success"
+  - test: tests/nodes/node_lab_check_run_effect/test_golden_chain_lab_check_run_effect.py::test_superseded_and_missing_a_superseded_attempt_posts_nothing_and_is_invalidated
+    description: "AC2 a superseded attempt's check is invalidated and a missing check reads missing, with the typed failure on the chain"
+
+metadata:
+  ticket: OMN-22950
+  transport_type: http

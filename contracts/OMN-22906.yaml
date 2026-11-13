@@ -1,0 +1,57 @@
+schema_version: 1.0.0
+ticket_id: OMN-22906
+title: Host power control and a runnable storage command exist as nodes with a failing control, so a host window needs no hand step
+summary: Two omnimarket nodes. node_host_power_effect takes a host and an action from its overlay, refuses a host with no declared power route with a typed result, and serves the ilo_redfish route through node_ilo_redfish_effect. node_host_storage_effect runs one declared storage command on a host and returns the free bytes before and after. Each has an in-memory backend and a real one chosen by overlay.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22906-host-power-storage
+  statement: A host window's power and storage steps run as nodes whose overlay declares the hosts, routes and commands, with typed refusals and a failing control for each reading.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a power node takes a host and an action from the host table''s overlay, refuses a host with no declared power route with a typed failure, and a test shows the refusal -- falsifier: uv run pytest tests/unit/nodes/node_host_power_effect -q'
+  - id: AC2
+    statement: 'AC2: a storage node runs one declared storage command on a host and returns a typed result with the free bytes before and after -- falsifier: uv run pytest tests/unit/nodes/node_host_storage_effect -q'
+  - id: AC3
+    statement: 'AC3: both nodes ship with an in-memory backend and a real one chosen by overlay, and one suite passes on both -- falsifier: uv run pytest tests/unit/nodes -q -k ''host_power or host_storage'''
+evidence_requirements:
+- kind: tests
+  description: The power and storage node suites, each run on both backends, with the named injected breaks.
+  command: uv run --frozen pytest tests/unit/nodes/node_host_power_effect tests/unit/nodes/node_host_storage_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22906-ac1
+  description: The power node suite passes on the branch and refuses the no-route host with a typed result.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_host_power_effect -q --no-cov
+- id: dod-omn22906-ac2
+  description: The storage node suite passes on the branch and returns the free bytes before and after.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_host_storage_effect -q --no-cov
+- id: dod-omn22906-ac3
+  description: One suite selection passes on the in-memory and the real backend of both nodes.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes -q --no-cov -k 'host_power or host_storage'
+- id: dod-omn22906-integration-proof
+  description: Run both node suites on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22906 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_host_power_effect tests/unit/nodes/node_host_storage_effect -q --no-cov

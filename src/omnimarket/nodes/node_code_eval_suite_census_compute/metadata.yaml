@@ -1,0 +1,19 @@
+name: node_code_eval_suite_census_compute
+version: "1.0.0"
+description: "Census of a code eval suite: per-band and per-repository counts, exclusions, band shortfalls, and candidate rows — no LLM calls, no clock, no I/O but the overlay"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_code_eval_suite_census_compute: "omnimarket.nodes.node_code_eval_suite_census_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+dependencies:
+  - "omnibase_core>=0.40.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "delegation", "evaluation", "suite", "census"]
+pack: "core"
+display_name: "Code Eval Suite Census"
+node_role: "compute"

@@ -1,0 +1,46 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lab_host_repair_dispatch_effect
+node_type: EFFECT_GENERIC
+version: 1.0.0
+lifecycle: experimental
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Consume the disk watermark alarm (a reading at level page) and start one repair lane per host and alarm on another
+  host, with the df and findmnt reading measured on the target in its brief. The dedupe key is the host and the alarm
+  name, kept in a durable store; a repeated alarm inside the backoff dispatches nothing, a repeat after it dispatches
+  the next attempt up to the retry budget and then writes one escalation row. A reading below the page mark ends the
+  episode. Budget, backoff, latency bound, brief, measure, dispatch and escalation commands are rows of the node
+  overlay, never of this node (OMN-23389, R13 of the full-disk cascade plan).
+input_model:
+  name: ModelHostRepairRequest
+  module: omnimarket.nodes.node_lab_host_repair_dispatch_effect.models.model_host_repair
+output_model:
+  name: ModelHostRepairResult
+  module: omnimarket.nodes.node_lab_host_repair_dispatch_effect.models.model_host_repair
+handler:
+  name: HandlerHostRepairDispatch
+  module: omnimarket.nodes.node_lab_host_repair_dispatch_effect.handlers.handler_host_repair_dispatch
+entrypoint:
+  name: NodeLabHostRepairDispatchEffect
+  module: omnimarket.nodes.node_lab_host_repair_dispatch_effect.node
+execution:
+  deterministic: false
+  side_effects: true
+overlay:
+  file: overlay.yaml
+  environment_pin: ONEX_LAB_HOST_REPAIR_OVERLAY
+runtime_dispatch:
+  external_trigger: "Run by the host timer after each disk watermark reading (python -m omnimarket.nodes.node_lab_host_repair_dispatch_effect run --reading-file <reading>), once per reading of a host."
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  side_effects:
+  - writes the durable dedupe state
+  - starts a repair lane
+  - writes an escalation row
+metadata:
+  ticket: OMN-23389
+  transport_type: in_process

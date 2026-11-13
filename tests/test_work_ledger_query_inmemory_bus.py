@@ -14,9 +14,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
+import yaml
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
 from omnimarket.handlers.work_ledger_text import split_ledger_rows
@@ -43,6 +45,7 @@ from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_query_i
     InMemoryWorkLedgerQueryReader,
     ledger_row_topics,
 )
+from tests.helpers.work_ledger_open_gate import OPEN_JUDGE_GATE
 from tests.test_golden_chain_work_ledger_query import (
     EXPECTED,
     LEDGER,
@@ -69,7 +72,7 @@ async def _write_fixture(emitter: InMemoryBusEmitter) -> int:
     The handler is synchronous (a CLI's shape), so it runs on a worker thread,
     where ``InMemoryBusEmitter.handle`` finds no running loop.
     """
-    handler = HandlerWorkLedgerEmit(emitter=emitter)
+    handler = HandlerWorkLedgerEmit(judge_gate=OPEN_JUDGE_GATE, emitter=emitter)
     accepted = 0
     for raw in split_ledger_rows(LEDGER.read_text()):
         result = await asyncio.to_thread(
@@ -127,6 +130,55 @@ async def test_query_over_the_bus_matches_the_recorded_markdown_reads(
         ]
 
 
+async def test_latest_state_over_the_bus_matches_a_scan_of_the_fixture_rows() -> None:
+    """OMN-23694 golden chain: rows published through the emit handler, read as the newest row per lane and type."""
+    bus = EventBusInmemory()
+    await bus.start()
+    tracked = frozenset(
+        yaml.safe_load(
+            (
+                Path(__file__).parents[1]
+                / "src/omnimarket/nodes/node_projection_work_ledger/contract.yaml"
+            ).read_text()
+        )["work_ledger"]["latest_row_types"]
+    )
+    reader = InMemoryWorkLedgerQueryReader(latest_row_types=tracked)
+    await reader.attach(bus)
+    await _write_fixture(InMemoryBusEmitter(bus))
+    expected: dict[tuple[str, str], str] = {}
+    for raw in split_ledger_rows(LEDGER.read_text()):
+        stamp, row_type, *cells = (
+            c.strip() for c in raw.split("\n", 1)[0].split(" | ")
+        )
+        # A MSG row names its lane in from=, every other tracked row in lane=.
+        lane = next(
+            (
+                c.split("=", 1)[1].split()[0]
+                for c in cells
+                if c.startswith(("lane=", "from="))
+            ),
+            None,
+        )
+        if lane and row_type in tracked:
+            expected[(lane, row_type)] = max(
+                expected.get((lane, row_type), stamp), stamp
+            )
+    assert expected
+    result = HandlerWorkLedgerQuery(reader=reader, now=lambda: NOW).handle(
+        ModelWorkLedgerQueryRequest(
+            correlation_id=uuid4(),
+            query=EnumWorkLedgerQueryKind.LATEST_STATE,
+            subject_kind="lane",
+            page_size=5000,
+        )
+    )
+    assert result.error is None
+    assert {
+        (e.subject, e.row_type): e.at.strftime("%Y-%m-%dT%H:%M:%SZ")
+        for e in result.latest
+    } == expected
+
+
 async def test_empty_ledger_answers_with_no_rows_and_no_error() -> None:
     _, reader, _ = await _local_ledger()
     request = ModelWorkLedgerQueryRequest(
@@ -157,7 +209,9 @@ def test_the_sync_emit_handler_writes_through_the_bus_outside_a_loop() -> None:
         return bus, reader
 
     bus, reader = asyncio.run(setup())
-    handler = HandlerWorkLedgerEmit(emitter=InMemoryBusEmitter(bus))
+    handler = HandlerWorkLedgerEmit(
+        judge_gate=OPEN_JUDGE_GATE, emitter=InMemoryBusEmitter(bus)
+    )
     row = (
         "2026-10-20T10:00:00Z | CLAIM | lane=local-a | actor=user | model=none | "
         "ticket=OMN-1 | worktree=none | host=laptop | run=r1 | scope=local ledger | "

@@ -125,7 +125,12 @@ def test_runtime_deliveries_write_typed_rows_and_close_real_pools(
         }
         for payload in (intro, heartbeat, {**heartbeat, "_offset": 43}):
             assert writer.handle(payload) == {"projected": True}
-            assert all(not adapter.is_connected for adapter in adapters)
+            # OMN-23196: the pool opened by the first delivery serves the rest.
+            assert len(adapters) == 1
+            assert all(adapter.is_connected for adapter in adapters)
+        writer.close()
+        writer.close()  # a second close finds nothing open and is harmless
+        assert all(not adapter.is_connected for adapter in adapters)
         rows = asyncio.run(readback())
         assert len(rows) == 1
         row = rows[0]
@@ -172,7 +177,11 @@ def test_live_events_runtime_delivery_strips_runner_keys_and_keeps_coordinates(
         finally:
             await connection.close()
 
+    table_attr = "_table_live_events"
+
     async def connect_fixture_database(self: BaseProjectionRunner) -> None:
+        # The handler names omninode_internal; point it at the scratch schema.
+        setattr(self, table_attr, f"{schema}.live_events")
         self._db = AsyncpgAdapter(dsn=integration_postgres_dsn)
         adapters.append(self._db)
         await self._db.connect()
@@ -220,7 +229,11 @@ def test_live_events_runtime_delivery_strips_runner_keys_and_keeps_coordinates(
         }
         for payload in (delivery, {**delivery, "_offset": 8}):
             assert writer.handle(payload) == {"projected": True}
-            assert all(not adapter.is_connected for adapter in adapters)
+            # OMN-23196: the pool opened by the first delivery serves the rest.
+            assert len(adapters) == 1
+            assert all(adapter.is_connected for adapter in adapters)
+        writer.close()
+        assert all(not adapter.is_connected for adapter in adapters)
         rows = asyncio.run(readback())
         assert len(rows) == 1
         row = rows[0]
@@ -271,7 +284,11 @@ def test_live_events_delegate_skill_list_source_projects_a_string_source_row(
         finally:
             await connection.close()
 
+    table_attr = "_table_live_events"
+
     async def connect_fixture_database(self: BaseProjectionRunner) -> None:
+        # The handler names omninode_internal; point it at the scratch schema.
+        setattr(self, table_attr, f"{schema}.live_events")
         self._db = AsyncpgAdapter(dsn=integration_postgres_dsn)
         await self._db.connect()
 
@@ -314,7 +331,11 @@ def test_live_events_delegate_skill_list_source_projects_a_string_source_row(
             "source": ["claude-code"],
             "timestamp": "2026-10-28T17:14:00+00:00",
         }
-        assert LiveEventsProjectionWriter().handle(delivery) == {"projected": True}
+        writer = LiveEventsProjectionWriter()
+        try:
+            assert writer.handle(delivery) == {"projected": True}
+        finally:
+            writer.close()
         rows = asyncio.run(readback())
         assert [row["source"] for row in rows] == ["claude-code"]
         assert rows[0]["topic"] == "onex.cmd.omnimarket.delegate-skill.v1"

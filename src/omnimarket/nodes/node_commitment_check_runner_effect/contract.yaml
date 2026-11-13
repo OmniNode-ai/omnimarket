@@ -1,0 +1,85 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Commitment Check Runner Effect (OMN-23013)
+#
+# Runs each due commitment's check on a schedule and writes the reading it earns: an open commitment whose check
+# passes is verified, a verified one whose check later fails is regressed (reopened), a regressed one whose check
+# passes is verified again. A commitment is a ledger row of kind commitment (the ask verbatim, an owner and a check
+# argv); the rows are folded by node_commitment_ledger_compute and the work-state projection lists the open ones as
+# work. A check runs only when the overlay allows its argv[0]. Every setting is in the overlay.
+name: node_commitment_check_runner_effect
+contract_name: node_commitment_check_runner_effect
+node_name: node_commitment_check_runner_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Reads the commitment rows of the rolling work ledger, runs the check of every open, regressed or stale-verified
+  commitment as an argv with no shell, and appends a reading row where a commitment changed state or a verified one was
+  re-read. A ledger that cannot be read fails the run with no check executed; a check outside the overlay's
+  allowlist is refused and never executed; a reading the ledger did not accept leaves the commitment where it was.
+
+handler:
+  module: omnimarket.nodes.node_commitment_check_runner_effect.handlers.handler_commitment_check_runner
+  class: HandlerCommitmentCheckRunner
+  input_model: omnimarket.nodes.node_commitment_check_runner_effect.models.ModelCommitmentCheckCommand
+
+# Not a runtime-dispatched handler: HandlerCommitmentCheckRunner takes its overlay rules, ledger source and appender, check
+# executor and clock as constructor parameters, so the node runs through its own CLI and schedule, not handler_routing.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [ledger-append, check-execution]
+  timeout_ms: 600000
+
+input_model:
+  name: ModelCommitmentCheckCommand
+  module: omnimarket.nodes.node_commitment_check_runner_effect.models
+  description: A correlation id; the run checks every due commitment.
+output_model:
+  name: ModelCommitmentCheckResult
+  module: omnimarket.nodes.node_commitment_check_runner_effect.models
+  description: Per commitment what its check read and what the ledger now says, or the failure that stopped the run.
+
+terminal_event: onex.evt.omnimarket.commitment-check-completed.v1
+
+runtime_dispatch:
+  external_trigger: true
+
+# The topics by role; the handler's event mapping reads these and holds no topic string.
+topics:
+  commitment_check_requested: onex.cmd.omnimarket.commitment-check-requested.v1
+  commitment_verified: onex.evt.omnimarket.commitment-verified.v1
+  commitment_regressed: onex.evt.omnimarket.commitment-regressed.v1
+  commitment_check_failed: onex.evt.omnimarket.commitment-check-failed.v1
+  commitment_check_completed: onex.evt.omnimarket.commitment-check-completed.v1
+  commitment_check_run_failed: onex.evt.omnimarket.commitment-check-run-failed.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.commitment-verified.v1
+  - onex.evt.omnimarket.commitment-regressed.v1
+  - onex.evt.omnimarket.commitment-check-failed.v1
+  - onex.evt.omnimarket.commitment-check-completed.v1
+  - onex.evt.omnimarket.commitment-check-run-failed.v1
+
+# The node's own schedule: a systemd user timer on a lab host the overlay declares in schedule_hosts, rendered and installed by
+# `python -m omnimarket.nodes.node_commitment_check_runner_effect schedule install --host <name>` (`uninstall` is the rollback).
+# The unit runs `python -m omnimarket.nodes.node_commitment_check_runner_effect` once per interval_seconds after the previous
+# run began. The overlay's recheck interval bounds how often a verified commitment is read again; the cadence is the unit's.
+schedule:
+  unit_name: onex-commitment-check
+  interval_seconds: 600
+  timeout_seconds: 600
+  state_directory: .onex_state/commitment-check
+  boot_delay: 120s
+  randomized_delay: 30s

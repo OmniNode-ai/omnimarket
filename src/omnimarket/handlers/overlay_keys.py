@@ -9,6 +9,10 @@ under the first root in ``ONEX_SKILL_OVERLAY_ROOTS`` that holds one. When none s
 reader raises :class:`NodeOverlayError` naming the key, the variables that supply it and the
 overlay file. There is no packaged fallback value.
 
+The lab host table is read only from the overlay roots ``ONEX_SKILL_OVERLAY_ROOTS``
+lists (the overlays repository's overlays directory); the workspace config owner's
+copy is not read.
+
 The two ``*_home_env(s)`` keys hold variable *names*; :func:`resolve_clone_home` reads the clone path
 they name.
 """
@@ -25,6 +29,7 @@ import yaml
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
 from omnimarket.handlers.node_overlay_reader import (
+    OVERLAY_ROOTS_ENV,
     NodeOverlayError,
     load_structured_overlay,
     not_configured_message,
@@ -41,6 +46,9 @@ from omnimarket.models.overlay_keys import (
 
 LAB_HOSTS_FILE_ENV = "ONEX_LAB_RUN_HOSTS"
 REGISTRY_ROOT_ENV = "ONEX_REGISTRY_ROOT"
+CONFIG_ROOT_ENV = "ONEX_WORKSPACE_CONFIG_ROOT"
+# The overlays directory under the config owner that held the retired copy of the host table.
+_RETIRED_ROOT_PARTS = ("config", "onex", "overlays")
 
 OVERLAY_DOCUMENT_MODELS: Mapping[str, type[BaseModel]] = {
     "repos": ModelReposOverlay,
@@ -142,29 +150,50 @@ def _table_from_file(spec: OverlayKeySpec, path_text: str) -> ModelLabHostsTable
         ) from None
 
 
-def _hosts_from_file(spec: OverlayKeySpec, path_text: str) -> Any:
-    return _table_from_file(spec, path_text).hosts
+def _without_retired_host_table_root(env: Mapping[str, str]) -> Mapping[str, str]:
+    """The environment without the config owner's overlays directory among the overlay roots.
+
+    The lab host table is read only from the roots the caller declared (the overlays
+    repository's overlays directory); a config owner's copy an older shell left in
+    ``ONEX_SKILL_OVERLAY_ROOTS`` must not serve it.
+    """
+    config_root = env.get(CONFIG_ROOT_ENV, "").strip()
+    if not config_root:
+        return env
+    retired = os.path.normpath(str(Path(config_root, *_RETIRED_ROOT_PARTS)))
+    kept = [
+        root
+        for root in env.get(OVERLAY_ROOTS_ENV, "").split(os.pathsep)
+        if root and os.path.normpath(root) != retired
+    ]
+    return {**env, OVERLAY_ROOTS_ENV: os.pathsep.join(kept)}
 
 
 def resolve_lab_hosts_table(
     environ: Mapping[str, str] | None = None,
 ) -> ModelLabHostsTable:
-    """The whole lab host table: the file ``ONEX_LAB_RUN_HOSTS`` names, else the ``lab_hosts`` overlay.
+    """The whole lab host table: the pinned file, else the overlay roots the caller declared.
 
     Hosts come with the table's ``unit_needs`` (what units of named repositories need of a host), which
-    are not overlay keys. Raises :class:`NodeOverlayError` when neither supplies a table."""
+    are not overlay keys. The table is read from the overlays repository through ``ONEX_SKILL_OVERLAY_ROOTS``
+    only: the config owner's copy (retired) is neither searched nor served when a shell lists it. A broken
+    selected source refuses; no host values are packaged.
+    Raises :class:`NodeOverlayError` when no source supplies a valid table."""
     env = os.environ if environ is None else environ
     spec = overlay_key_spec("lab_hosts.hosts")
     pinned = env.get(LAB_HOSTS_FILE_ENV, "").strip()
     if pinned:
         return _table_from_file(spec, pinned)
+    missing_message = (
+        not_configured_message(spec.overlay_id, spec.key, spec.env_vars)
+        + f"; the lab host table is read from the overlays repository's overlays directory listed in {OVERLAY_ROOTS_ENV}, "
+        "never from the config owner's copy"
+    )
     document = load_structured_overlay(
         spec.overlay_id,
         OVERLAY_DOCUMENT_MODELS[spec.overlay_id],
-        env,
-        missing_message=not_configured_message(
-            spec.overlay_id, spec.key, spec.env_vars
-        ),
+        _without_retired_host_table_root(env),
+        missing_message=missing_message,
     )
     if not isinstance(document, ModelLabHostsTable):
         raise NodeOverlayError(
@@ -188,10 +217,8 @@ def resolve_overlay_key(
     if explicit is not None:
         return _validate_explicit(spec, explicit)
     if key == "lab_hosts.hosts":
-        pinned = env.get(LAB_HOSTS_FILE_ENV, "").strip()
-        if pinned:
-            return _hosts_from_file(spec, pinned)
-    elif key == "lab_hosts.registry_root_candidates":
+        return resolve_lab_hosts_table(env).hosts
+    if key == "lab_hosts.registry_root_candidates":
         pinned = env.get(REGISTRY_ROOT_ENV, "").strip()
         if pinned:
             return _validate_explicit(spec, (pinned,))

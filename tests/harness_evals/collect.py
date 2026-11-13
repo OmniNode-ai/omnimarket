@@ -25,6 +25,9 @@ from omnimarket.handlers.handler_harness_eval import (
     normalize_observation,
     summarize,
 )
+from omnimarket.handlers.overlay_capability_line import (
+    resolve_capability_line,
+)
 from omnimarket.models.model_engine_experiment import (
     ModelEngineExperimentRow,
     format_experiment_line,
@@ -194,6 +197,7 @@ def main() -> int:
         observed_at=now,
         suite_revision=digest,
         harness_revision=harness_revision,
+        line=resolve_capability_line().line,
     )
     write("capability-map-run.json", capability.model_dump(mode="json"))
     write(

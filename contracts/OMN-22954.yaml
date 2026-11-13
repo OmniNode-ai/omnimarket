@@ -1,0 +1,81 @@
+schema_version: "1.0.0"
+ticket_id: OMN-22954
+title: "The hand-off refusals for want of installed proof are traced by cause, and the first install-canary result is dated"
+summary: >
+  node_install_refusal_trace_compute counts the hand-off's refusal records of a window per stated cause,
+  lists the declared classes no record reached as unread, and names the records no class matches. The
+  install canary gains a first_reading operation that returns the earliest canary result with its date,
+  the string the floor's piece declaration carries as first_reading. Reading the live records of the
+  120-refusal window and putting the reading on the floor overlay are not part of this change.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-refusal-trace"
+    statement: |-
+      The hand-off refusals of a window are classified by the cause each record states, with a count per class.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: every refusal of the window is classified by cause from its record with the count per class, and a class with no record is listed as unread -- falsifier: uv run pytest src/omnimarket/nodes/node_install_refusal_trace_compute -q -k classify
+  - id: "req-canary-first-reading"
+    statement: |-
+      The first install-canary result is dated and carried as the floor piece's first_reading.
+    acceptance:
+      - id: "AC2"
+        statement: |-
+          AC2: the first install-canary result is dated and shown on the floor -- falsifier: uv run pytest tests/nodes/node_install_canary_effect -q -k first_reading
+evidence_requirements:
+  - kind: tests
+    description: "Refusals are counted per stated cause, unread classes and unmatched records are named"
+    command: "uv run pytest src/omnimarket/nodes/node_install_refusal_trace_compute -q -k classify"
+  - kind: tests
+    description: "The earliest canary result is returned dated and fills the floor piece declaration"
+    command: "uv run pytest tests/nodes/node_install_canary_effect -q -k first_reading"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-refusal-trace-classify
+    description: "node_install_refusal_trace_compute classifies refusal records per cause and lists unread classes"
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest src/omnimarket/nodes/node_install_refusal_trace_compute -q -k classify"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: dod-refusal-trace-title-ticket-wordings
+    description: "the refusal trace reads both handoff_row.sh wordings of the title-ticket refusal (must cite, must include) as one class"
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest src/omnimarket/nodes/node_install_refusal_trace_compute -q -k both_printings_of_the_title_ticket_refusal"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: command
+        check_value: "grep -F '(?:cite|include) the title ticket' src/omnimarket/nodes/node_install_refusal_trace_compute/handlers/handler_install_refusal_trace.py"
+        cwd: "."
+    binds_ac: ["AC1"]
+  - id: dod-canary-first-reading
+    description: "the install canary returns the first canary result with its date for the floor"
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/nodes/node_install_canary_effect -q -k first_reading"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn22954-integration-proof"
+    description: "The pushed head ran the refusal trace and install canary focused tests on a lab host with its real installed dependencies and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane fill-ticket-OMN-22954-20261107T1626Z -- uv run --frozen pytest tests/test_golden_chain_install_refusal_trace.py src/omnimarket/nodes/node_install_refusal_trace_compute src/omnimarket/nodes/node_install_canary_effect -q --no-cov"
+        cwd: "."
+  - id: "dod-omn22954-deploy-assessment"
+    description: "Deploy assessment: the PR adds the node_install_refusal_trace_compute node and the install canary first_reading operation, both read-only compute/effect paths with no new Kafka topic, no migration and no prod mutation. The node reaches the runtime through the package entry point on the next standard image rebuild and deploy cycle. The check reads the install canary contract from GitHub at the PR branch and fails when first_reading is missing."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "body=\"$(gh api -H 'Accept: application/vnd.github.raw' 'repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_install_canary_effect/contract.yaml?ref=omn-22954-install-refusal-trace')\" && case \"$body\" in *first_reading*) exit 0;; *) exit 1;; esac"
+        cwd: "."

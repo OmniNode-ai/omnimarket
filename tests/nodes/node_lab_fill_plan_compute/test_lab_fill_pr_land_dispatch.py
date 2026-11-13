@@ -140,3 +140,32 @@ def test_a_pr_land_lane_brief_runs_pr_land_and_reports_an_unfixable_cause() -> N
     assert "no merge by hand, no arming" not in rendered.brief
     assert rendered.launch.pr == "repo_a#1"
     assert rendered.launch.lane == "lab-fill-land-repo_a-1-1010"
+
+
+def _red(**over: Any) -> dict[str, object]:
+    return {
+        "kind": "pr-red",
+        "ticket": "OMN-9",
+        "pr": "repo_a#7",
+        "repo": "repo_a",
+        "under_parent": True,
+        **over,
+    }
+
+
+def test_a_string_cause_reaches_the_dispatch_item_unchanged() -> None:
+    plan = _plan([_red(cause="base-red")], lanes=1)
+
+    assert [i.cause for i in plan.dispatch] == ["base-red"]
+
+
+@pytest.mark.parametrize("cause", [{"reason": "base-red"}, ["base-red"], 7])
+def test_a_non_string_cause_is_read_as_text_and_does_not_fail_the_plan(
+    cause: object,
+) -> None:
+    """The dispatch item's cause is text; a truthy non-string cause was copied through and
+    raised a ValidationError that nothing in the handler caught."""
+    plan = _plan([_red(cause=cause)], lanes=1)
+
+    assert len(plan.dispatch) == 1
+    assert isinstance(plan.dispatch[0].cause, str)

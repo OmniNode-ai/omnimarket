@@ -1,0 +1,78 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_work_ledger_file_mode_replay_effect
+lifecycle: experimental
+node_type: EFFECT_GENERIC
+runtime_profiles: []
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: >-
+  Queue a ledger row appended in file mode (the bus refused the write) and replay it
+  through the work-ledger emit path once the bus accepts again. The queue is keyed by
+  row id, so a row queued twice, or replayed twice, changes nothing. A drain marks a row
+  replayed only when the publisher reports it published; a refusing bus leaves it pending
+  with the reason and the attempt count; a row that can never be typed is marked refused
+  with its reason. The queue store and the publisher are injected; the overlay names the
+  backend (inmemory or file) and the queue file.
+  replay_from_file re-emits rows the ledger file holds and the projection never received
+  (the dual write's emit failed open): it takes row ids or a stamp window, reads those rows
+  from the ledger file of record and its archive, queues them by row id as retry records,
+  and drains exactly those rows through the work-ledger emit path under the replay source
+  the overlay names. A row already replayed is reported, not sent again; a requested id
+  the file does not hold is reported and nothing is sent for it. The overlay names the
+  ledger file, its archive directory and the replay source.
+input_model:
+  name: ModelFileModeReplayRequest
+  module: omnimarket.nodes.node_work_ledger_file_mode_replay_effect.models.model_file_mode_replay
+output_model:
+  name: ModelFileModeReplayResult
+  module: omnimarket.nodes.node_work_ledger_file_mode_replay_effect.models.model_file_mode_replay
+handler:
+  module: omnimarket.nodes.node_work_ledger_file_mode_replay_effect.handlers.handler_file_mode_replay
+  class: HandlerFileModeReplay
+  input_model: omnimarket.nodes.node_work_ledger_file_mode_replay_effect.models.model_file_mode_replay.ModelFileModeReplayRequest
+  output_model: omnimarket.nodes.node_work_ledger_file_mode_replay_effect.models.model_file_mode_replay.ModelFileModeReplayResult
+# Called in process with injected sources and publisher, not dispatched by the
+# runtime, so the node declares its injected dependencies and no handler_routing.
+dependencies:
+- name: ProtocolReplayQueue
+  dependency_type: protocol
+  description: the replay queue store (inmemory or file, named by the overlay), injected by the caller.
+  required: true
+- name: ProtocolRowPublisher
+  dependency_type: protocol
+  description: publishes a queued row through the work-ledger emit path, injected by the caller.
+  required: true
+- name: ProtocolLedgerFileRows
+  dependency_type: protocol
+  description: the ledger file of record (and its archive splits) that replay_from_file reads rows from; injected by the caller, required for that operation only.
+  required: false
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: File-mode ledger append (enqueue) and a periodic drain; the publisher is injected.
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 60000
+overlay:
+  id: node_work_ledger_file_mode_replay_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+metadata:
+  transport_type: local
+  description: Queue file-mode ledger rows and replay them when the bus accepts again.
+  author: OmniNode Team
+  created: '2026-11-03'
+  tags:
+  - effect
+  - work-ledger
+  - OMN-21849
+  related_tickets:
+  - OMN-21849
+  - OMN-23667

@@ -1,0 +1,109 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Seam Deadline Probe Effect (OMN-22478, base-first piece 3: bus, runtime and seams)
+#
+# Demands each declared seam's command on the bus and reads whether its correlated result arrives by
+# the seam's deadline, then appends one reading row per run. It writes seam reading rows and nothing
+# else: a reading is never a gate, a stop or an admission.
+name: node_seam_deadline_probe_effect
+contract_name: node_seam_deadline_probe_effect
+node_name: node_seam_deadline_probe_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Sends one read-only command per seam the overlay declares and reads its result topic for the
+  correlated answer. A seam is WORKING when the success result arrives by its deadline, NOT
+  WORKING when no result arrives by the deadline, the answer carries an error, or the bus cannot
+  be read. A run with a seam that did not cross ends in the typed failure event. The bus backend
+  (in-memory fixture or the lane's broker) comes from the overlay.
+
+handler:
+  module: omnimarket.nodes.node_seam_deadline_probe_effect.handlers.handler_seam_deadline
+  class: HandlerSeamDeadline
+  input_model: omnimarket.nodes.node_seam_deadline_probe_effect.models.model_seam_deadline.ModelSeamDeadlineCommand
+
+# HandlerSeamDeadline takes the overlay, host, bus, appender and clock as constructor parameters,
+# so the node runs through its own CLI, not handler_routing.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [bus-publish, ledger-append]
+  timeout_ms: 300000
+
+input_model:
+  name: ModelSeamDeadlineCommand
+  module: omnimarket.nodes.node_seam_deadline_probe_effect.models.model_seam_deadline
+  description: Which seams, whether to write, and the fault a drill injects.
+output_model:
+  name: ModelSeamDeadlineResult
+  module: omnimarket.nodes.node_seam_deadline_probe_effect.models.model_seam_deadline
+  description: Per seam verdict, crossing and time against its deadline, the run verdict and the row.
+
+terminal_event: onex.evt.omnimarket.seam-deadline-run-completed.v1
+
+runtime_dispatch:
+  external_trigger: true
+
+# The topics by role; the handler's event mapping reads these and holds no topic string.
+topics:
+  seam_deadline_requested: onex.cmd.omnimarket.seam-deadline-requested.v1
+  seam_deadline_run_started: onex.evt.omnimarket.seam-deadline-run-started.v1
+  seam_crossing_read: onex.evt.omnimarket.seam-crossing-read.v1
+  seam_deadline_run_completed: onex.evt.omnimarket.seam-deadline-run-completed.v1
+  seam_deadline_run_failed: onex.evt.omnimarket.seam-deadline-run-failed.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.seam-deadline-run-started.v1
+  - onex.evt.omnimarket.seam-crossing-read.v1
+  - onex.evt.omnimarket.seam-deadline-run-completed.v1
+  - onex.evt.omnimarket.seam-deadline-run-failed.v1
+
+# The node's hourly schedule, installed by `schedule install --host <name>` as a systemd user
+# timer on a host the overlay names, removed by `schedule uninstall` (the rollback).
+schedule:
+  unit_name: onex-seam-deadline-hourly
+  state_directory: .onex_state/seam-deadline
+  timeout_seconds: 300
+  cadence:
+    on_calendar: "*-*-* *:35:00"
+    randomized_delay: 60s
+    persistent: true
+    description: hourly, thirty-five minutes past
+  # A red hourly run is read again on its own short timer while the seam stays unanswered, so a
+  # redeploy that lands just before the hourly run does not hold piece 3 red for the whole hour
+  # (OMN-23201). The seam's deadline and the reading's freshness bound are unchanged.
+  recheck:
+    unit_name: onex-seam-deadline-recheck
+    interval: 5min
+    attempts: 6
+    description: every five minutes, re-reads only while the last hourly run read red, six times at most
+  # The error event of piece 3 comes from a drill: a run with an injected fault writes a row with
+  # drill=yes which the reading never reads. Twice a day keeps the newest error event under 12
+  # hours old, inside the floor's 24 hour window.
+  drill:
+    unit_name: onex-seam-deadline-drill
+    fault: deadline-zero
+    cadence:
+      on_calendar: "*-*-* 00,12:50:00"
+      randomized_delay: 60s
+      persistent: true
+      description: twice a day at 00:50 and 12:50, a run that waits no time for the result so the error event stays fresh
+
+overlay:
+  node: node_seam_deadline_probe_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+metadata:
+  ticket: OMN-22478
+  transport_type: inmemory

@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Factory floor</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg" id="icon-svg">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<style>
+:root{--ink:#1c2024;--mute:#646b73;--line:#dfe2e6;--bg:#f6f7f8;--card:#fff;--red:#b3261e;--amber:#a56a00;--green:#1f7a4d;--blue:#2b6cb0;--grey:#9aa1a9}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+main{max-width:760px;margin:0 auto;padding:20px 16px 32px}
+.now{background:var(--card);border:1px solid var(--line);border-left:6px solid var(--grey);border-radius:8px;padding:16px 18px}
+.now.red{border-left-color:var(--red)}.now.amber{border-left-color:var(--amber)}.now.green{border-left-color:var(--green)}
+.now h1{font-size:22px;line-height:1.3;margin:0 0 6px;font-weight:650}.now p{margin:0;color:var(--mute)}.now p.age{margin-top:6px;font-size:13px}.now p.age.old{color:var(--red);font-weight:650}
+.frozen{background:var(--red);color:#fff;border-radius:8px;padding:12px 16px;margin-bottom:12px;font-weight:650}
+.nums{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:14px 0}
+.num{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px 14px}
+.num b{display:block;font-size:26px;font-weight:650;line-height:1.1}.num span{font-size:13px;color:var(--mute)}
+.num.unread b{color:var(--red)}
+h2{font-size:14px;font-weight:650;margin:20px 0 8px}
+.row{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin-bottom:6px;display:flex;gap:12px;align-items:flex-start}
+.dot{flex:none;width:10px;height:10px;border-radius:50%;margin-top:7px;background:var(--grey)}
+.dot.red{background:var(--red)}.dot.amber{background:var(--amber)}.dot.green{background:var(--green)}.dot.quiet{background:var(--grey)}
+.row b{font-weight:600}.row small{display:block;color:var(--mute);font-size:13px;margin-top:2px}
+.strip{display:grid;grid-template-columns:repeat(18,1fr);gap:3px}
+.p{height:30px;border-radius:4px;background:#e6e8eb;color:var(--mute);font-size:12px;display:flex;align-items:center;justify-content:center;text-decoration:none;cursor:pointer}
+.p:focus-visible,.line .n a:focus-visible,#pclose:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.line .n a{font-size:inherit;color:inherit;text-decoration:underline dotted}
+.p.grey{background:#e6e8eb;color:var(--mute)}.p.green{background:var(--green);color:#fff}.p.red{background:var(--red);color:#fff}.p.amber{background:var(--amber);color:#fff}
+.p.cur{border:3px solid var(--ink);box-shadow:inset 0 0 0 2px #fff;font-weight:650}
+.legend{display:flex;flex-wrap:wrap;gap:2px 14px;margin-top:6px;font-size:12px;color:var(--mute)}.legend span{white-space:nowrap}
+.sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px;background:#e6e8eb}.sw.green{background:var(--green)}.sw.amber{background:var(--amber)}.sw.red{background:var(--red)}.sw.cur{background:#fff;border:2px solid var(--ink)}
+.piece{margin-top:8px;font-size:14px;color:var(--mute)}.piece b{color:var(--ink);font-weight:600}
+.line{display:flex;gap:10px;align-items:baseline;padding:5px 2px;border-bottom:1px solid var(--line);font-size:14px}
+.line .n{flex:none;width:1.8em;color:var(--mute);text-align:right}.line .t{flex:1}.line .t small{color:var(--mute)}.line .a{flex:none;color:var(--mute);font-size:12px}
+.line.red .t b{color:var(--red)}.line.amber .t b{color:var(--amber)}.line.grey{color:var(--mute)}
+.rule{margin-top:14px;font-size:13px;color:var(--mute)}.rule.bad{color:var(--red);font-weight:650}
+a{color:var(--blue);font-size:14px;text-decoration:none}.more{margin-top:18px}
+@media(max-width:480px){.now h1{font-size:19px}.num b{font-size:22px}.nums{gap:6px}.num{padding:10px}.strip{grid-template-columns:repeat(9,1fr);gap:4px}.p{height:40px;font-size:14px}}
+#tip{position:fixed;z-index:30;max-width:280px;background:var(--ink);color:#fff;border-radius:8px;padding:8px 10px;font-size:13px;line-height:1.35;pointer-events:none;box-shadow:0 4px 14px rgba(0,0,0,.25)}
+#tip[hidden]{display:none}#tip b{font-weight:650}#tip span{display:block;opacity:.85}
+#pback{position:fixed;inset:0;z-index:40;background:rgba(20,24,28,.35);opacity:0;visibility:hidden;transition:opacity .2s,visibility 0s linear .2s}
+#pback.open{opacity:1;visibility:visible;transition:opacity .2s,visibility 0s}
+#ppanel{position:fixed;z-index:41;top:0;right:0;bottom:0;width:min(420px,100vw);background:var(--card);border-left:1px solid var(--line);box-shadow:-6px 0 24px rgba(0,0,0,.18);overflow:auto;overscroll-behavior:contain;transform:translateX(100%);visibility:hidden;transition:transform .22s ease,visibility 0s linear .22s;padding:16px 18px 24px}
+#ppanel.open{transform:none;visibility:visible;transition:transform .22s ease,visibility 0s}
+@media(max-width:600px){#ppanel{top:auto;left:0;right:0;bottom:0;width:auto;max-height:82vh;border-left:0;border-top:1px solid var(--line);border-radius:14px 14px 0 0;box-shadow:0 -6px 24px rgba(0,0,0,.18);transform:translateY(100%)}}
+@media(prefers-reduced-motion:reduce){#pback,#ppanel{transition:none!important}}
+.ph{display:flex;gap:12px;align-items:flex-start;justify-content:space-between}.ph h2{margin:0;font-size:20px;line-height:1.25}.pn{font-size:13px;color:var(--mute)}
+#pclose{flex:none;font:inherit;font-size:14px;font-weight:650;padding:8px 14px;min-height:40px;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:8px;cursor:pointer}
+#ppanel h3{font-size:13px;font-weight:650;color:var(--mute);margin:16px 0 4px;text-transform:uppercase;letter-spacing:.03em}#ppanel p{margin:0 0 4px;font-size:15px}
+.pst{display:inline-block;margin-top:8px;font-size:12px;font-weight:650;padding:3px 9px;border-radius:999px;border:1px solid currentColor}
+.pst.green{color:var(--green)}.pst.red{color:var(--red)}.pst.amber{color:var(--amber)}.pst.grey{color:var(--mute)}.pst.blue{color:var(--blue)}
+.pcnt{display:grid;grid-template-columns:1fr 1fr;gap:8px}.pcnt div{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px}.pcnt b{display:block;font-size:22px;line-height:1.1}.pcnt span{font-size:13px;color:var(--mute)}
+#ppanel .mute{color:var(--mute)}
+.tabs{display:flex;gap:6px;margin-bottom:14px;border-bottom:1px solid var(--line)}
+.tabs a{padding:8px 14px;border:1px solid transparent;border-bottom:0;border-radius:8px 8px 0 0;color:var(--mute);font-size:15px;font-weight:650}
+.tabs a[aria-selected="true"]{background:var(--card);border-color:var(--line);color:var(--ink);margin-bottom:-1px}
+.hs{font-size:13px;color:var(--mute);margin:0 0 10px}
+.hcards{display:grid;gap:10px}
+.hcard{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px 14px;display:grid;gap:8px;min-width:0}
+.hcard.out{border-style:dashed}
+.hcard.unread{border-style:dashed;background:repeating-linear-gradient(45deg,transparent 0 6px,#e6e8eb 6px 7px),var(--card)}
+.hcard.stale,.hcard.refusing{border-left:6px solid var(--amber)}
+.mtop{display:flex;gap:6px 12px;align-items:baseline;flex-wrap:wrap}.mtop b{font-size:18px}.mtop .pill{margin-left:auto}
+.pill{font-size:12px;font-weight:650;padding:3px 8px;border-radius:999px;border:1px solid currentColor;white-space:nowrap}
+.pill.ok{color:var(--green)}.pill.warn{color:var(--amber)}.pill.idle{color:var(--mute)}
+.hwhy{margin:0;font-size:13px;color:var(--mute);overflow-wrap:anywhere}
+.capline{margin:0;font-size:14px}.unread{font-style:italic;color:var(--mute)}.sub{margin:0;font-size:13px;font-weight:650;color:var(--mute)}
+.slots{display:flex;flex-wrap:wrap;gap:3px}.slots i{width:12px;height:12px;border-radius:3px;background:#e6e8eb}.slots i.used{background:var(--blue)}.slots i.over{outline:2px solid var(--red);outline-offset:1px}
+.hgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px 14px}
+.hcell{display:grid;gap:2px;font-size:13px;color:var(--mute);min-width:0}.hcell .v{font-size:15px;font-weight:600;color:var(--ink);overflow-wrap:anywhere}
+.hcell .v.unread{font-weight:400;font-style:italic;color:var(--mute);font-size:13px}.chip{margin-left:6px;font-size:11px;padding:1px 5px;border-radius:4px;background:var(--amber);color:#fff}
+.hocc{display:grid;gap:2px;font-size:14px;margin:0;padding:0;list-style:none}.hocc li{display:flex;flex-wrap:wrap;gap:2px 10px;justify-content:space-between;overflow-wrap:anywhere}.hocc li span:last-child{color:var(--mute);font-size:13px}
+</style></head><body><main>
+<div class="tabs" role="tablist" aria-label="Floor views"><a role="tab" id="tab-process" href="#process" aria-controls="pane-process">Process</a><a role="tab" id="tab-machines" href="#machines" aria-controls="pane-machines">Machines</a><a role="tab" id="tab-compare" href="compare.html">Better or worse</a><a role="tab" id="tab-delegation" href="delegation.html">Delegation</a></div>
+<section id="pane-process" role="tabpanel" aria-labelledby="tab-process"><div id="app"><div class="frozen">Reading the floor...</div></div></section>
+<section id="pane-machines" role="tabpanel" aria-labelledby="tab-machines" hidden><div id="machines"><div class="frozen">Reading the machines...</div></div></section>
+</main>
+<script>
+"use strict";
+let pieceMeasures = {}, measuresFailure = "not read yet";
+const COMPARE_DATA = "floor-compare.json";
+const DATA = "floor-simple.json", MACHINES_DATA = "factory-floor.json", FALLBACK_MAX_AGE_S = 900, REFRESH_MS = 30000, TABS = ["process", "machines"];
+const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const ago = s => s == null ? "never" : s < 120 ? s + " s ago" : s < 7200 ? Math.floor(s / 60) + " min ago" : s < 172800 ? Math.floor(s / 3600) + " h ago" : Math.floor(s / 86400) + " d ago";
+let doc = null, failure = "";
+const ICON_BASE = "#2b6cb0", ICON_TINT = {green: "#1f7a4d", amber: "#a56a00", red: "#b3261e", grey: "#9aa1a9"};
+let iconSvg = null, iconTint = "";
+async function tintIcon(tint){
+  if (tint === iconTint) return;
+  iconTint = tint;
+  try {
+    if (iconSvg === null) { const r = await fetch("favicon.svg"); if (!r.ok) throw new Error("HTTP " + r.status); iconSvg = await r.text(); }
+    document.getElementById("icon-svg").href = "data:image/svg+xml," + encodeURIComponent(iconSvg.split(ICON_BASE).join(ICON_TINT[tint]));
+  } catch (e) { iconTint = ""; }
+}
+async function load(){
+  try {
+    const r = await fetch(DATA, {cache: "no-store"});
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    doc = await r.json(); failure = "";
+  } catch (e) { failure = String(e.message || e); }
+  // Each live piece against the old way (OMN-23081) is in the comparison record; a failed read leaves the panel saying so.
+  try {
+    const c = await fetch(COMPARE_DATA, {cache: "no-store"});
+    if (!c.ok) throw new Error("HTTP " + c.status);
+    const cd = await c.json();
+    pieceMeasures = {}; for (const pm of (cd.pieces || [])) pieceMeasures[pm.piece] = pm;
+    measuresFailure = "";
+  } catch (e) { measuresFailure = String(e.message || e); }
+  draw();
+}
+// The customer health line (OMN-22923, piece 17b): computed from the piece readings of this same record, drawn with its own age.
+// A line older than its own limit is drawn red whatever it says; a record with no line says so.
+const HEALTH_DOT = {"WORKING": "green", "NOT WORKING": "red", "UNKNOWN": "amber"};
+function healthRow(hl){
+  if (!hl) return `<div class="row" id="health-line"><span class="dot red"></span><div><b>Customer health line: this record carries none.</b><small>The record was written before the line existed, or the line was not computed.</small></div></div>`;
+  const hAge = Math.max(0, Math.floor((Date.now() - Date.parse(hl.generated_at)) / 1000));
+  const stale = hAge > hl.max_age_s;
+  const dot = stale ? "red" : (HEALTH_DOT[hl.state] || "red");
+  const note = stale ? `This line is itself ${ago(hAge)}, limit ${Math.floor(hl.max_age_s / 60)} min: do not trust it.` : `Computed ${ago(hAge)}, limit ${Math.floor(hl.max_age_s / 60)} min. Oldest reading ${hl.oldest_age_s == null ? "none" : ago(hl.oldest_age_s)}.`;
+  return `<div class="row" id="health-line"><span class="dot ${dot}"></span><div><b>${esc(hl.line)}</b><small>${note}</small></div></div>`;
+}
+// Merged work that is not running (OMN-23899), from the integration projection: the counts, then each group (the overlay's
+// heading) with its changes oldest merge first. An unread or stale projection says so with the reason; never an empty list.
+function integrationSection(s){
+  if (!s) return "";
+  if (s.status === "not_configured") return `<div class="rule bad" id="integration">Merged work not running: ${esc(s.reason)}.</div>`;
+  let h = `<h2 id="integration">${esc(s.title)}</h2>`;
+  if (s.status !== "read") return h + `<div class="row"><span class="dot red"></span><div><b>The list is not readable now.</b><small>${esc(s.reason)}${s.age_s == null ? "" : "; last published " + ago(s.age_s)}.</small></div></div>`;
+  const c = s.counts, o = c.oldest_unintegrated;
+  h += `<div class="piece"><b>${c.unintegrated} of ${c.merged} merged changes are not running.</b> ${c.seen_running} seen running, ${c.reading_owed} in place with no run seen yet, ${c.settled_elsewhere} run nowhere by design (CI or library).${o ? " Oldest not running: " + esc(o.key) + ", merged " + ago(Math.max(0, Math.floor((Date.now() - Date.parse(o.merged_at)) / 1000))) + "." : ""} List published ${ago(s.age_s)}.</div>`;
+  const byKey = {}; for (const r of s.rows) byKey[r.key] = r;
+  for (const g of s.groups) {
+    h += `<div class="line amber"><span class="n">${g.count}</span><span class="t"><b>${esc(g.title)}</b></span><span class="a"></span></div>`;
+    for (const k of g.keys) {
+      const r = byKey[k];
+      if (!r) continue;
+      const who = r.owner ? r.owner : "nobody named";
+      h += `<div class="line grey"><span class="n">&#8627;</span><span class="t"><b>${esc(r.key)}${r.companions.length ? " with " + r.companions.map(esc).join(", ") : ""}: ${esc(r.title)}</b> <small>Runs in ${esc(r.target)}. ${esc(r.gap)}. Next: ${esc(r.step)}. Owner: ${esc(who)}.</small></span><span class="a">merged ${ago(Math.max(0, Math.floor((Date.now() - Date.parse(r.merged_at)) / 1000)))}</span></div>`;
+    }
+  }
+  if (s.rows_total > s.rows.length) h += `<div class="piece">${s.rows_total - s.rows.length} more not-running changes are in the record.</div>`;
+  return h;
+}
+// The warning a refresh failure or an expired record calls for; the open panel shows it too, since it sits over the page.
+function recordWarning(age, limit){
+  if (failure) return `<div class="frozen">The last refresh failed (${esc(failure)}); this is the record from ${ago(age)}.</div>`;
+  if (age > limit) return `<div class="frozen">The floor is frozen: its record is ${ago(age)} old, the limit is ${Math.floor(limit / 60)} min. Everything below is old.</div>`;
+  return "";
+}
+function draw(){
+  const app = document.getElementById("app");
+  if (!doc) { app.innerHTML = `<div class="frozen">The floor record cannot be read (${esc(failure)}). Nothing below can be trusted.</div><div class="more"><a href="detail.html">Details: lines, machines, shipping, delegation</a></div>`; return; }
+  const age = Math.max(0, Math.floor((Date.now() - Date.parse(doc.generated_at)) / 1000));
+  const limit = doc.freshness_max_age_s || FALLBACK_MAX_AGE_S;
+  let h = "";
+  tintIcon(failure || age > limit || !ICON_TINT[doc.level] ? "grey" : doc.level);
+  document.title = (failure || age > limit ? "STALE " : "") + "Factory floor, record " + ago(age);
+  h += recordWarning(age, limit);
+  const cur = doc.rebuild.current_piece;
+  // The rebuild is the first section of the page (OMN-23135). Each tile draws its own state colour; the current piece is
+  // marked by an outline and aria-current, never by a colour of its own, and a one-line legend names the colours and the outline.
+  h += `<section class="rebuild"><h2>The rebuild</h2><div class="strip">` + doc.pieces.map(p => `<a class="p ${p.status === "not_started" ? "grey" : esc(p.draw)}${p.piece === cur ? " cur" : ""}"${p.piece === cur ? ' aria-current="true"' : ""} href="#piece-${p.piece}" data-piece="${p.piece}" data-fk="s${p.piece}" aria-label="${esc("Piece " + p.piece + ", " + p.name + ", " + pieceWord(p).toLowerCase() + (p.piece === cur ? ", the piece the rebuild is on now" : "") + ". Opens its details.")}">${p.piece}</a>`).join("") + `</div>`;
+  h += `<div class="legend" id="strip-legend"><span><i class="sw green"></i>Green: working</span><span><i class="sw amber"></i>Amber: held up, a lane is on it</span><span><i class="sw red"></i>Red: held up, nobody on it or it needs you</span><span><i class="sw"></i>Grey: not started</span><span><i class="sw cur"></i>Outline: the piece the rebuild is on now</span></div>`;
+  h += `<div class="piece"><b>${esc(doc.rebuild.headline)}</b> ${esc(doc.rebuild.next_text)}</div></section>`;
+  if (doc.readiness) h += `<div class="piece"><b>Ready, not just working:</b> ${esc(doc.readiness.text)}</div>`;
+  h += `<section class="now ${esc(doc.level)}"><h1>${esc(doc.sentence)}</h1><p>${esc(doc.subline)}</p><p class="age${age > limit ? " old" : ""}">Record read ${ago(age)}, limit ${Math.floor(limit / 60)} min.</p></section>`;
+  h += healthRow(doc.health);
+  h += `<div class="nums">` + doc.numbers.map(n => `<div class="num${n.read ? "" : " unread"}" title="${esc(n.basis)}"><b>${esc(n.value)}</b><span>${esc(n.label)}</span></div>`).join("") + `</div>`;
+  const open = doc.alarms.filter(a => a.delivery !== "delivered");
+  if (open.length) h += `<div class="row"><span class="dot red"></span><div><b>${open.length} lab alarms have no delivery receipt</b><small>${open.some(a => a.delivery === "undelivered") ? "No channel has proven delivery; it needs you." : "Waiting for a delivery receipt."} Oldest raised ${ago(Math.max(...open.map(a => Math.floor((Date.now() - Date.parse(a.raised_at)) / 1000))))}.</small></div></div>`;
+  const listed = doc.causes.filter(c => c.listed);
+  h += `<h2>What's holding things up, biggest first</h2>`;
+  if (!listed.length) h += `<div class="row"><span class="dot green"></span><div><b>Nothing is holding things up.</b></div></div>`;
+  for (const c of listed.slice(0, doc.causes_shown)) {
+    const who = c.state === "red" ? (c.needs_operator ? "It needs you." : c.owner_state === "unknown" ? "Owner unknown: " + c.owner_note + "." : "Nobody is on it.") : c.state === "quiet" ? "Not occurring since it was last seen; nothing is needed from you." : "A lane is on it: " + c.lanes.slice(0, 2).join(", ") + ".";
+    h += `<div class="row"><span class="dot ${esc(c.state)}"></span><div><b>${esc(c.title)}</b><small>${esc(c.detail)} ${esc(who)}</small></div></div>`;
+  }
+  if (listed.length > doc.causes_shown) h += `<div class="piece">${listed.length - doc.causes_shown} more holdups are in the details.</div>`;
+  h += integrationSection(doc.integration);
+  h += `<h2>The lab, read ${ago(Math.max(0, ...doc.lab_state.map(l => l.reading_age_s || 0)))} at the oldest</h2>`;
+  for (const l of doc.lab_state) h += `<div class="line ${esc(l.draw)}"><span class="n"><span class="dot ${esc(l.draw)}" style="display:inline-block"></span></span><span class="t"><b>${esc(l.title)}</b> <small>${esc(l.text)}</small></span><span class="a">${l.reading_age_s == null ? "not read" : "read " + ago(l.reading_age_s)}, max ${Math.floor(l.max_age_s / 60)} min</span></div>`;
+  h += `<h2>The 18 pieces, with their joins</h2>`;
+  for (const p of doc.pieces) {
+    const joins = p.joins.map(j => `${esc(j.id)} ${esc(j.state.replace("_", " "))}${j.golden_age_s == null ? "" : ", golden " + ago(j.golden_age_s)}${j.error_age_s == null ? "" : ", error " + ago(j.error_age_s)}${j.counted ? "" : " (outside the scope)"}`).join("; ");
+    h += `<div class="line ${p.status === "not_started" ? "grey" : esc(p.draw)}"><span class="n"><a href="#piece-${p.piece}" data-piece="${p.piece}" data-fk="l${p.piece}" aria-label="${esc("Piece " + p.piece + ", " + p.name + ". Opens its details.")}">${p.piece}</a></span><span class="t"><b>${esc(p.name)}</b> <small>${esc(p.text)}${joins ? " · join " + joins : ""}</small></span><span class="a">${p.reading_age_s == null ? "no reading" : "read " + ago(p.reading_age_s)}</span></div>`;
+    for (const s of p.shadows || []) h += `<div class="line grey"><span class="n">&#8627;</span><span class="t"><b>${esc(s.label)}</b> <small>${esc(s.text)}${s.stale ? " (stale)" : ""}; it holds no merge</small></span><span class="a">read ${ago(s.age_s)}, max ${Math.floor(s.max_age_s / 60)} min</span></div>`;
+  }
+  const r = doc.red_rule;
+  h += `<div class="rule${r.state === "WORKING" ? "" : " bad"}">Colour rule ${esc(r.state)}: ${r.red_rows} red rows, ${r.red_with_work_under_way} with work under way${r.violations.length ? " (" + esc(r.violations[0]) + ")" : ""}. Read ${ago(age)}.</div>`;
+  if ((r.unowned_red || []).length) h += `<div class="rule bad">${r.unowned_red.length} red with no declared owner: ${r.unowned_red.map(esc).join(", ")}.</div>`;
+  if ((r.owner_unknown_red || []).length) h += `<div class="rule bad">${r.owner_unknown_red.length} red with owner unknown: ${r.owner_unknown_red.map(esc).join(", ")}. ${doc.owner_inputs ? esc(doc.owner_inputs.reason) : ""}</div>`;
+  if ((r.uncarried_red || []).length) h += `<div class="rule bad">${r.uncarried_red.length} red with no live lane on it: ${r.uncarried_red.map(esc).join(", ")}.</div>`;
+  if (doc.chain_findings.length) h += `<div class="rule bad">${doc.chain_findings.length} emission chains break the contract: ${esc(doc.chain_findings[0].subject)} ${esc(doc.chain_findings[0].code)}.</div>`;
+  if (doc.outside_goal) h += `<div class="rule${doc.outside_goal.read ? "" : " bad"}">${esc(doc.outside_goal.text)}</div>`;
+  h += `<div class="more"><a href="${esc(doc.details_href)}">Details: lines, machines, shipping, delegation</a></div>`;
+  // The strip is redrawn every ten seconds: keep the keyboard focus on the same piece, and keep the open panel current.
+  const held = document.activeElement && document.activeElement.getAttribute ? document.activeElement.getAttribute("data-fk") : null;
+  app.innerHTML = h;
+  if (held) { const again = app.querySelector(`[data-fk="${held}"]`); if (again) again.focus({preventScroll: true}); }
+  if (!hashApplied) { hashApplied = true; syncPanel(); } else if (openPiece != null) renderPanel();
+}
+// ---- The rebuild strip: a tooltip on hover or focus, and a side panel on click or tap. Everything is read from the record
+// the page already loads (doc.pieces, doc.causes); the address carries #piece-N, so a piece can be linked and Back closes it.
+const STATUS_WORD = {working: "Working", not_working: "Not working", unknown: "Unknown", started: "Started, no reading yet", not_started: "Not started"};
+// READY means integrated (OMN-23081): a piece that works and has a join that does not pass is "Working, not integrated".
+const INTEGRATION_WORD = {ready: "Ready", working_not_integrated: "Working, not integrated"};
+const pieceWord = p => INTEGRATION_WORD[p.integration] || STATUS_WORD[p.status] || p.status;
+const STATUS_DRAW = p => p.status === "not_started" ? "grey" : p.draw;
+let hashApplied = false, openPiece = null, returnFocus = null, quiet = false;
+const pieceOf = n => doc && doc.pieces ? doc.pieces.find(p => p.piece === n) : null;
+function whoIsOn(p){
+  const ids = [p.cause_id, "piece:" + p.piece].filter(Boolean);
+  const cs = (doc.causes || []).filter(c => ids.includes(c.id));
+  const uniq = xs => [...new Set(xs)];
+  return {lanes: uniq(cs.flatMap(c => c.lanes || [])), prs: uniq(cs.flatMap(c => c.prs || [])), tickets: uniq(cs.flatMap(c => c.tickets || [])), unknown: (cs.find(c => c.owner_state === "unknown") || {}).owner_note || ""};
+}
+const prWords = r => { const m = /^(.+)#(\d+)$/.exec(r); return m ? m[1] + " pull request " + m[2] : r; };
+function whoLine(p){
+  if (p.status === "not_started") return "Not started.";
+  const w = whoIsOn(p);
+  if (w.lanes.length) return "On it: " + w.lanes.slice(0, 2).join(", ") + (w.lanes.length > 2 ? " and " + (w.lanes.length - 2) + " more" : "") + ".";
+  if (w.unknown && p.status !== "working") return "Owner unknown: " + w.unknown + ".";
+  if (p.integration === "working_not_integrated") return (p.blocking_joins || []).length ? "Not integrated: " + p.blocking_joins.join(", ") + " do not pass." : "Not integrated: no join to a piece in scope.";
+  if (p.ready) return "Ready: its reading works and its joins pass.";
+  return p.status === "working" ? "No lane needed: it reads working." : "Nobody is on it.";
+}
+function readAge(p){ return p.reading_age_s == null ? "No reading yet." : "Read " + ago(p.reading_age_s) + "."; }
+const tip = document.createElement("div");
+tip.id = "tip"; tip.setAttribute("role", "tooltip"); tip.hidden = true;
+function showTip(a){
+  const p = pieceOf(Number(a.getAttribute("data-piece")));
+  if (!p || openPiece != null || quiet) return;
+  tip.innerHTML = `<b>${p.piece} · ${esc(p.name)}</b><span>${esc(pieceWord(p))}</span><span>${esc(p.integration === "working_not_integrated" ? p.text : (p.reason || p.text))}</span><span>${esc(readAge(p))}</span><span>${esc(whoLine(p))}</span>`;
+  tip.hidden = false;
+  const r = a.getBoundingClientRect(), t = tip.getBoundingClientRect();
+  const left = Math.min(Math.max(8, r.left + r.width / 2 - t.width / 2), document.documentElement.clientWidth - t.width - 8);
+  const above = r.top - t.height - 8;
+  tip.style.left = left + "px"; tip.style.top = (above >= 8 ? above : r.bottom + 8) + "px";
+  a.setAttribute("aria-describedby", "tip");
+}
+function hideTip(){ tip.hidden = true; document.querySelectorAll(".p[aria-describedby]").forEach(e => e.removeAttribute("aria-describedby")); }
+const back = document.createElement("div"); back.id = "pback";
+const panel = document.createElement("aside");
+panel.id = "ppanel"; panel.setAttribute("role", "dialog"); panel.setAttribute("aria-modal", "true"); panel.setAttribute("aria-labelledby", "ptitle"); panel.setAttribute("aria-hidden", "true");
+panel.innerHTML = `<div class="ph"><div><div class="pn" id="pnum"></div><h2 id="ptitle"></h2></div><button id="pclose" type="button" aria-label="Close the piece details">Close</button></div><div id="pbody"></div>`;
+document.body.append(tip, back, panel);
+// The window as configured, never rounded into another interval: whole days, else whole hours, else whole minutes, else seconds.
+function windowText(s){
+  const unit = (n, one, many) => n + " " + (n === 1 ? one : many);
+  if (!s) s = 86400;
+  if (s === 86400) return "24 hours";
+  if (s % 86400 === 0) return unit(s / 86400, "day", "days");
+  if (s % 3600 === 0) return unit(s / 3600, "hour", "hours");
+  if (s % 60 === 0) return unit(s / 60, "minute", "minutes");
+  return unit(s, "second", "seconds");
+}
+// A piece with an event on record, or a count above zero, has events even when it has not both a golden and an error one.
+const hasEvents = p => p.golden_age_s != null || p.error_age_s != null || (p.golden_in_window || 0) > 0 || (p.error_in_window || 0) > 0;
+function eventsSection(p){
+  const cnt = v => v == null ? "not read" : String(v);
+  return `<h3>Events in the last ${esc(windowText(p.window_s))}</h3><div class="pcnt"><div><b>${esc(cnt(p.golden_in_window))}</b><span>golden (worked)</span></div><div><b>${esc(cnt(p.error_in_window))}</b><span>error (failed on purpose or for real)</span></div></div>`
+    + `<p class="mute">Last golden ${esc(ago(p.golden_age_s))}, last error ${esc(ago(p.error_age_s))}.</p>`;
+}
+function panelBody(p){
+  const w = whoIsOn(p);
+  let h = `<span class="pst ${esc(STATUS_DRAW(p))}">${esc(pieceWord(p))}</span>`;
+  h += `<h3>What it is</h3><p>${p.what ? esc(p.what) : `<span class="mute">No description is declared for this piece.</span>`}</p>`;
+  if (p.status === "not_started") return h + (hasEvents(p) ? `<h3>State</h3><p>Not started. It has no reading yet, and its events do not yet include both a golden and an error one.</p>` + eventsSection(p) : `<h3>State</h3><p>Not started. It has no reading and no events yet.</p>`) + `<h3>Next</h3><p>${esc(p.next_text || "")}</p>`;
+  h += `<h3>Reading now</h3><p>${esc(p.reason || p.text)}</p><p class="mute">${esc(readAge(p))}${p.reading_max_age_s ? " It may be at most " + esc(ageLimit(p.reading_max_age_s)) + " old." : ""}</p>`;
+  h += eventsSection(p);
+  h += `<h3>Against the old way, 7 days</h3>` + measureSection(p);
+  h += `<h3>Who is on it</h3>`;
+  h += w.lanes.length ? `<p>${esc(w.lanes.join(", "))}</p>` : `<p>${p.status === "working" ? "No lane needed: it reads working." : w.unknown ? "Owner unknown: " + esc(w.unknown) + "." : "Nobody is on it."}</p>`;
+  h += w.prs.length ? `<p class="mute">Open pull requests: ${esc(w.prs.map(prWords).join("; "))}.</p>` : `<p class="mute">No open pull request is tied to it on the floor.</p>`;
+  const joins = (p.joins || []).map(j => `${esc(j.id)}, ${esc(j.label)}: ${esc(j.state.replace("_", " "))}`);
+  if (joins.length) h += `<h3>Joins</h3><p>${joins.join("<br>")}</p>`;
+  return h + `<h3>Next</h3><p>${esc(p.next_text || "")}</p>`;
+}
+// The piece's measure against its baseline over its first 7 days, and on day 7 the verdict (OMN-23081). Never inferred:
+// the words and numbers are the comparison record's own; a missing record or piece says so.
+const VERDICT_WORD = {better: "Better than the old way", worse: "Worse than the old way", unread: "Unread: not enough history to say", pending: "Trial running, no verdict yet"};
+const VERDICT_DRAW = {better: "green", worse: "red", unread: "amber", pending: "grey"};
+const measureNum = (v, u) => v == null ? "unread" : (Math.round(v * 100) / 100) + " " + u;
+function measureSection(p){
+  const pm = pieceMeasures[p.piece];
+  if (!pm) return measuresFailure ? `<p class="mute">The comparison record cannot be read (${esc(measuresFailure)}).</p>` : `<p class="mute">No measure against the old way is declared for this piece.</p>`;
+  let h = `<p><span class="pst ${esc(VERDICT_DRAW[pm.verdict] || "grey")}" id="pm-verdict-${pm.piece}">${esc(VERDICT_WORD[pm.verdict] || pm.verdict)}</span></p>`;
+  h += `<p class="mute">Call: ${esc(pm.call)}. Live ${esc(pm.live_at.slice(0, 16).replace("T", " "))}Z (${esc(pm.live_source)}). Day ${esc(String(pm.day))} of ${esc(String(pm.trial_days))}; verdict ${pm.recorded ? "recorded" : "due"} ${esc((pm.verdict_at || pm.verdict_due).slice(0, 16).replace("T", " "))}Z. ${esc(pm.reason)}</p>`;
+  for (const m of pm.measures) {
+    h += `<p><b>${esc(m.label)}</b> <small>${esc(m.polarity === "higher_is_better" ? "higher is better" : "lower is better")}${m.verdict ? " · " + esc(m.verdict) : ""}</small><br>Baseline ${esc(measureNum(m.baseline, m.unit))} <small>(${m.baseline_points} points, ${esc(m.baseline_from.slice(0, 10))} to ${esc(m.baseline_to.slice(0, 10))})</small><br>Since live ${esc(measureNum(m.trial, m.unit))} <small>(${m.trial_points} points)</small></p>`;
+    if (m.days.length) h += `<p class="mute">` + m.days.map(d => `day ${d.day}: ${esc(measureNum(d.value, m.unit))} (${d.points})`).join(" · ") + `</p>`;
+    h += `<p class="mute">Source: ${esc(m.source)}</p>`;
+  }
+  return h;
+}
+const ageLimit = s => s < 7200 ? Math.round(s / 60) + " minutes" : s < 172800 ? Math.round(s / 3600) + " hours" : Math.round(s / 86400) + " days";
+function renderPanel(){
+  const p = pieceOf(openPiece);
+  if (!p) { hidePanel(); return; }
+  document.getElementById("pnum").textContent = "Piece " + p.piece + " of " + doc.pieces.length;
+  document.getElementById("ptitle").textContent = p.name;
+  const age = Math.max(0, Math.floor((Date.now() - Date.parse(doc.generated_at)) / 1000));
+  document.getElementById("pbody").innerHTML = recordWarning(age, doc.freshness_max_age_s || FALLBACK_MAX_AGE_S) + panelBody(p);
+}
+function showPanel(n){
+  if (!pieceOf(n)) return;
+  hideTip();
+  const first = openPiece == null;
+  openPiece = n; renderPanel();
+  back.classList.add("open"); panel.classList.add("open"); panel.setAttribute("aria-hidden", "false");
+  if (first) document.getElementById("pclose").focus({preventScroll: true});
+}
+function hidePanel(){
+  if (openPiece == null) return;
+  const n = openPiece;
+  openPiece = null;
+  back.classList.remove("open"); panel.classList.remove("open"); panel.setAttribute("aria-hidden", "true");
+  const again = document.querySelector(`#app [data-piece="${n}"]`) || returnFocus;
+  quiet = true;   // putting the focus back must not raise the tooltip
+  if (again && again.focus) again.focus({preventScroll: true});
+  quiet = false;
+}
+const pieceFromHash = () => { const m = /^#piece-(\d{1,2})$/.exec(location.hash || ""); return m ? Number(m[1]) : null; };
+function syncPanel(){ const n = pieceFromHash(); if (n != null && pieceOf(n)) showPanel(n); else hidePanel(); }
+function closePanel(){
+  if (openPiece == null) return;
+  if (history.state && history.state.piece === openPiece) history.back();   // the panel pushed the address: Back is the close
+  else { history.replaceState(null, "", location.pathname + location.search); hidePanel(); }
+}
+document.addEventListener("click", e => {
+  const a = e.target.closest ? e.target.closest("a[data-piece]") : null;
+  if (!a || e.metaKey || e.ctrlKey || e.shiftKey || e.button) return;
+  e.preventDefault(); returnFocus = a;
+  const n = Number(a.getAttribute("data-piece"));
+  if (pieceFromHash() !== n) history.pushState({piece: n}, "", "#piece-" + n);
+  showPanel(n);
+});
+back.addEventListener("click", closePanel);
+panel.addEventListener("click", e => { if (e.target.id === "pclose") closePanel(); });
+document.addEventListener("keydown", e => {
+  if (openPiece == null) { if (e.key === "Escape") hideTip(); return; }
+  if (e.key === "Escape") { e.preventDefault(); closePanel(); return; }
+  if (e.key !== "Tab") return;
+  const fs = [...panel.querySelectorAll("button, a[href], [tabindex]:not([tabindex='-1'])")];
+  if (!fs.length) return;
+  const first = fs[0], last = fs[fs.length - 1];
+  if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+});
+const stripPiece = e => e.target.closest ? e.target.closest(".strip a[data-piece]") : null;
+document.addEventListener("mouseover", e => { const a = stripPiece(e); if (a) showTip(a); });
+document.addEventListener("mouseout", e => { if (stripPiece(e)) hideTip(); });
+document.addEventListener("focusin", e => { const a = stripPiece(e); if (a) showTip(a); });
+document.addEventListener("focusout", e => { if (stripPiece(e)) hideTip(); });
+window.addEventListener("popstate", syncPanel);
+window.addEventListener("hashchange", syncPanel);
+// ---- Tabs. The address picks the view: #process (also no hash or an unknown one) and #machines are deep links.
+const tabFromHash = () => { const h = String(location.hash || "").replace(/^#/, ""); return TABS.includes(h) ? h : "process"; };
+function showTab(){
+  const cur = tabFromHash();
+  for (const id of TABS) {
+    document.getElementById("pane-" + id).hidden = id !== cur;
+    document.getElementById("tab-" + id).setAttribute("aria-selected", id === cur ? "true" : "false");
+  }
+}
+// ---- Machines tab: one card per host of floor.host_status in the factory floor record (the same card the Details page
+// draws, test_simple_page_machines holds the two equal). Every cell names its source, its state (read, stale or unread)
+// and the reason; an unread cell is never drawn as a number and a stale one is marked.
+let mdoc = null, mfailure = "";
+const numOr = (v, d = 0) => Number.isFinite(Number(v)) && v !== null && v !== "" ? Number(v) : d;
+const fmt = v => Number(v).toLocaleString("en-US", {maximumFractionDigits: 1});
+function ageText(ms){
+  const m = Math.max(0, Math.round(ms / 60000));
+  return m < 1 ? "under a minute" : m < 120 ? `${m} min` : m < 2880 ? `${(m / 60).toFixed(1)} h` : `${(m / 1440).toFixed(1)} days`;
+}
+function sinceRecord(){ const t = mdoc ? Date.parse(mdoc.generated_at) : NaN; return Number.isNaN(t) ? 0 : Math.max(0, Date.now() - t); }
+function liveMs(min){ return numOr(min) * 60000 + sinceRecord(); }
+const HOST_WORD = {out: "Out of selection", unread: "Not read", stale: "Reading out of date", refusing: "Refusing new work", read: "Read"};
+const HOST_TONE = {out: "idle", unread: "idle", stale: "warn", refusing: "warn", read: "ok"};
+function cellMin(c){ return c.age_min == null ? "" : `, read ${ageText(liveMs(c.age_min))} ago`; }
+function cellHTML(label, c, f){
+  if (!c || c.state === "unread" || c.value == null){
+    return `<div class="hcell"><span>${esc(label)}</span><span class="v unread" title="${esc(c ? c.source : "")}">unread${c && c.reason ? " (" + esc(c.reason) + ")" : ""}</span></div>`;
+  }
+  const stale = c.state === "stale" ? `<span class="chip stall" title="${esc(c.reason)}">stale</span>` : "";
+  return `<div class="hcell"><span>${esc(label)}</span><span class="v mono" title="${esc(c.source + cellMin(c))}">${esc(f(c.value))}${stale}</span></div>`;
+}
+const fmtGB = v => fmt(v) + " GB";
+function flagHTML(label, c, yes, no){
+  if (!c || c.state === "unread" || c.value == null) return cellHTML(label, c ? Object.assign({}, c, {value: null}) : null, String);
+  const stale = c.state === "stale" ? `<span class="chip stall" title="${esc(c.reason)}">stale</span>` : "";
+  return `<div class="hcell"><span>${esc(label)}</span><span class="v" title="${esc(c.source + cellMin(c))}">${esc(c.value ? yes : no)}${stale}</span></div>`;
+}
+function occRows(list){
+  return list.map(u => `<li><span><b>${esc(u.lane)}</b>${u.ticket ? " · " + esc(u.ticket) : ""}${u.engine === "codex" ? " · Codex" : ""}${u.stalled ? ` <span class="chip stall">gone quiet</span>` : ""}</span><span>running ${esc(ageText(liveMs(u.run_minutes)))}</span></li>`).join("");
+}
+function hostCard(h){
+  const used = h.slots_used, cap = h.cap;
+  const slotLine = used.value == null
+    ? `<p class="capline">Lane slots used: <span class="unread">unread (${esc(used.reason)})</span> of ${cap.value == null ? `<span class="unread">unread</span>` : esc(fmt(cap.value))}</p>`
+    : `<p class="capline"><b>${esc(fmt(used.value))}</b> of ${cap.value == null ? `<span class="unread">cap unread (${esc(cap.reason)})</span>` : `<b>${esc(fmt(cap.value))}</b>`} lane slots used${h.slots_free.value != null ? `; ${esc(fmt(h.slots_free.value))} free by the pool read` : ""}${used.state === "stale" ? " (stale)" : ""}</p>`;
+  const cells = cap.value != null && used.value != null ? Math.min(60, Math.max(0, Math.round(cap.value))) : 0;
+  const usedN = used.value == null ? 0 : Math.round(used.value);
+  const bar = cells ? `<div class="slots" role="img" aria-label="${esc(fmt(usedN) + " of " + fmt(cap.value) + " lane slots used")}">${Array.from({length: cells}, (_, i) => `<i class="${i < usedN ? "used" : ""}${i >= usedN && usedN > cells ? " over" : ""}"></i>`).join("")}</div>` : "";
+  const why = h.condition === "out" ? h.unavailable_reason || "out of selection, no reason in the host table"
+    : h.admission_refusal ? h.admission_refusal
+    : h.condition === "unread" ? h.load_per_core.reason
+    : h.condition === "stale" ? h.reading_age.reason : "";
+  const lanes = h.lanes.length ? `<div><p class="sub">Lanes on this machine (${h.lanes.length})</p><ul class="hocc">${occRows(h.lanes)}</ul></div>` : "";
+  const landing = h.landing_workers.length ? `<div><p class="sub">Landing workers (${h.landing_workers.length})</p><ul class="hocc">${occRows(h.landing_workers)}</ul></div>` : "";
+  const other = h.other_units.value == null
+    ? `<p class="capline">Lab-run jobs: <span class="unread">unread (${esc(h.other_units.reason)})</span></p>`
+    : `<p class="capline">${esc(fmt(h.other_units.value))} other placed units (lab-run jobs and the landing workers' own leases; the slot marker does not say which)</p>`;
+  const pressure = h.mem_pressure.unit === "psi" ? v => fmt(v) + " PSI" : v => "level " + fmt(v) + " (1 normal)";
+  // The cells the pool read gives. When none of them read, they share one cause and are drawn once, not eight times.
+  const poolCells = [["Load per core", h.load_per_core, v => fmt(v)], ["Free memory", h.mem_free_gb, fmtGB], ["Memory pressure", h.mem_pressure, pressure],
+    ["Swap used", h.swap_used_pct, v => fmt(v) + "%"], ["Free disk (run volume)", h.disk_free_gb, fmtGB], ["Disk used", h.disk_used_pct, v => fmt(v) + "%"],
+    ["Last reading", h.reading_age, v => ageText(v * 60000) + " old"]];
+  const noneRead = poolCells.every(([, c]) => !c || c.state === "unread" || c.value == null);
+  const poolFold = noneRead ? `<p class="capline"><span class="unread">Unread from the pool read: ${esc(poolCells.map(x => x[0].toLowerCase()).join(", "))} (${esc(h.reading_age.reason || "no reason recorded")})</span></p>` : "";
+  const poolHTML = noneRead ? "" : poolCells.map(([label, c, f]) => cellHTML(label, c, f)).join("");
+  return `<article class="hcard ${esc(h.condition)}" aria-label="${esc(h.label)}">
+    <div class="mtop"><b>${esc(h.label)}</b><span class="pill ${HOST_TONE[h.condition]}">${esc(HOST_WORD[h.condition])}${h.reading_age.value != null ? " · " + esc(ageText(liveMs(h.reading_age.age_min == null ? 0 : h.reading_age.age_min))) + " ago" : ""}</span></div>
+    ${why ? `<p class="hwhy">${esc(why)}</p>` : ""}
+    ${slotLine}${bar}${lanes}${landing}${other}
+    ${poolFold}
+    <div class="hgrid">
+      ${poolHTML}
+      ${cellHTML("Heartbeat age", h.heartbeat_age_min, v => ageText(v * 60000))}
+      ${cellHTML("Open drift items", h.drift_open, v => fmt(v))}
+      ${flagHTML("Docker", h.docker, "present", "absent")}
+    </div>
+  </article>`;
+}
+function drawMachines(){
+  const box = document.getElementById("machines");
+  if (!mdoc) { box.innerHTML = `<div class="frozen">The machine record cannot be read (${esc(mfailure)}). No machine below can be trusted.</div>`; return; }
+  const age = Math.max(0, Math.floor(sinceRecord() / 1000));
+  const limit = (doc && doc.freshness_max_age_s) || FALLBACK_MAX_AGE_S;
+  let h = "";
+  if (mfailure) h += `<div class="frozen">The last refresh of the machines failed (${esc(mfailure)}); this is the record from ${ago(age)}.</div>`;
+  else if (age > limit) h += `<div class="frozen">The machine record was read ${ago(age)}, the limit is ${Math.floor(limit / 60)} min. Everything below is old.</div>`;
+  const rows = ((mdoc.floor || {}).host_status) || [];
+  if (!rows.length) { box.innerHTML = h + `<p class="unread">The record carries no per-host status: it was written before the Machines tab existed, or the host table was not read.</p>`; return; }
+  const out = rows.filter(r => r.condition === "out").length, ok = rows.filter(r => r.condition === "read").length;
+  h += `<p class="hs">${esc(rows.length + " hosts in the host table: " + ok + " read, " + (rows.length - out - ok) + " not read fresh or refusing work, " + out + " out of selection")}. Record read ${ago(age)}. Each figure names its source when you hover it; a figure with no source is drawn unread with the reason, and a reading past its bound is marked stale.</p>`;
+  h += `<div class="hcards">${rows.map(hostCard).join("")}</div>`;
+  box.innerHTML = h;
+}
+async function loadMachines(){
+  try {
+    const r = await fetch(MACHINES_DATA, {cache: "no-store"});
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    mdoc = await r.json(); mfailure = "";
+  } catch (e) { mfailure = String(e.message || e); }
+  drawMachines();
+}
+window.addEventListener("hashchange", showTab);
+showTab();
+load(); loadMachines(); setInterval(load, REFRESH_MS); setInterval(loadMachines, REFRESH_MS); setInterval(draw, 10000); setInterval(drawMachines, 10000);
+</script></body></html>

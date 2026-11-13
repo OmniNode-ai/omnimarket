@@ -28,7 +28,11 @@ from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_factory
     Runner,
     copy_to_server,
     load_runtime,
+    local_copy_root,
     run_process,
+)
+from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_process_health_payload import (
+    HandlerProcessHealthPayload,
 )
 from omnimarket.nodes.node_factory_floor_publish_effect.models.model_factory_floor_publish import (
     ModelFactoryFloorPublishOverlay,
@@ -36,6 +40,9 @@ from omnimarket.nodes.node_factory_floor_publish_effect.models.model_factory_flo
     ModelReportEntry,
     ModelReportsPublishRequest,
     ModelReportsPublishResult,
+)
+from omnimarket.nodes.node_factory_floor_publish_effect.models.model_process_health_payload import (
+    ModelProcessHealthPayloadRequest,
 )
 
 MANIFEST_SCHEMA = "omni.reports-site/1"
@@ -65,8 +72,11 @@ def _isoz(moment: datetime) -> str:
 class HandlerReportsPublish:
     """Boundary of the reports publish: the data reads and the copies happen here."""
 
-    def __init__(self, runner: Runner = run_process) -> None:
+    def __init__(
+        self, runner: Runner = run_process, unreachable: set[str] | None = None
+    ) -> None:
         self._run = runner
+        self._unreachable: set[str] = unreachable if unreachable is not None else set()
 
     def handle(
         self,
@@ -130,8 +140,17 @@ class HandlerReportsPublish:
         ).encode("utf-8")
         files.append((reports.manifest, manifest))
 
+        local_root = local_copy_root(overlay, home)
         for name, payload in files:
-            copy_to_server(self._run, rt, overlay, name, payload)
+            copy_to_server(
+                self._run,
+                rt,
+                overlay,
+                name,
+                payload,
+                local_root=local_root,
+                unreachable=self._unreachable,
+            )
         return ModelReportsPublishResult(
             published=tuple(name for name, _ in files),
             unread=tuple(unread),
@@ -165,10 +184,19 @@ class HandlerReportsPublish:
         path = home / item.relpath
         try:
             stat = path.stat()
-            if stat.st_size > MAX_DATA_BYTES:
+            if item.projection == "process_health_summary":
+                health = HandlerProcessHealthPayload().handle(
+                    ModelProcessHealthPayloadRequest(source_path=str(path))
+                )
+                if health.summary is None:
+                    row["reason"] = health.reason
+                    return row, None
+                raw = health.summary
+            elif stat.st_size > MAX_DATA_BYTES:
                 row["reason"] = f"larger than {MAX_DATA_BYTES} bytes"
                 return row, None
-            raw = path.read_bytes()
+            else:
+                raw = path.read_bytes()
         except OSError as exc:
             row["reason"] = f"not readable ({type(exc).__name__})"
             return row, None

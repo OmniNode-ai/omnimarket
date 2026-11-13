@@ -48,6 +48,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 from urllib.parse import quote, quote_plus
 from uuid import UUID, uuid4
@@ -57,6 +58,9 @@ import pytest
 from omnibase_core.models.delegation.wire import EnumTierCostType, ModelTierCost
 
 from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
+from omnimarket.nodes.node_projection_delegation.handlers.delegation_runtime_coalescing import (
+    CoalescingProjectionBase,
+)
 from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation import (
     SNAPSHOT_GRAIN_COLUMN,
     DelegationProjectionRunner,
@@ -68,6 +72,7 @@ from omnimarket.projection.tenant_isolation import (
     TenantScopedWriteUnboundError,
     resolve_tenant_uuid,
 )
+from tests.helpers.isolated_schema_sql import for_isolated_schema
 
 _MIGRATIONS_DIR = (
     Path(__file__).resolve().parents[1]
@@ -113,7 +118,10 @@ def _test_schema_safe_sql(raw_sql: str) -> str:
     disposable, empty, single-connection test schema -- so a plain
     ``CREATE INDEX`` is schema-equivalent here.
     """
-    return raw_sql.replace("CREATE INDEX CONCURRENTLY", "CREATE INDEX")
+    # OMN-21970: and resolve 0065/0066's ``public.`` names in the test schema.
+    return for_isolated_schema(
+        raw_sql.replace("CREATE INDEX CONCURRENTLY", "CREATE INDEX")
+    )
 
 
 # Minimal, self-contained mirror of omnibase_infra forward migration
@@ -856,6 +864,13 @@ async def _provisioned_rls_writer() -> AsyncIterator[
             f"GRANT INSERT, UPDATE, SELECT ON ALL TABLES IN SCHEMA {schema} "
             f"TO {_RLS_WRITER_ROLE}"
         )
+        # OMN-21970: delegation_events.projection_cursor is a BIGSERIAL, so an
+        # insert takes nextval() from its sequence, as the migration grants
+        # tenant_projection_writer on a real lane.
+        await admin_conn.execute(
+            f"GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA {schema} "
+            f"TO {_RLS_WRITER_ROLE}"
+        )
 
         pool = await asyncpg.create_pool(
             _rls_writer_dsn(schema),
@@ -1247,3 +1262,76 @@ class TestOmn17773AggregateSnapshotRepublish:
                 summary_topic = "onex.snapshot.projection.delegation.summary.v1"
                 if topic == summary_topic:
                     assert delta["row"]["totalDelegations"] >= 1
+
+
+@pytest.mark.integration
+class TestRuntimeDeliveryCoalescesTheAggregateRepublish:
+    """A runtime delivery commits before the four whole-table views are read.
+
+    The runtime delivery host keeps the runner for the process, so the republish
+    is deferred to the contract window and published when the writer closes. The
+    views are real migrated Postgres views, and the snapshot a real row yields
+    must survive the serializer on that deferred path as well.
+    """
+
+    async def test_delivery_writes_the_row_and_the_window_publishes_the_aggregates(
+        self,
+    ) -> None:
+        published: list[tuple[str, bytes | None, bytes | None]] = []
+
+        class _CapturingProducer:
+            async def send_and_wait(
+                self,
+                topic: str,
+                value: bytes | None = None,
+                key: bytes | None = None,
+                headers: list[tuple[str, bytes]] | None = None,
+            ) -> None:
+                published.append((topic, key, value))
+
+        async with _provisioned_runner() as (runner, admin_conn, _schema):
+            seam: Any = runner
+            seam._connect_standalone_databases = _noop_async
+            seam._close_standalone_databases = _noop_async
+            seam._producer = _CapturingProducer()
+            assert isinstance(runner, CoalescingProjectionBase)
+            runner._coalescer.window_s = 30.0
+            correlation_id = str(uuid4())
+            data = _real_delegation_completed_payload(
+                correlation_id=correlation_id, tenant_id="beta-business-proof"
+            )
+            meta = MessageMeta(
+                partition=0,
+                offset=23340,
+                fallback_id=correlation_id,
+                topic=runner._topic_delegation_completed,
+            )
+
+            ok = await runner.project_runtime_event(
+                runner._topic_delegation_completed, data, meta
+            )
+            assert ok is True
+            row = await admin_conn.fetchrow(
+                "SELECT correlation_id FROM delegation_events WHERE correlation_id = $1",
+                correlation_id,
+            )
+            assert row is not None, "the delivery returned before its row was written"
+            expected = {e.topic for e in runner._aggregate_exposures}
+            assert not {topic for topic, _key, _value in published} & expected, (
+                "the delivery published an aggregate snapshot before returning, so "
+                "its offset commit waited on the whole-table views"
+            )
+
+            await runner.close_runtime_resources()
+            assert {topic for topic, _key, _value in published} >= expected
+            expected_tenant = str(resolve_tenant_uuid("beta-business-proof"))
+            for topic, key, value in published:
+                if topic not in expected:
+                    continue
+                assert key == f"{topic}|{expected_tenant}".encode()
+                assert value is not None
+                assert json.loads(value)["op"] == "upsert"
+
+
+async def _noop_async() -> None:
+    return None

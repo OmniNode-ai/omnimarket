@@ -21,13 +21,13 @@ from omnibase_core.enums.enum_workflow_result import EnumWorkflowResult
 from pydantic import ValidationError
 
 import omnimarket.nodes.node_dod_closeout_sweep_compute as node_package
-from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.handler_dod_closeout_sweep import (
-    HandlerDodCloseoutSweep,
-)
-from omnimarket.nodes.node_dod_closeout_sweep_compute.models.model_dod_closeout_sweep import (
+from omnimarket.models.dod_closeout_sweep import (
     EnumCloserHealth,
     ModelDodCloseoutDecisionRequest,
     ModelDodCloseoutDecisionResult,
+)
+from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.handler_dod_closeout_sweep import (
+    HandlerDodCloseoutSweep,
 )
 from tests.runtime_local_compat import RuntimeLocal
 
@@ -90,7 +90,11 @@ def test_third_zero_flip_completion_emits_friction_then_the_terminal_naming_it()
     result = complete([receipt(1), receipt(2)])
     assert result.zero_flip_streak == 3
     assert result.top_deferral_reason == "binding-refused:no-cwd"
-    assert result.completion_rows == [
+    assert result.completion_rows is not None
+    assert result.completion_rows[0].startswith(
+        f"{STAMP} | STATUS | {COMMON} | ticket=OMN-20655"
+    )
+    assert result.completion_rows[1:] == [
         f"{STAMP} | FRICTION | {COMMON} | existing=OMN-20655 | class=zero-flip-streak"
         " | zero_flip_streak=3 | top_deferral_reason=binding-refused:no-cwd | " + COST,
         f"{STAMP} | TERMINAL | {COMMON} | ticket=OMN-17427 | worktree=none | selected=2"
@@ -104,9 +108,11 @@ def test_third_zero_flip_completion_emits_friction_then_the_terminal_naming_it()
 def test_a_short_or_reset_streak_writes_only_the_terminal(history: list[str]) -> None:
     result = complete(history)
     assert result.completion_rows is not None
-    assert len(result.completion_rows) == 1
-    assert "| TERMINAL |" in result.completion_rows[0]
-    assert "friction=none" in result.completion_rows[0]
+    kinds = [row.split(" | ")[1] for row in result.completion_rows]
+    # The run flipped nothing: its reading row precedes the terminal, with no streak friction.
+    assert kinds == ["STATUS", "TERMINAL"]
+    assert "| TERMINAL |" in result.completion_rows[-1]
+    assert "friction=none" in result.completion_rows[-1]
 
 
 def test_a_flip_resets_the_streak_to_zero() -> None:
@@ -301,7 +307,11 @@ async def test_golden_chain_completion_then_ground_state_over_the_bus(
     ).handler_result
     assert isinstance(done, ModelDodCloseoutDecisionResult)
     assert done.completion_rows is not None
-    assert [r.split(" | ")[1] for r in done.completion_rows] == ["FRICTION", "TERMINAL"]
+    assert [r.split(" | ")[1] for r in done.completion_rows] == [
+        "STATUS",
+        "FRICTION",
+        "TERMINAL",
+    ]
 
     morning = (
         await _run(

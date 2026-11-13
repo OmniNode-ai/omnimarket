@@ -35,6 +35,7 @@ from .fakes import (
     FakeChecks,
     FakeClock,
     FakeLedgerReader,
+    FakeMerged,
     FakeOwners,
     FakePlacement,
     FakeReceipts,
@@ -47,9 +48,14 @@ OPERATIONS = (
     "probe_lab_fill_hosts",
     "read_lab_fill_owner_facts",
     "launch_lab_fill_lane",
+    "send_lab_fill_lane",
+    "gate_lab_fill_send",
     "read_lab_fill_receipts",
     "pick_lab_fill_fallback_host",
     "write_lab_fill_status",
+    "enumerate_lab_fill_sources",
+    "enumerate_lab_fill_approved_work",
+    "enumerate_lab_fill_sprint_tickets",
     "run_lab_fill_tick",
 )
 POOL = [
@@ -149,7 +155,7 @@ def test_the_cycle_runs_through_the_bindings(tmp_path: Path) -> None:
             ledger_path="/l",
         )
     )
-    assert owners.called == ["claims", "pr_claims", "watcher"]
+    assert owners.called == ["claims", "pr_claims", "watcher", "work_state"]
     assert facts.claim_index == {"OMN-5": {"lane": "peer", "state": "held"}}
     assert facts.pr_claims == {"repo#9": "peer2"}
     assert facts.watcher_merged == {"OMN-7": ("repo#3",)}
@@ -187,6 +193,7 @@ def test_the_cycle_runs_through_the_bindings(tmp_path: Path) -> None:
         blocks=FakeBlocks(),
         runner=runner,
         clock=clock,
+        merged=FakeMerged(),
     ).handle(
         ModelLabFillLaunchRequest(
             launch=launch,

@@ -1,0 +1,34 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lane_ctx_ledger_dedupe_effect
+version: 0.1.0
+description: >
+  Keeps one copy of each immutable ledger archive roll per lab host and makes every lane
+  context directory's roll another name of it (a hard link), so lane directories stop
+  carrying about 216 MB each. Run in process by the lab daemon sync's host tick.
+omnibase_core_compat: '>=0.47.31,<0.48.0'
+entry_points:
+  onex.nodes:
+    node_lane_ctx_ledger_dedupe_effect: omnimarket.nodes.node_lane_ctx_ledger_dedupe_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: destructive
+dependencies:
+- PyYAML>=6.0.3
+- aiokafka>=0.10.0
+- omnibase-infra>=0.1.0
+license: MIT
+authors:
+- OmniNode Team
+tags:
+- effect
+- lab
+- in_process
+pack: operator_tooling
+display_name: Lane Context Ledger Dedupe Effect
+node_role: effect

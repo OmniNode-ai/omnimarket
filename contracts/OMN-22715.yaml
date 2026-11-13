@@ -1,0 +1,65 @@
+---
+schema_version: 1.0.0
+ticket_id: OMN-22715
+title: The dev lane's local-environment observer takes its service bundle from the lane overlay and not from the laptop catalog
+summary: node_local_environment_observe_effect probes the services a lane's overlay names (<root>/node_local_environment_observe_effect/overlay.yaml under ONEX_SKILL_OVERLAY_ROOTS) and reads the contract's catalog bundle only when no overlay supplies one. A broken overlay refuses the pass and never falls back to the catalog. Until a lane's overlay names its roster, the observer behaves as before.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22715-roster-from-lane-overlay
+  statement: On a lane with an overlay the observer probes the services the overlay names and never the laptop catalog bundle; without one it probes the catalog bundle.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the observer''s service bundle on the dev lane is read from the lane overlay, and the laptop catalog is read only when no lane overlay is given -- falsifier: uv run pytest -q on the observer''s unit tests in omnimarket with a lane overlay naming three services, red on dev without the change'
+  - id: AC2
+    statement: 'AC2: an overlay naming a service the observer cannot reach yields a down row with the reason and never a row from the laptop catalog -- falsifier: uv run pytest -q on the observer''s error test with one unreachable service'
+- id: req-omn22715-retire-unrostered
+  statement: A service the lane overlay lists as retired is reported by the observer as retired, and the projection writer removes its stored row and clears its open alert, so a row left by the laptop catalog stops reading down.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: the observer reports each service in the overlay retired list as retired, the writer deletes only that service''s row and clears its alert, and a repeat changes nothing -- falsifier: uv run pytest tests/test_local_environment_retired_service_omn22030.py -q, which fails at collection on dev without the change'
+evidence_requirements:
+- kind: tests
+  description: The lane roster replaces the catalog bundle, the catalog stays for a lane with no overlay, an unreachable roster service reads down with its reason, and a broken overlay refuses.
+  command: uv run pytest tests/test_local_environment_observe_lane_overlay_omn22715.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22715-roster-from-lane-overlay
+  description: A lane overlay naming three services is probed in place of the catalog, which the test makes unreadable; with no overlay the catalog bundle is probed. Red at the merge base (the handler takes no overlay).
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_local_environment_observe_lane_overlay_omn22715.py -q --no-cov --tb=line -k "names_the_services or no_lane_overlay"
+    cwd: .
+- id: dod-omn22715-unreachable-reads-down
+  description: A real TCP probe of a closed port named by the overlay yields one DOWN row whose reason names the refused connection, and no catalog row; a broken overlay yields no rows and a refusal log.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_local_environment_observe_lane_overlay_omn22715.py -q --no-cov --tb=line -k "unreachable or broken_overlay"
+    cwd: .
+- id: dod-omn22715-retire-unrostered
+  description: The overlay retired list is reported as retired by the observer; the writer deletes the retired service's row, clears its alert, leaves siblings, and a repeated report changes nothing.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_local_environment_retired_service_omn22030.py -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn22715-integration-proof
+  description: Run this pull request's own check on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. The dev lane's rows change only once its overlay names a roster, a separate change in the overlay home.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22715 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/test_local_environment_observe_lane_overlay_omn22715.py tests/test_golden_chain_local_environment_observe_effect.py -q --no-cov
+    cwd: .

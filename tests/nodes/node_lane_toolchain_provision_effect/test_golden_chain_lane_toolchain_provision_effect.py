@@ -77,6 +77,52 @@ def test_contract_golden_chain() -> None:
     assert [s.state for s in result.steps] == ["changed", "changed", "changed"]
 
 
+@pytest.mark.parametrize(
+    ("command", "state"),
+    [
+        ("pnpm --version; true", "needs-operator"),
+        ("printf '10.20.0\\n'", "unchanged"),
+    ],
+)
+def test_contract_handler_reads_real_shell_probe(
+    tmp_path: Path, command: str, state: str
+) -> None:
+    from omnimarket.nodes.node_lane_toolchain_provision_effect.handlers.adapter_host_files import (
+        load_table,
+    )
+
+    package = importlib.import_module(
+        "omnimarket.nodes.node_lane_toolchain_provision_effect"
+    )
+    assert package.__file__ is not None
+    contract = yaml.safe_load(
+        Path(package.__file__).with_name("contract.yaml").read_text()
+    )
+    binding = contract["handler"]
+    handler_class = getattr(
+        importlib.import_module(binding["module"]), binding["class"]
+    )
+    request_module, _, request_name = binding["input_model"].rpartition(".")
+    request_class = getattr(importlib.import_module(request_module), request_name)
+
+    # Keep the packaged repair rule but replay the recorded shell wrapper with
+    # an empty PATH. The default host adapter runs /bin/sh and captures stderr;
+    # the shell's final builtin masks pnpm's failure with status zero.
+    table = load_table()
+    spec = table.tools["pnpm"].model_copy(update={"probe": ("/bin/sh", "-c", command)})
+    table = table.model_copy(
+        update={"tools": {"pnpm": spec}, "hosts": {"lane-a.test": ("pnpm",)}}
+    )
+    deployment = overlay()
+    host = deployment.hosts[0].model_copy(update={"lane_path": str(tmp_path)})
+    deployment = deployment.model_copy(update={"hosts": (host,)})
+    result = handler_class(deployment, table).handle(request_class(host=host.name))
+
+    assert [(step.step, step.state) for step in result.steps] == [("tool:pnpm", state)]
+    assert "exit 0" in result.steps[0].detail
+    assert bool(result.operator_steps) == (state == "needs-operator")
+
+
 async def test_node_auto_wires_before_host_overlay_is_loaded(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

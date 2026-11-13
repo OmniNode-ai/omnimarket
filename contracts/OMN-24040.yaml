@@ -1,0 +1,63 @@
+schema_version: 1.0.0
+ticket_id: OMN-24040
+title: Ship the code eval suite file inside the packaged omnimarket code
+summary: >-
+  The committed suite file of the code eval suite census node lived under benchmarks/, outside src/omnimarket, so no runtime image build carried it (the runtime image copies only src/, the package build ships only src/omnimarket plus its declared force-includes). The file moves to src/omnimarket/configs/code_eval_suite.v1.json, the declared packaged-data location, with no second copy, and the census request model gains one loader that reads it as a package resource. The census tests read the packaged file; a new test fails when the file is outside the package, when a second copy exists, or when the image build stops copying the src tree.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24040-suite-in-package
+  statement: The committed suite ships inside the package that the runtime image installs and the census request model loads it from there.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the committed suite file ships inside the omnimarket package and the census request model loads it as a package resource -- falsifier: uv run --frozen pytest tests/nodes/node_code_eval_suite_census_compute/test_packaged_suite.py -q --no-cov fails when the file is moved back outside src'
+  - id: AC2
+    statement: 'AC2: the runtime image build copies the whole src tree that holds the packaged suite, and the census over the packaged suite equals the census over the raw file rows -- falsifier: uv run --frozen pytest tests/nodes/node_code_eval_suite_census_compute/test_packaged_suite.py tests/nodes/node_code_eval_suite_census_compute/test_committed_suite.py -q --no-cov fails when the image COPY of src is removed or one count is planted wrong'
+  - id: AC3
+    statement: 'AC3: integrated: after the dev runtime rolls to the merged head, the census node answers a census over the packaged suite in the running runtime, read by its correlation id on the dev bus -- falsifier: the running image holds no packaged suite file or the census answer differs from the recount'
+evidence_requirements:
+- kind: tests
+  description: The packaged-suite tests and the committed-suite recount tests pass at the head; the packaged-suite tests fail with the file outside src.
+  command: uv run --frozen pytest tests/nodes/node_code_eval_suite_census_compute -q --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24040-ac1
+  description: 'AC1: the suite file is a package resource, the loader returns its rows, and no second copy exists under benchmarks. Reads red at the merge base, where the file is outside src.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_code_eval_suite_census_compute/test_packaged_suite.py -q --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24040-ac2
+  description: 'AC2: the image build copies the src tree (with a failing control on a Dockerfile without the line) and the node census over the packaged file equals the recount of its raw rows.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_code_eval_suite_census_compute/test_packaged_suite.py tests/nodes/node_code_eval_suite_census_compute/test_committed_suite.py -q --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24040-ac3-proxy
+  description: 'AC3: hosted proxy for the integrated criterion: the golden chain answers the exact census through the node handler on the in-memory bus and the packaged suite loads. The reading on dev follows the roll.'
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_code_eval_suite_census_compute/test_golden_chain_code_eval_suite_census.py tests/nodes/node_code_eval_suite_census_compute/test_packaged_suite.py -q --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24040-ac3-integration-proof
+  description: On a lab host, from the pushed head, the packaged suite is loaded and the census node is run over it; hosted CI cannot reach a lab host, so this unbound check belongs to the local Done gate. The reading in the running dev runtime follows the roll.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24040 --kind test -- uv run --frozen pytest tests/nodes/node_code_eval_suite_census_compute -q --no-cov'
+    cwd: .

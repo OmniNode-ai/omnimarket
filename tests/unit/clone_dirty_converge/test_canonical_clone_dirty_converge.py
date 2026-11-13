@@ -14,6 +14,8 @@ from __future__ import annotations
 import importlib
 import json
 import os
+import shutil
+import socket
 import subprocess
 import sys
 import time
@@ -39,6 +41,9 @@ pytestmark = pytest.mark.unit
 REAL_ROOT = os.environ.get("ONEX_TEST_OMNICLAUDE_ROOT", "")
 HOST_VALUE = "/" + "Users" + "/someone/Code"  # built, so no home path sits in this file
 AGE = 600
+#: The contract's bound for every repair (OMN-23032): one host timer period (180 s) is past it.
+CONTRACT_BOUND = 150
+TIMER_PERIOD = 180
 
 
 def _git(*args: str, cwd: Path) -> str:
@@ -202,9 +207,9 @@ def _clean(clone: Path) -> bool:
 
 
 def test_the_age_is_the_contracts_and_the_overlay_replaces_it() -> None:
-    assert declared_age_seconds({}) == 14400
+    assert declared_age_seconds({}) == CONTRACT_BOUND
     assert declared_age_seconds({AGE_ENV: "90"}) == 90
-    assert declared_age_seconds({AGE_ENV: "junk"}) == 14400
+    assert declared_age_seconds({AGE_ENV: "junk"}) == CONTRACT_BOUND
     assert load_declaration().max_listed >= 1
 
 
@@ -359,9 +364,9 @@ def _report_detached(
 
 
 def test_the_detached_age_is_the_contracts_and_the_overlay_replaces_it() -> None:
-    assert declared_detached_age_seconds({}) == 1800
+    assert declared_detached_age_seconds({}) == CONTRACT_BOUND
     assert declared_detached_age_seconds({DETACHED_AGE_ENV: "90"}) == 90
-    assert declared_detached_age_seconds({DETACHED_AGE_ENV: "junk"}) == 1800
+    assert declared_detached_age_seconds({DETACHED_AGE_ENV: "junk"}) == CONTRACT_BOUND
     assert declared_detached_age_seconds({}) < 3600  # inside the hour the ticket allows
 
 
@@ -495,3 +500,334 @@ def test_a_dirty_clone_refused_only_for_the_detached_bound_is_left_alone(
     assert (
         _git("diff", "--cached", "--name-only", cwd=staged_case.clone) == "a.txt\nb.txt"
     )
+
+
+# -- a mirror repairs itself on the next run (OMN-23032) -------------------------------------
+
+
+def _next_run(
+    handler: HandlerCanonicalCloneDirtyConvergeEffect, planted: Planted, why: str
+) -> None:
+    """The engine's report one timer period after it first refused the clone."""
+    if REAL_ROOT:
+        planted.refuse_for(handler, TIMER_PERIOD)
+        return
+    fetch = f"git -C '{planted.clone}' fetch --quiet origin"
+    line = f"REFUSED_TOO_LONG {planted.clone} refused for {TIMER_PERIOD}s: {why}"
+    handler._engine_argv = ["/bin/sh", "-c", f"{fetch}; echo '{line}'"]
+
+
+def test_a_planted_detached_clone_is_reattached_on_the_next_run(
+    detached_case: Planted,
+) -> None:
+    """AC1 falsifier: no overlay value, the contract's own bound, one timer period later."""
+    clone = detached_case.clone
+    assert _git("branch", "--show-current", cwd=clone) == ""  # planted detached
+    handler = detached_case.handler()
+    assert handler.detached_age <= TIMER_PERIOD
+    _next_run(handler, detached_case, "detached HEAD: the clone tracks no branch")
+    (outcome,) = handler.tick()
+    assert outcome.status is EnumDirtyConvergeStatus.CONVERGED, outcome
+    assert _git("symbolic-ref", "--quiet", "--short", "HEAD", cwd=clone) == "dev"
+    assert _git("rev-parse", "HEAD", cwd=clone) == detached_case.tip
+
+
+def test_a_clone_parked_on_a_lane_branch_returns_to_its_branch_on_the_next_run(
+    detached_case: Planted,
+) -> None:
+    clone = detached_case.clone
+    _git("switch", "--quiet", "-c", "omn-1-lane-work", cwd=clone)
+    handler = detached_case.handler()
+    _next_run(handler, detached_case, "checked out on 'omn-1-lane-work'")
+    (outcome,) = handler.tick()
+    assert outcome.status is EnumDirtyConvergeStatus.CONVERGED, outcome
+    assert "the lane branch omn-1-lane-work" in outcome.reason
+    assert _git("symbolic-ref", "--quiet", "--short", "HEAD", cwd=clone) == "dev"
+    assert _git("rev-parse", "HEAD", cwd=clone) == detached_case.tip
+
+
+def test_a_clean_clone_holding_a_local_commit_converges_on_the_next_run(
+    staged_case: Planted,
+) -> None:
+    clone = staged_case.clone
+    _git(
+        "reset", "--quiet", "--hard", "HEAD", cwd=clone
+    )  # clean: only the commit holds it back
+    (clone / "local.txt").write_text("local commit\n")
+    _git("add", "local.txt", cwd=clone)
+    _git("commit", "--quiet", "-m", "local", cwd=clone)
+    local = _git("rev-parse", "--short", "HEAD", cwd=clone)
+    handler = staged_case.handler()
+    _next_run(handler, staged_case, "dev and origin/dev have diverged")
+    (outcome,) = handler.tick()
+    assert outcome.status is EnumDirtyConvergeStatus.CONVERGED, outcome
+    assert outcome.dropped_commits == (local,)
+    assert outcome.dropped_paths == ()
+    assert _git("rev-parse", "HEAD", cwd=clone) == staged_case.tip
+    assert _clean(clone)
+
+
+def test_a_dirty_clone_converges_on_the_next_run_under_the_contract_bound(
+    staged_case: Planted,
+) -> None:
+    handler = staged_case.handler()
+    _next_run(handler, staged_case, "2 staged path(s)")
+    (outcome,) = handler.tick()
+    assert outcome.status is EnumDirtyConvergeStatus.CONVERGED, outcome
+    assert _git("rev-parse", "HEAD", cwd=staged_case.clone) == staged_case.tip
+    assert _clean(staged_case.clone)
+
+
+# -- an image build holds the reconcile-host lock (OMN-22718) -----------------------------------------
+#
+# The deploy agent stages its siblings into the canonical omnibase_infra clone, then builds. A tracked
+# placeholder it staged reads as a dirty clone, and an off-lineage build (an open pull request's head)
+# reads as a detached clone. Past the contract bound the tick converged the clone back to dev and the
+# agent's second build copied the placeholder: "Per-repo VCS provenance has no sibling entries"
+# (read twice on one host, a hard reset of the clone 3 to 4 minutes after each build began).
+
+BUILD_LOCK = ".onex-reconcile-host.lock"
+
+
+def _hold_build_lock(
+    planted: Planted,
+    *,
+    parent: bool,
+    age: int = 0,
+    pid: int = 1,
+    host: str = "h",
+) -> Path:
+    lock = (planted.home.parent if parent else planted.home) / BUILD_LOCK
+    lock.mkdir()
+    holder = lock / "holder"
+    holder.write_text(
+        f"pid={pid}\nhost={host}\nholder=deploy-agent\n"
+        "purpose=deploy-agent image build 550770d47df4\n"
+    )
+    if age:
+        past = time.time() - age
+        os.utime(holder, (past, past))
+        os.utime(lock, (past, past))
+    return lock
+
+
+@pytest.mark.parametrize("parent", [False, True], ids=["registry-lock", "host-lock"])
+def test_a_dirty_clone_is_left_alone_while_an_image_build_holds_the_lock(
+    staged_case: Planted, parent: bool
+) -> None:
+    _hold_build_lock(staged_case, parent=parent)
+    handler = staged_case.handler(**{AGE_ENV: str(AGE)})
+    staged_case.refuse_for(handler, 3 * AGE)
+    (outcome,) = handler.tick()
+    assert outcome.status is EnumDirtyConvergeStatus.SKIPPED
+    assert BUILD_LOCK in outcome.reason
+    assert (
+        _git("diff", "--cached", "--name-only", cwd=staged_case.clone) == "a.txt\nb.txt"
+    )
+
+
+@pytest.mark.parametrize("parent", [False, True], ids=["registry-lock", "host-lock"])
+def test_a_detached_clone_is_left_alone_while_an_image_build_holds_the_lock(
+    detached_case: Planted, parent: bool
+) -> None:
+    _hold_build_lock(detached_case, parent=parent)
+    handler = detached_case.handler(
+        **{AGE_ENV: str(AGE), DETACHED_AGE_ENV: str(DETACHED_AGE)}
+    )
+    _report_detached(handler, detached_case, 2 * DETACHED_AGE)
+    (outcome,) = handler.tick()
+    assert outcome.status is EnumDirtyConvergeStatus.SKIPPED
+    assert BUILD_LOCK in outcome.reason
+    assert _git("branch", "--show-current", cwd=detached_case.clone) == ""
+
+
+def test_a_build_lock_past_its_declared_age_does_not_hold_the_clone(
+    staged_case: Planted,
+) -> None:
+    max_age = load_declaration().build_lock_max_age_seconds
+    _hold_build_lock(staged_case, parent=False, age=max_age + 60)
+    handler = staged_case.handler(**{AGE_ENV: str(AGE)})
+    staged_case.refuse_for(handler, 3 * AGE)
+    (outcome,) = handler.tick()
+    assert outcome.status is EnumDirtyConvergeStatus.CONVERGED, outcome
+    assert _git("rev-parse", "HEAD", cwd=staged_case.clone) == staged_case.tip
+
+
+def test_the_build_lock_age_outlasts_the_deploy_agent_build_ceiling() -> None:
+    """The agent's image build is bounded at 3600 s; a lock younger than that is a live build."""
+    assert load_declaration().build_lock_max_age_seconds > 3600
+
+
+def _exited_pid() -> int:
+    """The pid of a child that has exited and been reaped: no process holds it now."""
+    child = subprocess.Popen([sys.executable, "-c", "pass"])
+    child.wait()
+    return child.pid
+
+
+def test_a_build_lock_held_by_a_running_process_on_this_host_holds_the_clone(
+    staged_case: Planted,
+) -> None:
+    """The recorded job: the agent's holder record names this host and its own live pid."""
+    _hold_build_lock(
+        staged_case, parent=False, pid=os.getpid(), host=socket.gethostname()
+    )
+    handler = staged_case.handler(**{AGE_ENV: str(AGE)})
+    staged_case.refuse_for(handler, 3 * AGE)
+    (outcome,) = handler.tick()
+    assert outcome.status is EnumDirtyConvergeStatus.SKIPPED
+    assert BUILD_LOCK in outcome.reason
+
+
+def test_a_build_lock_whose_holder_process_is_gone_does_not_hold_the_clone(
+    staged_case: Planted,
+) -> None:
+    """A crashed agent leaves its lock behind; the clone converges without waiting out the age."""
+    _hold_build_lock(
+        staged_case, parent=False, pid=_exited_pid(), host=socket.gethostname()
+    )
+    handler = staged_case.handler(**{AGE_ENV: str(AGE)})
+    staged_case.refuse_for(handler, 3 * AGE)
+    (outcome,) = handler.tick()
+    assert outcome.status is EnumDirtyConvergeStatus.CONVERGED, outcome
+
+
+# -- a clone git wrongly treats as bare (OMN-24240) --------------------------------------------
+
+
+def _report_bare(
+    handler: HandlerCanonicalCloneDirtyConvergeEffect, planted: Planted, seconds: int
+) -> None:
+    """The engine's breach line for the bare-flagged clone, after a fetch (the real engine's own work)."""
+    if REAL_ROOT:
+        planted.refuse_for(handler, seconds)
+        return
+    fetch = f"git -C '{planted.clone}' fetch --quiet origin"
+    line = f"REFUSED_TOO_LONG {planted.clone} refused for {seconds}s: core.bare=true"
+    handler._engine_argv = ["/bin/sh", "-c", f"{fetch}; echo '{line}'"]
+
+
+@pytest.fixture
+def bare_flagged_case(tmp_path: Path) -> Planted:
+    """A canonical clone with a working tree that git wrongly treats as bare (core.bare=true)."""
+    planted = Planted(tmp_path, "platform", {"a.txt": "one\n"})
+    _git("config", "core.bare", "true", cwd=planted.clone)
+    if not REAL_ROOT:
+        (planted.home / "omniclaude/scripts/converge-canonical-clone.sh").write_text(
+            FAKE_REATTACH
+        )
+    return planted
+
+
+def test_a_clone_flagged_bare_with_a_working_tree_is_repaired_and_brought_to_the_tip(
+    bare_flagged_case: Planted,
+) -> None:
+    """Golden: the handler clears core.bare and converges the clone to the upstream tip."""
+    clone = bare_flagged_case.clone
+    assert _git("rev-parse", "--is-bare-repository", cwd=clone) == "true"
+    handler = bare_flagged_case.handler(
+        **{AGE_ENV: str(AGE), DETACHED_AGE_ENV: str(DETACHED_AGE)}
+    )
+    _report_bare(handler, bare_flagged_case, 600)
+    (outcome,) = handler.tick()
+    assert outcome.status is EnumDirtyConvergeStatus.CONVERGED, outcome
+    assert "cleared core.bare=true" in outcome.reason
+    assert _git("rev-parse", "--is-bare-repository", cwd=clone) == "false"
+    assert _git("rev-parse", "HEAD", cwd=clone) == bare_flagged_case.tip
+    assert outcome.converged_to == bare_flagged_case.tip
+    assert bare_flagged_case.row_text()
+
+
+def test_a_true_bare_mirror_is_left_alone(bare_flagged_case: Planted) -> None:
+    """A true bare mirror has no .git directory inside it; the handler never touches one."""
+    planted = bare_flagged_case
+    shutil.rmtree(planted.clone)
+    _git("clone", "--bare", str(planted.remote), str(planted.clone), cwd=planted.home)
+    handler = planted.handler(
+        **{AGE_ENV: str(AGE), DETACHED_AGE_ENV: str(DETACHED_AGE)}
+    )
+    outcome = handler.converge_clone(planted.clone, refused_for=2 * DETACHED_AGE)
+    assert outcome.status is EnumDirtyConvergeStatus.SKIPPED
+    assert "no working tree" in outcome.reason
+    assert _git("config", "--get", "core.bare", cwd=planted.clone) == "true"
+
+
+def test_a_bare_flagged_clone_below_the_age_is_left_alone(
+    bare_flagged_case: Planted,
+) -> None:
+    handler = bare_flagged_case.handler(
+        **{AGE_ENV: str(AGE), DETACHED_AGE_ENV: str(DETACHED_AGE)}
+    )
+    outcome = handler.converge_clone(bare_flagged_case.clone, refused_for=1)
+    assert outcome.status is EnumDirtyConvergeStatus.SKIPPED
+    assert "below the declared" in outcome.reason
+    assert _git("config", "--get", "core.bare", cwd=bare_flagged_case.clone) == "true"
+
+
+def test_a_bare_flagged_clone_an_open_claim_names_is_left_alone(
+    bare_flagged_case: Planted, tmp_path: Path
+) -> None:
+    ledger = tmp_path / "ledger.md"
+    ledger.write_text(
+        "2026-11-03T10:00:00Z | CLAIM | lane=other-lane | ticket=OMN-1 | works in "
+        f"{bare_flagged_case.clone} right now\n"
+    )
+    handler = bare_flagged_case.handler(
+        **{
+            AGE_ENV: str(AGE),
+            DETACHED_AGE_ENV: str(DETACHED_AGE),
+            "ONEX_LEDGER_PATH": str(ledger),
+        }
+    )
+    _report_bare(handler, bare_flagged_case, 2 * DETACHED_AGE)
+    (outcome,) = handler.tick()
+    assert outcome.status is EnumDirtyConvergeStatus.SKIPPED
+    assert "other-lane" in outcome.reason
+    assert _git("config", "--get", "core.bare", cwd=bare_flagged_case.clone) == "true"
+
+
+def test_a_bare_flagged_clone_a_process_works_inside_is_left_alone(
+    bare_flagged_case: Planted,
+) -> None:
+    handler = bare_flagged_case.handler(
+        **{AGE_ENV: str(AGE), DETACHED_AGE_ENV: str(DETACHED_AGE)}
+    )
+    _report_bare(handler, bare_flagged_case, 2 * DETACHED_AGE)
+    with subprocess.Popen(["sleep", "60"], cwd=bare_flagged_case.clone) as sleeper:
+        try:
+            (outcome,) = handler.tick()
+        finally:
+            sleeper.kill()
+    assert outcome.status is EnumDirtyConvergeStatus.SKIPPED
+    assert "process" in outcome.reason
+    assert _git("config", "--get", "core.bare", cwd=bare_flagged_case.clone) == "true"
+
+
+def test_a_bare_flagged_clone_whose_converge_script_fails_reports_failed(
+    bare_flagged_case: Planted,
+) -> None:
+    if REAL_ROOT:
+        pytest.skip("drives the fake converge script that refuses")
+    script = bare_flagged_case.home / "omniclaude/scripts/converge-canonical-clone.sh"
+    script.write_text("#!/bin/bash\necho boom >&2\nexit 1\n")
+    handler = bare_flagged_case.handler(
+        **{AGE_ENV: str(AGE), DETACHED_AGE_ENV: str(DETACHED_AGE)}
+    )
+    _report_bare(handler, bare_flagged_case, 2 * DETACHED_AGE)
+    (outcome,) = handler.tick()
+    assert outcome.status is EnumDirtyConvergeStatus.FAILED
+    assert "exit 1" in outcome.reason
+
+
+def test_a_bare_flagged_clone_is_left_alone_while_an_image_build_holds_the_lock(
+    bare_flagged_case: Planted,
+) -> None:
+    _hold_build_lock(bare_flagged_case, parent=False)
+    handler = bare_flagged_case.handler(
+        **{AGE_ENV: str(AGE), DETACHED_AGE_ENV: str(DETACHED_AGE)}
+    )
+    _report_bare(handler, bare_flagged_case, 2 * DETACHED_AGE)
+    (outcome,) = handler.tick()
+    assert outcome.status is EnumDirtyConvergeStatus.SKIPPED
+    assert BUILD_LOCK in outcome.reason
+    assert _git("config", "--get", "core.bare", cwd=bare_flagged_case.clone) == "true"

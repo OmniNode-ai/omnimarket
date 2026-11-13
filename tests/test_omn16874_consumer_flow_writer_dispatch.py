@@ -391,6 +391,14 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # local_environment, dispatched once per consumed environment report by
     # runtime auto-wiring; its pure plan, HandlerProjectionLocalEnvironment,
     # does NOT declare the capability.
+    # LocalAlertsProjectionWriter (OMN-19991) is the only writer of
+    # local_alerts, dispatched once per consumed alert transition by runtime
+    # auto-wiring; its pure fold plan, HandlerProjectionLocalAlerts, does NOT
+    # declare the capability.
+    # LocalIdentityProjectionWriter (OMN-19986) is the only writer of
+    # local_identity: it composes HandlerLocalIdentityProjectionRunner once per
+    # consumed mint through the shared RuntimeProjectionWriter base; neither
+    # that runner nor the pure plan, HandlerProjectionLocalIdentity, declares it.
     # CompactionReceiptsProjectionWriter (OMN-21336) is the only writer of
     # compaction_receipts, dispatched once per consumed install-confirm-completed event by
     # runtime auto-wiring; its pure fold, HandlerProjectionCompactionReceipts,
@@ -411,22 +419,45 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # DelegationProjectionWriter (OMN-21288) is node_projection_delegation's
     # only routed handler: it composes DelegationProjectionRunner once per
     # delivery, and the runner itself does not declare the capability.
+    # AgentActionsProjectionWriter (OMN-21920) is node_projection_agent_actions'
+    # only DB writer, dispatched once per consumed event by runtime auto-wiring
+    # through the shared RuntimeProjectionWriter base.
+    # SkillLifecycleProjectionWriter is the only writer of skill_executions,
+    # dispatched once per consumed skill-started or skill-completed event by
+    # runtime auto-wiring; its pure fold, HandlerProjectionSkillLifecycle, does
+    # NOT declare the capability.
+    # OverlayStoreProjectionWriter is node_projection_overlay_store's only
+    # routed handler: it composes HandlerOverlayStoreProjectionRunner once per
+    # delivery, and the runner itself does not declare the capability.
+    # ContextAuditProjectionWriter is node_projection_context_audit's only DB
+    # writer, dispatched once per consumed audit event by runtime auto-wiring;
+    # its pure fold, HandlerProjectionContextAudit, does NOT declare it.
+    # OverlayStoreProjectionWriter is node_projection_overlay_store's only DB
+    # writer, dispatched once per consumed overlay event by runtime
+    # auto-wiring; its pure fold does NOT declare the capability.
+    # HostDiskProjectionWriter is node_projection_host_disk's only DB writer,
+    # dispatched once per consumed reading by runtime auto-wiring.
     assert declared == {
+        "AgentActionsProjectionWriter",
         "AlertChannelLivenessProjectionWriter",
         "AutomationLivenessProjectionWriter",
         "BoardProbeResultsProjectionWriter",
         "ClaudeHookEventsProjectionWriter",
         "CompactionReceiptsProjectionWriter",
+        "ContextAuditProjectionWriter",
         "MeteringSummaryProjectionWriter",
         "CiAttemptOutcomeProjectionWriter",
         "ConsumerFlowProjectionWriter",
         "LocalEnvironmentProjectionWriter",
+        "LocalAlertsProjectionWriter",
+        "LocalIdentityProjectionWriter",
         "DelegationEvalProjectionWriter",
         "HandlerDelegationDispositionWriter",
         "HandlerDelegationCapabilityMapWriter",
         "ProviderQuotaProjectionWriter",
         "DodVerdictProjectionWriter",
         "FleetLivenessProjectionWriter",
+        "HostDiskProjectionWriter",
         "InfraRoutingDecisionsProjectionWriter",
         "LabContainerMemoryProjectionWriter",
         "LabLaneHealthProjectionWriter",
@@ -437,6 +468,7 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
         "ProdPromotionGateProjectionWriter",
         "RuntimeErrorFingerprintProjectionWriter",
         "SessionContentProjectionWriter",
+        "SkillLifecycleProjectionWriter",
         "TopicActivityProjectionWriter",
         "WorkLedgerProjectionWriter",
         "WorktreeReconcileProjectionWriter",
@@ -449,6 +481,7 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
         "TenantMirrorProjectionWriter",
         "DelegationBudgetReadingsProjectionWriter",
         "DelegationProjectionWriter",
+        "OverlayStoreProjectionWriter",
     }, f"unexpected {attr} declarations: {sorted(declared)}"
 
 

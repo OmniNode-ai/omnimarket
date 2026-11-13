@@ -7,24 +7,32 @@ from __future__ import annotations
 import json
 import os
 import re
+import runpy
 import subprocess
 import sys
 import tempfile
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from functools import partial
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
+from pydantic import ValidationError
 
 from omnimarket.handlers.node_overlay_reader import find_node_overlay
 from omnimarket.models.model_factory_floor_input import (
     CiState,
     ModelFactoryFloorConfig,
     ModelFloorCloudAccount,
+    ModelFloorContext,
+    ModelFloorDriftHost,
+    ModelFloorGoalRow,
+    ModelFloorHostDrift,
     ModelFloorHostRow,
+    ModelFloorLaneProcess,
     ModelFloorLedgerRow,
     ModelFloorLinearIssue,
     ModelFloorManifest,
@@ -32,9 +40,11 @@ from omnimarket.models.model_factory_floor_input import (
     ModelFloorMerge,
     ModelFloorPlacedHost,
     ModelFloorPlanInput,
+    ModelFloorPoolDisk,
     ModelFloorPoolReading,
     ModelFloorPr,
     ModelFloorReceipt,
+    ModelFloorRequiredContexts,
     ModelFloorRunner,
     ModelFloorRunnerFleet,
     ModelFloorStoppage,
@@ -46,6 +56,7 @@ from omnimarket.models.model_factory_floor_input import (
     ModelLimitToken,
     ModelLimitTokenPool,
 )
+from omnimarket.models.model_floor_placement_reading import ModelFloorPlacementReading
 from omnimarket.models.model_host_capacity_advertisement import (
     ModelHostCapacityAdvertisement,
 )
@@ -54,9 +65,15 @@ from omnimarket.models.model_lane_container_budget import (
     ModelLaneContainerBudgetRequest,
     ModelLaneContainerBudgetVerdict,
 )
+from omnimarket.models.model_unresolved_rows_record import (
+    ModelUnresolvedRowsRecord,
+)
 from omnimarket.nodes.node_factory_floor_effect.handlers.plan_task_tickets import (
     merge_task_links,
     prose_task_tickets,
+)
+from omnimarket.nodes.node_factory_floor_effect.handlers.plan_task_tickets import (
+    with_table_evidence as _with_table_evidence,
 )
 from omnimarket.nodes.node_factory_floor_effect.models.model_factory_floor_runtime import (
     ModelFactoryFloorContainerHost,
@@ -74,7 +91,7 @@ TICKET_RE = re.compile(r"\bOMN-\d+\b")
 PR_RE = re.compile(r"\b[A-Za-z][A-Za-z0-9_.-]*#\d+\b")
 TS_FMT = "%Y-%m-%dT%H:%M:%SZ"
 ID_KEY_RE = re.compile(
-    r"^(?:lane|from|ticket|tickets|pr|prs|id|re|until|task|state|subject|verdict|outcome|closes-claim|closes-CLAIM|host|model|actor|to)$"
+    r"^(?:lane|from|ticket|tickets|parent_ticket|pr|prs|id|re|until|task|state|subject|verdict|outcome|closes-claim|closes-CLAIM|host|model|actor|to|run|head|ruling|cited-rulings|mechanism-ticket)$"
 )
 STATUS_TYPES = {
     "in progress": "started",
@@ -122,7 +139,21 @@ def _utc(value: str) -> datetime:
     return result.astimezone(UTC)
 
 
+# The hour is 00..23: Python 3.14's fromisoformat reads T24:00:00 as the next midnight, strptime never did.
+_TS_SHAPE = re.compile(r"\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):\d{2}:\d{2}Z", re.ASCII)
+
+
 def _ledger_ts(value: str) -> datetime | None:
+    """A ledger row's UTC stamp. A zero-padded ``TS_FMT`` stamp is read by the C parser (strptime is the cost of a 14-day
+    read: one call per row, about 250,000 rows); anything else takes the strict parse and so keeps its old answer."""
+    if not value:
+        # An absent cell (most rows carry no ``until=``) is no stamp; strptime would raise on it, one raise per row.
+        return None
+    if _TS_SHAPE.fullmatch(value):
+        try:
+            return datetime.fromisoformat(value[:-1]).replace(tzinfo=UTC)
+        except ValueError:
+            return None
     try:
         return datetime.strptime(value, TS_FMT).replace(tzinfo=UTC)
     except ValueError:
@@ -135,6 +166,8 @@ def _tickets(*values: str) -> tuple[str, ...]:
 
 
 def _csv(*values: str) -> tuple[str, ...]:
+    if not any(values):
+        return ()
     return tuple(
         dict.fromkeys(part for value in values for part in value.split(",") if part)
     )
@@ -156,10 +189,18 @@ def load_compute_config(path: Path) -> ModelFactoryFloorConfig:
         )
 
 
-def parse_ledger_text(text: str) -> tuple[ModelFloorLedgerRow, ...]:
-    kept: list[tuple[int, ModelFloorLedgerRow]] = []
-    latest: dict[str, tuple[int, ModelFloorLedgerRow]] = {}
-    for order, line in enumerate(text.splitlines()):
+OWN_CONTRACT_PATH = Path(__file__).resolve().parent / "contract.yaml"
+
+
+def contract_ledger_kinds() -> frozenset[str]:
+    """The row kinds this node's own contract keeps whole (``ledger_kinds``)."""
+    return frozenset(load_contract(OWN_CONTRACT_PATH).runtime.ledger_kinds)
+
+
+def parse_ledger_rows(text: str) -> tuple[ModelFloorLedgerRow, ...]:
+    """Every row of one reader answer, in the answer's order: no kind is dropped and no lane is reduced (``reduce_ledger_rows`` does that)."""
+    rows: list[ModelFloorLedgerRow] = []
+    for line in text.splitlines():
         match = ROW_RE.match(line)
         if line.startswith("ROWS ") or match is None:
             continue
@@ -179,6 +220,15 @@ def parse_ledger_text(text: str) -> tuple[ModelFloorLedgerRow, ...]:
                 fields.setdefault(key, tokens[0] if tokens else "")
                 if len(tokens) > 1:
                     remainders.append(" ".join(tokens[1:]))
+            elif sep and key == "owns":
+                # An explicit owns= cell, the ledger MSG's routing rule: a comma list with no spaces in it.
+                fields.setdefault("owns", value.split()[0] if value.split() else "")
+            elif sep and key == "needs":
+                # The closing row's typed ask (OMN-23417): `<action>:<target>`, or `unparsed`; one token, no spaces.
+                fields.setdefault("needs", value.split()[0] if value.split() else "")
+            elif sep and key == "report":
+                # The lane's report text, one cell value written by the close node (OMN-23417).
+                fields.setdefault("report", value.strip())
             elif sep and key in {"reason", "blocker"}:
                 # A lane that ends blocked says why in blocker=; the sentence after its cells is the launcher's receipt note.
                 fields.setdefault("reason", value.strip()[:300])
@@ -192,6 +242,7 @@ def parse_ledger_text(text: str) -> tuple[ModelFloorLedgerRow, ...]:
             kind=cells[1],
             lane=fields.get("lane") or fields.get("from", ""),
             tickets=_csv(fields.get("ticket", ""), fields.get("tickets", "")),
+            parent_tickets=_csv(fields.get("parent_ticket", "")),
             prs=_csv(fields.get("pr", ""), fields.get("prs", "")),
             row_id=fields.get("id", ""),
             re=fields.get("re", ""),
@@ -208,10 +259,28 @@ def parse_ledger_text(text: str) -> tuple[ModelFloorLedgerRow, ...]:
             model=fields.get("model", ""),
             actor=fields.get("actor", ""),
             to=fields.get("to", ""),
+            run_id=fields.get("run", ""),
+            owns=_csv(fields.get("owns", "")),
+            head=fields.get("head", ""),
+            ruling=fields.get("ruling") or fields.get("cited-rulings", ""),
+            mechanism=fields.get("mechanism-ticket", ""),
+            needs=fields.get("needs", ""),
+            report=fields.get("report", ""),
         )
-        core = row.kind in {"CLAIM", "TERMINAL", "HOLD", "RELEASE", "STATUS"}
-        # Every ask to a recipient and every row that answers one: an ask stays open until an answer names it.
-        if core or (row.kind == "MSG" and row.to) or (row.kind == "ACK" and row.re):
+        rows.append(row)
+    return tuple(rows)
+
+
+def reduce_ledger_rows(
+    rows: Sequence[ModelFloorLedgerRow], kinds: frozenset[str]
+) -> tuple[ModelFloorLedgerRow, ...]:
+    """The rows the floor reads: ``kinds`` are kept whole; of the other kinds only each lane's newest row is kept."""
+    kept: list[tuple[int, ModelFloorLedgerRow]] = []
+    latest: dict[str, tuple[int, ModelFloorLedgerRow]] = {}
+    for order, row in enumerate(rows):
+        ts = row.ts
+        core = row.kind in kinds
+        if core:
             kept.append((order, row))
         if (
             not core
@@ -230,26 +299,20 @@ def parse_ledger_text(text: str) -> tuple[ModelFloorLedgerRow, ...]:
     return tuple(row for _, row in ordered)
 
 
-def read_ledger_rows(
-    *,
-    window_days: int,
-    cut_chars: int,
-    timeout_seconds: int,
-    plugin_root: Path | None,
-    plugin_root_env: str,
-    ledger_rows_file: Path | None,
+def parse_ledger_text(
+    text: str, kinds: frozenset[str] | None = None
 ) -> tuple[ModelFloorLedgerRow, ...]:
-    if ledger_rows_file is not None:
-        with _source(ledger_rows_file):
-            return parse_ledger_text(ledger_rows_file.read_text(encoding="utf-8"))
-    if plugin_root is None:
-        raise SourceRefusedError(
-            f"{plugin_root_env} is not set: export the plugin root or supply ledger_rows_file"
-        )
-    reader = plugin_root / "scripts" / "onex_ledger.py"
+    """The rows of one reader answer. ``kinds`` (default: the contract's ``ledger_kinds``) are kept whole; of the other
+    kinds only each lane's newest row is kept."""
+    if kinds is None:
+        kinds = contract_ledger_kinds()
+    return reduce_ledger_rows(parse_ledger_rows(text), kinds)
+
+
+def _run_ledger_reader(
+    reader: Path, query: list[str], timeout_seconds: int, kinds: frozenset[str]
+) -> tuple[ModelFloorLedgerRow, ...]:
     with _source(reader):
-        query = ["query", "--since", f"{window_days}d", "--archives"]
-        query += ["--limit", "1000000", "--cut", str(cut_chars)]
         try:
             result = subprocess.run(
                 [sys.executable, str(reader), *query],
@@ -266,7 +329,124 @@ def read_ledger_rows(
             raise SourceRefusedError(
                 f"ledger reader {reader} exited {result.returncode}: {result.stderr[:200]}; repair the reader or supply ledger_rows_file"
             )
-        return parse_ledger_text(result.stdout)
+        return parse_ledger_text(result.stdout, kinds)
+
+
+def _source_args(source: str | None) -> list[str]:
+    """The reader's ``--source`` argument for the row source a deployment's overlay names; none named leaves the reader its own default."""
+    return [] if source is None else ["--source", source]
+
+
+def read_ledger_rows(
+    *,
+    window_days: int,
+    cut_chars: int,
+    timeout_seconds: int,
+    source: str | None,
+    plugin_root: Path | None,
+    plugin_root_env: str,
+    ledger_rows_file: Path | None,
+    kinds: frozenset[str] | None = None,
+) -> tuple[ModelFloorLedgerRow, ...]:
+    kinds = contract_ledger_kinds() if kinds is None else kinds
+    if ledger_rows_file is not None:
+        with _source(ledger_rows_file):
+            return parse_ledger_text(
+                ledger_rows_file.read_text(encoding="utf-8"), kinds
+            )
+    if plugin_root is None:
+        raise SourceRefusedError(
+            f"{plugin_root_env} is not set: export the plugin root or supply ledger_rows_file"
+        )
+    reader = plugin_root / "scripts" / "onex_ledger.py"
+    query = ["query", *_source_args(source), "--since", f"{window_days}d", "--archives"]
+    query += ["--limit", "1000000", "--cut", str(cut_chars)]
+    return _run_ledger_reader(reader, query, timeout_seconds, kinds)
+
+
+def read_unresolved_rows(
+    *,
+    reads: tuple[tuple[str, str], ...],
+    cut_chars: int,
+    timeout_seconds: int,
+    source: str | None,
+    plugin_root: Path | None,
+    plugin_root_env: str,
+    stand_in_file: Path | None,
+    kinds: frozenset[str],
+    older_than: datetime,
+    max_workers: int | None,
+) -> tuple[ModelFloorLedgerRow, ...]:
+    """Rows of the live ledger and every archive roll, with no age limit, that the window read did not bring.
+
+    Each ``(kind, text)`` read is one query of the same ledger reader over the live ledger and the archive rolls. The
+    window's own rows are already in the request; only rows older than ``older_than`` are returned, and a row is
+    returned once however many reads match it. Which of them a later row resolved is the compute's call.
+    ``max_workers`` is how many reads run together (OMN-19998: four reads in series took 207 s of a 231 s step); ``None``
+    reads them one after the other.
+    """
+    if stand_in_file is not None:
+        # A rows file stands in for the live ledger and the archive rolls (tests and replays): the same kind and text
+        # filters the reader applies are applied to its lines.
+        with _source(stand_in_file):
+            lines = stand_in_file.read_text(encoding="utf-8").splitlines()
+        wanted = [
+            line
+            for line in lines
+            if any(f" | {kind} | " in line and grep in line for kind, grep in reads)
+        ]
+        rows = parse_ledger_text("\n".join(wanted), kinds | {kind for kind, _ in reads})
+        return tuple(row for row in rows if row.ts < older_than)
+    if plugin_root is None:
+        raise SourceRefusedError(
+            f"{plugin_root_env} is not set: export the plugin root or supply a rows file"
+        )
+    reader = plugin_root / "scripts" / "onex_ledger.py"
+    all_kinds = kinds | {kind for kind, _ in reads}
+
+    def one(read: tuple[str, str]) -> tuple[ModelFloorLedgerRow, ...]:
+        kind, grep = read
+        query = ["query", *_source_args(source), "--archives"]
+        query += ["--kind", kind, "--grep", grep]
+        query += ["--limit", "1000000", "--cut", str(cut_chars)]
+        return _run_ledger_reader(reader, query, timeout_seconds, all_kinds)
+
+    if max_workers is None:
+        answers = [one(read) for read in reads]
+    else:
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            answers = list(pool.map(one, reads))
+    found: dict[tuple[datetime, str, str], ModelFloorLedgerRow] = {}
+    for rows in answers:
+        for row in rows:
+            found.setdefault((row.ts, row.kind, row.lane), row)
+    return tuple(
+        row
+        for _, row in sorted(found.items(), key=lambda pair: pair[0])
+        if row.ts < older_than
+    )
+
+
+def load_unresolved_rows(
+    path: Path, *, now: datetime, window_days: int, max_age_hours: int
+) -> tuple[ModelFloorLedgerRow, ...]:
+    """The unresolved rows the unresolved step wrote: those older than the window, from a record not older than its bound.
+
+    The step reads a margin of ``valid_hours`` past the window's edge, so the rows that cross the edge after it wrote are in the
+    file already; a row now inside the window is the window read's, never read twice. A record older than ``max_age_hours`` (or
+    than the margin it declares) is refused: a stop kept only in an archive roll is then unread, never reported absent.
+    """
+    with _source(path):
+        record = ModelUnresolvedRowsRecord.model_validate_json(
+            path.read_text(encoding="utf-8")
+        )
+    bound = timedelta(hours=min(max_age_hours, record.valid_hours))
+    if now - record.read_at > bound:
+        raise SourceRefusedError(
+            f"{path} was read at {record.read_at.isoformat()}, more than {bound} ago: rerun the unresolved step"
+        )
+    edge = now - timedelta(days=window_days)
+    return tuple(row for row in record.rows if row.ts < edge)
 
 
 def _ci_note(ci: dict[str, Any]) -> str:
@@ -280,6 +460,21 @@ def _ci_note(ci: dict[str, Any]) -> str:
     if parts and isinstance(total, int):
         return f"{', '.join(parts)} of {total}"
     return ", ".join(parts)
+
+
+def _contexts(ci: dict[str, Any]) -> tuple[ModelFloorContext, ...]:
+    """Each check run of the head with its result: the conclusion once completed, else the status."""
+    found: dict[str, str] = {}
+    for run in ci.get("runs") or ():
+        if not isinstance(run, list) or len(run) < 3 or not run[0]:
+            continue
+        name, status, conclusion = str(run[0]), str(run[1]), str(run[2])
+        found[name] = conclusion if status == "completed" and conclusion else status
+    return tuple(
+        ModelFloorContext(name=name, result=result)
+        for name, result in sorted(found.items())
+        if result
+    )
 
 
 def load_watcher(path: Path, now: datetime, max_age_min: int) -> ModelFloorWatcher:
@@ -308,6 +503,8 @@ def load_watcher(path: Path, now: datetime, max_age_min: int) -> ModelFloorWatch
                     or bool((value.get("ci") or {}).get("red")),
                     ci=CI_VERDICTS.get(str(ci.get("verdict")), "unread"),
                     ci_note=_ci_note(ci),
+                    head_sha=str(facts.get("head_sha") or ci.get("sha") or ""),
+                    contexts=_contexts(ci),
                     title=facts.get("title", ""),
                     head_ref=facts.get("head_ref", ""),
                     tickets=_tickets(facts.get("title", ""), facts.get("head_ref", "")),
@@ -372,6 +569,12 @@ def load_linear(path: Path | None) -> tuple[ModelFloorLinearIssue, ...]:
                             "",
                         ),
                         title=" ".join(str(issue.get("title") or "").split()),
+                        children=tuple(
+                            child
+                            for child in (issue.get("children") or ())
+                            if isinstance(child, str)
+                            and TICKET_RE.fullmatch(child) is not None
+                        ),
                     )
                 )
         return tuple(sorted(issues, key=lambda issue: issue.id))
@@ -383,8 +586,14 @@ def merge_linear_titles(
 ) -> tuple[ModelFloorLinearIssue, ...]:
     """The status text file gives each issue its status type; the JSON snapshot gives its title (and any issue only it holds)."""
     titles = {issue.id: issue.title for issue in titled if issue.title}
+    children = {issue.id: issue.children for issue in titled if issue.children}
     merged = {
-        issue.id: issue.model_copy(update={"title": titles.get(issue.id, issue.title)})
+        issue.id: issue.model_copy(
+            update={
+                "title": titles.get(issue.id, issue.title),
+                "children": children.get(issue.id, issue.children),
+            }
+        )
         for issue in issues
     }
     for issue in titled:
@@ -414,15 +623,45 @@ def newest_dated_file(directory: Path, filename: str) -> Path | None:
         return newest / filename if newest is not None else None
 
 
-def load_placement(path: Path) -> tuple[ModelHostCapacityAdvertisement, ...]:
+def read_placement(path: Path) -> ModelFloorPlacementReading:
+    """The host advertisements, read tolerantly: a field the model does not declare is ignored and named, a row that
+    still fails validation is skipped and named. The file being unreadable or not a list still refuses (OMN-23435)."""
     with _source(path):
         if not path.exists():
-            return ()
+            return ModelFloorPlacementReading()
         data = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(data, list):
             raise ValueError("expected a JSON list of host advertisements")
-        hosts = (ModelHostCapacityAdvertisement.model_validate(value) for value in data)
-        return tuple(sorted(hosts, key=lambda host: host.host_name))
+        declared = set(ModelHostCapacityAdvertisement.model_fields)
+        hosts: list[ModelHostCapacityAdvertisement] = []
+        unknown: list[str] = []
+        unreadable: list[str] = []
+        for index, value in enumerate(data):
+            if not isinstance(value, dict):
+                unreadable.append(f"row {index}: not a JSON object")
+                continue
+            name = str(value.get("host_name") or f"row {index}")
+            unknown.extend(f"{name}.{key}" for key in sorted(set(value) - declared))
+            try:
+                hosts.append(
+                    ModelHostCapacityAdvertisement.model_validate(
+                        {key: val for key, val in value.items() if key in declared}
+                    )
+                )
+            except ValidationError as exc:
+                first = exc.errors()[0]
+                unreadable.append(
+                    f"{name}: {'.'.join(str(part) for part in first['loc'])} {first['msg']}"
+                )
+        return ModelFloorPlacementReading(
+            hosts=tuple(sorted(hosts, key=lambda host: host.host_name)),
+            unknown_fields=tuple(unknown),
+            unreadable_rows=tuple(unreadable),
+        )
+
+
+def load_placement(path: Path) -> tuple[ModelHostCapacityAdvertisement, ...]:
+    return read_placement(path).hosts
 
 
 def load_stoppages(path: Path) -> tuple[ModelFloorStoppage, ...]:
@@ -438,6 +677,7 @@ def load_stoppages(path: Path) -> tuple[ModelFloorStoppage, ...]:
                 recurring=value.get("recurring", False),
                 tickets=value.get("tickets", ()),
                 last_seen=value.get("last_seen", ""),
+                resolved_at=value.get("resolved_at", ""),
             )
             for value in data.get("classes", [])
             if "class" in value
@@ -631,20 +871,6 @@ def is_section_heading(label: str, text: str) -> bool:
     return (
         re.search(rf"^#{{1,6}}\s+{re.escape(label)}(?![\w.])", text, re.MULTILINE)
         is not None
-    )
-
-
-def _with_table_evidence(
-    task: ModelFloorManifestTask, row: ModelFloorTableTask | None
-) -> ModelFloorManifestTask:
-    """A written task with the tickets and pull requests the plans-today row of the same label found for it."""
-    if row is None:
-        return task
-    return task.model_copy(
-        update={
-            "tickets": tuple(dict.fromkeys((*task.tickets, *row.tickets))),
-            "prs": tuple(sorted({*task.prs, *row.prs})),
-        }
     )
 
 
@@ -880,6 +1106,45 @@ def _number(value: str) -> float | None:
     return float(match.group(1)) if match else None
 
 
+_SIZE = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*([KMGT]?)i?B?\s*$", re.IGNORECASE)
+_TO_GB = {"": 1 / 1024**3, "K": 1 / 1024**2, "M": 1 / 1024, "G": 1.0, "T": 1024.0}
+
+
+def _size_gb(text: str) -> float | None:
+    """``123.2G`` as 123.2; None for ``-`` or anything that is not a size."""
+    match = _SIZE.match(text)
+    return float(match.group(1)) * _TO_GB[match.group(2).upper()] if match else None
+
+
+def _disks(cells: dict[str, str]) -> tuple[ModelFloorPoolDisk, ...]:
+    """Every ``disk_<name>=free/total/pct`` cell whose free and total sizes read; a cell that does not read is left out."""
+    disks: list[ModelFloorPoolDisk] = []
+    for key, value in cells.items():
+        if not key.startswith("disk_"):
+            continue
+        free, _, rest = value.partition("/")
+        total = rest.partition("/")[0]
+        free_gb, total_gb = _size_gb(free), _size_gb(total)
+        if free_gb is not None and total_gb:
+            disks.append(
+                ModelFloorPoolDisk(
+                    name=key.removeprefix("disk_"), free_gb=free_gb, total_gb=total_gb
+                )
+            )
+    return tuple(disks)
+
+
+def _pressure(
+    cells: dict[str, str],
+) -> tuple[float | None, Literal["", "psi", "level"]]:
+    """The Linux ``mempsi`` figure when the reading has one, else the macOS ``pressure`` level."""
+    psi = _number(cells.get("mempsi", ""))
+    if psi is not None:
+        return psi, "psi"
+    level = _number(cells.get("pressure", ""))
+    return (level, "level") if level is not None else (None, "")
+
+
 def parse_pool_reading(line: str, read_at: datetime) -> ModelFloorPoolReading:
     """One ``host:key=value,...`` reading of the landing placement's pool read (``Reading`` as the runner prints it)."""
     host, _, rest = line.partition(":")
@@ -906,9 +1171,13 @@ def parse_pool_reading(line: str, read_at: datetime) -> ModelFloorPoolReading:
         _number(cells.get("lane_slots", "") or cells.get("slots", "")),
         _number(cells.get("lane_slots", "")),
     )
+    pressure, pressure_kind = _pressure(cells)
     return ModelFloorPoolReading(
         host=host,
         read_at=read_at,
+        disks=_disks(cells),
+        mem_pressure=pressure,
+        mem_pressure_kind=pressure_kind,
         cores=int(cores) if cores is not None else None,
         load1=_number(cells.get("load1", "")),
         busy_cores=_number(cells.get("busy", "")),
@@ -936,6 +1205,35 @@ def load_pool(path: Path) -> tuple[ModelFloorPoolReading, ...] | None:
         )
 
     return _optional(read)
+
+
+def load_host_drift(path: Path) -> ModelFloorHostDrift | None:
+    """The host-drift fleet projection (``fleet.json``): when it was folded, and per host its newest heartbeat and its open items."""
+
+    def read() -> ModelFloorHostDrift:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return ModelFloorHostDrift(
+            folded_at=_utc(data["folded_at"]),
+            hosts=tuple(
+                ModelFloorDriftHost(
+                    host=str(row["host"]),
+                    last_heartbeat_at=_utc(row["last_heartbeat_at"])
+                    if row.get("last_heartbeat_at")
+                    else None,
+                    open_items=len(row.get("open") or ()),
+                )
+                for row in data["hosts"]
+            ),
+        )
+
+    return _optional(read)
+
+
+def host_drift_cause(path: Path) -> str:
+    """Why the fleet projection is unread, in words the Machines tab can show; empty when it reads."""
+    if not path.exists():
+        return f"the host-drift fleet projection {path.name} does not exist at the declared path"
+    return f"the host-drift fleet projection {path.name} exists but could not be parsed"
 
 
 def load_host_table(path: Path) -> tuple[ModelFloorHostRow, ...] | None:
@@ -968,6 +1266,19 @@ def _pid_alive(pid: int) -> bool:
     return True
 
 
+def _runner_alive(pid: int) -> bool | None:
+    """Only ESRCH proves an exited runner; permission and transport errors do not prove death."""
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except (OSError, OverflowError):
+        return None
+    return True
+
+
 def load_placed(
     directory: Path, lane_min_id: int
 ) -> tuple[ModelFloorPlacedHost, ...] | None:
@@ -997,12 +1308,22 @@ def load_placed(
     return _optional(read)
 
 
+def _output_written_at(receipt_path: Path) -> datetime | None:
+    """When the runner last wrote the lane's streamed output (the ``.out`` beside the receipt); None when absent or unread."""
+    try:
+        stamp = receipt_path.with_suffix(".out").stat().st_mtime
+        return datetime.fromtimestamp(stamp, tz=UTC)
+    except (OSError, OverflowError, ValueError):
+        return None
+
+
 def _receipt_of(path: Path, result_chars: int) -> ModelFloorReceipt | None:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
         cloud = _mapping(data.get("cloud"))
         state = _mapping(cloud.get("session_state"))
         ended = data.get("ended_at")
+        pid = data.get("pid")
         return ModelFloorReceipt(
             lane=str(data["lane"]),
             run_id=str(data.get("run_id") or ""),
@@ -1011,10 +1332,13 @@ def _receipt_of(path: Path, result_chars: int) -> ModelFloorReceipt | None:
             final=bool(data.get("final")),
             started_at=_utc(data["started_at"]),
             ended_at=_utc(ended) if isinstance(ended, str) else None,
+            runner_alive=_runner_alive(pid) if type(pid) is int and pid > 0 else None,
+            output_at=_output_written_at(path),
             model=str(data.get("model") or ""),
             ticket=str(data.get("ticket") or ""),
             placement=str(data.get("placement") or ""),
             account=str(cloud.get("account") or ""),
+            login=str(data.get("login") or ""),
             pr_heads=tuple(
                 str(h) for h in data.get("pr_heads") or () if isinstance(h, str)
             ),
@@ -1031,29 +1355,131 @@ def _receipt_of(path: Path, result_chars: int) -> ModelFloorReceipt | None:
 
 
 def load_receipts(
-    directory: Path, *, now: datetime, window_hours: int, glob: str, result_chars: int
+    directory: Path,
+    *,
+    now: datetime,
+    window_hours: int,
+    glob: str,
+    result_chars: int,
+    scan_workers: int,
 ) -> tuple[ModelFloorReceipt, ...] | None:
-    """The newest receipt file of each lane directory touched inside the window (the directory holds thousands)."""
+    """The newest receipt file of each lane directory touched inside the window (the directory holds thousands).
+
+    Whether a directory was touched inside the window is one metadata read per directory, tens of thousands of them,
+    and each waits on the disk when the process runs in the Background class; they are read ``scan_workers`` at a time.
+    """
+
+    def touched(entry: os.DirEntry[str]) -> bool:
+        return entry.is_dir() and entry.stat().st_mtime >= since
+
+    def newest_receipt(entry: os.DirEntry[str]) -> ModelFloorReceipt | None:
+        files = [
+            p for p in Path(entry.path).glob(glob) if not p.name.endswith(".job.json")
+        ]
+        newest = max(files, key=lambda p: p.stat().st_mtime, default=None)
+        return _receipt_of(newest, result_chars) if newest else None
+
+    since = now.timestamp() - window_hours * 3600
 
     def read() -> tuple[ModelFloorReceipt, ...]:
-        since = now.timestamp() - window_hours * 3600
-        found: list[ModelFloorReceipt] = []
-        with os.scandir(directory) as entries:
-            for entry in entries:
-                if not entry.is_dir() or entry.stat().st_mtime < since:
-                    continue
-                files = [
-                    p
-                    for p in Path(entry.path).glob(glob)
-                    if not p.name.endswith(".job.json")
-                ]
-                newest = max(files, key=lambda p: p.stat().st_mtime, default=None)
-                receipt = _receipt_of(newest, result_chars) if newest else None
-                if receipt is not None:
-                    found.append(receipt)
+        with os.scandir(directory) as scanned:
+            entries = list(scanned)
+        with ThreadPoolExecutor(max_workers=scan_workers) as pool:
+            recent = [
+                e
+                for e, keep in zip(entries, pool.map(touched, entries), strict=True)
+                if keep
+            ]
+            found = [r for r in pool.map(newest_receipt, recent) if r is not None]
         return tuple(sorted(found, key=lambda r: (r.started_at, r.lane)))
 
     return _optional(read)
+
+
+def load_lane_processes(
+    ledger: tuple[ModelFloorLedgerRow, ...],
+    *,
+    directory: Path,
+    plugin_root: Path | None,
+    now: datetime,
+    grace_seconds: int,
+    window_minutes: int = 180,
+) -> tuple[ModelFloorLaneProcess, ...] | None:
+    """Reuse the controller's group/tag probe; never signal workers or infer death from ledger silence.
+
+    These leases and the process table belong to the controller host, just like the placement markers.
+    An unread directory, lease or table stays unknown. A readable directory with no lease or worker tag
+    proves absence after the claim-before-spawn grace period.
+    """
+    claims: dict[str, ModelFloorLedgerRow] = {}
+    terminals: dict[str, datetime] = {}
+    newest: dict[str, datetime] = {}
+    for row in ledger:
+        newest[row.lane] = max(newest.get(row.lane, row.ts), row.ts)
+        if row.kind == "TERMINAL":
+            terminals[row.lane] = max(terminals.get(row.lane, row.ts), row.ts)
+        if (
+            row.kind == "CLAIM"
+            and re.fullmatch(r"landing-(?:cause-)?L\d+", row.lane)
+            and (row.lane not in claims or row.ts > claims[row.lane].ts)
+        ):
+            claims[row.lane] = row
+    claims = {
+        lane: claim
+        for lane, claim in claims.items()
+        if (lane not in terminals or terminals[lane] < claim.ts)
+        and (now - newest[lane]).total_seconds() <= window_minutes * 60
+    }
+    if not claims:
+        return ()
+    if plugin_root is None:
+        return None
+    try:
+        # A readable worker directory is the positive control for a missing lease file.
+        # One directory read, no stat per entry: the directory holds tens of thousands of lease directories, and a stat of
+        # each took more than 5 minutes as the publisher's tick (OMN-22699); a DirEntry knows its type from the read.
+        with os.scandir(directory / "workers") as scanned:
+            worker_ids = {e.name for e in scanned if e.is_dir()}
+        workers = runpy.run_path(
+            str(plugin_root / "skills/merge-drain/scripts/landing_workers.py")
+        )
+        table = workers["read_process_table"]()
+        if table is None:
+            return None
+        found: list[ModelFloorLaneProcess] = []
+        for lane, claim in claims.items():
+            if (now - claim.ts).total_seconds() < grace_seconds:
+                continue
+            lease_id = int(lane.rsplit("L", 1)[1])
+            lease = workers["read_lease"](directory, lease_id)
+            if lease is None:
+                if f"{lease_id:06d}" in worker_ids:
+                    # A present but unreadable lease cannot be treated as a missing worker.
+                    continue
+                alive = any(
+                    tag.startswith(f"landing-lease-{lease_id}-")
+                    and not p.stat.startswith("Z")
+                    for p in table
+                    for tag in p.tags
+                )
+            else:
+                # The lane's lease number is unique; claim time identifies the observation's ownership.
+                group, tagged = workers["probe"](lease, table)
+                alive = bool(group or tagged)
+            found.append(
+                ModelFloorLaneProcess(
+                    lane=lane,
+                    started_at=claim.ts,
+                    observed_at=now,
+                    alive=alive,
+                    detail="controller worker group or tag is live"
+                    if alive
+                    else "controller worker group and tag are absent",
+                )
+            )
+        return tuple(found)
+    except (OSError, ValueError, KeyError, TypeError, ImportError):
+        return None
 
 
 def load_cloud_accounts(path: Path) -> tuple[ModelFloorCloudAccount, ...] | None:
@@ -1207,10 +1633,18 @@ def load_runner_fleet(path: Path) -> ModelFloorRunnerFleet | None:
 
 def load_runner_fleet_strict(path: Path) -> ModelFloorRunnerFleet:
     data = json.loads(path.read_text(encoding="utf-8"))
+    if isinstance(data, dict) and data.get("status") == "unread":
+        raise SourceRefusedError(str(data.get("reason") or "fleet producer unread"))
     return ModelFloorRunnerFleet(
         observed_at=_utc(data["observed_at"]),
         runners=tuple(
-            ModelFloorRunner(host_label=str(row["host"]), status=row["status"])
+            ModelFloorRunner(
+                host_label=str(row["host"]),
+                status=row["status"],
+                runner_name=row.get("runner_name"),
+                label_class=row.get("label_class"),
+                labels=tuple(row.get("labels") or ()),
+            )
             for row in data["runners"]
         ),
     )
@@ -1310,3 +1744,55 @@ def load_lane_containers(
             )
         )
     return tuple(verdicts)
+
+
+def load_required_contexts(path: Path) -> tuple[ModelFloorRequiredContexts, ...] | None:
+    """The queue-status tick's saved map; None when the file is absent or unreadable (the caller records why).
+
+    A key is ``repository`` or ``repository:branch``; a value is the context list, or an object with ``contexts``
+    and ``read_at``.
+    """
+    with _source(path):
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            raise ValueError("required-contexts map is not an object")
+        found: list[ModelFloorRequiredContexts] = []
+        for key, value in sorted(data.items()):
+            names = value.get("contexts") if isinstance(value, dict) else value
+            read_at = value.get("read_at") if isinstance(value, dict) else None
+            if not isinstance(names, list):
+                raise ValueError(f"required contexts of {key} are not a list")
+            found.append(
+                ModelFloorRequiredContexts(
+                    repo=key.partition(":")[0],
+                    contexts=tuple(str(name) for name in names),
+                    read_at=_utc(read_at) if isinstance(read_at, str) else None,
+                )
+            )
+        return tuple(found)
+
+
+def load_goal_rows(
+    path: Path, closed_verdicts: tuple[str, ...]
+) -> tuple[ModelFloorGoalRow, ...]:
+    """The open rows of the goal file: ``id | what | verdict | next action | probe``. Header lines (``key: value``) and
+    ``->`` sub-rows are not rows; a row whose verdict is in ``closed_verdicts`` is not open."""
+    with _source(path):
+        text = path.read_text(encoding="utf-8")
+        rows: list[ModelFloorGoalRow] = []
+        for line in text.splitlines():
+            cells = [cell.strip() for cell in line.split(" | ")]
+            if line.startswith(("->", "Format:")) or len(cells) < 3 or not cells[0]:
+                continue
+            if " " in cells[0] or cells[2].upper() in closed_verdicts:
+                continue
+            rows.append(
+                ModelFloorGoalRow(
+                    row_id=cells[0],
+                    what=cells[1],
+                    verdict=cells[2],
+                    next_action=cells[3] if len(cells) > 3 else "",
+                    probe=cells[4] if len(cells) > 4 else "",
+                )
+            )
+        return tuple(rows)

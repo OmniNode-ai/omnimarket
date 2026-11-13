@@ -7,7 +7,7 @@ contract_version: {major: 1, minor: 0, patch: 0}
 node_type: compute
 node_version: {major: 1, minor: 0, patch: 0}
 description: >
-  Decide the seven silent-failure alarms from facts a caller read, without I/O: lab-fill placed
+  Decide the eight silent-failure alarms from facts a caller read, without I/O: lab-fill placed
   under half of what it dispatched over two consecutive runs, or one lane refusal reason on most
   of a run; the queue-status trend file older than 40 minutes while the landing controller is
   live; a pool host that ran lanes in the last hour and sent no hook event for 30 minutes; an
@@ -18,8 +18,12 @@ description: >
   reinstall did; and launchd jobs that exit nonzero on consecutive observed runs or miss their
   interval, with one episode per job and cause for remote-lane dispatch, a cooldown per job and
   cause, a cap on episodes opened in one tick, and a delayed push when no CLAIM cites the episode.
-  A host whose omni plugin, dispatch venv, installed controller or installed launchd lib has
+  The ticket closer's last TERMINAL or run record older than twice its declared interval
+  (OMN-20718), whether it ran and failed or its unit is gone. A host whose omni plugin, dispatch venv, installed controller or installed launchd lib has
   differed from merged main for over an hour is read from the host-drift fleet fold.
+  A fold file that does not exist is a declaration question (OMN-23275): given the fold-absence fact the
+  caller read, the finding names the hosts the manifest gives the host-drift unit and whether the
+  reading host is one of them.
   Each verdict carries the FRICTION cells and the alert text.
 handler:
   module: omnimarket.nodes.node_silent_failure_alarm_compute.handlers.handler_placement_share_alarm
@@ -42,6 +46,12 @@ handler_routing:
         module: omnimarket.nodes.node_silent_failure_alarm_compute.handlers.handler_tick_liveness_alarm
       input_model: omnimarket.nodes.node_silent_failure_alarm_compute.models.model_tick_liveness_alarm.ModelTickLivenessRequest
       output_model: omnimarket.nodes.node_silent_failure_alarm_compute.models.model_tick_liveness_alarm.ModelTickLivenessResult
+    - operation: decide_closer_staleness
+      handler:
+        name: HandlerCloserStalenessAlarm
+        module: omnimarket.nodes.node_silent_failure_alarm_compute.handlers.handler_closer_staleness_alarm
+      input_model: omnimarket.models.silent_failure_alarm.model_closer_staleness_alarm.ModelCloserStalenessRequest
+      output_model: omnimarket.models.silent_failure_alarm.model_closer_staleness_alarm.ModelCloserStalenessResult
     - operation: decide_throughput_results
       handler:
         name: HandlerThroughputResultsAlarm
@@ -70,8 +80,8 @@ handler_routing:
       handler:
         name: HandlerRunningVsMergedAlarm
         module: omnimarket.nodes.node_silent_failure_alarm_compute.handlers.handler_running_vs_merged_alarm
-      input_model: omnimarket.nodes.node_silent_failure_alarm_compute.models.model_running_vs_merged_alarm.ModelRunningVsMergedRequest
-      output_model: omnimarket.nodes.node_silent_failure_alarm_compute.models.model_running_vs_merged_alarm.ModelRunningVsMergedResult
+      input_model: omnimarket.models.model_running_vs_merged_alarm.ModelRunningVsMergedRequest
+      output_model: omnimarket.models.model_running_vs_merged_alarm.ModelRunningVsMergedResult
 descriptor:
   node_archetype: compute
   purity: pure

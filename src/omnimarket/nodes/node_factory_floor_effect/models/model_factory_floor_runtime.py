@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.models.model_factory_floor_input import (
     ModelFloorMachineDecl,
+    ModelFloorProcessDecl,
 )
 from omnimarket.models.model_lane_container_budget import (
     ModelLaneContainerBudgetDeclaration,
@@ -27,6 +28,28 @@ class ModelFactoryFloorSources(BaseModel):
     friction_report_relpath: str = Field(min_length=1)
     linear_titles_glob: str = Field(min_length=1)
     runner_fleet_relpath: str = Field(min_length=1)
+    # The host-drift fleet projection node_host_drift_fleet folds (OMN-21867); the Machines tab reads each host's heartbeat from it.
+    host_drift_relpath: str = Field(min_length=1)
+    # The required contexts the queue-status tick saved: a map keyed by repository (or ``repository:branch``).
+    required_contexts_relpath: str = Field(min_length=1)
+    # The record node_factory_floor_unresolved_effect writes: the ledger rows older than the window that nothing resolved (OMN-19998).
+    unresolved_rows_relpath: str = Field(min_length=1)
+
+
+class ModelFactoryFloorSourceBars(BaseModel):
+    """Minutes after which a source reads ``stale``. One key per source the line board depends on; each is required."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    plans: int = Field(gt=0)
+    watcher: int = Field(gt=0)
+    ledger: int = Field(gt=0)
+    plans_today: int = Field(gt=0)
+    linear: int = Field(gt=0)
+    running_evidence: int = Field(gt=0)
+    required_contexts: int = Field(gt=0)
+    goal: int = Field(gt=0)
+    placement: int = Field(gt=0)
 
 
 class ModelFactoryFloorLaneSources(BaseModel):
@@ -43,12 +66,26 @@ class ModelFactoryFloorLaneSources(BaseModel):
     pool_receipt: str = Field(min_length=1)
     receipt_glob: str = Field(min_length=1)
     receipt_window_hours: int = Field(gt=0)
+    # How many lane directories are examined at once: the scan is one metadata read per directory and the directory
+    # holds tens of thousands, so one at a time is minutes under the Background clamp the module tick runs in.
+    receipt_scan_workers: int = Field(gt=0)
     result_chars: int = Field(gt=0)
     placement_dir_env: str = Field(min_length=1)
     placement_dir_fallback: str = Field(min_length=1)
     lane_marker_min_id: int = Field(gt=0)
-    cloud_accounts_file: str = Field(min_length=1)
     host_table_env: str = Field(min_length=1)
+    controller_dir_env: str = Field(min_length=1)
+    controller_dir_fallback: str = Field(min_length=1)
+    process_start_grace_seconds: int = Field(ge=0)
+
+
+class ModelFactoryFloorCloudSource(BaseModel):
+    """The existing cloud node's read operation, called through the canonical runtime."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    node_name: str = Field(min_length=1)
+    action: str = Field(min_length=1)
+    timeout_seconds: int = Field(gt=0)
 
 
 class ModelFactoryFloorLimitSources(BaseModel):
@@ -80,6 +117,22 @@ class ModelFactoryFloorOutput(BaseModel):
     relpath: str = Field(min_length=1)
 
 
+class ModelLedgerArchiveWindow(BaseModel):
+    """Where the file ledger's split archives are and how they are named: the window read caches each archive once (OMN-19998).
+
+    The names are the deployment's, in its overlay: the variable holding the live ledger's path, the variable that says the ledger
+    record is the file, the archive directory beside the live file, the archive file pattern and the date inside an archive's name.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    ledger_path_env: str = Field(min_length=1)
+    ledger_record_env: str = Field(min_length=1)
+    archive_subdir: str = Field(min_length=1)
+    archive_glob: str = Field(min_length=1)
+    archive_date_pattern: str = Field(min_length=1)
+
+
 class ModelFactoryFloorRuntime(BaseModel):
     """The ``runtime`` block of contract.yaml."""
 
@@ -88,11 +141,24 @@ class ModelFactoryFloorRuntime(BaseModel):
     home_env: str = Field(min_length=1)
     plans_kb_env: str = Field(min_length=1)
     overlay_file_env: str = Field(min_length=1)
+    # The landing goal's scope overlay (the one the simple floor reads): the stopped-lane list needs it, and lists none unread.
+    goal_scope_overlay_id: str = Field(min_length=1)
+    goal_scope_file_env: str = Field(min_length=1)
+    goal_ticket_rule_overlay_id: str = Field(min_length=1)
+    goal_ticket_rule_file_env: str = Field(min_length=1)
     plugin_root_env: str = Field(min_length=1)
     phoenix_url_env: str = Field(min_length=1)
     ledger_window_days: int = Field(gt=0)
     ledger_cut_chars: int = Field(gt=0)
     ledger_timeout_seconds: int = Field(gt=0)
+    # The row kinds the effect keeps from the window.
+    ledger_kinds: tuple[str, ...] = Field(min_length=1)
+    # Hours after which the unresolved step's record reads unread (its own margin past the window's edge is the other bound).
+    unresolved_max_age_hours: int = Field(gt=0)
+    source_max_age_min: ModelFactoryFloorSourceBars
+    # The plans repository file with the goal's rows, and the verdicts that close a row.
+    goal_relpath: str = Field(min_length=1)
+    goal_closed_verdicts: tuple[str, ...] = Field(min_length=1)
     watcher_max_age_min: int = Field(gt=0)
     manifest_suffix: str = Field(min_length=1)
     plan_header_keys: tuple[str, ...] = Field(min_length=1)
@@ -100,6 +166,7 @@ class ModelFactoryFloorRuntime(BaseModel):
     heading_task_patterns: tuple[str, ...] = Field(min_length=1)
     sources: ModelFactoryFloorSources
     lane_sources: ModelFactoryFloorLaneSources
+    cloud_source: ModelFactoryFloorCloudSource
     limit_sources: ModelFactoryFloorLimitSources
     container_source: ModelFactoryFloorContainerSource
     output: ModelFactoryFloorOutput
@@ -146,6 +213,9 @@ class ModelFactoryFloorOverlay(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     plan_path_contains: tuple[str, ...] = Field(min_length=1)
+    # Optional argv prefix ending in `onex node`, e.g. ssh to the reachable state owner.
+    # Empty calls the node on the publisher. Paths are resolved by the node on its own host.
+    cloud_accounts_node_command: tuple[str, ...] = ()
     # The machines drawn as bays, in order. A machine not listed here is never drawn, whatever the pool read holds.
     machines: tuple[ModelFloorMachineDecl, ...] = ()
     # The shared lab host table (caps, repair), relative to the registry home, for a deployment where the host_table_env
@@ -159,3 +229,14 @@ class ModelFactoryFloorOverlay(BaseModel):
     container_read_line: str = ""
     container_hosts: tuple[ModelFactoryFloorContainerHost, ...] = ()
     container_budgets: tuple[ModelLaneContainerBudgetDeclaration, ...] = ()
+    # The ledger reader's row source for the window read (its ``--source``: file, db or compare; the reader refuses another).
+    # None names no source and leaves the reader its own default, which on a host whose ledger record is the bus is the bus read.
+    ledger_source: str | None = Field(default=None, min_length=1)
+    # Where the file ledger's split archives are, so the window read keeps each archive's rows in the source read cache and reads only
+    # the live ledger each cycle (OMN-19998). Absent: the window is read as before.
+    ledger_archives: ModelLedgerArchiveWindow | None = None
+    # The line board's declarations (OMN-22368). No default: an overlay without them is refused by name.
+    processes: tuple[ModelFloorProcessDecl, ...]
+    roles: tuple[str, ...]
+    release_required_repos: tuple[str, ...]
+    held_gates: tuple[str, ...]

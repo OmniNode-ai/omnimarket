@@ -12,30 +12,36 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 from collections import OrderedDict
 from collections.abc import Callable
 from typing import Protocol, TypedDict
 from uuid import UUID
 
 from omnimarket.handlers.handler_lane_intake import LaneIntakeRefusedError
+from omnimarket.inference.secret_store_resolver import SecretStoreConfigurationError
 from omnimarket.models.model_ticket_io import (
     EnumTicketOperation,
     ModelCreateTicketRequest,
     ModelCreateTicketResult,
+)
+from omnimarket.models.secret_store.model_secret_resolution_error import (
+    SecretResolutionError,
+)
+from omnimarket.models.ticket_write_io import (
+    ModelTicketWriteCompleted,
+    ModelTicketWriteFailed,
+    ModelTicketWriteRequest,
 )
 from omnimarket.nodes.node_create_ticket import (
     HandlerCreateTicket,
     TicketGuardRefusedError,
     TicketGuardUnavailableError,
 )
-from omnimarket.nodes.node_linear_ticket_write_effect.models.model_ticket_write_io import (
-    ModelTicketWriteCompleted,
-    ModelTicketWriteFailed,
-    ModelTicketWriteRequest,
-)
 
 Result = ModelTicketWriteCompleted | ModelTicketWriteFailed
 _RECORD_LIMIT = 1024
+_LOG = logging.getLogger(__name__)
 
 
 def _handler(lane: str) -> HandlerCreateTicket:
@@ -126,8 +132,17 @@ class HandlerLinearTicketWriteEffect:
                 return failed("guard_refused", exc.finding_codes)
             except (TicketGuardUnavailableError, LaneIntakeRefusedError):
                 return failed("guard_unavailable")
-            except Exception:
-                # Exception text may contain HTTP headers or adapter credentials.
+            except (SecretResolutionError, SecretStoreConfigurationError):
+                # The consumer cannot resolve the Linear key: say so, with the
+                # exception type only (its text is never put on a terminal).
+                _LOG.warning("linear ticket write: Linear key unresolved")
+                return failed("secret_unavailable", ["linear_api_key_unresolved"])
+            except Exception as exc:
+                # Exception text may contain HTTP headers or adapter credentials,
+                # so the log and the terminal carry the type name alone.
+                _LOG.warning(
+                    "linear ticket write: operation failed (%s)", type(exc).__name__
+                )
                 return failed("operation_failed")
             if result.status == "error":
                 return failed("invalid_request", result.finding_codes)

@@ -1,0 +1,108 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodeHookEventsByCorrelationReadEffect
+#
+# Route: GET /v1/projections/hook-events/by-correlation
+#
+# A parameterised read of the hook_events projection by correlation id, served
+# from the runtime's contract-declared HTTP mount. It was served by the hosted
+# onex-api service before; the caller tenant now comes from the injected
+# ProtocolHttpTenantIdentity resolver that the hosted edge supplies.
+name: "node_hook_events_by_correlation_read_effect"
+contract_name: "node_hook_events_by_correlation_read_effect"
+node_name: "node_hook_events_by_correlation_read_effect"
+node_type: "EFFECT_GENERIC"
+runtime_profiles:
+  - effects
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: "0.1.0"
+# This node is reached only through its HTTP mount and declares no bus topic, so
+# the node-drift liveness check, which models bus nodes, would read it as
+# UNWIRED_NODE. The gate's documented lifecycle exemption is used rather than
+# inventing a bus command path: a bus command carrying a tenant would be a
+# second, unauthenticated way to read another tenant's rows.
+lifecycle: experimental
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles:
+    - effects
+  idempotent: true
+description: >
+  Answers GET /v1/projections/hook-events/by-correlation: the hook_events rows
+  carrying one correlation id, for the authenticated caller's own tenant only,
+  as one of three explicit data states (found, not_found, projection_absent),
+  all HTTP 200. The tenant key of this projection is the tenant SLUG, where the
+  sibling delegation routes key on the tenant UUID; the two are not aligned. The
+  caller tenant is never read from the request: it comes from the bound
+  ProtocolHttpTenantIdentity resolver, and a mount with no resolver bound, or a
+  resolver that returns no tenant, refuses before any projection read. The event
+  payload is withheld unless include_payload=true. An unconfigured or
+  unreachable projection database is a 503, never an empty answer.
+
+input_model:
+  name: "ModelHookEventsReadRequest"
+  module: "omnimarket.nodes.node_hook_events_by_correlation_read_effect.models"
+  description: "One tenant-scoped read: resolved tenant slug, correlation id, limit and the payload opt-in."
+# Runtime-owned HTTP boundary. The prefix equals the route path, so a sibling
+# route under /v1/projections can be mounted later without an overlap.
+http_mount:
+  factory: "omnimarket.nodes.node_hook_events_by_correlation_read_effect.handlers.http_app:create_app"
+  path_prefix: "/v1/projections/hook-events/by-correlation"
+http_route:
+  handler:
+    name: HandlerHookEventsByCorrelation
+    module: omnimarket.nodes.node_hook_events_by_correlation_read_effect.handlers.handler_hook_events_by_correlation
+  path: "/v1/projections/hook-events/by-correlation"
+  methods: [GET]
+  projection: "hook_events"
+  max_correlation_id_length: 64
+  default_limit: 10
+  max_limit: 100
+  # Refusals mirror the hosted service: no resolver bound answers as it does
+  # with OIDC uninitialised; a resolver that returns no tenant answers as it
+  # does with no tenant (the code separates "sent nothing" from "did not resolve").
+  unbound_identity_detail: "OIDC authentication is not configured"
+  identity_unavailable_detail: "Identity provider is unavailable"
+  unauthorized_detail: "Unauthorized"
+  absent_credential_code: "auth.credential.absent"
+  invalid_credential_code: "auth.credential.invalid"
+  credential_headers: [x-api-key, authorization]
+  not_configured_detail: "Ledger projection database is not configured"
+  unavailable_detail: "Ledger projection database is unavailable"
+# The projection database comes from the projection read binding overlay (the
+# repository's existing binding surface, its database reference resolved there);
+# no handler reads an environment variable and no value is named in this file.
+dependencies:
+  - name: "tenant_identity"
+    type: "protocol"
+    class_name: "ProtocolHttpTenantIdentity"
+    module: "omnimarket.protocols.protocol_http_tenant_identity"
+    description: "Resolves the authenticated caller tenant from request headers. When no resolver is bound by the host, the mount builds a bearer-token resolver from this node's overlay document (node_hook_events_by_correlation_read_effect/overlay.yaml under the overlay roots); without that document it refuses every request."
+    required: false
+  - name: "hook_events_reader"
+    type: "protocol"
+    class_name: "ProtocolHookEventsReader"
+    module: "omnimarket.nodes.node_hook_events_by_correlation_read_effect.protocols.protocol_hook_events_reader"
+    description: "The repository the read goes through: a fake in the in-memory profile, the database adapter over the projection read binding overlay in the deployed runtime."
+    required: false
+capabilities:
+  - name: "hook_events_by_correlation_http_read"
+    description: "Serve GET /v1/projections/hook-events/by-correlation with tenant-scoped, three-state answers."
+metadata:
+  transport_type: database
+  description: "Hook-events by-correlation projection read, served from the runtime."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-11-03"
+  ticket: "OMN-22341"
+  tags:
+    - "effect"
+    - "projection"
+    - "read"
+    - "http"

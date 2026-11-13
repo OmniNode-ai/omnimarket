@@ -14,7 +14,7 @@ import json
 import sys
 from importlib import resources
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import click
 import yaml
@@ -26,7 +26,7 @@ from omnimarket.handlers.scm.handler_scm_dispatch import ScmBusCaller
 from omnimarket.handlers.scm.scm_cli import _open_bus
 from omnimarket.lab_work.cli import _with_bus_options
 from omnimarket.models.scm import ModelScmTerminal, ModelScmTopics
-from omnimarket.nodes.node_linear_ticket_write_effect.models.model_ticket_write_io import (
+from omnimarket.models.ticket_write_io import (
     ModelTicketWriteRequest,
 )
 
@@ -41,6 +41,32 @@ def load_ticket_topics() -> ModelScmTopics:
     return ModelScmTopics(
         command=dispatch["command_topic"], **dispatch["terminal_events"]
     )
+
+
+_LANE_DECLARATION_FIX = (
+    "export ONEX_WORKSPACE_CONFIG_ROOT=<config root holding config/lab/ci_bus_lanes.yaml> "
+    "or pass --omnibase-path <workspace root>"
+)
+
+
+def _bus_unavailable_answer(
+    correlation_id: UUID, exc: LabRunBusError | InfraConnectionError
+) -> dict[str, str]:
+    """The bus_unavailable terminal, naming why the bus could not be opened.
+
+    A bus-opener refusal carries a message that names fields, files and
+    variables only (never a credential), and a missing lane declaration is the
+    one cause a host fixes itself, so its remedy is stated. A broker connection
+    error keeps to its type name: its text can carry connection details.
+    """
+    answer = {"status": "bus_unavailable", "correlation_id": str(correlation_id)}
+    if isinstance(exc, LabRunBusError):
+        answer["detail"] = str(exc)
+        if "ci_bus_lanes.yaml" in str(exc):
+            answer["fix"] = _LANE_DECLARATION_FIX
+    else:
+        answer["detail"] = type(exc).__name__
+    return answer
 
 
 @click.group("ticket")
@@ -110,10 +136,10 @@ def _command(operation: str) -> click.Command:
                 )
             )
             sys.exit(75)
-        except (LabRunBusError, InfraConnectionError):
+        except (LabRunBusError, InfraConnectionError) as exc:
             click.echo(
                 json.dumps(
-                    {"status": "bus_unavailable", "correlation_id": str(correlation_id)}
+                    _bus_unavailable_answer(correlation_id, exc), sort_keys=False
                 )
             )
             sys.exit(69)

@@ -1,0 +1,89 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_automatic_fix_install_effect
+node_type: EFFECT_GENERIC
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+lifecycle: experimental
+description: >-
+  On each lab host tick, read a fresh local watcher snapshot and the existing
+  landing lab prover's exact-head passes. Compare each declared host install
+  with its released ref and proven open fix heads, compose their superset while
+  preserving the installed revision, and call the deployment-bound existing
+  installer. A conflicting incoming fix is dropped whole and named with its
+  head and paths; independent fixes continue. Read back the installed revision
+  and run the bound observation command before reporting installation.
+input_model:
+  name: ModelFixInstallRequest
+  module: omnimarket.nodes.node_automatic_fix_install_effect.models
+output_model:
+  name: ModelFixInstallResult
+  module: omnimarket.nodes.node_automatic_fix_install_effect.models
+handler:
+  module: omnimarket.nodes.node_automatic_fix_install_effect.handler
+  class: HandlerAutomaticFixInstall
+  input_model: omnimarket.nodes.node_automatic_fix_install_effect.models.ModelFixInstallRequest
+  output_model: omnimarket.nodes.node_automatic_fix_install_effect.models.ModelFixInstallResult
+entrypoint:
+  name: NodeAutomaticFixInstallEffect
+  module: omnimarket.nodes.node_automatic_fix_install_effect.node
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_automatic_fix_install_effect.handler:HandlerAutomaticFixInstall
+  handlers:
+    - operation: tick
+      topic: onex.cmd.omnimarket.automatic-fix-install-requested.v1
+      handler:
+        name: HandlerAutomaticFixInstall
+        module: omnimarket.nodes.node_automatic_fix_install_effect.handler
+terminal_event: onex.evt.omnimarket.automatic-fix-install-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.automatic-fix-install-requested.v1
+  external_trigger: >-
+    A lab host service invokes this node's runtime module with --serve. Every interval
+    publishes a typed tick and correlated terminal through RuntimeLocal. A host
+    timer can invoke the same module once. No shared container should attach
+    this node without its server-owned lab overlay and local clones.
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.automatic-fix-install-requested.v1]
+  publish_topics: [onex.evt.omnimarket.automatic-fix-install-completed.v1]
+externally_consumed_topics:
+  - onex.evt.omnimarket.automatic-fix-install-completed.v1
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: [effects]
+  idempotent: false
+  timeout_ms: 3600000
+overlay:
+  id: node_automatic_fix_install_effect
+  file_env: ONEX_FIX_INSTALL_OVERLAY
+  model: omnimarket.nodes.node_automatic_fix_install_effect.models.ModelFixInstallOverlay
+  trust_boundary: Server-owned paths and argv; bus requests contain no host, revision, path or command.
+host_service:
+  module: omnimarket.nodes.node_automatic_fix_install_effect.runtime_automatic_fix_install
+  arguments: [--serve, --interval-seconds, "60"]
+  environment: lab
+  installer: Deployment supplies a service overlay to the existing host installer.
+metadata:
+  transport_type: inmemory
+# Rebuild plan 4.1 join J9 (piece 9 to piece 10): a merged fix is installed on every declared target within an hour and
+# the read-back equals the merged head. The join handler answers piece 10's chain on the floor's emission contract: a
+# start then a success once every target reads back the merged head inside the deadline, a start then a typed failure
+# naming each target that did not, and nothing while the deadline has not passed.
+join_j9:
+  join_id: "J9"
+  from_piece: 9
+  to_piece: 10
+  emission_node: "node_automatic_fix_install_effect"
+  deadline_seconds: 3600
+  late_failure_code: "fix_install_not_within_deadline"
+  mismatch_failure_code: "fix_install_readback_mismatch"
+  refused_failure_code: "fix_install_refused"
+# The in-process join handler, bound here and not in handler_routing: it takes an emission sink and a policy through its
+# constructor, which the auto-wiring cannot supply.
+in_process_handlers:
+  join_j9:
+    handler:
+      module: "omnimarket.nodes.node_automatic_fix_install_effect.handlers.handler_fix_install_join_j9"
+      class: "HandlerFixInstallJoinJ9"

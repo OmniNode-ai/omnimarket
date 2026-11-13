@@ -1,0 +1,160 @@
+schema_version: 1.0.0
+ticket_id: OMN-22854
+title: 'node_floor_fill_orchestrator: the one writer of every floor lane'
+summary: 'A new orchestrator node, node_floor_fill_orchestrator: one pass reads the floor, resolves its RESERVED and SENT entries through the reducer, decides through the candidates compute, mints each task''s ticket, reserves under a conditional write of one state row and starts a lane on every startable line; it words the tick through the lines compute, stores the answer, and forwards read-only commands to the fill host.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22854-floor-fill-orchestrator
+  statement: One command at a time writes the fill's state row, under a conditional write made before any intent it authorises, and starts a lane on every startable floor line; a row or source it cannot read stops the pass with an UNKNOWN line and a failing exit code.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: With an empty backlog file, 20 free slots and four startable lines, the pass starts at least four lanes, one per line, each with a distinct key `floor:<line_id>:<task_id>` and its own task ticket -- falsifier: fixture test counts starts, distinct keys and distinct tickets, and asserts that the set of line ids started equals the set of the four lines'' ids; below 4 fails.'
+  - id: AC2
+    statement: 'AC2: A second pass inside the sent window starts nothing for the same keys, and a `send_key` for a key that is `SENT` or `RESERVED` starts nothing and returns a non-zero exit code -- falsifier: `-k second_pass_starts_nothing` and `-k send_key_refuses_held_key`.'
+  - id: AC3
+    statement: 'AC3: **One writer.** Two commands (two `tick`s, and separately a `tick` and a `send_key` for the same key) run as two instances from one synchronized snapshot against one real conditional store with one startable task: exactly one reserve write succeeds, one lane is started, and the other ends `STALE-STATE` at its first stale write with no intent after it -- falsifier: `-k one_writer_two_instances` and `-k send_key_one_writer`, counting starts in the scripted process effect.'
+  - id: AC4
+    statement: 'AC4: **Fail closed, with a failing status.** A row that is unreadable or unparseable, a store that cannot be reached and a missing overlay key each start nothing and write nothing; an unreadable floor, pool, brake or stop signal starts nothing while S2''s resolutions still run, and an unreadable ledger resolves nothing, starts nothing and leaves every entry exactly as it is; each prints `UNKNOWN fill-state:<cause>`, `STALE-STATE` or `UNKNOWN <source>-unread:<cause>` and answers `FAILED` (or `DEGRADED` when the pass ran on the facts it could read) with a non-zero `exit_code` -- falsifier: `-k state_unreadable_fails_closed`, `-k stale_seq_refused`, `-k floor_unread_is_unknown`, `-k existing_ticket_empty_state` (a task whose `Floor key:` ticket exists and whose state row is empty is started once on that ticket and mints nothing), `-k brake_and_stop_decide_before_mint` (both signals, zero Linear calls), `-k degraded_status_nonzero` and `-k timeout_order_refused` (an overlay with `command_timeout_seconds` not below `reserved_timeout_seconds` refuses naming both keys), asserting the printed line, the starts, the writes, the status and the exit code.'
+  - id: AC5
+    statement: 'AC5: **Retry after a crash.** With the real store and the scripted process effect, the process is killed after each state write (ticket stored, reserved) and, separately, after the start effect returned and before any confirmation (an external effect, not a write), and a second pass runs after each kill: a lane whose CLAIM was already appended ends `SENT`; an entry with no CLAIM before the timeout is left alone and, after it, cleared and offered once more as attempt 2 -- falsifier: `-k crash_after_each_write`, counting starts per `(key, attempt)`.'
+  - id: AC6
+    statement: 'AC6: A start the effect answers `failed` clears the entry at once (`StartFailed`), prints `MISSING line-stopped:` for the line and is offered again by the next tick; a start the effect answers `started` that never appends its CLAIM leaves the entry `RESERVED` (the line prints `NOTE line-at-capacity:`) until the timeout clears it -- falsifier: `-k failed_start_clears_at_once` and `-k started_without_claim_clears_at_timeout`. With `max_fill_lanes_per_line = 1` and a first task whose payload the gate refuses, the line''s second task is minted, reserved and started and the line prints no `MISSING line-stopped:` -- falsifier: `-k mint_refused_next_task_starts`.'
+  - id: AC7
+    statement: 'AC7: In landing-only mode (open count rising on two reads) and, separately, for a class that the stop signal refuses, no floor task is started -- falsifier: two fixtures, zero starts of kind `floor-task` in each.'
+  - id: AC9
+    statement: 'AC9: `-k duplicate_ticket_one_lane` (T11 criterion 5) passes here, with the orchestrator, the reducer and the stubbed Linear store. -- falsifier: `uv run pytest -k duplicate_ticket_one_lane` with the orchestrator, the reducer and the stubbed Linear store'
+  - id: AC10
+    statement: 'AC10: **The stored answer and the forward.** After a `tick`, `lines` prints exactly the tick''s rendered lines; with the stored answer aged `max_age_minutes + 1` it prints the stale line and no MISSING; with no row it prints the absent line; a `tick` run on another host is refused `wrong-host`, and an `inspect`, `lines` or `send_key` run on another host runs on the fill host through the scripted runner with its output and exit code relayed, while a failing forward and a forward past the command timeout print `UNKNOWN floor-fill-unreachable` and exit 75 -- falsifier: `-k lines_prints_stored_answer`, `-k lines_stale_and_absent`, `-k older_snapshot_cannot_publish`, `-k tick_wrong_host_refused`, `-k forward_to_fill_host`, `-k forward_send_key_preserves_argument` (the scripted remote entry receives exactly the supplied key, one element, and reserves and dispatches that key) and `-k forward_failure_unreachable`. An overlay with `tick_interval_seconds` not below `max_age_minutes` in seconds, or a `host_id` that is not an available row of the lab host table (a fixture table with an unavailable row and a missing row), refuses naming the keys -- falsifier: `-k interval_order_refused` and `-k fill_host_must_be_available_lab_host`.
+
+      AC10b: **First tick and the deadline on the fill host.** Against a real store with no row for the scope the first `tick` creates the row and starts the lanes, a second command racing it on the insert ends `STALE-STATE`, and a store that cannot be read is told apart from a missing row; a command that stalls on the fill host is ended by that host''s own entry at `command_timeout_seconds` and no process remains -- falsifier: `-k first_tick_creates_row`, `-k absent_row_vs_unreadable_store` and `-k entry_exits_process_at_timeout`.
+
+      (The ticket''s criterion AC10b rides on this entry: the contract schema binds only labels of AC plus digits.)'
+  - id: AC11
+    statement: 'AC11: G-NODE holds, and a scripted scenario (four startable lines, one refusing runner, one degraded read) gives equal decision projections and answer statuses on the in-memory and Redpanda legs -- falsifier: `-m floor_fill_parity -k orchestrator` with the Redpanda receipt in the PR body.'
+evidence_requirements:
+- kind: tests
+  description: The focused tests of the floor fill orchestrator node.
+  command: uv run pytest src/omnimarket/nodes/node_floor_fill_orchestrator -q --no-cov --tb=line
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22854-ac1
+  description: AC1 four startable lines with 20 free slots start one lane per line, each with its own key and ticket.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_orchestrator -q --no-cov --tb=line -k "four_lines_start_four_lanes_one_per_line"
+    cwd: .
+- id: dod-omn22854-ac2
+  description: AC2 a second pass inside the sent window starts nothing, and send_key on a held key starts nothing and fails.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_orchestrator -q --no-cov --tb=line -k "second_pass_starts_nothing or send_key_refuses_held_key"
+    cwd: .
+- id: dod-omn22854-ac3
+  description: 'AC3 two instances from one snapshot against a real conditional store: one reserve write, one lane, the other STALE-STATE.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_orchestrator -q --no-cov --tb=line -k "one_writer_two_instances or send_key_one_writer"
+    cwd: .
+- id: dod-omn22854-ac4
+  description: AC4 every unreadable source or row fails closed with the printed line, the status and a non-zero exit code.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_orchestrator -q --no-cov --tb=line -k "state_unreadable_fails_closed or stale_seq_refused or floor_unread_is_unknown or existing_ticket_empty_state or brake_and_stop_decide_before_mint or degraded_status_nonzero or timeout_order_refused or missing_overlay_key_refused or unreadable_ledger_resolves_nothing"
+    cwd: .
+- id: dod-omn22854-ac5
+  description: 'AC5 a kill after each state write and after the start effect, then a second pass: SENT with a CLAIM, left alone before the timeout and attempt 2 after it.'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_orchestrator -q --no-cov --tb=line -k "crash_after_each_write or crash_after_start_returned_before_confirmation"
+    cwd: .
+- id: dod-omn22854-ac6
+  description: AC6 a failed start clears at once; a started lane with no CLAIM holds the entry until the timeout; a refused mint moves to the line's next task.
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_orchestrator -q --no-cov --tb=line -k "failed_start_clears_at_once or started_without_claim_clears_at_timeout or mint_refused_next_task_starts"
+    cwd: .
+- id: dod-omn22854-ac7
+  description: AC7 landing-only mode and a stop signal start no floor task.
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_orchestrator -q --no-cov --tb=line -k "landing_only_starts_nothing or stop_signal_starts_nothing"
+    cwd: .
+- id: dod-omn22854-ac9
+  description: AC9 two tickets for one key still start exactly one lane.
+  source: manual
+  binds_ac:
+  - AC9
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_orchestrator -q --no-cov --tb=line -k "duplicate_ticket_one_lane"
+    cwd: .
+- id: dod-omn22854-ac10
+  description: 'AC10 and AC10b: the stored answer, the wrong-host refusal, the forward to the fill host, the overlay order and host-table refusals, the first tick, the racing insert, an unreadable store against a missing row, and a stalled command ending its own process at the deadline.'
+  source: manual
+  binds_ac:
+  - AC10
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_orchestrator -q --no-cov --tb=line -k "lines_prints_stored_answer or lines_stale_and_absent or older_snapshot_cannot_publish or tick_wrong_host_refused or forward_to_fill_host or forward_send_key_preserves_argument or forward_failure_unreachable or interval_order_refused or fill_host_must_be_available_lab_host"
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_orchestrator -q --no-cov --tb=line -k "first_tick_creates_row or absent_row_vs_unreadable_store or entry_exits_process_at_timeout"
+    cwd: .
+- id: dod-omn22854-ac11
+  description: 'AC11 G-NODE: contract loads, behaviour follows each overlay key, a missing key is refused naming it, and the named injected break (a store that ignores the expected version) turns the one-writer reading red.'
+  source: manual
+  binds_ac:
+  - AC11
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_orchestrator -q --no-cov --tb=line -k "contract_loads or config_variation or missing_key_refused or one_writer_control"
+    cwd: .
+- id: dod-omn22854-ac11-redpanda
+  description: AC11 the Redpanda leg equals the in-memory leg on the three-case scenario. The hosted verifier has no lab broker, so this unbound check belongs to the local Done gate; its receipt is in the pull request body.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-redpanda-parity-22854 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_orchestrator -q --no-cov -m "floor_fill_parity and kafka"
+    cwd: .
+- id: dod-omn22854-integration-proof
+  description: The focused command exits 0 on a lab host through lab-run; the task's lab step is none until T8, so the focused command is the proof. The hosted verifier cannot dispatch lab work, so this unbound check belongs to the local Done gate.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-focused-22854 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_orchestrator -q --no-cov
+    cwd: .
+- id: dod-omn22854-deploy-probe
+  description: 'Deploy probe: GitHub serves the shared scenario run model the parity test imports at the checked-out commit, with the shared row import and the parity result fields. The probe fails before this shared model exists and runs on the hosted verifier with GitHub access and Python.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: 'bash -o pipefail -c ''curl --fail --silent --show-error --header "Authorization: Bearer ${GH_TOKEN:?}" --header "Accept: application/vnd.github.raw+json" "https://api.github.com/repos/OmniNode-ai/omnimarket/contents/src/omnimarket/models/model_scenario_run.py?ref=$(git rev-parse HEAD)" | python3 -c ''\''''import ast, sys; tree = ast.parse(sys.stdin.read()); assert any(isinstance(n, ast.ImportFrom) and n.module == "omnimarket.models.model_scenario_row" for n in tree.body); model = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "ModelScenarioRun"); assert {"profile_id", "binding", "proof_eligible", "verdicts", "lines", "rows", "counts", "provenance"} <= {n.target.id for n in model.body if isinstance(n, ast.AnnAssign)}''\'''''''
+    cwd: .

@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Factory floor: delegation</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg" id="icon-svg">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<style>
+:root{--ink:#1c2024;--mute:#646b73;--line:#dfe2e6;--bg:#f6f7f8;--card:#fff;--red:#b3261e;--amber:#a56a00;--green:#1f7a4d;--blue:#2b6cb0;--grey:#9aa1a9}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+main{max-width:960px;margin:0 auto;padding:20px 16px 32px}
+.frozen{background:var(--red);color:#fff;border-radius:8px;padding:12px 16px;margin-bottom:12px;font-weight:650}
+.frozen.warn{background:var(--amber)}
+a{color:var(--blue);font-size:14px;text-decoration:none}.more{margin-top:18px}
+button{appearance:none;font:inherit;cursor:pointer}
+.tabs{display:flex;gap:6px;margin-bottom:14px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.tabs a{padding:8px 14px;border:1px solid transparent;border-bottom:0;border-radius:8px 8px 0 0;color:var(--mute);font-size:15px;font-weight:650}
+.tabs a[aria-selected="true"]{background:var(--card);border-color:var(--line);color:var(--ink);margin-bottom:-1px}
+.ship{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;background:var(--card);border:1px solid var(--line);border-left:8px solid var(--grey);border-radius:8px;padding:14px 16px;margin:0 0 14px}
+.ship.yes{border-left-color:var(--green)}.ship.no{border-left-color:var(--red)}
+.ship b{font-size:22px;line-height:1.2;display:block}.ship small{display:block;color:var(--mute);font-size:13px;margin-top:2px}
+.link{font-size:14px;font-weight:650;color:var(--blue);background:none;border:0;padding:4px 0}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(420px,1fr));gap:12px;margin:0 0 16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px 14px;display:grid;gap:8px;align-content:start;min-width:0}
+.card h2{font-size:17px;line-height:1.25;margin:0;font-weight:650}
+.card p{margin:0;font-size:13px;color:var(--mute)}
+.cnt{display:grid;grid-template-columns:repeat(auto-fit,minmax(78px,1fr));gap:6px;margin:0;padding:0;list-style:none}
+.cnt li{min-width:0}
+.cnt button{width:100%;background:var(--bg);border:1px solid transparent;border-radius:6px;padding:6px 4px;text-align:center;color:var(--ink)}
+.cnt button:hover,.cnt button:focus-visible{border-color:var(--blue)}
+.cnt b{display:block;font-size:22px;line-height:1.1}.cnt span{font-size:12px;color:var(--mute)}
+.cnt .g b{color:var(--green)}.cnt .r b{color:var(--red)}.cnt .a b{color:var(--amber)}.cnt .z b{color:var(--mute)}
+.sub{display:flex;gap:14px;flex-wrap:wrap;font-size:13px;color:var(--mute)}
+.sub button{font-size:13px;color:var(--blue);background:none;border:0;padding:0;font-weight:650}
+h3{font-size:16px;margin:18px 0 8px}
+.list{list-style:none;margin:0;padding:0;background:var(--card);border:1px solid var(--line);border-radius:8px}
+.list li{border-bottom:1px solid var(--line)}.list li:last-child{border-bottom:0}
+.row{display:flex;gap:10px;align-items:baseline;justify-content:space-between;width:100%;text-align:left;background:none;border:0;padding:10px 14px;color:var(--ink)}
+.row:hover,.row:focus-visible{background:var(--bg)}
+.row .t{min-width:0;overflow-wrap:anywhere}.row .t b{font-weight:650}.row .t small{display:block;color:var(--mute);font-size:13px}
+.row .r{flex:none;text-align:right;font-size:13px;color:var(--mute)}
+.chip{display:inline-block;font-size:12px;font-weight:650;padding:1px 8px;border-radius:999px;border:1px solid currentColor;white-space:nowrap;margin-left:6px}
+.chip.green{color:var(--green)}.chip.red{color:var(--red)}.chip.amber{color:var(--amber)}.chip.grey{color:var(--mute)}
+.details{background:var(--card);border:1px solid var(--line);border-radius:8px;margin-top:8px}
+.details>summary{cursor:pointer;padding:12px 14px;font-weight:650;list-style:none;display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+.details>summary::-webkit-details-marker{display:none}
+.details>summary::before{content:"\25b6";font-size:12px;color:var(--mute)}.details[open]>summary::before{content:"\25bc"}
+.details>summary small{font-weight:400;color:var(--mute);font-size:13px}
+.ctl{display:grid;grid-template-columns:2fr 1fr;gap:8px;padding:0 14px 10px}
+.ctl label{display:grid;gap:2px;font-size:12px;color:var(--mute);font-weight:650;min-width:0}
+.ctl input,.ctl select{font:inherit;font-size:15px;padding:7px 8px;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--ink);min-width:0;width:100%}
+.pager{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:8px 14px 12px;flex-wrap:wrap}
+.pager button{font-size:14px;font-weight:650;padding:6px 14px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink)}
+.pager button[disabled]{color:var(--grey);cursor:default}.pager span{font-size:13px;color:var(--mute)}
+.empty{padding:14px;color:var(--mute)}
+.rt{width:100%;border-collapse:collapse;font-size:14px;background:var(--card);border:1px solid var(--line);border-radius:8px}
+.rt caption{text-align:left;padding:0 0 6px;color:var(--mute);font-size:13px}
+.rt th,.rt td{padding:6px 10px;border-bottom:1px solid var(--line);text-align:right}.rt th:first-child,.rt td:first-child{text-align:left}
+.rt th{font-size:12px;color:var(--mute);font-weight:650}.rt tr:last-child td{border-bottom:0}.rt tr.now td{font-weight:650}
+dialog{border:1px solid var(--line);border-radius:10px;padding:0;max-width:640px;width:calc(100% - 24px);color:var(--ink)}
+dialog::backdrop{background:rgba(20,24,28,.45)}
+.dh{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;padding:14px 16px 8px}
+.dh h2{font-size:18px;margin:0;line-height:1.25}.dh small{display:block;color:var(--mute);font-size:13px}
+.dh button{font-size:14px;font-weight:650;border:1px solid var(--line);background:var(--card);border-radius:8px;padding:5px 12px}
+.db{padding:0 16px 16px;max-height:70vh;overflow:auto}
+.db dl{display:grid;grid-template-columns:max-content 1fr;gap:4px 12px;margin:8px 0;font-size:14px}
+.db dt{color:var(--mute)}.db dd{margin:0;overflow-wrap:anywhere}
+.db h4{font-size:14px;margin:14px 0 4px}
+.db ul.plain{margin:0;padding-left:18px;font-size:14px}
+@media(max-width:640px){main{padding:14px 10px 24px}.cards{grid-template-columns:1fr}.ctl{grid-template-columns:1fr}}
+</style>
+</head><body><main>
+<div class="tabs" role="tablist" aria-label="Floor views"><a role="tab" href="index.html#process">Process</a><a role="tab" href="index.html#machines">Machines</a><a role="tab" href="compare.html">Better or worse</a><a role="tab" id="tab-delegation" href="delegation.html" aria-selected="true">Delegation</a></div>
+<div id="alert"><div class="frozen">Reading the delegation tracker...</div></div>
+<div id="ship"></div>
+<div id="cards" class="cards"></div>
+<h3>Delegations by route <small id="rsum"></small></h3>
+<div id="routes"></div>
+<h3>Scenarios <small id="ssum"></small></h3>
+<ul id="scn" class="list"></ul>
+<h3>Plan tickets <small id="tsum"></small></h3>
+<details id="details" class="details">
+<summary>Every ticket <small id="dsum">searchable, in pages</small></summary>
+<div class="ctl">
+<label>Search<input id="q" type="search" placeholder="ticket, title, pull request, lane" autocomplete="off"></label>
+<label>Group<select id="grp"></select></label>
+</div>
+<ul id="tk" class="list"></ul>
+<div id="pg" class="pager"></div>
+</details>
+<h3>Sources</h3>
+<ul id="src" class="list"></ul>
+<div class="more"><a href="index.html">Back to the floor</a></div>
+</main>
+<dialog id="dlg" aria-labelledby="dlg-title"><div class="dh"><div><h2 id="dlg-title"></h2><small id="dlg-kick"></small></div><button type="button" id="dlg-close">Close</button></div><div class="db" id="dlg-body"></div></dialog>
+<script>
+"use strict";
+const DATA = "delegation-tracker.json", MAX_AGE_S = 900, REFRESH_MS = 30000;
+const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const ago = s => s == null ? "never" : s < 120 ? s + " s ago" : s < 7200 ? Math.floor(s / 60) + " min ago" : s < 172800 ? Math.floor(s / 3600) + " h ago" : Math.floor(s / 86400) + " d ago";
+const since = iso => { const t = Date.parse(iso); return Number.isFinite(t) ? Math.max(0, Math.floor((Date.now() - t) / 1000)) : null; };
+const safe = u => /^https:\/\//.test(String(u || "")) ? u : "";
+const $ = id => document.getElementById(id);
+let doc = null, failure = "";
+const st = {q: "", grp: "", page: 0};
+const GROUPS = {done: "Done", merged_awaiting_closer: "Merged, awaiting the closer", pr_open: "Pull request open", lane_running: "Lane running", not_started: "Not started", unread: "Not readable"};
+const SCN = {pass: ["Passing", "green"], fail: ["Failing", "red"], no_workflow: ["Not built", "amber"], no_run: ["No finished run", "amber"], unread: ["Unread", "grey"], stale: ["Stale", "amber"]};
+const TONE = {done: "green", merged_awaiting_closer: "green", pr_open: "amber", lane_running: "amber", not_started: "grey", unread: "grey"};
+
+const renderable = d => !!d && typeof d === "object" && Number.isFinite(Date.parse(d.generated_at)) && Array.isArray(d.scenarios) && Array.isArray(d.tickets) && !!d.counts && Array.isArray(d.counts.groups);
+async function load(){
+  try {
+    const r = await fetch(DATA, {cache: "no-store"});
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const next = await r.json();
+    if (!renderable(next)) throw new Error("the tracker has no renderable shape or no valid generated_at");
+    doc = next; failure = "";
+  } catch (e) { failure = String(e.message || e); }
+  draw();
+}
+
+// ---- the first screen: the shippable line, then the counts ----------------------------------------------------------------
+function tile(n, label, key, tone){ return `<li class="${tone || ""}"><button type="button" data-open="${esc(key)}" aria-haspopup="dialog"><b>${esc(n)}</b><span>${esc(label)}</span></button></li>`; }
+function drawShip(){
+  const s = doc.shippable;
+  $("ship").innerHTML = `<div class="ship ${s ? "yes" : "no"}"><div><b>${s ? "Shippable: yes" : "Shippable: no"}</b><small>${esc(doc.shippable_line)}</small></div><button type="button" class="link" data-open="ship" aria-haspopup="dialog">${s ? "What this rests on" : "What is in the way"}</button></div>`;
+}
+function drawCards(){
+  const c = doc.counts, g = Object.fromEntries(c.groups.map(x => [x.id, x]));
+  const scn = `<section class="card"><h2>Scenarios</h2><ul class="cnt">`
+    + tile(c.scenarios_passing + " of " + c.scenarios_total, "passing", "scs:pass", "g")
+    + tile(c.scenarios_failing, "failing", "scs:fail", c.scenarios_failing ? "r" : "z")
+    + tile(c.scenarios_not_built, "not built", "scs:no_workflow", c.scenarios_not_built ? "a" : "z")
+    + tile(c.scenarios_no_run, "no finished run", "scs:no_run", c.scenarios_no_run ? "a" : "z")
+    + tile(c.scenarios_unread, "unread", "scs:unread", c.scenarios_unread ? "a" : "z")
+    + tile(c.scenarios_stale || 0, "stale", "scs:stale", c.scenarios_stale ? "a" : "z")
+    + `</ul><p>Each scenario passes on its latest scheduled run. Tap a number to see which.</p></section>`;
+  const tk = `<section class="card"><h2>Plan tickets <small>(${esc(c.tickets_total)})</small></h2><ul class="cnt">`
+    + ["done", "merged_awaiting_closer", "pr_open", "lane_running", "not_started"].map(id => tile(g[id] ? g[id].count : 0, GROUPS[id].toLowerCase(), "grp:" + id, id === "done" || id === "merged_awaiting_closer" ? "g" : id === "not_started" ? "z" : "a")).join("")
+    + (g.unread && g.unread.count ? tile(g.unread.count, "not readable", "grp:unread", "a") : "")
+    + `</ul><div class="sub"><span>Open pull requests:</span><button type="button" data-open="pr:red">${esc(c.pr_open_red)} red</button><button type="button" data-open="pr:green">${esc(c.pr_open_green)} green</button><button type="button" data-open="pr:pending">${esc(c.pr_open_pending)} pending</button>`
+    + `<span>Not started:</span><button type="button" data-open="start:true">${esc(c.start_true)} can start</button><button type="button" data-open="start:false">${esc(c.start_false)} waiting</button>${c.start_unread ? `<button type="button" data-open="start:null">${esc(c.start_unread)} unread</button>` : ""}</div>`
+    + `<p>The delegation readiness plan, grouped by where each ticket stands now.</p></section>`;
+  $("cards").innerHTML = scn + tk;
+}
+
+// ---- delegations per hour by route: local, GLM, other and the local share; only a fresh reading is drawn as numbers -------------
+const pct = x => x == null ? "no delegations" : (x * 100).toFixed(1) + " %";
+const hourText = iso => { const t = new Date(iso); return Number.isFinite(t.getTime()) ? t.toISOString().slice(5, 13).replace("T", " ") + ":00Z" : String(iso); };
+function drawRoutes(){
+  const r = doc.routes || {state: "unread", reason: "this tracker has no routes block", hours: [], max_age_min: null};
+  const tone = r.state === "fresh" ? "green" : r.state === "stale" ? "amber" : "red", limit = r.max_age_min == null ? "" : ", limit " + r.max_age_min + " min";
+  $("rsum").innerHTML = chip(r.state, tone) + (r.read_at ? ` <small>read ${esc(ago(since(r.read_at)))}${esc(limit)}</small>` : "");
+  if (r.state !== "fresh") { $("routes").innerHTML = `<p class="empty">${r.state === "stale" ? "Stale" : "Unread"}: ${esc(r.reason || "no reading")}. No number is drawn, and no share.</p>`; return; }
+  const last = r.last_hour, rows = (r.hours || []).slice().reverse();
+  const body = rows.map(h => `<tr${last && h.hour === last.hour ? ' class="now"' : ""}><td>${esc(hourText(h.hour))}</td><td>${esc(h.local)}</td><td>${esc(h.glm)}</td><td>${esc(h.other)}</td><td>${esc(h.total)}</td><td>${esc(pct(h.local_share))}</td></tr>`).join("");
+  $("routes").innerHTML = `<table class="rt"><caption>${last ? "This hour: " + esc(last.local) + " local, " + esc(last.glm) + " GLM, " + esc(last.other) + " other; local share " + esc(pct(last.local_share)) + "." : ""} Hours are UTC; the first row is the newest.</caption><thead><tr><th>Hour</th><th>Local</th><th>GLM</th><th>Other</th><th>Total</th><th>Local share</th></tr></thead><tbody>${body || `<tr><td colspan="6">No delegations in the window.</td></tr>`}</tbody></table>`;
+}
+
+// ---- rows -------------------------------------------------------------------------------------------------------------------
+const chip = (text, tone) => `<span class="chip ${esc(tone)}">${esc(text)}</span>`;
+function scnRow(s){
+  const [word, tone] = SCN[s.state] || [s.state, "grey"];
+  const when = s.latest_at ? "latest " + ago(since(s.latest_at)) : "";
+  return `<li><button type="button" class="row" data-open="scn:${esc(s.id)}" aria-haspopup="dialog"><span class="t"><b>${esc(s.id)}</b> ${esc(s.title)}${chip(s.result_text, tone)}<small>${esc(s.workflow)}${s.overdue ? " · no run for more than twice its cadence" : ""}</small></span><span class="r">${esc(when)}</span></button></li>`;
+}
+function tkSub(t){
+  if (t.group === "pr_open") return t.prs.filter(p => p.state === "open").map(p => p.ref + " " + p.ci).join(", ");
+  if (t.group === "merged_awaiting_closer") return t.prs.filter(p => p.state === "merged").map(p => p.ref).join(", ");
+  if (t.group === "lane_running") return t.lane + (t.host ? " on " + t.host : "");
+  if (t.group === "not_started") return t.start_condition === true ? "start condition true" : t.start_condition === false ? "start condition false" : "start condition unread";
+  return t.linear_status;
+}
+function tkRow(t){
+  const ci = t.pr_ci === "red" ? "red" : t.pr_ci === "green" ? "green" : "amber";
+  const tone = t.group === "pr_open" ? ci : (TONE[t.group] || "grey");
+  return `<li><button type="button" class="row" data-open="tk:${esc(t.id)}" aria-haspopup="dialog"><span class="t"><b>${esc(t.id)}</b> ${esc(t.title)}<small>${esc(t.plan_task ? t.plan_task + " · " : "")}${esc(tkSub(t))}</small></span><span class="r">${chip(GROUPS[t.group], tone)}</span></button></li>`;
+}
+
+// ---- the searchable, paged list of tickets ---------------------------------------------------------------------------------
+const hay = t => [t.id, t.title, t.plan_task, t.group, GROUPS[t.group], t.lane, t.host, t.prs.map(p => p.ref + " " + p.title).join(" ")].join(" ").toLowerCase();
+function drawTickets(){
+  const size = Math.max(1, Number(doc.details_page_size) || 25), q = st.q.trim().toLowerCase();
+  const all = doc.tickets, hit = all.filter(t => (!st.grp || t.group === st.grp) && (!q || hay(t).indexOf(q) >= 0));
+  const pages = Math.max(1, Math.ceil(hit.length / size));
+  if (st.page >= pages) st.page = pages - 1;
+  const slice = hit.slice(st.page * size, (st.page + 1) * size);
+  $("dsum").textContent = `${hit.length === all.length ? all.length + " tickets" : hit.length + " of " + all.length + " match"}, ${pages > 1 ? pages + " pages" : "one page"}`;
+  $("tk").innerHTML = slice.length ? slice.map(tkRow).join("") : `<li class="empty">No ticket matches. Clear the search or pick all groups.</li>`;
+  $("pg").innerHTML = pages > 1 ? `<button type="button" data-page="-1"${st.page === 0 ? " disabled" : ""}>Previous</button><span>Page ${st.page + 1} of ${pages}</span><button type="button" data-page="1"${st.page >= pages - 1 ? " disabled" : ""}>Next</button>` : "";
+}
+function fillGroups(){
+  const sel = $("grp"), sig = doc.counts.groups.map(g => g.id + g.count).join("|");
+  if (sel.dataset.sig === sig) return;
+  sel.dataset.sig = sig;
+  sel.innerHTML = `<option value="">All groups</option>` + doc.counts.groups.filter(g => g.count).map(g => `<option value="${esc(g.id)}">${esc(g.title)} (${esc(g.count)})</option>`).join("");
+  sel.value = st.grp;
+}
+
+// ---- the details panel: one dialog, filled from the key of whatever was tapped --------------------------------------------
+const facts = rows => `<dl>${rows.filter(r => r[1] !== "" && r[1] != null).map(r => `<dt>${esc(r[0])}</dt><dd>${r[2] ? r[1] : esc(r[1])}</dd>`).join("")}</dl>`;
+const link = (url, text) => safe(url) ? `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(text)}</a>` : esc(text);
+function listOf(rows, empty){ return rows.length ? `<ul class="list">${rows.join("")}</ul>` : `<p class="empty">${esc(empty)}</p>`; }
+function scnPanel(s){
+  const recent = s.recent.length ? s.recent.map((r, i) => (i ? ", " : "") + r).join("") + " (newest first)" : "";
+  return {title: s.id + " " + s.title, kicker: "Scenario · " + s.result_text, body:
+    facts([["Result", s.result_text], ["Why", s.reason], ["Latest finished run", s.latest_at ? s.latest_at + " (" + ago(since(s.latest_at)) + ")" : ""],
+      ["Latest run", s.latest_url ? link(s.latest_url, "open the run") : "", true], ["A newer run is going", s.in_progress ? "yes" : ""],
+      ["Recent scheduled runs", recent], ["Workflow", s.workflow_url ? link(s.workflow_url, s.repo + " " + s.workflow) : s.repo + " " + s.workflow, !!s.workflow_url],
+      ["Scheduled every", s.cadence_hours + " h"], ["Built by", s.builder_ticket ? s.builder_ticket + (s.builder_group ? " (" + GROUPS[s.builder_group].toLowerCase() + ")" : "") : "an existing workflow"]])};
+}
+function tkPanel(t){
+  const prs = t.prs.length ? `<h4>Pull requests</h4><ul class="plain">${t.prs.map(p => `<li>${link(p.url, p.ref)} ${esc(p.state)}${p.state === "open" ? ", checks " + esc(p.ci) : ""}${p.ci_note ? " — " + esc(p.ci_note) : ""}<br><small>${esc(p.title)}</small></li>`).join("")}</ul>` : "";
+  const parts = t.start_parts.length ? `<h4>Start condition parts</h4><ul class="plain">${t.start_parts.map(p => `<li>${p.met === true ? "met" : p.met === false ? "not met" : "unread"}: ${esc(p.text)}</li>`).join("")}</ul>` : "";
+  return {title: t.id + " " + t.title, kicker: GROUPS[t.group] + (t.plan_task ? " · plan task " + t.plan_task : ""), body:
+    facts([["Where it stands", t.why], ["Lane", t.lane ? t.lane + (t.host ? " on " + t.host : "") : ""],
+      ["Start condition", t.group === "not_started" ? (t.start_condition === true ? "true" : t.start_condition === false ? "false" : "unread") + (t.start_text ? ": " + t.start_text : "") : ""], ["Not read", t.start_note],
+      ["Ticket status", t.linear_status + (t.mirror_read_at ? ", read " + ago(since(t.mirror_read_at)) : "")], ["Ticket", link(t.url, t.id), true]]) + prs + parts};
+}
+function listPanel(title, kicker, tickets, empty){ return {title, kicker, body: listOf(tickets.map(tkRow), empty)}; }
+function resolve(key){
+  if (!doc) return null;
+  const [kind, id] = [key.slice(0, key.indexOf(":")), key.slice(key.indexOf(":") + 1)];
+  if (key === "ship") {
+    const bad = doc.scenarios.filter(s => s.state !== "pass");
+    return {title: doc.shippable ? "Shippable: yes" : "Shippable: no", kicker: "The rule", body: `<p>${esc(doc.shippable_rule)}</p>` + (bad.length ? `<h4>Not passing (${bad.length})</h4>` + listOf(bad.map(scnRow), "") : `<p>Every scenario passes.</p>`)};
+  }
+  if (kind === "scn") { const s = doc.scenarios.find(x => x.id === id); return s ? scnPanel(s) : null; }
+  if (kind === "tk") { const t = doc.tickets.find(x => x.id === id); return t ? tkPanel(t) : null; }
+  if (kind === "scs") { const rows = doc.scenarios.filter(s => s.state === id); return {title: (SCN[id] || [id])[0] + " scenarios", kicker: rows.length + " of " + doc.scenarios.length, body: listOf(rows.map(scnRow), "None.")}; }
+  if (kind === "grp") { const rows = doc.tickets.filter(t => t.group === id); return listPanel(GROUPS[id] || id, rows.length + " of " + doc.tickets.length + " plan tickets", rows, "No ticket is in this group."); }
+  if (kind === "pr") { const rows = doc.tickets.filter(t => t.group === "pr_open" && t.pr_ci === id); return listPanel("Open pull requests with " + id + " checks", rows.length + " tickets", rows, "None."); }
+  if (kind === "start") { const want = id === "true" ? true : id === "false" ? false : null; const rows = doc.tickets.filter(t => t.group === "not_started" && t.start_condition === want);
+    return listPanel("Not started, start condition " + (want === null ? "unread" : want ? "true" : "false"), rows.length + " tickets", rows, "None."); }
+  if (kind === "src") { const s = doc.sources.find(x => x.id === id); return s ? {title: s.title, kicker: s.ok ? "Read" : "Not read", body: facts([["Detail", s.detail], ["Read at", s.read_at], ["Age", s.age_seconds == null ? "" : ago(s.age_seconds)]])} : null; }
+  return null;
+}
+let opener = null;
+function openKey(key, from){
+  const spec = resolve(key);
+  if (!spec) return;
+  opener = from || null;
+  $("dlg-title").textContent = spec.title; $("dlg-kick").textContent = spec.kicker; $("dlg-body").innerHTML = spec.body;
+  const d = $("dlg"); d.dataset.key = key;
+  if (d.showModal) { if (!d.open) d.showModal(); } else d.setAttribute("open", "");
+}
+function closePanel(){ const d = $("dlg"); if (d.close) d.close(); else d.removeAttribute("open"); d.dataset.key = ""; if (opener && opener.focus) opener.focus(); }
+// A refresh redraws the page; an open panel is refilled from the new document so it never shows the old one.
+function refreshPanel(){ const d = $("dlg"), key = d.dataset.key; if (!key || !d.open) return; const spec = resolve(key); if (!spec) return closePanel(); $("dlg-title").textContent = spec.title; $("dlg-kick").textContent = spec.kicker; $("dlg-body").innerHTML = spec.body; }
+
+function drawSources(){
+  $("src").innerHTML = doc.sources.map(s => `<li><button type="button" class="row" data-open="src:${esc(s.id)}" aria-haspopup="dialog"><span class="t"><b>${esc(s.title)}</b><small>${esc(s.detail)}</small></span><span class="r">${chip(s.ok ? "read" : "not read", s.ok ? "green" : "red")}</span></button></li>`).join("");
+}
+function drawAlert(){
+  if (!doc) { $("alert").innerHTML = `<div class="frozen">The delegation tracker cannot be read (${esc(failure)}). Nothing below can be trusted.</div>`; return; }
+  const age = since(doc.generated_at);
+  document.title = (failure || age > MAX_AGE_S ? "STALE " : "") + "Factory floor: delegation" + (doc.shippable ? " (shippable)" : " (not shippable)");
+  let a = "";
+  if (failure) a += `<div class="frozen">The last refresh failed (${esc(failure)}); this is the tracker from ${ago(age)}.</div>`;
+  else if (age > MAX_AGE_S) a += `<div class="frozen">The tracker is ${ago(age)} old, the limit is ${Math.floor(MAX_AGE_S / 60)} min. Everything below is old.</div>`;
+  const bad = doc.sources.filter(s => !s.ok);
+  if (bad.length) a += `<div class="frozen warn">${esc(bad.map(s => s.title).join(", "))} could not be read fresh; rows that depend on ${bad.length > 1 ? "them are" : "it is"} drawn unread.</div>`;
+  $("alert").innerHTML = a;
+}
+function draw(){
+  drawAlert();
+  if (!doc) { for (const id of ["ship", "cards", "routes", "rsum", "scn", "tk", "pg", "src"]) $(id).innerHTML = ""; return; }
+  drawShip(); drawCards(); drawRoutes();
+  $("ssum").textContent = `${doc.counts.scenarios_passing} of ${doc.counts.scenarios_total} passing`;
+  $("scn").innerHTML = doc.scenarios.map(scnRow).join("");
+  $("tsum").textContent = `${doc.counts.tickets_total} tickets`;
+  fillGroups(); drawTickets(); drawSources(); refreshPanel();
+}
+document.addEventListener("click", e => {
+  const t = e.target && e.target.closest ? e.target.closest("[data-open],[data-page]") : null;
+  if (!t) return;
+  if (t.dataset.page) { st.page = Math.max(0, st.page + Number(t.dataset.page)); if (doc) drawTickets(); return; }
+  openKey(t.dataset.open, t);
+});
+$("dlg-close").addEventListener("click", closePanel);
+$("dlg").addEventListener("click", e => { if (e.target === $("dlg")) closePanel(); });
+$("q").addEventListener("input", () => { st.q = $("q").value; st.page = 0; if (doc) drawTickets(); });
+$("grp").addEventListener("change", () => { st.grp = $("grp").value; st.page = 0; if (doc) drawTickets(); });
+load(); setInterval(load, REFRESH_MS); setInterval(() => { if (doc) drawAlert(); }, 10000);
+</script></body></html>

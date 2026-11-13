@@ -31,6 +31,11 @@ from omnimarket.events.delegation import (
 from omnimarket.models.delegation.wire.model_delegation_output_files import (
     ModelDeclaredOutputs,
 )
+from omnimarket.models.delegation.wire.model_probe_faults import ModelProbeFaults
+from omnimarket.models.delegation.wire.model_probe_ladder import ModelProbeLadder
+from omnimarket.models.delegation.wire.model_probe_ladder_credentialed import (
+    ModelProbeLadderCredentialed,
+)
 
 # OMN-15482: the closed set of ``response_format`` directives this delegation
 # path genuinely threads end-to-end (onto the outbound chat-completions
@@ -45,9 +50,10 @@ _SUPPORTED_RESPONSE_FORMAT_TYPES: frozenset[str] = frozenset({"json_object"})
 # ``requested_timeout_seconds``.
 NO_ESCALATION_WIRE_KEY = "no_escalation"
 
-# OMN-20844: the request key that names the model the customer's own provider
-# key runs for one call. Decoded, not declared, by
-# ``_tolerate_model_before_it_is_declared``.
+# OMN-20844 (step 1 of 2), declared by step 2: the request key that names the
+# model the customer's own provider key runs for one call. Declared on the
+# request below; the released step-1 decoder
+# ``_tolerate_model_before_it_is_declared`` is now a no-op for this class.
 MODEL_WIRE_KEY = "model"
 
 # OMN-21098 (step 1 of 2): the request key that carries the client-call identity
@@ -55,6 +61,13 @@ MODEL_WIRE_KEY = "model"
 # adapter stamps on an Agent call. Decoded, not declared, by
 # ``_tolerate_client_call_before_it_is_declared``.
 CLIENT_CALL_WIRE_KEY = "client_call"
+
+# OMN-23161 (step 1 of 2), declared by OMN-23162 (step 2): the request key that
+# carries a probe ladder. The local dispatch port takes it as a dispatch
+# argument (OMN-21212) and admits it only from synthetic traffic. The released
+# step-1 decoder ``_tolerate_probe_ladder_before_it_is_declared`` is now a
+# no-op for this class.
+PROBE_LADDER_WIRE_KEY = "probe_ladder"
 
 # OMN-19437 AC1: the keys the CLI and RuntimeLocal stamp on a command so its
 # terminal can carry the same ids. Declared on the request below; the released
@@ -174,6 +187,21 @@ class ModelDelegateSkillRequest(BaseModel):
     # publish. The handler copies both onto every terminal it builds so the
     # delegation_events row joins to the trace. ``exclude_if`` keeps a command
     # that carries no ids byte-identical on the wire to today's.
+    probe_ladder: (
+        ModelProbeLadder | ModelProbeLadderCredentialed | ModelProbeFaults | None
+    ) = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description=(
+            "OMN-23162: a synthetic probe's per-run ladder. In rungs mode "
+            "(ModelProbeLadder) it names the rungs the run walks instead of the "
+            "routing contract's; in faults mode (ModelProbeFaults) the production "
+            "ladder is resolved as usual and it only names transport faults keyed "
+            "by model id. The local dispatch port refuses it, before any provider "
+            "call, unless the provenance is synthetic with a probe source surface. "
+            "None is an ordinary request."
+        ),
+    )
     trace_id: UUID | None = Field(
         default=None,
         exclude_if=lambda value: value is None,
@@ -204,6 +232,26 @@ class ModelDelegateSkillRequest(BaseModel):
         description=(
             "Optional explicit backend pin (e.g. 'local-coder-mlx'). None resolves "
             "the backend via the normal cheapest-first tier_order selection."
+        ),
+    )
+    # OMN-20844, step 2 of 2: the declared field. Step 1 released a consumer
+    # that decodes this key without declaring it (a null dropped, a named
+    # model refused by name), which is what lets the Wire Compatibility Gate
+    # pass this declaration: the last released model no longer forbids the key.
+    #
+    # ``exclude_if`` keeps the ordinary request byte-identical to today's: the
+    # key reaches the wire only when a model is named. The handler passes it to
+    # the dispatch port under the same rule, so a port that predates the
+    # keyword keeps serving every request that names no model.
+    model: str | None = Field(
+        default=None,
+        min_length=1,
+        exclude_if=lambda value: value is None,
+        description=(
+            "The per-call model name the customer's own provider key runs for "
+            "this one call (OMN-20844). None is the ordinary request and runs "
+            "the stored model; it is omitted from serialisation, so a consumer "
+            "predating this field is not handed an extra key it forbids."
         ),
     )
     # OMN-18931, step 2 of 2: the declared field. Step 1 released a consumer
@@ -382,18 +430,15 @@ class ModelDelegateSkillRequest(BaseModel):
         ),
     )
 
-    # OMN-20844, step 1 of 2: decode ``model`` before it is declared, the same
-    # tolerate-before-declare order as ``declared_outputs`` above. Declaring it
-    # outright is refused by the Wire Compatibility Gate: the last release
-    # forbids the key and the gate grades the maximal key set, so ``exclude_if``
-    # does not help. A null is the ordinary request and is dropped. A named
-    # model is refused by name rather than dropped, so a caller is never run
-    # on the stored model when it asked for another. Step 2 declares the field
-    # once a release carrying this is out.
+    # OMN-20844, step 2 is done: ``model`` is now declared (above), so this
+    # released step-1 decoder is a no-op for this class. Keep it in place for a
+    # subclass that does not declare the field.
     @model_validator(mode="before")
     @classmethod
     def _tolerate_model_before_it_is_declared(cls, data: Any) -> Any:
         if not isinstance(data, Mapping) or MODEL_WIRE_KEY not in data:
+            return data
+        if MODEL_WIRE_KEY in cls.model_fields:
             return data
         if data[MODEL_WIRE_KEY] is not None:
             raise ValueError(
@@ -427,6 +472,20 @@ class ModelDelegateSkillRequest(BaseModel):
                 "is not run as an ordinary delegation with no claim or admission."
             )
         return {key: item for key, item in data.items() if key != CLIENT_CALL_WIRE_KEY}
+
+    # OMN-23161, step 1 of 2: accept and ignore ``probe_ladder`` before it is
+    # declared, the same tolerate-before-declare order as ``client_call`` above.
+    # OMN-23162, step 2 is done: ``probe_ladder`` is now declared (above), so
+    # this released step-1 decoder is a no-op for this class. Keep it in place
+    # for a subclass that does not declare the field.
+    @model_validator(mode="before")
+    @classmethod
+    def _tolerate_probe_ladder_before_it_is_declared(cls, data: Any) -> Any:
+        if not isinstance(data, Mapping) or PROBE_LADDER_WIRE_KEY not in data:
+            return data
+        if PROBE_LADDER_WIRE_KEY in cls.model_fields:
+            return data
+        return {key: item for key, item in data.items() if key != PROBE_LADDER_WIRE_KEY}
 
     # OMN-19437, step 2 is done: ``trace_id`` and ``span_id`` are now declared
     # (below), so this released step-1 decoder is a no-op for this class. Keep it
@@ -528,6 +587,7 @@ __all__: list[str] = [
     "CLIENT_CALL_WIRE_KEY",
     "MODEL_WIRE_KEY",
     "NO_ESCALATION_WIRE_KEY",
+    "PROBE_LADDER_WIRE_KEY",
     "TRACE_CONTEXT_WIRE_KEYS",
     "EnumQualityContractMode",
     "ModelDelegateSkillRequest",

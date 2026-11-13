@@ -21,6 +21,8 @@ from pydantic import (
     model_validator,
 )
 
+from omnimarket.models.lab_host_key import public_key_parts
+
 # A registry root as a probe script quotes it: no quote, backtick, space or ``$(``.
 RegistryRoot = Annotated[
     str, StringConstraints(min_length=1, pattern=r"^[A-Za-z0-9_$/.~-]+$")
@@ -70,6 +72,41 @@ SshIdentity = Annotated[
     AfterValidator(_identity_path),
 ]
 
+
+def _volumes_root(value: str) -> str:
+    if not value.strip("/"):
+        raise ValueError("must be a directory, not the filesystem root")
+    return value
+
+
+VolumesRoot = Annotated[
+    str,
+    StringConstraints(pattern=r"^/[A-Za-z0-9._/-]*$"),
+    AfterValidator(_volumes_root),
+]
+
+# The address of a host's iLO management processor (OMN-22870): a bare IPv4, IPv6 or DNS name, as the iLO setup verb of
+# ``node_ilo_redfish_effect`` takes it. No scheme, path, port, space or leading dash; the port and the pinned certificate live
+# in that node's own overlay.
+IloAddress = Annotated[
+    str, StringConstraints(min_length=1, pattern=r"^[A-Za-z0-9][A-Za-z0-9.:-]*$")
+]
+
+
+def _host_public_key(value: str) -> str:
+    parts = value.split()
+    if len(parts) != 2:
+        raise ValueError(
+            "a host key is exactly two whitespace-separated tokens: "
+            "key type and base64 key, no comment"
+        )
+    public_key_parts(value)
+    return value
+
+
+HostPublicKey = Annotated[str, AfterValidator(_host_public_key)]
+
+
 RepoRole = Literal["plugin_source", "private_data", "deploy", "knowledge_base"]
 
 
@@ -90,19 +127,45 @@ class ModelLabHostRow(_ModelOverlayBase):
 
     name: NonEmptyStr
     target: NonEmptyStr
+    # The address of the host's iLO (HPE management processor), for the hosts that have one. The iLO setup
+    # verb of node_ilo_redfish_effect reads it, so a host is set up from its table row (OMN-22870).
+    ilo_address: IloAddress | None = None
     # Further ssh destinations of the same machine, tried after ``target`` in order: nonempty names,
     # none equal to ``target``, none repeated (the rule of the launcher's ``_fallback_targets``).
     fallback_targets: tuple[NonEmptyStr, ...] = ()
+    # The public ssh host keys this machine's sshd presents, declared so another host
+    # can write them to its known_hosts (never trust on first use).
+    host_keys: tuple[HostPublicKey, ...] = ()
+    # The names the machine's own hook events carry as their host (its native hostname), for a row whose ``target`` or
+    # ``fallback_targets`` do not give it. The quiet-host alarm attributes a hook event to the row it names, so a host
+    # whose native name is none of its destinations (an ssh alias, an address, a tailnet name) declares it here (OMN-22778).
+    hostnames: tuple[NonEmptyStr, ...] = ()
     # The login every destination of the row is reached as, the jump host (ssh ``-J``) it is reached through, and the key file
     # offered to it (OMN-17427). Omitted: ssh's own defaults, as before. The probe and the launcher pass them; this model only
     # keeps a table that carries them from being refused whole.
     ssh_user: SshUser | None = None
     proxy_jump: SshJump | None = None
     ssh_identity: SshIdentity | None = None
+    # The same three cells for the ``fallback_targets`` destinations, which a machine off the lab LAN
+    # reaches by a different route than ``target``. Omitted: the row-level cell applies. Same rules as above.
+    fallback_ssh_user: SshUser | None = None
+    fallback_proxy_jump: SshJump | None = None
+    fallback_ssh_identity: SshIdentity | None = None
     local: bool = False
     codex: bool = False
+    # The host is admitted as a Tart VM host of the clean-VM walk (OMN-23204): its admission receipt names the tart version,
+    # the image digest and the probe results. Omitted means not admitted. Independent of ``roles``, whose declaration makes the
+    # table require one desired-publisher.
+    tart: bool = False
     available: bool = True
+    roles: (
+        tuple[Literal["lab-proof", "lab", "launcher", "desired-publisher"], ...] | None
+    ) = None
     unavailable_reason: str | None = None
+    # Model serving is independent of lane/unit placement. Omitted: inherit the validated
+    # ``available`` value, preserving the existing policy for every row without this column.
+    # Keep this after ``available``: Pydantic passes preceding validated fields to the factory.
+    model_serving: bool = Field(default_factory=lambda data: data["available"])
     # A collaborator machine: it takes no lane bound to a lane the non-contributor rows bind, only
     # one bound to its own ``lane_binding``, and only while ``lane_ready`` says that lane can take a
     # lane (the remote-lane placement node judges it).
@@ -129,6 +192,15 @@ class ModelLabHostRow(_ModelOverlayBase):
     tenant_id: str | None = None
     ledger_bus_lane: str | None = None
     ledger_bus_python: str | None = None
+    # The ledger a lane on this host is configured with: absolute or ``$OMNI_HOME/`` form, filled on the host.
+    ledger_path: (
+        Annotated[
+            str, StringConstraints(pattern=r"^(?:/|\$OMNI_HOME/)[A-Za-z0-9._/-]+$")
+        ]
+        | None
+    ) = None
+    # Where a Mac mounts its external volume (OMN-22688): an absolute directory, never the filesystem root.
+    volumes_root: VolumesRoot | None = None
     parity_python: str | None = None
     parity_clones: tuple[NonEmptyStr, ...] = ()
     gh_absent: bool = False
@@ -153,6 +225,23 @@ class ModelLabHostRow(_ModelOverlayBase):
     speed: float | None = Field(default=None, gt=0)
 
     @model_validator(mode="after")
+    def _roles_are_compatible(self) -> "ModelLabHostRow":
+        """Require distinct roles compatible with host availability and capacity."""
+        roles = self.roles or ()
+        if len(set(roles)) != len(roles):
+            raise ValueError(f"lab host {self.name!r}: roles must not repeat")
+        if not self.available and roles:
+            raise ValueError(f"lab host {self.name!r}: unavailable host has roles")
+        if "launcher" in roles:
+            if self.cap != 0:
+                raise ValueError(f"lab host {self.name!r}: launcher requires cap == 0")
+            if "lab" in roles or "lab-proof" in roles:
+                raise ValueError(
+                    f"lab host {self.name!r}: launcher cannot carry lab or lab-proof roles"
+                )
+        return self
+
+    @model_validator(mode="after")
     def _fallback_targets_are_distinct_from_target(self) -> "ModelLabHostRow":
         """No fallback name is the row's ``target`` or repeats another."""
         names = self.fallback_targets
@@ -160,6 +249,13 @@ class ModelLabHostRow(_ModelOverlayBase):
             raise ValueError(
                 f"lab host {self.name!r}: fallback_targets repeats target or itself: {list(names)}"
             )
+        return self
+
+    @model_validator(mode="after")
+    def _host_keys_are_distinct(self) -> "ModelLabHostRow":
+        """No public host key repeats within the row's ``host_keys``."""
+        if len(set(self.host_keys)) != len(self.host_keys):
+            raise ValueError(f"lab host {self.name!r}: host_keys repeats a public key")
         return self
 
 
@@ -184,6 +280,24 @@ class ModelLabHostsTable(_ModelOverlayBase):
     # What units of named repositories need of a host (OMN-17232), matched against the host columns above;
     # carried by the table shape, not an overlay key.
     unit_needs: tuple[ModelUnitNeedsRule, ...] = ()
+    # The overlay store projects the whole lab_hosts overlay into the file ONEX_LAB_RUN_HOSTS names, so a table file may hold
+    # the registry roots too; the placement reads only the hosts from it, the roots key is read from the overlay (OMN-23036).
+    registry_root_candidates: (
+        Annotated[tuple[RegistryRoot, ...], Field(min_length=1)] | None
+    ) = None
+
+    @model_validator(mode="after")
+    def _roles_have_one_desired_publisher(self) -> "ModelLabHostsTable":
+        """Require one desired-state publisher whenever the table declares roles."""
+        if any(host.roles for host in self.hosts):
+            count = sum(
+                "desired-publisher" in (host.roles or ()) for host in self.hosts
+            )
+            if count != 1:
+                raise ValueError(
+                    f"desired-publisher role must appear on exactly one row; found {count}"
+                )
+        return self
 
     @model_validator(mode="after")
     def _contributor_lane_is_its_own(self) -> "ModelLabHostsTable":

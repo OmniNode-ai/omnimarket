@@ -1,0 +1,156 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Code Graph Effect (OMN-22651, rebuild piece 1 of OMN-22478)
+#
+# Builds the Python import graph of the declared repositories at their default-branch heads,
+# reachability from the declared roots, and a verdict against a frozen sample with known-used
+# controls; appends one reading row per run through the configured append command. It writes
+# code graph rows and nothing else: a reading is never a gate, a stop or an admission.
+name: node_code_graph_effect
+contract_name: node_code_graph_effect
+node_name: node_code_graph_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Reads each declared repository's committed files at its ref, builds the import graph across
+  repositories, computes what the roots reach, judges the graph against the frozen sample and
+  the known-used controls, and appends one row. The check verb compares a pull request's head with
+  its base and names the modules the head adds that no root reaches, and names every allowlist entry
+  past its date as a finding. The shadow verb runs that check over every open pull request of the
+  declared repositories, appends one row of what it would refuse, and holds no merge. An unreadable
+  repository, pull request source or an append that does not land are typed failures.
+
+handler:
+  module: omnimarket.nodes.node_code_graph_effect.handlers.handler_code_graph_requested
+  class: HandlerCodeGraphRequested
+  input_model: omnimarket.models.model_code_graph.ModelCodeGraphCommand
+
+# CodeGraphRun and CodeGraphShadowCheck take the overlay, host, repository source, appender
+# and clock as constructor parameters, so the CLI and schedule build them. handler_routing binds the
+# envelope-shaped wrappers, which build them at dispatch, so the boot resolver can construct them.
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: code_graph
+      handler:
+        name: HandlerCodeGraphRequested
+        module: omnimarket.nodes.node_code_graph_effect.handlers.handler_code_graph_requested
+      input_model: omnimarket.models.model_code_graph.ModelCodeGraphCommand
+      output_model: omnimarket.models.model_code_graph.ModelCodeGraphResult
+    - operation: code_graph_shadow
+      handler:
+        name: HandlerCodeGraphShadowRequested
+        module: omnimarket.nodes.node_code_graph_effect.handlers.handler_code_graph_requested
+      input_model: omnimarket.models.model_code_graph.ModelShadowCommand
+      output_model: omnimarket.models.model_code_graph.ModelShadowResult
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [ledger-append]
+  timeout_ms: 3600000
+
+input_model:
+  name: ModelCodeGraphCommand
+  module: omnimarket.models.model_code_graph
+  description: Whether to write, and the fault a drill injects.
+output_model:
+  name: ModelCodeGraphResult
+  module: omnimarket.models.model_code_graph
+  description: Per repository counts and unreachable modules, the sample outcome, the verdict and the row.
+
+terminal_event: onex.evt.omnimarket.code-graph-run-completed.v1
+
+runtime_dispatch:
+  external_trigger: true
+  command_topic: onex.cmd.omnimarket.code-graph-requested.v1
+
+# The topics by role; the handler's event mapping reads these and holds no topic string.
+topics:
+  code_graph_requested: onex.cmd.omnimarket.code-graph-requested.v1
+  code_graph_run_started: onex.evt.omnimarket.code-graph-run-started.v1
+  code_graph_repo_read: onex.evt.omnimarket.code-graph-repo-read.v1
+  code_graph_run_completed: onex.evt.omnimarket.code-graph-run-completed.v1
+  code_graph_run_failed: onex.evt.omnimarket.code-graph-run-failed.v1
+  code_graph_shadow_requested: onex.cmd.omnimarket.code-graph-shadow-requested.v1
+  code_graph_shadow_pr_checked: onex.evt.omnimarket.code-graph-shadow-pr-checked.v1
+  code_graph_shadow_completed: onex.evt.omnimarket.code-graph-shadow-completed.v1
+  code_graph_shadow_failed: onex.evt.omnimarket.code-graph-shadow-failed.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.code-graph-run-started.v1
+  - onex.evt.omnimarket.code-graph-repo-read.v1
+  - onex.evt.omnimarket.code-graph-run-completed.v1
+  - onex.evt.omnimarket.code-graph-run-failed.v1
+  - onex.evt.omnimarket.code-graph-shadow-pr-checked.v1
+  - onex.evt.omnimarket.code-graph-shadow-completed.v1
+  - onex.evt.omnimarket.code-graph-shadow-failed.v1
+
+# The node's own nightly schedule, installed by `schedule install --host <name>` as a systemd user
+# timer on a host the overlay declares, removed by `schedule uninstall` (the rollback).
+schedule:
+  verb: nightly
+  unit_name: onex-code-graph-nightly
+  description: ONEX nightly code graph (piece 1 reading)
+  timer_description: ONEX nightly code graph tick
+  log_stem: code-graph
+  state_directory: .onex_state/code-graph
+  timeout_seconds: 3600
+  cadence:
+    on_calendar: "*-*-* 06:40:00 UTC"
+    randomized_delay: 120s
+    persistent: true
+    description: nightly at 06:40 UTC, before the 05:30 Eastern daily line
+
+# The pull request check in shadow: its own timer, installed by `schedule install --unit shadow --host <name>` and
+# removed by `schedule uninstall --unit shadow`. The pull request watcher state it reads is refreshed every few minutes, so
+# the unit reads it hourly; the unit's environment names the state file the overlay's shadow block asks for.
+shadow_schedule:
+  verb: shadow
+  unit_name: onex-code-graph-shadow
+  description: ONEX code graph pull request check in shadow (piece 1)
+  timer_description: ONEX code graph pull request check in shadow tick
+  log_stem: code-graph-shadow
+  state_directory: .onex_state/code-graph
+  timeout_seconds: 3000
+  cadence:
+    on_calendar: "*-*-* *:20:00 UTC"
+    randomized_delay: 120s
+    persistent: true
+    description: hourly at minute 20 UTC, after the reading writer's window rows of the previous hour
+
+# The scheduled drill: a run with an injected fault that writes a row with drill=yes, which no operational
+# reading reads. Twice a day keeps the newest error event under 12 hours old, inside the floor's 24 hour window.
+# The injected fault makes the run exit 1 on purpose, so systemd must count exit 1 as success for this unit.
+drill_schedule:
+  verb: "nightly --fault unreadable-repo"
+  unit_name: onex-code-graph-drill
+  description: ONEX scheduled code graph drill (piece 1 error event; an injected fault, drill=yes)
+  timer_description: ONEX code graph drill tick
+  log_stem: code-graph-drill
+  state_directory: .onex_state/code-graph
+  timeout_seconds: 3600
+  success_exit_status: [1]
+  cadence:
+    on_calendar: "*-*-* 00,12:25:00 UTC"
+    randomized_delay: 120s
+    persistent: true
+    description: twice a day at 00:25 and 12:25 UTC, a run with an unreadable repository so the error event stays fresh
+
+overlay:
+  node: node_code_graph_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+metadata:
+  ticket: OMN-22651
+  transport_type: inmemory

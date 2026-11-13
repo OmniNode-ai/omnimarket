@@ -8,6 +8,7 @@ shared-account decision, credential verification, notice consumption and recover
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import shlex
@@ -22,6 +23,11 @@ from typing import Any, cast
 from ..models.model_claude_account_limit import (
     ModelClaudeAccountLimitRequest,
     ModelClaudeAccountLimitResult,
+)
+from ..models.model_placement_wait import (
+    ModelPlacementWaitRequest,
+    ModelPlacementWaitResult,
+    PlacementOutcome,
 )
 
 Capture = Callable[..., subprocess.CompletedProcess[str]]
@@ -111,8 +117,14 @@ class HandlerClaudeAccountLimit:
         )
 
     def _pool_account(self, text: str) -> str | None:
-        labels = _POOL_LABEL_RE.findall(text)
-        return labels[-1] if labels else None
+        """The pool label the notice's log text names, or ``None`` when it names none or several.
+
+        Measured 2026-11-11 (OMN-23895): the last label in a log won, so a notice about one account was marked
+        on the label of another, and a reset that was never that label's stamped it until Nov 13. A text that
+        names more than one distinct label does not say which account hit the limit: no label is marked.
+        """
+        labels = set(_POOL_LABEL_RE.findall(text))
+        return next(iter(labels)) if len(labels) == 1 else None
 
     def _claude_account(self, text: str) -> str | None:
         label = self._pool_account(text)
@@ -123,9 +135,16 @@ class HandlerClaudeAccountLimit:
         return set(_POOL_LABEL_RE.findall(text)) | set(_TOKEN_ACCOUNT_RE.findall(text))
 
     def _mark_pool_account(
-        self, host: Any, label: str, seconds: float, capture: Capture
+        self,
+        host: Any,
+        label: str,
+        seconds: float,
+        capture: Capture,
+        *,
+        exact: bool = False,
     ) -> int:
-        script = f'{self.runtime["CLAUDE_POOL_SH"]}\n[ -n "$CPY" ] || exit 127\n"$CPY" -m {self.runtime["CLAUDE_POOL_MODULE"]} mark-limited --label {shlex.quote(label)} --seconds {int(seconds) + 1}'
+        flag = " --exact" if exact else ""
+        script = f'{self.runtime["CLAUDE_POOL_SH"]}\n[ -n "$CPY" ] || exit 127\n"$CPY" -m {self.runtime["CLAUDE_POOL_MODULE"]} mark-limited --label {shlex.quote(label)} --seconds {int(seconds) + 1}{flag}'
         return capture(
             self.runtime["exec_argv"](host, "claude-pool-mark", script),
             timeout=self.runtime["PROBE_TIMEOUT_S"],
@@ -430,7 +449,13 @@ class HandlerClaudeAccountLimit:
             pick = hosts.get(name)
             owned = source_owned if name == host else None
             if label is not None and pick is not None:
-                rc = self._mark_pool_account(pick, label, seconds, capture)
+                rc = self._mark_pool_account(
+                    pick,
+                    label,
+                    seconds,
+                    capture,
+                    exact=reset is not None and account is not None,
+                )
                 if name != host and rc not in (0, 4):
                     answered, _, selected = self._claude_room_verified(pick, capture)
                     if answered or not identities.intersection(selected):
@@ -553,3 +578,121 @@ class HandlerClaudeAccountLimit:
                         marker, {**body, "probed_at": self.runtime["_utc_stamp"](now)}
                     )
         return cast("dict[str, str]", self.runtime["limited_hosts"](directory, now=now))
+
+
+class HandlerPlacementWait:
+    def __init__(self, runtime: Mapping[str, Any]) -> None:
+        self.runtime = runtime
+
+    def handle(self, request: ModelPlacementWaitRequest) -> ModelPlacementWaitResult:
+        result = self._read(request)
+        request.echo(result.line())
+        return result
+
+    def _read(self, request: ModelPlacementWaitRequest) -> ModelPlacementWaitResult:
+        receipt, max_s, lane = request.receipt, request.max_s, request.lane
+        alive, poll_s, echo = request.alive, request.poll_s, request.echo
+        clock, sleep = request.clock, request.sleep
+        rt = self.runtime
+        end = clock() + max_s
+        dead = False
+
+        def result(
+            outcome: PlacementOutcome,
+            code: int,
+            status: str,
+            host: str,
+            reason: str = "",
+            wait_command: str = "",
+        ) -> ModelPlacementWaitResult:
+            return ModelPlacementWaitResult(
+                outcome=outcome,
+                error=outcome in ("refused", "crashed"),
+                exit_code=code,
+                lane=lane,
+                status=status,
+                host=host,
+                receipt=str(receipt),
+                reason=reason,
+                wait_command=wait_command,
+            )
+
+        while True:
+            try:
+                data = json.loads(receipt.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError, UnicodeError):
+                data = {}
+            if not isinstance(data, dict):
+                data = {}
+            status, host = data.get("status") or "placing", data.get("host") or "none"
+            if data.get("final"):
+                if status == "no-host":
+                    reason = " ".join(str(data.get("reason") or "unrecorded").split())
+                    echo(
+                        f"PLACEMENT lane={lane} status=no-host reason={reason} receipt={receipt}"
+                    )
+                    return result(
+                        "refused", cast("int", rt["EXIT_NO_HOST"]), status, host, reason
+                    )
+                if status == "done":
+                    echo(
+                        f"PLACEMENT lane={lane} status=done host={host} receipt={receipt}"
+                    )
+                    return result("placed", cast("int", rt["EXIT_OK"]), status, host)
+                failure = data.get("failure")
+                reason = (
+                    data.get("reason")
+                    or data.get("error")
+                    or (failure.get("reason") if isinstance(failure, dict) else None)
+                    or "unrecorded"
+                )
+                reason = " ".join(str(reason).split())[:300]
+                echo(
+                    f"PLACEMENT lane={lane} status={status} host={host} reason={reason} receipt={receipt}"
+                )
+                code = data.get("exit_code")
+                return result(
+                    "crashed",
+                    code
+                    if type(code) is int and code != 0
+                    else cast("int", rt["EXIT_LANE_ERROR"]),
+                    str(status),
+                    str(host),
+                    reason,
+                )
+            if status in ("preparing", "running"):
+                echo(
+                    f"PLACEMENT lane={lane} status=running host={host} receipt={receipt}"
+                )
+                return result("placed", cast("int", rt["EXIT_OK"]), status, host)
+            if dead:
+                echo(
+                    f"PLACEMENT lane={lane} status=dead receipt={receipt}: the runner exited before placement"
+                )
+                return result(
+                    "crashed",
+                    cast("int", rt["EXIT_REMOTE_FAILED"]),
+                    "dead",
+                    str(host),
+                    "the runner exited before placement",
+                )
+            if not alive():
+                dead = (
+                    True  # Re-read the child's last receipt before declaring it dead.
+                )
+                continue
+            if clock() >= end:
+                wait_command = f"onex-remote-lane wait --receipt {receipt}"
+                echo(
+                    f"PLACEMENT lane={lane} status=placing after {int(max_s)}s; read it with: "
+                    f"{wait_command}"
+                )
+                return result(
+                    "placing",
+                    cast("int", rt["EXIT_STILL_RUNNING"]),
+                    str(status),
+                    str(host),
+                    f"still placing after {int(max_s)}s",
+                    wait_command,
+                )
+            sleep(min(poll_s, max(0.0, end - clock())))

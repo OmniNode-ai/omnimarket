@@ -1,0 +1,71 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Copy to <root>/node_floor_fill_orchestrator/overlay.yaml. All values here are synthetic; supply your
+# deployment's facts. Every key is required and none has a default: a missing key refuses naming it.
+floor_fill:
+  # The one key the fill is serialized under (the state row, and `<scope>:answer` for the stored answer).
+  scope: example-floor-fill
+  # The one designated fill host: an available row of the lab host table. Any other value is refused.
+  host_id: host-a
+  # The published floor record.
+  url: https://floor.example.invalid/factory-floor.json
+  # Where the plan texts the floor's lines name are read.
+  plans_root: /srv/example/plans
+  # The argv of the lane start node's entry; {lane} {key} {ticket} {attempt} and {brief} (the path of the brief file the
+  # fill writes from line_brief_text) are filled per start. The entry requires --overlay, --ledger, --pool-snapshot,
+  # --model, --brief and --run-id, so the command carries them (the run id is the lane name, which carries the attempt).
+  # It must not name the script runner.
+  runner_command: [example-node-entry, --overlay, /srv/example/lane-start-overlay.yaml, --ledger, /srv/example/ledger.md, --pool-snapshot, /srv/example/pool-snapshot.json, --model, example-model, --lane, "{lane}", --key, "{key}", --ticket, "{ticket}", --attempt, "{attempt}", --brief, "{brief}", --run-id, "{lane}"]
+  # The text of the brief a floor-line start hands the entry through {brief}; {lane} {key} {ticket} {line_id} {task_id}
+  # and {plans_root} are filled per start: the entry requires --brief, and a line has no predecessor to continue.
+  line_brief_text: "Work task {task_id} of floor line {line_id} on ticket {ticket} as lane {lane} (key {key}). Read the line's plan under {plans_root} and do the task's work; do not widen it."
+  # Above the start node's placement and start timeouts; the entry's own deadline is below it.
+  reserved_timeout_seconds: 600
+  # How long a started key is held (read from the idle_slot_fill window, not a second value).
+  sent_window_minutes: 120
+  # How long the entry waits for its own command; must be below reserved_timeout_seconds.
+  command_timeout_seconds: 60
+  # How often the tick unit runs; must be below max_age_minutes in seconds (a sanity bound only).
+  tick_interval_seconds: 300
+  # Runs a command of this entry on the fill host from another host; {argv} stands for the command name and
+  # its arguments as separate elements. It must not name the script runner.
+  remote_argv: [example-remote, host-a, example-node-entry, "{argv}"]
+  process_environment:
+    EXAMPLE_VARIABLE: example
+  process_working_directory: /srv/example/work
+  # A floor record older than this is FLOOR-UNREAD; a stored answer older than this prints the stale line.
+  max_age_minutes: 15
+  # The most lanes the fill holds on one line.
+  max_fill_lanes_per_line: 2
+  # The most continuation lanes of stopped lanes that run at once.
+  stopped_max_lanes: 2
+  # How much of a stopped lane's last report a continuation brief carries, in characters.
+  stopped_report_chars: 2000
+  # The rule a continuation brief ends with.
+  stopped_continue_rule: "Continue the predecessor's work; do not repeat what its report says is done."
+  # The argv of the lane start node's entry for a continuation lane; {lane} {key} {ticket} {attempt} and {brief}
+  # (the path of the brief file the fill writes, what the entry's --brief reads) are filled per start. It must
+  # carry {brief} and must not name the script runner. The entry also requires --overlay, --ledger, --pool-snapshot, --model
+  # and --run-id, which are this deployment's, so the command carries them (the run id is the lane name, which carries the attempt).
+  stopped_runner_command: [example-node-entry, --overlay, /srv/example/lane-start-overlay.yaml, --ledger, /srv/example/ledger.md, --pool-snapshot, /srv/example/pool-snapshot.json, --model, example-model, --lane, "{lane}", --key, "{key}", --ticket, "{ticket}", --attempt, "{attempt}", --brief, "{brief}", --run-id, "{lane}"]
+  # Where the stopped lanes' report paths (as the floor record names them) are read from.
+  stopped_reports_root: /srv/example/registry
+  # Where the fill writes each continuation's brief file (<lane>.md; the lane name carries the attempt).
+  stopped_brief_directory: /srv/example/briefs
+# The live profile (``--profile live``) reads this second section. Every key is required and none has a default.
+# The pool, tickets, brake and stop-signal seams have no live source yet and carry no key here: they fail closed
+# naming what is unbound.
+floor_fill_live:
+  # The NAME of the environment variable that holds the state store DSN (the DSN itself is never in an overlay).
+  store_dsn_env: EXAMPLE_FLOOR_FILL_DSN
+  store_schema_name: public
+  store_table_name: floor_fill_state
+  store_connect_timeout_seconds: 5
+  # How long the floor record read may take.
+  floor_fetch_timeout_seconds: 10.0
+  # The plan file of a floor line under floor_fill.plans_root; {line_id} is the line's id.
+  plan_file_pattern: "{line_id}.md"
+  # The rolling ledger file the CLAIM and liveness reads scan.
+  ledger_path: /srv/example/ledger/work-ledger.md
+  # Where a started lane's log is written.
+  process_output_dir: /srv/example/work/lane-logs

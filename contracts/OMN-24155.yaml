@@ -1,0 +1,59 @@
+schema_version: 1.0.0
+ticket_id: OMN-24155
+title: Drop the cloud-openrouter rung from the nightly rung eval
+summary: 'The nightly per-rung eval declared a cloud rung whose backend id and dogfood tenant the eval host never carried, so every night recorded it as unresolved and the unit failed. The rung is removed
+  from the declared list (src/omnimarket/configs/delegation_rung_eval.v1.yaml), the existing tests that read it are brought into line, and a new test shows the missing-night check green with the three
+  remaining rungs and red for a rung whose environment is unset. Not in this change: the live nightly run on the eval host after the revision is installed (AC2).'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24155-drop-cloud-rung
+  statement: The nightly rung eval declares no cloud-openrouter rung and its check runs green with the remaining rungs.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the declared rung list of the nightly eval no longer holds cloud-openrouter and the check runs green with the remaining rungs -- falsifier: uv run pytest tests/unit/delegation/rung_eval/test_rung_list_omn19998.py
+      -q -p no:randomly --no-cov with the rung restored in delegation_rung_eval.v1.yaml'
+  - id: AC2
+    statement: 'AC2: integrated: the next onex-rung-eval run on h201 after the change is installed ends with exit 0 -- falsifier: systemctl show onex-rung-eval -p Result,ExecMainStatus on h201 reads
+      Result=exit-code or a nonzero status'
+evidence_requirements:
+- kind: tests
+  description: The rung eval tests pass at the pushed head.
+  command: uv run pytest tests/unit/delegation/rung_eval tests/unit/delegation/test_omn20173_no_coding_plan_rung.py -q -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24155-ac1
+  description: 'AC1: the declared list holds three rungs and none of kind cloud, the check-missing CLI exits 0 over rows for those rungs, and a planted rung with an unset environment makes the failing
+    gaps non-empty; fails with the cloud-openrouter rung restored in the declared list.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/rung_eval/test_rung_list_omn19998.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn24155-ac2
+  description: 'hosted proxy for AC2: the rung eval tests pass and the declared list at the pull request head holds no cloud-openrouter rung; the next onex-rung-eval run on h201 after the install is read there
+    and named in the pull request.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/rung_eval -q -p no:randomly --no-cov
+    cwd: .
+  - check_type: command
+    check_value: "sh -c '! grep -q rung_id:.cloud-openrouter src/omnimarket/configs/delegation_rung_eval.v1.yaml'"
+    cwd: .
+- id: dod-omn24155-integration-proof
+  description: the rung eval tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24155 --kind test -- env PYTHONDONTWRITEBYTECODE=1
+      uv run --frozen pytest tests/unit/delegation/rung_eval -q --no-cov

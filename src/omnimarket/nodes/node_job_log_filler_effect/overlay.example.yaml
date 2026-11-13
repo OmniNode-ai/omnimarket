@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. The deployment's overlay lives at <root>/node_job_log_filler_effect/overlay.yaml
+# under a root named in ONEX_SKILL_OVERLAY_ROOTS, or the file ONEX_JOB_LOG_FILLER_OVERLAY names.
+# No key has a default. The job-log cache root is the gateway's own (github_job_logs overlay).
+github_owner: example-owner
+watcher_state_env: EXAMPLE_PR_WATCHER_STATE
+pr_classes: [red, pending]
+always_job_names: [CI Summary]
+max_reads_per_pass: 20
+reader_concurrency: 2
+reply_tail_bytes: 4096
+reply_timeout_seconds: 60
+reprobe_seconds: 1800
+# Seconds a job whose log the gateway answered HTTP 404 (a check run that is not an Actions job, or an expired log) is not read again.
+not_found_hold_seconds: 3600
+# Seconds after which a pass starts no more reads. Budget + reply_timeout_seconds stays under the unit's run_timeout_s.
+pass_budget_seconds: 240
+# The red-facts records (OMN-23832): the state directory is the one the variable names, the records sit under the subdirectory.
+red_facts_state_env: EXAMPLE_ONEX_STATE_DIR
+red_facts_subdir: red-facts
+red_facts_tail_bytes: 65536
+red_facts_max_lines: 12
+red_facts_line_chars: 240
+default_profile: inmemory
+profiles:
+  inmemory:
+    kind: inmemory
+  redpanda:
+    kind: kafka
+    lane: example-lane

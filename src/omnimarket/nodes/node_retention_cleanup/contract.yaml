@@ -34,6 +34,21 @@ handler_routing:
       handler:
         name: NodeRetentionCleanup
         module: omnimarket.nodes.node_retention_cleanup.handlers.handler_retention_cleanup
+    - operation: retention_cleanup.references
+      handler:
+        name: HandlerRetentionReferences
+        module: omnimarket.nodes.node_retention_cleanup.handlers.handler_retention_references
+      event_model:
+        name: ModelRetentionReferencesRequest
+        module: omnimarket.nodes.node_retention_cleanup.models.model_retention_references
+    # Whole-tree cache removal (OMN-19998), called by NodeRetentionCleanup on each run.
+    - operation: retention_cleanup.cache_trees
+      handler:
+        name: NodeCacheTreeRetention
+        module: omnimarket.nodes.node_retention_cleanup.handlers.handler_cache_tree_retention
+      event_model:
+        name: CacheTreeRequest
+        module: omnimarket.nodes.node_retention_cleanup.models.model_cache_tree_retention
     # The schedule's entry. Same handler class as the manual operation: the
     # elapsed-time stamp is per-instance state.
     - operation: retention_cleanup.scheduled_run
@@ -118,14 +133,22 @@ retention_policy:
     archive_root_env: ONEX_RETENTION_ARCHIVE_ROOT
     synced_marker_xattr: com.google.drivefs.item-id
     entries:
-      # Readers: the lane that ran the ledger verb reads the detail= path in the
-      # refusal within the session. Nothing reads one later.
+      # Readers can keep citing detail= after its original call. Keep a detail
+      # while any local ledger, report, lane output or session transcript cites
+      # its unique name. Missing readers are optional; unreadable or changing
+      # readers prevent removal. Their own retention determines their lifetime.
       - name: ledger-detail
         path: $OMNI_HOME/.claude_scratch/ledger-detail
         pattern: "*"
         keep_days: 7
         action: archive
-        readers: [onex-ledger verb output, read in the same session]
+        readers: [onex-ledger verb output, live ledger, reports, lane outputs, session transcripts]
+        reference_paths:
+          - $OMNI_HOME/docs/tracking/ROLLING_WORK_LEDGER.md
+          - $OMNI_HOME/.claude_scratch/reports/*
+          - ~/.local/state/omni/remote-lanes/*/*.out
+          - ~/.claude/projects/*/*.jsonl
+          - ~/.codex/sessions/*/*/*/*.jsonl
         consent_ref: "OPERATOR-CONSENT 2026-10-17T00:06:56Z"
       # Readers: a ledger TERMINAL cell worktree=pinned-removed:<path>@<archive>
       # cites a pin, and a person restores from one by hand after a lane stops.
@@ -209,6 +232,18 @@ retention_policy:
         action: archive
         enabled: false
         readers: [codex resume]
+
+    # Rebuildable caches (OMN-19998): deleted whole, never archived; the owner rebuilds a unit from a lockfile on next use.
+    # A unit goes only when every file in it is older than keep_days (floor 7). Read by NodeCacheTreeRetention.
+  cache_tree_retention:
+    entries:
+      # Owner: node_dod_verify (`_hermetic_venv_root`) prunes only when a check builds on its own host; a host that stopped
+      # building kept 92 environments (34 GB on h101, 2026-11-13). Reader: the next dod-verify check.
+      - name: dod-verify-venvs
+        path: ~/.cache/onex/dod-verify-venvs
+        pattern: "*"
+        keep_days: 7
+        readers: [node_dod_verify hermetic environments, rebuilt from uv.lock on the next check]
 
 metadata:
   transport_type: kafka

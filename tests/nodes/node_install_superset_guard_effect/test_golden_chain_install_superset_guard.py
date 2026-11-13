@@ -6,7 +6,9 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -484,3 +486,385 @@ def test_cli_no_drops_needs_no_overlay(
     assert code == 0
     assert plan.is_file()
     assert (tmp_path / "drop-rows.txt").read_text() == ""
+
+
+def test_branch_without_guard_preserves_it_before_src_swap_and_records(
+    repo: Repo, tmp_path: Path
+) -> None:
+    """The second source lacks the guard; record still imports from the new live src."""
+    from omnimarket.nodes.node_install_only_preserve_effect import (
+        NodeInstallOnlyPreserveEffect,
+    )
+    from omnimarket.nodes.node_install_only_preserve_effect.models import (
+        ModelInstallOnlyOverlay,
+        ModelInstallOnlyRequest,
+    )
+
+    # The first source contains the real guard under the installer's package name.
+    relative = "src/omni/nodes/node_install_superset_guard_effect"
+    source = tmp_path / "source"
+    guard_source = Path(guard.__file__).parents[1]
+    shutil.copytree(
+        guard_source, source / relative, ignore=shutil.ignore_patterns("__pycache__")
+    )
+    live = tmp_path / "live"
+    shutil.copytree(source / "src", live / "src")
+    shutil.rmtree(source / relative)
+    stage = live / ".install-stage.test"
+    shutil.copytree(source / "src", stage / "src")
+    assert not (stage / relative).exists()
+
+    node = NodeInstallOnlyPreserveEffect(
+        overlay=ModelInstallOnlyOverlay(nodes=(relative,))
+    )
+    result = node.handle(ModelInstallOnlyRequest(live_root=live, stage_root=stage))
+    assert result.preserved == (relative,)
+    (live / "src").rename(stage / "src.replaced")
+    (stage / "src").rename(live / "src")
+    assert (live / relative / "handlers/handler_install_superset_cli.py").is_file()
+
+    # A positive control uses the real guard's check and record CLI after the swap.
+    # The commit subject is the recorded incident's marker, not preservation output.
+    base = repo.git("rev-parse", "HEAD")
+    first = repo.change(base, "guard.py", "guard=first")
+    env = {
+        **scrub_git_location_env(os.environ),
+        "PYTHONPATH": os.pathsep.join(
+            (str(live / "src"), str(guard_source.parents[2]))
+        ),
+    }
+    module = "omni.nodes.node_install_superset_guard_effect.handlers.handler_install_superset_cli"
+    plan, history = tmp_path / "plan.json", live / "INSTALLED-FROM-BRANCHES.txt"
+    command = [sys.executable, "-m", module]
+    checked = subprocess.run(
+        [
+            *command,
+            "check",
+            "--install-dir",
+            str(live),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--source",
+            str(repo.root / SKILLS),
+            "--lane",
+            "second",
+            "--history",
+            str(history),
+            "--plan",
+            str(plan),
+            "--drop-rows",
+            str(tmp_path / "drops.txt"),
+            "--main-ref",
+            base,
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert checked.returncode == 0, checked.stderr
+    assert "INSTALL-SUPERSET-CONTAINED" in checked.stdout
+    recorded = subprocess.run(
+        [
+            *command,
+            "record",
+            "--plan",
+            str(plan),
+            "--install-record",
+            str(live / "landing_install.json"),
+            "--history",
+            str(history),
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert recorded.returncode == 0, recorded.stderr
+    entry = json.loads((live / "landing_install.json").read_text())["superset"]
+    assert entry["commit"] == first
+    assert entry["carried"][0]["subject"] == "guard=first"
+    assert "SUPERSET" in history.read_text()
+
+
+def test_preservation_cli_copies_all_declared_nodes_and_keeps_stage_versions(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from omnimarket.nodes.node_install_only_preserve_effect.__main__ import main
+
+    live, stage = tmp_path / "live", tmp_path / "stage"
+    for root, node, body in [
+        (live, "first", "live first"),
+        (live, "second", "live second"),
+        (stage, "second", "stage second"),
+        (live, "undeclared", "private"),
+    ]:
+        target = root / "src/example/nodes" / node / "handler.py"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(body)
+    overlay = tmp_path / "overlays/node_install_only_preserve_effect"
+    overlay.mkdir(parents=True)
+    (overlay / "overlay.yaml").write_text(
+        "nodes: [src/example/nodes/first, src/example/nodes/second, src/example/nodes/absent]\n"
+    )
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(overlay.parent))
+    assert main(["--install-root", str(live), "--stage-root", str(stage)]) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["preserved"] == ["src/example/nodes/first"]
+    assert result["stage_present"] == ["src/example/nodes/second"]
+    assert result["unavailable"] == ["src/example/nodes/absent"]
+    assert (stage / "src/example/nodes/first/handler.py").read_text() == "live first"
+    assert (stage / "src/example/nodes/second/handler.py").read_text() == "stage second"
+    assert not (stage / "src/example/nodes/undeclared").exists()
+    assert main(["--install-root", str(live), "--stage-root", str(stage)]) == 0
+    assert json.loads(capsys.readouterr().out)["preserved"] == []
+
+
+@pytest.mark.parametrize(
+    "declarations",
+    [
+        [],
+        ["/absolute/node"],
+        ["../outside/node"],
+        ["src/../node"],
+        ["src/./node"],
+        ["src//node"],
+        ["src/node/"],
+        ["src/node", "src/node"],
+        ["src/node", "src/node/nested"],
+    ],
+)
+def test_preservation_rejects_invalid_declarations(declarations: list[str]) -> None:
+    from pydantic import ValidationError
+
+    from omnimarket.nodes.node_install_only_preserve_effect.models import (
+        ModelInstallOnlyOverlay,
+    )
+
+    with pytest.raises(ValidationError):
+        ModelInstallOnlyOverlay(nodes=declarations)
+
+
+def test_preservation_requires_overlay_and_refuses_unsafe_stage_before_copy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from omnimarket.nodes.node_install_only_preserve_effect import (
+        NodeInstallOnlyPreserveEffect,
+    )
+    from omnimarket.nodes.node_install_only_preserve_effect.__main__ import main
+    from omnimarket.nodes.node_install_only_preserve_effect.models import (
+        ModelInstallOnlyOverlay,
+        ModelInstallOnlyRequest,
+    )
+
+    monkeypatch.delenv("ONEX_SKILL_OVERLAY_ROOTS", raising=False)
+    monkeypatch.delenv("INSTALL_ONLY_NODES_OVERLAY", raising=False)
+    live, stage, outside = (tmp_path / name for name in ("live", "stage", "outside"))
+    for root in (live, stage, outside):
+        root.mkdir()
+    assert main(["--install-root", str(live), "--stage-root", str(stage)]) == 3
+    assert "overlay.yaml" in capsys.readouterr().err
+    for relative in ("src/nodes/first", "src/nodes/second"):
+        target = live / relative / "handler.py"
+        target.parent.mkdir(parents=True)
+        target.write_text("first")
+    (stage / "src").symlink_to(outside, target_is_directory=True)
+    node = NodeInstallOnlyPreserveEffect(
+        overlay=ModelInstallOnlyOverlay(nodes=("src/nodes/first", "src/nodes/second"))
+    )
+    with pytest.raises(ValueError, match=r"escapes|symlink"):
+        node.handle(ModelInstallOnlyRequest(live_root=live, stage_root=stage))
+    assert list(outside.iterdir()) == []
+    with pytest.raises(ValueError, match="equal or contain"):
+        node.handle(ModelInstallOnlyRequest(live_root=live, stage_root=live))
+    with pytest.raises(ValueError, match="equal or contain"):
+        node.handle(ModelInstallOnlyRequest(live_root=live, stage_root=tmp_path))
+
+
+def test_preservation_uses_injected_copy_and_failed_copy_leaves_no_node(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from omnimarket.nodes.node_install_only_preserve_effect import (
+        NodeInstallOnlyPreserveEffect,
+    )
+    from omnimarket.nodes.node_install_only_preserve_effect import (
+        handler as preservation,
+    )
+    from omnimarket.nodes.node_install_only_preserve_effect.models import (
+        ModelInstallOnlyOverlay,
+        ModelInstallOnlyRequest,
+    )
+
+    live, stage = tmp_path / "live", tmp_path / "stage"
+    (live / "src/nodes/guard").mkdir(parents=True)
+    stage.mkdir()
+    calls: list[tuple[Path, Path]] = []
+    handler = preservation.HandlerInstallOnlyPreserve(
+        overlay=ModelInstallOnlyOverlay(nodes=("src/nodes/guard",)),
+        copy_tree=lambda source, dest: calls.append((source, dest)),
+    )
+    node = NodeInstallOnlyPreserveEffect(handler=handler)
+    request = ModelInstallOnlyRequest(live_root=live, stage_root=stage)
+    assert node.handle(request).preserved == ("src/nodes/guard",)
+    assert calls == [(live / "src/nodes/guard", stage / "src/nodes/guard")]
+
+    def failed_copy(source: Path, target: Path) -> None:
+        target.mkdir()
+        (target / "partial.py").write_text("partial")
+        raise OSError("copy failed")
+
+    monkeypatch.setattr(preservation.shutil, "copytree", failed_copy)
+    with pytest.raises(OSError, match="copy failed"):
+        preservation.copy_node(*calls[0])
+    assert not (stage / "src/nodes/guard").exists()
+    assert list((stage / "src/nodes").iterdir()) == []
+
+
+def test_recorded_guard_first_case_from_the_second_install(tmp_path: Path) -> None:
+    """Minimal guard sentinel reproduces the recorded check/record import failure."""
+    relative = "src/omni/nodes/node_install_superset_guard_effect"
+    source, live = tmp_path / "source", tmp_path / "live"
+    package = source / relative
+    package.mkdir(parents=True)
+    (package / "__main__.py").write_text(
+        "import sys\nfrom pathlib import Path\n"
+        "if sys.argv[1] == 'check':\n print('INSTALL-SUPERSET-CONTAINED guard=first')\n"
+        "else:\n Path(sys.argv[2]).write_text('SUPERSET guard=first\\n')\n"
+    )
+    shutil.copytree(source / "src", live / "src")
+    shutil.rmtree(package)
+    overlay = tmp_path / "overlay.yaml"
+    overlay.write_text(f"nodes: [{relative}]\n")
+    stage = live / ".install-stage.second"
+    shutil.copytree(source / "src", stage / "src")
+    missing = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "omni.nodes.node_install_superset_guard_effect",
+            "record",
+        ],
+        env={**os.environ, "PYTHONPATH": str(stage / "src")},
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+    assert missing.returncode != 0
+    assert "No module named" in missing.stderr
+    # Invoke the same single module call the shell installer will use.
+    node_cli = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "omnimarket.nodes.node_install_only_preserve_effect",
+            "--install-root",
+            str(live),
+            "--stage-root",
+            str(stage),
+        ],
+        env={
+            **os.environ,
+            "INSTALL_ONLY_NODES_OVERLAY": str(overlay),
+            "PYTHONPATH": str(Path(guard.__file__).parents[4]),
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+    assert node_cli.returncode == 0, node_cli.stderr
+    assert json.loads(node_cli.stdout)["preserved"] == [relative]
+    (live / "src").rename(stage / "src.replaced")
+    (stage / "src").rename(live / "src")
+    assert (live / relative / "__main__.py").is_file()
+    env = {**os.environ, "PYTHONPATH": str(live / "src")}
+    command = [sys.executable, "-m", "omni.nodes.node_install_superset_guard_effect"]
+    checked = subprocess.run(
+        [*command, "check"],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+    assert checked.returncode == 0, checked.stderr
+    assert "INSTALL-SUPERSET-CONTAINED guard=first" in checked.stdout
+    history = live / "INSTALLED-FROM-BRANCHES.txt"
+    recorded = subprocess.run(
+        [*command, "record", str(history)],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+    assert recorded.returncode == 0, recorded.stderr
+    assert "SUPERSET guard=first" in history.read_text()
+
+
+async def test_preservation_runtime_command_and_completed_event(tmp_path: Path) -> None:
+    import asyncio
+    from uuid import uuid4
+
+    import yaml
+    from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+    from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
+    from omnibase_infra.event_bus.models.model_event_message import ModelEventMessage
+    from omnibase_infra.runtime.auto_wiring.discovery import (
+        discover_contracts_from_paths,
+    )
+    from omnibase_infra.runtime.auto_wiring.handler_wiring import wire_from_manifest
+    from omnibase_infra.runtime.message_dispatch_engine import MessageDispatchEngine
+
+    from omnimarket.nodes.node_install_only_preserve_effect import (
+        NodeInstallOnlyPreserveEffect,
+    )
+
+    contract = NodeInstallOnlyPreserveEffect.contract_path
+    manifest = discover_contracts_from_paths([contract])
+    assert not manifest.errors
+    assert len(manifest.contracts) == 1
+    raw = yaml.safe_load(contract.read_text())
+    command, completed = raw["runtime_dispatch"]["command_topic"], raw["terminal_event"]
+    assert completed == "onex.evt.omnimarket.install-only-preserve-completed.v1"
+    live, stage = tmp_path / "live", tmp_path / "stage"
+    (live / "src/example/nodes/guard").mkdir(parents=True)
+    (live / "src/example/nodes/guard/handler.py").write_text("first")
+    stage.mkdir()
+    results: asyncio.Queue[dict[str, object]] = asyncio.Queue()
+    bus = EventBusInmemory(environment="local", group="install-only-preserve")
+    await bus.start()
+
+    async def collect(message: ModelEventMessage) -> None:
+        await results.put(json.loads(message.value))
+
+    try:
+        await bus.subscribe(
+            completed, group_id="install-only-results", on_message=collect
+        )
+        engine = MessageDispatchEngine()
+        report = await wire_from_manifest(
+            manifest, engine, event_bus=bus, environment="local"
+        )
+        assert [result.outcome.value for result in report.results] == ["wired"]
+        engine.freeze()
+        correlation_id = uuid4()
+        envelope = ModelEventEnvelope[object](
+            payload={
+                "live_root": str(live),
+                "stage_root": str(stage),
+                "overlay": {"nodes": ["src/example/nodes/guard"]},
+            },
+            correlation_id=correlation_id,
+            event_type="omnimarket.install-only-preserve-requested",
+        )
+        await bus.publish(command, None, envelope.model_dump_json().encode(), None)
+        event = await asyncio.wait_for(results.get(), timeout=3)
+        assert event["correlation_id"] == str(correlation_id)
+        assert event["payload"]["preserved"] == ["src/example/nodes/guard"]
+        assert (stage / "src/example/nodes/guard/handler.py").read_text() == "first"
+    finally:
+        await bus.close()

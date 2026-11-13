@@ -23,8 +23,10 @@ from __future__ import annotations
 
 import os
 import re
+import socket
 import subprocess
 import sys
+import time
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -194,6 +196,51 @@ class HandlerCanonicalCloneDirtyConvergeEffect:
         return paths
 
     # -- live use -----------------------------------------------------------------------------
+    def _live_build_lock(self) -> str:
+        """The first declared build lock that is held and younger than the declared age, else ''.
+
+        The deploy agent takes these mkdir locks from staging through its last image build; its holder
+        record's time (the directory's, without one) is the age, the reclaim rule the agent applies. A
+        holder on this host whose process is gone is reclaimable at once, as the agent reclaims it.
+        """
+        now = time.time()
+        for relative in self.declaration.build_lock_dirs:
+            lock = self.registry_root / relative
+            if not lock.is_dir():
+                continue
+            holder = lock / "holder"
+            try:
+                age = now - (holder if holder.is_file() else lock).stat().st_mtime
+            except OSError:
+                continue  # an unreadable age is not evidence of a live build
+            if age > self.declaration.build_lock_max_age_seconds:
+                continue
+            if self._holder_is_gone(holder):
+                continue
+            return lock.name
+        return ""
+
+    @staticmethod
+    def _holder_is_gone(holder: Path) -> bool:
+        """True only when the record names this host and a process that is not running."""
+        try:
+            fields = dict(
+                line.partition("=")[::2]
+                for line in holder.read_text(encoding="utf-8").splitlines()
+            )
+            pid = int(fields.get("pid", ""))
+        except (OSError, UnicodeError, ValueError):
+            return False  # no readable record proves nothing about the build
+        if fields.get("host") != socket.gethostname():
+            return False
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return True
+        except (OSError, OverflowError):
+            return False  # PermissionError means alive; other errors prove nothing
+        return False
+
     def _open_claim_naming(self, clone: Path) -> str:
         """The lane of an open CLAIM that names the clone's path, else an empty string."""
         ledger = self._env.get("ONEX_LEDGER_PATH", "")
@@ -281,11 +328,23 @@ class HandlerCanonicalCloneDirtyConvergeEffect:
 
         skipped = EnumDirtyConvergeStatus.SKIPPED
         failed = EnumDirtyConvergeStatus.FAILED
+        building = self._live_build_lock()
+        if building:
+            return outcome(
+                skipped, f"an image build holds {building}: converged after it ends"
+            )
+        if self._out(clone, "rev-parse", "--is-bare-repository") == "true":
+            return self._repair_bare(clone, refused_for, outcome)
         branch = self._out(clone, "symbolic-ref", "--quiet", "--short", "HEAD")
         if not branch:
             return self._reattach_detached(clone, refused_for, outcome)
         if branch not in self.declaration.tracking_branches:
-            return outcome(skipped, f"checked out on {branch}, not a tracking branch")
+            # A canonical clone parked on a lane branch serves that branch to every reader and the
+            # engine refuses it on every run, so it is returned to its remote default branch the
+            # same way a detached HEAD is reattached (OMN-23032).
+            return self._reattach_detached(
+                clone, refused_for, outcome, parked_on=branch
+            )
         if refused_for < self.age:
             return outcome(
                 skipped,
@@ -313,8 +372,11 @@ class HandlerCanonicalCloneDirtyConvergeEffect:
             ).splitlines()
             if c
         ]
-        if not dirty:
-            return outcome(skipped, "no tracked changes: the refusal has another cause")
+        if not dirty and not commits:
+            return outcome(
+                skipped,
+                "no tracked changes or local commits: the refusal has another cause",
+            )
         lane = self._open_claim_naming(clone)
         if lane:
             return outcome(skipped, f"an open CLAIM of lane {lane} names the clone")
@@ -328,9 +390,10 @@ class HandlerCanonicalCloneDirtyConvergeEffect:
             more = f" and {len(items) - listed} more" if len(items) > listed else ""
             return ", ".join(items[:listed]) + more
 
-        dropped = f"{len(dirty)} tracked path(s) ({named(dirty)})"
+        parts = [f"{len(dirty)} tracked path(s) ({named(dirty)})"] if dirty else []
         if commits:
-            dropped += f" and {len(commits)} local commit(s) ({named(commits)})"
+            parts.append(f"{len(commits)} local commit(s) ({named(commits)})")
+        dropped = " and ".join(parts)
         note = f"dropped, not saved: {dropped}; converged to {target[:12]}"
         script = self.registry_root / self.declaration.converge_script
         try:
@@ -377,6 +440,8 @@ class HandlerCanonicalCloneDirtyConvergeEffect:
         clone: Path,
         refused_for: int,
         outcome: Callable[..., ModelDirtyConvergeOutcome],
+        *,
+        parked_on: str = "",
     ) -> ModelDirtyConvergeOutcome:
         """Reattach a clone left on a detached HEAD to its tracking branch (OMN-20344).
 
@@ -387,10 +452,11 @@ class HandlerCanonicalCloneDirtyConvergeEffect:
         """
         skipped = EnumDirtyConvergeStatus.SKIPPED
         failed = EnumDirtyConvergeStatus.FAILED
+        where = f"on {parked_on}" if parked_on else "detached"
         if refused_for < self.detached_age:
             return outcome(
                 skipped,
-                f"detached for {refused_for}s, below the declared {int(self.detached_age)}s",
+                f"{where} for {refused_for}s, below the declared {int(self.detached_age)}s",
             )
         # A raw ref can name a missing object. Require the commit before allowing
         # the converge script to move HEAD and potentially lose its only reference.
@@ -428,7 +494,8 @@ class HandlerCanonicalCloneDirtyConvergeEffect:
                 f"; {len(only_here)} commit(s) reachable only from it "
                 f"({', '.join(only_here[:listed])}{more}) saved as patches by the script"
             )
-        note = f"reattached from a detached HEAD at {before[:12]}{kept}"
+        origin = f"the lane branch {parked_on}" if parked_on else "a detached HEAD"
+        note = f"reattached from {origin} at {before[:12]}{kept}"
         script = self.registry_root / self.declaration.converge_script
         try:
             done = self._run(
@@ -466,6 +533,90 @@ class HandlerCanonicalCloneDirtyConvergeEffect:
         return outcome(
             EnumDirtyConvergeStatus.CONVERGED,
             f"{note}; now on {branch} at {head[:12]}",
+            converged_to=head,
+        )
+
+    # -- a clone git wrongly treats as bare (OMN-24240) -----------------------------------------
+    def _repair_bare(
+        self,
+        clone: Path,
+        refused_for: int,
+        outcome: Callable[..., ModelDirtyConvergeOutcome],
+    ) -> ModelDirtyConvergeOutcome:
+        """Clear core.bare on a clone that has a working tree, then converge it (OMN-24240).
+
+        A lab host's clone had a full working tree and a .git directory but core.bare=true, so the
+        engine refused it forever (a fetch lands and no checkout ever does). A true bare mirror has
+        no .git directory inside it and is never touched; a clone with a working tree is repaired.
+        """
+        skipped = EnumDirtyConvergeStatus.SKIPPED
+        failed = EnumDirtyConvergeStatus.FAILED
+        if refused_for < self.detached_age:
+            return outcome(
+                skipped,
+                f"core.bare=true for {refused_for}s, below the declared {int(self.detached_age)}s",
+            )
+        if not (clone / ".git").is_dir():
+            return outcome(
+                skipped, "a bare mirror with no working tree: nothing to repair"
+            )
+        if any((clone / ".git" / marker).exists() for marker in _IN_PROGRESS):
+            return outcome(skipped, "a git operation is in progress in the clone")
+        lane = self._open_claim_naming(clone)
+        if lane:
+            return outcome(skipped, f"an open CLAIM of lane {lane} names the clone")
+        inside = self._process_inside(clone)
+        if inside:
+            return outcome(skipped, f"a process is using the clone ({inside})")
+        before = self._out(clone, "rev-parse", "--verify", "--quiet", "HEAD")
+        if not before:
+            return outcome(failed, "HEAD does not resolve to a commit")
+        code, text = self._git(clone, "config", "core.bare", "false")
+        if code:
+            return outcome(failed, f"could not clear core.bare: {text}")
+        note = f"cleared core.bare=true on a clone with a working tree at {before[:12]}"
+        script = self.registry_root / self.declaration.converge_script
+        try:
+            done = self._run(
+                [
+                    "/bin/bash",
+                    str(script),
+                    str(clone),
+                    "--execute",
+                    "--ticket",
+                    self.declaration.ticket,
+                    "--lane",
+                    self.declaration.lane,
+                    "--note",
+                    note,
+                ],
+                capture_output=True,
+                text=True,
+                env={k: v for k, v in self._env.items() if k not in _GIT_LOCATION_ENV},
+                timeout=_TIMEOUTS.get("dirty_converge_script_seconds"),
+                check=False,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            return outcome(
+                failed, f"converge could not run: {type(exc).__name__}: {exc}"
+            )
+        still_bare = self._out(clone, "rev-parse", "--is-bare-repository")
+        branch = self._out(clone, "symbolic-ref", "--quiet", "--short", "HEAD")
+        head = self._out(clone, "rev-parse", "--verify", "--quiet", "HEAD")
+        if (
+            done.returncode
+            or still_bare == "true"
+            or branch not in self.declaration.tracking_branches
+        ):
+            tail = " ".join((done.stderr or done.stdout or "").split())[-300:]
+            return outcome(
+                failed,
+                f"clone still bare or off a tracking branch ({branch or 'detached'}); "
+                f"converge-canonical-clone.sh exit {done.returncode}: {tail}",
+            )
+        return outcome(
+            EnumDirtyConvergeStatus.CONVERGED,
+            f"{note}; now at {head[:12]}",
             converged_to=head,
         )
 

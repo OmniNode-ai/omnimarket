@@ -15,7 +15,6 @@ co-resolves, is accepted.
 
 from __future__ import annotations
 
-import re
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -377,14 +376,16 @@ def test_gates_unchanged_over_the_changed_file_list() -> None:
         assert path != ".github/workflows/ci.yml", path
         assert "allowlist" not in path, path
         assert "baseline" not in path, path
-    workflow = yaml.safe_load(
-        (REPO_ROOT / ".github/workflows/sibling-pin-train.yml").read_text()
-    )
+    workflow_text = (REPO_ROOT / ".github/workflows/sibling-pin-train.yml").read_text()
+    workflow = yaml.safe_load(workflow_text)
     triggers = workflow.get("on", workflow.get(True))
-    # Schedule and workflow_dispatch only: no pull_request context is minted.
-    assert set(triggers) == {"schedule", "workflow_dispatch"}
+    # RULING 2026-11-09T21:54:25Z lane=orchestrator-31d9 (OMN-18594): the daily
+    # schedule is off; workflow_dispatch only, so no pull_request context is minted.
+    assert set(triggers) == {"workflow_dispatch"}
+    assert "schedule" not in triggers
     assert triggers["workflow_dispatch"]["inputs"]["dry_run"]["type"] == "boolean"
-    assert re.fullmatch(r"\d+ \d+ \* \* \*", triggers["schedule"][0]["cron"])
+    head, _, _ = workflow_text.partition("\non:\n")
+    assert "RULING 2026-11-09T21:54:25Z lane=orchestrator-31d9 (OMN-18594)" in head
     # The node's gates stay: it is still a pure COMPUTE node with no bus topics.
     contract = yaml.safe_load(
         (
@@ -398,4 +399,6 @@ def test_gates_unchanged_over_the_changed_file_list() -> None:
         "move_dev_tag_pin",
         "select_dev_tag_pin_set",
         "run_dev_tag_pin_train",
+        # OMN-22497: the pure green verdict the train's oracle calls.
+        "judge_dev_tag_green",
     ]

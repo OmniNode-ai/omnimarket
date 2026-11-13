@@ -1,0 +1,75 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_work_ledger_parity_receipt_effect
+node_type: effect
+runtime_profiles: [effects]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  The daily work-ledger parity receipt writer (OMN-23251), moved from the ledger-publish unit (its parity_receipt function)
+  (OMN-20536). From the not-before time it runs the parity check of node_projection_work_ledger for the previous UTC day
+  with --receipt and appends the one STATUS row it prints through an injected appender. A day whose newest receipt shows
+  missing=0 and unexplained=0 is skipped; a day with no receipt, or whose newest receipt shows missing or unexplained above
+  0, gets a fresh one. Exit codes: 0 nothing owed or receipt appended, 1 failed or not configured. Every setting is in
+  overlay.example.yaml.
+input_model:
+  name: ModelParityReceiptRequest
+  module: omnimarket.nodes.node_work_ledger_parity_receipt_effect.models.model_parity_receipt
+output_model:
+  name: ModelParityReceiptResult
+  module: omnimarket.nodes.node_work_ledger_parity_receipt_effect.models.model_parity_receipt
+handler:
+  module: omnimarket.nodes.node_work_ledger_parity_receipt_effect.handlers.handler_parity_receipt
+  class: HandlerParityReceipt
+  input_model: omnimarket.nodes.node_work_ledger_parity_receipt_effect.models.model_parity_receipt.ModelParityReceiptRequest
+  output_model: omnimarket.nodes.node_work_ledger_parity_receipt_effect.models.model_parity_receipt.ModelParityReceiptResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_work_ledger_parity_receipt_effect.handlers.handler_parity_receipt:HandlerParityReceipt
+  handlers:
+    - operation: write_parity_receipt
+      handler:
+        name: HandlerParityReceipt
+        module: omnimarket.nodes.node_work_ledger_parity_receipt_effect.handlers.handler_parity_receipt
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: false
+  timeout_ms: 1020000
+  runtime_profiles:
+    - effects
+inputs:
+  registry_root: {type: str, required: true, description: Root whose state directory the parity check writes under.}
+  ledger_path: {type: str, required: true, description: The rolling work ledger to read and append to.}
+  parity_python: {type: str, required: false, description: Interpreter that runs the parity check.}
+  verb_command: {type: str, required: false, description: Command prefix of the ledger readers; passed to the parity check as --verb-command.}
+  dsn_overlay_path: {type: str, required: false, description: Overlay file holding the host variable name, database and user.}
+  dsn_env_file: {type: str, required: false, description: Env file holding the host and the password.}
+  pg_port: {type: str, required: false, description: Port of the projection database.}
+  now: {type: str, required: false, description: UTC timestamp used instead of the clock.}
+  dry_run: {type: bool, required: false, description: Decide whether a receipt is owed and write nothing.}
+outputs:
+  status: {type: str}
+  exit_code: {type: int}
+  state: {type: str}
+  day: {type: str}
+  reason: {type: str}
+  receipt_row: {type: str}
+  log_line: {type: str}
+  error_message: {type: str}
+terminal_event: onex.evt.omnimarket.work-ledger-parity-receipt-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.work-ledger-parity-receipt-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.work-ledger-parity-receipt-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.work-ledger-parity-receipt-completed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.work-ledger-parity-receipt-completed.v1
+metadata:
+  transport_type: inmemory
+  description: Daily work-ledger parity receipt writer
+  author: OmniNode Team
+  created: "2026-11-09"
+  related_tickets: [OMN-23251, OMN-20536]

@@ -1,0 +1,312 @@
+# The shape of the MVP launch block's deployed overlay, with the estate's repository names replaced (the deployed file is the overlays
+# repository's node_product_floor_verdict_compute_mvp_launch). (OMN-23205, MVP launch plan task M1): which 17 readings the floor's mvp_launch block holds, the
+# producer each reads, that producer's cron (copied from its workflow's on.schedule), the grace the newest-run rule allows an absent
+# run, the conclusion that counts as green, the packages whose versions the run must record equal to the launch candidate, and the
+# Mac leg a customer-machine reading also needs. Grace: one cadence period for producers that run every 6 hours or more often, two
+# hours for daily ones, one day for the weekly walk. C32 and R2..R6, R8 and both walks have no scheduled producer yet; their
+# entries declare the schedule the plan asks for and read NOT WORKING until a scheduled run exists.
+title: MVP launch
+max_age_s: 900
+mac_leg_max_age_s: 604800
+walk_reading_id: clean-vm-walk
+readings:
+- id: C11
+  kind: scheduled
+  cron: 10 * * * *
+  grace_s: 3600
+  green_conclusion: success
+  source:
+    repo: OmniNode-ai/omnibase_infra
+    workflow: chain-canary-c11-negative-paths.yml
+    limit: 10
+- id: C12
+  kind: scheduled
+  cron: 27 * * * *
+  grace_s: 3600
+  green_conclusion: success
+  source:
+    repo: OmniNode-ai/omnibase_infra
+    workflow: chain-canary-c12-provider-catalogue.yml
+    limit: 10
+- id: C13
+  kind: scheduled
+  cron: 16 * * * *
+  grace_s: 3600
+  green_conclusion: success
+  mac_leg: mac-c13
+  source:
+    repo: example-org/customer-estate
+    workflow: c13-customer-local-delegation.yml
+    limit: 10
+- id: C14
+  kind: scheduled
+  cron: 34 * * * *
+  grace_s: 3600
+  green_conclusion: success
+  mac_leg: mac-c14
+  source:
+    repo: example-org/customer-estate
+    workflow: c14-customer-local-routing.yml
+    limit: 10
+- id: C15
+  kind: scheduled
+  cron: 41 1,3,5,7,9,11,13,15,17,19,21,23 * * *
+  grace_s: 7200
+  green_conclusion: success
+  source:
+    repo: OmniNode-ai/omnibase_infra
+    workflow: chain-canary.yml
+    limit: 10
+- id: C16
+  kind: scheduled
+  cron: 29 3,9,15,21 * * *
+  grace_s: 21600
+  green_conclusion: success
+  source:
+    repo: OmniNode-ai/omnibase_infra
+    workflow: chain-canary-c16-receipt-identity.yml
+    limit: 10
+- id: C17
+  kind: scheduled
+  cron: 24 * * * *
+  grace_s: 3600
+  green_conclusion: success
+  source:
+    repo: example-org/customer-estate
+    workflow: m4-c17-customer-surface-verdict.yml
+    limit: 10
+- id: C28
+  kind: scheduled
+  cron: 3 * * * *
+  grace_s: 3600
+  green_conclusion: success
+  source:
+    repo: OmniNode-ai/omnibase_infra
+    workflow: chain-canary-c28-consumer-flow.yml
+    limit: 10
+- id: C29
+  kind: scheduled
+  cron: 56 * * * *
+  grace_s: 3600
+  green_conclusion: success
+  mac_leg: mac-c29
+  source:
+    repo: example-org/customer-estate
+    workflow: c29-customer-byo-key-delegation.yml
+    limit: 10
+- id: C30
+  kind: scheduled
+  cron: 17 */6 * * *
+  grace_s: 21600
+  green_conclusion: success
+  graded_packages:
+  - omnibase_core
+  - omnibase_infra
+  - omnimarket
+  source:
+    repo: example-org/customer-estate
+    workflow: c30-claude-code-plugin-delegate.yml
+    limit: 10
+- id: C31
+  kind: scheduled
+  cron: 47 */6 * * *
+  grace_s: 21600
+  green_conclusion: success
+  mac_leg: mac-c31
+  source:
+    repo: example-org/customer-estate
+    workflow: c31-local-dashboard-parity.yml
+    limit: 10
+- id: C32
+  kind: scheduled
+  cron: 30 7 * * *
+  grace_s: 7200
+  green_conclusion: success
+  mac_leg: mac-c32
+  source:
+    repo: example-org/customer-estate
+    workflow: c32-local-auth-boundary.yml
+    limit: 10
+- id: C33
+  kind: derived
+  inputs:
+  - R1
+  - R2
+  - R3
+  - R4
+  - R5
+  - R6
+  - R7
+  - R8
+  - R9
+- id: clean-vm-walk
+  kind: scheduled
+  cron: 0 9 * * 1
+  grace_s: 86400
+  green_conclusion: success
+  admitted_triggers:
+  - candidate
+  graded_packages:
+  - omnibase_core
+  - omnibase_infra
+  - omnimarket
+  source:
+    repo: OmniNode-ai/omnimarket
+    workflow: clean-vm-walk.yml
+    limit: 10
+- id: clean-vm-walk-plugin
+  kind: scheduled
+  cron: 0 9 * * 1
+  grace_s: 86400
+  green_conclusion: success
+  admitted_triggers:
+  - candidate
+  graded_packages:
+  - omnibase_core
+  - omnibase_infra
+  - omnimarket
+  source:
+    repo: OmniNode-ai/omnimarket
+    workflow: clean-vm-walk.yml
+    limit: 10
+- id: onboarding-verify-native
+  kind: scheduled
+  cron: 23 5 * * *
+  grace_s: 7200
+  green_conclusion: success
+  graded_packages:
+  - omnibase_core
+  - omnibase_infra
+  - omnimarket
+  source:
+    repo: OmniNode-ai/omniclaude
+    workflow: onboarding-verify.yml
+    limit: 10
+- id: release-identity
+  kind: derived
+  inputs:
+  - candidate-manifest
+  - clean-vm-walk
+  - onboarding-verify-native
+scenarios:
+- id: R1
+  kind: scheduled
+  cron: 56 * * * *
+  grace_s: 3600
+  green_conclusion: success
+  mac_leg: mac-c29
+  graded_packages:
+  - omnibase_core
+  - omnibase_infra
+  - omnimarket
+  source:
+    repo: example-org/customer-estate
+    workflow: c29-customer-byo-key-delegation.yml
+    limit: 10
+- id: R2
+  kind: scheduled
+  cron: 0 * * * *
+  grace_s: 3600
+  green_conclusion: success
+  mac_leg: mac-r2
+  graded_packages:
+  - omnibase_core
+  - omnibase_infra
+  - omnimarket
+  source:
+    repo: example-org/customer-estate
+    workflow: delegation-readiness-r2-local-after-onboarding.yml
+    limit: 10
+- id: R3
+  kind: scheduled
+  cron: 0 */6 * * *
+  grace_s: 21600
+  green_conclusion: success
+  mac_leg: mac-r3
+  graded_packages:
+  - omnibase_core
+  - omnibase_infra
+  - omnimarket
+  source:
+    repo: example-org/customer-estate
+    workflow: delegation-readiness-r3-forced-escalation.yml
+    limit: 10
+- id: R4
+  kind: scheduled
+  cron: 0 */6 * * *
+  grace_s: 21600
+  green_conclusion: success
+  graded_packages:
+  - omnibase_core
+  - omnibase_infra
+  - omnimarket
+  source:
+    repo: example-org/customer-estate
+    workflow: delegation-readiness-r4-rung-failures.yml
+    limit: 10
+- id: R5
+  kind: scheduled
+  cron: 0 * * * *
+  grace_s: 3600
+  green_conclusion: success
+  mac_leg: mac-r5
+  graded_packages:
+  - omnibase_core
+  - omnibase_infra
+  - omnimarket
+  source:
+    repo: example-org/customer-estate
+    workflow: delegation-readiness-r5-openrouter-ordered-models.yml
+    limit: 10
+- id: R6
+  kind: scheduled
+  cron: 0 3 * * *
+  grace_s: 7200
+  green_conclusion: success
+  graded_packages:
+  - omnibase_core
+  - omnibase_infra
+  - omnimarket
+  source:
+    repo: example-org/customer-estate
+    workflow: delegation-readiness-r6-long-task-ceiling.yml
+    limit: 10
+- id: R7
+  kind: scheduled
+  cron: 29 3,9,15,21 * * *
+  grace_s: 21600
+  green_conclusion: success
+  graded_packages:
+  - omnibase_core
+  - omnibase_infra
+  - omnimarket
+  source:
+    repo: OmniNode-ai/omnibase_infra
+    workflow: chain-canary-c16-receipt-identity.yml
+    limit: 10
+- id: R8
+  kind: scheduled
+  cron: 0 */6 * * *
+  grace_s: 21600
+  green_conclusion: success
+  graded_packages:
+  - omnibase_core
+  - omnibase_infra
+  - omnimarket
+  source:
+    repo: example-org/customer-estate
+    workflow: delegation-readiness-r8-synthetic-not-counted.yml
+    limit: 10
+- id: R9
+  kind: scheduled
+  cron: 10 * * * *
+  grace_s: 3600
+  green_conclusion: success
+  graded_packages:
+  - omnibase_core
+  - omnibase_infra
+  - omnimarket
+  source:
+    repo: OmniNode-ai/omnibase_infra
+    workflow: chain-canary-c11-negative-paths.yml
+    limit: 10

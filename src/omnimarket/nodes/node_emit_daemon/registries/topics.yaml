@@ -115,16 +115,21 @@ events:
 
   # OMN-19550: full-content capture (RULING 2026-09-25T11:23:30Z). The complete
   # prompt, tool input, tool result and assistant reply, one content item (or
-  # one chunk of it) per record, raw (OMN-19513, RULING 2026-10-15T04:24:42Z:
-  # no redaction on the bus). A cmd topic: full prompts and file contents go only
-  # on the restricted onex.cmd.omniintelligence.* family (omniclaude's privacy
-  # split). Local only: the cloud relay's explicit allowlist does not name it.
+  # one chunk of it) per record. OMN-24062: credential-shaped spans are replaced
+  # in place before the record is published (redact_capture; the topic's
+  # `content` and `command` fields are capture_scrubbed in capture_redaction.yaml),
+  # and every other character crosses, so the full output is kept. This replaces
+  # the raw passthrough of OMN-19513 (RULING 2026-10-15T04:24:42Z) for secrets
+  # only: a planted token never reaches the bus or session_content. A cmd topic:
+  # full prompts and file contents go only on the restricted
+  # onex.cmd.omniintelligence.* family (omniclaude's privacy split). Local only:
+  # the cloud relay's explicit allowlist does not name it.
   content.captured:
     fan_out:
       - topic: "onex.cmd.omniintelligence.content-captured.v1"
         tier: telemetry
-        transform: passthrough
-        description: "Raw full session content (OMN-19550, OMN-19513)"
+        transform: redact_capture
+        description: "Full session content with credential-shaped spans replaced (OMN-19550, OMN-24062)"
     partition_key_field: session_id
     required_fields: [session_id, content_kind]
 
@@ -1086,3 +1091,27 @@ events:
         description: "Compaction install uncertain: ids and reason enum only"
     partition_key_field: session_id
     required_fields: [activation_id, session_id, reason]
+
+  # C32 local auth-boundary probe run (OMN-23213): one daily run of node_c32_auth_boundary_probe_effect, the record the MVP launch
+  # reading (M1) reads C32 from. One record a day; the run history file on the host keeps every run. Carries the run id, trigger, verdict,
+  # graded clause names and details (never a credential value: the probe only searches for its planted value), and package versions.
+  c32.auth_boundary_probe.completed:
+    node_owned: true
+    fan_out:
+      - topic: "onex.evt.omnimarket.local-auth-boundary-probe-completed.v1"
+        tier: telemetry
+        description: "C32 auth-boundary probe run: verdict, conclusion, clauses and graded versions; no credential value"
+    partition_key_field: criterion
+    required_fields: [run_id, verdict, conclusion, criterion]
+
+  # Lab proof judge use (OMN-23642): one record each time the judge applies its declared not-applicable class to a change, or refuses
+  # a change that qualifies but has no substitute proof. Carries the repository, pull request, head, class, outcome, node names and
+  # substitute receipt ids; no code, no log text, no credential.
+  lab_proof_judge.use_recorded:
+    node_owned: true
+    fan_out:
+      - topic: "onex.evt.omnimarket.lab-proof-judge-use-recorded.v1"
+        tier: telemetry
+        description: "Lab proof judge use: repo, pr, head, class, outcome, node names and substitute receipt ids"
+    partition_key_field: head
+    required_fields: [repo, pr_number, head, class_id, outcome]

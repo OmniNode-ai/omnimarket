@@ -12,7 +12,10 @@ from __future__ import annotations
 
 import re
 
-from omnimarket.nodes.node_dod_closeout_sweep_compute.models.model_dod_closeout_sweep import (
+from omnimarket.models.closeout_scope_overlay import (
+    ModelCloseoutScopeOverlay,
+)
+from omnimarket.models.dod_closeout_sweep import (
     ModelBindingCheck,
 )
 
@@ -126,7 +129,7 @@ _OWNER_SLUG = re.compile(r"omninode-ai/([^/\s]+)", re.IGNORECASE)
 _TEST_SELECTOR = re.compile(
     r"[A-Za-z0-9_./-]+\.py(::[A-Za-z0-9_./-]+(\[[^\]`$;&|<>\n\\]*\])?)*"
 )
-_MERGED_REF = re.compile(r"origin/dev|[0-9a-f]{40}")
+_FULL_SHA = re.compile(r"[0-9a-f]{40}")
 _LANE_TOKEN = re.compile(r"\blane=(\S+)", _A)
 _TIMEOUT_DURATION = re.compile(r"\d+[smhd]?", _A)
 _NICE_LEVEL = re.compile(r"-?\d+", _A)
@@ -140,7 +143,7 @@ REFUSAL_REASONS = {
     "no-test-selector": "a test check names no pytest node id",
     "test-selector-not-a-test-id": "the test selector is not a pytest node id (path/to/test_x.py::test_name)",
     "no-repo": "the test check names no single registry repo to run it in",
-    "not-on-merged-dev": "the check does not run at origin/dev or a full merged sha",
+    "not-on-merged-dev": "the check does not run at origin/{branch} or a full merged sha",
     "no-command": "the check carries no runnable command",
     "no-cwd": "a command check names no working directory",
     "no-host": "a lab readback names no host",
@@ -154,8 +157,12 @@ UNKNOWN_REFUSAL_REASON = (
 )
 
 
-def refusal_reason(refusal_class: str) -> str:
-    reason = REFUSAL_REASONS.get(refusal_class) or UNKNOWN_REFUSAL_REASON
+def refusal_reason(refusal_class: str, branch: str = "dev") -> str:
+    """The open comment's words for a refusal; ``branch`` is the default branch the merged ref
+    must name for the check's repository (dev unless the overlay says otherwise)."""
+    reason = (REFUSAL_REASONS.get(refusal_class) or UNKNOWN_REFUSAL_REASON).format(
+        branch=branch
+    )
     return f"binding refused ({refusal_class}): {reason}"
 
 
@@ -337,7 +344,28 @@ def _text(value: str | None) -> str:
     return (value or "").strip()
 
 
-def refusal_of(check: ModelBindingCheck | None) -> str | None:
+def merged_branch(
+    check: ModelBindingCheck | None, overlay: ModelCloseoutScopeOverlay
+) -> str:
+    """The default branch a merged ref must name for the check's repository: the one the overlay
+    lists for it, else the overlay's fallback branch."""
+    repo = normalize_repo(check.repo if check else None)
+    return overlay.default_branches().get(repo, overlay.binding_default_branch)
+
+
+def merged_ref_ok(check: ModelBindingCheck, overlay: ModelCloseoutScopeOverlay) -> bool:
+    """A full sha, or ``origin/<branch>`` where the branch is the one the overlay names as the
+    check's repository's default branch (a repository it does not list: its fallback branch).
+    A ref on another branch of that repository is not a merged ref."""
+    ref = check.ref or ""
+    if _FULL_SHA.fullmatch(ref):
+        return True
+    return ref == f"origin/{merged_branch(check, overlay)}"
+
+
+def refusal_of(
+    check: ModelBindingCheck | None, overlay: ModelCloseoutScopeOverlay
+) -> str | None:
     """None when the check may go to the acceptor, else the refusal class."""
     if check is None:
         return "no-check"
@@ -354,7 +382,7 @@ def refusal_of(check: ModelBindingCheck | None) -> str | None:
             return "test-selector-not-a-test-id"
         if check.repo is None or not _REPO_NAME.fullmatch(normalize_repo(check.repo)):
             return "no-repo"
-        if not _MERGED_REF.fullmatch(check.ref or ""):
+        if not merged_ref_ok(check, overlay):
             return "not-on-merged-dev"
         return None
     command = _text(check.command)
@@ -363,7 +391,7 @@ def refusal_of(check: ModelBindingCheck | None) -> str | None:
     if check.kind == "command":
         if not _text(check.cwd):
             return "no-cwd"
-        if not _MERGED_REF.fullmatch(check.ref or ""):
+        if not merged_ref_ok(check, overlay):
             return "not-on-merged-dev"
     if check.kind == "lab_readback" and not _text(check.host):
         return "no-host"

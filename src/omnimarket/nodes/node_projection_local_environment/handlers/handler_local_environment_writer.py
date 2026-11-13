@@ -14,30 +14,50 @@ registry does not know, or any other form, is refused, so the runtime
 dead-letters it. The row is stored under the uuid the registry recorded: the
 dashboard reads by the uuid, so a row stored under anything else is never
 served.
+
+After the commit, every alert the write raised or cleared is published to the
+local alert transition topic, derived by the shared transition derivation from
+the mode's rows before and after the write; node_projection_local_alerts folds
+them into one row per (tenant, code, subject). Transitions are published before
+the snapshot deltas. A redelivered report (a publish failed after commit)
+publishes a raise for each alert its mode still holds open: the transition id
+is derived from the transition itself, so the fold ignores the ones it already
+has. A clear whose publish failed is not recovered by a redelivery, because the
+row it cleared is no longer stored; the next report that changes the alert
+supersedes it.
 """
 
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-import yaml
+from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 
+from omnimarket.handlers.delivery_cache import load_contract
 from omnimarket.handlers.handler_local_environment_judgement import (
     load_local_alert_rules,
 )
 from omnimarket.handlers.handler_projection_runtime_writer import (
     RuntimeProjectionWriter,
 )
+from omnimarket.handlers.local_alert_fold import (
+    derive_local_alert_transitions,
+)
+from omnimarket.models.model_local_alert_transitioned import (
+    ModelLocalAlertTransitioned,
+)
 from omnimarket.models.model_local_environment_status import (
     ModelLocalEnvironmentStatus,
 )
 from omnimarket.nodes.node_projection_local_environment.handlers.handler_projection_local_environment import (
     HandlerProjectionLocalEnvironment,
+    plan_local_environment_retirement,
 )
 from omnimarket.nodes.node_projection_local_environment.models.model_local_environment_plan import (
     ModelLocalEnvironmentPlanRequest,
@@ -54,6 +74,12 @@ from omnimarket.projection.tenant_registry_resolution import (
     async_registry_tenant_uuid,
     is_tenant_slug,
 )
+from omnimarket.topic_namespace import apply_topic_namespace
+
+logger = logging.getLogger(__name__)
+
+# The local alert transition topic: the one declared publish topic with this suffix.
+_TRANSITION_TOPIC_SUFFIX = ".local-alert-transitioned.v1"
 
 # Every column a report writes, in statement order. projection_cursor is the
 # table's own sequence; updated_at is the plan's stamp.
@@ -89,6 +115,11 @@ _SELECT_MODE_ROWS = f"""
     FROM public.local_environment
     WHERE tenant_id = $1 AND mode = $2
     FOR UPDATE
+"""
+
+_DELETE_ROW = """
+    DELETE FROM public.local_environment
+    WHERE tenant_id = $1 AND mode = $2 AND service = $3
 """
 
 _UPSERT_ROW = (
@@ -180,8 +211,7 @@ class HandlerLocalEnvironmentProjectionRunner(BaseProjectionRunner):
     def __init__(self, contract_path: Path | None = None) -> None:
         super().__init__()
         path = contract_path or Path(__file__).parent.parent / "contract.yaml"
-        with open(path) as handle:
-            self._contract: dict[str, Any] = yaml.safe_load(handle)
+        self._contract: dict[str, Any] = load_contract(path)
         exposures = load_projection_exposures_from_contract(
             self._contract, str(self._contract["name"]), path
         )
@@ -190,6 +220,45 @@ class HandlerLocalEnvironmentProjectionRunner(BaseProjectionRunner):
         )
         self._plan = HandlerProjectionLocalEnvironment()
         self._rules = load_local_alert_rules()
+        transition_topics = [
+            topic
+            for topic in self._contract.get("event_bus", {}).get("publish_topics", [])
+            if str(topic).endswith(_TRANSITION_TOPIC_SUFFIX)
+        ]
+        if len(transition_topics) != 1:
+            raise ValueError(
+                "the local environment contract must declare exactly one local "
+                f"alert transition publish topic; found {transition_topics!r}"
+            )
+        self._transition_topic: str = str(transition_topics[0])
+
+    @property
+    def transition_topic(self) -> str:
+        return self._transition_topic
+
+    async def _publish_alert_transitions(
+        self, transitions: tuple[ModelLocalAlertTransitioned, ...]
+    ) -> None:
+        """Publish each transition in an event envelope; a failure raises, so the report is redelivered."""
+        if not transitions:
+            return
+        publish = await self.get_publish_fn()
+        if publish is None:
+            raise RuntimeError(
+                f"local environment writer: no publisher for {self._transition_topic}; "
+                f"{len(transitions)} alert transition(s) not published"
+            )
+        topic = apply_topic_namespace(self._transition_topic)
+        for transition in transitions:
+            envelope = ModelEventEnvelope[dict[str, object]](
+                payload=transition.model_dump(mode="json"),
+                correlation_id=transition.transition_id,
+                event_type="omnimarket.local-alert-transitioned",
+                tenant_id=transition.tenant_id,
+            )
+            await publish(
+                topic, json.dumps(envelope.model_dump(mode="json")).encode("utf-8")
+            )
 
     @property
     def subscribe_topics(self) -> list[str]:
@@ -252,6 +321,27 @@ class HandlerLocalEnvironmentProjectionRunner(BaseProjectionRunner):
             )
             stored = await conn.fetch(_SELECT_MODE_ROWS, tenant, report.mode.value)
             stored_rows = [dict(r) for r in stored]
+            removed = plan_local_environment_retirement(report, stored_rows)
+            if removed is not None:
+                await conn.execute(
+                    _DELETE_ROW, tenant, report.mode.value, report.service
+                )
+                # The service is gone, so its open alert has no later report to
+                # clear it: clear it with the removal, in the same transaction.
+                await self._publish_alert_transitions(
+                    derive_local_alert_transitions(
+                        [removed],
+                        [
+                            {
+                                **removed,
+                                "alert_code": None,
+                                "alert_severity": None,
+                                "alert_since": None,
+                                "last_seen": report.observed_at,
+                            }
+                        ],
+                    )
+                )
             planned = list(
                 self._plan.handle(
                     ModelLocalEnvironmentPlanRequest(
@@ -275,6 +365,37 @@ class HandlerLocalEnvironmentProjectionRunner(BaseProjectionRunner):
                     _UPSERT_ROW, *(_parameter(name, row.get(name)) for name in _COLUMNS)
                 )
                 written.append(_wire_row(dict(returned[0])))
+            # Derived from the rows around the write and published before the
+            # commit: a failed publish rolls the write back, so the redelivery
+            # sees the same stored rows and derives the same transitions (their
+            # ids are deterministic), clears included. After the commit, a
+            # replay has no before-state to derive a clear from, and builds a
+            # raise from the current row rather than the report it came from.
+            if written:
+                await self._publish_alert_transitions(
+                    derive_local_alert_transitions(stored_rows, written)
+                )
+        if self._snapshot_exposure is not None and removed is not None:
+            # A genuine tombstone: the compacted snapshot topic reclaims the key,
+            # so the page stops serving the retired service. Like a clear, it is
+            # not recovered by a redelivery (the row is already gone).
+            await self.publish_snapshot_delta(
+                self._snapshot_exposure,
+                op="delete",
+                row=None,
+                key={
+                    "tenant_id": tenant,
+                    "mode": report.mode.value,
+                    "service": report.service,
+                },
+                source_event_id=(
+                    f"{tenant}:{report.mode.value}:{report.service}:{report.report_id}"
+                ),
+                source_topic=meta.topic,
+                source_partition=meta.partition,
+                source_offset=meta.offset,
+                tenant_id=tenant,
+            )
         if self._snapshot_exposure is not None:
             for row in written or replayed:
                 await self.publish_snapshot_delta(

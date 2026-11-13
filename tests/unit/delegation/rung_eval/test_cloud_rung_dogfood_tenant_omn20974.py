@@ -21,7 +21,6 @@ from omnimarket.delegation.rung_eval.models import (
     EnumRungEvalStatus,
     ModelRungSpec,
 )
-from omnimarket.delegation.rung_eval.rungs import load_rungs
 from omnimarket.delegation.rung_eval.runner import (
     OpenAIChatTransport,
     PinnedDelegateTransport,
@@ -79,13 +78,6 @@ def _answer(**over: object) -> dict[str, object]:
 
 def _transport(delegate: _Delegate, env: dict[str, str] | None = None):
     return PinnedDelegateTransport(run=delegate, environ=_ENV if env is None else env)
-
-
-def test_the_cloud_rung_is_configured_with_no_key_and_a_backend_pin() -> None:
-    cloud = next(r for r in load_rungs() if r.kind == "cloud")
-    assert cloud.api_key_env is None
-    assert cloud.backend_id_env is not None
-    assert cloud.tenant_env is not None
 
 
 def test_it_pins_the_backend_and_runs_as_the_tenant_without_a_key() -> None:

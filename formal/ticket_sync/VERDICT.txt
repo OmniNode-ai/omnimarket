@@ -1,0 +1,146 @@
+TicketSync design verdict (OMN-23828, a child of OMN-23761, plan task S4; unblocks the S4 code once cited)
+=========================================================================================================
+
+Model: TicketSync.tla sha256=fa7923fe9c28f9afa6dcce8cd2f0cbc92cf37bbc21f818326aa059dc54d5e369
+Receipts: formal/ticket_sync/results/SUMMARY.txt (TLC 2.19, host h053, 2026-11-11)
+
+Result
+------
+base1 .. base7_fedit2 (every knob on; 138 thousand to 70.6 million distinct states; base3_crash and
+  base4_crash2 with one crash; base7_fedit2 two file edits on each branch; base6_wide2 is two commands
+  on each branch and two hand edits, no crash)             PASS  no error found
+quiesce (the design with crashes, deadlock check on)       PASS  every command ends
+M1  no second read just before the write                    violates P1
+M2  two runs on the ticket at once                          violates P1
+M2b the same, a stale-base write                            violates P3
+M3  no live-hash against newest-event check                 violates P1
+M4  no block-against-file drift check                       violates P3
+M5  adoption event carries the hash alone                   violates P1
+M6  written event hashes a later read, not the response     violates EventsExact
+M6b the same, the overwrite it lets through                 violates P1
+M7  the file's fingerprint is not written                   violates SyncedMatch
+M8  a refusal ends with no terminal                         violates DoneHasTerm
+M9  an unchanged sync writes anyway                         violates NoopNoWrite
+M10 sync --replace X writes whatever the block is           violates P1
+M11 a redelivered command publishes a second event          violates EventsAtMostOne
+M12 a command whose run crashed is lost                     deadlock (a command with no terminal)
+M13 a redelivered sync refuses its own earlier write        violates P6
+residual  the design against the strict P1s                 violates P1s: the residual race below
+
+What the model found, and the design it ends in
+-----------------------------------------------
+F1  The read-then-write gap lets a concurrent write through. With sync as read, decide, write (M1) a hand
+    edit or the other branch's sync that lands after the read is overwritten (P1 violated). Narrowest fix,
+    checked: read the ticket again just before the write and end the run refused ticket_changed when the
+    hash or block moved. P1 then holds. THE RESIDUAL IS BELOW.
+F2  The second branch cannot be left to the re-read: with two runs at once (M2) the other branch's write can
+    land after this run's re-read and be overwritten (P1), and a branch can write from an older fingerprint
+    (M2b, P3). Requirement: one run at a time per ticket, from its read to its terminal.
+F3  The brief's pull (an adoption event carrying the hash of the ticket as read) hides a hand edit. A pull
+    writes the file from the block only; a hand edit of the text outside the block is not in the file, yet
+    the adoption event's hash is the live hash, so the next sync passes the hash check and overwrites the
+    edit (M5, P1: person edits the text, branch pulls, the other branch syncs). Design change: the adoption
+    event carries cap, false when the ticket's text outside the block was not carried into the file, and a
+    sync refuses ticket_hand_edit behind an event with cap false; --replace is then the way through.
+F4  The written event must hash what the write call itself returned. A later read of the ticket (M6) lets a
+    hand edit that lands between the write and that read be hashed as if the node had written it: the event
+    no longer carries the hash of what was written (EventsExact), and the next sync passes over that edit
+    and overwrites it (M6b, P1).
+F5  A crash between publishing the written event and the terminal, with the bus delivering again, publishes a
+    second event unless the event is keyed by command, kind and hash (M11); a crash that loses the command
+    leaves it with no terminal (M12): the bus must redeliver.
+F6  A crash after the Linear write and before the file's fingerprint or the event leaves the ticket written
+    and no written event. Without a recovery rule (M13) the redelivered run reads its own write as a hand
+    edit or drift and ends refused, no event is ever published, and every later sync refuses
+    ticket_hand_edit until a pull or a --replace. Design change (Recover): a sync that finds the ticket
+    exactly as its own write leaves it (the block is the file's contract, the hash is the render's) and the
+    newest event not that hash takes the write as its own and finishes: file, event, terminal. P6 holds in
+    the design with crashes (base3_crash, base4_crash2); wit_resumed shows the path is reached.
+F7  --replace X is consent to overwrite whatever the ticket holds at the read that matched X, the text
+    outside the block included: the plan's criterion AC3 says --replace rewrites a ticket whose text was
+    edited by hand, so the model lets it (P1 counts an overwrite as lost only without that consent, and
+    only for a hand edit the run did not see at its first read). The plan's wording "overwrites only the
+    block it names" does not say the same; the plan must pick. Not recorded here: a first-pass reviewer's
+    variant in which --replace keeps the hand-edit check passed the base invariants (651,171 states).
+
+RESIDUAL RACE (the plan must list it)
+-------------------------------------
+residual.cfg (strict property P1s, no hand edit ever overwritten): TLC finds it in 8 steps. A sync reads,
+renders, reads again (nothing moved), and a person edits the ticket in Linear after that second read and
+before the write lands; the write replaces the edit and the run ends written. Bound: one hand edit inside
+the one window between the response of the second read and the application of the write, per sync run
+(MaxHand=1 is enough). The window is one Linear round trip; it is not timed here (UNMEASURED). Linear has
+no compare-and-swap, so the node cannot close it; the model closes everything outside it: P1 holds in the
+design at every bound run, and the same window for the other branch is closed by one run at a time (M2).
+A holder that outlives its one-run-per-ticket lock (R3) opens the same window for the other branch, between
+its re-read and its write (M2 shows the cost of no lock at all); the model does not bound it.
+The replaced text is not in any event; whether Linear's issue history holds it is UNVERIFIED. A
+mitigation that is not modelled: the written event also carries the hash the second read returned, so a
+reader of the log can tell which state the write replaced.
+
+Requirements for the S4 code (each is the knob whose removal violates a property)
+---------------------------------------------------------------------------------
+R1  sync --replace X skips the drift and hand-edit refusals by design (F7): it is the way through, and its
+    terminal and event say so: the written event of a replace carries the hash the first read returned (the
+    state it replaced), so a replace over a hand edit is not a plain "written". Sync reads the ticket, the newest written event and the file, then decides: drift (the ticket's block is
+    not the file's fingerprint), then hand edit (the live hash is not the newest event's, or the newest
+    event is an adoption with cap false), then no-op (file, block and hash agree: no write, no event)
+    (M3, M4, M5, M9). sync --replace X refuses unless the ticket's block fingerprint is X (M10).
+R2  Sync reads the ticket again just before the write and ends refused ticket_changed when its hash or
+    block moved; no write follows a refusal (M1). The comparison is on the title and description hash and
+    the block, not updatedAt alone: updatedAt moves on a state change or an assignment, which is only a
+    retry but makes the refusal frequent (UNMEASURED).
+R3  One run at a time per ticket from its read to its terminal: the command keyed by ticket id, one
+    in-flight handler per key, or a lock held for the run (M2, M2b). Whether the runtime gives it, and what
+    a holder that outlives its lock does, are not measured here; a holder alive past its lock is M2.
+R4  The written event carries the hash from the write call's own response, never from a later read (M6,
+    M6b). Whether the update call's response carries the stored description is UNVERIFIED here: S4 reads
+    the write handler before it relies on it.
+R5  The pull's adoption event carries the hash as read and cap (M5); the file's fingerprint is written
+    after the ticket write and before the event (M7).
+R6  Events are keyed by ticket id, kind and hash, and a command that crashed is delivered again (M11, M12).
+R7  Every refusal and every end publishes one terminal (M8). The event count is one per write: a redelivered
+    run whose file changed may write twice and publish two events with different hashes, which the model
+    allows (EventsExact is checked only without a crash; EventsAtMostOne holds with crashes).
+R9  --replace names the block fingerprint, not the edit it overwrites: a hand edit made after the operator's
+    command and before the run's first read is overwritten, and a redelivered replace can overwrite an edit
+    made long after the command (second-pass reviewer's variant). Narrowest answer, not modelled: --replace
+    also names the live hash the refusal printed, and a redelivered replace is treated as a sync.
+R8  A sync delivered again after a crash that finds the ticket as its own write left it finishes that write
+    (file, event, terminal) and does not refuse it (M13). The "as its own write left it" test is the
+    hash of the render: S4 must show the render is deterministic against what Linear stores (UNVERIFIED).
+
+P6 holds by construction (Begin tests the resume before drift and hand edit) and M13 shows it is not vacuous;
+it holds only while the newest event is still stale: if another branch's pull adopts the written hash after
+a crash and before the redelivery, the redelivered sync refuses ticket_contract_drift although the ticket
+equals its own contract (second-pass reviewer's variant; nothing is overwritten, one terminal).
+
+Not modelled (left out, stated so the pass is not over-read)
+------------------------------------------------------------
+time and Linear's updatedAt (a changed hash stands for a changed updatedAt); a hand edit put back so the
+hash repeats; a third writer; more than two branches; more than two commands per branch or two hand edits
+and one crash per run of the model (base6_wide2 is two commands on each branch, two hand edits, no crash;
+the crash runs are one crash and at most two commands on one branch); the event log lagging its publish (a lag is a false refusal, not a loss); two branches with identical
+contract content (fingerprints in the model are branch-unique); Linear normalising the text so the hash of
+the render differs from the hash it stores (a false refusal on R8's test);
+the S3 create; the content of the contract and the render; a pull that overwrites a branch's unsynced file
+edit (local and recoverable from git); a partition that loses a published terminal; the Linear call
+failing after it took effect (a write whose response is lost reads, on the rerun, as a block that is not
+the file's fingerprint: the same false refusal as F6). The live tick and the node were not read.
+
+Design review (another reviewer)
+--------------------------------
+Reviewer: a sonnet subagent of this lane (a model and a context other than the author's), two passes, each
+run with the pinned TLC in docker on h053 in its own scratch copy.
+Pass 1 (model digest before the Recover knob): CHANGES REQUIRED. Blocking: (1) --replace skips the hand-edit
+check; (2) a crash after the write and before the event: the redelivered run refuses its own write and no
+event is ever published. Changes made: (2) the Recover knob, P6, M13, wit_resumed, base7_fedit2 (it also ran
+MaxFEdit=2, 8,587,973 states, no error); (1) F7 states the replace consent and why (AC3 of OMN-23761); the
+reviewer's keep-the-check variant is noted in F7 and is not recorded here.
+Pass 2 (the model of this digest, fa7923fe...): APPROVE WITH CONDITIONS. It ran base3_crash (no error),
+M13_no_resume (P6 violated) and three scratch variants; it read the recorded results of the rest. No defect
+in the model was found; the conditions were wording: carry the replace bypass into R1, name the replace
+exposure (R9), state P6's limit and the one-event-per-write count (all four applied above, no model change).
+Open for the plan: the replace decision in F7 (AC3's "then rewrites it" against "overwrites only the block it
+names"). The reviewers did not read the S4 code (none exists). Verdict recorded here: APPROVE WITH CONDITIONS,
+conditions applied; it is also posted on OMN-23761.

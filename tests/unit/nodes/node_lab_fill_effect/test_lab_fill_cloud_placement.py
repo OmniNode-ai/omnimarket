@@ -45,6 +45,7 @@ from tests.nodes.node_lab_fill_effect.fakes import (
     FakeBlocks,
     FakeChecks,
     FakeClock,
+    FakeMerged,
     FakeOwners,
     FakeRunner,
 )
@@ -87,6 +88,7 @@ def _tick(rows: list[dict[str, object]]) -> tuple[HandlerLabFillTick, FakeRunner
     approved = FakeApproved(rows={str(r["id"]): r for r in rows}, all_rows=rows)
     clock = FakeClock()
     launch = HandlerLabFillLaunch(
+        merged=FakeMerged(),
         checks=FakeChecks(),
         approved=approved,
         blocks=FakeBlocks(),
@@ -345,3 +347,34 @@ def test_cloud_lane_age_line_says_unreadable_when_the_ledger_is_missing(
     handler, _ = _tick([])
     result = handler.handle(_request(tmp_path, tmp_path / "missing.md"))
     assert " newest_cloud_claim_age=unreadable " in result.cloud_line
+
+
+# OMN-22122: the runner gets the class the ticket's Class line names.
+
+
+def _launch() -> ModelLabFillLaunch:
+    return ModelLabFillLaunch(
+        lane="lab-fill-omn1-10170930",
+        ticket="OMN-1",
+        engine="sonnet",
+        host="h201",
+        parent="orchestrator-bb1a",
+        timeout_min=60,
+        repo="omnimarket",
+    )
+
+
+def test_runner_args_carry_the_priority_class_of_the_tickets_class_line() -> None:
+    text = "ticket-text: OMN-1\n> Title: x\n> Class: factory-fix\n> State: Backlog\n"
+    args = runner_args(_launch(), "/b.md", text)
+    assert args[args.index("--priority-class") + 1] == "factory-fix"
+    assert args[-1] == "--detach"
+
+
+def test_runner_args_carry_no_priority_class_for_a_ticket_without_one() -> None:
+    # negative controls: no line, and a line naming a retired class, pass nothing; the runner falls back and reports it
+    assert "--priority-class" not in runner_args(_launch(), "/b.md", "> Title: x\n")
+    assert "--priority-class" not in runner_args(_launch(), "/b.md")
+    assert "--priority-class" not in runner_args(
+        _launch(), "/b.md", "> Class: mvp-landing\n"
+    )

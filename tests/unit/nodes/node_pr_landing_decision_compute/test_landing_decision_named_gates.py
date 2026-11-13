@@ -548,6 +548,61 @@ def _generated_fleet(rng: random.Random) -> dict[str, Any]:
         facts["drain_requested"] = [rng.choice(repos)]
     if rng.random() < 0.2:
         facts["fixer_hold"] = [rng.choice([*repos, "all"])]
+    # J8 (OMN-22919): some PRs carry a lab-bound check. Drawn from a stream of its own, seeded from the fleet, so the
+    # main stream (and every fleet the other reasons were covered with) is unchanged.
+    lab_rng = random.Random(repr(prs))
+    for pr in prs:
+        if lab_rng.random() < 0.3:
+            attempt = "dispatch-2:order-1"
+            runs = [
+                {
+                    "name": "lab-tests / run",
+                    "head_sha": pr["head_sha"]
+                    if lab_rng.random() < 0.8
+                    else f"{99:040x}",
+                    "attempt_id": attempt
+                    if lab_rng.random() < 0.6
+                    else "dispatch-1:order-1",
+                    "conclusion": lab_rng.choice(
+                        ["success", "success", "failure", "pending"]
+                    ),
+                }
+                for _ in range(lab_rng.randint(0, 2))
+            ]
+            pr["lab_check"] = {
+                "check_name": "lab-tests / run",
+                "current_attempt_id": attempt,
+                "runs": runs,
+            }
+    # Liveness (OMN-23529): some PRs carry a liveness read. Drawn from a stream of its own, seeded from the fleet,
+    # so the main stream (and every fleet the other reasons were covered with) is unchanged.
+    liveness_rng = random.Random("liveness" + repr(prs))
+    for pr in prs:
+        if liveness_rng.random() < 0.3:
+            pr["liveness"] = liveness_rng.choice(
+                [
+                    {
+                        "head_sha": pr["head_sha"],
+                        "read": "read",
+                        "undeclared_sources": ["deploy/systemd/example.timer"],
+                    },
+                    {
+                        "head_sha": pr["head_sha"],
+                        "read": "read",
+                        "undeclared_sources": ["deploy/systemd/example.timer"],
+                    },
+                    {
+                        "head_sha": pr["head_sha"],
+                        "read": "read",
+                        "undeclared_sources": [],
+                    },
+                    {
+                        "head_sha": pr["head_sha"],
+                        "read": "unreadable",
+                        "detail": "reader timed out",
+                    },
+                ]
+            )
     return facts
 
 

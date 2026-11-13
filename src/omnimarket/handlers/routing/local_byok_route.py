@@ -149,7 +149,39 @@ def substitute_local_byok_route(
     route = _registered_byok_route(
         byok, replaced=backend, tier=backend.tier, db_path=db_path
     )
-    return route or backend
+    if route is None:
+        return backend
+    return _keep_eval_arm_model(route, replaced=backend)
+
+
+def _keep_eval_arm_model(
+    route: ModelResolvedDelegationBackend,
+    *,
+    replaced: ModelResolvedDelegationBackend,
+) -> ModelResolvedDelegationBackend:
+    """Keep an eval arm's own model when the registered key stands in for it.
+
+    OMN-23751. An eval arm exists to measure one named model, and only a run
+    that pins its backend id reaches it. The registered key still authenticates
+    the call (the team is its own customer), but the model the key resolved at
+    registration is not the one under test: running it would score a different
+    model under the arm's name. Any other substituted rung keeps the key's model.
+    """
+    overlay = load_delegation_routing_overlay()
+    if overlay.eval_arms is None:
+        return route
+    arm = overlay.eval_arms.arm_by_backend_id().get(replaced.backend_id)
+    if arm is None:
+        return route
+    return route.model_copy(
+        update={
+            "model_id": arm.slug,
+            "model_id_source": (
+                f"eval arm {replaced.backend_id} slug, from the delegation routing "
+                "overlay eval_arms (OMN-23751)"
+            ),
+        }
+    )
 
 
 def _registered_byok_route(
@@ -441,6 +473,7 @@ def next_chosen_model_byok_route(
     *,
     tried_models: frozenset[tuple[str, str]],
     db_path: Path | None = None,
+    quota_state: ModelProviderQuotaSnapshot | None = None,
 ) -> ModelResolvedDelegationBackend | None:
     """The next model the customer chose for the key behind ``failed``, or ``None`` (OMN-21059).
 
@@ -468,7 +501,7 @@ def next_chosen_model_byok_route(
         )
         if route is None:
             return None
-        return route.model_copy(
+        candidate = route.model_copy(
             update={
                 "model_id": model_id,
                 "max_tokens": failed.max_tokens,
@@ -477,6 +510,16 @@ def next_chosen_model_byok_route(
                 "substituted_from_backend_id": failed.substituted_from_backend_id,
             }
         )
+        if (
+            quota_block_for_backend(
+                quota_state,
+                endpoint_url=candidate.endpoint_ref,
+                api_key_ref=candidate.secret_ref,
+                model_name=candidate.model_id,
+            )
+            is None
+        ):
+            return candidate
     return None
 
 
@@ -485,6 +528,7 @@ def next_registered_byok_route(
     *,
     tried_backend_ids: frozenset[str],
     db_path: Path | None = None,
+    quota_state: ModelProviderQuotaSnapshot | None = None,
 ) -> ModelResolvedDelegationBackend | None:
     """The customer's next registered key after ``failed``, or ``None`` (OMN-20844).
 
@@ -507,7 +551,16 @@ def next_registered_byok_route(
         route = _registered_byok_route(
             byok, replaced=failed, tier=failed.tier, db_path=db_path
         )
-        if route is not None:
+        if (
+            route is not None
+            and quota_block_for_backend(
+                quota_state,
+                endpoint_url=route.endpoint_ref,
+                api_key_ref=route.secret_ref,
+                model_name=route.model_id,
+            )
+            is None
+        ):
             # The failed route's headers belong to its own provider.
             return route.model_copy(update={"extra_headers": {}})
     return None

@@ -39,6 +39,7 @@ from omnimarket.nodes.node_dod_verify.models.model_dod_verify_start_command impo
 from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
     EnumDodVerifyStatus,
     EnumEvidenceCheckStatus,
+    EnumEvidenceUnverifiableCause,
     ModelDodVerifyState,
     ModelEvidenceCheckResult,
 )
@@ -80,6 +81,9 @@ def durable_gate_check_results(
         message = check.message
         if not check.passed and gate_run.ticket_read_detail:
             message = f"{message} (ticket unreadable: {gate_run.ticket_read_detail})"
+        read_fault = not check.passed and check.unresolved_cause is (
+            EnumDodVerifyUnresolvedCause.CHECK_RUN_READ_FAILED
+        )
         results.append(
             ModelEvidenceCheckResult(
                 evidence_id=f"durable_gate::{check.check.value}",
@@ -87,7 +91,14 @@ def durable_gate_check_results(
                 status=(
                     EnumEvidenceCheckStatus.VERIFIED
                     if check.passed
+                    else EnumEvidenceCheckStatus.SKIPPED
+                    if read_fault
                     else EnumEvidenceCheckStatus.FAILED
+                ),
+                unverifiable_cause=(
+                    EnumEvidenceUnverifiableCause.CHECK_RUN_READ_FAILED
+                    if read_fault
+                    else None
                 ),
                 message=message,
             )
@@ -198,49 +209,57 @@ class HandlerDodVerify:
         if evidence_results is None:
             assert execution_audience is not None
             collector = self._make_collector()
-            if command.goal_id is not None:
-                assert command.contract_schema_version is not None
-                evidence_results = collector.collect_inline(
-                    ticket_id=command.ticket_id,
-                    dod_evidence=command.dod_evidence,
-                    goal_id=command.goal_id,
-                    contract_schema_version=command.contract_schema_version,
-                    execution_audience=execution_audience,
+            # OMN-23198: the collector builds lock-exact environments for the
+            # run; whatever way the run ends they are removed here, so a lab
+            # host never accumulates them. ``getattr`` for the stub seam.
+            try:
+                if command.goal_id is not None:
+                    assert command.contract_schema_version is not None
+                    evidence_results = collector.collect_inline(
+                        ticket_id=command.ticket_id,
+                        dod_evidence=command.dod_evidence,
+                        goal_id=command.goal_id,
+                        contract_schema_version=command.contract_schema_version,
+                        execution_audience=execution_audience,
+                    )
+                else:
+                    evidence_results = collector.collect(
+                        ticket_id=command.ticket_id,
+                        contract_path=command.contract_path,
+                        execution_audience=execution_audience,
+                    )
+                # ``getattr`` because ``_make_collector`` is the documented seam a
+                # dozen suites replace with a stub; a stub that never derived
+                # anything reads as "not measured", never as "no checks".
+                acceptance_summary = getattr(collector, "acceptance_summary", None)
+                contract_subject = getattr(collector, "contract_subject", None)
+                # OMN-17022: read the same way — typed provenance the collector
+                # already holds, never a message string parsed back out.
+                lookup_failure_cause = collector.lookup_failure_cause
+                lookup_failure_code = collector.lookup_failure_code
+                # OMN-20886: the DurableEvidenceGate runs on the auto-resolved
+                # path, so its three pre-Done checks are checks of this verdict.
+                # ``getattr`` for the same stub seam as above: a stub that never
+                # resolved a contract runs no gate.
+                run_durable_gate = getattr(collector, "run_durable_gate", None)
+                gate_run = run_durable_gate() if callable(run_durable_gate) else None
+                if isinstance(gate_run, ModelDurableEvidenceGateRun):
+                    evidence_results = [
+                        *evidence_results,
+                        *durable_gate_check_results(gate_run),
+                    ]
+                # OMN-20858: the second ticket read, taken after the checks ran. A
+                # stub collector that never measured it, or one that hands back
+                # anything but the typed check, reads as "not measured".
+                finish_criteria = getattr(collector, "finish_criteria_check", None)
+                finished = finish_criteria() if callable(finish_criteria) else None
+                criteria_check = (
+                    finished if isinstance(finished, ModelCriteriaCheck) else None
                 )
-            else:
-                evidence_results = collector.collect(
-                    ticket_id=command.ticket_id,
-                    contract_path=command.contract_path,
-                    execution_audience=execution_audience,
-                )
-            # ``getattr`` because ``_make_collector`` is the documented seam a
-            # dozen suites replace with a stub; a stub that never derived
-            # anything reads as "not measured", never as "no checks".
-            acceptance_summary = getattr(collector, "acceptance_summary", None)
-            contract_subject = getattr(collector, "contract_subject", None)
-            # OMN-17022: read the same way — typed provenance the collector
-            # already holds, never a message string parsed back out.
-            lookup_failure_cause = collector.lookup_failure_cause
-            lookup_failure_code = collector.lookup_failure_code
-            # OMN-20886: the DurableEvidenceGate runs on the auto-resolved
-            # path, so its three pre-Done checks are checks of this verdict.
-            # ``getattr`` for the same stub seam as above: a stub that never
-            # resolved a contract runs no gate.
-            run_durable_gate = getattr(collector, "run_durable_gate", None)
-            gate_run = run_durable_gate() if callable(run_durable_gate) else None
-            if isinstance(gate_run, ModelDurableEvidenceGateRun):
-                evidence_results = [
-                    *evidence_results,
-                    *durable_gate_check_results(gate_run),
-                ]
-            # OMN-20858: the second ticket read, taken after the checks ran. A
-            # stub collector that never measured it, or one that hands back
-            # anything but the typed check, reads as "not measured".
-            finish_criteria = getattr(collector, "finish_criteria_check", None)
-            finished = finish_criteria() if callable(finish_criteria) else None
-            criteria_check = (
-                finished if isinstance(finished, ModelCriteriaCheck) else None
-            )
+            finally:
+                close_collector = getattr(collector, "close", None)
+                if callable(close_collector):
+                    close_collector()
 
         # OMN-20858: a pass that rests on a criterion the ticket no longer carries
         # in the text it was accepted against stops counting before anything is
@@ -277,6 +296,12 @@ class HandlerDodVerify:
         # blocked (the check was never proven).
         unverifiable = [
             r for r in executable_checks if r.unverifiable_cause is not None
+        ]
+        check_read_faults = [
+            r
+            for r in unverifiable
+            if r.unverifiable_cause
+            is EnumEvidenceUnverifiableCause.CHECK_RUN_READ_FAILED
         ]
         # OMN-15391: executed, exited 0, and its exit status cannot depend on
         # the product change — a bare ``gh pr view`` (green for every PR on
@@ -363,6 +388,13 @@ class HandlerDodVerify:
             # today, so it is run-wide and antecedent.
             overall = EnumDodVerifyStatus.UNRESOLVED
             unresolved_cause = EnumDodVerifyUnresolvedCause.TICKET_UNAVAILABLE
+        elif check_read_faults and failed == 0:
+            # The durable gate re-reads checks after collection. That read can
+            # fault even when evidence already verified; it still cannot
+            # establish the newest check's conclusion or authorize closure.
+            overall = EnumDodVerifyStatus.UNRESOLVED
+            unresolved_cause = EnumDodVerifyUnresolvedCause.CHECK_RUN_READ_FAILED
+            lookup_failure_code = lookup_failure_code or check_read_faults[0].message
         elif lookup_failure_cause is not None and verified == 0:
             # OMN-17022 (off-rails A15). The run could not resolve the PR or
             # repo binding its checks are written against, and NOTHING verified.
@@ -553,6 +585,14 @@ class HandlerDodVerify:
                 "compared with the criteria it carries now. This is a fact about "
                 "the verifier's reach to the ticket, not a verdict about the work: "
                 "no check verified under this run counts."
+            )
+        elif unresolved_cause is EnumDodVerifyUnresolvedCause.CHECK_RUN_READ_FAILED:
+            error_message = (
+                f"CHECK_RUN_READ_FAILED: the deciding merged PR's checks could "
+                f"not be read ({lookup_failure_code}). No check conclusion was "
+                "observed. Retry the read with bounded backoff; if it remains "
+                "unreadable, repair the gateway configuration or check-run access. "
+                "Closure stays blocked."
             )
         elif unresolved_cause is not None:
             # OMN-17022: a distinct, machine-checkable reason code, sitting
@@ -858,6 +898,11 @@ class HandlerDodVerify:
                 state.acceptance_runnable_falsifier_count
             ),
             acceptance_unrunnable_labels=state.acceptance_unrunnable_labels,
+            dry_run=state.dry_run,
+            acceptance_self_accepted_bindings=state.acceptance_self_accepted_bindings,
+            acceptance_retired_bindings=state.acceptance_retired_bindings,
+            acceptance_refused_retirements=state.acceptance_refused_retirements,
+            acceptance_unbound_criteria=state.acceptance_unbound_criteria,
             criteria_revision=state.criteria_revision,
             criteria_drift=state.criteria_drift,
             criteria_amendment=state.criteria_amendment,

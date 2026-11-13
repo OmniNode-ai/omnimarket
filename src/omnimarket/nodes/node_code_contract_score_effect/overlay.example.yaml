@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. A deployment's real overlay lives in the overlays repository
+# (overlays/node_code_contract_score_effect/overlay.yaml). The schema is ModelCodeScoreOverlay; no key has a default.
+check_timeout_s: 600          # code_eval.score.check_timeout_s
+env_sync_timeout_s: 900       # code_eval.score.env_sync_timeout_s
+runnable_check_types:         # code_eval.score.runnable_check_types
+  - test_passes
+  - command
+env_sync_command: "uv sync --frozen"
+scratch_root: /srv/example/code-eval-scratch
+repo_roots:
+  example/repo: /srv/example/repo
+protected_paths:              # code_eval.protected_paths.<repo>
+  example/repo:
+    - contracts/
+    - .github/
+output_tail_chars: 400
+event_bus:
+  type: kafka
+  lane: example-lane

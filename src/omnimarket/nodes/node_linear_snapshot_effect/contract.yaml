@@ -1,0 +1,53 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_linear_snapshot_effect
+lifecycle: experimental
+node_type: EFFECT_GENERIC
+runtime_profiles: []
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: >-
+  Write linear-<UTC date>.json, the signed-in subject's open Linear issues with id, title, status, statusType, assignee, labels, project, projectId, parentId (the parent issue identifier, null when none), updatedAt and description, each issue's attachments (source type, title, metadata) and child ids (null when a part was not read, so a reader reads Linear for it), the top-level operator (the resolved Linear user id) and the top-level ancestors (every ancestor of an issue that is not itself an issue, up to ancestor_depth levels, with id, parentId, project and projectId), validated by one typed model. The lab fill generator reads it for the operator's open tickets and plans-today reads it as the identity sidecar; with only the compact text snapshot the generator reports linear_snapshot unread and generates no ticket. The result carries counts only.
+input_model:
+  name: ModelLinearSnapshotRequest
+  module: omnimarket.nodes.node_linear_snapshot_effect.models.model_linear_snapshot
+output_model:
+  name: ModelLinearSnapshotResult
+  module: omnimarket.nodes.node_linear_snapshot_effect.models.model_linear_snapshot
+handler:
+  module: omnimarket.nodes.node_linear_snapshot_effect.handlers.handler_linear_snapshot
+  class: HandlerLinearSnapshot
+  input_model: omnimarket.nodes.node_linear_snapshot_effect.models.model_linear_snapshot.ModelLinearSnapshotRequest
+  output_model: omnimarket.nodes.node_linear_snapshot_effect.models.model_linear_snapshot.ModelLinearSnapshotResult
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct Python invocation, or python -m omnimarket.nodes.node_linear_snapshot_effect from the plans-today skill's first step and the session-start hook's note.
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 300000
+  side_effects:
+  - reads the signed-in subject's open Linear issues through the GraphQL API with the LINEAR_API_KEY of the environment
+  - selects each issue's attachments and children (first 50 of each; a part with a next page is written as not read) in the full and the incremental read; a snapshot written before the parts existed is read in full once
+  - writes linear-<UTC date>.json under the output directory, replacing the file atomically
+  - writes linear-snapshot-state.json beside it, the time of the last good read and of the last attempt with its status
+  - waits out an HTTP 429 by its Retry-After within a budget, and keeps the last good snapshot (copied to today's name when today has none) when the limit outlasts it
+metadata:
+  transport_type: HTTP
+  description: >-
+    Write linear-<UTC date>.json, the signed-in subject's open Linear issues, validated by one typed model.
+  author: OmniNode Team
+  created: '2026-11-03'
+  tags:
+  - effect
+  - linear-snapshot-effect
+  - OMN-22361
+  related_tickets:
+  - OMN-22361

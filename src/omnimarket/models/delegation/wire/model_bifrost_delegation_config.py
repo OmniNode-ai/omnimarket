@@ -36,6 +36,7 @@ class EnumDelegationHarness(StrEnum):
     CODEX = "codex"
     CLAUDE_GLM = "claude-glm"
     CLAUDE = "claude"
+    LAB_AGENT = "lab-agent"
 
 
 class EnumDelegationBackendSurface(StrEnum):
@@ -453,8 +454,8 @@ class EnumQuotaScope(StrEnum):
     The key is (tenant, credential_ref, provider, model). ``provider`` bars
     every model behind that credential, because the provider pools one counter
     across models (the z.ai Coding Plan). ``model`` bars only the model that
-    answered, because the provider counts per model (OpenRouter free models,
-    the Gemini free tier).
+    answered, because the provider counts per model (for example the Gemini
+    free tier). A provider's daily cap can have a wider scope than its throttle.
     """
 
     PROVIDER = "provider"
@@ -474,7 +475,9 @@ class ModelQuotaCodeRule(BaseModel):
             "How to source the reset instant. 'message_reset_timestamp' reads an "
             "absolute stamp the provider states inline (z.ai); "
             "'message_retry_delay' reads a relative 'retry in <N>s' delay "
-            "(Gemini, OMN-16932). Anything else falls back to the cooldown."
+            "(Gemini, OMN-16932); 'rate_limit_reset_milliseconds' reads "
+            "X-RateLimit-Reset from response or error.metadata.headers. "
+            "Anything else falls back to the cooldown."
         ),
     )
     fallback_cooldown_seconds: int = Field(
@@ -572,7 +575,7 @@ class ModelTierSaturationRule(BaseModel):
             "How many generations this tier's backends can serve AT ONCE "
             "(OMN-18349). The bounded wait above already says this tier can be "
             "saturated; this says by how little. It was prose in the overlay "
-            "header -- '.201:8000 serves both local-coder and "
+            "header -- 'one local endpoint serves both local-coder and "
             "local-heavy-reasoning and permits a SINGLE running generation' -- "
             "which no caller could read, so a probe that wanted to publish at "
             "the rate the tier can serve had to guess it. A caller that fans "

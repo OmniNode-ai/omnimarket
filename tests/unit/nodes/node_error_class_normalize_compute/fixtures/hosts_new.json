@@ -1,0 +1,101 @@
+{
+  "configuration": {
+    "strip_stages": [
+      {
+        "name": "urls",
+        "pattern": "https?://[^\\s<>\\\"']+",
+        "replacement": "<url>"
+      },
+      {
+        "name": "shas",
+        "pattern": "(?<![\\w-])[0-9a-fA-F]{7,40}(?![\\w-])",
+        "replacement": "<sha>"
+      },
+      {
+        "name": "request_ids",
+        "pattern": "\\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\\b",
+        "replacement": "<request>"
+      },
+      {
+        "name": "timestamps",
+        "pattern": "\\b\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:Z|[+-]\\d{2}:\\d{2})\\b",
+        "replacement": "<time>"
+      },
+      {
+        "name": "paths",
+        "pattern": "(?<!\\w)(?:[A-Za-z]:[\\\\/]|/|\\./|\\.\\./|~/)[^\\s<>\\\"']+",
+        "replacement": "<path>"
+      },
+      {
+        "name": "tickets",
+        "pattern": "\\b[A-Z]{2,8}-\\d+\\b",
+        "replacement": "<ticket>"
+      },
+      {
+        "name": "prs",
+        "pattern": "(?:[\\w.-]+/)?[\\w.-]+#\\d+|(?i:\\bPR\\s*#?\\d+)|(?<!\\w)#\\d+",
+        "replacement": "<pr>"
+      },
+      {
+        "name": "hosts",
+        "kind": "hosts",
+        "replacement": "<host>"
+      },
+      {
+        "name": "lanes",
+        "kind": "lanes",
+        "replacement": "<lane>"
+      },
+      {
+        "name": "numbers",
+        "pattern": "\\b\\d+(?:\\.\\d+)?\\b",
+        "replacement": "<number>"
+      }
+    ],
+    "producer_adapters": [
+      {
+        "source": "tool",
+        "producer": "*",
+        "unique_codes": false
+      },
+      {
+        "source": "hook",
+        "producer": "*",
+        "unique_codes": true
+      },
+      {
+        "source": "gate",
+        "producer": "*",
+        "unique_codes": true
+      },
+      {
+        "source": "lane",
+        "producer": "*",
+        "unique_codes": false
+      },
+      {
+        "source": "ci",
+        "producer": "*",
+        "unique_codes": false
+      },
+      {
+        "source": "tick",
+        "producer": "*",
+        "unique_codes": true
+      },
+      {
+        "source": "prose",
+        "producer": "*",
+        "unique_codes": false
+      }
+    ],
+    "lane_name_patterns": [
+      "\\b(?:[a-z0-9]+-)+\\d{4}(?:-[a-f0-9]+)?\\b"
+    ],
+    "max_open_triage": 4
+  },
+  "hosts": [
+    "lab-alpha",
+    "lab-beta"
+  ]
+}

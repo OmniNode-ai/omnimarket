@@ -12,6 +12,12 @@ class ModelHookRefusalRowResult(BaseModel):
     reason: str = Field(description="Low-cardinality dedupe token for the reason.")
     detail: str = Field(description="Redacted detail, at most 240 characters.")
     key: str = Field(description="Twelve-character dedupe key of the refusal class.")
+    class_key: str = Field(
+        description="Stable error class, independent of lane/session."
+    )
+    key_version: str = Field(
+        description="Digest of normalization configuration and hosts."
+    )
     repeated_secret: bool = Field(
         description="True when the secret guard's per-session retry budget applies."
     )

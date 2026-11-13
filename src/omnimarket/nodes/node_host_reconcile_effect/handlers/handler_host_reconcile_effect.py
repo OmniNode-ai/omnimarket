@@ -507,6 +507,13 @@ class _ReconcilePass:
             with suppress(subprocess.TimeoutExpired):
                 self.child.communicate(timeout=5)
 
+    def receipt_path(self) -> str:
+        if self.request.receipt:
+            return self.request.receipt
+        # A check run must not overwrite the last repair receipt the wrapper reads.
+        suffix = ".check" if self.request.mode == "check" else ""
+        return str(self.root / f".onex-workspace-reconcile{suffix}.json")
+
     def evaluate(
         self, facts: tuple[ModelSurfaceFact, ...]
     ) -> ModelHostReconcileDecisions:
@@ -516,8 +523,7 @@ class _ReconcilePass:
                 workspace_root=str(self.root),
                 scripts_dir=str(self.scripts),
                 rerun_command=f"python -m omnimarket.nodes.node_host_reconcile_effect --omni-home {self.root}",
-                receipt_path=self.request.receipt
-                or str(self.root / ".onex-workspace-reconcile.json"),
+                receipt_path=self.receipt_path(),
                 facts=facts,
             )
         )
@@ -999,6 +1005,45 @@ class _ReconcilePass:
             )
         )
 
+    def restore_proven_floor(self, sp: Path | None) -> None:
+        """Put the dispatch venv back on the floor's commit when a repair could not stamp.
+
+        The venv delegate installs the clone head, so a repair moves the venv off the
+        commit the floor names before the dispatch premise is judged. When the premise
+        then fails, the floor is retained and the venv stays on a commit nothing proved,
+        which the wrapper reads as below the floor and refuses to mint evidence on until
+        a later run happens to stamp (OMN-19998). A repair therefore ends on the floor
+        or on a new stamp, never between them.
+        """
+        floor = self.root / ".onex-workspace-floor.json"
+        try:
+            proven = str(json.loads(floor.read_text()).get("omnimarket_commit") or "")
+        except (OSError, ValueError, AttributeError):
+            return
+        installed = self.commit(sp)
+        if not proven or not installed or installed == proven:
+            return
+        delegate = Path(
+            self.request.venv_delegate or self.scripts / "reconcile-workspace-venvs.sh"
+        )
+        if not delegate.is_file():
+            return
+        self.say(
+            f"dispatch premise unproven; restoring omnimarket {installed[:12]} -> "
+            f"the floor's {proven[:12]}"
+        )
+        self.step(
+            "venv restore",
+            ["bash", str(delegate), "--omni-home", str(self.root), "--proven"],
+        )
+        venv = Path(self.request.dispatch_venv or self.root / ".onex-dispatch-venv")
+        restored = self.commit(self.site_packages(venv))
+        if restored != proven:
+            self.say(
+                f"WARNING: the restore left omnimarket at {restored[:12] or 'none'}, "
+                f"not the floor's {proven[:12]}."
+            )
+
     def finish(self, governed: list[str], sp: Path | None) -> Literal[0, 2]:
         decisions = self.evaluate(tuple(self.facts))
         self.surfaces = list(decisions.surfaces)
@@ -1025,7 +1070,7 @@ class _ReconcilePass:
             + "\n  ]\n}\n"
         )
 
-        path = self.request.receipt or str(self.root / ".onex-workspace-reconcile.json")
+        path = self.receipt_path()
         if self.command(
             ["tee", path], owner=True, input_text=text, discard_stdout=True
         ).returncode:
@@ -1049,6 +1094,8 @@ class _ReconcilePass:
                 self.floor_stamped = self.verify(*args, owner=True).returncode == 0
             else:
                 self.say("WARNING: nothing observable to stamp; floor left untouched.")
+        elif self.request.mode == "repair":
+            self.restore_proven_floor(sp)
         for surface in self.surfaces:
             self.say(f"  {surface.surface}: {surface.verdict} ({surface.detail})")
         for line in decisions.verdict_lines:

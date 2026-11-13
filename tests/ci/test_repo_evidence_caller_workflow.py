@@ -106,6 +106,36 @@ def _pytest_argv(check_value: str) -> list[str]:
     return ["uv", "run", *rest] if rest[:1] == ["pytest"] else []
 
 
+def _command_pytest_argv(check_value: str) -> list[str]:
+    """The argv of a `uv run pytest` run inside a wrapper command, or an empty list.
+
+    OMN-22496 bound two criteria to a `check_type: command` that makes a
+    temporary HOME, writes a .gitconfig into it and then runs `uv run pytest`
+    over one repo test file. That is a real pytest run naming a real file, and
+    no `test_passes` value can express it, because the evidence is about what
+    the HOME contains and `env VAR=value` cannot create a directory. Only
+    `test_passes` checks were parsed, so both items read as unbound and this
+    assertion reddened every open pull request of the repository at once.
+
+    The loosening is narrow on purpose: a command with no `uv run pytest` in it
+    still binds nothing, and a wrapped run still has to name a path that exists
+    in the tree, so the planted deploy probe and a wrapped nonexistent file are
+    both still refused (the three tests beside this rule).
+    """
+    index = check_value.find("uv run pytest")
+    if index < 0:
+        return []
+    # The run sits inside the wrapper's quoted -c argument, so the slice ends
+    # on that argument's closing quote; shlex would refuse the unbalanced tail.
+    try:
+        return _pytest_argv(check_value[index:].rstrip("'\""))
+    except ValueError:
+        # A tail shlex cannot split (a quote opened before the marker, a stray
+        # escape) names no argv we can read, so it binds nothing rather than
+        # raising out of the assertion and hiding every other contract.
+        return []
+
+
 # OMN-21980: pytest options that take their value as the next token. Without
 # this, an option's value reads as a path target, and a value that happens to
 # name a directory (`-k tests`) would be accepted as the binding's selector.
@@ -181,9 +211,13 @@ def contract_binds_violations(name: str, contract: dict[str, Any]) -> list[str]:
             continue
         bound.update(item["binds_ac"])
         argvs = [
-            _pytest_argv(check.get("check_value", ""))
+            (
+                _pytest_argv(check.get("check_value", ""))
+                if check.get("check_type") == "test_passes"
+                else _command_pytest_argv(check.get("check_value", ""))
+            )
             for check in item.get("checks", [])
-            if check.get("check_type") == "test_passes"
+            if check.get("check_type") in {"test_passes", "command"}
         ]
         selectors = [
             next(
@@ -532,6 +566,57 @@ def test_contract_binds_refuses_a_selector_naming_a_path_not_in_the_tree() -> No
     ]
 
 
+def _wrapper_command_contract(command: str) -> dict[str, Any]:
+    return {
+        "requirements": [{"acceptance": [{"id": "AC1"}]}],
+        "dod_evidence": [
+            {
+                "id": "dod-wrapped-pytest",
+                "binds_ac": ["AC1"],
+                "checks": [{"check_type": "command", "check_value": command}],
+            }
+        ],
+    }
+
+
+def test_contract_binds_accepts_a_command_that_wraps_uv_run_pytest() -> None:
+    """A `command` check that prepares a HOME and then runs pytest binds its file.
+
+    OMN-22496 bound two criteria to exactly this shape: the evidence is about
+    what the HOME's .gitconfig contains, so no `test_passes` value can express
+    it. Only `test_passes` checks were parsed, so both items read as unbound
+    and this assertion reddened every open pull request of the repository.
+    """
+    contract = _wrapper_command_contract(
+        'bash -o pipefail -c \'h=$(mktemp -d) && printf "[tag]\\n\\tgpgsign = true\\n" '
+        '> "$h/.gitconfig" && HOME="$h" uv run pytest '
+        "tests/ci/test_repo_evidence_caller_workflow.py -q --no-cov'"
+    )
+    assert contract_binds_violations("OMN-0.yaml", contract) == []
+
+
+def test_contract_binds_still_refuses_a_command_with_no_pytest_run() -> None:
+    """The loosening is narrow: a wrapper command that runs no pytest binds nothing."""
+    contract = _wrapper_command_contract(
+        "bash -o pipefail -c 'curl -fsSL https://example.invalid/x | grep -F y'"
+    )
+    assert contract_binds_violations("OMN-0.yaml", contract) == [
+        "OMN-0.yaml:dod-wrapped-pytest: binds_ac requires uv run pytest evidence "
+        "naming an existing repo test file"
+    ]
+
+
+def test_contract_binds_refuses_a_wrapped_pytest_naming_a_missing_path() -> None:
+    """A wrapper is not a way past the existing-file rule."""
+    contract = _wrapper_command_contract(
+        "bash -c 'HOME=/tmp/x uv run pytest tests/ci/test_no_such_file_exists.py -q'"
+    )
+    assert contract_binds_violations("OMN-0.yaml", contract) == [
+        "OMN-0.yaml:dod-wrapped-pytest: binds_ac requires uv run pytest evidence "
+        "naming an existing repo test file"
+    ]
+
+
 def test_contract_binds_does_not_read_an_option_value_as_the_target() -> None:
     """`-k tests` names an expression, not the `tests` directory."""
     contract = _dir_selector_contract("uv run pytest -k tests -q")
@@ -710,3 +795,19 @@ def test_no_repo_contract_binds_a_local_done_gate_item() -> None:
             if "a local_done_gate item may not carry binds_ac" in violation
         )
     assert not violations, "\n".join(violations)
+
+
+@pytest.mark.parametrize(
+    "item_id", ["dod-omn22496-signing-on", "dod-omn22496-signing-off"]
+)
+def test_omn22496_items_bind_their_criterion_to_a_test_passes_check(
+    item_id: str,
+) -> None:
+    """OMN-22702: each OMN-22496 item binds its criterion to pytest evidence."""
+    path = REPO_ROOT / "contracts" / "OMN-22496.yaml"
+    contract = yaml.safe_load(path.read_text(encoding="utf-8"))
+    item = next(i for i in contract["dod_evidence"] if i["id"] == item_id)
+    assert item["binds_ac"], f"{item_id} binds no criterion"
+    kinds = [c.get("check_type") for c in item["checks"]]
+    assert "test_passes" in kinds, f"{item_id} has no test_passes check: {kinds}"
+    assert contract_binds_violations(path.name, contract) == []

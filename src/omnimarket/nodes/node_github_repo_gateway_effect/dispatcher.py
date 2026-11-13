@@ -20,15 +20,18 @@ from omnimarket.nodes.node_github_repo_gateway_effect.read_operations import (
     read_branch_protection,
     read_ci_checks,
     read_commit_check_runs,
+    read_job_log_fill,
     read_job_log_tail,
     read_merge_commit_sha,
     read_merged_pr,
+    read_open_pr_facts,
     read_open_prs_list,
     read_pr_heads,
     read_pr_review_threads,
     read_pr_status,
     read_pr_text,
     read_releases,
+    read_repo_file,
     read_review_gate,
     read_run_jobs,
     read_ticket_ref,
@@ -56,6 +59,8 @@ def dispatch(
         return read_run_jobs(transport, request)
     if op is EnumGithubGatewayOperation.JOB_LOG_TAIL:
         return read_job_log_tail(transport, request)
+    if op is EnumGithubGatewayOperation.JOB_LOG_FILL:
+        return read_job_log_fill(transport, request)
     if op is EnumGithubGatewayOperation.ARTIFACTS:
         return read_artifacts(transport, request)
     if op is EnumGithubGatewayOperation.PR_TEXT:
@@ -69,8 +74,12 @@ def dispatch(
         return read_commit_check_runs(transport, request)
     if op is EnumGithubGatewayOperation.MERGED_PR:
         return read_merged_pr(transport, request)
+    if op is EnumGithubGatewayOperation.REPO_FILE:
+        return read_repo_file(transport, request)
     if op is EnumGithubGatewayOperation.PR_REVIEW_THREADS:
         return read_pr_review_threads(transport, request)
+    if op is EnumGithubGatewayOperation.OPEN_PR_FACTS:
+        return read_open_pr_facts(transport, request)
 
     # PR-scoped operations: the request validator guarantees pr_number is set.
     pr_number = request.pr_number

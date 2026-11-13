@@ -1,0 +1,223 @@
+{
+ "decision": {
+  "actions": [
+   {
+    "attempts": [],
+    "brief": {
+     "allowed_results": [
+      "merged",
+      "armed",
+      "fix_submitted",
+      "external_blocker"
+     ],
+     "brief_class": "real_red",
+     "deadline_at": "2026-09-28T01:05:00Z",
+     "engine": "claude_sonnet",
+     "head_sha": "3c1ef7c83cf227d2a38f5fa8283a5e52eb6ce571",
+     "instructions": "A check on this head is red for a product reason, or stayed red after its one whole-run rerun. Read the failing check-run's log, fix the cause on the branch, run the focused tests for the change, and push.",
+     "lease_id": 1,
+     "pr": "acme/app#1",
+     "push_rule": "Push only with a plain fast-forward push, or with --force-with-lease=<ref>:<expected_old_head> naming the old head explicitly. Never push with a bare --force. Report every push in push_evidence, in order, as {ref, expected_old_head, new_head, mode}; the first expected_old_head is the head you were dispatched on or a head you last saw, and the last new_head is the head you report.",
+     "result_rule": "Write exactly one result file, with exactly one of: merged; armed (auto-merge armed on the exact head after your last push); fix_submitted{head_sha, fix_attempt} with push_evidence or a rerun run id created after dispatch; external_blocker{kind, ref} with kind one of operator_decision, production_gate, hold_row, collaborator, upstream_open. waiting_ci, waiting_order, report_only and a bare blocked are invalid results. Do not write the ledger and do not choose other work."
+    },
+    "cause_brief": null,
+    "dedupe_key": null,
+    "head_sha": "3c1ef7c83cf227d2a38f5fa8283a5e52eb6ce571",
+    "kind": "dispatch_worker",
+    "lease_id": 1,
+    "members": [],
+    "owner": null,
+    "rebuild_key": null,
+    "replacement": null,
+    "subject": "acme/app#1",
+    "target_repo": null
+   }
+  ],
+  "companion_verdicts": [],
+  "degraded": [],
+  "gates": [],
+  "land_skips": [],
+  "next_state": {
+   "causes": [],
+   "close_requested": [],
+   "draining_repos": [],
+   "eligibility_reruns": [],
+   "last_tick": 1,
+   "leases": [
+    {
+     "brief_class": "real_red",
+     "deadline_at": "2026-09-28T01:05:00Z",
+     "dispatch_head": "3c1ef7c83cf227d2a38f5fa8283a5e52eb6ce571",
+     "dispatch_red_checks": [
+      "unit"
+     ],
+     "dispatched_at": "2026-09-28T00:05:00Z",
+     "engine": "claude_sonnet",
+     "kill_sent_tick": null,
+     "last_seen_head": "3c1ef7c83cf227d2a38f5fa8283a5e52eb6ce571",
+     "lease_id": 1,
+     "pr": "acme/app#1",
+     "result_recorded_at": null,
+     "revoked": false,
+     "seen_heads": [
+      "3c1ef7c83cf227d2a38f5fa8283a5e52eb6ce571"
+     ],
+     "stuck": false
+    }
+   ],
+   "next_lease_id": 2,
+   "observe_only_repos": [],
+   "rebuilds": [],
+   "records": [
+    {
+     "attempt_red_checks": [],
+     "awaiting_head": null,
+     "blocker_fingerprint": "",
+     "exhaustion_owner": null,
+     "ladder_index": 0,
+     "outcome": null,
+     "parked_fingerprint": "",
+     "parked_head": null,
+     "pr": "acme/app#1",
+     "reason": "none",
+     "rerun_heads": [],
+     "stale_refreshes": 0,
+     "update_heads": [],
+     "update_no_new_commits_at": null,
+     "verdict_reruns": []
+    }
+   ],
+   "revoked_lease_ids": [],
+   "token_holder": null,
+   "uncovered": []
+  },
+  "observe_only_refused": [],
+  "observed_actions": [],
+  "recorded_outcomes": [],
+  "tick": 1,
+  "violations": []
+ },
+ "facts": {
+  "available_engines": [
+   "claude_sonnet",
+   "claude_sonnet",
+   "claude_sonnet"
+  ],
+  "base_green_checks": [],
+  "base_heads": [],
+  "base_red_checks": [],
+  "cause_escalations": [],
+  "cause_owners": [],
+  "cause_releases": [],
+  "companions": [],
+  "drain_requested": [],
+  "fixer_hold": [],
+  "fixer_hold_released_prs": [],
+  "floor_breached_repos": [],
+  "load1": 0.0,
+  "observed_at": "2026-09-28T00:05:00Z",
+  "policy": {
+   "cause_attempt_budget": 2,
+   "cause_diagnosis_engine": "claude_sonnet",
+   "cause_engine_ladder": [
+    "claude_sonnet",
+    "claude_sonnet"
+   ],
+   "cause_lease_seconds": 5400,
+   "cause_park_hours": 12,
+   "cause_spawn_failure_budget": 3,
+   "cause_spawn_failure_seconds": 600,
+   "cluster_absorb_ratio": 0.8,
+   "cluster_excluded_checks": [
+    "CI Summary",
+    "Hostile Reviewer (adversarial gate)",
+    "Hostile Review Gate"
+   ],
+   "cluster_min_members": 3,
+   "cluster_min_members_floor": 2,
+   "engine_ladder": [
+    "claude_sonnet",
+    "claude_sonnet",
+    "claude_sonnet"
+   ],
+   "exhaustion_owner": {
+    "kind": "lane",
+    "name": "landing-controller",
+    "source": "policy"
+   },
+   "exit_grace_seconds": 120,
+   "lease_seconds": 3600,
+   "load_pause_threshold": 20.0,
+   "max_cause_workers": 4,
+   "max_cause_workers_per_repo": 2,
+   "max_rebuild_attempts": 3,
+   "max_stale_refreshes": 2,
+   "max_workers": 6,
+   "max_workers_per_repo": 6,
+   "rebuild_backoff_ticks": [
+    1,
+    2
+   ],
+   "rebuild_visibility_ticks": 3,
+   "stale_gate_seconds": 600,
+   "update_retry_seconds": 600,
+   "wait_stall_minutes": 60
+  },
+  "probes": [],
+  "producer_failures": [],
+  "producer_release": "producer-1",
+  "prs": [
+   {
+    "auto_merge_head": null,
+    "blocker_refs": [],
+    "cancelled_checks": [],
+    "ci": "red",
+    "collaborator": false,
+    "created_at": "2026-08-29T00:00:00Z",
+    "gate_reasons": [],
+    "gate_since": null,
+    "head_sha": "3c1ef7c83cf227d2a38f5fa8283a5e52eb6ce571",
+    "lacks_base_head": false,
+    "merge_queue": false,
+    "merge_state": "clean",
+    "open_parents": [],
+    "parents": [],
+    "pr": "acme/app#1",
+    "priority_class": null,
+    "process_fix": false,
+    "red_annotations": {},
+    "red_checks": [
+     "unit"
+    ],
+    "red_class": "product",
+    "ref_updates": [],
+    "rerun_runs": [],
+    "runtime": false,
+    "state": "open",
+    "suspensions": []
+   }
+  ],
+  "rebuild_acks": [],
+  "results": [],
+  "shared_check_verdicts": [],
+  "state": {
+   "causes": [],
+   "close_requested": [],
+   "draining_repos": [],
+   "eligibility_reruns": [],
+   "last_tick": 0,
+   "leases": [],
+   "next_lease_id": 1,
+   "observe_only_repos": [],
+   "rebuilds": [],
+   "records": [],
+   "revoked_lease_ids": [],
+   "token_holder": null,
+   "uncovered": []
+  },
+  "tick": 1,
+  "update_no_new_commits": []
+ },
+ "fair_share": true,
+ "provenance": "facts: reviewed scenario S13k_result_written_kill_fails, its busiest tick; decision: the pinned decision path with fair share at the recording commit"
+}

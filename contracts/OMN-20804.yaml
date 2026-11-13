@@ -1,0 +1,53 @@
+schema_version: "1.0.0"
+ticket_id: OMN-20804
+title: "The automation-liveness installer scan reads only what installs an automatic process"
+summary: A pure node scans a repository's files for units, templates, cron files and installer code so a completeness gate can refuse any the overlay does not cover. This repository is the published destination of node_automation_liveness_overlay_check_compute, so the scan's reading rules are maintained here. The overlay declaration and the completeness run itself are not in this repository, so this contract carries only the scan's own criterion.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn20804-installer-scan
+    statement: The scan finds an installer in a directory nobody listed, and a file that only names a unit directory inside a wildcard pattern installs nothing and is not reported.
+    acceptance:
+      - id: AC3
+        statement: 'AC3: a planted installer in an unlisted directory is found by the scan, and a wildcard unit-directory token is read as a pattern rather than an install path -- falsifier: `uv run pytest tests/nodes/node_automation_liveness_overlay_check_compute -q`'
+evidence_requirements:
+  - kind: tests
+    description: The installer-scan reading rules for this repository's copy of the compute node.
+    command: uv run pytest tests/nodes/node_automation_liveness_overlay_check_compute -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+dod_evidence:
+  - id: dod-omn20804-glob-is-not-an-install-path
+    description: "A unit directory named inside a wildcard token is a shape something is matched against, not a path anything installs to, so the scan reads it as neither. Fails at the merge base, where a module that merely globs the agent and user-unit directories and copies something elsewhere reads as installer code: that is the shape of a plugin pruner in a sibling repository, which reads those globs so it can spare a plugin tree some unit still references, and whose misclassification reddened the overlay completeness gate on every pull request of the repository the scan was reported from. Concrete declarations keep their classification, which is why proximity to the write verb cannot be the discriminator: a clone sync in that same repository names nine real units 137 lines from its nearest write."
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_automation_liveness_overlay_check_compute -q
+        cwd: "."
+    binds_ac:
+      - AC3
+  - id: dod-deploy-omn20804-hermetic-symbol-check
+    description: "Compute-only ticket: the change is a reading rule inside a pure compute node and deploys nothing, so there is no live runtime surface to probe. Per the deploy-gate falsifiability guidance (OMN-14505) for compute-only tickets, this is a hermetic GitHub-content check: it reads the file's real content at a real commit on this repository and asserts the predicate the change introduces is present. It reads no receipt and no contract this pull request authors, and it goes RED if the predicate is ever removed. Pinned to this branch's own head rather than to dev because the Contract Compliance Check executes the command at authoring time, and dev would 404 until after the merge."
+    source: manual
+    checks:
+      - check_type: command
+        check_value: gh api 'repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_automation_liveness_overlay_check_compute/handlers/handler_automation_liveness_installer_scan.py?ref='"$(git rev-parse HEAD)"'' --jq .content | base64 -d | grep 'def _names_a_unit_directory' > /dev/null
+  - id: dod-omn20804-glob-integration-proof
+    description: "The pushed head runs the compute node's scan suite on a lab host, where the node's dependencies are the deployed ones rather than this laptop's. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. NOT YET RUN at the time this item was written: the lab is in blackout from the launching host, so the ticket cannot reach Done until a lab host admits the lane. The measurement already in hand is the AC3 item above plus the scan's own command line over every registry clone on the operator host, which reports ten findings at this head against eleven at the merge base, the one that goes being the plugin pruner's."
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-20804 -- uv run --frozen pytest tests/nodes/node_automation_liveness_overlay_check_compute -q --no-cov
+        cwd: .
+  - id: dod-omn20804-moved-layout-refuses-undeclared
+    description: "The check is run from its new home with the overlay and the sources declaration in a separate overlays checkout that is not a scanned repository (OMN-20804, RULING 2026-11-03T18:40:27Z): a fixture installer in a registry clone with no line in that sources overlay makes the command exit 1 naming the file, the same fixture with the line exits 0, and a line whose file is gone exits 1. Fails if the run stops reading the overlay and the sources by path, or stops scanning the registry clones."
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_automation_liveness_overlay_check_effect/test_overlay_check_moved_layout_omn20804.py -q
+        cwd: "."
+    binds_ac:
+      - AC3

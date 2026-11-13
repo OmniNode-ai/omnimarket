@@ -11,6 +11,7 @@ different ones, whatever a plan table listed beside the row.
 
 from __future__ import annotations
 
+import functools
 import re
 from dataclasses import dataclass
 
@@ -65,16 +66,24 @@ def pr_records(request: ModelFactoryFloorRequest) -> dict[str, PrRecord]:
     return records
 
 
+@functools.lru_cache(maxsize=4096)
+def _id_pattern(task_id: str) -> re.Pattern[str]:
+    """One compiled pattern per task id: the mapping asks it of every pull request for every task."""
+    return re.compile(rf"(?<![\w.]){re.escape(task_id)}(?![\w.])")
+
+
 def _id_in(task_id: str, text: str) -> bool:
-    return re.search(rf"(?<![\w.]){re.escape(task_id)}(?![\w.])", text) is not None
+    # A plain substring test first: the pattern can match only where the id itself appears, and almost no title does.
+    return task_id in text and _id_pattern(task_id).search(text) is not None
 
 
 def _is_work_of(
     record: PrRecord,
     task: ModelFloorManifestTask,
     scope: frozenset[str],
+    task_tickets: frozenset[str],
 ) -> bool:
-    if record.tickets & set(task.tickets):
+    if record.tickets & task_tickets:
         return True
     if task.tickets:
         # The row names its tickets, and this pull request names others: it is some other row's work.
@@ -94,20 +103,24 @@ def task_prs(
 ) -> tuple[str, ...]:
     """The pull requests that are the work of the task, by the tickets in their titles and branches.
 
-    A pull request the plan lists for the row stays when the watcher does not know it (a plan may name a pull request in
-    another repository) or when it is the row's by ticket; a known pull request that is some other ticket's work goes.
+    A pull request the plan lists for the row stays when the watcher does not know its identity (a plan may name a pull
+    request in another repository) or when it is the row's by ticket. A known title or branch with no matching ticket,
+    including a dependency update with no ticket at all, is not evidence for a row that names its tickets.
     """
     wanted = frozenset(scope)
+    task_tickets = frozenset(task.tickets)
     listed = tuple(
         pr
         for pr in task.prs
         if (record := records.get(pr_key(pr))) is None
         or not task.tickets
-        or not record.tickets
-        or bool(record.tickets & set(task.tickets))
+        or not (record.title or record.head_ref)
+        or bool(record.tickets & task_tickets)
     )
     inferred = tuple(
-        record.key for record in records.values() if _is_work_of(record, task, wanted)
+        record.key
+        for record in records.values()
+        if _is_work_of(record, task, wanted, task_tickets)
     )
     return tuple(sorted(set(listed + inferred)))
 

@@ -1,13 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Apply the contract's declared consumer-group DELETE ACL rows to the dev broker.
-
-The rows, the reconcile command and the ssh-target variable are all read from this
-node's ``contract.yaml``. The handler renders the rows into a declaration file in the
-lab broker ACL reconcile command's format and runs that command's own
-``apply`` (``--dry-run`` first): it lists the live rows, creates only the missing ones
-and lists again, so the readback is the broker's listing, not a local assumption.
-"""
+"""Aggregate contract ACL declarations and reconcile them with the broker."""
 
 from __future__ import annotations
 
@@ -23,9 +16,26 @@ from typing import Any
 
 import yaml
 
+from omnimarket.handlers.node_overlay_reader import NodeOverlayNotFoundError
+from omnimarket.models.broker_acl import (
+    EnumAclResourceType,
+    EnumBrokerAclFindingCode,
+    ModelBrokerAclDeriveRequest,
+    ModelBrokerAclRow,
+)
 from omnimarket.models.broker_acl_reconcile import (
     ModelBrokerAclReconcileRequest,
     ModelBrokerAclReconcileResult,
+)
+from omnimarket.nodes.node_broker_acl_overlay_render_compute.handlers.handler_broker_acl_derive import (
+    HandlerBrokerAclDerive,
+)
+from omnimarket.nodes.node_broker_acl_overlay_render_compute.overlay import (
+    load_principals_overlay,
+)
+from omnimarket.nodes.node_broker_acl_reconcile_effect.handlers import driver_broker_acl
+from omnimarket.nodes.node_broker_acl_reconcile_effect.handlers.contract_topics import (
+    load_topic_uses,
 )
 
 _NODE = "node_broker_acl_reconcile_effect"
@@ -86,6 +96,123 @@ def render_declaration(
     return rendered
 
 
+def aggregate_declared_grants(nodes_root: Path | None = None) -> list[dict[str, str]]:
+    """Merge this node's declaration with grant blocks from every packaged node.
+
+    Malformed declarations fail closed and identify the contract to fix. Duplicate
+    rows collapse before sorting by principal, resource type, pattern, name and operation.
+    """
+    root = (
+        nodes_root
+        if nodes_root is not None
+        else Path(str(resources.files("omnimarket.nodes")))
+    )
+    own_path = resources.files(f"omnimarket.nodes.{_NODE}").joinpath("contract.yaml")
+    blocks: list[tuple[str, object]] = [
+        (str(own_path), contract()["broker_acl_declaration"]["principals"])
+    ]
+    for path in sorted(root.rglob("contract.yaml")):
+        try:
+            loaded = yaml.load(
+                path.read_text(encoding="utf-8"),
+                Loader=getattr(yaml, "CSafeLoader", yaml.SafeLoader),
+            )
+            if not isinstance(loaded, dict):
+                raise ValueError("contract must be a mapping")
+            if "broker_acl_grants" in loaded:
+                blocks.append((str(path), loaded["broker_acl_grants"]))
+        except (ValueError, OSError, yaml.YAMLError) as error:
+            raise ValueError(f"{path}: {error}") from error
+    keys = ("principal", "resource_type", "pattern", "name", "operation")
+    rows: set[tuple[str, ...]] = set()
+    for source, block in blocks:
+        try:
+            # Placeholder principals are checked again as concrete identities after rendering.
+            checked = render_declaration(
+                {"principals": block},
+                dict.fromkeys(
+                    _PLACEHOLDER.findall(yaml.safe_dump(block)), "User:placeholder"
+                ),
+            )
+            driver_broker_acl.load_principals(checked["principals"])
+            for row in declared_grants({"principals": block}):
+                rows.add(tuple(row[key] for key in keys))
+        except (ValueError, TypeError, KeyError) as error:
+            raise ValueError(f"{source}: {error}") from error
+    return [dict(zip(keys, row, strict=True)) for row in sorted(rows)]
+
+
+def derived_grants(
+    settings: Mapping[str, Any],
+    declared: Sequence[Mapping[str, str]],
+    environ: Mapping[str, str],
+    node: str | None = None,
+) -> tuple[list[dict[str, str]], int]:
+    """The rows the contracts' topics need for the declared principals, and how many topics still have no row.
+
+    No principals overlay (the setting is absent or the file is not found) derives nothing, so a deployment that does not
+    declare principals applies exactly what it applied before. A derivation the apply tool would refuse raises.
+    With a node (the readiness check) an absent overlay raises instead: no answer is never read as ready.
+    """
+    scope = settings.get("derive_principals_scope")
+    if not scope:
+        if node is not None:
+            raise ValueError("no principals overlay scope is configured")
+        return [], 0
+    try:
+        principals = load_principals_overlay(scope, environ)
+    except NodeOverlayNotFoundError:
+        if node is not None:
+            raise ValueError(f"no principals overlay found for scope {scope}") from None
+        return [], 0
+    result = HandlerBrokerAclDerive().handle(
+        ModelBrokerAclDeriveRequest(
+            scope=scope,
+            topic_uses=load_topic_uses(),
+            principals=principals,
+            only_node=node,
+            declared_rows=tuple(
+                ModelBrokerAclRow(**row)
+                for row in declared
+                if row["resource_type"] == EnumAclResourceType.TOPIC.value
+            ),
+        )
+    )
+    refusing = sorted(
+        {
+            finding.code.value
+            for finding in result.findings
+            if finding.code != EnumBrokerAclFindingCode.TOPIC_WITHOUT_ROW
+        }
+    )
+    if refusing:
+        raise ValueError(f"derived rows refused: {', '.join(refusing)}")
+    return [
+        {
+            "principal": row.principal,
+            "resource_type": row.resource_type.value,
+            "pattern": row.pattern.value,
+            "name": row.name,
+            "operation": row.operation.value,
+        }
+        for row in result.rows
+    ], len(result.uncovered_topics)
+
+
+def role_logins(
+    settings: Mapping[str, Any], environ: Mapping[str, str]
+) -> dict[str, str]:
+    """The placeholders a principals overlay's roles fill, so no new environment variable is needed."""
+    scope = settings.get("derive_principals_scope")
+    if not scope:
+        return {}
+    try:
+        overlay = load_principals_overlay(scope, environ)
+    except NodeOverlayNotFoundError:
+        return {}
+    return overlay.placeholder_logins()
+
+
 def _run(argv: Sequence[str], timeout: float) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         list(argv), capture_output=True, text=True, timeout=timeout, check=False
@@ -97,8 +224,10 @@ class HandlerBrokerAclReconcile:
         self,
         runner: Runner = _run,
         environ: Mapping[str, str] | None = None,
+        remote_runner: driver_broker_acl.RemoteRunner | None = None,
     ) -> None:
         self._runner = runner
+        self._remote_runner = remote_runner
         self._environ = os.environ if environ is None else environ
 
     def handle(
@@ -114,14 +243,18 @@ class HandlerBrokerAclReconcile:
                 error=f"{settings['ssh_target_env']} is not set",
             )
         # The program comes only from operator configuration; a bus request never
-        # carries an argv.
+        # carries an argv. Without configured command, the packaged driver runs.
         command = shlex.split(self._environ.get(settings["reconcile_command_env"], ""))
+        if request.mode == "ready_check":
+            if command:
+                return ModelBrokerAclReconcileResult(
+                    mode=request.mode,
+                    exit_code=2,
+                    error="ready_check reads through the packaged driver only",
+                )
+            return self._ready_check(request, loaded, target)
         if not command:
-            return ModelBrokerAclReconcileResult(
-                mode=request.mode,
-                exit_code=2,
-                error=f"{settings['reconcile_command_env']} is not set",
-            )
+            return self._apply_driver(request, loaded, target)
         try:
             rendered = render_declaration(
                 loaded["broker_acl_declaration"], self._environ
@@ -153,6 +286,127 @@ class HandlerBrokerAclReconcile:
                     mode=request.mode, exit_code=2, error=str(error)
                 )
         return self._result(request, completed)
+
+    def _ready_check(
+        self,
+        request: ModelBrokerAclReconcileRequest,
+        loaded: Mapping[str, Any],
+        target: str,
+    ) -> ModelBrokerAclReconcileResult:
+        """Does the broker hold every row derived for one node? Reads only; a row it lacks is named in missing_rows."""
+        try:
+            settings = loaded["broker_acl_reconcile"]
+            derived, _ = derived_grants(settings, [], self._environ, node=request.node)
+            if request.principal is not None:
+                derived = [
+                    row for row in derived if row["principal"] == request.principal
+                ]
+                if not derived:
+                    raise ValueError(
+                        f"{request.node} derives no rows for {request.principal}"
+                    )
+            declaration = dict(loaded["broker_acl_declaration"])
+            declaration.pop("principals", None)
+            keys = ("principal", "resource_type", "pattern", "name", "operation")
+            declaration["rows"] = [
+                dict(zip(keys, tuple(row[k] for k in keys), strict=True))
+                for row in derived
+            ]
+            timeout = float(settings["timeout_seconds"])
+            connection = driver_broker_acl.AclConnection.from_mapping(
+                declaration, target, timeout
+            )
+            grants = [driver_broker_acl.AclGrant(**row) for row in declaration["rows"]]
+
+            def run_remote(ssh_target: str, script: str) -> str:
+                return driver_broker_acl.run_remote(ssh_target, script, timeout=timeout)
+
+            output = driver_broker_acl.apply(
+                grants, connection, "dry_run", self._remote_runner or run_remote
+            )
+            reports = _REPORT.findall(output)
+            if not reports:
+                return ModelBrokerAclReconcileResult(
+                    mode=request.mode,
+                    exit_code=2,
+                    error="the broker listing could not be read",
+                    output=output,
+                )
+            missing = int(reports[-1][2])
+            missing_rows = tuple(
+                line.removeprefix("MISSING ")
+                for line in output.splitlines()
+                if line.startswith("MISSING ")
+            )
+            return ModelBrokerAclReconcileResult(
+                mode=request.mode,
+                exit_code=int(missing > 0),
+                declared=int(reports[-1][0]),
+                live=int(reports[-1][1]),
+                missing=missing,
+                undeclared=int(reports[-1][3]),
+                missing_rows=missing_rows,
+                derived=len(derived),
+                ready=missing == 0,
+                output=output,
+            )
+        except (ValueError, OSError, RuntimeError, subprocess.TimeoutExpired) as error:
+            return ModelBrokerAclReconcileResult(
+                mode=request.mode, exit_code=2, error=str(error)
+            )
+
+    def _apply_driver(
+        self,
+        request: ModelBrokerAclReconcileRequest,
+        loaded: Mapping[str, Any],
+        target: str,
+    ) -> ModelBrokerAclReconcileResult:
+        try:
+            declaration = dict(loaded["broker_acl_declaration"])
+            declared = aggregate_declared_grants()
+            derived, uncovered = derived_grants(
+                loaded["broker_acl_reconcile"], declared, self._environ
+            )
+            keys = ("principal", "resource_type", "pattern", "name", "operation")
+            declaration["rows"] = [
+                dict(zip(keys, row, strict=True))
+                for row in sorted(
+                    {tuple(row[key] for key in keys) for row in (*declared, *derived)}
+                )
+            ]
+            rendered = render_declaration(
+                declaration,
+                {
+                    **self._environ,
+                    **role_logins(loaded["broker_acl_reconcile"], self._environ),
+                },
+            )
+            timeout = float(loaded["broker_acl_reconcile"]["timeout_seconds"])
+            connection = driver_broker_acl.AclConnection.from_mapping(
+                rendered, target, timeout
+            )
+            grants = [driver_broker_acl.AclGrant(**row) for row in rendered["rows"]]
+
+            def run_remote(ssh_target: str, script: str) -> str:
+                return driver_broker_acl.run_remote(ssh_target, script, timeout=timeout)
+
+            output = driver_broker_acl.apply(
+                grants,
+                connection,
+                "apply" if request.mode == "apply" else "dry_run",
+                self._remote_runner or run_remote,
+            )
+            reports = _REPORT.findall(output)
+            code = int(bool(int(reports[-1][2])))
+            return self._result(
+                request, subprocess.CompletedProcess([], code, output, "")
+            ).model_copy(
+                update={"derived": len(derived), "uncovered_topics": uncovered}
+            )
+        except (ValueError, OSError, RuntimeError, subprocess.TimeoutExpired) as error:
+            return ModelBrokerAclReconcileResult(
+                mode=request.mode, exit_code=2, error=str(error)
+            )
 
     @staticmethod
     def _result(

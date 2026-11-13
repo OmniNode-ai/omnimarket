@@ -33,7 +33,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Final, cast
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from omnibase_core.enums.ticket.enum_dod_check_type import EnumDodCheckType
 from omnibase_core.enums.ticket.enum_dod_evidence_execution_scope import (
@@ -246,8 +246,9 @@ _DEFAULT_GIT_OP_TIMEOUT_S = 300
 _GIT_OP_TIMEOUT_ENV = "DOD_VERIFY_GIT_OP_TIMEOUT_S"
 
 # OMN-20886: a ticket's product-repository contract could not be resolved (its
-# merged PRs, the contract at a merge commit, or the check runs were unreadable
-# or malformed). Refuses: an OCC copy does not govern such a ticket.
+# merged PRs or the contract at a merge commit were unreadable or malformed).
+# Check-run read faults have their own retryable cause. Refuses: an OCC copy
+# does not govern such a ticket.
 _REPO_CONTRACT_UNRESOLVED_CODE = "REPO_CONTRACT_UNRESOLVED"
 
 
@@ -572,6 +573,61 @@ def _hermetic_venv_path(project_root: Path) -> Path:
     digest.update(str(project_root).encode("utf-8"))
     digest.update((project_root / "uv.lock").read_bytes())
     return _hermetic_venv_root() / f"{project_root.name}-{digest.hexdigest()[:12]}"
+
+
+_HERMETIC_VENV_RETENTION_ENV = "DOD_VERIFY_HERMETIC_VENV_RETENTION_S"
+_DEFAULT_HERMETIC_VENV_RETENTION_S = 6 * 3600
+
+
+def _hermetic_venv_retention_s() -> float:
+    """Seconds an unused ephemeral environment survives (OMN-22993).
+
+    Malformed or non-positive falls back to the default rather than turning
+    pruning off or deleting everything.
+    """
+    raw = os.environ.get(_HERMETIC_VENV_RETENTION_ENV, "").strip()
+    try:
+        value = float(raw) if raw else float(_DEFAULT_HERMETIC_VENV_RETENTION_S)
+    except ValueError:
+        value = 0.0
+    if value <= 0:
+        return float(_DEFAULT_HERMETIC_VENV_RETENTION_S)
+    return value
+
+
+def _prune_stale_hermetic_envs(keep: Path) -> list[Path]:
+    """Remove environments beside ``keep`` unused for the retention period.
+
+    The path is keyed by project root + lock bytes, so every lane worktree
+    makes its own ~0.5 GB environment and, before OMN-22993, none was ever
+    removed (39 of them, 20 GB, took a lab host under its disk floor).
+    ``keep`` is marked used first; a sibling is removed only when its mtime is
+    older than the retention, which a build or reuse refreshes. Failures are
+    logged and never fail the build.
+    """
+    root = _hermetic_venv_root()
+    removed: list[Path] = []
+    try:
+        os.utime(keep, None)
+        cutoff = time.time() - _hermetic_venv_retention_s()
+        for entry in root.iterdir():
+            if entry == keep or not entry.is_dir() or entry.is_symlink():
+                continue
+            if not (entry / "bin" / "python").exists():
+                continue  # not one of ours; never delete a foreign directory
+            if entry.stat().st_mtime >= cutoff:
+                continue
+            shutil.rmtree(entry, ignore_errors=True)
+            removed.append(entry)
+    except OSError as exc:
+        logger.warning("OMN-22993: could not prune %s: %s", root, exc)
+    if removed:
+        logger.info(
+            "OMN-22993: pruned %d stale hermetic environment(s) under %s",
+            len(removed),
+            root,
+        )
+    return removed
 
 
 # ---------------------------------------------------------------------------
@@ -2249,6 +2305,13 @@ class EvidenceCollector:
         # two is non-None, and a failure is remembered so a broken environment
         # is not re-attempted once per check.
         self._hermetic_uv_envs: dict[Path, tuple[Path | None, str | None]] = {}
+        # OMN-23198: every environment directory THIS collector started building,
+        # and the token that makes its path unique to this run. A peer run's
+        # directory is never in the list, so ``close`` can remove everything in
+        # it without touching an environment another run is still using.
+        self._hermetic_uv_built: list[Path] = []
+        self._hermetic_run_token = uuid4().hex[:10]
+        self._hermetic_close_registered = False
         # OMN-17863: the JS sibling of the memo above. Same shape, same
         # per-run-once contract -- a project's stage is built at most once
         # per collector, and a build FAILURE is memoised too so a second
@@ -2418,6 +2481,11 @@ class EvidenceCollector:
                 commit_sha=sha,
             )
         )
+        if not event.resolved:
+            self._record_lookup_failure(
+                f"CHECK_RUN_READ_FAILED: {repo}@{sha}: "
+                f"{event.detail or 'no usable check-run listing returned'}"
+            )
         return event.check_runs if event.resolved else None
 
     def _collect_repo_governed(
@@ -2456,6 +2524,24 @@ class EvidenceCollector:
         )
         if isinstance(resolved, ModelRepoEvidenceVerdict):
             if resolved.outcome is EnumRepoEvidenceOutcome.REFUSED:
+                if resolved.unresolved_cause is (
+                    EnumDodVerifyUnresolvedCause.CHECK_RUN_READ_FAILED
+                ):
+                    self._record_lookup_failure("CHECK_RUN_READ_FAILED")
+                    return [
+                        ModelEvidenceCheckResult(
+                            evidence_id="contract",
+                            description=f"Merged PR check runs for {ticket_id} unreadable",
+                            status=EnumEvidenceCheckStatus.SKIPPED,
+                            unverifiable_cause=(
+                                EnumEvidenceUnverifiableCause.CHECK_RUN_READ_FAILED
+                            ),
+                            message=(
+                                f"{self.lookup_failure_code}: {resolved.detail} "
+                                "Closure stays blocked pending a readable check-run result."
+                            ),
+                        )
+                    ]
                 return [self._repo_contract_refusal(ticket_id, resolved.detail)]
             logger.info(
                 "No product repository governs %s (%s)",
@@ -5699,6 +5785,39 @@ class EvidenceCollector:
         """True only for the OMN-15620 gate's own verbatim refusal banner."""
         return all(marker in message for marker in _VENV_PURITY_REFUSAL_MARKERS)
 
+    def _register_close_at_exit(self) -> None:
+        """Remove this run's environments at interpreter exit as a backstop.
+
+        ``close`` is the path a run takes; this covers a caller that never
+        reached it (an unhandled signal that still unwinds the interpreter).
+        """
+        if not self._hermetic_close_registered:
+            self._hermetic_close_registered = True
+            atexit.register(self.close)
+
+    def close(self) -> None:
+        """Remove every hermetic environment this collector built (OMN-23198).
+
+        Called when a run ends, whether it succeeded, failed or timed out.
+        Idempotent, and it only ever removes directories this collector began
+        building, so an environment a peer run built under the same root is
+        never touched. A removal that fails is logged and the rest still run:
+        a stuck directory must not strand the others on disk.
+        """
+        built, self._hermetic_uv_built = self._hermetic_uv_built, []
+        self._hermetic_uv_envs.clear()
+        for env_path in built:
+            try:
+                shutil.rmtree(env_path)
+            except FileNotFoundError:
+                continue
+            except OSError as exc:
+                logger.warning(
+                    "OMN-23198: could not remove hermetic environment %s: %s",
+                    env_path,
+                    exc,
+                )
+
     def _ensure_hermetic_uv_env(
         self, project_root: Path
     ) -> tuple[Path | None, str | None]:
@@ -5728,7 +5847,13 @@ class EvidenceCollector:
 
         result: tuple[Path | None, str | None]
         try:
-            env_path = _hermetic_venv_path(project_root)
+            # OMN-23198: the run token makes the path this run's own, so the
+            # directory is safe to remove when the run ends and a concurrent run
+            # on the same lock never shares (or loses) it.
+            shared_path = _hermetic_venv_path(project_root)
+            env_path = shared_path.with_name(
+                f"{shared_path.name}-{self._hermetic_run_token}"
+            )
         except OSError as exc:
             result = (
                 None,
@@ -5767,6 +5892,10 @@ class EvidenceCollector:
             project_root,
             env_path,
         )
+        # OMN-23198: recorded BEFORE the build so a build that times out or dies
+        # half-way is removed by ``close`` like a finished one.
+        self._hermetic_uv_built.append(env_path)
+        self._register_close_at_exit()
         try:
             env_path.parent.mkdir(parents=True, exist_ok=True)
             proc = subprocess.run(
@@ -5818,6 +5947,7 @@ class EvidenceCollector:
             self._hermetic_uv_envs[project_root] = result
             return result
 
+        _prune_stale_hermetic_envs(env_path)
         result = (env_path, None)
         self._hermetic_uv_envs[project_root] = result
         return result

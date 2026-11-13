@@ -1,0 +1,31 @@
+schema_version: 1.0.0
+ticket_id: OMN-23410
+title: The seam between the remote-lane runner and the ticket node has a join test on the in-memory bus and the real broker
+summary: A join test pins the wire between the onex ticket client (the remote-lane runner side) and node_linear_ticket_write_effect, the request keys the runner publishes and the completed and failed terminal keys the node answers with, plus the paths a lane reads from the terminal. It serves the node through its real runtime dispatch on the in-memory profile and reaches the node the lab runtime serves on the redpanda profile. Named renames planted on either side turn it red. No node code changes.
+is_seam_ticket: true
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn23410-runner-node-seam
+    statement: The seam between the remote-lane runner and the ticket node fails a test when either side's request or result model changes shape.
+    acceptance:
+      - id: AC2
+        statement: "AC2: the seam between the remote-lane runner and the ticket node has a join test that fails when either side's request or result model changes shape, run on the in-memory bus and the real broker -- falsifier: uv run pytest on that join test with a planted field rename on either side"
+evidence_requirements:
+  - kind: tests
+    description: The join test, golden and error chains over the runner and the node, the pinned wire, and three planted renames.
+    command: uv run pytest tests/nodes/node_linear_ticket_write_effect/test_join_ticket_runner_seam.py -q --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn23410-ac2-join
+    description: The in-memory profile passes golden, error, pinned wire and contract topic checks; each of three planted renames (runner renames requested_by_lane, node renames reason, node renames result) turns the golden or the error chain red with TICKET_SEAM_MUTATE set.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_linear_ticket_write_effect/test_join_ticket_runner_seam.py -q --no-cov -p no:cacheprovider
+        cwd: ${OMNI_HOME}/omnimarket

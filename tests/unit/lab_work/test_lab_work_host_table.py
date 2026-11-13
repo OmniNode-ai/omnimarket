@@ -29,6 +29,7 @@ from omnibase_core.validators.no_unguarded_git_subprocess import (
 )
 from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 
+from omnimarket.handlers.overlay_keys import resolve_overlay_key
 from omnimarket.lab_work import cli
 from omnimarket.lab_work.bus import LabWorkCaller, LabWorkHost
 from omnimarket.models.overlay_keys import (
@@ -485,6 +486,134 @@ def test_an_unreadable_table_refuses_instead_of_admitting(tmp_path: Path) -> Non
         load_host_table({"ONEX_SKILL_OVERLAY_ROOTS": str(tmp_path)})
 
 
+@pytest.fixture
+def workspace_host_env(tmp_path: Path) -> dict[str, str]:
+    """Remote-lane shape: the plugin's roots omit lab_hosts, the overlays repository's root holds it.
+
+    The table is read from the overlays repository through the overlay roots; the config owner's copy
+    is never searched (OMN-23928). Keep the fixture's hosts and paths local to this test.
+    """
+    config = tmp_path / "config-owner"
+    overlays = tmp_path / "overlays-repo/overlays"
+    overlay = overlays / "lab_hosts/overlay.yaml"
+    overlay.parent.mkdir(parents=True)
+    overlay.write_text(
+        TABLE_YAML
+        + "registry_root_candidates: [$HOME/registry]\nbus_lane: fixture-lane\n",
+        encoding="utf-8",
+    )
+    return {
+        "OMNI_HOME": str(tmp_path / "workspace"),
+        "ONEX_WORKSPACE_CONFIG_ROOT": str(config),
+        "ONEX_SKILL_OVERLAY_ROOTS": os.pathsep.join(
+            (str(tmp_path / "plugin-overlays"), str(overlays))
+        ),
+    }
+
+
+def test_remote_lane_reads_the_overlays_repository_table(
+    workspace_host_env: dict[str, str],
+) -> None:
+    env = dict(workspace_host_env)
+    before = dict(env)
+    document = load_host_table(env)
+    assert document.bus_lane == "fixture-lane"
+    assert [rule.repo for rule in document.unit_needs] == ["native_audio"]
+    assert next(h for h in document.hosts if h.name == "h051").available is False
+    assert resolve_overlay_key("lab_hosts.hosts", environ=env) == document.hosts
+    assert env == before
+
+
+def test_the_config_owner_copy_is_not_discovered(tmp_path: Path) -> None:
+    """The config owner's and the developer workspace-config copies of the table are refused, not read."""
+    config = tmp_path / "config-owner"
+    for owner in (config, tmp_path / ".onex/workspace-config"):
+        overlay = owner / "config/onex/overlays/lab_hosts"
+        overlay.mkdir(parents=True)
+        (overlay / "overlay.yaml").write_text(
+            TABLE_YAML + "registry_root_candidates: [$HOME/registry]\n",
+            encoding="utf-8",
+        )
+    with pytest.raises(HostTableError, match="not configured"):
+        load_host_table({"OMNI_HOME": str(tmp_path)})
+    with pytest.raises(HostTableError, match="not configured"):
+        load_host_table({"ONEX_WORKSPACE_CONFIG_ROOT": str(config)})
+
+
+@pytest.mark.parametrize("source", ["file", "overlay"])
+def test_explicit_host_source_wins_over_workspace_discovery(
+    workspace_host_env: dict[str, str], tmp_path: Path, source: str
+) -> None:
+    path = tmp_path / "selected/lab_hosts/overlay.yaml"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        "hosts: [{name: selected, target: 192.0.2.10}]\n"
+        + (
+            "registry_root_candidates: [$HOME/registry]\n"
+            if source == "overlay"
+            else ""
+        ),
+        encoding="utf-8",
+    )
+    env = dict(workspace_host_env)
+    if source == "file":
+        env["ONEX_LAB_RUN_HOSTS"] = str(path)
+    else:
+        env["ONEX_SKILL_OVERLAY_ROOTS"] = str(path.parent.parent)
+    assert [h.name for h in load_host_table(env).hosts] == ["selected"]
+    path.write_text("hosts: [{name: invalid}]\n", encoding="utf-8")
+    with pytest.raises(HostTableError, match="invalid"):
+        load_host_table(env)
+    if source == "file":
+        path.unlink()
+        with pytest.raises(HostTableError, match="unreadable"):
+            load_host_table(env)
+
+
+def test_workspace_discovery_uses_only_the_supplied_environment(
+    workspace_host_env: dict[str, str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    for name, value in workspace_host_env.items():
+        monkeypatch.setenv(name, value)
+    assert load_host_table().hosts[0].name == "h101"
+    with pytest.raises(HostTableError, match="not configured"):
+        load_host_table({})
+    with pytest.raises(HostTableError, match="not configured"):
+        load_host_table({"ONEX_WORKSPACE_CONFIG_ROOT": str(tmp_path / "absent")})
+
+
+@pytest.mark.parametrize(
+    ("host", "load", "free_gb", "tools", "reason"),
+    [
+        ("h051", 0.1, 300, (), "unavailable"),
+        ("h999", 0.1, 32, (), "not a row"),
+        ("h101", 100, 32, (), "load"),
+        ("h101", 0.1, 0.1, (), "memory"),
+        ("h101", 0.1, 32, ("missing-tool",), "tool"),
+    ],
+)
+def test_discovered_workspace_table_keeps_placement_refusals(
+    workspace_host_env: dict[str, str],
+    rules: ModelPlacementRules,
+    host: str,
+    load: float,
+    free_gb: float,
+    tools: tuple[str, ...],
+    reason: str,
+) -> None:
+    table = load_host_table(workspace_host_env)
+    refused = _place(
+        [_ad(host, load, 12, free_gb=free_gb)],
+        table,
+        rules,
+        repo="omnimarket",
+        need_tools=tools,
+    )
+    assert not refused.placed
+    assert reason in refused.verdicts[0].reason
+    assert _place([_ad("h101", 0.1, 12)], table, rules, repo="omnimarket").placed
+
+
 def test_the_judge_command_prints_the_tables_verdicts_for_the_shim(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -628,13 +757,22 @@ def _run_args(repo: str, *extra: str) -> list[str]:
     ]
 
 
+@pytest.mark.parametrize("source", ["file", "workspace"])
 def test_the_run_command_refuses_an_unavailable_host_that_advertises_and_places_the_other(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    workspace_host_env: dict[str, str],
+    source: str,
 ) -> None:
     """The bus path itself: h051 advertises 80 idle cores and the table marks it unavailable."""
     path = tmp_path / "hosts.yaml"
     path.write_text(TABLE_YAML, encoding="utf-8")
-    monkeypatch.setenv("ONEX_LAB_RUN_HOSTS", str(path))
+    if source == "file":
+        monkeypatch.setenv("ONEX_LAB_RUN_HOSTS", str(path))
+    else:
+        monkeypatch.delenv("ONEX_LAB_RUN_HOSTS", raising=False)
+        for name, value in workspace_host_env.items():
+            monkeypatch.setenv(name, value)
     pool = [("h051", 0.5, 80, 300.0), ("h101", 6.0, 12, 32.0)]
 
     @asynccontextmanager

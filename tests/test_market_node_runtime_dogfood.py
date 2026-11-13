@@ -4,10 +4,12 @@
 
 from __future__ import annotations
 
+import copy
 import dataclasses
 import tomllib
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -75,9 +77,14 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # so a host timer runs it from the command line; it publishes events but
     # subscribes to no topic and has no onex.nodes entry point.
     "node_worktree_reconcile_effect",
-    # The host-reconcile effect is likewise run from the command line by a host
-    # timer; it subscribes to no topic and has no onex.nodes entry point.
-    "node_host_reconcile_effect",
+    # OMN-24121: the PR lifecycle triage compute is called in process by the
+    # PR lifecycle orchestrator since its inventory subscription was removed, and
+    # the seam field diff compute and its check effect run from the merge check's
+    # own command line; none subscribes to a command topic with a terminal event,
+    # so none has an onex.nodes entry point.
+    "node_pr_lifecycle_triage_compute",
+    "node_seam_field_diff_check_effect",
+    "node_seam_field_diff_compute",
     # OMN-19998: the lab daemon sync effect installs on the host's own
     # filesystem, so a host timer runs it with python -m; it publishes events
     # but subscribes to no topic and has no onex.nodes entry point.
@@ -86,12 +93,15 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # still registered; called in process by its host scheduler, so it subscribes
     # to no topic and has no onex.nodes entry point until the registration
     # hand-over (nodes-to-market plan step B).
-    "node_lab_fill_selection_compute",
     # OMN-20712: hosted from the operator tooling repository, whose copy is
     # still registered; called in process by its host scheduler, so it subscribes
     # to no topic and has no onex.nodes entry point until the registration
     # hand-over (nodes-to-market plan step B).
     "node_lab_disk_hygiene_effect",
+    # OMN-23297: the lane context ledger dedupe links files on the host's own
+    # filesystem, so the lab daemon sync's host tick runs it with python -m; it
+    # publishes events but subscribes to no topic and has no onex.nodes entry point.
+    "node_lane_ctx_ledger_dedupe_effect",
     # OMN-19970: the dev seed runs from `onex seed` against the store or broker
     # it names; it publishes fixture terminals but subscribes to no topic and
     # has no onex.nodes entry point.
@@ -105,10 +115,6 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # consumer's own identity; it returns the value as a SecretStr, publishes
     # nothing and subscribes to no topic, so it has no onex.nodes entry point.
     "node_captured_secret_resolve_effect",
-    # OMN-20926: the captured secret store effect is called in-process by the
-    # content-capture producer for each secret its scrub detects; it returns a
-    # reference, publishes nothing and subscribes to no topic.
-    "node_captured_secret_store_effect",
     # OMN-20817: the model setup effect runs from `onex models`; it returns its
     # status and test results to the CLI shim and subscribes to no topic, so it
     # has no onex.nodes entry point.
@@ -121,11 +127,6 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # local environment writer around each write it makes; it subscribes to no
     # topic, so it has no onex.nodes entry point.
     "node_local_alert_transition_compute",
-    # OMN-17427: the Claude token pool runs as `python -m` on the lab host whose
-    # pool it is (the remote-lane runner at lane start, the operator adding a
-    # token); it publishes nothing and subscribes to no topic, so it has no
-    # onex.nodes entry point.
-    "node_claude_token_pool_effect",
     # OMN-17427: the lab secret-store override edits an ephemeral render copy on
     # the caller's own filesystem, so the lab apply script runs it in process
     # from its console script; it subscribes to no topic and has no onex.nodes
@@ -135,23 +136,17 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # its console script runs it from the command line; it subscribes to no
     # topic and has no onex.nodes entry point.
     "node_legacy_worktree_audit_effect",
-    # OMN-19991: migration-only until its contract and entry point land.
-    "node_projection_local_alerts",
-    # OMN-19986: migration-only until its contract and entry point land.
-    "node_projection_local_identity",
+    # OMN-23606: the factory floor unresolved rows effect runs as a step of the
+    # floor publisher through its own `python -m` module, about every six hours;
+    # it publishes nothing and subscribes to no topic, so it has no onex.nodes
+    # entry point.
+    "node_factory_floor_unresolved_effect",
 }
 
 # Node directories that hold migrations and no contract.yaml yet. Each entry
 # expires itself: a directory that gains a contract.yaml, or disappears, fails
 # the inventory until the entry is removed.
-MIGRATION_ONLY_NODE_DIRS: set[str] = {
-    # OMN-19991: the local alerts migrations precede its contract, which
-    # follows the omnibase_infra release that vendors them.
-    "node_projection_local_alerts",
-    # OMN-19986: the local identity migrations precede its contract, which
-    # follows the omnibase_infra release that vendors them.
-    "node_projection_local_identity",
-}
+MIGRATION_ONLY_NODE_DIRS: set[str] = set()
 
 # Node directories on dev when the pinned totals were retired (OMN-17427).
 # Adding a node never touches this. Lower it only in a PR that deletes a node,
@@ -302,6 +297,99 @@ def test_market_node_inventory_fails_on_a_missing_or_extra_node(
     assert _inventory_violations(mutate(_real_inventory())) != []
 
 
+def _real_contracts() -> dict[str, dict[str, Any]]:
+    """Contract of every node that has an onex.nodes entry point."""
+    entries = _real_inventory().entry_points
+    contracts: dict[str, dict[str, Any]] = {}
+    for node in entries:
+        contract_path = _NODES_DIR / node / "contract.yaml"
+        raw = yaml.safe_load(contract_path.read_text(encoding="utf-8")) or {}
+        contracts[node] = raw if isinstance(raw, dict) else {}
+    return contracts
+
+
+def _declared_unrouted(contracts: dict[str, dict[str, Any]]) -> set[str]:
+    """Nodes whose own contract says they have no handler route yet.
+
+    Experimental lifecycle, no handler_routing, not a typed local invocation and
+    still runtime addressable: the set the dogfood report skips as
+    experimental_handler_pending.
+    """
+    return {
+        node
+        for node, contract in contracts.items()
+        if contract.get("lifecycle") == "experimental"
+        and "handler_routing" not in contract
+        and not _local_invocation_check(contract)[0]
+        and (contract.get("runtime_dispatch") or {}).get("addressable") is not False
+    }
+
+
+def _subscribed_topics(contract: dict[str, Any]) -> list[object]:
+    event_bus = contract.get("event_bus") or {}
+    return [
+        topic
+        for source in (
+            event_bus.get("subscribe_topics"),
+            event_bus.get("subscribe"),
+            contract.get("subscribe_topics"),
+            contract.get("subscribe_topic"),
+        )
+        for topic in ([source] if isinstance(source, str) else source or [])
+    ]
+
+
+def _unrouted_violations(contracts: dict[str, dict[str, Any]]) -> list[str]:
+    """A node without handler_routing must be one nothing on the bus can reach.
+
+    With the total no longer pinned, this is what fails when a routable node is
+    left experimental and loses its handler_routing: it still subscribes to a
+    command topic, so the bus would deliver to a node with no handler.
+    """
+    return [
+        f"{node}: has no handler_routing but subscribes to {topics}"
+        for node in sorted(_declared_unrouted(contracts))
+        if (topics := _subscribed_topics(contracts[node]))
+    ]
+
+
+def _with_routable_node_unrouted(
+    contracts: dict[str, dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    node = copy.deepcopy(contracts["node_similarity_compute"])
+    node["lifecycle"] = "experimental"
+    del node["handler_routing"]
+    return {**contracts, "node_similarity_compute": node}
+
+
+def _with_unrouted_node_subscribed(
+    contracts: dict[str, dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    node = copy.deepcopy(contracts["node_lab_job_reducer"])
+    node["event_bus"] = {
+        **(node.get("event_bus") or {}),
+        "subscribe_topics": ["onex.cmd.omnimarket.lab-job-reduce.v1"],
+    }
+    return {**contracts, "node_lab_job_reducer": node}
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [_with_routable_node_unrouted, _with_unrouted_node_subscribed],
+)
+def test_unrouted_node_that_a_topic_reaches_fails(
+    mutate: Callable[
+        [dict[str, dict[str, Any]]],
+        dict[str, dict[str, Any]],
+    ],
+) -> None:
+    # Positive control: the real contracts are clean, and each injected break
+    # (a routable node left experimental with its handler_routing removed, an
+    # unrouted node given a subscribe topic) is reported.
+    assert _unrouted_violations(_real_contracts()) == []
+    assert _unrouted_violations(mutate(_real_contracts())) != []
+
+
 def test_migration_only_dir_fails_once_it_gains_a_contract(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -331,80 +419,22 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     assert set(summary["missing_entry_points"]) == EXPECTED_MISSING_ENTRY_POINTS
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299
-    # OMN-14648's report-only projection is non-addressable: 4 -> 5.
-    # OMN-19824/OMN-19829's node_pr_landing_reducer and
-    # node_pr_landing_orchestrator are experimental-lifecycle wave-1 seams
-    # with no handler_routing yet (staged landing; see each node's
-    # contract.yaml header), so build_report's experimental_handler_pending bucket skips
-    # them rather than counting them as failed: 5 -> 7. The wave-3 compose
-    # (OMN-19829) wires the orchestrator, so only the reducer, which the
-    # orchestrator calls in process, stays experimental: 7 -> 6.
-    # OMN-19976's node_local_dashboard_serve_effect is started by
-    # `onex dashboard`, not by a bus command, so it is experimental with no
-    # handler_routing and lands in the same bucket: 6 -> 7.
-    # OMN-20496's node_canonical_clone_refresh_effect is hosted by one
-    # `clone-refresh serve` process per host, not by a runtime, so it is
-    # experimental with no handler_routing and lands there too: 7 -> 8.
-    # OMN-20604's node_lab_job_reducer is called in process by the lab job
-    # orchestrator, like the landing reducer, so it is experimental with no
-    # handler_routing: 8 -> 9. Its node_lab_job_submit_effect is published to
-    # by the submit CLI and has no handler_routing either: 9 -> 10.
-    # node_prune_binding_effect is called in process by the two prune effects,
-    # so it is experimental with no handler_routing: 10 -> 11.
-    # The manifest-fetch canary is invoked in process and has no bus route: 11 -> 12.
-    # The five NL-to-ticket nodes are invoked in process and have no bus route: 12 -> 17.
-    # OMN-20474's node_projection_delegation_judged_acceptance is a pure fold
-    # the writer calls in process, so it has no handler_routing: 17 -> 18.
-    # node_work_ledger_delegation_mirror is hosted by the single ledger serve
-    # process, not by a runtime, so it has no handler_routing: 18 -> 19.
-    # OMN-20541's node_work_ledger_seq_gap_effect is run by `python -m` and its
-    # reader is used in process by the branch claim check, so it has no bus route: 19 -> 20.
-    # node_operator_capture_effect is hosted by the work-ledger serve process
-    # on the ledger host (--operator-capture), not by a runtime, so it has no
-    # handler_routing: 20 -> 21.
-    # OMN-21014's node_claude_review_gateway_effect is started by
-    # `onex models review-gateway`, not by a bus command, so it has no
-    # handler_routing: 21 -> 22.
-    # node_e2e_orchestrator routes its event topics to a handler now, so it is no
-    # longer non-addressable: 22 -> 21.
-    # OMN-20275's node_work_ledger_render_effect is hosted by the process that
-    # owns its rendered markdown file, not by a runtime, so it is experimental
-    # with no handler_routing: 21 -> 22.
-    # node_work_ledger_landing_mirror is hosted by the same ledger serve
-    # process and has no handler_routing either: 22 -> 23.
-    # node_beacon_trace_capture_effect reads host-local beacon JSONL and is run
-    # by `python -m` on the lab host, not by a runtime, so it is experimental
-    # with no handler_routing: 23 -> 24.
-    # node_lane_placement_recovery_effect is called in process by the host
-    # placement caller through its node.py, not by a bus command or a runtime,
-    # so it is experimental with no handler_routing: 24 -> 25.
-    # node_adoption_recovery_effect is called in process by the throughput tick with an
-    # injected launcher, so it is experimental with no handler_routing: 25 -> 26.
-    # node_seam_read_orchestrator is a graph contract only until its handler lands, so it is
-    # experimental with no handler_routing: 26 -> 27. node_delegation_seam_orchestrator binds
-    # a handler, so it is routable and adds nothing.
-    # node_ilo_redfish_effect is called in process by the lab tooling and has no
-    # bus route, so it is experimental with no handler_routing: 27 -> 28.
-    # node_host_drift_fleet is called in process with an injected bus, clock and
-    # state store and reads with one stable group per host, not by a bus command,
-    # so it is experimental with no handler_routing: 28 -> 29.
-    # node_lane_census_effect is run by a host systemd user timer through its own
-    # entry point, not by a bus command, so it is experimental with no
-    # handler_routing: 29 -> 30.
-    # OMN-21883's node_host_bringup_orchestrator is a target-graph contract read by
-    # load_bringup_graph and declares no handler, so it is experimental with no
-    # handler_routing: 30 -> 31.
-    # node_overlay_tree_install_effect and node_host_installer_registry_units are
-    # called in process by the host installer and declare no handler_routing, so
-    # they are experimental: 31 -> 33.
-    # node_omnidash_host_effect is run by `python -m` on the dashboard host, not
-    # by a runtime, so it is experimental with no handler_routing: 33 -> 34.
-    # node_agent_inbox_spool is called in process with an injected bus and clock
-    # and reads with one stable group per host, not by a bus command, so it is
-    # experimental with no handler_routing: 34 -> 35.
-    # node_host_installer_net_units is called in process by the host installer
-    # and declares no handler_routing, so it is experimental: 35 -> 36.
-    assert summary["skipped"] == 36
+    # OMN-22571: the skipped total is derived, never pinned. A pinned total was
+    # edited by every pull request that added an experimental node with no
+    # handler_routing, so each merge turned every other open one red. The set
+    # below is read from the contracts; _unrouted_violations is what fails when
+    # a node that a bus topic can reach loses its handler_routing.
+    contracts = _real_contracts()
+    unrouted = _declared_unrouted(contracts)
+    assert _unrouted_violations(contracts) == []
+    assert {
+        item["node_name"]
+        for item in report["skipped"]
+        if item["bucket"] == "experimental_handler_pending"
+    } == unrouted
+    assert summary["skipped"] == len(unrouted) + len(
+        [item for item in report["skipped"] if item["bucket"] == "non_addressable"]
+    )
     assert summary["failed"] == 0
     assert summary["failure_buckets"] == {}
     assert {
@@ -416,6 +446,7 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
         "node_navigation_history_reducer",
         "node_projection_dep_health",
         "node_pr_merged_projection",  # OMN-13226 T2 stub; handler pending T3
+        "node_view_seam_reading_reducer",  # OMN-22020 projection reducer
     }
     assert not {
         item["node_name"]
@@ -633,3 +664,74 @@ def test_inventory_accounts_for_local_invocation_and_refuses_broken_handler(
     assert report["summary"]["local_invokable"] == 0
     assert report["summary"]["failed"] == 1
     assert report["summary"]["failure_buckets"] == {"invalid_local_invocation": 1}
+
+
+def _declared_entry_point_nodes_that_subscribe_without_registration() -> list[str]:
+    """Nodes whose contract subscribes to a bus topic and whose metadata.yaml
+    declares an onex.nodes entry point, yet pyproject.toml has no such line.
+
+    The runtime finds nodes only through the onex.nodes table, so such a node
+    is never loaded: its command topic is never subscribed and its result topic
+    is never created (OMN-18925). An EXPECTED_MISSING_ENTRY_POINTS reason that
+    says "subscribes to no topic" cannot be true for it.
+    """
+    with _PYPROJECT.open("rb") as f:
+        registered = set(
+            tomllib.load(f)["project"]["entry-points"]["onex.nodes"].keys()
+        )
+    offenders: list[str] = []
+    for meta_path in sorted(_NODES_DIR.glob("*/metadata.yaml")):
+        node_dir = meta_path.parent
+        meta = yaml.safe_load(meta_path.read_text(encoding="utf-8")) or {}
+        declared = (meta.get("entry_points") or {}).get("onex.nodes") or {}
+        contract_path = node_dir / "contract.yaml"
+        if not declared or not contract_path.exists():
+            continue
+        contract = yaml.safe_load(contract_path.read_text(encoding="utf-8")) or {}
+        topics = (contract.get("event_bus") or {}).get("subscribe_topics") or []
+        if topics and any(name not in registered for name in declared):
+            offenders.append(node_dir.name)
+    return offenders
+
+
+def test_declared_subscribing_node_entry_points_are_registered() -> None:
+    offenders = _declared_entry_point_nodes_that_subscribe_without_registration()
+
+    assert offenders == [], (
+        "these nodes declare an onex.nodes entry point and subscribe to a bus topic, "
+        "but pyproject.toml's onex.nodes table has no line for them, so the runtime "
+        "never loads them: " + ", ".join(offenders)
+    )
+
+
+def _http_mounted_nodes_without_registration() -> list[str]:
+    """Nodes whose contract declares an http_mount but whose pyproject.toml
+    onex.nodes table has no entry point for them (OMN-22341).
+
+    The runtime mounts a contract's http_mount only for a contract it
+    discovered through the onex.nodes table, so such a node's HTTP route is
+    never discovered and never mounted.
+    """
+    with _PYPROJECT.open("rb") as f:
+        registered = set(
+            tomllib.load(f)["project"]["entry-points"]["onex.nodes"].keys()
+        )
+    offenders: list[str] = []
+    for contract_path in sorted(_NODES_DIR.glob("*/contract.yaml")):
+        contract = yaml.safe_load(contract_path.read_text(encoding="utf-8")) or {}
+        if not isinstance(contract, dict) or not contract.get("http_mount"):
+            continue
+        if contract_path.parent.name not in registered:
+            offenders.append(contract_path.parent.name)
+    return offenders
+
+
+def test_http_mounted_node_entry_points_are_registered() -> None:
+    offenders = _http_mounted_nodes_without_registration()
+
+    assert offenders == [], (
+        "these nodes declare an http_mount in their contract, "
+        "but pyproject.toml's onex.nodes table has no line for them, so the runtime "
+        "never discovers their contract and never mounts them (OMN-22341): "
+        + ", ".join(offenders)
+    )

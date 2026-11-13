@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_join_refusal_effect
+version: 1.0.0
+description: Writes the downstream piece's typed upstream refusal to the floor's emission journal for each real failure of the upstream piece that the downstream piece has not answered within emission.window_hours, the journal window it reads.
+pack: operator_tooling
+node_role: effect
+display_name: Join Refusal Effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_join_refusal_effect: omnimarket.nodes.node_join_refusal_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+- pydantic>=2.0
+- pyyaml>=6.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- floor
+- join

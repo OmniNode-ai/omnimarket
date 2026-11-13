@@ -6,6 +6,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from pydantic import BaseModel, ConfigDict, Field
+
 from omnimarket.models.lab_fill import ModelLabFillPrLandFacts
 
 from .model_lab_fill_deployment import ModelLabFillDeployment
@@ -36,6 +38,13 @@ class ModelLabFillCandidateInput:
     ticket_prs: tuple[str, ...] = ()
     merged_prs: tuple[str, ...] = ()
     body: str = ""
+    # Delegation ownership and start facts from the ticket mirror (OMN-23312): the ticket's assignee,
+    # the epics it sits under (nearest first), its state type, and how its start criterion reads
+    # ("true", "false" or "unread"). The deployment overlay says which epics and assignees are delegation.
+    assignee: str = ""
+    parents: tuple[str, ...] = ()
+    state_type: str = ""
+    criterion: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,15 +72,18 @@ class ModelLabFillInputBaseline:
     recorded_at: str
 
 
-@dataclass(frozen=True, slots=True)
-class ModelLabFillSelectionRequest:
+class ModelLabFillSelectionRequest(BaseModel):
     """All facts needed for deterministic selection and baseline retention."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     now: str
     candidates: tuple[ModelLabFillCandidateInput, ...]
     ledger_lines: tuple[str, ...]
     deployment: ModelLabFillDeployment
-    controller: ModelLandingControllerFacts = ModelLandingControllerFacts()
+    controller: ModelLandingControllerFacts = Field(
+        default_factory=ModelLandingControllerFacts
+    )
     baselines: tuple[ModelLabFillInputBaseline, ...] = ()
     closed_prs: tuple[str, ...] = ()
     landing_lane: str = "landing-controller"

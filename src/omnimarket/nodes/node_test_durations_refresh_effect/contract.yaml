@@ -66,6 +66,14 @@ terminal_event: onex.evt.omnimarket.test-durations-refresh-completed.v1
 externally_consumed_topics:
   - onex.evt.omnimarket.test-durations-refresh-completed.v1
 
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.test-durations-refresh-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.test-durations-refresh-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.test-durations-refresh-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.test-durations-refresh-completed.v1, operation: DESCRIBE}
+
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.test-durations-refresh-requested.v1
   external_trigger: "The test-durations-refresh workflow invokes the node's runtime entry point on each push to dev."

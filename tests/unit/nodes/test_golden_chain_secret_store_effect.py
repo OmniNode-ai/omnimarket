@@ -21,6 +21,9 @@ import pytest
 import yaml
 from pydantic import SecretStr
 
+from omnimarket.nodes.node_secret_store_effect.adapters.handler_infisical_http import (
+    HandlerInfisicalHttp,
+)
 from omnimarket.nodes.node_secret_store_effect.models import (
     EnumSecretStoreOperation,
     EnumSecretStoreOutcome,
@@ -83,7 +86,11 @@ def test_the_node_is_registered_and_its_handler_is_vendor_neutral() -> None:
 
 
 async def _run_over_bus(
-    store: _FakeSecretStore, request: ModelSecretStoreRequest
+    store: _FakeSecretStore | None,
+    request: ModelSecretStoreRequest,
+    *,
+    overlay: ModelSecretStoreOverlay | None = None,
+    bootstrap_store: _FakeSecretStore | None = None,
 ) -> tuple[ModelSecretStoreResult, list[bytes]]:
     from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
     from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
@@ -101,7 +108,9 @@ async def _run_over_bus(
     handler_type = getattr(
         importlib.import_module(declaration["module"]), declaration["class"]
     )
-    handler = handler_type(store=store, overlay=_overlay())
+    handler = handler_type(
+        store=store, overlay=overlay or _overlay(), bootstrap_store=bootstrap_store
+    )
     discovered = _parse_contract(
         contract_path=_NODE_DIR / "contract.yaml",
         entry_point_name="node_secret_store_effect",
@@ -115,6 +124,7 @@ async def _run_over_bus(
         "create",
         "list",
         "resolve_house_model_key",
+        "generate_key",
     }
     route = routes[request.operation.value]
     assert route.event_model is not None
@@ -219,4 +229,150 @@ async def test_error_create_sent_over_the_bus_arrives_without_a_value_and_is_ref
     )
     assert terminal.outcome is EnumSecretStoreOutcome.VALUE_MISSING
     assert store.calls == []
+    assert all(PLANTED.encode() not in message for message in raw)
+
+
+# --- the transport rule (OMN-23193) -----------------------------------------
+
+
+class _RecordingExchange:
+    """An HTTP exchange that records every request and answers a login."""
+
+    def __init__(self) -> None:
+        self.urls: list[str] = []
+
+    async def __call__(
+        self, method: str, url: str, **kwargs: Any
+    ) -> tuple[int, dict[str, Any]]:
+        self.urls.append(url)
+        return 200, {"accessToken": "t", "expiresIn": 300}
+
+
+def _adapter(
+    address: str, exchange: _RecordingExchange, *hosts: str
+) -> HandlerInfisicalHttp:
+    return HandlerInfisicalHttp(
+        address=address,
+        project_id="00000000-0000-0000-0000-000000000001",
+        environment="dev",
+        client_id=SecretStr("id"),
+        client_secret=SecretStr("secret"),
+        exchange=exchange,
+        timeout_seconds=5.0,
+        **({"plain_http_hosts": hosts} if hosts else {}),
+    )
+
+
+@pytest.mark.parametrize(
+    "address",
+    [
+        "http://store.example.test:8880",
+        "http://203.0.113.9:8880",
+        "http://198.51.100.5:8880",
+        "http://[2001:db8::1]:8880",
+    ],
+)
+def test_plain_http_to_a_remote_host_is_refused_before_any_request(
+    address: str,
+) -> None:
+    exchange = _RecordingExchange()
+    with pytest.raises(ValueError, match="remote store needs https") as refused:
+        _adapter(address, exchange)
+    assert type(refused.value).__name__ == "PlainHttpRefusedError"
+    assert exchange.urls == []
+
+
+def test_plain_http_to_a_host_the_overlay_names_is_still_refused_for_other_hosts() -> (
+    None
+):
+    exchange = _RecordingExchange()
+    with pytest.raises(ValueError, match="remote store needs https"):
+        _adapter(
+            "http://198.51.100.5:8880", exchange, "203.0.113.0/24", "vault.example.test"
+        )
+    with pytest.raises(ValueError, match="remote store needs https"):
+        _adapter(
+            "http://store.example.test",
+            exchange,
+            "203.0.113.0/24",
+            "vault.example.test",
+        )
+    assert exchange.urls == []
+
+
+@pytest.mark.parametrize(
+    ("address", "hosts"),
+    [
+        ("http://198.51.100.5:8880", ("198.51.100.0/24",)),
+        ("http://198.51.100.3", ("198.51.100.3",)),
+        ("http://Vault.Example.Test:8880", ("vault.example.test",)),
+    ],
+)
+async def test_plain_http_to_a_host_the_overlay_names_works(
+    address: str, hosts: tuple[str, ...]
+) -> None:
+    exchange = _RecordingExchange()
+    assert await _adapter(address, exchange, *hosts).health_check() is True
+    assert exchange.urls == [f"{address}/api/v1/auth/universal-auth/login"]
+
+
+@pytest.mark.parametrize(
+    "address",
+    [
+        "https://store.example.test",
+        "https://203.0.113.9:8443",
+        "http://127.0.0.1:8880",
+        "http://localhost:8880",
+        "http://[::1]:8880",
+    ],
+)
+async def test_https_and_loopback_addresses_still_work(address: str) -> None:
+    exchange = _RecordingExchange()
+    assert await _adapter(address, exchange).health_check() is True
+    assert exchange.urls == [f"{address}/api/v1/auth/universal-auth/login"]
+
+
+def test_plain_http_hosts_that_are_not_hosts_are_rejected_by_the_overlay() -> None:
+    for bad in (
+        "http://vault.example.test",
+        "vault.example.test:8880",
+        "198.51.100.0/99",
+        "",
+    ):
+        with pytest.raises(ValueError, match="plain_http_hosts"):
+            ModelSecretStoreOverlay(provider="infisical", plain_http_hosts=(bad,))
+    assert ModelSecretStoreOverlay(
+        provider="infisical", plain_http_hosts=("198.51.100.0/24", "vault.example.test")
+    ).plain_http_hosts == ("198.51.100.0/24", "vault.example.test")
+
+
+async def test_error_plain_http_to_a_remote_host_over_the_bus_is_misconfigured_and_sends_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from omnimarket.nodes.node_secret_store_effect.handlers import handler_secret_store
+
+    exchange = _RecordingExchange()
+    monkeypatch.setattr(handler_secret_store, "http_exchange", exchange)
+    overlay = ModelSecretStoreOverlay(
+        provider="infisical",
+        address="http://store.example.test:8880",
+        project_id="00000000-0000-0000-0000-000000000001",
+        environment="dev",
+        client_id_ref="id-ref",
+        client_secret_ref="secret-ref",
+    )
+    bootstrap = _FakeSecretStore({"id-ref": "cid", "secret-ref": PLANTED})
+    terminal, raw = await _run_over_bus(
+        None,
+        ModelSecretStoreRequest(
+            operation=EnumSecretStoreOperation.RESOLVE,
+            folder="/lab",
+            key="TEST_KEY",
+            correlation_id=uuid4(),
+        ),
+        overlay=overlay,
+        bootstrap_store=bootstrap,
+    )
+    assert terminal.outcome is EnumSecretStoreOutcome.MISCONFIGURED
+    assert exchange.urls == []
     assert all(PLANTED.encode() not in message for message in raw)

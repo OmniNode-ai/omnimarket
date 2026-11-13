@@ -28,6 +28,10 @@ class NodeOverlayError(ValueError):
     """The deployment overlay is invalid, or a required deployment fact is absent."""
 
 
+class NodeOverlayNotFoundError(NodeOverlayError):
+    """No overlay source was selected; a caller may discover another source."""
+
+
 def find_node_overlay(
     node_name: str, environ: Mapping[str, str] | None = None
 ) -> Path | None:
@@ -40,6 +44,21 @@ def find_node_overlay(
         if candidate.is_file():
             return candidate
     return None
+
+
+def pinned_overlay_root(
+    node_name: str, environ: Mapping[str, str] | None = None
+) -> Path:
+    """Return the overlay root holding ``<node_name>/overlay.yaml``, for pinning in a unit.
+
+    Raises :class:`NodeOverlayError` when no overlay file is found under the roots.
+    """
+    found = find_node_overlay(node_name, environ)
+    if found is None:
+        raise NodeOverlayError(
+            "the overlay file cannot be found to pin its root in the unit"
+        )
+    return found.parent.parent
 
 
 def load_node_overlay(
@@ -100,7 +119,8 @@ def load_structured_overlay[ModelT: BaseModel](
     ``ONEX_SKILL_OVERLAY_ROOTS``. ``environ`` defaults to the process environment.
     An explicit model or document takes precedence without reading either file.
 
-    No source raises :class:`NodeOverlayError` naming the id and model fields.
+    No source raises :class:`NodeOverlayNotFoundError` naming the id, the overlay
+    file, and the roots searched.
     ``missing_message`` lets a key reader name the requested field and its input variables.
     A broken selected source refuses without trying a lower-priority source.
     Errors name the source, exception type and invalid fields, never document
@@ -115,13 +135,21 @@ def load_structured_overlay[ModelT: BaseModel](
         path = Path(pinned) if pinned else find_node_overlay(overlay_id, env)
         if path is None:
             if missing_message is not None:
-                raise NodeOverlayError(missing_message)
-            settings = ", ".join(f"{overlay_id}.{name}" for name in model.model_fields)
-            raise NodeOverlayError(
-                not_configured_message(
-                    overlay_id, settings or overlay_id, (file_env,) if file_env else ()
-                )
+                raise NodeOverlayNotFoundError(missing_message)
+            roots = [
+                root
+                for root in env.get(OVERLAY_ROOTS_ENV, "").split(os.pathsep)
+                if root
+            ]
+            message = (
+                f"{overlay_id}: the overlay file is not configured; none was found at "
+                f"<root>/{overlay_id}/{OVERLAY_FILE_NAME}; "
+                f"{OVERLAY_ROOTS_ENV} names "
+                + (", ".join(roots) if roots else "no root")
             )
+            if file_env:
+                message += f"; or set {file_env} to the overlay file"
+            raise NodeOverlayNotFoundError(message)
         source = f"{file_env if pinned else OVERLAY_ROOTS_ENV}: overlay {path}"
         try:
             raw = yaml.safe_load(path.read_text(encoding="utf-8"))

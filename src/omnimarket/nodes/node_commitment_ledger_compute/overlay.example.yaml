@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Copy to <root>/node_commitment_ledger_compute/overlay.yaml and set ONEX_SKILL_OVERLAY_ROOTS to that root, or name the
+# file in ONEX_COMMITMENT_OVERLAY. Every value decides what counts; the handler holds none of them.
+#
+#   row_type, kind_cell, kind_value   a commitment is a row of this type whose kind cell holds this value
+#   max_ask_chars, max_check_chars    a longer ask or check is refused
+row_type: STATUS
+kind_cell: kind
+kind_value: commitment
+max_ask_chars: 4000
+max_check_chars: 1000

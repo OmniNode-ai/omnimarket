@@ -1,0 +1,91 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Job Log Filler Effect (OMN-23032)
+#
+# READS the PR watcher's state (the mirror lanes read; never the GitHub API) to pick
+# the merge-relevant runs of open pull requests: the jobs of a pull request's current
+# head that are red, plus the jobs the overlay names. FILLS the gateway's job-log cache
+# (node_github_repo_gateway_effect, the cache `job-log-cached` answers from), one
+# reader call per run, after a cache-only probe that skips a log already held. A lane's
+# `onex scm job-log` read is cache-only (gateway contract: job_log_cache.lane_reads_cache_only),
+# and a miss is refused naming the cache path.
+#
+# NOT node_repo_state_query_effect (OMN-23033): that node answers a job's record from the
+# same watcher state and never fetches a log.
+name: node_job_log_filler_effect
+lifecycle: experimental
+node_type: effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+description: >
+  EFFECT: one pass reads the PR watcher state, selects the merge-relevant runs of
+  open pull requests (red jobs of the current head, plus the jobs the overlay names),
+  and has one reader fetch each run's log into the job-log cache. A log already cached
+  costs one local probe and no GitHub call; the per-pass cap bounds GitHub reads.
+  The in-memory profile fills this host's cache through the gateway's own cache
+  transport; the Redpanda profile asks the deployed gateway over the lane's bus. The
+  result event says per run whether the log was filled, already cached or failed. For each red job
+  it also writes one red-facts record (failing step, capped failure lines, cache path) keyed by
+  repository, pull request, head and job, which `onex scm red-facts` reads with no gateway call (OMN-23832).
+  A job whose log the gateway answers HTTP 404 is held for the overlay's not_found_hold_seconds, recorded
+  with its cause, so live reads go to jobs that can fill.
+input_model:
+  name: ModelJobLogFillRequest
+  module: omnimarket.nodes.node_job_log_filler_effect.models.model_job_log_filler
+  description: "Profile, optional repository narrowing and a lower per-pass cap."
+output_model:
+  name: ModelJobLogFillResult
+  module: omnimarket.nodes.node_job_log_filler_effect.models.model_job_log_filler
+  description: "Counts and one item per merge-relevant run: filled, already_cached or failed."
+handler:
+  module: omnimarket.nodes.node_job_log_filler_effect.handlers.handler_job_log_filler
+  class: HandlerJobLogFiller
+  input_model: omnimarket.nodes.node_job_log_filler_effect.models.model_job_log_filler.ModelJobLogFillRequest
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: HandlerJobLogFiller
+        module: omnimarket.nodes.node_job_log_filler_effect.handlers.handler_job_log_filler
+      event_model:
+        name: ModelJobLogFillRequest
+        module: omnimarket.nodes.node_job_log_filler_effect.models.model_job_log_filler
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 600000
+  runtime_profiles:
+    - effects
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.job-log-filler-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.job-log-filler-completed.v1
+# One terminal carries the pass's typed result; its `status` field says completed,
+# partial or failed (a pass that cannot start, or whose every read failed).
+terminal_event: onex.evt.omnimarket.job-log-filler-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.job-log-filler-requested.v1
+externally_produced_topics:
+  - topic: onex.cmd.omnimarket.job-log-filler-requested.v1
+    producer: "`onex job-log-fill run` on a timer, not a node contract"
+externally_consumed_topics:
+  - onex.evt.omnimarket.job-log-filler-completed.v1
+secrets:
+  GITHUB_TOKEN:
+    description: "Read-only token the in-memory profile's reader resolves at the effect boundary for a live log download."
+    required: false
+overlay:
+  id: node_job_log_filler_effect
+  file_env: ONEX_JOB_LOG_FILLER_OVERLAY
+  example: overlay.example.yaml
+reading:
+  name: job_log_cache_fill_coverage
+  description: "Share of merge-relevant runs whose log is in the job-log cache after a pass (filled plus already cached, over considered)."
+  injected_fault: "A reader that downloads nothing (planted in tests as a reader that returns without writing the cache): the lane's cache-only read still refuses and names the cache path."
+metadata:
+  transport_type: kafka
+  description: "Fills the job-log cache from merge-relevant runs of open pull requests"
+  author: "OmniNode Team"
+  tags: ["effect", "job-log", "cache", "red-facts", "OMN-23032", "OMN-23832"]

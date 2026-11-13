@@ -4,9 +4,10 @@
 
 from __future__ import annotations
 
+from .model_lab_host_declared_host_keys_install import (
+    ModelLabHostDeclaredHostKeysInstallRequest,
+)
 from .model_lab_host_key_distribution import (
-    EnumKeyFile,
-    EnumLineState,
     EnumPairStatus,
     ModelHostKeyMaterial,
     ModelLabHostKeyDistributionRequest,
@@ -25,11 +26,10 @@ from .model_lab_host_public_keys_install import (
 __all__ = [
     "PUBLIC_KEYS_OVERLAY_ID",
     "EnumHostInstallStatus",
-    "EnumKeyFile",
-    "EnumLineState",
     "EnumPairStatus",
     "ModelHostInstallResult",
     "ModelHostKeyMaterial",
+    "ModelLabHostDeclaredHostKeysInstallRequest",
     "ModelLabHostKeyDistributionRequest",
     "ModelLabHostKeyDistributionResult",
     "ModelLabHostPublicKeysInstallRequest",

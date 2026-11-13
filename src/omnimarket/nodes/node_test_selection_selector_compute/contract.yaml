@@ -1,0 +1,64 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Test Selection Selector (OMN-23296)
+name: node_test_selection_selector_compute
+node_type: compute
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Decides a narrowed test selection's shard count and weight bound from estimated test time. The
+  estimate is the sum of the recorded per-file seconds the selected paths cover; the shard count is
+  ceil(estimate / target_shard_seconds), never fewer than the older path-count rule. A selection that
+  needs more shards than a narrowed run may take, or whose recorded durations cannot be read, is
+  answered as a full-suite escalation. Every setting is in policy.yaml; the durations source is
+  injected (in-memory default, durations file as the real backend). scripts/ci/detect_test_paths.py
+  calls this node. HandlerTestPathResolution (OMN-23719) maps a change's files to the test paths it can
+  affect, by the import graph for the modules the adjacency map lists as node-scoped; scripts/ci/detect_test_paths.py
+  calls it as a library handler.
+input_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_test_selection_selector.ModelSelectorRequest
+output_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_test_selection_selector.ModelSelectorDecision
+handler:
+  module: omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_test_selection_selector
+  class: HandlerTestSelectionSelector
+  input_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_test_selection_selector.ModelSelectorRequest
+  output_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_test_selection_selector.ModelSelectorDecision
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_test_selection_selector:HandlerTestSelectionSelector
+  handlers:
+    - operation: select_test_shards
+      handler:
+        name: HandlerTestSelectionSelector
+        module: omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_test_selection_selector
+    - operation: resolve_test_paths
+      input_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_test_path_resolution.ModelPathResolutionRequest
+      output_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_test_path_resolution.ModelPathResolutionResult
+      handler:
+        name: HandlerTestPathResolution
+        module: omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_test_path_resolution
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 10000
+terminal_event: onex.evt.omnimarket.test-selection-selected.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.test-selection-select-requested.v1
+  # ModelSelectorFailed carries terminal_failure_cause, so the runtime's failure-terminal guard
+  # publishes it on the failure topic.
+  terminal_events:
+    success: onex.evt.omnimarket.test-selection-selected.v1
+    failure: onex.evt.omnimarket.test-selection-select-failed.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.test-selection-select-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.test-selection-selected.v1
+    - onex.evt.omnimarket.test-selection-select-failed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.test-selection-selected.v1
+  - onex.evt.omnimarket.test-selection-select-failed.v1
+metadata:
+  transport_type: kafka
+  related_tickets: [OMN-23296]

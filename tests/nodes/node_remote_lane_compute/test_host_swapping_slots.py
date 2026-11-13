@@ -12,6 +12,11 @@ from __future__ import annotations
 
 import pytest
 
+from omnimarket.models.remote_lane_placement import (
+    EnumRemoteLaneOutcome,
+    ModelRemoteLaneHostReading,
+    ModelRemoteLanePlacementRequest,
+)
 from omnimarket.nodes.node_host_pool_alarm_effect.models import (
     MEM_PRESSURE_CRITICAL,
     MEM_PSI_BOUND,
@@ -22,11 +27,6 @@ from omnimarket.nodes.node_remote_lane_compute.handlers.handler_remote_lane_plac
     effective_lane_slots,
     pool_lane_slots,
     swap_refusal,
-)
-from omnimarket.nodes.node_remote_lane_compute.models import (
-    EnumRemoteLaneOutcome,
-    ModelRemoteLaneHostReading,
-    ModelRemoteLanePlacementRequest,
 )
 
 PAGING_SWAP_IN_KB_S = 167_000.0  # the measured burst

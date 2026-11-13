@@ -22,6 +22,8 @@ from typing import Final, cast
 
 from pydantic import JsonValue, TypeAdapter, ValidationError
 
+from omnimarket.models.github_landing.model_transport_error import GitHubTransportError
+from omnimarket.models.model_gateway_node_skew import GatewayReadError, failure_error
 from omnimarket.models.model_github_gateway_io import (
     GithubGatewayResult,
     ModelGithubGatewayRequest,
@@ -34,7 +36,6 @@ from omnimarket.nodes.node_github_repo_gateway_effect.token_resolver import (
 from omnimarket.nodes.node_github_repo_gateway_effect.transport import (
     RealGitHubReadTransport,
 )
-from omnimarket.nodes.node_merge_sweep_compute.protocols import GitHubTransportError
 
 #: The declared bus lane the deployed gateway serves; a host may name another.
 GATEWAY_BUS_LANE_ENV: Final[str] = "ONEX_GITHUB_GATEWAY_BUS_LANE"
@@ -44,10 +45,6 @@ DEFAULT_GATEWAY_TIMEOUT_S: Final[float] = 45.0
 _RESULT: Final[TypeAdapter[GithubGatewayResult]] = TypeAdapter(GithubGatewayResult)
 
 GatewayRoute = Callable[[ModelGithubGatewayRequest], GithubGatewayResult]
-
-
-class GatewayReadError(RuntimeError):
-    """The gateway gave no typed result for a request."""
 
 
 def _resolve_token_off_loop() -> str:
@@ -117,10 +114,7 @@ def read_over_bus(
         # status=failed and the reason; a gateway that predates an operation
         # refuses the request that way.
         if terminal.failed or terminal.payload.get("status") == "failed":
-            reason = str(terminal.payload.get("failure_reason") or "no reason")
-            raise GatewayReadError(
-                f"gateway {request.operation.value} failed: {reason[:300]}"
-            )
+            raise failure_error(request.operation.value, terminal.payload)
         return terminal.payload
 
     def run_call() -> dict[str, JsonValue]:

@@ -1,0 +1,226 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Floor Simple Effect (OMN-19998, 17a)
+#
+# One 17a cycle, run as a step of the factory floor publish: read the floor record, the pull request watcher, the runner
+# fleet file, the pool receipt and the lab alarm's last run; judge every lab source; run the lab-state alarm; fold the
+# emission journal into golden and error receipts; build the simple floor; write it and the reads it was built from.
+# Every node of the cycle emits a start and then a success with counters or a typed failure (the emission contract).
+# Paths are relative to the registry home (OMNI_HOME). The pieces, joins, sources, limits and channels are overlays.
+name: node_floor_simple_effect
+contract_name: node_floor_simple_effect
+node_name: node_floor_simple_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Reads the lab and the factory's own records, computes the simple floor from those readings and writes it with its
+  reads, so a checker can repeat every number. A source that cannot be read is drawn as unread and is never zero.
+
+handler:
+  module: omnimarket.nodes.node_floor_simple_effect.handlers.handler_floor_simple_tick
+  class: HandlerFloorSimpleTick
+  input_model: omnimarket.models.floor_17a.ModelFloorSimpleTickRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: run_floor_simple_cycle
+      handler:
+        name: HandlerFloorSimpleTick
+        module: omnimarket.nodes.node_floor_simple_effect.handlers.handler_floor_simple_tick
+      input_model: omnimarket.models.floor_17a.ModelFloorSimpleTickRequest
+      output_model: omnimarket.models.floor_17a.ModelFloorSimpleTickResult
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 120000
+  side_effects:
+    - reads the floor record, the pull request watcher state, the runner fleet file, the pool receipt and the lab alarm run record under the registry home
+    - appends emission events to the journal under the state directory
+    - reads the work ledger's RULING rows for the go on rebuild pieces and the rows of pieces that write ledger rows, through the ledger row port the overlay names
+    - reads the served floor record over HTTP to read an alarm delivery back and to learn the age the hosted canary should see
+    - posts a lab alarm to the alert channel the overlay names, and reads the post back from that channel
+    - pushes the canary status (three times and two bounds, nothing else) to the branch the alarm overlay names
+    - writes the simple floor, its reads, the alarm state and the open-pull-request history
+
+input_model:
+  name: ModelFloorSimpleTickRequest
+  module: omnimarket.models.floor_17a
+  description: The flags of one cycle.
+output_model:
+  name: ModelFloorSimpleTickResult
+  module: omnimarket.models.floor_17a
+  description: Whether the cycle wrote the floor, and the colour rule's reading.
+
+terminal_event: onex.evt.omnimarket.floor-simple-written.v1
+
+# The cycle runs as a step of the factory floor publish, from the registry module tick; the command topic lets the runtime dispatch it too.
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.floor-simple-cycle-requested.v1
+  external_trigger: python -m omnimarket.nodes.node_floor_simple_effect, and as a step of python -m omnimarket.nodes.node_factory_floor_publish_effect, from the registry module tick that the host installer contract declares.
+
+event_bus:
+  subscribe_topics: []
+  publish_topics:
+    - onex.evt.omnimarket.floor-simple-written.v1
+    # The emission contract: every node of the cycle emits a start and then a success or a typed failure through the sink.
+    - onex.evt.omnimarket.floor-node-started.v1
+    - onex.evt.omnimarket.floor-node-succeeded.v1
+    - onex.evt.omnimarket.floor-node-failed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.floor-simple-written.v1
+
+# Where the cycle reads and writes. The overlays are found under ONEX_SKILL_OVERLAY_ROOTS (or the file the env var names).
+runtime:
+  home_env: OMNI_HOME
+  floor_overlay: {overlay_id: node_floor_simple_compute, file_env: ONEX_FLOOR_SIMPLE_OVERLAY}
+  lab_overlay: {overlay_id: node_floor_simple_effect, file_env: ONEX_LAB_STATE_OVERLAY}
+  alarm_overlay: {overlay_id: node_lab_state_alarm_effect, file_env: ONEX_LAB_STATE_ALARM_OVERLAY}
+  # The landing goal's scope: owned by the landing tick and read here only to count what the goal counts. When it cannot
+  # be read, the numbers and the queue age are drawn as unread and the floor names the missing input as a cause.
+  # The customer health line (OMN-22923, 17b): the pieces of the customer path, the line's title and its own bound.
+  health_overlay: {overlay_id: node_product_floor_verdict_compute, file_env: ONEX_PRODUCT_FLOOR_VERDICT_OVERLAY}
+  # The MVP launch block (OMN-23205): its own overlay (17 readings, their cron, grace and Mac legs). The producers' scheduled runs are read
+  # from a record that the publish's mvp_launch_reads step keeps (--mvp-reads): each producer workflow's scheduled runs through the
+  # source-control node (onex scm run-list), one at a time, the least recently read first, stopping at the stage deadline. A read older
+  # than reads_max_age_seconds is drawn stale. The launch candidate manifest is the release train's receipt (plan task M13), a JSON file
+  # with a `versions` mapping from package name to version; until it exists the block says so. A command named by command_env, when
+  # set, replaces the record as the source (it reads one JSON request on stdin and answers one JSON document).
+  mvp_launch:
+    overlay: {overlay_id: node_product_floor_verdict_compute_mvp_launch, file_env: ONEX_MVP_LAUNCH_OVERLAY}
+    command_env: ONEX_MVP_LAUNCH_READ_COMMAND
+    timeout_seconds: 60
+    onex_relpath: omnibase_infra/scripts/onex
+    reads_relpath: .onex_state/mvp-launch/mvp-launch-reads.json
+    candidate_relpath: .onex_state/mvp-launch/candidate-manifest.json
+    read_timeout_seconds: 25
+    stage_deadline_seconds: 80
+    refresh_seconds: 240
+    reads_max_age_seconds: 1800
+  goal_scope_overlay: {overlay_id: goal_scope, file_env: ONEX_GOAL_SCOPE_OVERLAY}
+  # Read only to find where the floor answers, for the alarm's delivery read-back.
+  serve_overlay: {overlay_id: node_factory_floor_publish_effect, file_env: ONEX_FACTORY_FLOOR_PUBLISH_OVERLAY}
+  served_record_name: floor-simple.json
+  served_fetch_timeout_seconds: 10
+  # The cycle ends itself with a typed failure when it has not finished in this time. It stays below the publish node's
+  # own limit for the floor_simple and floor_canary steps (120 s), which would end a hung cycle with a kill and no word.
+  cycle_deadline_seconds: 100
+  # A start with no terminal older than this is closed by the next cycle with a typed failure (OMN-22864): a process that is
+  # killed cannot close its own start, and the journal is append-only. It is above the publish node's 120 s limit for the cycle
+  # steps, so a cycle that is still running is never closed from under itself, and below the receipts' chain deadline.
+  abandon_after_seconds: 300
+  # Starts of other nodes of piece 17 that run as publish steps are closed the same way (OMN-22864). They are not pipeline
+  # chains: no join reads them, so adding one here changes no join. The comparison cycle ends itself below its own 15 s step
+  # limit; a kill it could not answer leaves its start for this cycle to close.
+  abandon_chains:
+    - node_floor_compare_effect:run_floor_compare_cycle
+  # The J2 join's chains (OMN-23230): the join-j2 publish step is killed at its 90 s limit if it hangs, and a kill cannot close
+  # the starts it made. The join now bounds its own run and closes its chains on every path it can; this closes what a hard kill
+  # still strands, and the start already open in the journal. Piece 2 is the host canary, piece 3 the placement seam.
+  abandon_other_pieces:
+    - {piece: 2, nodes: ["node_host_reading_effect:join_j2"]}
+    - {piece: 3, nodes: ["node_lab_placement_compute:join_j2"]}
+  # The chains of this node that a join reads (OMN-22478): the cycle and each of its steps, bound to the floor's own piece.
+  # The chains the node emits for each lab source row it reads (overlay store, deploy agent) are not pipeline chains and
+  # are left out: a row that reads a bad value ends in an error chain, and no downstream piece can answer it.
+  pipeline_chains:
+    - node_floor_simple_effect:run_floor_simple_cycle
+    - node_floor_simple_effect:read_sources
+    - node_floor_simple_compute:compute_lab_state
+    - node_lab_state_alarm_effect:alarm_lab_state
+    - node_floor_emission_compute:compute_floor_receipts
+    - node_floor_simple_compute:compute_floor_simple
+    - node_lab_state_alarm_effect:publish_canary
+    - node_product_floor_verdict_compute:decide_customer_health
+    - node_product_floor_verdict_compute:decide_mvp_launch
+    # OMN-23601: the piece 17 chain the J16 join (node_join_j16_effect) writes for its answer to a piece 16 failure. A join into
+    # piece 17 reads only the chains named here, so a refusal written under a node that is not named reads as no answer at all.
+    - node_floor_simple_effect:join_j16
+    # OMN-23022: the piece 17 chain the J0 join (node_join_j0_effect) writes: the floor record read as the code graph's row is drawn
+    # on it (golden) and the same read of a deliberately corrupt payload (the join's error chain).
+    - node_floor_simple_effect:join_j0
+  # Joins that end at a node of this piece (OMN-22864). J0 (piece 17 to piece 1) asked piece 1 for a typed refusal of every
+  # piece 17 failure, and no node of piece 1 can give one: the code graph and the ledger rows that stand for piece 1 run under
+  # their own correlation ids and never receive a piece 17 failure. J0 ends at a node of piece 17 that emits a typed outcome for
+  # it, within the chain deadline. The cycle chain ended it golden only and never ended it in an error (OMN-23022): the join has
+  # its own chain now, node_join_j0_effect's join_j0, which ends in a success when the floor record draws the code graph's row and
+  # in a typed failure when the record cannot be read, with the code graph's typed upstream_ refusal beside it. Every other join is unchanged.
+  join_ends:
+    - join: J0
+      node: node_floor_simple_effect:join_j0
+  # The ledger the go and the ledger-written piece events are read from (OMN-22674): the live file the environment names and
+  # the rolls beside it. A ledger that cannot be read draws the go and those events as unread, never as zero.
+  ledger:
+    route: file
+    path_env: ONEX_LEDGER_PATH
+    archive_subdir: archive
+    timeout_seconds: 60
+    row_limit: 100000
+  sources:
+    record_relpath: .claude_scratch/factory-floor/factory-floor.json
+    watcher_relpath: .claude_scratch/pr-watcher/state.json
+    # The landing controller's admission record (OMN-22876): the merges the floor counts include the ones on no goal list that the
+    # controller admitted (its ticket rule, a release, a scope lift), so the floor reads what the controller admits. Found at
+    # <controller_state_dir_env or ~/controller_state_dir_fallback>/controller_admissions_name; only its newest tail is read.
+    controller_state_dir_env: LANDING_STATE_DIR
+    controller_state_dir_fallback: .local/state/omni/landing
+    controller_admissions_name: admissions.jsonl
+    controller_admissions_tail_bytes: 4194304
+    # The friction rollup's report: the stoppages come from it, so its build time is what the stoppage rows are as of.
+    friction_report_relpath: .claude_scratch/friction/friction-report.json
+    runner_fleet_relpath: .onex_state/runner-fleet/runner-fleet.json
+    lab_alarm_runs_relpath: .onex_state/lab-alarm/alarm-runs.jsonl
+    # The lag condition comes from node_lab_alarm's finished runs (its overlay's lag.record_path and
+    # lag.record_condition), not from the alarm script's record: see read_broker_lag.
+    broker_lag_runs_relpath: .onex_state/lab-alarm/broker-lag-runs.jsonl
+    broker_lag_condition: consumer_group_lag
+    # The projections the floor takes from the bus (OMN-23391): node_floor_projection_read_effect writes the bundle as a step of the
+    # publish, each projection with the time its producer stood by it, and a projection older than its own bound reads unknown. The
+    # overlay store's fleet was this node's file from the Mac's reader; it is the hosts' published views now.
+    projection_reads_relpath: .onex_state/floor-projection/projection-reads.json
+    overlay_store_projection: overlay_store_fleet
+    # The floor's chain emissions (OMN-23877): node_floor_emissions_publish_effect folds the three emission topics into this projection.
+    # The readiness rule counts a chain as real work only from it; the journal file is read as health only (origin unknown). A
+    # projection that is unknown (never published, or older than its bound) holds no chain, so no join reads real.
+    emissions_projection: floor_emissions
+    # The owner map (OMN-23184, OMN-23391): who holds each pull request (the controller's landing leases and the cause leases that hold
+    # shared reds), published by the controller's host from its own state. The board's work list names a pull request's owner from it;
+    # a map that is unknown (never published, or older than its bound) makes the list unread, never empty.
+    owner_map_projection: owner_map
+    # The lane list (OMN-22935, OMN-23391): the lanes the floor draws are attributed to the work-state projection's rows from their CLAIM
+    # cells, never from an owner typed into the overlay. The work-state node publishes its projection with the time it was built; one
+    # that is unknown (never published, or older than its bound) is a cause on the board, and no lane is drawn from it.
+    work_state_projection: work_state
+    # The integration list (OMN-23899): every merged change and whether it runs where it runs, published by the hourly integration
+    # pass through node_integration_reading_publish_effect. One that is unknown (never published, or older than its bound) draws the
+    # board's integration section unread with the reason, never an empty list.
+    integration_projection: integration
+    # What the floor has seen of the deploy agent: its finished jobs, kept by the cycle itself.
+    deploy_agent_relpath: .onex_state/floor-simple/deploy-agent.json
+    # The reading writer's rows, when it exists; absent means no piece has a reading row, drawn as such.
+    readings_relpath: .onex_state/readings/readings.jsonl
+    # The central test harness's stored result (node_lab_test_harness_effect writes it) is the reading of this piece,
+    # piece 8, CI, runners and the central test location.
+    harness_result_relpath: .onex_state/readings/central-test-harness.drill.json
+    harness_piece: 8
+    remote_lane_dir_env: ONEX_REMOTE_LANE_DIR
+    remote_lane_dir_fallback: .local/state/omni/remote-lanes
+    pool_receipt: hosts-probe/latest.json
+  output:
+    relpath: .claude_scratch/factory-floor/floor-simple.json
+    reads_relpath: .claude_scratch/factory-floor/floor-simple-reads.json
+  state:
+    dir_relpath: .onex_state/floor-simple
+    emissions: emissions.jsonl
+    alarm_state: alarm-state.json
+    history: open-pr-history.json
+    history_keep_minutes: 180
+    emission_window_hours: 48
+    canary_clone: canary-publish

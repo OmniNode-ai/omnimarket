@@ -1,0 +1,33 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_read_only_principal_effect
+version: 0.1.0
+description: The read-only principal of step 0. An ssh forced-command gate, a probe that
+  reads each channel and attempts one real mutation, and the key install.
+pack: operator_tooling
+node_role: effect
+display_name: Read Only Principal Effect
+omnibase_core_compat: '>=0.47.31,<0.48.0'
+entry_points:
+  onex.nodes:
+    node_read_only_principal_effect: omnimarket.nodes.node_read_only_principal_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+- omnibase-infra>=0.32.0
+- pydantic>=2.0
+- pyyaml>=6.0
+license: MIT
+authors:
+- OmniNode Team
+tags:
+- effect
+- ssh
+- credentials
+- read-only

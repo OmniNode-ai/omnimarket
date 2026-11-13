@@ -93,6 +93,7 @@ inputs:
   deploy_drifts: {type: list, required: false, description: "Lab daemon drift rows node_lab_daemon_sync_effect wrote per host (OMN-19998); omitted skips the deploy-drift finding."}
   deploy_drift_max_hours: {type: float, required: false, description: "A daemon lagging its source tip longer than this is MISSING deploy-drift:<daemon>@<host>, a younger lag a NOTE (default 2)."}
   repo_status: {type: object, required: false, description: "OMN-19998: window_minutes and the open status-check units; every repository with open non-draft PRs and no merge in the window gets one typed verdict; omitted skips the check."}
+  seam_readings: {type: object, required: false, description: "Typed readings of a finalized publish window; an absent field leaves this check disabled until the runtime caller is wired."}
 outputs:
   lines: {type: list}
   status_line: {type: str}
@@ -104,6 +105,7 @@ outputs:
   exit_code: {type: int}
   open_count: {type: int, description: The open PR count of a fresh watcher state, for the caller to record.}
   repo_status: {type: list, description: "OMN-19998: one status-check verdict per repository with open PRs and no merge in the window (merging_normally, waiting_on_ci, base_branch_red, merge_queue_ejecting, shared_red_unowned, parked_or_escalated) and whether its event is due; absent when empty."}
+  seam_readings: {type: object, required: false, description: "Expected and consumed seam ids and MISSING/UNKNOWN findings for the finalized window; absent without seam input."}
 config:
   throughput_tick_decision:
     # OMN-20867: the tick's cadence, the launchd agent's (every 600 s).

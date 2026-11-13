@@ -1,0 +1,82 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Delegation Completion Rate Effect (OMN-23108, a floor reading of rebuild piece 15)
+#
+# Reads the last window of delegation_events (the in-memory source by default, the dev postgres over ssh by overlay), runs the
+# node_delegation_completion_rate_compute node over the rows and the owner-set bounds, and appends the one STATUS row the floor's
+# ledger_shadows rule shows under piece 15. It writes a ledger row and nothing else: a reading is never a gate, a stop or an
+# admission, and the node never writes delegation_events.
+name: node_delegation_completion_rate_effect
+contract_name: node_delegation_completion_rate_effect
+node_name: node_delegation_completion_rate_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  The delegation completion rate of the last window as a ledger row. A NOT WORKING reading still writes its row (the row is the
+  reading); rows that cannot be read write an UNKNOWN row naming why, and a row that cannot be appended is a failed run.
+
+handler:
+  module: omnimarket.nodes.node_delegation_completion_rate_effect.handlers.handler_delegation_completion_rate_run
+  class: HandlerDelegationCompletionRateRun
+  input_model: omnimarket.nodes.node_delegation_completion_rate_effect.models.model_delegation_rate_run.ModelDelegationRateCommand
+
+# HandlerDelegationCompletionRateRun takes the overlays, the host, the row source, the appender and the clock as constructor
+# parameters, so the node runs through its own CLI, not handler_routing. HandlerPaidRungBurnRead (OMN-23756) is built the same
+# way and runs through that CLI too.
+
+# OMN-23756: the paid rung burn reading (credit balance, spend since switch-on, hours left), read only. It is bound here as a second
+# node handler without an operation route, because it takes constructor parameters like the handler above.
+paid_rung_burn_read:
+  handler:
+    module: omnimarket.nodes.node_delegation_completion_rate_effect.handlers.handler_paid_rung_burn_read
+    class: HandlerPaidRungBurnRead
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [ledger-append, postgres-read-over-ssh]
+  timeout_ms: 120000
+
+input_model:
+  name: ModelDelegationRateCommand
+  module: omnimarket.nodes.node_delegation_completion_rate_effect.models.model_delegation_rate_run
+  description: A correlation id and whether to write.
+output_model:
+  name: ModelDelegationRateRunResult
+  module: omnimarket.nodes.node_delegation_completion_rate_effect.models.model_delegation_rate_run
+  description: The verdict, the three numbers, the broken bounds and what happened on the ledger.
+
+terminal_event: onex.evt.omnimarket.delegation-completion-rate-run-completed.v1
+
+runtime_dispatch:
+  external_trigger: true
+
+topics:
+  delegation_rate_run_requested: onex.cmd.omnimarket.delegation-completion-rate-run-requested.v1
+  delegation_rate_run_started: onex.evt.omnimarket.delegation-completion-rate-run-started.v1
+  delegation_rate_run_completed: onex.evt.omnimarket.delegation-completion-rate-run-completed.v1
+  delegation_rate_run_failed: onex.evt.omnimarket.delegation-completion-rate-run-failed.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.delegation-completion-rate-run-started.v1
+  - onex.evt.omnimarket.delegation-completion-rate-run-completed.v1
+  - onex.evt.omnimarket.delegation-completion-rate-run-failed.v1
+
+overlay:
+  node: node_delegation_completion_rate_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+  model: omnimarket.nodes.node_delegation_completion_rate_effect.overlay.ModelDelegationRateEffectOverlay
+
+metadata:
+  ticket: OMN-23108
+  transport_type: inmemory

@@ -20,6 +20,7 @@ import hashlib
 import re
 from datetime import UTC, datetime
 from typing import Any, Literal
+from urllib.parse import quote
 
 from pydantic import BaseModel
 
@@ -47,7 +48,9 @@ from omnimarket.github_landing.model_github_http_exchange import (
     ModelGithubHttpRequest,
     ModelGithubHttpResponse,
 )
+from omnimarket.models.github_landing.model_transport_error import GitHubTransportError
 from omnimarket.models.model_github_gateway_io import (
+    DEFAULT_ARTIFACT_MAX_BYTES,
     DEFAULT_LOG_TAIL_BYTES,
     MAX_TEXT_CHARS,
     EnumArtifactFetchRefusal,
@@ -59,10 +62,13 @@ from omnimarket.models.model_github_gateway_io import (
     ModelCiChecksResult,
     ModelCommitCheckRunsResult,
     ModelGithubGatewayRequest,
+    ModelJobLogFillResult,
     ModelJobLogTailResult,
     ModelJobStep,
     ModelMergeCommitShaResult,
     ModelMergedPrResult,
+    ModelOpenPrFact,
+    ModelOpenPrFactsResult,
     ModelOpenPrsResult,
     ModelOpenPrSummary,
     ModelPrComment,
@@ -75,6 +81,7 @@ from omnimarket.models.model_github_gateway_io import (
     ModelPrTextResult,
     ModelRelease,
     ModelReleasesResult,
+    ModelRepoFileResult,
     ModelReviewGateResult,
     ModelRunJob,
     ModelRunJobsResult,
@@ -86,7 +93,6 @@ from omnimarket.models.model_github_gateway_io import (
 from omnimarket.nodes.node_github_repo_gateway_effect.transport import (
     GitHubReadTransportProtocol,
 )
-from omnimarket.nodes.node_merge_sweep_compute.protocols import GitHubTransportError
 
 # A runaway paging guard: MAX_LIST_LIMIT items need at most 3 pages of 100.
 _MAX_PAGES = 10
@@ -394,14 +400,22 @@ def read_run_jobs(
     )
 
 
-def read_job_log_tail(
+def _job_log_read(
+    transport: GitHubReadTransportProtocol,
+    request: ModelGithubGatewayRequest,
+    answer: type[ModelJobLogTailResult] | type[ModelJobLogFillResult],
+) -> ModelJobLogTailResult | ModelJobLogFillResult:
+    tail = _read_job_log_tail(transport, request)
+    if answer is ModelJobLogTailResult:
+        return tail
+    return ModelJobLogFillResult.model_validate(
+        {**tail.model_dump(), "operation": "job_log_fill"}
+    )
+
+
+def _read_job_log_tail(
     transport: GitHubReadTransportProtocol, request: ModelGithubGatewayRequest
 ) -> ModelJobLogTailResult:
-    """The last ``tail_bytes`` of one job's log, or a window of it (OMN-17427).
-
-    With ``offset_bytes`` or ``step`` set the read keeps ``length_bytes`` from
-    that offset of the whole log, or of the named step's region.
-    """
     job_id = _require(request.job_id, "job_id")
     if request.offset_bytes is not None or request.step is not None:
         return _read_job_log_window(transport, request, job_id)
@@ -418,6 +432,32 @@ def read_job_log_tail(
         text=response.content.decode("utf-8", errors="replace"),
         start_offset=response.total_bytes - len(response.content),
     )
+
+
+def read_job_log_tail(
+    transport: GitHubReadTransportProtocol, request: ModelGithubGatewayRequest
+) -> ModelJobLogTailResult:
+    """The last ``tail_bytes`` of one job's log, or a window of it (OMN-17427).
+
+    With ``offset_bytes`` or ``step`` set the read keeps ``length_bytes`` from
+    that offset of the whole log, or of the named step's region.
+    """
+    result = _job_log_read(transport, request, ModelJobLogTailResult)
+    assert isinstance(result, ModelJobLogTailResult)
+    return result
+
+
+def read_job_log_fill(
+    transport: GitHubReadTransportProtocol, request: ModelGithubGatewayRequest
+) -> ModelJobLogFillResult:
+    """The same tail or window of one named job's log, for a job the cache may not hold.
+
+    The gateway handler hands this read the host-shared cache as its transport: a hit is
+    answered from the cache, and a miss downloads that one job's log into it (OMN-23308).
+    """
+    result = _job_log_read(transport, request, ModelJobLogFillResult)
+    assert isinstance(result, ModelJobLogFillResult)
+    return result
 
 
 # An unknown step's refusal lists at most this many step names, each cut.
@@ -746,6 +786,67 @@ def read_pr_heads(
     )
 
 
+# The lines of a PR body the duplicate-fix guard reads (``Fix-Check:`` and ``Fix-Cause:``), in the
+# guard's own spelling: line start, any case.
+_FIX_MARKER_LINE = re.compile(r"^Fix-(?:Check|Cause):[ \t]*.+$", re.M | re.I)
+_MAX_FIX_MARKERS = 8
+_MAX_FIX_MARKER_CHARS = 500
+
+
+def _open_pr_fact(item: dict[str, object]) -> ModelOpenPrFact:
+    """One REST pull-request item as the facts the duplicate-fix guard needs.
+
+    A PR the read cannot shape is an error, never a skipped PR: a guard that dropped one would
+    decide without it.
+    """
+    head, base = item.get("head"), item.get("base")
+    body = item.get("body")
+    markers = (
+        [
+            found.group(0)[:_MAX_FIX_MARKER_CHARS]
+            for found in _FIX_MARKER_LINE.finditer(body)
+        ][:_MAX_FIX_MARKERS]
+        if isinstance(body, str)
+        else []
+    )
+    title = item.get("title")
+    return ModelOpenPrFact.model_validate(
+        {
+            "number": item.get("number"),
+            "head_ref": _nested_str(head, "ref"),
+            "head_sha": _nested_str(head, "sha"),
+            "base_ref": _nested_str(base, "ref"),
+            "title": title if isinstance(title, str) else "",
+            "draft": bool(item.get("draft", False)),
+            "fix_markers": markers,
+        }
+    )
+
+
+def read_open_pr_facts(
+    transport: GitHubReadTransportProtocol, request: ModelGithubGatewayRequest
+) -> ModelOpenPrFactsResult:
+    """Every open PR with the facts the duplicate-fix guard folds over (OMN-22654).
+
+    One REST list of the open PRs, newest first, cut at the request's limit and flagged when cut.
+    The PR body does not travel: only its ``Fix-Check:`` and ``Fix-Cause:`` lines do.
+    """
+    raw, total, cut = _collect(
+        transport,
+        pull_requests_request(
+            request.repo, state="open", per_page=min(request.limit, LIST_PAGE_SIZE)
+        ),
+        item_key="value",
+        limit=request.limit,
+    )
+    return ModelOpenPrFactsResult(
+        repo=request.repo,
+        prs=[_open_pr_fact(item) for item in raw],
+        total_count=total,
+        truncated=cut,
+    )
+
+
 def read_commit_check_runs(
     transport: GitHubReadTransportProtocol, request: ModelGithubGatewayRequest
 ) -> ModelCommitCheckRunsResult:
@@ -782,6 +883,78 @@ def read_commit_check_runs(
             )
             for run in raw
         ],
+    )
+
+
+def read_repo_file(
+    transport: GitHubReadTransportProtocol, request: ModelGithubGatewayRequest
+) -> ModelRepoFileResult:
+    """One file's text at one commit, read through the contents API.
+
+    A 404 answer is a not-found result, not a transport error. Any other
+    non-2xx status raises ``GitHubTransportError``. A 2xx body that is not a
+    file object, is not base64-encoded, decodes to more than
+    ``DEFAULT_ARTIFACT_MAX_BYTES`` bytes, or does not decode as UTF-8 raises
+    ``ValueError`` naming the repo, path and the reason.
+    """
+    head_sha = request.head_sha
+    file_path = request.file_path
+    if head_sha is None or file_path is None:  # defensive; the validator enforces it
+        raise ValueError("this operation requires head_sha and file_path.")
+    quoted_path = quote(file_path, safe="/")
+    req = ModelGithubHttpRequest(
+        method="GET",
+        path=f"/repos/{request.repo}/contents/{quoted_path}?ref={quote(head_sha)}",
+    )
+    response = transport.send_sync(req)
+    if response.status == 404:
+        return ModelRepoFileResult(
+            repo=request.repo,
+            head_sha=head_sha,
+            file_path=file_path,
+            found=False,
+            text=None,
+        )
+    body = _checked(req, response)
+    # A directory answers with an array, which the transport wraps as ``value``.
+    if isinstance(body.get("value"), list):
+        raise ValueError(
+            f"repo {request.repo} path {file_path!r} is a directory, not a file."
+        )
+    raw = body
+    file_type = raw.get("type")
+    if file_type != "file":
+        raise ValueError(
+            f"repo {request.repo} path {file_path!r} is not a file (type={file_type!r})."
+        )
+    encoding = raw.get("encoding")
+    if encoding != "base64":
+        raise ValueError(
+            f"repo {request.repo} path {file_path!r} has encoding {encoding!r}, not base64."
+        )
+    content = raw.get("content")
+    if not isinstance(content, str):
+        raise ValueError(
+            f"repo {request.repo} path {file_path!r} has no base64 content."
+        )
+    decoded = base64.b64decode(content)
+    if len(decoded) > DEFAULT_ARTIFACT_MAX_BYTES:
+        raise ValueError(
+            f"repo {request.repo} path {file_path!r} is {len(decoded)} bytes, "
+            f"over the {DEFAULT_ARTIFACT_MAX_BYTES}-byte cap."
+        )
+    try:
+        text = decoded.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValueError(
+            f"repo {request.repo} path {file_path!r} does not decode as UTF-8: {exc}"
+        ) from exc
+    return ModelRepoFileResult(
+        repo=request.repo,
+        head_sha=head_sha,
+        file_path=file_path,
+        found=True,
+        text=text,
     )
 
 
@@ -930,15 +1103,18 @@ __all__: list[str] = [
     "read_branch_protection",
     "read_ci_checks",
     "read_commit_check_runs",
+    "read_job_log_fill",
     "read_job_log_tail",
     "read_merge_commit_sha",
     "read_merged_pr",
+    "read_open_pr_facts",
     "read_open_prs_list",
     "read_pr_heads",
     "read_pr_review_threads",
     "read_pr_status",
     "read_pr_text",
     "read_releases",
+    "read_repo_file",
     "read_review_gate",
     "read_run_jobs",
     "read_ticket_ref",

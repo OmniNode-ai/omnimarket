@@ -120,7 +120,32 @@
 # the host-table, direct guard and remote-leg tests. The upstream commit column
 # records the original upstream donor, not an assertion of byte identity.
 #
+# 2026-11-09, OMN-23355 -- PER-LOGIN ROWS IN THE GUARD'S TABLE READER. The host row
+# carried one operator's uv path and run folder, so a second person on the same host
+# could not run a full suite under his own user. pytest_full_suite_host_guard.py now
+# also reads the `prepush_logins` overlay (a `table: |` block of `label login
+# uv_abs_path workroot` rows, found through ONEX_SKILL_OVERLAY_ROOTS) and, for the
+# INVOKING login's own row only, replaces the host row's uv_abs_path and workroot in
+# the table text every consumer reads. The ssh target is unchanged and still a host.
+# `--read-table decision` prints the guard's decision line for a host and login. The
+# sha256 below is of the edited file; `upstream_commit` still names the donor.
+#
+# 2026-11-09, OMN-23367 -- THE HOST DECISION MOVED INTO A NODE. The per-login rows, the
+# designated-host reading, the refusal text and the login decision line are now
+# node_pytest_full_suite_host_guard (contract, handler, models); the reads of the shipped
+# table, the private table and the overlay file are its adapter. The script keeps the pytest
+# hook, the override grant and the CLI, and calls the node through this checkout's own src
+# (re-running itself under `uv run --no-project --with pydantic` when no project env is
+# present, since the vendored dispatch script calls it with none). The sha256 below is of
+# the shrunken file.
+#
+# 2026-11-10, OMN-23551 -- LOGIN-RELATIVE PATHS IN PER-LOGIN ROWS. A per-login row may give its uv path
+# and run folder relative to the login's home; the script now asks the node's reader for the invoking
+# account name and its home (the host's account database, never a constant) and hands the home to the
+# node as login_home, which resolves a relative path under it. The script holds two code lines fewer than
+# before. `upstream_commit` still names the donor; the sha256 below is of the edited file.
+#
 #path	upstream_repo	upstream_path	upstream_commit	upstream_branch	sha256	copied_at
 scripts/hooks/prepush_dispatch.sh	OmniNode-ai/omnibase_infra	scripts/hooks/prepush_dispatch.sh	7031f3dcbe004752c09aa47544cb1edc76448a6c	refs/pull/4630/head	a64a0fa9d451d76b494ac39303346fc1aaf367a57dad7ef434bb67bb02232521	2026-10-06
 scripts/hooks/prepush_override_grant.py	OmniNode-ai/omnibase_infra	scripts/hooks/prepush_override_grant.py	eddf4a9d20a294bed00a3c7e73ab14f73f2c6911	dev	6777c592a944fe1964a195bf088c00c7747551e5e9a20705ca49d9e59dbc3f3c	2026-09-01
-scripts/hooks/pytest_full_suite_host_guard.py	OmniNode-ai/omnibase_infra	scripts/hooks/pytest_full_suite_host_guard.py	eddf4a9d20a294bed00a3c7e73ab14f73f2c6911	dev	a1a1d0293577d948161fbbe745463b7b79b2cda73e1ef34c3172484c92c4a25b	2026-09-07
+scripts/hooks/pytest_full_suite_host_guard.py	OmniNode-ai/omnibase_infra	scripts/hooks/pytest_full_suite_host_guard.py	eddf4a9d20a294bed00a3c7e73ab14f73f2c6911	dev	56339f1060859be58d582e8667e2d50646e289cd3af98289a30c2394f47a2519	2026-09-07
