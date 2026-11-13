@@ -70,10 +70,11 @@ def server() -> Iterator[_Server]:
 MINTED = "ghs_minted_example_0123456789"
 APP_ID_REF = "EXAMPLE_APP_ID"
 KEY_REF = "EXAMPLE_APP_PRIVATE_KEY"
-MINT = {
+MINT: dict[str, Any] = {
     "org": "example-org",
     "app_id_secret": APP_ID_REF,
     "private_key_secret": KEY_REF,
+    "store": None,
 }
 
 
