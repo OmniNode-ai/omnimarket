@@ -67,7 +67,7 @@ class BackendValkeySourceReadCache:
             found = self._loop.run_until_complete(
                 asyncio.wait_for(self._backend.get(key), self._operation_timeout)
             )
-        except TimeoutError:
+        except (TimeoutError, ModelOnexError, OSError, ValueError, RuntimeError):
             self._unavailable = True
             raise SourceCacheUnavailableError("backend unavailable") from None
         return found if isinstance(found, str) else None
@@ -81,7 +81,7 @@ class BackendValkeySourceReadCache:
                     self._operation_timeout,
                 )
             )
-        except TimeoutError:
+        except (TimeoutError, ModelOnexError, OSError, ValueError, RuntimeError):
             self._unavailable = True
             raise SourceCacheUnavailableError("backend unavailable") from None
 
