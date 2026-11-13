@@ -34,13 +34,13 @@ dod_evidence:
     check_value: uv run pytest tests/nodes/node_floor_emission_compute/test_contract_topics.py -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
 - id: dod-omn24298-ac2
-  description: 'AC2: one ModelNodeEmission dumped to JSON fails ModelFloorReceiptInput validation on now, emissions and pieces, the cause of the dead letters.'
+  description: 'AC2: the whole contract topic file, which holds the single-event refusal test beside the two contract tests that fail at the merge base, so the file fails there and passes at the head.'
   source: manual
   binds_ac:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_floor_emission_compute/test_contract_topics.py -q -n 0 --no-cov -p no:cacheprovider -k single_event
+    check_value: uv run pytest tests/nodes/node_floor_emission_compute/test_contract_topics.py -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
 - id: dod-omn24298-ac3
   description: 'hosted proxy for AC3: the contract topic tests and the piece 16 chain test pass; the in-runtime reading of the dev runtime log is taken on a lab host after the deploy and named in the pull request.'
