@@ -4690,6 +4690,7 @@
   "tests/unit/nodes/node_gpu_power_caps_effect/test_gpu_power_caps.py": 3.14,
   "tests/unit/nodes/node_gpu_power_caps_effect/test_gpu_power_caps_chain.py": 1.71,
   "tests/unit/nodes/node_gpu_power_caps_effect/test_gpu_power_caps_direct_bootstrap.py": 3.76,
+  "tests/unit/nodes/node_gpu_power_caps_effect/test_gpu_power_caps_event_bus.py": 1.5,
   "tests/unit/nodes/node_gpu_power_caps_effect/test_gpu_power_caps_lab_work.py": 3.0,
   "tests/unit/nodes/node_gpu_power_caps_effect/test_gpu_power_caps_lab_work_chain.py": 8.7,
   "tests/unit/nodes/node_gpu_power_caps_effect/test_gpu_power_caps_seam.py": 1.7,
