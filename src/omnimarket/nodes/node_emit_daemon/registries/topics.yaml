@@ -115,16 +115,21 @@ events:
 
   # OMN-19550: full-content capture (RULING 2026-09-25T11:23:30Z). The complete
   # prompt, tool input, tool result and assistant reply, one content item (or
-  # one chunk of it) per record, raw (OMN-19513, RULING 2026-10-15T04:24:42Z:
-  # no redaction on the bus). A cmd topic: full prompts and file contents go only
-  # on the restricted onex.cmd.omniintelligence.* family (omniclaude's privacy
-  # split). Local only: the cloud relay's explicit allowlist does not name it.
+  # one chunk of it) per record. OMN-24062: credential-shaped spans are replaced
+  # in place before the record is published (redact_capture; the topic's
+  # `content` and `command` fields are capture_scrubbed in capture_redaction.yaml),
+  # and every other character crosses, so the full output is kept. This replaces
+  # the raw passthrough of OMN-19513 (RULING 2026-10-15T04:24:42Z) for secrets
+  # only: a planted token never reaches the bus or session_content. A cmd topic:
+  # full prompts and file contents go only on the restricted
+  # onex.cmd.omniintelligence.* family (omniclaude's privacy split). Local only:
+  # the cloud relay's explicit allowlist does not name it.
   content.captured:
     fan_out:
       - topic: "onex.cmd.omniintelligence.content-captured.v1"
         tier: telemetry
-        transform: passthrough
-        description: "Raw full session content (OMN-19550, OMN-19513)"
+        transform: redact_capture
+        description: "Full session content with credential-shaped spans replaced (OMN-19550, OMN-24062)"
     partition_key_field: session_id
     required_fields: [session_id, content_kind]
 

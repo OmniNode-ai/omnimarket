@@ -12,11 +12,17 @@ class. Three legs: a pr_comment that posts (completed), a dry_run that sends
 nothing (completed), and a pr_close with no claim (failed). The pr_label legs
 run against an injected overlay: an allowed add (completed), a label outside
 the allowed set (failed label_not_allowed), and a moved head (failed
-head_moved).
+head_moved). The repo_variable legs run against an overlay that also declares
+the repository variables, with the value files under a temporary root: a set
+that reads then creates (completed), a get reporting the value in sync
+(completed), a name outside the overlay (failed variable_not_allowed), a name
+carrying a refuse marker (failed secret_refused), and a refused POST (failed
+github_refused).
 """
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -63,10 +69,16 @@ from omnimarket.nodes.node_github_repo_write_effect.models import (
 )
 from omnimarket.nodes.node_github_repo_write_effect.overlay import (
     ModelPrLabelOverlay,
+    ModelRepoVariablesEntry,
+    ModelRepoVariablesOverlay,
     ModelRepoWriteOverlay,
 )
 from omnimarket.nodes.node_github_repo_write_effect.services.pr_label import (
     add_labels_request,
+)
+from omnimarket.nodes.node_github_repo_write_effect.services.repo_variable import (
+    create_variable_request,
+    get_variable_request,
 )
 
 pytestmark = pytest.mark.unit
@@ -462,3 +474,214 @@ def test_the_contract_declares_pr_label() -> None:
         "replaces gh api --method POST /repos/{o}/{r}/issues/{n}/labels."
         in entries["pr_label"]["description"]
     )
+
+
+# Test-local variable names and value only; no real variable name or value
+# lives in src, the contract or the shipped overlay example.
+_VAR = "LAB_VAR_ONE"
+_VAR_OFF_LIMITS = "LAB_VAR_TWO"
+_VAR_MARKED = "LAB_TOKEN_ONE"
+_VAR_VALUE = "lab-one-value"
+
+
+def _variables_overlay() -> ModelRepoWriteOverlay:
+    return ModelRepoWriteOverlay(
+        pr_label=ModelPrLabelOverlay(allowed_labels=(_LABEL,)),
+        repo_variables=ModelRepoVariablesOverlay(
+            entries=(
+                ModelRepoVariablesEntry(
+                    repository=_REPO, name=_VAR, source="lab/vars/one.txt"
+                ),
+            ),
+            refuse_name_markers=("TOKEN",),
+            refuse_value_markers=("LABSECRET",),
+        ),
+    )
+
+
+def _variable_handler(fake: _Recorded, tmp_path: Path) -> HandlerGithubRepoWriteEffect:
+    return HandlerGithubRepoWriteEffect(
+        fake,
+        clock=_CLOCK.timestamp,
+        overlay=_variables_overlay(),
+        variable_source_root=tmp_path,
+    )
+
+
+def _write_source(tmp_path: Path, text: str) -> None:
+    path = tmp_path / "lab" / "vars" / "one.txt"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(f"{text}\n", encoding="utf-8")
+
+
+async def test_a_repo_variable_set_is_published_as_completed(tmp_path: Path) -> None:
+    _write_source(tmp_path, _VAR_VALUE)
+    get = get_variable_request(_REPO, _VAR)
+    create = create_variable_request(_REPO, _VAR, _VAR_VALUE)
+    fake = _Recorded(
+        [
+            (
+                get,
+                ModelGithubHttpResponse(
+                    status=404, headers=_HEADERS, body={"message": "Not Found"}
+                ),
+            ),
+            (
+                create,
+                ModelGithubHttpResponse(
+                    status=201, headers=_HEADERS, body={"name": _VAR}
+                ),
+            ),
+        ]
+    )
+    handler = _variable_handler(fake, tmp_path)
+    broker, correlation_id = await _run(
+        handler,
+        _command(EnumRepoWriteOperation.REPO_VARIABLE_SET, variable_name=_VAR),
+    )
+    (envelope,) = _on(broker, _COMPLETED)
+    assert envelope.correlation_id == correlation_id
+    completed = ModelRepoWriteCompleted.model_validate(envelope.payload)
+    assert completed.operation is EnumRepoWriteOperation.REPO_VARIABLE_SET
+    assert completed.mode is EnumRepoWriteMode.ENFORCE
+    assert completed.replayed is False
+    assert completed.variable_name == _VAR
+    assert (
+        completed.variable_digest
+        == hashlib.sha256(_VAR_VALUE.encode("utf-8")).hexdigest()
+    )
+    assert completed.requests == (get, create)
+    assert completed.http_statuses == (404, 201)
+    assert fake.sent == [get, create]
+    assert fake.exchanges == []
+    assert _on(broker, _FAILED) == []
+
+
+async def test_a_repo_variable_get_is_published_as_completed(tmp_path: Path) -> None:
+    _write_source(tmp_path, _VAR_VALUE)
+    get = get_variable_request(_REPO, _VAR)
+    fake = _Recorded(
+        [
+            (
+                get,
+                ModelGithubHttpResponse(
+                    status=200,
+                    headers=_HEADERS,
+                    body={"name": _VAR, "value": _VAR_VALUE},
+                ),
+            )
+        ]
+    )
+    handler = _variable_handler(fake, tmp_path)
+    broker, correlation_id = await _run(
+        handler,
+        _command(EnumRepoWriteOperation.REPO_VARIABLE_GET, variable_name=_VAR),
+    )
+    (envelope,) = _on(broker, _COMPLETED)
+    assert envelope.correlation_id == correlation_id
+    completed = ModelRepoWriteCompleted.model_validate(envelope.payload)
+    assert completed.operation is EnumRepoWriteOperation.REPO_VARIABLE_GET
+    assert completed.mode is EnumRepoWriteMode.ENFORCE
+    assert completed.variable_name == _VAR
+    assert completed.variable_value == _VAR_VALUE
+    assert completed.variable_in_sync is True
+    assert (
+        completed.variable_digest
+        == hashlib.sha256(_VAR_VALUE.encode("utf-8")).hexdigest()
+    )
+    assert completed.requests == (get,)
+    assert completed.http_statuses == (200,)
+    assert fake.sent == [get]
+    assert fake.exchanges == []
+    assert _on(broker, _FAILED) == []
+
+
+async def test_a_variable_outside_the_overlay_is_published_as_failed(
+    tmp_path: Path,
+) -> None:
+    fake = _Recorded([])
+    handler = _variable_handler(fake, tmp_path)
+    broker, _ = await _run(
+        handler,
+        _command(
+            EnumRepoWriteOperation.REPO_VARIABLE_SET,
+            variable_name=_VAR_OFF_LIMITS,
+        ),
+    )
+    assert fake.sent == []
+    assert fake.exchanges == []
+    assert _on(broker, _COMPLETED) == []
+    (envelope,) = _on(broker, _FAILED)
+    failed = ModelRepoWriteFailed.model_validate(envelope.payload)
+    assert failed.reason is EnumRepoWriteRefusal.VARIABLE_NOT_ALLOWED
+    assert failed.terminal_failure_cause is EnumRepoWriteRefusal.VARIABLE_NOT_ALLOWED
+    assert _VAR_OFF_LIMITS in failed.detail
+
+
+async def test_a_variable_name_carrying_a_refuse_marker_is_published_as_failed(
+    tmp_path: Path,
+) -> None:
+    fake = _Recorded([])
+    handler = _variable_handler(fake, tmp_path)
+    broker, _ = await _run(
+        handler,
+        _command(EnumRepoWriteOperation.REPO_VARIABLE_SET, variable_name=_VAR_MARKED),
+    )
+    assert fake.sent == []
+    assert fake.exchanges == []
+    assert _on(broker, _COMPLETED) == []
+    (envelope,) = _on(broker, _FAILED)
+    failed = ModelRepoWriteFailed.model_validate(envelope.payload)
+    assert failed.reason is EnumRepoWriteRefusal.SECRET_REFUSED
+    assert failed.terminal_failure_cause is EnumRepoWriteRefusal.SECRET_REFUSED
+    assert "carries a refuse marker" in failed.detail
+
+
+async def test_a_refused_variable_post_is_published_as_failed(tmp_path: Path) -> None:
+    _write_source(tmp_path, _VAR_VALUE)
+    get = get_variable_request(_REPO, _VAR)
+    create = create_variable_request(_REPO, _VAR, _VAR_VALUE)
+    fake = _Recorded(
+        [
+            (
+                get,
+                ModelGithubHttpResponse(
+                    status=404, headers=_HEADERS, body={"message": "Not Found"}
+                ),
+            ),
+            (
+                create,
+                ModelGithubHttpResponse(
+                    status=403,
+                    headers=_HEADERS,
+                    body={"message": "Resource not accessible"},
+                ),
+            ),
+        ]
+    )
+    handler = _variable_handler(fake, tmp_path)
+    broker, _ = await _run(
+        handler,
+        _command(EnumRepoWriteOperation.REPO_VARIABLE_SET, variable_name=_VAR),
+    )
+    assert fake.sent == [get, create]
+    assert fake.exchanges == []
+    assert _on(broker, _COMPLETED) == []
+    (envelope,) = _on(broker, _FAILED)
+    failed = ModelRepoWriteFailed.model_validate(envelope.payload)
+    assert failed.reason is EnumRepoWriteRefusal.GITHUB_REFUSED
+    assert failed.terminal_failure_cause is EnumRepoWriteRefusal.GITHUB_REFUSED
+    assert failed.http_status == 403
+    assert failed.requests == (get, create)
+    assert failed.http_statuses == (404, 403)
+
+
+def test_the_contract_declares_repo_variable_operations() -> None:
+    contract = yaml.safe_load(_CONTRACT.read_text(encoding="utf-8"))
+    entries = {entry["name"]: entry for entry in contract["operations"]}
+    for name, replaces in (
+        ("repo_variable_set", "replaces gh variable set."),
+        ("repo_variable_get", "replaces gh variable get."),
+    ):
+        assert entries[name]["transport"] == "rest"
+        assert replaces in entries[name]["description"]
