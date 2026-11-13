@@ -15,6 +15,10 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
+from omnimarket.models.model_net_units_overlay import (
+    ModelNetUnitDeclaration,
+    ModelNetUnitsOverlay,
+)
 from omnimarket.nodes.node_gpu_power_caps_effect.handlers import (
     backend_subprocess,
     handler_gpu_power_caps,
@@ -25,10 +29,6 @@ from omnimarket.nodes.node_gpu_power_caps_effect.handlers.handler_gpu_power_caps
 )
 from omnimarket.nodes.node_gpu_power_caps_effect.models.model_gpu_power_caps import (
     ModelGpuPowerCapsRequest,
-)
-from omnimarket.nodes.node_host_installer_net_units.models.model_net_units import (
-    ModelNetUnitDeclaration,
-    ModelNetUnitsOverlay,
 )
 from omnimarket.nodes.node_host_storage_effect.handlers import (
     backend_subprocess as storage_transport,

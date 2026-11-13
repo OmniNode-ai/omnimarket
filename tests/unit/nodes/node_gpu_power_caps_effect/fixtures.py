@@ -12,15 +12,15 @@ from typing import Any
 
 import yaml
 
+from omnimarket.models.model_net_units_overlay import (
+    ModelNetUnitsOverlay,
+)
 from omnimarket.nodes.node_gpu_power_caps_effect.handlers.handler_gpu_power_caps import (
     HandlerGpuPowerCaps,
     select_backend,
 )
 from omnimarket.nodes.node_gpu_power_caps_effect.models.model_gpu_power_caps_overlay import (
     ModelGpuPowerCapsOverlay,
-)
-from omnimarket.nodes.node_host_installer_net_units.models.model_net_units import (
-    ModelNetUnitsOverlay,
 )
 
 NODE_DIR = (

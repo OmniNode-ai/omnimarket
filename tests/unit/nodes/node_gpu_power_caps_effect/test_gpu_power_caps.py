@@ -13,6 +13,9 @@ import yaml
 from pydantic import ValidationError
 
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
+from omnimarket.models.model_net_units_overlay import (
+    ModelNetUnitDeclaration,
+)
 from omnimarket.nodes.node_gpu_power_caps_effect.handlers.backend_in_memory import (
     BackendGpuPowerCapsInMemory,
 )
@@ -37,9 +40,6 @@ from omnimarket.nodes.node_gpu_power_caps_effect.models.model_gpu_power_caps imp
 )
 from omnimarket.nodes.node_gpu_power_caps_effect.models.model_gpu_power_caps_overlay import (
     ModelGpuPowerCapsOverlay,
-)
-from omnimarket.nodes.node_host_installer_net_units.models.model_net_units import (
-    ModelNetUnitDeclaration,
 )
 from tests.unit.nodes.node_gpu_power_caps_effect.fixtures import (
     BIG,
@@ -237,7 +237,7 @@ def test_the_caps_settings_are_read_on_every_request() -> None:
     doc = caps_document()
 
     def loader() -> Any:
-        from omnimarket.nodes.node_host_installer_net_units.models.model_net_units import (
+        from omnimarket.models.model_net_units_overlay import (
             ModelNetUnitsOverlay,
         )
 
