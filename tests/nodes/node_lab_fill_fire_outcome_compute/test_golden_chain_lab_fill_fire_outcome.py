@@ -42,6 +42,10 @@ def test_golden_chain_contract_is_in_process_only() -> None:
     assert contract["event_bus"] == {"subscribe_topics": [], "publish_topics": []}
     assert contract["runtime_profiles"] == []
     assert "command_topic" not in contract["runtime_dispatch"]
+    assert (
+        contract["terminal_event"]
+        == "onex.evt.omnimarket.lab-fill-fire-outcome-completed.v1"
+    )
 
 
 def test_golden_chain_the_operation_runs_through_its_binding(

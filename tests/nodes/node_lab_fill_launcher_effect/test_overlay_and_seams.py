@@ -78,6 +78,33 @@ def test_overlay_refuses_an_unknown_key() -> None:
         ModelLabFillLauncherOverlay.model_validate(document)
 
 
+def test_golden_chain_contract_declares_its_terminal_events() -> None:
+    """Golden chain: the packaged contract declares its terminal event and topics."""
+    text = (
+        files("omnimarket.nodes.node_lab_fill_launcher_effect")
+        .joinpath("contract.yaml")
+        .read_text("utf-8")
+    )
+    contract: dict[str, object] = yaml.safe_load(text)
+    topics = cast("dict[str, object]", contract["topics"])
+    assert (
+        contract["terminal_event"]
+        == "onex.evt.omnimarket.lab-fill-launcher-completed.v1"
+    )
+    assert (
+        topics["lab_fill_launcher_completed"]
+        == "onex.evt.omnimarket.lab-fill-launcher-completed.v1"
+    )
+    assert (
+        topics["lab_fill_launcher_failed"]
+        == "onex.evt.omnimarket.lab-fill-launcher-failed.v1"
+    )
+    assert (
+        topics["lab_fill_launcher_requested"]
+        == "onex.cmd.omnimarket.lab-fill-launcher-requested.v1"
+    )
+
+
 def _status_idle(dispatched: int) -> dict[str, object]:
     """What the fill's status step (node_lab_fill_plan_compute, the writer of the version-1 result) builds."""
     request = {

@@ -51,8 +51,9 @@ dod_evidence:
         check_value: uv run pytest tests/nodes/node_lab_fill_fire_outcome_compute tests/nodes/node_lab_fill_launcher_effect -q -k "golden_chain or error_chain or overlay or no_hard_coded"
         cwd: .
   - id: dod-omn24109-seams
-    description: The result file, the published latest file and the one line the tick reads each have a test that fails when either side changes shape.
+    description: The result file, the published latest file and the one line the tick reads each have a test that fails when either side changes shape. This is the part of AC4 that hosted CI can run; the live fire on the Mac is the unbound local_done_gate item below.
     source: manual
+    binds_ac: [AC4]
     checks:
       - check_type: test_passes
         check_value: uv run pytest tests/nodes/node_lab_fill_launcher_effect -q -k seam
@@ -60,7 +61,6 @@ dod_evidence:
   - id: dod-omn24109-live-receipt
     description: The orchestrator installs the branch on the Mac and one lab-fill fire runs through the moved code; the newest lab-fill receipt after the install must read completed, exit 0, result_channel read. Pending until that fire.
     source: manual
-    binds_ac: [AC4]
     execution_scope: local_done_gate
     checks:
       - check_type: command
