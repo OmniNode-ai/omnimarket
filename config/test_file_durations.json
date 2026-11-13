@@ -767,6 +767,7 @@
   "tests/nodes/node_code_contract_score_effect/test_score_verdicts.py": 4.48,
   "tests/nodes/node_code_contract_score_effect/test_seam_dod_verify_producer.py": 2.75,
   "tests/nodes/node_code_contract_score_effect/test_seam_ticket_contract.py": 0.81,
+  "tests/nodes/node_code_contract_score_effect/test_terminal_event_seam.py": 1.0,
   "tests/nodes/node_code_embedding_effect/test_boot_resolvable_container_di.py": 0.04,
   "tests/nodes/node_code_enrichment_effect/test_handler_code_enrichment_effect_di.py": 0.05,
   "tests/nodes/node_code_eval_context_arm_compute/test_arm_satisfied.py": 1.88,
