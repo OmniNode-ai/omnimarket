@@ -1,0 +1,84 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodeHookToolOutcomeCompute
+#
+# One finished Claude Code tool call, classified into a typed outcome:
+#
+#   handle(ModelHookToolOutcomeRequest) -> ModelHookToolOutcomeResult
+#
+# A tool call refused by one of our components (a ledger writer, the factory
+# floor, a ticket hold, the write node) shows up today as a successful call
+# (exit 0) or as plain failed. This node names the refusing component, parsed
+# from known refusal lines. Pure: no clock, no I/O, no model. All rule values
+# come from an overlay, never from code.
+name: "node_hook_tool_outcome_compute"
+contract_name: "node_hook_tool_outcome_compute"
+node_name: "node_hook_tool_outcome_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+description: >
+  Pure classification of one finished tool call into a typed outcome. Reads the
+  raw stored response text and the failure text, and returns the outcome
+  (ok, failed, refused, timeout), the refusing component when refused, the rule
+  or marker that decided, the exit code and a short reason. Deterministic in
+  any input order. No clock, no I/O, no model. All rule values come from an
+  overlay, never from code.
+input_model:
+  name: "ModelHookToolOutcomeRequest"
+  module: "omnimarket.nodes.node_hook_tool_outcome_compute.models.model_hook_tool_outcome"
+  description: "One finished tool call's facts."
+output_model:
+  name: "ModelHookToolOutcomeResult"
+  module: "omnimarket.nodes.node_hook_tool_outcome_compute.models.model_hook_tool_outcome"
+  description: "The typed outcome, the refusing component, the deciding rule or marker, the exit code and a short reason."
+handler:
+  module: "omnimarket.nodes.node_hook_tool_outcome_compute.handlers.handler_hook_tool_outcome"
+  class: "HandlerHookToolOutcome"
+  input_model: "omnimarket.nodes.node_hook_tool_outcome_compute.models.model_hook_tool_outcome.ModelHookToolOutcomeRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_hook_tool_outcome_compute.handlers.handler_hook_tool_outcome:HandlerHookToolOutcome"
+  handlers:
+    - operation: "classify_tool_outcome"
+      handler:
+        name: "HandlerHookToolOutcome"
+        module: "omnimarket.nodes.node_hook_tool_outcome_compute.handlers.handler_hook_tool_outcome"
+# Called in process through its own command line (python -m
+# omnimarket.nodes.node_hook_tool_outcome_compute: JSON Lines in, JSON Lines out)
+# and by import, so it declares no bus topic and needs no broker permission row.
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  subscribe_topics: []
+  publish_topics: []
+runtime_profiles:
+  - main
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+replay:
+  deterministic: true
+metadata:
+  description: "Pure classification of one finished tool call into a typed outcome."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-11-13"
+  tags:
+    - compute
+    - hooks
+    - tool-outcome
+    - pure
