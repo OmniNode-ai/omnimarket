@@ -16,7 +16,7 @@ from pydantic import ValidationError
 from omnimarket.nodes.node_triage_fences_effect.handlers.handler_triage_fences import (
     HandlerTriageFences,
 )
-from omnimarket.nodes.node_triage_fences_effect.handlers.handler_triage_fences_receipts import (
+from omnimarket.nodes.node_triage_fences_effect.logic.triage_fences_receipts import (
     running_lanes,
 )
 from omnimarket.nodes.node_triage_fences_effect.models import (

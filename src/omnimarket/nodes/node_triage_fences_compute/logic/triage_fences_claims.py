@@ -15,7 +15,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime
 
 from ..models import LedgerRow, ModelTriageFencesClaim, OpenClaim
-from .handler_triage_fences_grammar import (
+from .triage_fences_grammar import (
     EXPLICIT_BIND_RE,
     LEADING_TS_RE,
     TS,

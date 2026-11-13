@@ -11,7 +11,7 @@ from collections.abc import Iterable
 from datetime import datetime
 
 from ..models import ModelTriageFencesOpenPull, ModelTriageFencesPullFence
-from .handler_triage_fences_grammar import (
+from .triage_fences_grammar import (
     BRANCH_TICKET_RE,
     TICKET_TEAM,
     iso,

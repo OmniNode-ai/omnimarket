@@ -17,7 +17,7 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
-from omnimarket.nodes.node_triage_fences_compute.handlers.handler_triage_fences_grammar import (
+from omnimarket.nodes.node_triage_fences_compute.logic.triage_fences_grammar import (
     parse_ts,
 )
 from omnimarket.nodes.node_triage_fences_effect.handlers.handler_triage_fences import (

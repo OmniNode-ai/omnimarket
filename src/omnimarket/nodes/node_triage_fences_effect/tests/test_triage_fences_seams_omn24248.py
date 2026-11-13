@@ -29,7 +29,7 @@ from omnimarket.nodes.node_triage_fences_compute.models import (
     ModelTriageFencesDeriveRequest,
     ModelTriageFencesVerdict,
 )
-from omnimarket.nodes.node_triage_fences_effect.handlers.handler_triage_fences_receipts import (
+from omnimarket.nodes.node_triage_fences_effect.logic.triage_fences_receipts import (
     running_lanes,
 )
 

@@ -7,26 +7,26 @@ missed a dangling CLAIM whose lane never went TERMINAL, so a live-claimed ticket
 anyway. A list assembled by eye is not reproducible and cannot be regression-tested. The handler
 reads no file and no clock: the same ledger text and the same ``now`` give a byte-identical list.
 
-The grammar is in ``handler_triage_fences_grammar``, the CLAIM / TERMINAL pairing and the lane
-liveness window in ``handler_triage_fences_claims``, and the pull-request matching in
-``handler_triage_fences_pulls``.
+The grammar is in ``logic.triage_fences_grammar``, the CLAIM / TERMINAL pairing and the lane
+liveness window in ``logic.triage_fences_claims``, and the pull-request matching in
+``logic.triage_fences_pulls``.
 """
 
 from __future__ import annotations
 
-from ..models import (
-    ModelTriageFencesCounts,
-    ModelTriageFencesDeriveRequest,
-    ModelTriageFencesVerdict,
-)
-from .handler_triage_fences_claims import (
+from ..logic.triage_fences_claims import (
     claim_model,
     lane_last_seen,
     open_claims,
     split_live_and_stale,
 )
-from .handler_triage_fences_grammar import parse_ledger_text, sort_tickets
-from .handler_triage_fences_pulls import pr_fences_from_pulls
+from ..logic.triage_fences_grammar import parse_ledger_text, sort_tickets
+from ..logic.triage_fences_pulls import pr_fences_from_pulls
+from ..models import (
+    ModelTriageFencesCounts,
+    ModelTriageFencesDeriveRequest,
+    ModelTriageFencesVerdict,
+)
 
 
 class HandlerTriageFencesDerive:

@@ -50,11 +50,17 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest src/omnimarket/nodes/node_triage_fences_effect/tests -q --no-cov
-- id: dod-omn24248-integration-proof
-  description: After the operator host runs the moved node, the next lab fill run reads fenced tickets close to the live-lane count and dispatches above zero. Hosted CI cannot reach the operator host, so only the local Done gate reads this.
+- id: dod-omn24248-ac4-seam
+  description: The fill effect node reads the fence report the moved node writes, so fenced tickets follow the live claims (the hosted half of AC4; the operator-host read is the integration-proof item).
   source: manual
   binds_ac:
   - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_triage_fences_effect/tests/test_triage_fences_seams_omn24248.py -q --no-cov
+- id: dod-omn24248-integration-proof
+  description: After the operator host runs the moved node, the next lab fill run reads fenced tickets close to the live-lane count and dispatches above zero. Hosted CI cannot reach the operator host, so only the local Done gate reads this.
+  source: manual
   execution_scope: local_done_gate
   checks:
   - check_type: command

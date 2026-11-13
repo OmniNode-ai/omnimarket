@@ -20,6 +20,8 @@ from omnimarket.nodes.node_triage_fences_compute.models import (
     ModelTriageFencesOpenPull,
 )
 
+from ..logic.triage_fences_receipts import running_lanes
+from ..logic.triage_fences_state import PullReader, WatcherStatePulls, read_open_pulls
 from ..models import (
     ModelTriageFencesOptions,
     ModelTriageFencesOverlay,
@@ -27,8 +29,6 @@ from ..models import (
     ModelTriageFencesRequest,
     ModelTriageFencesResult,
 )
-from .handler_triage_fences_receipts import running_lanes
-from .handler_triage_fences_state import PullReader, WatcherStatePulls, read_open_pulls
 
 ReceiptReader = Callable[
     [Path, datetime, float], tuple[tuple[str, ...], tuple[str, ...]]
