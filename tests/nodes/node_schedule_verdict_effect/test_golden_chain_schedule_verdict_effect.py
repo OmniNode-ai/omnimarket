@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Literal
 from uuid import uuid4
 
 import pytest
@@ -65,7 +66,7 @@ def _run_event(
     job_id: str,
     fired_at: datetime,
     *,
-    outcome: str = "completed",
+    outcome: Literal["completed", "failed"] = "completed",
 ) -> ModelScheduleRunEvent:
     return ModelScheduleRunEvent(
         job_id=job_id,
@@ -73,7 +74,7 @@ def _run_event(
         tick_id=f"tick-{job_id}",
         scheduled_for=fired_at,
         fired_at=fired_at,
-        outcome=outcome,  # type: ignore[arg-type]
+        outcome=outcome,
     )
 
 

@@ -7,6 +7,7 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any, cast
 from uuid import uuid4
 
 import pytest
@@ -14,6 +15,9 @@ import yaml
 from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 
 from omnimarket.handlers.schedule_run_store import InMemoryScheduleRunStore
+from omnimarket.nodes.node_floor_fill_orchestrator.handlers.handler_floor_fill_command import (
+    HandlerFloorFillCommand,
+)
 from omnimarket.nodes.node_floor_fill_orchestrator.models import (
     ModelFloorFillCommandRequest,
     ModelFloorFillConfig,
@@ -96,12 +100,12 @@ def test_golden_a_due_tick_runs_the_fill_tick_and_reads_the_unread_floor_by_name
 
 
 def test_golden_a_fill_that_exits_zero_is_a_completed_run(tmp_path: Path) -> None:
-    def build(config: ModelFloorFillConfig) -> _Done:
-        return _Done(0, "OK started 0 lanes\nmore\n")
+    def build(config: ModelFloorFillConfig) -> HandlerFloorFillCommand:
+        return cast(HandlerFloorFillCommand, _Done(0, "OK started 0 lanes\nmore\n"))
 
     h = HandlerFloorFillScheduled(
         environ=environ(tmp_path),
-        build_handler=build,  # type: ignore[arg-type]
+        build_handler=build,
     )
     event = h.handle(tick(T0))
     assert event is not None
@@ -162,9 +166,9 @@ def test_golden_the_live_profile_builds_through_the_live_factory_with_the_named_
 ) -> None:
     seen: dict[str, str] = {}
 
-    def factory(settings: object, *, dsn: str) -> object:
+    def factory(settings: Any, *, dsn: str) -> object:
         seen["dsn"] = dsn
-        seen["env"] = str(getattr(settings, "store_dsn_env"))  # noqa: B009
+        seen["env"] = str(settings.store_dsn_env)
 
         def build(config: ModelFloorFillConfig) -> _Done:
             return _Done(0, "OK live pass\n")
