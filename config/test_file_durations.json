@@ -1071,6 +1071,7 @@
   "tests/nodes/node_delegation_scenario_r7_effect/test_scenario_r7_tick.py": 0.05,
   "tests/nodes/node_delegation_scenario_r7_effect/test_seam_r7_lane_and_receipt.py": 0.88,
   "tests/nodes/node_delegation_scenario_r8_effect/test_bus_lane.py": 0.15,
+  "tests/nodes/node_delegation_scenario_r8_effect/test_bus_lane_delegate_transport.py": 2.0,
   "tests/nodes/node_delegation_scenario_r8_effect/test_bus_request_failed_terminal.py": 0.34,
   "tests/nodes/node_delegation_scenario_r8_effect/test_golden_chain_scenario_r8_effect.py": 0.05,
   "tests/nodes/node_delegation_scenario_r8_effect/test_r8_inputs.py": 0.03,
