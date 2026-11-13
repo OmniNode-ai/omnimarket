@@ -1053,7 +1053,7 @@ async def test_a_failed_setup_step_shows_its_fix_and_no_ready_line(
             await pilot.pause()
         text = _log_text(app)
         assert (
-            "llama3.2 were not added: Error: start Ollama, then run /config again"
+            "llama3.2 were not added: start Ollama, then run /config again"  # no "Error: " (plain_reason)
             in text
         )
         assert "Ready:" not in text
@@ -1189,9 +1189,7 @@ async def test_models_that_fail_to_add_are_not_called_ready(
             await pilot.pause()
         text = _log_text(app)
         # One command stores both, so a refusal stores neither and says why.
-        assert (
-            "big-27b, small-1b were not added: Error: small-1b did not answer" in text
-        )
+        assert "big-27b, small-1b were not added: small-1b did not answer" in text
         assert "Ready:" not in text
 
 

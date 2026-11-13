@@ -3646,6 +3646,7 @@
   "tests/unit/cli/test_cloud_cli_entry_point_registration_omn16967.py": 0.35,
   "tests/unit/cli/test_golden_outputs.py": 0.08,
   "tests/unit/cli/test_lab_setup_inventory.py": 1.41,
+  "tests/unit/cli/test_local_model_by_server_omn23413.py": 6.37,
   "tests/unit/cli/test_market_cli.py": 0.07,
   "tests/unit/cli/test_model_setup_local_url_omn21162.py": 5.7,
   "tests/unit/cli/test_multiple_local_models_omn21211.py": 3.33,
@@ -4648,6 +4649,9 @@
   "tests/unit/nodes/node_onex_setup_effect/test_onex_setup_model_step.py": 10.27,
   "tests/unit/nodes/node_onex_setup_effect/test_onex_tui.py": 6.19,
   "tests/unit/nodes/node_onex_setup_effect/test_onex_tui_cancel.py": 5.2,
+  "tests/unit/nodes/node_onex_setup_effect/test_onex_tui_dashboard.py": 13.41,
+  "tests/unit/nodes/node_onex_setup_effect/test_onex_tui_local_servers.py": 8.71,
+  "tests/unit/nodes/node_onex_setup_effect/test_onex_tui_reasons.py": 0.57,
   "tests/unit/nodes/node_onex_setup_effect/test_onex_tui_secrets_keyboard.py": 8.4,
   "tests/unit/nodes/node_onex_setup_effect/test_setup_banner.py": 1.0,
   "tests/unit/nodes/node_onex_setup_effect/test_setup_claude.py": 3.27,
@@ -5389,8 +5393,5 @@
   "tests/validators/test_provider_model_catalogue.py": 1.25,
   "tests/validators/test_publisher_fixture_one_copy_omn17427.py": 16.05,
   "tests/validators/test_routing_input_model_fit_effective_model.py": 7.47,
-  "tests/validators/test_topic_graph_closure_gates.py": 11.85,
-  "tests/unit/cli/test_local_model_by_server_omn23413.py": 6.37,
-  "tests/unit/nodes/node_onex_setup_effect/test_onex_tui_local_servers.py": 8.71,
-  "tests/unit/nodes/node_onex_setup_effect/test_onex_tui_dashboard.py": 13.41
+  "tests/validators/test_topic_graph_closure_gates.py": 11.85
 }

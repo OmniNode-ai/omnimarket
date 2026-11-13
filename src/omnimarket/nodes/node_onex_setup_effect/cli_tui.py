@@ -351,6 +351,41 @@ def _stopped_by(out: str, err: str) -> str:
     return _last_line(out, err)
 
 
+# The CLI's failure text leads with how delegation routed ("returned_to_caller:
+# quality_veto; no model you chose finished the task; ..."), and the cause comes
+# last, often after the first 160 characters. These drop that framing.
+_LAST_ERROR = "last error:"
+_PINNED = re.compile(r"^pinned_backend_failed: .*? does not move to another backend: ")
+_TAG = re.compile(r"^(?:[A-Z][A-Z_]+|[a-z]+(?:_[a-z]+)+): ")
+_TICKET_NOTE = re.compile(r"\s*\(OMN-\d+[^)]*\)?\s*$")
+_FRAMING = ("returned_to_caller", "no model you chose", "do the task in this session")
+
+
+def plain_reason(raw: str, limit: int) -> str:
+    """The cause in a CLI failure, without its routing framing, cut at a word."""
+    text = " ".join(raw.split())
+    if _LAST_ERROR in text:
+        text = text.rsplit(_LAST_ERROR, 1)[1].strip()
+    text = _PINNED.sub("", text.removeprefix("Error: "))
+    kept: list[str] = []
+    for clause in text.split("; "):
+        while _TAG.match(clause):
+            clause = _TAG.sub("", clause, count=1)
+        clause = clause.rsplit(" -- ", 1)[-1]
+        if " " not in clause.strip() or any(f in clause for f in _FRAMING):
+            continue
+        kept.append(clause.strip())
+    text = _TICKET_NOTE.sub("", "; ".join(kept))
+    if text.count("(") > text.count(")"):
+        text += ")"
+    cut = text.endswith("...")
+    if cut:
+        text = text[:-3].rsplit(" ", 1)[0]
+    if len(text) > limit:
+        text, cut = text[: limit - 1].rsplit(" ", 1)[0], True
+    return text + "…" if cut and text else text
+
+
 def _tested_line(provider: str, result: Mapping[str, object]) -> Text:
     """One model's test result as one line: ready, busy, or stored but failing."""
     glyphs = tui_design().glyphs
@@ -361,9 +396,8 @@ def _tested_line(provider: str, result: Mapping[str, object]) -> Text:
             f"{glyphs.done} " + _say("model_ready", model=model, provider=provider),
             style=_style("success"),
         )
-    reason = " ".join(str(result.get("reason") or status).split())
-    limit = tui_design().reason_chars
-    short = reason if len(reason) <= limit else reason[: limit - 1] + "…"
+    short = plain_reason(str(result.get("reason") or ""), tui_design().reason_chars)
+    short = short or str(status)
     if status == "throttled":
         return Text(
             f"{glyphs.unchanged} " + _say("model_busy", model=model, reason=short),
@@ -2038,7 +2072,10 @@ class OnexTui(App[int]):
                             "add_failed",
                             provider=provider,
                             models=", ".join(choice.models),
-                            reason=heard[-1] if heard else _say("no_answer"),
+                            reason=plain_reason(
+                                heard[-1] if heard else "", tui_design().reason_chars
+                            )
+                            or _say("no_answer"),
                         ),
                         style=_style("error"),
                     )

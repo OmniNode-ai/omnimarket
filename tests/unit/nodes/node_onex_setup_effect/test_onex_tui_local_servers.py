@@ -875,7 +875,7 @@ async def test_a_failed_save_keeps_the_chosen_models_for_a_retry() -> None:
         basket = str(app.screen.query_one("#basket").render())
         assert "gemma3:1b" in basket
         assert "qwen3.5:0.8b" in basket
-        assert "were not added: Error: the server did not answer" in str(
+        assert "were not added: the server did not answer" in str(
             app.screen.query_one("#note").render()
         )
         # A retry sends the same choices without ticking again.
@@ -940,7 +940,10 @@ async def test_a_stored_model_whose_test_failed_is_reported_as_added() -> None:
         await _settle(pilot)
         note = str(screen.query_one("#note").render())
         assert "gemma3:1b ready" in note
-        assert "qwen3.5:0.8b was added, but its test failed: WEAK_OUTPUT" in note
+        assert (
+            "qwen3.5:0.8b was added, but its test failed: the response was cut off"
+            in note
+        )
         assert "were not added" not in note
         # Stored, so not chosen again for a retry.
         assert "Selected:" not in str(screen.query_one("#basket").render())
