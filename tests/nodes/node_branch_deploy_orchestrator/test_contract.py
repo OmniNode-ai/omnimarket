@@ -16,10 +16,17 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
+from omnimarket.models.branch_deploy_command import ModelBranchDeployCommandRequest
+from omnimarket.models.branch_deploy_probe import ModelBranchDeployProbeRequest
+from omnimarket.models.host_install_state import ModelHostInstallReduceCommand
+from omnimarket.nodes.node_branch_deploy_orchestrator.models import (
+    ModelBranchDeployCompleted,
+)
 from omnimarket.nodes.node_branch_deploy_orchestrator.overlay import (
     ModelBranchDeployOrchestratorOverlay,
     load_overlay,
 )
+from omnimarket.nodes.node_branch_deploy_orchestrator.state_codec import StateIoCodec
 from tests.nodes.node_branch_deploy_orchestrator.support import NODE_DIR, NODES
 
 pytestmark = pytest.mark.unit
@@ -114,3 +121,42 @@ def test_overlay_with_no_root_refuses(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("ONEX_SKILL_OVERLAY_ROOTS", raising=False)
     with pytest.raises(ValueError, match="node_branch_deploy_orchestrator"):
         load_overlay()
+
+
+def test_state_io_declares_the_row_table_and_its_codec() -> None:
+    doc = contract("node_branch_deploy_orchestrator")
+    state_io = doc["state_io"]
+    assert state_io["database"] == "omnibase_infra"
+    assert state_io["table"] == "branch_deploy_state"
+    assert state_io["key"] == "correlation_id"
+    codec = state_io["codec"]
+    assert (
+        getattr(importlib.import_module(codec["module"]), codec["name"]) is StateIoCodec
+    )
+
+
+def test_published_events_are_exactly_the_classes_the_handler_publishes() -> None:
+    doc = contract("node_branch_deploy_orchestrator")
+    entries = doc["published_events"]
+    assert len(entries) == 4
+    assert {entry["topic"] for entry in entries} == set(
+        doc["event_bus"]["publish_topics"]
+    )
+    handler_module = importlib.import_module(doc["handler"]["module"])
+    resolved = {
+        getattr(handler_module, f"Model{entry['event_type']}") for entry in entries
+    }
+    assert resolved == {
+        ModelBranchDeployCommandRequest,
+        ModelBranchDeployProbeRequest,
+        ModelHostInstallReduceCommand,
+        ModelBranchDeployCompleted,
+    }
+
+
+def test_every_routed_event_model_carries_the_state_io_key() -> None:
+    doc = contract("node_branch_deploy_orchestrator")
+    for route in doc["handler_routing"]["handlers"]:
+        model = route["event_model"]
+        routed = getattr(importlib.import_module(model["module"]), model["name"])
+        assert "correlation_id" in routed.model_fields

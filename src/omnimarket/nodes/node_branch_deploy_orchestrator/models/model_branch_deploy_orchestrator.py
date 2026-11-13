@@ -27,6 +27,8 @@ class EnumBranchDeployPhase(StrEnum):
     ROLLBACK_COMMAND = "rollback_command"
     ROLLBACK_JOB = "rollback_job"
     ROLLBACK_PROBE = "rollback_probe"
+    # A finished deploy's row: it stays stored and ignores every later result.
+    DONE = "done"
 
 
 class EnumBranchDeployNext(StrEnum):
@@ -98,7 +100,7 @@ class ModelBranchDeployCompleted(BaseModel):
 
 
 class ModelBranchDeployContext(BaseModel):
-    """The bounded working memory of one deploy: the request, the phase awaited, and what follows the next record."""
+    """The stored row of one deploy: the request, the phase awaited, and what follows the next record."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
