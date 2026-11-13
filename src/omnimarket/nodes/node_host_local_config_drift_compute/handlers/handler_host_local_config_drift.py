@@ -31,7 +31,7 @@ HOST_MISMATCH = "measurement host does not match the declaration host"
 
 
 class HandlerHostLocalConfigDrift:
-    """``handle(command) -> result``: WORKING, NOT_WORKING with a finding per difference, or a refusal."""
+    """``handle(request) -> result``: WORKING, NOT_WORKING with a finding per difference, or a refusal."""
 
     def handle(
         self, request: ModelLocalConfigDriftCommand
