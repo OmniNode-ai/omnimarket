@@ -136,6 +136,11 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # its console script runs it from the command line; it subscribes to no
     # topic and has no onex.nodes entry point.
     "node_legacy_worktree_audit_effect",
+    # OMN-19998: the host local config drift compute is run from its own
+    # `python -m` command line, which loads the overlay and builds the handler in
+    # process; it subscribes to no topic and publishes none, so it has no
+    # onex.nodes entry point.
+    "node_host_local_config_drift_compute",
     # OMN-23606: the factory floor unresolved rows effect runs as a step of the
     # floor publisher through its own `python -m` module, about every six hours;
     # it publishes nothing and subscribes to no topic, so it has no onex.nodes
