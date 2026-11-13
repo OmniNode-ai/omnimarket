@@ -13,7 +13,7 @@ contract_version: {major: 1, minor: 0, patch: 0}
 node_version: {major: 1, minor: 0, patch: 0}
 node_type: compute
 lifecycle: experimental
-runtime_profiles: [effects]
+runtime_profiles: []
 
 description: >
   The drift read of the copies of the lab host table. Copies that agree on every field of every
@@ -25,13 +25,14 @@ handler:
   module: omnimarket.nodes.node_host_table_copies_drift_compute.handlers.handler_host_table_copies_drift
   class: HandlerHostTableCopiesDrift
   input_model: omnimarket.nodes.node_host_table_copies_drift_compute.models.model_host_table_copies_drift.ModelHostTableDriftCommand
+  output_model: omnimarket.nodes.node_host_table_copies_drift_compute.models.model_host_table_copies_drift.ModelHostTableDriftResult
 
 # HandlerHostTableCopiesDrift takes the overlay, host, copy source, appender and clock as
 # constructor parameters, so the node runs through its own CLI, not handler_routing.
 
 descriptor:
   node_archetype: compute
-  runtime_profiles: [effects]
+  runtime_profiles: []
   purity: impure
   idempotent: true
   side_effects: [ledger-append]
@@ -49,7 +50,7 @@ output_model:
 terminal_event: onex.evt.omnimarket.host-table-copies-drift-run-completed.v1
 
 runtime_dispatch:
-  external_trigger: true
+  external_trigger: python -m omnimarket.nodes.node_host_table_copies_drift_compute from a host timer, with the overlay, copy source, appender and clock supplied by its own command line.
 
 # The topics by role; the handler's event mapping reads these and holds no topic string.
 topics:
@@ -62,6 +63,9 @@ topics:
 event_bus:
   subscribe_topics: []
   publish_topics: []
+
+metadata:
+  transport_type: local
 
 externally_consumed_topics:
   - onex.evt.omnimarket.host-table-copies-drift-written.v1
