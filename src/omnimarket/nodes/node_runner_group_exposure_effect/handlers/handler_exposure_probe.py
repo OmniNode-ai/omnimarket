@@ -105,6 +105,7 @@ class HandlerExposureProbe:
             backend=overlay.source.backend,
             calls=read.calls,
             reading=reading,
+            missing_permission=read.missing_permission,
         )
 
     @staticmethod

@@ -38,6 +38,7 @@ class ModelGroupRead(BaseModel):
     read_at: datetime
     calls: int = Field(ge=0)
     read_failure: EnumExposureReadFailure | None = None
+    missing_permission: str | None = None
 
 
 class ModelExposureProbeResult(BaseModel):
@@ -47,6 +48,7 @@ class ModelExposureProbeResult(BaseModel):
     backend: Literal["inmemory", "github"]
     calls: int = Field(ge=0)
     reading: ModelRunnerGroupExposureReading
+    missing_permission: str | None = None
 
 
 __all__ = ["ModelExposureProbeRequest", "ModelExposureProbeResult", "ModelGroupRead"]

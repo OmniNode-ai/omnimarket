@@ -1,0 +1,20 @@
+# Synthetic example of the overlay of node_host_local_config_drift_compute (OMN-24242). The real values are the overlays repository's
+# own file of the same node name. No key has a default in the node; an absent key refuses the load.
+#
+# One entry per host. `ssh_aliases` are the `Host` aliases of the host's ssh config with their targets; `git_safe_directories` are the
+# global git `safe.directory` entries it may carry (a wildcard is a finding unless it is listed here); `git_allowed_local_keys` are the
+# repo-local git keys a clone may hold; each `env_dirs` entry names a directory of env files, the file names that are its live files,
+# and how many other (backup) files it may hold at most.
+hosts:
+  - host: host-a
+    ssh_aliases:
+      - {alias: host-b, hostname: 192.0.2.2}
+    git_safe_directories:
+      - /srv/example/clone
+    git_allowed_local_keys:
+      - core.hookspath
+    env_dirs:
+      - directory: ~/.example
+        live_files: [.env]
+        max_backups: 2
+injected_fault: Add a wildcard git safe.directory entry on the host, or leave more backup copies than the bound
