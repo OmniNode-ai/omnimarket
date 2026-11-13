@@ -209,3 +209,11 @@ def test_s5_the_decision_compute_contract_names_the_models_the_orchestrator_pass
     ):
         spec = compute[key]
         assert getattr(importlib.import_module(spec["module"]), spec["name"]) is model
+
+
+def test_the_published_topics_are_the_two_the_run_readers_consume() -> None:
+    # The projection and the schedule verdict read these two names; a rename here is a seam break.
+    assert ORCHESTRATOR["event_bus"]["publish_topics"] == [
+        "onex.evt.omnimarket.host-hygiene-run-completed.v1",
+        "onex.evt.omnimarket.schedule-run.v1",
+    ]
