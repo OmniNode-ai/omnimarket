@@ -199,7 +199,10 @@ SEAM_ENVELOPE_MODEL: Final[str] = (
 # OMN-17427: 2.2.0 -> 2.3.0, tracking omnibase-core 0.47.48. OMN-18717 added the
 # declared `producer` field, an additive `extra="forbid"` change like the one
 # above.
-SEAM_ENVELOPE_VERSION: Final[str] = "2.3.0"
+#
+# OMN-24079: 2.3.0 -> 2.4.0, tracking the omnibase-core tag that adds the
+# optional `task_type` field to the inference intent.
+SEAM_ENVELOPE_VERSION: Final[str] = "2.4.0"
 
 # The gateway contract as it is actually PACKAGED in the pinned omnibase_infra
 # wheel — not a copy vendored into this repo. If the dependency's contract
@@ -612,8 +615,8 @@ def cloud_hand_rolled_envelope_json(
         # `parent_envelope_id`, which is correct for a chain head and is why
         # the addition parses despite `extra="forbid"`. OMN-17427: 2.2.0 ->
         # 2.3.0 in omnibase-core 0.47.48 (OMN-18717 added `producer`, also
-        # omitted here).
-        "envelope_version": {"major": 2, "minor": 3, "patch": 0},
+        # omitted here). OMN-24079: 2.3.0 -> 2.4.0 with the task_type tag.
+        "envelope_version": {"major": 2, "minor": 4, "patch": 0},
         "payload": payload,
     }
     return json.dumps(body).encode("utf-8")

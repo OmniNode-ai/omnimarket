@@ -187,8 +187,8 @@ class TestS4WireBody:
         # states the canonical wire version and the bridge round-trips it, which
         # is the property this line exists to hold; the literal moves with the
         # envelope rather than pinning a version nothing emits. OMN-17427:
-        # 2 -> 3, tracking omnibase-core 0.47.48 (OMN-18717).
-        assert decoded.envelope_version.minor == 3
+        # 2 -> 3, tracking omnibase-core 0.47.48 (OMN-18717). OMN-24079: 3 -> 4.
+        assert decoded.envelope_version.minor == 4
 
     def test_registry_match_is_shape_only_because_the_producer_is_out_of_closure(
         self,
