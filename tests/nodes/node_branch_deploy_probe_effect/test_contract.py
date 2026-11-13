@@ -39,7 +39,7 @@ def test_topics_and_terminal_event() -> None:
     assert doc["node_type"] == "effect"
     assert doc["descriptor"]["purity"] == "impure"
     assert doc["descriptor"]["runtime_profiles"] == ["effects"]
-    assert doc["descriptor"]["side_effects"] == ["ssh-read", "http-read"]
+    assert doc["descriptor"]["side_effects"] == ["http-read"]
 
 
 def test_handler_and_models_resolve() -> None:
@@ -63,6 +63,12 @@ def test_every_setting_is_in_the_overlay_with_no_default() -> None:
         trimmed = {k: v for k, v in document.items() if k != key}
         with pytest.raises(ValidationError):
             ModelBranchDeployProbeOverlay.model_validate(trimmed)
+
+
+def test_overlay_example_names_no_ssh() -> None:
+    """The shipped overlay example names HTTP urls only: the ssh read is gone for good."""
+    text = (NODE_DIR / "overlay.example.yaml").read_text()
+    assert "ssh" not in text
 
 
 def test_overlay_loads_from_the_named_root(
