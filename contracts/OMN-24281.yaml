@@ -52,13 +52,13 @@ dod_evidence:
     check_value: uv run pytest tests/nodes/node_floor_projection_read_effect/test_publisher_reader_seam.py -q -p no:randomly --no-cov
     cwd: .
 - id: dod-omn24281-ac3
-  description: 'hosted proxy for AC3: the inventory test passes with the new step names, and the overlays repository test is run in that repository at its pushed head.'
+  description: 'hosted proxy for AC3: with a time limit for each new step in the cycle limits, the cycle declares the steps in its longest path; the test fails at the merge base, where the steps are not declared. The overlays repository test is run in that repository at its pushed head.'
   source: manual
   binds_ac:
   - AC3
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_floor_input_inventory.py -q -p no:randomly --no-cov
+    check_value: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_floor_projection_publish_steps.py -q -p no:randomly --no-cov -k longest_declared_path
     cwd: .
 - id: dod-omn24281-ac4
   description: 'hosted proxy for AC4: the step golden test runs both publishers in one cycle; the reading on the publishing machine is posted as a pull request comment naming the head.'
