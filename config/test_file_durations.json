@@ -4743,6 +4743,7 @@
   "tests/unit/nodes/node_network_graph_compute/test_relation_join_map.py": 0.03,
   "tests/unit/nodes/node_onex_setup_effect/test_onex_setup_contract.py": 0.03,
   "tests/unit/nodes/node_onex_setup_effect/test_onex_setup_model_step.py": 10.27,
+  "tests/unit/nodes/node_onex_setup_effect/test_onex_setup_notice_omn21262.py": 2.68,
   "tests/unit/nodes/node_operator_capture_compute/test_golden_chain_operator_capture.py": 0.02,
   "tests/unit/nodes/node_operator_capture_compute/test_handler_utterance_classify.py": 0.27,
   "tests/unit/nodes/node_operator_capture_compute/test_operator_capture_decisions.py": 0.15,
