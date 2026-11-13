@@ -706,3 +706,11 @@ def test_the_read_command_exits_78_when_the_overlay_is_absent(
         ],
     )
     assert result.exit_code == 78
+
+
+def test_terminal_event_topics_are_the_declared_states() -> None:
+    topics = load_topics()
+    assert topics.verdict == "onex.evt.omnimarket.release-sibling-premise-read.v1"
+    assert (
+        topics.failure == "onex.evt.omnimarket.release-sibling-premise-read-failed.v1"
+    )

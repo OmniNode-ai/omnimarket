@@ -264,14 +264,16 @@ def test_short_candidate_sha_rejected() -> None:
 
 def test_extra_field_rejected() -> None:
     with pytest.raises(ValidationError):
-        ModelSiblingPremiseRequest(
-            repo=REPO,
-            candidate_sha="a" * 40,
-            candidate_merged_at=datetime(2026, 1, 1, tzinfo=UTC),
-            receipts=(),
-            as_of=datetime(2026, 1, 1, 1, tzinfo=UTC),
-            pending_window_seconds=1,
-            bogus=1,  # type: ignore[call-arg]
+        ModelSiblingPremiseRequest.model_validate(
+            {
+                "repo": REPO,
+                "candidate_sha": "a" * 40,
+                "candidate_merged_at": datetime(2026, 1, 1, tzinfo=UTC),
+                "receipts": (),
+                "as_of": datetime(2026, 1, 1, 1, tzinfo=UTC),
+                "pending_window_seconds": 1,
+                "bogus": 1,
+            }
         )
 
 
@@ -368,3 +370,15 @@ def test_golden_chain_event_and_error_chain_event() -> None:
     topic, out = dispatch(command_topic, bad_payload)
     assert topic == failure_topic
     assert out is None
+
+
+def test_terminal_event_topics_are_the_declared_states() -> None:
+    contract = yaml.safe_load(CONTRACT_PATH.read_text())
+    assert (
+        contract["runtime_dispatch"]["terminal_events"]["success"]
+        == "onex.evt.omnimarket.release-sibling-premise-decided.v1"
+    )
+    assert (
+        contract["runtime_dispatch"]["terminal_events"]["failure"]
+        == "onex.evt.omnimarket.release-sibling-premise-decision-failed.v1"
+    )
