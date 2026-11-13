@@ -52,6 +52,11 @@ class HttpRuntimeProbe:
         self, now: datetime, expected_sha: str
     ) -> tuple[tuple[ModelRuntimeProbeFact, ...], str | None]:
         s = self._settings
+        if s.ready_url is None or s.provenance_url is None:
+            return (
+                (),
+                "runtime probe unreadable: the overlay names no ready url or no provenance url",
+            )
         try:
             status, body = self._fetch(s.health_url, s.timeout_seconds)
             if status != 200:
