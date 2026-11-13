@@ -19,11 +19,8 @@ rungs:
   # OMN-20173: the cloud-glm rung is removed. The nightly eval called z.ai's
   # GLM Coding Plan directly, which the plan's terms bar (knowledge-base-internal
   # reference/zai-glm-coding-plan-terms.md, OMN-20154).
-  # OMN-20974: the team is its own customer. This rung holds no provider key: it
-  # is an `onex delegate` pinned to a backend and run as the dogfood tenant, whose
-  # registered key the effect boundary resolves by reference. The backend id and
-  # the tenant are environment names; the values arrive as repository variables.
-  - rung_id: cloud-openrouter
-    kind: cloud
-    backend_id_env: RUNG_EVAL_CLOUD_OPENROUTER_BACKEND_ID
-    tenant_env: RUNG_EVAL_DOGFOOD_TENANT_ID
+  # OMN-24155: the cloud-openrouter rung is removed from the nightly eval. The rung
+  # needs a backend id and a dogfood tenant that the eval host never carried, so
+  # every night recorded it as unresolved and the unit failed; the operator ruled
+  # on 2026-11-13 to drop it. The pinned-backend transport stays in the runner for
+  # a rung of kind cloud declared here later.

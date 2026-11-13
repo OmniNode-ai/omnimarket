@@ -13,6 +13,7 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from omnimarket.models.bus_binding.model_node_event_bus import ModelNodeEventBus
 from omnimarket.nodes.node_gpu_power_caps_effect.models.model_gpu_power_caps import (
     EnumGpuPowerCapsBackend,
     ModelGpuCard,
@@ -96,6 +97,8 @@ class ModelGpuPowerCapsOverlay(BaseModel):
     set_timeout_seconds: float = Field(gt=0)
     hosts: tuple[ModelGpuPowerCapsHost, ...] = Field(min_length=1)
     lab_work: ModelGpuPowerCapsLabWork | None = None
+    # The bus `onex run-node` reads to reach this node (OMN-24201)
+    event_bus: ModelNodeEventBus | None = None
 
     @model_validator(mode="after")
     def _consistent(self) -> ModelGpuPowerCapsOverlay:

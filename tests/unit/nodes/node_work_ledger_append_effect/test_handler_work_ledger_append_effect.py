@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 """Ledger-host safety and redelivery proofs (OMN-20275)."""
 
+import re
 from datetime import UTC, datetime
 from importlib import resources
 from pathlib import Path
@@ -52,11 +53,25 @@ def _attribute_line(line: str, principal: str) -> str:
         return line
     cells = line.split(" | ", 3)
     if len(cells) == 4 and cells[2].startswith(("lane=", "from=")):
-        return (
+        stamped = (
             f"{cells[0]} | {cells[1]} | {cells[2]} | principal={principal} | {cells[3]}"
         )
-    timestamp, kind, text = line.split(" | ", 2)
-    return f"{timestamp} | {kind} | principal={principal} | {text}"
+    else:
+        timestamp, kind, text = line.split(" | ", 2)
+        stamped = f"{timestamp} | {kind} | principal={principal} | {text}"
+    return _via_attributed(stamped)
+
+
+def _via_attributed(line: str) -> str:
+    """The handler also stamps ``via=bus:<requesting host>`` after the ``req=`` cell (OMN-24205)."""
+    if re.search(r"(?:^| \| )via=bus:", line):
+        return line
+    return re.sub(
+        r" \| (req=[0-9a-f-]+)(?= \||[\r\n]|$)",
+        r" | \1 | via=bus:lab-host",
+        line,
+        count=1,
+    )
 
 
 @pytest.mark.parametrize(

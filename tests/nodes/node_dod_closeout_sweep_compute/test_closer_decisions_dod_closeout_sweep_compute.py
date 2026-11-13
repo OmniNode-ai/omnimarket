@@ -25,12 +25,12 @@ import pytest
 from pydantic import ValidationError
 
 import omnimarket.nodes.node_dod_closeout_sweep_compute as node_package
-from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.handler_dod_closeout_sweep import (
-    HandlerDodCloseoutSweep,
-)
-from omnimarket.nodes.node_dod_closeout_sweep_compute.models.model_dod_closeout_sweep import (
+from omnimarket.models.dod_closeout_sweep import (
     ModelDodCloseoutDecisionRequest,
     ModelDodCloseoutDecisionResult,
+)
+from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.handler_dod_closeout_sweep import (
+    HandlerDodCloseoutSweep,
 )
 from tests.runtime_local_compat import RuntimeLocal
 

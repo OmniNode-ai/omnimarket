@@ -10,18 +10,24 @@ capture output and time out after 120 seconds.
 from __future__ import annotations
 
 import contextlib
+import fcntl
 import json
 import os
 import re
 import shutil
+import sqlite3
 import subprocess
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import Literal, Protocol
 
 from omnimarket.nodes.node_host_retention_effect.models.model_host_retention import (
     ModelDiskReading,
+)
+from omnimarket.nodes.node_temp_retention_effect.handlers.handler_temp_retention import (
+    ProcessReferences,
+    read_process_references,
 )
 
 
@@ -42,6 +48,25 @@ def _run(
         raise OSError(f"{argv[0]} {argv[1]}: no answer in {timeout_s:.0f} s") from None
     except FileNotFoundError:
         raise OSError(f"{argv[0]}: not installed") from None
+
+
+def read_references_portable() -> ProcessReferences | None:
+    """The live process references, read from ``/proc`` or, without it, from ``ps``.
+
+    The command line of a process names any path it works in as an argument; a working directory
+    alone is not seen on macOS.
+    """
+    found = read_process_references()
+    if found is not None:
+        return found
+    try:
+        proc = _run(["ps", "-axww", "-o", "command="], timeout_s=20)
+    except OSError:
+        return None
+    if proc.returncode != 0:
+        return None
+    lines = [line for line in proc.stdout.splitlines() if line]
+    return ProcessReferences(blobs=list(lines), commands=list(lines))
 
 
 class CiHostStatePort(Protocol):
@@ -98,6 +123,18 @@ class DiskPort(Protocol):
     """Read disk usage for a path."""
 
     def reading(self, path: str) -> ModelDiskReading: ...
+
+
+class PreCommitStorePort(Protocol):
+    """Forget a repository path in the pre-commit store's index.
+
+    Takes the store lock, deletes the rows whose path is repo_path; "locked" when the lock is
+    held by another process; "unreferenced" when no row named the path.
+    """
+
+    def forget(
+        self, index_db: str, repo_path: str
+    ) -> Literal["forgotten", "unreferenced", "locked"]: ...
 
 
 class DockerCiHostState:
@@ -322,9 +359,45 @@ class ShutilDisk:
         )
 
 
+class SqlitePreCommitStore:
+    """The pre-commit store's sqlite index, taken under the ``.lock`` file beside it.
+
+    The row for a hook repository folder goes before the folder does, so pre-commit never finds a
+    row whose folder is gone.
+    """
+
+    def forget(
+        self, index_db: str, repo_path: str
+    ) -> Literal["forgotten", "unreferenced", "locked"]:
+        if not os.path.exists(index_db):
+            raise OSError("index_db absent")
+        lock_path = os.path.join(os.path.dirname(index_db), ".lock")
+        descriptor = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o600)
+        try:
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                return "locked"
+            try:
+                connection = sqlite3.connect(index_db, timeout=5)
+                try:
+                    cursor = connection.execute(
+                        "DELETE FROM repos WHERE path = ?", (repo_path,)
+                    )
+                    connection.commit()
+                    return "forgotten" if cursor.rowcount > 0 else "unreferenced"
+                finally:
+                    connection.close()
+            except sqlite3.Error as exc:
+                raise OSError(str(exc)[:200]) from exc
+        finally:
+            fcntl.flock(descriptor, fcntl.LOCK_UN)
+            os.close(descriptor)
+
+
 @dataclass(frozen=True)
 class HostRetentionPorts:
-    """The seven ports a handler needs, with a ``default()`` of the real adapters."""
+    """The eight ports a handler needs, with a ``default()`` of the real adapters."""
 
     runner_state: CiHostStatePort
     runner_remove: CiHostRemovePort
@@ -333,6 +406,7 @@ class HostRetentionPorts:
     container_mounts: ContainerMountPort
     unit_files: UnitFilesPort
     disk: DiskPort
+    pre_commit_store: PreCommitStorePort
 
     @classmethod
     def default(cls, docker_timeout_s: float) -> HostRetentionPorts:
@@ -344,4 +418,5 @@ class HostRetentionPorts:
             container_mounts=DockerContainerMounts(docker_timeout_s),
             unit_files=FilesystemUnitFiles(),
             disk=ShutilDisk(),
+            pre_commit_store=SqlitePreCommitStore(),
         )
