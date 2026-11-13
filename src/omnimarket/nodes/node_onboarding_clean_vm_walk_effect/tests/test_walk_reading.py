@@ -203,10 +203,7 @@ def test_reading_flips_max_age_comes_from_the_overlay_with_no_packaged_default(
 
 
 def _contract_path() -> Path:
-    return (
-        Path(__file__).resolve().parents[3]
-        / "src/omnimarket/nodes/node_onboarding_clean_vm_walk_effect/contract.yaml"
-    )
+    return Path(__file__).resolve().parents[1] / "contract.yaml"
 
 
 def test_reading_flips_the_contract_routes_the_reading_operation() -> None:

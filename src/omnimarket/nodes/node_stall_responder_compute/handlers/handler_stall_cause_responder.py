@@ -20,10 +20,12 @@ import re
 from datetime import UTC, datetime, timedelta
 
 from omnimarket.handlers.ledger_row_grammar import parse_row
-from omnimarket.nodes.node_stall_responder_compute.models import (
+from omnimarket.models.model_stall_cause import (
     ModelCauseDispatch,
     ModelCauseSkip,
     ModelRowRefusal,
+)
+from omnimarket.nodes.node_stall_responder_compute.models import (
     ModelStallResponderRequest,
     ModelStallResponderResult,
 )
