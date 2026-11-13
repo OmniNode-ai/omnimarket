@@ -54,6 +54,8 @@ LANE_WRITES: dict[str, str] = {
     "api --method POST /repos/{o}/{r}/issues/{n}/labels": "pr_label",
     "variable set": "repo_variable_set",
     "variable get": "repo_variable_get",
+    "api --method GET /orgs/{o}/actions/runners": "runner_list",
+    "api --method DELETE /orgs/{o}/actions/runners/{id}": "runner_remove",
 }
 _REGISTRY_OWNER = "OmniNode-ai"
 

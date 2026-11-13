@@ -22,6 +22,12 @@ repo_variables:
     - SECRET
     - TOKEN
     - PASSWORD
+runner_removals:
+  entries:
+    - organization: example-org
+      name: example-runner-1
+    - organization: example-org
+      name: example-runner-2
 event_bus:
   type: kafka
   lane: example-lane

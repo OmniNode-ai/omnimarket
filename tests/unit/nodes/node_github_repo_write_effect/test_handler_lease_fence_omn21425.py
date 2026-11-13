@@ -199,6 +199,8 @@ _VERB_FIELDS: dict[EnumRepoWriteOperation, dict[str, object]] = {
     },
     EnumRepoWriteOperation.REPO_VARIABLE_SET: {"variable_name": "LAB_VAR_ONE"},
     EnumRepoWriteOperation.REPO_VARIABLE_GET: {"variable_name": "LAB_VAR_ONE"},
+    EnumRepoWriteOperation.RUNNER_LIST: {},
+    EnumRepoWriteOperation.RUNNER_REMOVE: {"runner_name": "example-runner-1"},
     EnumRepoWriteOperation.WORKFLOW_DISPATCH: {"workflow": "ci.yml", "ref": "dev"},
     EnumRepoWriteOperation.CHECK_RUN_CREATE: {
         "name": "lab-pass",

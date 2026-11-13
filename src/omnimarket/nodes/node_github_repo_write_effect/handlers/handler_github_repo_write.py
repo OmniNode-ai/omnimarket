@@ -50,6 +50,16 @@ Rules this handler enforces:
   that cannot be read (set only; get reports ``variable_in_sync`` as None), or a
   name or value carrying a refuse marker is refused before any GitHub call, in
   either mode, and only the /actions/variables endpoints are called.
+- **Runners.** runner_list pages a self-hosted runner organization's registrations
+  and answers with every one of them; runner_remove deletes one offline, idle
+  runner by name. The organizations and runner names a lane may act on are only
+  the overlay's ``runner_removals`` entries (``overlay.py``); anything else, an
+  absent overlay or an absent ``runner_removals`` is refused ``runner_not_allowed``
+  before any GitHub call, in either mode, and only the /actions/runners endpoints
+  are called. A runner that is online or busy is refused ``runner_online`` with no
+  DELETE; a name GitHub does not register answers completed ``replayed`` with
+  ``runner_removed`` false. Like a variable, a runner is read back from GitHub on
+  every call, so runner operations keep no idempotency record.
 - **Claim.** pr_close is refused with ``claim_not_held`` unless the requesting
   lane and run hold a live claim on the PR in node_pr_claim_registry_effect.
   The claim is checked in dry_run too, since it needs no GitHub call.
@@ -106,6 +116,7 @@ from omnimarket.github_landing.github_landing_requests import (
     open_pulls_for_head_request,
     pull_request_request,
     review_comments_request,
+    split_repository,
     workflow_dispatch_request,
 )
 from omnimarket.github_landing.github_landing_transport import (
@@ -152,6 +163,7 @@ from omnimarket.nodes.node_github_repo_write_effect.models import (
     ModelRepoWriteConfig,
     ModelRepoWriteFailed,
     ModelRepoWriteRequest,
+    ModelRepoWriteRunner,
 )
 from omnimarket.nodes.node_github_repo_write_effect.models.model_repo_write_config import (
     ModelRepoWriteCredentialChoice,
@@ -190,6 +202,10 @@ from omnimarket.nodes.node_github_repo_write_effect.services.repo_variable impor
     update_variable_request,
     variable_digest,
 )
+from omnimarket.nodes.node_github_repo_write_effect.services.runner_registration import (
+    delete_runner_request,
+    list_runners_request,
+)
 
 _log = logging.getLogger(__name__)
 _CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
@@ -213,6 +229,8 @@ _CALL_CONTEXT_FIELDS: tuple[str, ...] = (
 # Comment pages scanned for an idempotency marker (300 comments), for the
 # conversation comments, review comments and reviews of the comment/review writes.
 _MARKER_SCAN_PAGES = 3
+# The per_page the runner list requests name; a shorter page ends the paging.
+_RUNNERS_PAGE_SIZE = 100
 # A planned node id in dry_run: the real one is read from the PR first.
 _PLANNED_NODE_ID = "<node id read from the pull request>"
 
@@ -359,6 +377,9 @@ class _Run:
         variable_value: str | None = None,
         variable_digest: str | None = None,
         variable_in_sync: bool | None = None,
+        runners: tuple[ModelRepoWriteRunner, ...] | None = None,
+        runner_name: str | None = None,
+        runner_removed: bool | None = None,
     ) -> ModelRepoWriteCompleted:
         c = self.command
         return ModelRepoWriteCompleted(
@@ -382,6 +403,9 @@ class _Run:
             variable_value=variable_value,
             variable_digest=variable_digest,
             variable_in_sync=variable_in_sync,
+            runners=runners,
+            runner_name=runner_name,
+            runner_removed=runner_removed,
         )
 
     async def send(
@@ -606,6 +630,72 @@ class HandlerGithubRepoWriteEffect:
                 )
         return _VariablePlan(value=source_value, source_value=source_value)
 
+    def _runner_preflight(
+        self, request: ModelRepoWriteRequest
+    ) -> ModelRepoWriteFailed | None:
+        """Refuse a runner write the overlay's ``runner_removals`` does not
+        allow, before any call.
+
+        The overlay is read the first time a runner operation needs it, so no
+        other operation depends on it. The organization is the owner part of
+        the request's repository: a runner_list is served when at least one
+        entry names that organization (case-insensitively), a runner_remove
+        only when (organization, runner_name) is an entry.
+        """
+        if request.operation not in (
+            EnumRepoWriteOperation.RUNNER_LIST,
+            EnumRepoWriteOperation.RUNNER_REMOVE,
+        ):
+            return None
+        try:
+            if self._write_overlay is None:
+                self._write_overlay = load_overlay()
+        except NodeOverlayError as exc:
+            return self._preflight_refusal(
+                request,
+                EnumRepoWriteRefusal.RUNNER_NOT_ALLOWED,
+                f"no runner overlay is configured: {exc}",
+            )
+        overlay = self._write_overlay.runner_removals
+        if overlay is None:
+            return self._preflight_refusal(
+                request,
+                EnumRepoWriteRefusal.RUNNER_NOT_ALLOWED,
+                "the node's overlay declares no runner_removals; no call made",
+            )
+        organization, _ = split_repository(request.repo)
+        lowered_organization = organization.lower()
+        if request.operation is EnumRepoWriteOperation.RUNNER_LIST:
+            if any(
+                entry.organization.lower() == lowered_organization
+                for entry in overlay.entries
+            ):
+                return None
+            return self._preflight_refusal(
+                request,
+                EnumRepoWriteRefusal.RUNNER_NOT_ALLOWED,
+                f"no runner_removals entry names organization {organization}; "
+                "no call made",
+            )
+        name = request.runner_name
+        if name is None:  # defensive; the request validator enforces this
+            return self._preflight_refusal(
+                request,
+                EnumRepoWriteRefusal.RUNNER_NOT_ALLOWED,
+                "runner_remove requires runner_name; no call made",
+            )
+        if any(
+            entry.organization.lower() == lowered_organization and entry.name == name
+            for entry in overlay.entries
+        ):
+            return None
+        return self._preflight_refusal(
+            request,
+            EnumRepoWriteRefusal.RUNNER_NOT_ALLOWED,
+            f"runner {name} on organization {organization} is not in the "
+            "node's runner_removals overlay; no call made",
+        )
+
     def _label_refusal(
         self, request: ModelRepoWriteRequest
     ) -> ModelRepoWriteFailed | None:
@@ -688,6 +778,9 @@ class HandlerGithubRepoWriteEffect:
         variable_plan = self._variable_plan(request)
         if isinstance(variable_plan, ModelRepoWriteFailed):
             return variable_plan
+        runner_refusal = self._runner_preflight(request)
+        if runner_refusal is not None:
+            return runner_refusal
         mode = (
             EnumRepoWriteMode.DRY_RUN
             if request.dry_run
@@ -716,12 +809,15 @@ class HandlerGithubRepoWriteEffect:
             result: Result = await self._run(run)
         except _RefusedError as exc:
             result = exc.failed
-        # A repository variable is read back from GitHub on every call, so a
-        # repeat finds the value already there (replayed) without a record: the
-        # request carries no value, and a record would hide a changed source.
+        # A repository variable, and a runner, is read back from GitHub on
+        # every call, so a repeat finds the answer already there without a
+        # record: a record would hide a value or a registration that changed
+        # since the first call.
         if isinstance(result, ModelRepoWriteCompleted) and request.operation not in (
             EnumRepoWriteOperation.REPO_VARIABLE_SET,
             EnumRepoWriteOperation.REPO_VARIABLE_GET,
+            EnumRepoWriteOperation.RUNNER_LIST,
+            EnumRepoWriteOperation.RUNNER_REMOVE,
         ):
             self._done[key] = (digests, result)
             while len(self._done) > _IDEMPOTENCY_RECORD_SIZE:
@@ -940,6 +1036,10 @@ class HandlerGithubRepoWriteEffect:
             return await _repo_variable_set(run)
         if op is EnumRepoWriteOperation.REPO_VARIABLE_GET:
             return await _repo_variable_get(run)
+        if op is EnumRepoWriteOperation.RUNNER_LIST:
+            return await _runner_list(run)
+        if op is EnumRepoWriteOperation.RUNNER_REMOVE:
+            return await _runner_remove(run)
         if op is EnumRepoWriteOperation.PR_REVIEW_POST:
             return await _pr_review_post(run)
         if op is EnumRepoWriteOperation.CHECK_RUN_CREATE:
@@ -1289,6 +1389,71 @@ async def _repo_variable_get(run: _Run) -> ModelRepoWriteCompleted:
     )
 
 
+async def _runners_pages(run: _Run, organization: str) -> list[ModelRepoWriteRunner]:
+    """Every runner the organization has registered, page after page.
+
+    ``list_runners_request`` asks 100 runners per page; a page holding fewer
+    than that ends the paging.
+    """
+    runners: list[ModelRepoWriteRunner] = []
+    page = 1
+    while True:
+        body = (await run.send(list_runners_request(organization, page))).body or {}
+        registered = body.get("runners")
+        entries = registered if isinstance(registered, list) else []
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            runner_id = _int_at(entry, "id")
+            name = entry.get("name")
+            if runner_id is None or not isinstance(name, str) or not name:
+                continue
+            runners.append(
+                ModelRepoWriteRunner(
+                    id=runner_id,
+                    name=name,
+                    status=str(entry.get("status", "")),
+                    busy=entry.get("busy") is True,
+                )
+            )
+        if len(entries) < _RUNNERS_PAGE_SIZE:
+            return runners
+        page += 1
+
+
+async def _runner_list(run: _Run) -> ModelRepoWriteCompleted:
+    c = run.command
+    organization, _ = split_repository(c.repo)
+    return run.completed(runners=tuple(await _runners_pages(run, organization)))
+
+
+async def _runner_remove(run: _Run) -> ModelRepoWriteCompleted:
+    c = run.command
+    name = c.runner_name or ""
+    organization, _ = split_repository(c.repo)
+    found = next(
+        (
+            runner
+            for runner in await _runners_pages(run, organization)
+            if runner.name == name
+        ),
+        None,
+    )
+    if found is None:
+        # No registration of that name: the asked-for state already holds, so
+        # the answer is replayed and no DELETE is sent.
+        return run.completed(replayed=True, runner_name=name, runner_removed=False)
+    if found.status == "online" or found.busy:
+        raise run.refused(
+            EnumRepoWriteRefusal.RUNNER_ONLINE,
+            f"runner {name} on {organization} is "
+            f"{'busy' if found.busy else found.status}; only an offline, idle "
+            "runner may be removed; no DELETE sent",
+        )
+    await run.send(delete_runner_request(organization, found.id))
+    return run.completed(runner_name=name, runner_removed=True)
+
+
 async def _pr_label(run: _Run) -> ModelRepoWriteCompleted:
     c = run.command
     number = c.pr_number or 0
@@ -1372,6 +1537,14 @@ def planned_requests(
         return (get_variable_request(c.repo, c.variable_name or ""),)
     if op is EnumRepoWriteOperation.REPO_VARIABLE_GET:
         return (get_variable_request(c.repo, c.variable_name or ""),)
+    if op in (
+        EnumRepoWriteOperation.RUNNER_LIST,
+        EnumRepoWriteOperation.RUNNER_REMOVE,
+    ):
+        # A remove reads the registrations first, to find the id and check the
+        # runner is offline and idle; the DELETE it may send is only known
+        # after that read answers.
+        return (list_runners_request(split_repository(c.repo)[0], 1),)
     if op is EnumRepoWriteOperation.PR_LABEL:
         return (
             pull_request_request(c.repo, n),

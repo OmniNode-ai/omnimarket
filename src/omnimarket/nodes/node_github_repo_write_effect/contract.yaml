@@ -10,9 +10,9 @@
 # (metadata side_effect_class read_only, descriptor idempotent true); a write
 # needs a mode, a quota floor and guards a read never does.
 name: node_github_repo_write_effect
-contract_version: {major: 1, minor: 9, patch: 0}
+contract_version: {major: 1, minor: 10, patch: 0}
 node_type: EFFECT_GENERIC
-node_version: {major: 1, minor: 8, patch: 0}
+node_version: {major: 1, minor: 9, patch: 0}
 
 description: >
   EFFECT: the PR authoring writes a lane makes. One ModelRepoWriteRequest on
@@ -79,6 +79,20 @@ description: >
   no write (replayed) when it already holds the value. repo_variable_get returns
   the value, its sha256 digest and whether it equals the declared source. Only the
   /actions/variables endpoints are called.
+  runner_list and runner_remove act on an organization's self-hosted runners
+  under the node's own write identity. The organization is the owner part of the
+  request's repository, and what a lane may act on is only the overlay's
+  runner_removals entries: runner_list is served for an organization at least
+  one entry names (case-insensitively) and answers with every runner the
+  organization has registered, names are not secret; runner_remove names one
+  runner and is served only for an (organization, name) pair an entry lists.
+  Anything else, no overlay or no runner_removals is refused runner_not_allowed
+  before any GitHub call, in either mode. runner_remove reads the registrations
+  first: a runner that is online or busy is refused runner_online with no
+  DELETE, a name GitHub does not register answers replayed with runner_removed
+  false, and an offline, idle runner is deleted by its id. Like a repository
+  variable, a runner is read back on every call, so these operations keep no
+  idempotency record. Only the /orgs/{o}/actions/runners endpoints are called.
   A command carrying lease {kind, resource, fence, expires_at} is refused before
   any GitHub call unless the runtime's fence port answers ok: lease_fence_stale
   for a newer grant, lease_expired for no live grant or a lease expiring inside
@@ -140,6 +154,12 @@ operations:
     transport: rest
   - name: repo_variable_get
     description: "Request ModelRepoWriteRequest with variable_name, result ModelRepoWriteCompleted (variable_value, variable_digest, variable_in_sync) or ModelRepoWriteFailed (variable_not_allowed, not_found); replaces gh variable get. GET /repos/{o}/{r}/actions/variables/{name} for an allowlisted name."
+    transport: rest
+  - name: runner_list
+    description: "Request ModelRepoWriteRequest (the organization is the repository's owner part), result ModelRepoWriteCompleted (runners: id, name, status, busy of every registered runner) or ModelRepoWriteFailed (runner_not_allowed when no runner_removals entry names the organization); replaces gh api --method GET /orgs/{o}/actions/runners. GET /orgs/{o}/actions/runners?per_page=100&page={p} page after page, for an organization the overlay names."
+    transport: rest
+  - name: runner_remove
+    description: "Request ModelRepoWriteRequest with runner_name (the pair of the repository's organization and the name must be a runner_removals entry), result ModelRepoWriteCompleted (runner_name, runner_removed) or ModelRepoWriteFailed (runner_not_allowed, runner_online when the runner is online or busy); replaces gh api --method DELETE /orgs/{o}/actions/runners/{id}. GET the registrations first, DELETE /orgs/{o}/actions/runners/{id} only for an offline, idle runner; a name not registered answers replayed with runner_removed false."
     transport: rest
 
 modes:

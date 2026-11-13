@@ -146,6 +146,18 @@ SCM_VERBS: Final[tuple[ModelScmVerb, ...]] = (
         operation="repo_variable_get",
         replaces="gh variable get",
     ),
+    ModelScmVerb(
+        verb="runner-list",
+        node=_W,
+        operation="runner_list",
+        replaces="gh api --method GET /orgs/{o}/actions/runners",
+    ),
+    ModelScmVerb(
+        verb="runner-remove",
+        node=_W,
+        operation="runner_remove",
+        replaces="gh api --method DELETE /orgs/{o}/actions/runners/{id}",
+    ),
     *(
         ModelScmVerb(verb=v, node=_G, operation=op, replaces=gh)
         for v, op, gh in (
@@ -218,19 +230,16 @@ def load_topics(node: EnumScmNode) -> ModelScmTopics:
             failure=str(terminals["failure"]),
         )
     return ModelScmTopics(
-        command=str(dispatch["command_topic"]),
-        success=str(contract["terminal_event"]),
+        command=str(dispatch["command_topic"]), success=str(contract["terminal_event"])
     )
 
 
 def contract_operations(node: EnumScmNode) -> tuple[str, ...]:
     """The ``operations`` names the node contract declares."""
     operations = load_contract(node).get("operations")
-    if not isinstance(operations, list):
-        return ()
     return tuple(
         str(entry["name"])
-        for entry in operations
+        for entry in (operations if isinstance(operations, list) else ())
         if isinstance(entry, dict) and "name" in entry
     )
 
@@ -284,9 +293,8 @@ class ScmBusCaller:
             correlation_id=correlation_id,
             event_type=event_type_for(topics.command),
         )
-        future: asyncio.Future[ModelScmTerminal] = (
-            asyncio.get_running_loop().create_future()
-        )
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future[ModelScmTerminal] = loop.create_future()
 
         def on_terminal(topic: str) -> Callable[[ProtocolBusMessage], Awaitable[None]]:
             async def on_message(message: ProtocolBusMessage) -> None:
@@ -298,13 +306,11 @@ class ScmBusCaller:
                     return
                 if not isinstance(raw, dict):
                     return
-                payload_dict = terminal_payload(
-                    raw, envelope.envelope_id, correlation_id
-                )
-                if payload_dict is None:
+                body = terminal_payload(raw, envelope.envelope_id, correlation_id)
+                if body is None:
                     return
-                partition = getattr(message, "partition", None)
-                offset = getattr(message, "offset", None)
+                part = getattr(message, "partition", None)
+                off = getattr(message, "offset", None)
                 future.set_result(
                     ModelScmTerminal(
                         receipt=ModelScmBusReceipt(
@@ -313,15 +319,11 @@ class ScmBusCaller:
                             command_envelope_id=envelope.envelope_id,
                             terminal_topic=topic,
                             terminal_envelope_id=_uuid_or_none(raw.get("envelope_id")),
-                            terminal_partition=(
-                                partition if isinstance(partition, int) else None
-                            ),
-                            terminal_offset=(
-                                str(offset) if offset is not None else None
-                            ),
+                            terminal_partition=part if isinstance(part, int) else None,
+                            terminal_offset=str(off) if off is not None else None,
                         ),
                         failed=topic == topics.failure,
-                        payload=payload_dict,
+                        payload=body,
                     )
                 )
 
@@ -329,9 +331,7 @@ class ScmBusCaller:
 
         unsubscribes: list[Callable[[], Awaitable[None]]] = []
         try:
-            for topic in (topics.success, topics.failure):
-                if topic is None:
-                    continue
+            for topic in filter(None, (topics.success, topics.failure)):
                 unsubscribes.append(
                     await self._bus.subscribe_ungrouped(topic, on_terminal(topic))
                 )

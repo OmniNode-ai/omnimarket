@@ -39,6 +39,9 @@ from omnimarket.nodes.node_github_repo_write_effect.overlay import NODE_NAME
 from omnimarket.nodes.node_github_repo_write_effect.services.repo_variable import (
     get_variable_request,
 )
+from omnimarket.nodes.node_github_repo_write_effect.services.runner_registration import (
+    list_runners_request,
+)
 from tests.unit.nodes.node_github_repo_write_effect.test_handler_github_repo_write import (
     _HEAD as _NODE_HEAD,
 )
@@ -81,6 +84,7 @@ _REQUEST_FIELDS = frozenset(
         "requested_by_lane",
         "requested_by_run",
         "review_thread_id",
+        "runner_name",
         "status",
         "thread_comment_id",
         "title",
@@ -107,6 +111,9 @@ _COMPLETED_FIELDS = frozenset(
         "requested_by_lane",
         "requests",
         "review_id",
+        "runner_name",
+        "runner_removed",
+        "runners",
         "variable_digest",
         "variable_in_sync",
         "variable_name",
@@ -147,6 +154,8 @@ _REFUSAL_REASONS = frozenset(
         "lease_unreadable",
         "not_found",
         "quota_floor",
+        "runner_not_allowed",
+        "runner_online",
         "secret_refused",
         "thread_not_replied",
         "transport_error",
@@ -528,3 +537,93 @@ def test_variable_get_dry_run_plans_the_same_single_read(
     assert answer["outcome"] == "completed"
     completed = ModelRepoWriteCompleted.model_validate(answer["result"])
     assert completed.requests == (get_variable_request(_WRITE_REPO, _VAR_ONE),)
+
+
+# --- the runner verbs (OMN-24274) ------------------------------------------------
+
+# Test-local organization and runner names only; the real names live in the
+# overlays repository, never in src, the contract or the shipped overlay example.
+_RUNNER_ORG = "example-org"
+_RUNNER_REPO = f"{_RUNNER_ORG}/example-repo"
+_RUNNER_ONE = "example-runner-1"
+_RUNNER_OFF_LIMITS = "example-runner-off-limits"
+
+
+def _pin_runner_overlay(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """The write node's overlay, with one allowed runner, under one pinned root."""
+    overlay = tmp_path / NODE_NAME / "overlay.yaml"
+    overlay.parent.mkdir(parents=True, exist_ok=True)
+    overlay.write_text(
+        "pr_label:\n"
+        "  allowed_labels:\n"
+        "    - lab:ready\n"
+        "runner_removals:\n"
+        "  entries:\n"
+        f"    - organization: {_RUNNER_ORG}\n"
+        f"      name: {_RUNNER_ONE}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path))
+
+
+def _runner(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, verb: str, *extra: str
+) -> Result:
+    """Run one runner verb through the real CLI to the real node on the in-memory bus."""
+    _pin_runner_overlay(monkeypatch, tmp_path)
+    return CliRunner().invoke(
+        scm_cli.scm_group,
+        [
+            verb,
+            _RUNNER_REPO,
+            *extra,
+            "--lane",
+            "scm-seam-test",
+            "--bus",
+            "inmemory",
+            "--timeout-s",
+            "0.1",
+            "--dry-run",
+        ],
+        catch_exceptions=False,
+    )
+
+
+def test_runner_list_dry_run_plans_the_first_page_read(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    result = _runner(monkeypatch, tmp_path, "runner-list")
+    assert result.exit_code == 0, result.output
+    answer = json.loads(result.output)
+    assert answer["outcome"] == "completed"
+    completed = ModelRepoWriteCompleted.model_validate(answer["result"])
+    assert completed.mode is EnumRepoWriteMode.DRY_RUN
+    assert completed.requests == (list_runners_request(_RUNNER_ORG, 1),)
+    (read,) = completed.requests
+    assert read.method == "GET"
+    assert read.path == f"/orgs/{_RUNNER_ORG}/actions/runners?per_page=100&page=1"
+
+
+def test_runner_remove_dry_run_of_an_allowed_runner_plans_only_the_read(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    result = _runner(monkeypatch, tmp_path, "runner-remove", "--runner", _RUNNER_ONE)
+    assert result.exit_code == 0, result.output
+    completed = ModelRepoWriteCompleted.model_validate(
+        json.loads(result.output)["result"]
+    )
+    assert completed.requests == (list_runners_request(_RUNNER_ORG, 1),)
+
+
+def test_runner_remove_of_a_name_the_overlay_does_not_allow_fails_without_a_call(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    result = _runner(
+        monkeypatch, tmp_path, "runner-remove", "--runner", _RUNNER_OFF_LIMITS
+    )
+    assert result.exit_code == scm_cli.EXIT_FAILED, result.output
+    answer = json.loads(result.output)
+    assert answer["outcome"] == "failed"
+    failed = ModelRepoWriteFailed.model_validate(answer["result"])
+    assert failed.reason is EnumRepoWriteRefusal.RUNNER_NOT_ALLOWED
+    assert failed.requests == ()

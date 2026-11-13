@@ -536,6 +536,8 @@ _WRITE_ARGS: dict[str, list[str]] = {
     "pr-label": [f"{REPO}#77", "--add", "ci:ready", "--head-sha", HEAD],
     "variable-set": [REPO, "--variable", "LAB_VAR_ONE"],
     "variable-get": [REPO, "--variable", "LAB_VAR_ONE"],
+    "runner-list": [REPO],
+    "runner-remove": [REPO, "--runner", "example-runner-1"],
 }
 
 
@@ -748,6 +750,8 @@ def _contract_1_2_0_request() -> type[BaseModel]:
             "pr-label",
             "variable-set",
             "variable-get",
+            "runner-list",
+            "runner-remove",
         }
     ),
 )
@@ -858,6 +862,48 @@ def test_variable_verbs_refuse_a_typed_value_and_a_missing_name(
     assert typed.exit_code != 0
     missing = _run([verb_name, REPO, "--lane", "lane-x"])
     assert missing.exit_code != 0
+    assert bus.published == []
+
+
+def test_runner_list_carries_no_runner_name(monkeypatch: pytest.MonkeyPatch) -> None:
+    bus = FakeBus()
+    _install(monkeypatch, bus)
+    result = _run(["runner-list", *_WRITE_ARGS["runner-list"], "--lane", "lane-x"])
+    assert result.exit_code == 0, result.output
+    payload = bus.published[0][1]["payload"]
+    assert payload["operation"] == "runner_list"
+    assert "runner_name" not in payload
+    assert payload["pr_number"] is None
+    assert payload["expected_head_sha"] is None
+
+
+def test_runner_remove_carries_the_name_and_nothing_else(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bus = FakeBus()
+    _install(monkeypatch, bus)
+    result = _run(["runner-remove", *_WRITE_ARGS["runner-remove"], "--lane", "lane-x"])
+    assert result.exit_code == 0, result.output
+    payload = bus.published[0][1]["payload"]
+    assert payload["operation"] == "runner_remove"
+    assert payload["runner_name"] == "example-runner-1"
+    assert payload["pr_number"] is None
+    assert payload["expected_head_sha"] is None
+    sent = ModelRepoWriteRequest.model_validate(payload)
+    assert sent.operation is EnumRepoWriteOperation.RUNNER_REMOVE
+
+
+def test_runner_remove_refuses_a_missing_name_and_runner_list_a_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bus = FakeBus()
+    _install(monkeypatch, bus)
+    missing = _run(["runner-remove", REPO, "--lane", "lane-x"])
+    assert missing.exit_code != 0
+    typed = _run(
+        ["runner-list", REPO, "--runner", "example-runner-1", "--lane", "lane-x"]
+    )
+    assert typed.exit_code != 0
     assert bus.published == []
 
 

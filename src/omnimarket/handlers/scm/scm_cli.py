@@ -20,12 +20,15 @@ A lane does GitHub work through this command and no ``gh`` verb:
   run-view, job-log, run-download, release-list) publish the gateway's typed request.
 - **PR authoring writes** (pr-create, pr-edit, pr-ready, pr-close, pr-comment,
   pr-thread-reply, pr-thread-resolve, pr-review-post, pr-label, workflow-run,
-  check-run-create, variable-set, variable-get) publish node_github_repo_write_effect's typed
+  check-run-create, variable-set, variable-get, runner-list, runner-remove)
+  publish node_github_repo_write_effect's typed
   request. Its guards apply: quota floor, expected head, idempotency, and the claim pr-close
   needs. pr-edit, pr-ready, pr-close, pr-review-post and pr-label take the expected head from the
   watcher state when ``--head-sha`` is not given. pr-close reads the claim the
   caller took from the caller's own claim registry and carries it on the
-  command: the effect runs elsewhere and cannot read that directory.
+  command: the effect runs elsewhere and cannot read that directory. The
+  runner verbs name the organization as the repo argument's owner part, and
+  the effect serves only the overlay's runner_removals entries.
 - **merge, arm, rerun, update-branch** have no node operation and are refused,
   naming the landing controller that does them.
 
@@ -773,6 +776,8 @@ _WRITE_OPTIONS: Final[dict[str, tuple[str, ...]]] = {
     "pr_label": ("add_label", "remove_label"),
     "repo_variable_set": ("variable",),
     "repo_variable_get": ("variable",),
+    "runner_list": (),
+    "runner_remove": ("runner",),
     "pr_review_post": ("body", "body_file"),
     "workflow_dispatch": ("workflow", "ref", "input"),
     "check_run_create": (
@@ -790,6 +795,8 @@ _REPO_SCOPED_WRITES: Final[frozenset[str]] = frozenset(
         "check_run_create",
         "repo_variable_set",
         "repo_variable_get",
+        "runner_list",
+        "runner_remove",
     }
 )
 _HEAD_FROM_WATCHER: Final[frozenset[str]] = frozenset(
@@ -880,6 +887,15 @@ _OPTION_DECORATORS: Final[
         help="The repository variable's name. It must be in the write node's "
         "overlay allowlist; its value comes from the overlay's declared source, "
         "never from this command line.",
+    ),
+    "runner": click.option(
+        "--runner",
+        "runner_name",
+        required=True,
+        help="The runner's registered name. The pair of the repository's "
+        "organization and this name must be in the write node's overlay "
+        "runner_removals, and the runner must be offline and idle before it "
+        "is deleted.",
     ),
     "add_label": click.option(
         "--add", "add_labels", multiple=True, help="A label to add (repeatable)."
