@@ -8,10 +8,10 @@ from pathlib import Path
 
 import yaml
 
-from omnimarket.events.closeout_scope_overlay import (
+from omnimarket.handlers.node_overlay_reader import resolve_overlay_file
+from omnimarket.models.closeout_scope_overlay import (
     ModelCloseoutScopeOverlay,
 )
-from omnimarket.handlers.node_overlay_reader import resolve_overlay_file
 
 PACKAGED_OVERLAY = Path(__file__).resolve().parent.parent / "overlay.yaml"
 NODE_NAME = "node_dod_closeout_sweep_compute"

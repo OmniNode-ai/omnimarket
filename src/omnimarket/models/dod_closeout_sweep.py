@@ -18,7 +18,7 @@ from pydantic import (
     model_validator,
 )
 
-from omnimarket.events.closeout_scope_overlay import (
+from omnimarket.models.closeout_scope_overlay import (
     ModelCloseoutScopeOverlay,
 )
 from omnimarket.models.runtime_proof.model_runtime_proof_close import (

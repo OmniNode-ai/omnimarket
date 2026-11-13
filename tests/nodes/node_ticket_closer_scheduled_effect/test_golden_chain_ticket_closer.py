@@ -17,7 +17,7 @@ import yaml
 from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
 from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 
-from omnimarket.events.dod_closeout_sweep import (
+from omnimarket.models.dod_closeout_sweep import (
     EnumCloseoutAction,
     ModelDodCloseoutDecisionResult,
 )

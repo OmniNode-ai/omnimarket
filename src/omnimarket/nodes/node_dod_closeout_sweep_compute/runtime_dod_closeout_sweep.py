@@ -38,15 +38,6 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
-from omnimarket.events.closeout_scope_overlay import (
-    ModelCloseoutScopeOverlay,
-)
-from omnimarket.events.dod_closeout_sweep import (
-    STAMP_PATTERN,
-    EnumCloseoutDecisionKind,
-    ModelDodCloseoutDecisionRequest,
-    ModelRunSummary,
-)
 from omnimarket.handlers.closeout_boundary_reads import (
     read_text_file,
     registry_root_from_environment,
@@ -54,6 +45,15 @@ from omnimarket.handlers.closeout_boundary_reads import (
 from omnimarket.handlers.closeout_examined_memory import (
     read_examined_memory,
     write_examined_memory,
+)
+from omnimarket.models.closeout_scope_overlay import (
+    ModelCloseoutScopeOverlay,
+)
+from omnimarket.models.dod_closeout_sweep import (
+    STAMP_PATTERN,
+    EnumCloseoutDecisionKind,
+    ModelDodCloseoutDecisionRequest,
+    ModelRunSummary,
 )
 from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_completion_rules import (
     zero_flip_reading,

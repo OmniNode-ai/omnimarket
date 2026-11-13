@@ -17,12 +17,12 @@ from typing import Any
 
 import pytest
 
-from omnimarket.events.closeout_scope_overlay import (
-    ModelCloseoutScopeOverlay,
-)
 from omnimarket.handlers.closeout_examined_memory import (
     read_examined_memory,
     write_examined_memory,
+)
+from omnimarket.models.closeout_scope_overlay import (
+    ModelCloseoutScopeOverlay,
 )
 from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_examined_rules import (
     state_key,
@@ -300,7 +300,7 @@ def test_closer_rank_last_examined_the_contract_integration_payload_holds_one_an
     memory after the selection carries OMN-2 examined now."""
     import yaml
 
-    from omnimarket.events.dod_closeout_sweep import (
+    from omnimarket.models.dod_closeout_sweep import (
         ModelDodCloseoutDecisionRequest,
     )
     from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.handler_dod_closeout_sweep import (

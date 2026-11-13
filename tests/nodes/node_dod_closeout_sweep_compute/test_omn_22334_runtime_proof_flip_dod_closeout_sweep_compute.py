@@ -17,7 +17,7 @@ from typing import Any
 import pytest
 from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
 
-from omnimarket.events.dod_closeout_sweep import (
+from omnimarket.models.dod_closeout_sweep import (
     EnumCloseoutAction,
     ModelDodCloseoutDecisionRequest,
 )

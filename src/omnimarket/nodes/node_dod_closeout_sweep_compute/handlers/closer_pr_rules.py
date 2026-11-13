@@ -15,7 +15,7 @@ import re
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
-from omnimarket.events.closeout_scope_overlay import (
+from omnimarket.models.closeout_scope_overlay import (
     ModelCloseoutScopeOverlay,
 )
 

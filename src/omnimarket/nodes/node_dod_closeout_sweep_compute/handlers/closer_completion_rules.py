@@ -16,7 +16,7 @@ from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from omnimarket.events.dod_closeout_sweep import (
+from omnimarket.models.dod_closeout_sweep import (
     EnumCloserHealth,
     ModelDodCloseoutZeroFlipAlert,
     ModelDodCloseoutZeroFlipReading,

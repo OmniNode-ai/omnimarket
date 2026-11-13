@@ -17,7 +17,7 @@ from typing import Any
 
 import pytest
 
-from omnimarket.events.dod_closeout_sweep import (
+from omnimarket.models.dod_closeout_sweep import (
     EnumTicketDecision,
     ModelDodCloseoutDecisionRequest,
     ModelDodCloseoutDecisionResult,

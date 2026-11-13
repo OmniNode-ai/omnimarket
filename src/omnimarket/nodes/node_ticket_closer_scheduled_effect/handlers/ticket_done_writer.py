@@ -15,11 +15,11 @@ import json
 from typing import Protocol
 from uuid import uuid4
 
-from omnimarket.events.ticket_write_io import (
-    ModelTicketWriteRequest,
-)
 from omnimarket.models.scm import ModelScmTerminal
 from omnimarket.models.ticket_closer import ModelCloserWriteReceipt
+from omnimarket.models.ticket_write_io import (
+    ModelTicketWriteRequest,
+)
 
 
 class ProtocolTicketWriteCall(Protocol):

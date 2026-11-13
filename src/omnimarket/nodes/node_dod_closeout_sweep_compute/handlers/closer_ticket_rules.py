@@ -15,7 +15,7 @@ import json
 import re
 from typing import Any
 
-from omnimarket.events.dod_closeout_sweep import (
+from omnimarket.models.dod_closeout_sweep import (
     EnumTicketDecision,
     ModelAcceptanceState,
     ModelBoxTick,

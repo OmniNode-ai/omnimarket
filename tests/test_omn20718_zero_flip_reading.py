@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from omnimarket.events.dod_closeout_sweep import (
+from omnimarket.models.dod_closeout_sweep import (
     ModelDodCloseoutDecisionRequest,
     ModelDodCloseoutZeroFlipReading,
     ModelRunSummary,

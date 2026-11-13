@@ -24,11 +24,11 @@ import pytest
 from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
 
 import omnimarket.nodes.node_dod_closeout_sweep_compute as node_package
-from omnimarket.events.closeout_scope_overlay import (
+from omnimarket.models.closeout_scope_overlay import (
     EnumRankRule,
     ModelCloseoutScopeOverlay,
 )
-from omnimarket.events.dod_closeout_sweep import (
+from omnimarket.models.dod_closeout_sweep import (
     ModelDodCloseoutDecisionRequest,
     ModelDodCloseoutDecisionResult,
 )

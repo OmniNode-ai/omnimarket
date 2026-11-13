@@ -19,16 +19,16 @@ from typing import Protocol, runtime_checkable
 
 from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 
-from omnimarket.events.dod_closeout_sweep import (
-    EnumCloseoutAction,
-    EnumCloseoutDecisionKind,
-    ModelDodCloseoutDecisionRequest,
-)
 from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayNotFoundError,
     load_structured_overlay,
 )
 from omnimarket.handlers.scheduled_overlay_refusal import ScheduledOverlayRefusalLatch
+from omnimarket.models.dod_closeout_sweep import (
+    EnumCloseoutAction,
+    EnumCloseoutDecisionKind,
+    ModelDodCloseoutDecisionRequest,
+)
 from omnimarket.models.runtime_proof.model_runtime_proof_close import (
     EnumRuntimeReceiptKind,
     ModelProofCloseRequest,

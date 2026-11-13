@@ -22,10 +22,10 @@ from typing import Protocol
 
 from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
 
-from omnimarket.events.closeout_scope_overlay import (
+from omnimarket.handlers.rules_lab_fill_tickets import parse_criteria
+from omnimarket.models.closeout_scope_overlay import (
     ModelCloseoutScopeOverlay,
 )
-from omnimarket.handlers.rules_lab_fill_tickets import parse_criteria
 from omnimarket.models.runtime_proof.model_runtime_proof_close import (
     ModelProofCloseRequest,
 )

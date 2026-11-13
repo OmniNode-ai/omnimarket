@@ -13,7 +13,7 @@ import yaml
 from pydantic import ValidationError
 
 import omnimarket.nodes.node_dod_closeout_sweep_compute as node_package
-from omnimarket.events.dod_closeout_sweep import (
+from omnimarket.models.dod_closeout_sweep import (
     EnumCloserHealth,
     ModelDodCloseoutDecisionRequest,
     ModelDodCloseoutDecisionResult,

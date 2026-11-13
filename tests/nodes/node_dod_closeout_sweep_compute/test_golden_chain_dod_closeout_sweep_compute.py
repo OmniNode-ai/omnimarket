@@ -28,7 +28,7 @@ from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_locat
 from pydantic import ValidationError
 
 import omnimarket.nodes.node_dod_closeout_sweep_compute as node_package
-from omnimarket.events.dod_closeout_sweep import (
+from omnimarket.models.dod_closeout_sweep import (
     EnumCloseoutAction,
     EnumPrecheckVerdict,
     ModelDodCloseoutDecisionRequest,
@@ -110,7 +110,7 @@ def test_contract_declares_topics_models_handler_and_entry_point() -> None:
 
 def test_contract_kind_enum_is_the_set_the_handler_decides() -> None:
     declared = set(_contract()["inputs"]["kind"]["enum"])
-    from omnimarket.events.dod_closeout_sweep import (
+    from omnimarket.models.dod_closeout_sweep import (
         EnumCloseoutDecisionKind,
     )
 

@@ -12,10 +12,10 @@ from __future__ import annotations
 
 import re
 
-from omnimarket.events.closeout_scope_overlay import (
+from omnimarket.models.closeout_scope_overlay import (
     ModelCloseoutScopeOverlay,
 )
-from omnimarket.events.dod_closeout_sweep import (
+from omnimarket.models.dod_closeout_sweep import (
     ModelBindingCheck,
 )
 

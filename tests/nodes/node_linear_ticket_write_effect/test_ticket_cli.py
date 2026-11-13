@@ -14,10 +14,10 @@ from click.testing import CliRunner
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 
 from omnimarket.delegated_test_loop.lane_bus import LabRunBusError
-from omnimarket.events.ticket_write_io import (
+from omnimarket.handlers.ticket import ticket_cli
+from omnimarket.models.ticket_write_io import (
     ModelTicketWriteRequest,
 )
-from omnimarket.handlers.ticket import ticket_cli
 
 pytestmark = pytest.mark.unit
 
