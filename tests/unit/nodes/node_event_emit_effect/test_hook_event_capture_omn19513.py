@@ -98,10 +98,14 @@ def test_hook_event_routes_to_its_topic_partitioned_by_session() -> None:
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("event_type", [HOOK_EVENT, "content.captured"])
-def test_captured_content_crosses_the_emit_seam_untransformed(event_type: str) -> None:
-    """OMN-19513 RULING 2026-10-15T04:24:42Z: no redaction on the bus."""
-    targets = resolve_event_type(event_type)
+def test_captured_content_crosses_the_emit_seam_untransformed() -> None:
+    """OMN-19513 RULING 2026-10-15T04:24:42Z: no redaction on the bus.
+
+    Pinned for the hook-event topic only since OMN-24062: content.captured's
+    fan-out now names ``redact_capture`` and is pinned in
+    test_content_capture_omn19550.py.
+    """
+    targets = resolve_event_type(HOOK_EVENT)
     assert [t.transform_name for t in targets] == ["passthrough"]
 
 

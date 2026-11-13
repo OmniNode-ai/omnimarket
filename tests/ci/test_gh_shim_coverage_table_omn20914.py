@@ -159,13 +159,15 @@ def _real() -> tuple[str, str]:
 def test_the_shim_reads_every_write_operation_the_repo_serves() -> None:
     contract_text, dispatch_text = _real()
     assert shim_coverage_violations(contract_text, dispatch_text, SCM_VERBS) == []
-    # Positive control: all six native CLI writes remain covered by the shim.
+    # Positive control: all eight native CLI writes remain covered by the shim.
     assert sorted(_shim_table(contract_text)) == [
         "pr_close",
         "pr_comment",
         "pr_create",
         "pr_edit",
         "pr_ready",
+        "repo_variable_get",
+        "repo_variable_set",
         "workflow_dispatch",
     ]
 

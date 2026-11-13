@@ -1,0 +1,60 @@
+schema_version: 1.0.0
+ticket_id: OMN-24215
+title: Checker for the lane setting document that starts a runtime lane's workflows on first message
+summary: The private overlay repository's CI loads each overlay document through the model its pin names, and refuses a document no model loads. The runtime lane contract hot-load row (overlays/runtime_contract_hotload) has none, so its pull request is red. This adds the pydantic model that validates it (version 1, a map of lane names to a switch, a mode of on_demand or full_load and a list of environment names; the same accept and refuse answers as omnibase_infra's own reader, measured over a fourteen-document corpus), so the overlay repository can pin it. No value lives here and nothing that runs today changes.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24215-hotload-lane-overlay-model
+  statement: The shared code holds a model that accepts the runtime_contract_hotload overlay document and refuses each malformed form listed in its test, with the same verdicts as the runtime's own reader.
+  acceptance:
+  - id: AC1
+    statement: "AC1: the checker accepts a lane setting document (version 1, a map of lane names to a switch, a mode of on_demand or full_load and environment names) and refuses each malformed document listed in its test -- falsifier: python -m pytest tests/unit/models/test_contract_hotload_lane_overlay_document_omn24215.py -q fails at the merge base"
+  - id: AC2
+    statement: "AC2: the checker gives the same accept or refuse answer as omnibase_infra's ModelContractHotloadLaneOverlay on the corpus in its test -- falsifier: a document in the corpus is accepted by one and refused by the other when both are loaded in one interpreter"
+  - id: AC3
+    statement: "AC3: integrated: the private settings repository's CI loads the runtime_contract_hotload document through the merged checker at the pinned revision and passes -- falsifier: the overlays CI step that lists overlays loaded by no checker still names runtime_contract_hotload"
+evidence_requirements:
+- kind: tests
+  description: The overlay document model tests pass at the pushed head.
+  command: uv run pytest tests/unit/models/test_contract_hotload_lane_overlay_document_omn24215.py -q -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24215-ac1
+  description: 'AC1: the model tests pass at the head; at the merge base the module does not exist, so the same test file cannot even import it.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/models/test_contract_hotload_lane_overlay_document_omn24215.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn24215-ac2
+  description: 'AC2: the corpus verdicts in the test file hold; the live comparison against the runtime reader on its dev branch (fourteen documents, zero differences) is posted as a pull request comment naming the head.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/models/test_contract_hotload_lane_overlay_document_omn24215.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn24215-ac3
+  description: 'hosted proxy for AC3: the model tests pass here; the overlays CI reading after the pin moves to the merge commit is posted as a pull request comment naming the head.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/models/test_contract_hotload_lane_overlay_document_omn24215.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn24215-integration-proof
+  description: the model tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24215 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/models/test_contract_hotload_lane_overlay_document_omn24215.py -q --no-cov -p no:randomly

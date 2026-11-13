@@ -79,6 +79,31 @@ def run(
     return code, out.out, out.err
 
 
+def run_batch(
+    tmp_path: Path,
+    state: FakeStateReader,
+    capsys: pytest.CaptureFixture[str],
+    prs: tuple[str, ...],
+    *extra: str,
+    fallback: bool = True,
+) -> tuple[int, str, str, QueryNodePointRead]:
+    """The batch form: one reader the test can inspect, one ``--pr`` per pull request."""
+    reader = QueryNodePointRead(state)
+    environment = env(tmp_path, fallback=fallback)
+    (tmp_path / "reader.yaml").write_text(
+        READER_OVERLAY.replace(
+            "max_watermark_age_seconds: 900", "max_watermark_age_seconds: 99999999"
+        )
+    )
+    argv: list[str] = []
+    for pr in prs:
+        argv += ["--pr", pr]
+    argv += ["--lane", "lane-x", *extra]
+    code = main(argv, environ=environment, point_read=reader)
+    out = capsys.readouterr()
+    return code, out.out, out.err, reader
+
+
 def test_a_hold_only_in_the_projection_exits_3_held(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -126,3 +151,50 @@ def test_a_retired_fallback_is_undecided_even_with_file_lines(
         tmp_path, state, capsys, "--file-holds", str(holds), fallback=False
     )
     assert (code, out.strip()) == (2, "UNDECIDED")
+
+
+def test_the_batch_lists_one_line_per_pr_and_exits_0(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    state = FakeStateReader((pr_hold_entity(),))
+    code, out, err, _ = run_batch(
+        tmp_path, state, capsys, ("omnimarket#7", "omnimarket#8")
+    )
+    assert code == 0
+    assert out.splitlines() == [
+        "omnimarket#7 HELD hold-a",
+        "omnimarket#8 CLEAR -",
+    ]
+    assert (tmp_path / "journal.jsonl").read_text().count("\n") == 2
+    assert err.count("HOLD-VERDICT") == 2
+
+
+def test_the_batch_is_undecided_when_the_reader_fails_and_there_are_no_file_holds(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    state = FakeStateReader(error=WorkLedgerReadError("database unavailable"))
+    code, out, err, _ = run_batch(
+        tmp_path, state, capsys, ("omnimarket#7", "omnimarket#8")
+    )
+    assert code == 2
+    assert out.splitlines() == [
+        "omnimarket#7 UNDECIDED -",
+        "omnimarket#8 UNDECIDED -",
+    ]
+    assert err.count("HOLD-VERDICT") == 2
+
+
+def test_the_batch_reads_the_node_once(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    state = FakeStateReader((pr_hold_entity(),))
+    code, out, _, reader = run_batch(
+        tmp_path, state, capsys, ("omnimarket#7", "omnimarket#8", "omnimarket#9")
+    )
+    assert len(reader.requests) == 1
+    assert code == 0
+    assert out.splitlines() == [
+        "omnimarket#7 HELD hold-a",
+        "omnimarket#8 CLEAR -",
+        "omnimarket#9 CLEAR -",
+    ]
