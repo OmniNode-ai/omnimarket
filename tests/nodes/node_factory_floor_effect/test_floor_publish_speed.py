@@ -152,11 +152,15 @@ def test_an_absent_stamp_and_absent_id_cells_cost_no_parse(
 
     strptime_calls: list[str] = []
 
-    class CountingDatetime(datetime):
-        @classmethod
-        def strptime(cls, value: str, fmt: str) -> datetime:  # type: ignore[override]
+    class CountingDatetime:
+        @staticmethod
+        def strptime(value: str, fmt: str) -> datetime:
             strptime_calls.append(value)
             return datetime.strptime(value, fmt)
+
+        @staticmethod
+        def fromisoformat(value: str) -> datetime:
+            return datetime.fromisoformat(value)
 
     monkeypatch.setattr(source_loader, "datetime", CountingDatetime)
     text = "\n".join(
