@@ -1,0 +1,72 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Host Job Claim Compute
+#
+# Reads the units installed on a host and, against the role baseline, names every installed claimant
+# of a job that is not its owner as a duplicate and the owner that lost its marker as a second
+# implementation. It writes nothing: a finding is a reading, never a gate, a stop or an admission.
+name: node_host_job_claim_compute
+contract_name: node_host_job_claim_compute
+node_name: node_host_job_claim_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+lifecycle: experimental
+runtime_profiles: []
+
+description: >
+  The claim read of the jobs of a host role. Every installed claimant of a job that is not its owner
+  is a duplicate; an owner unit whose ExecStart text no longer carries the job's marker is a second
+  implementation. Without its overlay the run is refused.
+
+handler:
+  module: omnimarket.nodes.node_host_job_claim_compute.handlers.handler_host_job_claim
+  class: HandlerHostJobClaim
+  input_model: omnimarket.nodes.node_host_job_claim_compute.models.model_host_job_claim.ModelHostJobClaimRequest
+  output_model: omnimarket.nodes.node_host_job_claim_compute.models.model_host_job_claim.ModelHostJobClaimResult
+
+# HandlerHostJobClaim is pure, so the node runs through its own CLI, not handler_routing.
+
+descriptor:
+  node_archetype: compute
+  runtime_profiles: []
+  purity: pure
+  idempotent: true
+  side_effects: []
+  timeout_ms: 60000
+
+input_model:
+  name: ModelHostJobClaimRequest
+  module: omnimarket.nodes.node_host_job_claim_compute.models.model_host_job_claim
+  description: A correlation id, the host, its installed units and its role baseline.
+output_model:
+  name: ModelHostJobClaimResult
+  module: omnimarket.nodes.node_host_job_claim_compute.models.model_host_job_claim
+  description: "The verdict and each finding (a duplicate unit or a second implementation of the owner)."
+
+terminal_event: onex.evt.omnimarket.host-job-claim-run-completed.v1
+
+runtime_dispatch:
+  external_trigger: python -m omnimarket.nodes.node_host_job_claim_compute from a host timer, with the overlay and the installed-unit port supplied by its own command line.
+
+# The topics by role; the handler's event mapping reads these and holds no topic string.
+topics:
+  host_job_claim_requested: onex.cmd.omnimarket.host-job-claim-requested.v1
+  host_job_claim_duplicate_found: onex.evt.omnimarket.host-job-claim-duplicate-found.v1
+  host_job_claim_run_completed: onex.evt.omnimarket.host-job-claim-run-completed.v1
+  host_job_claim_run_failed: onex.evt.omnimarket.host-job-claim-run-failed.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+dependency_ownership:
+  overlay: "Supplied by the node's own command line, which loads the overlay and constructs the handler in process with the host and the installed-unit port."
+
+metadata:
+  transport_type: local
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.host-job-claim-duplicate-found.v1
+  - onex.evt.omnimarket.host-job-claim-run-completed.v1
+  - onex.evt.omnimarket.host-job-claim-run-failed.v1
