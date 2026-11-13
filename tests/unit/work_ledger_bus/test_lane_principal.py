@@ -282,3 +282,42 @@ async def test_environment_login_picks_the_declared_writer_topic(
         assert topics.writer_command_topic(principal) == (
             "onex.cmd.omnimarket.work-ledger-append-from-writer-under-test.v1"
         )
+
+
+@pytest.mark.asyncio
+async def test_refusals_stand_beside_the_environment_login(
+    container_without_a_client_store: pytest.MonkeyPatch,
+) -> None:
+    """One container, one login: the full credential names the writer; half a credential, a refused
+    broker start and a bound plaintext transport still name none."""
+    container_without_a_client_store.setenv("KAFKA_SASL_USERNAME", "writer-under-test")
+    container_without_a_client_store.setenv("KAFKA_SASL_PASSWORD", "test-password")
+    async with _open_bus():
+        assert bound_lane_principal() == "writer-under-test"
+
+    class Refusing(_FakeKafka):
+        async def start(self) -> None:
+            raise InfraConnectionError("broker refused")
+
+    container_without_a_client_store.setattr(
+        event_bus_kafka.EventBusKafka,
+        "from_bootstrap",
+        staticmethod(lambda _bootstrap: Refusing()),
+    )
+    with pytest.raises(LabRunBusError, match="broker refused"):
+        async with _open_bus():
+            pass
+    with pytest.raises(LabRunBusError, match="this lane resolves no broker login"):
+        bound_lane_principal()
+
+    container_without_a_client_store.delenv("KAFKA_SASL_PASSWORD")
+    with pytest.raises(LabRunBusError, match="Half a credential"):
+        async with _open_bus():
+            pass
+
+    container_without_a_client_store.setenv("KAFKA_SASL_PASSWORD", "test-password")
+    with (
+        bind_lane_client_transport(_transport(None)),
+        pytest.raises(LabRunBusError, match="this lane resolves no broker login"),
+    ):
+        bound_lane_principal()

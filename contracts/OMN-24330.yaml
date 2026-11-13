@@ -42,7 +42,7 @@ dod_evidence:
     binds_ac: ["AC2"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run --frozen pytest tests/unit/work_ledger_bus/test_lane_principal.py -q --no-cov -n 0 -p no:randomly -k \"without_a_password or failed_broker_start or ignores_the_ambient\""
+        check_value: "uv run --frozen pytest tests/unit/work_ledger_bus/test_lane_principal.py -q --no-cov -n 0 -p no:randomly -k refusals_stand_beside"
         cwd: "."
   - id: "dod-omn24330-writer-declared"
     description: "hosted proxy for AC3: the lane principal tests pass here; the writer declaration and the broker rows are a separate change in the overlays repository and are applied by the apply tool after it merges (dry run first), read on the broker by the lane."
