@@ -48,3 +48,20 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/test_golden_chain_github_repo_write_effect.py tests/unit/handlers/scm/test_scm_write_seam_shapes.py tests/unit/handlers/scm/test_onex_scm_command.py tests/ci/test_scm_operation_table_omn20912.py tests/ci/test_gh_shim_coverage_table_omn20914.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn24274-ac4-integration-proof
+  description: The pushed head ran the focused runner tests on a lab host through the lab work runner and exited 0. The running-runtime reading (onex scm runner-list through the dev lane's runtime on a revision that carries the operations) is read from the lab receipt comment on the ticket.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24274 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_github_repo_write_effect/test_handler_runner_remove.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24274-ac4-verb-readback
+  description: The onex scm runner-list and runner-remove verb tests on a hosted runner. They fail at the merge base, where the verbs and the operations do not exist; the running-runtime reading is read from the lab receipt comment on the ticket.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/handlers/scm/test_onex_scm_command.py -k runner -q --no-cov -n 0 -p no:randomly
+    cwd: .
