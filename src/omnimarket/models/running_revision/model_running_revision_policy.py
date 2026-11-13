@@ -6,6 +6,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from omnimarket.models.bus_binding.model_node_event_bus import ModelNodeEventBus
+
 
 class ModelRunningRevisionPolicy(BaseModel):
     """The overlay document of node_dev_running_revision_compute.
@@ -18,6 +20,7 @@ class ModelRunningRevisionPolicy(BaseModel):
     known_repositories: tuple[str, ...] = Field(min_length=1)
     behind_threshold_seconds: int = Field(gt=0)
     median_merge_to_running_bound_seconds: int = Field(gt=0)
+    event_bus: ModelNodeEventBus | None = None
 
     @model_validator(mode="after")
     def _repositories_unique(self) -> ModelRunningRevisionPolicy:
