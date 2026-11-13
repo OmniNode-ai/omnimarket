@@ -1,0 +1,35 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_workflow_gateway_effect
+version: 0.1.0
+description: Serves the workflow gateway routes (submit, status, receipt) from the runtime's HTTP port.
+pack: gateway
+node_role: effect
+display_name: Workflow Gateway
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_workflow_gateway_effect: omnimarket.nodes.node_workflow_gateway_effect
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+- omnibase-infra>=0.38.3,<0.39.0
+- omnibase-spi>=0.23.3,<0.24.0
+- fastapi>=0.100
+- pydantic>=2.0
+- pyyaml>=6.0
+- asyncpg>=0.30.0
+- jsonschema>=4.18.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- http
+- gateway

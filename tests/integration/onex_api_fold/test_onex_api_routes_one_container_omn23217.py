@@ -174,8 +174,10 @@ async def test_the_recorded_served_identities_answer_from_the_one_container(
 async def test_the_recorded_pending_identities_fall_through_today(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # The last pending identity (GET /v1/workflows/contracts) was served by the workflow
+    # gateway node; with none pending this holds vacuously, and a port that is later added
+    # as pending again is read here. The injected break below keeps the reading able to fail.
     pending = [i for i in identities() if i["state"] == "pending"]
-    assert pending
     answers = await read_from_the_runtime(
         runtime_contract_paths(), pending, monkeypatch
     )
