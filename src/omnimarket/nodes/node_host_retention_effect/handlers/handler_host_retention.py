@@ -26,13 +26,13 @@ from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
     load_structured_overlay,
 )
-from omnimarket.nodes.node_host_retention_effect.handlers.handler_uv_cache_cap import (
-    evict_over_cap,
-)
 from omnimarket.nodes.node_host_retention_effect.handlers.host_retention_ports import (
     HostRetentionPorts,
     PreCommitStorePort,
     read_references_portable,
+)
+from omnimarket.nodes.node_host_retention_effect.handlers.host_retention_uv_cache_cap import (
+    evict_over_cap,
 )
 from omnimarket.nodes.node_host_retention_effect.models.model_host_retention import (
     ModelAgeClass,
