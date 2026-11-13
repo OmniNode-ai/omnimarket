@@ -1,0 +1,65 @@
+schema_version: 1.0.0
+ticket_id: OMN-24322
+title: Name two kinds of failed check by rule before any model call
+summary: 'A compute node, node_ci_red_kind_rule_compute, reads a failed check name against an ordered pattern table kept in its settings overlay and names the kind (the delegation health gate, the pin resolvability gate) with no model call; a name no pattern matches is returned as needing the model.'
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn24322-rule-first-kind
+  statement: A failed check whose name alone decides its kind is classified by a rule from the settings overlay, and every other name still goes to the model.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a failed check whose name matches the delegation health gate or the pin resolvability gate pattern from the settings is classified by rule with no model call, and an unmatched name returns no match -- falsifier: pytest tests/nodes/node_ci_red_kind_rule_compute -q fails on the base tree'
+  - id: AC2
+    statement: 'AC2: the rule''s patterns come from the settings, and an unbound, invalid or empty settings file is a typed refusal with no default pattern -- falsifier: pytest tests/nodes/node_ci_red_kind_rule_compute/test_rule_error.py -q'
+  - id: AC3
+    statement: 'AC3: the rule''s two kind names are members of the per-kind routing settings kinds and the test fails when either side renames one -- falsifier: pytest tests/nodes/node_ci_red_kind_rule_compute/test_rule_seam.py -q'
+  - id: AC4
+    statement: 'AC4: integrated: on a lab host from the branch, the rule scores the frozen experiment set and matched failures are classified with no model call, read from the receipt of that run -- falsifier: the receipt shows matched count 31 of 156 and zero wrong kinds'
+evidence_requirements:
+- kind: tests
+  description: The rule node tests pass at the pushed head.
+  command: uv run pytest tests/nodes/node_ci_red_kind_rule_compute -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24322-ac1
+  description: 'AC1: the golden chain tests, including the two kinds classified with no model call and an unmatched name passed on.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_ci_red_kind_rule_compute/test_rule_golden.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24322-ac2
+  description: 'AC2: the error chain tests, an unbound, an invalid and an empty overlay each a typed refusal.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_ci_red_kind_rule_compute/test_rule_error.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24322-ac3
+  description: 'AC3: the seam test between the rule kinds, the kind taxonomy and the routing kinds.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_ci_red_kind_rule_compute/test_rule_seam.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24322-ac4
+  description: 'hosted proxy for AC4: the node tests pass; the frozen-set reading (matched 31 of 156, zero wrong) is taken on a lab host and named in the pull request.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_ci_red_kind_rule_compute -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
