@@ -16,6 +16,7 @@ from typing import Any
 
 import yaml
 
+from omnimarket.handlers.delegation_scenario_settings import SecretStoreSettingsReader
 from omnimarket.models.runner_group_exposure import (
     ModelRunnerGroupExposureRequest,
 )
@@ -77,7 +78,15 @@ class HandlerExposureProbe:
             return InMemoryGroupSource(source.fixture)
         token_mint = self._token_mint
         if token_mint is None and source.token_mint is not None:
-            token_mint = AppInstallationTokenMint()
+            store = source.token_mint.store
+            token_mint = (
+                AppInstallationTokenMint()
+                if store is None
+                else AppInstallationTokenMint(
+                    reader=SecretStoreSettingsReader(overlay=store.secret_store),
+                    folder=store.folder,
+                )
+            )
         return GithubGroupSource(
             source,
             self._http_get or UrllibHttpTransport(),
