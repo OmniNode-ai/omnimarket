@@ -16,3 +16,6 @@ protected_paths:              # code_eval.protected_paths.<repo>
     - contracts/
     - .github/
 output_tail_chars: 400
+event_bus:
+  type: kafka
+  lane: example-lane
