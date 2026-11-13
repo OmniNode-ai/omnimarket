@@ -39,6 +39,7 @@ ENV = {
     "ONEX_ACL_CONSUMER_GROUP_STATE_PRINCIPAL": "User:cg-state",
     "ONEX_ACL_DEV_ROLL_CAPTURE_PRINCIPAL": "User:dev-roll-capture",
     "ONEX_ACL_BRANCH_DEPLOY_PRINCIPAL": "User:branch-deploy",
+    "ONEX_ACL_CODE_EDIT_PRINCIPAL": "User:code-edit",
     "ONEX_ACL_RUNTIME_PRINCIPAL": "User:runtime",
 }
 HEADER = (

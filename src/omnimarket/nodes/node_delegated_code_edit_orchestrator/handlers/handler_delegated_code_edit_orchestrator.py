@@ -74,6 +74,12 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Literal, cast
 
+from omnimarket.handlers.code_edit_ports_from_overlay import (
+    build_code_edit_ports_from_overlay,
+)
+from omnimarket.models.model_code_edit_ports_overlay import (
+    CODE_EDIT_PORTS_OVERLAY_ID,
+)
 from omnimarket.nodes.node_delegated_code_edit_orchestrator.handlers.turn_protocol import (
     RESPONSE_CONTRACT,
     TOOL_SCHEMAS,
@@ -406,10 +412,16 @@ class HandlerDelegatedCodeEditOrchestrator:
     @property
     def _ports(self) -> ProtocolDelegatedCodeEditPorts:
         if self._bound is None:
-            raise RuntimeError(
-                "no loop ports are bound; `onex code-edit run` binds onex "
-                "delegate, the worktree and the declared checks"
-            )
+            ports = build_code_edit_ports_from_overlay()
+            if ports is None:
+                raise RuntimeError(
+                    "no loop ports are bound; the node's ports overlay "
+                    f"({CODE_EDIT_PORTS_OVERLAY_ID}) is not configured, and "
+                    "`onex code-edit run` binds onex delegate, the worktree "
+                    "and the declared checks"
+                )
+            self._bound = ports
+            return ports
         return self._bound
 
     @property
