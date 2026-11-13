@@ -1,0 +1,75 @@
+schema_version: 1.0.0
+ticket_id: OMN-24207
+title: Ship the dashboard pages bundle inside the installed package so a first run needs no network
+summary: 'onex dashboard downloaded its pinned pages bundle from GitHub before printing a URL, so a cold first run on a slow or offline network outlasted the Claude Code plugin delegate check''s 30 s wait. The pinned archive now ships inside the package as two parts under node_local_dashboard_serve_effect/packaged_bundle/, is reassembled and verified against the pin in pyproject.toml, and is installed with no network call; the download stays only for a pin the package does not carry. Not in this change: the reading of the delegate check clause on a lab host with a stalled network (AC4), taken after the revision is installed.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24207-packaged-bundle
+  statement: A first run of the dashboard command serves the pinned pages from the installed package with no network call.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a first run of the dashboard command on an empty cache serves the pinned pages with no network call -- falsifier: pytest tests/projection/test_dashboard_bundle_packaged_offline.py
+      -q -k cold_first_run (fails on the download-first code)'
+  - id: AC2
+    statement: 'AC2: a packaged copy whose bytes are not the pinned digest is refused with no download and nothing served, and the packaged parts must equal the pin -- falsifier: pytest tests/projection/test_dashboard_bundle_packaged_offline.py
+      -q -k "tampered or exactly_the_pinned"'
+  - id: AC3
+    statement: 'AC3: the network download remains only for a pin the package does not carry -- falsifier: pytest tests/projection/test_dashboard_bundle_packaged_offline.py -q -k update_path'
+  - id: AC4
+    statement: 'AC4: integrated: on a lab host with the network stalled and an empty scratch HOME, the installed dashboard command prints its loopback address inside the plugin delegate check''s 30
+      s wait, and that check''s dashboard clause reads pass -- falsifier: the check''s clause result on the host with the revision installed from this branch'
+evidence_requirements:
+- kind: tests
+  description: The dashboard bundle tests pass at the pushed head.
+  command: uv run pytest tests/projection/test_dashboard_bundle_packaged_offline.py tests/projection/test_dashboard_bundle_omn19917.py -q -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24207-ac1
+  description: 'AC1: with the download made to raise, an empty cache and the real pin, ensure_bundle installs the packaged pages, serves index.html and reaches for no network; fails on the download-first bundle.py.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/projection/test_dashboard_bundle_packaged_offline.py -q -p no:randomly --no-cov -k cold_first_run
+    cwd: .
+- id: dod-omn24207-ac2
+  description: 'AC2: a flipped byte or a missing part in the packaged copy is refused with no download and no extracted pages; the packaged parts reassemble to the pinned digest and no part of an older pin remains.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/projection/test_dashboard_bundle_packaged_offline.py -q -p no:randomly --no-cov -k "tampered or truncated or exactly_the_pinned"
+    cwd: .
+- id: dod-omn24207-ac3
+  description: 'AC3: a pin with no packaged parts is fetched once and then served from the verified cache.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/projection/test_dashboard_bundle_packaged_offline.py -q -p no:randomly --no-cov -k update_path
+    cwd: .
+- id: dod-omn24207-ac4
+  description: 'hosted proxy for AC4: the dashboard bundle tests pass; the delegate check clause on a lab host is read there after the install and named in the pull request.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/projection/test_dashboard_bundle_packaged_offline.py tests/projection/test_dashboard_bundle_omn19917.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn24207-integration-proof
+  description: the dashboard bundle tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24207 --kind test -- env PYTHONDONTWRITEBYTECODE=1
+      uv run --frozen pytest tests/projection/test_dashboard_bundle_packaged_offline.py tests/projection/test_dashboard_bundle_omn19917.py -q --no-cov

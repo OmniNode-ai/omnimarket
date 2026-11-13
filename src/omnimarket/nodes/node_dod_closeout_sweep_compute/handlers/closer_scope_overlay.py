@@ -9,7 +9,7 @@ from pathlib import Path
 import yaml
 
 from omnimarket.handlers.node_overlay_reader import resolve_overlay_file
-from omnimarket.nodes.node_dod_closeout_sweep_compute.models.model_closeout_scope_overlay import (
+from omnimarket.models.closeout_scope_overlay import (
     ModelCloseoutScopeOverlay,
 )
 
