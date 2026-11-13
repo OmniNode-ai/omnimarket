@@ -10,12 +10,13 @@ same probe in a detached refresh under ``$HOME/.cache/omni/capabilities`` (every
 printed as ``PARITY-CAP <name> <ok|missing|unknown> <detail>``, and judged the way a plugin mismatch is: a unit whose needs name a
 capability the host reads ``missing`` is refused with the reason and what the host owner adds. ``unknown`` (no dispatch venv, no
 credential to judge, GitHub or the broker silent) and an older probe without the lines never refuse. Nothing here changes a login or
-a credential on the host; the token the git check reads is passed to curl on stdin and never printed.
+a credential on the host; the token the git check reads is passed to curl on stdin and never printed. On 2026-11-13 an operator ruling
+dropped the delegation key item from this probe (the open router check), and the ssh route read moved to the ``node_lab_ssh_probe_compute``
+node, which renders the ``PARITY-CAP lab-ssh`` line parsed here.
 """
 
 from __future__ import annotations
 
-import hashlib
 import os
 import re
 from collections.abc import Iterable, Mapping, Sequence
@@ -38,18 +39,14 @@ from ..models.model_host_capability import (
 SCM_PR_CREATE = "scm-pr-create"
 GIT_WORKFLOW_PUSH = "git-workflow-push"
 SHELLCHECK = "shellcheck"
-DELEGATION_KEY = "delegation-key"
 LAB_SSH = "lab-ssh"
-CAPABILITIES = (SCM_PR_CREATE, GIT_WORKFLOW_PUSH, SHELLCHECK, DELEGATION_KEY, LAB_SSH)
+CAPABILITIES = (SCM_PR_CREATE, GIT_WORKFLOW_PUSH, SHELLCHECK, LAB_SSH)
 VERDICTS = ("ok", "missing", "unknown")
-# Every remote lane opens its PR with ``onex scm pr-create``. The delegation key is read and recorded, not needed by default: on
-# 2026-10-19 the bare probe read it absent on one lab host too, where lanes delegate, so a default need would refuse every host.
+# Every remote lane opens its PR with ``onex scm pr-create``; no other capability is a default need.
 LANE_CAPABILITIES = frozenset({SCM_PR_CREATE})
 # A dispatcher names further capabilities a unit needs (``git-workflow-push`` for a lane that merges a base touching workflows,
-# ``lab-ssh`` for one that drives other lab hosts, ``delegation-key``) as a comma list in this variable of the runner's environment.
+# ``lab-ssh`` for one that drives other lab hosts) as a comma list in this variable of the runner's environment.
 NEEDS_ENV = "ONEX_LANE_NEEDS_CAPABILITIES"
-# The secret ref every delegation rung resolves its key through (omnimarket ``bifrost_delegation.yaml``).
-DELEGATION_SECRET_REF = "llm.openrouter.api_key"
 # The bus lane lanes open PRs over (``onex scm pr-create --bus-lane dev``).
 SCM_BUS_LANE = "dev"
 # Interpreter override (tests, a host with its venv elsewhere); else the dispatch venv under the registry root.
@@ -60,8 +57,6 @@ CAPABILITY_CHECK_S = 6
 CAPABILITY_SCM_S = 30
 CAPABILITY_VENV_S = 45
 CAPABILITY_LOCK_MIN = 3
-SSH_CONNECT_S = 4
-PEER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9@._-]*$")
 
 # What the host lacks, and what its owner adds, per capability; the probe's detail follows.
 OWNER_FIX = {
@@ -71,8 +66,6 @@ OWNER_FIX = {
     "host owner gives the host a GitHub credential with the workflow scope",
     SHELLCHECK: "shellcheck is not on the PATH lanes run with, so a system shellcheck hook (shell-hygiene) fails; the host owner "
     "installs shellcheck",
-    DELEGATION_KEY: f"{DELEGATION_SECRET_REF} does not resolve from the host's secret store, so every delegation is refused; the "
-    "host owner adds the key to the host's store",
     LAB_SSH: "the host has no ssh route to the other lab hosts; the host owner adds the host's key (and their host keys) for them",
 }
 
@@ -84,16 +77,7 @@ def say(verdict, detail):
     print(verdict + " " + ("_".join(str(detail).split()) or "-")[:200])
 
 
-if what == "delegation-key":
-    ref = sys.argv[2]
-    try:
-        from omnimarket.inference.secret_store_resolver import resolve_api_key_loop_safe
-        found = resolve_api_key_loop_safe(ref, required=False)
-    except Exception as exc:
-        say("unknown", "resolver-failed:" + type(exc).__name__)
-    else:
-        say("ok", ref + "-resolves") if found else say("missing", ref + "-is-absent-from-the-secret-store")
-elif what == "scm-pr-create":
+if what == "scm-pr-create":
     lane, bound, root = sys.argv[2], float(sys.argv[3]), sys.argv[4] if len(sys.argv) > 4 else ""
     try:
         from pathlib import Path
@@ -135,7 +119,7 @@ else:
 """
 
 # Runs inside the parity probe after it has set ``PARITY_H`` (the registry root it found). ``__BOUND__`` defines ``probe_bound``; the
-# git and ssh checks run in their own background subshell, so each exports the PATH lanes run with there.
+# git check runs in its own background subshell, so it exports the PATH lanes run with there.
 CAPABILITY_SH = r"""
 __BOUND__
 CAP_DIR="$HOME/.cache/omni/capabilities"; mkdir -p "$CAP_DIR" 2>/dev/null
@@ -145,11 +129,6 @@ else for r in "${PARITY_H:-}" "${ONEX_REGISTRY_ROOT:-}" __REGISTRY_ROOTS__; do
   if [ -n "$r" ] && [ -x "$r/.onex-dispatch-venv/bin/python" ]; then CAP_PYI="$r/.onex-dispatch-venv/bin/python"; break; fi
 done; fi
 CAP_PY='__CAPABILITY_PY__'
-# The peers arrive as octal escapes (``peer_codes``) so a probe script never carries another host's target in plain text: callers
-# and their tests tell which host a probe is for by its target in the argv.
-CAP_CODES='__PEER_CODES__'; CAP_PEERS=""
-for e in $CAP_CODES; do CAP_PEERS="$CAP_PEERS $(printf '%b' "$e")"; done
-CAP_PEERS="${CAP_PEERS# }"
 cap_line() { case "$1" in ok\ *|missing\ *|unknown\ *) printf '%s\n' "$1";; *) printf 'unknown %s\n' "$2";; esac; }
 cap_venv() {
   [ -n "$CAP_PYI" ] || { echo "unknown no-dispatch-venv"; return 0; }
@@ -170,18 +149,6 @@ cap_git() {
   elif [ -z "$sc" ]; then echo "unknown no-oauth-scopes-header-http=$cs"
   else case ",$sc," in *,workflow,*) echo "ok scopes=$sc";; *) echo "missing scopes=$sc";; esac; fi
 }
-cap_ssh() {
-  __FETCH_PATH_EXPORT__
-  [ -n "$CAP_PEERS" ] || { echo "unknown no-peers-named"; return 0; }
-  sp=""; sb=""
-  for t in $CAP_PEERS; do
-    ( probe_bound __CHECK_S__ ssh -n -o BatchMode=yes -o ConnectTimeout=__SSH_S__ -o ConnectionAttempts=1 "$t" true >/dev/null 2>&1 || echo "$t" ) > "$CAP_DIR/.ssh.$t" &
-    sp="$sp $!"
-  done
-  for p in $sp; do wait "$p"; done
-  for t in $CAP_PEERS; do [ -s "$CAP_DIR/.ssh.$t" ] && sb="$sb,$t"; rm -f "$CAP_DIR/.ssh.$t"; done
-  if [ -n "$sb" ]; then echo "missing no-ssh-route-to:${sb#,}"; else echo "ok reached:$(echo $CAP_PEERS | tr ' ' ',')"; fi
-}
 # A check runs detached and is never waited on: the bus check alone took 10 s on one lab host (2026-10-19) against the remote probe's 20 s.
 # The probe prints the last verdict the host wrote (``unknown not-read`` before the first), and starts a refresh once it is older than
 # the fresh window; the lock keeps one refresh per check, and a lock left by a killed refresh is cleared after __LOCK_MIN__ minutes.
@@ -193,19 +160,11 @@ cap_cached() {
   ( trap '' HUP; "$@" > "$CAP_DIR/$cn.tmp" 2>/dev/null; mv -f "$CAP_DIR/$cn.tmp" "$CAP_DIR/$cn"; rmdir "$CAP_DIR/$cn.lock" ) </dev/null >/dev/null 2>&1 &
 }
 cap_cached __SCM__ cap_venv __SCM__ __SCM_LANE__ __SCM_S__ "${PARITY_H:-}"
-cap_cached __KEY__ cap_venv __KEY__ __SECRET_REF__
 cap_cached __GIT__ cap_git
-cap_cached __SSH__-__PEERS_KEY__ cap_ssh
-for cn in __SCM__ __GIT__ __KEY__; do cv=$(head -n 1 "$CAP_DIR/$cn" 2>/dev/null); echo "PARITY-CAP $cn ${cv:-unknown not-read}"; done
-cv=$(head -n 1 "$CAP_DIR/__SSH__-__PEERS_KEY__" 2>/dev/null); echo "PARITY-CAP __SSH__ ${cv:-unknown not-read}"
+for cn in __SCM__ __GIT__; do cv=$(head -n 1 "$CAP_DIR/$cn" 2>/dev/null); echo "PARITY-CAP $cn ${cv:-unknown not-read}"; done
 cv=$( __FETCH_PATH_EXPORT__; command -v shellcheck 2>/dev/null ) || cv=""
 if [ -n "$cv" ]; then echo "PARITY-CAP __SHELLCHECK__ ok $cv"; else echo "PARITY-CAP __SHELLCHECK__ missing shellcheck-is-not-on-the-lane-PATH"; fi
 """
-
-
-def peer_codes(peers: Sequence[str]) -> str:
-    """The peers as ``printf %b`` octal escapes, one word each."""
-    return " ".join("".join(f"\\0{ord(ch):03o}" for ch in p) for p in peers)
 
 
 REGISTRY_ROOT_RE = re.compile(r"^[A-Za-z0-9_$/.~-]+$")
@@ -255,43 +214,33 @@ def registry_root_candidates(
 
 
 def capability_probe_sh(
-    peers: Sequence[str],
     *,
     bound: str,
     path_export: str,
     registry_roots: Sequence[str] | None = None,
     environ: Mapping[str, str] | None = None,
 ) -> str:
-    """The probe block printing one PARITY-CAP line per capability. ``peers`` are the ssh targets of the other lab hosts (a target
-    that is not a plain host word is dropped), ``bound`` the shell that defines ``probe_bound`` and ``path_export`` the PATH export
-    lanes run with (``landing_placement.fetch_path_export``)."""
+    """The probe block printing one PARITY-CAP line per capability; ``bound`` is the shell that defines ``probe_bound`` and
+    ``path_export`` the PATH export lanes run with (``landing_placement.fetch_path_export``)."""
     roots = (
         registry_root_candidates(environ)
         if registry_roots is None
         else _validate_registry_roots(registry_roots, "explicit registry_roots")
     )
-    kept = [p for p in dict.fromkeys(peers) if PEER_RE.match(p)]
-    key = hashlib.sha256(",".join(kept).encode()).hexdigest()[:12] if kept else "none"
     swaps = {
         "__REGISTRY_ROOTS__": " ".join(f'"{root}"' for root in roots),
         "__BOUND__": bound,
         "__CAPABILITY_PY__": CAPABILITY_PY,
         "__FETCH_PATH_EXPORT__": path_export,
         "__PYTHON_ENV__": PYTHON_ENV,
-        "__PEER_CODES__": peer_codes(kept),
-        "__PEERS_KEY__": key,
         "__CHECK_S__": str(CAPABILITY_CHECK_S),
         "__SCM_S__": str(CAPABILITY_SCM_S),
         "__VENV_S__": str(CAPABILITY_VENV_S),
         "__LOCK_MIN__": str(CAPABILITY_LOCK_MIN),
-        "__SSH_S__": str(SSH_CONNECT_S),
         "__FRESH_MIN__": str(CAPABILITY_FRESH_MIN),
         "__SCM_LANE__": SCM_BUS_LANE,
-        "__SECRET_REF__": DELEGATION_SECRET_REF,
         "__SCM__": SCM_PR_CREATE,
-        "__KEY__": DELEGATION_KEY,
         "__GIT__": GIT_WORKFLOW_PUSH,
-        "__SSH__": LAB_SSH,
         "__SHELLCHECK__": SHELLCHECK,
     }
     text = CAPABILITY_SH

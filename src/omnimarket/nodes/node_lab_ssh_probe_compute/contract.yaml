@@ -1,0 +1,44 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lab_ssh_probe_compute
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: compute
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: >
+  Render, without I/O, the lab-ssh half of the parity probe script a lab host runs under its own /bin/sh. The peers
+  are the host table rows other than the host itself that are available and whose target matches the destination
+  grammar: the script tries each peer's target and then the peer's declared fallback targets in order under a time
+  bound, reads ok naming the destination each peer was reached on, and names by its target a peer nothing answered
+  for. A parked row (available false) is never a peer and is never named. Every peer label and destination travels in
+  the script as a printf %b octal escape, so a rendered script never carries another host's name in plain text. The
+  bounds, the PATH export, the cache directory and the destination grammar are the caller's, injected by the caller.
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+  - operation: render_lab_ssh_probe
+    handler:
+      name: HandlerLabSshProbe
+      module: omnimarket.nodes.node_lab_ssh_probe_compute.handlers.handler_lab_ssh_probe
+    input_model: omnimarket.nodes.node_lab_ssh_probe_compute.models.model_lab_ssh_probe.ModelLabSshProbeRequest
+    output_model: omnimarket.nodes.node_lab_ssh_probe_compute.models.model_lab_ssh_probe.ModelLabSshProbeScript
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  runtime_profiles: [main]
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct invocation with the host table rows and the host the probe runs on (python -m omnimarket.nodes.node_lab_ssh_probe_compute, one JSON request on stdin, one JSON script on stdout); the node holds no bus route, so it adds no topic.
+metadata:
+  ticket: OMN-24279
+  transport_type: kafka
+lifecycle: experimental
