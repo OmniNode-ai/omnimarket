@@ -323,12 +323,18 @@ class ModelTable(Widget):
         for entry in visible:
             rows.add_row(*self._cells(entry), key=entry_key(entry))
         words = _table()
-        ticked = f"  ·  {len(self._ticked)} ticked" if self._selectable else ""
+        ticked = (
+            words.bar_ticked.format(count=len(self._ticked)) if self._selectable else ""
+        )
         self.query_one("#mt-bar", Static).update(
             Text(
-                f"{len(visible)} of {len(self._entries)} models  ·  "
-                f"{words.filter_labels.get(self._filter, self._filter)}  ·  "
-                f"sorted by {words.sort_labels.get(self._sort, self._sort)}{ticked}",
+                words.bar.format(
+                    shown=len(visible),
+                    total=len(self._entries),
+                    filter=words.filter_labels.get(self._filter, self._filter),
+                    sort=words.sort_labels.get(self._sort, self._sort),
+                )
+                + ticked,
                 style=_colour("muted"),
             )
         )

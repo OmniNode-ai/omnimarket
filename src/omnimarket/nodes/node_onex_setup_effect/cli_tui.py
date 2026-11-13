@@ -187,34 +187,25 @@ class ModelTuiSetupChoice(BaseModel):
     models: tuple[str, ...]
     key: SecretStr | None = None
 
-    def argv(self, workspace: Path) -> tuple[str, ...]:
-        argv: tuple[str, ...] = (
-            "setup",
-            "--no-interactive",
-            "--yes",
-            "--workspace",
-            str(workspace),
-        )
-        argv += ("--provider", self.provider, "--model", self.models[0])
-        return argv + (("--url", self.url) if self.url else ())
+    def models_argv(self, stored: tuple[str, ...] = ()) -> tuple[str, ...]:
+        """The one `onex models add` that stores these models (OMN-23413).
 
-    def more_models_argv(self) -> tuple[str, ...] | None:
-        """The command that adds every model after the first, in the order chosen.
-
-        A keyed provider extends its stored key with `models add-model`. A server
-        with no key (Ollama, a local server) has no key to extend: it declares all
-        of its models, in order, under the endpoint owner setup registered it as,
-        with `models add <owner> --url URL --model ...`.
+        A server with no key (a local server) appends them after the models
+        already declared there. A key is stored with its whole ordered list,
+        so the models it already has (``stored``) come first and none is
+        dropped. The key itself goes on stdin, never into argv.
         """
-        if len(self.models) < 2:
-            return None
         traits = setup_provider_traits()
         if self.url and self.key is None and traits.needs_url(self.provider):
             owner = traits.registration(self.provider, keyed=False)
             every = tuple(part for m in self.models for part in ("--model", m))
             return ("models", "add", owner, "--url", self.url, *every)
-        extra = tuple(part for m in self.models[1:] for part in ("--model", m))
-        return ("models", "add-model", self.provider, *extra)
+        if self.key is None:
+            extra = tuple(part for m in self.models for part in ("--model", m))
+            return ("models", "add-model", self.provider, *extra)
+        wanted = tuple(dict.fromkeys((*stored, *self.models)))
+        every = tuple(part for m in wanted for part in ("--model", m))
+        return ("models", "add", self.provider, *every)
 
 
 class ProtocolTuiRunner(Protocol):
@@ -344,15 +335,6 @@ async def load_status() -> ModelTuiStatus:
     )
 
 
-def _setup_report(text: str) -> dict[str, object] | None:
-    """`onex setup --json`: one JSON document on stdout."""
-    try:
-        value = json.loads(text)
-    except ValueError:
-        return _last_json_object(text)
-    return value if isinstance(value, dict) else None
-
-
 def _last_line(out: str, err: str) -> str:
     lines = [ln for ln in (err or out).strip().splitlines() if ln.strip()]
     return lines[-1] if lines else "no output"
@@ -369,15 +351,28 @@ def _stopped_by(out: str, err: str) -> str:
     return _last_line(out, err)
 
 
-def _step_detail(evidence: dict[str, object]) -> str:
-    """The one evidence value worth a glance: a folder, or what a model step set."""
-    for key in ("workspace",):
-        if evidence.get(key):
-            return f"  {display_path(Path(str(evidence[key])))}"
-    picked = [
-        f"{k}: {str(v).split(';')[0]}" for k, v in evidence.items() if ";" in str(v)
-    ]
-    return f"  {', '.join(picked)}" if picked else ""
+def _tested_line(provider: str, result: Mapping[str, object]) -> Text:
+    """One model's test result as one line: ready, busy, or stored but failing."""
+    glyphs = tui_design().glyphs
+    model = str(result.get("model"))
+    status = result.get("status")
+    if status == "passed":
+        return Text(
+            f"{glyphs.done} " + _say("model_ready", model=model, provider=provider),
+            style=_style("success"),
+        )
+    reason = " ".join(str(result.get("reason") or status).split())
+    limit = tui_design().reason_chars
+    short = reason if len(reason) <= limit else reason[: limit - 1] + "…"
+    if status == "throttled":
+        return Text(
+            f"{glyphs.unchanged} " + _say("model_busy", model=model, reason=short),
+            style=_style("warning"),
+        )
+    return Text(
+        f"{glyphs.failed} " + _say("model_test_failed", model=model, reason=short),
+        style=_style("error"),
+    )
 
 
 def _discovered_models(text: str) -> tuple[str | None, list[str]]:
@@ -538,11 +533,21 @@ class _TabbedScreen(ModalScreen[_ResultT]):
         app = self.app
         if not isinstance(app, OnexTui):
             return
+        if self._busy:  # the running action's outcome shows here first
+            self._note(_say("still_working"), "warning")
+            return
         label = next(
             (t.label.strip() for t in tui_design().tabs if t.id == target), target
         )
         self._note(_say("tab_loading", tab=label))
         app.run_worker(app.switch_tab(target), exclusive=True, group="tabs")
+
+    def _close(self) -> None:
+        """Esc or Cancel closes the tab, except while its action is running."""
+        if self._busy:
+            self._note(_say("still_working"), "warning")
+            return
+        self.dismiss(cast(_ResultT, None))
 
     def _note(self, text: Text | str, style: str = "muted") -> None:
         line = text if isinstance(text, Text) else Text(text, style=_style(style))
@@ -608,7 +613,7 @@ class SetupScreen(_TabbedScreen[None]):
     """
     BINDINGS = [
         Binding("escape", "cancel", "Back"),
-        Binding("ctrl+s", "save", "Save", priority=True),
+        Binding("ctrl+s", "save", _say("button_save"), priority=True),
     ]
 
     def __init__(
@@ -657,9 +662,9 @@ class SetupScreen(_TabbedScreen[None]):
             yield Static(self._current_line(), id="basket")
             yield Static(keycaps(tui_design().model_table.help["config"]), id="keys")
             with Horizontal(id="buttons"):
-                yield Button("Add", id="add")
-                yield Button("Save", variant="primary", id="save")
-                yield Button("Cancel", id="cancel")
+                yield Button(_say("button_add"), id="add")
+                yield Button(_say("button_save"), variant="primary", id="save")
+                yield Button(_say("button_cancel"), id="cancel")
 
     def on_mount(self) -> None:
         self.query_one("#found").display = False
@@ -844,26 +849,34 @@ class SetupScreen(_TabbedScreen[None]):
             key=SecretStr(key) if key else None,
         )
         table.set_ticked(())
-        self.query_one("#basket", Static).update(
-            _say(
-                "basket",
-                choices="   ·   ".join(
-                    f"{c.provider}: {', '.join(c.models)}"
-                    for c in self._basket.values()
-                ),
-            )
-        )
+        self.query_one("#basket", Static).update(self._basket_line())
         return True
+
+    def _basket_line(self) -> str:
+        """What is added and not yet set up, or what is set up when nothing is."""
+        if not self._basket:
+            return self._current_line()
+        return _say(
+            "basket",
+            choices="   ·   ".join(
+                f"{c.provider}: {', '.join(c.models)}" for c in self._basket.values()
+            ),
+        )
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         note = self.query_one("#note", Static)
         if event.button.id == "cancel":
-            self.dismiss(None)
+            self._close()
         elif event.button.id == "add":
             if self._loading:
                 note.update(_say("still_loading"))
             elif self._add_current():
                 note.update(_say("added"))
+                self.app.notify(
+                    _say("added"),
+                    title=_say("toast_added"),
+                    timeout=tui_design().toast_seconds,
+                )
             else:
                 note.update(_say("tick_first"))
         elif event.button.id == "save":
@@ -882,16 +895,22 @@ class SetupScreen(_TabbedScreen[None]):
             self.app.notify(warning, severity="warning")
             return
         choices = tuple(self._basket.values())
-        self._basket = {}
-        self._run(lambda app: app.apply_setup(choices))
+
+        async def save(app: OnexTui) -> Text | str | None:
+            line = await app.apply_setup(choices, progress=self._note)
+            if app.setup_ok:  # a failed save keeps the choices for a retry
+                self._basket = {}
+            return line
+
+        self._run(save)
 
     def _show_selection(self) -> None:
         super()._show_selection()
         self.query_one("#found", ModelTable).set_ticked(())
-        self.query_one("#basket", Static).update(self._current_line())
+        self.query_one("#basket", Static).update(self._basket_line())
 
     def action_cancel(self) -> None:
-        self.dismiss(None)
+        self._close()
 
 
 def _json_rows(text: str) -> list[dict[str, object]]:
@@ -1055,8 +1074,8 @@ class DelegationScreen(_TabbedScreen[None]):
     TAB = "delegation"
     NOTE = "#dnote"
     BINDINGS = [
-        Binding("escape", "cancel", "Cancel"),
-        Binding("ctrl+s", "save", "Save", priority=True),
+        Binding("escape", "cancel", _say("button_cancel")),
+        Binding("ctrl+s", "save", _say("button_save"), priority=True),
         Binding("space", "flip", "Switch", show=False),
         Binding("m", "next_mode", "Mode", show=False),
     ]
@@ -1106,8 +1125,8 @@ class DelegationScreen(_TabbedScreen[None]):
                 keycaps(tui_design().model_table.help["delegation"]), id="dkeys"
             )
             with Horizontal(id="dbuttons"):
-                yield Button("Save", variant="primary", id="dsave")
-                yield Button("Cancel", id="dcancel")
+                yield Button(_say("button_save"), variant="primary", id="dsave")
+                yield Button(_say("button_cancel"), id="dcancel")
 
     def on_mount(self) -> None:
         table = self.query_one("#selected", ModelTable)
@@ -1202,12 +1221,12 @@ class DelegationScreen(_TabbedScreen[None]):
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "dcancel":
-            self.dismiss(None)
+            self._close()
         else:
             self.action_save()
 
     def action_cancel(self) -> None:
-        self.dismiss(None)
+        self._close()
 
 
 class ModelPickScreen(_TabbedScreen[None]):
@@ -1225,7 +1244,7 @@ class ModelPickScreen(_TabbedScreen[None]):
     #auto { width: auto; margin-bottom: 0; }
     """
     BINDINGS = [
-        Binding("escape", "cancel", "Cancel"),
+        Binding("escape", "cancel", _say("button_cancel")),
         Binding("a", "auto", "Auto", show=False),
         Binding("r,delete", "remove", "Remove", show=False),
     ]
@@ -1341,7 +1360,7 @@ class ModelPickScreen(_TabbedScreen[None]):
         self._run(lambda app: app.remove_model(entry))
 
     def action_cancel(self) -> None:
-        self.dismiss(None)
+        self._close()
 
 
 def _big_word(word: str, gradient: tuple[str, ...]) -> Text:
@@ -1465,8 +1484,8 @@ class OnexTui(App[int]):
         self._ticker: Timer | None = None
         self._history: list[str] = []
         self._recall = 0
-        #: The last failed setup step's line, for the open /config to show.
-        self._last_line: Text | str | None = None
+        #: Whether the last /config save set up every choice.
+        self.setup_ok = False
         #: The setup as last read, so a tab opens at once and refreshes after.
         self._selection: ModelTuiSelection | None = None
         #: What each server said, by (URL, models), with when it was asked.
@@ -1543,6 +1562,15 @@ class OnexTui(App[int]):
         """The main screen: its log and status bar, even while a tab is open."""
         return cast(Screen[object], self.screen_stack[0])
 
+    def _toast(self, line: Text | str, *, ok: bool) -> None:
+        """A pop-up over whatever is open: green Done or red Failed, with the line."""
+        self.notify(
+            line.plain if isinstance(line, Text) else line,
+            title=_say("toast_done" if ok else "toast_failed"),
+            severity="information" if ok else "error",
+            timeout=tui_design().toast_seconds,
+        )
+
     def _emit(self, line: str) -> None:
         """A streamed command's output line, into the main log."""
         self._write(line)
@@ -1613,7 +1641,9 @@ class OnexTui(App[int]):
             await work
         except asyncio.CancelledError:
             seconds = int(time.monotonic() - self._task_started)
-            self._write(Text(f"cancelled after {seconds}s", style=_style("muted")))
+            self._write(
+                Text(_say("task_cancelled", seconds=seconds), style=_style("muted"))
+            )
             raise
         finally:
             self._active_task = None
@@ -1713,7 +1743,7 @@ class OnexTui(App[int]):
             if self._active_task is not None:
                 self._write(
                     Text(
-                        "a task is still running: Esc or Ctrl+C cancels it",
+                        _say("task_running"),
                         style=_style("warning"),
                     )
                 )
@@ -1804,100 +1834,108 @@ class OnexTui(App[int]):
             await self.push_screen(await self.tab_screen(action))
 
     async def apply_setup(
-        self, choices: tuple[ModelTuiSetupChoice, ...] | None
+        self,
+        choices: tuple[ModelTuiSetupChoice, ...] | None,
+        progress: Callable[[str], None] | None = None,
     ) -> Text | str | None:
-        """Set up each choice; every line goes to the log, the last is returned."""
-        last: Text | str | None = None
+        """Store each choice's models with `onex models add` (OMN-23413: only the
+        models, so machine checks never block them).
+
+        The command declares the models, then tests each with one real
+        delegation and prints one result per model; ``progress`` hears each as
+        it lands. A model whose test failed is still stored, and says so: the
+        outcome is read from those results, not from the exit code alone.
+        Nothing is written to the main screen; the outcome is returned for the
+        open tab and pops up.
+        """
+        glyphs = tui_design().glyphs
+        lines: list[Text] = []
+        all_ok = True
+        refused_any = False
         for choice in choices or ():
-            models = ", ".join(choice.models)
-            self._write(
-                Text(
-                    _say("setting_up", provider=_label(choice.provider), models=models),
-                    style=_style("foreground", "bold"),
-                )
+            stored = tuple(
+                e.model_id
+                for e in (self._selection.entries if self._selection else ())
+                if e.provider == choice.provider and not e.server_url
             )
+            argv = choice.models_argv(stored)
+            if argv[:2] == ("models", "add"):
+                argv = (*argv, "--json")
             stdin = choice.key.get_secret_value() + "\n" if choice.key else None
-            code, out, err = await self._runner.capture(
-                (*choice.argv(Path.cwd()), "--json"), stdin=stdin
-            )
-            ok = self._write_setup_report(_setup_report(out), code, err)
-            last = self._last_line or last
-            ready = list(choice.models[:1])
-            more = choice.more_models_argv()
-            if ok and more:
-                code, out, err = await self._runner.capture(more)
-                extra = ", ".join(choice.models[1:])
-                last = self._write(
-                    Text(
-                        f"  {tui_design().glyphs.done} "
-                        + _say("also_added", models=extra),
-                        style=_style("success"),
+            provider = _label(choice.provider)
+            heard: list[str] = []
+            results: list[dict[str, object]] = []
+            total = len(choice.models)
+
+            def hear(
+                raw: str,
+                results: list[dict[str, object]] = results,
+                heard: list[str] = heard,
+                total: int = total,
+            ) -> None:
+                row = _json_rows(raw)
+                if row and row[0].get("model") and row[0].get("status"):
+                    results.append(row[0])
+                    if progress is not None:
+                        progress(
+                            _say(
+                                "model_tested",
+                                done=len(results),
+                                total=total,
+                                model=row[0]["model"],
+                            )
+                        )
+                elif raw.strip():
+                    heard.append(raw.strip())
+
+            if progress is not None:
+                progress(
+                    _say(
+                        "adding_models",
+                        provider=provider,
+                        models=", ".join(choice.models),
                     )
-                    if not code
-                    else Text(
-                        f"  {tui_design().glyphs.failed} "
+                )
+            code = await self._runner.stream(argv, hear, stdin=stdin)
+            if results or not code:
+                lines += [_tested_line(provider, row) for row in results]
+                if not results:  # add-model: no per-model results to read
+                    lines.append(
+                        Text(
+                            f"{glyphs.done} "
+                            + _say(
+                                "setup_ready",
+                                provider=provider,
+                                models=", ".join(choice.models),
+                            ),
+                            style=_style("success"),
+                        )
+                    )
+                all_ok = all_ok and all(r.get("status") == "passed" for r in results)
+            else:
+                all_ok = False
+                refused_any = True
+                lines.append(
+                    Text(
+                        f"{glyphs.failed} "
                         + _say(
-                            "adding_failed", models=extra, reason=_last_line(out, err)
+                            "add_failed",
+                            provider=provider,
+                            models=", ".join(choice.models),
+                            reason=heard[-1] if heard else _say("no_answer"),
                         ),
                         style=_style("error"),
-                    )
-                )
-                if not code:
-                    ready = list(choice.models)
-            if ok:
-                last = self._write(
-                    Text(
-                        _say(
-                            "setup_ready",
-                            provider=_label(choice.provider),
-                            models=", ".join(ready),
-                        ),
-                        style=_style("success", "bold"),
                     )
                 )
         await self._refresh_status()
-        return last
-
-    def _write_setup_report(
-        self, report: dict[str, object] | None, code: int, err: str
-    ) -> bool:
-        """One line per setup step: done, unchanged, or failed with its fix."""
-        steps = report.get("observations") if report else None
-        self._last_line = None
-        if not isinstance(steps, list):
-            self._last_line = self._write(
-                Text(
-                    f"  {tui_design().glyphs.failed} "
-                    + _say("setup_failed", reason=_last_line("", err)),
-                    style=_style("error"),
-                )
-            )
-            return False
-        ok = code == 0
-        for step in steps:
-            if not isinstance(step, dict):
-                continue
-            name = str(step.get("step", "")).replace("_", " ").replace("-", " ")
-            evidence = step.get("evidence")
-            detail = _step_detail(evidence if isinstance(evidence, dict) else {})
-            if step.get("status") == "success":
-                mark, style = (
-                    (tui_design().glyphs.done, _style("success"))
-                    if step.get("changed")
-                    else (tui_design().glyphs.unchanged, _style("muted"))
-                )
-                self._write(Text(f"  {mark} {name}{detail}", style=style))
-            else:
-                ok = False
-                fix = step.get("fix")
-                self._last_line = self._write(
-                    Text(
-                        f"  {tui_design().glyphs.failed} {name}{detail}"
-                        + (f": {fix}" if fix else ""),
-                        style=_style("error"),
-                    )
-                )
-        return ok
+        # A stored model is not chosen again on a retry, even if its test
+        # failed; a choice the CLI refused stays chosen for the retry.
+        self.setup_ok = bool(lines) and not refused_any
+        if not lines:
+            return None
+        outcome = Text("\n").join(lines)
+        self._toast(outcome, ok=all_ok)
+        return outcome
 
     async def load_selection(self) -> ModelTuiSelection:
         """The selected models, read through the CLI's own JSON (no second engine)."""
@@ -1956,16 +1994,16 @@ class OnexTui(App[int]):
         outcome: Text | str | None = None
         words = tui_design().delegation
         state = "on" if choice.on else "off"
+        failed = False
         for argv in choice.commands:
             code, out, err = await self._runner.capture(argv)
             if code:
+                failed = True
                 reason = _stopped_by(out, err)
-                outcome = self._write(
-                    Text(
-                        f"{glyphs.failed} "
-                        + words.not_switched.format(state=state, reason=reason),
-                        style=_style("error"),
-                    )
+                outcome = Text(
+                    f"{glyphs.failed} "
+                    + words.not_switched.format(state=state, reason=reason),
+                    style=_style("error"),
                 )
                 break
         else:
@@ -1975,10 +2013,10 @@ class OnexTui(App[int]):
                 if choice.on
                 else words.switched_off
             )
-            outcome = self._write(
-                Text(f"{glyphs.done} {done}", style=_style("success"))
-            )
+            outcome = Text(f"{glyphs.done} {done}", style=_style("success"))
         await self._refresh_status()
+        if outcome is not None:
+            self._toast(outcome, ok=not failed)
         return outcome
 
     async def remove_model(self, entry: ModelCatalogEntry) -> Text | str:
@@ -1994,7 +2032,7 @@ class OnexTui(App[int]):
         code, out, err = await self._runner.capture(argv)
         glyphs = tui_design().glyphs
         named = _on_server(entry.model_id, entry.server_url)
-        outcome = self._write(
+        outcome = (
             Text(
                 f"{glyphs.done} "
                 + _say("removed", model=named, provider=_label(entry.provider)),
@@ -2008,6 +2046,7 @@ class OnexTui(App[int]):
             )
         )
         await self._refresh_status()
+        self._toast(outcome, ok=not code)
         return outcome
 
     async def apply_model(self, picked: tuple[str, str, str]) -> Text | str:
@@ -2028,7 +2067,7 @@ class OnexTui(App[int]):
                 "now_first", model=_on_server(model, url), provider=_label(provider)
             )
         )
-        outcome = self._write(
+        outcome = (
             Text(f"{glyphs.done} {chosen}", style=_style("success"))
             if not code
             else Text(
@@ -2037,6 +2076,7 @@ class OnexTui(App[int]):
             )
         )
         await self._refresh_status()
+        self._toast(outcome, ok=not code)
         return outcome
 
     async def _delegate(self, task: str) -> None:
@@ -2045,17 +2085,18 @@ class OnexTui(App[int]):
                 f"{tui_design().glyphs.task} {task}", style=_style("secondary", "bold")
             )
         )
-        self._write(Text("delegating…", style=_style("muted", "italic")))
+        self._write(Text(_say("delegating"), style=_style("muted", "italic")))
         code, out, err = await self._runner.capture(("delegate", task, "--json"))
         document = _last_json_object(out)
         result = document.get("result") if document else None
         if code or not isinstance(result, dict) or not result.get("response"):
             reason = (_failure_reason(document) if document else None) or (
-                err.strip().splitlines()[-1] if err.strip() else "no answer"
+                err.strip().splitlines()[-1] if err.strip() else _say("no_answer")
             )
             self._write(
                 Text(
-                    f"{tui_design().glyphs.failed} delegation failed: {reason}",
+                    f"{tui_design().glyphs.failed} "
+                    + _say("delegation_failed", reason=reason),
                     style=_style("error"),
                 )
             )

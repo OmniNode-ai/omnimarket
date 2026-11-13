@@ -152,6 +152,10 @@ class ModelTuiModelTable(BaseModel):
     sorts: tuple[str, ...] = Field(min_length=1)
     sort_labels: dict[str, str]
     search_placeholder: str
+    #: The line above the table: how many shown, the filter and the sort.
+    bar: str
+    #: Added to the bar where rows can be ticked.
+    bar_ticked: str
     auto_label: str
     help: dict[str, str]
 
@@ -213,6 +217,10 @@ class ModelTuiDesign(BaseModel):
     prompt_placeholder: str
     help: str
     auto_find_seconds: float = Field(gt=0)
+    #: How long a Done or Failed pop-up stays on screen.
+    toast_seconds: float = Field(gt=0)
+    #: A failure reason longer than this is cut on screen.
+    reason_chars: int = Field(ge=20)
     min_key_length: int = Field(ge=1)
 
     @model_validator(mode="after")

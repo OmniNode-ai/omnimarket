@@ -118,9 +118,9 @@ async def test_a_typed_key_never_reaches_the_screen_or_the_pane() -> None:
         await pilot.press("escape")
         await pilot.pause()
 
-        setups = [call for call in runner.calls if call[0] == "setup"]
-        assert setups, "save by keyboard did not run setup"
-        assert runner.stdins[runner.calls.index(setups[0])] == _SENTINEL + "\n"
+        adds = [call for call in runner.calls if call[:2] == ("models", "add")]
+        assert adds, "save by keyboard did not store the models"
+        assert runner.stdins[runner.calls.index(adds[0])] == _SENTINEL + "\n"
         assert all(_SENTINEL not in " ".join(call) for call in runner.calls)
         assert _SENTINEL not in _screen_text(app)
         assert _SENTINEL not in _pane_text(app)

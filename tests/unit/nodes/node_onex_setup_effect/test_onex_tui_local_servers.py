@@ -508,7 +508,7 @@ async def test_saving_config_keeps_config_open_and_shows_the_outcome() -> None:
         await pilot.press("ctrl+s")
         await _settle(pilot)
         assert isinstance(app.screen, SetupScreen)
-        assert [c for c in runner.calls if c[0] == "setup"]
+        assert [c for c in runner.calls if c[:2] == ("models", "add")]
         assert "Ready" in str(app.screen.query_one("#note").render())
 
 
@@ -606,3 +606,345 @@ async def test_a_server_that_did_not_answer_is_asked_again() -> None:
         await pilot.press("tab")
         await _settle(pilot, 20)
         assert asked.count(_VLLM) == 2
+
+
+# Edge cases (OMN-23413, operator 2026-11-13: "cover all edge cases"):
+#   G1  Esc while an action runs tore the tab down and hid its outcome.
+#   G2  a tab switch while an action runs did the same.
+#   G3  removing the model tried first left the "Now:" line naming it.
+#   G4  a remove the CLI refuses must show the CLI's reason and keep the tab.
+#   G5  a server /config cannot reach must say so, not show an empty table.
+
+
+class _SlowFirst(_Runner):
+    """`models first` takes a while, as a real CLI call does."""
+
+    async def capture(
+        self, argv: tuple[str, ...], stdin: str | None = None
+    ) -> tuple[int, str, str]:
+        import asyncio
+
+        if argv[:2] == ("models", "first"):
+            await asyncio.sleep(0.4)
+        return await super().capture(argv, stdin)
+
+
+async def test_escape_while_an_action_runs_keeps_the_tab_until_it_finishes() -> None:
+    """G1."""
+    runner = _SlowFirst([], by_command={("models", "list"): _rows()})
+    app = _app(runner)
+    async with app.run_test(size=(170, 46)) as pilot:
+        await _open(pilot, "/model")
+        await pilot.press("a")
+        await pilot.pause()
+        await pilot.press("escape")
+        await pilot.pause()
+        assert isinstance(app.screen, ModelPickScreen)
+        assert "still working" in str(app.screen.query_one("#pnote").render())
+        for _ in range(100):  # wait for the outcome, not a fixed time
+            await pilot.pause(0.05)
+            if "Auto" in str(app.screen.query_one("#pnote").render()):
+                break
+        assert "Auto" in str(app.screen.query_one("#pnote").render())
+        await pilot.press("escape")
+        await pilot.pause()
+        assert len(app.screen_stack) == 1
+
+
+async def test_a_tab_switch_while_an_action_runs_waits_for_it() -> None:
+    """G2."""
+    runner = _SlowFirst([], by_command={("models", "list"): _rows()})
+    app = _app(runner)
+    async with app.run_test(size=(170, 46)) as pilot:
+        await _open(pilot, "/model")
+        await pilot.press("a")
+        await pilot.pause()
+        await pilot.press("tab")
+        await pilot.pause()
+        assert isinstance(app.screen, ModelPickScreen)
+        assert "still working" in str(app.screen.query_one("#pnote").render())
+
+
+class _Removes(_Runner):
+    """`models list` reflects a remove, as the real CLI does."""
+
+    def __init__(self, before: str, after: str, refuse: str | None = None) -> None:
+        super().__init__([], by_command={("models", "list"): before})
+        self._after = after
+        self._refuse = refuse
+
+    async def capture(
+        self, argv: tuple[str, ...], stdin: str | None = None
+    ) -> tuple[int, str, str]:
+        if argv[:2] == ("models", "remove"):
+            self.calls.append(argv)
+            self.stdins.append(stdin)
+            if self._refuse:
+                return 1, "", f"Error: {self._refuse}\n"
+            self._by_command[("models", "list")] = self._after
+            return 0, "", ""
+        return await super().capture(argv, stdin)
+
+
+def _only(rows: str, server: str) -> str:
+    """`models list --json` with one server's model gone."""
+    row = json.loads(rows)
+    row["local_models"] = [m for m in row["local_models"] if m["base_url"] != server]
+    row["models"] = [m["model"] for m in row["local_models"]]
+    row.update(tried_first=False, first_model=None, first_url=None)
+    return json.dumps(row)
+
+
+async def test_removing_the_model_tried_first_shows_auto_again() -> None:
+    """G3."""
+    runner = _Removes(_rows(first_url=_LLAMA), _only(_rows(), _LLAMA))
+    app = _app(runner)
+    async with app.run_test(size=(170, 46)) as pilot:
+        await _remove_ready(pilot, app, _LLAMA)
+        assert "llama.test:8000" in str(app.screen.query_one("#pnow").render())
+        await pilot.press("r")
+        await pilot.pause()
+        await pilot.press("r")
+        await _settle(pilot, 12)
+        now = str(app.screen.query_one("#pnow").render())
+        assert "Auto" in now
+        assert "llama.test" not in now
+        assert app.screen.query_one("#models").query_one(DataTable).row_count == 2
+
+
+async def test_a_refused_remove_shows_the_reason_and_keeps_the_tab() -> None:
+    """G4."""
+    reason = "that would leave your openrouter key with no model"
+    runner = _Removes(_rows(), _rows(), refuse=reason)
+    app = _app(runner)
+    async with app.run_test(size=(170, 46)) as pilot:
+        await _remove_ready(pilot, app, _LLAMA)
+        await pilot.press("r")
+        await pilot.pause()
+        await pilot.press("r")
+        await _settle(pilot, 12)
+        assert isinstance(app.screen, ModelPickScreen)
+        assert reason in str(app.screen.query_one("#pnote").render())
+        assert app.screen.query_one("#models").query_one(DataTable).row_count == 3
+
+
+async def test_config_says_when_a_server_cannot_be_read() -> None:
+    """G5: the CLI's own message, as `onex models discover` prints it."""
+    message = "The endpoint could not be read. Check its URL and availability."
+    unread = json.dumps(
+        {
+            "url": "http://127.0.0.1:9",
+            "status": "unavailable",
+            "models": [],
+            "message": message,
+        }
+    )
+    runner = _Runner(
+        [], by_command={("models", "list"): _rows(), ("models", "discover"): unread}
+    )
+    app = _app(runner)
+    async with app.run_test(size=(170, 46)) as pilot:
+        await _open(pilot, "/config")
+        app.screen.query_one("#provider").value = "local"
+        await pilot.pause()
+        app.screen.query_one("#url").value = "http://127.0.0.1:9"
+        await pilot.pause(1.2)
+        await _settle(pilot)
+        assert message in str(app.screen.query_one("#note").render())
+        assert not app.screen.query_one("#found").display
+
+
+# A pop-up for every outcome (OMN-23413, operator 2026-11-13):
+#   X1  a saved model showed no pop-up; only a line under the table.
+#   X2  a failed action showed no pop-up either.
+#   X3  Add on /config showed nothing but the note line.
+
+
+def _record_toasts(app: OnexTui) -> list[tuple[str, str, str]]:
+    shown: list[tuple[str, str, str]] = []
+
+    def notify(
+        message: str, *, title: str = "", severity: str = "information", **_: object
+    ) -> None:
+        shown.append((title, severity, message))
+
+    app.notify = notify  # type: ignore[method-assign]
+    return shown
+
+
+async def test_saving_a_model_pops_up_done() -> None:
+    """X1."""
+    from omnimarket.nodes.node_onex_setup_effect.cli_tui import SetupScreen
+
+    found = json.dumps({"status": "ready", "models": ["llama3.2"]})
+    report = json.dumps(
+        {"observations": [{"step": "models", "status": "success", "changed": True}]}
+    )
+    runner = _Runner(
+        [],
+        by_command={
+            ("models", "list"): _rows(),
+            ("models", "discover"): found,
+            ("setup", "--no-interactive"): report,
+        },
+    )
+    app = _app(runner)
+    toasts = _record_toasts(app)
+    async with app.run_test(size=(170, 46)) as pilot:
+        await _open(pilot, "/config")
+        app.screen.query_one("#provider").value = "local"
+        await _wait_for_models(pilot)
+        table = app.screen.query_one("#found")
+        table.set_ticked([entry_key(e) for e in table.entries])
+        await pilot.press("ctrl+s")
+        await _settle(pilot)
+        assert isinstance(app.screen, SetupScreen)
+        done = [t for t in toasts if t[0] == "Done"]
+        assert done
+        assert done[-1][1] == "information"
+        assert "Ready" in done[-1][2]
+
+
+async def test_a_failed_remove_pops_up_failed_with_the_reason() -> None:
+    """X2."""
+    reason = "that would leave your openrouter key with no model"
+    runner = _Removes(_rows(), _rows(), refuse=reason)
+    app = _app(runner)
+    toasts = _record_toasts(app)
+    async with app.run_test(size=(170, 46)) as pilot:
+        await _remove_ready(pilot, app, _LLAMA)
+        await pilot.press("r")
+        await pilot.pause()
+        await pilot.press("r")
+        await _settle(pilot, 12)
+        failed = [t for t in toasts if t[0] == "Failed"]
+        assert failed
+        assert failed[-1][1] == "error"
+        assert reason in failed[-1][2]
+
+
+async def test_adding_on_config_pops_up_added() -> None:
+    """X3."""
+    found = json.dumps({"status": "ready", "models": ["llama3.2"]})
+    runner = _Runner(
+        [], by_command={("models", "list"): _rows(), ("models", "discover"): found}
+    )
+    app = _app(runner)
+    toasts = _record_toasts(app)
+    async with app.run_test(size=(170, 46)) as pilot:
+        await _open(pilot, "/config")
+        app.screen.query_one("#provider").value = "local"
+        await _wait_for_models(pilot)
+        table = app.screen.query_one("#found")
+        table.set_ticked([entry_key(e) for e in table.entries])
+        app.screen.query_one("#add").press()
+        await _settle(pilot)
+        assert [t for t in toasts if t[0] == "Added"]
+
+
+async def test_a_failed_save_keeps_the_chosen_models_for_a_retry() -> None:
+    """Y1 (operator 2026-11-13): a save that setup refused cleared every tick,
+    so the user had to find and tick each model again."""
+    found = json.dumps({"status": "ready", "models": ["gemma3:1b", "qwen3.5:0.8b"]})
+    _refused = json.dumps(
+        {
+            "observations": [
+                {
+                    "step": "shell-safety",
+                    "status": "action_required",
+                    "fix": "Review named shell conflicts.",
+                }
+            ]
+        }
+    )
+    runner = _Runner(
+        [],
+        code=1,
+        errors="Error: the server did not answer\n",
+        by_command={("models", "list"): _rows(), ("models", "discover"): found},
+    )
+    app = _app(runner)
+    async with app.run_test(size=(170, 46)) as pilot:
+        await _open(pilot, "/config")
+        app.screen.query_one("#provider").value = "local"
+        await _wait_for_models(pilot)
+        table = app.screen.query_one("#found")
+        table.set_ticked([entry_key(e) for e in table.entries])
+        await pilot.press("ctrl+s")
+        await _settle(pilot)
+        basket = str(app.screen.query_one("#basket").render())
+        assert "gemma3:1b" in basket
+        assert "qwen3.5:0.8b" in basket
+        assert "were not added: Error: the server did not answer" in str(
+            app.screen.query_one("#note").render()
+        )
+        # A retry sends the same choices without ticking again.
+        await pilot.press("ctrl+s")
+        await _settle(pilot)
+        adds = [c for c in runner.calls if c[:2] == ("models", "add")]
+        assert len(adds) == 2
+        assert adds[0] == adds[1]
+
+
+# Real run, 2026-11-13 (three Ollama models): `onex models add` stored all three
+# and tested each; one test failed, so the command exited 1. The tab said all
+# three "were not added", gave a success line as the reason, and kept them
+# chosen. Measured in the operator's lab:
+#   Z1  stored models whose test failed were reported as not added.
+#   Z2  the tab said only "working…" for the 150 s the tests took.
+
+
+def _results(*rows: tuple[str, str, str | None]) -> str:
+    """`onex models add --json`: one test result per model, as the CLI prints them."""
+    return "\n".join(
+        json.dumps(
+            {"provider": "local", "status": status, "model": model, "reason": why}
+        )
+        for model, status, why in rows
+    )
+
+
+async def test_a_stored_model_whose_test_failed_is_reported_as_added() -> None:
+    """Z1, Z2."""
+    found = json.dumps({"status": "ready", "models": ["gemma3:1b", "qwen3.5:0.8b"]})
+    added = _results(
+        ("gemma3:1b", "passed", None),
+        ("qwen3.5:0.8b", "failed", "WEAK_OUTPUT: the response was cut off"),
+    )
+    runner = _Runner(
+        [],
+        code=1,
+        by_command={
+            ("models", "list"): _rows(),
+            ("models", "discover"): found,
+            ("models", "add"): added,
+        },
+    )
+    seen: list[str] = []
+    app = _app(runner)
+    async with app.run_test(size=(170, 46)) as pilot:
+        await _open(pilot, "/config")
+        app.screen.query_one("#provider").value = "local"
+        await _wait_for_models(pilot)
+        screen = app.screen
+        real_note = screen._note
+
+        def watch(text, style="muted"):
+            seen.append(str(text))
+            real_note(text, style)
+
+        screen._note = watch
+        table = screen.query_one("#found")
+        table.set_ticked([entry_key(e) for e in table.entries])
+        await pilot.press("ctrl+s")
+        await _settle(pilot)
+        note = str(screen.query_one("#note").render())
+        assert "gemma3:1b ready" in note
+        assert "qwen3.5:0.8b was added, but its test failed: WEAK_OUTPUT" in note
+        assert "were not added" not in note
+        # Stored, so not chosen again for a retry.
+        assert "Selected:" not in str(screen.query_one("#basket").render())
+        # Z2: the tab said what it was doing, model by model.
+        assert any("each is tested with one real delegation" in s for s in seen)
+        assert any("1 of 2 tested" in s for s in seen)
+        assert any("2 of 2 tested" in s for s in seen)

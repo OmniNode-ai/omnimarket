@@ -207,8 +207,13 @@ class _Runner:
     ) -> int:
         self.calls.append(argv)
         self.stdins.append(stdin)
-        for line in self._lines:
+        # As the real runner: a command's own output, then stderr merged in.
+        text = self._by_command.get(argv[:2])
+        for line in self._lines if text is None else text.splitlines():
             emit(line)
+        for line in self._errors.splitlines():
+            if line.strip():
+                emit(line)
         return self._code
 
     def in_terminal(self, argv: tuple[str, ...]) -> int:
@@ -233,9 +238,13 @@ def _actions(runner: _Runner) -> list[tuple[str, ...]]:
 
 
 def _log_text(app: OnexTui) -> str:
-    """The main log, read from the main screen even while a tab is open."""
+    """What the user can read: the main log and, while a tab is open, its note
+    line, where a tab's action shows how it went (OMN-23413)."""
     main = app.screen_stack[0]
-    return "\n".join(str(line) for line in main.query_one("#output").lines)
+    lines = [str(line) for line in main.query_one("#output").lines]
+    for note in ("#note", "#dnote", "#pnote"):
+        lines += [str(w.render()) for w in app.screen.query(note)]
+    return "\n".join(lines)
 
 
 async def test_slash_opens_a_filtered_palette_and_escape_closes_it() -> None:
@@ -494,20 +503,8 @@ async def test_config_finds_server_models_and_saves_the_ticked_ones(
         await _press(pilot, app, "save")
         for _ in range(6):
             await pilot.pause()
-        assert _actions(runner)[-2] == (
-            "setup",
-            "--no-interactive",
-            "--yes",
-            "--workspace",
-            str(tmp_path),
-            "--provider",
-            "local",
-            "--model",
-            "llama3.2",
-            "--url",
-            _OLLAMA_DEFAULT,
-            "--json",
-        )
+        # Save stores the models only (no machine setup), in one command.
+        assert not [c for c in runner.calls if c[0] == "setup"]
         assert _actions(runner)[-1] == (
             "models",
             "add",
@@ -518,11 +515,9 @@ async def test_config_finds_server_models_and_saves_the_ticked_ones(
             "llama3.2",
             "--model",
             "qwen3:8b",
+            "--json",
         )
         text = _log_text(app)
-        assert "✓ workspace" in text
-        assert "✓ models  local: llama3.2" in text
-        assert "✓ also added qwen3:8b" in text
         assert "Ready: Local model · llama3.2, qwen3:8b" in text
         assert "Welcome To OmniNode Delegation Onboarding" not in text
 
@@ -609,12 +604,11 @@ async def test_config_takes_several_providers_and_keeps_keys_out_of_argv_and_log
         assert "local: llama3.2" in basket
         await _press(pilot, app, "save")
         await pilot.pause()
-        setups = [call for call in runner.calls if call[0] == "setup"]
-        assert [call[call.index("--provider") + 1] for call in setups] == [
-            "openrouter",
-            "local",
-        ]
-        assert runner.stdins[runner.calls.index(setups[0])] == "sk-or-secret-value\n"
+        for _ in range(6):
+            await pilot.pause()
+        adds = [call for call in runner.calls if call[:2] == ("models", "add")]
+        assert [call[2] for call in adds] == ["openrouter", "local"]
+        assert runner.stdins[runner.calls.index(adds[0])] == "sk-or-secret-value\n"
         assert all("sk-or-secret-value" not in " ".join(call) for call in runner.calls)
         assert "sk-or-secret-value" not in _log_text(app)
 
@@ -1040,14 +1034,13 @@ async def test_a_failed_setup_step_shows_its_fix_and_no_ready_line(
             ]
         }
     )
+    del failed  # a refused add prints its reason on stderr, as the CLI does
     found = json.dumps({"status": "ready", "models": ["llama3.2"]})
     runner = _Runner(
         [],
         code=1,
-        by_command={
-            ("setup", "--no-interactive"): failed,
-            ("models", "discover"): found,
-        },
+        errors="Error: start Ollama, then run /config again\n",
+        by_command={("models", "discover"): found},
     )
     app = _app(runner)
     async with app.run_test(size=(120, 50)) as pilot:
@@ -1055,9 +1048,13 @@ async def test_a_failed_setup_step_shows_its_fix_and_no_ready_line(
         await _wait_for_models(pilot)
         _tick(app, "llama3.2")
         await _press(pilot, app, "save")
-        await pilot.pause()
+        for _ in range(6):
+            await pilot.pause()
         text = _log_text(app)
-        assert "✗ models: start Ollama, then run /config again" in text
+        assert (
+            "llama3.2 were not added: Error: start Ollama, then run /config again"
+            in text
+        )
         assert "Ready:" not in text
 
 
@@ -1149,7 +1146,7 @@ async def test_save_stays_on_screen_with_a_long_list_and_ctrl_s_saves(
         await pilot.press("ctrl+s")
         await pilot.pause()
         await pilot.pause()
-        assert any(call[0] == "setup" for call in runner.calls)
+        assert any(call[:3] == ("models", "add", "openrouter") for call in runner.calls)
 
 
 async def test_models_that_fail_to_add_are_not_called_ready(
@@ -1160,13 +1157,18 @@ async def test_models_that_fail_to_add_are_not_called_ready(
     found = json.dumps({"status": "ready", "models": ["big-27b", "small-1b"]})
 
     class _AddFails(_Runner):
-        async def capture(
-            self, argv: tuple[str, ...], stdin: str | None = None
-        ) -> tuple[int, str, str]:
+        async def stream(
+            self,
+            argv: tuple[str, ...],
+            emit: Callable[[str], None],
+            stdin: str | None = None,
+        ) -> int:
             if argv[:2] == ("models", "add"):
                 self.calls.append(argv)
-                return 1, "", "Error: small-1b did not answer"
-            return await super().capture(argv, stdin)
+                self.stdins.append(stdin)
+                emit("Error: small-1b did not answer")
+                return 1
+            return await super().stream(argv, emit, stdin)
 
     runner = _AddFails(
         [],
@@ -1182,12 +1184,14 @@ async def test_models_that_fail_to_add_are_not_called_ready(
         _tick(app, "big-27b", "small-1b")
         await pilot.pause()
         await _press(pilot, app, "save")
-        await pilot.pause()
-        await pilot.pause()
+        for _ in range(6):
+            await pilot.pause()
         text = _log_text(app)
-        assert "adding small-1b: Error: small-1b did not answer" in text
-        assert "Ready: Local model · big-27b." in text
-        assert "Ready: Local model · big-27b, small-1b" not in text
+        # One command stores both, so a refusal stores neither and says why.
+        assert (
+            "big-27b, small-1b were not added: Error: small-1b did not answer" in text
+        )
+        assert "Ready:" not in text
 
 
 async def test_switching_provider_keeps_a_typed_url() -> None:
@@ -1399,10 +1403,8 @@ async def test_a_failed_switch_prints_one_line_with_the_step_and_its_fix() -> No
         await pilot.pause()
         await pilot.pause()
         text = _log_text(app)
-        # The one line wraps in the pane: read it as plain text, wrap undone.
-        flat = " ".join(
-            " ".join(line.text for line in app.query_one("#output").lines).split()
-        )
+        # The outcome shows on the tab: read it as plain text, wrap undone.
+        flat = " ".join(str(app.screen.query_one("#dnote").render()).split())
         assert "not switched on: claude-plugin" in flat
         assert "Install or repair the customer asset bundle" in flat
         assert "Welcome To OmniNode" not in text

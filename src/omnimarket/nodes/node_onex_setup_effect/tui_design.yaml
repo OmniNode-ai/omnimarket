@@ -96,6 +96,10 @@ help: >-
 # /config loads a provider's models this long after the key or URL stops
 # changing; a key shorter than min_key_length is never sent.
 auto_find_seconds: 0.8
+# A Done or Failed pop-up after an action stays this long.
+toast_seconds: 6
+# A test's failure reason is cut to this many characters on screen.
+reason_chars: 160
 min_key_length: 8
 
 # The model table every model screen shows: /config (tick models), /model
@@ -165,6 +169,8 @@ model_table:
   sorts: [name, context, input, output]
   sort_labels: {name: Name, context: Context, input: Input price, output: Output price}
   search_placeholder: Search models, providers or capabilities
+  bar: "{shown} of {total} models  ·  {filter}  ·  sorted by {sort}"
+  bar_ticked: "  ·  {count} ticked"
   auto_label: "Auto: ONEX picks per task (cost and availability)"
   help:
     config: "Tab next screen · Space ticks · Enter moves on · I details · / search · F filter · S sort · Ctrl+S saves · Esc back"
@@ -249,8 +255,20 @@ words:
   also_added: "also added {models}"
   adding_failed: "adding {models}: {reason}"
   setup_failed: "setup failed: {reason}"
+  add_failed: "{provider} · {models} were not added: {reason}"
+  # /config Save: each model is stored, then tested with one real delegation.
+  adding_models: "adding {provider} · {models}: each is tested with one real delegation, which can take a minute…"
+  model_tested: "{done} of {total} tested (last: {model})…"
+  model_ready: "{model} ready ({provider})"
+  model_test_failed: "{model} was added, but its test failed: {reason}"
+  model_busy: "{model} was added; the provider was busy, so test it later: {reason}"
   # A tab stays open while its action runs, then shows how it went.
   working: "working…"
+  # Pop-up titles after an action.
+  toast_done: Done
+  toast_failed: Failed
+  toast_added: Added
+  still_working: "still working… the tab closes or changes once this finishes"
   tab_loading: "opening {tab}…"
   # The one line under the tabs: how many models, on how many servers, and the first.
   summary: "{dot} {models} models · {servers} servers · {first}"
@@ -266,6 +284,16 @@ words:
   status_working: "working {seconds}s · esc cancels"
   status_hint: "/ commands · ctrl+c quit"
   status_unavailable: "status unavailable: {error}"
+  # Buttons on /config and /delegation.
+  button_add: Add
+  button_save: Save
+  button_cancel: Cancel
+  # A task typed on the main screen.
+  delegating: "delegating…"
+  delegation_failed: "delegation failed: {reason}"
+  no_answer: "no answer"
+  task_running: "a task is still running: Esc or Ctrl+C cancels it"
+  task_cancelled: "cancelled after {seconds}s"
   unreadable_command: "could not read that command: {error}"
   exit_code: "exit {code}"
   no_match: "no onex command matches '/{command}'; type / to list them"
