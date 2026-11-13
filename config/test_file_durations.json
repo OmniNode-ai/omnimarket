@@ -2220,6 +2220,7 @@
   "tests/nodes/node_savings_estimate_compute/test_handler_savings_estimate.py": 0.05,
   "tests/nodes/node_schedule_run_reducer/test_contract_topics.py": 2.91,
   "tests/nodes/node_schedule_run_reducer/test_golden_chain_schedule_run_reducer.py": 2.35,
+  "tests/nodes/node_schedule_run_reducer/test_runtime_role_acl_seam.py": 20.39,
   "tests/nodes/node_schedule_verdict_compute/test_contract_topics.py": 2.66,
   "tests/nodes/node_schedule_verdict_compute/test_golden_chain_schedule_verdict_compute.py": 2.51,
   "tests/nodes/node_schedule_verdict_effect/test_contract_topics.py": 2.6,
