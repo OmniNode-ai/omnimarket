@@ -45,6 +45,7 @@ handler:
   module: "omnimarket.nodes.node_hook_tool_outcome_compute.handlers.handler_hook_tool_outcome"
   class: "HandlerHookToolOutcome"
   input_model: "omnimarket.nodes.node_hook_tool_outcome_compute.models.model_hook_tool_outcome.ModelHookToolOutcomeRequest"
+  output_model: "omnimarket.nodes.node_hook_tool_outcome_compute.models.model_hook_tool_outcome.ModelHookToolOutcomeResult"
 handler_routing:
   routing_strategy: "operation_match"
   default_handler: "omnimarket.nodes.node_hook_tool_outcome_compute.handlers.handler_hook_tool_outcome:HandlerHookToolOutcome"
@@ -57,22 +58,21 @@ handler_routing:
 # omnimarket.nodes.node_hook_tool_outcome_compute: JSON Lines in, JSON Lines out)
 # and by import, so it declares no bus topic and needs no broker permission row.
 event_bus:
-  version:
-    major: 1
-    minor: 0
-    patch: 0
   subscribe_topics: []
   publish_topics: []
-runtime_profiles:
-  - main
+runtime_profiles: []
 descriptor:
+  runtime_profiles: []
   node_archetype: compute
   purity: pure
   idempotent: true
   timeout_ms: 1000
 replay:
   deterministic: true
+runtime_dispatch:
+  external_trigger: Direct Python invocation by the hook runtime through the node's JSON Lines command line, with one finished tool call's facts.
 metadata:
+  transport_type: local
   description: "Pure classification of one finished tool call into a typed outcome."
   author: "OmniNode Team"
   license: "MIT"
