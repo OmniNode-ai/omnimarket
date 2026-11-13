@@ -45,11 +45,12 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/nodes/node_workflow_contract_catalog_effect -q --no-cov
     cwd: .
 - id: catalog-route-redpanda
-  description: 'The real runtime HTTP mount serves the route on the Redpanda profile: the isolated auth-required broker of the customer-path harness is up and its environment is set. The route itself reads
-    no topic.
+  description: 'The real runtime HTTP mount serves the route on the Redpanda profile: the isolated auth-required broker of the customer-path harness is up and its environment is set. Hosted CI has no broker
+    container runtime, so only the local Done gate runs this check. The route itself reads no topic.
 
     '
   source: manual
+  execution_scope: local_done_gate
   binds_ac:
   - AC1
   checks:
@@ -89,6 +90,15 @@ dod_evidence:
     '
   source: manual
   checks:
+  - check_type: command
+    check_value: |-
+      set -euo pipefail;
+      probe_dir=$(mktemp -d);
+      trap 'rm -rf "$probe_dir"' EXIT;
+      root="https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes";
+      curl --fail --silent --show-error --location --max-time 30 "$root/node_workflow_contract_catalog_effect/contract.yaml" --output "$probe_dir/catalog.yaml";
+      grep -q 'path_prefix: "/v1/workflows/contracts"' "$probe_dir/catalog.yaml"
+    cwd: .
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_workflow_contract_catalog_effect/test_http_runtime_profiles.py -q --no-cov --refuse-skips
     cwd: .
