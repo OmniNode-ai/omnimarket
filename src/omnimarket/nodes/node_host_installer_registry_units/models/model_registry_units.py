@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class ModelRegistryUnitsRequest(BaseModel):
@@ -85,6 +85,16 @@ class ModelRegistryUnitsRequest(BaseModel):
         default="",
         pattern=r"^(?:secret://onex/(?:[A-Za-z0-9][A-Za-z0-9_.-]*/)*[A-Za-z0-9][A-Za-z0-9_.-]*)?$",
     )
+    # Set only with mode "dry-run": the verb the dry run was asked about; the handler returns its plan and touches nothing.
+    plan_verb: Literal["kickstart", "uninstall", "rollback"] | None = None
+
+    @model_validator(mode="after")
+    def _refuse_plan_verb_outside_dry_run(self) -> ModelRegistryUnitsRequest:
+        if self.plan_verb is not None and self.mode != "dry-run":
+            raise ValueError(
+                f"plan_verb {self.plan_verb!r} is only valid with mode 'dry-run', not {self.mode!r}"
+            )
+        return self
 
 
 class ModelRegistryUnitsResult(BaseModel):
