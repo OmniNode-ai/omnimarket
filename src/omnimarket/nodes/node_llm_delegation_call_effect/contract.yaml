@@ -116,45 +116,17 @@ consume_concurrency:
 
 # === IO OPERATIONS ===
 #
-# OMN-18852: `timeout_seconds` below is LOAD-BEARING, not descriptive.
-# `load_inference_call_budget()` reads it and `HandlerInferenceIntent` clamps
-# every requested `ModelInferenceIntent.timeout_seconds` to it.
-#
-# Why it has to bind: this node's inference-intent consumer is single-partition
-# and single-member, and the handler awaits the provider call inline inside it,
-# so every LLM call on the lane -- local and cloud, every tier -- is serialised
-# through ONE slot (measured 2026-09-19: 15 consecutive calls, 8 correlations,
-# 3 providers, zero overlapping pairs). A rung's duration is therefore a global
-# resource. The local backend declares `timeout_ms: 300000`, which is the WHOLE
-# of the delegate-skill dispatch port's 300 s wait and 125 % of that node's
-# 240 s handler execution budget, so an unanswered local rung held the only
-# slot for 300 s twice in one 25-minute window and produced nothing either
-# time.
-#
-# Raising this value past half of
-# node_delegate_skill_orchestrator's handler_execution_budget makes the
-# escalation ladder unreachable inside the caller's budget -- a second rung
-# would have nowhere to run. That relationship is pinned by
-# tests/unit/delegation/test_omn18852_inference_deadline_bound.py.
-#
-# OMN-19432: `model_timeout_seconds` lengthens the ceiling for a model whose
-# measured latency does not fit 120 s, keyed by the model id the intent names.
-# Measured 2026-09-30 on the 30-task GLM lineup set with z.ai's documented
-# settings: 7 of 60 glm-5.3 answers needed more than 120 s (53 finished inside
-# it, 54 inside 150 s, 56 inside 180 s), so glm-5.3 gets 150 s. glm-5.3-flash
-# keeps the default (52 of 60 inside 120 s), which is the point of the ladder:
-# flash first at 120 s, then glm-5.3 at 150 s, 270 s together against the
-# delegate-skill caller's 300 s wait (240 s class ceiling plus 60 s delivery
-# margin), so the second rung is reachable and the gate has room. Pinned by
-# tests/unit/delegation/test_omn19432_per_model_inference_ceiling.py, and read
-# here rather than from the request because the wire's `timeout_seconds` is
-# producer-supplied on a public topic.
+# OMN-24039: the per-call time ceiling of an outbound provider call is not declared here. It is an
+# overlay value: the call budget of the intent's task class in the code budget overlay
+# (node_delegation_code_budget_compute, class_budgets_s), read on every call through
+# omnimarket.handlers.delegation_call_budget_reader. An intent that names no task class gets that
+# overlay's ceiling_s; a class the overlay does not name is refused, never defaulted. The effect
+# clamps the requested timeout_seconds to it (a ceiling, never a floor), because this node's
+# inference consumer is single-partition and single-member: every call is serialised through one
+# slot (measured 2026-09-19, OMN-18852), so a call's duration is a global resource.
 io_operations:
   - operation_type: "http_request"
     atomic: false
-    timeout_seconds: 120
-    model_timeout_seconds:
-      glm-5.3: 150
     validation_enabled: true
 
 # === TOOL SPECIFICATION ===

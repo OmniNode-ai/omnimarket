@@ -50,6 +50,8 @@ class ModelTypedDecisionEventRouting(BaseModel):
     event_type: str = Field(..., min_length=1)
     task_type: str = Field(..., min_length=1)
     provider: str = Field(..., min_length=1)
+    # The provider label of a decision the site's local engine answered.
+    local_provider: str = Field(..., min_length=1)
     tenant_id: str = Field(..., min_length=1)
 
 
