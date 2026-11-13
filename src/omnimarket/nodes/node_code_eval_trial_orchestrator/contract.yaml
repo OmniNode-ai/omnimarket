@@ -1,0 +1,217 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodeCodeEvalTrialOrchestrator
+#
+# The code eval trial run (OMN-23627, plan revision 44 task E1): one run command
+# takes candidates (merged changes whose ticket contract binds the check) and model
+# arms; each task's control is scored first, then each arm's tries are placed one
+# after another on free lab hosts (each from a new worktree at the base commit, up to
+# the largest attempt budget, stopping at the first pass), each answer is scored by
+# the code contract score node one at a time, and one row per verdict is published.
+# An ORCHESTRATOR composes, the pure node_code_eval_trial_reducer decides, the lab
+# work unit EFFECT only executes a typed command and reports (operator RULING
+# 2026-11-11T19:50:17Z). Exemplars: node_pr_landing_orchestrator (state_io row, codec,
+# class-name routing of typed terminals) and node_delegation_orchestrator
+# (completion_bound and the codec's build_abandoned_terminal).
+#
+#   * state_io: one row per run keyed by the run's correlation id, held in
+#     code_eval_trial_state (an omnibase_infra migration, a separate change). Until it
+#     merges the runtime holds no row table for this node and the in-memory store runs.
+#   * completion_bound: the last resort. The runtime sweeps a row still in_flight and
+#     not advanced for max_wall_seconds and publishes the codec's abandoned terminal
+#     (ModelCodeEvalRunClosed, abandoned true) on the closed topic. It must exceed the
+#     larger of the overlay's try timeout and the score node's contract timeout, plus
+#     the slack and one nudge interval, or the run leg raises a configuration error.
+#   * The cells and paired-compare routes (the stateless close route, publish_cells
+#     true) are a named follow-up: this version publishes the rows and the closed event.
+name: "node_code_eval_trial_orchestrator"
+contract_name: "node_code_eval_trial_orchestrator"
+node_name: "node_code_eval_trial_orchestrator"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_type: "ORCHESTRATOR_GENERIC"
+lifecycle: experimental
+description: >
+  Code eval trial orchestrator. Keyed by the run's correlation id, it folds each
+  consumed message (run request, unit receipt or failure, score, nudge) through the
+  pure node_code_eval_trial_reducer, sends the returned unit commands and score
+  requests, publishes one context-ROI row per verdict, and closes the run exactly once.
+  It waits for nothing and never reads a clock the message did not carry.
+input_model:
+  name: "ModelCodeEvalRunRequest"
+  module: "omnimarket.models.code_eval_trial.model_code_eval_run_request"
+  description: "The run command: candidates, model arms, tenant, harness revision and publish_cells."
+output_model:
+  name: "ModelCodeEvalRunClosed"
+  module: "omnimarket.models.code_eval_trial.model_code_eval_run_closed"
+  description: "The closed event: the run's digest, controls, sequences and whether it was abandoned."
+inputs:
+  correlation_id:
+    type: str
+    required: true
+    description: "The run's id; onex run-node fills it with the envelope's."
+# onex run-node publishes the request and polls this topic for the run's result.
+terminal_event: "onex.evt.omnimarket.code-eval-run-closed.v1"
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.code-eval-run-requested.v1"
+runtime_profiles:
+  - main
+state_io:
+  database: "omnibase_infra"
+  table: "code_eval_trial_state"
+  key: "correlation_id"
+  codec:
+    module: "omnimarket.nodes.node_code_eval_trial_orchestrator.state_codec"
+    name: "StateIoCodec"
+completion_bound:
+  max_wall_seconds: 7200
+  on_runtime_restart: "terminalise_failed"
+  failure_class: "runtime_restart_during_code_eval_run"
+  failure_code: "ONEX_MARKET_CODE_EVAL_RUN_ABANDONED"
+code_eval_config:
+  max_hosts: 8
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  subscribe_topics:
+    - onex.cmd.omnimarket.code-eval-run-requested.v1
+    - onex.evt.omnimarket.lab-work-unit-completed.v1
+    - onex.evt.omnimarket.lab-work-unit-failed.v1
+    - onex.evt.omnimarket.code-contract-scored.v1
+    - onex.cmd.omnimarket.code-eval-run-nudge.v1
+    - onex.evt.omnimarket.lab-host-capacity-advertised.v1
+    - onex.intent.platform.runtime-tick.v1
+    - onex.evt.omnimarket.code-eval-run-closed.v1
+  publish_topics:
+    - onex.cmd.omnimarket.lab-work-unit-requested.v1
+    - onex.cmd.omnimarket.code-contract-score-requested.v1
+    - onex.evt.omnimarket.context-roi-run-completed.v1
+    - onex.cmd.omnimarket.code-eval-run-nudge.v1
+    - onex.evt.omnimarket.code-eval-run-closed.v1
+published_events:
+  - event_type: "LabWorkUnitRequest"
+    topic: onex.cmd.omnimarket.lab-work-unit-requested.v1
+    description: "One try placed on a free host: kind code_draft, the run id as lane, the synthetic traffic class and this node's source surface on its draft."
+  - event_type: "CodeScoreRequest"
+    topic: onex.cmd.omnimarket.code-contract-score-requested.v1
+    description: "One score request, sent only when no other score of the run is in flight; a control carries the held answer, a try its diff."
+  - event_type: "ContextRoiRunResult"
+    topic: onex.evt.omnimarket.context-roi-run-completed.v1
+    description: "One verdict as one row (the context-ROI projection's existing input); its correlation id derives from run, task, model, ordinal and kind."
+  - event_type: "CodeEvalRunNudge"
+    topic: onex.cmd.omnimarket.code-eval-run-nudge.v1
+    description: "The tick route's per-run nudge."
+  - event_type: "CodeEvalRunClosed"
+    topic: onex.evt.omnimarket.code-eval-run-closed.v1
+    description: "Terminal: once per run, by the close rule or by the codec's abandoned terminal."
+# The unit command leaves the node graph here: node_lab_work_unit_effect takes it as its
+# runtime_dispatch.command_topic on a lab host's `onex lab-work serve`, which is no event_bus subscription.
+externally_consumed_topics:
+  - onex.cmd.omnimarket.lab-work-unit-requested.v1
+handler_routing:
+  routing_strategy: "payload_type_match"
+  handlers:
+    - operation: "code_eval.run"
+      message_category: "command"
+      handler:
+        name: "HandlerCodeEvalTrialOrchestrator"
+        module: "omnimarket.nodes.node_code_eval_trial_orchestrator.handlers.handler_code_eval_trial_orchestrator"
+      event_model:
+        name: "ModelCodeEvalRunRequest"
+        module: "omnimarket.models.code_eval_trial.model_code_eval_run_request"
+      topic: onex.cmd.omnimarket.code-eval-run-requested.v1
+      description: "The run leg: reads the suite through the suite reader port, bands and admits each task, freezes the overlay values and the digest into the row, queues each control's score, places what the free hosts take. Timeouts plus slack that do not fit under completion_bound raise a configuration error: the runtime dead-letters the request and no row is written."
+    - operation: "code_eval.unit_completed"
+      message_category: "event"
+      handler:
+        name: "HandlerCodeEvalTrialOrchestrator"
+        module: "omnimarket.nodes.node_code_eval_trial_orchestrator.handlers.handler_code_eval_trial_orchestrator"
+      event_model:
+        name: "ModelLabWorkUnitReceipt"
+        module: "omnimarket.models.model_lab_work_unit"
+      topic: onex.evt.omnimarket.lab-work-unit-completed.v1
+      description: "The answer route: a unit's receipt, matched to its run by lane (the run id) and to its try by unit id; rule 2's table gives the verdict. A unit not in flight changes nothing."
+    - operation: "code_eval.unit_failed"
+      message_category: "event"
+      handler:
+        name: "HandlerCodeEvalTrialOrchestrator"
+        module: "omnimarket.nodes.node_code_eval_trial_orchestrator.handlers.handler_code_eval_trial_orchestrator"
+      event_model:
+        name: "ModelLabWorkCommandFailure"
+        module: "omnimarket.lab_work.bus"
+      topic: onex.evt.omnimarket.lab-work-unit-failed.v1
+      description: "The failure terminal of a unit, matched by the command's echoed correlation id or its lane; the try ends unscorable(harness)."
+    - operation: "code_eval.scored"
+      message_category: "event"
+      handler:
+        name: "HandlerCodeEvalTrialOrchestrator"
+        module: "omnimarket.nodes.node_code_eval_trial_orchestrator.handlers.handler_code_eval_trial_orchestrator"
+      event_model:
+        name: "ModelCodeScored"
+        module: "omnimarket.models.model_code_score"
+      topic: onex.evt.omnimarket.code-contract-scored.v1
+      description: "The score route: E2's verdict matched by the try identity (task, model arm, ordinal); frees the single score slot."
+    - operation: "code_eval.nudge"
+      message_category: "command"
+      handler:
+        name: "HandlerCodeEvalTrialOrchestrator"
+        module: "omnimarket.nodes.node_code_eval_trial_orchestrator.handlers.handler_code_eval_trial_orchestrator"
+      event_model:
+        name: "ModelCodeEvalRunNudge"
+        module: "omnimarket.models.code_eval_trial.model_code_eval_run_nudge"
+      topic: onex.cmd.omnimarket.code-eval-run-nudge.v1
+      description: "The nudge route: expires a unit or score in flight past its deadline plus slack, then places."
+    - operation: "code_eval.capacity"
+      message_category: "event"
+      handler:
+        name: "HandlerCodeEvalTrialOrchestrator"
+        module: "omnimarket.nodes.node_code_eval_trial_orchestrator.handlers.handler_code_eval_trial_orchestrator"
+      event_model:
+        name: "ModelHostCapacityAdvertisement"
+        module: "omnimarket.models.model_host_capacity_advertisement"
+      topic: onex.evt.omnimarket.lab-host-capacity-advertised.v1
+      description: "The capacity route: keeps the newest advertisement per host, at most max_hosts; emits nothing."
+    - operation: "code_eval.tick"
+      handler:
+        name: "HandlerCodeEvalTrialOrchestrator"
+        module: "omnimarket.nodes.node_code_eval_trial_orchestrator.handlers.handler_code_eval_trial_orchestrator"
+      event_model:
+        name: "ModelRuntimeTick"
+        module: "omnibase_infra.runtime.models.model_runtime_tick"
+      topic: onex.intent.platform.runtime-tick.v1
+      description: "The tick route: one nudge per open run, carrying the tick's time."
+    - operation: "code_eval.closed"
+      message_category: "event"
+      handler:
+        name: "HandlerCodeEvalTrialOrchestrator"
+        module: "omnimarket.nodes.node_code_eval_trial_orchestrator.handlers.handler_code_eval_trial_orchestrator"
+      event_model:
+        name: "ModelCodeEvalRunClosed"
+        module: "omnimarket.models.code_eval_trial.model_code_eval_run_closed"
+      topic: onex.evt.omnimarket.code-eval-run-closed.v1
+      description: "The tick route's read of the closed event: drops the run from the nudged set."
+overlay:
+  node: node_code_eval_trial_orchestrator
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+  model: omnimarket.models.code_eval_trial.model_code_eval_overlay.ModelCodeEvalRunnerOverlay
+metadata:
+  description: "Code eval trial orchestrator: places, scores and records each try of a grid of coding trials on local models."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-11-11"
+  tags:
+    - orchestrator
+    - code-eval
+    - trial-driver
+  related_tickets:
+    - "OMN-23627"

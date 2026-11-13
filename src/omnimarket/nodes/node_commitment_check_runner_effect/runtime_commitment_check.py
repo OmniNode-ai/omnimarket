@@ -8,7 +8,7 @@ What the schedule's unit runs. The ledger routes, the allowlist and every bound 
 
 Exit codes: 0 the run completed (a check that failed is still 0: it is a reading, not a fault of the run); 1 the run failed
 (the ledger could not be read) or a reading was not accepted by the ledger; 3 a deployment fact is missing (an overlay or a
-route variable).
+route variable); 4 the ledger holds no live commitment, so no check could run.
 """
 
 from __future__ import annotations
@@ -158,11 +158,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         for o in result.outcomes
     ]
     lines.append(
-        f"commitment-check: checked={sum(1 for o in result.outcomes if o.ran)} "
+        f"commitment-check: read={result.read} live={result.live} "
+        f"checked={sum(1 for o in result.outcomes if o.ran)} "
         f"refused={sum(1 for o in result.outcomes if not o.ran)} malformed={len(result.malformed)} "
         f"deferred={result.deferred}"
     )
     sys.stdout.write("\n".join(lines) + "\n")
+    if result.live == 0:
+        sys.stderr.write(
+            "commitment-check: EMPTY-SOURCE no live commitment on the ledger; nothing was checked\n"
+        )
+        return 4
     return (
         1 if any(o.result.startswith("append-failed:") for o in result.outcomes) else 0
     )

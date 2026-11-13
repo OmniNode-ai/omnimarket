@@ -72,7 +72,7 @@ def piece9_reading(ledger: InMemoryLedger, *, now: datetime) -> EnumReadingVerdi
 
 def assert_piece9_not_working(world: World) -> None:
     ledger = InMemoryLedger()
-    result = world.handler(ledger).handle(COMMAND)
+    result = world.handler(ledger, operational_overlay()).handle(COMMAND)
     assert result.ending is EnumCanaryEnding.STALLED
     assert result.elapsed_seconds is not None
     assert result.elapsed_seconds >= 3600
@@ -92,7 +92,7 @@ def test_a_planted_stall_leaves_the_canary_unmerged_past_an_hour_and_piece_9_rea
 def test_the_stalled_row_names_the_time_waited_and_the_bar() -> None:
     world, ledger = World(), InMemoryLedger()
     world.break_landing_tick_disabled()
-    result = world.handler(ledger).handle(COMMAND)
+    result = world.handler(ledger, operational_overlay()).handle(COMMAND)
     row = ledger.lines[0]
     assert "verdict=NOT_WORKING" in row
     assert "ending=stalled" in row
@@ -107,7 +107,7 @@ def test_the_bar_is_the_overlays_and_the_wait_never_exceeds_it_by_more_than_one_
 ):
     world = World()
     world.break_landing_tick_disabled()
-    world.handler(InMemoryLedger()).handle(COMMAND)
+    world.handler(InMemoryLedger(), operational_overlay()).handle(COMMAND)
     waited = (world.clock.now - RUN_AT).total_seconds()
     target = overlay().target
     assert (
@@ -147,7 +147,7 @@ def test_a_drill_run_is_marked_and_never_counts_as_an_operational_reading() -> N
     world, ledger = World(), InMemoryLedger()
     world.handler(ledger, drill).handle(COMMAND)
     assert "tag=drill" in ledger.lines[0]
-    assert "verdict=WORKING" in ledger.lines[0]
+    assert "verdict=UNKNOWN" in ledger.lines[0]
     # A healthy drill row does not make piece 9 WORKING: only an operational row does.
     assert piece9_reading(ledger, now=RUN_AT + timedelta(hours=2)) is (
         EnumReadingVerdict.NOT_WORKING

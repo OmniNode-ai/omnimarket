@@ -12,3 +12,13 @@ units:
     probe_address: 127.0.0.1
     probe_port: 59092
     probe_wait_seconds: 60
+    network: example-net
+    published_ports:
+      - host_address: 127.0.0.1
+        host_port: 59092
+        container_port: 59092
+    create:
+      image: example/broker:1.0
+      command: [broker, start]
+      volumes: [example-broker:/data]
+      restart_policy: unless-stopped

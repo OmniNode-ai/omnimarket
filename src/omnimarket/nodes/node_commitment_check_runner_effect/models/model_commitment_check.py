@@ -110,3 +110,7 @@ class ModelCommitmentCheckResult(BaseModel):
     malformed: tuple[str, ...] = ()
     # Due commitments this run did not reach (the cap or the service deadline); the next run takes them.
     deferred: int = 0
+    # Every commitment the fold returned, withdrawn ones included.
+    read: int = Field(ge=0, default=0)
+    # Those whose status is not EnumCommitmentStatus.WITHDRAWN.
+    live: int = Field(ge=0, default=0)

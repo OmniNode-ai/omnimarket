@@ -24,6 +24,11 @@ requirements:
   - id: AC3
     statement: 'AC3: integrated: after reinstall from the merged change, ai.omninode.factory-floor-publish on the Mac and a unit on h053 render and run with the declared overlays clone first among their
       roots, and one tick of each reads a value only that clone holds -- falsifier: read the live plist and unit environment and the next tick''s record'
+- id: req-omn23950-installer-default
+  statement: Every installed unit whose program reads the lab host table declares ONEX_SKILL_OVERLAY_ROOTS by default, so a unit installed without an override still reads the table.
+  acceptance:
+  - id: AC4
+    statement: 'AC4: every registry unit whose module package calls the lab host table reader declares ONEX_SKILL_OVERLAY_ROOTS in its environment, as an overridable path and as a refused-worktree path, and its rendered plist lists the declared overlays clone first -- falsifier: pytest tests/nodes/node_host_installer_registry_units/test_host_table_readers_declare_overlay_roots.py -q fails on the contract without the silent-failure alarm declaration'
 evidence_requirements:
 - kind: tests
   description: The overlays-repository-only reader tests pass at the pushed head.
@@ -61,6 +66,15 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_default_host_source_overlays_repository.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23950-ac4
+  description: The scan finds the silent-failure alarm among the units whose program reads the host table, each such unit declares the roots, and the rendered plists list the declared overlays clone first; the declaration test fails on the base contract (control).
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_host_table_readers_declare_overlay_roots.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn23950-integration-proof
   description: Run the overlays-repository-only reader and installer tests on a lab host at the pushed head. Hosted CI cannot reach the lab hosts, so only the local Done gate runs this unbound check; it binds no criterion for the hosted check.

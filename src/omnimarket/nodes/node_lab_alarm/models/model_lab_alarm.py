@@ -70,6 +70,8 @@ class ModelBrokerLagResult(BaseModel):
     sample_kept: bool
     evidence: str
     failure: str = ""
+    #: One entry per subject the alarm delivery reported, empty when no delivery is wired.
+    delivery: tuple[str, ...] = ()
 
 
 __all__ = [
