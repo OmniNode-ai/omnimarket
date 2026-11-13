@@ -16,11 +16,16 @@ from pathlib import Path
 import pytest
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 
-from omnimarket.delegated_test_loop.lab_run_bus import event_type_for
+from omnimarket.delegated_test_loop.lab_run_bus import (
+    ProtocolBusMessage,
+    ProtocolLabRunBus,
+    event_type_for,
+)
 from omnimarket.delegated_test_loop.lane_bus import open_lab_run_bus
 from omnimarket.handlers.bus_binding.select import positional_opener
 from omnimarket.handlers.scm.handler_scm_dispatch import ScmBusCaller
 from omnimarket.lab_work.bus import _bytes
+from omnimarket.models.scm import ModelScmTerminal
 from omnimarket.nodes.node_ci_checkout_effect.handlers.adapter_ci_checkout_cli import (
     load_topics,
     result_from_terminal,
@@ -40,6 +45,7 @@ from omnimarket.nodes.node_ci_checkout_effect.models.model_ci_checkout import (
 from omnimarket.nodes.node_ci_checkout_effect.models.model_ci_checkout_deployment import (
     ModelCiCheckoutDeployment,
 )
+from omnimarket.nodes.node_lab_work_unit_effect.protocols import require_ungrouped
 from tests.nodes.node_ci_checkout_effect.planted import (
     HOST,
     deployment_document,
@@ -66,8 +72,10 @@ def _request(sha: str, host: str = HOST) -> ModelCiCheckoutRequest:
     )
 
 
-async def _ask(bus: object, request: ModelCiCheckoutRequest, timeout_s: float = 10):
-    return await ScmBusCaller(bus).call_topics(  # type: ignore[arg-type]
+async def _ask(
+    bus: ProtocolLabRunBus, request: ModelCiCheckoutRequest, timeout_s: float = 10
+) -> ModelScmTerminal:
+    return await ScmBusCaller(bus).call_topics(
         topics=load_topics(),
         request=request,
         correlation_id=request.correlation_id,
@@ -119,6 +127,8 @@ async def test_error_chain_an_unreadable_request_ends_on_the_failed_topic(
 ) -> None:
     mirrors, _sha = plant_bare_mirror(tmp_path)
     topics = load_topics()
+    failed_topic = topics.failure
+    assert failed_topic is not None
     async with positional_opener(open_lab_run_bus)("inmemory", None, None, None) as bus:
         host = CiCheckoutHost(bus, _handler(mirrors), HOST)
         await host.start()
@@ -130,10 +140,12 @@ async def test_error_chain_an_unreadable_request_ends_on_the_failed_topic(
 
         failures: list[bytes] = []
 
-        async def on_failed(message: object) -> None:
-            failures.append(message.value)  # type: ignore[attr-defined]
+        async def on_failed(message: ProtocolBusMessage) -> None:
+            failures.append(message.value)
 
-        unsubscribe = await bus.subscribe_ungrouped(topics.failure, on_failed)  # type: ignore[attr-defined]
+        unsubscribe = await require_ungrouped(bus).subscribe_ungrouped(
+            failed_topic, on_failed
+        )
         await bus.publish(topics.command, b"k", _bytes(command))
         for _ in range(50):
             if failures:
