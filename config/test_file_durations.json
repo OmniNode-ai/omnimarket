@@ -4185,6 +4185,7 @@
   "tests/unit/kbi_clone_coverage/test_kbi_clone_coverage_profiles.py": 0.98,
   "tests/unit/lab_work/test_adaptive_capacity_omn23337.py": 0.17,
   "tests/unit/lab_work/test_caller_groupless.py": 0.46,
+  "tests/unit/lab_work/test_dispatch_wire_compat.py": 4.6,
   "tests/unit/lab_work/test_lab_host_model_serving.py": 0.08,
   "tests/unit/lab_work/test_lab_host_table_fallback_targets.py": 0.17,
   "tests/unit/lab_work/test_lab_host_table_ilo_address.py": 0.01,
