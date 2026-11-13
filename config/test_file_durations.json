@@ -4152,6 +4152,7 @@
   "tests/unit/handlers/test_network_bindings_slice_b.py": 0.17,
   "tests/unit/handlers/test_node_contract_overlay_resolver.py": 0.066,
   "tests/unit/handlers/test_node_overlay_reader_omn20935.py": 0.09,
+  "tests/unit/handlers/test_node_overlay_reader_resolved_roots.py": 3.07,
   "tests/unit/handlers/test_node_overlay_reader_structured.py": 0.01,
   "tests/unit/handlers/test_overlay_keys.py": 1.04,
   "tests/unit/handlers/test_rules_lab_fill_tickets_criteria_unread.py": 0.08,
