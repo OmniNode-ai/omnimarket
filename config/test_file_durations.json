@@ -5281,6 +5281,7 @@
   "tests/unit/projection/test_omn21206_sqlite_savings_population.py": 0.2,
   "tests/unit/projection/test_omn21349_claims_table_old_shape.py": 0.34,
   "tests/unit/projection/test_omn23347_overview_latency.py": 1.51,
+  "tests/unit/projection/test_omn24224_sqlite_savings_null_cost.py": 1.47,
   "tests/unit/projection/test_omn_18035_evidence_cursor_truncation.py": 0.11,
   "tests/unit/projection/test_postgres_read_database_tenant_seam_omn16092.py": 0.3,
   "tests/unit/projection/test_projection_api_dynamic.py": 0.21,

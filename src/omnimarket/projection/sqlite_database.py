@@ -644,6 +644,14 @@ _DELEGATION_SAVINGS_MEASURED_VIEW_SQL = (
     "omnimarket.nodes.node_projection_savings",
     "sqlite/delegation_savings_view_measured.sql",
 )
+# OMN-24224: a session whose run stored no cost serves local_cost_usd as null,
+# not 0. Its own step after the OMN-21206 one: a store that has recorded that
+# step would never run it again.
+_DELEGATION_SAVINGS_NULL_COST_VIEW_STEP = "omn24224_delegation_savings_null_cost_view"
+_DELEGATION_SAVINGS_NULL_COST_VIEW_SQL = (
+    "omnimarket.nodes.node_projection_savings",
+    "sqlite/delegation_savings_view_null_cost.sql",
+)
 # OMN-21349: correlation-keyed claims have no delivery_id mapping. Preserve
 # them in a legacy table and create the current shape before its indexes.
 _CLAIMS_DELIVERY_ID_SHAPE_STEP = "omn21349_claims_delivery_id_shape"
@@ -932,6 +940,14 @@ class SqliteDatabaseAdapter(CredentialSqliteStore):
                     "restricted savings money to measured runs and counted each basis",
                 )
             )
+        if not cls._store_step_recorded(conn, _DELEGATION_SAVINGS_NULL_COST_VIEW_STEP):
+            pending.append(
+                (
+                    _DELEGATION_SAVINGS_NULL_COST_VIEW_STEP,
+                    cls._create_delegation_savings_null_cost_view,
+                    "served a run with no stored cost as a null session cost",
+                )
+            )
         if not cls._store_step_recorded(
             conn, _DELEGATION_MODEL_ROUTING_TIER_MODELS_STEP
         ):
@@ -1209,6 +1225,18 @@ class SqliteDatabaseAdapter(CredentialSqliteStore):
     def _create_delegation_savings_measured_view(conn: sqlite3.Connection) -> None:
         """Replace the view once on both new and previously upgraded stores."""
         package, resource = _DELEGATION_SAVINGS_MEASURED_VIEW_SQL
+        ddl = files(package).joinpath(resource).read_text(encoding="utf-8")
+        conn.execute("DROP VIEW IF EXISTS projection_delegation_savings")
+        conn.execute(ddl)
+
+    @staticmethod
+    def _create_delegation_savings_null_cost_view(conn: sqlite3.Connection) -> None:
+        """OMN-24224: re-create the savings view with a null cost for unmeasured runs.
+
+        Same shape as the steps before it: dropped first, and a later revision
+        is a new step, never an edit to this one.
+        """
+        package, resource = _DELEGATION_SAVINGS_NULL_COST_VIEW_SQL
         ddl = files(package).joinpath(resource).read_text(encoding="utf-8")
         conn.execute("DROP VIEW IF EXISTS projection_delegation_savings")
         conn.execute(ddl)
