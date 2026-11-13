@@ -237,13 +237,15 @@ def test_unopenable_bus_is_bus_unavailable_never_a_default(
     _write_overlay(tmp_path)
     _bind(tmp_path, monkeypatch)
 
-    @contextlib.asynccontextmanager
-    async def refused() -> AsyncIterator[ProtocolLabRunBus]:
-        raise LabRunBusError("no broker")
-        yield  # pragma: no cover
+    class RefusedBus:
+        async def __aenter__(self) -> ProtocolLabRunBus:
+            raise LabRunBusError("no broker")
+
+        async def __aexit__(self, *exc_info: object) -> None:
+            return None
 
     with pytest.raises(DelegationRoutingOrderError, match="bus_unavailable"):
-        read_engine_order("code_generation", open_bus=refused)
+        read_engine_order("code_generation", open_bus=RefusedBus)
 
 
 def test_a_malformed_answer_is_answer_shape_never_a_default(
