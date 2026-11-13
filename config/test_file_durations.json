@@ -3867,6 +3867,7 @@
   "tests/unit/delegation/test_harness_eval_fixtures.py": 0.68,
   "tests/unit/delegation/test_harness_eval_recent.py": 0.17,
   "tests/unit/delegation/test_inference_attempt_identity_omn15542.py": 6.54,
+  "tests/unit/delegation/test_inference_call_ceiling_overlay.py": 1.46,
   "tests/unit/delegation/test_inference_error_429_word_boundary_omn20154.py": 0.04,
   "tests/unit/delegation/test_inference_error_503_status_first_omn20712.py": 0.02,
   "tests/unit/delegation/test_inline_named_tests_roundtrip_omn18300.py": 0.17,
