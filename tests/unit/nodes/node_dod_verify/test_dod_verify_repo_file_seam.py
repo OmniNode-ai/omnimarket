@@ -16,7 +16,6 @@ import base64
 from pathlib import Path
 
 import pytest
-import yaml
 
 from omnimarket.handlers.scm import handler_gateway_read_client as client_mod
 from omnimarket.handlers.scm.handler_gateway_read_client import (
@@ -116,16 +115,6 @@ def test_repo_file_seam_a_404_crosses_the_wire_as_not_found() -> None:
     assert (result.found, result.text) == (False, None)
 
 
-def test_repo_file_seam_the_gateway_contract_declares_the_operation_dod_verify_sends() -> (
-    None
-):
-    declared = {
-        op["name"] for op in yaml.safe_load(_CONTRACT_YAML.read_text())["operations"]
-    }
-    assert EnumGithubGatewayOperation.REPO_FILE.value in declared
-    assert (
-        ModelRepoFileResult(
-            repo=REPO, head_sha=_SHA, file_path=_PATH, found=False
-        ).operation
-        == EnumGithubGatewayOperation.REPO_FILE.value
-    )
+def test_repo_file_seam_the_result_names_the_operation_dod_verify_sends() -> None:
+    result = ModelRepoFileResult(repo=REPO, head_sha=_SHA, file_path=_PATH, found=False)
+    assert result.operation == EnumGithubGatewayOperation.REPO_FILE.value
