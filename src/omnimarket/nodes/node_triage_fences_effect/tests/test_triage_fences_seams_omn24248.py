@@ -19,7 +19,7 @@ from pathlib import Path
 
 import yaml
 
-from omnimarket.events.triage_fences import (
+from omnimarket.models.triage_fences import (
     ModelTriageFencesDeriveRequest,
     ModelTriageFencesVerdict,
 )

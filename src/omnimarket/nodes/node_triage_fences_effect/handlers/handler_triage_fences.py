@@ -12,7 +12,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
-from omnimarket.events.triage_fences import (
+from omnimarket.models.triage_fences import (
     ModelTriageFencesDeriveRequest,
     ModelTriageFencesOpenPull,
 )

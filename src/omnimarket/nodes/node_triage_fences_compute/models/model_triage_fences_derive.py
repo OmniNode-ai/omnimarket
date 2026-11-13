@@ -1,10 +1,10 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Re-export of the shared triage fence models, which live in omnimarket.events.triage_fences."""
+"""Re-export of the shared triage fence models, which live in omnimarket.models.triage_fences."""
 
 from __future__ import annotations
 
-from omnimarket.events.triage_fences import (
+from omnimarket.models.triage_fences import (
     ModelTriageFencesClaim,
     ModelTriageFencesCounts,
     ModelTriageFencesDeriveRequest,
