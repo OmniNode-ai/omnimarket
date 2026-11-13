@@ -3765,6 +3765,7 @@
   "tests/test_schema_parity_projection_llm_cost.py": 0.03,
   "tests/test_seam_merge_sweep_plan_to_landing_effect.py": 1.12,
   "tests/test_seam_nodes_state_coverage.py": 0.04,
+  "tests/test_seam_skill_hook_to_skill_lifecycle_fold.py": 2.44,
   "tests/test_seams_extraction.py": 0.63,
   "tests/test_seams_registry_contract.py": 0.21,
   "tests/test_seams_registry_match_integration.py": 0.12,
