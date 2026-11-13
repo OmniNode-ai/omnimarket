@@ -77,10 +77,14 @@ dod_evidence:
           bash -o pipefail -c 'printf "%s\n" "{\"id\":\"live\",\"request\":{\"tool_name\":\"Bash\",\"hook_event_name\":\"PostToolUse\",\"tool_response\":\"{\\\"stdout\\\":\\\"REFUSED factory-floor-publish: the required step failed\\\",\\\"stderr\\\":\\\"\\\",\\\"interrupted\\\":false}\",\"exit_code\":0}}" | ONEX_SKILL_OVERLAY_ROOTS="$OMNI_HOME/overlays/overlays" uv run --frozen python -m omnimarket.nodes.node_hook_tool_outcome_compute | grep -F refused | grep -F factory-floor-publish'
         cwd: "."
   - id: dod-omn24062-deploy-hosted-probe
-    description: "Deploy evidence the hosted runner can run: the node's command line chain (JSON Lines in, a refused line with its component out, exit 3 and empty stdout on a bad line or missing overlay) runs from a fresh frozen sync of this head, the same install a deployed runtime image takes. It fails at the merge base, where the node does not exist. No lab route is required."
+    description: "Deploy probe the hosted runner can run: the handler GitHub serves at the checked-out commit defines the outcome node's handler class, which the merge base does not. The node's command line chain also runs from a fresh frozen sync of this head."
     source: manual
     binds_ac: [AC3]
     checks:
+      - check_type: command
+        check_value: |-
+          bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_hook_tool_outcome_compute/handlers/handler_hook_tool_outcome.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "class HandlerHookToolOutcome" > /dev/null'
+        cwd: "."
       - check_type: test_passes
         check_value: "env ONEX_DEPLOY_PROBE=OMN-24062 uv run --frozen pytest tests/unit/nodes/node_hook_tool_outcome_compute/test_tool_outcome_cli.py -q -p no:randomly --no-cov"
         cwd: "."
