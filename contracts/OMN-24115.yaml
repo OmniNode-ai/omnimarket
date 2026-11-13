@@ -1,0 +1,73 @@
+schema_version: 1.0.0
+ticket_id: OMN-24115
+title: R8 probe customer identity and priced control route as settings
+summary: >-
+  Scenario R8 reads one probe tenant's totals and sends two runs, a synthetic one and an organic control. Measured 2026-11-13 on the dev runtime: the overlay's probe tenant is the shared dev tenant every lab lane delegates under, so totals rose by 3 to 26 runs per R8 run, and the control runs on the local model at cost 0.0, so organic_run_has_values cannot hold. The bus lane now runs every delegate send with the delegate command's tenant variable (named in the contract as lane.bus.tenant_env) set to the overlay's probe_tenant_id, and sends the organic control with --backend-id from a new optional overlay key tenant_read.control_backend_id; with the key absent and the probe tenant unchanged the lane sends what it sent before. A pin to the priced eval arm openrouter-eval-deepseek-v4-1-flash answered in-process with the routing overlay with cost_usd 8.7e-05 (run a75f87ec); the same pin on the dev lane was refused before dispatch (receipts 00e96692 and 0dc000d6) while a local-coder pin answered, so the dev runtime serving that route is a separate follow-up. No counting rule, threshold or check is changed.
+is_seam_ticket: true
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24115-r8-probe-tenant-control-route
+  statement: The R8 bus lane stamps the overlay's probe tenant on every delegate send and pins only the organic control to the overlay's optional control backend.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: every delegate run the R8 bus lane sends carries the probe tenant named in the overlay, through the tenant variable the contract names -- falsifier: uv run --frozen pytest tests/nodes/node_delegation_scenario_r8_effect/test_bus_lane_probe_tenant_and_control_route.py -q -k golden_chain_probe_tenant fails when the lane does not set that variable'
+  - id: AC2
+    statement: 'AC2: the organic control send carries the pin to the routing backend the overlay''s optional control_backend_id names, the synthetic send never does, and an overlay without the key sends no pin -- falsifier: the same file with -k control_route fails when the pin is dropped or also sent on the synthetic run'
+  - id: AC3
+    statement: 'AC3: the pin flag and the tenant variable the lane uses are the ones the delegate command has -- falsifier: the seam tests in that file fail when the option is renamed or the command reads another variable'
+  - id: AC4
+    statement: 'AC4: integrated: one R8 run on the dev runtime, with the overlay naming a priced route the runtime serves, lists the organic control with cost_usd above zero (assertion +organic_run_has_values in the result) -- falsifier: the same run before the overlay value is set lists the control at cost 0.0 (measured 2026-11-13, run 0fc74489 on Qwen3.8-27B)'
+evidence_requirements:
+- kind: tests
+  description: The new probe tenant and control route tests, the existing R8 bus lane tests and the R8 golden chain tests.
+  command: uv run --frozen pytest tests/nodes/node_delegation_scenario_r8_effect -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24115-ac1
+  description: 'AC1: through the production wiring every send runs with the tenant variable set to the overlay probe tenant and the host environment kept; a lane that sets nothing fails the golden test.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_r8_effect/test_bus_lane_probe_tenant_and_control_route.py -q -n 0 --no-cov -p no:cacheprovider -k golden_chain_probe_tenant
+    cwd: .
+- id: dod-omn24115-ac2
+  description: 'AC2: the organic control carries --backend-id from the overlay key, the synthetic run never, and an absent key sends no pin.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_r8_effect/test_bus_lane_probe_tenant_and_control_route.py -q -n 0 --no-cov -p no:cacheprovider -k control_route
+    cwd: .
+- id: dod-omn24115-ac3
+  description: 'AC3: the delegate command lists the pin option in its help and reads the tenant variable the contract names.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_r8_effect/test_bus_lane_probe_tenant_and_control_route.py -q -n 0 --no-cov -p no:cacheprovider -k seam
+    cwd: .
+- id: dod-omn24115-ac4
+  description: 'hosted proxy for AC4: the lane-level tests pass here and fail with the pin or the tenant variable removed; the R8 reading on the dev runtime with the overlay value set is the integration-proof item below and is posted as a pull request comment naming the head.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_r8_effect -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24115-integration-proof
+  description: 'The R8 tests run at the pushed head, and after the dev runtime serves the priced route and the overlay names it one R8 run lists the control with cost above zero. Hosted CI cannot reach the lab or the runtime, so only the local Done gate runs these checks.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24115 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_delegation_scenario_r8_effect/test_bus_lane_probe_tenant_and_control_route.py -q --no-cov
+    cwd: .
