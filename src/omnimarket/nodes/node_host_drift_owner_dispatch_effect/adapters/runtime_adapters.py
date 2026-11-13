@@ -184,7 +184,7 @@ class LedgerQueryLiveLanes:
         )
 
 
-class SubprocessLaneRunner:
+class SubprocessLanePlacer:
     """Starts one lane detached; a runner still running after the settle window is a lane that started."""
 
     def __init__(self, settle_seconds: float, log_directory: Path) -> None:
@@ -247,5 +247,5 @@ __all__ = [
     "FileDispatchRecord",
     "FileDriftOpenItems",
     "LedgerQueryLiveLanes",
-    "SubprocessLaneRunner",
+    "SubprocessLanePlacer",
 ]

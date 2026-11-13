@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import sys
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from subprocess import CompletedProcess
@@ -17,7 +18,7 @@ from omnimarket.nodes.node_host_drift_owner_dispatch_effect.adapters.runtime_ada
     FileDispatchRecord,
     FileDriftOpenItems,
     LedgerQueryLiveLanes,
-    SubprocessLaneRunner,
+    SubprocessLanePlacer,
 )
 from omnimarket.nodes.node_host_drift_owner_dispatch_effect.protocols import (
     LiveLanesUnreadableError,
@@ -72,7 +73,9 @@ def test_the_brief_is_written_under_its_directory(tmp_path: Path) -> None:
     assert Path(path).read_text(encoding="utf-8") == "text"
 
 
-def _ledger(rows_by_kind: dict[str, list[dict[str, str]]]):  # type: ignore[no-untyped-def]
+def _ledger(
+    rows_by_kind: dict[str, list[dict[str, str]]],
+) -> tuple[Callable[..., CompletedProcess[str]], list[list[str]]]:
     calls: list[list[str]] = []
 
     def run(argv: list[str], **_: object) -> CompletedProcess[str]:
@@ -94,7 +97,7 @@ def _claim(lane: str) -> dict[str, str]:
     }
 
 
-def _live(run) -> LedgerQueryLiveLanes:  # type: ignore[no-untyped-def]
+def _live(run: Callable[..., CompletedProcess[str]]) -> LedgerQueryLiveLanes:
     return LedgerQueryLiveLanes(
         ("onex-example", "ledger", "query"), 72, 50, 30, lambda: NOW, run
     )
@@ -168,7 +171,7 @@ def _argv(code: str, tmp: Path) -> tuple[str, ...]:
 def test_a_runner_that_exits_zero_started_and_one_that_exits_nonzero_did_not(
     tmp_path: Path,
 ) -> None:
-    runner = SubprocessLaneRunner(20, tmp_path / "logs")
+    runner = SubprocessLanePlacer(20, tmp_path / "logs")
     assert runner.place(_argv("raise SystemExit(0)", tmp_path)).started is True
     failed = runner.place(
         _argv("import sys; print('no placement'); sys.exit(3)", tmp_path)
@@ -178,14 +181,14 @@ def test_a_runner_that_exits_zero_started_and_one_that_exits_nonzero_did_not(
 
 
 def test_a_runner_still_running_past_the_settle_window_started(tmp_path: Path) -> None:
-    outcome = SubprocessLaneRunner(0.2, tmp_path / "logs").place(
+    outcome = SubprocessLanePlacer(0.2, tmp_path / "logs").place(
         _argv("import time; time.sleep(3)", tmp_path)
     )
     assert outcome.started is True
 
 
 def test_a_runner_that_cannot_be_executed_did_not_start(tmp_path: Path) -> None:
-    outcome = SubprocessLaneRunner(1, tmp_path / "logs").place(
+    outcome = SubprocessLanePlacer(1, tmp_path / "logs").place(
         ("/no/such/interpreter", "--lane", "lane-x")
     )
     assert outcome.started is False

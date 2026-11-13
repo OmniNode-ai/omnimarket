@@ -58,7 +58,7 @@ class InMemoryBriefWriter:
         return f"memory://{name}"
 
 
-class InMemoryLaneRunner:
+class InMemoryLanePlacer:
     """Records every argv; ``refuse`` makes the next placements fail with that detail."""
 
     def __init__(self) -> None:
@@ -76,6 +76,6 @@ __all__ = [
     "InMemoryBriefWriter",
     "InMemoryDispatchRecord",
     "InMemoryDriftOpenItems",
-    "InMemoryLaneRunner",
+    "InMemoryLanePlacer",
     "InMemoryLiveLanes",
 ]

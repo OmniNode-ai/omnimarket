@@ -15,7 +15,7 @@ from omnimarket.nodes.node_host_drift_owner_dispatch_effect.adapters.inmemory_ad
     InMemoryBriefWriter,
     InMemoryDispatchRecord,
     InMemoryDriftOpenItems,
-    InMemoryLaneRunner,
+    InMemoryLanePlacer,
     InMemoryLiveLanes,
 )
 from omnimarket.nodes.node_host_drift_owner_dispatch_effect.adapters.runtime_adapters import (
@@ -23,7 +23,7 @@ from omnimarket.nodes.node_host_drift_owner_dispatch_effect.adapters.runtime_ada
     FileDispatchRecord,
     FileDriftOpenItems,
     LedgerQueryLiveLanes,
-    SubprocessLaneRunner,
+    SubprocessLanePlacer,
 )
 from omnimarket.nodes.node_host_drift_owner_dispatch_effect.handlers.handler_host_drift_owner_dispatch import (
     HandlerHostDriftOwnerDispatch,
@@ -49,26 +49,34 @@ def _utc_now() -> datetime:
     return datetime.now(UTC)
 
 
-def build_handler(
+def _build_inmemory(
     overlay: ModelDriftOwnerOverlay,
     *,
     root: Path,
     environ: Mapping[str, str],
-    clock: Callable[[], datetime] = _utc_now,
+    clock: Callable[[], datetime],
 ) -> HandlerHostDriftOwnerDispatch:
-    """The handler wired to the overlay's backend; ``root`` is what the overlay's relative paths are under."""
     dispatch = overlay.dispatch
-    if overlay.backend == "inmemory":
-        return HandlerHostDriftOwnerDispatch(
-            overlay=overlay,
-            items=InMemoryDriftOpenItems(host="inmemory"),
-            live=InMemoryLiveLanes(),
-            record=InMemoryDispatchRecord(),
-            briefs=InMemoryBriefWriter(),
-            runner=InMemoryLaneRunner(),
-            runner_path=environ.get(dispatch.runner_env, ""),
-            clock=clock,
-        )
+    return HandlerHostDriftOwnerDispatch(
+        overlay=overlay,
+        items=InMemoryDriftOpenItems(host="inmemory"),
+        live=InMemoryLiveLanes(),
+        record=InMemoryDispatchRecord(),
+        briefs=InMemoryBriefWriter(),
+        runner=InMemoryLanePlacer(),
+        runner_path=environ.get(dispatch.runner_env, ""),
+        clock=clock,
+    )
+
+
+def _build_runtime(
+    overlay: ModelDriftOwnerOverlay,
+    *,
+    root: Path,
+    environ: Mapping[str, str],
+    clock: Callable[[], datetime],
+) -> HandlerHostDriftOwnerDispatch:
+    dispatch = overlay.dispatch
     runner_path = environ.get(dispatch.runner_env, "")
     if not runner_path:
         raise DriftStateUnreadableError(
@@ -90,9 +98,28 @@ def build_handler(
         ),
         record=FileDispatchRecord(root / overlay.dispatch_record_path),
         briefs=FileBriefWriter(briefs),
-        runner=SubprocessLaneRunner(dispatch.settle_seconds, briefs),
+        runner=SubprocessLanePlacer(dispatch.settle_seconds, briefs),
         runner_path=runner_path,
         clock=clock,
+    )
+
+
+_BACKEND_BUILDERS: dict[str, Callable[..., HandlerHostDriftOwnerDispatch]] = {
+    "inmemory": _build_inmemory,
+    "runtime": _build_runtime,
+}
+
+
+def build_handler(
+    overlay: ModelDriftOwnerOverlay,
+    *,
+    root: Path,
+    environ: Mapping[str, str],
+    clock: Callable[[], datetime] = _utc_now,
+) -> HandlerHostDriftOwnerDispatch:
+    """The handler wired to the overlay's backend; ``root`` is what the overlay's relative paths are under."""
+    return _BACKEND_BUILDERS[overlay.backend](
+        overlay, root=root, environ=environ, clock=clock
     )
 
 

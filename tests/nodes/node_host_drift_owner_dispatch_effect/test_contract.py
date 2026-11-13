@@ -20,6 +20,10 @@ def test_the_contract_names_a_handler_that_imports_and_the_topics_it_declares() 
     assert hasattr(module, contract["handler"]["class"])
     assert contract["terminal_event"] in contract["externally_consumed_topics"]
     assert (
+        contract["terminal_event"]
+        == "onex.evt.omnimarket.host-drift-owner-dispatch-completed.v1"
+    )
+    assert (
         contract["runtime_dispatch"]["command_topic"]
         == contract["topics"]["dispatch_requested"]
     )

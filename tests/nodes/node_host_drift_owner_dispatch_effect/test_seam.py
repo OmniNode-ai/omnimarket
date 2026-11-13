@@ -18,6 +18,7 @@ from omnimarket.handlers.ledger_row_grammar import parse_row
 from omnimarket.nodes.node_alarm_owner_responder_compute import (
     HandlerAlarmOwnerResponder,
     ModelAlarmOwnerRequest,
+    ModelAlarmOwnerResult,
 )
 from omnimarket.nodes.node_host_drift_owner_dispatch_effect.handlers.handler_host_drift_owner_dispatch import (
     cause_key_of,
@@ -34,7 +35,7 @@ pytestmark = pytest.mark.unit
 NOW_STAMP = NOW.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _ask(rows: tuple[str, ...]):  # type: ignore[no-untyped-def]
+def _ask(rows: tuple[str, ...]) -> ModelAlarmOwnerResult:
     return HandlerAlarmOwnerResponder().handle(
         ModelAlarmOwnerRequest(rows=rows, now=NOW_STAMP, policy=overlay().policy)
     )
