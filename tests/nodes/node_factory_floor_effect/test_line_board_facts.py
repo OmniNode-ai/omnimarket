@@ -122,14 +122,10 @@ class _Reader:
     def __init__(self, read: ModelMrcEvidenceRead | None = None) -> None:
         self._read = read
 
-    def read(
-        self, now: datetime, *, hosts_table: Path | None = None
-    ) -> ModelMergedRunningCountResult:
+    def read(self, now: datetime) -> ModelMergedRunningCountResult:
         raise OSError("the count is not under test")
 
-    def read_evidence(
-        self, now: datetime, *, hosts_table: Path | None = None
-    ) -> ModelMrcEvidenceRead:
+    def read_evidence(self, now: datetime) -> ModelMrcEvidenceRead:
         assert self._read is not None
         return self._read
 
@@ -532,7 +528,7 @@ def test_a_reader_with_no_evidence_method_leaves_running_evidence_unread(
     world: dict[str, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     class CountOnly:
-        def read(self, now: datetime, *, hosts_table: Path | None = None) -> Any:
+        def read(self, now: datetime) -> Any:
             raise OSError("not under test")
 
     files = _prepare(world, monkeypatch)

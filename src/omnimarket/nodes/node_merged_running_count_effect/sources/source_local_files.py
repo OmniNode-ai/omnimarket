@@ -6,12 +6,11 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.models.model_merged_running_count import (
@@ -20,6 +19,9 @@ from omnimarket.models.model_merged_running_count import (
     ModelMrcHost,
     ModelMrcLiveLane,
     ModelMrcPr,
+)
+from omnimarket.nodes.node_host_table_compute.models.model_host_table import (
+    ModelHostTableResult,
 )
 from omnimarket.nodes.node_merged_running_count_effect.sources.source_deployed_provenance import (
     SourceDeployedProvenance,
@@ -78,7 +80,7 @@ class SourceLocalFiles:
         watcher_state: Path,
         ledger: Path,
         labels: ModelSourceLabels,
-        hosts_table: Path,
+        hosts: Callable[[], ModelHostTableResult],
         placement_read: Path,
         now: datetime,
         lab_pass: SourceLabPassReceipts | None = None,
@@ -89,7 +91,7 @@ class SourceLocalFiles:
         self._watcher_state = watcher_state
         self._ledger = ledger
         self._labels = labels
-        self._hosts_table = hosts_table
+        self._hosts = hosts
         self._placement_read = placement_read
         self._now = now
         self._lab_pass = lab_pass
@@ -196,7 +198,7 @@ class SourceLocalFiles:
 
     def read_hosts(self) -> tuple[ModelMrcHost, ...]:
         """Slots from the host's placement advertisement; the table cap only as a named fallback; neither: unread."""
-        table = yaml.safe_load(self._hosts_table.read_text(encoding="utf-8"))["hosts"]
+        table = self._hosts().rows
         advertised: dict[str, int] | None = None
         if self._placement_read.exists():
             advertised = {
@@ -205,9 +207,9 @@ class SourceLocalFiles:
             }
         hosts: list[ModelMrcHost] = []
         for row in table:
-            name = str(row["name"])
-            available = row.get("available") is not False
-            cap = row.get("cap")
+            name = row.name
+            available = row.available
+            cap = row.cap
             if advertised is not None and name in advertised:
                 hosts.append(
                     ModelMrcHost(

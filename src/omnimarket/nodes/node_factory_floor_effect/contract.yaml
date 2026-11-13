@@ -166,7 +166,7 @@ runtime:
   # the pool receipt is the one `onex_lab_run.py --hosts` writes: the landing placement's pool read (load, memory,
   # swap, cap per host, or UNREADABLE). The placement directory holds the live placement markers
   # (<host>.<lease>.<pid>; a lease id at or over lane_marker_min_id is a remote lane) and the cloud accounts file.
-  # The lab host table is the file host_table_env names, else the one the deployment overlay's host_table_relpath names.
+  # The lab host table is read through the one host table reader (resolve_lab_hosts_table and node_host_table_compute).
   lane_sources:
     remote_lane_dir_env: ONEX_REMOTE_LANE_DIR
     remote_lane_dir_fallback: .local/state/omni/remote-lanes
@@ -180,7 +180,6 @@ runtime:
     placement_dir_env: LANDING_PLACEMENT_DIR
     placement_dir_fallback: .local/state/omni/landing/placement
     lane_marker_min_id: 1000000000
-    host_table_env: ONEX_LAB_RUN_HOSTS
     # Run on the launching/controller host: receipt pids, worker leases and placement pids are local there.
     # Reuse landing_workers' group/tag probe so a surviving descendant stays live after its parent exits.
     controller_dir_env: LANDING_STATE_DIR

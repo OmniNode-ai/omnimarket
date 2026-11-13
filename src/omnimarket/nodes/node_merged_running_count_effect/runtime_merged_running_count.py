@@ -21,12 +21,20 @@ from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
     load_structured_overlay,
 )
+from omnimarket.handlers.overlay_keys import resolve_lab_hosts_table
 from omnimarket.models.model_merged_running_count import (
     ModelMergedRunningCountResult,
     ModelMrcConfig,
     ModelMrcEvidenceRead,
 )
 from omnimarket.models.model_runtime_host_reads import ModelRuntimeHostReadOverlay
+from omnimarket.nodes.node_host_table_compute.handlers.handler_host_table import (
+    HandlerHostTable,
+)
+from omnimarket.nodes.node_host_table_compute.models.model_host_table import (
+    ModelHostTableRequest,
+    ModelHostTableResult,
+)
 from omnimarket.nodes.node_merged_running_count_effect.handlers.handler_merged_running_count_effect import (
     HandlerMergedRunningCountEffect,
 )
@@ -99,8 +107,14 @@ def build_provenance_source(
     )
 
 
+def read_host_table() -> ModelHostTableResult:
+    return HandlerHostTable().handle(
+        ModelHostTableRequest(table=resolve_lab_hosts_table(os.environ))
+    )
+
+
 def build_sources(
-    now: datetime, *, hosts_table: Path | None = None
+    now: datetime,
 ) -> SourceLocalFiles:
     rt = yaml.safe_load(OWN_CONTRACT.read_text(encoding="utf-8"))["runtime"]
     home = Path(_required_env(rt["home_env"]))
@@ -118,9 +132,7 @@ def build_sources(
         ),
         ledger=Path(_required_env(rt["ledger_env"])),
         labels=ModelSourceLabels.model_validate(rt["labels"]),
-        hosts_table=hosts_table
-        if hosts_table is not None
-        else Path(_required_env(rt["hosts_table_env"])),
+        hosts=read_host_table,
         placement_read=home / rt["placement_read_relpath"],
         now=now,
     )
@@ -130,10 +142,11 @@ class MergedRunningCountReader:
     """The count as the floor reads it (``ProtocolMergedRunningCountReader``): the local-file sources, the handler, the count."""
 
     def read(
-        self, now: datetime, *, hosts_table: Path | None = None
+        self,
+        now: datetime,
     ) -> ModelMergedRunningCountResult:
         try:
-            sources = build_sources(now, hosts_table=hosts_table)
+            sources = build_sources(now)
         except SystemExit as exc:
             raise RuntimeError(str(exc)) from exc
         container: Any = _LocalContainer(sources)
@@ -143,11 +156,12 @@ class MergedRunningCountReader:
         return run.count
 
     def read_evidence(
-        self, now: datetime, *, hosts_table: Path | None = None
+        self,
+        now: datetime,
     ) -> ModelMrcEvidenceRead:
         """The evidence the count is computed from (``ProtocolMergedRunningEvidenceReader``): adoption rows and deploy receipts."""
         try:
-            sources = build_sources(now, hosts_table=hosts_table)
+            sources = build_sources(now)
         except SystemExit as exc:
             raise RuntimeError(str(exc)) from exc
         deployed = sources.read_deployed_evidence()

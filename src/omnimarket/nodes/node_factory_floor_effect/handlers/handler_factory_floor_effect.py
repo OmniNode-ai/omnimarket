@@ -84,7 +84,6 @@ from omnimarket.nodes.node_factory_floor_effect.source_loader import (
     read_placement,
     resolve_dir,
     resolve_home,
-    resolve_host_table,
     runner_fleet_cause,
     write_result,
 )
@@ -191,13 +190,13 @@ class HandlerFactoryFloorEffect:
         self._merged_running = merged_running
 
     def _read_merged_running(
-        self, now: datetime, hosts_table: Path | None
+        self, now: datetime
     ) -> tuple[ModelMergedRunningCountResult | None, str]:
         """The count and an empty cause, or None and why it was not read: a count that fails never stops the floor."""
         if self._merged_running is None:
             return None, "no merged-running count reader is bound"
         try:
-            return self._merged_running.read(now, hosts_table=hosts_table), ""
+            return self._merged_running.read(now), ""
         except (OSError, ValueError, KeyError, LookupError, RuntimeError) as exc:
             return None, f"{type(exc).__name__}: {exc}"
 
@@ -214,7 +213,7 @@ class HandlerFactoryFloorEffect:
             return None, str(exc)
 
     def _read_running_evidence(
-        self, now: datetime, hosts_table: Path | None
+        self, now: datetime
     ) -> tuple[tuple[ModelMrcEvidence, ...] | None, str]:
         """The per-merge running evidence, or None and why. Evidence read in part is unread: a merge missing from it
         would otherwise read as not running."""
@@ -227,7 +226,7 @@ class HandlerFactoryFloorEffect:
                 "the bound merged-running reader supplies no per-merge evidence",
             )
         try:
-            read = reader.read_evidence(now, hosts_table=hosts_table)
+            read = reader.read_evidence(now)
         except (OSError, ValueError, KeyError, LookupError, RuntimeError) as exc:
             return None, f"{type(exc).__name__}: {exc}"
         if read.unread_cause:
@@ -308,12 +307,6 @@ class HandlerFactoryFloorEffect:
         )
         placement_dir = resolve_dir(
             os.environ, ls.placement_dir_env, ls.placement_dir_fallback
-        )
-        host_table_path = resolve_host_table(
-            os.environ,
-            ls.host_table_env,
-            home,
-            overlay.host_table_relpath if overlay is not None else "",
         )
         linear_snapshot = newest_linear_snapshot(
             home / src.plans_today_dir, src.linear_snapshot_glob
@@ -405,12 +398,8 @@ class HandlerFactoryFloorEffect:
             ),
             task_links=overlay.plan_task_links if overlay is not None else (),
         )
-        merged_running, merged_running_cause = self._read_merged_running(
-            now, host_table_path
-        )
-        running_evidence, running_cause = self._read_running_evidence(
-            now, host_table_path
-        )
+        merged_running, merged_running_cause = self._read_merged_running(now)
+        running_evidence, running_cause = self._read_running_evidence(now)
         ledger = ledger_read.result()
         ledger_read_at = (
             _file_time(Path(request.ledger_rows_file))
@@ -550,9 +539,7 @@ class HandlerFactoryFloorEffect:
             stoppages=load_stoppages(home / src.friction_report_relpath),
             machines=machines,
             pool=load_pool(lane_dir / ls.pool_receipt),
-            host_table=load_host_table(host_table_path)
-            if host_table_path is not None
-            else None,
+            host_table=load_host_table(os.environ),
             placed=load_placed(placement_dir, ls.lane_marker_min_id),
             receipts=load_receipts(
                 lane_dir,

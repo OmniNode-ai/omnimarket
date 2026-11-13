@@ -1,0 +1,68 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_host_table_compute
+lifecycle: experimental
+node_type: COMPUTE_GENERIC
+runtime_profiles: []
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: Turn the lab host table (ModelLabHostsTable) into the row set every reader uses, one row per
+  host in table order, the names of the admitted hosts and the excluded rows, each exclusion with its stated
+  reason. The node is pure, the caller reads the table and passes it in; a table that excludes a host without
+  a stated reason, or names one host twice, is refused.
+# The caller reads the key through omnimarket.handlers.overlay_keys.resolve_lab_hosts_table; this node does no I/O.
+overlay_keys:
+- lab_hosts.hosts
+input_model:
+  name: ModelHostTableRequest
+  module: omnimarket.nodes.node_host_table_compute.models.model_host_table
+output_model:
+  name: ModelHostTableResult
+  module: omnimarket.nodes.node_host_table_compute.models.model_host_table
+handler:
+  module: omnimarket.nodes.node_host_table_compute.handlers.handler_host_table
+  class: HandlerHostTable
+  input_model: omnimarket.nodes.node_host_table_compute.models.model_host_table.ModelHostTableRequest
+  output_model: omnimarket.nodes.node_host_table_compute.models.model_host_table.ModelHostTableResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_host_table_compute.handlers.handler_host_table:HandlerHostTable
+  handlers:
+  - operation: handle
+    handler:
+      name: HandlerHostTable
+      module: omnimarket.nodes.node_host_table_compute.handlers.handler_host_table
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct Python invocation with the lab host table the caller read through
+    resolve_lab_hosts_table, to name the admitted hosts and the excluded ones with their
+    reasons (handle).
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 5000
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: true
+metadata:
+  transport_type: local
+  description: Turn the lab host table (ModelLabHostsTable) into the row set every reader uses, one row per
+    host in table order, the names of the admitted hosts and the excluded rows, each exclusion with its stated
+    reason. The node is pure, the caller reads the table and passes it in; a table that excludes a host without
+    a stated reason, or names one host twice, is refused.
+  author: OmniNode Team
+  created: '2026-11-12'
+  tags:
+  - compute
+  - host-table-compute
+  - OMN-22251
+  related_tickets:
+  - OMN-22251
