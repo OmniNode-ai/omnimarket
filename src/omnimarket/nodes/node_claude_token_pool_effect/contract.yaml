@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: MIT
 # ONEX Node Contract - Claude Token Pool Effect (OMN-17427)
 #
-# CLI-run effect, like node_local_secret_store_effect: no subscription and no
-# onex.nodes entry point, invoked as `python -m
+# CLI-run effect, like node_local_secret_store_effect: it has an onex.nodes
+# entry point and is invoked locally, with no subscription, as `python -m
 # omnimarket.nodes.node_claude_token_pool_effect` on the lab host whose pool it
 # is (the remote-lane runner at lane start, the operator adding a token). It also
 # owns its schedule (OMN-23000): the `tick` verb, run by the timer
@@ -61,6 +61,7 @@ handler:
   module: omnimarket.nodes.node_claude_token_pool_effect.handlers.handler_claude_token_pool
   class: HandlerClaudeTokenPool
   input_model: omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_pool.ModelClaudeTokenPoolRequest
+  output_model: omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_pool.ModelClaudeTokenPoolResult
 
 handler_routing:
   default_handler: omnimarket.nodes.node_claude_token_pool_effect.handlers.handler_claude_token_pool:HandlerClaudeTokenPool
@@ -92,8 +93,7 @@ descriptor:
   purity: impure
   idempotent: false  # resolve records the token chosen; mark_limited moves a limit
   timeout_ms: 10000
-  runtime_profiles:
-    - effects
+  runtime_profiles: []
 
 # The node publishes nothing: it runs on the host that holds the tokens and
 # returns its result to the runner's shell. Declaring topics would claim a
@@ -101,6 +101,9 @@ descriptor:
 event_bus:
   subscribe_topics: []
   publish_topics: []
+
+runtime_dispatch:
+  external_trigger: "python -m omnimarket.nodes.node_claude_token_pool_effect on the lab host whose pool it is (the remote-lane runner at lane start, the operator adding a token) and its scheduled tick timer."
 
 # The node's own timer, installed by `schedule install --host <name>` as the scheduler the overlay
 # names for that host (a systemd user timer on a lab host, a launchd agent on the Mac), removed by
@@ -130,4 +133,4 @@ seams:
 
 metadata:
   ticket: OMN-23000
-  transport_type: kafka
+  transport_type: local
