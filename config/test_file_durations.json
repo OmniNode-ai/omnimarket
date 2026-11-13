@@ -3184,6 +3184,7 @@
   "tests/test_lab_test_harness_review_findings.py": 0.138,
   "tests/test_lab_test_harness_schedule.py": 2.03,
   "tests/test_lane_census_effect_omn21946.py": 0.17,
+  "tests/test_lane_census_project_check_omn19998.py": 2.54,
   "tests/test_lane_census_registry_omn22152.py": 0.16,
   "tests/test_ledger_nodes_unit.py": 0.03,
   "tests/test_ledger_state_reducer_pure.py": 0.06,
