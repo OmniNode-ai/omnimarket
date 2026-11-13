@@ -15,7 +15,7 @@ requirements:
     statement: 'AC1: onex-host-install-units <unit> --dry-run with any of install, kickstart, uninstall, rollback, in either flag order, prints a plan and makes no file change and no launchctl or systemctl
       call -- falsifier: uv run pytest tests/nodes/node_host_installer_registry_units/test_dry_run_holds.py -q fails at the merge base'
   - id: AC2
-    statement: 'AC2: without --dry-run the last mode flag still wins -- falsifier: uv run pytest tests/nodes/node_host_installer_registry_units/test_cli.py -q fails if the last-flag rule changes'
+    statement: 'AC2: without --dry-run the last mode flag still wins -- falsifier: the last-flag tests in test_dry_run_holds.py fail if the last-flag rule changes and fail at the merge base'
   - id: AC3
     statement: 'AC3: integrated: on a lab host, onex-host-install-units <harmless unit> --dry-run --uninstall exits 0 with the plan and the unit is still loaded afterwards -- falsifier: the status read of
       that unit on the host after the dry run reads NOT LOADED'
@@ -44,7 +44,7 @@ dod_evidence:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_cli.py -q -n 0 --no-cov -p no:cacheprovider
+    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_dry_run_holds.py -q -n 0 --no-cov -p no:cacheprovider -k 'test_control_the_old_parse or keeps_the_last_flag'
     cwd: .
 - id: dod-omn24144-ac3
   description: 'hosted proxy for AC3: the dry-run tests pass; the reading on a lab host is named in the pull request.'
