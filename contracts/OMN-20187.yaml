@@ -42,3 +42,18 @@ dod_evidence:
         check_value: "uv run pytest tests/test_delegation_dispatch_entrypoints.py -q -k \"verified_dispatch_orchestrator_dispatch\""
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
+  - id: "dod-omn20187-ac1-three-handlers-dispatch"
+    description: "AC1: the model router, AB-compare reducer and verified-dispatch orchestrator are each dispatched through the real auto-wiring _make_dispatch_callback with their contract-declared event_model and return a result, and the baseline never-stale test shows no handler with an entrypoint is still baselined. Re-run by the accepting lane on lab host h051 (work unit lw-1e00b6149aec4ad5) at omnimarket dev c586f0d98f6a: 6 passed."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_delegation_dispatch_entrypoints.py \"tests/validators/test_handler_dispatch_entrypoint.py::test_baseline_is_shrink_only_and_never_stale\" -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+context:
+  ac_binding_provenance:
+    "dod-omn20187-ac1-three-handlers-dispatch":
+      - label: "AC1"
+        criterion_hash: "0ba7e5c6d32eefb27d86af9df4332663dda5aa03b8d868d71ebfabc51384b288"
+        proposed_by: "lane=dod-closeout-bind-2026-11-13T0345Z-c3"
+        accepted_by: "lane=dod-closeout-accept-2026-11-13T0345Z-c3"
