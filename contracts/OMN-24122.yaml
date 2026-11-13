@@ -1,0 +1,60 @@
+schema_version: 1.0.0
+ticket_id: OMN-24122
+title: The eval census and trial jobs can be started from the command line on the dev system
+summary: The overlay documents of node_code_eval_suite_census_compute and node_code_eval_trial_orchestrator declared no event_bus, so onex run-node refused both with a SkillRoutingError, and both overlay models forbid unknown keys, so the key could not be added to the documents without breaking the nodes' own load. Both models now accept event_bus as an optional key (ModelNodeEventBus) and keep refusing every other unknown key. The overlays repository change that adds the key is a draft pull request that stays draft until this change is on dev.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24122-event-bus-key
+  statement: One overlay document of each of the two eval nodes loads through the node model and the bus overlay reader.
+  acceptance:
+  - id: AC1
+    statement: "AC1: the settings reader of the census node and of the trial orchestrator accept an optional event_bus key and still refuse any other unknown key, and a document without the key still loads -- falsifier: uv run pytest tests/unit/nodes/test_overlay_event_bus_omn_eval_nodes.py -q -n 0 --no-cov"
+  - id: AC2
+    statement: "AC2: the census and trial orchestrator settings documents in the overlays repository carry event_bus type kafka lane dev and load through both readers -- falsifier: uv run pytest tests/test_eval_nodes_event_bus_overlay.py -q"
+  - id: AC3
+    statement: "AC3: integrated: onex run-node node_code_eval_suite_census_compute with the packaged suite as its input, run against the dev runtime, answers a census of 310 tasks, read in the lane's receipt -- falsifier: the run ends with SkillRoutingError naming a missing event_bus, or a count other than 310"
+evidence_requirements:
+- kind: tests
+  description: The event_bus tests pass at the pushed head and the model-accepts-the-key test fails at the base commit.
+  command: uv run pytest tests/unit/nodes/test_overlay_event_bus_omn_eval_nodes.py tests/nodes/node_code_eval_suite_census_compute/test_overlay_keys.py -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24122-ac1
+  description: 'AC1: both models accept event_bus and refuse any other unknown key; at the base commit both refuse event_bus.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/test_overlay_event_bus_omn_eval_nodes.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24122-ac2
+  description: 'hosted proxy for AC2: the event_bus tests pass here; the overlays repository change is a draft pull request that stays draft until this one is on dev, and its test is read in that pull request.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/test_overlay_event_bus_omn_eval_nodes.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24122-ac3
+  description: 'hosted proxy for AC3: the census node tests pass here; the census run against the dev runtime is read on a lab host after the overlays change is applied and posted as a pull request comment.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_code_eval_suite_census_compute/test_overlay_keys.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24122-integration-proof
+  description: 'Run the event_bus tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24122 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/test_overlay_event_bus_omn_eval_nodes.py -q --no-cov -p no:cacheprovider
