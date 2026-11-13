@@ -5412,6 +5412,7 @@
   "tests/unit/test_remaining_bifrost_readers.py": 5.34,
   "tests/unit/test_reviewer_trigger_absent.py": 16.39,
   "tests/unit/test_routing_policy_helpers.py": 0.05,
+  "tests/unit/test_runtime_delivery_host_closed_after_test_omn19998.py": 2.89,
   "tests/unit/test_session_start_nodes_present.py": 0.01,
   "tests/unit/test_verify_target_mapping.py": 0.21,
   "tests/unit/test_workflow_core_pin_only_classifier_omn_17427.py": 0.07,
