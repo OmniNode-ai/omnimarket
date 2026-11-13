@@ -2701,6 +2701,7 @@
   "tests/test_dod_verify_every_criterion_bound.py": 0.18,
   "tests/test_dod_verify_occ_difference.py": 6.91,
   "tests/test_dod_verify_s5_case_list.py": 0.38,
+  "tests/test_entry_points_node_move_batch1.py": 3.89,
   "tests/test_event_chain_projection_omn13620.py": 0.16,
   "tests/test_evidence_dashboard_nodes.py": 0.08,
   "tests/test_evidence_pipeline_contracts.py": 0.39,
