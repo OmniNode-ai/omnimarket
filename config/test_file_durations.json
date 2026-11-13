@@ -1709,6 +1709,7 @@
   "tests/nodes/node_lab_fill_selection_compute/test_overlay.py": 0.21,
   "tests/nodes/node_lab_history_archive_effect/test_adapters_overlay_cli.py": 0.11,
   "tests/nodes/node_lab_history_archive_effect/test_golden_chain_lab_history_archive_effect.py": 0.4,
+  "tests/nodes/node_lab_host_key_distribution_effect/test_lab_host_declared_host_keys_install.py": 5.13,
   "tests/nodes/node_lab_host_key_distribution_effect/test_lab_host_key_distribution.py": 0.17,
   "tests/nodes/node_lab_host_key_distribution_effect/test_lab_host_public_keys_install.py": 0.17,
   "tests/nodes/node_lab_host_repair_dispatch_effect/test_host_repair_dispatch.py": 0.17,

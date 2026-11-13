@@ -1,0 +1,54 @@
+schema_version: 1.0.0
+ticket_id: OMN-24128
+title: The second lab computer holds the first one's declared public identity key under every name
+summary: A lab host row may declare the public ssh host keys of its machine (host_keys), and the host key node gains the install_declared_host_keys operation that writes each declared key into the known_hosts of the selected pool hosts under the peer's name, its target and every fallback target. The overlay values are a separate pull request that waits for this one on dev.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn24128-declared-host-keys
+  statement: The lab host row model accepts declared public host keys and the host key node installs them into known_hosts under every destination name of the row.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a lab host row may declare public host keys, a row with a repeated key, a key carrying a comment or a malformed key is refused, and a table with no declared keys still loads -- falsifier: uv run pytest tests/nodes/node_lab_host_key_distribution_effect/test_lab_host_declared_host_keys_install.py -k "declares_and_validates or without_host_keys" -n 0 --no-cov fails when the host_keys field is removed from the row model'
+  - id: AC2
+    statement: 'AC2: the install_declared_host_keys operation writes one known_hosts line per destination, peer and key naming the peer name, its target and every fallback target, a second run adds nothing, a refused destination does not stop the others, and a table declaring no keys is refused -- falsifier: with the fallback names left out of the line, uv run pytest tests/nodes/node_lab_host_key_distribution_effect/test_lab_host_declared_host_keys_install.py -n 0 --no-cov fails three tests'
+  - id: AC3
+    statement: 'AC3: integrated: after the overlay values merge and the step runs on h053, ssh to the h051 fallback name answers instead of ending 255 -- falsifier: ssh -o BatchMode=yes hp-gen8 true on h053 ends 255 Host key verification failed'
+evidence_requirements:
+- kind: tests
+  description: The focused host key node tests pass at the pushed head.
+  command: uv run pytest tests/nodes/node_lab_host_key_distribution_effect -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24128-ac1
+  description: 'AC1: the row model tests pass at the head and fail on the pre-change model, which refuses the host_keys field.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lab_host_key_distribution_effect/test_lab_host_declared_host_keys_install.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24128-ac2
+  description: 'AC2: the operation tests pass at the head and three of them fail with the fallback names left out of the known_hosts line.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lab_host_key_distribution_effect/test_lab_host_declared_host_keys_install.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24128-ac3
+  description: 'hosted proxy for AC3: the operation tests pass; the reading of the h051 fallback from h053 after the step is posted as a comment on the pull request.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lab_host_key_distribution_effect/test_lab_host_declared_host_keys_install.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
