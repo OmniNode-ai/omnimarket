@@ -3552,6 +3552,7 @@
   "tests/test_omn23325_real_postgres_producer_closed_terminal.py": 0.17,
   "tests/test_omn23888_code_eval_trial_state_ownership_declared.py": 1.22,
   "tests/test_omn23994_host_overlay_real_postgres.py": 1.49,
+  "tests/test_omn24085_branch_deploy_state_ownership_declared.py": 1.22,
   "tests/test_omn8693_node_heartbeat_mechanism.py": 0.05,
   "tests/test_omn9403_publisher_wiring.py": 0.04,
   "tests/test_omn_13718_plan_to_tickets_runtime_local.py": 0.03,
