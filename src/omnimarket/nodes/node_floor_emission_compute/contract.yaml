@@ -54,12 +54,13 @@ output_model:
 
 terminal_event: onex.evt.omnimarket.floor-receipts-computed.v1
 
+runtime_dispatch:
+  external_trigger: run in process by node_floor_simple_effect (chain node_floor_emission_compute:compute_floor_receipts); the input is a whole window, never a single event, so the node subscribes to nothing (OMN-24298).
+
 event_bus:
-  subscribe_topics:
-    - onex.evt.omnimarket.floor-node-started.v1
-    - onex.evt.omnimarket.floor-node-succeeded.v1
-    - onex.evt.omnimarket.floor-node-failed.v1
-  # The three emission topics are published by the nodes that emit (the 17a cycle's sink); this node folds them.
+  subscribe_topics: []
+  # This node publishes only its receipts. The three emission topics are published by node_floor_simple_effect and read at
+  # once by node_floor_emissions_publish_effect (its snapshot_reads); a single event is never dispatched to this node.
   publish_topics:
     - onex.evt.omnimarket.floor-receipts-computed.v1
 
