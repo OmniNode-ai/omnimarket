@@ -54,6 +54,15 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/test_worktree_reconcile_schedule.py -q --no-cov
     cwd: .
+- id: dod-omn22799-run-completed-deferred
+  description: The run-completed event carries the deferred count and paths, and a tree that vanishes mid-probe defers while a missing file in a live tree still fails.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_worktree_reconcile_exit_classes.py tests/test_golden_chain_worktree_reconcile.py -q --no-cov -k "vanishes or deferred or chain"
+    cwd: .
 - id: dod-omn22799-integration-proof
   description: Run this pull request's own tests on a lab host at the pushed head, then install the branch's worktree reconcile through its schedule install with a rollback copy and read two ticks of the timer with exit 0 (the lane's report holds the reads). Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
   source: manual

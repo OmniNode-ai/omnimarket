@@ -12,6 +12,9 @@ overlay that is present but unreadable or invalid raises
 :class:`~omnimarket.handlers.node_overlay_reader.NodeOverlayError`, never a
 default. The overlay is read on every call, so a changed budget is in force on
 the next read.
+
+The strict reader is for a caller that must not run without a declared budget
+(the inference effect, OMN-24039).
 """
 
 from __future__ import annotations
@@ -63,4 +66,55 @@ def read_call_budget_s(
     return result.call_budget_s
 
 
-__all__ = ["read_call_budget_s"]
+class CallBudgetNotDeclaredError(ValueError):
+    """The code budget overlay names no call budget for a task class."""
+
+
+def require_call_budget_s(
+    task_class: str, environ: Mapping[str, str] | None = None
+) -> float:
+    """The overlay's call budget for ``task_class``; refuses when it names none.
+
+    Refuses with :class:`CallBudgetNotDeclaredError` when the overlay names no
+    budget for ``task_class``, when no overlay root names the code budget
+    overlay, and when ``task_class`` is blank. Same reading as
+    :func:`read_call_budget_s` (it calls that reader, it does not reimplement
+    the node read); an invalid overlay still raises
+    :class:`~omnimarket.handlers.node_overlay_reader.NodeOverlayError`.
+    """
+    value = read_call_budget_s(task_class, environ) if task_class.strip() else None
+    if value is None:
+        raise CallBudgetNotDeclaredError(
+            f"no call budget declared for task class {task_class!r} in the "
+            f"code budget overlay {CODE_BUDGET_OVERLAY_ID!r}; the budget is an "
+            f"overlay value with no code default"
+        )
+    return value
+
+
+def require_call_ceiling_s(environ: Mapping[str, str] | None = None) -> float:
+    """The code budget overlay's ceiling; refuses when no overlay root names it.
+
+    Refuses with :class:`CallBudgetNotDeclaredError` when no overlay root names
+    the code budget overlay; the ceiling is an overlay value with no code
+    default. An invalid overlay still raises
+    :class:`~omnimarket.handlers.node_overlay_reader.NodeOverlayError`.
+    """
+    try:
+        overlay = load_structured_overlay(
+            CODE_BUDGET_OVERLAY_ID, ModelCodeBudgetOverlay, environ
+        )
+    except NodeOverlayNotFoundError as exc:
+        raise CallBudgetNotDeclaredError(
+            f"no code budget overlay is declared in {CODE_BUDGET_OVERLAY_ID!r}; "
+            f"the ceiling is an overlay value with no code default"
+        ) from exc
+    return overlay.ceiling_s
+
+
+__all__ = [
+    "CallBudgetNotDeclaredError",
+    "read_call_budget_s",
+    "require_call_budget_s",
+    "require_call_ceiling_s",
+]

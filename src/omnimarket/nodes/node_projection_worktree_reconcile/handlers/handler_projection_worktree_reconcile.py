@@ -21,6 +21,8 @@ class HandlerProjectionWorktreeReconcile:
                 event.correlation_id.int,
             ):
                 return current
+        # The deferred count and paths ride the event (OMN-22799); the host table keeps the
+        # columns it has, so the fold leaves them off the row.
         return ModelWorktreeReconcileHostRow.model_validate(
-            event.model_dump(exclude={"started_at"})
+            event.model_dump(exclude={"started_at", "deferred", "deferred_paths"})
         )
