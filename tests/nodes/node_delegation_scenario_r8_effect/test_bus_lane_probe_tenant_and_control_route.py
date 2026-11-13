@@ -66,7 +66,6 @@ def test_golden_chain_probe_tenant_every_send_carries_the_overlay_tenant(
 ) -> None:
     """Every send carries the overlay's probe tenant in the delegate command's environment."""
     assert SETTINGS.bus is not None
-    monkeypatch.setenv("MARKER_ENV", "marker-value")
     lane = handler_scenario_r8._build_bus_lane(
         SETTINGS, {SETTINGS.bus.workspace_env: "/workspace"}, KAFKA_OVERLAY
     )
@@ -83,10 +82,10 @@ def test_golden_chain_probe_tenant_every_send_carries_the_overlay_tenant(
     lane.send(ModelSendRequest(task_type="summarization", prompt="p"))
 
     assert len(recorded) == 2
-    for _argv, kwargs in recorded:
-        env = kwargs["env"]
-        assert env[SETTINGS.bus.tenant_env] == str(TENANT)
-        assert env["MARKER_ENV"] == "marker-value"
+    for argv, _kwargs in recorded:
+        # `env NAME=VALUE` layers the tenant over the inherited host environment.
+        assert argv[0] == "env"
+        assert f"{SETTINGS.bus.tenant_env}={TENANT}" in argv
 
 
 def test_control_route_pins_only_the_organic_control(

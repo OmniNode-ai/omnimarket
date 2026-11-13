@@ -14,7 +14,6 @@ is a typed ``LaneReadError``, never a default of zero.
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 import urllib.error
 import urllib.request
@@ -217,21 +216,11 @@ def _subprocess_run(argv: Sequence[str], timeout: float) -> tuple[int, str]:
 def _subprocess_run_as(extra_environment: Mapping[str, str]) -> CommandRunner:
     """A runner that passes the host environment plus ``extra_environment`` to the delegate command."""
 
+    # `env NAME=VALUE ...` layers the extra variables over the inherited host environment.
+    prefix = ["env", *(f"{k}={v}" for k, v in extra_environment.items())]
+
     def run(argv: Sequence[str], timeout: float) -> tuple[int, str]:
-        try:
-            done = subprocess.run(
-                list(argv),
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-                check=False,
-                env={**os.environ, **extra_environment},
-            )
-        except (OSError, subprocess.TimeoutExpired) as exc:
-            raise LaneReadError(
-                f"{argv[0]} did not finish: {type(exc).__name__}"
-            ) from exc
-        return done.returncode, done.stdout
+        return _subprocess_run([*prefix, *argv], timeout)
 
     return run
 

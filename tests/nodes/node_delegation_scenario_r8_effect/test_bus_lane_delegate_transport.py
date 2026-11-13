@@ -74,7 +74,10 @@ def test_golden_chain_kafka_overlay_names_the_transport_on_every_send(
     )
 
     assert len(recorded) == 1
-    argv = recorded[0]
+    argv = list(recorded[0])
+    # The tenant variable rides in front as `env NAME=VALUE`; the delegate command follows it.
+    if argv[0] == "env":
+        argv = argv[argv.index(SETTINGS.delegate_command[0]) :]
     assert argv[: len(SETTINGS.delegate_command)] == list(SETTINGS.delegate_command)
     assert argv[-6:] == [
         "--bus",
