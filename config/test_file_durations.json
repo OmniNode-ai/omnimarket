@@ -150,6 +150,7 @@
   "tests/ci/test_nightly_chain_skip_guard.py": 0.11,
   "tests/ci/test_no_lab_values_in_product_source_omn19184.py": 0.17,
   "tests/ci/test_no_stale_rebuild_classifier.py": 8.15,
+  "tests/ci/test_node_entry_point_guard_wiring.py": 5.41,
   "tests/ci/test_occ_callers_removed_omn20073.py": 0.45,
   "tests/ci/test_omn15797_rls_read_tenant_seam_gate.py": 13.71,
   "tests/ci/test_omn16804_no_source_compiled_tenant_map_on_write_path.py": 4.39,

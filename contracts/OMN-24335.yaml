@@ -1,0 +1,53 @@
+schema_version: 1.0.0
+ticket_id: OMN-24335
+title: Refuse a node directory without its entry point on every pull request
+summary: A node directory with no onex.nodes entry point merged to dev twice on 2026-11-13 because the pull request runs selected tests that skipped the dogfood inventory test and the drift gate excuses experimental contracts. The required lint job now runs the existing inventory check on every pull request.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24335-entry-point-guard
+  statement: The required lint job of the omnimarket CI runs the node inventory check on every pull request, and a node directory with no onex.nodes entry point fails it whatever its contract lifecycle.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the required lint job of the omnimarket CI runs the node entry point inventory check on every pull request, with no condition that can skip it -- falsifier: uv run pytest tests/ci/test_node_entry_point_guard_wiring.py -q -n 0 --no-cov fails when the step is removed from ci.yml, made conditional or made non-blocking'
+  - id: AC2
+    statement: 'AC2: a node directory with no onex.nodes entry point fails that check with the message "node directory has no onex.nodes entry point", whatever its contract lifecycle -- falsifier: add src/omnimarket/nodes/node_zz_probe/contract.yaml with no pyproject entry point and run the step''s command; it must exit 1, and exit 0 means the check is blind'
+  - id: AC3
+    statement: 'AC3: integrated: on a test branch pushed to omnimarket that adds a node directory without an entry point, the lint job of the running CI fails on that step and CI Summary reads failure, while the same branch with the entry point reads success -- falsifier: the CI read of the test branch head shows the lint job green without the entry point'
+evidence_requirements:
+- kind: tests
+  description: The wiring test, the pre-commit registry test and the one-case inventory check pass at the pushed head.
+  command: uv run pytest tests/ci/test_node_entry_point_guard_wiring.py tests/ci/test_precommit_commit_budget.py -q -n 0 --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24335-ac1
+  description: 'AC1: the wiring test passes at the head and fails on the base ci.yml, which has no such step.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_node_entry_point_guard_wiring.py -q -n 0 --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn24335-ac2
+  description: 'AC2: the step command passes on the real tree, and the same inventory check reports a node directory with no entry point (the parametrized controls of the dogfood test).'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_market_node_runtime_dogfood.py -k "inventory_fails_on_a_missing_or_extra_node and _without_entry_point" -q -n 0 --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn24335-ac3
+  description: 'hosted proxy for AC3: the registry test passes; the CI read of the test branch pair (red without the entry point, green with it) is posted as a comment on the pull request.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_precommit_commit_budget.py -q -n 0 --no-cov -p no:randomly
+    cwd: .
