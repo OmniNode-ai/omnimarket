@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+node: node_release_sibling_premise_effect
+description: >-
+  Reads the dev-merge redeploy receipts from the bus plus the branch history from a git
+  clone, calls the pure sibling-premise compute node, publishes one verdict event and
+  prints it. Replaces the release train's timed CI wait for the lane to vendor the merged
+  sibling revision; it reads the deploy agent's own receipt from the bus.
+side_effect_class:
+  - bus-publish
+  - git-read
+capabilities:
+  standalone: true
+  full_runtime: false

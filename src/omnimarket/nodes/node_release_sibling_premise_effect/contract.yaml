@@ -1,0 +1,94 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Release Sibling Premise Read Effect (OMN-24209)
+#
+# WHAT THIS REPLACES. The release train's premise that the dev lane vendors the merged sibling
+# revision is read from a CI job that polls the lane with a timeout. When the deploy agent's queue
+# is deeper than the job can wait, the job reads INDETERMINATE although nothing is broken. This node
+# reads the deploy agent's own answer instead: the receipt node_dev_merge_redeploy_trigger_effect
+# (R2) publishes per merge on onex.evt.omnimarket.dev-merge-redeploy-receipt.v1, whose deadline is
+# longer than the CI job's. It reads that topic and the branch history from a clone, has
+# node_release_sibling_premise_compute decide, publishes one verdict event and prints it.
+#
+# WHAT THE OVERLAY HOLDS. Every deployment fact: the repositories, their clones and base branches,
+# the deploy-path classifier's location, the git and classifier timeouts, the pending window, the
+# receipt lookback and the walk bound. See overlay.example.yaml. There is no packaged default.
+#
+# CUTOVER. Not done by this contract. The release train script still reads Actions artifacts until
+# its premise calls this node's verdict.
+name: "node_release_sibling_premise_effect"
+contract_name: "node_release_sibling_premise_effect"
+node_name: "node_release_sibling_premise_effect"
+lifecycle: experimental
+node_type: "EFFECT_GENERIC"
+runtime_profiles: [effects]
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: "0.1.0"
+description: >
+  Reads the dev-merge redeploy receipts from the bus and the branch history from a clone, has
+  node_release_sibling_premise_compute decide whether the dev lane runs the candidate revision, and
+  publishes one verdict event. A topic or clone that cannot be read ends in one typed failure event.
+input_model:
+  name: "ModelSiblingPremiseReadCommand"
+  module: "omnimarket.nodes.node_release_sibling_premise_effect.models.model_sibling_premise_read_command"
+  description: "The repository, and optionally an explicit candidate revision."
+output_model:
+  name: "ModelSiblingPremiseVerdict"
+  module: "omnimarket.nodes.node_release_sibling_premise_compute.models.model_sibling_premise_verdict"
+  description: "State, covering merge, lane revision, correlation, receipts considered, detail."
+handler:
+  module: "omnimarket.nodes.node_release_sibling_premise_effect.handlers.handler_sibling_premise_read"
+  class: "HandlerSiblingPremiseRead"
+  input_model: "omnimarket.nodes.node_release_sibling_premise_effect.models.model_sibling_premise_read_command.ModelSiblingPremiseReadCommand"
+# Not a runtime-dispatched handler: HandlerSiblingPremiseRead takes its overlay, readers, sink and
+# clock as constructor parameters, so the node runs through its own CLI
+# (`python -m omnimarket.nodes.node_release_sibling_premise_effect read`).
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [git-read, bus-read, bus-publish]
+  timeout_ms: 300000
+runtime_dispatch:
+  external_trigger: true
+  receipt_topic: "onex.evt.omnimarket.dev-merge-redeploy-receipt.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.release-sibling-premise-read.v1"
+    failure: "onex.evt.omnimarket.release-sibling-premise-read-failed.v1"
+event_bus:
+  version: {major: 1, minor: 0, patch: 0}
+  subscribe_topics: []
+  publish_topics:
+    - "onex.evt.omnimarket.release-sibling-premise-read.v1"
+    - "onex.evt.omnimarket.release-sibling-premise-read-failed.v1"
+externally_produced_topics:
+  - topic: "onex.evt.omnimarket.dev-merge-redeploy-receipt.v1"
+    producer: "node_dev_merge_redeploy_trigger_effect (R2), one receipt per merge it reads"
+externally_consumed_topics:
+  - "onex.evt.omnimarket.release-sibling-premise-read.v1"
+  - "onex.evt.omnimarket.release-sibling-premise-read-failed.v1"
+published_events:
+  - event_type: ModelSiblingPremiseVerdict
+    topic: "onex.evt.omnimarket.release-sibling-premise-read.v1"
+    description: "One verdict per read."
+  - event_type: ModelSiblingPremiseReadFailed
+    topic: "onex.evt.omnimarket.release-sibling-premise-read-failed.v1"
+    description: "One typed failure per read that could not be answered."
+metadata:
+  transport_type: kafka
+  description: "Read-only against git and the bus topic; publishes only its own verdict events"
+  author: "OmniNode Team"
+  created: "2026-11-13"
+  tags: ["effect", "release", "OMN-24209"]
+  related_tickets: ["OMN-24209", "OMN-19998"]
+
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RELEASE_SIBLING_PREMISE_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.dev-merge-redeploy-receipt.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.dev-merge-redeploy-receipt.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.release-sibling-premise-read.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.release-sibling-premise-read.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.release-sibling-premise-read-failed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.release-sibling-premise-read-failed.v1, operation: DESCRIBE}
