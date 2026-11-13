@@ -44,9 +44,6 @@ from omnimarket.models.scm.model_scm_local_verbs import (
     SCM_LOCAL_VERBS as SCM_LOCAL_VERBS,
 )
 from omnimarket.models.scm.model_scm_refused_verbs import (
-    LANDING_CONTROLLER as LANDING_CONTROLLER,
-)
-from omnimarket.models.scm.model_scm_refused_verbs import (
     SCM_REFUSED_VERBS as SCM_REFUSED_VERBS,
 )
 from omnimarket.nodes.node_lab_work_unit_effect.protocols import require_ungrouped

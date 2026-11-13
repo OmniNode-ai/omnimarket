@@ -3,7 +3,7 @@
 """The ``onex scm`` verbs that have no node operation and are refused (OMN-24326).
 
 The table lives with the verb models so the verb dispatch module, a baselined file that only
-shrinks, takes no new rows; ``handler_scm_dispatch`` re-exports it unchanged.
+shrinks, takes no new rows; ``handler_scm_dispatch`` re-exports SCM_REFUSED_VERBS unchanged.
 """
 
 from __future__ import annotations
