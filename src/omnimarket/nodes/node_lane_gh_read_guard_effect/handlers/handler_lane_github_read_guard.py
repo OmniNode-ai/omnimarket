@@ -74,9 +74,6 @@ from omnimarket.nodes.node_lane_gh_read_guard_effect.enums import (
     EnumLaneGithubReadVerdict,
     EnumSessionMode,
 )
-from omnimarket.nodes.node_lane_gh_read_guard_effect.handlers.handler_gh_shim_probe import (
-    FileGhShimProbe,
-)
 from omnimarket.nodes.node_lane_gh_read_guard_effect.models import (
     ModelLaneGithubReadDecision,
     ModelLaneGithubReadRequest,
@@ -84,6 +81,21 @@ from omnimarket.nodes.node_lane_gh_read_guard_effect.models import (
 from omnimarket.nodes.node_lane_gh_read_guard_effect.protocols import (
     ProtocolGhShimProbe,
 )
+
+#: The marker the shim carries in its first 512 bytes (scripts/user-bin/gh).
+GH_SHIM_MARKER = b"ONEX_GH_USER_SHIM"
+
+
+class FileGhShimProbe:
+    """Reads a file's first 512 bytes for the shim's marker, as the shim itself does."""
+
+    def is_gh_shim(self, path: str) -> bool:
+        try:
+            with open(path, "rb") as handle:
+                return GH_SHIM_MARKER in handle.read(512)
+        except OSError:
+            return False
+
 
 #: The shim's lane-specific environment markers (scripts/user-bin/gh, _lane_context),
 #: without CLAUDECODE, CLAUDE_CODE_SESSION_ID and CLAUDE_CODE_ENTRYPOINT, which every
