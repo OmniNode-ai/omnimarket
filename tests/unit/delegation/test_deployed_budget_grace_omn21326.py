@@ -31,12 +31,14 @@ from typing import Any
 
 import pytest
 
+from omnimarket.handlers.runtime_delivery_host import RuntimeDeliveryHost
 from omnimarket.inference.task_class_authority import (
     resolve_task_class_execution_budget,
 )
 from omnimarket.models.delegation.wire.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
 )
+from omnimarket.models.model_message_meta import MessageMeta
 from omnimarket.nodes.node_delegate_skill_orchestrator.handlers import (
     handler_delegate_skill as handler_mod,
 )
@@ -247,3 +249,32 @@ async def test_a_retry_loop_alive_on_another_thread_cannot_move_the_fake_clock(
 
     assert response.status == "completed"
     assert response.execution_duration_ms == (BUDGET_SECONDS - 1) * 1000
+
+
+class _ProbeProjection:
+    """A tiny projection: records nothing, reports success, closes nothing."""
+
+    async def project_runtime_event(
+        self, topic: str, data: dict[str, Any], meta: MessageMeta
+    ) -> bool:
+        return True
+
+    async def close_runtime_resources(self) -> None:
+        return None
+
+
+def _thread_alive(name: str) -> bool:
+    return any(t.name == name and t.is_alive() for t in threading.enumerate())
+
+
+def test_a_host_a_test_makes_starts_a_loop_thread() -> None:
+    """OMN-24114: delivering one event starts the host's daemon loop thread."""
+    host = RuntimeDeliveryHost(_ProbeProjection, name="omn24114-probe")
+    meta = MessageMeta(topic="t", partition=0, offset=0, fallback_id="x")
+    assert host.deliver("t", {}, meta) is True
+    assert _thread_alive("omn24114-probe-loop")
+
+
+def test_the_host_the_previous_test_made_was_closed_when_it_ended() -> None:
+    """Depends on the previous test and the autouse fixture in tests/conftest.py; red when the fixture is removed."""
+    assert not _thread_alive("omn24114-probe-loop")
