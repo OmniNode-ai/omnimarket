@@ -35,6 +35,7 @@ from omnimarket.github_landing.github_landing_requests import (
     pull_request_request,
     pull_requests_request,
     releases_request,
+    repo_file_request,
     review_threads_request,
     run_artifacts_request,
     run_jobs_request,
@@ -49,6 +50,7 @@ from omnimarket.github_landing.model_github_http_exchange import (
 )
 from omnimarket.models.github_landing.model_transport_error import GitHubTransportError
 from omnimarket.models.model_github_gateway_io import (
+    DEFAULT_ARTIFACT_MAX_BYTES,
     DEFAULT_LOG_TAIL_BYTES,
     MAX_TEXT_CHARS,
     EnumArtifactFetchRefusal,
@@ -79,6 +81,7 @@ from omnimarket.models.model_github_gateway_io import (
     ModelPrTextResult,
     ModelRelease,
     ModelReleasesResult,
+    ModelRepoFileResult,
     ModelReviewGateResult,
     ModelRunJob,
     ModelRunJobsResult,
@@ -883,6 +886,74 @@ def read_commit_check_runs(
     )
 
 
+def read_repo_file(
+    transport: GitHubReadTransportProtocol, request: ModelGithubGatewayRequest
+) -> ModelRepoFileResult:
+    """One file's text at one commit, read through the contents API.
+
+    A 404 answer is a not-found result, not a transport error. Any other
+    non-2xx status raises ``GitHubTransportError``. A 2xx body that is not a
+    file object, is not base64-encoded, decodes to more than
+    ``DEFAULT_ARTIFACT_MAX_BYTES`` bytes, or does not decode as UTF-8 raises
+    ``ValueError`` naming the repo, path and the reason.
+    """
+    head_sha = request.head_sha
+    file_path = request.file_path
+    if head_sha is None or file_path is None:  # defensive; the validator enforces it
+        raise ValueError("this operation requires head_sha and file_path.")
+    req = repo_file_request(request.repo, head_sha, file_path)
+    response = transport.send_sync(req)
+    if response.status == 404:
+        return ModelRepoFileResult(
+            repo=request.repo,
+            head_sha=head_sha,
+            file_path=file_path,
+            found=False,
+            text=None,
+        )
+    body = _checked(req, response)
+    # A directory answers with an array, which the transport wraps as ``value``.
+    if isinstance(body.get("value"), list):
+        raise ValueError(
+            f"repo {request.repo} path {file_path!r} is a directory, not a file."
+        )
+    raw = body
+    file_type = raw.get("type")
+    if file_type != "file":
+        raise ValueError(
+            f"repo {request.repo} path {file_path!r} is not a file (type={file_type!r})."
+        )
+    encoding = raw.get("encoding")
+    if encoding != "base64":
+        raise ValueError(
+            f"repo {request.repo} path {file_path!r} has encoding {encoding!r}, not base64."
+        )
+    content = raw.get("content")
+    if not isinstance(content, str):
+        raise ValueError(
+            f"repo {request.repo} path {file_path!r} has no base64 content."
+        )
+    decoded = base64.b64decode(content)
+    if len(decoded) > DEFAULT_ARTIFACT_MAX_BYTES:
+        raise ValueError(
+            f"repo {request.repo} path {file_path!r} is {len(decoded)} bytes, "
+            f"over the {DEFAULT_ARTIFACT_MAX_BYTES}-byte cap."
+        )
+    try:
+        text = decoded.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValueError(
+            f"repo {request.repo} path {file_path!r} does not decode as UTF-8: {exc}"
+        ) from exc
+    return ModelRepoFileResult(
+        repo=request.repo,
+        head_sha=head_sha,
+        file_path=file_path,
+        found=True,
+        text=text,
+    )
+
+
 def read_merged_pr(
     transport: GitHubReadTransportProtocol, request: ModelGithubGatewayRequest
 ) -> ModelMergedPrResult:
@@ -1039,6 +1110,7 @@ __all__: list[str] = [
     "read_pr_status",
     "read_pr_text",
     "read_releases",
+    "read_repo_file",
     "read_review_gate",
     "read_run_jobs",
     "read_ticket_ref",

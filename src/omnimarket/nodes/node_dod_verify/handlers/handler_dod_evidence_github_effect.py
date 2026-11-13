@@ -51,8 +51,6 @@ empirical trace this design is built from.
 
 from __future__ import annotations
 
-import base64
-import binascii
 import json
 import logging
 import os
@@ -86,6 +84,7 @@ from omnimarket.models.model_github_gateway_io import (
     ModelCommitCheckRunsResult,
     ModelGithubGatewayRequest,
     ModelMergedPrResult,
+    ModelRepoFileResult,
 )
 from omnimarket.nodes.node_dod_verify.handlers.dod_evidence_local_source import (
     DodEvidenceLocalSource,
@@ -587,6 +586,26 @@ class HandlerDodEvidenceGithubEffect:
             return str(exc)
         if not isinstance(result, ModelMergedPrResult):
             return f"gateway answered {result.operation!r} for merged_pr"
+        return result
+
+    def gateway_repo_file(
+        self, repo: str, sha: str, path: str
+    ) -> ModelRepoFileResult | str:
+        """One file's text at one commit from the gateway, or a string saying
+        why it is unreadable."""
+        try:
+            result = self._gateway.read(
+                ModelGithubGatewayRequest(
+                    operation=EnumGithubGatewayOperation.REPO_FILE,
+                    repo=repo,
+                    head_sha=sha,
+                    file_path=path,
+                )
+            )
+        except GatewayReadError as exc:
+            return str(exc)
+        if not isinstance(result, ModelRepoFileResult):
+            return f"gateway answered {result.operation!r} for repo_file"
         return result
 
     def gateway_check_runs(
@@ -1331,31 +1350,17 @@ class HandlerDodEvidenceGithubEffect:
         ticket_id = command.ticket_id or ""
         read = self._local.repo_contract_at(repo, sha, ticket_id)
         if read is None:
-            data, detail = _gh_json(
-                [
-                    "gh",
-                    "api",
-                    f"repos/{repo}/contents/contracts/{ticket_id}.yaml?ref={sha}",
-                ],
-                _GH_PR_TIMEOUT_S,
-            )
-            if data is None and "http 404" in detail.lower():
-                read = ModelRepoContractRead(status=EnumRepoContractReadStatus.ABSENT)
-            elif not isinstance(data, dict) or not isinstance(data.get("content"), str):
+            # A squash-merged PR's own head is no commit the clone holds, and a
+            # lane may not read GitHub, so the gateway reads the file there.
+            fetched = self.gateway_repo_file(repo, sha, f"contracts/{ticket_id}.yaml")
+            if isinstance(fetched, str):
                 read = ModelRepoContractRead(
-                    status=EnumRepoContractReadStatus.ERROR,
-                    error=detail or "contents response carries no content",
+                    status=EnumRepoContractReadStatus.ERROR, error=fetched
                 )
+            elif not fetched.found or fetched.text is None:
+                read = ModelRepoContractRead(status=EnumRepoContractReadStatus.ABSENT)
             else:
-                try:
-                    text = base64.b64decode(str(data["content"])).decode("utf-8")
-                except (binascii.Error, UnicodeDecodeError) as exc:
-                    read = ModelRepoContractRead(
-                        status=EnumRepoContractReadStatus.ERROR,
-                        error=f"contents not decodable: {exc}",
-                    )
-                else:
-                    read = parse_repo_contract(text)
+                read = parse_repo_contract(fetched.text)
         return ModelDodEvidenceGithubLookupResultEvent(
             correlation_id=command.correlation_id,
             operation=command.operation,

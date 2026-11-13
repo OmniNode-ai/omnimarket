@@ -328,6 +328,20 @@ def pull_request_request(
     )
 
 
+def repo_file_request(repository: str, ref: str, path: str) -> ModelGithubHttpRequest:
+    """GET one file's contents at one commit (the contents API).
+
+    ``path`` is the repo-relative path; it is percent-quoted with ``/`` kept
+    safe so a path with spaces or other reserved characters still reaches the
+    API. ``ref`` is the commit SHA the file is read at.
+    """
+    quoted_path = urllib.parse.quote(path, safe="/")
+    return ModelGithubHttpRequest(
+        method="GET",
+        path=f"{_repo_path(repository)}/contents/{quoted_path}?ref={ref}",
+    )
+
+
 def commit_check_runs_request(
     repository: str,
     head_sha: str,

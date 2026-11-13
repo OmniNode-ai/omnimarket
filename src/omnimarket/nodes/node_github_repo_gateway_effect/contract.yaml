@@ -37,7 +37,7 @@ description: >
   operation (pr_status, ci_checks, open_prs_list, branch_protection,
   review_gate, merge_commit_sha, ticket_ref, workflow_runs, run_jobs,
   job_log_tail, job_log_fill, artifacts, pr_text, releases, pr_heads, commit_check_runs,
-  merged_pr, pr_review_threads, open_pr_facts) and returns a small typed object
+  merged_pr, pr_review_threads, open_pr_facts, repo_file) and returns a small typed object
   so callers replace raw `gh pr checks/view --json`, `gh run list/view`, job
   log reads, `gh run download`, `gh release list`, commit check-run reads,
   PR state/head/merge detail reads, and a PR's review threads with their
@@ -120,6 +120,10 @@ operations:
     description: "Request ModelGithubGatewayRequest, result ModelCommitCheckRunsResult; replaces gh api repos/<r>/commits/<sha>/check-runs."
   - name: merged_pr
     description: "Request ModelGithubGatewayRequest, result ModelMergedPrResult; replaces gh pr view --json state,mergedAt,mergeCommit,headRefOid,headRefName,baseRefName."
+
+  # OMN-24187: one file's text at one commit, for a contract at a PR head the clone does not hold.
+  - name: repo_file
+    description: "Request ModelGithubGatewayRequest, result ModelRepoFileResult; replaces gh api repos/<r>/contents/<path>?ref=<sha>."
 
   # A PR's review threads: ids, path, line and resolved state, which only
   # GraphQL reports. The id a reply to a thread names is root_comment_id.

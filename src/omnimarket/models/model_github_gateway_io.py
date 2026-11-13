@@ -52,6 +52,8 @@ class EnumGithubGatewayOperation(StrEnum):
     # OMN-22654: every open PR's head, base, title and fix markers, the read the
     # duplicate-fix guard makes on a host that has no PR watcher state.
     OPEN_PR_FACTS = "open_pr_facts"
+    # OMN-24187: one file's text at one commit (the contents API); dod_verify's read of a contract at a PR head the clone does not hold.
+    REPO_FILE = "repo_file"
 
 
 # Operations that read one job's log and take its window fields.
@@ -202,6 +204,11 @@ class ModelGithubGatewayRequest(BaseModel):
         le=MAX_ARTIFACT_MAX_BYTES,
         description="artifacts only: largest archive fetched; larger is refused.",
     )
+    file_path: str | None = Field(
+        default=None,
+        max_length=512,
+        description="repo_file only: the repo-relative path of the file to read.",
+    )
     correlation_id: UUID = Field(
         default_factory=uuid4,
         description="Correlation ID flowing through the pipeline (auto if omitted).",
@@ -245,6 +252,17 @@ class ModelGithubGatewayRequest(BaseModel):
             and self.operation is not EnumGithubGatewayOperation.ARTIFACTS
         ):
             raise ValueError("artifact_id is read only by the artifacts operation.")
+        if self.operation is EnumGithubGatewayOperation.REPO_FILE:
+            if self.head_sha is None or self.file_path is None:
+                raise ValueError(
+                    "operation 'repo_file' requires head_sha and file_path to be set."
+                )
+            if self.file_path.startswith("/") or ".." in self.file_path.split("/"):
+                raise ValueError(
+                    "file_path must be a repo-relative path with no '..' segment."
+                )
+        elif self.file_path is not None:
+            raise ValueError("file_path is read only by the repo_file operation.")
         window = {
             "offset_bytes": self.offset_bytes,
             "length_bytes": self.length_bytes,
@@ -744,6 +762,27 @@ class ModelCommitCheckRunsResult(_ModelBoundedList):
     check_runs: list[ModelCheckRun] = Field(default_factory=list)
 
 
+class ModelRepoFileResult(BaseModel):
+    """One file's text at one commit, read through the contents API."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    operation: Literal["repo_file"] = "repo_file"
+    repo: str
+    head_sha: str
+    file_path: str
+    found: bool
+    text: str | None = None
+
+    @model_validator(mode="after")
+    def _found_matches_text(self) -> ModelRepoFileResult:
+        if self.found and self.text is None:
+            raise ValueError("a found repo_file result must carry its text.")
+        if not self.found and self.text is not None:
+            raise ValueError("a missing repo_file result must not carry text.")
+        return self
+
+
 class ModelMergedPrResult(BaseModel):
     """PR state, head refs and merge details (replaces ``gh pr view --json``)."""
 
@@ -856,6 +895,7 @@ GithubGatewayResult = Annotated[
     | ModelPrHeadsResult
     | ModelCommitCheckRunsResult
     | ModelMergedPrResult
+    | ModelRepoFileResult
     | ModelPrReviewThreadsResult
     | ModelOpenPrFactsResult,
     Field(discriminator="operation"),
@@ -915,6 +955,7 @@ __all__: list[str] = [
     "ModelPrTextResult",
     "ModelRelease",
     "ModelReleasesResult",
+    "ModelRepoFileResult",
     "ModelReviewGateResult",
     "ModelRunJob",
     "ModelRunJobsResult",
