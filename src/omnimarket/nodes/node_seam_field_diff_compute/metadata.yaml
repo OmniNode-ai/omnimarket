@@ -1,0 +1,20 @@
+name: node_seam_field_diff_compute
+version: "1.0.0"
+description: "Pure seam field diff: producer vs consumer declared shape comparison"
+omnibase_core_compat: ">=0.42.0,<0.43.0"
+entry_points:
+  onex.nodes:
+    node_seam_field_diff_compute: "omnimarket.nodes.node_seam_field_diff_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+dependencies:
+  - "omnibase_core>=0.42.0,<0.43.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "seam-graph", "deterministic", "seam-field-diff"]
+pack: "seams"
+display_name: "Seam Field Diff Compute"
+node_role: "compute"
+ticket: "OMN-24121"

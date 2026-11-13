@@ -1,5 +1,5 @@
 {
- "source": "deploy_agent.events.ModelRebuildRequested and deploy_agent.auth.compute_signature of omnibase_infra dev d3d941b6ae9e",
+ "source": "deploy_agent.events.ModelRebuildRequested and deploy_agent.auth.compute_signature of omnibase_infra dev d3d941b6ae9e; also reads omnibase_infra branch omn-24216-overlay-ref-nodes head 625d3168776e4c26a6ddcfc9c4981cb61588d8ef (events.py ModelRebuildRequested.overlay_ref)",
  "rebuild_requested_fields": [
   "build_source",
   "correlation_id",
@@ -7,6 +7,7 @@
   "image_digest",
   "image_ref",
   "open_pr",
+  "overlay_ref",
   "requested_at",
   "requested_by",
   "rollback",
@@ -25,6 +26,7 @@
   "scope"
  ],
  "open_pr_pattern": "^([a-z][a-z0-9_]*#[1-9][0-9]*@[0-9a-f]{40})?$",
+ "overlay_ref_pattern": "^([0-9a-f]{40})?$",
  "signature_vector": {
   "secret": "fixture-key",
   "envelope": {

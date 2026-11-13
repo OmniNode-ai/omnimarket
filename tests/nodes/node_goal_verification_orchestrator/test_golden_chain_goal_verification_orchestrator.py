@@ -44,7 +44,12 @@ def test_the_contract_declares_its_topics_and_the_verifier_start_publish() -> No
     assert "onex.evt.omniclaude.work-result-recorded.v1" in bus["subscribe_topics"]
     assert "onex.evt.omnibase-infra.delegation-completed.v2" in bus["subscribe_topics"]
     assert "onex.evt.omnimarket.goal-disposition-recorded.v1" in bus["subscribe_topics"]
-    assert bus["publish_topics"] == ["onex.cmd.omnimarket.dod-verify-start.v1"]
+    # OMN-24236: the returned outcome has its own decided topic; the verifier start command
+    # stays declared because the injected publisher sends it there.
+    assert bus["publish_topics"] == [
+        "onex.evt.omnimarket.goal-verification-decided.v1",
+        "onex.cmd.omnimarket.dod-verify-start.v1",
+    ]
     assert (
         contract["verification_rules"]["start_command_topic"] in bus["publish_topics"]
     )

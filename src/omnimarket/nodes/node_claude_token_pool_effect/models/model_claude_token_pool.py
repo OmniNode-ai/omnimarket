@@ -17,6 +17,9 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr
 from omnimarket.models.model_claude_pool_limit_recheck import (
     ModelLimitRecheckCommand,
 )
+from omnimarket.models.model_claude_pool_revoke_recheck import (
+    ModelRevokeRecheckCommand,
+)
 from omnimarket.models.model_claude_pool_revoke_staleness import (
     ModelClearRevokeCommand,
 )
@@ -60,7 +63,10 @@ class ModelClaudeTokenPoolRequest(BaseModel):
     ``resolve``: choose the first token, in the order they were added, whose
     limit has passed and whose OAuth login is not revoked. ``mark_limited``:
     the account behind ``label`` hit its usage limit, out for ``seconds``.
-    ``mark_revoked``: skip ``label`` until re-added. ``reorder``: draw ``labels`` first, in that
+    ``mark_revoked``: skip ``label`` until re-added; ``cause`` says why the login is out — ``revoked``
+    (a real revoke, the default) or ``challenged`` (a 403 challenge page, out of rotation like a revoke
+    until the pool tick re-tests it and clears the mark when it answers). ``reorder``: draw ``labels``
+    first, in that
     order, then every other token in its present order (a draw order differs per host so no two hosts
     draw the same first token). ``status``: read the pool. ``record_use``: a lane on this host
     started under ``label``; count the use and when it was seen, so the spread rule can tell a
@@ -69,8 +75,10 @@ class ModelClaudeTokenPoolRequest(BaseModel):
     ``release``; ``pinned_by`` says whether an operator's assign or the spread rule set it. ``clear_revokes``:
     execute the typed ``clear_commands`` the revoke staleness compute decided (see ``clear_commands``).
     ``apply_limit_rechecks``: execute the typed ``limit_commands`` the limit recheck compute decided after a probe
-    (see ``limit_commands``). ``export``: hand the stored token of ``label`` to the caller's pipe, for adopting
-    a host-held label into the secret store; the value is never in a result, only in ``token``.
+    (see ``limit_commands``). ``apply_revoke_rechecks``: execute the typed ``revoke_commands`` the revoke recheck
+    compute decided after a probe of a revoked label (see ``revoke_commands``). ``export``: hand the stored
+    token of ``label`` to the caller's pipe, for adopting a host-held label into the secret store; the value
+    is never in a result, only in ``token``.
 
     ``resolve`` for a NEW lane start also takes ``drain_labels`` (the usage verdict's list of labels close
     to their limit: skipped while any other label is usable, used only when nothing else is) and
@@ -93,9 +101,13 @@ class ModelClaudeTokenPoolRequest(BaseModel):
         "release",
         "clear_revokes",
         "apply_limit_rechecks",
+        "apply_revoke_rechecks",
         "export",
     ]
     label: str | None = None
+    #: ``mark_revoked``: why the login is out. A challenge is out of rotation like a revoke until the
+    #: pool tick re-tests the label and clears the mark when it answers.
+    cause: Literal["revoked", "challenged"] = "revoked"
     #: ``pin``: who sets the pin. An operator's ``assign`` pin is never replaced by the spread rule.
     pinned_by: Literal["assign", "spread"] = "assign"
     marks: tuple[ModelRotationMark, ...] = ()
@@ -106,6 +118,9 @@ class ModelClaudeTokenPoolRequest(BaseModel):
     #: ``apply_limit_rechecks``: the typed commands the limit recheck compute decided after a probe answered. The pool
     #: executes a command only while it still holds that fingerprint AND that exact limited-until stamp.
     limit_commands: tuple[ModelLimitRecheckCommand, ...] = ()
+    #: ``apply_revoke_rechecks``: the typed commands the revoke recheck compute decided after a probe answered. The pool
+    #: executes a command only while it still holds that fingerprint AND that exact revoked stamp.
+    revoke_commands: tuple[ModelRevokeRecheckCommand, ...] = ()
     labels: tuple[str, ...] = ()
     #: ``sync_marks``: when the source wrote ``marks``. A local limit or revocation observed after this
     #: instant is newer than the snapshot and is kept; unset, the marks are authoritative.
@@ -145,6 +160,10 @@ class ModelClaudeTokenPoolEntry(BaseModel):
     limited_at: str | None = None
     #: When the limit recheck last got an answer from a probe of this label (an error answer records none).
     probed_at: str | None = None
+    #: Why the login is out (``revoked_at`` set): ``revoked``, a real revoke, or ``challenged``, a 403
+    #: challenge page the pool tick re-tests. ``None`` (or a stored entry without the key, from before
+    #: this field existed) reads as ``revoked``.
+    revoke_cause: Literal["revoked", "challenged"] | None = None
 
 
 class ModelClaudeTokenPoolResult(BaseModel):
@@ -165,6 +184,7 @@ class ModelClaudeTokenPoolResult(BaseModel):
         "release",
         "clear_revokes",
         "apply_limit_rechecks",
+        "apply_revoke_rechecks",
         "export",
     ]
     host: str
@@ -176,6 +196,9 @@ class ModelClaudeTokenPoolResult(BaseModel):
     token: SecretStr | None = Field(default=None, exclude=True, repr=False)
     limited: int = 0
     revoked: tuple[str, ...] = ()
+    #: The labels whose out mark is a 403 challenge, not a real revoke. They are also in ``revoked``,
+    #: so every existing reader keeps treating them as out until the recheck clears the mark.
+    challenged: tuple[str, ...] = ()
     synced: tuple[str, ...] = ()
     #: ``clear_revokes``: the labels whose revoked mark was cleared.
     cleared: tuple[str, ...] = ()
@@ -184,6 +207,11 @@ class ModelClaudeTokenPoolResult(BaseModel):
     limits_cleared: tuple[str, ...] = ()
     limits_replaced: tuple[str, ...] = ()
     limits_kept: tuple[str, ...] = ()
+    #: ``apply_revoke_rechecks``: labels whose revoked mark was cleared, whose cause was confirmed as a
+    #: real revoke, and whose probe time was recorded with the mark kept.
+    revoke_rechecks_cleared: tuple[str, ...] = ()
+    revoke_rechecks_confirmed: tuple[str, ...] = ()
+    revoke_rechecks_kept: tuple[str, ...] = ()
     alert: str | None = None
     all_limited: bool = False
     next_reset: str | None = None
