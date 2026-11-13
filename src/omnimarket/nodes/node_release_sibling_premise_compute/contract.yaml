@@ -54,6 +54,7 @@ handler_routing:
       handler:
         name: "HandlerSiblingPremise"
         module: "omnimarket.nodes.node_release_sibling_premise_compute.handlers.handler_sibling_premise"
+terminal_event: "onex.evt.omnimarket.release-sibling-premise-decided.v1"
 runtime_dispatch:
   command_topic: "onex.cmd.omnimarket.release-sibling-premise-decision-requested.v1"
   terminal_events:
@@ -68,7 +69,6 @@ event_bus:
     - "onex.cmd.omnimarket.release-sibling-premise-decision-requested.v1"
   publish_topics:
     - "onex.evt.omnimarket.release-sibling-premise-decided.v1"
-    - "onex.evt.omnimarket.release-sibling-premise-decision-failed.v1"
 externally_consumed_topics:
   - "onex.evt.omnimarket.release-sibling-premise-decided.v1"
   - "onex.evt.omnimarket.release-sibling-premise-decision-failed.v1"
