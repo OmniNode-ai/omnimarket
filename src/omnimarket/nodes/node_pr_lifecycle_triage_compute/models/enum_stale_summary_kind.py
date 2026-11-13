@@ -11,6 +11,7 @@ class EnumStaleSummaryKind(StrEnum):
     RERUN = "rerun"
     REFRESH = "refresh"
     REFRESH_FIRST = "refresh_first"
+    GATES_FLIPPED = "gates_flipped"
 
 
 __all__: list[str] = ["EnumStaleSummaryKind"]

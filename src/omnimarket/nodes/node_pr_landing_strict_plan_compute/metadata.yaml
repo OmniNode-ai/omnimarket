@@ -1,5 +1,5 @@
 name: node_pr_landing_strict_plan_compute
-version: "0.1.0"
+version: "0.2.0"
 description: "the landing controller's order of a tick's merges and branch updates on a strict base"
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:
