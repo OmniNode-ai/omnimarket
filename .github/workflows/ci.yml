@@ -657,6 +657,34 @@ jobs:
       # frozen under a sha256 hash. SYNC with pre-commit hook 'delegation-routing-overlay-bars'.
       - name: Routing overlay bars gate (OMN-22976)
         run: uv run pytest src/omnimarket/nodes/node_delegation_routing_overlay_check_compute -q -n 0 -p no:randomly --no-cov
+      # OMN-24005: a topic use this change adds to a node contract needs a declared broker grant. SYNC with pre-commit hook
+      # 'broker-acl-coverage-gate'. The tests that hold the check (the added use refuses, the unchanged tree passes) run here first.
+      - name: Broker permission coverage gate (OMN-24005)
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          uv run pytest tests/nodes/node_broker_acl_overlay_render_compute/test_coverage_gate.py -q -n 0 -p no:randomly --no-cov
+          if [ -n "$BASE_REF" ]; then
+            git fetch origin "$BASE_REF" --no-tags
+            REF="origin/$BASE_REF"
+          else
+            REF="HEAD~1"
+          fi
+          uv run python -m omnimarket.nodes.node_broker_acl_reconcile_effect.runtime_broker_acl_coverage_gate --base-ref "$REF"
+      # OMN-24121: a producer-consumer pair this change adds or reshapes must match in declared message shape; differences the base
+      # already has are not judged. SYNC with pre-commit hook 'seam-field-diff-gate'. The tests that hold the check run here first.
+      - name: Seam field diff gate (OMN-24121)
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          uv run pytest tests/nodes/node_seam_field_diff_compute tests/nodes/node_seam_field_diff_check_effect -q -n 0 -p no:randomly --no-cov
+          if [ -n "$BASE_REF" ]; then
+            git fetch origin "$BASE_REF" --no-tags
+            REF="origin/$BASE_REF"
+          else
+            REF="HEAD~1"
+          fi
+          env -u PYTHONPATH uv run python -m omnimarket.nodes.node_seam_field_diff_check_effect.runtime_seam_field_diff_check --base-ref "$REF"
       # OMN-17104: SYNC with pre-commit hook 'delegation-wire-public-models'.
       - name: Delegation public models match loader and inference contract
         run: uv run --frozen pytest tests/unit/models/delegation/wire/test_public_exports.py -q -n 0 -p no:randomly --no-cov
@@ -4212,6 +4240,75 @@ jobs:
         run: uv run pytest tests/unit/validators/test_ledger_file_census.py tests/unit/nodes/node_work_ledger_file_census_effect -q --no-cov -p no:cacheprovider
       - name: The seven no-file readings turn red on their planted breaks (OMN-22917)
         run: uv run pytest tests/unit/nodes/node_work_ledger_reader_effect/test_no_file_readings.py tests/unit/nodes/node_work_ledger_no_file_readings_effect -q --no-cov -p no:cacheprovider
+
+  # OMN-23963: every document on overlays main loads through THIS pull request's own node models. omnimarket 5915 made the key
+  # `limits` required for node_factory_floor_publish_effect while overlays main had none: it merged at about 22:39Z on 2026-11-12 and
+  # the Mac board publisher refused every cycle until the overlays change merged at 23:34Z. The overlays repository's own overlay-load
+  # step runs only on overlays pull requests, so nothing checked this direction. The check is node_overlay_main_load_check_effect:
+  # it reads the overlays repository's pins file with node_overlay_drift_effect's parser and judges each document with that node's
+  # validator (one implementation, two callers), through the models of the tree under review, and the floor overlays through the floor
+  # node's own check. The planted-break tests run first so a check that cannot refuse is red here. Unconditional (no needs/if): a
+  # failure here fails CI Summary through its default-deny sweep. It is not in STRICT_GATE_JOBS: adding a row there changes the
+  # report bytes the recorded-head replay (tests/unit/scripts/ci/test_ci_summary_rules_replay_omn23079.py) pins, which is a
+  # follow-up with its own fixture re-record.
+  overlay-main-load:
+    name: Overlay Main Load (OMN-23963)
+    # A pull request from a fork holds no secrets and cannot read the private overlays repository; its job is skipped, not green-washed
+    # (a skipped job is not a failure to the CI Summary sweep, and the maintainers' own branch run of the same head reads the overlays).
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      OVERLAYS_REPOSITORY_NAME: overlays
+      OVERLAYS_REF: main
+      OVERLAYS_CHECKOUT: .overlays-main
+      OVERLAYS_DOCUMENTS_DIR: overlays
+      OVERLAYS_PINS_FILE: .omnimarket-node-pins
+    steps:
+      - name: Checkout this pull request
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+        with:
+          persist-credentials: false
+      # The overlays repository is private and this one is public: the workflow token and OMNI_GITHUB_TOKEN cannot read it (measured
+      # on this job's first run: "Repository not found"). A read-only installation token of the CI GitHub App, scoped to that one
+      # repository and to contents read, is the pattern hostile-reviewer.yml uses for its private CI overlay.
+      - name: Mint a read-only overlays token
+        id: overlays-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.ONEXBOT_APP_ID }}
+          private-key: ${{ secrets.ONEXBOT_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ env.OVERLAYS_REPOSITORY_NAME }}
+          permission-contents: read
+      - name: Checkout the overlays repository at its main branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+        with:
+          repository: ${{ github.repository_owner }}/${{ env.OVERLAYS_REPOSITORY_NAME }}
+          ref: ${{ env.OVERLAYS_REF }}
+          path: ${{ env.OVERLAYS_CHECKOUT }}
+          token: ${{ steps.overlays-token.outputs.token }}
+          persist-credentials: false
+      - name: Assert the overlays checkout holds the pins file and documents
+        run: |
+          set -euo pipefail
+          # A silently empty checkout would turn this job into a green no-op that compared nothing.
+          test -s "$OVERLAYS_CHECKOUT/$OVERLAYS_PINS_FILE" || { echo "::error::$OVERLAYS_CHECKOUT/$OVERLAYS_PINS_FILE is missing or empty"; exit 1; }
+          test -n "$(find "$OVERLAYS_CHECKOUT/$OVERLAYS_DOCUMENTS_DIR" -name overlay.yaml -print -quit)" || { echo "::error::no overlay document under $OVERLAYS_CHECKOUT/$OVERLAYS_DOCUMENTS_DIR"; exit 1; }
+          echo "overlays revision: $(git -C "$OVERLAYS_CHECKOUT" rev-parse HEAD)"
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7
+        with:
+          version: "0.8.3"
+      - name: Sync the environment
+        run: uv sync --locked
+      - name: The planted breaks turn the check red (a required key missing from a document is refused)
+        run: uv run pytest tests/unit/nodes/node_overlay_main_load_check_effect tests/nodes/node_overlay_main_load_check_effect -q --no-cov -p no:cacheprovider
+      - name: Every overlays-main document loads through this pull request's node models
+        run: |
+          uv run python -m omnimarket.nodes.node_overlay_main_load_check_effect \
+            --overlays-root "$OVERLAYS_CHECKOUT/$OVERLAYS_DOCUMENTS_DIR" \
+            --pins-file "$OVERLAYS_CHECKOUT/$OVERLAYS_PINS_FILE"
 
   # OMN-19998: public-repository runner placement (RULING 2026-10-16T07:07:09Z,
   # "Ci runners should be for private repos only"). omnibase_core's check refuses

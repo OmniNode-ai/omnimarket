@@ -121,9 +121,9 @@ def test_no_rule_operation_is_routed_and_the_node_gains_no_topic() -> None:
     contract = _contract()
     routed = {h["operation"] for h in contract["handler_routing"]["handlers"]}
     assert not routed & set(_RULE_OPERATIONS)
-    assert contract["event_bus"]["subscribe_topics"] == [
-        "onex.evt.omnimarket.pr-lifecycle-inventory-completed.v1"
-    ]
+    # OMN-24121: the node no longer subscribes the inventory topic — its route
+    # could not validate the inventory event, and triage is called in process.
+    assert contract["event_bus"]["subscribe_topics"] == []
     assert contract["event_bus"]["publish_topics"] == [
         "onex.evt.omnimarket.pr-lifecycle-triage-completed.v1"
     ]
@@ -140,6 +140,7 @@ def test_the_red_class_enum_is_the_controllers_vocabulary() -> None:
         "runner_saturation",
         "cancelled_producer",
         "reviewer_pool",
+        "stale_fleet",
     }
 
 

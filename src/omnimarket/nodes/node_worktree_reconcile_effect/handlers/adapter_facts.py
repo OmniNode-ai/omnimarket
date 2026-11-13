@@ -209,6 +209,9 @@ class GitWorktreeFactsProbe:
         self._merged_unavailable: set[str] = set()
         self._merged_lock = threading.Lock()
         self._command: ModelWorktreeReconcileCommand | None = None
+        # Clones found under an extra clone root. A .git directory anywhere else (a clone or
+        # a sandbox's leftover under a registry root) is counted and never removed.
+        self._standalone: frozenset[Path] = frozenset()
         self._cwds: tuple[Path, ...] = ()
         self._claims: tuple[str, ...] = ()
         self._errors: tuple[str, ...] = ()
@@ -327,11 +330,13 @@ class GitWorktreeFactsProbe:
             except OSError:
                 errors.append("clone_discovery_failed")
         self._errors = tuple(errors)
+        self._standalone = frozenset(standalone)
+        # Every candidate but a canonical clone is scanned: a directory under a registry
+        # root that holds a .git directory is counted too, so scanned matches the root.
         selected = [
             (path, root)
             for path, root in sorted(candidates.items())
             if path not in canonical
-            and (not (path / ".git").is_dir() or path in standalone)
         ]
         # An error with nothing to attach it to would vanish into a run that
         # reports scanned=0 and reads as a clean host. Raise so the run says so.
@@ -415,9 +420,19 @@ class GitWorktreeFactsProbe:
         self, path: Path, root: Path, now: datetime, *, measure_size: bool = True
     ) -> ModelWorktreeFacts:
         assert self._command is not None
+        git_dir = (path / ".git").is_dir()
+        # Under a registry root, a .git directory with no HEAD is a sandbox's leftover
+        # directory, not a repository: it is an orphan directory like any other.
+        registry_clone = (
+            git_dir
+            and path not in self._standalone
+            and (path / ".git" / "HEAD").is_file()
+        )
         kind = (
             Kind.STANDALONE_CLONE
-            if (path / ".git").is_dir()
+            if git_dir and (path in self._standalone or registry_clone)
+            else Kind.ORPHAN_DIR
+            if git_dir
             else Kind.LINKED_WORKTREE
             if (path / ".git").is_file()
             else Kind.ORPHAN_DIR
@@ -441,6 +456,10 @@ class GitWorktreeFactsProbe:
                 or not path.resolve().is_relative_to(root.resolve())
             ):
                 raise ValueError("unsafe_path")
+            if registry_clone:
+                # Registry roots are never a standalone-clone source: a clone there goes
+                # to a person whatever the policy allows.
+                raise ProbeNeedsHumanError("clone_under_worktree_root")
             names: list[str] = []
             size = 0
             newest = 0.0
@@ -737,6 +756,17 @@ class GitWorktreeFactsProbe:
                 }
             )
         except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
+            if isinstance(exc, FileNotFoundError) and not os.path.lexists(path):
+                # The tree was removed between discovery and this read (a lane's closeout):
+                # nothing is left to keep or remove, and the next scan no longer lists it.
+                return facts.model_copy(
+                    update={
+                        "probe_errors": (
+                            *facts.probe_errors,
+                            f"{PROBE_DEFERRED_PREFIX}path_vanished",
+                        )
+                    }
+                )
             # Do not leak subprocess arguments or remote credentials.
             return facts.model_copy(
                 update={

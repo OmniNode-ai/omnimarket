@@ -22,6 +22,9 @@ from enum import StrEnum
 from typing import Annotated, Literal
 from uuid import UUID
 
+from omnibase_core.enums.enum_delegation_traffic_class import (
+    EnumDelegationTrafficClass,
+)
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 #: The tool_use rubric's turn budget (delegation_class_rubrics.v1.yaml).
@@ -102,6 +105,7 @@ class EnumCodeEditStatus(StrEnum):
     ACCEPTED = "accepted"
     CHECKS_FAILED = "checks_failed"
     NO_PROGRESS = "no_progress"
+    NO_CHANGE = "no_change"
     BUDGET_EXHAUSTED = "budget_exhausted"
     DELEGATE_FAILED = "delegate_failed"
     INFRA_ERROR = "infra_error"
@@ -121,9 +125,12 @@ class ModelDeclaredCheck(BaseModel):
         "rubric can bind a passing check to the answer that names it.",
     )
 
-    @field_validator("name")
+    @field_validator("name", mode="before")
     @classmethod
     def _name(cls, value: str) -> str:
+        """Normalise a lane-brief name (``PYTEST``) before the rule is applied."""
+        if isinstance(value, str):
+            value = re.sub(r"[^a-z0-9_-]+", "-", value.strip().lower()).strip("-")
         if not _CHECK_NAME.fullmatch(value):
             raise ValueError(
                 "a check name is lowercase letters, digits, '_' or '-', at most 48"
@@ -164,12 +171,37 @@ class ModelDelegatedCodeEditRequest(BaseModel):
         "command. Empty: no format tool.",
     )
     max_turns: int = Field(default=20, ge=1, le=MAX_TURNS_CEILING)
+    wall_budget_seconds: int | None = Field(
+        default=None,
+        ge=1,
+        le=7200,
+        description="Wall seconds the loop may use; None means no limit. The loop starts no "
+        "turn that its slowest turn so far would not finish inside this budget.",
+    )
+    max_no_change_finishes: int = Field(
+        default=2,
+        ge=1,
+        le=10,
+        description="How many finish calls over an empty diff end the loop as no_change.",
+    )
     task_type: Literal["code_generation"] = "code_generation"
     caller_lane: str | None = Field(
         default=None,
         description="The ledger lane each onex delegate run is attributed to.",
     )
     ticket: str | None = Field(default=None, pattern=r"^OMN-[0-9]+$")
+    traffic_class: EnumDelegationTrafficClass | None = Field(
+        default=None,
+        description="Provenance of every delegate turn: put on each turn's argv "
+        "as --traffic-class (core ModelDelegationProvenance). Synthetic marks an "
+        "eval or probe run as not a user's run and requires source_surface.",
+    )
+    source_surface: str | None = Field(
+        default=None,
+        min_length=1,
+        description="Named producer surface put on each turn's argv as "
+        "--source-surface.",
+    )
 
     @field_validator("correlation_id")
     @classmethod
@@ -191,6 +223,15 @@ class ModelDelegatedCodeEditRequest(BaseModel):
             if not item or item.startswith("/") or ".." in item.split("/"):
                 raise ValueError(f"{item!r} is not a worktree-relative path")
         return value
+
+    @model_validator(mode="after")
+    def _synthetic_names_its_surface(self) -> ModelDelegatedCodeEditRequest:
+        if (
+            self.traffic_class is EnumDelegationTrafficClass.SYNTHETIC
+            and not self.source_surface
+        ):
+            raise ValueError("synthetic traffic requires a source_surface")
+        return self
 
     @model_validator(mode="after")
     def _unique_checks(self) -> ModelDelegatedCodeEditRequest:

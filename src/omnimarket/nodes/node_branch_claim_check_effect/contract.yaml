@@ -45,6 +45,14 @@ handler_routing:
       handler:
         name: HandlerBranchClaimCheck
         module: omnimarket.nodes.node_branch_claim_check_effect.handlers.handler_branch_claim_check
+    - operation: pr_status_poll_observed
+      topic: onex.evt.github.pr-status.v1
+      message_category: event
+      event_model: omnimarket.nodes.node_github_pr_poller_effect.models.model_github_pr_status_poll_event.ModelGitHubPrStatusPollEvent
+      handler_module: omnimarket.nodes.node_branch_claim_check_effect.handlers.handler_branch_claim_check
+      handler:
+        name: HandlerBranchClaimCheck
+        module: omnimarket.nodes.node_branch_claim_check_effect.handlers.handler_branch_claim_check
 terminal_event: onex.evt.omnimarket.branch-claim-check-completed.v1
 event_bus:
   subscribe_topics:

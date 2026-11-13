@@ -603,9 +603,11 @@ def test_compute_routes_only_batch_triage_and_declares_pure_ci_classifier() -> N
         "triage_prs"
     ]
     assert "topic" not in raw["handler_routing"]["handlers"][0]
-    assert _topics_for_handler_entry(
-        contract, contract.handler_routing.handlers[0]
-    ) == ("onex.evt.omnimarket.pr-lifecycle-inventory-completed.v1",)
+    # No bus input since OMN-24121: the orchestrator calls triage in process.
+    assert raw["event_bus"]["subscribe_topics"] == []
+    assert (
+        _topics_for_handler_entry(contract, contract.handler_routing.handlers[0]) == ()
+    )
     assert raw["event_bus"]["publish_topics"] == [
         "onex.evt.omnimarket.pr-lifecycle-triage-completed.v1"
     ]

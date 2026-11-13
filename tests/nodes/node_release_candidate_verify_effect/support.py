@@ -10,6 +10,7 @@ the train derives it from the published ones: wheel sha256, RECORD, entry_points
 from __future__ import annotations
 
 import base64
+import ensurepip
 import hashlib
 import io
 import os
@@ -359,7 +360,8 @@ def pipx_templates_from_stub_installs(
                 "--python",
                 sys.executable,
                 "--pip-args",
-                f"--no-index --no-deps --find-links {wheel_dir}",
+                # pipx 1.6 to 1.11 hand --pip-args to the shared-library pip upgrade
+                f"--no-index --no-deps --find-links {wheel_dir} --find-links {pip_wheel_dir(base)}",
                 "omnibase-core==1.0.0",
             ],
             {"PIPX_HOME": str(home), "PIPX_BIN_DIR": str(home / "bin")},
@@ -404,11 +406,26 @@ def overlay_with_bundled_pip(
     )
 
 
+def pip_wheel_dir(base: Path) -> Path:
+    """The pip wheel this interpreter's ensurepip bundles, copied into base / "pip-wheel"."""
+    target = base / "pip-wheel"
+    target.mkdir(parents=True, exist_ok=True)
+    bundled = Path(ensurepip.__file__).parent / "_bundled"
+    wheels = list(bundled.glob("pip-*.whl"))
+    if not wheels:
+        raise RuntimeError(f"no pip wheel found in {bundled}")
+    shutil.copy2(wheels[0], target / wheels[0].name)
+    return target
+
+
 def install_pipx(base: Path, wheel_dir: Path) -> tuple[str, str]:
     """A pipx environment reached through its bin symlink; pipx itself when present, else the pip venv it wraps."""
     pipx_bin = base / "pipx-bin"
-    pip_args = f"--no-index --find-links {wheel_dir}"
     if shutil.which("pipx"):
+        # pipx 1.6 to 1.11 hand --pip-args to the shared-library pip upgrade
+        pip_args = (
+            f"--no-index --find-links {wheel_dir} --find-links {pip_wheel_dir(base)}"
+        )
         env = {"PIPX_HOME": str(base / "pipx-home"), "PIPX_BIN_DIR": str(pipx_bin)}
         _run(
             [

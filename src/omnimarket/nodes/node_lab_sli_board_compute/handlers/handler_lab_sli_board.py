@@ -13,6 +13,7 @@ import html
 from collections.abc import Mapping
 from functools import lru_cache
 from pathlib import Path
+from typing import overload
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -22,6 +23,7 @@ from omnimarket.models.lab_sli import (
     ModelLabSliBoard,
     ModelLabSliBoardRequest,
     ModelLabSliEvaluated,
+    ModelLabSliEvaluationBatch,
     ModelLabSliHistoryPoint,
     ModelLabSliProjection,
 )
@@ -125,8 +127,24 @@ class HandlerLabSliBoard:
     ) -> None:
         self._environ = environ
         self._config = config if config is not None else _contract_config()
+        self._projection = ModelLabSliProjection()
 
-    def handle(self, request: ModelLabSliBoardRequest) -> ModelLabSliBoard:
+    @overload
+    def handle(self, request: ModelLabSliBoardRequest) -> ModelLabSliBoard: ...
+
+    @overload
+    def handle(self, request: ModelLabSliEvaluationBatch) -> ModelLabSliBoard: ...
+
+    def handle(self, request: BaseModel) -> ModelLabSliBoard:
+        carries_state = isinstance(request, ModelLabSliEvaluationBatch)
+        if isinstance(request, ModelLabSliEvaluationBatch):
+            request = ModelLabSliBoardRequest(
+                evaluation=request, projection=self._projection
+            )
+        elif not isinstance(request, ModelLabSliBoardRequest):
+            raise TypeError(
+                "lab SLI board handler requires its contract-declared payload"
+            )
         require_lab_sli_pack("node_lab_sli_board_compute", self._environ)
         projection = fold(
             request.projection,
@@ -201,9 +219,12 @@ class HandlerLabSliBoard:
             )
             + "</body></html>"
         )
-        return ModelLabSliBoard(
+        result = ModelLabSliBoard(
             projection=projection, html=page, markdown="\n".join(md) + "\n"
         )
+        if carries_state:
+            self._projection = result.projection
+        return result
 
 
 __all__ = ["HandlerLabSliBoard", "fold", "load_board_config", "trend"]

@@ -70,6 +70,7 @@ import posixpath
 import re
 import shlex
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Literal, cast
 
@@ -371,6 +372,9 @@ class _State:
     superseded: list[dict[str, object]] = field(default_factory=list)
     resumes: int = 0
     read_only_streak: int = 0
+    empty_finishes: int = 0
+    loop_started: float = 0.0
+    turn_seconds: list[float] = field(default_factory=list)
 
     def record_good(self, turn: int) -> None:
         """Snapshot the history boundary after a received reply was processed."""
@@ -388,10 +392,16 @@ class _TerminalError(Exception):
 class HandlerDelegatedCodeEditOrchestrator:
     """ORCHESTRATOR: sequences the loop's turns through injected ports."""
 
-    def __init__(self, ports: ProtocolDelegatedCodeEditPorts | None = None) -> None:
+    def __init__(
+        self,
+        ports: ProtocolDelegatedCodeEditPorts | None = None,
+        *,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
         # Optional so the handler constructs at boot from defaults alone; a run
         # without bound ports is refused rather than half-wired.
         self._bound = ports
+        self._clock = clock
 
     @property
     def _ports(self) -> ProtocolDelegatedCodeEditPorts:
@@ -425,6 +435,7 @@ class HandlerDelegatedCodeEditOrchestrator:
         prior = self._resume_receipt(request) if resume else None
         self._ports.claim_loop_receipt(loop_run_id, resume=resume)
         state = self._seed(prior) if prior is not None else _State()
+        state.loop_started = self._clock()
         status = EnumCodeEditStatus.INFRA_ERROR
         detail = ""
         manifest: tuple[tuple[str, int], ...] = ()
@@ -679,7 +690,13 @@ class HandlerDelegatedCodeEditOrchestrator:
         state.paths = tuple(path for path, _ in manifest)
         index = relevant_first(request, [path for path, _ in manifest])
         failed_delegates = 0
+        wall_stopped = False
         for turn in range(start_turn, request.max_turns + 1):
+            if request.wall_budget_seconds is not None and state.turn_seconds:
+                elapsed = self._clock() - state.loop_started
+                if elapsed + max(state.turn_seconds) > request.wall_budget_seconds:
+                    wall_stopped = True
+                    break
             prompt = self._prompt(
                 request,
                 index,
@@ -688,6 +705,7 @@ class HandlerDelegatedCodeEditOrchestrator:
                 turn,
                 reads_paused=state.read_only_streak >= MAX_READ_ONLY_TURNS,
             )
+            turn_started = self._clock()
             try:
                 reply = self._ports.delegate(request, prompt, RESPONSE_CONTRACT, turn)
             except DelegatePinViolationError as exc:
@@ -695,6 +713,8 @@ class HandlerDelegatedCodeEditOrchestrator:
                 raise _TerminalError(
                     EnumCodeEditStatus.DELEGATE_FAILED, bound_error(str(exc))
                 ) from exc
+            finally:
+                state.turn_seconds.append(self._clock() - turn_started)
             if not reply.run_id and (reply.ok or reply.raw_text):
                 # Model output the receipt cannot name by its `onex delegate`
                 # run is a model call outside the delegation path (AC2 of
@@ -752,6 +772,22 @@ class HandlerDelegatedCodeEditOrchestrator:
             try:
                 finished = self._apply_turn(request, turn, reply, record, state)
                 if finished:
+                    diff = self._ports.diff(request)
+                    if not diff.strip():
+                        state.empty_finishes += 1
+                        state.history.append(
+                            HistoryTurn(
+                                turn,
+                                message="FINISH REFUSED: no file in the worktree has changed. "
+                                "The task needs a change to a writable file; write it, then finish.\n",
+                            )
+                        )
+                        if state.empty_finishes >= request.max_no_change_finishes:
+                            raise _TerminalError(
+                                EnumCodeEditStatus.NO_CHANGE,
+                                f"finish was called {state.empty_finishes} times with no file changed",
+                            )
+                        continue
                     checks = self._run_checks(request, state)
                     self._record_finish(request, checks, state)
                     if all(c.status == "passed" for c in checks):
@@ -770,13 +806,23 @@ class HandlerDelegatedCodeEditOrchestrator:
                     self._progress_or_stop(request, checks, state)
             finally:
                 state.record_good(turn)
+        n = len(state.turn_seconds)
+        if not self._ports.diff(request).strip():
+            detail = (
+                f"the wall budget ({request.wall_budget_seconds} s) was reached after {n} turns with no file changed"
+                if wall_stopped
+                else f"the turn cap ({request.max_turns}) was reached with no file changed"
+            )
+            raise _TerminalError(EnumCodeEditStatus.NO_CHANGE, detail)
         checks = self._run_checks(request, state)
         if all(c.status == "passed" for c in checks):
             return EnumCodeEditStatus.ACCEPTED
-        raise _TerminalError(
-            EnumCodeEditStatus.BUDGET_EXHAUSTED,
-            f"the turn cap ({request.max_turns}) was reached with checks failing",
+        detail = (
+            f"the wall budget ({request.wall_budget_seconds} s) was reached after {n} turns with checks failing"
+            if wall_stopped
+            else f"the turn cap ({request.max_turns}) was reached with checks failing"
         )
+        raise _TerminalError(EnumCodeEditStatus.BUDGET_EXHAUSTED, detail)
 
     @staticmethod
     def _prompt(

@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. A deployment's real overlay lives in the overlays repository
+# (overlays/node_code_eval_trial_orchestrator/overlay.yaml). The schema is ModelCodeEvalRunnerOverlay; no key has a default.
+attempt_budgets: [1, 3, 5]                # code_eval.runner.attempt_budgets: the attempt ladder, strictly increasing; a sequence holds the largest
+try_timeout_seconds: 900                  # code_eval.runner.try_timeout_seconds: one try's unit timeout
+receipt_slack_seconds: 60                 # code_eval.runner.receipt_slack_seconds: added to the try and score deadlines before the nudge expires them
+nudge_interval_seconds: 30                # code_eval.runner.nudge_interval_seconds: the tick cadence the completion bound must clear by one interval
+max_turns: 12                             # code_eval.runner.max_turns: the loop's turn ceiling for one try, 1..40
+max_diff_bytes: 1000000                   # code_eval.runner.max_diff_bytes: a longer diff is cut and the try reads unscorable(draft_not_recoverable)
+draft_checks:                             # code_eval.runner.draft_checks: the loop's own checks, never a ticket contract's check
+  - "uv run python -c pass"
+need_tools:                               # code_eval.runner.need_tools: tools a host must advertise to take a try
+  - uv
+source_surface: node_code_eval_trial_orchestrator   # core ModelDelegationProvenance source_surface put on each delegate turn
+unit_lane_prefix: "code-eval-"            # prefix of a unit's lane; the run id follows it
+onex_executable: onex                     # the executable a unit runs: onex code-edit run
+caller_ticket: OMN-23627                  # the ticket every unit's loop request carries, or null
+event_bus:                     # read by onex run-node, not by the node
+  type: kafka
+  lane: dev

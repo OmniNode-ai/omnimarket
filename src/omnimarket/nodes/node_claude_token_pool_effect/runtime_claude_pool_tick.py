@@ -84,6 +84,35 @@ def main(argv: list[str] | None = None) -> int:
             "stale_revoke": result.stale_revoke,
             "revokes_cleared": list(result.revokes_cleared),
             "revokes_kept": list(result.revokes_kept),
+            "limit_recheck": result.limit_recheck,
+            "limit_rechecks": [
+                {
+                    "label": o.label,
+                    "outcome": o.outcome,
+                    "probed_at": (
+                        o.probed_at.strftime("%Y-%m-%dT%H:%M:%SZ")
+                        if o.probed_at
+                        else None
+                    ),
+                }
+                for o in result.limit_rechecks
+            ],
+            "revoke_recheck": result.revoke_recheck,
+            "revoke_rechecks": [
+                {
+                    "label": o.label,
+                    "outcome": o.outcome,
+                    "probed_at": (
+                        o.probed_at.strftime("%Y-%m-%dT%H:%M:%SZ")
+                        if o.probed_at
+                        else None
+                    ),
+                }
+                for o in result.revoke_rechecks
+            ],
+            "revokes_rechecked_cleared": list(result.revokes_rechecked_cleared),
+            "revokes_confirmed": list(result.revokes_confirmed),
+            "revokes_rechecked_kept": list(result.revokes_rechecked_kept),
         }
         if result.outcome == "no_usable":
             code = EXIT_ALL_LIMITED

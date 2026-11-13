@@ -1070,6 +1070,26 @@ repos:
         files: ^(src/omnimarket/configs/(task_class_bars|task_class_contracts)\.v1\.yaml|src/omnimarket/nodes/node_delegation_routing_overlay_check_compute/.*)$
         stages: [pre-commit]
 
+      # OMN-24005: a topic use a change adds to a node contract needs a declared broker grant; uses the base branch already
+      # declares are not judged and no exception list exists. SYNC with ci.yml step "Broker permission coverage gate (OMN-24005)".
+      - id: broker-acl-coverage-gate
+        name: A topic a contract change adds has a broker permission row (OMN-24005)
+        language: system
+        entry: uv run python -m omnimarket.nodes.node_broker_acl_reconcile_effect.runtime_broker_acl_coverage_gate --base-ref origin/dev
+        pass_filenames: false
+        files: ^(src/omnimarket/nodes/[^/]+/contract\.yaml|src/omnimarket/nodes/node_broker_acl_(overlay_render_compute|reconcile_effect)/.*)$
+        stages: [pre-commit]
+
+      # OMN-24121: a producer-consumer pair a change adds or reshapes must match in declared message shape; differences the base
+      # branch already has are not judged and no exception list exists. SYNC with ci.yml step "Seam field diff gate (OMN-24121)".
+      - id: seam-field-diff-gate
+        name: A producer-consumer pair a change adds matches in message shape (OMN-24121)
+        language: system
+        entry: env -u PYTHONPATH uv run python -m omnimarket.nodes.node_seam_field_diff_check_effect.runtime_seam_field_diff_check --base-ref origin/dev
+        pass_filenames: false
+        files: ^(src/omnimarket/nodes/[^/]+/contract\.yaml|src/omnimarket/nodes/node_seam_field_diff_(compute|check_effect)/.*|src/omnimarket/models/.*\.py)$
+        stages: [pre-commit]
+
       # OMN-18311 (release criterion C12, third clause). A customer catalogue
       # row that resolves to a HOUSE credential renders identically to a
       # bring-your-own-key row and bills to us. Same entry point as the
