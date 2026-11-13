@@ -89,6 +89,18 @@ repos:
       - id: commit-hygiene-message
         stages: [commit-msg]
         require_serial: true
+  # OMN-24065: generic validators omnibase_core merged (core 2290 to 2294), run here by
+  # hook id. rev is the dev-merge tag of the core commit this repository's lock resolves, a
+  # revision that carries every hook below. No baseline file and no allowlist: each hook
+  # passes over the whole tree.
+  - repo: https://github.com/OmniNode-ai/omnibase_core
+    rev: dev-20261111183916-a85cb916d4c1
+    hooks:
+      - id: declared-timeout-reaches-call
+      - id: no-time-bound-truncation
+      - id: no-naive-timestamp
+      - id: no-id-from-stamp
+      - id: no-fixed-tmp-atomic-write
   # OMN-21940: five validators this repository used to run from its own script
   # copies. The rule code is omnibase_core's, at this rev; only the inputs stay here.
   # The rev is the first dev-merge tag whose check-release-identity runtime installs
