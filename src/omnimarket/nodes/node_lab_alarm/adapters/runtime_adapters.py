@@ -1,10 +1,10 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The real backend: the lane's served manifest over HTTP, the lane's broker over aiokafka, the broker's external listener over TCP, a state file.
+"""The real backend: the lane's served manifest over HTTP, the lane's broker over aiokafka, a declared broker's consumer groups over the confluent_kafka admin client, the broker's external listener over TCP, a state file.
 
-The broker address and login come from the lane declaration the dev-lane clients resolve, never from an
-ambient variable. Nothing here prints or returns a credential or a broker address: a failure is named by
-its exception type only.
+The lane's broker address and login come from the lane declaration the dev-lane clients resolve, never
+from an ambient variable; ``AdminLag`` reads the address its overlay declares. Nothing here prints or
+returns a credential or a broker address: a failure is named by its exception type only.
 """
 
 from __future__ import annotations
@@ -217,6 +217,92 @@ class KafkaLag:
             raise GroupUnreadableError(
                 f"group {group} unreadable ({type(exc).__name__})"
             ) from None
+
+
+def _committed_request(group: str) -> Any:
+    """The read-committed request for one group; built lazily so the import stays lazy."""
+    from confluent_kafka import ConsumerGroupTopicPartitions
+
+    return ConsumerGroupTopicPartitions(group)
+
+
+def _end_offset_key(topic: str, partition: int) -> tuple[Any, Any]:
+    """One list-offsets key with its latest-offset spec; built lazily so the import stays lazy."""
+    from confluent_kafka import TopicPartition
+
+    # The class confluent_kafka.admin re-exports, from the module that types it.
+    from confluent_kafka.admin._listoffsets import OffsetSpec
+
+    latest: Callable[[], Any] = OffsetSpec.latest
+    return TopicPartition(topic, partition), latest()
+
+
+def _end_offsets(
+    admin: Any, keys: list[tuple[str, int]], timeout_seconds: float
+) -> dict[tuple[str, int], int]:
+    if not keys:
+        return {}
+    futures = admin.list_offsets(
+        dict(_end_offset_key(topic, partition) for topic, partition in keys),
+        request_timeout=timeout_seconds,
+    )
+    return {
+        (tp.topic, tp.partition): int(f.result(timeout=timeout_seconds).offset)
+        for tp, f in futures.items()
+    }
+
+
+class AdminLag:
+    """Committed offsets against partition end offsets on one declared broker, the admin client only.
+
+    No consumer is built and no group is joined, so reading a group moves nothing, and the read
+    carries no credential: the address is the overlay's ``bootstrap_servers`` alone. A broker failure
+    is named by its exception type only, never its text, which carries the address.
+    """
+
+    def __init__(
+        self,
+        bootstrap_servers: str,
+        timeout_seconds: float,
+        admin_factory: Callable[[dict[str, str]], Any] | None = None,
+    ) -> None:
+        self._bootstrap_servers = bootstrap_servers
+        self._timeout = timeout_seconds
+        self._admin_factory = admin_factory
+
+    def total_lag(self, group: str) -> int:
+        try:
+            return self._read(group)
+        except (GroupNeverCommittedError, GroupUnreadableError):
+            raise
+        except Exception as exc:  # classify by type, never echo str(exc)
+            raise GroupUnreadableError(
+                f"group {group} unreadable ({type(exc).__name__})"
+            ) from None
+
+    def _read(self, group: str) -> int:
+        from confluent_kafka.admin import AdminClient
+
+        admin = (self._admin_factory or AdminClient)(
+            {"bootstrap.servers": self._bootstrap_servers}
+        )
+        future = admin.list_consumer_group_offsets(
+            [_committed_request(group)], request_timeout=self._timeout
+        )[group]
+        committed = future.result(timeout=self._timeout).topic_partitions
+        held = [tp for tp in committed if int(tp.offset) >= 0]
+        if not held:
+            raise GroupNeverCommittedError(
+                f"group {group} holds no committed offset on any partition"
+            )
+        ends = _end_offsets(
+            admin, [(tp.topic, tp.partition) for tp in held], self._timeout
+        )
+        total = 0
+        for tp in held:
+            end = ends[(tp.topic, tp.partition)]
+            total += max(0, end - int(tp.offset))
+        return total
 
 
 class FileSamples:
@@ -471,6 +557,7 @@ class TcpApiVersionsProbe:
 
 
 __all__ = [
+    "AdminLag",
     "CommandLaneDispatcher",
     "FileGrowthStreaks",
     "FileHeldState",

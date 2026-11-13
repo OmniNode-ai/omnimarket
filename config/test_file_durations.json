@@ -1681,6 +1681,8 @@
   "tests/nodes/node_lab_alarm_deliver_effect/test_lab_alarm_delivery.py": 3.91,
   "tests/nodes/node_lab_alarm_scheduled_effect/test_contract_topics.py": 3.02,
   "tests/nodes/node_lab_alarm_scheduled_effect/test_golden_chain_lab_alarm_scheduled.py": 1.7,
+  "tests/nodes/node_lab_alarm_scheduled_effect/test_lab_alarm_admin_lag_reader.py": 3.07,
+  "tests/nodes/node_lab_alarm_scheduled_effect/test_lab_alarm_scheduled_bound_source.py": 2.55,
   "tests/nodes/node_lab_check_run_effect/test_golden_chain_lab_check_run_effect.py": 0.07,
   "tests/nodes/node_lab_check_run_effect/test_join_j8_poster.py": 0.24,
   "tests/nodes/node_lab_claude_token_effect/test_lab_claude_token_cli.py": 0.08,

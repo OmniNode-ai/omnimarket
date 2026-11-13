@@ -26,10 +26,22 @@ NODE_NAME = "node_lab_alarm"
 class ModelAlarmBackend(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    #: ``inmemory`` reads fixtures; ``runtime`` reads the lane's manifest URL and broker.
-    backend: Literal["inmemory", "runtime"]
+    #: ``inmemory`` reads fixtures; ``runtime`` reads the lane's manifest URL and broker;
+    #: ``runtime_admin`` reads committed and end offsets with the admin client only against the
+    #: overlay's ``bootstrap_servers`` (no credential, no consumer, no group joined).
+    backend: Literal["inmemory", "runtime", "runtime_admin"]
     #: The bus lane whose broker address and stored login the runtime backend resolves.
     lane: str = Field(min_length=1)
+    #: The broker address the ``runtime_admin`` backend reads; the other backends take none.
+    bootstrap_servers: str | None = Field(default=None, min_length=1)
+
+    @model_validator(mode="after")
+    def _admin_backend_declares_its_broker(self) -> ModelAlarmBackend:
+        if self.backend == "runtime_admin" and self.bootstrap_servers is None:
+            raise ValueError("backend runtime_admin needs bootstrap_servers")
+        if self.backend != "runtime_admin" and self.bootstrap_servers is not None:
+            raise ValueError("only backend runtime_admin takes bootstrap_servers")
+        return self
 
 
 class ModelDeclaredNode(BaseModel):
