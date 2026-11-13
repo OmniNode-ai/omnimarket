@@ -54,6 +54,14 @@ description: >
   that fingerprint and that exact stamp. mark-limited takes --exact for a notice that names its own reset, which replaces
   the stamp; an estimate never shortens one. export --label L --name KEY writes KEY=value to a pipe (never a terminal) so
   the refill's adopt step can move a host-held label into the secret store through the secret seed node.
+  Inside the same tick on the marks-source host (OMN-19998), when the overlay carries a revoke_recheck block, the tick asks
+  node_claude_pool_revoke_recheck_compute which revoked or challenged labels are due, runs the same headless probe, and has
+  the pool execute the typed apply_revoke_rechecks commands: an ok or limited answer clears the mark (the token answers, so
+  the revocation is not real), a refused answer keeps it and confirms a challenged one as a revoke, an error answer proves
+  nothing; the pool executes a command only while it holds that fingerprint and that exact revoke stamp. mark-revoked
+  --evidence-stdin reads the failing engine's closing output on stdin and asks node_claude_pool_revoke_cause_compute
+  whether a runner-written revoke is a 403 challenge page, recorded challenged (out of rotation like a revoke until the
+  recheck clears it) instead of revoked.
 
 output_model: omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_pool.ModelClaudeTokenPoolResult
 

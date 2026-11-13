@@ -119,3 +119,19 @@ hosts:
         min_gib: 20
         ci_prune: false
         timeout_seconds: 1800
+  # macOS host with uv cache and pre-commit store
+  - name: pool-mac
+    docker_timeout_seconds: 5
+    docker_mount_guard: false
+    age_classes:
+      - name: pre-commit-store
+        kind: pre_commit_store
+        root: ~/.cache/pre-commit
+        index_db: ~/.cache/pre-commit/db.db
+        keep_days: 7
+    uv_caches:
+      - path: ~/.cache/uv
+        uv_binary: ~/.local/bin/uv
+        min_gib: 10
+        ci_prune: false
+        timeout_seconds: 1800

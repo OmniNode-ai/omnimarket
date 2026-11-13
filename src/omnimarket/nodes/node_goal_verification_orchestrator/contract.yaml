@@ -21,6 +21,12 @@ input_model:
 output_model:
   name: ModelGoalVerificationOutcome
   module: omnimarket.nodes.node_goal_verification_orchestrator.models.model_goal_verification
+# OMN-24236: the returned outcome is a record of what was decided, so the
+# runtime's result applier needs a terminal of its own to publish it on. Without
+# this line the applier fell back to the first publish topic -- the verifier's
+# start command -- and node_dod_verify rejected the outcome as a malformed
+# command on both ends.
+terminal_event: onex.evt.omnimarket.goal-verification-decided.v1
 handler:
   module: omnimarket.nodes.node_goal_verification_orchestrator.handlers.handler_goal_verification
   class: HandlerGoalClosureResult
@@ -94,7 +100,18 @@ event_bus:
     - onex.cmd.omnimarket.goal-verification-sweep.v1
     - onex.cmd.omnimarket.goal-unverified-closes-query.v1
   publish_topics:
+    # The decided record first: it is the terminal_event above, which is the
+    # topic the result applier publishes the returned outcome on.
+    - onex.evt.omnimarket.goal-verification-decided.v1
     - onex.cmd.omnimarket.dod-verify-start.v1
+# The event types the returned models map to, read by the runtime's result
+# applier to route each returned model to its declared topic.
+published_events:
+  - event_type: GoalVerificationOutcome
+    topic: onex.evt.omnimarket.goal-verification-decided.v1
+    description: >-
+      Carries one decision per goal the handled event touched; a record of what
+      the orchestrator decided, never a command to the verifier.
 # The four subscribe topics no contract publishes. Each names its producer; the result-recorded
 # and goal-disposition producers are not built yet (follow-ups named on OMN-20033).
 externally_produced_topics:
@@ -106,6 +123,17 @@ externally_produced_topics:
     producer: "a scheduled sweep tick, to be wired as an overlay of the lab scheduler"
   - topic: onex.cmd.omnimarket.goal-unverified-closes-query.v1
     producer: "the floor and the operator's listing of unverified closes"
+# OMN-24236: the decided record leaves the ONEX node graph here; no node
+# contract subscribes to it yet, its first readers are humans on the bus.
+externally_consumed_topics:
+  - onex.evt.omnimarket.goal-verification-decided.v1
+# OMN-24236: the dev runtime login publishes the decided record; the principal is the placeholder the broker permission derivation fills
+# for the runtime's own login (overlays: broker_acl_principals). Write and describe on that one topic, literal, nothing else.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.goal-verification-decided.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.goal-verification-decided.v1, operation: DESCRIBE}
 metadata:
   transport_type: kafka
   description: Goal closure orchestrator
