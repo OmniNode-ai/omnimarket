@@ -2802,6 +2802,7 @@
   "tests/test_dispatch_path_projection_llm_cost.py": 0.06,
   "tests/test_dispatch_prompt_context.py": 0.06,
   "tests/test_dispatch_worker_main.py": 1.43,
+  "tests/test_dod_verdict_failure_terminal_decline.py": 1.97,
   "tests/test_dod_verify_acceptance_basis.py": 1.9,
   "tests/test_dod_verify_every_criterion_bound.py": 0.18,
   "tests/test_dod_verify_occ_difference.py": 6.91,
