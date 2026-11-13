@@ -1391,6 +1391,7 @@ node_test_selector_reading_compute = "omnimarket.nodes.node_test_selector_readin
 node_thread_reply_effect = "omnimarket.nodes.node_thread_reply_effect"
 node_throughput_tick_decision_compute = "omnimarket.nodes.node_throughput_tick_decision_compute"
 node_ticket_classify_compute = "omnimarket.nodes.node_ticket_classify_compute"
+node_ticket_closer_scheduled_effect = "omnimarket.nodes.node_ticket_closer_scheduled_effect"
 node_ticket_compiler = "omnimarket.nodes.node_ticket_compiler"
 node_ticket_contract_merge_compute = "omnimarket.nodes.node_ticket_contract_merge_compute"
 node_ticket_contract_prerequisite_effect = "omnimarket.nodes.node_ticket_contract_prerequisite_effect"
