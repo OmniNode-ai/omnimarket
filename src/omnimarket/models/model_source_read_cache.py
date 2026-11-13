@@ -86,6 +86,8 @@ class ModelSourceCacheValkey(BaseModel):
     host_env: str = Field(min_length=1)
     port_env: str = Field(min_length=1)
     password_env: str | None = Field(min_length=1)
+    # The NAME of the environment variable that holds a secret store reference (secret://onex/<folder>/<KEY>) for the password; used when the variable named by password_env holds none; absent, only password_env is read.
+    password_ref_env: str | None = Field(default=None, min_length=1)
     database: int = Field(ge=0)
     connect_timeout_seconds: int = Field(ge=1)
     operation_timeout_seconds: int = Field(ge=1)

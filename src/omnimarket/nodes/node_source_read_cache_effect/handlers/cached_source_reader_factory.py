@@ -15,6 +15,7 @@ import time
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import yaml
 
@@ -38,9 +39,15 @@ from omnimarket.nodes.node_source_read_cache_effect.handlers.cached_source_reade
 from omnimarket.nodes.node_source_read_cache_effect.handlers.handler_source_read_cache import (
     HandlerSourceReadCache,
 )
+from omnimarket.nodes.node_source_read_cache_effect.handlers.password_reference import (
+    resolve_password,
+)
 from omnimarket.nodes.node_source_read_cache_effect.protocols.protocol_source_read_cache_backend import (
     ProtocolSourceReadCacheBackend,
 )
+
+if TYPE_CHECKING:
+    from omnimarket.handlers.delegation_scenario_settings import ProtocolSettingStore
 
 OWN_CONTRACT = Path(__file__).resolve().parents[1] / "contract.yaml"
 
@@ -79,6 +86,7 @@ def build_cached_source_reader(
     overlay: ModelSourceCacheOverlay | None = None,
     backend: ProtocolSourceReadCacheBackend | None = None,
     clock: Callable[[], float] = time.monotonic,
+    password_reader: ProtocolSettingStore | None = None,
 ) -> CachedSourceReader:
     """The reader for this deployment: the overlay's backend, or a reader with no handler when the overlay cannot be used."""
     env = os.environ if environ is None else environ
@@ -113,8 +121,23 @@ def build_cached_source_reader(
                 backend_name=backend_name,
             )
         password = (
-            env.get(connection.password_env, "") if connection.password_env else ""
+            env.get(connection.password_env, "").strip()
+            if connection.password_env
+            else ""
         )
+        if not password and connection.password_ref_env:
+            reference = env.get(connection.password_ref_env, "").strip()
+            if reference:
+                password = resolve_password(reference, password_reader)
+                if not password:
+                    return CachedSourceReader(
+                        None,
+                        clock,
+                        disabled_reason=(
+                            f"valkey: password reference in {connection.password_ref_env} did not resolve"
+                        ),
+                        backend_name=backend_name,
+                    )
         chosen = BackendValkeySourceReadCache(
             valkey_url(host, int(port), password or None, connection.database),
             connection.connect_timeout_seconds,
