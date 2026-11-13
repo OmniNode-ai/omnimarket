@@ -123,3 +123,12 @@ def test_a_run_id_that_is_not_text_writes_nothing(run_id: object) -> None:
     result = _fold(_STARTED_TOPIC, _hook_started() | {"run_id": run_id})
     assert result.row is None
     assert result.skipped_reason is not None
+
+
+def test_a_non_text_run_id_is_refused_where_a_tool_use_id_is_accepted() -> None:
+    """The contrast the fold draws: opaque text is keyed, anything else is refused."""
+    accepted = _fold(_STARTED_TOPIC, _hook_started("toolu_contrast"))
+    assert accepted.row is not None
+    for run_id in (12345, "", True, ["toolu_contrast"]):
+        refused = _fold(_STARTED_TOPIC, _hook_started() | {"run_id": run_id})
+        assert refused.row is None
