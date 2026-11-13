@@ -13,7 +13,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from omnimarket.nodes.node_stall_responder_compute.models.model_stall_responder import (
+from omnimarket.events.stall_cause import (
     ModelCauseDispatch,
     ModelCauseSkip,
     ModelRowRefusal,
