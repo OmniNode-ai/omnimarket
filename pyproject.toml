@@ -860,6 +860,7 @@ node_lab_fill_eval_catalog_compute = "omnimarket.nodes.node_lab_fill_eval_catalo
 node_lab_fill_orchestrator = "omnimarket.nodes.node_lab_fill_orchestrator"
 node_lab_fill_plan_compute = "omnimarket.nodes.node_lab_fill_plan_compute"
 node_lab_fill_receipt_table_compute = "omnimarket.nodes.node_lab_fill_receipt_table_compute"
+node_lab_fill_selection_compute = "omnimarket.nodes.node_lab_fill_selection_compute"
 node_lab_first_routing_check_compute = "omnimarket.nodes.node_lab_first_routing_check_compute"
 node_lab_history_archive_effect = "omnimarket.nodes.node_lab_history_archive_effect"
 node_lab_host_key_distribution_effect = "omnimarket.nodes.node_lab_host_key_distribution_effect"
