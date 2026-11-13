@@ -1,0 +1,68 @@
+schema_version: 1.0.0
+ticket_id: OMN-24138
+title: A scheduled closer node in the runtime moves a ticket to Done only on a passing check with a runtime proof
+summary: 'The closer that moves finished tickets to Done ran as an agent-driven workflow on a Mac launchd job and reported zero flips in 93 consecutive runs, while about 2,250 open tickets already hold
+  a contract on a product default branch. This change adds node_ticket_closer_scheduled_effect, a scheduled effect node that runs inside the runtime on the runtime tick, gated by an overlay interval. For each
+  candidate ticket it runs the DoD verifier, decides with the existing flip predicate of node_dod_closeout_sweep_compute (flip_decision, including its runtime-proof conjunct) and moves the ticket to the overlay''s
+  done state through the ticket write node only when the predicate passes. A verifier that cannot run judges nothing and writes nothing.'
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- topics
+requirements:
+- id: req-omn24138-scheduled-closer
+  statement: The runtime closes a ticket only on a passing verifier run with every criterion bound and a runtime proof, on a schedule, and reports every decision.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a scheduled tick examines only tickets with a merged change and a definition of done, runs the verifier on each and moves a ticket to Done only when the verifier passes with every criterion
+      bound and a runtime proof is present -- falsifier: pytest tests/nodes/node_ticket_closer_scheduled_effect -q fails when the flip rule is loosened to ignore the proof or an unbound criterion'
+  - id: AC2
+    statement: 'AC2: a verifier that cannot run, or a refused ticket write, leaves the ticket open and is reported in the run result with its reason, and a tick inside the interval does nothing --
+      falsifier: the error chain test in tests/nodes/node_ticket_closer_scheduled_effect fails when the handler swallows the refusal or acts inside the interval'
+  - id: AC3
+    statement: 'AC3: integrated: in the dev runtime the closer node is loaded on the runtime tick topic and one tick produces a closer result event on its terminal topic listing each examined ticket and its decision
+      -- falsifier: read the terminal topic on the dev lane after one tick and find no event for the node''s name'
+evidence_requirements:
+- kind: tests
+  description: The closer node's golden chain, error chain, failing-control, adapter and seam tests pass at the pushed head.
+  command: uv run pytest tests/nodes/node_ticket_closer_scheduled_effect -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24138-ac1
+  description: 'AC1: a ticket flips only when the existing flip predicate passes; each missing conjunct (unbound criterion, no runtime proof, receipt revision lacking the change, unmerged change, no behaviour proof, no running-system exercise) holds it and a loosened rule is shown flipping an unproven ticket (the control).'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_ticket_closer_scheduled_effect/test_golden_chain_ticket_closer.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24138-ac2
+  description: 'AC2: a verifier that cannot run or raises, a refused or raising write, an unread source and a tick inside the interval each leave every ticket open and are reported.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_ticket_closer_scheduled_effect/test_golden_chain_ticket_closer.py tests/nodes/node_ticket_closer_scheduled_effect/test_ticket_done_writer.py tests/nodes/node_ticket_closer_scheduled_effect/test_dod_verify_reading.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24138-ac3
+  description: 'hosted proxy for AC3: the contract topics test passes; the dev-runtime tick reading is taken after install and named in the pull request.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_ticket_closer_scheduled_effect/test_contract_topics.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24138-integration-proof
+  description: the closer node's tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24138 --kind test -- env PYTHONDONTWRITEBYTECODE=1
+      uv run --frozen pytest tests/nodes/node_ticket_closer_scheduled_effect -q --no-cov
