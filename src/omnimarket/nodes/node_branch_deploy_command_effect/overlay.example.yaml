@@ -1,12 +1,7 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 # Synthetic values. A deployment's real overlay lives in the overlays repository.
-trigger_argv_prefix:
-  - bash
-  - /srv/example/deploy-agent-trigger.sh
-env_file: /etc/example/deploy-agent.env
-timeout_seconds: 300
-detail_max_chars: 4096
-refused_marker: "REFUSED:"
-build_source: workspace
+hmac_secret_env: EXAMPLE_DEPLOY_AGENT_SIGNING_KEY
 scope: runtime
+build_source: workspace
+detail_max_chars: 4096
