@@ -54,11 +54,18 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_floor_fill_scheduled_effect -q --no-cov
     cwd: .
-- id: dod-omn24029-deploy-schedule-nodes
-  description: 'Deploy probe the hosted runner can run: the verdict effect contract at the checked-out commit on GitHub names its handler class; the file does not exist at the merge base, so the probe fails there. AC4 is read on the dev runtime after the dev deploy through the deploy agent; the unbound lab run below is the local Done gate proof.'
+- id: dod-omn24029-ac4-verdict-reads-red
+  description: AC4's verdict half proven by the verdict effect tests, which read a job with no run as red; the reading on the dev runtime is taken after the dev deploy and named in the pull request.
   source: manual
   binds_ac:
   - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_schedule_verdict_effect -q --no-cov
+    cwd: .
+- id: dod-omn24029-deploy-schedule-nodes
+  description: 'Deploy probe the hosted runner can run: the verdict effect contract at the checked-out commit on GitHub names its handler class; the file does not exist at the merge base, so the probe fails there. AC4 is read on the dev runtime after the dev deploy through the deploy agent; the unbound lab run below is the local Done gate proof.'
+  source: manual
   checks:
   - check_type: command
     check_value: 'bash -o pipefail -c ''gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_schedule_verdict_effect/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "HandlerScheduleVerdictScheduled" > /dev/null'''
