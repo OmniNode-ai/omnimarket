@@ -18,7 +18,7 @@ requirements:
 evidence_requirements:
 - kind: tests
   description: The mint handler, chain and adapter tests pass at the pushed head; the control tests fail against a handler that skips the existence check and against a delivery that logs the content.
-  command: env PYTHONPATH=src python -m pytest tests/nodes/node_service_principal_mint_effect -q -p no:cacheprovider
+  command: uv run --frozen pytest tests/nodes/node_service_principal_mint_effect -q --no-cov -p no:cacheprovider
 emergency_bypass:
   enabled: false
   justification: ''
@@ -31,7 +31,7 @@ dod_evidence:
   - AC1
   checks:
   - check_type: test_passes
-    check_value: env PYTHONPATH=src python -m pytest tests/nodes/node_service_principal_mint_effect/test_handler_service_principal_mint.py -q -p no:cacheprovider
+    check_value: uv run --frozen pytest tests/nodes/node_service_principal_mint_effect/test_handler_service_principal_mint.py -q --no-cov -p no:cacheprovider
     cwd: .
 - id: dod-omn24256-ac2
   description: 'AC2: golden and error chain tests: the delivered env file content, owner and mode; every refusal kind serializes with no password in the result, repr or log.'
@@ -40,7 +40,7 @@ dod_evidence:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: env PYTHONPATH=src python -m pytest tests/nodes/node_service_principal_mint_effect/test_service_principal_mint_chain.py tests/nodes/node_service_principal_mint_effect/test_service_principal_mint_adapters.py -q -p no:cacheprovider
+    check_value: uv run --frozen pytest tests/nodes/node_service_principal_mint_effect/test_service_principal_mint_chain.py tests/nodes/node_service_principal_mint_effect/test_service_principal_mint_adapters.py -q --no-cov -p no:cacheprovider
     cwd: .
 - id: dod-omn24256-ac3
   description: 'hosted proxy for AC3: the adapter seam tests (the broker script, the secret store requests and the real delivery script on a temporary folder) pass; the runner read on h202 is named in the pull request Lab line.'
@@ -49,7 +49,7 @@ dod_evidence:
   - AC3
   checks:
   - check_type: test_passes
-    check_value: env PYTHONPATH=src python -m pytest tests/nodes/node_service_principal_mint_effect/test_service_principal_mint_adapters.py -q -p no:cacheprovider
+    check_value: uv run --frozen pytest tests/nodes/node_service_principal_mint_effect/test_service_principal_mint_adapters.py -q --no-cov -p no:cacheprovider
     cwd: .
 - id: dod-omn24256-integration-proof
   description: the mint, chain and adapter tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
