@@ -132,7 +132,7 @@ def test_a_malformed_event_bus_raises_naming_the_file(tmp_path: Path) -> None:
         resolve_node_event_bus("node_demo_effect", registry_root, environ)
     message = str(excinfo.value)
     assert str(clone_file) in message
-    assert "lane" in message
+    assert "invalid event_bus" in message
 
 
 def test_an_overlay_without_event_bus_answers_none(tmp_path: Path) -> None:
