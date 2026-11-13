@@ -41,6 +41,11 @@ handler_routing:
       event_model:
         name: ModelRetentionReferencesRequest
         module: omnimarket.nodes.node_retention_cleanup.models.model_retention_references
+    # Whole-tree cache removal (OMN-19998), called by NodeRetentionCleanup on each run.
+    - operation: retention_cleanup.cache_trees
+      handler:
+        name: NodeCacheTreeRetention
+        module: omnimarket.nodes.node_retention_cleanup.handlers.handler_cache_tree_retention
     # The schedule's entry. Same handler class as the manual operation: the
     # elapsed-time stamp is per-instance state.
     - operation: retention_cleanup.scheduled_run
