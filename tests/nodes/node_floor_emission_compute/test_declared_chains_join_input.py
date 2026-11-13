@@ -276,6 +276,10 @@ def test_error_every_chain_the_cycle_emits_is_declared_in_the_contract() -> None
     """A node added to the cycle and left out of the contract would silently stop being judged by J0."""
     source = Path(tick_module.__file__).read_text(encoding="utf-8")
     emitted = set(re.findall(r'"(node_[a-z_]+:[a-z_]+)"', source))
+    # The J16 join (OMN-23601) writes its piece 17 answer under this declared node from its own package, not the tick.
+    emitted.add("node_floor_simple_effect:join_j16")
+    # The J0 join (OMN-23747) likewise writes its piece 17 answer from its own package.
+    emitted.add("node_floor_simple_effect:join_j0")
     assert emitted == set(PIPELINE_NODES)
     assert OVERLAY_STORE_EMITTER not in PIPELINE_NODES
     assert DEPLOY_AGENT_EMITTER not in PIPELINE_NODES

@@ -26,6 +26,39 @@ events_file: token-rotations.jsonl
 spread:
   enabled: true
   in_use_longer_than_seconds: 3600
+# Account steering for NEW lane starts. enabled is the switch: off, a lane start draws as it did before
+# the block existed. On, the lane start runs verdict_argv (the command that prints the usage verdict
+# node's result as JSON), passes its drain_labels to resolve, and counts the lanes running under each
+# label from the open CLAIM rows no older than open_claim_max_age_seconds. max_lanes_per_label is the
+# hard cap resolve holds those counts against; left out, a label carries any number of lanes. The
+# values below are examples: the deployed ones are the operator's, in the overlays repository.
+steering:
+  enabled: true
+  max_lanes_per_label: 4
+  verdict_argv: [onex-example-verdict, --json]
+  verdict_timeout_seconds: 20
+  open_claim_max_age_seconds: 21600
 unit_environment: {}
 schedule:
   interval_seconds: 300
+# Stale-revoke rule (OMN-23887). Absent: no revoke is ever cleared as stale (the tick keeps every revoked mark, as before).
+# Present: a revoked label is cleared only when the same fingerprint was limited on the source host more than margin_seconds
+# AFTER the revoke stamp (a revoke with no later success of that token anywhere stands). The value is the operator's.
+stale_revoke:
+  margin_seconds: 60
+# Limit-recheck rule (OMN-23895). Absent: a limited mark is never re-tested (the tick answers limit_recheck=not_configured).
+# Present: on the marks-source host only (the one that holds the marks and syncs them out), the tick probes each limited label
+# every policy.interval_seconds with one small headless Claude call under that label's stored token. An ok answer clears the
+# mark; a limited answer that names a reset replaces the stamp (even with an earlier one); a limited answer without a newer
+# reset keeps it; an error answer proves nothing and is asked again next tick. reset_pattern names the groups month, day,
+# hour (and optionally minute and ampm), read as UTC. The values are the operator's, in the overlays repository.
+limit_recheck:
+  policy:
+    interval_seconds: 3600
+  probe:
+    model: example-model
+    prompt: Reply with the single word ok
+    timeout_seconds: 90
+    limited_patterns: ["hit your weekly limit"]
+    reset_pattern: 'resets (?P<month>[A-Za-z]{3}) (?P<day>\d{1,2}), (?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?(?P<ampm>am|pm)'
+    reset_margin_seconds: 7

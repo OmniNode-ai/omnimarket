@@ -22,6 +22,9 @@ class ModelClaudePoolRefillRequest(BaseModel):
     hosts: tuple[str, ...] = ()
     dry_run: bool = False
     check_config: bool = False
+    #: ``adopt``: first move every label a host's pool holds and the store lacks into the store (the overlay's ``adopt``
+    #: block names the key prefix), so the refill hands it to every host. ``dry_run`` runs the seed node's dry run.
+    adopt: bool = False
 
 
 class ModelClaudePoolRefillResult(BaseModel):

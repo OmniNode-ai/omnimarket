@@ -14,6 +14,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
+from packaging.version import Version
 
 from omnimarket.nodes.node_release_candidate_verify_effect.handlers.handler_release_candidate_verify import (
     HandlerReleaseCandidateVerify,
@@ -65,6 +66,16 @@ def _has_pip(python: Path) -> bool:
         ).returncode
         == 0
     )
+
+
+def test_offline_pipx_find_links_carry_the_pip_pipx_upgrades_its_shared_libraries_to(
+    tmp_path: Path,
+) -> None:
+    # pipx 1.6 to 1.11 run `pip install --upgrade "pip>=23.1"` for a fresh PIPX_HOME with the offline
+    # --pip-args, so the directory those args name must hold a pip wheel that satisfies it.
+    wheels = list(support.pip_wheel_dir(tmp_path).glob("pip-*.whl"))
+    assert len(wheels) == 1
+    assert Version(wheels[0].name.split("-")[1]) >= Version("23.1")
 
 
 def test_untouched_pipx_passes(

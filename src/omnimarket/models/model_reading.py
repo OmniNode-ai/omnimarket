@@ -112,7 +112,8 @@ class EnumSourceMode(StrEnum):
 
 
 class ModelReadingSource(BaseModel):
-    """One ledger source of a piece's reading: which rows, and when they pass."""
+    """One ledger source of a piece's reading: which rows, when they pass, and when the
+    source cannot judge yet (the row then makes the reading UNKNOWN, not NOT_WORKING)."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -123,6 +124,7 @@ class ModelReadingSource(BaseModel):
     cells: dict[str, str] = Field(default_factory=dict)
     mode: EnumSourceMode
     pass_when: tuple[ModelCellPredicate, ...] = ()
+    unknown_when: tuple[ModelCellPredicate, ...] = ()
     min_rows: int = Field(default=1, ge=1)
     max_age_seconds: int = Field(ge=1)
 
@@ -137,6 +139,12 @@ class ModelReadingSource(BaseModel):
 
     def passes(self, row: ModelLedgerEvidenceRow) -> bool:
         return all(predicate.holds(row.cells) for predicate in self.pass_when)
+
+    def reads_unknown(self, row: ModelLedgerEvidenceRow) -> bool:
+        """True only when ``unknown_when`` is non-empty and every predicate holds on the row's cells."""
+        if not self.unknown_when:
+            return False
+        return all(predicate.holds(row.cells) for predicate in self.unknown_when)
 
 
 class ModelLandingRequirements(BaseModel):

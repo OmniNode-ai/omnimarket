@@ -1,0 +1,32 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. The deployment's overlay lives at <root>/node_broker_topic_removal_effect/overlay.yaml
+# under a root named in ONEX_SKILL_OVERLAY_ROOTS. No key has a default.
+#
+#   metrics_source          the broker's public metrics, read inside its container over ssh (the broker load reading's shape)
+#   contracts               where the contracts that declare topics are found and how a topic and its role are told
+#     reference_globs       globs, relative to a repository, of source files whose text naming a topic makes it declared
+#   listing_rule            the never-produced listing's rule: protected prefixes and the declared-producer policy
+#   remove_declared_topics  whether a never-produced topic that a contract declares may be a candidate
+#   execute_enabled         whether an execute run may issue deletes; a dry run never reads it
+#   max_topics_per_run      the most topics one execute run may remove
+metrics_source:
+  ssh_host_env: EXAMPLE_BROKER_SSH_HOST
+  compose_project: example-project
+  service: example-broker
+  metrics_url: http://localhost:9644/public_metrics
+  read_timeout_seconds: 30
+contracts:
+  registry_root_env: EXAMPLE_REGISTRY_ROOT
+  repositories: [example-repo]
+  contract_glob: "**/contract*.yaml"
+  topic_pattern: '^onex\.[a-z]+\.[A-Za-z0-9_.-]+\.v[0-9]+$'
+  publish_key_fragments: [publish, terminal_event]
+  excluded_parts: [.venv, .git, omni_worktrees, node_modules]
+  reference_globs: ["src/**/*", "scripts/**/*", "deploy/**/*", "plugins/**/*"]
+listing_rule:
+  protected_prefixes: ["_", "__consumer_offsets"]
+  list_declared_producers: true
+remove_declared_topics: false
+execute_enabled: false
+max_topics_per_run: 50

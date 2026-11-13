@@ -72,7 +72,7 @@ descriptor:
 outputs:
   status:
     type: str
-    enum: [accepted, checks_failed, no_progress, budget_exhausted, delegate_failed, infra_error]
+    enum: [accepted, checks_failed, no_progress, no_change, budget_exhausted, delegate_failed, infra_error]
   turns:
     type: int
   delegate_run_ids:

@@ -124,6 +124,7 @@ from omnimarket.enums.enum_delegation_context_strategy import (
     EnumDelegationContextStrategy,
 )
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
+from omnimarket.enums.enum_probe_rung_credential import EnumProbeRungCredential
 from omnimarket.enums.enum_usage_source import EnumUsageSource
 from omnimarket.events.emit_effect_topic_publisher import EmitEffectTopicPublisher
 from omnimarket.events.provider_quota import ModelProviderQuotaObserved
@@ -135,6 +136,7 @@ from omnimarket.handlers.delegation_model_scope import (
     read_model_scope,
 )
 from omnimarket.handlers.delegation_paid_band import resolve_paid_from_size_band
+from omnimarket.handlers.delegation_sampling_reader import read_sampling_settings
 from omnimarket.handlers.handler_capability_start import (
     ProtocolCapabilityCellReader,
     read_capability_cells,
@@ -275,10 +277,14 @@ from omnimarket.models.delegation.wire.model_probe_ladder import (
     ModelProbeLadder,
     probe_ladder_admitted,
 )
+from omnimarket.models.delegation.wire.model_probe_ladder_credentialed import (
+    ModelProbeRungCredentialed,
+)
 from omnimarket.models.delegation.wire.model_quality_gate import (
     ModelQualityGateResult,
     ModelQualityRuleEvaluation,
 )
+from omnimarket.models.model_delegation_code_budget import ModelClassSampling
 from omnimarket.models.model_delegation_split_recombine import (
     EnumDelegationSizeBand,
     ModelDelegationSplitUnit,
@@ -1440,6 +1446,55 @@ def _request_size_band(
     return None if band is None else _ATTEMPT_SIZE_BANDS.get(band.value)
 
 
+def _resolve_class_sampling_call_values(
+    task_type: str, max_tokens: int | None, temperature: float | None
+) -> tuple[int | None, float | None]:
+    """The caller's token cap and temperature, each filled from the overlay when the caller sent none (OMN-24061).
+
+    A task class the code budget overlay names no sampling for, and an install with no
+    overlay, leave both values as the caller sent them. A value the caller sent wins.
+    """
+    if not task_type:
+        return max_tokens, temperature
+    sampling = read_sampling_settings(task_type)
+    if sampling is None:
+        return max_tokens, temperature
+    return (
+        max_tokens if max_tokens is not None else sampling.max_tokens,
+        temperature if temperature is not None else sampling.temperature,
+    )
+
+
+def _apply_class_sampling(
+    provider_request_options: dict[str, Any],
+    outbound_prompt: str,
+    sampling: ModelClassSampling,
+) -> tuple[dict[str, Any], str]:
+    """The profile's request options and prompt with the overlay's sampling values over them (OMN-24061).
+
+    Returns new objects; the options passed in are never changed. A value the overlay
+    does not name is not sent. When the overlay turns thinking on, the profile's
+    ``/no_think`` soft switch is taken off the prompt so the two cannot contradict.
+    """
+    options = dict(provider_request_options)
+    if sampling.enable_thinking is not None:
+        options["chat_template_kwargs"] = {
+            **options.get("chat_template_kwargs", {}),
+            "enable_thinking": sampling.enable_thinking,
+        }
+    if sampling.thinking_token_budget is not None:
+        options["thinking_token_budget"] = sampling.thinking_token_budget
+        options["thinking_budget_tokens"] = sampling.thinking_token_budget
+    for name in ("top_p", "top_k", "min_p", "presence_penalty", "repetition_penalty"):
+        value = getattr(sampling, name)
+        if value is not None:
+            options[name] = value
+    prompt = outbound_prompt
+    if sampling.enable_thinking is True:
+        prompt = prompt.removeprefix("/no_think\n")
+    return options, prompt
+
+
 def _attempt_configuration(
     backend: ModelResolvedDelegationBackend,
     *,
@@ -1495,11 +1550,24 @@ class _ProbeLadderWalk:
             )
             for rung in ladder.rungs
         )
+        # OMN-23511: the rungs that declare their credential absent. The port
+        # never attempts them -- no provider call, the same skip production
+        # takes for a rung whose credential has no value (OMN-23170).
+        self._credential_absent = frozenset(
+            rung.backend_id
+            for rung in ladder.rungs
+            if isinstance(rung, ModelProbeRungCredentialed)
+            and rung.credential is EnumProbeRungCredential.DECLARED_ABSENT
+        )
         self._cursor = 0
 
     @property
     def length(self) -> int:
         return len(self._rungs)
+
+    def credential_absent(self, backend_id: str) -> bool:
+        """Whether this rung of the walk declares its credential absent."""
+        return backend_id in self._credential_absent
 
     def first(self) -> ModelResolvedDelegationBackend:
         self._cursor = 0
@@ -2031,6 +2099,12 @@ class LocalDelegationDispatchPort:
         queue_wait_ms: int | None = None,
     ) -> dict[str, object]:
         dispatch_started = time.monotonic()
+        # OMN-24061: the overlay's sampling values for this task class stand in for a
+        # token cap and temperature the caller sent none of; the attempt configuration
+        # recorded in the receipt then shows them.
+        max_tokens, temperature = _resolve_class_sampling_call_values(
+            task_type, max_tokens, temperature
+        )
         attempt_size_band = _request_size_band(
             task_type=task_type,
             prompt=prompt,
@@ -2548,6 +2622,19 @@ class LocalDelegationDispatchPort:
                 else "provider_quota"
             )
             route_skip_reason = scope_reason
+            # OMN-23511: a probe rung that declares its credential absent is
+            # never attempted -- no provider call, the same skip production
+            # takes for a rung whose credential has no value (OMN-23170).
+            if (
+                route_skip_reason is None
+                and probe_walk is not None
+                and probe_walk.credential_absent(backend.backend_id)
+            ):
+                route_skip_reason = (
+                    f"credential absent: probe rung {backend.backend_id} "
+                    "declares no credential"
+                )
+                skip_rule = EnumEscalationCause.CREDENTIAL_MISSING.value
             if route_skip_reason is None:
                 route_skip_reason = size_band_skip_reason(backend)
                 if route_skip_reason is not None:
@@ -3443,7 +3530,8 @@ class LocalDelegationDispatchPort:
                     "PAID DELEGATION (metered): task_type=%s model=%s tier=%s "
                     "cost_usd=%.6f cumulative_paid_usd=%.6f escalation_count=%d "
                     "correlation=%s — escalated off the free tiers (local/frontier); "
-                    "set ONEX_DELEGATION_ALLOW_PAID=0 to disable paid escalation.",
+                    "set ONEX_DELEGATION_ALLOW_PAID=0 to disable METERED escalation "
+                    "(free non-local rungs stay reachable).",
                     task_type,
                     backend.model_id,
                     attempt_tier,
@@ -5152,6 +5240,13 @@ class LocalDelegationDispatchPort:
         if reserved:
             keys = ", ".join(sorted(reserved))
             raise ValueError(f"provider request options cannot override: {keys}")
+        # OMN-24061: the overlay's sampling values for this task class go over the
+        # profile's request options; a class the overlay does not name changes nothing.
+        class_sampling = read_sampling_settings(task_type) if task_type else None
+        if class_sampling is not None:
+            provider_request_options, outbound_prompt = _apply_class_sampling(
+                provider_request_options, outbound_prompt, class_sampling
+            )
         # OMN-19432: the profile's prescribed temperature is a default for a
         # caller that sent none, never a competing writer of the wire key.
         profile_default_temperature = resolve_inference_protocol_default_temperature(

@@ -1,0 +1,68 @@
+Parsing file LaneStart.tla
+Parsing file Integers.tla
+Parsing file FiniteSets.tla
+Parsing file Naturals.tla
+Parsing file Sequences.tla
+Semantic processing of module Naturals
+Semantic processing of module Integers
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module LaneStart
+Implied-temporal checking--satisfiability problem has 3 branches.
+Computing initial states...
+Error: Temporal properties were violated.
+
+Error: The following behavior constitutes a counter-example:
+
+State 1: <Initial predicate>
+/\ lp = <<"requested", "none", "none">>
+/\ dec = <<"none", "none", "none">>
+/\ claims = {}
+/\ eng = <<"none", "none", "none">>
+/\ terms = {}
+
+State 2: <Next line 275, col 14 to line 278, col 46 of module LaneStart>
+/\ lp = <<"claimed", "none", "none">>
+/\ dec = <<"none", "none", "none">>
+/\ claims = {1}
+/\ eng = <<"none", "none", "none">>
+/\ terms = {}
+
+State 3: <Next line 275, col 14 to line 278, col 46 of module LaneStart>
+/\ lp = <<"running", "none", "none">>
+/\ dec = <<"none", "none", "none">>
+/\ claims = {1}
+/\ eng = <<"running", "none", "none">>
+/\ terms = {}
+
+State 4: <Next line 275, col 14 to line 278, col 46 of module LaneStart>
+/\ lp = <<"running", "none", "none">>
+/\ dec = <<"none", "none", "none">>
+/\ claims = {1}
+/\ eng = <<"exited", "none", "none">>
+/\ terms = {}
+
+State 5: <Next line 275, col 14 to line 278, col 46 of module LaneStart>
+/\ lp = <<"exited_seen", "none", "none">>
+/\ dec = <<"none", "none", "none">>
+/\ claims = {1}
+/\ eng = <<"exited", "none", "none">>
+/\ terms = {}
+
+State 6: <LeaderClose line 228, col 3 to line 236, col 30 of module LaneStart>
+/\ lp = <<"exited_seen", "none", "none">>
+/\ dec = <<"terminal", "none", "none">>
+/\ claims = {1}
+/\ eng = <<"exited", "none", "none">>
+/\ terms = {}
+
+State 7: <LeaderClose line 228, col 3 to line 236, col 30 of module LaneStart>
+/\ lp = <<"done", "none", "none">>
+/\ dec = <<"terminal", "none", "none">>
+/\ claims = {1}
+/\ eng = <<"exited", "none", "none">>
+/\ terms = {}
+
+State 8: Stuttering
+427 states generated, 238 distinct states found, 0 states left on queue.
+exit=13

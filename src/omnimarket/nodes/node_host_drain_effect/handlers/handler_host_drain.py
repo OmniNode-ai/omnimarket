@@ -57,6 +57,7 @@ class HandlerHostDrain:
             clock=lambda: self._clock().astimezone(UTC),
             correlation_id=cid,
             backend=self._backend,
+            origin="real",
         )
         chain.start()
         host = request.host_name

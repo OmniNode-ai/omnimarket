@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_dev_running_revision_effect
+version: 1.0.0
+description: Reads the dev runtime's running revision against the merged head and returns the compute's reading. A reading that decides nothing.
+pack: pr_lifecycle
+node_role: effect
+display_name: Dev Running Revision Reading
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_dev_running_revision_effect: omnimarket.nodes.node_dev_running_revision_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: true
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+- pydantic>=2.0
+- pyyaml>=6.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- reading
+- dev-runtime
+- running-revision

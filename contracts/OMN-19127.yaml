@@ -1,0 +1,46 @@
+schema_version: 1.0.0
+ticket_id: OMN-19127
+title: The glm-4.5 alias and the glm-5.3-flash contract id are documented at both sites that read them
+summary: The thread-reply registry keys the cloud-glm backend by glm-4.5 while the delegation contract declares it as glm-5.3-flash and parks it. Each site now names the other and a test holds both notes.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn19127-glm-spelling
+  statement: node_model_names.v1.yaml and bifrost_delegation.yaml each carry a note that names the other spelling and why they differ, and a test fails when either note is missing.
+  acceptance:
+  - id: AC5
+    statement: 'AC5: The `glm-4.5` env spelling and the `glm-5.3-flash` contract spelling are reconciled or the divergence is documented where both are read -- falsifier: the two values still differing with no note at either site.'
+evidence_requirements:
+- kind: tests
+  description: The spelling-note test, with its planted failing control, and the existing no-Coding-Plan-rung and model-name contract tests pass
+  command: uv run --frozen pytest tests/unit/delegation/test_omn19127_glm_model_spelling_documented.py tests/unit/delegation/test_omn20173_no_coding_plan_rung.py tests/test_node_model_names_contract.py -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn19127-glm-spelling
+  description: Runs the spelling-note test. It reads both config files, requires the two values to still differ and each file to carry the note (both files fail it at the merge base, shown by reading the base text through the detector), and a planted site with no note is flagged.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_omn19127_glm_model_spelling_documented.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn19127-glm-regression
+  description: The no-Coding-Plan-rung check and the model-name manifest contract still pass with the added comments. A regression check, binds no criterion.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_omn20173_no_coding_plan_rung.py tests/test_node_model_names_contract.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn19127-integration-proof
+  description: Runs the spelling-note test and the no-Coding-Plan-rung check at the pushed head on a lab host through the lab work runner. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check; AC5 is bound by dod-omn19127-glm-spelling.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-19127 --kind test -- uv run --frozen pytest tests/unit/delegation/test_omn19127_glm_model_spelling_documented.py tests/unit/delegation/test_omn20173_no_coding_plan_rung.py -q --no-cov -p no:randomly'
+    cwd: .

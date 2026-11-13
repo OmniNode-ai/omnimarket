@@ -21,10 +21,18 @@ from __future__ import annotations
 
 import re
 from enum import StrEnum
+from pathlib import PurePosixPath
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from omnibase_core.enums.enum_delegation_traffic_class import (
+    EnumDelegationTrafficClass,
+)
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from omnimarket.models.model_delegated_code_edit import (
+    ModelCodeEditResult,
+    ModelDeclaredCheck,
+)
 from omnimarket.models.model_host_capacity_advertisement import (
     ModelHostCapacityAdvertisement,
 )
@@ -58,6 +66,38 @@ class EnumLabWorkUnitStatus(StrEnum):
     INFRA_ERROR = "infra_error"
 
 
+#: Upper bound of ``ModelLabCodeDraft.max_diff_bytes``; the caller's overlay
+#: value is checked against it, never defaulted from it.
+MAX_DRAFT_DIFF_BYTES: int = 5_000_000
+
+
+class ModelLabCodeDraft(BaseModel):
+    """What a ``code_draft`` unit asks the delegated code edit loop to do.
+
+    The loop request's fields but ``workspace_root`` (the unit's own worktree)
+    and ``correlation_id`` (derived from the unit id), plus the backend the
+    whole sequence is pinned to and the diff cap. Every value comes from the
+    caller (E1's overlay); ``checks`` are the overlay's draft checks, never a
+    ticket contract's check or check file text.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    task: str = Field(..., min_length=1, max_length=20_000)
+    writable_globs: tuple[str, ...] = Field(..., min_length=1)
+    context_paths: tuple[str, ...] = ()
+    file_list: tuple[str, ...] = ()
+    checks: tuple[ModelDeclaredCheck, ...] = Field(..., min_length=1)
+    formatter: tuple[tuple[str, ...], ...] = ()
+    max_turns: int = Field(..., ge=1, le=40)
+    caller_lane: str | None = None
+    ticket: str | None = Field(default=None, pattern=r"^OMN-[0-9]+$")
+    traffic_class: EnumDelegationTrafficClass | None = None
+    source_surface: str | None = Field(default=None, min_length=1)
+    backend_id: str = Field(..., min_length=1, pattern=r"^\S+$")
+    max_diff_bytes: int = Field(..., ge=1, le=MAX_DRAFT_DIFF_BYTES)
+
+
 class ModelLabWorkUnitRequest(BaseModel):
     """One heavy command at one pushed commit, addressed to one pool host."""
 
@@ -72,6 +112,16 @@ class ModelLabWorkUnitRequest(BaseModel):
     timeout_seconds: int = Field(default=1800, ge=1, le=MAX_TIMEOUT_SECONDS)
     lane: str
     need_tools: list[str] = Field(default_factory=list, max_length=16)
+    code_draft: ModelLabCodeDraft | None = None
+
+    @model_validator(mode="after")
+    def _draft_kind(self) -> ModelLabWorkUnitRequest:
+        if self.code_draft is not None:
+            if self.kind != "code_draft":
+                raise ValueError("a unit with a code_draft must be kind code_draft")
+            if PurePosixPath(self.argv[0]).name != "onex":
+                raise ValueError("a code_draft unit runs onex code-edit run")
+        return self
 
     @field_validator("target_host", "lane", "work_unit_id")
     @classmethod
@@ -123,6 +173,13 @@ class ModelLabWorkUnitReceipt(BaseModel):
     output_tail: str = Field(default="", max_length=MAX_TAIL_CHARS)
     duration_seconds: float = 0.0
     detail: str = Field(default="", max_length=2000)
+    #: A ``code_draft`` unit: the worktree's staged diff against the unit's
+    #: commit, taken before the worktree is removed (also on a timeout, so a
+    #: killed loop still returns its edits), cut to the draft's cap.
+    diff: str = ""
+    diff_truncated: bool = False
+    #: The loop receipt's ``result`` when the loop wrote one.
+    code_edit_result: ModelCodeEditResult | None = None
 
 
 class ModelHostCapacityProbeRequest(BaseModel):
@@ -144,11 +201,13 @@ class ModelHostCapacityProbeRequest(BaseModel):
 
 
 __all__ = [
+    "MAX_DRAFT_DIFF_BYTES",
     "MAX_TAIL_CHARS",
     "MAX_TIMEOUT_SECONDS",
     "EnumLabWorkUnitStatus",
     "ModelHostCapacityAdvertisement",
     "ModelHostCapacityProbeRequest",
+    "ModelLabCodeDraft",
     "ModelLabWorkUnitReceipt",
     "ModelLabWorkUnitRequest",
     "WorkKind",

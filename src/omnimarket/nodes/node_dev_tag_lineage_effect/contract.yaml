@@ -1,0 +1,49 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_dev_tag_lineage_effect
+node_id: node_dev_tag_lineage_effect
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+contract_version: {major: 1, minor: 0, patch: 0}
+tags: [validator_support_node]
+description: >
+  Resolve dev-merge tag identity, project version and complete ancestry with request-supplied git policy.
+  The request and facts models stay in omnibase_core, whose dev_tag_lineage validator consumes them.
+  Moved from omnibase_core, where the runtime cannot register a node (OMN-23932).
+input_model: omnibase_core.models.validation.model_dev_tag_lineage_request.ModelDevTagLineageRequest
+output_model: omnibase_core.models.validation.model_dev_tag_lineage_facts.ModelDevTagLineageFacts
+handler_routing:
+  version: {major: 1, minor: 0, patch: 0}
+  routing_strategy: payload_type_match
+  handlers:
+    - operation: resolve_dev_tag_lineage
+      handler:
+        name: HandlerDevTagLineage
+        module: omnimarket.nodes.node_dev_tag_lineage_effect.handlers.handler_dev_tag_lineage
+      event_model:
+        name: ModelDevTagLineageRequest
+        module: omnibase_core.models.validation.model_dev_tag_lineage_request
+  default_handler: omnimarket.nodes.node_dev_tag_lineage_effect.handlers.handler_dev_tag_lineage:HandlerDevTagLineage
+handler:
+  module: omnimarket.nodes.node_dev_tag_lineage_effect.handlers.handler_dev_tag_lineage
+  class: HandlerDevTagLineage
+  input_model: omnibase_core.models.validation.model_dev_tag_lineage_request.ModelDevTagLineageRequest
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: side_effecting
+  idempotent: true
+  timeout_ms: 120000
+runtime_profiles: [effects]
+terminal_event: onex.evt.omnimarket.dev-tag-lineage-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.dev-tag-lineage-requested.v1
+event_bus:
+  version: {major: 1, minor: 0, patch: 0}
+  subscribe_topics:
+    - onex.cmd.omnimarket.dev-tag-lineage-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.dev-tag-lineage-completed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.dev-tag-lineage-completed.v1

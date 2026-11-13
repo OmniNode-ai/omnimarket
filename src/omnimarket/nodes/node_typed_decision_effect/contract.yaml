@@ -74,6 +74,14 @@ runtime_dispatch:
 externally_consumed_topics:
   - onex.evt.omnimarket.typed-decision-shadow-completed.v1
 
+# The decision ENGINE is a site setting, not a contract value: the overlay
+# <root>/node_typed_decision_effect/overlay.yaml (ModelTypedDecisionEngineOverlay) names
+# engine: jev | local, and for local the routing-contract backend id of the model
+# server (which local model) and its abstention threshold. A site with no overlay
+# keeps the engine pinned below; an invalid overlay refuses and never decides by a
+# default. The local engine asks the server with guided decoding constrained to the
+# offered options and returns per-option probabilities from the first token's
+# logprobs, in the result shape the Jev engine returns.
 decision_routing:
   # The routing contract's typed-decision backend. Swapping the provider or
   # the model is a change to that backend (or an overlay), not to this node.
@@ -93,6 +101,8 @@ delegation_event:
   event_type: task.delegated
   task_type: typed_decision
   provider: typesafe
+  # The label of a decision the site's local engine answered (overlay engine: local).
+  local_provider: local
   # The house tenant slug: typed decisions serve the operator's own work. The slug
   # resolves through the closed legacy mapping; the house UUID would need a row in
   # tenant_registry_mirror, which the lab evidence target does not hold.
@@ -135,3 +145,4 @@ metadata:
   related_tickets:
     - "OMN-19432"
     - "OMN-23334"
+    - "OMN-18850"

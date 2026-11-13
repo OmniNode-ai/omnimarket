@@ -22,6 +22,7 @@ from typing import Any, cast
 import pytest
 import yaml
 
+import omnimarket.nodes.node_factory_floor_unresolved_effect as unresolved_step
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.models.model_factory_floor_input import ModelFactoryFloorRequest
 from omnimarket.models.model_merged_running_count import (
@@ -46,6 +47,13 @@ from omnimarket.nodes.node_factory_floor_effect.models.model_factory_floor_run i
 from omnimarket.nodes.node_factory_floor_effect.source_loader import (
     SourceRefusedError,
     load_contract,
+)
+from omnimarket.nodes.node_factory_floor_unresolved_effect.handlers import (
+    HandlerFactoryFloorUnresolved,
+)
+from omnimarket.nodes.node_factory_floor_unresolved_effect.models.model_factory_floor_unresolved import (
+    ModelFactoryFloorUnresolvedOverlay,
+    ModelFactoryFloorUnresolvedRequest,
 )
 
 from .test_runtime_factory_floor import CONTRACT, NOW, _write, world
@@ -167,7 +175,24 @@ def _prepare(
     required = _write(scratch / "queue-status/required-contexts.json", REQUIRED)
     goal = _write(kb / "beta/GOAL.md", GOAL)
     window = _write(tmp / "window-rows.txt", WINDOW_ROWS)
-    archive = _write(tmp / "archive-roll.txt", ARCHIVE_ROLL)
+    archive_roll = _write(tmp / "archive-roll.txt", ARCHIVE_ROLL)
+    # The unresolved step's own record, made by the step over the archive roll: the floor reads what the step writes (seam S1).
+    unresolved_overlay = ModelFactoryFloorUnresolvedOverlay.model_validate(
+        yaml.safe_load(
+            (Path(unresolved_step.__file__).parent / "overlay.example.yaml").read_text()
+        )
+    )
+    archive = tmp / "unresolved-rows.json"
+    archive.write_text(
+        HandlerFactoryFloorUnresolved(unresolved_overlay, clock=lambda: NOW)
+        .handle(
+            ModelFactoryFloorUnresolvedRequest(
+                read_at=NOW, stand_in_file=str(archive_roll)
+            )
+        )
+        .model_dump_json(),
+        encoding="utf-8",
+    )
     overlay = _write(tmp / "overlay.yaml", yaml.safe_dump(OVERLAY))
     monkeypatch.setenv("ONEX_FACTORY_FLOOR_OVERLAY", str(overlay))
     # Every source is as fresh as the run's clock.
@@ -260,28 +285,35 @@ def test_facts_reach_the_request_and_the_health_reaches_the_record(
     assert {entry.state for entry in request.source_health} == {"read"}
 
 
-def test_a_stop_kept_only_in_an_archive_roll_is_read_through_the_ledger_reader(
-    world: dict[str, Path], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """With no rows file the unresolved reads go through the same reader script, over the archive rolls, by kind."""
-    files = _prepare(world, monkeypatch)
+def _reader_plugin(tmp_path: Path, files: dict[str, Path]) -> tuple[Path, Path]:
+    """A plugin tree whose ledger reader logs every query it is asked and answers the window read from the window file."""
     plugin = tmp_path / "plugin"
     (plugin / "scripts").mkdir(parents=True)
     calls = tmp_path / "reader-calls.txt"
     (plugin / "scripts/onex_ledger.py").write_text(
         "import sys\n"
         f"open({str(calls)!r}, 'a').write(' '.join(sys.argv[1:]) + '\\n')\n"
-        f"window = open({str(files['window'])!r}).read()\n"
-        f"archive = open({str(files['archive'])!r}).read().splitlines()\n"
-        "if '--kind' in sys.argv:\n"
-        "    kind = sys.argv[sys.argv.index('--kind') + 1]\n"
-        "    grep = sys.argv[sys.argv.index('--grep') + 1]\n"
-        "    print('\\n'.join(l for l in archive if f' | {kind} | ' in l and grep in l))\n"
-        "else:\n"
-        "    print(window)\n",
+        f"print(open({str(files['window'])!r}).read())\n",
         encoding="utf-8",
     )
+    return plugin, calls
+
+
+def test_a_stop_kept_only_in_an_archive_roll_comes_from_the_unresolved_steps_record(
+    world: dict[str, Path], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The floor reads the ledger once, for the window; the four unresolved reads are the unresolved step's (OMN-19998).
+
+    Break: the floor reading the four unresolved reads itself again (the base) shows four ``--kind`` queries here, and 231 s.
+    """
+    files = _prepare(world, monkeypatch)
+    plugin, calls = _reader_plugin(tmp_path, files)
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin))
+    record = (
+        world["home"] / load_contract(CONTRACT).runtime.sources.unresolved_rows_relpath
+    )
+    record.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy(files["archive"], record)
     seen: list[ModelFactoryFloorRequest] = []
 
     class Recording(handler_factory_floor.HandlerFactoryFloor):
@@ -296,28 +328,33 @@ def test_a_stop_kept_only_in_an_archive_roll_is_read_through_the_ledger_reader(
         )
     )
     queries = calls.read_text().splitlines()
-    assert sum("--kind" not in q for q in queries) == 1
-    assert sum("--kind" in q for q in queries) == 4
-    assert all("--archives" in q for q in queries)
+    assert len(queries) == 1
+    assert "--kind" not in queries[0]
     unresolved = seen[0].ledger_unresolved
     assert unresolved is not None
     assert {row.lane for row in unresolved} == {"old-blocked", "old-hand"}
 
 
-def test_a_failing_archive_read_makes_the_ledger_unread_never_empty(
-    world: dict[str, Path], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+@pytest.mark.parametrize("cause", ["missing", "stale"])
+def test_an_unreadable_unresolved_record_makes_the_ledger_unread_never_empty(
+    world: dict[str, Path],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    cause: str,
 ) -> None:
     files = _prepare(world, monkeypatch)
-    plugin = tmp_path / "plugin"
-    (plugin / "scripts").mkdir(parents=True)
-    (plugin / "scripts/onex_ledger.py").write_text(
-        "import sys\n"
-        "if '--kind' in sys.argv:\n"
-        "    sys.exit(3)\n"
-        f"print(open({str(files['window'])!r}).read())\n",
-        encoding="utf-8",
-    )
+    plugin, _ = _reader_plugin(tmp_path, files)
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin))
+    runtime = load_contract(CONTRACT).runtime
+    if cause == "stale":
+        record = world["home"] / runtime.sources.unresolved_rows_relpath
+        record.parent.mkdir(parents=True, exist_ok=True)
+        # A record read longer ago than the floor's bound: a stop kept only in an archive roll may have been missed.
+        text = files["archive"].read_text(encoding="utf-8")
+        old = (NOW - timedelta(hours=runtime.unresolved_max_age_hours + 1)).isoformat()
+        document = json.loads(text)
+        document["read_at"] = old
+        record.write_text(json.dumps(document), encoding="utf-8")
     seen: list[ModelFactoryFloorRequest] = []
 
     class Recording(handler_factory_floor.HandlerFactoryFloor):
@@ -522,7 +559,8 @@ def _contract_keys() -> list[tuple[str, ...]]:
     runtime = yaml.safe_load(CONTRACT.read_text(encoding="utf-8"))["runtime"]
     keys: list[tuple[str, ...]] = [
         ("ledger_kinds",),
-        ("unresolved_reads",),
+        ("unresolved_max_age_hours",),
+        ("sources", "unresolved_rows_relpath"),
         ("goal_relpath",),
         ("goal_closed_verdicts",),
         ("sources", "required_contexts_relpath"),

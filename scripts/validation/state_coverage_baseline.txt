@@ -39,8 +39,6 @@ node_context_experiment_compute onex.evt.omnimarket.context-experiment-completed
 node_context_experiment_compute onex.evt.omnimarket.context-experiment-failed.v1
 node_context_exploration_policy_compute onex.evt.omnimarket.context-exploration-policy-completed.v1
 node_context_exploration_policy_compute selection_reason_class
-node_context_roi_compute onex.evt.omnimarket.context-roi-score-completed.v1
-node_context_roi_compute onex.evt.omnimarket.context-roi-score-failed.v1
 node_cross_cli_originator onex.cmd.omnimarket.cross-cli-delegation-requested.v1
 node_cross_cli_originator onex.evt.omnimarket.cross-cli-delegation-completed.v1
 node_cross_cli_originator onex.evt.omnimarket.cross-cli-originator-completed.v1
@@ -152,7 +150,6 @@ node_plan_to_tickets created_count
 node_plan_to_tickets epic_id
 node_plan_to_tickets failed_count
 node_plan_to_tickets skipped_count
-node_pr_health_monitor onex.evt.omnimarket.pr-health-report-completed.v1
 node_projection_capsule_store onex.evt.omnimarket.capsule-store-applied.v1
 node_projection_event_chain onex.evt.omnimarket.event-chain-applied.v1
 node_projection_llm_routing onex.evt.omnimarket.projection-llm-routing-applied.v1

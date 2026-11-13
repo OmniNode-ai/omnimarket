@@ -15,10 +15,16 @@ description: >
   The onboarding walk a developer needs after installing the ONEX CLI: create the workspace
   root, choose the install path (local by default, docker on request) and check what it needs,
   write the user config when there is none, and write the workspace runtime configuration.
-  Every step is idempotent and every write atomic, so a second run changes nothing and a run
-  that stopped at a failed step resumes from it. A failure names its one fix and the retry
-  command. setup_step_inventory.yaml beside this contract records which omnibase install.sh
-  step this walk took over, which stayed with install.sh and which was dropped.
+  The last step, model, stores the user's key (Gemini, OpenRouter, OpenAI, an OpenAI-compatible
+  endpoint by URL, or a local model server by URL; Ollama is reached as local by URL) through the
+  handler onex models add uses, runs one delegation pinned to it and reads its receipt back; the
+  walk ends only when that delegation answered on the provider and model named. The unattended
+  form, onex setup --no-interactive --workspace DIR --provider P --model M [--url URL] with the
+  key on stdin, names every choice and refuses, before any step runs, the one that is missing.
+  Every step but model is idempotent and every write atomic, so a second run changes nothing and
+  a run that stopped at a failed step resumes from it (model stores the key and proves a
+  delegation again). A failure names its one fix and the retry command. setup_step_inventory.yaml beside this contract records which omnibase
+  install.sh step this walk took over, which stayed with install.sh and which was dropped.
 
 input_model: omnimarket.nodes.node_onex_setup_effect.models.model_onex_setup.ModelOnexSetupRequest
 
@@ -41,6 +47,14 @@ handler_routing:
         module: omnimarket.nodes.node_onex_setup_effect.handlers.handler_onex_setup
       handler_module: omnimarket.nodes.node_onex_setup_effect.handlers.handler_onex_setup
       event_model: omnimarket.nodes.node_onex_setup_effect.models.model_onex_setup.ModelOnexSetupRequest
+    # The model step registers a keyless local model server through this handler, which lives on
+    # the dispatch side so the node imports no model class from the model setup node (OMN-23207).
+    - operation: onex_setup.add_local_model
+      handler:
+        name: HandlerLocalModelSetup
+        module: omnimarket.handlers.handler_local_model_setup
+      handler_module: omnimarket.handlers.handler_local_model_setup
+      event_model: omnimarket.handlers.handler_local_model_setup.ModelLocalModelSetupRequest
 
 descriptor:
   node_archetype: effect
@@ -72,8 +86,8 @@ externally_consumed_topics:
 
 dod_evidence:
   PYTEST:
-    description: "inventory coverage of install.sh, the walk's prompts, idempotence, resume and help"
-    command: "uv run pytest tests/unit/cli/test_setup_command.py tests/unit/cli/test_setup_step_inventory.py -q"
+    description: "inventory coverage of install.sh, the walk's prompts, idempotence, resume and help; the model step's proven delegation, unattended refusals, wrong-key resume, local URL and key secrecy"
+    command: "uv run pytest tests/unit/cli/test_setup_command.py tests/unit/cli/test_setup_step_inventory.py tests/unit/nodes/node_onex_setup_effect -q"
     pass_criteria: >
       every install.sh section and flag has an inventory entry; the walk prompts only for an
       underivable workspace root; a second run leaves an identical snapshot; each injected step

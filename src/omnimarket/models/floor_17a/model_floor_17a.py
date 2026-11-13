@@ -18,6 +18,11 @@ from omnimarket.models.floor_17a.model_delegation_idle import (
     ModelDelegationIdleOverlay,
     ModelDelegationTicketIn,
 )
+from omnimarket.models.floor_17a.model_floor_integration import (
+    ModelFloorIntegrationIn,
+    ModelFloorIntegrationOverlay,
+    ModelFloorIntegrationSection,
+)
 from omnimarket.models.floor_17a.model_mvp_launch import ModelMvpLaunchBlock
 from omnimarket.models.floor_17a.model_worklist import (
     ModelWorklistClass,
@@ -27,6 +32,10 @@ from omnimarket.models.floor_17a.model_worklist import (
 
 ReadingState = Literal["WORKING", "NOT WORKING", "UNKNOWN"]
 Phase = Literal["start", "success", "failure"]
+# What kind of unit of work a chain came from (OMN-23862). ``real`` is a unit of factory work; ``probe`` and the rest are
+# the factory's own test traffic. An emission that sets none is ``unknown``, and unknown never counts as real: which origins
+# count is the readiness overlay's ``real_origins``, not code.
+ChainOrigin = Literal["real", "probe", "twin", "control", "canary", "drill", "unknown"]
 Draw = Literal["green", "amber", "red", "grey"]
 ReadingVerdict = Literal["fresh", "stale", "failing", "unread"]
 SourceKind = Literal[
@@ -58,6 +67,8 @@ class ModelNodeEmission(_Frozen):
     emitted_at: datetime
     backend: Literal["in_memory", "real"] = "real"
     drill: bool = False
+    # The kind of work the chain came from (OMN-23862); unset is ``unknown``, never ``real``.
+    origin: ChainOrigin = "unknown"
     counters: dict[str, int] = Field(default_factory=dict)
     failure_code: str | None = None
     failure_detail: str = ""
@@ -144,6 +155,9 @@ class ModelFloorReceiptInput(_Frozen):
     declared_chains: tuple[ModelPieceChains, ...] = ()
     # For each join listed, the node of its from piece at which it ends. A join not listed ends at its to piece.
     join_ends: tuple[ModelJoinEnd, ...] = ()
+    # The chain origins that are real work (OMN-23862), the readiness overlay's ``real_origins``. A join's ``real_golden_at``
+    # reads only chains whose every event carries one of these; with none declared no chain is real.
+    real_origins: tuple[ChainOrigin, ...] = ()
 
 
 ChainKind = Literal["golden", "error", "open", "broken"]
@@ -177,6 +191,8 @@ class ModelChain(_Frozen):
     ended_at: datetime | None
     backend: str
     drill: bool
+    # The origin every event of the chain carries; ``unknown`` when the events disagree or set none (OMN-23862).
+    origin: ChainOrigin = "unknown"
     counters: dict[str, int] = Field(default_factory=dict)
 
 
@@ -200,6 +216,9 @@ class ModelJoinReceipt(_Frozen):
     golden_at: datetime | None
     error_at: datetime | None
     state: Literal["not_run", "golden_only", "error_only", "passed", "broken"]
+    # The newest golden chain of this join whose chains on both sides came from real work (OMN-23862); ``None`` when every
+    # golden chain was probe traffic or of unknown origin. ``golden_at`` stays the health reading, probes included.
+    real_golden_at: datetime | None = None
 
 
 class ModelFloorReceipts(_Frozen):
@@ -277,6 +296,8 @@ class ModelLabStateOverlay(_Frozen):
     broker_conditions: tuple[str, ...] = Field(min_length=1)
     queue_age_classes: tuple[str, ...] = Field(min_length=1)
     deploy_lag_lookback_days: int = Field(gt=0)
+    # The longest one dev merge may wait from merge to running; past it the deploy_lag row reads NOT WORKING by itself.
+    deploy_lag_ceiling_minutes: int | None = Field(default=None, gt=0)
     require_runner_version: bool
     declared_host_states: tuple[str, ...] = ()
     # Hosts the pool probe does not read; every other host of the floor record needs a disk line in the pool receipt.
@@ -500,6 +521,10 @@ class ModelFloorJoinRow(_Frozen):
     last_run_age_s: int | None = None
     owners: tuple[str, ...] = ()
     lanes: tuple[str, ...] = ()
+    # Real work (OMN-23862): age of the newest golden chain that came from real work, ``None`` when none did. The join's
+    # ``state`` and ``golden_age_s`` are the probe health, shown apart; only ``real_passes`` counts toward READY.
+    real_golden_age_s: int | None = None
+    real_passes: bool = False
 
 
 class ModelFloorShadowLine(_Frozen):
@@ -548,6 +573,10 @@ class ModelFloorPieceRow(_Frozen):
     blocking_joins: tuple[str, ...] = ()
     # How many joins count for this piece (both ends in scope).
     counted_joins: int = 0
+    # Counted joins that pass on probe health but saw no real work in the window (OMN-23862), and the neighbours on a counted
+    # join whose own reading blocks this piece's READY.
+    probe_only_joins: tuple[str, ...] = ()
+    blocking_neighbours: tuple[int, ...] = ()
 
 
 class ModelFloorLabLine(_Frozen):
@@ -580,6 +609,15 @@ class ModelFloorReadiness(_Frozen):
     not_working: tuple[int, ...]
     broken_joins: tuple[str, ...]
     text: str
+    # Probe health shown apart from integration (OMN-23862): the joins whose probe chains pass, and how many of them saw
+    # no real work in the window. Probes never count toward READY.
+    probe_health_joins: tuple[str, ...] = ()
+    probe_only_joins: tuple[str, ...] = ()
+    probe_health_text: str = ""
+    # Whether the overlay names the real-work origins (OMN-23862). ``not_configured`` means the old rule applied (a join
+    # passes on its health alone) and ``real_work_notice`` says so in one line.
+    real_work_rule: Literal["configured", "not_configured"] = "configured"
+    real_work_notice: str = ""
 
 
 class ModelRebuild(_Frozen):
@@ -687,6 +725,9 @@ class ModelFloorSimple(_Frozen):
     worklist: tuple[ModelWorklistClass, ...] | None = None
     # The owner map and lane list as judged this cycle (OMN-23388); ``None`` when the overlay declares no judgment.
     owner_inputs: ModelOwnerInputs | None = None
+    # Merged work that is not running, from the integration projection (OMN-23899); ``None`` is a record written before the
+    # section existed.
+    integration: ModelFloorIntegrationSection | None = None
 
 
 class ModelGoRule(_Frozen):
@@ -910,6 +951,21 @@ class ModelReadinessOverlay(_Frozen):
     min_joins: int = Field(ge=1)
     passing_join_states: tuple[str, ...] = Field(min_length=1)
     finding_sides: dict[str, Literal["from", "to"]] = Field(default_factory=dict)
+    # Real work (OMN-23862). A join counts toward READY only when its golden chain inside the window came from a chain whose
+    # origin is one of these; probe, twin, control, canary, drill and unknown origins are health only. Empty (the key absent
+    # from the overlay) means the real-work rule is not configured: the old rule applies and the board says so in one line
+    # (``ModelFloorReadiness.real_work_rule``), so this code and the overlay values merge in either order.
+    real_origins: tuple[ChainOrigin, ...] = ()
+    # A piece is not READY while a neighbour on a counted join has one of these piece statuses (a ``ModelFloorPieceRow.status``).
+    # Empty (the key absent) means the neighbour rule is not configured and is not applied.
+    blocking_neighbour_statuses: tuple[
+        Literal["not_started", "started", "working", "not_working", "unknown"], ...
+    ] = ()
+
+    @property
+    def real_work_configured(self) -> bool:
+        """True when the overlay names the origins that count as real work."""
+        return bool(self.real_origins)
 
     @model_validator(mode="after")
     def _pieces_exist(self) -> ModelReadinessOverlay:
@@ -939,6 +995,8 @@ class ModelFloorSimpleOverlay(_Frozen):
     details_href: str = Field(min_length=1)
     # The board's work list (OMN-23184); ``None`` declares none and the floor draws none.
     worklist: ModelWorklistOverlay | None = None
+    # The integration section's words (OMN-23899); ``None`` declares none and the floor draws the section not configured.
+    integration: ModelFloorIntegrationOverlay | None = None
 
     @model_validator(mode="after")
     def _eighteen(self) -> ModelFloorSimpleOverlay:
@@ -1013,6 +1071,8 @@ class ModelFloorSimpleInput(_Frozen):
     # The operator-owned delegation tickets whose start criterion reads true (OMN-23313); ``None`` is a list that was not
     # read (drawn as an unread input), ``()`` is a list that was read and holds none.
     delegation_tickets: tuple[ModelDelegationTicketIn, ...] | None = None
+    # The integration projection as this cycle read it (OMN-23899); ``None`` is a cycle that did not read it.
+    integration: ModelFloorIntegrationIn | None = None
 
 
 # --- the alarm ---------------------------------------------------------------------------------------------------------

@@ -6,11 +6,21 @@ Usage, on the lab host whose pool it is:
     python -m omnimarket.nodes.node_claude_token_pool_effect add --label <account>
         reads the pasted ``claude setup-token`` output on stdin (a terminal gets
         a hidden prompt for the token line); prints the label and fingerprint
-    python -m omnimarket.nodes.node_claude_token_pool_effect resolve
+    python -m omnimarket.nodes.node_claude_token_pool_effect resolve [--drain-labels <a>,<b>] [--lanes <a>=<n>,<b>=<n>]
         writes the chosen token to stdout for ``export X="$(...)"`` and refuses a
-        terminal; the status line, with the chosen label, goes to stderr
+        terminal; the status line, with the chosen label, goes to stderr. For a NEW lane start,
+        --drain-labels names the labels the usage verdict asks to stay off (skipped while another
+        label is usable, used when nothing else is) and --lanes the lanes running under each label
+        (an empty value means none are running), which the overlay's steering.max_lanes_per_label
+        is held against. Exit 5 with ``refusal=<code>`` on the stderr line when a usable token
+        exists and the start is refused all the same (the cap, a cap with no counts passed, or
+        counts passed where the overlay holding the cap cannot be read).
     python -m omnimarket.nodes.node_claude_token_pool_effect mark-limited --label <account> --seconds <n>
     python -m omnimarket.nodes.node_claude_token_pool_effect mark-revoked --label <account>
+    python -m omnimarket.nodes.node_claude_token_pool_effect export --label <account>
+        writes the stored token of --label to stdout for a pipe into the secret store (OMN-23895: a
+        host-held label is adopted without any lane reading the value) and refuses a terminal; the
+        label goes to stderr, never the value.
     python -m omnimarket.nodes.node_claude_token_pool_effect reorder --labels <a>,<b>,...
         draws these labels first, in this order, then every other token as it stands
     python -m omnimarket.nodes.node_claude_token_pool_effect status [--json]
@@ -59,6 +69,13 @@ from omnimarket.handlers.node_overlay_reader import (
     find_node_overlay,
     load_structured_overlay,
 )
+from omnimarket.models.engine_login import ModelEngineLoginSteer
+from omnimarket.nodes.node_claude_pool_refill_effect.handlers.handler_claude_pool_refill import (
+    _lane_overlay_yaml as lane_overlay_yaml,
+)
+from omnimarket.nodes.node_claude_token_pool_effect.handlers.adapter_limit_probe import (
+    HeadlessLimitProbe,
+)
 from omnimarket.nodes.node_claude_token_pool_effect.handlers.adapter_rotation_ports import (
     FileTokenFile,
     MirrorMarksSource,
@@ -71,6 +88,10 @@ from omnimarket.nodes.node_claude_token_pool_effect.handlers.handler_claude_toke
     HandlerClaudeTokenAssign,
     HandlerClaudeTokenRotation,
 )
+from omnimarket.nodes.node_claude_token_pool_effect.handlers.handler_pool_steering import (
+    HandlerPoolSteering,
+    ProtocolLedgerText,
+)
 from omnimarket.nodes.node_claude_token_pool_effect.handlers.schedule import (
     NODE_NAME,
     RotationScheduler,
@@ -78,6 +99,7 @@ from omnimarket.nodes.node_claude_token_pool_effect.handlers.schedule import (
 )
 from omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_pool import (
     ModelClaudeTokenPoolRequest,
+    ModelPoolLabelLanes,
 )
 from omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_rotation import (
     ModelClaudeTokenAssignRequest,
@@ -90,6 +112,7 @@ from omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_ro
 EXIT_REFUSED = 2
 EXIT_EMPTY = 3
 EXIT_ALL_LIMITED = 4
+EXIT_START_REFUSED = 5
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -102,14 +125,39 @@ def _parser() -> argparse.ArgumentParser:
     add.add_argument(
         "--force", action="store_true", help="replace the token stored under this label"
     )
-    verbs.add_parser(
+    resolve = verbs.add_parser(
         "resolve", help="write the first unlimited token to stdout (never a terminal)"
+    )
+    resolve.add_argument(
+        "--drain-labels",
+        default="",
+        help="comma-separated labels a new lane start stays off while another is usable",
+    )
+    resolve.add_argument(
+        "--lanes",
+        default=None,
+        help="the lanes running under each label, as <label>=<n>,...; empty means none are running",
+    )
+    export = verbs.add_parser(
+        "export",
+        help="write the stored token of --label to stdout, for a pipe into the secret store (never a terminal)",
+    )
+    export.add_argument("--label", required=True)
+    export.add_argument(
+        "--name",
+        default=None,
+        help="write NAME=value instead of the bare value, the dotenv line the secret seed node reads from stdin",
     )
     mark = verbs.add_parser(
         "mark-limited", help="the account behind --label hit its usage limit"
     )
     mark.add_argument("--label", required=True)
     mark.add_argument("--seconds", required=True, type=float)
+    mark.add_argument(
+        "--exact",
+        action="store_true",
+        help="--seconds is the reset the limit notice itself names: it replaces the label's stamp, even an earlier one",
+    )
     revoke = verbs.add_parser(
         "mark-revoked",
         help="the OAuth token behind --label was revoked; skip it until re-added",
@@ -165,6 +213,40 @@ def load_overlay() -> ModelRotationOverlay:
     return load_structured_overlay(NODE_NAME, ModelRotationOverlay)
 
 
+def run_steer(ledger: ProtocolLedgerText) -> ModelEngineLoginSteer | None:
+    """The steer of one lane start from the deployed overlay; ``None`` when steering is off."""
+    return HandlerPoolSteering(steering=load_overlay().steering, ledger=ledger).handle()
+
+
+def parse_lane_counts(text: str | None) -> tuple[ModelPoolLabelLanes, ...] | None:
+    """``--lanes``: absent is ``None`` (nobody counted); ``a=2,b=0`` is the count; an empty value is "none running"."""
+    if text is None:
+        return None
+    rows: list[ModelPoolLabelLanes] = []
+    for piece in filter(None, text.split(",")):
+        label, _, lanes = piece.partition("=")
+        if not lanes.isdigit():
+            raise ValueError(f"--lanes entry {piece!r} is not <label>=<number>")
+        rows.append(ModelPoolLabelLanes(label=label, lanes=int(lanes)))
+    return tuple(rows)
+
+
+def read_lane_cap() -> tuple[int | None, bool]:
+    """The overlay's lanes-per-label cap and whether the overlay holding it was read.
+
+    A host with no readable pool overlay (none under its roots, or one that does not validate) answers
+    ``(None, False)``: ``resolve`` then refuses a caller that passed lane counts to be capped
+    (``lane_cap_unread``), and serves a caller that passed none as it always has. A cap is never guessed.
+    """
+    try:
+        if find_node_overlay(NODE_NAME) is None:
+            return None, False
+        steering = load_overlay().steering
+    except (NodeOverlayError, ValidationError, OSError):
+        return None, False
+    return (steering.max_lanes_per_label if steering is not None else None), True
+
+
 def run_tick(
     host: str,
     *,
@@ -190,8 +272,19 @@ def run_tick(
             )
         root = Path(root_text)
     source = declared.marks_source
+    claude_pool = pool or HandlerClaudeTokenPool(host=host)
+    recheck = declared.limit_recheck
     handler = HandlerClaudeTokenRotation(
-        pool=pool or HandlerClaudeTokenPool(host=host),
+        pool=claude_pool,
+        limit_probe=(
+            HeadlessLimitProbe(
+                secret=claude_pool.secret,
+                settings=recheck.probe,
+                lane_overlay_yaml=lane_overlay_yaml,
+            )
+            if recheck is not None and source.host == host
+            else None
+        ),
         token_file=FileTokenFile(user_home / row.token_file),
         marks_source=MirrorMarksSource(
             home=user_home,
@@ -247,6 +340,29 @@ def _tick(args: argparse.Namespace) -> int:
         f"claude-pool-tick host={result.host} rank={result.rank} outcome={result.outcome} "
         f"in_use={result.in_use_state} from={result.from_label or 'none'} to={result.to_label or 'none'} "
         f"marks={sync.state}"
+        f" stale_revoke={result.stale_revoke}"
+        f" limit_recheck={result.limit_recheck}"
+        + (
+            f" limits_cleared={','.join(result.limits_cleared)}"
+            if result.limits_cleared
+            else ""
+        )
+        + (
+            f" limits_replaced={','.join(result.limits_replaced)}"
+            if result.limits_replaced
+            else ""
+        )
+        + (f" limits_kept={','.join(result.limits_kept)}" if result.limits_kept else "")
+        + (
+            f" revokes_cleared={','.join(result.revokes_cleared)}"
+            if result.revokes_cleared
+            else ""
+        )
+        + (
+            f" revokes_kept={','.join(result.revokes_kept)}"
+            if result.revokes_kept
+            else ""
+        )
         + (f" changed={','.join(sync.changed)}" if sync.changed else "")
         + (f" ({sync.detail})" if sync.detail else "")
         + "\n"
@@ -364,6 +480,11 @@ def main(
         except (NodeOverlayError, ValidationError, ValueError, OSError) as exc:
             sys.stderr.write(f"INDETERMINATE: {type(exc).__name__}: {exc}\n")
             return EXIT_EMPTY
+    if args.verb == "export" and sys.stdout.isatty():
+        sys.stderr.write(
+            "refusing to write a token to a terminal; pipe it: ... export --label L | <store writer>\n"
+        )
+        return EXIT_REFUSED
     if args.verb == "resolve" and sys.stdout.isatty():
         sys.stderr.write(
             'refusing to write a token to a terminal; capture it: export X="$(... resolve)"\n'
@@ -378,17 +499,44 @@ def main(
             labels=tuple(filter(None, getattr(args, "labels", "").split(","))),
             seconds=getattr(args, "seconds", None),
             force=getattr(args, "force", False),
+            exact=getattr(args, "exact", False),
+            drain_labels=tuple(
+                filter(None, (getattr(args, "drain_labels", "") or "").split(","))
+            ),
+            lane_counts=parse_lane_counts(getattr(args, "lanes", None)),
         )
+        if handler is None and args.verb == "resolve":
+            cap, cap_read = read_lane_cap()
+            handler = HandlerClaudeTokenPool(lane_cap=cap, lane_cap_read=cap_read)
         result = (handler or HandlerClaudeTokenPool()).handle(request)
     except (ClaudeTokenPoolRefusedError, ValueError) as refusal:
         sys.stderr.write(f"claude-pool refused: {refusal}\n")
         return EXIT_REFUSED
     if args.verb == "resolve":
+        if result.refusal is not None:
+            cap = result.refusal.cap
+            sys.stderr.write(
+                f"{result.status_line} chosen=none ({result.refusal.detail}) "
+                f"cap={'none' if cap is None else cap} refusal={result.refusal.code}\n"
+            )
+            return EXIT_START_REFUSED
         if result.token is None:
             sys.stderr.write(result.status_line + " chosen=none\n")
             return EXIT_EMPTY if not result.tokens else EXIT_ALL_LIMITED
-        sys.stderr.write(f"{result.status_line} label={result.chosen}\n")
+        sys.stderr.write(
+            result.status_line
+            + (" drained_fallback=1" if result.drained_fallback else "")
+            + f" label={result.chosen}\n"
+        )
         sys.stdout.write(result.token.get_secret_value())
+        return 0
+    if args.verb == "export":
+        if result.token is None:
+            sys.stderr.write("claude-pool export: no token\n")
+            return EXIT_REFUSED
+        sys.stderr.write(f"claude-pool exported label={args.label}\n")
+        value = result.token.get_secret_value()
+        sys.stdout.write(f"{args.name}={value}\n" if args.name else value)
         return 0
     if args.verb == "add":
         added = next(t for t in result.tokens if t.label == args.label)

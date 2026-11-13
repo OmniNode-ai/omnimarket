@@ -33,6 +33,21 @@ class StoreIdentityUnresolvedError(LookupError):
     """The store holds no identity for the reference, or could not be read."""
 
 
+class RunDeadlineExceededError(Exception):
+    """The run's own time limit passed while a call was open; the run deadline raises it, the join closes its chain."""
+
+
+class ProjectionReadFailedError(Exception):
+    """The join read the projection and it could not be read; the message carries the last read error."""
+
+    def __init__(self, *, error: str, attempts: int) -> None:
+        self.error = error
+        self.attempts = attempts
+        super().__init__(
+            f"the projection read failed on its last of {attempts} attempts: {error}"
+        )
+
+
 class ProtocolStoreIdentities(Protocol):
     """Piece 5's side of the join: the store gives the broker principal an append runs under."""
 
@@ -65,7 +80,9 @@ class ProtocolProjectedRows(Protocol):
     ) -> ModelWorkLedgerRowRecord | None:
         """The projected row at the position. ``raw_row`` is the durable row the caller expects there; a backend that
         cannot be asked by position (a read command over rows by text) finds the row by it. ``correlation_id`` is the join
-        run's: a backend that reads over a command sends it, because the reader's request requires one."""
+        run's: a backend that reads over a command sends it, because the reader's request requires one. A read the backend
+        cannot make raises ``ProjectionReadFailedError``; ``None`` is only a read the backend answered, in which the
+        projection does not hold the row yet."""
         ...
 
 
@@ -231,9 +248,11 @@ __all__ = [
     "InMemoryJoinLedger",
     "InMemoryProjectedRows",
     "InMemoryStoreIdentities",
+    "ProjectionReadFailedError",
     "ProtocolJoinAppend",
     "ProtocolProjectedRows",
     "ProtocolStoreIdentities",
+    "RunDeadlineExceededError",
     "ScratchFileJoinLedger",
     "StoreIdentityUnresolvedError",
 ]

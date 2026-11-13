@@ -174,7 +174,8 @@ def test_injected_break_a_public_trigger_writes_a_not_working_row(trigger: str) 
 
 
 @pytest.mark.parametrize(
-    "failure", ["org-read-denied", "unreadable", "budget-exhausted"]
+    "failure",
+    ["org-read-denied", "unreadable", "budget-exhausted", "token-mint-failed"],
 )
 def test_error_chain_an_unread_group_writes_an_unknown_row_and_fails_the_run(
     failure: str,
