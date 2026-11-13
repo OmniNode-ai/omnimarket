@@ -140,6 +140,20 @@ def test_the_contract_subscribes_to_the_topic_it_dispatches_on() -> None:
     assert [s["topic"] for s in contract["input_subscriptions"]] == [_topic()]
 
 
+def test_the_contract_publishes_the_completed_and_failed_topics() -> None:
+    contract = _contract()
+    terminal = contract["runtime_dispatch"]["terminal_events"]
+    assert contract["event_bus"]["publish_topics"] == [
+        terminal["success"],
+        terminal["failure"],
+    ]
+    assert contract["terminal_event"] == terminal["success"]
+    assert terminal["success"] == (
+        "onex.evt.omnimarket.delegated-code-edit-completed.v1"
+    )
+    assert terminal["failure"] == "onex.evt.omnimarket.delegated-code-edit-failed.v1"
+
+
 async def test_golden_a_message_starts_exactly_one_run(fake_ports: FakePorts) -> None:
     correlation_id = "11111111-1111-4111-8111-111111111111"
     wired = await _drive(

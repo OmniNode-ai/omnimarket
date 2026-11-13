@@ -71,6 +71,8 @@ descriptor:
   purity: effectful
   idempotent: false
   timeout_ms: 7200000
+  runtime_profiles:
+    - effects
 outputs:
   status:
     type: str
