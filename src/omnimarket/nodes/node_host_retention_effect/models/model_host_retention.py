@@ -48,10 +48,11 @@ class ModelAgeClass(_Frozen):
     """
 
     name: NonEmptyStr
-    kind: Literal["lane_scratch", "lane_results"]
+    kind: Literal["lane_scratch", "lane_results", "pre_commit_store"]
     root: HostPath
     keep_days: float = Field(gt=0)
     protected_name_patterns: tuple[NonEmptyStr, ...] = ()
+    index_db: HostPath | None = None
 
     @model_validator(mode="after")
     def patterns_compile(self) -> Self:
@@ -62,6 +63,15 @@ class ModelAgeClass(_Frozen):
                 raise ValueError(
                     f"protected_name_patterns entry {pattern!r} is not a valid regex: {exc}"
                 ) from exc
+        return self
+
+    @model_validator(mode="after")
+    def index_db_rule(self) -> Self:
+        if self.kind == "pre_commit_store":
+            if self.index_db is None:
+                raise ValueError("pre_commit_store requires index_db")
+        elif self.index_db is not None:
+            raise ValueError("index_db is only for pre_commit_store")
         return self
 
 
@@ -154,7 +164,13 @@ class ModelRetentionBounds(_Frozen):
     min_keep_days: float = Field(gt=0)
     root_leaf_names: Annotated[
         dict[
-            Literal["lane_scratch", "lane_results", "runner_mount", "uv_cache"],
+            Literal[
+                "lane_scratch",
+                "lane_results",
+                "runner_mount",
+                "uv_cache",
+                "pre_commit_store",
+            ],
             tuple[NonEmptyStr, ...],
         ],
         Field(min_length=1),
@@ -175,7 +191,14 @@ class ModelHostRetentionRequest(_Frozen):
     overlay_file: str = ""
     dry_run: bool = False
     classes: tuple[
-        Literal["lane_scratch", "lane_results", "runner_work", "uv_cache"], ...
+        Literal[
+            "lane_scratch",
+            "lane_results",
+            "runner_work",
+            "uv_cache",
+            "pre_commit_store",
+        ],
+        ...,
     ] = ()
 
 
@@ -207,6 +230,7 @@ class ModelRetentionKept(_Frozen):
         "protected",
         "under_budget",
         "below_min",
+        "store_locked",
     ]
 
 
