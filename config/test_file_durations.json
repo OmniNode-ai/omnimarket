@@ -3838,6 +3838,7 @@
   "tests/unit/delegation/rung_eval/test_cli_environment_omn20974.py": 0.11,
   "tests/unit/delegation/rung_eval/test_cloud_rung_dogfood_tenant_omn20974.py": 0.06,
   "tests/unit/delegation/rung_eval/test_rung_eval.py": 0.08,
+  "tests/unit/delegation/rung_eval/test_rung_list_omn19998.py": 5.63,
   "tests/unit/delegation/test_acceptance_directives_reach_the_model_omn18349.py": 2.05,
   "tests/unit/delegation/test_active_cloud_tiers_omn16891.py": 2.02,
   "tests/unit/delegation/test_ambient_tenant_id_scrubbed_omn17427.py": 0.64,
