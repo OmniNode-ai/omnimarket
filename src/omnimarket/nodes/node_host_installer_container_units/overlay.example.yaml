@@ -22,3 +22,9 @@ units:
       command: [broker, start]
       volumes: [example-broker:/data]
       restart_policy: unless-stopped
+    # OMN-24208: applied in place with docker update --memory/--memory-swap, so the running
+    # container neither restarts nor is recreated. memory_swap_gib is memory plus swap, so
+    # the two keys are declared together and swap never sits below memory; the installer
+    # skips docker update when the running container already matches.
+    memory_gib: 4
+    memory_swap_gib: 8

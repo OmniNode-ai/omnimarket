@@ -233,6 +233,14 @@ class HandlerRegistryUnits:
             return self.result(
                 request, 2, error=f"{request.unit} is not a unit of this node\n"
             )
+        if request.plan_verb is not None:
+            verb = request.plan_verb
+            plan_text = (
+                f"dry-run: would {verb} {request.unit} "
+                f"({unit['label']}, {unit['platform']}); "
+                "nothing was written, loaded, unloaded or run\n"
+            )
+            return self.result(request, 0, out=plan_text)
         try:
             with self.install_lock(request, unit):
                 if unit.get("kind") == "copied_tree":

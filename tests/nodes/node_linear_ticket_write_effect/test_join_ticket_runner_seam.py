@@ -53,15 +53,15 @@ from omnimarket.models.model_ticket_io import (
     ModelCreateTicketRequest,
     ModelCreateTicketResult,
 )
+from omnimarket.models.ticket_write_io import (
+    ModelTicketWriteCompleted,
+    ModelTicketWriteFailed,
+)
 from omnimarket.nodes.node_create_ticket.handlers.handler_create_ticket import (
     TicketGuardRefusedError,
 )
 from omnimarket.nodes.node_linear_ticket_write_effect.handlers.handler_linear_ticket_write import (
     HandlerLinearTicketWriteEffect,
-)
-from omnimarket.nodes.node_linear_ticket_write_effect.models.model_ticket_write_io import (
-    ModelTicketWriteCompleted,
-    ModelTicketWriteFailed,
 )
 
 pytestmark = pytest.mark.unit
@@ -468,7 +468,7 @@ def test_error_a_malformed_request_is_refused_with_the_gates_own_reason(
 
 def test_the_pinned_wire_is_what_the_models_declare() -> None:
     """A field added to or renamed in a model must be a decision made here, on both sides."""
-    from omnimarket.nodes.node_linear_ticket_write_effect.models.model_ticket_write_io import (
+    from omnimarket.models.ticket_write_io import (
         ModelTicketWriteRequest,
     )
 
