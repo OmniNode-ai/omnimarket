@@ -5,22 +5,26 @@
 from __future__ import annotations
 
 from omnimarket.models.schedule_trigger.model_schedule_trigger import (
+    ModelScheduleBlock,
     ModelScheduleDeclaration,
     ModelScheduleJobState,
     ModelScheduleJobVerdict,
     ModelScheduleRunApplied,
     ModelScheduleRunEvent,
+    ModelScheduleUnreadableJob,
     ModelScheduleVerdictOverlay,
     ModelScheduleVerdictRequest,
     ModelScheduleVerdictResult,
 )
 
 __all__ = [
+    "ModelScheduleBlock",
     "ModelScheduleDeclaration",
     "ModelScheduleJobState",
     "ModelScheduleJobVerdict",
     "ModelScheduleRunApplied",
     "ModelScheduleRunEvent",
+    "ModelScheduleUnreadableJob",
     "ModelScheduleVerdictOverlay",
     "ModelScheduleVerdictRequest",
     "ModelScheduleVerdictResult",

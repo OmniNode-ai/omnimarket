@@ -75,7 +75,13 @@ def test_golden_chain_kafka_overlay_names_the_transport_on_every_send(
 
     assert len(recorded) == 1
     argv = recorded[0]
-    assert argv[: len(SETTINGS.delegate_command)] == list(SETTINGS.delegate_command)
+    assert SETTINGS.bus is not None
+    # The delegate command is started through the environment command that sets the probe tenant (OMN-24115).
+    start = argv.index(SETTINGS.delegate_command[0])
+    assert start == 2
+    assert argv[start : start + len(SETTINGS.delegate_command)] == list(
+        SETTINGS.delegate_command
+    )
     assert argv[-6:] == [
         "--bus",
         "kafka",

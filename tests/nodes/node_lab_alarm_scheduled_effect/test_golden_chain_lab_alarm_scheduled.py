@@ -255,6 +255,40 @@ def test_real_chain_a_flat_lag_reads_ok(tmp_path: Path) -> None:
     assert outcome == ModelLabAlarmTickOutcome(False, "outcome=ok declared=2")
 
 
+def test_real_chain_an_unbound_lag_source_reads_failed_by_name(
+    tmp_path: Path,
+) -> None:
+    outcome = run_lab_alarm_tick(
+        alarm_overlay_id=ALARM_NODE,
+        environ=alarm_environ(tmp_path),
+        clock=lambda: T0,
+    )
+    assert outcome.failed is True
+    assert "not bound" in outcome.detail
+
+
+def test_real_chain_the_builder_builds_the_handler_from_the_overlay(
+    tmp_path: Path,
+) -> None:
+    expected = ModelLabAlarmOverlay.model_validate(
+        yaml.safe_load(ALARM_EXAMPLE.read_text(encoding="utf-8"))
+    )
+    calls: list[ModelLabAlarmOverlay] = []
+
+    def build(overlay: ModelLabAlarmOverlay) -> HandlerBrokerLag:
+        calls.append(overlay)
+        return _alarm_handler(_flat(7), _flat(7))
+
+    outcome = run_lab_alarm_tick(
+        alarm_overlay_id=ALARM_NODE,
+        environ=alarm_environ(tmp_path),
+        clock=lambda: T0,
+        build_handler=build,
+    )
+    assert outcome == ModelLabAlarmTickOutcome(False, "outcome=ok declared=2")
+    assert calls == [expected]
+
+
 def test_real_chain_a_growing_lag_is_a_completed_run_that_names_the_alarm(
     tmp_path: Path,
 ) -> None:

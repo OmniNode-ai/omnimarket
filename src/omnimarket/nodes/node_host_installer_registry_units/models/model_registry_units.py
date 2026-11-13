@@ -21,7 +21,9 @@ class ModelRegistryUnitsRequest(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     unit: str
-    mode: Literal["dry-run", "install", "status", "kickstart", "uninstall"] = "dry-run"
+    mode: Literal[
+        "dry-run", "install", "status", "kickstart", "uninstall", "rollback"
+    ] = "dry-run"
     home: str
     registry_root: str
     workspace_config_root: str = ""

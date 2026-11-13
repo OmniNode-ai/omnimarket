@@ -21,6 +21,7 @@ from omnimarket.nodes.node_gpu_power_caps_effect.models.model_gpu_power_caps imp
 REPO_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$"
 COMMIT_SHA_PATTERN = r"^[0-9a-f]{40}$"
 LANE_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+BOOTSTRAP_PATTERN = r"^[A-Za-z0-9._-]+:[0-9]{1,5}$"
 
 NODE_NAME = "node_gpu_power_caps_effect"
 HOST_NAME = r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
@@ -44,8 +45,13 @@ class ModelGpuPowerCapsHost(BaseModel):
 class ModelGpuPowerCapsLabWork(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    # The declared bus lane the node opens.
-    bus_lane: Annotated[str, Field(min_length=1)]
+    # Where the lab work unit is published: the declared bus lane the node opens, or, for a node
+    # inside the runtime container, the broker address stated directly (its broker login comes
+    # from the process environment). Exactly one of the two.
+    bus_lane: Annotated[str | None, Field(min_length=1)] = None
+    kafka_bootstrap: Annotated[
+        str | None, Field(min_length=1, pattern=BOOTSTRAP_PATTERN)
+    ] = None
     repo: Annotated[str, Field(pattern=REPO_PATTERN)]
     commit_sha: Annotated[str, Field(pattern=COMMIT_SHA_PATTERN)]
     # Attribution of the unit.
@@ -56,6 +62,14 @@ class ModelGpuPowerCapsLabWork(BaseModel):
     # The directory that holds the lane declaration; may name $VARIABLES, expanded when read;
     # None lets the bus opener use its own default.
     workspace_root: str | None = None
+
+    @model_validator(mode="after")
+    def _one_address(self) -> ModelGpuPowerCapsLabWork:
+        if self.bus_lane is not None and self.kafka_bootstrap is not None:
+            raise ValueError("names both a bus_lane and a kafka_bootstrap")
+        if self.bus_lane is None and self.kafka_bootstrap is None:
+            raise ValueError("names neither a bus_lane nor a kafka_bootstrap")
+        return self
 
     @model_validator(mode="after")
     def _argv_placeholders(self) -> ModelGpuPowerCapsLabWork:
