@@ -25,29 +25,30 @@ description: >
 handler:
   module: omnimarket.nodes.node_pause_check_findings_compute.handlers.handler_pause_check_findings
   class: HandlerPauseCheckFindings
-  input_model: omnimarket.nodes.node_pause_check_findings_compute.models.model_pause_check.ModelPauseCheckRequest
+  input_model: omnimarket.events.pause_check.ModelPauseCheckRequest
+  output_model: omnimarket.events.pause_check.ModelPauseCheckResult
 
 # HandlerPauseCheckFindings takes its overlay as a constructor parameter (read by
 # node_pause_check_runtime_effect), so it runs through that command, not handler_routing.
 
 descriptor:
   node_archetype: compute
-  runtime_profiles: [effects]
+  runtime_profiles: []
   purity: pure
   idempotent: true
   timeout_ms: 30000
 
 input_model:
   name: ModelPauseCheckRequest
-  module: omnimarket.nodes.node_pause_check_findings_compute.models.model_pause_check
+  module: omnimarket.events.pause_check
   description: The pull requests with their labels, the pause rules, the ledger text and the time.
 output_model:
   name: ModelPauseCheckResult
-  module: omnimarket.nodes.node_pause_check_findings_compute.models.model_pause_check
+  module: omnimarket.events.pause_check
   description: Per pull request the findings, the context rows, the order tokens and the verdict.
 
 runtime_dispatch:
-  external_trigger: true
+  external_trigger: python -m omnimarket.nodes.node_pause_check_runtime_effect, which loads the overlay, reads the hold log and constructs this handler in process.
 
 event_bus:
   subscribe_topics: []
@@ -55,4 +56,4 @@ event_bus:
 
 metadata:
   ticket: OMN-24233
-  transport_type: inmemory
+  transport_type: local

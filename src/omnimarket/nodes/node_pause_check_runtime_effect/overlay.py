@@ -11,10 +11,10 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from omnimarket.handlers.node_overlay_reader import load_structured_overlay
-from omnimarket.nodes.node_pause_check_findings_compute.models import (
+from omnimarket.events.pause_check import (
     ModelPauseCheckOverlay,
 )
+from omnimarket.handlers.node_overlay_reader import load_structured_overlay
 
 NODE_NAME = "node_pause_check_runtime_effect"
 OVERLAY_FILE_ENV = "ONEX_PAUSE_CHECK_OVERLAY"

@@ -14,15 +14,15 @@ from __future__ import annotations
 
 import pytest
 
-from omnimarket.nodes.node_pause_check_findings_compute.handlers import (
-    HandlerPauseCheckFindings,
-)
-from omnimarket.nodes.node_pause_check_findings_compute.models import (
+from omnimarket.events.pause_check import (
     EnumPauseVerdict,
     ModelPauseCheckOverlay,
     ModelPauseCheckPr,
     ModelPauseCheckRequest,
     ModelPauseCheckRules,
+)
+from omnimarket.nodes.node_pause_check_findings_compute.handlers import (
+    HandlerPauseCheckFindings,
 )
 
 pytestmark = pytest.mark.unit

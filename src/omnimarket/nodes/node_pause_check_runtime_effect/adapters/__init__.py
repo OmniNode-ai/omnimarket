@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from omnimarket.nodes.node_pause_check_findings_compute.models import (
+from omnimarket.events.pause_check import (
     ModelPauseCheckEvent,
 )
 

@@ -33,30 +33,16 @@ import sys
 from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 
 import yaml
 
-from omnimarket.models.model_work_ledger_reader import (
-    EnumReaderQuery,
-    ModelReaderRequest,
-    ModelReaderResult,
-)
-from omnimarket.nodes.node_ledger_hold_verdict_effect.adapters import (
-    InMemoryHoldVerdictSink,
-)
-from omnimarket.nodes.node_ledger_hold_verdict_effect.handlers import HandlerHoldVerdict
-from omnimarket.nodes.node_ledger_hold_verdict_effect.models import (
+from omnimarket.events.hold_verdict import (
     EnumHoldVerdict,
     ModelHoldVerdictOverlay,
     ModelHoldVerdictRequest,
 )
-from omnimarket.nodes.node_ledger_hold_verdict_effect.overlay import (
-    load_overlay as load_hold_overlay,
-)
-from omnimarket.nodes.node_pause_check_findings_compute.handlers import (
-    HandlerPauseCheckFindings,
-)
-from omnimarket.nodes.node_pause_check_findings_compute.models import (
+from omnimarket.events.pause_check import (
     EnumFindingKind,
     EnumPauseHoldSource,
     EnumPauseVerdict,
@@ -67,6 +53,21 @@ from omnimarket.nodes.node_pause_check_findings_compute.models import (
     ModelPauseCheckRequest,
     ModelPauseCheckRules,
     ModelPauseDecision,
+)
+from omnimarket.models.model_work_ledger_reader import (
+    EnumReaderQuery,
+    ModelReaderRequest,
+    ModelReaderResult,
+)
+from omnimarket.nodes.node_ledger_hold_verdict_effect.adapters import (
+    InMemoryHoldVerdictSink,
+)
+from omnimarket.nodes.node_ledger_hold_verdict_effect.handlers import HandlerHoldVerdict
+from omnimarket.nodes.node_ledger_hold_verdict_effect.overlay import (
+    load_overlay as load_hold_overlay,
+)
+from omnimarket.nodes.node_pause_check_findings_compute.handlers import (
+    HandlerPauseCheckFindings,
 )
 from omnimarket.nodes.node_pause_check_runtime_effect.adapters import (
     InMemoryPauseCheckSink,
@@ -176,7 +177,7 @@ def _parse_prs(
     """The pull requests from ``--request-json``, ``--prs-json`` or the ``--pr`` flags."""
     entries: list[dict[str, object]]
     if document:
-        entries = document["prs"]  # type: ignore[assignment]
+        entries = cast("list[dict[str, object]]", document["prs"])
     elif args.prs_json:
         entries = json.loads(Path(args.prs_json).read_text(encoding="utf-8"))
     else:

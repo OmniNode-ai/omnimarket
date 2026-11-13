@@ -14,8 +14,7 @@ from __future__ import annotations
 import re
 from collections.abc import Sequence
 
-from omnimarket.merge_control.hold_marker import match_hold_token
-from omnimarket.nodes.node_pause_check_findings_compute.models import (
+from omnimarket.events.pause_check import (
     EnumFindingKind,
     EnumPauseVerdict,
     ModelFinding,
@@ -25,6 +24,7 @@ from omnimarket.nodes.node_pause_check_findings_compute.models import (
     ModelPauseCheckRequest,
     ModelPauseCheckResult,
 )
+from omnimarket.merge_control.hold_marker import match_hold_token
 
 # The awk FS " [|] ": a field boundary is a space, a pipe, a space.
 _FIELD_RE = re.compile(r" [|] ")

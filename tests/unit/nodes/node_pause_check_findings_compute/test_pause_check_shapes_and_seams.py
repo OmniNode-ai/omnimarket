@@ -16,6 +16,20 @@ from pathlib import Path
 import pytest
 import yaml
 
+from omnimarket.events.hold_verdict import (
+    EnumHoldVerdict,
+    ModelHoldVerdictOverlay,
+    ModelHoldVerdictRequest,
+)
+from omnimarket.events.pause_check import (
+    EnumFindingKind,
+    EnumPauseVerdict,
+    ModelFinding,
+    ModelPauseCheckOverlay,
+    ModelPauseCheckPr,
+    ModelPauseCheckRequest,
+    ModelPauseCheckRules,
+)
 from omnimarket.models.model_work_ledger_reader import (
     EnumReaderQuery,
     EnumReaderStatus,
@@ -25,22 +39,8 @@ from omnimarket.nodes.node_ledger_hold_verdict_effect.adapters import (
     InMemoryHoldVerdictSink,
 )
 from omnimarket.nodes.node_ledger_hold_verdict_effect.handlers import HandlerHoldVerdict
-from omnimarket.nodes.node_ledger_hold_verdict_effect.models import (
-    EnumHoldVerdict,
-    ModelHoldVerdictOverlay,
-    ModelHoldVerdictRequest,
-)
 from omnimarket.nodes.node_pause_check_findings_compute.handlers import (
     HandlerPauseCheckFindings,
-)
-from omnimarket.nodes.node_pause_check_findings_compute.models import (
-    EnumFindingKind,
-    EnumPauseVerdict,
-    ModelFinding,
-    ModelPauseCheckOverlay,
-    ModelPauseCheckPr,
-    ModelPauseCheckRequest,
-    ModelPauseCheckRules,
 )
 from omnimarket.nodes.node_pause_check_runtime_effect import runtime_pause_check
 from omnimarket.nodes.node_work_ledger_reader_effect.adapters import InMemoryEventSink

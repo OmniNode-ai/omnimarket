@@ -24,6 +24,10 @@ import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
+from omnimarket.events.hold_verdict import (
+    EnumHoldVerdict,
+    ModelHoldVerdictRequest,
+)
 from omnimarket.models.model_work_ledger_reader import (
     EnumReaderQuery,
     ModelReaderRequest,
@@ -33,10 +37,6 @@ from omnimarket.nodes.node_ledger_hold_verdict_effect.adapters import (
     JournalHoldVerdictSink,
 )
 from omnimarket.nodes.node_ledger_hold_verdict_effect.handlers import HandlerHoldVerdict
-from omnimarket.nodes.node_ledger_hold_verdict_effect.models import (
-    EnumHoldVerdict,
-    ModelHoldVerdictRequest,
-)
 from omnimarket.nodes.node_ledger_hold_verdict_effect.overlay import load_overlay
 from omnimarket.nodes.node_ledger_hold_verdict_effect.protocols import (
     ProtocolHoldVerdictEventSink,

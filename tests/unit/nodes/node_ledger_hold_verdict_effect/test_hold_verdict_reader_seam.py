@@ -16,15 +16,15 @@ from datetime import UTC, datetime
 
 import pytest
 
-from omnimarket.models.work_ledger_query import ModelWorkLedgerStateEntity
-from omnimarket.nodes.node_ledger_hold_verdict_effect.handlers.handler_hold_verdict import (
-    HandlerHoldVerdict,
-)
-from omnimarket.nodes.node_ledger_hold_verdict_effect.models import (
+from omnimarket.events.hold_verdict import (
     EnumHoldSource,
     EnumHoldVerdict,
     ModelHoldVerdictOverlay,
     ModelHoldVerdictRequest,
+)
+from omnimarket.models.work_ledger_query import ModelWorkLedgerStateEntity
+from omnimarket.nodes.node_ledger_hold_verdict_effect.handlers.handler_hold_verdict import (
+    HandlerHoldVerdict,
 )
 from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_query_reader import (
     WorkLedgerReadError,

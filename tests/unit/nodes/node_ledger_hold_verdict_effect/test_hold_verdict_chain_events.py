@@ -16,19 +16,19 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from omnimarket.events.hold_verdict import (
+    EnumHoldSource,
+    EnumHoldVerdict,
+    ModelHoldVerdictEvent,
+    ModelHoldVerdictOverlay,
+    ModelHoldVerdictRequest,
+)
 from omnimarket.nodes.node_ledger_hold_verdict_effect.handlers import (
     handler_hold_verdict,
 )
 from omnimarket.nodes.node_ledger_hold_verdict_effect.handlers.handler_hold_verdict import (
     HandlerHoldVerdict,
     load_topics,
-)
-from omnimarket.nodes.node_ledger_hold_verdict_effect.models import (
-    EnumHoldSource,
-    EnumHoldVerdict,
-    ModelHoldVerdictEvent,
-    ModelHoldVerdictOverlay,
-    ModelHoldVerdictRequest,
 )
 from omnimarket.nodes.node_work_ledger_reader_effect.models import (
     EnumReaderEventKind,
