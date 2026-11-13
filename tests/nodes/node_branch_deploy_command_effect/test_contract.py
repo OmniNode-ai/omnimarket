@@ -12,6 +12,9 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
+from omnimarket.nodes.node_branch_deploy_command_effect.handlers.handler_branch_deploy_command import (
+    load_command_topic,
+)
 from omnimarket.nodes.node_branch_deploy_command_effect.overlay import (
     ModelBranchDeployCommandOverlay,
     load_overlay,
@@ -22,6 +25,7 @@ pytestmark = pytest.mark.unit
 
 CMD_TOPIC = "onex.cmd.omnimarket.branch-deploy-command-requested.v1"
 EVT_TOPIC = "onex.evt.omnimarket.branch-deploy-command-completed.v1"
+DEPLOY_TOPIC = "onex.cmd.deploy.rebuild-requested.v1"
 
 
 def contract() -> dict[str, Any]:
@@ -32,14 +36,14 @@ def test_topics_and_terminal_event() -> None:
     doc = contract()
     assert doc["event_bus"] == {
         "subscribe_topics": [CMD_TOPIC],
-        "publish_topics": [EVT_TOPIC],
+        "publish_topics": [EVT_TOPIC, DEPLOY_TOPIC],
     }
     assert doc["terminal_event"] == EVT_TOPIC
-    assert doc["externally_consumed_topics"] == [EVT_TOPIC]
+    assert doc["externally_consumed_topics"] == [EVT_TOPIC, DEPLOY_TOPIC]
     assert doc["node_type"] == "effect"
     assert doc["descriptor"]["purity"] == "impure"
     assert doc["descriptor"]["runtime_profiles"] == ["effects"]
-    assert doc["descriptor"]["side_effects"] == ["subprocess", "bus-publish"]
+    assert doc["descriptor"]["side_effects"] == ["bus-publish"]
 
 
 def test_handler_and_models_resolve() -> None:
@@ -81,3 +85,9 @@ def test_overlay_with_no_root_refuses(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("ONEX_SKILL_OVERLAY_ROOTS", raising=False)
     with pytest.raises(ValueError, match="node_branch_deploy_command_effect"):
         load_overlay()
+
+
+def test_contract_secret_dependencies_and_command_topic() -> None:
+    doc = contract()
+    assert doc["secret_dependencies"]["DEPLOY_AGENT_HMAC_SECRET"]["required"] is True
+    assert load_command_topic() == DEPLOY_TOPIC
