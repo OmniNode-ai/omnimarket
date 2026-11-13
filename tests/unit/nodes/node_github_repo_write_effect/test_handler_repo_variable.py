@@ -985,3 +985,52 @@ def test_a_text_entry_with_select_refuses_the_load() -> None:
     )
     with pytest.raises(ValidationError):
         ModelRepoVariablesOverlay.model_validate(document)
+
+
+_SCALAR_VAR = "LAB_SCALAR_VAR"
+_SCALAR_SOURCE = "lab/docs/scalar.yaml"
+
+
+def _scalar_value(root: Path, document: str, *, select: str = "command") -> str:
+    path = root / _SCALAR_SOURCE
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(document, encoding="utf-8")
+    return read_variable_source_value(
+        root,
+        _SCALAR_SOURCE,
+        fmt="scalar",
+        select=select,
+        name=_SCALAR_VAR,
+        repository=_REPO,
+        max_chars=100,
+    )
+
+
+def test_a_scalar_source_is_the_selected_string_as_it_is(tmp_path: Path) -> None:
+    value = _scalar_value(
+        tmp_path,
+        f"variable: {_SCALAR_VAR}\nrepository: {_REPO}\ncommand: lab-tool read --stdin\n",
+    )
+    assert value == "lab-tool read --stdin"
+
+
+@pytest.mark.parametrize(
+    "document",
+    [
+        pytest.param("command: 7\n", id="not-a-string"),
+        pytest.param("command: '  '\n", id="blank"),
+        pytest.param("other: x\n", id="select-key-missing"),
+        pytest.param("variable: LAB_OTHER_VAR\ncommand: x\n", id="another-variable"),
+        pytest.param("command: [a, b]\n", id="a-list"),
+    ],
+)
+def test_an_unusable_scalar_source_is_refused(tmp_path: Path, document: str) -> None:
+    with pytest.raises(ValueError, match=r"select key|declares another"):
+        _scalar_value(tmp_path, document)
+
+
+def test_a_scalar_entry_without_select_refuses_the_load() -> None:
+    with pytest.raises(ValidationError, match="requires select"):
+        ModelRepoVariablesEntry(
+            repository=_REPO, name=_SCALAR_VAR, source=_SCALAR_SOURCE, format="scalar"
+        )

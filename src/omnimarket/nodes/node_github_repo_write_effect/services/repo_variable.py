@@ -164,9 +164,16 @@ def read_variable_source_value(
     selected = document[select]
     if selected is None or (isinstance(selected, str | list | dict) and not selected):
         raise ValueError("the select key holds no value in the source document")
-    rendered = json.dumps(
-        _without_nones(selected), separators=(",", ":"), ensure_ascii=True
-    )
+    if fmt == "scalar":
+        if not isinstance(selected, str) or not selected.strip():
+            raise ValueError(
+                "the select key does not hold a string in the source document"
+            )
+        rendered = selected.strip()
+    else:
+        rendered = json.dumps(
+            _without_nones(selected), separators=(",", ":"), ensure_ascii=True
+        )
     if len(rendered) > max_chars:
         raise ValueError("the rendered value exceeds the maximum variable length")
     return rendered

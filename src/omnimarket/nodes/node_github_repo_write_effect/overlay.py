@@ -9,7 +9,7 @@ package ships ``overlay.example.yaml`` with synthetic values. Nothing here has a
 ``repo_variables`` names each allowed repository variable and the file its value is read from, so no value is ever in
 code, on a command line or on a request; names or values that look like secrets are refused. An entry's ``format``
 reads the source as the value itself (``text``) or as a YAML document in the overlays repository whose declared
-``select`` key's value is rendered as compact JSON (``json_compact``).
+``select`` key's value is rendered as compact JSON (``json_compact``) or, for a string, used as it is (``scalar``).
 
 The document also carries ``event_bus`` and ``comment_author_logins`` for their own readers; they are optional here
 because the node never reads them, and each reader refuses on its own when its key is absent.
@@ -58,15 +58,15 @@ class ModelRepoVariablesEntry(BaseModel):
     repository: str = Field(pattern=r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
     name: str = Field(pattern=r"^[A-Za-z_][A-Za-z0-9_]{0,99}$")
     source: str
-    format: Literal["text", "json_compact"] = "text"
+    format: Literal["text", "json_compact", "scalar"] = "text"
     select: str | None = None
 
     @model_validator(mode="after")
     def _shape(self) -> ModelRepoVariablesEntry:
-        if self.format == "json_compact":
+        if self.format in ("json_compact", "scalar"):
             if self.select is None or not self.select.strip():
                 raise ValueError(
-                    "a json_compact repository variable source requires select, "
+                    "a json_compact or scalar repository variable source requires select, "
                     "the name of the document's top-level key the variable holds"
                 )
         elif self.select is not None:
