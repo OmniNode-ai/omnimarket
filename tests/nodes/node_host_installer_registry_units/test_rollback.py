@@ -23,11 +23,9 @@ from omnimarket.nodes.node_host_installer_registry_units.handlers import (
 )
 from omnimarket.nodes.node_host_installer_registry_units.handlers.handler_registry_units import (
     HandlerRegistryUnits,
-    load_units,
-)
-from omnimarket.nodes.node_host_installer_registry_units.handlers.handler_unit_rollback import (
     NoPreviousInstallError,
     keep_previous,
+    load_units,
     read_previous,
     restore_previous,
 )
