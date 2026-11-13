@@ -93,6 +93,8 @@ handler_routing:
 generated_keys:
   # The probe tenant key scenario R8 reads (settings overlay of node_delegation_scenario_r8_effect).
   r8_probe_tenant_key: {folder: /shared/env, key: R8_PROBE_TENANT_API_KEY, bytes: 32, prefix: ""}
+  # (OMN-24115) the dev probe user's password, read by node_dev_identity_provision_effect
+  dev_probe_user_password: {folder: /shared/env, key: DEV_PROBE_USER_PASSWORD, bytes: 24, prefix: "Dp1!"}
 
 # A reference's first segment, when it names one of these, maps through it:
 # secret://onex/captured/<digest> is key CAPTURED_<digest> in folder /captured
