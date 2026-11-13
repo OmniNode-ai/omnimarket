@@ -32,5 +32,6 @@ class BackendMemorySourceReadCache:
         now = self._clock()
         return sorted(k for k, (_, exp) in self._store.items() if now < exp)
 
-    def close(self) -> None:  # stub-ok: nothing is held open
-        pass
+    def close(self) -> None:
+        """Nothing is held open; the store is dropped with the object."""
+        self._store.clear()

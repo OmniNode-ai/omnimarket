@@ -14,9 +14,11 @@ from __future__ import annotations
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 import pytest
 
+from omnimarket.models.model_factory_floor_input import ModelFloorLedgerRow
 from omnimarket.nodes.node_factory_floor_effect.handlers.ledger_window_by_archive import (
     decode_rows,
     encode_rows,
@@ -133,7 +135,7 @@ def _combined(live: Path, now: datetime, window_days: int = 14) -> str:
 
 def _by_archive(
     live: Path, reader: Reader, cache: CachedSourceReader, now: datetime = NOW
-):  # type: ignore[no-untyped-def]
+) -> tuple[ModelFloorLedgerRow, ...]:
     return read_ledger_rows_by_archive(
         live_path=live,
         archive=ARCHIVE,
@@ -313,7 +315,7 @@ def test_without_a_cache_or_with_another_record_the_window_read_is_the_old_one(
 
     monkeypatch.setattr(module, "read_ledger_rows", old)
     cache, _ = memory_reader()
-    common = {
+    common: dict[str, Any] = {
         "window_days": 14,
         "cut_chars": 1200,
         "timeout_seconds": 30,
@@ -325,18 +327,18 @@ def test_without_a_cache_or_with_another_record_the_window_read_is_the_old_one(
         "now": NOW,
     }
     env = {"TEST_LEDGER_PATH": str(live), "TEST_LEDGER_RECORD": "file"}
-    read_ledger_window(source=None, archive_cache=None, environ=env, **common)  # type: ignore[arg-type]
+    read_ledger_window(source=None, archive_cache=None, environ=env, **common)
     read_ledger_window(
         source="db",
         archive_cache=cache,
         environ=env,
-        **common,  # type: ignore[arg-type]
+        **common,
     )
     read_ledger_window(
         source=None,
         archive_cache=cache,
         environ={"TEST_LEDGER_PATH": str(live)},
-        **common,  # type: ignore[arg-type]
+        **common,
     )
     assert seen == ["old", "old", "old"]
     read_ledger_window(
@@ -344,7 +346,7 @@ def test_without_a_cache_or_with_another_record_the_window_read_is_the_old_one(
         archive_cache=cache,
         environ=env,
         archive_runner=Reader(),
-        **common,  # type: ignore[arg-type]
+        **common,
     )
     assert seen == ["old", "old", "old"]
 

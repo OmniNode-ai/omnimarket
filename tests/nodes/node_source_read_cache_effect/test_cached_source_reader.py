@@ -11,6 +11,7 @@ cached value the caller no longer accepts each end in the source's answer, never
 from __future__ import annotations
 
 import json
+from typing import Any
 
 import pytest
 
@@ -46,7 +47,9 @@ class Source:
         return [1, 2, 3]
 
 
-def _read(reader: CachedSourceReader, source: Source, revision: str = "r1", **kwargs):  # type: ignore[no-untyped-def]
+def _read(
+    reader: CachedSourceReader, source: Source, revision: str = "r1", **kwargs: Any
+) -> tuple[list[int], EnumSourceCacheOutcome]:
     return reader.read(
         key(revision), source.fetch, json.dumps, lambda text: json.loads(text), **kwargs
     )

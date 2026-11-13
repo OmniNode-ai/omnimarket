@@ -20,6 +20,7 @@ from omnimarket.nodes.node_source_read_cache_effect.models.model_source_read_cac
     EnumSourceCacheOutcome,
     ModelSourceCacheKey,
     ModelSourceCacheRequest,
+    ModelSourceCacheResult,
 )
 from tests.nodes.node_source_read_cache_effect.support import (
     PREFIX,
@@ -38,13 +39,17 @@ def _handler(clock: Clock) -> HandlerSourceReadCache:
     return HandlerSourceReadCache(backend, PREFIX, TTL_BACKSTOP)
 
 
-def _lookup(handler: HandlerSourceReadCache, revision: str = "r1"):  # type: ignore[no-untyped-def]
+def _lookup(
+    handler: HandlerSourceReadCache, revision: str = "r1"
+) -> ModelSourceCacheResult:
     return handler.handle(
         ModelSourceCacheRequest(operation="lookup", key=key(revision))
     )
 
 
-def _store(handler: HandlerSourceReadCache, revision: str = "r1", payload: str = "p"):  # type: ignore[no-untyped-def]
+def _store(
+    handler: HandlerSourceReadCache, revision: str = "r1", payload: str = "p"
+) -> ModelSourceCacheResult:
     return handler.handle(
         ModelSourceCacheRequest(operation="store", key=key(revision), payload=payload)
     )

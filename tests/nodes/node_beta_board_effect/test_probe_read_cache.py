@@ -12,7 +12,8 @@ injected break (a slot that changes on every call) turns the golden assertion re
 from __future__ import annotations
 
 import json
-from datetime import timedelta
+from collections.abc import Sequence
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -30,12 +31,17 @@ from omnimarket.nodes.node_beta_board_effect.handlers.handler_beta_board import 
 from omnimarket.nodes.node_beta_board_effect.models.model_beta_board import (
     ModelBetaBoardOverlay,
     ModelBetaBoardRequest,
+    ModelBetaBoardRuntime,
+    ModelSourceReads,
 )
 from omnimarket.nodes.node_source_read_cache_effect.handlers.cached_source_reader import (
     CachedSourceReader,
 )
 from omnimarket.nodes.node_source_read_cache_effect.handlers.handler_source_read_cache import (
     HandlerSourceReadCache,
+)
+from omnimarket.nodes.node_source_read_cache_effect.handlers.schedule_revision import (
+    schedule_slot,
 )
 from tests.nodes.node_beta_board_effect.support import NOW, OVERLAY, run_list_answer
 from tests.nodes.node_source_read_cache_effect.support import (
@@ -51,7 +57,9 @@ pytestmark = pytest.mark.unit
 HOURLY = "0 * * * *"
 
 
-def _runtime(cron: str | None = HOURLY, second_cron: str | None = None):  # type: ignore[no-untyped-def]
+def _runtime(
+    cron: str | None = HOURLY, second_cron: str | None = None
+) -> ModelBetaBoardRuntime:
     doc = json.loads(json.dumps(OVERLAY))
     doc["probes"][0]["cron"] = cron
     doc["probes"][1]["cron"] = second_cron
@@ -72,7 +80,7 @@ class Runner:
         self.calls: list[str] = []
         self.now = NOW
 
-    def __call__(self, argv, timeout):  # type: ignore[no-untyped-def]
+    def __call__(self, argv: Sequence[str], timeout: int) -> tuple[int, str, str]:
         self.calls.append(argv[argv.index("--workflow") + 1])
         if self.fail:
             return 1, "", "down"
@@ -93,8 +101,12 @@ class Runner:
 
 
 def _refresh(
-    tmp_path: Path, runner: Runner, at, cache: CachedSourceReader | None, rt=None
-):  # type: ignore[no-untyped-def]
+    tmp_path: Path,
+    runner: Runner,
+    at: datetime,
+    cache: CachedSourceReader | None,
+    rt: ModelBetaBoardRuntime | None = None,
+) -> ModelSourceReads:
     runner.now = at
     reads = refresh_probes(rt or _runtime(), tmp_path, at, runner, lambda: at, cache)
     path = tmp_path / (rt or _runtime()).reads_relpath
@@ -103,7 +115,7 @@ def _refresh(
     return reads
 
 
-def _past_interval(at):  # type: ignore[no-untyped-def]
+def _past_interval(at: datetime) -> datetime:
     return at + timedelta(seconds=_runtime().probe_refresh_seconds + 1)
 
 
@@ -200,10 +212,10 @@ def test_named_injected_break_a_slot_that_changes_every_call_reads_again(
     runner = Runner()
     at = NOW + timedelta(minutes=2)
     _refresh(tmp_path, runner, at, cache)
-    real = adapter_beta_board_sources.schedule_slot
+    real = schedule_slot
     counter = {"n": 0}
 
-    def drifting(crons, now):  # type: ignore[no-untyped-def]
+    def drifting(crons: Sequence[str], now: datetime) -> datetime | None:
         counter["n"] += 1
         base = real(crons, now)
         return base - timedelta(minutes=counter["n"]) if base else None
@@ -246,7 +258,7 @@ class MissingRunner(Runner):
         super().__init__()
         self.missing = missing
 
-    def __call__(self, argv, timeout):  # type: ignore[no-untyped-def]
+    def __call__(self, argv: Sequence[str], timeout: int) -> tuple[int, str, str]:
         workflow = argv[argv.index("--workflow") + 1]
         if workflow == self.missing:
             self.calls.append(workflow)
@@ -265,7 +277,7 @@ class Tip:
         self.sha = "a" * 40
         self.reads = 0
 
-    def __call__(self, argv, timeout):  # type: ignore[no-untyped-def]
+    def __call__(self, argv: Sequence[str], timeout: int) -> tuple[int, str, str]:
         self.reads += 1
         return 0, self.sha + "\n", ""
 
@@ -281,7 +293,7 @@ def test_a_missing_workflow_is_not_asked_again_until_the_default_branch_moves(
     rt = _runtime()
     at = NOW + timedelta(minutes=2)
 
-    def cycle(moment, runner=runner):  # type: ignore[no-untyped-def]
+    def cycle(moment: datetime, runner: Runner = runner) -> ModelSourceReads:
         runner.now = moment
         reads = refresh_probes(rt, tmp_path, moment, runner, lambda: moment, cache, tip)
         path = tmp_path / rt.reads_relpath

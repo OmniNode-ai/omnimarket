@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 
 from omnimarket.nodes.node_source_read_cache_effect.handlers.repo_revision import (
+    CommandRunner,
     cached_repo_head,
     repo_head_revision,
     run_git,
@@ -26,7 +27,7 @@ pytestmark = pytest.mark.unit
 SHA = "0123456789abcdef0123456789abcdef01234567"
 
 
-def _runner(code: int, out: str) -> tuple[list[Sequence[str]], object]:
+def _runner(code: int, out: str) -> tuple[list[Sequence[str]], CommandRunner]:
     calls: list[Sequence[str]] = []
 
     def run(argv: Sequence[str], timeout: int) -> tuple[int, str, str]:
@@ -44,7 +45,7 @@ def test_golden_the_tip_of_the_clone_is_the_revision(tmp_path: Path) -> None:
         "Org/repo-x",
         clone_relpath_template="{name}",
         timeout_seconds=3,
-        run=run,  # type: ignore[arg-type]
+        run=run,
     )
     assert got == SHA
     assert calls[0][:3] == ["git", "-C", str(tmp_path / "repo-x")]
@@ -60,7 +61,7 @@ def test_error_chain_no_clone_a_failing_command_and_a_non_commit_give_no_revisio
             "Org/absent",
             clone_relpath_template="{name}",
             timeout_seconds=3,
-            run=run,  # type: ignore[arg-type]
+            run=run,
         )
         is None
     )
@@ -73,7 +74,7 @@ def test_error_chain_no_clone_a_failing_command_and_a_non_commit_give_no_revisio
                 "Org/present",
                 clone_relpath_template="{name}",
                 timeout_seconds=3,
-                run=failing,  # type: ignore[arg-type]
+                run=failing,
             )
             is None
         )
@@ -85,8 +86,8 @@ def test_cached_repo_head_uses_the_overlays_clone_settings_and_none_without_a_ca
     (tmp_path / "repo-z").mkdir()
     _calls, run = _runner(0, SHA)
     cache, _ = memory_reader()
-    assert cached_repo_head(cache, tmp_path, "Org/repo-z", run) == SHA  # type: ignore[arg-type]
-    assert cached_repo_head(None, tmp_path, "Org/repo-z", run) is None  # type: ignore[arg-type]
+    assert cached_repo_head(cache, tmp_path, "Org/repo-z", run) == SHA
+    assert cached_repo_head(None, tmp_path, "Org/repo-z", run) is None
 
 
 def test_the_run_git_runner_answers_a_missing_binary_as_a_failure() -> None:
