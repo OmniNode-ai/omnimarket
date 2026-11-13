@@ -1,0 +1,64 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Source Read Cache Effect
+#
+# A revision-keyed read cache for the factory board's source reads. The board's steps call the in-process
+# CachedSourceReader, which asks the handler for a lookup and a store; the handler talks to the backend named
+# in the overlay. A second cycle with unchanged sources reads from the cache and does not read the source again.
+name: node_source_read_cache_effect
+contract_name: node_source_read_cache_effect
+node_name: node_source_read_cache_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  A revision-keyed read cache for the factory board's source reads. The board's steps call the in-process
+  CachedSourceReader, which asks the handler for a lookup and a store; the handler talks to the backend named
+  in the overlay. A second cycle with unchanged sources reads from the cache and does not read the source again.
+
+handler:
+  module: omnimarket.nodes.node_source_read_cache_effect.handlers.handler_source_read_cache
+  class: HandlerSourceReadCache
+  input_model: omnimarket.models.model_source_read_cache.ModelSourceCacheRequest
+
+# Not a runtime-dispatched handler: HandlerSourceReadCache takes the backend, the key prefix and the ttl backstop
+# as constructor parameters, so the node runs through its own CLI and the board's steps.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [key-value-read, key-value-write]
+  timeout_ms: 30000
+
+input_model:
+  name: ModelSourceCacheRequest
+  module: omnimarket.models.model_source_read_cache
+  description: A lookup or a store of one source read, keyed by source id, params digest and revision.
+output_model:
+  name: ModelSourceCacheResult
+  module: omnimarket.models.model_source_read_cache
+  description: The outcome of the request and, on a hit, the payload.
+
+runtime_dispatch:
+  external_trigger: true
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+runtime:
+  overlay:
+    overlay_id: node_source_read_cache_effect
+    file_env: ONEX_SOURCE_READ_CACHE_OVERLAY
+  # Each step that reads through the cache writes what the cache did in its cycle (hits, misses, source reads, why the cache was
+  # off) to <registry home>/<this directory>/<step name>.json, so a cycle's source reads are countable after it ends.
+  receipt_dir_relpath: .onex_state/source-cache
+
+metadata:
+  ticket: OMN-19998
+  transport_type: inmemory

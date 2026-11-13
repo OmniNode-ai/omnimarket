@@ -30,6 +30,18 @@ context:
       proposed_by: lane=dod-closeout-bind-2026-11-12T0545Z-c1
       accepted_by: lane=dod-closeout-accept-2026-11-12T0545Z-c1
       accepted_at: '2026-11-12T06:20:05Z'
+    dod-omn18339-ac1-accepted-20261113t0945z:
+    - label: AC1
+      criterion_hash: 343a7ec7cf1842001cabdcd0bd38c9fec06e4582acaa629f8ff5c8400d7da491
+      proposed_by: lane=dod-closeout-bind-2026-11-13T0945Z-c2
+      accepted_by: lane=dod-closeout-accept-2026-11-13T0945Z-c2
+      accepted_at: '2026-11-13T10:11:14Z'
+    dod-omn18339-ac2-accepted-20261113t0945z:
+    - label: AC2
+      criterion_hash: 80e59ae8af5520f5f6e93f46d75fb6595888da1b6e22414e8ecd3032831b1b77
+      proposed_by: lane=dod-closeout-bind-2026-11-13T0945Z-c2
+      accepted_by: lane=dod-closeout-accept-2026-11-13T0945Z-c2
+      accepted_at: '2026-11-13T10:11:14Z'
 requirements:
 - id: req-r3b-measures-parameter-filling
   statement: R3b responses are scored by parsing and schema validation, not by substring presence.
@@ -137,4 +149,29 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest "benchmarks/delegation_ladder/tests/test_workflow_request_scorer.py::test_ac5_no_threshold_is_written_in_the_new_scorer" -q -n 0 -p no:randomly --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn18339-ac1-accepted-20261113t0945z
+  description: 'AC1 binding (accepted 2026-11-13T0945Z, proposed by lane=dod-closeout-bind-2026-11-13T0945Z-c2,
+    accepted by lane=dod-closeout-accept-2026-11-13T0945Z-c2). A response naming the right workflow whose
+    parameter object omits a required field, or supplies one with the wrong type, scores FAIL under the
+    workflow_request scorer, and the schema-validation checklist reads True for a valid object. Re-run at
+    omnimarket origin/dev 54cbf4e718 passed (15 passed); with the parent of 0c4619863e the test file does not
+    exist.'
+  source: manual
+  binds_ac: [AC1]
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest benchmarks/delegation_ladder/tests/test_workflow_request_scorer.py -k ac1 -q -n 0 -p no:randomly --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn18339-ac2-accepted-20261113t0945z
+  description: 'AC2 binding (accepted 2026-11-13T0945Z, proposed by lane=dod-closeout-bind-2026-11-13T0945Z-c2,
+    accepted by lane=dod-closeout-accept-2026-11-13T0945Z-c2). For apply_patch_and_test, a committed diff
+    that applies to the named file scores PASS and a committed plausible diff that does not apply scores
+    FAIL; an absent, empty or prose patch scores FAIL. Re-run at omnimarket origin/dev 54cbf4e718 passed
+    (10 passed); with the parent of 0c4619863e the test file does not exist.'
+  source: manual
+  binds_ac: [AC2]
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest benchmarks/delegation_ladder/tests/test_workflow_request_scorer.py -k ac2 -q -n 0 -p no:randomly --no-cov
     cwd: ${OMNI_HOME}/omnimarket

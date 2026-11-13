@@ -21,6 +21,8 @@ from pydantic import (
     model_validator,
 )
 
+from omnimarket.models.lab_host_key import public_key_parts
+
 # A registry root as a probe script quotes it: no quote, backtick, space or ``$(``.
 RegistryRoot = Annotated[
     str, StringConstraints(min_length=1, pattern=r"^[A-Za-z0-9_$/.~-]+$")
@@ -90,6 +92,21 @@ IloAddress = Annotated[
     str, StringConstraints(min_length=1, pattern=r"^[A-Za-z0-9][A-Za-z0-9.:-]*$")
 ]
 
+
+def _host_public_key(value: str) -> str:
+    parts = value.split()
+    if len(parts) != 2:
+        raise ValueError(
+            "a host key is exactly two whitespace-separated tokens: "
+            "key type and base64 key, no comment"
+        )
+    public_key_parts(value)
+    return value
+
+
+HostPublicKey = Annotated[str, AfterValidator(_host_public_key)]
+
+
 RepoRole = Literal["plugin_source", "private_data", "deploy", "knowledge_base"]
 
 
@@ -116,6 +133,9 @@ class ModelLabHostRow(_ModelOverlayBase):
     # Further ssh destinations of the same machine, tried after ``target`` in order: nonempty names,
     # none equal to ``target``, none repeated (the rule of the launcher's ``_fallback_targets``).
     fallback_targets: tuple[NonEmptyStr, ...] = ()
+    # The public ssh host keys this machine's sshd presents, declared so another host
+    # can write them to its known_hosts (never trust on first use).
+    host_keys: tuple[HostPublicKey, ...] = ()
     # The names the machine's own hook events carry as their host (its native hostname), for a row whose ``target`` or
     # ``fallback_targets`` do not give it. The quiet-host alarm attributes a hook event to the row it names, so a host
     # whose native name is none of its destinations (an ssh alias, an address, a tailnet name) declares it here (OMN-22778).
@@ -232,6 +252,13 @@ class ModelLabHostRow(_ModelOverlayBase):
             raise ValueError(
                 f"lab host {self.name!r}: fallback_targets repeats target or itself: {list(names)}"
             )
+        return self
+
+    @model_validator(mode="after")
+    def _host_keys_are_distinct(self) -> "ModelLabHostRow":
+        """No public host key repeats within the row's ``host_keys``."""
+        if len(set(self.host_keys)) != len(self.host_keys):
+            raise ValueError(f"lab host {self.name!r}: host_keys repeats a public key")
         return self
 
 

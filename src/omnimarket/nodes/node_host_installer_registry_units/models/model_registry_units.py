@@ -21,7 +21,9 @@ class ModelRegistryUnitsRequest(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     unit: str
-    mode: Literal["dry-run", "install", "status", "kickstart", "uninstall"] = "dry-run"
+    mode: Literal[
+        "dry-run", "install", "status", "kickstart", "uninstall", "rollback"
+    ] = "dry-run"
     home: str
     registry_root: str
     workspace_config_root: str = ""
@@ -67,6 +69,21 @@ class ModelRegistryUnitsRequest(BaseModel):
     # contract's rendered command.
     ledger_read_command: str = Field(
         default="", pattern=r"^(?:/[^\s;&|`$<>()'\"\\]+(?: [^\s;&|`$<>()'\"\\]+)*)?$"
+    )
+    # The address of the Valkey the board's source read cache keeps its answers in (OMN-24050). Empty defers to the installing shell;
+    # unset in both, the cache is off and each step reads its sources as it did. No password is a request input: a rendered unit is
+    # printed by a dry run, so a secret never goes into it.
+    source_cache_valkey_host: str = Field(
+        default="", pattern=r"^(?:[A-Za-z0-9][A-Za-z0-9_.-]*)?$"
+    )
+    source_cache_valkey_port: str = Field(default="", pattern=r"^(?:[0-9]{1,5})?$")
+    # The reference of the Valkey password the board's source read cache uses (OMN-24112): a store path
+    # (secret://onex/<folder>/<KEY>) naming where the password is kept, never the password. A dry run prints the
+    # rendered unit, so a value must never be a request input. Empty defers to the installing shell; unset in both,
+    # the cache connects with no password.
+    source_cache_valkey_password_ref: str = Field(
+        default="",
+        pattern=r"^(?:secret://onex/(?:[A-Za-z0-9][A-Za-z0-9_.-]*/)*[A-Za-z0-9][A-Za-z0-9_.-]*)?$",
     )
 
 

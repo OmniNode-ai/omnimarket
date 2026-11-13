@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_hook_tool_outcome_compute
+version: "0.1.0"
+description: "Classifies one finished tool call into a typed outcome, naming the refusing component when refused"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_hook_tool_outcome_compute: "omnimarket.nodes.node_hook_tool_outcome_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "hooks", "tool-outcome", "pure"]
+pack: "core"
+display_name: "Hook Tool Outcome Compute"
+node_role: "compute"
