@@ -18,6 +18,10 @@ from omnimarket.nodes.node_gpu_power_caps_effect.models.model_gpu_power_caps imp
     ModelGpuCard,
 )
 
+REPO_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$"
+COMMIT_SHA_PATTERN = r"^[0-9a-f]{40}$"
+LANE_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+
 NODE_NAME = "node_gpu_power_caps_effect"
 HOST_NAME = r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
 # The nvidia-smi query both backends must agree on; the parse order of the handler.
@@ -37,6 +41,31 @@ class ModelGpuPowerCapsHost(BaseModel):
     simulated_cards: tuple[ModelGpuCard, ...] = ()
 
 
+class ModelGpuPowerCapsLabWork(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    # The declared bus lane the node opens.
+    bus_lane: Annotated[str, Field(min_length=1)]
+    repo: Annotated[str, Field(pattern=REPO_PATTERN)]
+    commit_sha: Annotated[str, Field(pattern=COMMIT_SHA_PATTERN)]
+    # Attribution of the unit.
+    lane: Annotated[str, Field(pattern=LANE_PATTERN)]
+    unit_timeout_seconds: Annotated[int, Field(gt=0, le=7200)]
+    # The words run on the host; "{host}" and "{requested_by}" are replaced.
+    host_argv: Annotated[tuple[str, ...], Field(min_length=1)]
+    # The directory that holds the lane declaration; may name $VARIABLES, expanded when read;
+    # None lets the bus opener use its own default.
+    workspace_root: str | None = None
+
+    @model_validator(mode="after")
+    def _argv_placeholders(self) -> ModelGpuPowerCapsLabWork:
+        if not any("{host}" in word for word in self.host_argv):
+            raise ValueError("host_argv has no {host} word")
+        if not any("{requested_by}" in word for word in self.host_argv):
+            raise ValueError("host_argv has no {requested_by} word")
+        return self
+
+
 class ModelGpuPowerCapsOverlay(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -52,6 +81,7 @@ class ModelGpuPowerCapsOverlay(BaseModel):
     read_timeout_seconds: float = Field(gt=0)
     set_timeout_seconds: float = Field(gt=0)
     hosts: tuple[ModelGpuPowerCapsHost, ...] = Field(min_length=1)
+    lab_work: ModelGpuPowerCapsLabWork | None = None
 
     @model_validator(mode="after")
     def _consistent(self) -> ModelGpuPowerCapsOverlay:
@@ -66,6 +96,11 @@ class ModelGpuPowerCapsOverlay(BaseModel):
             raise ValueError("set_argv has no {index} word")
         if not any("{watts}" in word for word in self.set_argv):
             raise ValueError("set_argv has no {watts} word")
+        if self.backend is EnumGpuPowerCapsBackend.LAB_WORK:
+            if self.lab_work is None:
+                raise ValueError("backend lab_work needs a lab_work block")
+            if any(host.transport_prefix for host in self.hosts):
+                raise ValueError("a lab_work host has no transport prefix")
         return self
 
     def host(self, name: str) -> ModelGpuPowerCapsHost | None:
