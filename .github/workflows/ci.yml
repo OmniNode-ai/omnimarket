@@ -4239,10 +4239,13 @@ jobs:
   # follow-up with its own fixture re-record.
   overlay-main-load:
     name: Overlay Main Load (OMN-23963)
+    # A pull request from a fork holds no secrets and cannot read the private overlays repository; its job is skipped, not green-washed
+    # (a skipped job is not a failure to the CI Summary sweep, and the maintainers' own branch run of the same head reads the overlays).
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      OVERLAYS_REPOSITORY: OmniNode-ai/overlays
+      OVERLAYS_REPOSITORY_NAME: overlays
       OVERLAYS_REF: main
       OVERLAYS_CHECKOUT: .overlays-main
       OVERLAYS_DOCUMENTS_DIR: overlays
@@ -4252,13 +4255,25 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
         with:
           persist-credentials: false
+      # The overlays repository is private and this one is public: the workflow token and OMNI_GITHUB_TOKEN cannot read it (measured
+      # on this job's first run: "Repository not found"). A read-only installation token of the CI GitHub App, scoped to that one
+      # repository and to contents read, is the pattern hostile-reviewer.yml uses for its private CI overlay.
+      - name: Mint a read-only overlays token
+        id: overlays-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.ONEXBOT_APP_ID }}
+          private-key: ${{ secrets.ONEXBOT_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ env.OVERLAYS_REPOSITORY_NAME }}
+          permission-contents: read
       - name: Checkout the overlays repository at its main branch
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
         with:
-          repository: ${{ env.OVERLAYS_REPOSITORY }}
+          repository: ${{ github.repository_owner }}/${{ env.OVERLAYS_REPOSITORY_NAME }}
           ref: ${{ env.OVERLAYS_REF }}
           path: ${{ env.OVERLAYS_CHECKOUT }}
-          token: ${{ secrets.OMNI_GITHUB_TOKEN || github.token }}
+          token: ${{ steps.overlays-token.outputs.token }}
           persist-credentials: false
       - name: Assert the overlays checkout holds the pins file and documents
         run: |

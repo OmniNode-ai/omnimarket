@@ -144,14 +144,15 @@ def test_seam_contract_topics_and_terminal_event() -> None:
     contract = yaml.safe_load(
         (Path(_pkg.__file__).parent / "contract.yaml").read_text(encoding="utf-8")
     )
-    topics = contract["topics"]
-    terminal = contract["terminal_event"]
-    assert set(topics) == {
-        "overlay_main_load_check_requested",
-        "overlay_main_load_check_completed",
-        "overlay_main_load_check_failed",
+    assert contract["topics"] == {
+        "overlay_main_load_check_requested": "onex.cmd.omnimarket.overlay-main-load-check-requested.v1",
+        "overlay_main_load_check_completed": "onex.evt.omnimarket.overlay-main-load-check-completed.v1",
+        "overlay_main_load_check_failed": "onex.evt.omnimarket.overlay-main-load-check-failed.v1",
     }
-    assert terminal in topics.values()
+    assert (
+        contract["terminal_event"]
+        == "onex.evt.omnimarket.overlay-main-load-check-completed.v1"
+    )
 
 
 @pytest.mark.parametrize("drop_limits", [False, True])
