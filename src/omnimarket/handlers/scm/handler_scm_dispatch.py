@@ -162,6 +162,18 @@ SCM_VERBS: Final[tuple[ModelScmVerb, ...]] = (
         operation="pr_label",
         replaces="gh api --method POST /repos/{o}/{r}/issues/{n}/labels",
     ),
+    ModelScmVerb(
+        verb="variable-set",
+        node=_W,
+        operation="repo_variable_set",
+        replaces="gh variable set",
+    ),
+    ModelScmVerb(
+        verb="variable-get",
+        node=_W,
+        operation="repo_variable_get",
+        replaces="gh variable get",
+    ),
     *(
         ModelScmVerb(verb=v, node=_G, operation=op, replaces=gh)
         for v, op, gh in (
