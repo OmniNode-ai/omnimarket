@@ -48,7 +48,9 @@ TABLE = (
 )
 
 
-def _split(hosts: tuple[str, ...], inventory: InMemoryHostInventory):  # type: ignore[no-untyped-def]
+def _split(
+    hosts: tuple[str, ...], inventory: InMemoryHostInventory
+) -> tuple[tuple[str, ...], tuple[tuple[str, str], ...], str]:
     from omnimarket.nodes.node_host_reading_effect.handlers.join_j2_hosts import (
         split_probed_and_parked,
     )
