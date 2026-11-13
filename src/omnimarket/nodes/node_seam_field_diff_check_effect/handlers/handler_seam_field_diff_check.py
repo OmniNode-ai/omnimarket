@@ -46,6 +46,7 @@ from omnimarket.nodes.node_seam_field_diff_compute.handlers.handler_seam_field_d
 )
 
 _NODE = "node_seam_field_diff_check_effect"
+_RUNTIME_PAIR_LOADER = Path(__file__).resolve().parents[1] / "runtime_pair_loader.py"
 
 
 class SeamCheckUnreadableError(Exception):
@@ -220,7 +221,7 @@ class HandlerSeamFieldDiffCheck:
                 destination = Path(scratch) / relative
                 roots[package] = destination
                 parents.append(str(destination.parent))
-            command = [sys.executable, str(Path(pair_loader.__file__).resolve())]
+            command = [sys.executable, str(_RUNTIME_PAIR_LOADER)]
             for package, root in roots.items():
                 command += ["--root", f"{package}={root}"]
             for model in envelope_models:

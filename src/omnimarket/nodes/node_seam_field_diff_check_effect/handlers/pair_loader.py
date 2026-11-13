@@ -4,7 +4,7 @@
 
 STANDALONE ON PURPOSE. This module imports only the standard library, ``yaml`` and
 ``pydantic``, never anything from ``omnimarket``: the check also runs it as a script
-(``python pair_loader.py --root PACKAGE=PATH ...``) against a base revision's source
+(``python runtime_pair_loader.py --root PACKAGE=PATH ...``, which loads this module) against a base revision's source
 tree, where this node does not exist yet. The models it imports are the ones on
 ``sys.path``, so the base run reads the base revision's own models.
 
@@ -27,12 +27,9 @@ pair is never dropped silently.
 
 from __future__ import annotations
 
-import argparse
 import importlib
 import inspect
-import json
 import re
-import sys
 import typing
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -363,20 +360,3 @@ def collect_pairs(
                     }
                 )
     return {"pairs": pairs, "unreadable": sorted(set(unreadable))}
-
-
-def main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--root", action="append", default=[], metavar="PACKAGE=PATH")
-    parser.add_argument("--envelope-model", action="append", default=[])
-    args = parser.parse_args(argv)
-    roots = {}
-    for item in args.root:
-        package, _, path = item.partition("=")
-        roots[package] = Path(path)
-    sys.stdout.write(json.dumps(collect_pairs(roots, args.envelope_model)))
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

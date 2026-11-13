@@ -118,7 +118,10 @@ def test_the_loader_runs_as_a_script_and_needs_nothing_from_omnimarket(
     completed = subprocess.run(
         [
             sys.executable,
-            str(Path(pair_loader.__file__).resolve()),
+            str(
+                Path(pair_loader.__file__).resolve().parents[1]
+                / "runtime_pair_loader.py"
+            ),
             "--root",
             f"{package}={repo / 'src' / package}",
         ],
