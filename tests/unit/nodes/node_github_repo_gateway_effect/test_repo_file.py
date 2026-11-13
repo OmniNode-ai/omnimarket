@@ -122,3 +122,14 @@ def test_repo_file_request_refuses_a_shape_that_names_no_file(
 ) -> None:
     with pytest.raises(ValidationError):
         _request(**override)
+
+
+def test_repo_file_field_is_sent_only_by_the_read_that_names_a_file() -> None:
+    """A node that predates ``file_path`` refuses any request carrying it, so
+    every other read must leave it off the wire."""
+    merged = ModelGithubGatewayRequest(
+        operation=EnumGithubGatewayOperation.MERGED_PR, repo=REPO, pr_number=1
+    )
+    assert "file_path" not in merged.model_dump(mode="json")
+    assert "file_path" not in merged.model_dump_json()
+    assert _request().model_dump(mode="json")["file_path"] == _PATH

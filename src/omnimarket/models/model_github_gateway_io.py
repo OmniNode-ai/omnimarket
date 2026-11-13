@@ -14,7 +14,14 @@ from enum import StrEnum
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializerFunctionWrapHandler,
+    model_serializer,
+    model_validator,
+)
 
 
 class EnumGithubGatewayOperation(StrEnum):
@@ -213,6 +220,21 @@ class ModelGithubGatewayRequest(BaseModel):
         default_factory=uuid4,
         description="Correlation ID flowing through the pipeline (auto if omitted).",
     )
+
+    @model_serializer(mode="wrap")
+    def _omit_unset_file_path(
+        self, handler: SerializerFunctionWrapHandler
+    ) -> dict[str, object]:
+        """Send ``file_path`` only when a read names one (OMN-24187).
+
+        A node that predates the field refuses every request that carries it
+        (``extra_forbid``), so a null ``file_path`` on each other read would
+        break all of them until the node is redeployed.
+        """
+        data: dict[str, object] = handler(self)
+        if data.get("file_path") is None:
+            data.pop("file_path", None)
+        return data
 
     @model_validator(mode="after")
     def _require_scope_fields(self) -> ModelGithubGatewayRequest:
