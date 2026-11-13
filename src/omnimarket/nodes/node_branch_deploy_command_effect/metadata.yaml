@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 name: node_branch_deploy_command_effect
 version: "1.0.0"
-description: "Effect that builds and runs the deploy agent trigger for a branch deploy command."
+description: "Effect that signs the deploy agent rebuild command for a branch deploy and publishes it on the bus."
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:
   onex.nodes:
@@ -14,7 +14,7 @@ capabilities:
   requires_repo: false
   requires_secrets: true
   requires_docker: false
-  side_effect_class: subprocess
+  side_effect_class: external_io
 dependencies:
   - "omnibase_core>=0.39.0"
   - "pydantic>=2.0"
