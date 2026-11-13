@@ -3,27 +3,30 @@
 # written in code. Loaded and checked by models/model_tui_design.py.
 
 # Colour tokens. Every widget and every line of output uses these by name.
-# Midnight neon (operator choice, 2026-11-13): deep navy, electric violet and cyan.
+# Yellow-led warm (operator choice, 2026-11-13): warm yellow for borders, tabs,
+# the row cursor and buttons; teal for the summary and keys; violet highlights;
+# green for success; cyan for information; on warm charcoal.
 theme:
   name: onex
   dark: true
-  primary: "#7c5cff"
-  secondary: "#22d3ee"
-  accent: "#c084fc"
-  success: "#34d399"
-  warning: "#fbbf24"
-  error: "#fb7185"
-  foreground: "#e2e8f0"
-  muted: "#7c88a8"
-  background: "#0b1020"
-  surface: "#10172e"
-  panel: "#141c38"
+  primary: "#f2c14e"
+  secondary: "#2ec4b6"
+  accent: "#b48ead"
+  success: "#8ac926"
+  info: "#56c7dc"
+  warning: "#f4a259"
+  error: "#e76f51"
+  foreground: "#efe7dc"
+  muted: "#a39686"
+  background: "#1c1915"
+  surface: "#241f1a"
+  panel: "#2c2620"
 
-# Left-to-right colour ramps for the banner words.
+# Left-to-right colour ramps for the banner words, from the same five colours.
 gradients:
-  cool: ["#00d2ff", "#3a9bff", "#6a7bff", "#9a5cf5", "#c64cec", "#ff4fa3"]
-  warm: ["#ffd166", "#ffb347", "#ff8c5a", "#ff6b81", "#ff4fa3"]
-  fresh: ["#3ddc97", "#2fd4c4", "#22c3ee", "#3a9bff"]
+  cool: ["#56c7dc", "#2ec4b6", "#8ac926", "#f2c14e"]
+  warm: ["#f2c14e", "#f4a259", "#d08c9a", "#b48ead"]
+  fresh: ["#8ac926", "#2ec4b6", "#56c7dc", "#b48ead"]
 
 # Three-row block letters for the banner words.
 font:
@@ -148,13 +151,13 @@ model_table:
   status_pill: "●"
   status:
     ready: {text: READY, colour: success}
-    listed: {text: AVAILABLE, colour: secondary}
+    listed: {text: AVAILABLE, colour: info}
     untested: {text: UNTESTED, colour: warning}
     failed: {text: FAILED, colour: error}
     unavailable: {text: UNAVAILABLE, colour: muted}
   deployment:
     local: {text: Local, colour: success}
-    cloud: {text: Cloud, colour: secondary}
+    cloud: {text: Cloud, colour: info}
   # Capability badges: a supported capability is a coloured badge; unknown is dim.
   capability_colours: [primary, secondary, success, accent, warning, error]
   filters: [all, local, cloud]
@@ -243,6 +246,12 @@ words:
   # /config: what is set up already, shown before anything new is ticked.
   basket_current: "Set up now: {models}. Tick more to add them, or Esc to keep these."
   setting_up: "Setting up {provider} · {models} …"
+  also_added: "also added {models}"
+  adding_failed: "adding {models}: {reason}"
+  setup_failed: "setup failed: {reason}"
+  # A tab stays open while its action runs, then shows how it went.
+  working: "working…"
+  tab_loading: "opening {tab}…"
   # The one line under the tabs: how many models, on how many servers, and the first.
   summary: "{dot} {models} models · {servers} servers · {first}"
   summary_auto: "Auto picks per task"

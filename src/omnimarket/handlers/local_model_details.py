@@ -192,6 +192,12 @@ def read_local_details(
     timeout = float(settings["timeout_seconds"])
     wanted = list(dict.fromkeys(models))
     base = base.rstrip("/")
+    # The Messages check needs nothing else, so it runs while the rest is read.
+    probe = ThreadPoolExecutor(max_workers=1)
+    native_answer = (
+        probe.submit(speaks_anthropic_messages, base, post_status) if wanted else None
+    )
+    probe.shutdown(wait=False)
     get = get_json or _get_json
     listed = _listed(base, get, timeout)
     found = {model: _from_list(listed.get(model)) for model in wanted}
@@ -212,7 +218,7 @@ def read_local_details(
             for model, page in zip(ask, pages, strict=True):
                 if page is not None:
                     found[model] = page
-    native = speaks_anthropic_messages(base, post_status) if wanted else None
+    native = native_answer.result() if native_answer is not None else None
     return {
         model: said.model_copy(update={"native_messages": native})
         for model, said in found.items()

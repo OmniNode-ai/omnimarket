@@ -44,6 +44,9 @@ capabilities:
 local_servers:
   timeout_seconds: 3
   max_parallel: 8
+  # The TUI remembers what a server said for this long, so moving between
+  # /config, /model and /delegation does not ask every server again.
+  remember_seconds: 600
   # Ollama: POST <base><show_path> {"model": id}. The answer names the model's
   # architecture; its context is model_info["<architecture><context_suffix>"].
   ollama:

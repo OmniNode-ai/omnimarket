@@ -37,6 +37,8 @@ class ModelTuiTheme(BaseModel):
     secondary: str
     accent: str
     success: str
+    #: Information that is neither good nor bad: a cloud model, an available one.
+    info: str
     warning: str
     error: str
     foreground: str
@@ -50,6 +52,7 @@ class ModelTuiTheme(BaseModel):
         "secondary",
         "accent",
         "success",
+        "info",
         "warning",
         "error",
         "foreground",

@@ -32,7 +32,7 @@ from textual import on
 from textual.app import App, ComposeResult, SuspendNotSupported
 from textual.binding import Binding, BindingType
 from textual.containers import Horizontal, Vertical
-from textual.screen import ModalScreen
+from textual.screen import ModalScreen, Screen
 from textual.theme import Theme
 from textual.timer import Timer
 from textual.widgets import (
@@ -55,6 +55,7 @@ from omnimarket.handlers.local_model_details import read_local_details
 from omnimarket.handlers.model_catalog import (
     EMPTY_INDEX,
     ModelsDevIndex,
+    catalog_config,
     catalog_entry,
     load_models_dev,
     stored_entries,
@@ -476,6 +477,11 @@ def _tab_strip(current: str) -> Tabs:
 
 
 def _summary(selection: ModelTuiSelection) -> Static:
+    """The one line under the tabs, as the widget each tab shows it in."""
+    return Static(_summary_text(selection), id="summary", classes="summary")
+
+
+def _summary_text(selection: ModelTuiSelection) -> Text:
     """The one line under the tabs: how many models, on how many servers, the first."""
     servers = len({e.server_url for e in selection.entries if e.server_url})
     first = (
@@ -493,7 +499,7 @@ def _summary(selection: ModelTuiSelection) -> Static:
         servers=servers,
         first=first,
     )
-    return Static(Text(line, style=_style("secondary", "bold")), classes="summary")
+    return Text(line, style=_style("secondary", "bold"))
 
 
 def _base(url: str) -> str:
@@ -523,17 +529,71 @@ class _TabbedScreen(ModalScreen[_ResultT]):
         if target and target != self.TAB:
             self._leave(target)
 
+    #: The id of the line this tab shows its notes and outcomes in.
+    NOTE: ClassVar[str] = ""
+    _busy: bool = False
+
     def _leave(self, target: str) -> None:
+        """Swap this tab for another; this one stays up while the next is read."""
         app = self.app
-        self.dismiss(cast(_ResultT, None))
-        if isinstance(app, OnexTui):
-            app.call_later(app.open_tab, target)
+        if not isinstance(app, OnexTui):
+            return
+        label = next(
+            (t.label.strip() for t in tui_design().tabs if t.id == target), target
+        )
+        self._note(_say("tab_loading", tab=label))
+        app.run_worker(app.switch_tab(target), exclusive=True, group="tabs")
+
+    def _note(self, text: Text | str, style: str = "muted") -> None:
+        line = text if isinstance(text, Text) else Text(text, style=_style(style))
+        self.query_one(self.NOTE, Static).update(line)
+
+    def _run(self, action: Callable[[OnexTui], Awaitable[Text | str | None]]) -> None:
+        """Run an action while the tab stays open, then show how it went and
+        what is set up now (OMN-23413: only Esc closes a tab)."""
+        app = self.app
+        if self._busy or not isinstance(app, OnexTui):
+            return
+        self._busy = True
+        self._note(_say("working"))
+
+        async def go() -> None:
+            try:
+                outcome = await action(app)
+                self._selection = await app.load_selection()
+                self._show_selection()
+                if outcome is not None:
+                    self._note(outcome)
+            finally:
+                self._busy = False
+
+        self.run_worker(go(), exclusive=True, group="tab-action")
+
+    _selection: ModelTuiSelection
+
+    def refresh_selection(self) -> None:
+        """Read the setup again in the background and show it (a tab opened
+        from the setup as last read)."""
+        app = self.app
+        if not isinstance(app, OnexTui):
+            return
+
+        async def go() -> None:
+            self._selection = await app.load_selection()
+            self._show_selection()
+
+        self.run_worker(go(), exclusive=True, group="tab-refresh")
+
+    def _show_selection(self) -> None:
+        """Show ``self._selection`` again after an action changed it."""
+        self.query_one("#summary", Static).update(_summary_text(self._selection))
 
 
-class SetupScreen(_TabbedScreen[tuple[ModelTuiSetupChoice, ...] | None]):
+class SetupScreen(_TabbedScreen[None]):
     """Provider, then its key or URL, then any number of its models; repeat per provider."""
 
     TAB = "config"
+    NOTE = "#note"
 
     CSS = """
     SetupScreen { align: center middle; }
@@ -810,7 +870,9 @@ class SetupScreen(_TabbedScreen[tuple[ModelTuiSetupChoice, ...] | None]):
             self.action_save()
 
     def action_save(self) -> None:
-        """Save what is ticked or added; refuse with nothing chosen."""
+        """Set up what is ticked or added, here, and stay; refuse with nothing chosen."""
+        if self._busy:
+            return
         self._add_current()
         if not self._basket:
             warning = tui_design().delegation.nothing_ticked
@@ -819,7 +881,14 @@ class SetupScreen(_TabbedScreen[tuple[ModelTuiSetupChoice, ...] | None]):
             )
             self.app.notify(warning, severity="warning")
             return
-        self.dismiss(tuple(self._basket.values()))
+        choices = tuple(self._basket.values())
+        self._basket = {}
+        self._run(lambda app: app.apply_setup(choices))
+
+    def _show_selection(self) -> None:
+        super()._show_selection()
+        self.query_one("#found", ModelTable).set_ticked(())
+        self.query_one("#basket", Static).update(self._current_line())
 
     def action_cancel(self) -> None:
         self.dismiss(None)
@@ -966,7 +1035,7 @@ class ModelTuiDelegationChoice(BaseModel):
     commands: tuple[tuple[str, ...], ...]
 
 
-class DelegationScreen(_TabbedScreen[ModelTuiDelegationChoice | None]):
+class DelegationScreen(_TabbedScreen[None]):
     """Your selected models and one switch; nothing is typed (OMN-23413 AC25)."""
 
     CSS = """
@@ -984,6 +1053,7 @@ class DelegationScreen(_TabbedScreen[ModelTuiDelegationChoice | None]):
     #dbuttons { height: 3; dock: bottom; align-horizontal: right; }
     """
     TAB = "delegation"
+    NOTE = "#dnote"
     BINDINGS = [
         Binding("escape", "cancel", "Cancel"),
         Binding("ctrl+s", "save", "Save", priority=True),
@@ -1117,13 +1187,18 @@ class DelegationScreen(_TabbedScreen[ModelTuiDelegationChoice | None]):
         )
 
     def action_save(self) -> None:
+        """Switch here and stay; the outcome shows on this tab."""
         choice = self._choice()
         if isinstance(choice, str):
             self.query_one("#dnote", Static).update(
                 Text(choice, style=_style("warning"))
             )
             return
-        self.dismiss(choice)
+        self._run(lambda app: app.apply_delegation(choice))
+
+    def _show_selection(self) -> None:
+        super()._show_selection()
+        self.query_one("#selected", ModelTable).set_entries(self._selection.entries)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "dcancel":
@@ -1135,10 +1210,11 @@ class DelegationScreen(_TabbedScreen[ModelTuiDelegationChoice | None]):
         self.dismiss(None)
 
 
-class ModelPickScreen(_TabbedScreen[tuple[str, str, str] | None]):
+class ModelPickScreen(_TabbedScreen[None]):
     """Auto, or the model every task tries first, from the one model table."""
 
     TAB = "model"
+    NOTE = "#pnote"
 
     CSS = """
     ModelPickScreen { align: center middle; }
@@ -1194,6 +1270,22 @@ class ModelPickScreen(_TabbedScreen[tuple[str, str, str] | None]):
         table = self.query_one("#models", ModelTable)
         table.set_entries(self._selection.entries)
         table.query_one("DataTable").focus()
+        if not self._selection.entries:
+            self._note(_say("nothing_set_up"), "warning")
+
+    def _now(self) -> Text:
+        first = self._selection.first
+        current = (
+            _first_text(first[0], first[1], self._selection.first_url)
+            if first
+            else tui_design().model_table.auto_label
+        )
+        return Text(_say("model_now", current=current), style=_style("success"))
+
+    def _show_selection(self) -> None:
+        super()._show_selection()
+        self.query_one("#models", ModelTable).set_entries(self._selection.entries)
+        self.query_one("#pnow", Static).update(self._now())
 
     @on(ModelTable.Chosen)
     def _chosen(self, event: ModelTable.Chosen) -> None:
@@ -1210,14 +1302,15 @@ class ModelPickScreen(_TabbedScreen[tuple[str, str, str] | None]):
                 )
             )
             return
-        self.dismiss((entry.provider, entry.model_id, entry.server_url or ""))
+        picked = (entry.provider, entry.model_id, entry.server_url or "")
+        self._run(lambda app: app.apply_model(picked))
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "auto":
             self.action_auto()
 
     def action_auto(self) -> None:
-        self.dismiss(("", "", ""))
+        self._run(lambda app: app.apply_model(("", "", "")))
 
     @on(DataTable.RowHighlighted)
     def _moved(self) -> None:
@@ -1244,10 +1337,8 @@ class ModelPickScreen(_TabbedScreen[tuple[str, str, str] | None]):
                 )
             )
             return
-        app = self.app
-        self.dismiss(None)
-        if isinstance(app, OnexTui):
-            app.call_later(app.remove_model, entry)
+        self._removing = None
+        self._run(lambda app: app.remove_model(entry))
 
     def action_cancel(self) -> None:
         self.dismiss(None)
@@ -1374,6 +1465,15 @@ class OnexTui(App[int]):
         self._ticker: Timer | None = None
         self._history: list[str] = []
         self._recall = 0
+        #: The last failed setup step's line, for the open /config to show.
+        self._last_line: Text | str | None = None
+        #: The setup as last read, so a tab opens at once and refreshes after.
+        self._selection: ModelTuiSelection | None = None
+        #: What each server said, by (URL, models), with when it was asked.
+        self._said: dict[
+            tuple[str, tuple[str, ...]],
+            tuple[float, dict[str, ModelLocalServerDetails]],
+        ] = {}
 
     def compose(self) -> ComposeResult:
         yield RichLog(id="output", wrap=True, markup=False, highlight=False)
@@ -1437,10 +1537,20 @@ class OnexTui(App[int]):
             ]
         else:
             parts += [sep, (_say("status_hint"), _style("muted"))]
-        self.query_one("#status", Static).update(Text.assemble(*parts))
+        self._main().query_one("#status", Static).update(Text.assemble(*parts))
 
-    def _write(self, text: str | Text) -> None:
-        self.query_one("#output", RichLog).write(text)
+    def _main(self) -> Screen[object]:
+        """The main screen: its log and status bar, even while a tab is open."""
+        return cast(Screen[object], self.screen_stack[0])
+
+    def _emit(self, line: str) -> None:
+        """A streamed command's output line, into the main log."""
+        self._write(line)
+
+    def _write(self, text: str | Text) -> Text | str:
+        """Write one line to the main log, and return it so a tab can show it too."""
+        self._main().query_one("#output", RichLog).write(text)
+        return text
 
     def _matches(self, query: str) -> list[ModelTuiCommand]:
         words = query.lower().split()
@@ -1634,15 +1744,53 @@ class OnexTui(App[int]):
             except SuspendNotSupported:  # headless or a terminal that cannot hand over
                 code = self._runner.in_terminal(argv)
         else:
-            code = await self._runner.stream(argv, self._write)
+            code = await self._runner.stream(argv, self._emit)
         if code:
             self._write(_say("exit_code", code=code))
         if entry.path[:1] in (("models",), ("claude",)):
             self.run_worker(self._refresh_status(), exclusive=True, group="status")
 
     async def open_tab(self, name: str) -> None:
-        """Open /config, /model or /delegation, as Tab on one of them asks."""
+        """Open /config, /model or /delegation from the main screen."""
         await self._shortcut(name)
+
+    async def tab_screen(self, name: str) -> Screen[object]:
+        """The /config, /model or /delegation screen. After the first read it
+        opens at once from the setup as last read, then refreshes it."""
+        cached = self._selection
+        selection = cached or await self.load_selection()
+        screen = self._build_tab(name, selection)
+        if cached is not None:
+            self.call_after_refresh(self._refresh_tab, screen)
+        return screen
+
+    def _refresh_tab(self, screen: Screen[object]) -> None:
+        if isinstance(screen, _TabbedScreen):
+            screen.refresh_selection()
+
+    def _build_tab(self, name: str, selection: ModelTuiSelection) -> Screen[object]:
+        if name == "config":
+            return cast(
+                Screen[object],
+                SetupScreen(
+                    self._runner,
+                    self._list_models,
+                    self._load_index,
+                    self._read_server,
+                    selection,
+                ),
+            )
+        if name == "delegation":
+            return cast(
+                Screen[object], DelegationScreen(selection, self._status.gateway)
+            )
+        return cast(Screen[object], ModelPickScreen(selection))
+
+    async def switch_tab(self, name: str) -> None:
+        """Swap the open tab for another: the next one is read first, so the
+        main screen never shows between them (OMN-23413)."""
+        screen = await self.tab_screen(name)
+        await self.switch_screen(screen)
 
     async def _shortcut(self, action: str) -> None:
         if action == "quit":
@@ -1651,30 +1799,15 @@ class OnexTui(App[int]):
             self._write(Text(tui_design().help, style=_style("foreground")))
         elif action == "clear":
             self.query_one("#output", RichLog).clear()
-        elif action == "config":
-            selection = await self._load_selection()
-            self.push_screen(
-                SetupScreen(
-                    self._runner,
-                    self._list_models,
-                    self._load_index,
-                    self._read_server,
-                    selection,
-                ),
-                self._apply_setup,
-            )
-        elif action == "model":
-            await self._pick_model()
-        elif action == "delegation":
-            selection = await self._load_selection()
-            self.push_screen(
-                DelegationScreen(selection, self._status.gateway),
-                self._apply_delegation,
-            )
+        elif action in ("config", "model", "delegation"):
+            # A tab stays open until Esc; its actions run while it is open.
+            await self.push_screen(await self.tab_screen(action))
 
-    async def _apply_setup(
+    async def apply_setup(
         self, choices: tuple[ModelTuiSetupChoice, ...] | None
-    ) -> None:
+    ) -> Text | str | None:
+        """Set up each choice; every line goes to the log, the last is returned."""
+        last: Text | str | None = None
         for choice in choices or ():
             models = ", ".join(choice.models)
             self._write(
@@ -1688,26 +1821,31 @@ class OnexTui(App[int]):
                 (*choice.argv(Path.cwd()), "--json"), stdin=stdin
             )
             ok = self._write_setup_report(_setup_report(out), code, err)
+            last = self._last_line or last
             ready = list(choice.models[:1])
             more = choice.more_models_argv()
             if ok and more:
                 code, out, err = await self._runner.capture(more)
                 extra = ", ".join(choice.models[1:])
-                self._write(
+                last = self._write(
                     Text(
-                        f"  {tui_design().glyphs.done} also added {extra}",
+                        f"  {tui_design().glyphs.done} "
+                        + _say("also_added", models=extra),
                         style=_style("success"),
                     )
                     if not code
                     else Text(
-                        f"  {tui_design().glyphs.failed} adding {extra}: {_last_line(out, err)}",
+                        f"  {tui_design().glyphs.failed} "
+                        + _say(
+                            "adding_failed", models=extra, reason=_last_line(out, err)
+                        ),
                         style=_style("error"),
                     )
                 )
                 if not code:
                     ready = list(choice.models)
             if ok:
-                self._write(
+                last = self._write(
                     Text(
                         _say(
                             "setup_ready",
@@ -1717,17 +1855,20 @@ class OnexTui(App[int]):
                         style=_style("success", "bold"),
                     )
                 )
-        self.run_worker(self._refresh_status(), exclusive=True, group="status")
+        await self._refresh_status()
+        return last
 
     def _write_setup_report(
         self, report: dict[str, object] | None, code: int, err: str
     ) -> bool:
         """One line per setup step: done, unchanged, or failed with its fix."""
         steps = report.get("observations") if report else None
+        self._last_line = None
         if not isinstance(steps, list):
-            self._write(
+            self._last_line = self._write(
                 Text(
-                    f"  {tui_design().glyphs.failed} setup failed: {_last_line('', err)}",
+                    f"  {tui_design().glyphs.failed} "
+                    + _say("setup_failed", reason=_last_line("", err)),
                     style=_style("error"),
                 )
             )
@@ -1749,7 +1890,7 @@ class OnexTui(App[int]):
             else:
                 ok = False
                 fix = step.get("fix")
-                self._write(
+                self._last_line = self._write(
                     Text(
                         f"  {tui_design().glyphs.failed} {name}{detail}"
                         + (f": {fix}" if fix else ""),
@@ -1758,7 +1899,7 @@ class OnexTui(App[int]):
                 )
         return ok
 
-    async def _load_selection(self) -> ModelTuiSelection:
+    async def load_selection(self) -> ModelTuiSelection:
         """The selected models, read through the CLI's own JSON (no second engine)."""
         (_, listed, _), (_, connected, _) = await asyncio.gather(
             self._runner.capture(("models", "list", "--json")),
@@ -1771,12 +1912,7 @@ class OnexTui(App[int]):
         index, *answers = await asyncio.gather(
             asyncio.to_thread(_safe_index, self._load_index),
             *(
-                asyncio.to_thread(
-                    _safe_server,
-                    self._read_server,
-                    base,
-                    tuple(model for _, model in pairs),
-                )
+                self._server_said(base, tuple(model for _, model in pairs))
                 for base, pairs in by_server.items()
             ),
         )
@@ -1786,7 +1922,7 @@ class OnexTui(App[int]):
             for provider, model in pairs
             if model in said
         }
-        return selected_models(
+        self._selection = selected_models(
             rows,
             [c for c in connections if isinstance(c, dict)]
             if isinstance(connections, list)
@@ -1794,18 +1930,37 @@ class OnexTui(App[int]):
             index,
             servers,
         )
+        return self._selection
 
-    async def _apply_delegation(self, choice: ModelTuiDelegationChoice | None) -> None:
+    async def _server_said(
+        self, base: str, models: tuple[str, ...]
+    ) -> dict[str, ModelLocalServerDetails]:
+        """What a server says about its models, asked again only after a while."""
+        key = (base, models)
+        remembered = self._said.get(key)
+        keep = float(catalog_config()["local_servers"]["remember_seconds"])
+        if remembered is not None and time.monotonic() - remembered[0] < keep:
+            return remembered[1]
+        said = await asyncio.to_thread(_safe_server, self._read_server, base, models)
+        if said:  # an unreachable server is asked again next time
+            self._said[key] = (time.monotonic(), said)
+        return said
+
+    async def apply_delegation(
+        self, choice: ModelTuiDelegationChoice | None
+    ) -> Text | str | None:
+        """Run the switch's commands; the outcome goes to the log and is returned."""
         if choice is None:
-            return
+            return None
         glyphs = tui_design().glyphs
+        outcome: Text | str | None = None
         words = tui_design().delegation
         state = "on" if choice.on else "off"
         for argv in choice.commands:
             code, out, err = await self._runner.capture(argv)
             if code:
                 reason = _stopped_by(out, err)
-                self._write(
+                outcome = self._write(
                     Text(
                         f"{glyphs.failed} "
                         + words.not_switched.format(state=state, reason=reason),
@@ -1820,18 +1975,14 @@ class OnexTui(App[int]):
                 if choice.on
                 else words.switched_off
             )
-            self._write(Text(f"{glyphs.done} {done}", style=_style("success")))
-        self.run_worker(self._refresh_status(), exclusive=True, group="status")
+            outcome = self._write(
+                Text(f"{glyphs.done} {done}", style=_style("success"))
+            )
+        await self._refresh_status()
+        return outcome
 
-    async def _pick_model(self) -> None:
-        selection = await self._load_selection()
-        if not selection.entries:
-            self._write(_say("nothing_set_up"))
-            return
-        self.push_screen(ModelPickScreen(selection), self._apply_model)
-
-    async def remove_model(self, entry: ModelCatalogEntry) -> None:
-        """Remove one model through the CLI, then show /model again with what is left."""
+    async def remove_model(self, entry: ModelCatalogEntry) -> Text | str:
+        """Remove one model through the CLI; the outcome goes to the log and is returned."""
         argv = (
             "models",
             "remove",
@@ -1843,7 +1994,7 @@ class OnexTui(App[int]):
         code, out, err = await self._runner.capture(argv)
         glyphs = tui_design().glyphs
         named = _on_server(entry.model_id, entry.server_url)
-        self._write(
+        outcome = self._write(
             Text(
                 f"{glyphs.done} "
                 + _say("removed", model=named, provider=_label(entry.provider)),
@@ -1856,12 +2007,11 @@ class OnexTui(App[int]):
                 style=_style("error"),
             )
         )
-        self.run_worker(self._refresh_status(), exclusive=True, group="status")
-        await self._pick_model()
+        await self._refresh_status()
+        return outcome
 
-    async def _apply_model(self, picked: tuple[str, str, str] | None) -> None:
-        if picked is None:
-            return
+    async def apply_model(self, picked: tuple[str, str, str]) -> Text | str:
+        """Make a model first, or Auto; the outcome goes to the log and is returned."""
         provider, model, url = picked
         auto = not provider
         argv: tuple[str, ...] = (
@@ -1878,7 +2028,7 @@ class OnexTui(App[int]):
                 "now_first", model=_on_server(model, url), provider=_label(provider)
             )
         )
-        self._write(
+        outcome = self._write(
             Text(f"{glyphs.done} {chosen}", style=_style("success"))
             if not code
             else Text(
@@ -1886,7 +2036,8 @@ class OnexTui(App[int]):
                 style=_style("error"),
             )
         )
-        self.run_worker(self._refresh_status(), exclusive=True, group="status")
+        await self._refresh_status()
+        return outcome
 
     async def _delegate(self, task: str) -> None:
         self._write(
@@ -1927,7 +2078,7 @@ class OnexTui(App[int]):
                 _say("run_saved", saved=f"{float(metrics['cost_savings_usd']):.4f}")
             )
         run_id = str(document.get("run_id") or "") if document else ""
-        self.query_one("#output", RichLog).write(
+        self._main().query_one("#output", RichLog).write(
             Markdown(str(result["response"]).strip())
         )
         self._write(

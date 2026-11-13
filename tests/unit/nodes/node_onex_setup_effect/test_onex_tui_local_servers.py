@@ -34,6 +34,7 @@ from tests.unit.nodes.node_onex_setup_effect.test_onex_tui import (
     _Runner,
     _status,
     _type,
+    _wait_for_models,
 )
 
 pytestmark = pytest.mark.unit
@@ -391,3 +392,217 @@ async def test_moving_to_another_row_cancels_a_pending_remove() -> None:
         await pilot.press("r")  # asks again; it does not remove
         await pilot.pause()
         assert not [c for c in runner.calls if c[:2] == ("models", "remove")]
+
+
+# A tab stays open until Esc (OMN-23413, operator 2026-11-13):
+#   W1  Enter on /model closed the tab; the outcome went to the hidden main log.
+#   W2  A (Auto) closed the tab.
+#   W3  a confirmed remove closed the tab.
+#   W4  Save on /delegation closed the tab.
+#   W5  Save on /config closed the tab.
+#   T1  a click on another tab closed this one and showed the main screen while
+#       the next tab's setup was read.
+#   E1  Esc still closes the tab, back to the main screen.
+
+
+class _Slow(_Runner):
+    """Reading the setup takes a while, as real CLI calls and server probes do."""
+
+    async def capture(
+        self, argv: tuple[str, ...], stdin: str | None = None
+    ) -> tuple[int, str, str]:
+        import asyncio
+
+        if argv[:2] == ("models", "list"):
+            await asyncio.sleep(0.3)
+        return await super().capture(argv, stdin)
+
+
+async def _settle(pilot, times: int = 8) -> None:
+    for _ in range(times):
+        await pilot.pause()
+
+
+async def test_choosing_a_first_model_keeps_model_open_and_shows_the_outcome() -> None:
+    """W1."""
+    runner = _Runner([], by_command={("models", "list"): _rows()})
+    app = _app(runner)
+    async with app.run_test(size=(170, 46)) as pilot:
+        await _open(pilot, "/model")
+        await pilot.press("enter")
+        await _settle(pilot)
+        assert isinstance(app.screen, ModelPickScreen)
+        assert [c for c in runner.calls if c[:2] == ("models", "first")]
+        assert "is now tried first" in str(app.screen.query_one("#pnote").render())
+
+
+async def test_auto_keeps_model_open() -> None:
+    """W2."""
+    runner = _Runner([], by_command={("models", "list"): _rows(first_url=_LLAMA)})
+    app = _app(runner)
+    async with app.run_test(size=(170, 46)) as pilot:
+        await _open(pilot, "/model")
+        await pilot.press("a")
+        await _settle(pilot)
+        assert isinstance(app.screen, ModelPickScreen)
+        assert ("models", "first", "--clear") in runner.calls
+
+
+async def test_a_confirmed_remove_keeps_model_open_and_shows_the_outcome() -> None:
+    """W3."""
+    runner = _Runner([], by_command={("models", "list"): _rows()})
+    app = _app(runner)
+    async with app.run_test(size=(170, 46)) as pilot:
+        await _remove_ready(pilot, app, _LLAMA)
+        await pilot.press("r")
+        await pilot.pause()
+        await pilot.press("r")
+        await _settle(pilot)
+        assert isinstance(app.screen, ModelPickScreen)
+        assert "removed" in str(app.screen.query_one("#pnote").render())
+
+
+async def test_saving_delegation_keeps_delegation_open_and_shows_the_outcome() -> None:
+    """W4."""
+    runner = _Runner(
+        [],
+        by_command={
+            ("models", "list"): _rows(),
+            ("models", "connections"): json.dumps({"connections": []}),
+        },
+    )
+    app = _app(runner)
+    async with app.run_test(size=(170, 46)) as pilot:
+        await _open(pilot, "/delegation")
+        app.screen.query_one("#on").value = True
+        await pilot.press("ctrl+s")
+        await _settle(pilot)
+        assert isinstance(app.screen, DelegationScreen)
+        assert [c for c in runner.calls if c[:2] == ("hooks", "enable")]
+        assert "delegation is on" in str(app.screen.query_one("#dnote").render())
+
+
+async def test_saving_config_keeps_config_open_and_shows_the_outcome() -> None:
+    """W5."""
+    from omnimarket.nodes.node_onex_setup_effect.cli_tui import SetupScreen
+
+    found = json.dumps({"status": "ready", "models": ["llama3.2"]})
+    report = json.dumps(
+        {"observations": [{"step": "models", "status": "success", "changed": True}]}
+    )
+    runner = _Runner(
+        [],
+        by_command={
+            ("models", "list"): _rows(),
+            ("models", "discover"): found,
+            ("setup", "--no-interactive"): report,
+        },
+    )
+    app = _app(runner)
+    async with app.run_test(size=(170, 46)) as pilot:
+        await _open(pilot, "/config")
+        app.screen.query_one("#provider").value = "local"
+        await _wait_for_models(pilot)
+        table = app.screen.query_one("#found")
+        table.set_ticked([entry_key(e) for e in table.entries])
+        await pilot.press("ctrl+s")
+        await _settle(pilot)
+        assert isinstance(app.screen, SetupScreen)
+        assert [c for c in runner.calls if c[0] == "setup"]
+        assert "Ready" in str(app.screen.query_one("#note").render())
+
+
+async def test_clicking_another_tab_never_shows_the_main_screen() -> None:
+    """T1: the next tab is read while this one stays up, then swapped in."""
+    from textual.widgets import Tabs
+
+    from omnimarket.nodes.node_onex_setup_effect.cli_tui import SetupScreen
+
+    runner = _Slow([], by_command={("models", "list"): _rows()})
+    app = _app(runner)
+    async with app.run_test(size=(170, 46)) as pilot:
+        await _type(pilot, "/model")
+        await pilot.press("enter")
+        await _settle(pilot, 20)
+        assert isinstance(app.screen, ModelPickScreen)
+        app.screen.query_one(Tabs).active = "tab-config"
+        for _ in range(40):
+            await pilot.pause(0.05)
+            assert len(app.screen_stack) >= 2, "the main screen showed"
+            if isinstance(app.screen, SetupScreen):
+                break
+        assert isinstance(app.screen, SetupScreen)
+        assert len(app.screen_stack) == 2  # swapped, not stacked
+
+
+async def test_escape_closes_a_tab_back_to_the_main_screen() -> None:
+    """E1."""
+    runner = _Runner([], by_command={("models", "list"): _rows()})
+    app = _app(runner)
+    async with app.run_test(size=(170, 46)) as pilot:
+        await _open(pilot, "/model")
+        await pilot.press("escape")
+        await pilot.pause()
+        assert len(app.screen_stack) == 1
+
+
+# Opening a tab took about 9 s in the operator's lab, measured 2026-11-13: two
+# onex CLI reads (2 s) and every server probed again (7 s for llama.cpp):
+#   K1  every tab open asked every server again.
+#   K2  every tab open waited for the full read before it showed.
+#   K3  (control) a server that did not answer must be asked again.
+
+
+async def test_moving_between_tabs_does_not_ask_the_servers_again() -> None:
+    """K1."""
+    asked: list[str] = []
+
+    def counting(base: str, models: tuple[str, ...]):
+        asked.append(base)
+        return _read_server(base, models)
+
+    runner = _Runner([], by_command={("models", "list"): _rows()})
+    app = OnexTui(root=_root, runner=runner, load_status=_status, read_server=counting)
+    async with app.run_test(size=(170, 46)) as pilot:
+        await _open(pilot, "/model")
+        first = sorted(asked)
+        assert first == sorted([_VLLM, _LLAMA, _OLLAMA])
+        await pilot.press("tab")  # to /delegation
+        await _settle(pilot, 20)
+        assert isinstance(app.screen, DelegationScreen)
+        assert sorted(asked) == first  # no server was asked twice
+
+
+async def test_a_tab_opens_from_the_last_read_setup_before_reading_again() -> None:
+    """K2: the next tab shows while its setup is still being read again."""
+    runner = _Slow([], by_command={("models", "list"): _rows()})
+    app = _app(runner)
+    async with app.run_test(size=(170, 46)) as pilot:
+        await _type(pilot, "/model")
+        await pilot.press("enter")
+        await _settle(pilot, 20)
+        assert isinstance(app.screen, ModelPickScreen)
+        reads = runner.calls.count(("models", "list", "--json"))
+        await pilot.press("tab")
+        await pilot.pause(0.1)  # well inside the 0.3 s a read takes
+        assert isinstance(app.screen, DelegationScreen)
+        assert app.screen.query_one("#selected").query_one(DataTable).row_count == 3
+        await pilot.pause(0.5)
+        assert runner.calls.count(("models", "list", "--json")) == reads + 1
+
+
+async def test_a_server_that_did_not_answer_is_asked_again() -> None:
+    """K3."""
+    asked: list[str] = []
+
+    def silent(base: str, models: tuple[str, ...]):
+        asked.append(base)
+        return {}
+
+    runner = _Runner([], by_command={("models", "list"): _rows()})
+    app = OnexTui(root=_root, runner=runner, load_status=_status, read_server=silent)
+    async with app.run_test(size=(170, 46)) as pilot:
+        await _open(pilot, "/model")
+        await pilot.press("tab")
+        await _settle(pilot, 20)
+        assert asked.count(_VLLM) == 2

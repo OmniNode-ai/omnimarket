@@ -98,7 +98,7 @@ async def test_a_typed_key_never_reaches_the_screen_or_the_pane() -> None:
         await _focus(pilot, app, "provider")
         await pilot.press("enter")
         await pilot.pause()
-        # Gemini, Ollama (selected), OpenAI, OpenRouter: two steps down; the
+        # Gemini (first), OpenAI, OpenRouter, Local model: two steps down; the
         # list wraps, so more presses would come back round.
         await pilot.press("down", "down")
         await pilot.press("enter")
@@ -111,7 +111,11 @@ async def test_a_typed_key_never_reaches_the_screen_or_the_pane() -> None:
         assert app.focused.id == "mt-rows"  # the list takes the keyboard on load
         await pilot.press("space")  # tick the highlighted model
         await pilot.press("ctrl+s")
-        await pilot.pause()
+        for _ in range(6):
+            await pilot.pause()
+        # The tab stays open after Save; close it, so the scans read the
+        # main screen and its pane as well as what the tab showed.
+        await pilot.press("escape")
         await pilot.pause()
 
         setups = [call for call in runner.calls if call[0] == "setup"]

@@ -224,8 +224,18 @@ def _app(runner: _Runner) -> OnexTui:
     return OnexTui(root=_root, runner=runner, load_status=_status)
 
 
+_READS = {("models", "list"), ("models", "connections"), ("claude", "status")}
+
+
+def _actions(runner: _Runner) -> list[tuple[str, ...]]:
+    """The commands a test's actions ran, without the reads a tab reloads with."""
+    return [call for call in runner.calls if call[:2] not in _READS]
+
+
 def _log_text(app: OnexTui) -> str:
-    return "\n".join(str(line) for line in app.query_one("#output").lines)
+    """The main log, read from the main screen even while a tab is open."""
+    main = app.screen_stack[0]
+    return "\n".join(str(line) for line in main.query_one("#output").lines)
 
 
 async def test_slash_opens_a_filtered_palette_and_escape_closes_it() -> None:
@@ -482,9 +492,9 @@ async def test_config_finds_server_models_and_saves_the_ticked_ones(
         assert [e.model_id for e in _found(app).entries] == ["llama3.2", "qwen3:8b"]
         _tick(app, "llama3.2", "qwen3:8b")
         await _press(pilot, app, "save")
-        await pilot.pause()
-        await pilot.pause()
-        assert runner.calls[-2] == (
+        for _ in range(6):
+            await pilot.pause()
+        assert _actions(runner)[-2] == (
             "setup",
             "--no-interactive",
             "--yes",
@@ -498,7 +508,7 @@ async def test_config_finds_server_models_and_saves_the_ticked_ones(
             _OLLAMA_DEFAULT,
             "--json",
         )
-        assert runner.calls[-1] == (
+        assert _actions(runner)[-1] == (
             "models",
             "add",
             "local",
@@ -760,21 +770,18 @@ async def test_delegation_hook_mode_runs_the_design_commands_on_and_off() -> Non
         await pilot.pause()
         app.screen.query_one("#on").value = True
         await _press(pilot, app, "dsave")
-        await pilot.pause()
-        await pilot.pause()
-        assert runner.calls[-len(hook.enable) :] == list(hook.enable)
+        for _ in range(6):
+            await pilot.pause()
+        assert _actions(runner)[-len(hook.enable) :] == list(hook.enable)
         assert "Claude Code delegation is on: Subagent tasks" in _log_text(app)
         assert "Welcome To OmniNode" not in _log_text(app)  # one line only
 
-        await _type(pilot, "/delegation")
-        await pilot.press("enter")
-        await pilot.pause()
-        await pilot.pause()
+        # The tab stays open: switch off from the same screen.
         app.screen.query_one("#on").value = False
         await _press(pilot, app, "dsave")
-        await pilot.pause()
-        await pilot.pause()
-        assert runner.calls[-len(hook.disable) :] == list(hook.disable)
+        for _ in range(6):
+            await pilot.pause()
+        assert _actions(runner)[-len(hook.disable) :] == list(hook.disable)
         assert "Claude Code delegation is off." in _log_text(app)
 
 
@@ -817,9 +824,9 @@ async def test_gateway_mode_fills_connection_and_model_from_the_selection() -> N
         app.screen.query_one("#on").value = True
         await pilot.pause()
         await _press(pilot, app, "dsave")
-        await pilot.pause()
-        await pilot.pause()
-        assert runner.calls[-1][-4:] == (
+        for _ in range(6):
+            await pilot.pause()
+        assert _actions(runner)[-1][-4:] == (
             "--gateway-connection",
             "lab-gateway",
             "--gateway-model",
@@ -900,19 +907,16 @@ async def test_model_lists_set_up_models_and_makes_the_choice_first() -> None:
         )
         assert table.query_one(DataTable).has_focus
         await pilot.press("down", "enter")
-        await pilot.pause()
-        await pilot.pause()
-        assert runner.calls[-1] == ("models", "first", "local", "qwen3:8b")
+        for _ in range(6):
+            await pilot.pause()
+        assert _actions(runner)[-1] == ("models", "first", "local", "qwen3:8b")
         assert "qwen3:8b is now tried first (Local model)" in _log_text(app)
 
-        await _type(pilot, "/model")
-        await pilot.press("enter")
-        await pilot.pause()
-        await pilot.pause()
+        # The tab stays open: A goes back to Auto from the same screen.
         await pilot.press("a")
-        await pilot.pause()
-        await pilot.pause()
-        assert runner.calls[-1] == ("models", "first", "--clear")
+        for _ in range(6):
+            await pilot.pause()
+        assert _actions(runner)[-1] == ("models", "first", "--clear")
 
 
 async def test_model_with_nothing_set_up_points_to_setup() -> None:
@@ -921,7 +925,10 @@ async def test_model_with_nothing_set_up_points_to_setup() -> None:
         await _type(pilot, "/model")
         await pilot.press("enter")
         await pilot.pause()
-        assert "Type /config to connect one." in _log_text(app)
+        await pilot.pause()
+        assert "Type /config to connect one." in str(
+            app.screen.query_one("#pnote").render()
+        )
 
 
 async def test_clear_empties_the_output() -> None:
