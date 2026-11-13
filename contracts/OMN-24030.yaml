@@ -42,6 +42,9 @@ dod_evidence:
         check_value: >-
           bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_consumer_group_guard_effect/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "host_drift_fleet" | grep -F "[0-9a-f]{12}(\.__t" > /dev/null'
         cwd: "."
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_consumer_group_guard_effect/test_consumer_group_reaper.py -k drift_checks_persisted -q --no-cov --tb=line"
+        cwd: "."
   - id: "dod-omn24030-integration-proof"
     description: "The pushed head ran the guard reaper and ACL reconcile tests on a lab host and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
     source: "manual"
