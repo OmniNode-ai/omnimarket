@@ -10,6 +10,7 @@ file, else ``<alarm_overlay_id>/overlay.yaml`` under ``ONEX_SKILL_OVERLAY_ROOTS`
 
 from __future__ import annotations
 
+import importlib
 from collections.abc import Callable, Mapping
 from datetime import datetime
 from typing import NamedTuple
@@ -27,7 +28,6 @@ from omnimarket.nodes.node_lab_alarm.models.model_lab_alarm import (
     ModelBrokerLagCommand,
 )
 from omnimarket.nodes.node_lab_alarm.overlay import ModelLabAlarmOverlay
-from omnimarket.nodes.node_lab_alarm.runtime_lab_alarm import build_handler
 
 
 class ModelLabAlarmTickOutcome(NamedTuple):
@@ -52,6 +52,10 @@ def run_lab_alarm_tick(
         file_env="ONEX_LAB_ALARM_OVERLAY",
     )
     if handler is None:
+        # Resolved by name at the call, so the raw-transport adapters stay out of this module's import graph.
+        build_handler = importlib.import_module(
+            "omnimarket.nodes.node_lab_alarm.runtime_lab_alarm"
+        ).build_handler
         handler = build_handler(overlay)
     result = handler.handle(
         ModelBrokerLagCommand(
