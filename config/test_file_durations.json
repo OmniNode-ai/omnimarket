@@ -604,6 +604,7 @@
   "tests/nodes/node_branch_claim_check_effect/test_seam_pr_status_route_coverage.py": 2.46,
   "tests/nodes/node_branch_deploy_command_effect/test_command_effect.py": 3.34,
   "tests/nodes/node_branch_deploy_command_effect/test_contract.py": 2.66,
+  "tests/nodes/node_branch_deploy_command_effect/test_overlay_ref_seam_omn24216.py": 2.59,
   "tests/nodes/node_branch_deploy_command_effect/test_trigger_seam.py": 2.48,
   "tests/nodes/node_branch_deploy_command_effect/test_wire_seam.py": 3.37,
   "tests/nodes/node_branch_deploy_orchestrator/test_contract.py": 2.43,
