@@ -76,6 +76,8 @@ handler_routing:
 descriptor:
   node_archetype: effect
   purity: effectful
+  runtime_profiles:
+    - effects
   idempotent: true
   timeout_ms: 5000
 

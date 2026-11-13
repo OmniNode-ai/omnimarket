@@ -8,6 +8,10 @@ from typing import TYPE_CHECKING
 
 from omnibase_core.nodes.node_effect import NodeEffect
 
+from omnimarket.nodes.node_lane_gh_read_guard_effect.handlers.handler_runner_placement_snapshot_policy import (
+    HandlerRunnerPlacementSnapshotPolicy,
+)
+
 if TYPE_CHECKING:
     from omnibase_core.models.container.model_onex_container import ModelONEXContainer
 
@@ -19,4 +23,4 @@ class NodeLaneGithubReadGuardEffect(NodeEffect):
         super().__init__(container)
 
 
-__all__ = ["NodeLaneGithubReadGuardEffect"]
+__all__ = ["HandlerRunnerPlacementSnapshotPolicy", "NodeLaneGithubReadGuardEffect"]
