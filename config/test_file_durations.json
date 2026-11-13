@@ -2253,6 +2253,7 @@
   "tests/nodes/node_schedule_verdict_compute/test_golden_chain_schedule_verdict_compute.py": 2.51,
   "tests/nodes/node_schedule_verdict_effect/test_contract_topics.py": 2.6,
   "tests/nodes/node_schedule_verdict_effect/test_golden_chain_schedule_verdict_effect.py": 2.15,
+  "tests/nodes/node_schedule_verdict_effect/test_real_job_overlays.py": 2.04,
   "tests/nodes/node_script_node_src_compute/test_contract_script_node_src_compute.py": 0.01,
   "tests/nodes/node_script_node_src_compute/test_script_node_src.py": 0.0,
   "tests/nodes/node_seam_classify_compute/test_classify_backlog_engine_seams.py": 0.17,
