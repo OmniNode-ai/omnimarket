@@ -146,7 +146,10 @@ class LedgerQueryLiveLanes:
             None,
         )
         if done.returncode != 0 or payload is None:
-            raise LiveLanesUnreadableError(f"ledger query exited {done.returncode}")
+            reason = _last_line(done.stderr or done.stdout or "")
+            raise LiveLanesUnreadableError(
+                f"ledger query exited {done.returncode}: {reason}"
+            )
         try:
             answer = json.loads(payload)
         except ValueError as exc:
@@ -212,7 +215,7 @@ class SubprocessLaneRunner:
             if code == 0:
                 return ModelPlaceOutcome(started=True, detail="runner exited 0")
             return ModelPlaceOutcome(
-                started=False, detail=f"runner exited {code}: {_last_line(log)}"
+                started=False, detail=f"runner exited {code}: {_last_log_line(log)}"
             )
         except (OSError, ValueError) as exc:
             return ModelPlaceOutcome(
@@ -221,7 +224,13 @@ class SubprocessLaneRunner:
             )
 
 
-def _last_line(log: Path) -> str:
+def _last_line(text: str) -> str:
+    """The last non-empty line of a command's output, the command's own reason for a refusal."""
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    return lines[-1][:200] if lines else "no output"
+
+
+def _last_log_line(log: Path) -> str:
     try:
         lines = [
             line

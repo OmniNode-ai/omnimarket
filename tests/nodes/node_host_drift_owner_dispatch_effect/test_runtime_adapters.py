@@ -140,9 +140,14 @@ def test_a_claim_that_does_not_name_the_cause_does_not_cover_it() -> None:
 
 def test_a_failed_ledger_read_is_unreadable_never_no_lanes() -> None:
     def run(argv: list[str], **_: object) -> CompletedProcess[str]:
-        return CompletedProcess(argv, 2, "", "refused")
+        return CompletedProcess(
+            argv, 2, "", "Error: the ledger node refused the read\n"
+        )
 
-    with pytest.raises(LiveLanesUnreadableError, match="exited 2"):
+    with pytest.raises(
+        LiveLanesUnreadableError,
+        match=r"exited 2: Error: the ledger node refused the read",
+    ):
         _live(run).read((CAUSE,))
 
 
