@@ -61,3 +61,10 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_host_installer_container_units -q -p no:randomly --no-cov
     cwd: .
+- id: dod-omn24249-integration-proof
+  description: the container unit installer tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24249 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_host_installer_container_units -q --no-cov
