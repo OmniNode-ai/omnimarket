@@ -19,6 +19,8 @@ requirements:
         statement: "AC3: a missing stored token with no key fetch names no permission and makes no call -- falsifier: the error chain test in the same file fails if a permission is named for a missing token"
       - id: "AC4"
         statement: "AC4: integrated, read in the running runtime on h053: the installed revision of onex-runner-group-exposure-hourly.service contains this change, and one hourly run prints a reading line whose verdict is WORKING or NOT WORKING, or whose reason cells name the missing permission or the failed key fetch -- falsifier: the unit log line still reads reason=org-read-denied alone, or the install record shows a revision without this change"
+      - id: "AC5"
+        statement: "AC5: a refused token (401 on the organization read) names no permission, since the token itself was refused and no permission is missing -- falsifier: test_error_chain_a_refused_token_names_no_permission fails if a 401 read names the declared permission"
 evidence_requirements:
   - kind: "tests"
     description: "The exposure effect's golden chain, error chain, token mint, permission refusal, reading writer and overlay tests."
@@ -35,6 +37,14 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_runner_group_exposure_effect -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn24254-refused-token-names-no-permission"
+    description: "A 401 on the organization read names no permission; the test fails if the source names the declared permission for a 401."
+    source: "manual"
+    binds_ac: ["AC5"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_runner_group_exposure_effect/test_org_read_permission.py -q --no-cov -k test_error_chain_a_refused_token_names_no_permission"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn24254-integration-proof"
     description: "Run the exposure effect's tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. It binds no acceptance criterion: the runtime reading (AC4) is read on h053 after the unit is reinstalled."
