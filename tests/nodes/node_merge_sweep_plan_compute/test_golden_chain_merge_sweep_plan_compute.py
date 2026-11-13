@@ -134,3 +134,94 @@ def test_golden_chain_plans_a_sweep_then_decides_a_lane_retry() -> None:
     limited = handler().handle(request_type(exit_code=77))
     assert (limited.action, limited.wait_min) == ("retry_other_host", None)
     assert handler().handle(request_type(exit_code=0)).action == "accept"
+
+
+def test_golden_landing_commands_chain_head_then_reds_in_reading_order() -> None:
+    """A green-unarmed chain head, a cancelled-latest red and a stale-base red plan three
+    commands: the chain head first, then the reds in reading order."""
+    head = "a" * 40
+    handler, request_type, result_type = _resolve(
+        {e["operation"]: e for e in _contract()["handler_routing"]["handlers"]}[
+            "plan_merge_sweep_lanes"
+        ]
+    )
+    planned = handler().handle(
+        request_type.model_validate(
+            {
+                "reading": {
+                    "controller": {"stalled": False},
+                    "product": {"under_floor": []},
+                    "load1": 1.0,
+                    "cpus": 8,
+                    "chain_heads": [
+                        {
+                            "repo": "omnimarket",
+                            "number": 5,
+                            "cls": "green-unarmed",
+                            "state": "OPEN",
+                            "repository": "OmniNode-ai/omnimarket",
+                            "head_sha": head,
+                            "pr_node_id": "N_node_5",
+                        }
+                    ],
+                    "reds": [
+                        {
+                            "repo": "omnimarket",
+                            "number": 7,
+                            "state": "OPEN",
+                            "repository": "OmniNode-ai/omnimarket",
+                            "head_sha": head,
+                            "classes": [
+                                {
+                                    "name": "a",
+                                    "cls": "cancelled-latest",
+                                    "remedy": "rerun-newest-once",
+                                    "run_id": 11,
+                                },
+                                {
+                                    "name": "b",
+                                    "cls": "cancelled-latest",
+                                    "remedy": "rerun-newest-once",
+                                    "run_id": 12,
+                                },
+                            ],
+                        },
+                        {
+                            "repo": "omnimarket",
+                            "number": 8,
+                            "state": "OPEN",
+                            "repository": "OmniNode-ai/omnimarket",
+                            "head_sha": head,
+                            "base_ref": "dev",
+                            "classes": [
+                                {
+                                    "name": "c",
+                                    "cls": "stale-base-sql",
+                                    "remedy": "update-branch",
+                                },
+                            ],
+                        },
+                    ],
+                }
+            }
+        )
+    )
+    assert isinstance(planned, result_type)
+    assert len(planned.landing_commands) == 3
+    assert [c.request.operation for c in planned.landing_commands] == [
+        "arm_auto_merge",
+        "rerun_runs",
+        "update_branch",
+    ]
+    assert (
+        planned.landing_commands[0].idempotency_key
+        == f"OmniNode-ai/omnimarket#5@{head}:arm_auto_merge"
+    )
+    assert (
+        planned.landing_commands[1].idempotency_key
+        == f"OmniNode-ai/omnimarket#7@{head}:rerun_runs"
+    )
+    assert (
+        planned.landing_commands[2].idempotency_key
+        == f"OmniNode-ai/omnimarket#8@{head}:update_branch"
+    )

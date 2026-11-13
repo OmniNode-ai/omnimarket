@@ -24,6 +24,10 @@ from pydantic import ValidationError
 
 from omnimarket.handlers.emission_sink import JsonlEmissionSink, ProtocolEmissionSink
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError, find_node_overlay
+from omnimarket.handlers.rules_overlay_root_declared import (
+    OverlayRootRefusedError,
+    refuse_undeclared_overlay_root,
+)
 from omnimarket.nodes.node_overlay_drift_effect.adapters.overlay_home import (
     LocalOverlayHome,
 )
@@ -200,6 +204,15 @@ def _schedule(arguments: Sequence[str]) -> int:
             raise NodeOverlayError(
                 "the overlay file cannot be found to pin its root in the unit"
             )
+        try:
+            refuse_undeclared_overlay_root(
+                found.parent.parent,
+                host=args.host,
+                omni_root=Path(args.workspace_root),
+            )
+        except OverlayRootRefusedError as exc:
+            sys.stderr.write(f"{exc}\n")
+            return 1
         result = scheduler.install(
             args.host,
             omni_root=Path(args.workspace_root),

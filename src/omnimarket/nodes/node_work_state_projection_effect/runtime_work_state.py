@@ -61,6 +61,7 @@ from omnimarket.models.work_state_projection import (
 )
 from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
     FileLedgerRowSource,
+    read_queries,
 )
 from omnimarket.nodes.node_reading_writer_effect.protocols import (
     ModelLedgerQuery,
@@ -128,12 +129,16 @@ def source_readers(
             raise SourceUnreadableError(f"{rt['ledger']['path_env']} unset")
         rows: list[Any] = []
         since = now - timedelta(hours=float(rt["ledger"]["lookback_hours"]))
-        for row_type in rt["ledger"]["row_types"]:
-            read = ledger.read(
-                ModelLedgerQuery(
-                    since=since, until=now + timedelta(days=1), row_type=row_type
-                )
+        row_types = tuple(rt["ledger"]["row_types"])
+        queries = tuple(
+            ModelLedgerQuery(
+                since=since, until=now + timedelta(days=1), row_type=row_type
             )
+            for row_type in row_types
+        )
+        # One pass over the ledger files for every row type (OMN-23081); a source without the batch port reads once each.
+        reads = read_queries(ledger, queries)
+        for row_type, read in zip(row_types, reads, strict=True):
             if read.error is not None:
                 raise SourceUnreadableError(f"{row_type} {read.error}")
             rows.extend(read.rows)
@@ -360,19 +365,22 @@ def build_request(
 
 
 def run(
-    env: Mapping[str, str], now: datetime, out: Path | None = None
+    env: Mapping[str, str],
+    now: datetime,
+    out: Path | None = None,
+    ledger_source: ProtocolLedgerRowSource | None = None,
 ) -> ModelWorkStateResult:
     rt = _runtime()
     home = Path(env[rt["home_env"]])
     rules = load_structured_overlay(
         NODE, ModelWorkStateRules, env, file_env=rt["overlay_file_env"]
     )
+    # A ledger source the caller built (the overlay's bus read route) is the only ledger read: the file route below is
+    # consulted only when none was given, never as a fallback after one failed.
+    ledger: ProtocolLedgerRowSource | None = ledger_source
     live = _env_path(env, rt["ledger"]["path_env"])
-    ledger = (
-        FileLedgerRowSource(live, live.parent / rt["ledger"]["archive_subdir"])
-        if live
-        else None
-    )
+    if ledger is None and live is not None:
+        ledger = FileLedgerRowSource(live, live.parent / rt["ledger"]["archive_subdir"])
     snapshots = (
         _env_path(env, rt["snapshots"]["dir_env"]) or home / rt["snapshots"]["relpath"]
     )

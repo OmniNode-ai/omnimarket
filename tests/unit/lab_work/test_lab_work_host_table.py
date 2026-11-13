@@ -488,14 +488,14 @@ def test_an_unreadable_table_refuses_instead_of_admitting(tmp_path: Path) -> Non
 
 @pytest.fixture
 def workspace_host_env(tmp_path: Path) -> dict[str, str]:
-    """Remote-lane shape from the Nov 1-2 receipts: plugin roots omit lab_hosts.
+    """Remote-lane shape: the plugin's roots omit lab_hosts, the overlays repository's root holds it.
 
-    Adding the declared config owner's overlay root made placement work in the
-    23:06:31Z receipt; the 03:01:46Z receipt still needed that manual export.
-    Keep the fixture's hosts and paths local to this test.
+    The table is read from the overlays repository through the overlay roots; the config owner's copy
+    is never searched (OMN-23928). Keep the fixture's hosts and paths local to this test.
     """
     config = tmp_path / "config-owner"
-    overlay = config / "config/onex/overlays/lab_hosts/overlay.yaml"
+    overlays = tmp_path / "overlays-repo/overlays"
+    overlay = overlays / "lab_hosts/overlay.yaml"
     overlay.parent.mkdir(parents=True)
     overlay.write_text(
         TABLE_YAML
@@ -505,18 +505,16 @@ def workspace_host_env(tmp_path: Path) -> dict[str, str]:
     return {
         "OMNI_HOME": str(tmp_path / "workspace"),
         "ONEX_WORKSPACE_CONFIG_ROOT": str(config),
-        "ONEX_SKILL_OVERLAY_ROOTS": str(tmp_path / "plugin-overlays"),
+        "ONEX_SKILL_OVERLAY_ROOTS": os.pathsep.join(
+            (str(tmp_path / "plugin-overlays"), str(overlays))
+        ),
     }
 
 
-@pytest.mark.parametrize("plugin_roots", [True, False])
-def test_remote_lane_discovers_declared_workspace_host_overlay(
-    workspace_host_env: dict[str, str], plugin_roots: bool
+def test_remote_lane_reads_the_overlays_repository_table(
+    workspace_host_env: dict[str, str],
 ) -> None:
     env = dict(workspace_host_env)
-    if not plugin_roots:
-        env.pop("ONEX_SKILL_OVERLAY_ROOTS")
-        env.pop("OMNI_HOME")  # The explicit config root alone is sufficient.
     before = dict(env)
     document = load_host_table(env)
     assert document.bus_lane == "fixture-lane"
@@ -526,22 +524,20 @@ def test_remote_lane_discovers_declared_workspace_host_overlay(
     assert env == before
 
 
-def test_developer_workspace_host_overlay_is_discovered(tmp_path: Path) -> None:
-    overlay = tmp_path / ".onex/workspace-config/config/onex/overlays/lab_hosts"
-    overlay.mkdir(parents=True)
-    (overlay / "overlay.yaml").write_text(
-        TABLE_YAML + "registry_root_candidates: [$HOME/registry]\n",
-        encoding="utf-8",
-    )
-    assert load_host_table({"OMNI_HOME": str(tmp_path)}).hosts[0].name == "h101"
-    # An explicit config owner never falls through to the developer directory.
-    with pytest.raises(HostTableError, match="not configured"):
-        load_host_table(
-            {
-                "OMNI_HOME": str(tmp_path),
-                "ONEX_WORKSPACE_CONFIG_ROOT": str(tmp_path / "absent"),
-            }
+def test_the_config_owner_copy_is_not_discovered(tmp_path: Path) -> None:
+    """The config owner's and the developer workspace-config copies of the table are refused, not read."""
+    config = tmp_path / "config-owner"
+    for owner in (config, tmp_path / ".onex/workspace-config"):
+        overlay = owner / "config/onex/overlays/lab_hosts"
+        overlay.mkdir(parents=True)
+        (overlay / "overlay.yaml").write_text(
+            TABLE_YAML + "registry_root_candidates: [$HOME/registry]\n",
+            encoding="utf-8",
         )
+    with pytest.raises(HostTableError, match="not configured"):
+        load_host_table({"OMNI_HOME": str(tmp_path)})
+    with pytest.raises(HostTableError, match="not configured"):
+        load_host_table({"ONEX_WORKSPACE_CONFIG_ROOT": str(config)})
 
 
 @pytest.mark.parametrize("source", ["file", "overlay"])

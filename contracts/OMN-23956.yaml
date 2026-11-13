@@ -1,0 +1,60 @@
+schema_version: 1.0.0
+ticket_id: OMN-23956
+title: The installer status check compares an installed host job file with the file its declaration renders
+summary: The host installer's status mode for a systemd unit compares the installed service and timer files with the text the installer renders now, prints one UNIT TEXT line per file and fails when a file differs.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23956-unit-text-drift
+  statement: A host job file that differs from what its declaration renders is reported by the installer's status, per unit and per file, and fails the status.
+  acceptance:
+  - id: AC1
+    statement: "AC1: the installer status for a systemd unit whose installed service text differs from its render prints a line naming the unit file and the differing lines, and fails -- falsifier: uv run pytest tests/nodes/node_host_installer_registry_units/test_unit_text_drift.py -q -p no:randomly --no-cov fails at the merge base"
+  - id: AC2
+    statement: "AC2: the status for a unit whose installed service and timer text equal their render prints an in-sync line for each and does not fail on text -- falsifier: uv run pytest tests/nodes/node_host_installer_registry_units/test_unit_text_drift.py -q -p no:randomly --no-cov -k in_sync fails at the merge base"
+  - id: AC3
+    statement: "AC3: integrated: on hosts h051, h053 and h202 the installed status of each systemd registry unit prints a text-compare line per unit (in sync, differs, or not comparable) -- falsifier: a host's status output lacks the compare line for an installed unit, or h202 is unreadable and is named as such"
+evidence_requirements:
+- kind: tests
+  description: The unit text drift tests and the existing systemd installer tests pass at the pushed head.
+  command: uv run pytest tests/nodes/node_host_installer_registry_units/test_unit_text_drift.py tests/nodes/node_host_installer_registry_units/test_registry_units_systemd.py -q -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23956-ac1
+  description: 'AC1: the differing-text test passes at the head; all five new tests fail with the handler at its merge-base state.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_unit_text_drift.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn23956-ac2
+  description: 'AC2: the in-sync test passes at the head and fails at the merge base, where the status prints no UNIT TEXT line.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_unit_text_drift.py -q -p no:randomly --no-cov -k in_sync
+    cwd: .
+- id: dod-omn23956-ac3
+  description: 'hosted proxy for AC3: the status tests that stand in for the installed hosts pass here; the readings of h053, h051 and h202 are posted as a pull request comment naming the head.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_unit_text_drift.py tests/nodes/node_host_installer_registry_units/test_registry_units_systemd.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn23956-integration-proof
+  description: the unit text drift tests run on a lab host at the pushed head, including the tests that fail at the merge base; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23956 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_unit_text_drift.py -q --no-cov -p no:randomly

@@ -10,28 +10,25 @@ resolution-markers = [
 
 [manifest]
 overrides = [
-    { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?tag=dev-20261109065232-cd128b790ec6" },
-    { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261110074352-0ddea3131fd0" },
-    { name = "omnibase-spi", git = "https://github.com/OmniNode-ai/omnibase_spi.git?tag=dev-20261108015921-ace601e12033" },
+    { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?tag=dev-20261111183916-a85cb916d4c1" },
+    { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261113041401-2b0c3eacdf4d" },
+    { name = "omnibase-spi", git = "https://github.com/OmniNode-ai/omnibase_spi.git?tag=dev-20261108170744-52946639a23a" },
 ]
 
 [[package]]
 name = "a2a-sdk"
-version = "1.1.2"
+version = "0.3.26"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "culsans", marker = "python_full_version < '3.13'" },
     { name = "google-api-core" },
-    { name = "googleapis-common-protos" },
     { name = "httpx" },
-    { name = "json-rpc" },
-    { name = "packaging" },
+    { name = "httpx-sse" },
     { name = "protobuf" },
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/38/cc/59b35c518d8289bd59d20d9d216ca29ccb41c4697eb85971efe41d1adaf3/a2a_sdk-1.1.2.tar.gz", hash = "sha256:f928d8bf9a0dc0a473ee8258bd5226c1b8520a85c70e7f233c3b9b0e30a1bd10", size = 379627, upload-time = "2026-07-22T13:40:51.409Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/be/97/a6840e01795b182ce751ca165430d46459927cde9bfab838087cbb24aef7/a2a_sdk-0.3.26.tar.gz", hash = "sha256:44068e2d037afbb07ab899267439e9bc7eaa7ac2af94f1e8b239933c993ad52d", size = 274598, upload-time = "2026-04-09T15:21:13.902Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c1/33/d414a03d5ef5a7d6d09a20dc9f8094e7fb9edb488662ff99c535a2a62cf1/a2a_sdk-1.1.2-py3-none-any.whl", hash = "sha256:eb9a698f526dc45a9ea967d7804e7aa363ff273d2c44fbed699bc68c9399f9c9", size = 245981, upload-time = "2026-07-22T13:40:49.484Z" },
+    { url = "https://files.pythonhosted.org/packages/dd/d5/51f4ee1bf3b736add42a542d3c8a3fd3fa85f3d36c17972127defc46c26f/a2a_sdk-0.3.26-py3-none-any.whl", hash = "sha256:754e0573f6d33b225c1d8d51f640efa69cbbed7bdfb06ce9c3540ea9f58d4a91", size = 151016, upload-time = "2026-04-09T15:21:12.35Z" },
 ]
 
 [[package]]
@@ -259,20 +256,6 @@ wheels = [
 [package.optional-dependencies]
 snappy = [
     { name = "cramjam" },
-]
-
-[[package]]
-name = "aiologic"
-version = "0.17.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "sniffio" },
-    { name = "typing-extensions" },
-    { name = "wrapt" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/f1/7a/d51f2fde1e8ae8a83431f8e97b7a71e9358cdb1d4d2ce6be387fa44d68de/aiologic-0.17.1.tar.gz", hash = "sha256:2e1b93b9e88ced318c2a63ad7b382688f40cbfe40e3d42258d49dc9c5aea179d", size = 252354, upload-time = "2026-06-27T20:41:33.25Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/5b/d3/2d310b1b839014034dba0cba685e492df8a5c7ad32c19cab7e979eed6554/aiologic-0.17.1-py3-none-any.whl", hash = "sha256:c66b319830fedb7ca3d2b2125fa6f5b653f89418c2a27ea76f259ec5f00943c0", size = 161331, upload-time = "2026-06-27T20:41:31.877Z" },
 ]
 
 [[package]]
@@ -1304,19 +1287,6 @@ nvtx = [
 ]
 
 [[package]]
-name = "culsans"
-version = "0.11.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "aiologic" },
-    { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/d9/e3/49afa1bc180e0d28008ec6bcdf82a4072d1c7a41032b5b759b60814ca4b0/culsans-0.11.0.tar.gz", hash = "sha256:0b43d0d05dce6106293d114c86e3fb4bfc63088cfe8ff08ed3fe36891447fe33", size = 107546, upload-time = "2025-12-31T23:15:38.196Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/e0/5d/9fb19fb38f6d6120422064279ea5532e22b84aa2be8831d49607194feda3/culsans-0.11.0-py3-none-any.whl", hash = "sha256:278d118f63fc75b9db11b664b436a1b83cc30d9577127848ba41420e66eb5a47", size = 21811, upload-time = "2025-12-31T23:15:37.189Z" },
-]
-
-[[package]]
 name = "datasketch"
 version = "2.0.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1924,6 +1894,15 @@ http2 = [
 ]
 
 [[package]]
+name = "httpx-sse"
+version = "0.4.3"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/0f/4c/751061ffa58615a32c31b2d82e8482be8dd4a89154f003147acee90f2be9/httpx_sse-0.4.3.tar.gz", hash = "sha256:9b1ed0127459a66014aec3c56bebd93da3c1bc8bb6618c8082039a44889a755d", size = 15943, upload-time = "2025-10-10T21:48:22.271Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d2/fd/6668e5aec43ab844de6fc74927e155a3b37bf40d7c3790e49fc0406b6578/httpx_sse-0.4.3-py3-none-any.whl", hash = "sha256:0ac1c9fe3c0afad2e0ebb25a934a59f4c7823b60792691f779fad2c5568830fc", size = 8960, upload-time = "2025-10-10T21:48:21.158Z" },
+]
+
+[[package]]
 name = "httpx2"
 version = "2.13.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2158,15 +2137,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/d5/1d/537ab090f302b838943a1b56497dd53059b9a9b46a074936470173a2e207/joblib-1.6.0.tar.gz", hash = "sha256:2ccc96785b12046c08fd6d55839c12857831b54a3c1673ffadd2f04bfc4eda03", size = 327903, upload-time = "2026-08-31T09:39:04.122Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/18/53/84099323c2ec4be98d935f63c033ac4151ee83836ca1050ede3b3aadf155/joblib-1.6.0-py3-none-any.whl", hash = "sha256:3dbbf9f6e4b592a2357b854608e980fe6390d131d7a82f011a377ef2ebef7aba", size = 306115, upload-time = "2026-08-31T09:39:02.298Z" },
-]
-
-[[package]]
-name = "json-rpc"
-version = "1.15.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/6d/9e/59f4a5b7855ced7346ebf40a2e9a8942863f644378d956f68bcef2c88b90/json-rpc-1.15.0.tar.gz", hash = "sha256:e6441d56c1dcd54241c937d0a2dcd193bdf0bdc539b5316524713f554b7f85b9", size = 28854, upload-time = "2023-06-11T09:45:49.078Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/94/9e/820c4b086ad01ba7d77369fb8b11470a01fac9b4977f02e18659cf378b6b/json_rpc-1.15.0-py2.py3-none-any.whl", hash = "sha256:4a4668bbbe7116feb4abbd0f54e64a4adcf4b8f648f19ffa0848ad0f6606a9bf", size = 39450, upload-time = "2023-06-11T09:45:47.136Z" },
 ]
 
 [[package]]
@@ -3071,8 +3041,8 @@ wheels = [
 
 [[package]]
 name = "omnibase-core"
-version = "0.47.72"
-source = { git = "https://github.com/OmniNode-ai/omnibase_core.git?tag=dev-20261109065232-cd128b790ec6#cd128b790ec6190de372251689d9042775b14d8f" }
+version = "0.47.76"
+source = { git = "https://github.com/OmniNode-ai/omnibase_core.git?tag=dev-20261111183916-a85cb916d4c1#a85cb916d4c1334b63877da178bbfbf3023f168a" }
 dependencies = [
     { name = "blake3" },
     { name = "click" },
@@ -3094,7 +3064,7 @@ dependencies = [
 [[package]]
 name = "omnibase-infra"
 version = "0.38.77"
-source = { git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261110074352-0ddea3131fd0#0ddea3131fd05dfe5534337449d1440090cd4d20" }
+source = { git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261113041401-2b0c3eacdf4d#2b0c3eacdf4d49b07ed1e97ad22b8972e37da75a" }
 dependencies = [
     { name = "a2a-sdk" },
     { name = "aiofiles" },
@@ -3150,8 +3120,8 @@ dependencies = [
 
 [[package]]
 name = "omnibase-spi"
-version = "0.23.14"
-source = { git = "https://github.com/OmniNode-ai/omnibase_spi.git?tag=dev-20261108015921-ace601e12033#ace601e12033e7930f64a0aef364f160efc1b17f" }
+version = "0.23.15"
+source = { git = "https://github.com/OmniNode-ai/omnibase_spi.git?tag=dev-20261108170744-52946639a23a#52946639a23afcbaaa81cc81cdfbfafc098ef9a6" }
 dependencies = [
     { name = "omnibase-core" },
     { name = "pydantic" },
@@ -3235,10 +3205,10 @@ requires-dist = [
     { name = "graphifyy", marker = "extra == 'dep-health'", specifier = "==0.8.2" },
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "jsonschema", specifier = ">=4.18.0" },
-    { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?tag=dev-20261109065232-cd128b790ec6" },
-    { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261110074352-0ddea3131fd0" },
-    { name = "omnibase-spi", git = "https://github.com/OmniNode-ai/omnibase_spi.git?tag=dev-20261108015921-ace601e12033" },
-    { name = "omninode-memory", git = "https://github.com/OmniNode-ai/omnimemory.git?tag=dev-20261106074413-b4fa53dcb119" },
+    { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?tag=dev-20261111183916-a85cb916d4c1" },
+    { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261113041401-2b0c3eacdf4d" },
+    { name = "omnibase-spi", git = "https://github.com/OmniNode-ai/omnibase_spi.git?tag=dev-20261108170744-52946639a23a" },
+    { name = "omninode-memory", git = "https://github.com/OmniNode-ai/omnimemory.git?tag=dev-20261112102309-92b9c1a20bef" },
     { name = "packaging", specifier = ">=24.0" },
     { name = "psycopg2-binary", specifier = ">=2.9.10" },
     { name = "pyasn1", specifier = ">=0.6.4" },
@@ -3274,8 +3244,8 @@ parity = [{ name = "mutmut", specifier = ">=3.3,<4" }]
 
 [[package]]
 name = "omninode-memory"
-version = "0.18.11"
-source = { git = "https://github.com/OmniNode-ai/omnimemory.git?tag=dev-20261106074413-b4fa53dcb119#b4fa53dcb11963026d7a85a5a05a04e701c838f0" }
+version = "0.18.14"
+source = { git = "https://github.com/OmniNode-ai/omnimemory.git?tag=dev-20261112102309-92b9c1a20bef#92b9c1a20bef7bbd32a4e0ba557d116d5c9fbb2d" }
 dependencies = [
     { name = "aiohttp" },
     { name = "alembic" },

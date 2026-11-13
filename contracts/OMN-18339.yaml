@@ -1,0 +1,177 @@
+schema_version: 1.0.0
+ticket_id: OMN-18339
+title: R3b scores catalogue responses against the request schemas
+summary: The R3b rung scorer parses a response into a workflow name and a parameter object, validates the
+  object against the workflow's request schema, compares the situation's held values, and for the
+  patch-carrying workflow checks that the patch is present and applies. Does not claim the re-run of the
+  rung on both surfaces (AC4 of the ticket), which needs the lab models and a document change in another
+  repository; that evidence is not part of this change.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+context:
+  parent_epic_complete: false
+  epic_criteria_evidence: The ticket's AC4 (re-run of the rung on both surfaces with the new scorer, the
+    superseded 4/4 marked as selection only) is not supplied by this change and is not declared as
+    acceptance here, so no binding is fabricated for it.
+  epic_criteria_unproven:
+  - id: AC4
+    statement: "AC4. The rung is re-run on both surfaces with the new scorer, once each, zero retries, before any R3b number is cited in a document or a decision."
+  ac_binding_provenance:
+    dod-omn18339-ac3-accepted-20261112t0545z:
+    - label: AC3
+      criterion_hash: b951d59f72a2b895fbf4d7f7c099f7df2684fc698e2c09ecb2e97ce4a2e74b52
+      proposed_by: lane=dod-closeout-bind-2026-11-12T0545Z-c1
+      accepted_by: lane=dod-closeout-accept-2026-11-12T0545Z-c1
+      accepted_at: '2026-11-12T06:20:05Z'
+    dod-omn18339-ac5-accepted-20261112t0545z:
+    - label: AC5
+      criterion_hash: 4b76a50be5c0d01785b5242a5b199c4c176dc34046e397ad133e72eec0a97502
+      proposed_by: lane=dod-closeout-bind-2026-11-12T0545Z-c1
+      accepted_by: lane=dod-closeout-accept-2026-11-12T0545Z-c1
+      accepted_at: '2026-11-12T06:20:05Z'
+    dod-omn18339-ac1-accepted-20261113t0945z:
+    - label: AC1
+      criterion_hash: 343a7ec7cf1842001cabdcd0bd38c9fec06e4582acaa629f8ff5c8400d7da491
+      proposed_by: lane=dod-closeout-bind-2026-11-13T0945Z-c2
+      accepted_by: lane=dod-closeout-accept-2026-11-13T0945Z-c2
+      accepted_at: '2026-11-13T10:11:14Z'
+    dod-omn18339-ac2-accepted-20261113t0945z:
+    - label: AC2
+      criterion_hash: 80e59ae8af5520f5f6e93f46d75fb6595888da1b6e22414e8ecd3032831b1b77
+      proposed_by: lane=dod-closeout-bind-2026-11-13T0945Z-c2
+      accepted_by: lane=dod-closeout-accept-2026-11-13T0945Z-c2
+      accepted_at: '2026-11-13T10:11:14Z'
+requirements:
+- id: req-r3b-measures-parameter-filling
+  statement: R3b responses are scored by parsing and schema validation, not by substring presence.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: R3b responses are parsed into a workflow name plus a parameter object and the object is validated against the catalogue request schema for that workflow, with every required parameter present and type-correct; falsifier: uv run pytest benchmarks/delegation_ladder/tests/test_workflow_request_scorer.py -k ac1 -q -p no:randomly'
+  - id: AC2
+    statement: 'AC2: for apply_patch_and_test the check includes that a patch is present and that it applies; falsifier: uv run pytest benchmarks/delegation_ladder/tests/test_workflow_request_scorer.py -k ac2 -q -p no:randomly, where a plausible diff that does not apply to the named file scores FAIL and a diff that applies scores PASS.'
+  - id: AC3
+    statement: 'AC3: the review counterexample is committed as a RED fixture, one space-joined token list per R3b task, and each scores FAIL under the new scorer while the retired substring scorer passes the same text; falsifier: uv run pytest benchmarks/delegation_ladder/tests/test_workflow_request_scorer.py -k ac3 -q -p no:randomly'
+  - id: AC5
+    statement: 'AC5: no numeric literal beyond the zeros and ones of control flow enters the new scorer path; falsifier: uv run pytest benchmarks/delegation_ladder/tests/test_workflow_request_scorer.py -k ac5 -q -p no:randomly, whose positive control fails if it finds no scorer functions.'
+evidence_requirements:
+- kind: tests
+  description: The R3b scorer tests and the routing-complexity contract tests that read the scorer table.
+  command: uv run pytest benchmarks/delegation_ladder/tests/test_workflow_request_scorer.py -q -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn18339-ac1
+  description: Missing required parameters, wrong types, extra parameters, a wrong workflow and unparseable answers score FAIL; complete type-correct requests score PASS.
+  source: manual
+  binds_ac: [AC1]
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest benchmarks/delegation_ladder/tests/test_workflow_request_scorer.py -k "ac1 or complete_type_correct or catalogue_parameter_for_parameter" -q -n 0 -p no:randomly --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn18339-ac2
+  description: A diff that applies to the named file passes; a plausible diff whose context is not in the file, an absent or empty patch, prose and a diff that touches another file fail.
+  source: manual
+  binds_ac: [AC2]
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest benchmarks/delegation_ladder/tests/test_workflow_request_scorer.py -k ac2 -q -n 0 -p no:randomly --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn18339-ac3
+  description: The four space-joined token lists from the review are committed verbatim and each scores FAIL; the retired scorer passes the same text.
+  source: manual
+  binds_ac: [AC3]
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest benchmarks/delegation_ladder/tests/test_workflow_request_scorer.py -k ac3 -q -n 0 -p no:randomly --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn18339-ac5
+  description: The new scorer functions are found by name and carry no numeric literal beyond zero and one.
+  source: manual
+  binds_ac: [AC5]
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest benchmarks/delegation_ladder/tests/test_workflow_request_scorer.py -k ac5 -q -n 0 -p no:randomly --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn18339-integration-proof
+  description: The pushed head, run on a lab host through the ONEX CLI, scores the four committed R3b counterexamples as FAIL through the ladder's own dispatch and still derives every R3b rung through the routing-complexity rubric the scorer table was added to. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: |-
+      uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-18339 --kind test -- uv run --frozen pytest benchmarks/delegation_ladder/tests/test_workflow_request_scorer.py -q --no-cov -p no:randomly
+    cwd: .
+- id: deploy-probe
+  description: Hosted-runner source-artifact readback requires the published scorer handler at the evaluated commit to match this checkout and to define the workflow request scorer, and the published routing-complexity rubric to map the workflow_request scorer. The base has neither file, so the readback fails there. This checks the source artifact; it does not claim the fix is installed on a host.
+  source: manual
+  checks:
+  - check_type: command
+    check_value: |
+      set -eu;
+      readback_dir="$(mktemp -d)";
+      trap 'rm -rf "$readback_dir"' EXIT;
+      revision="$(git rev-parse HEAD)";
+      handler=src/omnimarket/handlers/workflow_request_score.py;
+      rubric=src/omnimarket/nodes/node_routing_complexity_compute/contracts/task_complexity_rubric.v1.yaml;
+      curl --fail --silent --show-error --location --max-time 30 \
+        "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$revision/$handler" \
+        --output "$readback_dir/handler.py";
+      curl --fail --silent --show-error --location --max-time 30 \
+        "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$revision/$rubric" \
+        --output "$readback_dir/rubric.yaml";
+      cmp "$handler" "$readback_dir/handler.py";
+      grep -F 'def score_workflow_request(' "$readback_dir/handler.py";
+      grep -F '  workflow_request: exact_match' "$readback_dir/rubric.yaml";
+      printf 'workflow request scorer source readback matched %s\n' "$revision"
+- id: dod-omn18339-ac3-accepted-20261112t0545z
+  description: 'AC3 binding (accepted 2026-11-12T0545Z, proposed by lane=dod-closeout-bind-2026-11-12T0545Z-c1,
+    accepted by lane=dod-closeout-accept-2026-11-12T0545Z-c1). The four space-joined token lists from the
+    review are committed verbatim in benchmarks/delegation_ladder/fixtures/r3b_review_counterexamples.json
+    and each scores FAIL under the workflow_request scorer. Re-run at omnimarket origin/dev 87874581e0 passed
+    (4 passed); with the parent of 0c4619863e the test file does not import (workflow_request_score absent).'
+  source: manual
+  binds_ac: [AC3]
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest "benchmarks/delegation_ladder/tests/test_workflow_request_scorer.py::test_ac3_each_counterexample_fails_under_the_new_scorer" -q -n 0 -p no:randomly --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn18339-ac5-accepted-20261112t0545z
+  description: 'AC5 binding (accepted 2026-11-12T0545Z, proposed by lane=dod-closeout-bind-2026-11-12T0545Z-c1,
+    accepted by lane=dod-closeout-accept-2026-11-12T0545Z-c1). An AST scan of the new scorer functions finds
+    no numeric literal beyond the zeros and ones of control flow. Re-run at omnimarket origin/dev 87874581e0
+    passed; its positive control (test_ac5_the_check_finds_the_new_scorer_functions) also passed there. With
+    the parent of 0c4619863e the test file does not import.'
+  source: manual
+  binds_ac: [AC5]
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest "benchmarks/delegation_ladder/tests/test_workflow_request_scorer.py::test_ac5_no_threshold_is_written_in_the_new_scorer" -q -n 0 -p no:randomly --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn18339-ac1-accepted-20261113t0945z
+  description: 'AC1 binding (accepted 2026-11-13T0945Z, proposed by lane=dod-closeout-bind-2026-11-13T0945Z-c2,
+    accepted by lane=dod-closeout-accept-2026-11-13T0945Z-c2). A response naming the right workflow whose
+    parameter object omits a required field, or supplies one with the wrong type, scores FAIL under the
+    workflow_request scorer, and the schema-validation checklist reads True for a valid object. Re-run at
+    omnimarket origin/dev 54cbf4e718 passed (15 passed); with the parent of 0c4619863e the test file does not
+    exist.'
+  source: manual
+  binds_ac: [AC1]
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest benchmarks/delegation_ladder/tests/test_workflow_request_scorer.py -k ac1 -q -n 0 -p no:randomly --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn18339-ac2-accepted-20261113t0945z
+  description: 'AC2 binding (accepted 2026-11-13T0945Z, proposed by lane=dod-closeout-bind-2026-11-13T0945Z-c2,
+    accepted by lane=dod-closeout-accept-2026-11-13T0945Z-c2). For apply_patch_and_test, a committed diff
+    that applies to the named file scores PASS and a committed plausible diff that does not apply scores
+    FAIL; an absent, empty or prose patch scores FAIL. Re-run at omnimarket origin/dev 54cbf4e718 passed
+    (10 passed); with the parent of 0c4619863e the test file does not exist.'
+  source: manual
+  binds_ac: [AC2]
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest benchmarks/delegation_ladder/tests/test_workflow_request_scorer.py -k ac2 -q -n 0 -p no:randomly --no-cov
+    cwd: ${OMNI_HOME}/omnimarket

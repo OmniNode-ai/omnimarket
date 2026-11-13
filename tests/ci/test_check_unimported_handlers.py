@@ -193,3 +193,19 @@ def test_partial_import_clears_both_handlers(tmp_path: Path) -> None:
         "from .handlers.handler_x import HandlerXEffect, HandlerXAlt\n",
     )
     assert find_dead_handlers(tmp_path) == []
+
+
+@pytest.mark.unit
+def test_selector_node_handlers_have_wiring_evidence() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    dead = find_dead_handlers(
+        repo_root / "src" / "omnimarket",
+        baseline_path=repo_root
+        / "scripts"
+        / "validation"
+        / "unimported_handler_baseline.txt",
+    )
+    selector_entries = [
+        entry for entry in dead if "node_test_selection_selector_compute" in entry
+    ]
+    assert selector_entries == []

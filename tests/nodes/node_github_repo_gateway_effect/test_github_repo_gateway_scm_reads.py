@@ -31,6 +31,7 @@ from omnimarket.github_landing.github_landing_transport import (
     _read_window,
     step_second,
 )
+from omnimarket.models.github_landing.model_transport_error import GitHubTransportError
 from omnimarket.nodes.node_github_repo_gateway_effect import __main__ as gateway_cli
 from omnimarket.nodes.node_github_repo_gateway_effect.dispatcher import dispatch
 from omnimarket.nodes.node_github_repo_gateway_effect.models.model_gateway_io import (
@@ -49,10 +50,10 @@ from omnimarket.nodes.node_github_repo_gateway_effect.models.model_gateway_io im
     ModelPrReviewThreadsResult,
     ModelPrTextResult,
     ModelReleasesResult,
+    ModelRepoFileResult,
     ModelRunJobsResult,
     ModelWorkflowRunsResult,
 )
-from omnimarket.nodes.node_merge_sweep_compute.protocols import GitHubTransportError
 from tests.nodes.node_github_repo_gateway_effect.recorded_transport import (
     HEAD,
     REPO,
@@ -90,6 +91,7 @@ SCM_READ_RESULT_MODELS: dict[EnumGithubGatewayOperation, type[BaseModel]] = {
     EnumGithubGatewayOperation.MERGED_PR: ModelMergedPrResult,
     EnumGithubGatewayOperation.PR_REVIEW_THREADS: ModelPrReviewThreadsResult,
     EnumGithubGatewayOperation.OPEN_PR_FACTS: ModelOpenPrFactsResult,
+    EnumGithubGatewayOperation.REPO_FILE: ModelRepoFileResult,
 }
 
 

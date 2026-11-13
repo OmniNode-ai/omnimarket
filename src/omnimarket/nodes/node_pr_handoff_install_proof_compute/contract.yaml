@@ -1,0 +1,51 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_pr_handoff_install_proof_compute
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: compute
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: >
+  Decide whether a pr-handoff PR's host install, launchd or systemd unit, tool,
+  hook or plugin is installed on the lab and observed running, without I/O. A
+  clean exit alone never proves the install is present; the decision is the one
+  the branch revision's ancestry and the lab's observed output declare. Its own
+  command topic, apart from the placement decision of the pr-handoff node, so
+  the runtime seeds this decision's request model. The deployment overlay binds
+  the paths, repo paths, exclusions and observed words; a missing or invalid
+  overlay refuses the decision rather than silently falling back.
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+  - operation: decide_install_proof
+    handler:
+      name: HandlerInstallProof
+      module: omnimarket.nodes.node_pr_handoff_install_proof_compute.handlers.handler_install_proof
+    input_model: omnimarket.models.pr_handoff_install_proof.model_install_proof.ModelInstallProofRequest
+    output_model: omnimarket.models.pr_handoff_install_proof.model_install_proof.ModelInstallProofResult
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  runtime_profiles: [main]
+terminal_event: onex.evt.omnimarket.pr-handoff-install-proof-decided.v1
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.pr-handoff-install-proof-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.pr-handoff-install-proof-decided.v1
+  terminal_event: onex.evt.omnimarket.pr-handoff-install-proof-decided.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.pr-handoff-install-proof-requested.v1
+externally_consumed_topics:
+- onex.evt.omnimarket.pr-handoff-install-proof-decided.v1
+metadata:
+  ticket: OMN-23616
+  transport_type: kafka
+lifecycle: experimental

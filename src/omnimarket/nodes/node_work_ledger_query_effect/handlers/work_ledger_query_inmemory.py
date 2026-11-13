@@ -32,8 +32,22 @@ from datetime import UTC, datetime
 from typing import Any, Protocol
 
 from omnimarket.events.enum_ledger_row_type import EnumLedgerRowType
+from omnimarket.handlers.work_ledger_fold import WorkLedgerFoldError, fold_row
+from omnimarket.handlers.work_ledger_latest_fold import (
+    apply_latest,
+    latest_entries_for_row,
+    page_latest,
+)
 from omnimarket.handlers.work_ledger_text import ledger_row_stamp
-from omnimarket.models.work_ledger_query import ModelWorkLedgerRowRecord
+from omnimarket.models.model_work_ledger_fold_request import (
+    ModelWorkLedgerFoldRequest,
+)
+from omnimarket.models.work_ledger_query import (
+    ModelWorkLedgerLatestEntry,
+    ModelWorkLedgerLatestPage,
+    ModelWorkLedgerLatestQuery,
+    ModelWorkLedgerRowRecord,
+)
 from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_query_reader import (
     WorkLedgerReadError,
 )
@@ -76,8 +90,13 @@ class InMemoryWorkLedgerQueryReader:
         *,
         parity_receipt_lane: str | None = None,
         now: Callable[[], datetime] | None = None,
+        latest_row_types: frozenset[str] = frozenset(),
     ) -> None:
         self._records: dict[str, ModelWorkLedgerRowRecord] = {}
+        # The newest row per lane or ticket and row type (OMN-23694), kept by the same pure fold the projection writer
+        # applies; no tracked row type (the default) keeps nothing and the latest-state read answers no entries.
+        self._latest_row_types = latest_row_types
+        self._latest: dict[tuple[str, str, str], ModelWorkLedgerLatestEntry] = {}
         self._parity_receipt_lane = parity_receipt_lane
         self._now = now if now is not None else lambda: datetime.now(UTC)
 
@@ -106,6 +125,17 @@ class InMemoryWorkLedgerQueryReader:
             raw_row=raw_row,
             source=str(payload.get("source") or "onex-ledger"),
             projected_at=self._now(),
+        )
+        record = self._records[row_id]
+        try:
+            folded = fold_row(
+                ModelWorkLedgerFoldRequest(raw_row=record.raw_row, source=record.source)
+            ).row.model_copy(update={"row_id": row_id})
+        except WorkLedgerFoldError:
+            # A row the projection refuses keeps no latest entry; the row itself is still served by the rows queries.
+            return True
+        apply_latest(
+            self._latest, latest_entries_for_row(folded, self._latest_row_types)
         )
         return True
 
@@ -149,10 +179,11 @@ class InMemoryWorkLedgerQueryReader:
     def read_rows_matching(
         self,
         *,
-        since: datetime,
+        since: datetime | None,
         until: datetime,
         kinds: tuple[str, ...],
         contains: str | None,
+        term: str | None = None,
     ) -> tuple[ModelWorkLedgerRowRecord, ...]:
         wanted = set(kinds)
         return tuple(
@@ -160,6 +191,21 @@ class InMemoryWorkLedgerQueryReader:
             for r in self.read_rows(since=since, until=until)
             if (not wanted or r.row_type in wanted)
             and (not contains or contains in r.raw_row)
+            and (not term or term.casefold() in r.raw_row.casefold())
+        )
+
+    def read_latest_page(
+        self, *, query: ModelWorkLedgerLatestQuery
+    ) -> ModelWorkLedgerLatestPage:
+        """One keyset page of the newest row per lane or ticket and row type, the watermark the newest ingest."""
+        page = page_latest(self._latest, query)
+        stamps = [r.projected_at for r in self._records.values() if r.projected_at]
+        return page.model_copy(update={"watermark": max(stamps, default=None)})
+
+    def oldest_row_ts(self, *, until: datetime) -> datetime | None:
+        return min(
+            (r.row_ts for r in self._records.values() if r.row_ts <= until),
+            default=None,
         )
 
     def read_parity_receipts(

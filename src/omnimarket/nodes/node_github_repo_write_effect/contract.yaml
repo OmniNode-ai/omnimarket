@@ -10,9 +10,9 @@
 # (metadata side_effect_class read_only, descriptor idempotent true); a write
 # needs a mode, a quota floor and guards a read never does.
 name: node_github_repo_write_effect
-contract_version: {major: 1, minor: 7, patch: 0}
+contract_version: {major: 1, minor: 9, patch: 0}
 node_type: EFFECT_GENERIC
-node_version: {major: 1, minor: 6, patch: 0}
+node_version: {major: 1, minor: 8, patch: 0}
 
 description: >
   EFFECT: the PR authoring writes a lane makes. One ModelRepoWriteRequest on
@@ -59,11 +59,37 @@ description: >
   refused head_moved before any mutation. It scans the PR's existing reviews
   for the body's idempotency marker and returns review_id and html_url replayed
   when found, including after restart.
+  pr_label adds and removes issue labels on a pull request under the node's own
+  write identity. It checks the PR's head when given an expected one and refuses
+  head_moved before any mutation. Each label is checked against the overlay's
+  allowed_labels set; a label not in that set is refused label_not_allowed,
+  naming the refused labels only. A label already in the desired state is not
+  re-sent (replayed). The overlay is loaded lazily only when a pr_label request
+  needs it, so no other operation requires an overlay.
+  repo_variable_set and repo_variable_get write and read one GitHub Actions
+  repository variable (never a secret) under the node's own write identity. The
+  request names the repository and variable_name and carries no value: the
+  variable must be an entry of the overlay's repo_variables allowlist, whose
+  source names the file in the overlays repository that holds the value. A name
+  not on the list (or no overlay) is refused variable_not_allowed; a name or value
+  carrying one of the overlay's refuse markers is refused secret_refused; a
+  source that cannot be read is refused variable_source_unreadable. All refusals
+  come before any GitHub call, in either mode. repo_variable_set reads the
+  variable, creates it when absent, updates it when the value differs and sends
+  no write (replayed) when it already holds the value. repo_variable_get returns
+  the value, its sha256 digest and whether it equals the declared source. Only the
+  /actions/variables endpoints are called.
   A command carrying lease {kind, resource, fence, expires_at} is refused before
   any GitHub call unless the runtime's fence port answers ok: lease_fence_stale
   for a newer grant, lease_expired for no live grant or a lease expiring inside
   descriptor.timeout_ms, lease_unreadable when the port answers unknown, fails
   or is not wired.
+  A key already recorded for a finished write of the same repository and
+  operation, sent again with different request content (body, title, base, head,
+  pull request number and the rest, apart from the correlation id, dry_run, the
+  asking lane and run, the expected head, the lease and the claim), is refused
+  idempotency_key_conflict, naming the differing fields and never their values;
+  the first write's result is not replayed. The same content replays once.
 
 input_model:
   name: ModelRepoWriteRequest
@@ -105,6 +131,15 @@ operations:
     transport: rest
   - name: check_run_create
     description: "Request ModelRepoWriteRequest with name, head_sha, status (queued, in_progress, completed), optional conclusion and output (title, summary); replaces gh api --method POST /repos/{o}/{r}/check-runs. Result ModelRepoWriteCompleted with check_run_id, html_url and head_sha or ModelRepoWriteFailed. POST /repos/{o}/{r}/check-runs via the existing GitHub transport and auth. Requires checks write permission; replay protection is in-process only."
+    transport: rest
+  - name: pr_label
+    description: "Request ModelRepoWriteRequest with pr_number, expected_head_sha, add_labels and remove_labels, result ModelRepoWriteCompleted (html_url, head_sha) or ModelRepoWriteFailed (label_not_allowed when a label is not in the overlay's allowed set); replaces gh api --method POST /repos/{o}/{r}/issues/{n}/labels. GET the PR (expected head), POST /repos/{o}/{r}/issues/{n}/labels for labels to add, DELETE /repos/{o}/{r}/issues/{n}/labels/{label} for each label to remove."
+    transport: rest
+  - name: repo_variable_set
+    description: "Request ModelRepoWriteRequest with variable_name (no value), result ModelRepoWriteCompleted (variable_digest) or ModelRepoWriteFailed (variable_not_allowed, secret_refused, variable_source_unreadable); replaces gh variable set. The value is read from the overlay's declared source for the allowlisted name. GET /repos/{o}/{r}/actions/variables/{name}, POST /repos/{o}/{r}/actions/variables when absent, PATCH /repos/{o}/{r}/actions/variables/{name} when different; no write when equal (replayed)."
+    transport: rest
+  - name: repo_variable_get
+    description: "Request ModelRepoWriteRequest with variable_name, result ModelRepoWriteCompleted (variable_value, variable_digest, variable_in_sync) or ModelRepoWriteFailed (variable_not_allowed, not_found); replaces gh variable get. GET /repos/{o}/{r}/actions/variables/{name} for an allowlisted name."
     transport: rest
 
 modes:
@@ -174,6 +209,10 @@ secrets:
   ONEXBOT_OCC_INSTALLATION_ID:
     description: "Optional writer installation id; absent means discover the App installation on the request's owner."
     required: false
+
+overlay:
+  node: node_github_repo_write_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
 
 event_bus:
   version:

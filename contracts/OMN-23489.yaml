@@ -1,0 +1,61 @@
+schema_version: 1.0.0
+ticket_id: OMN-23489
+title: The fill reads the live floor record when a job is integrating
+summary: ModelRecordItem declares the integrating item state the factory floor compute publishes, the candidates compute treats an integrating item as not ready with the cause integrating, and a seam test pins the publisher's item states against the reader's; the reader's bus scenarios run on the in-memory bus and the real broker.
+is_seam_ticket: true
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23489-integrating-reader
+  statement: The candidates compute reads a floor record whose items carry every state the factory floor compute can publish, so the live record is never FLOOR-UNREAD for a state the reader lacks, and a stopped lane in such a record is listed.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: node_floor_fill_candidates_compute reads a floor record whose items carry every state the factory floor compute can publish, and treats an integrating item as not ready with the cause integrating -- falsifier: uv run pytest on the candidates compute''s integrating test fails on the unfixed model with FLOOR-UNREAD malformed'
+  - id: AC2
+    statement: 'AC2: a seam test pins the publisher''s item states against the reader''s, so a state added on either side without the other fails -- falsifier: uv run pytest on that seam test with a planted extra state on the publisher side fails'
+  - id: AC3
+    statement: 'AC3: integrated: in the lab runtime, the live floor record read through the fill''s candidates compute lists the stopped lanes of the record instead of FLOOR-UNREAD -- falsifier: the compute''s verdict and stopped list printed from the served floor record after the change merges'
+evidence_requirements:
+- kind: tests
+  description: The integrating reader tests (golden, error chain), the item-state seam test and the candidates bus scenarios
+  command: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_candidates_compute/tests/test_floor_fill_integrating.py tests/nodes/node_floor_fill_candidates_compute/test_floor_item_states_seam.py tests/nodes/node_floor_fill_candidates_compute/test_floor_fill_candidates_parity.py -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23489-integrating-reader
+  description: Runs the reader tests. A record whose item is integrating reads and lists its stopped lane; at the merge base the record model rejects the state, so the golden tests fail there with FLOOR-UNREAD malformed.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_candidates_compute/tests/test_floor_fill_integrating.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23489-item-state-seam
+  description: Runs the seam test of the publisher's item states against the reader's, with a planted state on each side reading broken, and the candidates bus scenarios (the in-memory leg runs everywhere; the Redpanda leg runs against the broker FLOOR_FILL_PARITY_BOOTSTRAP names).
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_floor_fill_candidates_compute/test_floor_item_states_seam.py tests/nodes/node_floor_fill_candidates_compute/test_floor_fill_candidates_parity.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23489-ac3-stopped-lane-listed
+  description: The hosted part of AC3. A floor record whose items carry the integrating state, the shape the served record has, reads and lists its stopped lane. At the merge base the test does not exist and the record model rejects the state, so the same read gives FLOOR-UNREAD malformed there.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_candidates_compute/tests/test_floor_fill_integrating.py -k stopped_lane_is_listed -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23489-integration-proof-lab
+  description: Runs the reader tests and the seam test at the pushed head on a lab host through the lab work runner. Hosted CI cannot reach the lab runner, so only the local Done gate runs this unbound item. The read of the served floor record is a separate step recorded in the pull request.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23489 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_candidates_compute/tests/test_floor_fill_integrating.py tests/nodes/node_floor_fill_candidates_compute/test_floor_item_states_seam.py -q --no-cov -p no:randomly'
+    cwd: .

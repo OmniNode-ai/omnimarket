@@ -1,0 +1,22 @@
+[
+ {
+  "source": "harness answer, reasoning then the class word alone",
+  "reply": "The change should take effect wherever the serve unit reads the host table, and the reading names a concrete gap: one unit is not loaded, so the row never reaches that reader. Every other host runs it, but the named unloaded unit keeps it from running where it should.\n\nnot_running"
+ },
+ {
+  "source": "harness answer, class word then a closing note",
+  "reply": "The reading shows the publish cycle ended ok with its steps, so the change is observed doing its job.\n\nseen_running"
+ },
+ {
+  "source": "lab model answer, spaced class word",
+  "reply": "The registered entry point is present but no reading of it running is named.\nrun not seen"
+ },
+ {
+  "source": "lab model answer, first class word is a distractor",
+  "reply": "Not seen_running: the reading names a gap, and it waits on another change before it can run.\nblocked"
+ },
+ {
+  "source": "delegate raw response, markdown heading",
+  "reply": "\n### ANSWER\nnot_running"
+ }
+]

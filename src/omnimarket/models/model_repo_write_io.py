@@ -17,6 +17,13 @@ or one failed result. Each operation replaces one ``gh`` verb a lane ran:
   same GraphQL mutation, refused unless the thread has a reply from the fixing lane.
 - pr_review_post replaces ``gh api --method POST /repos/{o}/{r}/pulls/{n}/reviews``
   with one COMMENT review pinned to the expected head.
+- pr_label replaces ``gh api --method POST /repos/{o}/{r}/issues/{n}/labels`` with
+  that POST for the labels to add and one DELETE per label to remove, each label
+  allowed by the node's overlay.
+- repo_variable_set / repo_variable_get replace ``gh variable set`` /
+  ``gh variable get`` with the /actions/variables calls. The variable's value is
+  never on the request: it is read from the file the node's overlay declares for
+  the allowed name, and repository variables are never secrets.
 - check_run_create posts a check result to /check-runs.
 - workflow_dispatch replaces ``gh workflow run`` with
   POST /actions/workflows/{w}/dispatches.
@@ -24,6 +31,7 @@ or one failed result. Each operation replaces one ``gh`` verb a lane ran:
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any, Final, Literal
@@ -34,6 +42,7 @@ from pydantic import (
     ConfigDict,
     Field,
     SerializerFunctionWrapHandler,
+    field_validator,
     model_serializer,
     model_validator,
 )
@@ -44,17 +53,24 @@ from omnimarket.events.pr_landing_github.model_github_quota_reading import (
 from omnimarket.github_landing.model_github_http_exchange import (
     ModelGithubHttpRequest,
 )
+from omnimarket.models.model_pr_duplicate_guard import validate_replaces
 from omnimarket.models.model_repo_write_lease import (
     ModelRepoWriteLease,
 )
 
-# GitHub's own limits: a PR or comment body holds at most 65536 characters and
-# a workflow_dispatch carries at most 10 inputs.
+# GitHub's own limits: a PR or comment body holds at most 65536 characters,
+# a workflow_dispatch carries at most 10 inputs, a label name holds at
+# most 50 characters, and a repository variable holds at most 48000
+# characters.
 MAX_BODY_CHARS = 65_536
 MAX_DISPATCH_INPUTS = 10
+MAX_LABEL_CHARS = 50
+MAX_VARIABLE_CHARS = 48_000
 
 _SHA = r"^[0-9a-f]{40}$"
 _REF = r"^[A-Za-z0-9._/-]+$"
+_LABEL = r"^[A-Za-z0-9][A-Za-z0-9 ._:/-]*$"
+_VARIABLE_NAME = r"^[A-Za-z_][A-Za-z0-9_]{0,99}$"
 
 
 class EnumRepoWriteOperation(StrEnum):
@@ -68,6 +84,9 @@ class EnumRepoWriteOperation(StrEnum):
     PR_THREAD_REPLY = "pr_thread_reply"
     PR_THREAD_RESOLVE = "pr_thread_resolve"
     PR_REVIEW_POST = "pr_review_post"
+    PR_LABEL = "pr_label"
+    REPO_VARIABLE_SET = "repo_variable_set"
+    REPO_VARIABLE_GET = "repo_variable_get"
     WORKFLOW_DISPATCH = "workflow_dispatch"
     CHECK_RUN_CREATE = "check_run_create"
 
@@ -84,8 +103,10 @@ _OPERATION_ONLY_FIELDS: Final[dict[EnumRepoWriteOperation, tuple[str, ...]]] = {
         "conclusion",
         "output",
     ),
+    EnumRepoWriteOperation.PR_CREATE: ("replaces",),
     EnumRepoWriteOperation.PR_THREAD_REPLY: ("thread_comment_id",),
     EnumRepoWriteOperation.PR_THREAD_RESOLVE: ("review_thread_id",),
+    EnumRepoWriteOperation.PR_LABEL: ("add_labels", "remove_labels"),
 }
 
 
@@ -108,9 +129,14 @@ class EnumRepoWriteRefusal(StrEnum):
     CONTRACT_REQUIRED = "contract_required"
     NOT_FOUND = "not_found"
     THREAD_NOT_REPLIED = "thread_not_replied"
+    LABEL_NOT_ALLOWED = "label_not_allowed"
+    VARIABLE_NOT_ALLOWED = "variable_not_allowed"
+    VARIABLE_SOURCE_UNREADABLE = "variable_source_unreadable"
+    SECRET_REFUSED = "secret_refused"
     GITHUB_REFUSED = "github_refused"
     CREDENTIAL_UNAVAILABLE = "credential_unavailable"
     TRANSPORT_ERROR = "transport_error"
+    IDEMPOTENCY_KEY_CONFLICT = "idempotency_key_conflict"
 
 
 _PR_SCOPED = frozenset(
@@ -122,6 +148,7 @@ _PR_SCOPED = frozenset(
         EnumRepoWriteOperation.PR_THREAD_REPLY,
         EnumRepoWriteOperation.PR_THREAD_RESOLVE,
         EnumRepoWriteOperation.PR_REVIEW_POST,
+        EnumRepoWriteOperation.PR_LABEL,
     }
 )
 # State changes and reviews name the head they expect to act on.
@@ -131,6 +158,7 @@ _HEAD_REQUIRED = frozenset(
         EnumRepoWriteOperation.PR_READY,
         EnumRepoWriteOperation.PR_CLOSE,
         EnumRepoWriteOperation.PR_REVIEW_POST,
+        EnumRepoWriteOperation.PR_LABEL,
     }
 )
 
@@ -283,6 +311,31 @@ class ModelRepoWriteRequest(BaseModel):
         "(`onex scm pr-threads` lists them). Refused unless the thread already "
         "has a reply from the fixing lane.",
     )
+    add_labels: tuple[str, ...] | None = Field(
+        default=None,
+        min_length=1,
+        description="pr_label: the labels to add to the PR.",
+    )
+    remove_labels: tuple[str, ...] | None = Field(
+        default=None,
+        min_length=1,
+        description="pr_label: the labels to remove from the PR.",
+    )
+    variable_name: str | None = Field(
+        default=None,
+        pattern=_VARIABLE_NAME,
+        description="repo_variable_set / repo_variable_get: the repository "
+        "variable's name; its value is never on the request, it comes from the "
+        "overlay's declared source.",
+    )
+    replaces: tuple[str, ...] | None = Field(
+        default=None,
+        min_length=1,
+        description="pr_create: pull requests of the same repository, as OWNER/REPO#N, that this change "
+        "replaces. The duplicate check read each one's state itself and set aside only the overlaps it alone "
+        "introduced; the write carries the list so the handoff and landing sides can read it. None leaves the "
+        "field out of the envelope.",
+    )
     claims_dir: str | None = Field(
         default=None,
         min_length=1,
@@ -293,6 +346,29 @@ class ModelRepoWriteRequest(BaseModel):
         default=False,
         description="Force dry_run even where the contract's mode is enforce.",
     )
+
+    @field_validator("replaces")
+    @classmethod
+    def _replaces_are_pull_request_refs(
+        cls, value: tuple[str, ...] | None
+    ) -> tuple[str, ...] | None:
+        return None if value is None else validate_replaces(value)
+
+    @field_validator("add_labels", "remove_labels")
+    @classmethod
+    def _labels_are_valid(cls, value: tuple[str, ...] | None) -> tuple[str, ...] | None:
+        if value is None:
+            return None
+        for label in value:
+            if not label:
+                raise ValueError("label must be a non-empty string")
+            if len(label) > MAX_LABEL_CHARS:
+                raise ValueError(
+                    f"label {label!r} exceeds {MAX_LABEL_CHARS} characters"
+                )
+            if not re.fullmatch(_LABEL, label):
+                raise ValueError(f"label {label!r} does not match {_LABEL!r}")
+        return value
 
     @model_validator(mode="after")
     def _operation_fields(self) -> ModelRepoWriteRequest:
@@ -334,6 +410,27 @@ class ModelRepoWriteRequest(BaseModel):
             missing.append("review_thread_id")
         if op is EnumRepoWriteOperation.PR_CLOSE and self.requested_by_run is None:
             missing.append("requested_by_run")
+        if op is EnumRepoWriteOperation.PR_LABEL:
+            if self.add_labels is None and self.remove_labels is None:
+                raise ValueError(
+                    "pr_label requires at least one of add_labels, remove_labels"
+                )
+            if self.add_labels and self.remove_labels:
+                both = set(self.add_labels) & set(self.remove_labels)
+                if both:
+                    raise ValueError(
+                        f"pr_label label(s) {sorted(both)!r} are in both add_labels and remove_labels"
+                    )
+        if op in (
+            EnumRepoWriteOperation.REPO_VARIABLE_SET,
+            EnumRepoWriteOperation.REPO_VARIABLE_GET,
+        ):
+            if self.variable_name is None:
+                missing.append("variable_name")
+        elif self.variable_name is not None:
+            raise ValueError(
+                "variable_name is read only by repo_variable_set and repo_variable_get"
+            )
         if op is EnumRepoWriteOperation.WORKFLOW_DISPATCH:
             missing += [
                 n
@@ -381,6 +478,13 @@ class ModelRepoWriteRequest(BaseModel):
         data: dict[str, Any] = handler(self)
         if self.lease is None:
             data.pop("lease", None)
+        if self.replaces is None:
+            data.pop("replaces", None)
+        if self.operation not in (
+            EnumRepoWriteOperation.REPO_VARIABLE_SET,
+            EnumRepoWriteOperation.REPO_VARIABLE_GET,
+        ):
+            data.pop("variable_name", None)
         for owner, names in _OPERATION_ONLY_FIELDS.items():
             if owner is not self.operation:
                 for name in names:
@@ -426,6 +530,18 @@ class ModelRepoWriteCompleted(_ModelRepoWriteResultBase):
     comment_id: int | None = None
     review_id: int | None = Field(default=None, gt=0)
     check_run_id: int | None = Field(default=None, gt=0)
+    variable_name: str | None = None
+    variable_value: str | None = Field(
+        default=None, description="repo_variable_get only; variables are non-secret."
+    )
+    variable_digest: str | None = Field(
+        default=None, description="sha256 hex of the value written or read."
+    )
+    variable_in_sync: bool | None = Field(
+        default=None,
+        description="repo_variable_get: the value equals the declared source's; "
+        "None when the source cannot be read.",
+    )
 
 
 class ModelRepoWriteFailed(_ModelRepoWriteResultBase):
@@ -461,6 +577,7 @@ class ModelRepoWriteFailed(_ModelRepoWriteResultBase):
 __all__: list[str] = [
     "MAX_BODY_CHARS",
     "MAX_DISPATCH_INPUTS",
+    "MAX_VARIABLE_CHARS",
     "EnumRepoWriteMode",
     "EnumRepoWriteOperation",
     "EnumRepoWriteRefusal",

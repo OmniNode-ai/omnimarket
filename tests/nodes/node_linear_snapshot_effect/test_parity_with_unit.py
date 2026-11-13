@@ -157,10 +157,14 @@ def test_planted_divergence_in_the_unit_reader_turns_the_parity_red(
         assert_same_snapshot(unit, node)
 
 
-def test_failed_read_keeps_window_pointer_and_snapshot(
+def test_failed_snapshot_read_writes_no_snapshot_and_keeps_the_previous_one(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """A failed Linear read writes no snapshot and the hourly tick leaves its window pointer."""
+    """Guarantee 1 of 2: a failed Linear read writes no snapshot and leaves the earlier file.
+
+    This is the snapshot node alone. It does not reach the hourly tick; the tick's own
+    guarantee is the next test, which feeds the tick a failed sweep result by hand.
+    """
     out_dir = tmp_path / "snapshots"
     yesterday = out_dir / f"linear-{DATE}.json"
     out_dir.mkdir()
@@ -174,6 +178,16 @@ def test_failed_read_keeps_window_pointer_and_snapshot(
     assert capsys.readouterr().out.startswith("linear-snapshot | failed ")
     assert yesterday.read_text(encoding="utf-8") == "{}"
 
+
+def test_tick_given_a_failed_sweep_result_keeps_its_window_pointer(
+    tmp_path: Path,
+) -> None:
+    """Guarantee 2 of 2: the hourly tick keeps its window pointer when its sweep result says failed.
+
+    The failed and the successful sweep results are supplied by hand. No result of a
+    snapshot invocation reaches the tick here, so this test does not show that a snapshot
+    read failure propagates to the tick; the two guarantees are independent.
+    """
     home = tmp_path / "home"
     home.mkdir()
     (home / "checkpoints.md").write_text(

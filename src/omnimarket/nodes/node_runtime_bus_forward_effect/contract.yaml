@@ -1,0 +1,75 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Runtime Bus Forward Effect (OMN-24003)
+#
+# A runtime-local bus keeps the events a node run published in its own process. This node carries those recorded events
+# to the hosted bus the node's own overlay declares: the omnibase_core runtime (RuntimeLocal) calls it after the run,
+# through a forwarder registered under the onex.runtime_bus_forwarders entry-point group. It owns every publish; the
+# handler only validates and hands events to an injected publisher. An event whose topic is under none of the overlay's
+# allowed prefixes, or past the overlay's max_events, is refused by name and never published.
+name: node_runtime_bus_forward_effect
+contract_name: node_runtime_bus_forward_effect
+node_name: node_runtime_bus_forward_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Carries the events one node run published to the runtime-local bus to the hosted bus the node's overlay declares.
+  Every publish goes through the injected publisher (the handler dials nothing itself). An event whose topic is under
+  none of the overlay's allowed topic prefixes, or past the overlay's max_events, is refused by name and never
+  published; a publish the client refuses, or a flush that leaves events unconfirmed, counts as failed, and the run's
+  receipt carries the detail.
+
+handler:
+  module: omnimarket.nodes.node_runtime_bus_forward_effect.handlers.handler_runtime_bus_forward
+  class: HandlerRuntimeBusForward
+  input_model: omnimarket.nodes.node_runtime_bus_forward_effect.models.model_runtime_bus_forward.ModelRuntimeBusForwardCommand
+
+# HandlerRuntimeBusForward takes the overlay and the publisher as constructor parameters, so it is called by the
+# omnibase_core runtime through the entry point adapter, not handler_routing.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true  # a retry re-publishes the run's same recorded events, under the same keys
+  side_effects: [hosted-bus-publish]
+  timeout_ms: 120000
+
+input_model:
+  name: ModelRuntimeBusForwardCommand
+  module: omnimarket.nodes.node_runtime_bus_forward_effect.models.model_runtime_bus_forward
+  description: The run whose recorded runtime-bus events are carried to the hosted bus.
+output_model:
+  name: ModelRuntimeBusForwardResult
+  module: omnimarket.nodes.node_runtime_bus_forward_effect.models.model_runtime_bus_forward
+  description: How many recorded events were forwarded or failed, and each refusal by name.
+
+terminal_event: onex.evt.omnimarket.runtime-bus-forward-completed.v1
+
+runtime_dispatch:
+  external_trigger: true
+
+topics:
+  runtime_bus_forward_requested: onex.cmd.omnimarket.runtime-bus-forward-requested.v1
+  runtime_bus_forward_completed: onex.evt.omnimarket.runtime-bus-forward-completed.v1
+  runtime_bus_forward_failed: onex.evt.omnimarket.runtime-bus-forward-failed.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.runtime-bus-forward-completed.v1
+  - onex.evt.omnimarket.runtime-bus-forward-failed.v1
+
+overlay:
+  node: node_runtime_bus_forward_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+metadata:
+  ticket: OMN-24003
+  transport_type: inmemory
