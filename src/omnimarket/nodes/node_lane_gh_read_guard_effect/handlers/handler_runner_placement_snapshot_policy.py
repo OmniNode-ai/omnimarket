@@ -50,6 +50,15 @@ def handle(
     )
 
 
+class HandlerRunnerPlacementSnapshotPolicy:
+    """Class binding for the node's payload routing; delegates to ``handle``."""
+
+    def handle(
+        self, request: ModelRunnerPlacementSnapshotRequest
+    ) -> ModelRunnerPlacementSnapshotDecision:
+        return handle(request)
+
+
 def lane_reads_snapshot_only(snapshot: object | None) -> bool:
     """Adapt process facts to the node handler without carrying environment values."""
     return handle(

@@ -5212,6 +5212,7 @@
   "tests/unit/nodes/test_golden_chain_captured_secret_resolve_effect.py": 0.11,
   "tests/unit/nodes/test_golden_chain_captured_secret_store_effect.py": 1.82,
   "tests/unit/nodes/test_golden_chain_hook_ledger_omn17201.py": 0.3,
+  "tests/unit/nodes/test_golden_chain_lane_gh_read_guard_effect.py": 2.19,
   "tests/unit/nodes/test_golden_chain_node_ci_summary_registry_compute.py": 0.07,
   "tests/unit/nodes/test_golden_chain_open_obligations.py": 0.05,
   "tests/unit/nodes/test_golden_chain_pr_state_emit_effect.py": 0.07,
