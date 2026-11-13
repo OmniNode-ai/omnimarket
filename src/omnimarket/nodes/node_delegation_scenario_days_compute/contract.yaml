@@ -56,8 +56,18 @@ terminal_event: onex.evt.omnimarket.delegation-scenario-green-days-computed.v1
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.delegation-scenario-green-days-compute-requested.v1
 
+# OMN-19998: the declared broker grants for the topics this contract's event_bus lists (the permission coverage check, OMN-24005).
+# The principal is the dev runtime's login, read from the environment where the reconcile runs; no login name is written in a repository.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_DEV_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.delegation-scenario-green-days-compute-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.delegation-scenario-green-days-compute-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.delegation-scenario-green-days-computed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.delegation-scenario-green-days-computed.v1, operation: DESCRIBE}
 event_bus:
-  subscribe_topics: []
+  subscribe_topics:
+    - onex.cmd.omnimarket.delegation-scenario-green-days-compute-requested.v1
   publish_topics:
     - onex.evt.omnimarket.delegation-scenario-green-days-computed.v1
 
