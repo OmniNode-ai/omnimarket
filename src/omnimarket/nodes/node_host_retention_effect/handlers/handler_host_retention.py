@@ -26,6 +26,9 @@ from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
     load_structured_overlay,
 )
+from omnimarket.nodes.node_host_retention_effect.handlers.handler_uv_cache_cap import (
+    evict_over_cap,
+)
 from omnimarket.nodes.node_host_retention_effect.handlers.host_retention_ports import (
     HostRetentionPorts,
     PreCommitStorePort,
@@ -189,6 +192,20 @@ def validate_declarations(
             )
         except RefusalError as exc:
             refusals.append(str(exc))
+        cap = cache.cap
+        if cap is not None:
+            for bucket in cap.buckets:
+                if bucket not in bounds.uv_evictable_buckets:
+                    refusals.append(
+                        f"uv cache {cache.path}: cap bucket {bucket!r} is not named by "
+                        f"the contract, which allows only "
+                        f"{', '.join(sorted(bounds.uv_evictable_buckets)) or 'none'}"
+                    )
+            if cap.keep_days < bounds.min_keep_days:
+                refusals.append(
+                    f"uv cache {cache.path}: cap keep_days {cap.keep_days} is below the "
+                    f"contract minimum {bounds.min_keep_days}"
+                )
     return refusals
 
 
@@ -404,7 +421,14 @@ def _runner_group(
 
 
 def _uv_cache(
-    cache: ModelUvCache, *, dry_run: bool, ports: HostRetentionPorts, out: _Pass
+    cache: ModelUvCache,
+    *,
+    now: float,
+    dry_run: bool,
+    depths: dict[str, int],
+    refs: ProcessReferences | None,
+    ports: HostRetentionPorts,
+    out: _Pass,
 ) -> None:
     out.begin(UV_CACHE)
     if not Path(cache.path).is_dir():
@@ -418,6 +442,8 @@ def _uv_cache(
         out.errors.append(f"{cache.path}: {type(exc).__name__}")
         return
     if size < cache.min_gib * _GIB:
+        # Below min_gib the cache is also under cap_gib (the model validates cap_gib >= min_gib),
+        # so the cap pass has nothing to do here either.
         out.keep(UV_CACHE, cache.path, "below_min")
         return
     out.propose(
@@ -430,6 +456,17 @@ def _uv_cache(
         )
     )
     if dry_run:
+        # The prune never ran, so the cap pass measures with the size read before it.
+        evict_over_cap(
+            cache,
+            size_after=size,
+            now=now,
+            dry_run=True,
+            depths=depths,
+            refs=refs,
+            ports=ports,
+            out=out,
+        )
         return
     try:
         ports.uv_cache.prune(
@@ -442,6 +479,16 @@ def _uv_cache(
         out.errors.append(f"{cache.path}: {type(exc).__name__}")
         return
     out.done(UV_CACHE, max(0, size - after))
+    evict_over_cap(
+        cache,
+        size_after=after,
+        now=now,
+        dry_run=False,
+        depths=depths,
+        refs=refs,
+        ports=ports,
+        out=out,
+    )
 
 
 def _disk_readings(
@@ -514,8 +561,13 @@ class HandlerHostRetention:
         now = self.now()
         unreadable = 0
         age_classes = [age for age in row.age_classes if runs(age.kind)]
+        # The uv cache cap pass guards its evictions with the same process references the age
+        # classes read, so it is read once for both (and not at all when neither needs it).
+        wants_uv_cap = runs("uv_cache") and any(
+            cache.cap is not None for cache in row.uv_caches
+        )
+        refs = self.references() if (age_classes or wants_uv_cap) else None
         if age_classes:
-            refs = self.references()
             live = ports.lane_liveness.live_lanes(row.lane_run_roots, row.receipt_roots)
             mounts = (
                 ports.container_mounts.mount_sources()
@@ -564,7 +616,15 @@ class HandlerHostRetention:
                 )
         if runs("uv_cache"):
             for cache in row.uv_caches:
-                _uv_cache(cache, dry_run=request.dry_run, ports=ports, out=out)
+                _uv_cache(
+                    cache,
+                    now=now,
+                    dry_run=request.dry_run,
+                    depths=bounds.uv_evictable_buckets,
+                    refs=refs,
+                    ports=ports,
+                    out=out,
+                )
         totals = tuple(
             ModelClassTotals(
                 class_name=name,
