@@ -2502,6 +2502,7 @@
   "tests/nodes/node_work_ledger_file_mode_replay_effect/test_file_mode_replay_queue_through_emit_path.py": 0.02,
   "tests/nodes/node_work_ledger_file_mode_replay_effect/test_golden_chain_work_ledger_file_mode_replay_effect.py": 0.04,
   "tests/nodes/node_work_ledger_parity_receipt_effect/test_golden_chain_parity_receipt.py": 0.17,
+  "tests/nodes/node_work_ledger_parity_receipt_effect/test_verb_command.py": 1.94,
   "tests/nodes/node_work_ledger_reducer_compute/test_golden_chain_work_ledger_reducer_compute.py": 0.05,
   "tests/nodes/node_work_ledger_runtime_inventory_effect/test_runtime_inventory.py": 0.58,
   "tests/nodes/node_work_ledger_seam_counter_compute/test_golden_chain_work_ledger_seam_counter_compute.py": 0.04,

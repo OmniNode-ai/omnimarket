@@ -154,6 +154,8 @@ class HandlerParityReceipt:
             "--utc-day", day, "--dsn-env", settings.dsn_env_name, "--receipt",
             "--state-dir", str(Path(request.registry_root) / settings.state_subdir),
         ]  # fmt: skip
+        if request.verb_command.strip():
+            command.extend(["--verb-command", request.verb_command.strip()])
         try:
             done = self._runner.run(
                 command, {settings.dsn_env_name: dsn}, settings.parity_timeout_seconds
