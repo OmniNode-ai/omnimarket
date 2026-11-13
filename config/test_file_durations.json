@@ -4669,6 +4669,7 @@
   "tests/unit/nodes/node_ledger_hold_verdict_effect/test_hold_verdict_chain_events.py": 3.53,
   "tests/unit/nodes/node_ledger_hold_verdict_effect/test_hold_verdict_reader_seam.py": 2.6,
   "tests/unit/nodes/node_ledger_hold_verdict_effect/test_runtime_hold_verdict.py": 2.58,
+  "tests/unit/nodes/node_ledger_rows_loader_effect/test_file_rows_match_the_node_rows.py": 2.86,
   "tests/unit/nodes/node_ledger_rows_loader_effect/test_rows_loader_chain_events.py": 0.5,
   "tests/unit/nodes/node_ledger_rows_loader_effect/test_rows_loader_reader_seam.py": 2.0,
   "tests/unit/nodes/node_ledger_rows_loader_effect/test_runtime_rows_loader.py": 2.0,
