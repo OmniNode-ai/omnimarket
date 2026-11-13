@@ -4,7 +4,7 @@
 
 handle takes the runtime tick. A tick inside the overlay's interval returns nothing and does not move the last-run
 time; the tick that is due builds the fill handler on the profile the overlay names, runs one fill tick and returns
-the run event. A refused overlay or an unbound profile is a failed run event that names it, never a silent skip.
+the run event. A refused overlay, or a live profile whose store DSN variable is unset, is a failed run event that names it, never a silent skip.
 """
 
 from __future__ import annotations
@@ -19,6 +19,7 @@ from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
     NodeOverlayNotFoundError,
     load_structured_overlay,
+    resolve_setting,
 )
 from omnimarket.handlers.schedule_gate import ScheduleGate
 from omnimarket.handlers.scheduled_overlay_refusal import ScheduledOverlayRefusalLatch
@@ -27,6 +28,9 @@ from omnimarket.models.schedule_trigger.model_schedule_trigger import (
 )
 from omnimarket.nodes.node_floor_fill_orchestrator.container.container_inmemory import (
     build_inmemory_handler,
+)
+from omnimarket.nodes.node_floor_fill_orchestrator.container.container_live import (
+    build_live_handler_factory,
 )
 from omnimarket.nodes.node_floor_fill_orchestrator.handlers.handler_floor_fill_command import (
     HandlerFloorFillCommand,
@@ -107,13 +111,25 @@ class HandlerFloorFillScheduled:
         config = document.floor_fill
         build = self._build_handler
         if build is None:
-            if overlay.profile != "inmemory":
-                return self._event(
-                    request,
-                    "failed",
-                    f"the {overlay.profile} profile is not bound in the runtime yet",
-                )
-            build = build_inmemory_handler
+            if overlay.profile == "live":
+                live_settings = document.floor_fill_live
+                try:
+                    dsn = resolve_setting(
+                        NODE_NAME,
+                        "store_dsn",
+                        fields=frozenset(),
+                        env_vars=(live_settings.store_dsn_env,),
+                        environ=self._environ,
+                    )
+                except NodeOverlayError:
+                    return self._event(
+                        request,
+                        "failed",
+                        f"UNKNOWN fill-state:store-dsn-unset:{live_settings.store_dsn_env}",
+                    )
+                build = build_live_handler_factory(live_settings, dsn=dsn)
+            else:
+                build = build_inmemory_handler
         result = build(config).handle(
             ModelFloorFillCommandRequest(
                 command=EnumFloorFillCommand.TICK, key=None, host_id=config.host_id

@@ -137,14 +137,52 @@ def test_error_a_missing_fill_overlay_is_a_failed_run_naming_it(
     assert "node_floor_fill_orchestrator" in event.detail
 
 
-def test_error_the_live_profile_is_refused_by_name_until_it_is_bound(
+def _example_dsn_env_name() -> str:
+    return str(
+        yaml.safe_load(EXAMPLE.read_text(encoding="utf-8"))["floor_fill_live"][
+            "store_dsn_env"
+        ]
+    )
+
+
+def test_error_the_live_profile_with_no_store_dsn_is_a_failed_run_naming_the_variable(
     tmp_path: Path,
 ) -> None:
     h = HandlerFloorFillScheduled(environ=environ(tmp_path, profile="live"))
     event = h.handle(tick(T0))
     assert event is not None
     assert event.outcome == "failed"
-    assert "live profile is not bound" in event.detail
+    assert (
+        event.detail == f"UNKNOWN fill-state:store-dsn-unset:{_example_dsn_env_name()}"
+    )
+
+
+def test_golden_the_live_profile_builds_through_the_live_factory_with_the_named_dsn(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: dict[str, str] = {}
+
+    def factory(settings: object, *, dsn: str) -> object:
+        seen["dsn"] = dsn
+        seen["env"] = str(getattr(settings, "store_dsn_env"))  # noqa: B009
+
+        def build(config: ModelFloorFillConfig) -> _Done:
+            return _Done(0, "OK live pass\n")
+
+        return build
+
+    monkeypatch.setattr(
+        "omnimarket.nodes.node_floor_fill_scheduled_effect.handlers."
+        "handler_floor_fill_scheduled.build_live_handler_factory",
+        factory,
+    )
+    env = environ(tmp_path, profile="live")
+    env[_example_dsn_env_name()] = "postgres://fixture"
+    event = HandlerFloorFillScheduled(environ=env).handle(tick(T0))
+    assert event is not None
+    assert (event.outcome, event.detail) == ("completed", "OK live pass")
+    assert seen == {"dsn": "postgres://fixture", "env": _example_dsn_env_name()}
+    assert "postgres://fixture" not in event.detail
 
 
 def test_seam_the_run_event_folds_into_the_reducer_and_the_topics_match(
