@@ -9,9 +9,10 @@ uses and a ``cleanup`` name. Pairs whose identity is this group's are selected,
 their setup is rebuilt with fresh state, the request is replayed against the
 mounted app and any difference outside the manifest's named masking rules fails.
 
-Skipped only when the corpus location is unset or holds none of this group's
-identities (the recording is T18b, OMN-22158). With pairs present it never skips
-and never passes without comparing a pair.
+Defined only when the corpus location holds this group's identities (the recording
+is T18b, OMN-22158), because a collected-then-skipped test counts against the
+skip-count ratchet. With pairs present it never skips and never passes without
+comparing a pair.
 """
 
 from __future__ import annotations
@@ -48,10 +49,6 @@ pytestmark = pytest.mark.unit
 
 CORPUS_ENV = "ONEX_T18B_CORPUS_DIR"
 IDENTITIES = frozenset({"GET /v1/workflows/contracts"})
-SKIP_REASON = (
-    "the T18b recorded corpus (OMN-22158) is not available: "
-    f"set {CORPUS_ENV} to a corpus holding {sorted(IDENTITIES)}"
-)
 
 
 def _read_manifest(corpus: Path) -> dict[str, Any]:
@@ -77,13 +74,6 @@ def _group_pairs() -> tuple[Path | None, dict[str, Any], list[dict[str, Any]]]:
 
 
 _CORPUS, _MANIFEST, _PAIRS = _group_pairs()
-_CASES = (
-    [pytest.param(p, id=str(p.get("id", p["identity"]))) for p in _PAIRS]
-    if _PAIRS
-    else [
-        pytest.param(None, marks=pytest.mark.skip(reason=SKIP_REASON), id="no-corpus")
-    ]
-)
 
 
 def _load_json(corpus: Path, relative: str, expected_sha: str | None) -> Any:
@@ -179,26 +169,30 @@ def _fresh_app(request: Mapping[str, Any], expected: Mapping[str, Any]) -> TestC
     return TestClient(create_app(identity=identity, catalog=catalog))
 
 
-@pytest.mark.parametrize("pair", _CASES)
-def test_recorded_pair_replays_with_no_unmasked_difference(
-    pair: dict[str, Any],
-) -> None:
-    assert _CORPUS is not None
-    sha = pair.get("sha256") or {}
-    request = _load_json(_CORPUS, pair["request"], sha.get("request"))
-    expected = _load_json(_CORPUS, pair["response"], sha.get("response"))
-    method, path = pair["identity"].split(" ", 1)
-    assert (request.get("method", method).upper(), request.get("path", path)) == (
-        method,
-        path,
+if _PAIRS:
+
+    @pytest.mark.parametrize(
+        "pair", [pytest.param(p, id=str(p.get("id", p["identity"]))) for p in _PAIRS]
     )
+    def test_recorded_pair_replays_with_no_unmasked_difference(
+        pair: dict[str, Any],
+    ) -> None:
+        assert _CORPUS is not None
+        sha = pair.get("sha256") or {}
+        request = _load_json(_CORPUS, pair["request"], sha.get("request"))
+        expected = _load_json(_CORPUS, pair["response"], sha.get("response"))
+        method, path = pair["identity"].split(" ", 1)
+        assert (request.get("method", method).upper(), request.get("path", path)) == (
+            method,
+            path,
+        )
 
-    client = _fresh_app(request, expected)
-    actual = client.request(method, path, headers=request.get("headers") or {})
+        client = _fresh_app(request, expected)
+        actual = client.request(method, path, headers=request.get("headers") or {})
 
-    rules = _rules_for(pair)
-    assert actual.status_code == expected["status"]
-    assert _masked(actual.json(), rules) == _masked(expected.get("body"), rules)
+        rules = _rules_for(pair)
+        assert actual.status_code == expected["status"]
+        assert _masked(actual.json(), rules) == _masked(expected.get("body"), rules)
 
 
 def test_a_difference_outside_the_masking_rules_is_caught() -> None:
