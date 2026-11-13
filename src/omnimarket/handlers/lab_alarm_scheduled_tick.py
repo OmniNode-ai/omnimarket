@@ -6,6 +6,11 @@ The scheduled job node reaches the lab alarm's broker-lag handler through this s
 another node's models package. The alarm overlay is the lab alarm's own overlay (``ONEX_LAB_ALARM_OVERLAY`` pins the
 file, else ``<alarm_overlay_id>/overlay.yaml`` under ``ONEX_SKILL_OVERLAY_ROOTS``). An unreadable overlay raises
 ``NodeOverlayError``; the scheduled job node turns it into a failed run event.
+
+The lab alarm's lag source arrives as an injected ``handler``, or as a ``build_handler`` callable that is handed the
+loaded overlay; a runtime that binds a lag source passes one of the two. A runtime that binds no lag source passes
+neither, and the tick reports the lag source as not bound without running anything. This module imports no real
+backend adapter.
 """
 
 from __future__ import annotations
@@ -27,7 +32,6 @@ from omnimarket.nodes.node_lab_alarm.models.model_lab_alarm import (
     ModelBrokerLagCommand,
 )
 from omnimarket.nodes.node_lab_alarm.overlay import ModelLabAlarmOverlay
-from omnimarket.nodes.node_lab_alarm.runtime_lab_alarm import build_handler
 
 
 class ModelLabAlarmTickOutcome(NamedTuple):
@@ -43,6 +47,7 @@ def run_lab_alarm_tick(
     environ: Mapping[str, str] | None,
     clock: Callable[[], datetime],
     handler: HandlerBrokerLag | None = None,
+    build_handler: Callable[[ModelLabAlarmOverlay], HandlerBrokerLag] | None = None,
 ) -> ModelLabAlarmTickOutcome:
     """Run the lab alarm's broker-lag handler once, the way the runtime unit does."""
     overlay = load_structured_overlay(
@@ -51,8 +56,14 @@ def run_lab_alarm_tick(
         environ,
         file_env="ONEX_LAB_ALARM_OVERLAY",
     )
-    if handler is None:
+    if handler is None and build_handler is not None:
         handler = build_handler(overlay)
+    if handler is None:
+        return ModelLabAlarmTickOutcome(
+            True,
+            "the lab alarm's lag source is not bound in this runtime: "
+            "no handler was supplied",
+        )
     result = handler.handle(
         ModelBrokerLagCommand(
             correlation_id=f"lab-alarm-scheduled-{clock():%Y%m%dT%H%M%SZ}",
