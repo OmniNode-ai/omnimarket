@@ -26,6 +26,24 @@ class ModelScheduleDeclaration(BaseModel):
     grace_seconds: int = Field(ge=0)
 
 
+class ModelScheduleBlock(ModelScheduleDeclaration):
+    """The schedule part of a job overlay.
+
+    The keys beyond job_id, run_interval_seconds, grace_seconds belong to the job node's own model and are not read here.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+
+class ModelScheduleUnreadableJob(BaseModel):
+    """A declared job overlay that could not be read: its overlay id and the error detail."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    overlay_id: str = Field(min_length=1)
+    detail: str
+
+
 class ModelScheduleVerdictOverlay(ModelScheduleDeclaration):
     """The verdict effect's own overlay: its cadence plus the overlay ids it judges."""
 
@@ -51,6 +69,7 @@ class ModelScheduleVerdictRequest(BaseModel):
     observed_since: datetime
     declared: tuple[ModelScheduleDeclaration, ...]
     states: tuple[ModelScheduleJobState, ...]
+    unreadable: tuple[ModelScheduleUnreadableJob, ...] = ()
 
 
 class ModelScheduleJobVerdict(BaseModel):
@@ -59,7 +78,9 @@ class ModelScheduleJobVerdict(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     job_id: str
-    state: Literal["FIRING", "FAILING", "OVERDUE", "NEVER_FIRED", "PENDING"]
+    state: Literal[
+        "FIRING", "FAILING", "OVERDUE", "NEVER_FIRED", "PENDING", "UNREADABLE"
+    ]
     last_fired_at: datetime | None
     age_seconds: int | None
     detail: str
@@ -116,11 +137,13 @@ class ModelScheduleRunApplied(BaseModel):
 
 
 __all__ = [
+    "ModelScheduleBlock",
     "ModelScheduleDeclaration",
     "ModelScheduleJobState",
     "ModelScheduleJobVerdict",
     "ModelScheduleRunApplied",
     "ModelScheduleRunEvent",
+    "ModelScheduleUnreadableJob",
     "ModelScheduleVerdictOverlay",
     "ModelScheduleVerdictRequest",
     "ModelScheduleVerdictResult",

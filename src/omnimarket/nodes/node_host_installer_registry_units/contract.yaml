@@ -75,6 +75,23 @@ metadata:
 execution:
   deterministic: false
   side_effects: true
+# The command line (OMN-24108): `onex-host-install-units <unit> [--dry-run|--install|--status|--kickstart|--uninstall|--rollback]`,
+# declared in omnimarket's pyproject. Every request input is a `--<field-with-hyphens>` option; `--set NAME=PATH` repeats for
+# path_overrides. A value comes from the option, else the environment variable named under env_inputs, else the template under
+# defaults ({home}, {registry_root}, filled in that order; a path to a private repository is never a default here). A field named under required_inputs that
+# resolves to nothing is refused before anything is dispatched. `mode` is the node's own default, so a bare command is a dry run.
+command_line:
+  program: onex-host-install-units
+  modes: [dry-run, install, status, kickstart, uninstall, rollback]
+  required_inputs: [registry_root]
+  env_inputs:
+    registry_root: OMNI_HOME
+    workspace_config_root: ONEX_WORKSPACE_CONFIG_ROOT
+    plans_path: ONEX_PLANS_KB_PATH
+    marketplace_root: ONEX_MARKETPLACE_ROOT
+    ledger_path: ONEX_LEDGER_PATH
+    source_root: ONEX_PLUGIN_ROOT
+  defaults: {}
 # The registry_module_tick units this node renders. Placeholders in `environment` values: {home}, {registry_root},
 # {workspace_config_root}, {plans_path}, {marketplace_root} (request inputs, refused when named and not given), and
 # {overlays_root}: the overlays directory of the clone the lab_hosts overlay declares for the host the request names

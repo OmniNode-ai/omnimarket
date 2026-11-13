@@ -143,16 +143,16 @@ class HandlerOverlayDriftCompute:
         self._appender = appender
         self._clock = clock
 
-    def handle(self, command: ModelOverlayJoinCommand) -> ModelOverlayJoinResult:
-        if command.write and self._appender is None:
+    def handle(self, request: ModelOverlayJoinCommand) -> ModelOverlayJoinResult:
+        if request.write and self._appender is None:
             return ModelOverlayJoinResult(
-                correlation_id=command.correlation_id,
+                correlation_id=request.correlation_id,
                 status="failed",
                 host=self._host,
                 failure="no-appender-for-a-writing-run",
             )
         now = self._clock().astimezone(UTC)
-        return self._publish(self._read(command.correlation_id), now, command.write)
+        return self._publish(self._read(request.correlation_id), now, request.write)
 
     def _consumer_value(
         self, consumer_env: str | None, source: ModelValueSource
