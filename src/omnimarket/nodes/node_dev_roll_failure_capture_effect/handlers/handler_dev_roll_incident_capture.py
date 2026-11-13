@@ -106,6 +106,7 @@ class HandlerDevRollIncidentCapture:
             commit=request.commit,
             error=request.error,
             recovery_verified=request.recovery_verified,
+            failed_phase=request.failed_phase,
             manifest_seen=manifest[0],
             manifest_issuer_matches=manifest[1],
             health_probe_count=len(request.health_probes),
