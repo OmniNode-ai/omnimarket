@@ -52,6 +52,13 @@ dod_evidence:
   - check_type: command
     check_value: 'uv run --frozen python -c "import os, psycopg2; cur = psycopg2.connect(os.environ[\"OMNIBASE_INFRA_DB_URL\"]).cursor(); cur.execute(\"select count(*) from public.floor_fill_state\"); raise SystemExit(0 if cur.fetchone()[0] > 0 else 1)"'
     cwd: .
+- id: dod-omn24266-deploy-readback
+  description: Deploy probe. The store's connection line carries the boundary mark in the tree this change ships, read through gh api at the checked-out commit so hosted CI can run it before merge. It fails at a base whose store has no mark.
+  source: manual
+  checks:
+  - check_type: command
+    check_value: gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/handlers/floor_fill_state_store_postgres.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep 'no-contract-check' > /dev/null
+    cwd: .
 - id: dod-omn24266-integration-proof
   description: The pushed head ran the guard-boundary tests of the store on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
   source: manual
