@@ -13,10 +13,10 @@ from uuid import NAMESPACE_URL, uuid5
 
 from pydantic import BaseModel
 
-from omnimarket.events.github_pr_status_poll import (
+from omnimarket.handlers.work_ledger_text import ledger_row_stamp
+from omnimarket.models.github_pr_status_poll import (
     ModelGitHubPrStatusPollEvent,
 )
-from omnimarket.handlers.work_ledger_text import ledger_row_stamp
 from omnimarket.models.model_github_pr_state_observation import (
     ModelGitHubPrStateObservation,
 )

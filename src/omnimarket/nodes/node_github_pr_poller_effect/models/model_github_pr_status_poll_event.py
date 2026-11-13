@@ -4,6 +4,6 @@
 
 from __future__ import annotations
 
-from omnimarket.events.github_pr_status_poll import ModelGitHubPrStatusPollEvent
+from omnimarket.models.github_pr_status_poll import ModelGitHubPrStatusPollEvent
 
 __all__ = ["ModelGitHubPrStatusPollEvent"]
