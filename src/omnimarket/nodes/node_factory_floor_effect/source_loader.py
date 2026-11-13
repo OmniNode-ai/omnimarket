@@ -146,6 +146,9 @@ _TS_SHAPE = re.compile(r"\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):\d{2}:\d{2}Z", re.A
 def _ledger_ts(value: str) -> datetime | None:
     """A ledger row's UTC stamp. A zero-padded ``TS_FMT`` stamp is read by the C parser (strptime is the cost of a 14-day
     read: one call per row, about 250,000 rows); anything else takes the strict parse and so keeps its old answer."""
+    if not value:
+        # An absent cell (most rows carry no ``until=``) is no stamp; strptime would raise on it, one raise per row.
+        return None
     if _TS_SHAPE.fullmatch(value):
         try:
             return datetime.fromisoformat(value[:-1]).replace(tzinfo=UTC)
@@ -163,6 +166,8 @@ def _tickets(*values: str) -> tuple[str, ...]:
 
 
 def _csv(*values: str) -> tuple[str, ...]:
+    if not any(values):
+        return ()
     return tuple(
         dict.fromkeys(part for value in values for part in value.split(",") if part)
     )

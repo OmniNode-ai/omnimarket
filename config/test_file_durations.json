@@ -1188,6 +1188,7 @@
   "tests/nodes/node_factory_floor_compute/test_live_lines.py": 0.15,
   "tests/nodes/node_factory_floor_compute/test_one_runtime_containers.py": 0.05,
   "tests/nodes/node_factory_floor_compute/test_projection.py": 0.11,
+  "tests/nodes/node_factory_floor_compute/test_scoped_task_lane_lookup.py": 2.91,
   "tests/nodes/node_factory_floor_compute/test_scoped_tasks.py": 0.05,
   "tests/nodes/node_factory_floor_compute/test_slot_truth.py": 0.17,
   "tests/nodes/node_factory_floor_compute/test_station_per_task.py": 6.23,
