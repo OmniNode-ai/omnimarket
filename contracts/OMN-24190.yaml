@@ -1,0 +1,74 @@
+schema_version: 1.0.0
+ticket_id: OMN-24190
+title: A tested step that creates the development test login and its test customer
+summary: "Adds node_dev_identity_provision_effect: on the dev lane only, it reads the Keycloak admin client credential from the secret store by reference, creates or reuses one named dev user, generates that user's password into the secret store through the secret store node's generate_key operation (a new declared key, dev_probe_user_password), signs in as the user with the password grant, and calls onex-api POST /v1/auth/provision to bind a new probe tenant. The result carries user name, tenant id and slug only. A lane or realm the contract's dev_only block does not declare is refused before any secret read or network call; a missing admin credential is a typed result naming the secret folder and key the node expects."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24190-dev-identity
+  statement: The dev identity node refuses non-dev lanes and realms, provisions one dev login and probe tenant, never exposes a secret, and types every failure.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the step refuses a lane or a sign-in realm that is not the declared development one, before any secret read or network call -- falsifier: pytest tests/nodes/node_dev_identity_provision_effect/test_dev_only_guard.py -q fails when the guard is removed'
+  - id: AC2
+    statement: 'AC2: a full run creates or reuses the named login, stores a generated password for it, signs in and returns the tenant id and slug, and no password, token or bootstrap token appears in the result, its text form or the logs -- falsifier: pytest tests/nodes/node_dev_identity_provision_effect/test_golden_chain_dev_identity_provision.py -q fails when the password is added to the result detail'
+  - id: AC3
+    statement: 'AC3: every failure is a typed result, and a missing administrator credential names the secret folder and key it expects and makes no network call -- falsifier: pytest tests/nodes/node_dev_identity_provision_effect/test_error_chain_dev_identity_provision.py -q fails when the missing-credential result drops the expected name'
+  - id: AC4
+    statement: 'AC4: the generated password key the overlay names is the one the secret store node declares, and the requests the step sends are the ones the sign-in service and the platform accept -- falsifier: pytest tests/nodes/node_dev_identity_provision_effect/test_seam_generated_password_key.py tests/nodes/node_dev_identity_provision_effect/test_seam_wire_shapes.py -q fail when the key is renamed or a request field is renamed'
+  - id: AC5
+    statement: 'AC5: integrated: one probe run on the development runtime reads the administrator credential by reference and answers ready, and one run creates the login and prints a tenant id -- falsifier: before the credential is in the secret store the same probe prints admin_credential_missing with the expected secret name'
+evidence_requirements:
+- kind: tests
+  description: 'The node''s focused tests at the pushed head. The failing controls are the removed dev guard, a password added to the result detail, a renamed generated key and a renamed request field.'
+  command: uv run --frozen pytest tests/nodes/node_dev_identity_provision_effect -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24190-ac1-guard
+  description: 'The dev-only guard tests pass at the pushed head, including the control that the same handler runs when the contract declares the other lane and realm.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_dev_identity_provision_effect/test_dev_only_guard.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24190-ac2-golden
+  description: 'The golden chain test passes at the pushed head: the call order, the idempotent second run, and no secret in the result, repr or logs.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_dev_identity_provision_effect/test_golden_chain_dev_identity_provision.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24190-ac3-error
+  description: 'The error chain test passes at the pushed head: one typed outcome per injected break.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_dev_identity_provision_effect/test_error_chain_dev_identity_provision.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24190-ac4-seams
+  description: 'The seam tests pass at the pushed head: the generated key against the secret store contract, the real seed handler against the node''s reader, and the wire shapes against the strict fake.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_dev_identity_provision_effect/test_seam_generated_password_key.py tests/nodes/node_dev_identity_provision_effect/test_seam_wire_shapes.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24190-integration-proof
+  description: 'The pushed head ran the node''s tests on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24190 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_dev_identity_provision_effect -q --no-cov'
+    cwd: .
