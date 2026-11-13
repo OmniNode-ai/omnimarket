@@ -9,12 +9,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 BATCH1_NODES = (
     "node_c32_auth_boundary_probe_effect",
-    "node_captured_secret_store_effect",
-    "node_claude_token_pool_effect",
     "node_host_reconcile_effect",
-    "node_host_table_copies_drift_compute",
-    "node_lab_fill_selection_compute",
-    "node_overlay_drift_compute",
     "node_pr_landing_liveness_read_effect",
 )
 

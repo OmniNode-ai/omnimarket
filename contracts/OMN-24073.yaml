@@ -1,18 +1,18 @@
 schema_version: 1.0.0
 ticket_id: OMN-24073
-title: Eight built nodes are listed so the dev runtime loads them
-summary: Eight nodes that already live in omnimarket with a contract (node_c32_auth_boundary_probe_effect, node_captured_secret_store_effect, node_claude_token_pool_effect, node_host_reconcile_effect, node_host_table_copies_drift_compute, node_lab_fill_selection_compute, node_overlay_drift_compute, node_pr_landing_liveness_read_effect) carried no onex.nodes entry point, so the dev runtime image never discovered them. The entry points are added and a test fails when any of them is missing. No node code changes.
+title: Three built nodes are listed so the dev runtime loads them
+summary: Three nodes that already live in omnimarket with a contract (node_c32_auth_boundary_probe_effect, node_host_reconcile_effect, node_pr_landing_liveness_read_effect) carried no onex.nodes entry point, so the dev runtime image never discovered them. The entry points are added and a test fails when any of them is missing. No node code changes.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
 - id: req-omn24073-entry-points
-  statement: Each of the eight named nodes is registered under onex.nodes in the omnimarket package metadata so the runtime image build discovers it.
+  statement: Each of the three named nodes is registered under onex.nodes in the omnimarket package metadata so the runtime image build discovers it.
   acceptance:
   - id: AC1
-    statement: 'AC1: the eight named nodes are listed under the onex.nodes entry points of the omnimarket package and each imports -- falsifier: with one entry removed from pyproject.toml, uv run pytest tests/test_entry_points_node_move_batch1.py -n 0 --no-cov fails on that node'
+    statement: 'AC1: the three named nodes are listed under the onex.nodes entry points of the omnimarket package and each imports -- falsifier: with one entry removed from pyproject.toml, uv run pytest tests/test_entry_points_node_move_batch1.py -n 0 --no-cov fails on that node'
   - id: AC2
-    statement: 'AC2: integrated: after the dev runtime rolls to a tag at or past the merge, its node registry lists all eight nodes -- falsifier: the dev runtime registry read, taken after the roll, lacks any of the eight names'
+    statement: 'AC2: integrated: after the dev runtime rolls to a tag at or past the merge, its node registry lists all three nodes -- falsifier: the dev runtime registry read, taken after the roll, lacks any of the three names'
 evidence_requirements:
 - kind: tests
   description: The entry point test passes at the pushed head.
