@@ -67,6 +67,11 @@ def _scan(source: str) -> ModelFreestandingImperativeResult:
     )
 
 
+def scan_has_no_active_finding(source: str) -> bool:
+    """True when the guard's scan of one live module source reports no active (unsuppressed) finding."""
+    return all(finding.suppressed for finding in _scan(source).findings)
+
+
 def test_store_connection_is_a_declared_boundary_for_the_guard(
     store_source: str,
 ) -> None:
@@ -88,7 +93,11 @@ def test_store_connection_is_a_declared_boundary_for_the_guard(
 def test_guard_boundary_control_unmarked_connection_is_active(
     store_source: str,
 ) -> None:
-    """With the boundary mark removed the same connection is an active (unsuppressed) finding."""
+    """The mark is what separates the two verdicts: the shipped source has no active finding, the unmarked copy does."""
+    shipped_active = [
+        finding for finding in _scan(store_source).findings if not finding.suppressed
+    ]
+    assert not shipped_active, "the shipped store source must carry no active finding"
     unmarked = _BOUNDARY_MARK.sub("", store_source)
     result = _scan(unmarked)
     active = [finding for finding in result.findings if not finding.suppressed]
