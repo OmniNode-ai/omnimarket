@@ -23,9 +23,8 @@ from omnimarket.nodes.node_hook_tool_outcome_compute.overlay import (
 
 def test_invalid_hook_event_name_is_a_validation_error() -> None:
     with pytest.raises(ValidationError):
-        ModelHookToolOutcomeRequest(
-            tool_name="Bash",
-            hook_event_name="PreToolUse",  # type: ignore[arg-type]
+        ModelHookToolOutcomeRequest.model_validate(
+            {"tool_name": "Bash", "hook_event_name": "PreToolUse"}
         )
 
 
