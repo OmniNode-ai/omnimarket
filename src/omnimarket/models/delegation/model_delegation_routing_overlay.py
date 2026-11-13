@@ -25,6 +25,9 @@ from omnimarket.models.delegation.model_local_endpoints_overlay import (
 from omnimarket.models.delegation.model_paid_rungs_overlay import (
     ModelPaidRungsOverlay,
 )
+from omnimarket.models.delegation.model_task_kind_rungs_overlay import (
+    ModelTaskKindRungsOverlay,
+)
 from omnimarket.models.delegation.wire.model_bifrost_delegation_config import (
     EnumDelegationBackendKind,
     ModelDelegationBackendConfig,
@@ -94,6 +97,11 @@ class ModelDelegationRoutingOverlay(BaseModel):
     ``local_endpoints`` (OMN-23871) declares the local GPU backends: the complete
     endpoint and the served model of each, bound onto the routing contract's local
     rungs by the bifrost loaders; an absent section changes nothing.
+
+    ``task_kind_rungs`` (OMN-24296) pins individual question kinds to a rung: a
+    kind may run on the route's local backend once it has measured at least the
+    route's ``min_f1``, or stay on its current rung, the class's escalation
+    chain; an absent section changes nothing.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -106,6 +114,7 @@ class ModelDelegationRoutingOverlay(BaseModel):
     eval_arms: ModelEvalArmsOverlay | None = None
     paid_rungs: ModelPaidRungsOverlay | None = None
     local_endpoints: ModelLocalEndpointsOverlay | None = None
+    task_kind_rungs: ModelTaskKindRungsOverlay | None = None
 
     @model_validator(mode="after")
     def _validate_references(self) -> ModelDelegationRoutingOverlay:
@@ -192,6 +201,24 @@ class ModelDelegationRoutingOverlay(BaseModel):
                     problems.append(
                         f"local endpoint {backend.backend_id!r} reuses a harness, "
                         "eval or paid backend_id"
+                    )
+        if self.task_kind_rungs is not None:
+            chain_classes = {c.task_class for c in self.escalation_chains}
+            local_backend_ids = (
+                {b.backend_id for b in self.local_endpoints.backends}
+                if self.local_endpoints is not None
+                else set()
+            )
+            for route in self.task_kind_rungs.routes:
+                if route.task_class not in chain_classes:
+                    problems.append(
+                        f"task_kind route {route.task_kind!r} names task_class "
+                        f"{route.task_class!r} with no escalation chain"
+                    )
+                if route.local_backend_id not in local_backend_ids:
+                    problems.append(
+                        f"task_kind route {route.task_kind!r} local_backend_id "
+                        f"{route.local_backend_id!r} is not declared in local_endpoints"
                     )
         for chain in self.escalation_chains:
             for tier in self.harness_tiers:

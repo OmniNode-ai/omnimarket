@@ -1,0 +1,55 @@
+schema_version: 1.0.0
+ticket_id: OMN-24296
+title: Route CI red triage by measured kind to the lab model with a live accuracy guard
+summary: 'A typed per-task-kind rung section in the delegation routing overlay model (unknown keys refused, a local rung refused for a kind below the declared F1 bar) and a compute node,
+  node_delegation_task_kind_guard_compute, that scores every routed answer against the deterministic class and falls back when live accuracy drops under the measured interval lower bound.'
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn24296-task-kind-rungs-and-guard
+  statement: The routing overlay declares which question kinds run on the local rung, and a guard node checks each local answer against the deterministic class.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the routing settings model accepts a per-task-kind rung section, refuses an unknown key and refuses a local rung for a kind whose measured F1 is below the declared bar -- falsifier: pytest tests/test_task_kind_rung_overlay.py -q fails on the base model'
+  - id: AC2
+    statement: 'AC2: the guard node scores every routed triage answer against the deterministic class when one exists and returns fallback when live accuracy is below the declared lower bound -- falsifier: pytest tests/nodes/test_node_delegation_task_kind_guard_compute.py -q, golden and error chain tests, fails on the base tree'
+  - id: AC3
+    statement: 'AC3: integrated: on the dev runtime from the branch, one base-red triage request answered by the h201 rung with facts is scored by the guard node and the tally is read back from the terminal event -- falsifier: the terminal event carries tally.scored=1 and the h201 receipt names the endpoint'
+evidence_requirements:
+- kind: tests
+  description: The overlay model tests and the guard node tests pass at the pushed head.
+  command: uv run pytest tests/unit/delegation/test_task_kind_rung_overlay.py tests/nodes/node_delegation_task_kind_guard_compute -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24296-ac1
+  description: 'AC1: the overlay model tests, including the refusals of unknown keys and of a local rung below the F1 bar.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_task_kind_rung_overlay.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24296-ac2
+  description: 'AC2: the guard node golden chain, error chain and seam tests.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_task_kind_guard_compute -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24296-ac3
+  description: 'hosted proxy for AC3: the guard node tests pass; the live reading (h201 receipt, latency, tally) is taken on a lab host and named in the pull request.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_task_kind_guard_compute -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .

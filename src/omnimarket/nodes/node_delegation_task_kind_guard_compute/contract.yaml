@@ -1,0 +1,80 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodeDelegationTaskKindGuardCompute (OMN-24296)
+#
+# Scores one local model answer to a classification question against the
+# deterministic class and says whether the answer is accepted on the local rung
+# or the question escalates to the task class's current rung (called in process, so the contract declares no topic):
+#
+#   handle(ModelTaskKindGuardRequest) -> ModelTaskKindGuardAnswer
+#
+# The route (the kinds that earned the local rung, the local backend, the guard's
+# sample size and its accuracy lower bound) is the task_kind_rungs section of the
+# routing overlay bound by DELEGATION_ROUTING_OVERLAY_PATH. The running tally is
+# carried by the caller and returned updated: the node holds no state and has no
+# clock. An unbound overlay, an invalid overlay or a question with no declared
+# route is a typed refusal: there is no fallback and no default route.
+name: "node_delegation_task_kind_guard_compute"
+contract_name: "node_delegation_task_kind_guard_compute"
+node_name: "node_delegation_task_kind_guard_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+description: >
+  Decides, for one local answer to a classification question, whether the answer
+  is accepted on the local rung or escalates to the task class's current rung. The
+  answer is scored against the deterministic class when the caller has one and the
+  caller's running tally is returned updated. It escalates when live accuracy,
+  after the declared sample size, is under the declared lower bound; when the
+  answer disagrees with the deterministic class; when the answered kind is not
+  declared; and when the kind stays on its current rung. Every number, kind name
+  and backend name is a value of the routing overlay, never of this node.
+input_model:
+  name: "ModelTaskKindGuardRequest"
+  module: "omnimarket.nodes.node_delegation_task_kind_guard_compute.models.model_task_kind_guard_request"
+  description: "The question, the kind the local model answered, the deterministic class if any, and the running tally."
+output_model:
+  name: "ModelTaskKindGuardAnswer"
+  module: "omnimarket.nodes.node_delegation_task_kind_guard_compute.models.model_task_kind_guard_answer"
+  description: "Route (local or escalate) with its reason, the updated tally, accuracy and its lower bound, or a typed refusal."
+handler:
+  module: "omnimarket.nodes.node_delegation_task_kind_guard_compute.handlers.handler_task_kind_guard"
+  class: "HandlerDelegationTaskKindGuard"
+  input_model: "omnimarket.nodes.node_delegation_task_kind_guard_compute.models.model_task_kind_guard_request.ModelTaskKindGuardRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_delegation_task_kind_guard_compute.handlers.handler_task_kind_guard:HandlerDelegationTaskKindGuard"
+  handlers:
+    - operation: "guard_task_kind_answer"
+      handler:
+        name: "HandlerDelegationTaskKindGuard"
+        module: "omnimarket.nodes.node_delegation_task_kind_guard_compute.handlers.handler_task_kind_guard"
+# No event_bus and no runtime_dispatch: the caller that scores a local answer invokes the handler in process, like the
+# landing controller does the decision node. A topic would need broker permission rows in the overlays repository
+# (broker-acl-coverage-gate); add the topics and the rows together when a bus caller exists.
+runtime_profiles:
+  - main
+descriptor:
+  node_archetype: compute
+  purity: impure  # reads the bound routing overlay file; writes nothing
+  idempotent: true
+  timeout_ms: 5000
+metadata:
+  description: "Guard that scores a local classification answer against the deterministic class and falls back on a live accuracy drop."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-11-13"
+  tags:
+    - compute
+    - delegation
+    - routing
+    - guard
