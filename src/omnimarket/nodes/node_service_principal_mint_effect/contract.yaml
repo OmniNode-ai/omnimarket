@@ -4,6 +4,11 @@ name: node_service_principal_mint_effect
 lifecycle: experimental
 node_type: EFFECT_GENERIC
 runtime_profiles: []
+dependency_ownership:
+  - overlay
+  - admin
+  - vault
+  - delivery
 contract_version:
   major: 1
   minor: 0
@@ -30,16 +35,6 @@ handler:
   class: HandlerServicePrincipalMint
   input_model: omnimarket.nodes.node_service_principal_mint_effect.models.model_service_principal_mint.ModelServicePrincipalMintRequest
   output_model: omnimarket.nodes.node_service_principal_mint_effect.models.model_service_principal_mint.ModelServicePrincipalMintResult
-handler_routing:
-  routing_strategy: operation_match
-  default_handler: omnimarket.nodes.node_service_principal_mint_effect.handlers.handler_service_principal_mint:HandlerServicePrincipalMint
-  handlers:
-  - operation: mint
-    handler:
-      name: HandlerServicePrincipalMint
-      module: omnimarket.nodes.node_service_principal_mint_effect.handlers.handler_service_principal_mint
-    input_model: omnimarket.nodes.node_service_principal_mint_effect.models.model_service_principal_mint.ModelServicePrincipalMintRequest
-    output_model: omnimarket.nodes.node_service_principal_mint_effect.models.model_service_principal_mint.ModelServicePrincipalMintResult
 event_bus:
   subscribe_topics: []
   publish_topics: []

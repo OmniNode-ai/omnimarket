@@ -77,16 +77,7 @@ async def test_contract_golden_chain() -> None:
         importlib.import_module(binding["module"]), binding["class"]
     )
     assert handler_class is HandlerServicePrincipalMint
-    assert (
-        contract["handler_routing"]["default_handler"]
-        == binding["module"] + ":" + binding["class"]
-    )
-    mint_route = contract["handler_routing"]["handlers"][0]
-    assert mint_route["operation"] == "mint"
-    assert (
-        mint_route["handler"]["module"] + ":" + mint_route["handler"]["name"]
-        == contract["handler_routing"]["default_handler"]
-    )
+    assert "handler_routing" not in contract
 
     def model(ref: str) -> type[BaseModel]:
         module, _, name = ref.rpartition(".")
