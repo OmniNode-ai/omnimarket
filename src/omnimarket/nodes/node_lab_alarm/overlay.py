@@ -23,6 +23,10 @@ from omnimarket.handlers.node_overlay_reader import load_structured_overlay
 NODE_NAME = "node_lab_alarm"
 
 
+#: Whether each backend reads a broker address from the overlay.
+_TAKES_BOOTSTRAP_SERVERS = {"inmemory": False, "runtime": False, "runtime_admin": True}
+
+
 class ModelAlarmBackend(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -37,10 +41,11 @@ class ModelAlarmBackend(BaseModel):
 
     @model_validator(mode="after")
     def _admin_backend_declares_its_broker(self) -> ModelAlarmBackend:
-        if self.backend == "runtime_admin" and self.bootstrap_servers is None:
-            raise ValueError("backend runtime_admin needs bootstrap_servers")
-        if self.backend != "runtime_admin" and self.bootstrap_servers is not None:
-            raise ValueError("only backend runtime_admin takes bootstrap_servers")
+        declared = self.bootstrap_servers is not None
+        if _TAKES_BOOTSTRAP_SERVERS[self.backend] != declared:
+            raise ValueError(
+                "bootstrap_servers is required by backend runtime_admin and by no other"
+            )
         return self
 
 
