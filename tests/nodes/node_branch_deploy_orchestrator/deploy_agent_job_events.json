@@ -1,0 +1,81 @@
+{
+  "completed_failed": {
+    "completed_at": "2026-11-12T20:25:02Z",
+    "compose_invocations": [],
+    "container_residue": [],
+    "correlation_id": "11111111-1111-4111-8111-111111111111",
+    "deps_convergence": [],
+    "duration_seconds": 900.0,
+    "errors": [
+      "runtime_image_build_errored"
+    ],
+    "git_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "health_checks": [],
+    "image_digest": null,
+    "image_ref": null,
+    "lane_mirror": null,
+    "not_started": null,
+    "oneshot_reruns": [],
+    "onex_api_delivery": null,
+    "phase_results": {
+      "compose_gen": "success",
+      "core": "skipped",
+      "git": "success",
+      "preflight": "success",
+      "runtime": "failed",
+      "seed": "success",
+      "verification": "skipped"
+    },
+    "recreate_supervision": [],
+    "requested_git_ref": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "runtime_lane": "dev",
+    "scope": "runtime",
+    "services_restarted": [],
+    "sibling_refs": {},
+    "started_at": "2026-11-12T20:25:02Z",
+    "status": "failed",
+    "verify_recreate": []
+  },
+  "completed_success": {
+    "completed_at": "2026-11-12T20:25:02Z",
+    "compose_invocations": [],
+    "container_residue": [],
+    "correlation_id": "11111111-1111-4111-8111-111111111111",
+    "deps_convergence": [],
+    "duration_seconds": 900.0,
+    "errors": [],
+    "git_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "health_checks": [],
+    "image_digest": null,
+    "image_ref": null,
+    "lane_mirror": null,
+    "not_started": null,
+    "oneshot_reruns": [],
+    "onex_api_delivery": null,
+    "phase_results": {
+      "compose_gen": "success",
+      "core": "skipped",
+      "git": "success",
+      "preflight": "success",
+      "runtime": "success",
+      "seed": "success",
+      "verification": "success"
+    },
+    "recreate_supervision": [],
+    "requested_git_ref": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "runtime_lane": "dev",
+    "scope": "runtime",
+    "services_restarted": [
+      "omninode-runtime"
+    ],
+    "sibling_refs": {},
+    "started_at": "2026-11-12T20:25:02Z",
+    "status": "success",
+    "verify_recreate": []
+  },
+  "rejected": {
+    "correlation_id": "11111111-1111-4111-8111-111111111111",
+    "reason": "busy",
+    "scope": "runtime"
+  }
+}

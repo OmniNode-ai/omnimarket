@@ -1006,6 +1006,11 @@ _CI_YML_STRUCTURALLY_COVERED_KEYS: frozenset[str] = frozenset(
         # would be wrong: it legitimately reports `skipped` on every non-docs
         # PR, which is exactly the state the gates are built to reject.
         "docs-only-marker",
+        # Overlay Main Load: unconditional, no skip path other than the fork
+        # guard; covered by the L3 default-deny sweep, not individually named
+        # (naming it in STRICT_GATE_JOBS changes the bytes the recorded-head
+        # replay pins).
+        "overlay-main-load",
     }
 )
 
