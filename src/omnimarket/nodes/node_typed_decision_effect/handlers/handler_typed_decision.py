@@ -58,7 +58,7 @@ from omnimarket.inference.secret_store_resolver import (
     SecretResolutionError,
     resolve_api_key_loop_safe,
 )
-from omnimarket.nodes.node_typed_decision_effect.handlers.handler_local_decision_engine import (
+from omnimarket.nodes.node_typed_decision_effect.handlers.local_decision_engine import (
     answer_payload,
     build_request_body,
 )
