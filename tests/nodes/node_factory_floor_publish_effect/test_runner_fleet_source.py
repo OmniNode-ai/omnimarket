@@ -18,6 +18,7 @@ from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_factory
     HandlerFactoryFloorPublish,
     load_runtime,
 )
+from tests.nodes.node_factory_floor_publish_effect.limits_support import TEST_LIMITS
 
 pytestmark = pytest.mark.unit
 OBSERVATION = {
@@ -115,7 +116,7 @@ def test_fleet_refresh_is_concurrent_and_uses_the_floor_input_path() -> None:
     )
     from omnimarket.nodes.node_factory_floor_effect.source_loader import load_contract
 
-    steps = load_runtime().steps
+    steps = load_runtime().with_limits(TEST_LIMITS).steps
     source = next(step for step in steps if step.name == "runner_fleet")
     assert source.concurrent
     assert not source.required
