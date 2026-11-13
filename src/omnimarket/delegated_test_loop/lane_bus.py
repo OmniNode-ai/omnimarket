@@ -21,7 +21,8 @@ import asyncio
 import contextlib
 import os
 import threading
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Iterator, Mapping
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Literal
 
@@ -41,6 +42,45 @@ from omnimarket.nodes.node_push_validation_effect import (
 
 BusKind = Literal["kafka", "inmemory"]
 _READY_TIMEOUT_SECONDS = 120
+_ENV_BROKER_LOGIN: ContextVar[str | None] = ContextVar(
+    "onex_lane_bus_environment_broker_login", default=None
+)
+
+
+def _environment_broker_login(environ: Mapping[str, str]) -> str | None:
+    """The broker login the container exports, or None when it is not a login.
+
+    A login is the stripped ``KAFKA_SASL_USERNAME`` only when both it and the
+    password variable are non-empty; the password is tested for emptiness and
+    never read, returned or logged.
+    """
+    from omnibase_infra.cli.delegate_lane_credentials import (
+        ENV_SASL_PASSWORD,
+        ENV_SASL_USERNAME,
+    )
+
+    username = environ.get(ENV_SASL_USERNAME, "").strip()
+    password = environ.get(ENV_SASL_PASSWORD, "").strip()
+    if not username or not password:
+        return None
+    return username
+
+
+@contextlib.contextmanager
+def _environment_login_scope(environment_answers: bool) -> Iterator[None]:
+    """Name the container's exported broker login for the life of one opened connection.
+
+    Only where no lane transport is bound (the environment path answers); the login is reset on every
+    exit, a refused broker start included, so it never outlives the connection that used it.
+    """
+    if not environment_answers:
+        yield
+        return
+    token = _ENV_BROKER_LOGIN.set(_environment_broker_login(os.environ))
+    try:
+        yield
+    finally:
+        _ENV_BROKER_LOGIN.reset(token)
 
 
 class LabRunBusError(RuntimeError):
@@ -51,18 +91,29 @@ def bound_lane_principal() -> str:
     """Return the broker login the open lane bus connection authenticated as.
 
     Valid only inside ``open_lab_run_bus(bus="kafka", ...)``, which binds the
-    lane transport for the life of the connection.
+    lane transport for the life of the connection. A bound transport alone
+    names the login (an ambient environment must never name the login of a
+    lane that declares a plaintext or otherwise username-less transport); when
+    no transport is bound, the login is the environment broker login set for
+    the life of the opened connection, if any.
     """
     from omnibase_infra.event_bus.lane_client_transport_binding import (
         bound_lane_client_transport,
     )
 
     transport = bound_lane_client_transport()
-    if transport is None or not transport.sasl_username:
+    if transport is not None:
+        if not transport.sasl_username:
+            raise LabRunBusError(
+                "this lane resolves no broker login: the writer identity is the broker principal"
+            )
+        return transport.sasl_username
+    login = _ENV_BROKER_LOGIN.get()
+    if not login:
         raise LabRunBusError(
             "this lane resolves no broker login: the writer identity is the broker principal"
         )
-    return transport.sasl_username
+    return login
 
 
 @contextlib.asynccontextmanager
@@ -118,7 +169,7 @@ async def open_lab_run_bus(
         if transport is not None
         else contextlib.nullcontext()
     )
-    with binding:
+    with binding, _environment_login_scope(transport is None):
         kafka = EventBusKafka.from_bootstrap(bootstrap)
         try:
             await kafka.start()
