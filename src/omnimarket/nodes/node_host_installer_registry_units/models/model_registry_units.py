@@ -85,6 +85,18 @@ class ModelRegistryUnitsRequest(BaseModel):
         default="",
         pattern=r"^(?:secret://onex/(?:[A-Za-z0-9][A-Za-z0-9_.-]*/)*[A-Za-z0-9][A-Za-z0-9_.-]*)?$",
     )
+    # The database address the capture silence watch reads (OMN-24325): a postgresql URL with a user, a host, a port and a database and
+    # no password (the pattern refuses one), because a dry run prints the rendered unit. Empty defers to the installing shell.
+    capture_watch_db_url: str = Field(
+        default="",
+        pattern=r"^(?:postgresql://[A-Za-z0-9_.-]+@[A-Za-z0-9_.-]+:[0-9]{1,5}/[A-Za-z0-9_]+)?$",
+    )
+    # The reference of that login's password (OMN-24325): a store path, never the password; the watch resolves it at run time through
+    # the secret_store block of its overlay. Same shape as source_cache_valkey_password_ref. Empty defers to the installing shell.
+    capture_watch_db_password_ref: str = Field(
+        default="",
+        pattern=r"^(?:secret://onex/(?:[A-Za-z0-9][A-Za-z0-9_.-]*/)*[A-Za-z0-9][A-Za-z0-9_.-]*)?$",
+    )
     # Set only with mode "dry-run": the verb the dry run was asked about; the handler returns its plan and touches nothing.
     plan_verb: Literal["kickstart", "uninstall", "rollback"] | None = None
 
