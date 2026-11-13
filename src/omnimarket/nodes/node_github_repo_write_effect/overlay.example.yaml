@@ -4,3 +4,8 @@
 pr_label:
   allowed_labels:
     - example:label
+event_bus:
+  type: kafka
+  lane: example-lane
+comment_author_logins:
+  - example-login
