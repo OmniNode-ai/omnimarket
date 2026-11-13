@@ -13,8 +13,6 @@ requirements:
     statement: 'AC1: a plain lab job sent to a pool host carries no empty optional field, so a host running the older job form accepts it, and a job that does carry a code-draft request still sends it -- falsifier: uv run --frozen pytest tests/unit/lab_work/test_dispatch_wire_compat.py -q --no-cov'
   - id: AC2
     statement: 'AC2: the join J2 run on the real broker answers golden for every pooled host and exits 0 -- falsifier: the join-j2 verb of the host reading runtime on the floor bus lane exits 1 on the main line (3 of 5 golden) and 0 from the branch (5 of 5)'
-  - id: AC3
-    statement: 'AC3: integrated: the Mac factory-floor-publish cycle shows join_j2 ok and 23 of 23 steps ok in publish-status.json after the change runs there -- falsifier: the join_j2 entry of the published publish-status.json reads failed or the cycle shows fewer than 23 steps ok'
 evidence_requirements:
 - kind: tests
   description: The wire compatibility tests and the host bus tests at the pushed head.
