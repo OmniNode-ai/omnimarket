@@ -1,0 +1,72 @@
+schema_version: 1.0.0
+ticket_id: OMN-24043
+title: Hook-events by-correlation read - bind the sign-in check from a deployment overlay so the dev mount answers
+summary: The hook-events by-correlation mount is built by the runtime with no arguments and nothing bound a caller-identity resolver, so every request answered 503 OIDC authentication is not configured. When no resolver is bound explicitly the mount now builds a bearer-token resolver from its own overlay document under the overlay roots; with no document, an invalid document or an unreadable key set it still refuses (503), and a token that fails any check is 401. The dev value lives in the overlays repository and lands after this code is on dev.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24043-edge-identity
+  statement: The hook-events by-correlation mount, built as the runtime builds it, resolves the caller tenant from its own overlay document and answers an authenticated request instead of 503.
+  acceptance:
+  - id: AC1
+    statement: "AC1: the mount built with no arguments resolves the caller tenant from its overlay document under the overlay roots and a verified bearer token answers 200 with only that tenant's rows -- falsifier: uv run pytest tests/nodes/node_hook_events_by_correlation_read_effect -q -k edge_identity, red with the overlay document removed"
+  - id: AC2
+    statement: "AC2: no overlay document, an invalid overlay or an unreadable key set answers 503, a token that fails signature, issuer, audience, expiry or tenant claims answers 401, and no projection read happens in either case -- falsifier: the same test file, parametrised over each failing token and each broken overlay"
+  - id: AC3
+    statement: "AC3: the dev overlay value for the mount is a document in the overlays repository with no secret value, validated against the model the code reads -- falsifier: the overlays repository's pin test and an overlay-load test, red when a key is missing or an unsigned algorithm is named"
+  - id: AC4
+    statement: "AC4: integrated: after the dev runtime rolls to the merged revision, GET /v1/projections/hook-events/by-correlation on the dev runtime with a real correlation id from the dev hook events answers 200 with data_state found, and the same request with no token answers 401 instead of 503 -- falsifier: curl against the dev runtime from a lab host reading the status code and body"
+evidence_requirements:
+- kind: tests
+  description: The mount tests and the real key-set provider test pass at the pushed head.
+  command: uv run --frozen pytest tests/nodes/node_hook_events_by_correlation_read_effect tests/handlers/test_edge_bearer_jwt_identity.py -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24043-ac1
+  description: 'AC1: a verified bearer token answers 200 through the mount built as the runtime builds it; with the overlay document removed the same request answers 503.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_hook_events_by_correlation_read_effect/test_edge_identity_overlay.py -q --no-cov -p no:randomly -k edge_identity
+    cwd: .
+- id: dod-omn24043-ac2
+  description: 'AC2: each failing token answers 401 and each broken overlay or unreadable key set answers 503, with no repository call; the real key-set provider answers against a local key-set server.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_hook_events_by_correlation_read_effect tests/handlers/test_edge_bearer_jwt_identity.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn24043-ac3
+  description: 'hosted proxy for AC3: the overlay model refuses a missing key and an unsigned algorithm here; the overlay document itself is added in the overlays repository after this merges, pinned to its merge commit.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_hook_events_by_correlation_read_effect/test_edge_identity_overlay.py -q --no-cov -p no:randomly -k "invalid or partial"
+    cwd: .
+- id: dod-omn24043-ac4
+  description: 'hosted proxy for AC4: the mount answers through the real runtime-style construction here; the dev reading is posted as a pull request comment naming the head once the dev runtime has rolled.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_hook_events_by_correlation_read_effect/test_runtime_mount_profiles.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn24043-integration-proof
+  description: the mount tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24043 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_hook_events_by_correlation_read_effect tests/handlers/test_edge_bearer_jwt_identity.py -q --no-cov -p no:randomly
+    cwd: .
