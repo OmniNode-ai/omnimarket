@@ -38,7 +38,7 @@ from tests.nodes.node_broker_acl_reconcile_effect.test_aggregates_declared_grant
 pytestmark = pytest.mark.unit
 
 GPU = "node_gpu_power_caps_effect"
-PLACEHOLDER = "ONEX_ACL_GPU_POWER_CAPS_PRINCIPAL"
+PLACEHOLDER = "ONEX_ACL_RUNTIME_PRINCIPAL"
 ROLE_LOGIN = "User:role-login"
 ENV_LOGIN = "User:env-login"
 TOPIC = "onex.cmd.omnimarket.gpu-power-caps-requested.v1"
@@ -118,6 +118,21 @@ def test_role_wins_over_environment(tmp_path: Path) -> None:
     assert rows
     assert all(grant.principal == ROLE_LOGIN for grant in rows)
     assert not any(grant.principal == ENV_LOGIN for grant in rows)
+
+
+def test_the_contract_the_tests_use_names_the_placeholder() -> None:
+    """Seam: the node contract the apply tests use declares a broker grant for the placeholder the roles fill; a contract that stops naming it fails here, by name, instead of in the apply tests."""
+    text = (
+        resources.files("omnimarket.nodes.node_gpu_power_caps_effect")
+        .joinpath("contract.yaml")
+        .read_text(encoding="utf-8")
+    )
+    contract_doc = yaml.safe_load(text)
+    grants = contract_doc["broker_acl_grants"]
+    principals = [grant["principal"] for grant in grants]
+    assert f"${{{PLACEHOLDER}}}" in principals, (
+        f"contract for {GPU} no longer names the placeholder {PLACEHOLDER}"
+    )
 
 
 def test_refused_role_with_two_logins_and_placeholder() -> None:
