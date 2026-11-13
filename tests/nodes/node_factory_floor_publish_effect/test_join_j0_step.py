@@ -25,6 +25,7 @@ from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_factory
     HandlerFactoryFloorPublish,
     load_runtime,
 )
+from tests.nodes.node_factory_floor_publish_effect.limits_support import TEST_LIMITS
 from tests.nodes.node_factory_floor_publish_effect.test_factory_floor_publish import (
     FLOOR_SIMPLE,
     PLUGIN,
@@ -36,7 +37,7 @@ pytestmark = pytest.mark.unit
 
 JOIN_J0 = "omnimarket.nodes.node_join_j0_effect"
 
-RT = load_runtime()
+RT = load_runtime().with_limits(TEST_LIMITS)
 
 
 def _module_calls(runner: Scripted) -> list[tuple[str, list[str]]]:

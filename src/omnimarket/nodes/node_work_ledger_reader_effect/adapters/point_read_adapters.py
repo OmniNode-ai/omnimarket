@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from omnimarket.nodes.node_work_ledger_reader_effect.models import (
+    ModelBusSessionReadRoute,
     ModelCommandReadRoute,
     ModelInMemoryReadRoute,
     ModelPointAnswer,
@@ -71,6 +72,8 @@ def _request(query: ModelPointQuery, correlation_id: str) -> dict[str, object]:
         request["page_size"] = query.page_size
     if query.cursor is not None:
         request["cursor"] = query.cursor
+    if query.lines_only:
+        request["lines_only"] = True
     return request
 
 
@@ -189,11 +192,31 @@ class JournalEventSink:
 
 
 def build_point_read(
-    route: ModelCommandReadRoute | ModelInMemoryReadRoute,
+    route: ModelCommandReadRoute | ModelInMemoryReadRoute | ModelBusSessionReadRoute,
     environ: Mapping[str, str] | None = None,
 ) -> ProtocolLedgerPointRead:
     if isinstance(route, ModelInMemoryReadRoute):
         return InMemoryPointRead()
+    if isinstance(route, ModelBusSessionReadRoute):
+        from omnimarket.nodes.node_work_ledger_reader_effect.adapters.bus_session_point_read import (
+            BusSessionPointRead,
+            ProtocolBusQueryClient,
+        )
+
+        def factory() -> ProtocolBusQueryClient:
+            # Imported here so a host that never uses this route imports nothing from infra.
+            from omnibase_infra.cli.cli_ledger import (
+                resolve_work_ledger_query_transport,
+            )
+            from omnibase_infra.handlers.handler_work_ledger_query import (
+                HandlerWorkLedgerQuery,
+            )
+
+            return HandlerWorkLedgerQuery(
+                resolve_work_ledger_query_transport(route.bus_lane)
+            )
+
+        return BusSessionPointRead(factory, route.timeout_seconds)
     env = os.environ if environ is None else environ
     argv = shlex.split(env.get(route.command_env, ""))
     if not argv:
