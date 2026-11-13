@@ -1516,6 +1516,7 @@
   "tests/nodes/node_host_installer_registry_units/test_copied_units.py": 0.38,
   "tests/nodes/node_host_installer_registry_units/test_declared_clone_refresh_unit.py": 0.13,
   "tests/nodes/node_host_installer_registry_units/test_default_host_source_overlays_repository.py": 3.07,
+  "tests/nodes/node_host_installer_registry_units/test_dry_run_holds.py": 11.4,
   "tests/nodes/node_host_installer_registry_units/test_environment_file_unit.py": 2.2,
   "tests/nodes/node_host_installer_registry_units/test_floor_publish_source_cache_address.py": 1.89,
   "tests/nodes/node_host_installer_registry_units/test_floor_publish_source_cache_password_ref.py": 7.64,
