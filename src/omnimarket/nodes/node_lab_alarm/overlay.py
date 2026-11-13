@@ -182,6 +182,23 @@ class ModelBrokerListenerSettings(BaseModel):
     timeout_seconds: float = Field(gt=0)
 
 
+class ModelUpsSettings(BaseModel):
+    """The UPS condition: which upsd to read, which UPS, and the bounds the rules compare against."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    host: str = Field(min_length=1)
+    port: int = Field(ge=1)
+    ups_name: str = Field(min_length=1)
+    timeout_seconds: float = Field(gt=0)
+    load_alarm_above_percent: float = Field(gt=0)
+    status_variable: str = Field(min_length=1)
+    ok_status: str = Field(min_length=1)
+    runtime_variable: str = Field(min_length=1)
+    runtime_low_variable: str = Field(min_length=1)
+    load_variable: str = Field(min_length=1)
+
+
 class ModelAlarmDeliveryWiring(BaseModel):
     """Names that this node's alarms are delivered through node_lab_alarm_deliver_effect (OMN-23906).
 
@@ -208,6 +225,9 @@ class ModelLabAlarmOverlay(BaseModel):
     #: Read by the broker-listener verbs alone; absent, the overlay still loads and the other verbs
     #: run, and the broker-listener verbs refuse it themselves, as the effects-held ones do theirs.
     broker_listener: ModelBrokerListenerSettings | None = None
+    #: Read by the UPS verbs alone; absent, the overlay still loads and the other verbs run,
+    #: and the UPS verbs refuse it themselves, as the broker-listener ones do theirs.
+    ups: ModelUpsSettings | None = None
     #: Absent, nothing is delivered: an overlay written before the delivery existed loads and runs unchanged.
     alarm_delivery: ModelAlarmDeliveryWiring | None = None
 
@@ -239,5 +259,6 @@ __all__ = [
     "ModelLagSettings",
     "ModelManifestResilience",
     "ModelManifestSettings",
+    "ModelUpsSettings",
     "load_overlay",
 ]

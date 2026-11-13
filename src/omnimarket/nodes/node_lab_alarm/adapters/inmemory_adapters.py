@@ -22,6 +22,8 @@ from omnimarket.nodes.node_lab_alarm.protocols import (
     ManifestUnreachableError,
     ManifestUnreadableError,
     RunRecordUnwritableError,
+    UpsUnreachableError,
+    UpsUnreadableError,
 )
 
 
@@ -162,6 +164,24 @@ class InMemoryListenerProbe:
             raise ListenerRefusedError(f"{address} is not a fixture address")
 
 
+class InMemoryUpsReader:
+    """Serves the readings it holds; ``unreachable`` and ``unreadable`` make read raise their typed error."""
+
+    def __init__(self, readings: Mapping[str, str] | None = None) -> None:
+        self.readings: dict[str, str] = dict(readings or {})
+        self.unreachable: str | None = None
+        self.unreadable: str | None = None
+        self.calls: list[tuple[str, int, str, float]] = []
+
+    def read(self, host: str, port: int, ups_name: str, timeout: float) -> Mapping[str, str]:
+        self.calls.append((host, port, ups_name, timeout))
+        if self.unreachable is not None:
+            raise UpsUnreachableError(self.unreachable)
+        if self.unreadable is not None:
+            raise UpsUnreadableError(self.unreadable)
+        return dict(self.readings)
+
+
 __all__ = [
     "InMemoryDispatcher",
     "InMemoryEffectsGroups",
@@ -173,4 +193,5 @@ __all__ = [
     "InMemoryManifestCache",
     "InMemoryRunRecords",
     "InMemorySamples",
+    "InMemoryUpsReader",
 ]

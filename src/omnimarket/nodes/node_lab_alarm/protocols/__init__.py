@@ -125,6 +125,20 @@ class ProtocolListenerProbe(Protocol):
         ...
 
 
+class UpsUnreachableError(Exception):
+    """upsd did not answer (refused, timed out, name not resolved); no body was read."""
+
+
+class UpsUnreadableError(Exception):
+    """upsd answered but the body could not be read (an ERR reply, or a line that is not a variable)."""
+
+
+class ProtocolUpsReader(Protocol):
+    def read(self, host: str, port: int, ups_name: str, timeout: float) -> Mapping[str, str]:
+        """The UPS's variables as name to value, or raise UpsUnreachableError or UpsUnreadableError."""
+        ...
+
+
 class ProtocolAlarmDelivery(Protocol):
     def handle(
         self, request: ModelLabAlarmDeliveryRequest
@@ -150,6 +164,9 @@ __all__ = [
     "ProtocolLaneDispatcher",
     "ProtocolListenerProbe",
     "ProtocolManifestCache",
+    "ProtocolUpsReader",
+    "UpsUnreachableError",
+    "UpsUnreadableError",
     "ProtocolManifestSource",
     "ProtocolRunRecordStore",
     "ProtocolSampleStore",
