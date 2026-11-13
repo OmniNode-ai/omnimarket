@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+# unimported-handler-allow: wired by handler_routing in contract.yaml (consumer_group_census_event_effect), loaded by the runtime from the contract
 """Publish one census of a bus lane's consumer groups as an event (OMN-23992).
 
 The guard effect publishes one census per tick so the sibling reducer has a producer for the
