@@ -14,7 +14,6 @@ from subprocess import CompletedProcess
 import pytest
 
 from omnimarket.nodes.node_host_drift_owner_dispatch_effect.adapters.runtime_adapters import (
-    FileBriefWriter,
     FileDispatchRecord,
     FileDriftOpenItems,
     LedgerQueryLiveLanes,
@@ -66,11 +65,6 @@ def test_the_dispatch_record_round_trips_and_is_empty_when_absent(
     assert record.load() == {}
     record.save({CAUSE: "2026-11-13T16:00:00Z"})
     assert record.load() == {CAUSE: "2026-11-13T16:00:00Z"}
-
-
-def test_the_brief_is_written_under_its_directory(tmp_path: Path) -> None:
-    path = FileBriefWriter(tmp_path / "briefs").write("a-brief.md", "text")
-    assert Path(path).read_text(encoding="utf-8") == "text"
 
 
 def _ledger(

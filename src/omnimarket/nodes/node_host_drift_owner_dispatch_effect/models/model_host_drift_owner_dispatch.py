@@ -76,6 +76,18 @@ class ModelPlaceOutcome(_Frozen):
     detail: str
 
 
+class ModelBriefPrepared(_Frozen):
+    """What building and checking one lane brief answered: the written path, the verdict and the bytes checked."""
+
+    path: str
+    #: True only when the lane-brief check passed on the bytes at ``path``; the check leaves the stamp the runner reads.
+    passed: bool
+    #: The sha256 of the bytes the check read (the runner's stamp is keyed by it); empty when no brief was written.
+    sha256: str
+    #: The check's own refusal reasons when ``passed`` is false; empty when it passed.
+    detail: str
+
+
 class ModelDriftLanePlaced(_Frozen):
     """One lane the pass placed (started) or would place (dry run), or failed to place."""
 
@@ -83,6 +95,9 @@ class ModelDriftLanePlaced(_Frozen):
     lane: str
     argv: tuple[str, ...]
     brief_path: str
+    #: True when the lane-brief check passed on this lane's brief; a lane whose brief failed it is never handed to the runner.
+    brief_checked: bool
+    brief_sha256: str
     started: bool
     dry_run: bool
     detail: str
@@ -100,6 +115,7 @@ class ModelDriftOwnerResult(_Frozen):
 
 
 __all__ = [
+    "ModelBriefPrepared",
     "ModelDriftLanePlaced",
     "ModelDriftOpenItem",
     "ModelDriftOwnerRequest",

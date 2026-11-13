@@ -31,10 +31,11 @@ from omnimarket.nodes.node_host_drift_owner_dispatch_effect.models import (
 )
 from omnimarket.nodes.node_host_drift_owner_dispatch_effect.overlay import (
     ModelAlarmCells,
+    ModelBriefSections,
     ModelDriftOwnerOverlay,
 )
 from omnimarket.nodes.node_host_drift_owner_dispatch_effect.protocols import (
-    ProtocolBriefWriter,
+    ProtocolBriefPreparer,
     ProtocolDispatchRecord,
     ProtocolDriftOpenItems,
     ProtocolLaneRunner,
@@ -86,8 +87,17 @@ def render_drift_row(item: ModelDriftOpenItem, alarm: ModelAlarmCells) -> str:
     return " | ".join(cells)
 
 
-def render_brief(item: ModelDriftOpenItem, cause_key: str, lane: str, now: str) -> str:
-    """The brief a fix lane starts from: the cause, the host, the item and what the checker read."""
+def render_brief(
+    item: ModelDriftOpenItem,
+    cause_key: str,
+    lane: str,
+    now: str,
+    sections: ModelBriefSections,
+) -> str:
+    """The task part of a fix lane's brief: the cause, the host, the item, what the checker read and the overlay's lines.
+
+    The brief preparer completes it into the whole brief (rules block, ticket text, 3a) and checks it.
+    """
     return (
         "Host drift: an open item past its owner bound\n\n"
         f"Cause key: {cause_key}\n"
@@ -101,7 +111,8 @@ def render_brief(item: ModelDriftOpenItem, cause_key: str, lane: str, now: str) 
         "Find why the item drifted and fix the cause through a pull request in the repository that owns the "
         "declaration or the installer, then show the host drift check clear the item on that host. Cite "
         f"cause={cause_key} in your CLAIM. A cause that lives only on that host (uncommitted work, a login) is "
-        "reported in your final message with the observed text as evidence, never worked around.\n"
+        "reported in your final message with the observed text as evidence, never worked around.\n\n"
+        f"{sections.exemplars}\n{sections.seams}\n{sections.runtime}\n{sections.delegation}\n"
     )
 
 
@@ -115,7 +126,7 @@ class HandlerHostDriftOwnerDispatch:
         items: ProtocolDriftOpenItems,
         live: ProtocolLiveLanes,
         record: ProtocolDispatchRecord,
-        briefs: ProtocolBriefWriter,
+        briefs: ProtocolBriefPreparer,
         runner: ProtocolLaneRunner,
         runner_path: str,
         clock: Callable[[], datetime],
@@ -157,21 +168,41 @@ class HandlerHostDriftOwnerDispatch:
         recorded = self._record.load()
         for dispatch in answer.dispatches:
             item = by_cause[dispatch.cause_key]
-            path = self._briefs.write(
-                f"{dispatch.lane}-brief.md",
-                render_brief(item, dispatch.cause_key, dispatch.lane, now),
+            prepared = self._briefs.prepare(
+                lane=dispatch.lane,
+                name=f"{dispatch.lane}-brief.md",
+                text=render_brief(
+                    item, dispatch.cause_key, dispatch.lane, now, overlay.brief.sections
+                ),
             )
-            argv = self._argv(path, dispatch.lane, dispatch.cause_key)
+            argv = self._argv(prepared.path, dispatch.lane, dispatch.cause_key)
+            if not prepared.passed:
+                lanes.append(
+                    ModelDriftLanePlaced(
+                        cause_key=dispatch.cause_key,
+                        lane=dispatch.lane,
+                        argv=argv,
+                        brief_path=prepared.path,
+                        brief_checked=False,
+                        brief_sha256=prepared.sha256,
+                        started=False,
+                        dry_run=request.dry_run,
+                        detail=f"brief-check-refused: {prepared.detail}",
+                    )
+                )
+                continue
             if request.dry_run:
                 lanes.append(
                     ModelDriftLanePlaced(
                         cause_key=dispatch.cause_key,
                         lane=dispatch.lane,
                         argv=argv,
-                        brief_path=path,
+                        brief_path=prepared.path,
+                        brief_checked=True,
+                        brief_sha256=prepared.sha256,
                         started=False,
                         dry_run=True,
-                        detail="dry run: no lane started",
+                        detail="dry run: brief check passed, no lane started",
                     )
                 )
                 continue
@@ -183,7 +214,9 @@ class HandlerHostDriftOwnerDispatch:
                     cause_key=dispatch.cause_key,
                     lane=dispatch.lane,
                     argv=argv,
-                    brief_path=path,
+                    brief_path=prepared.path,
+                    brief_checked=True,
+                    brief_sha256=prepared.sha256,
                     started=outcome.started,
                     dry_run=False,
                     detail=outcome.detail,

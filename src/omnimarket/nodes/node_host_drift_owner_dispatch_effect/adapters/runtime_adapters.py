@@ -4,21 +4,28 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import re
 import subprocess
+import sys
 import tempfile
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from pydantic import ValidationError
 
 from omnimarket.nodes.node_host_drift_owner_dispatch_effect.models import (
+    ModelBriefPrepared,
     ModelDriftOpenItem,
     ModelDriftState,
     ModelLiveLanes,
     ModelPlaceOutcome,
+)
+from omnimarket.nodes.node_host_drift_owner_dispatch_effect.overlay import (
+    ModelBriefSettings,
 )
 from omnimarket.nodes.node_host_drift_owner_dispatch_effect.protocols import (
     DriftStateUnreadableError,
@@ -83,15 +90,208 @@ class FileDispatchRecord:
         temp.replace(self._path)
 
 
-class FileBriefWriter:
-    def __init__(self, directory: Path) -> None:
-        self._directory = directory
+_REFUSED_LINE = re.compile(r"^REFUSED (.+)$", re.MULTILINE)
+_ROUTE_LINE = re.compile(r"^ROUTE: band=.*$", re.MULTILINE)
+_REGENERATE = "regenerate 3a"
+#: What a check prints as a refusal when it reached no verdict on the brief (no lab host could run it): not the brief's fault.
+_NO_VERDICT = (
+    "the check did not run on a lab host",
+    "lab host could not check",
+    "lab check could not be prepared",
+    "check queue: all",
+)
 
-    def write(self, name: str, text: str) -> str:
-        self._directory.mkdir(parents=True, exist_ok=True)
+
+class LaneBriefPreparer:
+    """Completes a task text into a lane brief through the lane-brief path and checks it, as the lab fill's briefs are.
+
+    The standing rules block, the ticket's text and the 3a constraints are read with the plugin's own scripts
+    (``lane_rules_block.py``, ``lane_brief.py ticket-text`` and ``constraints``), the brief is written, and
+    ``lane_brief.py check`` runs on the written bytes. A passing check leaves the stamp, keyed by the brief's
+    sha256, that the remote-lane runner reads before it places anything. A command that timed out, did not start or
+    reached no verdict is a brief that did not pass, with its reason.
+    """
+
+    def __init__(
+        self,
+        directory: Path,
+        plugin_root: Path,
+        settings: ModelBriefSettings,
+        *,
+        model: str,
+        ticket: str,
+        environ: Mapping[str, str],
+        run: Run = subprocess.run,
+    ) -> None:
+        self._directory = directory
+        self._root = plugin_root
+        self._settings = settings
+        self._model = model
+        self._ticket = ticket
+        self._environ = dict(environ)
+        self._run = run
+
+    def _command(self, argv: list[str]) -> tuple[int, str, str]:
+        try:
+            done = self._run(
+                argv,
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=self._settings.command_timeout_seconds,
+                stdin=subprocess.DEVNULL,
+                env=self._environ,
+            )
+        except subprocess.TimeoutExpired:
+            return (
+                -2,
+                "",
+                f"timed out after {self._settings.command_timeout_seconds:g} s",
+            )
+        except OSError as exc:
+            return -1, "", f"did not start: {exc}"
+        return done.returncode, done.stdout, done.stderr
+
+    def _unread(self, what: str, rc: int, out: str, err: str) -> str:
+        said = _last_line(err or out or "")
+        return f"{what} exited {rc}: {said}" if rc >= 0 else f"{what} {said}"
+
+    def _constraints(self, lane: str, lane_brief: list[str]) -> list[str]:
+        settings = self._settings
+        score = sum(int(digit) for digit in settings.route_dims[1::2])
+        return [
+            *lane_brief,
+            "constraints",
+            "--lane",
+            lane,
+            "--parent",
+            settings.parent,
+            "--landing-lane",
+            settings.landing_lane,
+            "--landing-ruling-lane",
+            settings.landing_ruling_lane,
+            "--landing-ruling",
+            settings.landing_ruling,
+            "--ticket",
+            self._ticket,
+            "--model",
+            self._model,
+            "--effort",
+            settings.effort,
+            "--repo",
+            settings.repo,
+            "--out-of-scope",
+            settings.out_of_scope,
+            "--band",
+            settings.route_band,
+            "--score",
+            str(score),
+            "--dims",
+            settings.route_dims,
+        ]
+
+    def prepare(self, *, lane: str, name: str, text: str) -> ModelBriefPrepared:
+        settings = self._settings
         path = self._directory / name
-        path.write_text(text, encoding="utf-8")
-        return str(path)
+        unwritten = ModelBriefPrepared(
+            path=str(path), passed=False, sha256="", detail=""
+        )
+        ledger = self._environ.get(settings.ledger_env, "")
+        if not ledger:
+            return unwritten.model_copy(
+                update={
+                    "detail": f"{settings.ledger_env} is not set: the lane-brief reads the ledger"
+                }
+            )
+        lane_brief = [
+            sys.executable,
+            "-B",
+            str(self._root / settings.lane_brief_script),
+            "--ledger",
+            ledger,
+        ]
+        rc, rules, err = self._command(
+            [sys.executable, "-B", str(self._root / settings.rules_block_script)]
+        )
+        if rc != 0:
+            return unwritten.model_copy(
+                update={"detail": self._unread("lane_rules_block.py", rc, rules, err)}
+            )
+        rc, ticket_text, err = self._command(
+            [*lane_brief, "ticket-text", "--ticket", self._ticket]
+        )
+        if rc != 0:
+            return unwritten.model_copy(
+                update={
+                    "detail": self._unread(
+                        f"lane_brief.py ticket-text {self._ticket}",
+                        rc,
+                        ticket_text,
+                        err,
+                    )
+                }
+            )
+        reasons = "the lane-brief check ran no attempt"
+        digest = ""
+        for _ in range(settings.regenerate_attempts):
+            rc, block, err = self._command(self._constraints(lane, lane_brief))
+            if rc != 0:
+                return unwritten.model_copy(
+                    update={
+                        "detail": self._unread(
+                            "lane_brief.py constraints", rc, block, err
+                        )
+                    }
+                )
+            body = text.rstrip()
+            route = _ROUTE_LINE.search(block)
+            rows = body.splitlines()
+            first = next(
+                (i for i, row in enumerate(rows) if row.startswith("ROUTE: ")), None
+            )
+            if route and first is not None:
+                rows[first] = route.group(0)
+                body = "\n".join(rows)
+            whole = (
+                f"{body}\n\n## 3. Rules (committed standing block, verbatim)\n\n{rules.strip()}\n\n"
+                f"{ticket_text.strip()}\n\n{block.strip()}\n"
+            )
+            try:
+                self._directory.mkdir(parents=True, exist_ok=True)
+                path.write_text(whole, encoding="utf-8")
+            except OSError as exc:
+                return unwritten.model_copy(
+                    update={"detail": f"brief not written: {exc}"}
+                )
+            digest = hashlib.sha256(whole.encode("utf-8")).hexdigest()
+            rc, out, err = self._command(
+                [
+                    *lane_brief,
+                    "check",
+                    str(path),
+                    "--recompute",
+                    "--lab",
+                    "--where",
+                    settings.check_where,
+                ]
+            )
+            if rc == 0:
+                return ModelBriefPrepared(
+                    path=str(path), passed=True, sha256=digest, detail=""
+                )
+            if rc < 0:
+                reasons = self._unread("lane_brief.py check", rc, out, err)
+                break
+            refused = _REFUSED_LINE.findall(out) or [_last_line(err or out)]
+            reasons = "; ".join(refused)
+            if any(marker in reasons for marker in _NO_VERDICT):
+                reasons = f"no verdict on the brief: {reasons}"
+                break
+            if not any(_REGENERATE in line for line in refused):
+                break
+        return ModelBriefPrepared(
+            path=str(path), passed=False, sha256=digest, detail=reasons[:2000]
+        )
 
 
 class LedgerQueryLiveLanes:
@@ -243,9 +443,9 @@ def _last_log_line(log: Path) -> str:
 
 
 __all__ = [
-    "FileBriefWriter",
     "FileDispatchRecord",
     "FileDriftOpenItems",
+    "LaneBriefPreparer",
     "LedgerQueryLiveLanes",
     "SubprocessLanePlacer",
 ]

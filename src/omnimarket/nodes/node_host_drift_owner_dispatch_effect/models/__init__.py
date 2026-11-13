@@ -3,6 +3,7 @@
 """Models of node_host_drift_owner_dispatch_effect."""
 
 from omnimarket.nodes.node_host_drift_owner_dispatch_effect.models.model_host_drift_owner_dispatch import (
+    ModelBriefPrepared,
     ModelDriftLanePlaced,
     ModelDriftOpenItem,
     ModelDriftOwnerRequest,
@@ -13,6 +14,7 @@ from omnimarket.nodes.node_host_drift_owner_dispatch_effect.models.model_host_dr
 )
 
 __all__ = [
+    "ModelBriefPrepared",
     "ModelDriftLanePlaced",
     "ModelDriftOpenItem",
     "ModelDriftOwnerRequest",

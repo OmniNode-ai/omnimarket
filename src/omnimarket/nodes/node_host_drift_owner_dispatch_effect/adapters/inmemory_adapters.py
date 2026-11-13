@@ -4,7 +4,10 @@
 
 from __future__ import annotations
 
+import hashlib
+
 from omnimarket.nodes.node_host_drift_owner_dispatch_effect.models import (
+    ModelBriefPrepared,
     ModelDriftOpenItem,
     ModelDriftState,
     ModelLiveLanes,
@@ -49,31 +52,64 @@ class InMemoryDispatchRecord:
         self.record = dict(record)
 
 
-class InMemoryBriefWriter:
+class InMemoryBriefPreparer:
+    """Records every brief and stamps the sha256 of the ones it passes, as the lane-brief check does.
+
+    ``refuse`` makes the next briefs fail the check with that detail and leaves them unstamped.
+    """
+
     def __init__(self) -> None:
         self.briefs: dict[str, str] = {}
+        self.stamped: set[str] = set()
+        self.refuse: str | None = None
 
-    def write(self, name: str, text: str) -> str:
+    def prepare(self, *, lane: str, name: str, text: str) -> ModelBriefPrepared:
         self.briefs[name] = text
-        return f"memory://{name}"
+        digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        if self.refuse is not None:
+            return ModelBriefPrepared(
+                path=f"memory://{name}", passed=False, sha256=digest, detail=self.refuse
+            )
+        self.stamped.add(digest)
+        return ModelBriefPrepared(
+            path=f"memory://{name}", passed=True, sha256=digest, detail=""
+        )
 
 
 class InMemoryLanePlacer:
-    """Records every argv; ``refuse`` makes the next placements fail with that detail."""
+    """Records every argv; ``refuse`` makes the next placements fail with that detail.
 
-    def __init__(self) -> None:
+    Given the preparer, it refuses a brief whose sha256 the preparer never stamped, as the remote-lane runner
+    does before any placement (``REMOTE-LANE-BRIEF-UNCHECKED``).
+    """
+
+    def __init__(self, briefs: InMemoryBriefPreparer | None = None) -> None:
         self.placed: list[tuple[str, ...]] = []
         self.refuse: str | None = None
+        self._briefs = briefs
 
     def place(self, argv: tuple[str, ...]) -> ModelPlaceOutcome:
         if self.refuse is not None:
             return ModelPlaceOutcome(started=False, detail=self.refuse)
+        if self._briefs is not None:
+            name = argv[argv.index("--brief") + 1].removeprefix("memory://")
+            text = self._briefs.briefs.get(name)
+            digest = (
+                hashlib.sha256(text.encode("utf-8")).hexdigest()
+                if text is not None
+                else ""
+            )
+            if digest not in self._briefs.stamped:
+                return ModelPlaceOutcome(
+                    started=False,
+                    detail="REMOTE-LANE-BRIEF-UNCHECKED: no passing lane-brief check for this brief's current content",
+                )
         self.placed.append(argv)
         return ModelPlaceOutcome(started=True, detail="in-memory placement")
 
 
 __all__ = [
-    "InMemoryBriefWriter",
+    "InMemoryBriefPreparer",
     "InMemoryDispatchRecord",
     "InMemoryDriftOpenItems",
     "InMemoryLanePlacer",

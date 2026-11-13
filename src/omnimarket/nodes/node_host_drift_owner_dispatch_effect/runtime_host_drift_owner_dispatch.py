@@ -12,16 +12,16 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from omnimarket.nodes.node_host_drift_owner_dispatch_effect.adapters.inmemory_adapters import (
-    InMemoryBriefWriter,
+    InMemoryBriefPreparer,
     InMemoryDispatchRecord,
     InMemoryDriftOpenItems,
     InMemoryLanePlacer,
     InMemoryLiveLanes,
 )
 from omnimarket.nodes.node_host_drift_owner_dispatch_effect.adapters.runtime_adapters import (
-    FileBriefWriter,
     FileDispatchRecord,
     FileDriftOpenItems,
+    LaneBriefPreparer,
     LedgerQueryLiveLanes,
     SubprocessLanePlacer,
 )
@@ -57,13 +57,14 @@ def _build_inmemory(
     clock: Callable[[], datetime],
 ) -> HandlerHostDriftOwnerDispatch:
     dispatch = overlay.dispatch
+    briefs = InMemoryBriefPreparer()
     return HandlerHostDriftOwnerDispatch(
         overlay=overlay,
         items=InMemoryDriftOpenItems(host="inmemory"),
         live=InMemoryLiveLanes(),
         record=InMemoryDispatchRecord(),
-        briefs=InMemoryBriefWriter(),
-        runner=InMemoryLanePlacer(),
+        briefs=briefs,
+        runner=InMemoryLanePlacer(briefs),
         runner_path=environ.get(dispatch.runner_env, ""),
         clock=clock,
     )
@@ -83,6 +84,9 @@ def _build_runtime(
             f"{dispatch.runner_env} is not set: the unit's declaration names the runner"
         )
     briefs = root / dispatch.briefs_dir
+    plugin_root = (
+        Path(runner_path).resolve().parents[overlay.brief.runner_root_levels - 1]
+    )
     return HandlerHostDriftOwnerDispatch(
         overlay=overlay,
         items=FileDriftOpenItems(root / overlay.state_path),
@@ -97,7 +101,14 @@ def _build_runtime(
             clock,
         ),
         record=FileDispatchRecord(root / overlay.dispatch_record_path),
-        briefs=FileBriefWriter(briefs),
+        briefs=LaneBriefPreparer(
+            briefs,
+            plugin_root,
+            overlay.brief,
+            model=dispatch.model,
+            ticket=dispatch.ticket,
+            environ=environ,
+        ),
         runner=SubprocessLanePlacer(dispatch.settle_seconds, briefs),
         runner_path=runner_path,
         clock=clock,
@@ -143,9 +154,25 @@ def main(argv: list[str] | None = None) -> int:
         f"dry_run={str(args.dry_run).lower()}\n"
     )
     for lane in result.lanes:
-        state = "dry-run" if lane.dry_run else ("started" if lane.started else "failed")
-        sys.stdout.write(f"LANE {state} {lane.lane} {lane.cause_key} {lane.detail}\n")
-    failed = [lane for lane in result.lanes if not lane.dry_run and not lane.started]
+        if not lane.brief_checked:
+            state = "brief-refused"
+        else:
+            state = (
+                "dry-run" if lane.dry_run else ("started" if lane.started else "failed")
+            )
+        checked = (
+            f"brief=checked sha256={lane.brief_sha256[:12]}"
+            if lane.brief_checked
+            else "brief=unchecked"
+        )
+        sys.stdout.write(
+            f"LANE {state} {lane.lane} {lane.cause_key} {checked} {lane.detail}\n"
+        )
+    failed = [
+        lane
+        for lane in result.lanes
+        if not lane.brief_checked or (not lane.dry_run and not lane.started)
+    ]
     return EXIT_PLACEMENT_FAILED if failed else 0
 
 

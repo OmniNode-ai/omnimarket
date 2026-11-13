@@ -20,10 +20,14 @@ description: >
   watchdog's) is rendered as the FRICTION row the alarm owner responder reads, stamped with the moment the item was
   first seen. The responder answers one dispatch per cause key that is past the policy's bound, not dispatched inside
   its window and not covered by a live lane (read from the rolling ledger over the bus, never from the host's stale
-  file copy). For each dispatch the node writes a brief and starts one lane through the remote-lane runner; a request
-  with dry_run true starts nothing and records nothing, and names the lane and the command it would run. A placement
-  that fails is a typed lane entry with started false and is not recorded, so the next pass retries it. Every bound,
-  actor, path and command is the overlay's.
+  file copy). For each dispatch the node completes the task text into a lane brief through the lane-brief path (the
+  standing rules block, the ticket's text, the 3a constraints, and the overlay's exemplar, seam, runtime and delegation
+  lines), runs the lane-brief check on the written bytes, and only a brief that passed the check, which leaves the stamp
+  the runner reads, goes to the remote-lane runner (a brief the check refused is a typed lane entry with brief_checked
+  false, never handed over and not recorded). A request with dry_run true starts nothing and records nothing, runs the
+  check, and names the lane, the command it would run and the sha256 the check stamped. A placement that fails is a
+  typed lane entry with started false and is not recorded, so the next pass retries it. Every bound, actor, path,
+  command and brief line is the overlay's.
 
 handler:
   module: omnimarket.nodes.node_host_drift_owner_dispatch_effect.handlers.handler_host_drift_owner_dispatch
@@ -39,7 +43,7 @@ descriptor:
   runtime_profiles: [effects]
   purity: impure
   idempotent: true
-  side_effects: [ledger-read, brief-file-write, dispatch-record-write, lane-start]
+  side_effects: [ledger-read, brief-file-write, lane-brief-check, dispatch-record-write, lane-start]
   timeout_ms: 600000
 
 input_model:
@@ -49,7 +53,7 @@ input_model:
 output_model:
   name: ModelDriftOwnerResult
   module: omnimarket.nodes.node_host_drift_owner_dispatch_effect.models.model_host_drift_owner_dispatch
-  description: Items read, rows rendered, the lanes placed or failed, the causes skipped and the rows refused.
+  description: Items read, rows rendered, the lanes placed, failed or refused at the brief check, the causes skipped and the rows refused.
 
 terminal_event: onex.evt.omnimarket.host-drift-owner-dispatch-completed.v1
 
@@ -81,6 +85,9 @@ dod_evidence:
     description: "A refused placement is a failed lane entry that is not recorded and is retried on the next pass"
   - test: tests/nodes/node_host_drift_owner_dispatch_effect/test_seam.py
     description: "The row rendered from an open item parses into the cause key the alarm owner responder dispatches on, and a changed cell name dispatches nothing"
+
+  - test: tests/nodes/node_host_drift_owner_dispatch_effect/test_brief_check.py
+    description: "A brief the lane-brief check refuses is never handed to the runner and is not recorded; the bytes the check stamped are the bytes at the path the runner is given; the runner refuses a brief the check never stamped"
 
 metadata:
   ticket: OMN-24239

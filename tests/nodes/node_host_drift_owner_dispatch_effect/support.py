@@ -11,7 +11,7 @@ from pathlib import Path
 import yaml
 
 from omnimarket.nodes.node_host_drift_owner_dispatch_effect.adapters.inmemory_adapters import (
-    InMemoryBriefWriter,
+    InMemoryBriefPreparer,
     InMemoryDispatchRecord,
     InMemoryDriftOpenItems,
     InMemoryLanePlacer,
@@ -67,7 +67,7 @@ class Rig:
     items: InMemoryDriftOpenItems
     live: InMemoryLiveLanes
     record: InMemoryDispatchRecord
-    briefs: InMemoryBriefWriter
+    briefs: InMemoryBriefPreparer
     runner: InMemoryLanePlacer
 
 
@@ -82,8 +82,8 @@ def rig(
     source = InMemoryDriftOpenItems("h-example", items)
     live = InMemoryLiveLanes(covered_causes, covered_lanes)
     kept = InMemoryDispatchRecord(record)
-    briefs = InMemoryBriefWriter()
-    runner = InMemoryLanePlacer()
+    briefs = InMemoryBriefPreparer()
+    runner = InMemoryLanePlacer(briefs)
     handler = HandlerHostDriftOwnerDispatch(
         overlay=changed or overlay(),
         items=source,

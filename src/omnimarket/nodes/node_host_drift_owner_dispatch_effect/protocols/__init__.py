@@ -7,6 +7,7 @@ from __future__ import annotations
 from typing import Protocol
 
 from omnimarket.nodes.node_host_drift_owner_dispatch_effect.models import (
+    ModelBriefPrepared,
     ModelDriftState,
     ModelLiveLanes,
     ModelPlaceOutcome,
@@ -41,9 +42,11 @@ class ProtocolDispatchRecord(Protocol):
     def save(self, record: dict[str, str]) -> None: ...
 
 
-class ProtocolBriefWriter(Protocol):
-    def write(self, name: str, text: str) -> str:
-        """Write one brief; returns its path."""
+class ProtocolBriefPreparer(Protocol):
+    def prepare(self, *, lane: str, name: str, text: str) -> ModelBriefPrepared:
+        """Complete the task text into a lane brief (the standing rules block, the ticket text and the 3a
+        constraints), write it as ``name`` and run the lane-brief check on the written bytes. A check that
+        refused or could not run is a result with ``passed`` false and its reasons, never a silent pass."""
         ...
 
 
@@ -56,7 +59,7 @@ class ProtocolLaneRunner(Protocol):
 __all__ = [
     "DriftStateUnreadableError",
     "LiveLanesUnreadableError",
-    "ProtocolBriefWriter",
+    "ProtocolBriefPreparer",
     "ProtocolDispatchRecord",
     "ProtocolDriftOpenItems",
     "ProtocolLaneRunner",

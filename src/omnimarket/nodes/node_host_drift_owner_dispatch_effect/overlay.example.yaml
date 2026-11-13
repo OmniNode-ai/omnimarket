@@ -34,3 +34,25 @@ dispatch:
   briefs_dir: .onex_state/example-drift-owner/briefs
   settle_seconds: 20
   extra_args: [--parent, example-drift, --priority-class, process-fix]
+brief:
+  lane_brief_script: skills/lane-brief/scripts/lane_brief.py
+  rules_block_script: scripts/lane_rules_block.py
+  runner_root_levels: 4
+  ledger_env: EXAMPLE_LEDGER_PATH
+  parent: example-orchestrator
+  landing_lane: example-landing
+  landing_ruling_lane: example-ruling-lane
+  landing_ruling: "2026-01-01T00:00:00Z"
+  out_of_scope: any change to the lane-brief script or the remote-lane runner
+  repo: none
+  effort: high
+  route_band: B3
+  route_dims: S2A1R1V2N1C1J1
+  check_where: lab
+  command_timeout_seconds: 120
+  regenerate_attempts: 2
+  sections:
+    exemplars: "EXEMPLARS: read the example nodes before writing and match their shape."
+    seams: "SEAMS: name every topic, contract or model your change shares and add the test that fails when either side changes shape."
+    runtime: "RUNTIME: work is done only when observed running where it runs; name the host, the revision and the receipt."
+    delegation: "DELEG: drafts go through the delegation step first; end with a DELEGATION line carrying every run id."
