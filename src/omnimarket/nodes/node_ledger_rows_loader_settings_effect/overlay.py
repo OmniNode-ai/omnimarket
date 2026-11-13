@@ -12,10 +12,8 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
+from omnimarket.events.ledger_rows_loader_overlay import ModelRowsLoaderOverlay
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
-from omnimarket.nodes.node_ledger_rows_loader_effect.models import (
-    ModelRowsLoaderOverlay,
-)
 from omnimarket.nodes.node_ledger_rows_loader_effect.overlay import (
     load_overlay as load_loader_overlay_document,
 )

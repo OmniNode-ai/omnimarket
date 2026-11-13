@@ -19,11 +19,9 @@ from pathlib import Path
 
 import yaml
 
+from omnimarket.events.ledger_rows_loader_overlay import ModelRowsLoaderOverlay
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.models.model_work_ledger_reader import EnumReaderEventKind
-from omnimarket.nodes.node_ledger_rows_loader_effect.models import (
-    ModelRowsLoaderOverlay,
-)
 from omnimarket.nodes.node_ledger_rows_loader_settings_effect.models import (
     EnumLoaderSettingsStatus,
     ModelLoaderHostsOverlay,
