@@ -270,6 +270,8 @@ def test_a_systemd_unit_rolls_back_its_service_and_timer(tmp_path: Path) -> None
             "registry_root": str(tmp_path / "omni"),
             "project_path": str(branch),
             "expected_revision": revision,
+            # The store units read the lane declaration from the workspace root (OMN-24052).
+            "workspace_config_root": str(tmp_path / "workspace-config"),
             "path_overrides": {
                 "ONEX_SKILL_OVERLAY_ROOTS": str(tmp_path / "overlays" / "overlays"),
                 "LAB_WORK_HOST_NAME": "h051",
