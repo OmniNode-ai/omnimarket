@@ -1,0 +1,66 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodeHostHygieneDecisionCompute
+#
+# Pure definition-B compute: per (host, cleanup) due decisions from the newest
+# disk reading. No clock (now is an input), no I/O, no hard-coded threshold.
+#
+name: "node_host_hygiene_decision_compute"
+contract_name: "node_host_hygiene_decision_compute"
+node_name: "node_host_hygiene_decision_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+description: >
+  Pure definition-B decision of host hygiene dispatch: for each host and each
+  cleanup declared on it, decide due or not from the host's newest disk
+  reading, the cleanup's policy (threshold, interval, unread handling) and
+  the last dispatch times. Deterministic in any input order.
+input_model:
+  name: "ModelHostHygieneDecisionRequest"
+  module: "omnimarket.models.model_host_hygiene"
+  description: "The decision inputs: now, max reading age, cleanup policies, host facts."
+output_model:
+  name: "ModelHostHygieneDecision"
+  module: "omnimarket.models.model_host_hygiene"
+  description: "One item per (host, cleanup) with its due flag and named reason."
+handler:
+  module: "omnimarket.nodes.node_host_hygiene_decision_compute.handlers.handler_host_hygiene_decision"
+  class: "HandlerHostHygieneDecision"
+  input_model: "omnimarket.models.model_host_hygiene.ModelHostHygieneDecisionRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_host_hygiene_decision_compute.handlers.handler_host_hygiene_decision:HandlerHostHygieneDecision"
+  handlers:
+    - operation: "decide_host_hygiene"
+      handler:
+        name: "HandlerHostHygieneDecision"
+        module: "omnimarket.nodes.node_host_hygiene_decision_compute.handlers.handler_host_hygiene_decision"
+runtime_profiles:
+  - main
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+replay:
+  deterministic: true
+metadata:
+  description: "Pure decision core of host hygiene dispatch."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-09-28"
+  ticket: "OMN-23707"
+  tags:
+    - compute
+    - host-hygiene
+    - pure
