@@ -832,6 +832,7 @@
   "tests/nodes/node_compaction_probe_run_effect/test_probe_run.py": 0.54,
   "tests/nodes/node_compaction_score_compute/test_compaction_score.py": 0.17,
   "tests/nodes/node_compaction_verdict_compute/test_compaction_verdict.py": 2.93,
+  "tests/nodes/node_compose_project_census_compute/test_compose_project_census.py": 2.94,
   "tests/nodes/node_conflict_hunk_effect/test_golden_chain_conflict_hunk_effect.py": 0.02,
   "tests/nodes/node_conflict_hunk_effect/test_handler_conflict_hunk.py": 0.17,
   "tests/nodes/node_consumer_group_guard_effect/test_census_event.py": 2.84,
