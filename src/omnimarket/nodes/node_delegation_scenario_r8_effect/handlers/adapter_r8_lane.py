@@ -14,6 +14,7 @@ is a typed ``LaneReadError``, never a default of zero.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import urllib.error
 import urllib.request
@@ -66,6 +67,7 @@ class ModelSendRequest(_Frozen):
     prompt: str = Field(min_length=1)
     traffic_class: str | None = None
     source_surface: str | None = None
+    backend_id: str | None = None
 
 
 class LaneReadError(RuntimeError):
@@ -99,6 +101,7 @@ class ModelBusSettings(_Frozen):
     savings_node: str = Field(min_length=1)
     delegations_node: str = Field(min_length=1)
     workspace_env: str = Field(min_length=1)
+    tenant_env: str = Field(min_length=1)
 
 
 class ModelLaneSettings(_Frozen):
@@ -211,6 +214,28 @@ def _subprocess_run(argv: Sequence[str], timeout: float) -> tuple[int, str]:
     return done.returncode, done.stdout
 
 
+def _subprocess_run_as(extra_environment: Mapping[str, str]) -> CommandRunner:
+    """A runner that passes the host environment plus ``extra_environment`` to the delegate command."""
+
+    def run(argv: Sequence[str], timeout: float) -> tuple[int, str]:
+        try:
+            done = subprocess.run(
+                list(argv),
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                check=False,
+                env={**os.environ, **extra_environment},
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise LaneReadError(
+                f"{argv[0]} did not finish: {type(exc).__name__}"
+            ) from exc
+        return done.returncode, done.stdout
+
+    return run
+
+
 def _decimal(value: object, name: str) -> Decimal:
     try:
         return Decimal(str(value))
@@ -313,6 +338,8 @@ def send_delegate(
         argv += ["--traffic-class", request.traffic_class]
     if request.source_surface is not None:
         argv += ["--source-surface", request.source_surface]
+    if request.backend_id is not None:
+        argv += ["--backend-id", request.backend_id]
     argv += list(transport_args)
     code, out = run_command(argv, settings.delegate_timeout_seconds)
     try:
@@ -386,7 +413,7 @@ class BusLane:
         request: BusRequest,
         *,
         workspace: str | None = None,
-        run_command: CommandRunner = _subprocess_run,
+        run_command: CommandRunner | None = None,
     ) -> None:
         if settings.bus is None:
             raise LaneReadError("the R8 overlay document has no bus block")
@@ -394,7 +421,13 @@ class BusLane:
         self._overlay = overlay
         self._workspace = workspace
         self._request = request
-        self._run = run_command
+        self._run = (
+            run_command
+            if run_command is not None
+            else _subprocess_run_as(
+                {settings.bus.tenant_env: str(overlay.probe_tenant_id)}
+            )
+        )
 
     def _answer(self, kind: EnumTenantReadKind, limit: int) -> Mapping[str, object]:
         command = ModelTenantReadCommand(
@@ -419,6 +452,14 @@ class BusLane:
         return parse_runs(self._settings, body)
 
     def send(self, request: ModelSendRequest) -> str:
+        # The organic control (no traffic class) is pinned to the overlay's control backend so it carries spend; every other request is sent unchanged.
+        if (
+            request.traffic_class is None
+            and self._overlay.control_backend_id is not None
+        ):
+            request = request.model_copy(
+                update={"backend_id": self._overlay.control_backend_id}
+            )
         return send_delegate(
             self._settings,
             request,
