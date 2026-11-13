@@ -202,6 +202,18 @@ class ModelHostRetentionOverlay(_Frozen):
     hosts: Annotated[tuple[ModelHostRetention, ...], Field(min_length=1)]
 
 
+class ModelUvBucketBound(_Frozen):
+    """A folder of a uv cache whose entries a cap may evict, as the contract declares it.
+
+    ``depth`` is how many levels under the folder a whole entry sits. ``keep_linked`` keeps an entry in which any file has
+    more than one hard link: in ``archive-v0`` that is a virtual environment sharing the unpacked wheel, but a git checkout is
+    hard-linked to uv's own git database (never to a virtual environment), so there the link says nothing and is not a guard.
+    """
+
+    depth: int = Field(ge=1, le=3)
+    keep_linked: bool
+
+
 class ModelRetentionBounds(_Frozen):
     """What an overlay may not exceed, owned by the contract."""
 
@@ -221,9 +233,9 @@ class ModelRetentionBounds(_Frozen):
     ]
     allowed_container_roots: Annotated[tuple[NonEmptyStr, ...], Field(min_length=1)]
     protected_leaf_names_always: tuple[NonEmptyStr, ...] = ()
-    uv_evictable_buckets: dict[NonEmptyStr, Annotated[int, Field(ge=1, le=3)]] = Field(
+    uv_evictable_buckets: dict[NonEmptyStr, ModelUvBucketBound] = Field(
         default_factory=dict
-    )  # bucket path relative to a uv cache -> depth of the whole entries under it
+    )  # bucket path relative to a uv cache -> how its whole entries are found and guarded
 
 
 class ModelHostRetentionRequest(_Frozen):

@@ -420,7 +420,10 @@ def test_seam_real_archive_scan_past_its_deadline_is_an_error_not_a_partial_list
 def test_seam_real_uv_layout_names_two_buckets_and_the_overlay_example_loads() -> None:
     """The contract names uv's two growing folders with their depths; the overlay example's cap buckets are all among them."""
     bounds = load_bounds()
-    assert bounds.uv_evictable_buckets == {"archive-v0": 1, "git-v0/checkouts": 2}
+    assert {
+        name: (bound.depth, bound.keep_linked)
+        for name, bound in bounds.uv_evictable_buckets.items()
+    } == {"archive-v0": (1, True), "git-v0/checkouts": (2, False)}
     overlay = yaml.safe_load(
         (CONTRACT_PATH.parent / "overlay.example.yaml").read_text(encoding="utf-8")
     )
@@ -551,6 +554,12 @@ def _uv_tree(cache: Path) -> None:
     checkouts = cache / "git-v0" / "checkouts"
     entry(checkouts / "repoA", "rev-old", days=30)
     entry(checkouts / "repoA", "rev-new", days=2)
+    # `git clone --local` hard-links a checkout's objects to the git database: the link ties it to uv's database, not to a venv.
+    db = cache / "git-v0" / "db" / "repoA"
+    db.mkdir(parents=True)
+    (db / "pack").write_bytes(b"x" * 4096)
+    os.link(db / "pack", checkouts / "repoA" / "rev-old" / "pack")
+    age(checkouts / "repoA" / "rev-old", 30)
 
 
 def test_golden_chain_the_cap_pass_removes_aged_unlinked_entries_from_both_buckets_on_disk(
@@ -583,6 +592,32 @@ def test_golden_chain_the_cap_pass_removes_aged_unlinked_entries_from_both_bucke
     assert {Path(i.path).name for i in result.items if i.action == "evict"} == {
         "wheel-old",
         "rev-old",
+    }
+
+
+def test_a_git_checkout_hard_linked_to_the_git_database_is_evicted_but_a_venv_linked_wheel_is_kept(
+    tmp_path: Path,
+) -> None:
+    """Failing control for the per-folder guard: the same hard link keeps an archive entry and does not keep a checkout."""
+    path = tmp_path / "uv-cache"
+    path.mkdir()
+    day = 86400.0
+    archive = FakeUvArchive(
+        entries={
+            "archive-v0": _entries(("wheel", 10 * _GIB, NOW - 40 * day, True, False)),
+            "git-v0/checkouts": _entries(
+                ("repoA/rev", 10 * _GIB, NOW - 30 * day, True, False)
+            ),
+        }
+    )
+    uv = FakeUv(size=40 * _GIB, after=40 * _GIB)
+    cache = _uv_cache(path, cap_gib=25.0, buckets=("archive-v0", "git-v0/checkouts"))
+
+    result = _run_uv(tmp_path, cache, ports=make_ports(uv=uv, uv_archive=archive))
+
+    assert archive.removed == ["git-v0/checkouts/repoA/rev"]
+    assert {Path(k.path).name: k.reason for k in result.kept} == {
+        "wheel": "linked_by_venv"
     }
 
 

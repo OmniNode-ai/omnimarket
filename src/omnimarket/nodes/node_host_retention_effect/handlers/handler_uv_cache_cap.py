@@ -13,6 +13,7 @@ from omnimarket.nodes.node_host_retention_effect.handlers.host_retention_ports i
 from omnimarket.nodes.node_host_retention_effect.models.model_host_retention import (
     ModelRetentionItem,
     ModelUvArchiveEntry,
+    ModelUvBucketBound,
     ModelUvCache,
 )
 from omnimarket.nodes.node_temp_retention_effect.handlers.handler_temp_retention import (
@@ -52,15 +53,15 @@ def evict_over_cap(
     size_after: int,
     now: float,
     dry_run: bool,
-    depths: dict[str, int],
+    buckets: dict[str, ModelUvBucketBound],
     refs: ProcessReferences | None,
     ports: HostRetentionPorts,
     out: _Pass,
 ) -> None:
     """Evict whole entries of the cap's buckets oldest-first until the measured total is at or under cap_gib.
 
-    ``depths`` is the contract's bucket -> entry depth. An entry is kept (never removed) when it is linked into a virtual
-    environment, changed within keep_days, named by a live process, or a symlink or not a folder. A dry run lists the entries
+    ``buckets`` is the contract's evictable folders. An entry is kept (never removed) when, in a folder whose contract row says
+    keep_linked, it is linked into a virtual environment, changed within keep_days, named by a live process, or a symlink or not a folder. A dry run lists the entries
     it would evict and removes nothing; there the running total is the size read before the prune, because the prune frees an
     unknown amount. A references failure adds an error and evicts nothing; a bucket whose scan fails adds an error and is
     skipped, the others still run: the prune's result stands either way.
@@ -76,22 +77,24 @@ def evict_over_cap(
             "process references unreadable; the uv cache cap pass is skipped"
         )
         return
-    candidates: list[tuple[str, ModelUvArchiveEntry]] = []
+    candidates: list[tuple[str, bool, ModelUvArchiveEntry]] = []
     for bucket in cap.buckets:
         bucket_dir = str(Path(cache.path) / bucket)
         try:
             scanned = ports.uv_archive.scan(
-                bucket_dir, depths[bucket], cache.timeout_seconds
+                bucket_dir, buckets[bucket].depth, cache.timeout_seconds
             )
         except OSError as exc:
             out.errors.append(f"{bucket_dir}: {type(exc).__name__}")
             continue
-        candidates.extend((bucket_dir, entry) for entry in scanned)
+        candidates.extend(
+            (bucket_dir, buckets[bucket].keep_linked, entry) for entry in scanned
+        )
     cutoff = now - cap.keep_days * _DAY
     seen: dict[str, set[str]] = {}
     total = size_after
-    for bucket_dir, entry in sorted(
-        candidates, key=lambda c: (c[1].newest_mtime, c[0], c[1].name)
+    for bucket_dir, keep_linked, entry in sorted(
+        candidates, key=lambda c: (c[2].newest_mtime, c[0], c[2].name)
     ):
         if total <= target:
             return
@@ -99,7 +102,7 @@ def evict_over_cap(
         reason: str | None = None
         if entry.special:
             reason = "special_file"
-        elif entry.linked:
+        elif keep_linked and entry.linked:
             reason = "linked_by_venv"
         elif entry.newest_mtime >= cutoff:
             reason = "too_new"

@@ -90,12 +90,15 @@ retention_bounds:
   # A runner mount's container root is relative to the runner user's home and must sit under one of these.
   allowed_container_roots: [actions-runner/_work, tmp, .npm, .cache]
   protected_leaf_names_always: [_actions, _temp, _PipelineMapping, .git, memory]
-  # The folders of a uv cache a cap may evict whole entries from, and how deep an entry sits under each: `archive-v0/<id>`
-  # is an unpacked wheel; `git-v0/checkouts/<repository>/<revision>` is one checkout of a git dependency (uv makes a new
-  # one for every revision it installs and never removes an old one). A cap naming any other folder is refused.
+  # The folders of a uv cache a cap may evict whole entries from. `depth` is how far under the folder an entry sits:
+  # `archive-v0/<id>` is an unpacked wheel; `git-v0/checkouts/<repository>/<revision>` is one checkout of a git dependency
+  # (uv makes a new one for every revision it installs and never removes an old one; it rebuilds a missing one from its git
+  # database). `keep_linked` keeps an entry in which a file has more than one hard link: a virtual environment shares the
+  # unpacked wheel that way, so an archive entry so linked is in use; a git checkout is hard-linked to uv's own git database,
+  # never to a virtual environment, so the link there guards nothing. A cap naming any other folder is refused.
   uv_evictable_buckets:
-    archive-v0: 1
-    git-v0/checkouts: 2
+    archive-v0: {depth: 1, keep_linked: true}
+    git-v0/checkouts: {depth: 2, keep_linked: false}
 metadata:
   transport_type: inmemory
   execution_locus: host-local
