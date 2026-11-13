@@ -14,6 +14,7 @@ from __future__ import annotations
 import importlib
 import json
 import os
+import shutil
 import socket
 import subprocess
 import sys
@@ -689,3 +690,144 @@ def test_a_build_lock_whose_holder_process_is_gone_does_not_hold_the_clone(
     staged_case.refuse_for(handler, 3 * AGE)
     (outcome,) = handler.tick()
     assert outcome.status is EnumDirtyConvergeStatus.CONVERGED, outcome
+
+
+# -- a clone git wrongly treats as bare (OMN-24240) --------------------------------------------
+
+
+def _report_bare(
+    handler: HandlerCanonicalCloneDirtyConvergeEffect, planted: Planted, seconds: int
+) -> None:
+    """The engine's breach line for the bare-flagged clone, after a fetch (the real engine's own work)."""
+    if REAL_ROOT:
+        planted.refuse_for(handler, seconds)
+        return
+    fetch = f"git -C '{planted.clone}' fetch --quiet origin"
+    line = f"REFUSED_TOO_LONG {planted.clone} refused for {seconds}s: core.bare=true"
+    handler._engine_argv = ["/bin/sh", "-c", f"{fetch}; echo '{line}'"]
+
+
+@pytest.fixture
+def bare_flagged_case(tmp_path: Path) -> Planted:
+    """A canonical clone with a working tree that git wrongly treats as bare (core.bare=true)."""
+    planted = Planted(tmp_path, "platform", {"a.txt": "one\n"})
+    _git("config", "core.bare", "true", cwd=planted.clone)
+    if not REAL_ROOT:
+        (planted.home / "omniclaude/scripts/converge-canonical-clone.sh").write_text(
+            FAKE_REATTACH
+        )
+    return planted
+
+
+def test_a_clone_flagged_bare_with_a_working_tree_is_repaired_and_brought_to_the_tip(
+    bare_flagged_case: Planted,
+) -> None:
+    """Golden: the handler clears core.bare and converges the clone to the upstream tip."""
+    clone = bare_flagged_case.clone
+    assert _git("rev-parse", "--is-bare-repository", cwd=clone) == "true"
+    handler = bare_flagged_case.handler(
+        **{AGE_ENV: str(AGE), DETACHED_AGE_ENV: str(DETACHED_AGE)}
+    )
+    _report_bare(handler, bare_flagged_case, 600)
+    (outcome,) = handler.tick()
+    assert outcome.status is EnumDirtyConvergeStatus.CONVERGED, outcome
+    assert "cleared core.bare=true" in outcome.reason
+    assert _git("rev-parse", "--is-bare-repository", cwd=clone) == "false"
+    assert _git("rev-parse", "HEAD", cwd=clone) == bare_flagged_case.tip
+    assert outcome.converged_to == bare_flagged_case.tip
+    assert bare_flagged_case.row_text()
+
+
+def test_a_true_bare_mirror_is_left_alone(bare_flagged_case: Planted) -> None:
+    """A true bare mirror has no .git directory inside it; the handler never touches one."""
+    planted = bare_flagged_case
+    shutil.rmtree(planted.clone)
+    _git("clone", "--bare", str(planted.remote), str(planted.clone), cwd=planted.home)
+    handler = planted.handler(
+        **{AGE_ENV: str(AGE), DETACHED_AGE_ENV: str(DETACHED_AGE)}
+    )
+    outcome = handler.converge_clone(planted.clone, refused_for=2 * DETACHED_AGE)
+    assert outcome.status is EnumDirtyConvergeStatus.SKIPPED
+    assert "no working tree" in outcome.reason
+    assert _git("config", "--get", "core.bare", cwd=planted.clone) == "true"
+
+
+def test_a_bare_flagged_clone_below_the_age_is_left_alone(
+    bare_flagged_case: Planted,
+) -> None:
+    handler = bare_flagged_case.handler(
+        **{AGE_ENV: str(AGE), DETACHED_AGE_ENV: str(DETACHED_AGE)}
+    )
+    outcome = handler.converge_clone(bare_flagged_case.clone, refused_for=1)
+    assert outcome.status is EnumDirtyConvergeStatus.SKIPPED
+    assert "below the declared" in outcome.reason
+    assert _git("config", "--get", "core.bare", cwd=bare_flagged_case.clone) == "true"
+
+
+def test_a_bare_flagged_clone_an_open_claim_names_is_left_alone(
+    bare_flagged_case: Planted, tmp_path: Path
+) -> None:
+    ledger = tmp_path / "ledger.md"
+    ledger.write_text(
+        "2026-11-03T10:00:00Z | CLAIM | lane=other-lane | ticket=OMN-1 | works in "
+        f"{bare_flagged_case.clone} right now\n"
+    )
+    handler = bare_flagged_case.handler(
+        **{
+            AGE_ENV: str(AGE),
+            DETACHED_AGE_ENV: str(DETACHED_AGE),
+            "ONEX_LEDGER_PATH": str(ledger),
+        }
+    )
+    _report_bare(handler, bare_flagged_case, 2 * DETACHED_AGE)
+    (outcome,) = handler.tick()
+    assert outcome.status is EnumDirtyConvergeStatus.SKIPPED
+    assert "other-lane" in outcome.reason
+    assert _git("config", "--get", "core.bare", cwd=bare_flagged_case.clone) == "true"
+
+
+def test_a_bare_flagged_clone_a_process_works_inside_is_left_alone(
+    bare_flagged_case: Planted,
+) -> None:
+    handler = bare_flagged_case.handler(
+        **{AGE_ENV: str(AGE), DETACHED_AGE_ENV: str(DETACHED_AGE)}
+    )
+    _report_bare(handler, bare_flagged_case, 2 * DETACHED_AGE)
+    with subprocess.Popen(["sleep", "60"], cwd=bare_flagged_case.clone) as sleeper:
+        try:
+            (outcome,) = handler.tick()
+        finally:
+            sleeper.kill()
+    assert outcome.status is EnumDirtyConvergeStatus.SKIPPED
+    assert "process" in outcome.reason
+    assert _git("config", "--get", "core.bare", cwd=bare_flagged_case.clone) == "true"
+
+
+def test_a_bare_flagged_clone_whose_converge_script_fails_reports_failed(
+    bare_flagged_case: Planted,
+) -> None:
+    if REAL_ROOT:
+        pytest.skip("drives the fake converge script that refuses")
+    script = bare_flagged_case.home / "omniclaude/scripts/converge-canonical-clone.sh"
+    script.write_text("#!/bin/bash\necho boom >&2\nexit 1\n")
+    handler = bare_flagged_case.handler(
+        **{AGE_ENV: str(AGE), DETACHED_AGE_ENV: str(DETACHED_AGE)}
+    )
+    _report_bare(handler, bare_flagged_case, 2 * DETACHED_AGE)
+    (outcome,) = handler.tick()
+    assert outcome.status is EnumDirtyConvergeStatus.FAILED
+    assert "exit 1" in outcome.reason
+
+
+def test_a_bare_flagged_clone_is_left_alone_while_an_image_build_holds_the_lock(
+    bare_flagged_case: Planted,
+) -> None:
+    _hold_build_lock(bare_flagged_case, parent=False)
+    handler = bare_flagged_case.handler(
+        **{AGE_ENV: str(AGE), DETACHED_AGE_ENV: str(DETACHED_AGE)}
+    )
+    _report_bare(handler, bare_flagged_case, 2 * DETACHED_AGE)
+    (outcome,) = handler.tick()
+    assert outcome.status is EnumDirtyConvergeStatus.SKIPPED
+    assert BUILD_LOCK in outcome.reason
+    assert _git("config", "--get", "core.bare", cwd=bare_flagged_case.clone) == "true"
