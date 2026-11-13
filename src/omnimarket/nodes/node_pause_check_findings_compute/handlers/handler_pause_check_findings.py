@@ -14,6 +14,7 @@ from __future__ import annotations
 import re
 from collections.abc import Sequence
 
+from omnimarket.merge_control.hold_marker import HOLD_MARKER_RE
 from omnimarket.nodes.node_pause_check_findings_compute.models import (
     EnumFindingKind,
     EnumPauseVerdict,
@@ -41,7 +42,7 @@ _UNTIL_RE = re.compile(r"^20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-
 _UNTIL_PREFIX_RE = re.compile(r"^20[0-9][0-9]-")
 # The awk label pause-family regex.
 _LABEL_RE = re.compile(
-    r"(^|[^a-z])(hold|on-hold|do-not-merge|do not merge|dnm|wip|blocked|block|pause|paused|freeze|frozen)([^a-z]|$)"
+    r"(^|[^a-z])(hold|on-hold|blocked|block|pause|paused|freeze|frozen)([^a-z]|$)"
 )
 # The awk is_tick() actor prefix.
 _TICK_ACTOR_RE = re.compile(r"^launchd:")
@@ -187,7 +188,7 @@ def _build_pause_regexes() -> tuple[
     e = r"([^a-z]|$)"
     pause_re = re.compile(
         b
-        + r"(hold|holds|held|holding|pause|paused|pausing|freeze|frozen|halt|halted|do not merge|do-not-merge|dont merge|don.t merge|must not merge|not be merged|standalone|merge alongside|merged alongside|as a pair)"
+        + r"(hold|holds|held|holding|pause|paused|pausing|freeze|frozen|halt|halted|dont merge|don.t merge|must not merge|not be merged|standalone|merge alongside|merged alongside|as a pair)"
         + e
     )
     order_re = re.compile(
@@ -289,7 +290,9 @@ class HandlerPauseCheckFindings:
                         text=lab,
                     )
                 )
-            elif _LABEL_RE.search(lab.translate(_ASCII_LOWER)):
+            elif _LABEL_RE.search(lab.translate(_ASCII_LOWER)) or HOLD_MARKER_RE.search(
+                lab
+            ):
                 found.append(ModelFinding(kind=EnumFindingKind.LABEL, text=lab))
 
         # b. the line prefilter (split the ledger once; do not re-decode per PR).
@@ -399,7 +402,9 @@ class HandlerPauseCheckFindings:
                     s = _OOS_RE.sub("", s)
                 if _is_notice(typ, fields, row_low):
                     s = ""
-                if typ not in report_type and self._pause_re.search(s):
+                if typ not in report_type and (
+                    self._pause_re.search(s) or HOLD_MARKER_RE.search(s)
+                ):
                     pr_pause[ln] = _short(row, self._overlay.snippet_bytes)
                 elif self._order_re.search(s):
                     order_rows[ln] = _short(row, self._overlay.snippet_bytes)
