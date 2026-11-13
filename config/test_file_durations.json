@@ -4732,6 +4732,7 @@
   "tests/unit/nodes/node_overlay_store/test_golden_chain_overlay_store.py": 0.22,
   "tests/unit/nodes/node_overlay_store/test_overlay_store_load_tick.py": 0.17,
   "tests/unit/nodes/node_overlay_store/test_projection_snapshot_key.py": 2.45,
+  "tests/unit/nodes/node_overlay_store/test_snapshot_bus_lane.py": 2.59,
   "tests/unit/nodes/node_overnight/test_coderabbit_8487_findings.py": 0.25,
   "tests/unit/nodes/node_overnight/test_contract_enforcement.py": 0.68,
   "tests/unit/nodes/node_overnight/test_contract_topics.py": 0.09,
