@@ -351,6 +351,7 @@ node_agent_review_dispatch_orchestrator = "omnimarket.nodes.node_agent_review_di
 node_agent_review_gate_accept_effect = "omnimarket.nodes.node_agent_review_gate_accept_effect"
 node_agent_review_harness_rung_effect = "omnimarket.nodes.node_agent_review_harness_rung_effect"
 node_aislop_sweep = "omnimarket.nodes.node_aislop_sweep"
+node_alarm_owner_responder_compute = "omnimarket.nodes.node_alarm_owner_responder_compute"
 node_alert_channel_liveness_effect = "omnimarket.nodes.node_alert_channel_liveness_effect"
 node_ambiguity_gate = "omnimarket.nodes.node_ambiguity_gate"
 node_andon_stop_reducer = "omnimarket.nodes.node_andon_stop_reducer"
