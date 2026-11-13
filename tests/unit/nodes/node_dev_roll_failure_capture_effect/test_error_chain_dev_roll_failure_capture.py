@@ -102,6 +102,19 @@ async def test_an_incident_with_no_issuer_is_unknown_issuer_missing(store) -> No
     assert terminal.unknown_reason is EnumDevRollUnknownReason.ISSUER_MISSING
 
 
+async def test_a_preflight_incident_with_no_issuer_is_unknown_issuer_missing_and_keeps_failed_phase(
+    store,
+) -> None:
+    incident = incident_payload(
+        issuer=None, failed_phase="preflight", recovery_verified=False, log_captures=[]
+    )
+    broker, _cid = await _send(store, manifest_payload(), incident)
+    terminal = _terminal(broker)
+    assert terminal.outcome is EnumDevRollOutcome.UNKNOWN
+    assert terminal.unknown_reason is EnumDevRollUnknownReason.ISSUER_MISSING
+    assert terminal.failed_phase == "preflight"
+
+
 async def test_an_incident_with_an_empty_issuer_is_unknown_issuer_missing(
     store,
 ) -> None:

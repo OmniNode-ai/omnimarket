@@ -80,6 +80,27 @@ async def test_golden_recovered_roll_is_published_as_recovered(store) -> None:
     assert store.read(artifact.artifact_key) is not None
 
 
+async def test_golden_preflight_incident_carries_failed_phase_into_the_terminal(
+    store,
+) -> None:
+    dispatch, broker, _cid = await _send_manifest_and_incident(
+        store,
+        manifest_payload(),
+        incident_payload(
+            failed_phase="preflight",
+            recovery_verified=False,
+            log_captures=[],
+            recovery_error="no recovery ran: the runtime was untouched",
+        ),
+    )
+    assert await dispatch.drain() == 1
+    (terminal,) = on(broker, TERMINAL_TOPIC)
+    model = ModelDevRollTerminal.model_validate(terminal.payload)
+    assert model.outcome is EnumDevRollOutcome.UNRECOVERED
+    assert model.issuer == "operator-lane"
+    assert model.failed_phase == "preflight"
+
+
 async def test_golden_unrecovered_roll_is_published_as_unrecovered(store) -> None:
     dispatch, broker, _cid = await _send_manifest_and_incident(
         store, manifest_payload(), incident_payload(recovery_verified=False)
