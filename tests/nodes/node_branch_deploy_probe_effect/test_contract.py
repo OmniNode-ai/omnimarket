@@ -14,6 +14,7 @@ from pydantic import ValidationError
 
 from omnimarket.nodes.node_branch_deploy_probe_effect.overlay import (
     ModelBranchDeployProbeOverlay,
+    ModelHttpProbeSettings,
     load_overlay,
 )
 from tests.nodes.node_branch_deploy_probe_effect.support import NODE_DIR, overlay
@@ -58,6 +59,27 @@ def test_every_setting_is_in_the_overlay_with_no_default() -> None:
         if info.is_required()
     }
     assert required == set(ModelBranchDeployProbeOverlay.model_fields)
+    probe_required = {
+        f
+        for f, info in ModelHttpProbeSettings.model_fields.items()
+        if info.is_required()
+    }
+    # Only the routes overlays main does not name yet, and the retired ssh read's keys, may
+    # be absent (OMN-24058 transition); every other probe setting stays an overlay bound.
+    assert probe_required == {
+        "health_url",
+        "health_ok_path",
+        "sha_path",
+        "timeout_seconds",
+    }
+    assert set(ModelHttpProbeSettings.model_fields) - probe_required == {
+        "ready_url",
+        "provenance_url",
+        "ssh_host_env",
+        "compose_project",
+        "provenance_service",
+        "provenance_path",
+    }
     document = yaml.safe_load((NODE_DIR / "overlay.example.yaml").read_text())
     for key in document:
         trimmed = {k: v for k, v in document.items() if k != key}

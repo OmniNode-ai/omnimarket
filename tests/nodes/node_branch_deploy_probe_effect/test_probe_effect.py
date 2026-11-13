@@ -17,6 +17,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
+from pydantic import ValidationError
 
 from omnimarket.nodes.node_branch_deploy_probe_effect.adapters.adapter_http_probe import (
     HttpRuntimeProbe,
@@ -28,6 +30,7 @@ from omnimarket.nodes.node_branch_deploy_probe_effect.handlers.handler_branch_de
     HandlerBranchDeployProbe,
 )
 from omnimarket.nodes.node_branch_deploy_probe_effect.overlay import (
+    ModelBranchDeployProbeOverlay,
     ModelHttpProbeSettings,
 )
 from omnimarket.nodes.node_branch_deploy_probe_effect.protocols.protocol_branch_deploy_probe import (
@@ -45,6 +48,7 @@ pytestmark = pytest.mark.unit
 
 PROBED_AT = datetime(2026, 1, 2, 3, 4, 5, tzinfo=UTC)
 HERE = Path(__file__).resolve().parent
+OVERLAYS_MAIN_LEGACY = HERE / "overlays_main_legacy.yaml"
 RECORDED_RUNNING_REF = "b004b72344dfc212167045ed394e47e1ae0b7be8"
 _HEALTHY_BODY: Mapping[str, Any] = {"details": {"healthy": True}}
 _PROXY_VARS = (
@@ -337,6 +341,33 @@ def test_seam_recorded_runtime_and_agent_answers(runtime: HttpRuntime) -> None:
     assert result.status == "read"
     assert result.healthy is True
     assert result.observed_sha == RECORDED_RUNNING_REF
+
+
+def test_overlays_main_legacy_document_loads_and_reads_unreadable() -> None:
+    """The document overlays main still holds loads; its unnamed routes make the read unreadable, with no fetch."""
+    legacy = ModelBranchDeployProbeOverlay.model_validate(
+        yaml.safe_load(OVERLAYS_MAIN_LEGACY.read_text())
+    )
+
+    def forbidden_fetch(url: str, timeout: int) -> tuple[int, bytes]:
+        raise AssertionError(
+            "the probe fetched although the overlay names no ready url"
+        )
+
+    probe = HttpRuntimeProbe(legacy.probe, fetch=forbidden_fetch)
+    result = HandlerBranchDeployProbe(overlay=legacy, probe=probe).handle(request())
+
+    assert result.status == "unreadable"
+    assert result.healthy is False
+    assert result.observed_sha == ""
+    assert "names no ready url" in result.detail
+
+
+def test_overlays_main_legacy_document_with_unknown_key_refuses() -> None:
+    document: dict[str, Any] = yaml.safe_load(OVERLAYS_MAIN_LEGACY.read_text())
+    document["not_a_key"] = "no such setting"
+    with pytest.raises(ValidationError):
+        ModelBranchDeployProbeOverlay.model_validate(document)
 
 
 def test_node_does_not_import_adapter_lab_facts() -> None:
