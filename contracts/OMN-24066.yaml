@@ -1,0 +1,53 @@
+schema_version: 1.0.0
+ticket_id: OMN-24066
+title: Stop the dev system logging three recurring message-routing errors
+summary: The dev runtime logged about 3,200 error lines in 20 minutes. Three of the causes sit in omnimarket contracts and models. The Slack publish node's emit_seam_count routing entry declared its request model under a key the auto-wiring discovery ignores, so the entry was un-scoped, owned the node's only subscribe topic and received every slack-publish command, failing with six validation errors each time (the same un-scoped entry sits in three sibling nodes). The dod_verify handler returns a ModelDodVerifyState that the runtime publishes on the dod-verify-completed topic, and ModelDodVerifyCompletedEvent (extra forbid) refused it for five fields the state carries. This pull request scopes the four emitter entries to their request model and adds the five fields to the completed event. A third cause, the goal verification orchestrator's returned outcome reaching the verifier start command topic through the runtime's first-publish-topic fallback, needs a new sink topic and so a broker grant row and an overlays login; it is held out of this pull request and named in its body.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24066-routing-seams
+  statement: A routing entry is scoped to the model it takes, and a published state is accepted by the event model its readers validate.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a Slack publish command dispatched through the real contract reaches only the Slack handler, and each emit_seam_count entry is scoped to its request model -- falsifier: uv run pytest tests/test_omn19998_seam_emitter_scoped_dispatch.py -q -n 0 --no-cov fails without the contract change'
+  - id: AC2
+    statement: 'AC2: every field the verification state carries is accepted by the verification-finished event the readers validate -- falsifier: uv run pytest tests/test_omn19998_dod_state_event_seam.py -q -n 0 --no-cov fails without the five fields'
+  - id: AC4
+    statement: 'AC4: integrated: on the running dev runtime, the log shows zero ModelSeamEmitterRequest validation errors and zero dod-verify-completed dead letters carrying a state payload over twenty minutes after the roll -- falsifier: the docker log count of those lines on the dev runtime container is non-zero'
+evidence_requirements:
+- kind: tests
+  description: The two seam test files pass at the pushed head.
+  command: uv run pytest tests/test_omn19998_seam_emitter_scoped_dispatch.py tests/test_omn19998_dod_state_event_seam.py -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24066-ac1
+  description: 'AC1: the emitter scoping tests pass; they fail at the merge base because the entries carry no event_model.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_omn19998_seam_emitter_scoped_dispatch.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24066-ac2
+  description: 'AC2: the state and event field seam tests pass; they fail at the merge base because the event lacks five fields.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_omn19998_dod_state_event_seam.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24066-ac4
+  description: 'hosted proxy for AC4: the two seam test files pass; the reading of the dev runtime log after the roll is named in the pull request and read after the merge.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_omn19998_seam_emitter_scoped_dispatch.py tests/test_omn19998_dod_state_event_seam.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
