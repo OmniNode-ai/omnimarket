@@ -13,6 +13,7 @@ from pydantic import JsonValue
 
 from omnimarket.handlers.ticket.ticket_cli import load_ticket_topics
 from omnimarket.models.scm import ModelScmBusReceipt, ModelScmTerminal
+from omnimarket.models.ticket_closer import ModelCloserWriteReceipt
 from omnimarket.nodes.node_linear_ticket_write_effect.models.model_ticket_write_io import (
     ModelTicketWriteRequest,
 )
@@ -61,7 +62,7 @@ class Call:
         return self.answers.pop(0) if self.answers else terminal()
 
 
-def mark(call: Call, ticket_id: str = "OMN-1") -> object:
+def mark(call: Call, ticket_id: str = "OMN-1") -> ModelCloserWriteReceipt:
     return BusTicketDoneWriter(call).mark_done(
         ticket_id,
         state="Done",
@@ -73,7 +74,7 @@ def mark(call: Call, ticket_id: str = "OMN-1") -> object:
 def test_golden_comments_the_evidence_then_transitions() -> None:
     call = Call()
     receipt = mark(call)
-    assert receipt.ok is True  # type: ignore[attr-defined]
+    assert receipt.ok is True
     assert [r.operation.value for r in call.requests] == ["comment", "transition"]
     comment, transition = call.requests
     assert comment.ticket_id == transition.ticket_id == "OMN-1"
@@ -86,8 +87,8 @@ def test_golden_comments_the_evidence_then_transitions() -> None:
 def test_error_a_failed_comment_prevents_the_transition() -> None:
     call = Call([terminal(failed=True, payload={"reason": "no such ticket"})])
     receipt = mark(call)
-    assert receipt.ok is False  # type: ignore[attr-defined]
-    assert receipt.reason == "no such ticket"  # type: ignore[attr-defined]
+    assert receipt.ok is False
+    assert receipt.reason == "no such ticket"
     assert [r.operation.value for r in call.requests] == ["comment"]
 
 
@@ -102,14 +103,14 @@ def test_error_a_failed_transition_carries_the_refusal_and_its_codes() -> None:
         ]
     )
     receipt = mark(call)
-    assert receipt.ok is False  # type: ignore[attr-defined]
-    assert receipt.reason == "done guard [NO_RECEIPT]"  # type: ignore[attr-defined]
+    assert receipt.ok is False
+    assert receipt.reason == "done guard [NO_RECEIPT]"
 
 
 def test_error_a_call_that_times_out_is_reported() -> None:
     receipt = mark(Call(raises=TimeoutError("no terminal")))
-    assert receipt.ok is False  # type: ignore[attr-defined]
-    assert receipt.reason == "comment write raised TimeoutError"  # type: ignore[attr-defined]
+    assert receipt.ok is False
+    assert receipt.reason == "comment write raised TimeoutError"
 
 
 def test_a_retried_decision_replays_and_another_ticket_does_not() -> None:

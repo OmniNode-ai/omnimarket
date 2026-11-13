@@ -9,11 +9,15 @@ from uuid import uuid4
 
 import pytest
 
+from omnimarket.models.model_dod_verify_start_command import ModelDodVerifyStartCommand
 from omnimarket.models.model_dod_verify_state import (
     EnumDodVerifyStatus,
     EnumEvidenceCheckStatus,
     ModelDodVerifyState,
     ModelEvidenceCheckResult,
+)
+from omnimarket.nodes.node_dod_verify.handlers.handler_dod_verify import (
+    HandlerDodVerify,
 )
 from omnimarket.nodes.node_ticket_closer_scheduled_effect.handlers.dod_verify_reading import (
     DodVerifyReader,
@@ -122,30 +126,41 @@ def test_control_a_state_with_no_checks_judged_nothing() -> None:
     assert reading.error_code == "VERIFY_COULD_NOT_RUN"
 
 
-class StubHandler:
+class StubHandler(HandlerDodVerify):
+    """A verifier handler that returns what it was given and records the commands it ran."""
+
     def __init__(self, result: object = None, raises: Exception | None = None) -> None:
+        super().__init__()
         self._result = result
         self._raises = raises
-        self.commands: list[object] = []
+        self.commands: list[ModelDodVerifyStartCommand] = []
 
-    def handle(self, command: object) -> object:
-        self.commands.append(command)
+    def handle(
+        self,
+        payload: ModelDodVerifyStartCommand | dict[str, object],
+        *,
+        evidence_results: list[ModelEvidenceCheckResult] | None = None,
+    ) -> ModelDodVerifyState | dict[str, object]:
+        assert isinstance(payload, ModelDodVerifyStartCommand)
+        self.commands.append(payload)
         if self._raises is not None:
             raise self._raises
+        assert isinstance(self._result, (ModelDodVerifyState, dict))
         return self._result
 
 
 def test_the_reader_runs_the_verifier_for_the_ticket_and_audience() -> None:
     stub = StubHandler(verified_state())
-    reading = DodVerifyReader(stub).verify("OMN-1", "hosted")  # type: ignore[arg-type]
+    reading = DodVerifyReader(stub).verify("OMN-1", "hosted")
     assert reading.ran is True
     command = stub.commands[0]
-    assert command.ticket_id == "OMN-1"  # type: ignore[attr-defined]
-    assert command.execution_audience.value == "hosted"  # type: ignore[attr-defined]
+    assert command.ticket_id == "OMN-1"
+    assert command.execution_audience is not None
+    assert command.execution_audience.value == "hosted"
 
 
 def test_error_a_raising_verifier_reads_as_did_not_run() -> None:
-    reading = DodVerifyReader(StubHandler(raises=RuntimeError("x"))).verify(  # type: ignore[arg-type]
+    reading = DodVerifyReader(StubHandler(raises=RuntimeError("x"))).verify(
         "OMN-1", "hosted"
     )
     assert reading.ran is False
@@ -155,4 +170,4 @@ def test_error_a_raising_verifier_reads_as_did_not_run() -> None:
 
 def test_error_a_verifier_that_returns_no_state_is_refused_by_name() -> None:
     with pytest.raises(TypeError, match="dict"):
-        DodVerifyReader(StubHandler({"not": "a state"})).verify("OMN-1", "hosted")  # type: ignore[arg-type]
+        DodVerifyReader(StubHandler({"not": "a state"})).verify("OMN-1", "hosted")

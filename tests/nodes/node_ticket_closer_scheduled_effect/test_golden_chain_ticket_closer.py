@@ -9,6 +9,7 @@ import subprocess
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -24,6 +25,7 @@ from omnimarket.models.ticket_closer import (
     ModelCloserCandidate,
     ModelCloserVerifyReading,
     ModelCloserWriteReceipt,
+    ModelTicketCloserResult,
     ModelTicketCloserScheduleOverlay,
 )
 from omnimarket.nodes.node_dod_closeout_sweep_compute.models.model_dod_closeout_sweep import (
@@ -208,7 +210,7 @@ def run_one(
     cand: ModelCloserCandidate,
     reading: ModelCloserVerifyReading,
     writer: Writer | None = None,
-) -> tuple[object, Writer]:
+) -> tuple[ModelTicketCloserResult, Writer]:
     out = writer or Writer()
     result = handler(Source([cand]), Verifier({cand.ticket_id: reading}), out).handle(
         tick(T0)
@@ -267,7 +269,7 @@ def test_golden_a_proven_ticket_is_moved_to_done_with_its_evidence(repo: Repo) -
     ],
 )
 def test_control_each_missing_conjunct_holds_the_ticket(
-    repo: Repo, name: str, cand: dict[str, object], reading: dict[str, object]
+    repo: Repo, name: str, cand: dict[str, Any], reading: dict[str, Any]
 ) -> None:
     over = {
         key: (repo.root if value == "ROOT" else value) for key, value in reading.items()
@@ -275,7 +277,7 @@ def test_control_each_missing_conjunct_holds_the_ticket(
     result, writer = run_one(
         repo,
         candidate(repo, **cand),
-        passing(repo, **over),  # type: ignore[arg-type]
+        passing(repo, **over),
     )
     assert result.flipped == 0, name
     assert result.outcomes[0].action is EnumCloserAction.HELD, name
