@@ -18,7 +18,7 @@
 name: "node_delegated_code_edit_orchestrator"
 lifecycle: experimental
 node_type: "ORCHESTRATOR_GENERIC"
-runtime_profiles: [main]
+runtime_profiles: [effects]
 contract_version:
   major: 0
   minor: 2
