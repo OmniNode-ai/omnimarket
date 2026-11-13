@@ -54,13 +54,13 @@ dod_evidence:
     check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_cli.py -k 'contract_command_line' -q -p no:randomly --no-cov
     cwd: .
 - id: dod-omn24108-ac4
-  description: "hosted proxy for AC4: the neighbouring installer tests pass here; the Mac install through the new command and the read of its next run are posted as a pull request comment naming the head."
+  description: "hosted proxy for AC4: the install-then-rollback tests of a launchd, a systemd and a copied-tree unit pass here, and fail at the merge base where the rollback mode does not exist; the Mac install through the new command and the read of its next run are posted as a pull request comment naming the head."
   source: manual
   binds_ac:
   - AC4
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_registry_units.py tests/nodes/node_host_installer_registry_units/test_copied_units.py -q -p no:randomly --no-cov
+    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_rollback.py -k 'first_and_only_install or rolls_back' -q -p no:randomly --no-cov
     cwd: .
 - id: dod-omn24108-integration-proof
   description: the node tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
