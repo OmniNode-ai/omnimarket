@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import importlib
 import os
+import sqlite3
 import subprocess
 import sys
 from pathlib import Path
@@ -27,6 +28,7 @@ from omnimarket.nodes.node_host_retention_effect.handlers.host_retention_ports i
     DockerContainerMounts,
     FilesystemLaneLiveness,
     FilesystemUnitFiles,
+    SqlitePreCommitStore,
 )
 from omnimarket.nodes.node_host_retention_effect.models.model_host_retention import (
     ModelHostRetentionOverlay,
@@ -58,9 +60,11 @@ def completed(monkeypatch: pytest.MonkeyPatch, code: int, out: str) -> list[list
     return seen
 
 
-def test_overlay_seam_the_example_overlay_loads_and_every_declaration_is_inside_the_contract_bounds() -> (
-    None
-):
+def test_overlay_seam_the_example_overlay_loads_and_every_declaration_is_inside_the_contract_bounds(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A row written ~/... expands where it loads; pin the home so the path check reads a real folder, not a host's symlinked home.
+    monkeypatch.setenv("HOME", str(tmp_path.resolve()))
     overlay = ModelHostRetentionOverlay.model_validate(
         yaml.safe_load((NODE_DIR / "overlay.example.yaml").read_text())
     )
@@ -196,3 +200,73 @@ def test_unit_files_seam_reads_units_and_drop_ins_only(tmp_path: Path) -> None:
 
     assert texts is not None
     assert sorted(texts) == ["Environment=P=/x/two", "ExecStart=/x/one"]
+
+
+def test_pre_commit_seam_h101_style_mac_row_declares_the_store_the_tool_writes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path.resolve()))
+    overlay = ModelHostRetentionOverlay.model_validate(
+        yaml.safe_load((NODE_DIR / "overlay.example.yaml").read_text())
+    )
+    mac = next(row for row in overlay.hosts if row.name == "pool-mac")
+
+    assert validate_declarations(mac, load_bounds()) == []
+    store = next(age for age in mac.age_classes if age.kind == "pre_commit_store")
+    assert Path(store.root).name == "pre-commit"
+    assert store.index_db is not None
+    assert Path(store.index_db).name == "db.db"
+    assert Path(store.index_db).parent == Path(store.root)
+    assert [Path(cache.path).name for cache in mac.uv_caches] == ["uv"]
+
+
+def test_pre_commit_seam_the_index_schema_the_port_writes_matches_the_tool(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "pre-commit"
+    root.mkdir()
+    db = root / "db.db"
+    connection = sqlite3.connect(db)
+    connection.execute(
+        "CREATE TABLE repos (repo TEXT NOT NULL, ref TEXT NOT NULL, "
+        "path TEXT NOT NULL, PRIMARY KEY (repo, ref))"
+    )
+    connection.execute(
+        "INSERT INTO repos (repo, ref, path) VALUES (?, ?, ?)",
+        (
+            "https://github.com/pre-commit/pre-commit-hooks",
+            "v5.0.0",
+            str(root / "repoaged"),
+        ),
+    )
+    connection.execute(
+        "INSERT INTO repos (repo, ref, path) VALUES (?, ?, ?)",
+        ("https://github.com/pre-commit/mirrors-mypy", "v4.6.0", str(root / "reponew")),
+    )
+    connection.execute("CREATE TABLE configs (path TEXT NOT NULL, PRIMARY KEY (path))")
+    connection.execute(
+        "INSERT INTO configs (path) VALUES (?)",
+        (str(root / "repoaged" / ".pre-commit-config.yaml"),),
+    )
+    connection.commit()
+    connection.close()
+
+    assert SqlitePreCommitStore().forget(str(db), str(root / "repoaged")) == "forgotten"
+
+    check = sqlite3.connect(db)
+    try:
+        assert [row[0] for row in check.execute("SELECT path FROM repos")] == [
+            str(root / "reponew")
+        ]
+        assert [row[0] for row in check.execute("SELECT path FROM configs")] == [
+            str(root / "repoaged" / ".pre-commit-config.yaml")
+        ]
+    finally:
+        check.close()
+
+
+def test_pre_commit_seam_the_contract_bounds_name_the_leaf_folders() -> None:
+    bounds = load_bounds()
+
+    assert bounds.root_leaf_names["pre_commit_store"] == ("pre-commit",)
+    assert "uv" in bounds.root_leaf_names["uv_cache"]
