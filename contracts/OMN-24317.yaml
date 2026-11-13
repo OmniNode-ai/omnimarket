@@ -1,0 +1,42 @@
+schema_version: 1.0.0
+ticket_id: OMN-24317
+title: Fleet drift reader keeps events delivered before a failed read
+summary: The fleet drift reader reads heartbeat and resolved events with one stable consumer group per host, so the broker commits offsets as records are delivered. A read that failed after delivering events and had a previous view threw the folded events away and kept the old view, so the delivered records were never read again. The reader now folds and saves what was delivered, marks the view partial with the error, and keeps the old view only when nothing valid was delivered. This ports the failed-read fix written for the frozen host drift run handler, whose two other changes (read only heartbeat and resolved, keep one reader group) already hold in this node by its contract topics and its stable group.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24317-partial-read
+  statement: A failed read does not discard delivered events, and a failed read that delivered nothing keeps the last good view unchanged.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a failed read that delivered events saves the fold of those events and reports read_ok false with the error, while a failed read that delivered nothing keeps the previous view and saves nothing -- falsifier: pytest tests/nodes/node_host_drift_fleet/test_stale_state.py -n 0 --no-cov -q fails on origin/dev without the change'
+  - id: AC2
+    statement: 'AC2: golden and error chain event tests for the reader pass in memory and on the real broker -- falsifier: pytest tests/nodes/node_host_drift_fleet -n 0 --no-cov -q'
+  - id: AC3
+    statement: 'AC3: integrated: the reader running on a lab host from the branch reads two consecutive runs with replayed false and every lab host last report present -- falsifier: the reader result on the lab host after two runs lacks a host report or reads replayed true'
+evidence_requirements:
+- kind: tests
+  description: The fleet reader tests pass, including the partial failed read test.
+  command: uv run pytest tests/nodes/node_host_drift_fleet -n 0 --no-cov -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24317-ac1
+  description: A read that fails after delivering a heartbeat folds and saves it with a partial status line; a read that fails with nothing delivered keeps the previous view and saves nothing.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_drift_fleet/test_stale_state.py -n 0 --no-cov -q
+- id: dod-omn24317-ac2
+  description: The reader's golden, error chain, replay and contract tests pass in memory.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_drift_fleet -n 0 --no-cov -q

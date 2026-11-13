@@ -191,9 +191,23 @@ class HandlerHostDriftFleet:
             consumer_group=group_id,
             malformed=malformed,
         )
-        if error and previous is not None:
-            # A failed read must not be saved or served as a fresh fold: keep the
-            # last good projection, with its own folded_at, and say it is stale.
+        if error and events:
+            # The group's offsets are committed as records are delivered, so events
+            # that arrived before the failure are never delivered again: fold and
+            # save them, and say the read was partial.
+            view = view.model_copy(
+                update={
+                    "status_line": (
+                        f"host-drift: PARTIAL read failed ({error}); "
+                        f"{view.status_line.removeprefix('host-drift: ')}"
+                    ),
+                }
+            )
+            self._state_store.save(view)
+        elif error and previous is not None:
+            # A failed read that delivered no valid events must not be saved or
+            # served as a fresh fold: keep the last good projection, with its own
+            # folded_at, and say it is stale.
             view = previous.model_copy(
                 update={
                     "status_line": (
