@@ -5,8 +5,10 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
 
+from omnimarket.nodes.node_host_retention_effect.handlers.host_retention_pass import (
+    _Pass,
+)
 from omnimarket.nodes.node_host_retention_effect.handlers.host_retention_ports import (
     HostRetentionPorts,
 )
@@ -20,11 +22,6 @@ from omnimarket.nodes.node_temp_retention_effect.handlers.handler_temp_retention
     ProcessReferences,
     _held_names,
 )
-
-if TYPE_CHECKING:
-    from omnimarket.nodes.node_host_retention_effect.handlers.handler_host_retention import (
-        _Pass,
-    )
 
 # The declared class name of the uv cache (the handler owns it as UV_CACHE; importing it here would be circular).
 CLASS_NAME = "uv_cache"

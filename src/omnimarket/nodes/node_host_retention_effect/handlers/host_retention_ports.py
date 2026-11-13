@@ -104,11 +104,11 @@ class UvArchivePort(Protocol):
 
     def scan(
         self, bucket_dir: str, depth: int, timeout_s: float
-    ) -> list[ModelUvArchiveEntry]:  # raises OSError on failure or past the deadline
-        ...
+    ) -> list[ModelUvArchiveEntry]:
+        """List entries; raises OSError on failure or past the deadline."""
 
-    def remove(self, bucket_dir: str, name: str) -> None:  # raises OSError on failure
-        ...
+    def remove(self, bucket_dir: str, name: str) -> None:
+        """Remove one entry; raises OSError on failure."""
 
 
 class LaneLivenessPort(Protocol):

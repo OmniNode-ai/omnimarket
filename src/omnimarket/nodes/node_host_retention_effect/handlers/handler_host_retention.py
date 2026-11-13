@@ -15,7 +15,6 @@ import os
 import re
 import time
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -25,6 +24,9 @@ from pydantic import ValidationError
 from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
     load_structured_overlay,
+)
+from omnimarket.nodes.node_host_retention_effect.handlers.host_retention_pass import (
+    _Pass,
 )
 from omnimarket.nodes.node_host_retention_effect.handlers.host_retention_ports import (
     HostRetentionPorts,
@@ -44,7 +46,6 @@ from omnimarket.nodes.node_host_retention_effect.models.model_host_retention imp
     ModelHostRetentionResult,
     ModelRetentionBounds,
     ModelRetentionItem,
-    ModelRetentionKept,
     ModelRunnerGroup,
     ModelRunnerMount,
     ModelUvBucketBound,
@@ -212,34 +213,6 @@ def validate_declarations(
 
 _GIB = 2**30
 _DAY = 86400
-
-
-@dataclass
-class _Pass:
-    """What one pass has found so far; every list is exact, nothing is capped."""
-
-    items: list[ModelRetentionItem] = field(default_factory=list)
-    kept: list[ModelRetentionKept] = field(default_factory=list)
-    errors: list[str] = field(default_factory=list)
-    removed: dict[str, int] = field(default_factory=dict)
-    freed: dict[str, int] = field(default_factory=dict)
-    ran: list[str] = field(default_factory=list)
-
-    def keep(self, class_name: str, path: str, reason: str) -> None:
-        self.kept.append(
-            ModelRetentionKept(class_name=class_name, path=path, reason=reason)
-        )
-
-    def propose(self, item: ModelRetentionItem) -> None:
-        self.items.append(item)
-
-    def done(self, class_name: str, freed: int) -> None:
-        self.removed[class_name] = self.removed.get(class_name, 0) + 1
-        self.freed[class_name] = self.freed.get(class_name, 0) + freed
-
-    def begin(self, class_name: str) -> None:
-        if class_name not in self.ran:
-            self.ran.append(class_name)
 
 
 def _held_by_mount(entry: Path, sources: set[str]) -> bool:
