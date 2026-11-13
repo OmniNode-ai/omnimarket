@@ -1589,6 +1589,7 @@
   "tests/nodes/node_internal_release_path_guard_compute/test_internal_release_path_guard.py": 1.2,
   "tests/nodes/node_job_log_filler_effect/test_golden_chain_node_job_log_filler_effect.py": 0.125,
   "tests/nodes/node_job_log_filler_effect/test_job_log_filler.py": 0.162,
+  "tests/nodes/node_job_log_filler_effect/test_job_log_filler_not_found_hold.py": 1.51,
   "tests/nodes/node_job_log_filler_effect/test_job_log_filler_pass_budget.py": 11.77,
   "tests/nodes/node_job_log_filler_effect/test_job_log_filler_single_run.py": 0.03,
   "tests/nodes/node_job_log_filler_effect/test_job_log_filler_tick.py": 11.62,

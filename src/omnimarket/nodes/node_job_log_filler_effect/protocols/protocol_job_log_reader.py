@@ -13,6 +13,10 @@ class JobLogCacheMissError(Exception):
     """A cache-only probe found no cached log for the job."""
 
 
+class JobLogNotFoundError(Exception):
+    """The gateway answered the job's log is not served: HTTP 404."""
+
+
 @runtime_checkable
 class ProtocolJobLogReader(Protocol):
     """Read one job's log through the gateway's job-log cache.
@@ -34,4 +38,4 @@ class ProtocolJobLogReader(Protocol):
     ) -> ModelJobLogTailResult: ...
 
 
-__all__ = ["JobLogCacheMissError", "ProtocolJobLogReader"]
+__all__ = ["JobLogCacheMissError", "JobLogNotFoundError", "ProtocolJobLogReader"]
