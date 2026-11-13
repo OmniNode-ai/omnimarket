@@ -21,6 +21,7 @@ from ..models import (
     ModelJobExitAlarmResult,
     ModelJobExitEpisode,
     ModelJobExitReading,
+    ModelJobExitReraise,
     ModelJobExitStreak,
 )
 from ..models.model_job_exit_alarm import JobExitCause
@@ -31,6 +32,8 @@ _CLOSED = {
     "pushed": False,
     "dispatched": False,
     "cause": None,
+    "raised_at": None,
+    "raise_count": 0,
 }
 
 
@@ -70,6 +73,7 @@ class HandlerJobExitAlarm:
         opened: list[ModelJobExitEpisode] = []
         closed: list[str] = []
         push: list[ModelJobExitEpisode] = []
+        reraised: list[ModelJobExitReraise] = []
         suppressed: list[str] = []
         cells: list[str] = []
         alerts: list[str] = []
@@ -226,7 +230,60 @@ class HandlerJobExitAlarm:
                     f"{current.opened_at.astimezone(UTC):%Y-%m-%dT%H:%M:%SZ}; "
                     f"no CLAIM cites it after {request.push_after_minutes} minutes"
                 )
-                current = current.model_copy(update={"pushed": True})
+                current = current.model_copy(
+                    update={"pushed": True, "raised_at": request.now, "raise_count": 1}
+                )
+            if (
+                current.episode is not None
+                and current.opened_at is not None
+                and request.reraise_after_minutes > 0
+                and (
+                    request.now
+                    - (
+                        current.raised_at
+                        if current.raised_at is not None
+                        else current.opened_at
+                    )
+                    >= timedelta(minutes=request.reraise_after_minutes)
+                )
+            ):
+                count = max(current.raise_count, 1 if current.pushed else 0) + 1
+                age = int((request.now - current.opened_at).total_seconds() // 60)
+                what = (
+                    f"has not run since {current.last_run_at.astimezone(UTC):%Y-%m-%dT%H:%M:%SZ}"
+                    if current.cause == "missed-interval"
+                    and current.last_run_at is not None
+                    else f"reported its finding (exit {current.last_exit}) on "
+                    f"{current.streak} runs in a row"
+                    if current.cause == "finding-exit"
+                    else f"exited nonzero on {current.streak} runs in a row "
+                    f"(last exit {current.last_exit})"
+                )
+                cite = (
+                    "a CLAIM cites it"
+                    if current.episode in request.cited_episodes
+                    else "no CLAIM cites it"
+                )
+                alerts.append(
+                    f"JOB EXIT STILL OPEN {label} {what}; episode {current.episode} "
+                    f"open {age} minutes, raised {count} times; {cite}"
+                )
+                reraised.append(
+                    ModelJobExitReraise(
+                        episode=current.episode,
+                        label=label,
+                        cause=current.cause or "failed-exit",
+                        age_minutes=age,
+                        raise_count=count,
+                    )
+                )
+                current = current.model_copy(
+                    update={
+                        "raised_at": request.now,
+                        "raise_count": count,
+                        "pushed": True,
+                    }
+                )
             streaks[label] = current
         ordered = tuple(streaks[label] for label in sorted(streaks))
         failing = tuple(
@@ -244,4 +301,5 @@ class HandlerJobExitAlarm:
             suppressed=tuple(suppressed),
             friction_cells=tuple(cells),
             alert_text=tuple(alerts),
+            reraised=tuple(reraised),
         )

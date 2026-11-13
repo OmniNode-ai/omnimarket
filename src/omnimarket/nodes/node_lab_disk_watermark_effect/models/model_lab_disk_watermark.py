@@ -70,6 +70,18 @@ class ModelHostDiskReadingSettings(_Frozen):
     interval_seconds: int = Field(gt=0)
 
 
+class ModelWatermarkGrowth(_Frozen):
+    page_hours_to_floor: float = Field(gt=0)
+    min_span_minutes: int = Field(gt=0)
+
+
+class ModelVolumeGrowth(_Frozen):
+    path: str
+    free_gb_per_hour: float
+    hours_to_floor: float | None
+    span_minutes: float
+
+
 class ModelWatermarkHost(_Frozen):
     name: NonEmptyStr
     scheduler: Literal["systemd-user"]
@@ -82,6 +94,7 @@ class ModelWatermarkHost(_Frozen):
     #: The class roots this host declares; a class with no root here is read as an unread class, never from a default.
     class_roots: tuple[ModelClassRoot, ...] = ()
     docker: ModelDockerReader | None = None
+    growth: ModelWatermarkGrowth | None = None
 
 
 class ModelLabDiskWatermarkOverlay(_Frozen):
@@ -131,6 +144,8 @@ class ModelLabDiskWatermarkReading(_Frozen):
     #: The host disk event this run published, or the typed failure; None when the overlay declares no ``reading``.
     #: Not part of the reading file: placement reads that file's ``level`` and nothing else changes in it.
     host_disk: ModelHostDiskRead | ModelHostDiskReadFailed | None = None
+    growth: tuple[ModelVolumeGrowth, ...] = ()
+    growth_paged: bool = False
 
 
 class ModelLabDiskWatermarkScheduleResult(_Frozen):

@@ -20,11 +20,18 @@ from .model_drainer_alarm import (
     ModelDrainerRequest,
     ModelDrainerResult,
 )
+from .model_install_failure_alarm import (
+    ModelInstallFailureAlarmRequest,
+    ModelInstallFailureAlarmResult,
+    ModelInstallFailureRow,
+    ModelInstallFailureState,
+)
 from .model_job_exit_alarm import (
     ModelJobExitAlarmRequest,
     ModelJobExitAlarmResult,
     ModelJobExitEpisode,
     ModelJobExitReading,
+    ModelJobExitReraise,
     ModelJobExitStreak,
 )
 from .model_placement_share_alarm import (
@@ -53,10 +60,15 @@ __all__ = [
     "ModelFleetFoldAbsence",
     "ModelHostActivity",
     "ModelHostOmniHome",
+    "ModelInstallFailureAlarmRequest",
+    "ModelInstallFailureAlarmResult",
+    "ModelInstallFailureRow",
+    "ModelInstallFailureState",
     "ModelJobExitAlarmRequest",
     "ModelJobExitAlarmResult",
     "ModelJobExitEpisode",
     "ModelJobExitReading",
+    "ModelJobExitReraise",
     "ModelJobExitStreak",
     "ModelLaneRefusal",
     "ModelPlacementRun",
