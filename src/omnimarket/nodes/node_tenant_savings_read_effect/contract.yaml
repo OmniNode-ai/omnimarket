@@ -87,6 +87,8 @@ config:
   # The bus handler builds its projection reader through this contract-declared factory, so the
   # handler module holds no import of a database driver.
   reader_factory: "omnimarket.handlers.tenant_projection_read.resolver_reader:reader_for_node"
+  # Runs stored with these data sources are listed but never counted in a tenant's totals (OMN-19998, scenario R8).
+  uncounted_data_sources: ["experiment"]
 handler_dependencies:
   - omnimarket.protocols.protocol_http_tenant_identity.ProtocolHttpTenantIdentity
   - omnimarket.protocols.protocol_tenant_delegation_projection_reader.ProtocolTenantDelegationProjectionReader

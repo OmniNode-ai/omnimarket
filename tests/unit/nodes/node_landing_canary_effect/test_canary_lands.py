@@ -46,7 +46,7 @@ def test_the_canary_lands_inside_the_bar_and_the_elapsed_time_is_recorded() -> N
 
 def test_exactly_one_test_pull_request_is_opened_in_the_test_repository() -> None:
     world = World()
-    world.handler(InMemoryLedger()).handle(COMMAND)
+    world.handler(InMemoryLedger(), operational_overlay()).handle(COMMAND)
     assert len(world.repo.opened_requests) == 1
     request = world.repo.opened_requests[0]
     assert request.repo == overlay().target.repo
@@ -57,7 +57,7 @@ def test_exactly_one_test_pull_request_is_opened_in_the_test_repository() -> Non
 
 def test_the_wait_polls_at_the_overlay_interval_and_stops_when_it_merges() -> None:
     world = World()
-    world.handler(InMemoryLedger()).handle(COMMAND)
+    world.handler(InMemoryLedger(), operational_overlay()).handle(COMMAND)
     poll = float(overlay().target.poll_seconds)
     assert set(world.clock.sleeps) == {poll}
     assert len(world.clock.sleeps) == 5  # 300 s at 60 s a poll
@@ -68,7 +68,7 @@ def test_a_merge_after_the_bar_is_not_working_with_the_late_time_recorded() -> N
     world.break_landing_tick_slow()
     # The host slept through the wait: the first poll after the bar finds the merge, which came late.
     world.clock.oversleep_seconds = 4000
-    result = world.handler(ledger).handle(COMMAND)
+    result = world.handler(ledger, operational_overlay()).handle(COMMAND)
     assert result.verdict is EnumReadingVerdict.NOT_WORKING
     assert result.ending is EnumCanaryEnding.MERGED_LATE
     assert result.elapsed_seconds == 3720
@@ -78,7 +78,7 @@ def test_a_merge_after_the_bar_is_not_working_with_the_late_time_recorded() -> N
 def test_a_pull_request_closed_unmerged_is_not_working() -> None:
     world, ledger = World(), InMemoryLedger()
     world.break_pull_request_closed()
-    result = world.handler(ledger).handle(COMMAND)
+    result = world.handler(ledger, operational_overlay()).handle(COMMAND)
     assert result.verdict is EnumReadingVerdict.NOT_WORKING
     assert result.ending is EnumCanaryEnding.CLOSED_UNMERGED
     assert "reason=closed-unmerged" in ledger.lines[0]
@@ -87,7 +87,7 @@ def test_a_pull_request_closed_unmerged_is_not_working() -> None:
 def test_a_pull_request_that_cannot_be_opened_is_unknown_with_a_typed_reason() -> None:
     world, ledger = World(), InMemoryLedger()
     world.break_open_fails()
-    result = world.handler(ledger).handle(COMMAND)
+    result = world.handler(ledger, operational_overlay()).handle(COMMAND)
     assert result.verdict is EnumReadingVerdict.UNKNOWN
     assert result.outcome is EnumReadingOutcome.SOURCE_UNREADABLE
     assert result.ending is EnumCanaryEnding.OPEN_FAILED
@@ -99,7 +99,7 @@ def test_a_pull_request_that_cannot_be_opened_is_unknown_with_a_typed_reason() -
 def test_a_state_that_cannot_be_read_at_the_end_is_unknown() -> None:
     world, ledger = World(), InMemoryLedger()
     world.break_state_unreadable()
-    result = world.handler(ledger).handle(COMMAND)
+    result = world.handler(ledger, operational_overlay()).handle(COMMAND)
     assert result.verdict is EnumReadingVerdict.UNKNOWN
     assert result.ending is EnumCanaryEnding.STATE_UNREADABLE
     assert "reason=state-unreadable-pr-state-exit-1" in ledger.lines[0]
@@ -107,7 +107,7 @@ def test_a_state_that_cannot_be_read_at_the_end_is_unknown() -> None:
 
 def test_a_probe_run_appends_nothing() -> None:
     world, ledger = World(), InMemoryLedger()
-    result = world.handler(ledger).handle(
+    result = world.handler(ledger, operational_overlay()).handle(
         ModelLandingCanaryCommand(correlation_id="canary-probe", write=False)
     )
     assert result.verdict is EnumReadingVerdict.WORKING

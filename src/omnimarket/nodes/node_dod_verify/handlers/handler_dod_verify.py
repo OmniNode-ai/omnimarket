@@ -898,6 +898,11 @@ class HandlerDodVerify:
                 state.acceptance_runnable_falsifier_count
             ),
             acceptance_unrunnable_labels=state.acceptance_unrunnable_labels,
+            dry_run=state.dry_run,
+            acceptance_self_accepted_bindings=state.acceptance_self_accepted_bindings,
+            acceptance_retired_bindings=state.acceptance_retired_bindings,
+            acceptance_refused_retirements=state.acceptance_refused_retirements,
+            acceptance_unbound_criteria=state.acceptance_unbound_criteria,
             criteria_revision=state.criteria_revision,
             criteria_drift=state.criteria_drift,
             criteria_amendment=state.criteria_amendment,

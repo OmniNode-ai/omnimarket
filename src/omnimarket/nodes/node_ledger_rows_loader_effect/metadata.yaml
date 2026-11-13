@@ -1,0 +1,24 @@
+name: ledger_rows_loader_effect
+version: "1.0.0"
+description: "Loads the rows of a window of hours of the work ledger from the bus-fed reader node; a non-ok answer falls back to the file's rows while the overlay allows it, stamped source=file-fallback, and a read no source answered is unreadable, never an empty ok."
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_ledger_rows_loader_effect: omnimarket.nodes.node_ledger_rows_loader_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pyyaml>=6.0"
+  - "pydantic>=2.0"
+tags: [effect, work-ledger, rows]
+pack: "data"
+display_name: "Effect: Ledger Rows Loader"
+node_role: "effect"
+license: "MIT"

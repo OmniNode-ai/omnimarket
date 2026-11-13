@@ -1,0 +1,60 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Overlay Main Load Check Effect (OMN-23963)
+#
+# Loads every overlay document through the model class in this tree and refuses when a document no longer validates.
+name: node_overlay_main_load_check_effect
+contract_name: node_overlay_main_load_check_effect
+node_name: node_overlay_main_load_check_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Loads every overlay document through the model class in this tree and refuses when a document no longer validates.
+
+handler:
+  module: omnimarket.nodes.node_overlay_main_load_check_effect.handlers.handler_overlay_main_load_check
+  class: HandlerOverlayMainLoadCheck
+  input_model: omnimarket.nodes.node_overlay_main_load_check_effect.models.model_overlay_main_load_check.ModelOverlayMainLoadCommand
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: []
+  timeout_ms: 300000
+
+input_model:
+  name: ModelOverlayMainLoadCommand
+  module: omnimarket.nodes.node_overlay_main_load_check_effect.models.model_overlay_main_load_check
+  description: The overlays root and pins file to check.
+output_model:
+  name: ModelOverlayMainLoadResult
+  module: omnimarket.nodes.node_overlay_main_load_check_effect.models.model_overlay_main_load_check
+  description: What was loaded and what was found.
+
+terminal_event: onex.evt.omnimarket.overlay-main-load-check-completed.v1
+
+runtime_dispatch:
+  external_trigger: true
+
+topics:
+  overlay_main_load_check_requested: onex.cmd.omnimarket.overlay-main-load-check-requested.v1
+  overlay_main_load_check_completed: onex.evt.omnimarket.overlay-main-load-check-completed.v1
+  overlay_main_load_check_failed: onex.evt.omnimarket.overlay-main-load-check-failed.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.overlay-main-load-check-completed.v1
+  - onex.evt.omnimarket.overlay-main-load-check-failed.v1
+
+metadata:
+  ticket: OMN-23963
+  transport_type: inmemory

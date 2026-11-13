@@ -26,3 +26,21 @@ mode: observe
 # Seconds between lane reads while observing one merge.
 observe_poll_seconds: 30
 verify_deadline_seconds: 3000
+# The serve unit `dev-merge-redeploy unit install` renders on each declared host. Uncomment
+# where a unit is declared; while it is absent the installer refuses every verb. $OMNI_HOME
+# and $HOME are filled by the installing host, so one document serves every host.
+#unit:
+#  unit_name: example-dev-merge-redeploy-serve
+#  description: Example dev-merge redeploy serve process
+#  python: $OMNI_HOME/example/.venv/bin/python
+#  # The bus the serve process opens; kafka also needs bus_lane.
+#  bus: kafka
+#  bus_lane: example-lane
+#  restart_seconds: 10
+#  stop_timeout_seconds: 30
+#  log_file: $HOME/.local/state/example/serve.log
+#  environment:
+#    # The serve process's --omnibase-path (the workspace root holding the lane declaration).
+#    OMNIBASE_PATH: $OMNI_HOME/example-workspace
+#  hosts:
+#    - {name: host-a, scheduler: systemd-user}

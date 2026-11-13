@@ -1,0 +1,103 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodeDevRollVerifyCompute
+#
+# Five whys plan on the dev runtime dropouts, root R5 under decision D9 option
+# (a): one runtime start per roll, with the hot patch (branch install) inside that
+# start. The node counts the runtime starts of one finished dev roll and verdicts
+# the roll against the declared starts per roll. Start events are the typed
+# ModelDevRuntimeStarted (topic onex.evt.omnimarket.dev-runtime-started.v1), whose
+# producer (the deploy agent, five whys R1) does not exist yet.
+#
+# Every bound is an overlay value (declared_starts_per_roll). Nothing is
+# packaged as a fallback: an absent overlay refuses.
+name: "node_dev_roll_verify_compute"
+contract_name: "node_dev_roll_verify_compute"
+node_name: "node_dev_roll_verify_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+description: >
+  Pure verification decision for the dev roll. Counts the runtime starts of
+  the current dev roll and verdicts the roll against the declared starts per
+  roll (an overlay value), returning the roll verified or refused with a typed
+  reason. Facts that contradict themselves are refused as a whole. No clock,
+  no I/O.
+input_model:
+  name: "ModelDevRollVerifyFacts"
+  module: "omnimarket.nodes.node_dev_roll_verify_compute.models.model_dev_roll_verify_facts"
+  description: "The runtime starts counted for the current dev roll."
+output_model:
+  name: "ModelDevRollVerified"
+  module: "omnimarket.nodes.node_dev_roll_verify_compute.models.model_dev_roll_verified"
+  description: "The roll verdict: verified against the declared starts per roll."
+handler:
+  module: "omnimarket.nodes.node_dev_roll_verify_compute.handlers.handler_dev_roll_verify"
+  class: "HandlerDevRollVerify"
+  input_model: "omnimarket.nodes.node_dev_roll_verify_compute.models.model_dev_roll_verify_facts.ModelDevRollVerifyFacts"
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  subscribe_topics:
+    - onex.cmd.omnimarket.dev-roll-verify-requested.v1
+published_events:
+  - event_type: "DevRollVerified"
+    topic: onex.evt.omnimarket.dev-roll-verified.v1
+    description: "The roll verdict: verified against the declared starts per roll."
+  - event_type: "DevRollVerifyRefused"
+    topic: onex.evt.omnimarket.dev-roll-verify-refused.v1
+    description: "The facts contradicted themselves; no verdict was made."
+handler_routing:
+  routing_strategy: "payload_type_match"
+  handlers:
+    - operation: "dev_roll_verify.decide"
+      message_category: "command"
+      handler:
+        name: "HandlerDevRollVerify"
+        module: "omnimarket.nodes.node_dev_roll_verify_compute.handlers.handler_dev_roll_verify"
+      event_model:
+        name: "ModelDevRollVerifyFacts"
+        module: "omnimarket.nodes.node_dev_roll_verify_compute.models.model_dev_roll_verify_facts"
+      topic: onex.cmd.omnimarket.dev-roll-verify-requested.v1
+      description: "One verification tick: the runtime starts counted for the roll."
+# The verified and refused events are the results a caller of the decision awaits (the topic graph gate counts
+# runtime_dispatch.terminal_events as externally consumed), like node_pr_landing_decision_compute.
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.dev-roll-verify-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.dev-roll-verified.v1"
+    failure: "onex.evt.omnimarket.dev-roll-verify-refused.v1"
+consumed_events:
+  - event_type: ModelDevRollVerifyFacts
+    topic: "onex.cmd.omnimarket.dev-roll-verify-requested.v1"
+    description: "One verification tick's facts; declared so the platform topic provisioner creates the topic."
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+replay:
+  deterministic: true
+runtime_profiles:
+  - main
+metadata:
+  description: "Counts runtime starts per dev roll and verdicts the roll against the declared starts per roll."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-11-12"
+  tags:
+    - compute
+    - dev-runtime
+    - roll-verify
+    - pure

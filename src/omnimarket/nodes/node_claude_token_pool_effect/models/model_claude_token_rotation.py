@@ -271,6 +271,17 @@ class ModelRotationEvent(BaseModel):
     at: datetime
 
 
+class ModelLimitRecheckOutcome(BaseModel):
+    """What the tick's limit recheck decided for one limited label."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    label: str
+    outcome: Literal["cleared", "replaced", "kept", "not_due", "due"]
+    #: Time of the probe the tick ran this pass, or the last recorded probe for a label not probed this pass; labels only, never a token.
+    probed_at: datetime | None = None
+
+
 class ModelClaudeTokenRotationResult(BaseModel):
     """The tick's decision. Labels and states only."""
 
@@ -302,6 +313,8 @@ class ModelClaudeTokenRotationResult(BaseModel):
     limits_cleared: tuple[str, ...] = ()
     limits_replaced: tuple[str, ...] = ()
     limits_kept: tuple[str, ...] = ()
+    #: One typed outcome per limited, non-revoked label with an ``until`` the tick rechecked this pass.
+    limit_rechecks: tuple[ModelLimitRecheckOutcome, ...] = ()
 
 
 class ModelClaudeTokenAssignRequest(BaseModel):
@@ -335,6 +348,7 @@ __all__ = [
     "ModelClaudeTokenRotationRequest",
     "ModelClaudeTokenRotationResult",
     "ModelLimitProbeSettings",
+    "ModelLimitRecheckOutcome",
     "ModelLimitRecheckSettings",
     "ModelRotationEvent",
     "ModelRotationHost",

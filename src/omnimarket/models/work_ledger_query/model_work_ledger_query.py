@@ -135,6 +135,8 @@ class ModelWorkLedgerQueryRequest(BaseModel):
     history: ModelWorkLedgerHistoryRange | None = None
     cursor: str | None = Field(default=None, min_length=1, max_length=4096)
     page_size: int | None = Field(default=None, ge=1, le=MAX_POINT_PAGE_SIZE)
+    # A paged rows answer carries lines and no typed rows; the reader prints lines only.
+    lines_only: bool = False
     # latest-state (OMN-23606): which kind of subject to read (a lane or a ticket), the tickets to read
     # (``tickets``; a lane filter is ``lanes``), and the row types (``kinds``) and the newest-at start
     # (``since``) the entries are narrowed to.
@@ -161,6 +163,8 @@ class ModelWorkLedgerQueryRequest(BaseModel):
         paged_rows = (
             self.query is EnumWorkLedgerQueryKind.ROWS and self.page_size is not None
         )
+        if self.lines_only and not paged_rows:
+            raise ValueError("lines_only applies to a paged rows query only")
         if (
             self.page_size is not None
             and self.query not in POINT_QUERY_KINDS

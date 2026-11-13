@@ -1,0 +1,73 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Hook Spool Reconcile Effect (OMN-19998, the hook-emit drainer's dead letters and unalarmed losses)
+#
+# Replays the dead-lettered records whose event class the drainer does not currently refuse back into the journal dir, and
+# raises an alarm for every loss no alarm has covered. It moves the replayed records and writes the alarm state and the
+# emission chain; it changes no verdict and no bound.
+name: node_hook_spool_reconcile_effect
+contract_name: node_hook_spool_reconcile_effect
+node_name: node_hook_spool_reconcile_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Replays the hook-emit drainer's dead letters whose event class the drainer does not currently refuse back into the journal
+  dir, and raises an alarm for every loss no alarm has covered. A record the drainer still refuses is held, a record younger
+  than the overlay's min_age_seconds is held, and a record whose name the journal already holds is skipped (never
+  overwritten). A drainer status that is absent or unparsable is reported as unread and nothing is replayed. A second run
+  with no new losses raises no second alarm.
+
+handler:
+  module: omnimarket.nodes.node_hook_spool_reconcile_effect.handlers.handler_hook_spool_reconcile
+  class: HandlerHookSpoolReconcile
+  input_model: omnimarket.nodes.node_hook_spool_reconcile_effect.models.model_hook_spool_reconcile.ModelHookSpoolReconcileCommand
+
+# HandlerHookSpoolReconcile takes the overlay, the spool home, the emission sink, the backend and the clock as constructor
+# parameters, so the node runs through its own CLI, not handler_routing.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [hook-journal-replay, emission-journal-append, alarm-state-write]
+  timeout_ms: 120000
+
+input_model:
+  name: ModelHookSpoolReconcileCommand
+  module: omnimarket.nodes.node_hook_spool_reconcile_effect.models.model_hook_spool_reconcile
+  description: Whether to replay the eligible dead letters.
+output_model:
+  name: ModelHookSpoolReconcileResult
+  module: omnimarket.nodes.node_hook_spool_reconcile_effect.models.model_hook_spool_reconcile
+  description: What was read, replayed, held and alarmed on this run.
+
+terminal_event: onex.evt.omnimarket.hook-spool-reconcile-completed.v1
+
+runtime_dispatch:
+  external_trigger: true
+
+topics:
+  hook_spool_reconcile_requested: onex.cmd.omnimarket.hook-spool-reconcile-requested.v1
+  hook_spool_reconcile_completed: onex.evt.omnimarket.hook-spool-reconcile-completed.v1
+  hook_spool_reconcile_failed: onex.evt.omnimarket.hook-spool-reconcile-failed.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.hook-spool-reconcile-completed.v1
+  - onex.evt.omnimarket.hook-spool-reconcile-failed.v1
+
+overlay:
+  node: node_hook_spool_reconcile_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+metadata:
+  ticket: OMN-19998
+  transport_type: inmemory

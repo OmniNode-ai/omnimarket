@@ -18,7 +18,7 @@ from __future__ import annotations
 from omnibase_core.enums.enum_context_factor import EnumContextFactor
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_context_roi_compute.models.model_factor_arm import (
+from omnimarket.models.model_factor_arm import (
     EnumArmLabel,
 )
 from omnimarket.nodes.node_context_roi_compute.models.model_task_manifest import (

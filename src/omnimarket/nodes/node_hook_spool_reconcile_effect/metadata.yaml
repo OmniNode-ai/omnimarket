@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_hook_spool_reconcile_effect
+version: 1.0.0
+description: Replays the hook-emit drainer's dead letters whose event class the drainer does not currently refuse back into the journal dir, and raises an alarm for every loss no alarm has covered.
+pack: operator_tooling
+node_role: effect
+display_name: Hook Spool Reconcile Effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_hook_spool_reconcile_effect: omnimarket.nodes.node_hook_spool_reconcile_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+- pydantic>=2.0
+- pyyaml>=6.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- hook
+- spool

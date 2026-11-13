@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_dev_roll_verify_compute
+version: "0.1.0"
+description: "Counts runtime starts per dev roll and verdicts the roll against the declared starts per roll (an overlay value)"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_dev_roll_verify_compute: "omnimarket.nodes.node_dev_roll_verify_compute"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "dev-runtime", "roll-verify", "pure"]
+pack: "pr_lifecycle"
+display_name: "Dev Roll Verify"
+node_role: "compute"

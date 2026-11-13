@@ -140,6 +140,7 @@ def test_the_red_class_enum_is_the_controllers_vocabulary() -> None:
         "runner_saturation",
         "cancelled_producer",
         "reviewer_pool",
+        "stale_fleet",
     }
 
 

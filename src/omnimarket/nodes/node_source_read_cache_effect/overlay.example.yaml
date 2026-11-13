@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. A deployment's real overlay lives in the overlays repository.
+key_prefix: "example-board:"
+ttl_backstop_seconds: 900
+clone_relpath_template: "{name}"
+clone_revision_timeout_seconds: 10
+valkey:
+  host_env: EXAMPLE_VALKEY_HOST
+  port_env: EXAMPLE_VALKEY_PORT
+  password_env: EXAMPLE_VALKEY_PASSWORD
+  database: 0
+  connect_timeout_seconds: 3
+  operation_timeout_seconds: 5

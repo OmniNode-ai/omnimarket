@@ -89,6 +89,24 @@ class ModelDodVerifyCompletedEvent(BaseModel):
     acceptance_declared_falsifier_count: int = Field(default=0, ge=0)
     acceptance_runnable_falsifier_count: int = Field(default=0, ge=0)
     acceptance_unrunnable_labels: tuple[str, ...] = Field(default=())
+    # OMN-19998: the runtime publishes the state this handler returns on the
+    # terminal topic, so every field the state carries is a field of the event;
+    # the five below were the ones missing, and the consumers refused each
+    # published state as an extra input. Omitted when unset so older consumers
+    # see the shape they saw before.
+    dry_run: bool = Field(default=False, exclude_if=lambda value: not value)
+    acceptance_self_accepted_bindings: tuple[str, ...] = Field(
+        default=(), exclude_if=lambda value: not value
+    )
+    acceptance_retired_bindings: tuple[str, ...] = Field(
+        default=(), exclude_if=lambda value: not value
+    )
+    acceptance_refused_retirements: tuple[str, ...] = Field(
+        default=(), exclude_if=lambda value: not value
+    )
+    acceptance_unbound_criteria: tuple[str, ...] = Field(
+        default=(), exclude_if=lambda value: not value
+    )
     # OMN-20858: see the state.
     criteria_revision: str | None = Field(
         default=None, exclude_if=lambda value: value is None

@@ -91,7 +91,9 @@ def test_the_cli_closes_a_commitment_whose_check_passes(
     text = ledger.read_text(encoding="utf-8")
     assert "status=verified" in text
     assert "exit=0" in text
-    assert "open->verified verified exit=0" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "open->verified verified exit=0" in out
+    assert "read=1 live=1" in out
 
 
 def test_failing_control_the_cli_leaves_a_failing_check_open(
@@ -102,7 +104,9 @@ def test_failing_control_the_cli_leaves_a_failing_check_open(
     )
     assert main([]) == 0
     assert "status=verified" not in ledger.read_text(encoding="utf-8")
-    assert "still-open exit=4" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "still-open exit=4" in out
+    assert "read=1 live=1" in out
 
 
 def test_the_cli_refuses_with_no_overlay_instead_of_guessing(
@@ -112,6 +116,42 @@ def test_the_cli_refuses_with_no_overlay_instead_of_guessing(
     monkeypatch.delenv("ONEX_SKILL_OVERLAY_ROOTS", raising=False)
     assert main([]) == 3
     assert "refused" in capsys.readouterr().err
+
+
+def test_the_cli_exits_4_when_the_ledger_holds_no_commitment_rows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    ledger = _backend(
+        tmp_path, monkeypatch, f'{sys.executable} -c "raise SystemExit(0)"'
+    )
+    ledger.write_text("", encoding="utf-8")
+    assert main([]) == 4
+    out = capsys.readouterr()
+    assert "read=0 live=0 checked=0" in out.out
+    assert "EMPTY-SOURCE" in out.err
+
+
+def test_the_cli_exits_4_when_the_only_commitment_is_withdrawn(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    ledger = _backend(
+        tmp_path, monkeypatch, f'{sys.executable} -c "raise SystemExit(0)"'
+    )
+    opened = ledger.read_text(encoding="utf-8").strip()
+    cid = next(
+        cell.split("=", 1)[1]
+        for cell in opened.split(" | ")
+        if cell.startswith("commitment=")
+    )
+    withdrawn = (
+        f"{datetime.now(UTC):%Y-%m-%dT%H:%M:%SZ} | STATUS | lane=me | kind=commitment | "
+        f"commitment={cid} | status=withdrawn | the ask was withdrawn"
+    )
+    ledger.write_text(opened + "\n" + withdrawn + "\n", encoding="utf-8")
+    assert main([]) == 4
+    out = capsys.readouterr()
+    assert "read=1 live=0" in out.out
+    assert "EMPTY-SOURCE" in out.err
 
 
 def test_the_cli_fails_when_the_ledger_cannot_be_read(

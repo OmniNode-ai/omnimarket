@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_overlay_merge_order_compute
+version: 1.0.0
+description: Decides whether the overlays a change touches are accepted by the omnimarket models at the merged tree, so an overlay never merges ahead of the code that models it.
+pack: operator_tooling
+node_role: compute
+display_name: Overlay Merge Order Compute
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_overlay_merge_order_compute: omnimarket.nodes.node_overlay_merge_order_compute
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: pure
+dependencies:
+- pydantic>=2.0
+- pyyaml>=6.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- compute
+- overlays
+- merge-order

@@ -1,0 +1,81 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Schedule Run Reducer (OMN-19998)
+#
+# Holds the last run and the counts of each scheduled job from the run events. A redelivered or older
+# run is refused and the held state stays; a newer run folds into it. The store behind it is the
+# ProtocolScheduleRunStore the runtime binds: the in-memory store is the default profile.
+name: node_schedule_run_reducer
+contract_name: node_schedule_run_reducer
+node_name: node_schedule_run_reducer
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: reducer
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Holds the last run and the counts of each scheduled job from the run events. A run that is not newer
+  than the held one is refused and the held state stays; a redelivery therefore converges. A failed run
+  increments the failure count and keeps its detail; a later completed run keeps the failure count.
+
+handler:
+  module: omnimarket.nodes.node_schedule_run_reducer.handlers.handler_schedule_run_reducer
+  class: HandlerScheduleRunReducer
+  input_model: omnimarket.models.schedule_trigger.model_schedule_trigger.ModelScheduleRunEvent
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: schedule_run.project
+      handler:
+        name: HandlerScheduleRunReducer
+        module: omnimarket.nodes.node_schedule_run_reducer.handlers.handler_schedule_run_reducer
+      handler_module: omnimarket.nodes.node_schedule_run_reducer.handlers.handler_schedule_run_reducer
+      event_model: omnimarket.models.schedule_trigger.model_schedule_trigger.ModelScheduleRunEvent
+      event_type: omnimarket.schedule-run
+
+input_model:
+  name: ModelScheduleRunEvent
+  module: omnimarket.models.schedule_trigger.model_schedule_trigger
+  description: "One scheduled job run, with when it was scheduled, when it fired and how it went."
+output_model:
+  name: ModelScheduleRunApplied
+  module: omnimarket.models.schedule_trigger.model_schedule_trigger
+  description: Whether the run is now the held one, and why not when it is not.
+
+input_subscriptions:
+  - topic: "onex.evt.omnimarket.schedule-run.v1"
+    operation: "schedule_run.project"
+
+terminal_event: onex.evt.omnimarket.schedule-run-reduced.v1
+
+event_bus:
+  subscribe_topics:
+    - "onex.evt.omnimarket.schedule-run.v1"
+  publish_topics:
+    - "onex.evt.omnimarket.schedule-run-reduced.v1"
+
+published_events:
+  - event_type: ModelScheduleRunApplied
+    topic: onex.evt.omnimarket.schedule-run-reduced.v1
+    description: "One scheduled job run projected, or refused as not newer."
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.schedule-run-reduced.v1
+
+projection_api:
+  expose: false
+
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.schedule-run-reduced.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.schedule-run-reduced.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.schedule-run.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.schedule-run.v1, operation: DESCRIBE}
+
+metadata:
+  ticket: OMN-19998
+  transport_type: kafka

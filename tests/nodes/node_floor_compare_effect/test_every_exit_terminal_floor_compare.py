@@ -23,7 +23,6 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
-import yaml
 
 from omnimarket.handlers import cycle_interrupt
 from omnimarket.handlers.cycle_interrupt import CycleInterrupted
@@ -35,6 +34,7 @@ from omnimarket.nodes.node_floor_compare_effect.handlers import (
 from omnimarket.nodes.node_floor_compare_effect.models.model_floor_compare import (
     ModelFloorCompareRequest,
 )
+from tests.nodes.node_factory_floor_publish_effect.limits_support import TEST_LIMITS
 from tests.nodes.node_floor_compare_effect.support import NOW, RT, build_home
 from tests.nodes.node_floor_simple_effect.support import NOW as SIMPLE_NOW
 from tests.nodes.node_floor_simple_effect.support import build_home as simple_home
@@ -183,18 +183,7 @@ class _NoCloseSink:
 
 def test_the_cycle_deadline_is_below_the_publish_step_limit() -> None:
     """The deadline, not the publish node's kill, ends a hung cycle; no bound of the publish node is changed."""
-    publish = yaml.safe_load(
-        (
-            Path(compare.__file__).resolve().parents[2]
-            / "node_factory_floor_publish_effect"
-            / "contract.yaml"
-        ).read_text(encoding="utf-8")
-    )
-    steps = {
-        s["name"]: s["timeout_seconds"]
-        for key in ("steps", "pre_publish_steps", "after_publish_steps")
-        for s in publish["runtime"].get(key, ())
-    }
+    steps = dict(TEST_LIMITS.step_timeout_seconds)
     assert 0 < RT.cycle_deadline_seconds < steps["floor_compare"]
     assert steps["floor_compare"] == 15
 

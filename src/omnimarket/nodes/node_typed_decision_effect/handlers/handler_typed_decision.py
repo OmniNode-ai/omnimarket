@@ -35,7 +35,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any
@@ -45,6 +45,10 @@ import yaml
 from omnibase_spi.protocols.services import ProtocolSecretStore
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
+from omnimarket.handlers.node_overlay_reader import (
+    NodeOverlayNotFoundError,
+    load_structured_overlay,
+)
 from omnimarket.handlers.routing.delegation_backend_resolution import (
     ModelResolvedDelegationBackend,
     resolve_delegation_backend,
@@ -53,6 +57,10 @@ from omnimarket.handlers.routing.delegation_backend_resolution import (
 from omnimarket.inference.secret_store_resolver import (
     SecretResolutionError,
     resolve_api_key_loop_safe,
+)
+from omnimarket.nodes.node_typed_decision_effect.handlers.local_decision_engine import (
+    answer_payload,
+    build_request_body,
 )
 from omnimarket.nodes.node_typed_decision_effect.handlers.typed_decision_event import (
     ModelTypedDecisionEventRouting,
@@ -71,6 +79,11 @@ from omnimarket.nodes.node_typed_decision_effect.models.model_typed_decision imp
     ModelTypedDecisionShadowResult,
     ModelTypedDecisionWorkflowRequest,
     ModelTypedDecisionWorkflowResult,
+)
+from omnimarket.nodes.node_typed_decision_effect.models.model_typed_decision_engine import (
+    OVERLAY_ID,
+    EnumTypedDecisionEngine,
+    ModelTypedDecisionEngineOverlay,
 )
 
 _CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
@@ -122,7 +135,11 @@ class HandlerTypedDecision:
         refused_repositories: tuple[str, ...] | None = None,
         event_publisher: ProtocolTypedDecisionEventPublisher | None = None,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        engine_overlay: ModelTypedDecisionEngineOverlay | None = None,
+        overlay_environ: Mapping[str, str] | None = None,
     ) -> None:
+        self._engine_overlay = engine_overlay
+        self._overlay_environ = overlay_environ
         self._event_publisher = event_publisher
         self._clock = clock
         self._transport = transport
@@ -151,16 +168,44 @@ class HandlerTypedDecision:
         ``delegation_events`` row through the injected publisher, so the census
         counts what the backend was asked and what came of it.
         """
-        result = self._decide(request)
+        engine = self._read_engine()
+        result = (
+            self._decide_local(request, engine)
+            if engine is not None and engine.engine is EnumTypedDecisionEngine.LOCAL
+            else self._decide(request)
+        )
         if self._event_publisher is not None:
+            routing = self._event_routing
+            if engine is not None and engine.engine is EnumTypedDecisionEngine.LOCAL:
+                routing = routing.model_copy(
+                    update={"provider": routing.local_provider}
+                )
             record_typed_decision_event(
                 request,
                 result,
-                self._event_routing,
+                routing,
                 self._event_publisher,
                 self._clock,
             )
         return result
+
+    def _read_engine(self) -> ModelTypedDecisionEngineOverlay | None:
+        """The site's engine overlay, read on every decision.
+
+        A site with no overlay keeps the engine the contract pins (the Jev
+        backend), so an install that predates this overlay decides as it did. An
+        overlay that is present but invalid raises the overlay reader's typed
+        error and never decides by a default.
+        """
+        try:
+            return load_structured_overlay(
+                OVERLAY_ID,
+                ModelTypedDecisionEngineOverlay,
+                self._overlay_environ,
+                explicit=self._engine_overlay,
+            )
+        except NodeOverlayNotFoundError:
+            return None
 
     def _decide(self, request: ModelTypedDecisionRequest) -> ModelTypedDecisionResult:
         refusal = self._refuse_unless_permitted(request)
@@ -263,6 +308,109 @@ class HandlerTypedDecision:
                 detail="the answer violates the typed receipt schema",
             )
 
+    # -------------------------------------------------------------- local engine
+
+    def _decide_local(
+        self,
+        request: ModelTypedDecisionRequest,
+        engine: ModelTypedDecisionEngineOverlay,
+    ) -> ModelTypedDecisionResult:
+        """Ask the site's local model server, constrained to the offered options.
+
+        The overlay names the local backend and its abstention threshold; the
+        routing contract resolves that backend's endpoint, model and timeout. The
+        work-unit scoping of the Jev path does not apply: the repository refusals
+        exist because the Jev backend is a third party, and nothing here leaves
+        the lab. Any failure hands the decision to the optional incumbent, as the
+        Jev engine does.
+        """
+        assert engine.local_backend_id is not None  # the overlay model guarantees it
+        assert engine.local_abstain_below_probability is not None
+        threshold = engine.local_abstain_below_probability
+        try:
+            backend = resolve_delegation_backend(
+                _TASK_CLASS,
+                backend_id=engine.local_backend_id,
+                config_path=self._bifrost_config_path,
+                overlay_path=self._bifrost_overlay_path,
+                store=self._secret_store,
+            )
+        except (RuntimeError, ValueError) as exc:
+            return self._incumbent(
+                request,
+                EnumTypedDecisionDecider.INCUMBENT_REFUSED,
+                EnumTypedDecisionReason.BACKEND_UNRESOLVED,
+                detail=str(exc),
+                abstain_below=threshold,
+            )
+        try:
+            body = build_request_body(
+                request,
+                model_id=backend.model_id,
+                max_tokens=backend.max_tokens,
+                request_options=engine.local_request_options,
+            )
+        except ValueError as exc:
+            return self._incumbent(
+                request,
+                EnumTypedDecisionDecider.INCUMBENT_REFUSED,
+                EnumTypedDecisionReason.TOO_MANY_OPTIONS,
+                backend=backend,
+                detail=str(exc),
+                abstain_below=threshold,
+            )
+        started = time.monotonic()
+        try:
+            with httpx.Client(
+                transport=self._transport,
+                timeout=resolve_timeout_seconds(backend_timeout_ms=backend.timeout_ms),
+            ) as client:
+                response = client.post(
+                    backend.endpoint_ref, json=body, headers=backend.extra_headers
+                )
+        except httpx.HTTPError as exc:
+            return self._incumbent(
+                request,
+                EnumTypedDecisionDecider.INCUMBENT_BACKEND_ERROR,
+                EnumTypedDecisionReason.BACKEND_TRANSPORT_ERROR,
+                backend=backend,
+                detail=type(exc).__name__,
+                abstain_below=threshold,
+            )
+        latency_ms = int((time.monotonic() - started) * 1000)
+        if response.status_code != 200:
+            return self._incumbent(
+                request,
+                EnumTypedDecisionDecider.INCUMBENT_BACKEND_ERROR,
+                EnumTypedDecisionReason.BACKEND_HTTP_ERROR,
+                backend=backend,
+                http_status=response.status_code,
+                latency_ms=latency_ms,
+                detail=response.text[:_DETAIL_LIMIT],
+                abstain_below=threshold,
+            )
+        try:
+            payload = answer_payload(request, response.json())
+            return self._from_payload(
+                request,
+                backend,
+                payload,
+                http_status=response.status_code,
+                latency_ms=latency_ms,
+                threshold=threshold,
+            )
+        except (ValueError, KeyError, TypeError, AttributeError) as exc:
+            return self._incumbent(
+                request,
+                EnumTypedDecisionDecider.INCUMBENT_BACKEND_ERROR,
+                EnumTypedDecisionReason.BACKEND_MALFORMED_RESPONSE,
+                backend=backend,
+                http_status=response.status_code,
+                latency_ms=latency_ms,
+                detail=f"{type(exc).__name__}: {exc}"[:_DETAIL_LIMIT],
+                abstain_below=threshold,
+            )
+
     # ------------------------------------------------------------------ scoping
 
     def _refuse_unless_permitted(
@@ -314,13 +462,50 @@ class HandlerTypedDecision:
         response: httpx.Response,
         latency_ms: int,
     ) -> ModelTypedDecisionResult:
-        receipt: dict[str, Any] = {
-            "backend": backend,
-            "http_status": response.status_code,
-            "latency_ms": latency_ms,
-        }
         try:
             payload = response.json()
+        except ValueError as exc:
+            return self._incumbent(
+                request,
+                EnumTypedDecisionDecider.INCUMBENT_BACKEND_ERROR,
+                EnumTypedDecisionReason.BACKEND_MALFORMED_RESPONSE,
+                detail=f"{type(exc).__name__}: {exc}"[:_DETAIL_LIMIT],
+                backend=backend,
+                http_status=response.status_code,
+                latency_ms=latency_ms,
+            )
+        return self._from_payload(
+            request,
+            backend,
+            payload,
+            http_status=response.status_code,
+            latency_ms=latency_ms,
+            threshold=self._routing.abstain_below_probability,
+        )
+
+    def _from_payload(
+        self,
+        request: ModelTypedDecisionRequest,
+        backend: ModelResolvedDelegationBackend,
+        payload: Any,
+        *,
+        http_status: int,
+        latency_ms: int,
+        threshold: float,
+    ) -> ModelTypedDecisionResult:
+        """Map an answer payload in the Jev shape to the typed result.
+
+        Both engines reach here: the Jev backend returns this shape, and the local
+        engine maps its guided-decoding response into it, so the probabilities,
+        the abstention and the receipt are one code path.
+        """
+        receipt: dict[str, Any] = {
+            "backend": backend,
+            "http_status": http_status,
+            "latency_ms": latency_ms,
+            "abstain_below": threshold,
+        }
+        try:
             answer = payload["answers"][_QUESTION_ID]
             if answer.get("type") != request.kind.value:
                 raise ValueError(f"answer type {answer.get('type')!r}")
@@ -336,7 +521,6 @@ class HandlerTypedDecision:
         usage = payload.get("usage") if isinstance(payload.get("usage"), dict) else {}
         served_model = payload.get("model")
         model_answer, probability, probabilities, confidence, score = parsed
-        threshold = self._routing.abstain_below_probability
         abstained = probability < threshold
         decided_by = EnumTypedDecisionDecider.MODEL
         if abstained:
@@ -363,7 +547,7 @@ class HandlerTypedDecision:
             backend_id=backend.backend_id,
             requested_model=backend.model_id,
             served_model=served_model if isinstance(served_model, str) else None,
-            http_status=response.status_code,
+            http_status=http_status,
             latency_ms=latency_ms,
             input_tokens=_int_or_none(usage.get("input_tokens")),
             output_tokens=_int_or_none(usage.get("output_tokens")),
@@ -431,6 +615,7 @@ class HandlerTypedDecision:
         http_status: int | None = None,
         latency_ms: int | None = None,
         detail: str | None = None,
+        abstain_below: float | None = None,
     ) -> ModelTypedDecisionResult:
         return ModelTypedDecisionResult(
             correlation_id=request.correlation_id,
@@ -441,7 +626,11 @@ class HandlerTypedDecision:
             ),
             answer=request.incumbent_answer,
             reason=reason,
-            abstain_below_probability=self._routing.abstain_below_probability,
+            abstain_below_probability=(
+                self._routing.abstain_below_probability
+                if abstain_below is None
+                else abstain_below
+            ),
             backend_id=backend.backend_id if backend else self._routing.backend_id,
             requested_model=backend.model_id if backend else None,
             http_status=http_status,

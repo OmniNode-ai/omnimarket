@@ -11,12 +11,12 @@ present on every captured runner row.
 
 from __future__ import annotations
 
+from omnimarket.models.model_factor_arm import (
+    EnumArmLabel,
+)
 from omnimarket.nodes.node_context_roi_compute.models.model_context_roi_request import (
     ModelArmRunRow,
     ModelContextRoiRequest,
-)
-from omnimarket.nodes.node_context_roi_compute.models.model_factor_arm import (
-    EnumArmLabel,
 )
 
 

@@ -1,0 +1,89 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - GPU Power Caps Effect (OMN-24042)
+#
+# Applies the GPU power caps a lab host must have, read from the gpu_power_caps settings, and reads
+# each card's limit back. The caps, the hosts, the transports and the argv words are all in the
+# node's overlay and the settings document. A host, a cap or a card the settings do not cover is
+# refused with a typed result before any write, and a limit is applied only where the card's limit
+# differs from the cap. The backend is chosen by the overlay: in_memory (simulated hosts) or
+# subprocess (an argv list run behind the host's transport prefix, no shell).
+name: node_gpu_power_caps_effect
+lifecycle: experimental
+node_type: EFFECT_GENERIC
+runtime_profiles:
+- effects
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: Apply the GPU power caps a lab host must have from the gpu_power_caps settings and read
+  each card's limit back; in-memory backend by default, a subprocess backend chosen by overlay.
+input_model:
+  name: ModelGpuPowerCapsRequest
+  module: omnimarket.nodes.node_gpu_power_caps_effect.models.model_gpu_power_caps
+output_model:
+  name: ModelGpuPowerCapsResult
+  module: omnimarket.nodes.node_gpu_power_caps_effect.models.model_gpu_power_caps
+handler:
+  module: omnimarket.nodes.node_gpu_power_caps_effect.handlers.handler_gpu_power_caps
+  class: HandlerGpuPowerCaps
+  input_model: omnimarket.nodes.node_gpu_power_caps_effect.models.model_gpu_power_caps.ModelGpuPowerCapsRequest
+  output_model: omnimarket.nodes.node_gpu_power_caps_effect.models.model_gpu_power_caps.ModelGpuPowerCapsResult
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+  - handler:
+      name: HandlerGpuPowerCaps
+      module: omnimarket.nodes.node_gpu_power_caps_effect.handlers.handler_gpu_power_caps
+    event_model:
+      name: ModelGpuPowerCapsRequest
+      module: omnimarket.nodes.node_gpu_power_caps_effect.models.model_gpu_power_caps
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.gpu-power-caps-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.gpu-power-caps-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.gpu-power-caps-requested.v1
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles:
+  - effects
+  idempotent: true
+  timeout_ms: 300000
+# OVERLAY KEYS (overlay.yaml under node_gpu_power_caps_effect): backend (in_memory | subprocess),
+# caps_overlay_id (the id of the gpu_power_caps settings document), name_value_prefix and
+# watts_value_prefix (the key prefixes the caps are read from in that document), read_argv with the
+# nvidia-smi query and format words, set_argv with {index} and {watts} placeholders,
+# read_timeout_seconds, set_timeout_seconds and hosts (name, transport_prefix, caps_unit,
+# simulated_cards). Profiles ship in overlays/: in_memory.yaml and subprocess.example.yaml.
+overlay_profiles:
+  in_memory: overlays/in_memory.yaml
+  real: overlays/subprocess.example.yaml
+metadata:
+  transport_type: kafka
+  ticket: OMN-24042
+  description: Apply a lab host's GPU power caps from the gpu_power_caps settings; read each limit back.
+  created: '2026-11-13'
+  tags:
+  - gpu-power-caps
+terminal_event: onex.evt.omnimarket.gpu-power-caps-completed.v1
+published_events:
+- topic: onex.evt.omnimarket.gpu-power-caps-completed.v1
+  event_type: ModelGpuPowerCapsResult
+externally_consumed_topics:
+- onex.evt.omnimarket.gpu-power-caps-completed.v1
+# BROKER GRANTS (OMN-24005): the login that runs this node in the runtime is a placeholder the reconcile run fills from the
+# environment, as the host layer nodes do; the rows follow the derivation's operations for a subscriber and a publisher.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_GPU_POWER_CAPS_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.gpu-power-caps-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.gpu-power-caps-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.gpu-power-caps-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.gpu-power-caps-completed.v1, operation: DESCRIBE}
+      - {resource_type: GROUP, pattern: PREFIXED, name: local.omnimarket.node_gpu_power_caps_effect.consume.v1., operation: READ}
+      - {resource_type: GROUP, pattern: PREFIXED, name: local.omnimarket.node_gpu_power_caps_effect.consume.v1., operation: DESCRIBE}

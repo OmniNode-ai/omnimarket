@@ -64,3 +64,8 @@ effects_held:
     ticket: OMN-1
     settle_seconds: 20
     brief_dir: .onex_state/lab-alarm/escalation-briefs
+# The broker-listener condition (OMN-23933). Needed by the broker-listener verbs only; the other verbs run without
+# it. The timeout is the alarm script's own 10 seconds, held here as data.
+broker_listener:
+  bootstrap_servers: example-host:9092
+  timeout_seconds: 10

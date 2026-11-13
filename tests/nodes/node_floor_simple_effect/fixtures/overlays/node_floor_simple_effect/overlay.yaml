@@ -19,6 +19,8 @@ broker_conditions: [consumer_group_lag, broker_listener]
 # Which watcher classes count as green and waiting for the queue age.
 queue_age_classes: [green-unarmed, queue-stuck]
 deploy_lag_lookback_days: 2
+# D12, 2026-11-12T15:51:18Z: the longest one dev merge may wait from merge to running; first value 150 minutes.
+deploy_lag_ceiling_minutes: 150
 # The runner fleet producer does not report a runner version yet; when it does, set this true and a missing version fails.
 require_runner_version: false
 # A host the operator declared out or in repair is not a failing host.

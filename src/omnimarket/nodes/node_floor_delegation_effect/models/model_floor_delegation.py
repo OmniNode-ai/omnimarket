@@ -23,7 +23,7 @@ class _Frozen(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
 
-ScenarioState = Literal["pass", "fail", "no_run", "no_workflow", "unread"]
+ScenarioState = Literal["pass", "fail", "no_run", "no_workflow", "unread", "stale"]
 ScenarioReadKind = Literal["read", "no_workflow", "unread"]
 ScenarioSource = Literal["workflow", "lab_node"]
 TicketGroup = Literal[
@@ -243,6 +243,7 @@ class ModelScenarioResult(_Frozen):
     latest_at: str = ""
     latest_url: str = ""
     latest_conclusion: str = ""
+    stale_since: str = ""
     age_seconds: int | None = None
     overdue: bool = False
     in_progress: bool = False
@@ -301,6 +302,7 @@ class ModelDelegationCounts(_Frozen):
     scenarios_not_built: int
     scenarios_no_run: int
     scenarios_unread: int
+    scenarios_stale: int = 0
     tickets_total: int
     groups: tuple[ModelGroupCount, ...]
     pr_open_red: int

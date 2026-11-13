@@ -1,0 +1,71 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Dev Running Revision Effect (OMN-23993, five whys plan root R3)
+#
+# Reads the dev runtime's running revision against the merged head and returns the compute's reading.
+# A reading that decides nothing: no gate, stop or admission.
+name: node_dev_running_revision_effect
+contract_name: node_dev_running_revision_effect
+node_name: node_dev_running_revision_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Five whys plan root R3 (OMN-23993): reads the dev runtime's running revision against the merged head.
+  A reading that decides nothing: no gate, stop or admission. The effect gathers the facts through
+  its constructor-injected source and returns the compute's reading.
+
+handler:
+  module: omnimarket.nodes.node_dev_running_revision_effect.handlers.handler_dev_running_revision_read
+  class: HandlerDevRunningRevisionRead
+  input_model: omnimarket.nodes.node_dev_running_revision_effect.models.model_dev_running_revision_read.ModelDevRunningRevisionReadCommand
+
+# HandlerDevRunningRevisionRead takes the source, policy and clock through its constructor, so the node
+# runs through its own CLI, not handler_routing.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [ssh-read, git-read]
+  timeout_ms: 120000
+
+input_model:
+  name: ModelDevRunningRevisionReadCommand
+  module: omnimarket.nodes.node_dev_running_revision_effect.models.model_dev_running_revision_read
+  description: The correlation id of the reading tick.
+output_model:
+  name: ModelDevRunningRevisionReadCompleted
+  module: omnimarket.nodes.node_dev_running_revision_effect.models.model_dev_running_revision_read
+  description: The reading, its observed time and the correlation id.
+
+terminal_event: onex.evt.omnimarket.dev-running-revision-read-completed.v1
+
+runtime_dispatch:
+  external_trigger: true
+
+# The topics by role; the handler's event mapping reads these and holds no topic string.
+topics:
+  dev_running_revision_read_requested: onex.cmd.omnimarket.dev-running-revision-read-requested.v1
+  dev_running_revision_read_completed: onex.evt.omnimarket.dev-running-revision-read-completed.v1
+  dev_running_revision_read_failed: onex.evt.omnimarket.dev-running-revision-read-failed.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.dev-running-revision-read-completed.v1
+  - onex.evt.omnimarket.dev-running-revision-read-failed.v1
+
+overlay:
+  node: node_dev_running_revision_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+metadata:
+  ticket: OMN-23993
+  transport_type: inmemory

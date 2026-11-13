@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. The deployment's overlay lives at <root>/node_lab_alarm_deliver_effect/overlay.yaml under a root
+# named in ONEX_SKILL_OVERLAY_ROOTS. No key has a default. The runtime backend posts through the alert-channel
+# library and appends the FRICTION row over the ledger host's bus.
+backend: inmemory
+channel:
+  library_path: examplepkg/alert_channel.sh
+  category: lab-alarm
+  timeout_seconds: 30
+  message_template: ":rotating_light: lab alarm - {condition}\n*{subject}*\n{detail}"
+ledger:
+  bus_lane: example-lane
+  workspace_root: /example/registry
+  lane: example-alarm-lane
+  actor: node:example-lab-alarm
+  friction_class: lab-alarm
+  ticket: OMN-1
+  cost: "~0 lane-minutes at raise (accrues until the alarm clears)"
+  request_namespace: 00000000-0000-4000-8000-000000000000
+  timeout_seconds: 60
+  evidence_limit: 600
+  dedupe_window_minutes: 360
+state_path: .onex_state/lab-alarm/delivery-state.json

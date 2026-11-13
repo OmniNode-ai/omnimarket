@@ -1,0 +1,105 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract - Contract Topic Reader Compute (OMN-19998, broker plan mechanism M1)
+#
+# The one reader of the topics a node contract declares, in every shape. Boot provisioning, the ACL derive,
+# the removal node's declared-topic scan and the census each read a different subset of a contract
+# (5 readers, 12 shapes); this node returns every topic with the shape it was declared in, so a reader
+# that disagrees is visible. tests/nodes/node_contract_topic_reader_compute/test_reader_parity.py holds
+# each reader to the hand-written set it is documented to read and fails when either side changes shape.
+# The topic pattern is an overlay value; the contract documents arrive in the request (the loader is
+# adapters/contract_documents.py), so the compute does no I/O.
+{
+  "name": "node_contract_topic_reader_compute",
+  "lifecycle": "experimental",
+  "node_type": "COMPUTE_GENERIC",
+  "node_version": {
+    "major": 1,
+    "minor": 0,
+    "patch": 0
+  },
+  "description": "Read every topic a node contract declares, in every shape: the event_bus subscribe, publish and dlq lists, the served projection_api exposures, consumed_events, externally produced and consumed topics, the runtime_dispatch command and terminal topics, the handler_routing topics, the topics map and published_events. A document that is not a mapping is reported unreadable and a string in a topic position that does not match the overlay's pattern is reported rejected: nothing is dropped silently. The node reads nothing from disk: the contract documents arrive in the request.",
+  "input_model": {
+    "name": "ModelContractTopicRequest",
+    "module": "omnimarket.models.model_contract_topics"
+  },
+  "output_model": {
+    "name": "ModelContractTopicReport",
+    "module": "omnimarket.models.model_contract_topics"
+  },
+  "handler_routing": {
+    "routing_strategy": "operation_match",
+    "default_handler": "omnimarket.nodes.node_contract_topic_reader_compute.handlers.handler_contract_topic_reader:HandlerContractTopicReader",
+    "handlers": [
+      {
+        "operation": "handle",
+        "handler": {
+          "name": "HandlerContractTopicReader",
+          "module": "omnimarket.nodes.node_contract_topic_reader_compute.handlers.handler_contract_topic_reader"
+        },
+        "topic": "onex.cmd.omnimarket.contract-topic-read-requested.v1"
+      }
+    ]
+  },
+  "entrypoint": {
+    "name": "NodeContractTopicReaderCompute",
+    "module": "omnimarket.nodes.node_contract_topic_reader_compute"
+  },
+  "execution": {
+    "deterministic": true,
+    "side_effects": false,
+    "caller": "boot provisioning, the ACL derive, the topic removal node and the required-and-absent reading, each reading a contract's topics through this one reader or held to its output by the parity test"
+  },
+  "contract_version": {
+    "major": 1,
+    "minor": 0,
+    "patch": 0
+  },
+  "version": {
+    "major": 1,
+    "minor": 0,
+    "patch": 0
+  },
+  "handler": {
+    "module": "omnimarket.nodes.node_contract_topic_reader_compute.handlers.handler_contract_topic_reader",
+    "class": "HandlerContractTopicReader",
+    "input_model": "omnimarket.models.model_contract_topics.ModelContractTopicRequest",
+    "output_model": "omnimarket.models.model_contract_topics.ModelContractTopicReport"
+  },
+  "event_bus": {
+    "subscribe_topics": [
+      "onex.cmd.omnimarket.contract-topic-read-requested.v1"
+    ],
+    "publish_topics": [
+      "onex.evt.omnimarket.contract-topic-read-completed.v1"
+    ]
+  },
+  "runtime_dispatch": {
+    "command_topic": "onex.cmd.omnimarket.contract-topic-read-requested.v1"
+  },
+  "descriptor": {
+    "node_archetype": "compute",
+    "purity": "pure",
+    "runtime_profiles": [
+      "main"
+    ],
+    "idempotent": true,
+    "timeout_ms": 5000
+  },
+  "replay": {
+    "requires_validator_version": true,
+    "timestamp_authority": "ingest_sequence",
+    "deterministic": true
+  },
+  "terminal_event": "onex.evt.omnimarket.contract-topic-read-completed.v1",
+  "metadata": {
+    "transport_type": "inmemory"
+  },
+  "externally_consumed_topics": [
+    "onex.evt.omnimarket.contract-topic-read-completed.v1"
+  ],
+  "runtime_profiles": [
+    "main"
+  ]
+}

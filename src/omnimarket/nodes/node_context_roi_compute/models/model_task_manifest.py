@@ -32,7 +32,7 @@ from enum import StrEnum
 from omnibase_core.enums.enum_context_factor import EnumContextFactor
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from omnimarket.nodes.node_context_roi_compute.models.model_factor_arm import (
+from omnimarket.models.model_factor_arm import (
     EnumArmLabel,
 )
 

@@ -86,8 +86,10 @@ def reader_for_node(
     )
     if resolver is None:
         return None
+    uncounted = packaged_contract_value(package, "config", "uncounted_data_sources")
     return AnalyticsTenantProjectionReader(
-        Psycopg2AnalyticsQueryExecutor(SecretResolverDsnSource(resolver, str(secret)))
+        Psycopg2AnalyticsQueryExecutor(SecretResolverDsnSource(resolver, str(secret))),
+        uncounted_data_sources=list(uncounted),
     )
 
 

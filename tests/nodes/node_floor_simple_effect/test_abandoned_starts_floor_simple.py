@@ -41,6 +41,7 @@ from omnimarket.nodes.node_floor_simple_effect.handlers.handler_floor_simple_tic
     EMIT_CYCLE,
     load_runtime,
 )
+from tests.nodes.node_factory_floor_publish_effect.limits_support import TEST_LIMITS
 from tests.nodes.node_floor_simple_effect.support import (
     NOW,
     OVERLAYS,
@@ -208,7 +209,8 @@ def test_the_bound_is_above_the_publish_limit_and_below_the_chain_deadline() -> 
     ]
     assert steps, "the publish node runs the floor cycle"
     bound = load_runtime().abandon_after_seconds
-    assert bound > max(s["timeout_seconds"] for s in steps)
+    limits = TEST_LIMITS.step_timeout_seconds
+    assert bound > max(limits[s["name"]] for s in steps)
     overlay = yaml.safe_load(
         (OVERLAYS / "node_floor_simple_compute" / "overlay.yaml").read_text(
             encoding="utf-8"

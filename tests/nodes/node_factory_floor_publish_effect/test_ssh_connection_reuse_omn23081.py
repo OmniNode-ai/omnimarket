@@ -17,10 +17,11 @@ from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_factory
 from omnimarket.nodes.node_factory_floor_publish_effect.models.model_factory_floor_publish import (
     ModelFactoryFloorPublishOverlay,
 )
+from tests.nodes.node_factory_floor_publish_effect.limits_support import TEST_LIMITS
 
 pytestmark = pytest.mark.unit
 
-RT = load_runtime()
+RT = load_runtime().with_limits(TEST_LIMITS)
 
 
 def _options(argv: list[str]) -> set[str]:

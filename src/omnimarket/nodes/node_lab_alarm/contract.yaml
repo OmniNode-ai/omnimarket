@@ -34,6 +34,12 @@ description: >
   An ALARM opens one lane through the overlay's dispatch command, once per episode; a dispatch that cannot
   start is retried on the next run and the run exits ALARM with escalation=failed until one starts.
 
+  The broker-listener condition (HandlerBrokerListener, verb broker-listener, OMN-23933) dials the dev broker's
+  external listener addresses from the overlay's bootstrap_servers with one Kafka ApiVersions request each. It
+  is OK as soon as one address answers, ALARM when every address refused or timed out, INDETERMINATE when a
+  name cannot be resolved or the bootstrap string is malformed. The verdict is handed to the alarm delivery
+  when the overlay's alarm_delivery block turns it on.
+
 handler:
   module: omnimarket.nodes.node_lab_alarm.handlers.handler_broker_lag
   class: HandlerBrokerLag
@@ -48,6 +54,10 @@ cli_handlers:
     handler:
       name: HandlerEffectsHeld
       module: omnimarket.nodes.node_lab_alarm.handlers.handler_effects_held
+  - operation: broker_listener
+    handler:
+      name: HandlerBrokerListener
+      module: omnimarket.nodes.node_lab_alarm.handlers.handler_broker_listener
 
 # HandlerEffectsHeld (omnimarket.nodes.node_lab_alarm.handlers.handler_effects_held, input
 # ModelEffectsHeldCommand) takes its overlay settings, group reader, state store, lane dispatcher and clock
@@ -90,6 +100,10 @@ topics:
   effects_held_lane_dispatch: onex.evt.omnimarket.lab-alarm-effects-held-lane-dispatched.v1
   effects_held_run_completed: onex.evt.omnimarket.lab-alarm-effects-held-completed.v1
   effects_held_run_failed: onex.evt.omnimarket.lab-alarm-effects-held-failed.v1
+  broker_listener_requested: onex.cmd.omnimarket.lab-alarm-broker-listener-requested.v1
+  broker_listener_run_started: onex.evt.omnimarket.lab-alarm-broker-listener-started.v1
+  broker_listener_run_completed: onex.evt.omnimarket.lab-alarm-broker-listener-completed.v1
+  broker_listener_run_failed: onex.evt.omnimarket.lab-alarm-broker-listener-failed.v1
 
 event_bus:
   subscribe_topics: []
@@ -105,6 +119,9 @@ externally_consumed_topics:
   - onex.evt.omnimarket.lab-alarm-effects-held-lane-dispatched.v1
   - onex.evt.omnimarket.lab-alarm-effects-held-completed.v1
   - onex.evt.omnimarket.lab-alarm-effects-held-failed.v1
+  - onex.evt.omnimarket.lab-alarm-broker-listener-started.v1
+  - onex.evt.omnimarket.lab-alarm-broker-listener-completed.v1
+  - onex.evt.omnimarket.lab-alarm-broker-listener-failed.v1
 
 overlay:
   node: node_lab_alarm

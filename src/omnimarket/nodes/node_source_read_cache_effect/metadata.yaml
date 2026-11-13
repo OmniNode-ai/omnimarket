@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_source_read_cache_effect
+version: 1.0.0
+description: A revision-keyed read cache for the factory board's source reads; a second cycle with unchanged sources reads from the cache.
+pack: operator_tooling
+node_role: effect
+display_name: Source Read Cache Effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_source_read_cache_effect: omnimarket.nodes.node_source_read_cache_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+- pydantic>=2.0
+- pyyaml>=6.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- cache
+- source-read

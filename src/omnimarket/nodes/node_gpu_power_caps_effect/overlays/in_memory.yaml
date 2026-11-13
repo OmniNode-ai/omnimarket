@@ -1,0 +1,35 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# In-memory profile: simulated hosts and cards, nothing leaves the process. Synthetic names only.
+backend: in_memory
+caps_overlay_id: gpu_power_caps
+name_value_prefix: GPU_NAME_
+watts_value_prefix: WATTS_
+read_argv: [nvidia-smi, "--query-gpu=index,name,power.limit,power.min_limit,power.max_limit", "--format=csv,noheader,nounits"]
+set_argv: [nvidia-smi, -i, "{index}", -pl, "{watts}"]
+read_timeout_seconds: 30
+set_timeout_seconds: 60
+hosts:
+  - name: sim-host-a
+    transport_prefix: []
+    caps_unit: gpu-power-caps-sim-a
+    simulated_cards:
+      - index: 0
+        name: Sim Card Big
+        power_limit_watts: 600
+        min_limit_watts: 100
+        max_limit_watts: 600
+      - index: 1
+        name: Sim Card Small
+        power_limit_watts: 450
+        min_limit_watts: 100
+        max_limit_watts: 450
+  - name: sim-host-b
+    transport_prefix: []
+    caps_unit: gpu-power-caps-sim-b
+    simulated_cards:
+      - index: 0
+        name: Sim Card Small
+        power_limit_watts: 300
+        min_limit_watts: 100
+        max_limit_watts: 450

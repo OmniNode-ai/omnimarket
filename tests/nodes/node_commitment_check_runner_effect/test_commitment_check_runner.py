@@ -94,6 +94,8 @@ def test_open_commitment_whose_check_passes_is_verified() -> None:
     # The reading row was appended as a plain STATUS row the grammar admits.
     assert len(ledger.lines) == 2
     assert "status=verified" in ledger.lines[1]
+    assert result.read == 1
+    assert result.live == 1
 
 
 def test_failing_control_open_commitment_whose_check_fails_stays_open() -> None:
@@ -144,6 +146,32 @@ def test_verified_commitment_inside_the_recheck_interval_is_not_run() -> None:
     assert result.outcomes == ()
     assert executor.calls == []
     assert len(ledger.lines) == 2
+    assert result.read == 1
+    assert result.live == 1
+
+
+def test_a_withdrawn_commitment_is_never_checked_and_counts_in_read_not_live() -> None:
+    cid = commitment_id()
+    withdrawn = (
+        f"{(RUN_AT - timedelta(minutes=30)):%Y-%m-%dT%H:%M:%SZ} | STATUS | lane=me | kind=commitment | "
+        f"commitment={cid} | status=withdrawn | the ask was withdrawn"
+    )
+    executor = InMemoryCheckExecutor({CHECK: PASS})
+    result, ledger = _run([open_commitment_line(), withdrawn], executor)
+    assert result.outcomes == ()
+    assert executor.calls == []
+    assert len(ledger.lines) == 2
+    assert result.read == 1
+    assert result.live == 0
+
+
+def test_an_empty_ledger_reads_zero_and_lives_zero() -> None:
+    executor = InMemoryCheckExecutor({CHECK: PASS})
+    result, _ledger = _run([], executor)
+    assert result.status == "completed"
+    assert result.outcomes == ()
+    assert result.read == 0
+    assert result.live == 0
 
 
 def test_verified_commitment_past_the_interval_and_still_passing_gets_a_fresh_reading() -> (

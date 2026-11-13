@@ -1,0 +1,61 @@
+schema_version: 1.0.0
+ticket_id: OMN-23980
+title: Broker permission rows derived from what each program declares it uses
+summary: The broker ACL render node derives permission rows from the topics node contracts declare and the principals an overlay names, refuses a topic no row covers, and the reconcile effect applies the derived rows as additions only.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- topics
+requirements:
+- id: req-omn23980-derive-rows
+  statement: Rows follow from contract topics and declared principals, a topic with no row fails the render check, and the reconcile effect applies derived rows additions only with a dry run first.
+  acceptance:
+  - id: AC1
+    statement: "AC1: a topic that a node contract declares and that no derived or declared row covers makes the render check refuse and name the topic -- falsifier: uv run pytest tests/nodes/node_broker_acl_overlay_render_compute/test_derive_chain.py -q -k new_topic fails at the merge base"
+  - id: AC2
+    statement: "AC2: the reconcile effect applies the derived rows as additions only, creates nothing on a dry run, and derives nothing when no principals overlay exists -- falsifier: uv run pytest tests/nodes/node_broker_acl_reconcile_effect/test_derived_rows_on_reconcile.py -q fails at the merge base"
+  - id: AC3
+    statement: "AC3: integrated: a dry-run reconcile against the development broker, read-only, reports declared, live, missing and extra row counts from the running runtime -- falsifier: the dry-run result has no derived count, or the broker is unreadable and is named as such"
+evidence_requirements:
+- kind: tests
+  description: The derive and reconcile tests pass at the pushed head.
+  command: uv run pytest tests/nodes/node_broker_acl_overlay_render_compute tests/nodes/node_broker_acl_reconcile_effect -q -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23980-ac1
+  description: 'AC1: the new-topic test passes at the head; it cannot import the derive handler at the merge base.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_broker_acl_overlay_render_compute/test_derive_chain.py -q -p no:randomly --no-cov -k new_topic
+    cwd: .
+- id: dod-omn23980-ac2
+  description: 'AC2: the reconcile derive tests pass at the head; the result has no derived field at the merge base.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_broker_acl_reconcile_effect/test_derived_rows_on_reconcile.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn23980-ac3
+  description: 'hosted proxy for AC3: the reconcile tests that stand in for the dev broker pass here; the dry-run reading against the dev broker is posted as a pull request comment naming the head.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_broker_acl_reconcile_effect -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn23980-integration-proof
+  description: the derive and reconcile tests run on a lab host at the pushed head, including the tests that fail at the merge base; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23980 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_broker_acl_overlay_render_compute/test_derive_chain.py tests/nodes/node_broker_acl_reconcile_effect/test_derived_rows_on_reconcile.py -q --no-cov -p no:randomly

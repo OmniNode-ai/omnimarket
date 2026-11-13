@@ -66,6 +66,51 @@ class ModelDevMergeRepoPolicy(BaseModel):
         return self
 
 
+class ModelDevMergeUnitHost(BaseModel):
+    """One host that runs the serve process, and the scheduler that keeps it running."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    name: str = Field(min_length=1)
+    scheduler: Literal["systemd-user"]
+
+
+class ModelDevMergeUnit(BaseModel):
+    """The unit declaration of ``dev-merge-redeploy serve``: what the installer renders, per host.
+
+    ``python``, ``log_file`` and the ``environment`` values may start from ``$OMNI_HOME`` or
+    ``$HOME``; the installing host fills both, so the overlay names no home directory and one
+    document serves every host.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    unit_name: str = Field(min_length=1)
+    description: str = Field(min_length=1)
+    #: The interpreter the unit runs, from ``$OMNI_HOME`` or ``$HOME``.
+    python: str = Field(min_length=1)
+    bus: Literal["kafka", "inmemory"]
+    #: The declared lane that carries the merge events and the receipts; the kafka bus needs it.
+    bus_lane: str | None = Field(min_length=1)
+    restart_seconds: int = Field(ge=1)
+    stop_timeout_seconds: int = Field(ge=1)
+    #: The unit's log file, from ``$OMNI_HOME`` or ``$HOME``.
+    log_file: str = Field(min_length=1)
+    environment: dict[str, str] = Field(min_length=1)
+    hosts: list[ModelDevMergeUnitHost] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _check_unit(self) -> Self:
+        if "OMNIBASE_PATH" not in self.environment:
+            raise ValueError(
+                "unit.environment gives no value for OMNIBASE_PATH, which the serve's "
+                "workspace root option reads"
+            )
+        if self.bus == "kafka" and self.bus_lane is None:
+            raise ValueError("unit.bus_lane must be given when unit.bus is kafka")
+        return self
+
+
 class ModelDevMergeRedeployPolicy(BaseModel):
     """The node overlay: ``<root>/node_dev_merge_redeploy_trigger_effect/overlay.yaml``."""
 
@@ -94,6 +139,13 @@ class ModelDevMergeRedeployPolicy(BaseModel):
         gt=0,
         description="From publishing the command to a receipt; a missed deadline is a receipt.",
     )
+    unit: ModelDevMergeUnit | None = Field(
+        default=None,
+        description=(
+            "The host unit the installer renders; absent where no unit is declared, and the "
+            "installer then refuses."
+        ),
+    )
 
     @model_validator(mode="after")
     def _check_unique(self) -> Self:
@@ -110,4 +162,6 @@ __all__ = [
     "EnumDevMergeMode",
     "ModelDevMergeRedeployPolicy",
     "ModelDevMergeRepoPolicy",
+    "ModelDevMergeUnit",
+    "ModelDevMergeUnitHost",
 ]

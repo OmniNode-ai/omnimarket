@@ -175,6 +175,9 @@ class ModelOverlayStoreReadOverlay(_Frozen):
     fleet_record_relpath: str | None = None
     # The id this host's view of the fleet is published under as a floor projection (OMN-23391); unset publishes none.
     fleet_projection_id: OverlayId | None = None
+    # The declared bus lane the projection's snapshot topic is read from, when the projection runs in that
+    # lane's runtime; the readings, the fleet and the fleet projection stay on the broker above.
+    snapshot_bus_lane: str | None = Field(default=None, min_length=1)
 
     @model_validator(mode="after")
     def _backend_names_what_it_needs(self) -> ModelOverlayStoreReadOverlay:
@@ -194,5 +197,9 @@ class ModelOverlayStoreReadOverlay(_Frozen):
         if self.fleet_projection_id is not None and no_bus:
             raise ValueError(
                 f"the {self.backend} backend has no bus to publish the fleet projection on"
+            )
+        if self.snapshot_bus_lane is not None and no_bus:
+            raise ValueError(
+                f"the {self.backend} backend has no bus to read a snapshot from"
             )
         return self

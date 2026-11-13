@@ -127,6 +127,7 @@
   ["ci.yml", 3451, "actions/checkout", "d23441a48e516b6c34aea4fa41551a30e30af803"],
   ["ci.yml", 3620, "actions/checkout", "11bd71901bbe5b1630ceea73d27597364c9af683"],
   ["ci.yml", 3626, "actions/checkout", "11bd71901bbe5b1630ceea73d27597364c9af683"],
+  ["ci.yml", 4263, "actions/create-github-app-token", "bcd2ba49218906704ab6c1aa796996da409d3eb1"],
   ["contract-topic-closure.yml", 103, "actions/checkout", "11d5960a326750d5838078e36cf38b85af677262"],
   ["contract-topic-closure.yml", 110, "actions/checkout", "11d5960a326750d5838078e36cf38b85af677262"],
   ["contract-topic-closure.yml", 123, "astral-sh/setup-uv", "d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86"],

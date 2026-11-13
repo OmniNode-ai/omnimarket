@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The real backend: the lane's served manifest over HTTP, the lane's broker over aiokafka, a state file.
+"""The real backend: the lane's served manifest over HTTP, the lane's broker over aiokafka, the broker's external listener over TCP, a state file.
 
 The broker address and login come from the lane declaration the dev-lane clients resolve, never from an
 ambient variable. Nothing here prints or returns a credential or a broker address: a failure is named by
@@ -14,6 +14,8 @@ import http.client
 import json
 import os
 import re
+import socket
+import struct
 import subprocess
 import time
 import urllib.error
@@ -33,6 +35,8 @@ from omnimarket.nodes.node_lab_alarm.protocols import (
     GroupNeverCommittedError,
     GroupUnreadableError,
     LaneDispatchError,
+    ListenerRefusedError,
+    ListenerUnresolvableError,
     ManifestUnreachableError,
     ManifestUnreadableError,
     RunRecordUnwritableError,
@@ -421,6 +425,51 @@ class CommandLaneDispatcher:
             raise LaneDispatchError(f"dispatch exited {code}")
 
 
+_API_VERSIONS_KEY = 18
+_API_VERSIONS_VERSION = 0
+_CORRELATION_ID = 23933
+_CLIENT_ID = "lab-alarm"
+
+
+class TcpApiVersionsProbe:
+    """One unauthenticated Kafka ApiVersions request over TCP; the header back means the listener answers.
+
+    ApiVersions is answered before authentication, so nothing here sends or reads a credential: the
+    request carries only the api key, its version, the correlation id and the client id, and only
+    the response's 8-byte header (length and correlation id) is read. A name that will not resolve
+    is the alarm host's fault; every other failure is the listener's refusal.
+    """
+
+    def probe(self, host: str, port: int, timeout: float) -> None:
+        client_id = _CLIENT_ID.encode("utf-8")
+        payload = (
+            struct.pack(
+                ">hhi", _API_VERSIONS_KEY, _API_VERSIONS_VERSION, _CORRELATION_ID
+            )
+            + struct.pack(">h", len(client_id))
+            + client_id
+        )
+        try:
+            with socket.create_connection((host, port), timeout=timeout) as sock:
+                sock.sendall(struct.pack(">i", len(payload)) + payload)
+                header = b""
+                while len(header) < 8:
+                    chunk = sock.recv(8 - len(header))
+                    if not chunk:
+                        raise ListenerRefusedError(
+                            f"{host}:{port} closed before the response header"
+                        )
+                    header += chunk
+        except socket.gaierror as exc:
+            raise ListenerUnresolvableError(f"{type(exc).__name__}: {exc}") from None
+        except OSError as exc:
+            raise ListenerRefusedError(f"{type(exc).__name__}: {exc}") from None
+        if struct.unpack(">i", header[4:])[0] != _CORRELATION_ID:
+            raise ListenerRefusedError(
+                f"{host}:{port} answered with a foreign correlation id"
+            )
+
+
 __all__ = [
     "CommandLaneDispatcher",
     "FileGrowthStreaks",
@@ -431,5 +480,6 @@ __all__ = [
     "HttpManifest",
     "KafkaEffectsGroups",
     "KafkaLag",
+    "TcpApiVersionsProbe",
     "lane_client_kwargs",
 ]

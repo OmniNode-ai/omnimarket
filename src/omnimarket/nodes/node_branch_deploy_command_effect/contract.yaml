@@ -1,0 +1,82 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Branch deploy command EFFECT
+#
+# Publishes the deploy agent's signed rebuild command by running the deploy agent's own trigger. The node builds the
+# trigger argv from a typed request and the overlay, runs the trigger through an injected port, and maps the outcome
+# to a typed result. It is not a second signing or publishing path.
+---
+name: node_branch_deploy_command_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Branch deploy command effect. Builds the deploy agent trigger argv from a typed request and the overlay, runs the
+  trigger through an injected port, and maps the outcome to a typed result. Exit 0 is published; a non-zero exit whose
+  stderr starts with the overlay refused marker is refused; any other non-zero exit is failed. The detail is the stderr
+  (or stdout when stderr is empty), cut to the overlay bound.
+
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - event_model:
+        name: ModelBranchDeployCommandRequest
+        module: omnimarket.nodes.node_branch_deploy_command_effect.models.model_branch_deploy_command
+      handler:
+        name: HandlerBranchDeployCommand
+        module: omnimarket.nodes.node_branch_deploy_command_effect.handlers.handler_branch_deploy_command
+
+handler:
+  module: omnimarket.nodes.node_branch_deploy_command_effect.handlers.handler_branch_deploy_command
+  class: HandlerBranchDeployCommand
+  input_model: omnimarket.nodes.node_branch_deploy_command_effect.models.model_branch_deploy_command.ModelBranchDeployCommandRequest
+
+input_model:
+  name: ModelBranchDeployCommandRequest
+  module: omnimarket.nodes.node_branch_deploy_command_effect.models.model_branch_deploy_command
+  description: "The correlation id, mode, runtime lane, repo, PR number, git ref, image ref, rollback actor, rollback reason, and requested by."
+output_model:
+  name: ModelBranchDeployCommandResult
+  module: omnimarket.nodes.node_branch_deploy_command_effect.models.model_branch_deploy_command
+  description: "The result: correlation id, mode, status, exit code, and detail."
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: false
+  timeout_ms: 300000
+  runtime_profiles: [effects]
+  side_effects: [subprocess, bus-publish]
+
+terminal_event: onex.evt.omnimarket.branch-deploy-command-completed.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.branch-deploy-command-requested.v1
+
+broker_acl_grants:
+  - principal: "${ONEX_ACL_BRANCH_DEPLOY_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.branch-deploy-command-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.branch-deploy-command-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.branch-deploy-command-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.branch-deploy-command-completed.v1, operation: DESCRIBE}
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.branch-deploy-command-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.branch-deploy-command-completed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.branch-deploy-command-completed.v1
+
+dependencies:
+  packages:
+    - "omnibase_core>=0.39.0"
+
+metadata:
+  transport_type: kafka
+  description: "Branch deploy command effect"
+  author: "OmniNode Platform Team"
+  related_tickets:
+    - "OMN-24027"

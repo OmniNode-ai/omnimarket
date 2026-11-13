@@ -17,9 +17,11 @@ class ModelPointQuery(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    query: Literal["inbox", "holds", "open-claims", "rows"]
+    query: Literal["inbox", "holds", "open-claims", "open-rulings", "rows"]
     lanes: tuple[str, ...] = ()
     lane: str | None = None
+    #: The ticket whose open rulings an ``open-rulings`` read lists (OMN-19609).
+    ticket: str | None = None
     since: datetime | None = None
     #: The window's exclusive end; the node answers up to its own now when none is sent (OMN-23606).
     until: datetime | None = None
@@ -29,3 +31,5 @@ class ModelPointQuery(BaseModel):
     limit: int | None = Field(default=None, ge=1)
     page_size: int | None = Field(default=None, ge=1)
     cursor: str | None = None
+    #: A paged rows answer carries lines and no typed rows; the reader prints lines only.
+    lines_only: bool = False

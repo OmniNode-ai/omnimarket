@@ -49,6 +49,9 @@ handler_routing:
       handler:
         name: HandlerSeamEmitter
         module: omnimarket.nodes.node_seam_conservation_compute.handlers.handler_seam_emitter
+      event_model:
+        name: ModelSeamEmitterRequest
+        module: omnimarket.models.seam_reading.model_seam_emitter
       input_model: omnimarket.models.seam_reading.model_seam_emitter.ModelSeamEmitterRequest
       output_model: omnimarket.models.seam_reading.model_seam_emitter.ModelSeamEmitterInsufficient
     - operation: check_seam_graph

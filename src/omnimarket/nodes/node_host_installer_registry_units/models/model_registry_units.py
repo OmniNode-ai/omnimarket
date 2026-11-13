@@ -68,6 +68,13 @@ class ModelRegistryUnitsRequest(BaseModel):
     ledger_read_command: str = Field(
         default="", pattern=r"^(?:/[^\s;&|`$<>()'\"\\]+(?: [^\s;&|`$<>()'\"\\]+)*)?$"
     )
+    # The address of the Valkey the board's source read cache keeps its answers in (OMN-24050). Empty defers to the installing shell;
+    # unset in both, the cache is off and each step reads its sources as it did. No password is a request input: a rendered unit is
+    # printed by a dry run, so a secret never goes into it.
+    source_cache_valkey_host: str = Field(
+        default="", pattern=r"^(?:[A-Za-z0-9][A-Za-z0-9_.-]*)?$"
+    )
+    source_cache_valkey_port: str = Field(default="", pattern=r"^(?:[0-9]{1,5})?$")
 
 
 class ModelRegistryUnitsResult(BaseModel):

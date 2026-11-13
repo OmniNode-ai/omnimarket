@@ -181,9 +181,9 @@ async def test_reader_binds_uuid_text_and_limit_and_the_rls_setting() -> None:
             }
         ]
     )
-    rows = await AnalyticsTenantProjectionReader(stub).read_recent_delegations(
-        TENANT_A, 5
-    )
+    rows = await AnalyticsTenantProjectionReader(
+        stub, uncounted_data_sources=("experiment",)
+    ).read_recent_delegations(TENANT_A, 5)
     assert len(stub.calls) == 1
     _sql, params, rls = stub.calls[0]
     assert params == {"tenant_uuid": TENANT_A, "tenant_text": str(TENANT_A), "limit": 5}
@@ -208,9 +208,9 @@ async def test_a_missing_savings_projection_falls_back_to_delegation_truth() -> 
     stub = _MissingSavingsThenStub(
         rows=[{"run_id": "corr-live", "cost_usd": 0.000096, "saved_usd": 0.0}]
     )
-    rows = await AnalyticsTenantProjectionReader(stub).read_recent_delegations(
-        TENANT_A, 5
-    )
+    rows = await AnalyticsTenantProjectionReader(
+        stub, uncounted_data_sources=("experiment",)
+    ).read_recent_delegations(TENANT_A, 5)
     assert [c[0] for c in stub.calls] == [
         RECENT_DELEGATIONS_SQL,
         RECENT_DELEGATIONS_FALLBACK_SQL,
@@ -234,6 +234,6 @@ async def test_a_missing_delegation_projection_propagates_for_the_empty_envelope
             raise ProjectionMissingError("absent")
 
     with pytest.raises(ProjectionMissingError):
-        await AnalyticsTenantProjectionReader(AllMissing()).read_recent_delegations(
-            TENANT_A, 5
-        )
+        await AnalyticsTenantProjectionReader(
+            AllMissing(), uncounted_data_sources=("experiment",)
+        ).read_recent_delegations(TENANT_A, 5)

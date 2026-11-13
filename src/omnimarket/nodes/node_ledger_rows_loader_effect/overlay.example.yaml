@@ -1,0 +1,5 @@
+# The in-memory default. The real overlay (deployment data, kept outside this repository and found
+# under ONEX_SKILL_OVERLAY_ROOTS) sets file_fallback_allowed: true until cutover plan step L15, and
+# false from L15 on, when a non-ok node answer is UNREADABLE with no file read at all.
+file_fallback_allowed: true
+journal_env: ONEX_LEDGER_ROWS_LOADER_JOURNAL

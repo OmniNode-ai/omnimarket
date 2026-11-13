@@ -166,7 +166,9 @@ async def test_reader_binds_the_tenant_uuid_under_both_names_and_the_rls_setting
     None
 ):
     stub = TypedAnalyticsStub(rows=[])
-    await AnalyticsTenantProjectionReader(stub).read_savings(TENANT_A)
+    await AnalyticsTenantProjectionReader(
+        stub, uncounted_data_sources=("experiment",)
+    ).read_savings(TENANT_A)
     sql, params, rls = stub.calls[0]
     assert params["tenant_uuid"] == TENANT_A
     assert isinstance(params["tenant_uuid"], uuid.UUID)
@@ -180,8 +182,9 @@ def test_savings_sql_predicates_use_each_columns_own_parameter() -> None:
     sql = flat(SAVINGS_SQL)
     assert "FROM delegation_events WHERE tenant_id = %(tenant_uuid)s" in sql
     assert "FROM savings_estimates WHERE tenant_id = %(tenant_text)s" in sql
-    assert "::text" not in sql
     assert "::uuid" not in sql
+    # The only ::text is the array cast for the uncounted-sources bound parameter.
+    assert sql.count("::text") == sql.count("::text[]")
     assert {"delegation_events", "savings_estimates"} == {
         table for table, _ in tenant_predicate_bindings(SAVINGS_SQL)
     }
@@ -201,5 +204,7 @@ async def test_typed_stub_positive_control_rejects_the_single_str_binding() -> N
 
 async def test_reader_type_checks_against_both_projections() -> None:
     stub = TypedAnalyticsStub(rows=[])
-    await AnalyticsTenantProjectionReader(stub).read_savings(TENANT_A)
+    await AnalyticsTenantProjectionReader(
+        stub, uncounted_data_sources=("experiment",)
+    ).read_savings(TENANT_A)
     assert stub.seen_tables == {"delegation_events", "savings_estimates"}

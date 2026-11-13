@@ -30,6 +30,7 @@ from omnimarket.nodes.node_factory_floor_publish_effect.models.model_factory_flo
 from omnimarket.nodes.node_work_ledger_append_effect.overlay_join_j5 import (
     ModelJoinJ5Overlay,
 )
+from tests.nodes.node_factory_floor_publish_effect.limits_support import TEST_LIMITS
 
 pytestmark = pytest.mark.unit
 
@@ -76,7 +77,7 @@ def test_golden_the_example_overlay_and_the_real_contract_agree() -> None:
     overlay = _overlay()
 
     assert overlay.projection_wait_seconds == 25
-    assert window_problems(overlay, load_runtime()) == []
+    assert window_problems(overlay, load_runtime().with_limits(TEST_LIMITS)) == []
 
 
 def test_error_a_poll_that_waits_past_the_run_deadline_is_refused_with_both_numbers() -> (
@@ -103,7 +104,7 @@ def test_control_a_wait_one_second_inside_the_deadline_still_loads() -> None:
 
 
 def test_error_a_run_deadline_at_the_step_limit_is_named() -> None:
-    runtime = load_runtime()
+    runtime = load_runtime().with_limits(TEST_LIMITS)
     document = _document()
     document["run_deadline_seconds"] = _step_limit(runtime)
     document["projection"]["attempts"] = 2
@@ -115,7 +116,7 @@ def test_error_a_run_deadline_at_the_step_limit_is_named() -> None:
 
 
 def test_error_a_longest_path_past_the_cycle_bound_is_named() -> None:
-    runtime = load_runtime()
+    runtime = load_runtime().with_limits(TEST_LIMITS)
     steps = tuple(
         s.model_copy(update={"timeout_seconds": runtime.cycle.bound_seconds})
         if s.name == STEP

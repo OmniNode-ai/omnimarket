@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lab_alarm_deliver_effect
+version: 1.0.0
+description: Delivers a typed lab alarm once per episode - one post to the alert channel and one FRICTION row on the rolling ledger, with the alarm script's dedupe.
+pack: operator_tooling
+node_role: effect
+display_name: Lab Alarm Deliver
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_lab_alarm_deliver_effect: omnimarket.nodes.node_lab_alarm_deliver_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: read_write
+dependencies:
+- pydantic>=2.0
+- pyyaml>=6.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- alarm
+- delivery

@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_branch_deploy_command_effect
+version: "1.0.0"
+description: "Effect that builds and runs the deploy agent trigger for a branch deploy command."
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_branch_deploy_command_effect: "omnimarket.nodes.node_branch_deploy_command_effect"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: subprocess
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pydantic>=2.0"
+  - "pyyaml>=6.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "branch", "deploy", "command", "OMN-24027"]
+pack: "operator_tooling"
+display_name: "Branch Deploy Command Effect"
+node_role: "effect"

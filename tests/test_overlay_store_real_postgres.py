@@ -29,7 +29,10 @@ from omnimarket.nodes.node_overlay_store_read_effect.handlers import compare_doc
 from omnimarket.nodes.node_projection_overlay_store.handlers import (
     HandlerOverlayStoreProjectionRunner,
 )
-from omnimarket.projection.runner import MessageMeta, PublishFn
+from omnimarket.nodes.node_projection_overlay_store.handlers.handler_overlay_store_projection import (
+    PublishKeyedFn,
+)
+from omnimarket.projection.runner import MessageMeta
 from tests.unit.nodes.node_overlay_store.support import (
     NOW,
     SNAPSHOT_TOPIC,
@@ -83,8 +86,8 @@ class _Db:
 class _ConnectionRunner(HandlerOverlayStoreProjectionRunner):
     """The real runner, its writes on one throwaway connection and its publishes to the caller."""
 
-    def __init__(self, connection: asyncpg.Connection, publish: PublishFn) -> None:
-        super().__init__(publish_fn=publish)
+    def __init__(self, connection: asyncpg.Connection, publish: PublishKeyedFn) -> None:
+        super().__init__(publish_keyed_fn=publish)
         self._connection = connection
 
     def db_for(
@@ -99,7 +102,7 @@ async def _migrated() -> AsyncIterator[
     tuple[
         HandlerOverlayStoreProjectionRunner,
         asyncpg.Connection,
-        list[tuple[str, bytes]],
+        list[tuple[str, bytes | None, bytes]],
     ]
 ]:
     if not os.environ.get("INTEGRATION_POSTGRES_PASSWORD"):
@@ -117,10 +120,10 @@ async def _migrated() -> AsyncIterator[
     try:
         await connection.execute("CREATE SCHEMA IF NOT EXISTS omninode_internal")
         await connection.execute(MIGRATION.read_text(encoding="utf-8"))
-        published: list[tuple[str, bytes]] = []
+        published: list[tuple[str, bytes | None, bytes]] = []
 
-        async def publish(topic: str, value: bytes) -> None:
-            published.append((topic, value))
+        async def publish(topic: str, key: bytes | None, value: bytes) -> None:
+            published.append((topic, key, value))
 
         runner = _ConnectionRunner(connection, publish)
         yield runner, connection, published
@@ -153,8 +156,9 @@ async def test_a_load_is_stored_equal_with_its_key_order_and_published_as_stored
         assert compared.rows_compared == 2
         assert list(stored) == list(TABLE)
         assert list(stored["hosts"][0]) == list(TABLE["hosts"][0])
-        topic, value = published[-1]
+        topic, key, value = published[-1]
         assert topic == SNAPSHOT_TOPIC
+        assert key == loaded.overlay_id.encode("utf-8")
         assert ModelOverlayStoreRecord.model_validate_json(value) == loaded
 
 
@@ -169,7 +173,7 @@ async def test_an_older_load_changes_nothing_and_the_newer_is_republished() -> N
         await runner.project_event("t", newer.model_dump(mode="json"), META)
         await runner.project_event("t", older.model_dump(mode="json"), META)
         assert (await _stored(connection))["bus_lane"] == TABLE["bus_lane"]
-        assert ModelOverlayStoreRecord.model_validate_json(published[-1][1]) == newer
+        assert ModelOverlayStoreRecord.model_validate_json(published[-1][2]) == newer
 
 
 @pytest.mark.integration

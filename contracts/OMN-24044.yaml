@@ -1,0 +1,60 @@
+schema_version: 1.0.0
+ticket_id: OMN-24044
+title: The delegation step's default engine order is read from the routing settings by a reader in the team code
+summary: node_delegation_routing_order_compute (omnimarket 5868) answers the order in which a delegating caller tries engines for a task class from the delegation routing overlay, and nothing calls it. The lane's delegation step keeps its own fixed defaults (GLM first for text, GLM before the lab for code), so every brief overrides them by hand and an overlay edit changes nothing. This pull request adds the reader the step asks, read_engine_order in omnimarket.handlers.delegation_routing_order_reader, which returns one entry per rung through the node, None when the class has no chain or no overlay is bound, and raises a typed error for any other refusal. The step's switch to the reader is a separate pull request that waits for this one on dev.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24044-routing-order-reader
+  statement: A reader in omnimarket returns the engine order of a task class through the routing order node, and refuses an invalid or non-lab-first answer without a default.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the reader returns one entry per rung of the node''s answer in rung order (ladder, then each harness) for a named class, and None for a class with no chain or when no overlay is bound -- falsifier: uv run pytest tests/unit/handlers/test_delegation_routing_order_reader.py -q -n 0 --no-cov fails without the reader'
+  - id: AC2
+    statement: 'AC2: an invalid overlay and a chain that does not open on the lab tier raise the reader''s typed error and never return a default -- falsifier: uv run pytest tests/unit/handlers/test_delegation_routing_order_reader.py -q -n 0 --no-cov -k "overlay_invalid or not_lab_first"'
+  - id: AC3
+    statement: 'AC3: integrated: the reader called in the lab dispatch venv with the real overlay roots answers the order of the document class, lab first -- falsifier: the printed order on that host does not open with ladder or the call raises'
+evidence_requirements:
+- kind: tests
+  description: The reader tests pass at the pushed head.
+  command: uv run pytest tests/unit/handlers/test_delegation_routing_order_reader.py -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24044-ac1
+  description: 'AC1: the golden, lab-first, unnamed class and no-overlay tests pass; the whole file fails at the merge base because the reader module does not exist.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/handlers/test_delegation_routing_order_reader.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24044-ac2
+  description: 'AC2: the error chain tests pass: an invalid overlay and a chain that does not open on the lab tier raise the typed error.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/handlers/test_delegation_routing_order_reader.py -q -n 0 --no-cov -p no:cacheprovider -k "overlay_invalid or not_lab_first"
+    cwd: .
+- id: dod-omn24044-ac3
+  description: 'hosted proxy for AC3: the reader tests pass; the reading of the reader in a lab dispatch venv is named in the pull request and read after the merge.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/handlers/test_delegation_routing_order_reader.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24044-integration-proof
+  description: the reader test file runs on a lab host at the pushed head, including the error chain tests and the node parity test; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24044 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/handlers/test_delegation_routing_order_reader.py -q --no-cov

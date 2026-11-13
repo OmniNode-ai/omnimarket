@@ -16,6 +16,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any, cast
 
 import pytest
+import yaml
 from pydantic import ValidationError
 
 from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_factory_floor_publish import (
@@ -40,6 +41,7 @@ from omnimarket.nodes.node_factory_floor_publish_effect.models.model_factory_flo
 from omnimarket.nodes.node_factory_floor_publish_effect.runtime_factory_floor_publish import (
     main,
 )
+from tests.nodes.node_factory_floor_publish_effect.limits_support import TEST_LIMITS
 
 pytestmark = pytest.mark.unit
 
@@ -114,6 +116,7 @@ def _request(tmp_path: Path) -> ModelReportsPublishRequest:
     return ModelReportsPublishRequest(
         home=str(home),
         overlay=ModelFactoryFloorPublishOverlay(
+            limits=TEST_LIMITS,
             ssh_target="lab-web",
             remote_dir=str(tmp_path / "site"),
             serve_url="http://example.invalid:8088/",
@@ -312,7 +315,8 @@ def test_reports_cli_publishes_the_floor_and_then_the_reports_unless_skipped(
         f"ssh_target: lab-web\nremote_dir: {tmp_path / 'site'}\n"
         "serve_url: http://example.invalid:8088/\nbus_lane: lane-x\n"
         f"history_root: {tmp_path / 'kept'}\n"
-        "owner_login: owner@example.invalid\n",
+        "owner_login: owner@example.invalid\n"
+        + yaml.safe_dump({"limits": TEST_LIMITS.model_dump(mode="json")}),
         encoding="utf-8",
     )
     monkeypatch.setenv("ONEX_FACTORY_FLOOR_PUBLISH_OVERLAY", str(overlay))

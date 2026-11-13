@@ -1,0 +1,24 @@
+name: node_floor_fill_scheduled_effect
+version: "0.1.0"
+description: "Runs the stopped-line fill's tick on the runtime tick in place of the fill host's timer unit"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_floor_fill_scheduled_effect: "omnimarket.nodes.node_floor_fill_scheduled_effect"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "omnibase-infra>=0.38.3"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "schedule", "fill", "OMN-24029"]
+pack: "pipeline"
+display_name: "Floor Fill Scheduled"
+node_role: "effect"

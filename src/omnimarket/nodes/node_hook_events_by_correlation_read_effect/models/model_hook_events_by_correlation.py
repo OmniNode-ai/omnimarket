@@ -86,6 +86,7 @@ class ModelHookEventsHttpConfig(BaseModel):
     default_limit: int = Field(gt=0)
     max_limit: int = Field(gt=0)
     unbound_identity_detail: str = Field(min_length=1)
+    identity_unavailable_detail: str = Field(min_length=1)
     unauthorized_detail: str = Field(min_length=1)
     absent_credential_code: str = Field(min_length=1)
     invalid_credential_code: str = Field(min_length=1)

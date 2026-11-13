@@ -28,6 +28,7 @@ from omnimarket.nodes.node_factory_floor_publish_effect.models.model_factory_flo
     ModelFactoryFloorPublishRuntime,
     ModelPublishStepResult,
 )
+from tests.nodes.node_factory_floor_publish_effect.limits_support import TEST_LIMITS
 from tests.nodes.node_factory_floor_publish_effect.test_factory_floor_publish import (
     PLUGIN,
     LocalSsh,
@@ -58,7 +59,7 @@ def _with_step_timeout(
 
 
 def test_the_longest_declared_path_holds_under_the_cycle_bound() -> None:
-    rt = load_runtime()
+    rt = load_runtime().with_limits(TEST_LIMITS)
     path = rt.declared_longest_path()
     assert set(path) == {
         "input_steps",
@@ -68,14 +69,14 @@ def test_the_longest_declared_path_holds_under_the_cycle_bound() -> None:
         "after_publish",
         "final_status",
     }
-    assert rt.cycle.bound_seconds == 240
+    assert rt.cycle.bound_seconds == TEST_LIMITS.cycle_bound_seconds
     assert _longest(rt) <= rt.cycle.bound_seconds, path
 
 
 def test_concurrent_input_steps_count_at_their_slowest_and_sequential_ones_add_up() -> (
     None
 ):
-    rt = load_runtime()
+    rt = load_runtime().with_limits(TEST_LIMITS)
     timeouts = {s.name: s.timeout_seconds for s in rt.steps}
     concurrent = [s.timeout_seconds for s in rt.steps if s.concurrent]
     assert (
@@ -100,7 +101,7 @@ def test_concurrent_input_steps_count_at_their_slowest_and_sequential_ones_add_u
 )
 def test_a_step_timeout_raised_past_the_bound_fails_the_bound(name: str) -> None:
     """The falsifier: any one step's declared timeout raised past the bound makes the longest path exceed it."""
-    rt = load_runtime()
+    rt = load_runtime().with_limits(TEST_LIMITS)
     raised = _with_step_timeout(rt, name, rt.cycle.bound_seconds + 1)
     assert _longest(raised) > rt.cycle.bound_seconds
 
@@ -115,7 +116,7 @@ def test_a_step_timeout_raised_past_the_bound_fails_the_bound(name: str) -> None
     ],
 )
 def test_a_phase_budget_raised_past_the_bound_fails_the_bound(field: str) -> None:
-    rt = load_runtime()
+    rt = load_runtime().with_limits(TEST_LIMITS)
     cycle = rt.cycle.model_copy(update={field: rt.cycle.bound_seconds + 1})
     assert _longest(rt.model_copy(update={"cycle": cycle})) > rt.cycle.bound_seconds
 
@@ -156,7 +157,7 @@ def _handle(
 def test_every_copy_prune_and_status_call_is_held_to_its_phase_limit(
     tmp_path: Path,
 ) -> None:
-    rt = load_runtime()
+    rt = load_runtime().with_limits(TEST_LIMITS)
     ssh = TimedSsh()
     _handle(tmp_path, ssh)
     ssh_limits = [
@@ -214,7 +215,7 @@ def test_the_delegation_read_takes_its_limit_from_the_request() -> None:
 def test_the_record_step_keeps_its_seconds_when_a_declared_line_is_not_drawn(
     tmp_path: Path,
 ) -> None:
-    rt = load_runtime()
+    rt = load_runtime().with_limits(TEST_LIMITS)
     # the step as it ran, with the seconds it took
     results = [ModelPublishStepResult(name=rt.record_step, status="ok", seconds=23.5)]
     flagged = HandlerFactoryFloorPublish._flag_undrawn(results, rt, ("alpha-plan",), [])

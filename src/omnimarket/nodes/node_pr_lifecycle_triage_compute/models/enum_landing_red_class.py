@@ -13,6 +13,7 @@ class EnumLandingRedClass(StrEnum):
     RUNNER_SATURATION = "runner_saturation"
     CANCELLED_PRODUCER = "cancelled_producer"
     REVIEWER_POOL = "reviewer_pool"
+    STALE_FLEET = "stale_fleet"
 
 
 __all__: list[str] = ["EnumLandingRedClass"]

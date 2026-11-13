@@ -17,6 +17,7 @@ from omnimarket.nodes.node_factory_floor_publish_effect.models.model_factory_flo
     ModelFactoryFloorPublishContract,
     group_steps,
 )
+from tests.nodes.node_factory_floor_publish_effect.limits_support import TEST_LIMITS
 
 from .support import OVERLAY_FILE, RT
 
@@ -26,7 +27,9 @@ PAGES = NODE_DIR / "page"
 
 def _publish() -> Any:
     raw = yaml.safe_load(PUBLISH_CONTRACT.read_text(encoding="utf-8"))
-    return ModelFactoryFloorPublishContract.model_validate(raw).runtime
+    return ModelFactoryFloorPublishContract.model_validate(raw).runtime.with_limits(
+        TEST_LIMITS
+    )
 
 
 def test_the_nine_scenarios_and_the_plan_range_are_declared() -> None:

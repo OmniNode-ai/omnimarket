@@ -1,0 +1,108 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodeDevRunningRevisionCompute
+#
+# Five whys plan root R3 (OMN-23993): a reading that decides nothing; no gate,
+# stop or admission. It compares each repository's running revision in the dev
+# runtime with that repository's merged head on dev and says "behind by N
+# changes for M seconds". No clock and no I/O: the clock is facts.observed_at
+# and every bound is a policy (overlay) value.
+#
+# Every bound is an overlay value (known repositories, behind threshold,
+# median merge-to-running bound). Nothing is packaged as a fallback: an absent
+# overlay refuses.
+name: "node_dev_running_revision_compute"
+contract_name: "node_dev_running_revision_compute"
+node_name: "node_dev_running_revision_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+description: >
+  Pure running-revision reading. Reads the build history and each repository's
+  merge history, and returns a per-repository reading (current, lagging, behind
+  or unknown) with the merge-to-running times and the median. Facts that
+  contradict themselves are refused as a whole. No clock, no I/O.
+input_model:
+  name: "ModelRunningRevisionFacts"
+  module: "omnimarket.models.running_revision.model_running_revision_facts"
+  description: "The build history and each repository's merge history."
+output_model:
+  name: "ModelRunningRevisionReading"
+  module: "omnimarket.models.running_revision.model_running_revision_reading"
+  description: "Per-repository readings, merge times, median and red reasons."
+handler:
+  module: "omnimarket.nodes.node_dev_running_revision_compute.handlers.handler_dev_running_revision"
+  class: "HandlerDevRunningRevision"
+  input_model: "omnimarket.models.running_revision.model_running_revision_facts.ModelRunningRevisionFacts"
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  subscribe_topics:
+    - onex.cmd.omnimarket.dev-running-revision-requested.v1
+# The broker grant the subscribed command topic needs (OMN-24005 coverage gate): the same login that reconciles host
+# state reads the reading's request.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_HOST_RECONCILER_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.dev-running-revision-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.dev-running-revision-requested.v1, operation: DESCRIBE}
+published_events:
+  - event_type: "RunningRevisionReading"
+    topic: onex.evt.omnimarket.dev-running-revision-read.v1
+    description: "The running-revision reading: per-repository status, merge times and red reasons."
+  - event_type: "RunningRevisionRefused"
+    topic: onex.evt.omnimarket.dev-running-revision-refused.v1
+    description: "The facts contradicted themselves; no reading was made."
+handler_routing:
+  routing_strategy: "payload_type_match"
+  handlers:
+    - operation: "dev_running_revision.read"
+      message_category: "command"
+      handler:
+        name: "HandlerDevRunningRevision"
+        module: "omnimarket.nodes.node_dev_running_revision_compute.handlers.handler_dev_running_revision"
+      event_model:
+        name: "ModelRunningRevisionFacts"
+        module: "omnimarket.models.running_revision.model_running_revision_facts"
+      topic: onex.cmd.omnimarket.dev-running-revision-requested.v1
+      description: "One reading tick: build history and merge histories."
+# The read and refused events are the results a caller of the reading awaits (the topic graph gate counts
+# runtime_dispatch.terminal_events as externally consumed), like node_pr_landing_decision_compute.
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.dev-running-revision-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.dev-running-revision-read.v1"
+    failure: "onex.evt.omnimarket.dev-running-revision-refused.v1"
+consumed_events:
+  - event_type: ModelRunningRevisionFacts
+    topic: "onex.cmd.omnimarket.dev-running-revision-requested.v1"
+    description: "One reading tick's facts; declared so the platform topic provisioner creates the topic."
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+replay:
+  deterministic: true
+runtime_profiles:
+  - main
+metadata:
+  description: "Compares each repository's running revision with its merged head on dev."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-11-12"
+  tags:
+    - compute
+    - dev-runtime
+    - running-revision

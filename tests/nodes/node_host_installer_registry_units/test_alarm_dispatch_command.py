@@ -81,6 +81,10 @@ def _request(tmp_path: Path, **kw: Any) -> ModelRegistryUnitsRequest:
         "runtime_ssh_host": "lab-user@runtime.example.test",
         "appender_root": str(tmp_path / "appender"),
         "host_table_path": str(tmp_path / "hosts.yaml"),
+        # The alarm reads the lab host table through the overlay roots, which the unit declares (OMN-23950).
+        "path_overrides": {
+            "ONEX_SKILL_OVERLAY_ROOTS": str(tmp_path / "overlays" / "overlays")
+        },
     }
     fields.update(kw)
     return ModelRegistryUnitsRequest(**fields)

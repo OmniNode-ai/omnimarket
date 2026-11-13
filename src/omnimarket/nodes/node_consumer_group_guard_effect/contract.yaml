@@ -19,8 +19,13 @@ consumer_group_guard:
   # min_empty_age_seconds (two listings at least that far apart agree), its name matches a
   # reapable pattern (a per-call hex suffix) and matches no protected pattern. Protected
   # names win. Stable-named groups (the host drift fleet's `<prefix>.<host>` group,
-  # anything unlisted) are never deleted; the per-run `<host>.<hex12>` drift groups and
-  # the per-session gateway groups are per-call names and are reapable. The broker is
+  # anything unlisted) are never deleted. The host drift check's persisted
+  # `<host>.<hex12>` reader group (the hex is its stored reader id, one per host and topic
+  # consumer) is Empty between its 15 minute runs, so it is protected as well: deleting it
+  # sent every run back to the start of the topic (measured 2026-11-12: 21,911 and 11,115
+  # events read per run), and a run cut off at its 30 second window then reported healthy
+  # hosts as silent. Its orphans expire on the broker's own 24 hour retention. The
+  # per-session gateway groups are per-call names and are reapable. The broker is
   # checked after every batch; the run stops at the first error or unhealthy reading.
   reap:
     enabled: true
@@ -40,6 +45,7 @@ consumer_group_guard:
       - '^onex\.gateway-session\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
     protected_patterns:
       - 'host_drift_fleet\.h[0-9]+(\.__t\..*)?$'
+      - '^local\.[a-z_]+\.host_drift_fleet\.h[0-9]+\.[0-9a-f]{12}(\.__t\..*)?$'
 schedule:
   # The node's own timer (OMN-22194). The host installer cannot take the lab form as data, so
   # this node renders a systemd user timer the way node_host_reconcile_effect does:

@@ -17,7 +17,7 @@ import pytest
 from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 
 from omnimarket.lab_work import cli
-from omnimarket.lab_work.bus import LabWorkCaller, LabWorkHost, ProtocolWorkHandler
+from omnimarket.lab_work.bus import LabWorkCaller, LabWorkHost
 from omnimarket.nodes.node_lab_work_unit_effect import (
     EnumLabWorkUnitStatus,
     HandlerHostCapacityAdvertiseEffect,
@@ -25,6 +25,7 @@ from omnimarket.nodes.node_lab_work_unit_effect import (
     ModelLabWorkUnitRequest,
 )
 from omnimarket.nodes.node_lab_work_unit_effect.protocols import HostReading
+from omnimarket.protocols.protocol_lab_work_handlers import ProtocolWorkHandler
 
 pytestmark = pytest.mark.unit
 

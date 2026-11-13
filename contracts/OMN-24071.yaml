@@ -1,0 +1,77 @@
+schema_version: 1.0.0
+ticket_id: OMN-24071
+title: The roll failure capture node carries the incident's failed phase into the roll terminal, and its incident model is read against the deploy agent's own
+summary: 'Child of OMN-24048. The deploy agent (omnibase_infra#5924) publishes the dev roll incident with a new optional failed_phase field (preflight when the roll failed before the boot guard existed). node_dev_roll_failure_capture_effect now reads failed_phase on its tolerant incident model and carries it into the typed roll terminal, for a recovered, an unrecovered and an unknown terminal alike; an incident without the field reads as before. The seam test no longer relies only on a field list spelled in this repository: it imports the deploy agent''s own incident model from the pinned omnibase-infra and requires its field set to equal the capture node''s incident model, so a field added, dropped or renamed on either side fails a test. The omnibase-infra pin moves to the dev tag that carries failed_phase.'
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- topics
+- public_api
+requirements:
+- id: req-omn24071-failed-phase
+  statement: The failed phase of a failed dev roll reaches the typed roll terminal, and the two incident models are one description.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the capture node reads the incident''s failed_phase and carries it into the typed roll terminal, for a recovered, an unrecovered and an unknown (issuer missing) terminal alike -- falsifier: a preflight incident with failed_phase set yields a terminal whose failed_phase is empty'
+  - id: AC2
+    statement: 'AC2: the capture node''s incident model and the deploy agent''s incident model are one description: a seam test compares their field sets and fails when either side adds, drops or renames a field -- falsifier: renaming failed_phase on either side leaves the seam tests green'
+  - id: AC3
+    statement: 'AC3: an incident without failed_phase reads as before, with an empty failed_phase on its terminal -- falsifier: an old-shape incident raises or yields a changed outcome'
+- id: req-omn24071-integrated
+  statement: The failed phase is read on the terminal from the running dev runtime.
+  acceptance:
+  - id: AC4
+    statement: 'AC4: integrated: after the capture node and the deploy agent with these changes run on the dev runtime, a dev roll that fails its preflight (or a recorded fixture roll) shows a terminal carrying the issuer and failed_phase on the dev bus lane -- falsifier: a dev roll fails in preflight after both run and the dev bus lane carries no terminal naming the failed phase'
+evidence_requirements:
+- kind: tests
+  description: The node's handler, golden chain, error chain and seam tests pass at the pushed head; the seam test fails when failed_phase is removed from the capture node's incident model.
+  command: uv run --frozen pytest tests/unit/nodes/node_dev_roll_failure_capture_effect -q --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24071-ac1
+  description: A preflight incident (failed_phase preflight, recovery not verified) reads an unrecovered terminal carrying failed_phase preflight and the issuer; an incident with no issuer reads an unknown terminal that still carries failed_phase.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_dev_roll_failure_capture_effect/test_golden_chain_dev_roll_failure_capture.py tests/unit/nodes/node_dev_roll_failure_capture_effect/test_error_chain_dev_roll_failure_capture.py -q --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24071-ac2
+  description: The seam test requires the capture node's incident model fields to equal the fields of the deploy agent's ModelDevRollIncident imported from the pinned omnibase-infra, and to equal the spelled fifteen.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_dev_roll_failure_capture_effect/test_seam_agent_events.py -q --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24071-ac3
+  description: The existing recovered, unrecovered and unknown tests run unchanged and read an empty failed_phase.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_dev_roll_failure_capture_effect -q --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24071-ac4
+  description: The tests behind the integrated reading pass at the head; the reading itself (a failed-preflight roll's terminal on the dev bus lane) needs this node and the deploy agent change on the running dev runtime and is the pull request's Lab line; hosted CI cannot reach it.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_dev_roll_failure_capture_effect -q --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24071-integration-proof
+  description: The node tests run on a lab host at the pushed head through the lab work node. The reading on the running dev runtime is the pull request's Lab line; hosted CI cannot reach it.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24071 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_dev_roll_failure_capture_effect -q --no-cov -p no:cacheprovider
+    cwd: .

@@ -53,10 +53,12 @@ from omnimarket.nodes.node_job_log_filler_effect.models.model_job_log_filler imp
     ModelJobLogFillItem,
     ModelJobLogFillRequest,
     ModelJobLogFillResult,
+    ModelJobLogHold,
     ModelMergeRelevantRun,
 )
 from omnimarket.nodes.node_job_log_filler_effect.protocols.protocol_job_log_reader import (
     JobLogCacheMissError,
+    JobLogNotFoundError,
     ProtocolJobLogReader,
 )
 
@@ -193,11 +195,15 @@ class HandlerJobLogFiller:
         reader_factory: Callable[[str | None], ProtocolJobLogReader] | None = None,
         state_reader: Callable[[], Mapping[str, Any]] | None = None,
         held: MutableMapping[int, float] | None = None,
+        not_found: MutableMapping[int, ModelJobLogHold] | None = None,
         clock: Callable[[], float] = time.time,
         record_store: RedFactsStore | None = None,
     ) -> None:
         self._record_store = record_store
         self._held: MutableMapping[int, float] = {} if held is None else held
+        self._not_found: MutableMapping[int, ModelJobLogHold] = (
+            {} if not_found is None else not_found
+        )
         self._clock = clock
         self._overlay = overlay
         self._reader_factory = reader_factory
@@ -207,6 +213,11 @@ class HandlerJobLogFiller:
     def held(self) -> MutableMapping[int, float]:
         """Job id -> when a pass last confirmed its log cached; the tick keeps it between passes."""
         return self._held
+
+    @property
+    def not_found(self) -> MutableMapping[int, ModelJobLogHold]:
+        """Job id -> when a pass last saw its log answered HTTP 404 and why; the tick keeps it between passes."""
+        return self._not_found
 
     @property
     def overlay(self) -> ModelJobLogFillerOverlay:
@@ -278,10 +289,38 @@ class HandlerJobLogFiller:
             and not needs_record(r)
         ]
         remembered_ids = {r.job_id for r in remembered}
-        to_probe = [r for r in runs if r.job_id not in remembered_ids]
+        # A job whose log the gateway answered HTTP 404 recently enough is not probed again
+        # until the overlay's hold interval has passed: the answer would be the same 404, and
+        # one read per run per pass is the budget the pass has. No setting, no hold.
+        hold_seconds = overlay.not_found_hold_seconds
+        parked = (
+            [
+                r
+                for r in runs
+                if r.job_id in self._not_found
+                and r.job_id not in remembered_ids
+                and now - self._not_found[r.job_id].held_at < hold_seconds
+            ]
+            if hold_seconds is not None
+            else []
+        )
+        parked_ids = {r.job_id for r in parked}
+        to_probe = [
+            r
+            for r in runs
+            if r.job_id not in remembered_ids and r.job_id not in parked_ids
+        ]
         items.extend(
             ModelJobLogFillItem(run=r, outcome=EnumJobLogFillOutcome.ALREADY_CACHED)
             for r in remembered
+        )
+        items.extend(
+            ModelJobLogFillItem(
+                run=r,
+                outcome=EnumJobLogFillOutcome.HELD_NOT_FOUND,
+                error=self._not_found[r.job_id].cause,
+            )
+            for r in parked
         )
 
         def record(run: ModelMergeRelevantRun, log: ModelJobLogTailResult) -> None:
@@ -339,6 +378,16 @@ class HandlerJobLogFiller:
                 filled = reader.read(
                     run.repo, run.job_id, cache_only=False, tail_bytes=tail
                 )
+            except JobLogNotFoundError as exc:
+                # The first 404 still counts failed once; the hold starts here so the next
+                # pass parks the job instead of reading the same missing log again.
+                if overlay.not_found_hold_seconds is not None:
+                    with lock:
+                        self._not_found[run.job_id] = ModelJobLogHold(
+                            held_at=now,
+                            cause=f"{type(exc).__name__}: {exc}"[-500:],
+                        )
+                return self._failed(run, exc)
             except Exception as exc:
                 return self._failed(run, exc)
             if tail is not None:
@@ -354,11 +403,20 @@ class HandlerJobLogFiller:
         # What this pass confirmed held is remembered, what it did not is forgotten, and a job no longer
         # in play is dropped, so the memo never outgrows the open pull requests.
         confirmed = {
-            i.run.job_id for i in items if i.outcome is not EnumJobLogFillOutcome.FAILED
+            i.run.job_id
+            for i in items
+            if i.outcome is not EnumJobLogFillOutcome.FAILED
+            and i.outcome is not EnumJobLogFillOutcome.HELD_NOT_FOUND
         }
         current = {r.job_id for r in runs}
         for job_id in [j for j in memo if j not in current or j not in confirmed]:
             del memo[job_id]
+        # A 404 hold ends when its job is no longer merge-relevant, or when a pass read the
+        # log for real again (filled or found cached), so the holds never outgrow the runs.
+        for job_id in [
+            j for j in self._not_found if j not in current or j in confirmed
+        ]:
+            del self._not_found[job_id]
         for job_id in confirmed - remembered_ids:
             memo[job_id] = now
         filled = sum(i.outcome is EnumJobLogFillOutcome.FILLED for i in items)
@@ -384,6 +442,9 @@ class HandlerJobLogFiller:
             already_cached=cached,
             failed=failed,
             deferred=deferred,
+            held_not_found=sum(
+                i.outcome is EnumJobLogFillOutcome.HELD_NOT_FOUND for i in items
+            ),
             budget_exhausted=budget_exhausted,
             stale_skipped=stale,
             records_written=records_written,

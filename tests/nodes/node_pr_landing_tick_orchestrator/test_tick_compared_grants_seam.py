@@ -169,7 +169,11 @@ def _recording_bus(monkeypatch: pytest.MonkeyPatch) -> _Recorder:
 
 def test_contract_publish_topics_are_exactly_the_granted_topics() -> None:
     contract = yaml.safe_load(CONTRACT.read_text(encoding="utf-8"))
-    assert set(contract["event_bus"]["publish_topics"]) == set(GRANTED_PRODUCE_TOPICS)
+    # The request topic is listed only so boot provisioning creates it; the tick never produces on it.
+    provisioned_only = {"onex.cmd.omnimarket.pr-landing-rerun-requested.v1"}
+    assert set(contract["event_bus"]["publish_topics"]) == (
+        set(GRANTED_PRODUCE_TOPICS) | provisioned_only
+    )
 
 
 def test_bus_publisher_sends_compared_events_only_on_granted_topics(

@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_dev_tag_lineage_effect
+version: 1.0.0
+description: Resolves a dev-merge tag's identity, project version and complete ancestry through git
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_dev_tag_lineage_effect: omnimarket.nodes.node_dev_tag_lineage_effect
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  side_effect_class: network
+dependencies:
+- pydantic>=2.11.0
+authors:
+- OmniNode Team
+license: MIT
+tags:
+- effect
+- validator
+- governance
+node_role: effect
+pack: delegation
+display_name: Dev Tag Lineage Effect

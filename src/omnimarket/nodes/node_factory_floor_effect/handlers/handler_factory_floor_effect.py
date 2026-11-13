@@ -40,6 +40,9 @@ from omnimarket.nodes.node_factory_floor_compute.handlers.handler_factory_floor 
 from omnimarket.nodes.node_factory_floor_effect.handlers.draft_plan_refs import (
     draft_plan_refs,
 )
+from omnimarket.nodes.node_factory_floor_effect.handlers.ledger_window_by_archive import (
+    read_ledger_window,
+)
 from omnimarket.nodes.node_factory_floor_effect.handlers.source_health import (
     source_health,
 )
@@ -80,13 +83,18 @@ from omnimarket.nodes.node_factory_floor_effect.source_loader import (
     merge_linear_titles,
     newest_dated_file,
     newest_linear_snapshot,
-    read_ledger_rows,
     read_placement,
     resolve_dir,
     resolve_home,
     resolve_host_table,
     runner_fleet_cause,
     write_result,
+)
+from omnimarket.nodes.node_source_read_cache_effect.handlers.cached_source_reader import (
+    CachedSourceReader,
+)
+from omnimarket.nodes.node_source_read_cache_effect.handlers.cached_source_reader_factory import (
+    write_tally_receipt,
 )
 from omnimarket.protocols.protocol_merged_running_count_reader import (
     ProtocolMergedRunningCountReader,
@@ -182,13 +190,19 @@ def _degraded_reading(
     return health.model_copy(update={"cause": cause})
 
 
+FACTORY_FLOOR_STEP = "factory_floor"
+
+
 class HandlerFactoryFloorEffect:
     """Boundary of the factory floor: every read and the one write happen here, none in the compute node."""
 
     def __init__(
-        self, merged_running: ProtocolMergedRunningCountReader | None = None
+        self,
+        merged_running: ProtocolMergedRunningCountReader | None = None,
+        source_cache: CachedSourceReader | None = None,
     ) -> None:
         self._merged_running = merged_running
+        self._source_cache = source_cache
 
     def _read_merged_running(
         self, now: datetime, hosts_table: Path | None
@@ -341,7 +355,11 @@ class HandlerFactoryFloorEffect:
         )
         kinds = frozenset(rt.ledger_kinds)
         ledger_read = cloud_pool.submit(
-            read_ledger_rows,
+            read_ledger_window,
+            archive_cache=self._source_cache,
+            archive=overlay.ledger_archives if overlay is not None else None,
+            environ=os.environ,
+            now=now,
             window_days=rt.ledger_window_days,
             source=overlay.ledger_source if overlay is not None else None,
             cut_chars=rt.ledger_cut_chars,
@@ -601,6 +619,8 @@ class HandlerFactoryFloorEffect:
         )
         target = home / rt.output.relpath
         write_result(target, result.model_dump(mode="json"))
+        if self._source_cache is not None:
+            write_tally_receipt(self._source_cache, home, FACTORY_FLOOR_STEP)
         return ModelFactoryFloorRunResult(
             output_path=str(target),
             lines=len(result.lines),

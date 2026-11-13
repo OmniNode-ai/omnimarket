@@ -225,7 +225,9 @@ def test_error_a_result_older_than_the_read_limit_is_not_shown_as_current(
     )
     doc = json.loads((home / RT.output_relpath).read_text())
     r2 = next(s for s in doc["scenarios"] if s["id"] == "R2")
-    assert r2["state"] == "unread"
+    assert r2["state"] == "stale"
+    assert r2["stale_since"] == r2["result_text"].removeprefix("Stale since ")
+    assert r2["stale_since"]
 
 
 def test_error_the_overlay_refuses_a_lab_node_entry_with_no_lane_and_a_workflow_entry_with_no_workflow() -> (

@@ -1,0 +1,77 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Ledger Rows Loader Effect (OMN-23977, cutover plan step L7)
+#
+# The loader of the rows of a window of hours of the work ledger. It reads the rows through
+# node_work_ledger_reader_effect (the bus-fed projection) and carries the node's lines when the
+# node answered ok. A stale, unreadable or not-moved answer falls back to the file's rows,
+# counted and logged, while the overlay allows it; that answer is stamped source=file-fallback.
+# A failed read is never an empty ok: when no source answered the result is unreadable with no
+# lines. The file-read fallback count is the cutover measure; it must reach zero before the
+# file is retired at plan step L15.
+name: node_ledger_rows_loader_effect
+contract_name: node_ledger_rows_loader_effect
+node_name: node_ledger_rows_loader_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Loads the rows of a window of hours of the work ledger from the bus-fed work ledger reader
+  node, read through node_work_ledger_reader_effect. An ok answer carries the node's lines,
+  stamped source=node. A stale, unreadable or not-moved answer falls back to the file's rows
+  while the overlay allows it, stamped source=file-fallback and counted as a file-read
+  fallback; that count is the cutover measure, and it must reach zero before the file is
+  retired. A read no source answered is unreadable with no lines, never an empty ok. Every
+  answer emits a golden (ok) or error (unreadable) event.
+
+handler:
+  module: omnimarket.nodes.node_ledger_rows_loader_effect.handlers.handler_rows_loader
+  class: HandlerRowsLoader
+  input_model: omnimarket.nodes.node_ledger_rows_loader_effect.models.model_rows_loader.ModelRowsLoaderRequest
+
+# HandlerRowsLoader takes the overlay, the event sink, the file rows source and the clock as
+# constructor parameters, so a reader runs it through its own CLI, not handler_routing.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [event-journal]
+  timeout_ms: 30000
+
+input_model:
+  name: ModelRowsLoaderRequest
+  module: omnimarket.nodes.node_ledger_rows_loader_effect.models.model_rows_loader
+  description: The reader name, the window in hours and the reader's rows answer.
+output_model:
+  name: ModelRowsLoaderResult
+  module: omnimarket.nodes.node_ledger_rows_loader_effect.models.model_rows_loader
+  description: ok or unreadable, the source of the answer, the lines, the counts and the event.
+
+runtime_dispatch:
+  external_trigger: true
+
+# The topics by role; the handler reads these and holds no topic string.
+topics:
+  rows_loader_answered: onex.evt.omnimarket.ledger-rows-loader-answered.v1
+  rows_loader_refused: onex.evt.omnimarket.ledger-rows-loader-refused.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.ledger-rows-loader-answered.v1
+  - onex.evt.omnimarket.ledger-rows-loader-refused.v1
+
+overlay:
+  node: node_ledger_rows_loader_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+metadata:
+  ticket: OMN-23977
+  transport_type: inmemory

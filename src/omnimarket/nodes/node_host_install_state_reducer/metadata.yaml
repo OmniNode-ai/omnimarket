@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_host_install_state_reducer
+version: "1.0.0"
+description: "Reducer holding the state and digests of each host unit install: requested, snapshotted, installing, installed, verified, run_ok, failed, rolled_back."
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_host_install_state_reducer: "omnimarket.nodes.node_host_install_state_reducer"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pydantic>=2.0"
+  - "pyyaml>=6.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["reducer", "fsm", "host", "install", "OMN-23957"]
+pack: "operator_tooling"
+display_name: "Host Install State Reducer"
+node_role: "reducer"

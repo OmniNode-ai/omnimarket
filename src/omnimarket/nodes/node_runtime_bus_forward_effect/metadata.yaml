@@ -1,0 +1,32 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_runtime_bus_forward_effect
+version: 1.0.0
+description: Carries the events one node run published to the runtime-local bus to the hosted bus the node's overlay declares, refusing by name every event outside the overlay's allowed topic prefixes or past its max_events.
+pack: operator_tooling
+node_role: effect
+display_name: Runtime Bus Forward Effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_runtime_bus_forward_effect: omnimarket.nodes.node_runtime_bus_forward_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+- pydantic>=2.0
+- pyyaml>=6.0
+- omnibase-infra>=0.32.0
+- confluent-kafka>=2.12.0,<3.0.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- runtime-bus
+- forward

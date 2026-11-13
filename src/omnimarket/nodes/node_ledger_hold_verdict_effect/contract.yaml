@@ -1,0 +1,75 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Ledger Hold Verdict Effect (OMN-19609, cutover plan step L6)
+#
+# pause_check's question, "is this pull request held by a HOLD row?", decided from the answer of
+# node_work_ledger_reader_effect (the bus-fed projection). HELD when a hold in force applies to the
+# pull request, CLEAR only when the node answered fresh and no hold applies, UNDECIDED when the
+# read failed. Until plan step L15 the caller may carry the file's `holds` lines as a fallback;
+# that answer is logged as source=file-fallback, and a failed read with no fallback is never CLEAR.
+name: node_ledger_hold_verdict_effect
+contract_name: node_ledger_hold_verdict_effect
+node_name: node_ledger_hold_verdict_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Decides HELD, CLEAR or UNDECIDED for one pull request from the holds lines of the bus-fed work
+  ledger query node, read through node_work_ledger_reader_effect. A hold present only in the
+  projection answers HELD. CLEAR is returned only when the node answered (fresh) and no applying
+  hold exists, or, while the overlay allows the file fallback, when the file's holds lines were
+  carried by the caller; that answer is stamped source=file-fallback. A read that failed, a
+  stale answer with no hold, an unparseable hold line, or a retired fallback is UNDECIDED, never
+  CLEAR. Every verdict emits a golden (HELD, CLEAR) or error (UNDECIDED) event.
+
+handler:
+  module: omnimarket.nodes.node_ledger_hold_verdict_effect.handlers.handler_hold_verdict
+  class: HandlerHoldVerdict
+  input_model: omnimarket.nodes.node_ledger_hold_verdict_effect.models.model_hold_verdict.ModelHoldVerdictRequest
+
+# HandlerHoldVerdict takes the overlay, the event sink and the clock as constructor parameters, so a
+# reader runs it through its own CLI, not handler_routing.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [event-journal]
+  timeout_ms: 30000
+
+input_model:
+  name: ModelHoldVerdictRequest
+  module: omnimarket.nodes.node_ledger_hold_verdict_effect.models.model_hold_verdict
+  description: The pull request, the lane, the reader's holds answer and the file's holds lines when carried.
+output_model:
+  name: ModelHoldVerdict
+  module: omnimarket.nodes.node_ledger_hold_verdict_effect.models.model_hold_verdict
+  description: HELD, CLEAR or UNDECIDED, the source of the answer, the applying hold ids and the event.
+
+runtime_dispatch:
+  external_trigger: true
+
+# The topics by role; the handler reads these and holds no topic string.
+topics:
+  hold_verdict_answered: onex.evt.omnimarket.ledger-hold-verdict-answered.v1
+  hold_verdict_refused: onex.evt.omnimarket.ledger-hold-verdict-refused.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.ledger-hold-verdict-answered.v1
+  - onex.evt.omnimarket.ledger-hold-verdict-refused.v1
+
+overlay:
+  node: node_ledger_hold_verdict_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+metadata:
+  ticket: OMN-19609
+  transport_type: inmemory

@@ -21,6 +21,8 @@ class ModelFloorEmissionsOverlay(_Frozen):
     bus_lane: str | None = None
     # A broker named directly, when this deployment's bus is not on a declared lane; it wins over bus_lane.
     kafka_bootstrap: str | None = None
+    # The broker the snapshot is published on when it is not the broker the emission topics are read from; absent means the read broker.
+    snapshot_kafka_bootstrap: str | None = None
     read_window_s: float = Field(gt=0)
     projection_id: str = Field(pattern=r"^[a-z][a-z0-9_]*$")
     snapshot_topic: str = Field(min_length=1)

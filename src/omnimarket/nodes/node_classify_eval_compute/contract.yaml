@@ -1,0 +1,107 @@
+# Every section label, class size, seed, minimum and the rubric text is a value read from the node's
+# overlay by the handler itself; the contract holds none.
+name: node_classify_eval_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  The classify task kind of the code eval suite. Operation build_set takes a copy of the integration
+  ledger and answers a labelled set: one task per merged-change line, its label the class of the ledger
+  section it sits under, drawn per class by a seeded hash so the same ledger gives the same set; a line
+  listed under two classes is left out and counted. The state, step and owner cells that name the
+  answer are never carried into a task. Operation score_answers takes the tasks and the raw replies of
+  each engine on each input variant and answers accuracy overall and per class, replies that name no
+  class, and mean wall time per line. A request with no lines, a class short of its size, a set below
+  the minimum, no tasks, no answers, an answer for an unknown task or a repeated answer ends as a typed
+  failure and never a result. Class words in a task's text cells are masked from the overlay's list and
+  counted. No clock, no model call.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: classify_eval
+      handler:
+        name: HandlerClassifyEval
+        module: omnimarket.nodes.node_classify_eval_compute.handlers.handler_classify_eval
+
+handler:
+  module: omnimarket.nodes.node_classify_eval_compute.handlers.handler_classify_eval
+  class: HandlerClassifyEval
+  input_model: omnimarket.models.eval_classify.model_classify_eval.ModelClassifyEvalRequest
+  output_model: omnimarket.models.eval_classify.model_classify_eval.ModelClassifyEvalResult
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 300000
+  runtime_profiles: [main]
+
+inputs:
+  operation:
+    type: str
+    required: true
+    description: build_set or score_answers.
+  suite_id:
+    type: str
+    required: true
+    description: The identity of the suite being built or scored.
+  ledger_text:
+    type: str
+    required: false
+    description: The integration ledger copy (build_set).
+  tasks:
+    type: tuple
+    required: false
+    description: The labelled tasks (score_answers).
+  answers:
+    type: tuple
+    required: false
+    description: One raw reply per engine, input variant and task (score_answers).
+
+outputs:
+  suite_id:
+    type: str
+  operation:
+    type: str
+  failure:
+    type: str
+  detail:
+    type: str
+  rubric:
+    type: str
+  tasks:
+    type: tuple
+  class_counts:
+    type: tuple
+  ambiguous_excluded:
+    type: int
+  masked_cells:
+    type: int
+  scores:
+    type: tuple
+
+terminal_event: onex.evt.omnimarket.classify-eval-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.classify-eval-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.classify-eval-completed.v1
+
+published_events:
+  - event_type: ClassifyEvalCompleted
+    topic: onex.evt.omnimarket.classify-eval-completed.v1
+    description: >
+      The labelled set built from a ledger copy with its per-class counts, or the per-engine and
+      per-class scores of a set of replies, or the typed failure that stopped either.
+
+metadata:
+  transport_type: kafka
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.classify-eval-requested.v1
+
+# Sink declaration (contract topic graph closure): the terminal event leaves the node graph here.
+externally_consumed_topics:
+  - onex.evt.omnimarket.classify-eval-completed.v1

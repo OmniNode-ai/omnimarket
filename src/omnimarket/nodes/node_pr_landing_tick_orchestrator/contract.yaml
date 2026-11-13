@@ -83,12 +83,16 @@ event_bus:
     - "onex.evt.omnimarket.pr-landing-tick-compare-failed.v1"
     - "onex.evt.omnimarket.pr-landing-rerun-completed.v1"
     - "onex.evt.omnimarket.pr-landing-rerun-failed.v1"
+    # OMN-23964: listed so boot provisioning creates the request topic. The onex scm rerun-request verb publishes it
+    # and this node's topic reader consumes it; it is never a subscription, so the runtime wires no handler to it.
+    - "onex.cmd.omnimarket.pr-landing-rerun-requested.v1"
 terminal_event: "onex.evt.omnimarket.pr-landing-tick-compared.v1"
 externally_consumed_topics:
   - "onex.evt.omnimarket.pr-landing-tick-compared.v1"
   - "onex.evt.omnimarket.pr-landing-tick-compare-failed.v1"
   - "onex.evt.omnimarket.pr-landing-rerun-completed.v1"
   - "onex.evt.omnimarket.pr-landing-rerun-failed.v1"
+  - "onex.cmd.omnimarket.pr-landing-rerun-requested.v1"
 externally_produced_topics:
   - topic: "onex.cmd.omnimarket.pr-landing-rerun-requested.v1"
     producer: "the onex scm rerun-request verb (omnimarket.handlers.scm.scm_rerun_request), which publishes the request directly and reads the answer -- not a node contract"

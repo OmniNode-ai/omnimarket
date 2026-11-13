@@ -161,10 +161,7 @@ def test_run_exits_3_when_not_accepted(
         ],
     )
     assert result.exit_code == 3, result.output
-    assert (
-        json.loads(result.output.strip().splitlines()[-1])["status"]
-        == "budget_exhausted"
-    )
+    assert json.loads(result.output.strip().splitlines()[-1])["status"] == "no_change"
     assert seen[0][seen[0].index("--locus") + 1] == "in-process"
 
 

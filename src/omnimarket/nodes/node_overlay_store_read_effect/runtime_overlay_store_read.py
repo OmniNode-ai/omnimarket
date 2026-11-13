@@ -116,9 +116,27 @@ def _bus_snapshot_store(
             root=workspace_root(env),
         )
 
+    if kafka_bootstrap is not None:
+        snapshot_bootstrap: str | None = kafka_bootstrap
+        snapshot_lane: str | None = None
+    elif overlay.snapshot_bus_lane is not None:
+        snapshot_bootstrap = None
+        snapshot_lane = overlay.snapshot_bus_lane
+    else:
+        snapshot_bootstrap = bootstrap
+        snapshot_lane = None if bootstrap else overlay.bus_lane
+
+    def open_snapshot_bus() -> Any:
+        return open_lane_bus(
+            bus="kafka",
+            lane=snapshot_lane,
+            kafka_bootstrap=snapshot_bootstrap,
+            root=workspace_root(env),
+        )
+
     return (
         BusSnapshotOverlayStore(
-            open_bus=open_bus,
+            open_bus=open_snapshot_bus,
             topic=contract["snapshot_read"]["topic"],
             group_prefix=f"{NODE}.{host}",
             window_s=overlay.read_window_s,

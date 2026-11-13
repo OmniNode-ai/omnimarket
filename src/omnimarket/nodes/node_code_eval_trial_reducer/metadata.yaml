@@ -1,0 +1,25 @@
+name: node_code_eval_trial_reducer
+version: "0.1.0"
+description: "Code eval trial reducer: pure transition function of one run row"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_code_eval_trial_reducer: "omnimarket.nodes.node_code_eval_trial_reducer"
+capabilities:
+  standalone: true
+  # false until the orchestrator calls the handler in the runtime: auto-wiring
+  # prepares this node as SKIPPED, since it has no bus surface of its own.
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["reducer", "code-eval", "fsm", "pure"]
+pack: "code_eval"
+display_name: "Code Eval Trial Reducer"
+node_role: "reducer"

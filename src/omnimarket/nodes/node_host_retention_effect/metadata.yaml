@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_host_retention_effect
+version: "1.0.0"
+description: Hold a lab host's disk under control by path class (lane scratch, lane results, runner work, uv cache), dry run first, never a path a live lane or runner job holds.
+pack: infrastructure
+node_role: effect
+display_name: Host Retention
+omnibase_core_compat: '>=0.47.60,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_host_retention_effect: omnimarket.nodes.node_host_retention_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: true
+  side_effect_class: filesystem_write
+dependencies:
+  - pydantic>=2.0
+license: MIT
+tags: [retention, disk, lab-host, runner, effect]

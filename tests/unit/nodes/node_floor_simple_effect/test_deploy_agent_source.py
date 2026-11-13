@@ -61,6 +61,7 @@ class _Overlay:
     deploy_agent_history = 5
     deploy_agent_timeout_s = 1
     deploy_lag_lookback_days = 2
+    deploy_lag_ceiling_minutes = None
 
 
 OVERLAY = cast(ModelLabStateOverlay, _Overlay())

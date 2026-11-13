@@ -241,6 +241,11 @@ requirements:
     acceptance:
       - id: AC15
         statement: 'AC15: a read that gets "unexpected end of JSON input" is retried and succeeds on a later attempt, and a write that gets it is attempted once -- falsifier: uv run pytest tests/ci/test_pr_stale_red_heal_omn19852.py -q --no-cov -k truncated'
+  - id: req-omn19998-job-log-404-hold
+    statement: A job whose log the gateway answers as not cached with HTTP 404 on a live read is held for the overlay's not_found_hold_seconds instead of being read every pass.
+    acceptance:
+      - id: AC16
+        statement: 'AC16: a 404 job is read once, recorded with its cause in held-not-found.json, skipped until the hold passes, and counted as held_not_found; without the overlay value the earlier no-hold behaviour stays -- falsifier: uv run --frozen pytest tests/nodes/node_job_log_filler_effect/test_job_log_filler_not_found_hold.py -q --no-cov -n 0 -p no:randomly'
 evidence_requirements:
   - kind: tests
     description: Recorded gate subject spellings and named causes run through the production ledger parser and contract handler.
@@ -913,4 +918,28 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run pytest tests/ci/test_pr_stale_red_heal_omn19852.py -q --no-cov -k truncated
+        cwd: .
+  - id: dod-omn19998-job-log-404-hold
+    description: The nine tests of the new file replay the 404 job through the filler handler; the control test without a hold shows the 404 job read on both passes and the fillable job never read.
+    source: manual
+    binds_ac: [AC16]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_job_log_filler_effect/test_job_log_filler_not_found_hold.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn19998-job-log-404-hold-deploy
+    description: Hosted smoke runs the filler node golden and error chain tests, which plant a 404 through the real transport and an overlay without the new key. No live host is asserted.
+    source: manual
+    binds_ac: [AC16]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_job_log_filler_effect -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn19998-job-log-404-hold-integration-proof
+    description: Run the filler node tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-19998-404 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_job_log_filler_effect -q --no-cov
         cwd: .

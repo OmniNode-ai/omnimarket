@@ -17,6 +17,7 @@ from omnimarket.nodes.node_factory_floor_publish_effect.models.model_factory_flo
     ModelFactoryFloorPublishRequest,
     ModelFactoryFloorPublishResult,
 )
+from tests.nodes.node_factory_floor_publish_effect.limits_support import TEST_LIMITS
 from tests.nodes.node_factory_floor_publish_effect.test_factory_floor_publish import (
     PLUGIN,
     LocalSsh,
@@ -76,7 +77,7 @@ def test_the_served_status_and_the_heartbeat_name_the_seconds_and_the_slowest_st
 ) -> None:
     result, evidence, status = _run(tmp_path)
     served = json.loads(status.read_text(encoding="utf-8"))
-    runtime = load_runtime()
+    runtime = load_runtime().with_limits(TEST_LIMITS)
     assert all(step["seconds"] > 0 for step in served["steps"])
     assert served["cycle_seconds_before_copy"] > 0
     # The status served last names every phase, the after-publish steps, the slowest step and the cycle's total.

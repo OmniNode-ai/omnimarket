@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# The declared principals of the derivation: which broker login runs which nodes. Read as <root>/<scope>/overlay.yaml under
+# ONEX_SKILL_OVERLAY_ROOTS (scope broker_acl_principals). The rows follow from the topics each node's contract declares:
+# node_broker_acl_overlay_render_compute operation derive_broker_acl_rows, applied by node_broker_acl_reconcile_effect.
+# Every key is required; the real principals live in the overlays repository.
+scope: broker_acl_principals
+ticket: OMN-00000
+why: one line saying which logins these nodes run under
+principals:
+  - principal: User:example-login
+    role: what the login is
+    nodes: [node_example_effect]

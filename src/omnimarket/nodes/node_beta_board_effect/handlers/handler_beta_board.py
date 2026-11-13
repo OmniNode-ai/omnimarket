@@ -52,8 +52,15 @@ from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import
 from omnimarket.nodes.node_reading_writer_effect.protocols import (
     ProtocolLedgerRowSource,
 )
+from omnimarket.nodes.node_source_read_cache_effect.handlers.cached_source_reader import (
+    CachedSourceReader,
+)
+from omnimarket.nodes.node_source_read_cache_effect.handlers.cached_source_reader_factory import (
+    write_tally_receipt,
+)
 
 OWN_CONTRACT = Path(__file__).resolve().parents[1] / "contract.yaml"
+BETA_BOARD_STEP = "beta_board"
 
 
 def load_runtime(
@@ -87,9 +94,11 @@ class HandlerBetaBoard:
         copy: CopyRunner = run_copy,
         clock: Callable[[], datetime] | None = None,
         ledger: ProtocolLedgerRowSource | None = None,
+        cache: CachedSourceReader | None = None,
     ) -> None:
         self._rt = runtime or load_runtime()
         self._ledger = ledger
+        self._cache = cache
         self._run = run
         self._copy = copy
         self._clock = clock or (lambda: datetime.now(UTC))
@@ -143,7 +152,9 @@ class HandlerBetaBoard:
 
     def _build(self, rt: ModelBetaBoardRuntime, home: Path) -> ModelBetaBoardResult:
         now = self._clock()
-        probe_reads = refresh_probes(rt, home, now, self._run, self._clock)
+        probe_reads = refresh_probes(rt, home, now, self._run, self._clock, self._cache)
+        if self._cache is not None:
+            write_tally_receipt(self._cache, home, BETA_BOARD_STEP)
         write_atomic(
             home / rt.reads_relpath, probe_reads.model_dump_json(indent=1).encode()
         )
