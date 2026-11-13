@@ -70,3 +70,12 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24106 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_broker_acl_reconcile_effect/test_role_placeholders.py -q --no-cov -p no:randomly
+- id: dod-omn24106-placeholder-name-follow-up
+  description: 'AC1: the role placeholder tests name ONEX_ACL_RUNTIME_PRINCIPAL, the placeholder node_gpu_power_caps_effect/contract.yaml declares since OMN-24078, and pass; with the old name three of them fail.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_broker_acl_reconcile_effect/test_role_placeholders.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .

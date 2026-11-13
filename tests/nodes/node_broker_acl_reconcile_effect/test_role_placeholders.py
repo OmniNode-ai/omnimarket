@@ -38,7 +38,7 @@ from tests.nodes.node_broker_acl_reconcile_effect.test_aggregates_declared_grant
 pytestmark = pytest.mark.unit
 
 GPU = "node_gpu_power_caps_effect"
-PLACEHOLDER = "ONEX_ACL_GPU_POWER_CAPS_PRINCIPAL"
+PLACEHOLDER = "ONEX_ACL_RUNTIME_PRINCIPAL"
 ROLE_LOGIN = "User:role-login"
 ENV_LOGIN = "User:env-login"
 TOPIC = "onex.cmd.omnimarket.gpu-power-caps-requested.v1"
