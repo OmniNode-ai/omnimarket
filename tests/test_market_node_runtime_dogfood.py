@@ -93,14 +93,6 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # still registered; called in process by its host scheduler, so it subscribes
     # to no topic and has no onex.nodes entry point until the registration
     # hand-over (nodes-to-market plan step B).
-    #
-    # OMN-24073: the lab fill selection compute has handler_routing and no bus
-    # topic, and its request and result models are frozen dataclasses, not typed
-    # pydantic models, so the typed local invocation check (a typed request and
-    # result on handle) cannot accept it and registering it fails the runtime
-    # dogfood with "Contract lacks command/terminal topics". It stays host-only
-    # (called in process by the lab fill step) until its models are pydantic.
-    "node_lab_fill_selection_compute",
     # OMN-20712: hosted from the operator tooling repository, whose copy is
     # still registered; called in process by its host scheduler, so it subscribes
     # to no topic and has no onex.nodes entry point until the registration
