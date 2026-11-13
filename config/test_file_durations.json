@@ -2821,6 +2821,7 @@
   "tests/test_github_release_asset_edge_cached_504.py": 11.07,
   "tests/test_github_release_asset_retry.py": 0.07,
   "tests/test_glm_reviewer.py": 0.42,
+  "tests/test_goal_verification_outcome_topic.py": 2.92,
   "tests/test_golden_chain_adr_canary_real_bus_chain.py": 1.01,
   "tests/test_golden_chain_adr_segmentation_llm_effect.py": 0.02,
   "tests/test_golden_chain_adversarial_pipeline_orchestrator.py": 0.1,
