@@ -198,7 +198,7 @@ class ModelOverlayStoreReadOverlay(_Frozen):
             raise ValueError(
                 f"the {self.backend} backend has no bus to publish the fleet projection on"
             )
-        if self.snapshot_bus_lane is not None and self.backend != "bus_snapshot":
+        if self.snapshot_bus_lane is not None and no_bus:
             raise ValueError(
                 f"the {self.backend} backend has no bus to read a snapshot from"
             )
