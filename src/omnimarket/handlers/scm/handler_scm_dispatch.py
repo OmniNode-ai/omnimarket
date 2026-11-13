@@ -146,6 +146,18 @@ SCM_VERBS: Final[tuple[ModelScmVerb, ...]] = (
         operation="repo_variable_get",
         replaces="gh variable get",
     ),
+    ModelScmVerb(
+        verb="runner-list",
+        node=_W,
+        operation="runner_list",
+        replaces="gh api --method GET /orgs/{o}/actions/runners",
+    ),
+    ModelScmVerb(
+        verb="runner-remove",
+        node=_W,
+        operation="runner_remove",
+        replaces="gh api --method DELETE /orgs/{o}/actions/runners/{id}",
+    ),
     *(
         ModelScmVerb(verb=v, node=_G, operation=op, replaces=gh)
         for v, op, gh in (

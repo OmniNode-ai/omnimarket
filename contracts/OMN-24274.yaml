@@ -1,0 +1,50 @@
+schema_version: 1.0.0
+ticket_id: OMN-24274
+title: Let the write node list runners and remove approved offline ones
+summary: The GitHub write node had no verb to list an organization's self-hosted runners or to remove a registration, so three offline registrations of retired merge-queue runners could not be removed through the write node. The node now serves runner_list and runner_remove, limited to the organizations and runner names its overlay declares in runner_removals (the names come from the overlay, never from the request), refusing a name outside it with runner_not_allowed and a runner that is online or busy with runner_online before any DELETE, and onex scm serves them as runner-list and runner-remove.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- topics
+- events
+- public_api
+requirements:
+- id: req-omn24274-runner-verbs
+  statement: The GitHub write node serves runner_list and runner_remove for overlay-declared organizations and runner names, and onex scm serves them as runner-list and runner-remove.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: runner-list and runner-remove exist as typed verbs on the write node, and a remove of a runner name that is not in the overlay is refused runner_not_allowed with no GitHub call -- falsifier: pytest tests/unit/nodes/node_github_repo_write_effect/test_handler_runner_remove.py -q fails when the allowlist check is removed'
+  - id: AC2
+    statement: 'AC2: a runner that is online or busy is refused runner_online and a runner that is absent is a no-op, both with no delete sent -- falsifier: the same test file fails when either check is removed'
+  - id: AC3
+    statement: 'AC3: the verbs run through the real command line on the in-memory bus and the contract, verb table and gh-shim table all name them -- falsifier: pytest tests/unit/handlers/scm/test_scm_write_seam_shapes.py tests/ci/test_scm_operation_table_omn20912.py -q fails when a verb, field or refusal code changes shape on either side'
+  - id: AC4
+    statement: 'AC4: integrated: onex scm runner-list on the running dev lane prints the organization''s runners and, after the three offline retired runners are removed through runner-remove, none of the retired runners the overlay names appears -- falsifier: runner-list on the dev lane still prints a runner the overlay names for removal'
+evidence_requirements:
+- kind: tests
+  description: The focused test files at the pushed head; the runner handler tests, the chain tests, the scm verb and seam tests, the operation table and the gh shim coverage table fail at origin/dev where the operations do not exist.
+  command: env -u PYTHONPATH uv run --frozen pytest tests/unit/nodes/node_github_repo_write_effect/test_handler_runner_remove.py tests/test_golden_chain_github_repo_write_effect.py tests/unit/handlers/scm tests/ci/test_scm_operation_table_omn20912.py tests/ci/test_gh_shim_coverage_table_omn20914.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24274-ac1-ac2-handler
+  description: The runner handler tests (list paging, delete of an offline idle runner, no-op for an absent runner, refusals for a name outside the overlay, another organization, no runner_removals, and an online or busy runner, each with no DELETE). Fail at origin/dev, where the operations do not exist.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_github_repo_write_effect/test_handler_runner_remove.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24274-ac3-chain-and-seams
+  description: The golden chain and error chain legs for the runner operations on the in-memory bus, the CLI seam tests, the scm verb tests, the operation table and the gh shim coverage table.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_golden_chain_github_repo_write_effect.py tests/unit/handlers/scm/test_scm_write_seam_shapes.py tests/unit/handlers/scm/test_onex_scm_command.py tests/ci/test_scm_operation_table_omn20912.py tests/ci/test_gh_shim_coverage_table_omn20914.py -q --no-cov -n 0 -p no:randomly
+    cwd: .

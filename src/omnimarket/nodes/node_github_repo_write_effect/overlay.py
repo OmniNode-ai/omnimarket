@@ -1,7 +1,8 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The overlay of node_github_repo_write_effect: the labels a pr_label write may touch and the repository variables a
-repo_variable_set/get write may read or write, none in code.
+"""The overlay of node_github_repo_write_effect: the labels a pr_label write may touch, the repository variables a
+repo_variable_set/get write may read or write and the self-hosted runners a runner_list/remove write may act on, none
+in code.
 
 Found at ``<root>/node_github_repo_write_effect/overlay.yaml`` under a root named in ``ONEX_SKILL_OVERLAY_ROOTS``. The
 package ships ``overlay.example.yaml`` with synthetic values. Nothing here has a default: an absent key refuses the load.
@@ -10,6 +11,9 @@ package ships ``overlay.example.yaml`` with synthetic values. Nothing here has a
 code, on a command line or on a request; names or values that look like secrets are refused. An entry's ``format``
 reads the source as the value itself (``text``) or as a YAML document in the overlays repository whose declared
 ``select`` key's value is rendered as compact JSON (``json_compact``) or, for a string, used as it is (``scalar``).
+
+``runner_removals`` names each organization whose runners a lane may list and, per organization, the runners a
+runner_remove may delete: an offline runner of another name is never deleted.
 
 The document also carries ``event_bus`` and ``comment_author_logins`` for their own readers; they are optional here
 because the node never reads them, and each reader refuses on its own when its key is absent.
@@ -116,11 +120,47 @@ class ModelRepoVariablesOverlay(BaseModel):
         return self
 
 
+class ModelRunnerEntry(BaseModel):
+    """One organization whose runners a lane may list, and one of its runners
+    a runner_remove may delete; no runner is named in code."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    organization: str = Field(pattern=r"^[A-Za-z0-9_.-]+$")
+    name: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
+
+
+class ModelRunnerRemovalOverlay(BaseModel):
+    """The runners a runner_list/runner_remove write may act on, none in code.
+
+    ``runner_list`` is served for an organization named by at least one entry;
+    ``runner_remove`` only for a named (organization, name) pair.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    entries: tuple[ModelRunnerEntry, ...] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _shape(self) -> ModelRunnerRemovalOverlay:
+        seen: set[tuple[str, str]] = set()
+        for entry in self.entries:
+            key = (entry.organization.lower(), entry.name)
+            if key in seen:
+                raise ValueError(
+                    "a runner removal entry is named twice: "
+                    f"{entry.organization} {entry.name}"
+                )
+            seen.add(key)
+        return self
+
+
 class ModelRepoWriteOverlay(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     pr_label: ModelPrLabelOverlay
     repo_variables: ModelRepoVariablesOverlay | None = None
+    runner_removals: ModelRunnerRemovalOverlay | None = None
     event_bus: ModelNodeEventBus | None = None
     comment_author_logins: tuple[str, ...] | None = None
 

@@ -72,6 +72,8 @@ from omnimarket.nodes.node_github_repo_write_effect.overlay import (
     ModelRepoVariablesEntry,
     ModelRepoVariablesOverlay,
     ModelRepoWriteOverlay,
+    ModelRunnerEntry,
+    ModelRunnerRemovalOverlay,
 )
 from omnimarket.nodes.node_github_repo_write_effect.services.pr_label import (
     add_labels_request,
@@ -79,6 +81,9 @@ from omnimarket.nodes.node_github_repo_write_effect.services.pr_label import (
 from omnimarket.nodes.node_github_repo_write_effect.services.repo_variable import (
     create_variable_request,
     get_variable_request,
+)
+from omnimarket.nodes.node_github_repo_write_effect.services.runner_registration import (
+    list_runners_request,
 )
 
 pytestmark = pytest.mark.unit
@@ -682,6 +687,126 @@ def test_the_contract_declares_repo_variable_operations() -> None:
     for name, replaces in (
         ("repo_variable_set", "replaces gh variable set."),
         ("repo_variable_get", "replaces gh variable get."),
+    ):
+        assert entries[name]["transport"] == "rest"
+        assert replaces in entries[name]["description"]
+
+
+# Test-local organization and runner names only; the real names live in the
+# overlays repository, never in src, the contract or the shipped overlay example.
+_RUNNER_REPO = _REPO
+_RUNNER_ORG = _REPO.split("/")[0]
+_RUNNER = "example-runner-1"
+_RUNNER_OFF_LIMITS = "example-runner-off-limits"
+
+
+def _runners_overlay() -> ModelRepoWriteOverlay:
+    return ModelRepoWriteOverlay(
+        pr_label=ModelPrLabelOverlay(allowed_labels=(_LABEL,)),
+        runner_removals=ModelRunnerRemovalOverlay(
+            entries=(ModelRunnerEntry(organization=_RUNNER_ORG, name=_RUNNER),)
+        ),
+    )
+
+
+def _runner_command(
+    operation: EnumRepoWriteOperation, **kw: object
+) -> ModelRepoWriteRequest:
+    return ModelRepoWriteRequest.model_validate(
+        {
+            "correlation_id": uuid4(),
+            "operation": operation,
+            "repo": _RUNNER_REPO,
+            "idempotency_key": "runner-chain-0001",
+            "requested_by_lane": "author-lane",
+            **kw,
+        }
+    )
+
+
+async def test_a_runner_list_is_published_as_completed() -> None:
+    page = list_runners_request(_RUNNER_ORG, 1)
+    body = {
+        "total_count": 1,
+        "runners": [{"id": 9, "name": _RUNNER, "status": "offline", "busy": False}],
+    }
+    fake = _Recorded(
+        [(page, ModelGithubHttpResponse(status=200, headers=_HEADERS, body=body))]
+    )
+    handler = HandlerGithubRepoWriteEffect(
+        fake, clock=_CLOCK.timestamp, overlay=_runners_overlay()
+    )
+    broker, correlation_id = await _run(
+        handler, _runner_command(EnumRepoWriteOperation.RUNNER_LIST)
+    )
+    (envelope,) = _on(broker, _COMPLETED)
+    assert envelope.correlation_id == correlation_id
+    completed = ModelRepoWriteCompleted.model_validate(envelope.payload)
+    assert completed.operation is EnumRepoWriteOperation.RUNNER_LIST
+    assert completed.mode is EnumRepoWriteMode.ENFORCE
+    assert completed.runners is not None
+    assert [(r.id, r.name, r.status, r.busy) for r in completed.runners] == [
+        (9, _RUNNER, "offline", False)
+    ]
+    assert completed.requests == (page,)
+    assert fake.sent == [page]
+    assert fake.exchanges == []
+    assert _on(broker, _FAILED) == []
+
+
+async def test_a_runner_outside_the_overlay_is_published_as_failed() -> None:
+    fake = _Recorded([])
+    handler = HandlerGithubRepoWriteEffect(
+        fake, clock=_CLOCK.timestamp, overlay=_runners_overlay()
+    )
+    broker, _ = await _run(
+        handler,
+        _runner_command(
+            EnumRepoWriteOperation.RUNNER_REMOVE, runner_name=_RUNNER_OFF_LIMITS
+        ),
+    )
+    assert fake.sent == []
+    assert _on(broker, _COMPLETED) == []
+    (envelope,) = _on(broker, _FAILED)
+    failed = ModelRepoWriteFailed.model_validate(envelope.payload)
+    assert failed.reason is EnumRepoWriteRefusal.RUNNER_NOT_ALLOWED
+    assert failed.terminal_failure_cause is EnumRepoWriteRefusal.RUNNER_NOT_ALLOWED
+    assert _RUNNER_OFF_LIMITS in failed.detail
+
+
+async def test_an_online_runner_is_published_as_failed_with_no_delete() -> None:
+    page = list_runners_request(_RUNNER_ORG, 1)
+    body = {
+        "total_count": 1,
+        "runners": [{"id": 9, "name": _RUNNER, "status": "online", "busy": False}],
+    }
+    fake = _Recorded(
+        [(page, ModelGithubHttpResponse(status=200, headers=_HEADERS, body=body))]
+    )
+    handler = HandlerGithubRepoWriteEffect(
+        fake, clock=_CLOCK.timestamp, overlay=_runners_overlay()
+    )
+    broker, _ = await _run(
+        handler,
+        _runner_command(EnumRepoWriteOperation.RUNNER_REMOVE, runner_name=_RUNNER),
+    )
+    assert fake.sent == [page]
+    assert _on(broker, _COMPLETED) == []
+    (envelope,) = _on(broker, _FAILED)
+    failed = ModelRepoWriteFailed.model_validate(envelope.payload)
+    assert failed.reason is EnumRepoWriteRefusal.RUNNER_ONLINE
+    assert failed.terminal_failure_cause is EnumRepoWriteRefusal.RUNNER_ONLINE
+
+
+def test_the_contract_declares_the_runner_operations() -> None:
+    contract = yaml.safe_load(_CONTRACT.read_text(encoding="utf-8"))
+    entries = {entry["name"]: entry for entry in contract["operations"]}
+    for name, replaces in (
+        ("runner_list", "replaces gh api --method GET /orgs/{o}/actions/runners."),
+        (
+            "runner_remove",
+            "replaces gh api --method DELETE /orgs/{o}/actions/runners/{id}.",
+        ),
     ):
         assert entries[name]["transport"] == "rest"
         assert replaces in entries[name]["description"]
