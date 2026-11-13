@@ -36,6 +36,7 @@ from omnimarket.nodes.node_factory_floor_publish_effect.models.model_factory_flo
     ModelPublishTarget,
     ModelReportsPublishRequest,
 )
+from tests.nodes.node_factory_floor_publish_effect.limits_support import TEST_LIMITS
 
 pytestmark = pytest.mark.unit
 
@@ -80,6 +81,7 @@ class TwoHosts:
 
 def _overlay(tmp_path: Path, *, local: bool = True) -> ModelFactoryFloorPublishOverlay:
     return ModelFactoryFloorPublishOverlay(
+        limits=TEST_LIMITS,
         ssh_target=HOST_A,
         remote_dir=str(tmp_path / "a/site"),
         serve_url="http://a.example.invalid:8088/",

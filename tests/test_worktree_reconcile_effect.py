@@ -520,6 +520,47 @@ def test_standalone_depth_canonical_exclusion_and_trash(
     assert (extras / ".onex_state" / "worktree-reconcile-trash" / "2026-01-10").is_dir()
 
 
+def test_a_git_directory_under_a_registry_root_is_counted_and_never_removed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # OMN-22579: h201 reported scanned=12 while its root held 27 sandbox leftovers
+    # (empty .agents, .aws, .codex and .git directories) and one full clone. Discovery
+    # dropped every directory with a .git directory, so the run never counted them.
+    clone, root, remote = git_fixture(tmp_path)
+    linked = root / "linked-task" / "repo"
+    run_git(clone, "worktree", "add", "-b", "linked", str(linked))
+    full = root / "clone-task" / "repo"
+    run_git(tmp_path, "clone", str(remote), str(full))
+    residue = root / "sandbox-residue"
+    for name in (".agents", ".aws", ".codex", ".git"):
+        (residue / name).mkdir(parents=True)
+    monkeypatch.setattr(
+        "omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_facts.process_cwds",
+        lambda: (),
+    )
+    later = datetime(2100, 1, 1, tzinfo=UTC)
+    items = {
+        f.path: f
+        for f in GitWorktreeFactsProbe(unit_reader=NO_UNITS).discover(
+            command(roots=(str(root),)), later
+        )
+    }
+    assert sorted(items) == sorted(str(p.resolve()) for p in (linked, full, residue))
+    policy = ModelWorktreeReconcilePolicy(
+        allowed_remote_owners=("owner",), allow_standalone_clone_removal=True
+    )
+    from omnimarket.worktree_reconcile.rules import classify
+
+    clone_facts = items[str(full.resolve())]
+    assert clone_facts.kind == Kind.STANDALONE_CLONE
+    assert "probe_needs_human:clone_under_worktree_root" in clone_facts.probe_errors
+    residue_facts = items[str(residue.resolve())]
+    assert residue_facts.kind == Kind.ORPHAN_DIR
+    assert not residue_facts.orphan_empty
+    for fact in (clone_facts, residue_facts):
+        assert classify(fact, policy)[0] != Decision.REMOVE
+
+
 def test_pin_is_proven_on_the_remote(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
