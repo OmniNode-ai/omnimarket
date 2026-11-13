@@ -1528,6 +1528,7 @@
   "tests/nodes/node_host_installer_registry_units/test_lane_closeout_sweep_unit.py": 0.38,
   "tests/nodes/node_host_installer_registry_units/test_lane_host_pool_snapshot_unit.py": 0.57,
   "tests/nodes/node_host_installer_registry_units/test_log_directory.py": 0.17,
+  "tests/nodes/node_host_installer_registry_units/test_old_installer_module_tick_units.py": 5.29,
   "tests/nodes/node_host_installer_registry_units/test_overlay_root_declared_by_host_table.py": 5.3,
   "tests/nodes/node_host_installer_registry_units/test_overlay_root_never_a_worktree.py": 11.7,
   "tests/nodes/node_host_installer_registry_units/test_overlay_roots_store_first.py": 2.5,

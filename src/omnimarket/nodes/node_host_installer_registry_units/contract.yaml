@@ -1495,3 +1495,48 @@ units:
           registry_root: "{registry_root}"
     evidence_file: .local/state/omni/silent-failure-alarm/last-run.json
     state_directory: .onex_state/silent-failure-alarm
+  rescue-patch-review:
+    platform: launchd
+    kind: registry_module_tick
+    label: ai.omninode.rescue-patch-review
+    template: templates/ai.omninode.registry-module-tick.plist.tmpl
+    schedule:
+      start_interval: 21600
+      run_at_load: true
+      description: every 21600 s and at load
+    registry_project: omnimarket
+    run_timeout_s: 900
+    interpreter_candidates:
+      - /opt/homebrew/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_rescue_patch_review_effect
+    entry_file: src/omnimarket/nodes/node_rescue_patch_review_effect/__main__.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    evidence_file: .local/state/omni/rescue-patch-review/last-run.json
+    state_directory: .onex_state/rescue-patch-review
+  consumer-group-guard:
+    platform: launchd
+    kind: registry_module_tick
+    label: ai.omninode.consumer-group-guard
+    template: templates/ai.omninode.registry-module-tick.plist.tmpl
+    schedule:
+      start_interval: 300
+      run_at_load: true
+      description: every 300 s and at load
+    registry_project: omnimarket
+    run_timeout_s: 240
+    interpreter_candidates:
+      - /opt/homebrew/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_consumer_group_guard_effect
+    entry_file: src/omnimarket/nodes/node_consumer_group_guard_effect/__main__.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment:
+      ONEX_CONSUMER_GROUP_GUARD_BUS_LANE: dev
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    evidence_file: .local/state/omni/consumer-group-guard/last-run.json
+    state_directory: .onex_state/consumer-group-guard
