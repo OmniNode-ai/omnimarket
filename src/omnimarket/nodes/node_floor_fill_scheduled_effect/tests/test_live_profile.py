@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import typing
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -13,6 +14,7 @@ import pytest
 import yaml
 from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 
+from omnimarket.handlers.floor_fill_scheduled_tick import run_floor_fill_tick
 from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.core import (
     ANSWER_ROW_SUFFIX,
 )
@@ -25,6 +27,9 @@ from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.store import (
 )
 from omnimarket.nodes.node_floor_fill_scheduled_effect.handlers.handler_floor_fill_scheduled import (
     HandlerFloorFillScheduled,
+)
+from omnimarket.nodes.node_floor_fill_scheduled_effect.models import (
+    ModelFloorFillScheduleOverlay,
 )
 
 pytestmark = pytest.mark.unit
@@ -176,3 +181,67 @@ def test_live_without_injected_store_builds_the_table_store_from_the_declared_va
     )
     assert settings.schema_name == "public"
     assert settings.table_name == "floor_fill_state"
+
+
+_PROFILES = typing.get_args(
+    ModelFloorFillScheduleOverlay.model_fields["profile"].annotation
+)
+
+
+@pytest.mark.parametrize("profile", _PROFILES)
+def test_seam_every_profile_the_overlay_admits_is_bound_by_the_tick(
+    tmp_path: Path, profile: str
+) -> None:
+    """A profile the schedule overlay admits and the tick does not bind raises FloorFillProfileUnboundError."""
+    store = InMemoryFloorStateStore() if profile == "live" else None
+    outcome = run_floor_fill_tick(
+        fill_overlay_id="node_floor_fill_orchestrator",
+        profile=profile,
+        environ=environ(tmp_path),
+        store=store,
+    )
+    assert outcome.first_line.startswith("UNKNOWN")
+
+
+def test_seam_the_store_settings_come_from_the_overlay_keys(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import omnimarket.handlers.floor_fill_state_store_postgres as pg
+
+    class RecordingStore:
+        def __init__(self, settings: Any) -> None:
+            self._settings = settings
+            self._rows: dict[str, tuple[str, int]] = {}
+
+        def load(self, key: str) -> ModelStateRead:
+            stored = self._rows.get(key)
+            if stored is None:
+                return ModelStateRead(payload=None, version=0)
+            return ModelStateRead(payload=stored[0], version=stored[1])
+
+        def compare_and_set(
+            self, key: str, expected_version: int, new_version: int, payload: str
+        ) -> bool:
+            stored = self._rows.get(key)
+            current = stored[1] if stored is not None else 0
+            if current != expected_version:
+                return False
+            self._rows[key] = (payload, new_version)
+            return True
+
+    captured: list[Any] = []
+
+    class FakePostgresStore(RecordingStore):
+        def __init__(self, settings: Any) -> None:
+            super().__init__(settings)
+            captured.append(settings)
+
+    monkeypatch.setattr(pg, "PostgresFloorStateStore", FakePostgresStore)
+    handler = HandlerFloorFillScheduled(environ=environ(tmp_path))
+    handler.handle(tick(T0))
+    assert len(captured) == 1
+    settings = captured[0]
+    live = yaml.safe_load(EXAMPLE.read_text(encoding="utf-8"))["floor_fill_live"]
+    assert settings.schema_name == live["store_schema_name"]
+    assert settings.table_name == live["store_table_name"]
+    assert settings.connect_timeout_seconds == live["store_connect_timeout_seconds"]
