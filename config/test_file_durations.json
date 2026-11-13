@@ -4701,6 +4701,7 @@
   "tests/unit/nodes/node_ledger_rows_loader_effect/test_runtime_rows_loader.py": 2.0,
   "tests/unit/nodes/node_ledger_stats_compute/test_node_ledger_stats_compute.py": 0.14,
   "tests/unit/nodes/node_llm_delegation_call_effect/test_antigravity_target.py": 0.25,
+  "tests/unit/nodes/node_llm_delegation_call_effect/test_call_ceiling_evidence.py": 4.6,
   "tests/unit/nodes/node_llm_delegation_call_effect/test_contract_route_binding.py": 0.08,
   "tests/unit/nodes/node_llm_delegation_call_effect/test_delegation_targets.py": 0.52,
   "tests/unit/nodes/node_llm_delegation_call_effect/test_handler_llm_delegation_call.py": 1.13,
