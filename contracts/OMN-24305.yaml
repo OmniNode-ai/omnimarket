@@ -45,11 +45,11 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/nodes/node_schedule_run_reducer/test_runtime_role_acl_seam.py -q --no-cov
     cwd: .
 - id: dod-omn24305-deploy-work-ledger-reducer-scheduled
-  description: 'Deploy probe the hosted runner can run: the work-ledger reducer scheduled node contract exists at the checked-out commit; the file does not exist at the merge base, so the probe fails there. AC3 is read on the dev runtime after the dev deploy through the deploy agent.'
+  description: 'Deploy probe the hosted runner can run: the work-ledger reducer scheduled node contract at the checked-out commit on GitHub names its handler class; the file does not exist at the merge base, so the probe fails there. AC3 is read on the dev runtime after the dev deploy through the deploy agent.'
   source: manual
   checks:
   - check_type: command
-    check_value: 'test -f src/omnimarket/nodes/node_work_ledger_reducer_scheduled_effect/contract.yaml'
+    check_value: 'bash -o pipefail -c ''gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_work_ledger_reducer_scheduled_effect/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "HandlerWorkLedgerReducerScheduled" > /dev/null'''
     cwd: .
 - id: dod-omn24305-integration-proof
   description: AC3 is read on the dev runtime after the dev deploy through the deploy agent; the pushed head is run on a lab host first and the deployed reading is named in the pull request.
