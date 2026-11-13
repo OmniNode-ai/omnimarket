@@ -4,7 +4,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
+from typing import Literal
 
 import pytest
 from pydantic import ValidationError
@@ -29,7 +31,7 @@ def _event(
     job_id: str,
     fired_at: datetime,
     *,
-    outcome: str = "completed",
+    outcome: Literal["completed", "failed"] = "completed",
     detail: str = "",
     scheduled_for: datetime | None = None,
 ) -> ModelScheduleRunEvent:
@@ -39,13 +41,13 @@ def _event(
         tick_id=f"tick-{job_id}",
         scheduled_for=scheduled_for or fired_at,
         fired_at=fired_at,
-        outcome=outcome,  # type: ignore[arg-type]
+        outcome=outcome,
         detail=detail,
     )
 
 
 @pytest.fixture(autouse=True)
-def _fresh_store():
+def _fresh_store() -> Iterator[None]:
     reset_schedule_run_store()
     yield
     reset_schedule_run_store()
@@ -123,4 +125,9 @@ def test_error_a_later_completed_run_keeps_the_failure_count() -> None:
 
 def test_error_an_unknown_outcome_string_fails_model_validation() -> None:
     with pytest.raises(ValidationError):
-        _event("job_a", T0, outcome="exploded")
+        ModelScheduleRunEvent.model_validate(
+            {
+                **_event("job_a", T0).model_dump(),
+                "outcome": "exploded",
+            }
+        )

@@ -22,6 +22,7 @@ from omnimarket.models.broker_acl import (
     EnumAclResourceType,
     EnumBrokerAclFindingCode,
     ModelBrokerAclDeriveRequest,
+    ModelBrokerAclDeriveResult,
     ModelBrokerAclPrincipalsOverlay,
 )
 from omnimarket.nodes.node_broker_acl_overlay_render_compute.handlers.handler_broker_acl_derive import (
@@ -64,7 +65,9 @@ def _overlay(nodes: list[str]) -> ModelBrokerAclPrincipalsOverlay:
     )
 
 
-def _derive(overlay: ModelBrokerAclPrincipalsOverlay, only_node: str | None = None):
+def _derive(
+    overlay: ModelBrokerAclPrincipalsOverlay, only_node: str | None = None
+) -> ModelBrokerAclDeriveResult:
     return HandlerBrokerAclDerive().handle(
         ModelBrokerAclDeriveRequest(
             scope="broker_acl_principals",

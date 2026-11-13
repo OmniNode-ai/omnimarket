@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import Literal
 
 import pytest
 
@@ -32,13 +33,15 @@ def _decl(
 
 
 def _state(
-    job_id: str, last_fired_at: datetime, last_outcome: str = "completed"
+    job_id: str,
+    last_fired_at: datetime,
+    last_outcome: Literal["completed", "failed"] = "completed",
 ) -> ModelScheduleJobState:
     return ModelScheduleJobState(
         job_id=job_id,
         last_fired_at=last_fired_at,
         last_scheduled_for=last_fired_at,
-        last_outcome=last_outcome,  # type: ignore[arg-type]
+        last_outcome=last_outcome,
         fire_count=1,
         failure_count=0 if last_outcome == "completed" else 1,
         last_failure_detail="" if last_outcome == "completed" else "boom",
