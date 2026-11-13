@@ -83,6 +83,10 @@ handler_routing:
       handler:
         name: HandlerConsumerGroupReaper
         module: omnimarket.nodes.node_consumer_group_guard_effect.handlers.handler_group_reaper
+    - operation: consumer_group_census_event_effect
+      handler:
+        name: HandlerConsumerGroupCensusEvent
+        module: omnimarket.nodes.node_consumer_group_guard_effect.handlers.handler_consumer_group_census_event
 descriptor:
   node_archetype: effect
   purity: impure

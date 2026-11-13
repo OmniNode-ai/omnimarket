@@ -1,0 +1,69 @@
+schema_version: 1.0.0
+ticket_id: OMN-24191
+title: Declare the stability lane's proof list entry and hold the three proofs' required fields equal to it
+summary: 'The three customer-path proofs (chain canary, receipt identity, consumer flow) read their lane list from the repository variable LAB_PROOF_LANES_JSON, which nothing declares or fills. This change adds
+  the typed model the overlays repository validates its lab_proof_lanes overlay through (src/omnimarket/models/overlay_documents/model_lab_proof_lanes_overlay.py): it refuses what the proofs'' lane resolver
+  refuses (a host-local alias or loopback address, a missing port or a path, a bad compose project or bus lane, a duplicate lane, a lane that is not a stability lane) and renders the exact value of the variable.
+  Not in this change: the overlay value (overlays repository), the seam test against the resolver (omnibase_infra), setting the variable (waits for the write node verb) and the scheduled proof run reading it (AC3).'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24191-lab-proof-lanes-model
+  statement: The stability proof lane list has a typed model that refuses what the lane resolver refuses and renders the variable's exact value.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the stability lane''s list entry is declared once in the overlays repository and parses under the lane resolver''s own rules, carrying every field the consumer flow check requires -- falsifier:
+      uv run pytest tests -k lab_proof_lanes in overlays fails when a required field is dropped or an address is a loopback or host alias'
+  - id: AC2
+    statement: 'AC2: the fields each of the three proof workflows requires and matches on equal the list the overlay test holds -- falsifier: uv run pytest tests/ci -k stability_proof_lane_declaration in omnibase_infra
+      fails when a workflow adds a required field the declaration lacks'
+  - id: AC3
+    statement: 'AC3: integrated: once the repository variable is set from the declaration, a scheduled consumer flow run resolves the stability lane in the running lab and grades its checks -- falsifier:
+      a run log of the consumer flow check that ends at "no lab lane declared" or names a dev lane'
+evidence_requirements:
+- kind: tests
+  description: The overlay document model tests pass at the pushed head.
+  command: uv run pytest tests/unit/models/test_lab_proof_lanes_overlay_document_omn24191.py -q -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24191-ac1-model
+  description: 'AC1 (model half): the document model refuses a loopback or host-alias address, a missing port, a path, a bad compose project, a duplicate lane and a lane that is not a stability lane, and renders
+    the exact value; fails with the address checks removed (17 of 45 cases red).'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/models/test_lab_proof_lanes_overlay_document_omn24191.py -q -p no:cacheprovider
+    cwd: .
+- id: dod-omn24191-ac2-golden
+  description: 'AC2 (omnimarket half): the golden rendered value is held by a test, and the same string is held in omnibase_infra by the resolver seam test; a change to either shape fails its own repository''s
+    test.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/models/test_lab_proof_lanes_overlay_document_omn24191.py -q -p no:cacheprovider -k golden
+    cwd: .
+- id: dod-omn24191-ac3-hosted-proxy
+  description: 'hosted proxy for AC3: the model tests pass; the scheduled consumer flow run after the variable is set from the declaration is read in the running lab and named in the pull request.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/models/test_lab_proof_lanes_overlay_document_omn24191.py -q -p no:cacheprovider
+    cwd: .
+- id: dod-omn24191-integration-proof
+  description: the model tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24191 --kind test -- env PYTHONDONTWRITEBYTECODE=1
+      uv run --frozen pytest tests/unit/models/test_lab_proof_lanes_overlay_document_omn24191.py -q --no-cov
