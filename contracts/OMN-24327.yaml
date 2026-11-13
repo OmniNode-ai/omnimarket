@@ -1,7 +1,7 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-24327"
 title: "The landing system stops grouping pull requests on a check that only repeats another check"
-summary: "The landing decision node's policy default cluster_excluded_checks gains Repo Evidence Dependency, a check that only mirrors each pull request's own repo-evidence / dod-verify verdict and always carries one message. Three pull requests red on it were clustered into one fake shared cause (the controller's cause d17cc3829668, 557 workers all answering cause_not_shared); with the check excluded each goes to its own per-PR worker, while three reds on repo-evidence / dod-verify itself still cluster."
+summary: "The landing decision node's policy default cluster_excluded_checks gains Repo Evidence Dependency, a check that only mirrors each pull request's own repo-evidence / dod-verify verdict and always carries one message. Three pull requests red on it were clustered into one fake shared cause (the controller's cause d17cc3829668: 555 workers on record, the eight its export lists answering cause_not_shared or external_blocker); with the check excluded each goes to its own per-PR worker, while three reds on repo-evidence / dod-verify itself still cluster."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
