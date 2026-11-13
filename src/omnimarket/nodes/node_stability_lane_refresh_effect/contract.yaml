@@ -90,8 +90,8 @@ broker_acl_grants:
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.stability-refresh-completed.v1, operation: DESCRIBE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.stability-refresh-failed.v1, operation: WRITE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.stability-refresh-failed.v1, operation: DESCRIBE}
-      - {resource_type: GROUP, pattern: PREFIXED, name: onex-stability-refresh-serve, operation: READ}
-      - {resource_type: GROUP, pattern: PREFIXED, name: onex-stability-refresh-serve, operation: DESCRIBE}
+      - {resource_type: GROUP, pattern: PREFIXED, name: local.omnimarket.node_stability_lane_refresh_effect.consume.v1., operation: READ}
+      - {resource_type: GROUP, pattern: PREFIXED, name: local.omnimarket.node_stability_lane_refresh_effect.consume.v1., operation: DESCRIBE}
 
 externally_consumed_topics:
   - onex.evt.omnimarket.stability-refresh-pin-accepted.v1

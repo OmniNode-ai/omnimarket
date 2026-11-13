@@ -26,7 +26,7 @@ health_timeout_seconds: 10
 serve:
   bus_lane: example-bus-lane
   workspace_root: /example/omninode
-  consumer_group: onex-stability-refresh-serve.example-box
+  consumer_group: local.omnimarket.node_stability_lane_refresh_effect.consume.v1.example-box
   max_records: 100
   read_timeout_s: 30.0
   join_timeout_s: 10.0
