@@ -4,11 +4,12 @@
 
 One run against the fakes ensures the dev realm's service-account client: the call order is the
 admin token, the clients lookup, the client create, the management client lookup, the service
-account user, the role lookups, the role mapping, the scope mapping and the client token. The
-generated secret moves to Keycloak -- the client representation and the client_credentials form --
-and to nothing else: not the result's JSON dump, its repr, its str or the logs, and neither does
-the admin password or any access token. A second run finds the client and PUTs the same secret; the
-probe verb answers ready and calls nothing.
+account user, the role lookups, the role mapping, the scope mapping, the sign-in client lookup,
+the protocol mapper collection and one mapper create per declared mapper, then the client token.
+The generated secret moves to Keycloak -- the client representation and the client_credentials
+form -- and to nothing else: not the result's JSON dump, its repr, its str or the logs, and
+neither does the admin password or any access token. A second run finds the client and PUTs the
+same secret and the existing mappers; the probe verb answers ready and calls nothing.
 """
 
 from __future__ import annotations
@@ -45,6 +46,7 @@ _BASE = "https://keycloak.example.invalid"
 _REALM = "omninode"
 _ADMIN_REALM = "master"
 _CLIENTS_SUFFIX = "/admin/realms/omninode/clients"
+_MAPPERS_FRAGMENT = "/protocol-mappers/models"
 _ADMIN_USERNAME = "bootstrap-admin"
 _ADMIN_PASSWORD = "bootstrap-password-value"
 _SECRET = "Gk7!dev-client-secret"
@@ -67,6 +69,8 @@ def _overlay() -> ModelDevKeycloakClientOverlay:
             "client_role_path_template": "/admin/realms/{realm}/clients/{client_uuid}/roles/{role}",
             "user_client_role_mappings_path_template": "/admin/realms/{realm}/users/{user_id}/role-mappings/clients/{client_uuid}",
             "client_scope_mappings_path_template": "/admin/realms/{realm}/clients/{client_uuid}/scope-mappings/clients/{management_client_uuid}",
+            "client_protocol_mappers_path_template": "/admin/realms/{realm}/clients/{client_uuid}/protocol-mappers/models",
+            "client_protocol_mapper_path_template": "/admin/realms/{realm}/clients/{client_uuid}/protocol-mappers/models/{mapper_id}",
         },
         bootstrap={
             "env_file": ".example/.env",
@@ -81,6 +85,35 @@ def _overlay() -> ModelDevKeycloakClientOverlay:
             "secret_key_id": "dev_keycloak_client_secret",
             "secret_folder": "/shared/env",
             "secret_key": "KEYCLOAK_DEV_CLIENT_SECRET",
+        },
+        sign_in_client={
+            "client_id": "omnidash-spa",
+            "mappers": [
+                {
+                    "name": "tenant_id",
+                    "protocol_mapper": "oidc-usermodel-attribute-mapper",
+                    "config": {
+                        "user.attribute": "tenant_id",
+                        "claim.name": "tenant_id",
+                        "id.token.claim": "false",
+                        "access.token.claim": "true",
+                        "userinfo.token.claim": "true",
+                        "jsonType.label": "String",
+                    },
+                },
+                {
+                    "name": "tenant_slug",
+                    "protocol_mapper": "oidc-usermodel-attribute-mapper",
+                    "config": {
+                        "user.attribute": "tenant_slug",
+                        "claim.name": "tenant_slug",
+                        "id.token.claim": "false",
+                        "access.token.claim": "true",
+                        "userinfo.token.claim": "true",
+                        "jsonType.label": "String",
+                    },
+                },
+            ],
         },
         secret_store=None,
     )
@@ -143,11 +176,13 @@ def test_golden_chain_ensured(caplog: pytest.LogCaptureFixture) -> None:
     assert result.client_id == "provisioner-client"
     assert result.realm == "omninode"
     assert result.lane == "dev"
+    assert result.mappers_ensured == 2
 
     # Call order: admin token, clients lookup, client create, management client lookup, service
-    # account user, role lookups, role mapping, scope mapping, client token.
+    # account user, role lookups, role mapping, scope mapping, sign-in client lookup, protocol
+    # mapper collection, one mapper create per declared mapper, client token.
     calls = transport.call_log
-    assert len(calls) == 10
+    assert len(calls) == 14
     expected = [
         ("POST", f"/realms/{_ADMIN_REALM}/protocol/openid-connect/token"),
         ("GET", _CLIENTS_SUFFIX),
@@ -158,25 +193,30 @@ def test_golden_chain_ensured(caplog: pytest.LogCaptureFixture) -> None:
         ("GET", "/roles/view-users"),
         ("POST", "/role-mappings/clients/"),
         ("POST", "/scope-mappings/clients/"),
+        ("GET", _CLIENTS_SUFFIX),
+        ("GET", _MAPPERS_FRAGMENT),
+        ("POST", _MAPPERS_FRAGMENT),
+        ("POST", _MAPPERS_FRAGMENT),
         ("POST", f"/realms/{_REALM}/protocol/openid-connect/token"),
     ]
     for call, (method, fragment) in zip(calls, expected, strict=True):
         assert call.startswith(method)
         assert fragment in call
 
-    # The empty dev-client lookup came first; the management client lookup came second.
+    # The empty dev-client lookup came first, the management client lookup second and the
+    # sign-in client lookup after the role grants.
     listings = [
         request.query["clientId"]
         for request in transport.sent
         if request.method == "GET" and request.url.endswith(_CLIENTS_SUFFIX)
     ]
-    assert listings == ["provisioner-client", "realm-management"]
+    assert listings == ["provisioner-client", "realm-management", "omnidash-spa"]
 
     # Every admin call carried the admin bearer; neither token call carried one.
     admin_calls = [
         request for request in transport.sent if "/admin/realms/" in request.url
     ]
-    assert len(admin_calls) == 8
+    assert len(admin_calls) == 12
     assert all(
         request.bearer is not None and request.bearer.get_secret_value() == _ADMIN_TOKEN
         for request in admin_calls
@@ -246,7 +286,12 @@ def test_second_run_finds_the_client_and_puts_the_same_secret(
     assert transport.updated_bodies[0]["secret"] == _SECRET
     assert transport.dev_uuid is not None
     puts = [call for call in transport.call_log if call.startswith("PUT ")]
-    assert puts == [f"PUT {_BASE}/admin/realms/{_REALM}/clients/{transport.dev_uuid}"]
+    assert puts[0] == f"PUT {_BASE}/admin/realms/{_REALM}/clients/{transport.dev_uuid}"
+    # The second run also found both sign-in client mappers and PUT them in place, creating no more.
+    assert len(puts) == 3
+    assert all(_MAPPERS_FRAGMENT + "/" in call for call in puts[1:])
+    assert len(transport.mapper_created_bodies) == 2
+    assert len(transport.mapper_updated_bodies) == 2
 
     # The roles were granted on both runs, and the client_credentials proof succeeded on both.
     assert len(transport.role_mapping_bodies) == 2
