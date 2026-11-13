@@ -150,11 +150,11 @@ def test_protected_name_inside_a_venv_stops_the_unit_untouched(tmp_path: Path) -
     # error chain: a protected name inside an aged unit reports an error and removes nothing of it
     root = tmp_path / "venvs"
     venv = _make_venv(root, "protected", 30)
-    _file(venv / "memory" / "m.txt", b"m", 30)
+    _file(venv / "lib" / "MEMORY.md", b"m", 30)
     res = _only(_run([_entry(root, whole_tree=True)]))
     assert res.status == "error"
     assert "protected name" in res.error
-    assert (venv / "memory" / "m.txt").exists()
+    assert (venv / "lib" / "MEMORY.md").exists()
     assert (venv / "lib" / "site-packages" / "mod.py").exists()
     assert (venv / "bin" / "python").is_symlink()
 
@@ -214,3 +214,26 @@ def test_host_job_removes_an_aged_venv_through_the_cleanup_node(
     assert _only(result.files).status == "ok"
     assert not old_venv.exists()
     assert (new_venv / "bin" / "python").is_symlink()
+
+
+def test_a_library_package_named_memory_does_not_block_removal(tmp_path: Path) -> None:
+    # regression read on h101: every environment holds omnimemory/models/memory, and the agent-memory name rule refused them all
+    root = tmp_path / "venvs"
+    venv = _make_venv(root, "old", 30)
+    _file(
+        venv / "lib" / "site-packages" / "omnimemory" / "models" / "memory" / "x.py",
+        b"p",
+        30,
+    )
+    res = _only(_run([_entry(root, whole_tree=True)]))
+    assert res.status == "ok"
+    assert not venv.exists()
+
+
+def test_a_unit_named_memory_is_still_never_removed(tmp_path: Path) -> None:
+    # the unit's own name keeps the agent-memory rule
+    root = tmp_path / "venvs"
+    _file(root / "memory" / "lib" / "m.py", b"m", 30)
+    res = _only(_run([_entry(root, whole_tree=True)]))
+    assert res.status == "ok"
+    assert (root / "memory" / "lib" / "m.py").exists()

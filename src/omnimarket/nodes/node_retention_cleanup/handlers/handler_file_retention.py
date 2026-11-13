@@ -109,20 +109,36 @@ def _is_protected(path: Path) -> bool:
     )
 
 
-def _walk(path: Path) -> Iterator[Path]:
+def _is_protected_in_cache_tree(path: Path) -> bool:
+    """Inside a whole-tree cache unit only the memory index and the ledger are protected.
+
+    A Python environment holds library packages named ``memory`` (omnimemory.models.memory,
+    omnibase_spi.protocols.memory), which the agent-memory name rule would refuse for every
+    environment on a host (read on h101, 2026-11-13). The unit's own name still goes through
+    ``_is_protected`` in ``_units``.
+    """
+    return (
+        path.name == "MEMORY.md"
+        or path.name == ".git"
+        or path.name.startswith(_PROTECTED_PREFIX)
+    )
+
+
+def _walk(path: Path, *, cache_tree: bool = False) -> Iterator[Path]:
     """Regular files under ``path``, without following links or entering memory."""
-    if path.is_symlink() or _is_protected(path):
+    protected = _is_protected_in_cache_tree if cache_tree else _is_protected
+    if path.is_symlink() or protected(path):
         return
     if path.is_dir():
         for child in sorted(path.iterdir()):
-            yield from _walk(child)
+            yield from _walk(child, cache_tree=cache_tree)
     elif path.is_file():
         yield path
 
 
-def _measure(path: Path) -> _Unit:
+def _measure(path: Path, *, cache_tree: bool = False) -> _Unit:
     unit = _Unit(path)
-    for file in _walk(path):
+    for file in _walk(path, cache_tree=cache_tree):
         st = file.lstat()
         unit.files.append(file)
         unit.bytes += st.st_size
@@ -144,7 +160,7 @@ def _units(root: Path, entry: FileRetentionEntry) -> list[_Unit]:
             continue
         if match.is_dir() and any(match.rglob(".git")):
             continue
-        unit = _measure(match)
+        unit = _measure(match, cache_tree=entry.whole_tree)
         if unit.files:
             out.append(unit)
     return out
@@ -291,9 +307,9 @@ def _remove_verified(
     if whole_tree:
         for dirpath, dirnames, filenames in os.walk(unit.path, followlinks=False):
             for name in dirnames + filenames:
-                if _is_protected(Path(dirpath) / name):
+                if _is_protected_in_cache_tree(Path(dirpath) / name):
                     raise OSError("whole tree holds a protected name")
-    if set(_walk(unit.path)) != set(unit.files) or any(
+    if set(_walk(unit.path, cache_tree=whole_tree)) != set(unit.files) or any(
         _fingerprint(file) != snapshots[file] for file in unit.files
     ):
         raise OSError("source changed after archive verification")
