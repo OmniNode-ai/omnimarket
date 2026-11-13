@@ -8,6 +8,19 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from omnimarket.models.secret_store.model_secret_store_overlay import (
+    ModelSecretStoreOverlay,
+)
+
+
+class ModelNetUnitSecretRef(BaseModel):
+    """A secret in the store: the folder and key a ``__SECRET_<NAME>__`` placeholder is filled from."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    folder: str = Field(pattern=r"^/")
+    key: str = Field(min_length=1)
+
 
 class ModelNetUnitFile(BaseModel):
     """A single file entry in a net unit declaration."""
@@ -23,6 +36,7 @@ class ModelNetUnitFile(BaseModel):
     render: str = ""
     values: dict[str, str] = Field(default_factory=dict)
     encoding: str = ""
+    secrets: dict[str, ModelNetUnitSecretRef] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def _check_source_or_content(self) -> ModelNetUnitFile:
@@ -40,6 +54,7 @@ class ModelNetUnitDeclaration(BaseModel):
     platform: str
     hosts: list[str]
     service: str = ""
+    active_services: list[str] = Field(default_factory=list)
     serving: bool = False
     # The budget's numbers are checked by the handler, which refuses each defect with its own typed reason
     # (gpu-budget-incomplete, gpu-budget-no-room, gpu-budget-kv-floor); this document model only requires a mapping.
@@ -59,4 +74,7 @@ class ModelNetUnitsOverlay(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid", populate_by_name=True)
 
     document_schema: Literal["host_net_units.v1"] = Field(alias="schema")
+    # Where a file's `secrets` are read from: the store addressing and the identity's references, never a value. A document
+    # that declares no secrets declares no store.
+    secret_store: ModelSecretStoreOverlay | None = None
     units: dict[str, ModelNetUnitDeclaration]
