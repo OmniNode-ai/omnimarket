@@ -1,0 +1,101 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodeLabFillFireOutcomeCompute
+#
+# The pure judge of one lab-fill fire (OMN-24109):
+#
+#   handle(ModelLabFillFireOutcomeRequest) -> ModelLabFillFireOutcomeResult
+#
+# Given how the fire ended and what its own written result file says, it
+# returns the receipt's phase/exit/degraded class, the alert to send and the
+# validated result file to publish. It ports, behaviour for behaviour, the
+# lab-fill outcome logic of morning_workflows_tick.sh (the frozen repository),
+# including OMN-22431: a cut completion notification is NOT a failed fire
+# when the fire's own written result file exists and is non-empty.
+#
+# The node carries no setting: every setting rides on the request's policy,
+# which the effect node node_lab_fill_launcher_effect loads from its overlay.
+# The pure judge spells no marker, pattern, class name, exit code, template
+# or phase list of its own.
+#
+# The launcher calls it in two pure passes: the first with alert_exit unset
+# learns the alert, delivers it, and the second pass with the delivery's
+# exit code returns the final receipt. The second pass is what carries the
+# undelivered-alert degradation when a delivery failed.
+#
+# Addressable through runtime_dispatch like the other directly-invoked
+# compute nodes; nothing publishes the command yet (the launcher calls the
+# handler in process). Experimental until the launcher calls it.
+name: "node_lab_fill_fire_outcome_compute"
+contract_name: "node_lab_fill_fire_outcome_compute"
+node_name: "node_lab_fill_fire_outcome_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+description: >
+  The pure judge of one lab-fill fire. Given how the fire ended (the phase
+  and exit the run left, the run log's refused line and truncated marker,
+  the delivery record) and what its own written result file says (absent,
+  empty or its JSON content), it returns the receipt's phase, exit and
+  degraded class, the alert to send (refusal, no result, idle or blind), the
+  notice line to log and the validated result to publish at the latest path.
+  A selftest fire is returned unjudged. The node carries no setting: every
+  setting rides on the request's policy, which the effect node
+  node_lab_fill_launcher_effect loads from its overlay. Deterministic for the
+  same facts in both passes; no clock, no I/O, no side effect.
+input_model:
+  name: "ModelLabFillFireOutcomeRequest"
+  module: "omnimarket.nodes.node_lab_fill_fire_outcome_compute.models.model_lab_fill_fire_outcome"
+  description: "One fire as the tick observed it, with the overlay-loaded policy to judge under."
+output_model:
+  name: "ModelLabFillFireOutcomeResult"
+  module: "omnimarket.nodes.node_lab_fill_fire_outcome_compute.models.model_lab_fill_fire_outcome"
+  description: "The receipt: phase, exit, degraded class, result channel, notice line, alert, latest value."
+handler:
+  module: "omnimarket.nodes.node_lab_fill_fire_outcome_compute.handlers.handler_lab_fill_fire_outcome"
+  class: "HandlerLabFillFireOutcome"
+  input_model: "omnimarket.nodes.node_lab_fill_fire_outcome_compute.models.model_lab_fill_fire_outcome.ModelLabFillFireOutcomeRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_lab_fill_fire_outcome_compute.handlers.handler_lab_fill_fire_outcome:HandlerLabFillFireOutcome"
+  handlers:
+    - operation: "judge_lab_fill_fire"
+      handler:
+        name: "HandlerLabFillFireOutcome"
+        module: "omnimarket.nodes.node_lab_fill_fire_outcome_compute.handlers.handler_lab_fill_fire_outcome"
+# Called in process by node_lab_fill_launcher_effect, never over the bus: nothing publishes a command and no runtime
+# subscribes to one, so the contract declares no topic and no runtime profile (the dev broker gets no new topic or ACL
+# from this node). Its terminal events are named for the day it is dispatched.
+runtime_dispatch:
+  external_trigger: true
+terminal_event: onex.evt.omnimarket.lab-fill-fire-outcome-completed.v1
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_profiles: []
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+replay:
+  deterministic: true
+metadata:
+  description: "Pure judge of one lab-fill fire's outcome, alert and published result."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-11-13"
+  tags:
+    - compute
+    - lab-fill
+    - morning-workflows
+    - pure
