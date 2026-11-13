@@ -100,6 +100,7 @@ metadata:
   license: "MIT"
   created: "2026-11-13"
   ticket: "OMN-19998"
+  transport_type: "database"
   tags:
     - "effect"
     - "http"
