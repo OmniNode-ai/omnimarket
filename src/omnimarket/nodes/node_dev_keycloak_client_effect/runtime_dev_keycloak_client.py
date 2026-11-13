@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: MIT
 """``python -m omnimarket.nodes.node_dev_keycloak_client_effect <verb> --lane <lane>``.
 
-``run``   ensure the confidential dev service-account client, grant its realm-management roles, prove the
-          client_credentials token.
+``run``   ensure the confidential dev service-account client, grant its realm-management roles, ensure the sign-in
+          client's tenant claim mappers, prove the client_credentials token.
 ``probe`` read only: the bootstrap credential present is the ready answer; nothing is written and nothing is called.
 
 Exit codes: 0 the run ensured the client or the probe was ready; 1 a typed failure; 3 a deployment fact is
@@ -62,6 +62,7 @@ def _run(args: argparse.Namespace) -> int:
         f"outcome={result.outcome.value} ok={result.ok} realm={result.realm} "
         f"lane={result.lane} client_id={result.client_id or ''} "
         f"token_status={result.token_status if result.token_status is not None else ''} "
+        f"mappers_ensured={result.mappers_ensured if result.mappers_ensured is not None else ''} "
         f"expected_location={result.expected_location or ''} detail={result.detail}\n"
     )
     return 0 if result.ok else 1
