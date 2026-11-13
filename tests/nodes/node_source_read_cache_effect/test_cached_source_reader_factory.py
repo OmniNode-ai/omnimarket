@@ -30,7 +30,6 @@ pytestmark = pytest.mark.unit
 
 NODE_DIR = Path(factory.__file__).resolve().parents[1]
 MEMORY = {
-    "backend": "memory",
     "key_prefix": "t:",
     "ttl_backstop_seconds": 60,
     "clone_relpath_template": "{name}",
@@ -70,7 +69,7 @@ def test_golden_the_example_overlay_is_valid() -> None:
     doc = yaml.safe_load(
         (NODE_DIR / "overlay.example.yaml").read_text(encoding="utf-8")
     )
-    assert ModelSourceCacheOverlay.model_validate(doc).backend == "valkey"
+    assert ModelSourceCacheOverlay.model_validate(doc).valkey is not None
 
 
 def test_error_chain_an_absent_overlay_builds_an_uncached_reader(

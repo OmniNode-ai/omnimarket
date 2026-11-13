@@ -96,14 +96,11 @@ def build_cached_source_reader(
             None, clock, disabled_reason=f"overlay: {type(exc).__name__}"
         )
     chosen = backend
-    if chosen is None and declared.backend == "memory":
+    backend_name = "valkey" if declared.valkey is not None else "memory"
+    connection = declared.valkey
+    if chosen is None and connection is None:
         chosen = BackendMemorySourceReadCache(clock)
-    elif chosen is None:
-        connection = declared.valkey
-        if connection is None:
-            return CachedSourceReader(
-                None, clock, disabled_reason="overlay: valkey block absent"
-            )
+    elif chosen is None and connection is not None:
         host = env.get(connection.host_env, "").strip()
         port = env.get(connection.port_env, "").strip()
         if not host or not port.isdigit():
@@ -113,7 +110,7 @@ def build_cached_source_reader(
                 disabled_reason=(
                     f"valkey: host or port variable not set ({connection.host_env}, {connection.port_env})"
                 ),
-                backend_name=declared.backend,
+                backend_name=backend_name,
             )
         password = (
             env.get(connection.password_env, "") if connection.password_env else ""
@@ -129,7 +126,7 @@ def build_cached_source_reader(
     return CachedSourceReader(
         handler,
         clock,
-        backend_name=declared.backend,
+        backend_name=backend_name,
         clone_settings=(
             declared.clone_relpath_template,
             declared.clone_revision_timeout_seconds,

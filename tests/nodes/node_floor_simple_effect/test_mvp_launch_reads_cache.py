@@ -243,7 +243,6 @@ def test_the_publish_step_writes_the_cache_tally_receipt(tmp_path: Path) -> None
     cache_overlay.write_text(
         yaml.safe_dump(
             {
-                "backend": "memory",
                 "key_prefix": "t:",
                 "ttl_backstop_seconds": 60,
                 "clone_relpath_template": "{name}",

@@ -94,19 +94,12 @@ class ModelSourceCacheValkey(BaseModel):
 class ModelSourceCacheOverlay(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    backend: Literal["memory", "valkey"]
     key_prefix: str = Field(min_length=1)
     ttl_backstop_seconds: int = Field(ge=1)
     # Where a repository's canonical clone is, relative to the registry home; ``{name}`` is the repository's name after the owner. The
     # default branch's tip there is the revision of a source that can change only by a commit (a workflow file's existence).
     clone_relpath_template: str = Field(min_length=1)
     clone_revision_timeout_seconds: int = Field(ge=1)
+    # The store: a `valkey` block names the Valkey this deployment keeps its answers in; with no block the answers are kept in memory for
+    # the run (the default, which a test or a host with no store uses).
     valkey: ModelSourceCacheValkey | None = None
-
-    @model_validator(mode="after")
-    def _check_backend(self) -> ModelSourceCacheOverlay:
-        if self.backend == "valkey" and self.valkey is None:
-            raise ValueError("backend valkey requires the valkey block")
-        if self.backend == "memory" and self.valkey is not None:
-            raise ValueError("backend memory refuses the valkey block")
-        return self

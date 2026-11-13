@@ -1,7 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 # Synthetic values. A deployment's real overlay lives in the overlays repository.
-backend: valkey
 key_prefix: "example-board:"
 ttl_backstop_seconds: 900
 clone_relpath_template: "{name}"
