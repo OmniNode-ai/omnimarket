@@ -1281,6 +1281,7 @@
   "tests/nodes/node_floor_emission_compute/test_refusal_is_not_an_upstream_failure.py": 0.01,
   "tests/nodes/node_floor_emissions_publish_effect/test_emission_mirror_omn23877.py": 5.79,
   "tests/nodes/node_floor_emissions_publish_effect/test_emissions_seam_omn23931.py": 2.9,
+  "tests/nodes/node_floor_emissions_publish_effect/test_floor_emissions_concurrent_reads.py": 3.23,
   "tests/nodes/node_floor_emissions_publish_effect/test_floor_emissions_publish_omn23877.py": 4.46,
   "tests/nodes/node_floor_emissions_publish_effect/test_mac_rows_seam_omn23909.py": 2.75,
   "tests/nodes/node_floor_emissions_publish_effect/test_publish_broker_omn23931.py": 2.1,
