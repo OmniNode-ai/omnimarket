@@ -144,6 +144,14 @@ class ModelFactoryFloorPublishOverlay(BaseModel):
     owner_login: str = Field(min_length=3, pattern=r"^[^\s@]+@[^\s@]+$")
     limits: ModelPublishLimits
 
+    @model_validator(mode="before")
+    @classmethod
+    def _control_key_required(cls, data: object) -> object:
+        """CONTROL BRANCH ONLY (OMN-23963): a key made required that overlays main lacks; the overlay-main-load job must refuse."""
+        if isinstance(data, dict) and "control_required_key" not in data:
+            raise ValueError("control_required_key is required")
+        return data
+
     @field_validator("remote_dir", "history_root")
     @classmethod
     def _absolute_posix(cls, value: str) -> str:
