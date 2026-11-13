@@ -89,6 +89,7 @@ class FilePlan:
     pinned: bool = False
     rendered: bool = False
     is_unit_file: bool = False
+    is_dropin: bool = False
 
     @property
     def state(self) -> str:
@@ -243,7 +244,8 @@ class HandlerNetUnits:
         roots = [str(r) for r in spec["destination_roots"]]
         suffix = str(spec.get("destination_suffix") or "")
         clean = os.path.normpath(destination) == destination
-        if (
+        dropin = self.is_dropin_destination(destination, spec, plan)
+        if not dropin and (
             not clean
             or not any(destination.startswith(r) for r in roots)
             or "/" in destination[len(max(roots, key=destination.startswith)) :]
@@ -257,6 +259,7 @@ class HandlerNetUnits:
         mode = int(str(entry["mode"]), 8)
         item = FilePlan(destination=destination, path=path, mode=mode)
         item.is_unit_file = destination.startswith("/etc/systemd/system/")
+        item.is_dropin = dropin
         if request.mode != "uninstall":
             item.data = self.payload(request, entry, plan, item)
         try:
@@ -329,7 +332,7 @@ class HandlerNetUnits:
                 data = data.replace(placeholder, plan.interface.encode())
                 plan.rendered = data.decode("utf-8")
                 item.rendered = True
-        if plan.serving and item.is_unit_file:
+        if plan.serving and item.is_unit_file and not item.is_dropin:
             self.check_serving_restart(item.destination, data)
         pin = entry.get("sha256") or (entry.get("sha256_by_host") or {}).get(
             request.host_name
@@ -394,6 +397,31 @@ class HandlerNetUnits:
         plan.rendered = text
         item.rendered = True
         return text.encode("utf-8")
+
+    def is_dropin_destination(
+        self, destination: str, spec: dict[str, Any], plan: UnitPlan
+    ) -> bool:
+        """True for a file in this unit's own ``<service><dir_suffix>`` drop-in directory, as the kind's contract declares it."""
+        if os.path.normpath(destination) != destination:
+            return False
+        dropin_roots = [str(r) for r in spec.get("dropin_roots") or []]
+        if not dropin_roots or not plan.service:
+            return False
+        dir_suffix = str(spec.get("dropin_dir_suffix") or "")
+        file_suffix = str(spec.get("dropin_suffix") or "")
+        if not dir_suffix or not file_suffix:
+            return False
+        for root in dropin_roots:
+            expected_dir = f"{root}{plan.service}{dir_suffix}"
+            if not destination.startswith(expected_dir + "/"):
+                continue
+            name = destination[len(expected_dir) + 1 :]
+            if not name or "/" in name or name == file_suffix:
+                continue
+            if not name.endswith(file_suffix):
+                continue
+            return True
+        return False
 
     def check_serving_restart(self, destination: str, data: bytes) -> None:
         policies = [str(p) for p in self.contract["serving_unit"]["restart_policies"]]

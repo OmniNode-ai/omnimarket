@@ -1,0 +1,63 @@
+schema_version: 1.0.0
+ticket_id: OMN-24285
+title: Host installer accepts a declared service drop-in file
+summary: node_host_installer_net_units allowed files only directly under /usr/local/sbin/ and /etc/systemd/system/, so a declared systemd drop-in (vllm-embeddings.service.d/20-5090.conf) was refused with
+  destination-not-allowed on install, status and dry run. The kind's contract now declares dropin_roots, dropin_dir_suffix and dropin_suffix, and the handler allows exactly a .conf file inside the unit's
+  own declared <service>.d directory; a drop-in still triggers daemon-reload and is not subject to the serving restart rule.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24285-declared-dropin-allowed
+  statement: A systemd drop-in of a declared unit is an allowed destination, and any other path outside the kind's roots still refuses.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a declared drop-in of a unit (a .conf file inside that unit''s own service .d directory) is allowed by node_host_installer_net_units, and the install, status and dry run of such a unit read both files present and matching -- falsifier: uv run pytest tests/nodes/node_host_installer_net_units/test_host_net_units_dropin.py -q fails at the merge base'
+  - id: AC2
+    statement: 'AC2: an undeclared path (another unit''s .d directory, /etc/passwd, a nested directory, a non-.conf name, a path with parent segments, an sshd-dropin kind pointing at a systemd .d path) still refuses with destination-not-allowed and writes nothing -- falsifier: the refusal tests in the same file go green when the rule is widened to any path under /etc/systemd/system/'
+  - id: AC3
+    statement: 'AC3: integrated: the node''s status and dry run for vllm-embeddings on h201, run from the branch through the declared installer, read both declared files present and matching -- falsifier: either command refuses with destination-not-allowed or reads a file absent or different'
+evidence_requirements:
+- kind: tests
+  description: The net-units node tests pass at the pushed head.
+  command: uv run pytest tests/nodes/node_host_installer_net_units -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24285-ac1
+  description: 'AC1: golden install, status and dry run of a unit with a drop-in read both files; fails at the merge base (destination-not-allowed).'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_net_units/test_host_net_units_dropin.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24285-ac2
+  description: 'AC2: the refusal tests for each undeclared path, the failing control for the rule.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_net_units/test_host_net_units_dropin.py -q -n 0 --no-cov -p no:cacheprovider -k "refused or failing_control"
+    cwd: .
+- id: dod-omn24285-ac3
+  description: 'hosted proxy for AC3: the node tests pass; the in-runtime reading of the node on h201 is taken from the branch with onex-host-install and named in the pull request.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_net_units -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24285-integration-proof
+  description: the node's status for vllm-embeddings runs on h201 at the pushed head, reading the declared overlay there; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24285 --kind other --host h201 -- bash -c
+      'printf "{\"unit\":\"vllm-embeddings\",\"mode\":\"status\",\"host_name\":\"h201\",\"overlay_root\":\"$OMNI_HOME/overlays/overlays/node_host_installer_net_units\",\"units_file\":\"overlay.yaml\"}" | uv run --frozen python -m omnimarket.nodes.node_host_installer_net_units'
