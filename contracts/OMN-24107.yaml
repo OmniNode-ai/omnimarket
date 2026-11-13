@@ -1,0 +1,62 @@
+schema_version: 1.0.0
+ticket_id: OMN-24107
+title: R8 delegate runs name the shared bus so the test-run label arrives
+summary: >-
+  Scenario R8's bus lane sent each run with the delegate command and named no transport, so from a venv the command resolved to the in-memory bus and an in-process run, which carries no provenance: the synthetic run was listed as organic (measured 2026-11-13 on the dev runtime, receipts f28bc8ea and b298ff3b ran bus inmemory locus in-process, while a run sent with the kafka bus, the dev lane and the workspace root was listed synthetic). BusLane now appends the bus and lane its tenant_read overlay block already declares, and the workspace root read from the environment variable its contract already names, on every delegate send; a kafka overlay with no workspace root is refused when the lane is built. No overlay key, contract key, threshold or counting rule changes.
+is_seam_ticket: true
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24107-r8-transport
+  statement: The R8 bus lane's delegate command names the bus, lane and workspace root the overlay and contract declare, and the lane is not configured when a kafka overlay has no workspace root.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the R8 bus lane names the bus, lane and workspace root from the overlay and contract on every delegate send, and refuses a kafka overlay with no workspace root -- falsifier: uv run --frozen pytest tests/nodes/node_delegation_scenario_r8_effect/test_bus_lane_delegate_transport.py -q -k golden_chain_kafka fails when delegate_transport_args returns nothing'
+  - id: AC2
+    statement: 'AC2: every flag the lane sends is an option of the delegate command -- falsifier: uv run --frozen pytest tests/nodes/node_delegation_scenario_r8_effect/test_bus_lane_delegate_transport.py -q -k seam fails when one of those options is renamed or dropped'
+  - id: AC3
+    statement: 'AC3: integrated: one R8 run on the dev runtime after the change lists its synthetic run labelled synthetic -- falsifier: the same run on the build before the change lists it organic'
+evidence_requirements:
+- kind: tests
+  description: The transport tests, the existing R8 bus lane tests and the R8 golden chain tests.
+  command: uv run --frozen pytest tests/nodes/node_delegation_scenario_r8_effect -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24107-ac1
+  description: 'AC1: through the production wiring the lane sends --bus kafka --lane dev --omnibase-path <workspace> after the traffic flags; a lane that names no transport fails the golden test, and a kafka overlay with no workspace root is refused.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_r8_effect/test_bus_lane_delegate_transport.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24107-ac2
+  description: 'AC2: the delegate command lists every option the lane sends in its help.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_r8_effect/test_bus_lane_delegate_transport.py -q -n 0 --no-cov -p no:cacheprovider -k seam
+    cwd: .
+- id: dod-omn24107-ac3
+  description: 'hosted proxy for AC3: the production-wiring test passes here and fails with the transport flags removed; the R8 reading on the dev runtime after the rebuild is the integration-proof item below and is posted as a pull request comment naming the head.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_r8_effect -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24107-integration-proof
+  description: 'The R8 tests run at the pushed head, and after the dev runtime rebuilds from this change one R8 run lists its synthetic run labelled synthetic. Hosted CI cannot reach the lab or the runtime rebuild, so only the local Done gate runs these checks.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24107 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_delegation_scenario_r8_effect/test_bus_lane_delegate_transport.py -q --no-cov
+    cwd: .

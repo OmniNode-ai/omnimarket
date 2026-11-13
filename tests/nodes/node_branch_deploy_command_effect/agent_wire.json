@@ -1,0 +1,45 @@
+{
+ "source": "deploy_agent.events.ModelRebuildRequested and deploy_agent.auth.compute_signature of omnibase_infra dev d3d941b6ae9e",
+ "rebuild_requested_fields": [
+  "build_source",
+  "correlation_id",
+  "git_ref",
+  "image_digest",
+  "image_ref",
+  "open_pr",
+  "requested_at",
+  "requested_by",
+  "rollback",
+  "runtime_lane",
+  "scope",
+  "services"
+ ],
+ "rollback_fields": [
+  "actor",
+  "reason"
+ ],
+ "required_fields": [
+  "correlation_id",
+  "requested_by",
+  "runtime_lane",
+  "scope"
+ ],
+ "open_pr_pattern": "^([a-z][a-z0-9_]*#[1-9][0-9]*@[0-9a-f]{40})?$",
+ "signature_vector": {
+  "secret": "fixture-key",
+  "envelope": {
+   "correlation_id": "00000000-0000-0000-0000-000000000001",
+   "requested_by": "user-a",
+   "scope": "runtime",
+   "runtime_lane": "dev",
+   "build_source": "workspace",
+   "git_ref": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "rollback": {
+    "actor": "actor-a",
+    "reason": "reason-a"
+   },
+   "open_pr": "omnibase_infra#5917@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "signature": "9b1d3a31ffed12aedb33c97a3b7d94ea2a935438690cf2cb6f7ce7713a0a21f9"
+ }
+}

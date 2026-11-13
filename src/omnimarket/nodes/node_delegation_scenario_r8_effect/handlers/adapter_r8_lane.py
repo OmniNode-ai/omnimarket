@@ -275,10 +275,31 @@ def parse_runs(
     return tuple(rows)
 
 
+def delegate_transport_args(
+    overlay: ModelScenarioTenantReadOverlay, workspace: str | None
+) -> tuple[str, ...]:
+    """The delegate command's transport flags: the bus and lane the overlay names, and the workspace root on a kafka bus."""
+    if overlay.bus == "kafka":
+        if workspace is None or not workspace.strip():
+            raise LaneReadError(
+                "the workspace root is not set (the delegate command needs --omnibase-path on a kafka bus)"
+            )
+        return (
+            "--bus",
+            overlay.bus,
+            "--lane",
+            overlay.bus_lane,
+            "--omnibase-path",
+            workspace,
+        )
+    return ("--bus", overlay.bus)
+
+
 def send_delegate(
     settings: ModelLaneSettings,
     request: ModelSendRequest,
     run_command: CommandRunner,
+    transport_args: Sequence[str] = (),
 ) -> str:
     """Send one run with the ``onex delegate`` command and return its correlation id."""
     argv = [
@@ -292,6 +313,7 @@ def send_delegate(
         argv += ["--traffic-class", request.traffic_class]
     if request.source_surface is not None:
         argv += ["--source-surface", request.source_surface]
+    argv += list(transport_args)
     code, out = run_command(argv, settings.delegate_timeout_seconds)
     try:
         parsed = json.loads(out)
@@ -363,12 +385,14 @@ class BusLane:
         overlay: ModelScenarioTenantReadOverlay,
         request: BusRequest,
         *,
+        workspace: str | None = None,
         run_command: CommandRunner = _subprocess_run,
     ) -> None:
         if settings.bus is None:
             raise LaneReadError("the R8 overlay document has no bus block")
         self._settings = settings
         self._overlay = overlay
+        self._workspace = workspace
         self._request = request
         self._run = run_command
 
@@ -395,4 +419,9 @@ class BusLane:
         return parse_runs(self._settings, body)
 
     def send(self, request: ModelSendRequest) -> str:
-        return send_delegate(self._settings, request, self._run)
+        return send_delegate(
+            self._settings,
+            request,
+            self._run,
+            delegate_transport_args(self._overlay, self._workspace),
+        )
