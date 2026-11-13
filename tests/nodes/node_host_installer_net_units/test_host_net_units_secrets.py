@@ -593,3 +593,67 @@ def test_real_path_a_machine_with_no_store_block_is_refused(
     assert result.status == "refused"
     assert result.reason == "secret-unresolved"
     _nothing_written(fs)
+
+
+def test_a_root_only_installed_file_is_read_through_sudo_and_compared(
+    tmp_path: Path, overlay: Path
+) -> None:
+    """The first install, then the file turns unreadable to the caller (root:nut 0640): the second run reads it through
+    `sudo cat`, finds its bytes identical to the declaration."""
+    fs = tmp_path / "fs"
+    reader, _calls = reader_planted()
+    node = handler(FakeHost(), fs, reader)
+    assert node.handle(request(overlay, "nut-fixture")).changed is True
+    installed = fs / "etc/nut/upsd.users"
+    content = installed.read_text()
+    unreadable = fs / "etc/nut/nut.conf"
+    unreadable_text = unreadable.read_text()
+
+    class CatHost(FakeHost):
+        def __call__(self, argv: list[str]) -> subprocess.CompletedProcess[str]:
+            if argv[:2] == ["sudo", "cat"]:
+                self.calls.append(argv)
+                texts = {str(installed): content, str(unreadable): unreadable_text}
+                return subprocess.CompletedProcess(argv, 0, texts[argv[2]], "")
+            return super().__call__(argv)
+
+    cat_host = CatHost()
+    cat_host.states["nut.target"] = True  # the first install started it
+    installed.chmod(0)
+    unreadable.chmod(0)
+    try:
+        again = handler(cat_host, fs, reader, sudo=["sudo"]).handle(
+            request(overlay, "nut-fixture", mode="dry-run")
+        )
+    finally:
+        installed.chmod(0o640)
+        unreadable.chmod(0o640)
+    assert again.status == "success", again.stderr
+    # the fixture can only make the file unreadable by dropping its mode, so the one difference left is the mode: the
+    # bytes read through `sudo cat` are identical to the declaration
+    assert "(mode," in again.stdout
+    assert "(differs" not in again.stdout
+    assert "(absent" not in again.stdout
+    assert ["sudo", "cat", str(installed)] in cat_host.calls
+    _assert_no_planted(again)
+
+
+def test_an_unreadable_installed_file_with_no_sudo_is_a_failure(
+    tmp_path: Path, overlay: Path
+) -> None:
+    """The failing control of the sudo read: with no sudo the permission error is the result, not a silent overwrite."""
+    fs = tmp_path / "fs"
+    reader, _calls = reader_planted()
+    assert (
+        handler(FakeHost(), fs, reader).handle(request(overlay, "nut-fixture")).changed
+    )
+    target = fs / "etc/nut/nut.conf"
+    target.chmod(0)
+    try:
+        result = handler(FakeHost(), fs, reader).handle(
+            request(overlay, "nut-fixture", mode="dry-run")
+        )
+    finally:
+        target.chmod(0o640)
+    assert result.status == "failure"
+    assert "Permission denied" in result.stderr

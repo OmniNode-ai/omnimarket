@@ -329,11 +329,25 @@ class HandlerNetUnits:
         if request.mode != "uninstall":
             item.data = self.payload(request, entry, plan, item)
         try:
-            item.installed = path.read_bytes()
+            item.installed = self.read_installed(path)
             item.installed_mode = path.stat().st_mode & 0o777
         except FileNotFoundError:
             pass
         return item
+
+    def read_installed(self, path: Path) -> bytes:
+        """The bytes installed at ``path``; a file the caller may not read (a root:nut 0640 config) is read through sudo."""
+        try:
+            return path.read_bytes()
+        except PermissionError:
+            if not self.sudo:
+                raise
+        done = self.run([*self.sudo, "cat", str(path)])
+        if done.returncode:
+            raise OSError(
+                f"cat {path} failed ({done.returncode}): {done.stderr.strip()}"
+            )
+        return done.stdout.encode("utf-8")
 
     def payload(
         self,
