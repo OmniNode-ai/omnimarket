@@ -3610,6 +3610,7 @@
   "tests/test_runtime_lab_test_harness.py": 1.15,
   "tests/test_runtime_sha_verify_handler.py": 0.09,
   "tests/test_savings_estimates_from_source_omn12494.py": 0.03,
+  "tests/test_savings_hook_event_consume_concurrency.py": 2.65,
   "tests/test_savings_runner_task_delegated_omn13598.py": 0.22,
   "tests/test_schema_parity_projection_llm_cost.py": 0.03,
   "tests/test_seam_merge_sweep_plan_to_landing_effect.py": 1.12,
