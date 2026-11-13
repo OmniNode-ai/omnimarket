@@ -1643,8 +1643,9 @@ omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", ta
 # operator the condition model accepts). The version ranges in [project] stay
 # for external installs.
 # OMN-22472: core and infra move together; the ticket validator (omnibase_core#2281) the floor-task ticket nodes import came with core cd128b790ec6.
-# OMN-23839: this core tag is the one infra dev-20261111211012-df3f14f5e6b9 locks (omnibase_infra#5896); it carries the delegation routing order models (omnibase_core#2309).
-omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", tag = "dev-20261111183916-a85cb916d4c1" }
+# OMN-24039: the core tag below carries the task_type field of the inference intent (omnibase_core#2316); it is newer than the one infra dev-20261111211012-df3f14f5e6b9 locks, and the version is unchanged (0.47.76).
+# OMN-23839: the previous core tag was the one infra dev-20261111211012-df3f14f5e6b9 locks (omnibase_infra#5896); it carries the delegation routing order models (omnibase_core#2309).
+omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", tag = "dev-20261113013358-a09066caf945" }
 omnibase-spi = { git = "https://github.com/OmniNode-ai/omnibase_spi.git", tag = "dev-20261108170744-52946639a23a" }
 omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", tag = "dev-20261112102309-92b9c1a20bef" }
 # OMN-13878: omnibase-core and omnibase-compat now resolve from PyPI (removed

@@ -3975,6 +3975,7 @@
   "tests/unit/delegation/test_omn22822_expired_replayed_response.py": 0.17,
   "tests/unit/delegation/test_omn22822_expiry_review_findings.py": 0.17,
   "tests/unit/delegation/test_omn22822_host_bound_key_not_routed.py": 0.17,
+  "tests/unit/delegation/test_omn24039_task_class_seam.py": 0.56,
   "tests/unit/delegation/test_omn_18295_one_rule_decides.py": 0.09,
   "tests/unit/delegation/test_omn_18295_rule_evaluations_on_terminal.py": 0.04,
   "tests/unit/delegation/test_openrouter_daily_cap.py": 0.15,
