@@ -83,6 +83,8 @@ execution:
 command_line:
   program: onex-host-install-units
   modes: [dry-run, install, status, kickstart, uninstall, rollback]
+  # The modes a dry run holds back when --dry-run is on the command line with one of these verbs
+  held_by_dry_run: [install, kickstart, uninstall, rollback]
   required_inputs: [registry_root]
   env_inputs:
     registry_root: OMNI_HOME

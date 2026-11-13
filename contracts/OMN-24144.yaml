@@ -1,0 +1,57 @@
+schema_version: 1.0.0
+ticket_id: OMN-24144
+title: Dry run of an install, removal, restart or roll-back changes nothing, in any flag order
+summary: 'onex-host-install-units took the last of its mode flags, so --dry-run followed by --uninstall ran the uninstall (the older installer did the same on h201 on 2026-11-13 and removed a live unit for about
+  4 minutes). A --dry-run on the command line with install, kickstart, uninstall or rollback now gives a dry run whatever the order: a new request field plan_verb carries the verb, the handler returns
+  its plan before taking the install lock or running any command, and the contract declares which modes a dry run holds (command_line.held_by_dry_run). Without --dry-run the last flag still wins.'
+is_seam_ticket: true
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24144-dry-run-holds
+  statement: A dry run of any host-changing verb of the registry units installer prints its plan and changes nothing.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: onex-host-install-units <unit> --dry-run with any of install, kickstart, uninstall, rollback, in either flag order, prints a plan and makes no file change and no launchctl or systemctl
+      call -- falsifier: uv run pytest tests/nodes/node_host_installer_registry_units/test_dry_run_holds.py -q fails at the merge base'
+  - id: AC2
+    statement: 'AC2: without --dry-run the last mode flag still wins -- falsifier: uv run pytest tests/nodes/node_host_installer_registry_units/test_cli.py -q fails if the last-flag rule changes'
+  - id: AC3
+    statement: 'AC3: integrated: on a lab host, onex-host-install-units <harmless unit> --dry-run --uninstall exits 0 with the plan and the unit is still loaded afterwards -- falsifier: the status read of
+      that unit on the host after the dry run reads NOT LOADED'
+evidence_requirements:
+- kind: tests
+  description: The installer node tests pass at the pushed head.
+  command: uv run pytest tests/nodes/node_host_installer_registry_units -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24144-ac1
+  description: 'AC1: every host-changing verb under --dry-run, in both flag orders, returns its plan with no file written and no launchctl or systemctl call; fails on the merge base (the uninstall ran).'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_dry_run_holds.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24144-ac2
+  description: 'AC2: the last mode flag still wins when --dry-run is absent.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_cli.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24144-ac3
+  description: 'hosted proxy for AC3: the dry-run tests pass; the reading on a lab host is named in the pull request.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_dry_run_holds.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
