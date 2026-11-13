@@ -27,6 +27,7 @@
   "tests/chains/generated/test_generated_chains.py": 14.53,
   "tests/chains/generated/test_generated_chains_match_pilot.py": 0.05,
   "tests/chains/host_disk/test_chain_host_disk_reading.py": 1.51,
+  "tests/chains/lane_container_budget/test_chain_lane_container_budget.py": 2.8,
   "tests/chains/local/test_chain_l11_response_contract_omn18698.py": 9.06,
   "tests/chains/local/test_chain_l4_customer_key_route_omn18698.py": 7.15,
   "tests/chains/local/test_chain_l5_store_resolution_omn18698.py": 4.96,
