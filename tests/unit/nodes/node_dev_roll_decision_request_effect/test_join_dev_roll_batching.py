@@ -20,6 +20,8 @@ from omnimarket.nodes.node_dev_roll_decision_request_effect.handlers.store_dev_r
     InMemoryDevRollObservationStore,
 )
 from omnimarket.nodes.node_dev_roll_decision_request_effect.models import (
+    ModelDevRollDecisionRequestSkipped,
+    ModelDevRollManifestEvent,
     ModelDevRollObservationRecorded,
 )
 from omnimarket.nodes.node_dev_roll_request_compute.handlers import (
@@ -163,7 +165,9 @@ async def test_shadow_only_no_deploy_agent_command_is_on_the_bus(
 
 
 class _Silent(HandlerDevRollQueuedRoll):
-    def handle(self, request):  # type: ignore[no-untyped-def]
+    def handle(
+        self, request: ModelDevRollManifestEvent
+    ) -> ModelDevRollFacts | ModelDevRollDecisionRequestSkipped:
         raise RuntimeError("publishes nothing")
 
 
