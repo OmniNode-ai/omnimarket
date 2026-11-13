@@ -293,6 +293,25 @@ def _heartbeat(
     return beat, items
 
 
+def _parked_heartbeat(
+    request: ModelFactoryFloorRequest, host: str, row: ModelFloorHostRow | None
+) -> tuple[ModelHostNumber, ModelHostNumber]:
+    """The heartbeat cells of one host, reading the hosts the table marks unavailable before the projection.
+
+    A host the table marks ``available: false`` — parked out of selection, or down for repair — expects no heartbeat,
+    so both cells are unread with the table's own reason rather than the ``never reported a heartbeat`` failure of an
+    unread machine. Every other host is judged by ``_heartbeat`` as before.
+    """
+    if row is None or row.available:
+        return _heartbeat(request, host)
+    source = "host-drift fleet projection"
+    why = (
+        f"out of selection ({row.unavailable_reason or 'no reason in the host table'}); "
+        "no heartbeat is expected from this host"
+    )
+    return unread_number("min", source, why), unread_number("items", source, why)
+
+
 def _use(lane: ModelFloorLane) -> ModelHostLaneUse:
     return ModelHostLaneUse(
         lane=lane.lane,
@@ -409,7 +428,7 @@ def build_host_status(
             )
         load = pool.load_per_core()
         disk_free, disk_used = pool.disk()
-        beat, drift_open = _heartbeat(request, host)
+        beat, drift_open = _parked_heartbeat(request, host, row)
         age = (
             number(
                 _seconds(now, reading.read_at) / 60,
