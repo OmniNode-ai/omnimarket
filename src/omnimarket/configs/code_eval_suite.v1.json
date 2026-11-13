@@ -5447,7 +5447,7 @@
    "merge_commit": "0ca5b77b2ab6f7a04f6ec83a4f9f260bcb1b7d6b",
    "merged_at": "2026-11-09T14:37:38Z",
    "repository": "omnimarket",
-   "subject": "feat(OMN-23277): lab fill send gate skips merged tickets and keeps h200-bound briefs off unreachable hosts (#5565)"
+   "subject": "feat(OMN-23277): lab fill send gate skips merged tickets and keeps host-bound briefs off unreachable hosts (#5565)"
   },
   {
    "band": "M",
