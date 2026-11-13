@@ -624,6 +624,7 @@
   "tests/nodes/node_broker_acl_reconcile_effect/test_derived_rows_on_reconcile.py": 19.3,
   "tests/nodes/node_broker_acl_reconcile_effect/test_readiness_check.py": 28.83,
   "tests/nodes/node_broker_acl_reconcile_effect/test_request_command_is_never_executed.py": 0.01,
+  "tests/nodes/node_broker_acl_reconcile_effect/test_role_placeholders.py": 9.06,
   "tests/nodes/node_broker_auth_refusal_reading_effect/test_broker_auth_refusal_chain_events.py": 4.35,
   "tests/nodes/node_broker_auth_refusal_reading_effect/test_broker_auth_refusal_reading.py": 2.32,
   "tests/nodes/node_broker_load_reading_effect/test_broker_load_chain_events.py": 0.02,
