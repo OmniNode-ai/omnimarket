@@ -61,9 +61,16 @@ dod_evidence:
   description: Reads the unit on h051 after it is installed from the branch through onex-host-install-units, and requires the timer to be active and the unit's last-run evidence to hold a typed exit code. Hosted CI cannot reach h051, so only the local Done gate runs this unbound item.
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC5
   checks:
   - check_type: command
     check_value: ssh h051 'systemctl --user is-active onex-stability-refresh-serve.timer && test -s .local/state/omni/stability-refresh-serve/last-run.json'
+    cwd: .
+- id: dod-omn24220-ac5
+  description: The tests that stand behind the integrated reading pass at the head. The serve tick answers a request on the in-memory fakes and publishes a typed event, a refused request runs nothing, and the unit's run limit covers a whole refresh. The reading itself is the unit's last-run evidence and the answer event on h051, named in the pull request.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_stability_lane_refresh_effect -q --no-cov -p no:randomly
     cwd: .
