@@ -20,6 +20,7 @@ from typing import Any
 import yaml
 
 from omnimarket.models.model_reading import EnumReadingOutcome
+from omnimarket.models.runner_group_exposure import EnumExposureReadFailure
 from omnimarket.nodes.node_reading_compute.handlers.handler_reading_compute import (
     reason_token,
     stamp_text,
@@ -89,15 +90,21 @@ class HandlerExposureReadingWriter:
             if failure is not None
             else EnumReadingOutcome.READ
         )
-        reasons = (
-            (reason_token(failure.value),)
-            if failure is not None
-            else tuple(
+        if failure is None:
+            reasons = tuple(
                 reason_token(f"{s.name}-{s.reason}")
                 for s in reading.subjects
                 if s.verdict.value != "WORKING"
             )
-        )
+        elif failure is EnumExposureReadFailure.ORG_READ_DENIED and (
+            result.missing_permission is not None
+        ):
+            reasons = (
+                reason_token(failure.value),
+                reason_token("needs-" + result.missing_permission),
+            )
+        else:
+            reasons = (reason_token(failure.value),)
         subject_cells = [f"{s.name}={s.verdict.value}" for s in reading.subjects]
         subject_counts = [
             f"{s.name}_count={s.count}" for s in reading.subjects if s.count is not None

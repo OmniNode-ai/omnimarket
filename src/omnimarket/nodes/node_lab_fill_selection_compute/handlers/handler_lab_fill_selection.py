@@ -484,10 +484,10 @@ class HandlerLabFillSelection:
             - (len(pr_land.dispatch) if pr_land is not None else 0)
         )
         return ModelLabFillSelectionResult(
-            tuple(decisions),
-            tuple(sorted(baselines, key=lambda b: (b.ticket, b.lane))),
-            pr_land,
-            dod_verify_fallback(
+            decisions=tuple(decisions),
+            baselines=tuple(sorted(baselines, key=lambda b: (b.ticket, b.lane))),
+            pr_land=pr_land,
+            dod_verify=dod_verify_fallback(
                 decisions,
                 left,
                 request,
@@ -495,7 +495,7 @@ class HandlerLabFillSelection:
                 now,
                 {c.ticket: c.ticket_updated_at for c in request.candidates},
             ),
-            tuple(
+            closer=tuple(
                 d for d in decisions if d.reason is EnumLabFillSkipReason.ALREADY_BUILT
             ),
         )

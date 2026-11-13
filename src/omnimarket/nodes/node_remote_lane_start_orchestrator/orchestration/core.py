@@ -338,11 +338,12 @@ class RemoteLaneStartOrchestrator:
     def _login_cells(
         self, host: ModelLaneHostRef, receipt: ModelRemoteLaneStartReceipt
     ) -> list[str]:
-        """The CLAIM's ``login=`` cell: the label the host's token pool node draws for the engine, or ``none``.
+        """The CLAIM's ``login=`` and ``pool_label=`` cells: the label the host's token pool node draws, or ``none``.
 
         The draw is the pool node's own ``resolve`` (first unlimited label in draw order, limited and revoked
-        labels skipped); the cell carries the label only, never a token value. A start with no draw wired
+        labels skipped); each cell carries the label only, never a token value. A start with no draw wired
         (the in-memory default) writes no cell. The receipt names the drawn label (OMN-23550).
+        The CLAIM carries the label twice: ``login=`` (read by the pool node's steering handler) and ``pool_label=``.
         """
         self._login_refusal = ""
         if self._login is None:
@@ -356,7 +357,8 @@ class RemoteLaneStartOrchestrator:
             f"login host={host.name} label={drawn.label or 'none'}"
             + (f" ({drawn.detail})" if drawn.detail else "")
         )
-        return [f"login={drawn.label or 'none'}"]
+        label = drawn.label or "none"
+        return [f"login={label}", f"pool_label={label}"]
 
     def _worktree_path(self, request: ModelRemoteLaneStartRequest) -> str:
         return f"{self._s.host_run_root.rstrip('/')}/{request.run_id}/{request.repo}"

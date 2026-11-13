@@ -59,7 +59,13 @@ def test_the_contract_lists_and_grants_every_topic_the_tick_uses() -> None:
     contract = yaml.safe_load((NODE / "contract.yaml").read_text(encoding="utf-8"))
     topics = contract["topics"]
     bus = contract["event_bus"]
-    assert bus["subscribe_topics"] == [topics["stability_refresh_requested"]]
+    # The runtime wires nothing for this node: a non-empty subscribe list makes infra's auto-wiring build the handler, whose
+    # dependencies are constructor parameters, and quarantine it (test_every_node_auto_wires_in_process_omn17427).
+    assert bus["subscribe_topics"] == []
+    assert (
+        contract["runtime_dispatch"]["command_topic"]
+        == topics["stability_refresh_requested"]
+    )
     answers = {topics[role] for role in topics if role != "stability_refresh_requested"}
     assert set(bus["publish_topics"]) == answers
     rows = contract["broker_acl_grants"][0]["grants"]

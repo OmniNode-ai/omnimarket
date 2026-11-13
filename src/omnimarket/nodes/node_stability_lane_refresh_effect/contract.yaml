@@ -63,11 +63,13 @@ topics:
   stability_refresh_failed: onex.evt.omnimarket.stability-refresh-failed.v1
 
 # The serve tick (runtime_stability_refresh_serve, run by a host timer as the operator account) reads the request topic
-# and publishes the four answer topics. The node has no handler_routing, so the runtime wires nothing from this block;
-# it lists the topics for provisioning and for the broker rows the grants below name.
+# and publishes the four answer topics. The node has no handler_routing and its handler takes its dependencies as constructor
+# parameters, so the runtime must wire nothing from this block: a non-empty subscribe_topics makes infra's auto-wiring build the
+# handler and quarantine it (tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py), a crash loop under
+# ONEX_WIRING_STRICT_MODE=1. The request topic stays in topics: and runtime_dispatch.command_topic above, which the serve tick
+# reads, and in the broker rows the grants below name.
 event_bus:
-  subscribe_topics:
-    - onex.cmd.omnimarket.stability-refresh-requested.v1
+  subscribe_topics: []
   publish_topics:
     - onex.evt.omnimarket.stability-refresh-pin-accepted.v1
     - onex.evt.omnimarket.stability-refresh-refused.v1

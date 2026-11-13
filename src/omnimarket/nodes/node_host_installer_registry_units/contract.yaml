@@ -427,6 +427,35 @@ units:
       ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
     evidence_file: .local/state/omni/lane-ctx-ledger-dedupe/last-run.json
     state_directory: .onex_state/lane-ctx-ledger-dedupe
+  # The capture silence watch (node_capture_silence_watch_effect): the host ran this node from a /tmp copy of the source
+  # until this declaration replaced it. The broker and the secret-store login the node reads live in the environment file;
+  # the unit holds no value.
+  capture-silence-watch:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-capture-silence-watch
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 300
+      # Equal to the node contract's timeout_ms (30000 / 1000); under the 300 s interval, so a hung pass ends before the next tick is due.
+      run_timeout_s: 30
+      run_at_load: true
+      description: every 300 s and at load
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_capture_silence_watch_effect.runtime_capture_silence_watch_tick
+    entry_file: src/omnimarket/nodes/node_capture_silence_watch_effect/runtime_capture_silence_watch_tick.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_file: .config/onex/capture-silence-watch.env
+    evidence_file: .local/state/omni/capture-silence-watch/last-run.json
+    state_directory: .onex_state/capture-silence-watch
   # The C32 local auth-boundary probe (node_c32_auth_boundary_probe_effect, OMN-23213, MVP launch plan task M17), once a day on
   # a Linux lab host: a systemd user service and timer. One run starts the real `onex dashboard` in a scratch HOME, grades the
   # five auth cases and the planted-credential search, and publishes the run on the node's result topic, where the launch

@@ -1,0 +1,82 @@
+schema_version: 1.0.0
+ticket_id: OMN-23974
+title: The dev system's merge alarm gets its settings so its health reads ok
+summary: The merge override alarm node refuses every event while it has no settings overlay, so the dev runtime reads projection_apply_divergence DEGRADED for HandlerMergeOverrideAlarm. The settings model now requires the landing App login only once a repository is in S19 (none is), so the overlay can be written; the overlay itself is in the overlays repository.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn23974-ac1
+  statement: The merge override alarm's settings load with no landing App login while no repository is in S19, and are refused naming landing_app_login once a repository is listed without one
+  acceptance:
+  - id: AC1
+    statement: 'AC1: The merge override alarm''s settings load with no landing App login while no repository is in S19, and are refused naming landing_app_login once a repository is listed without one -- falsifier: run the new settings test file against the base settings model; the settings-without-login test and the golden chain test must fail'
+- id: req-omn23974-ac2
+  statement: The alarm's settings overlay in the overlays repository loads through the settings model of the pinned omnimarket dev commit that holds AC1
+  acceptance:
+  - id: AC2
+    statement: 'AC2: The alarm''s settings overlay in the overlays repository loads through the settings model of the pinned omnimarket dev commit that holds AC1 -- falsifier: run the overlays check against the old pin; the load of overlays/node_merge_override_alarm_effect/overlay.yaml must fail on the missing login'
+- id: req-omn23974-ac3
+  statement: A missing or invalid overlay still makes the alarm refuse the event and publish nothing, so the runtime health names the alarm as degraded
+  acceptance:
+  - id: AC3
+    statement: 'AC3: A missing or invalid overlay still makes the alarm refuse the event and publish nothing, so the runtime health names the alarm as degraded -- falsifier: remove the overlay in the error chain test; the handler must return refused and the publisher must hold no calls'
+- id: req-omn23974-ac4
+  statement: 'integrated: after the dev runtime is rebuilt on a revision carrying AC1 and with the overlay in its overlays checkout, the running runtime''s /health no longer lists projection_apply_divergence as DEGRADED for HandlerMergeOverrideAlarm and /ready reads healthy'
+  acceptance:
+  - id: AC4
+    statement: 'AC4: integrated: after the dev runtime is rebuilt on a revision carrying AC1 and with the overlay in its overlays checkout, the running runtime''s /health no longer lists projection_apply_divergence as DEGRADED for HandlerMergeOverrideAlarm and /ready reads healthy -- falsifier: read /health and /ready in the running dev runtime on the lab host after the roll; a DEGRADED dimension naming the alarm, or an unhealthy /ready, fails this criterion'
+evidence_requirements:
+- kind: tests
+  description: The settings, golden chain and error chain tests of the merge override alarm node pass at the pushed head.
+  command: uv run --frozen pytest tests/unit/nodes/node_merge_override_alarm_effect/test_settings_before_s19.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23974-ac1
+  description: The new settings tests hold the login optional before S19 and required once a repository is listed; on the base settings model two of them fail.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_merge_override_alarm_effect/test_settings_before_s19.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23974-ac2
+  description: The example overlay loads through the settings model with and without the login; the overlays repository's own check loads the real overlay through the pinned revision.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_merge_override_alarm_effect/test_settings_before_s19.py::test_example_overlay_loads_through_the_model_with_and_without_the_login -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23974-ac3
+  description: The error chain tests hold that a missing overlay, or an S19 overlay without the login, refuses and publishes nothing, and the golden chain test holds that a login-less overlay before S19 yields the landing verdict; the golden chain test fails on the base settings model, so the control at the merge base fails.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_merge_override_alarm_effect/test_error_chain_detector_unreadable.py::test_error_chain_missing_overlay_refuses_and_publishes_nothing tests/unit/nodes/node_merge_override_alarm_effect/test_settings_before_s19.py::test_golden_chain_landing_merge_without_login_before_s19 tests/unit/nodes/node_merge_override_alarm_effect/test_settings_before_s19.py::test_error_chain_s19_overlay_without_login_refuses -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23974-ac4
+  description: The reading is taken after the merge from the running dev runtime's health and ready answers; the check is the focused settings test (the tests behind it).
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_merge_override_alarm_effect/test_settings_before_s19.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23974-integration-proof
+  description: Run the declared merge override alarm node tests on a lab host at the pushed head. Hosted CI cannot reach the lab hosts, so only the local Done gate runs this unbound check; it binds no criterion for the hosted check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23974 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_merge_override_alarm_effect/ -q --no-cov -n 0 -p no:randomly
+    cwd: .
