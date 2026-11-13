@@ -14,7 +14,11 @@ from omnimarket.handlers.overlay_keys import resolve_lab_hosts_table
 
 
 class LabHostTableParkedSource:
-    """The parked hosts of the lab host table (``available: false``), with the table's reason."""
+    """The parked hosts of the lab host table (``available: false``, not ``local``), with the table's reason.
+
+    A ``local`` row is the machine the reader itself runs on: it keeps sending host-drift heartbeats
+    whatever its placement flag says, so it stays required and is never parked here.
+    """
 
     def __init__(self, environ: Mapping[str, str] | None = None) -> None:
         self._environ = environ
@@ -24,7 +28,7 @@ class LabHostTableParkedSource:
         return {
             row.name: row.unavailable_reason or "parked"
             for row in table.hosts
-            if not row.available
+            if not row.available and not row.local
         }
 
 

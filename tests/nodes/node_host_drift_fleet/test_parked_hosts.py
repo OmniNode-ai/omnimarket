@@ -7,20 +7,24 @@ as the only required reporter and lists the parked host with the table's reason 
 line. Control: the same fold without the parked set alerts the silent host as never reported.
 Error chain: a table the handler cannot read leaves every host required, alerts the silent
 host and says the table is unread on the view. A parked host that reports anyway and carries
-an open drift item still adds no alert.
+an open drift item still adds no alert. The table's ``local`` row — the machine the reader
+runs on — is never parked, whatever its placement flag (OMN-24289).
 """
 
 from __future__ import annotations
 
 import json
 from datetime import timedelta
+from pathlib import Path
 
 import pytest
 from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 
+from omnimarket.handlers.overlay_keys import LAB_HOSTS_FILE_ENV
 from omnimarket.nodes.node_host_drift_fleet import HandlerHostDriftFleet
 from omnimarket.nodes.node_host_drift_fleet.adapters.parked_hosts import (
     InMemoryParkedSource,
+    LabHostTableParkedSource,
 )
 from omnimarket.nodes.node_host_drift_fleet.handlers.fold_host_drift_view import (
     fold_view,
@@ -38,6 +42,32 @@ from .helpers import NOW, MemoryStore, RecordingBus, heartbeat, overlay
 pytestmark = pytest.mark.unit
 
 REASON = "parked, operator 2026-11-13"
+
+#: A pinned table in the shape the real one has: one required host, one parked host and the
+#: reader's own machine, out of placement yet still reporting.
+TABLE_YAML = """
+hosts:
+  - name: host-a
+    target: host-a.lab
+  - name: host-b
+    target: host-b.lab
+    available: false
+    unavailable_reason: parked, operator 2026-11-13
+  - name: host-local
+    target: host-local.lab
+    available: false
+    unavailable_reason: "out of lane: placement"
+    local: true
+"""
+
+
+def test_the_table_parks_unavailable_rows_but_not_the_local_row(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "hosts.yaml"
+    path.write_text(TABLE_YAML, encoding="utf-8")
+    parked = LabHostTableParkedSource({LAB_HOSTS_FILE_ENV: str(path)}).parked_hosts()
+    assert parked == {"host-b": "parked, operator 2026-11-13"}
 
 
 def test_golden_a_parked_host_is_listed_and_never_required() -> None:

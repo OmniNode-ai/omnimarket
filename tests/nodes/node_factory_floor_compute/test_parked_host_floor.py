@@ -5,11 +5,13 @@
 GOLDEN: a parked host draws no bay at all, and its heartbeat cells are unread with the table's own reason — no
 heartbeat is expected from a parked host. CONTROL: a machine down for repair keeps its stale bay, and an available
 host whose projection row carries no heartbeat still says it has never reported one. ERROR: an unread host table
-parks nobody: every declared machine draws its bay and no host is read as parked.
+parks nobody: every declared machine draws its bay and no host is read as parked. A ``local`` row out of placement
+is never parked: the machine the publisher runs on keeps heartbeating (OMN-24289).
 """
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -23,6 +25,7 @@ from omnimarket.models.model_factory_floor_input import (
 from omnimarket.nodes.node_factory_floor_compute.handlers.handler_factory_floor import (
     compute_factory_floor,
 )
+from omnimarket.nodes.node_factory_floor_effect.source_loader import load_host_table
 from tests.nodes.node_factory_floor_compute.support import (
     ago,
     request,
@@ -70,6 +73,51 @@ def test_golden_a_parked_host_draws_no_bay_and_its_heartbeat_is_unread_not_a_fai
         "unread",
         parked.heartbeat_age_min.reason,
     )
+
+
+def test_golden_a_local_out_host_keeps_its_heartbeat_while_a_parked_one_expects_none() -> (
+    None
+):
+    result = floor(
+        host_table=(
+            ModelFloorHostRow(
+                host="h202",
+                available=False,
+                unavailable_reason="out of lane: placement",
+                local=True,
+            ),
+            ModelFloorHostRow(host="h101", available=False, unavailable_reason=PARKED),
+        ),
+        host_drift=ModelFloorHostDrift(
+            folded_at=ago(1),
+            hosts=(
+                ModelFloorDriftHost(
+                    host="h202", last_heartbeat_at=ago(1), open_items=0
+                ),
+            ),
+        ),
+    )
+    local = {s.host: s for s in result.host_status}["h202"]
+    assert (local.heartbeat_age_min.state, local.heartbeat_age_min.value) == (
+        "read",
+        1.0,
+    )
+    assert "no heartbeat is expected" not in local.heartbeat_age_min.reason
+    parked = {s.host: s for s in result.host_status}["h101"]
+    assert parked.heartbeat_age_min.reason == (
+        f"out of selection ({PARKED}); no heartbeat is expected from this host"
+    )
+
+
+def test_the_loader_reads_the_local_column(tmp_path: Path) -> None:
+    path = tmp_path / "hosts.yaml"
+    path.write_text(
+        "hosts:\n  - name: h202\n    local: true\n  - name: h051\n",
+        encoding="utf-8",
+    )
+    rows = load_host_table(path)
+    assert rows is not None
+    assert [(r.host, r.local) for r in rows] == [("h202", True), ("h051", False)]
 
 
 def test_control_a_host_down_for_repair_keeps_its_stale_bay() -> None:

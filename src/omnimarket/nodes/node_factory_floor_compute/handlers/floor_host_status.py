@@ -296,13 +296,15 @@ def _heartbeat(
 def _parked_heartbeat(
     request: ModelFactoryFloorRequest, host: str, row: ModelFloorHostRow | None
 ) -> tuple[ModelHostNumber, ModelHostNumber]:
-    """The heartbeat cells of one host, reading the hosts the table marks unavailable before the projection.
+    """The heartbeat cells of one host, reading the hosts the table parks before the projection.
 
-    A host the table marks ``available: false`` — parked out of selection, or down for repair — expects no heartbeat,
-    so both cells are unread with the table's own reason rather than the ``never reported a heartbeat`` failure of an
-    unread machine. Every other host is judged by ``_heartbeat`` as before.
+    A host the table parks — ``available: false`` and not ``local`` — expects no heartbeat, so both
+    cells are unread with the table's own reason rather than the ``never reported a heartbeat``
+    failure of an unread machine. The local row is the machine the publisher runs on: it keeps
+    sending heartbeats whatever its placement flag says, so it and every other host are judged by
+    ``_heartbeat`` as before.
     """
-    if row is None or row.available:
+    if row is None or row.available or row.local:
         return _heartbeat(request, host)
     source = "host-drift fleet projection"
     why = (
