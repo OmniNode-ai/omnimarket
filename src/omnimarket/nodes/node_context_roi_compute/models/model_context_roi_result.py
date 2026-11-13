@@ -18,7 +18,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_context_roi_compute.models.model_factor_arm import (
+from omnimarket.models.model_factor_arm import (
     EnumArmLabel,
 )
 

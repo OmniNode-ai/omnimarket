@@ -112,7 +112,9 @@ descriptor:
 # overlay_file_env, else <ONEX_SKILL_OVERLAY_ROOTS root>/node_factory_floor_publish_effect/overlay.yaml.
 # The friction step keeps the 24-hour window of the rollup's report (the part with the classes the record reads).
 # Steps run in order. A step that is not required may fail: the status file records it and the page shows that
-# source as unread. The factory floor effect is last and required: without a record nothing is published.
+# source as unread. The factory floor effect is last and required: without a record nothing is published. The
+# delegation tracker the optional step built, and the served status carrying a `refused` block, are still served
+# when this step refuses (OMN-23969).
 delegation_report:
   local_group: local
   fallback_group: other
@@ -190,7 +192,6 @@ runtime:
     concurrent: true
     kind: capture
     required: false
-    timeout_seconds: 60
     argv: ["{home}/omnibase_infra/scripts/onex", "lab-work", "hosts", "--json", "--bus-lane", "{bus_lane}"]
     output_relpath: .claude_scratch/lab-run/hosts.json
   # The landing placement's pool read of every machine (load, memory, swap, cap, or UNREADABLE), the one the
@@ -203,13 +204,11 @@ runtime:
     concurrent: true
     kind: command
     required: false
-    timeout_seconds: 60
     argv: ["python3", "{plugin_root}/scripts/onex_lab_run.py", "--lane", "factory-floor-pool", "--hosts"]
   - name: friction
     concurrent: true
     kind: copy
     required: false
-    timeout_seconds: 10
     source_relpath: .onex_state/friction-rollup/latest.json
     select: [windows, 24h]
     output_relpath: .claude_scratch/friction/friction-report.json
@@ -217,7 +216,6 @@ runtime:
     concurrent: true
     kind: module
     required: false
-    timeout_seconds: 90
     module: omnimarket.nodes.node_process_health_effect.runtime_process_health
     fresh_relpath: .onex_state/process-health/process-health.json
     fresh_seconds: 900
@@ -225,7 +223,6 @@ runtime:
     concurrent: true
     kind: runner_fleet
     required: false
-    timeout_seconds: 10
     output_relpath: .onex_state/runner-fleet/runner-fleet.json
   # OMN-23083: join J2 (piece 2 to piece 3), run for each host its overlay names. A canary on the host publishes one command,
   # placement consumes the host's capacity advertisement and one correlated result returns on the bus; the node writes the
@@ -238,7 +235,6 @@ runtime:
     concurrent: true
     kind: module
     required: false
-    timeout_seconds: 90
     module: omnimarket.nodes.node_host_reading_effect.runtime_host_reading
     # The run's own bound sits inside the step's: a step killed at timeout_seconds cannot close the chains it started, and the floor
     # reads each start with no terminal as start_without_terminal. A host still open at --deadline-seconds ends its chains typed.
@@ -251,7 +247,6 @@ runtime:
     concurrent: true
     kind: module
     required: false
-    timeout_seconds: 90
     module: omnimarket.nodes.node_work_ledger_append_effect.runtime_join_j5
     args: ["run"]
   # OMN-22936: join J6 (piece 6 to piece 7). Each piece 6 golden reading the journal does not show piece 7 answering gets one stop
@@ -265,7 +260,6 @@ runtime:
     concurrent: true
     kind: module
     required: false
-    timeout_seconds: 90
     module: omnimarket.nodes.node_gate_store_effect.runtime_join_j6
     args: ["run"]
   # OMN-23420: the J7 run, the join's caller. Join J7 joins piece 7 (process spine) to piece 8 (central test harness): each run
@@ -277,7 +271,6 @@ runtime:
     concurrent: true
     kind: module
     required: false
-    timeout_seconds: 90
     module: omnimarket.nodes.node_lab_check_run_effect.runtime_join_j7
     args: ["run"]
   # OMN-22478: the friction report with the overlay home's class rules. It joins the concurrent group so the longest path
@@ -287,7 +280,6 @@ runtime:
     concurrent: true
     kind: friction_rollup
     required: false
-    timeout_seconds: 90
     output_relpath: .claude_scratch/friction/friction-report.json
     rollup:
       # The ledger is on the bus: the rows come from typed `rows` reads through the command the variable holds, one page at a
@@ -324,7 +316,6 @@ runtime:
     concurrent: true
     kind: module
     required: false
-    timeout_seconds: 30
     module: omnimarket.nodes.node_join_refusal_effect
     args: ["run"]
   # OMN-23081: the delegation tracker. It reads the latest scheduled run of each delegation scenario's workflow through the
@@ -337,7 +328,6 @@ runtime:
     concurrent: true
     kind: module
     required: false
-    timeout_seconds: 90
     module: omnimarket.nodes.node_floor_delegation_effect
     args: ["run", "--home", "{home}"]
   # OMN-23315: the beta board. It reads the probes' finished runs one at a time inside its own 50 s deadline and the ledger's newest
@@ -347,7 +337,6 @@ runtime:
     concurrent: true
     kind: module
     required: false
-    timeout_seconds: 85
     module: omnimarket.nodes.node_beta_board_effect
     args: ["run", "--home", "{home}"]
   # OMN-23205 (plan task M1): the MVP launch block's scheduled read. It lists the latest scheduled runs of each producer workflow the
@@ -359,7 +348,6 @@ runtime:
     concurrent: true
     kind: module
     required: false
-    timeout_seconds: 90
     module: omnimarket.nodes.node_floor_simple_effect
     args: ["--home", "{home}", "--mvp-reads"]
   # OMN-23391: the bus projections the floor takes its inputs from (the overlay store's fleet first). The step reads each snapshot topic
@@ -371,7 +359,6 @@ runtime:
     concurrent: true
     kind: module
     required: false
-    timeout_seconds: 60
     module: omnimarket.nodes.node_floor_projection_read_effect
     args: ["--home", "{home}"]
   # OMN-23877: the floor emissions projection. One pass folds the three floor emission topics into the floor emissions
@@ -383,7 +370,6 @@ runtime:
     concurrent: true
     kind: module
     required: false
-    timeout_seconds: 60
     module: omnimarket.nodes.node_floor_emissions_publish_effect
     args: ["--home", "{home}"]
   # OMN-23122: join J16 (piece 16 to piece 17). One run per cycle reads the newest eval reading of piece 16 on the ledger and the
@@ -397,7 +383,6 @@ runtime:
     concurrent: true
     kind: module
     required: false
-    timeout_seconds: 30
     module: omnimarket.nodes.node_join_j16_effect
     args: ["run"]
   # OMN-23022: join J0 (piece 17 to piece 1). One run per cycle reads the floor record the previous cycle wrote and writes piece 17's
@@ -411,7 +396,6 @@ runtime:
     concurrent: true
     kind: module
     required: false
-    timeout_seconds: 30
     module: omnimarket.nodes.node_join_j0_effect
     args: ["run"]
   # OMN-19998: the factory floor record's four unresolved ledger reads (TERMINAL blocked, partial, handed-off and STATUS handed-off=,
@@ -427,13 +411,14 @@ runtime:
     concurrent: true
     kind: module
     required: false
-    timeout_seconds: 90
     module: omnimarket.nodes.node_factory_floor_unresolved_effect
     args: ["--home", "{home}"]
     fresh_relpath: .onex_state/factory-floor/unresolved-rows.json
     fresh_seconds: 21600
   # OMN-23606: the record step, one window read of the ledger and every other source, with the unresolved record read from its file.
-  # Its limit stays 30 s and the cycle bound stays 240 s. Measured on the publishing Mac 2026-11-10 at load 10 to 11, with the
+  # Its limit is the overlay key limits.step_timeout_seconds.factory_floor (45 s) and the cycle bound the overlay key
+  # limits.cycle_bound_seconds (255 s) (operator decision 2026-11-12, OMN-23877: the step took 18 to 23 s at Mac load 10 to 12
+  # and passed 30 s near load 13, so the board stopped publishing; 45 s is at least 1.5 times the 23 s maximum). Measured on the publishing Mac 2026-11-10 at load 10 to 11, with the
   # overlay naming the file as the ledger source and the window read running beside the step's other reads: 19.6 s, 19.5 s and
   # 19.1 s (three runs; 24.1 s before the window read ran beside the others, 14.7 s of that the window read alone).
   # The window read takes the file (OMN-23606, measured on the publishing Mac 2026-11-11): the bus source never answers it (the
@@ -445,7 +430,6 @@ runtime:
   - name: factory_floor
     kind: module
     required: true
-    timeout_seconds: 30
     module: omnimarket.nodes.node_factory_floor_effect
     args: ["--home", "{home}"]
     environment:
@@ -455,7 +439,6 @@ runtime:
   - name: floor_simple
     kind: module
     required: false
-    timeout_seconds: 15
     module: omnimarket.nodes.node_floor_simple_effect
     args: ["--home", "{home}", "--defer-canary"]
   # OMN-23018: the floor's numbers are kept as a dated history and compared with 1, 7 and 30 days ago. Not required: when it
@@ -463,7 +446,6 @@ runtime:
   - name: floor_compare
     kind: module
     required: false
-    timeout_seconds: 15
     module: omnimarket.nodes.node_floor_compare_effect
     args: ["--home", "{home}"]
   # After the page and the record are served: the hosted canary's status, from the page as served now (OMN-19998, 17a).
@@ -471,7 +453,6 @@ runtime:
   - name: floor_canary
     kind: module
     required: true
-    timeout_seconds: 20
     module: omnimarket.nodes.node_floor_simple_effect
     args: ["--home", "{home}", "--publish-canary"]
   names:
@@ -493,17 +474,19 @@ runtime:
   transport:
     connect_timeout_seconds: 10
     transfer_timeout_seconds: 60
-  # OMN-22699: the cycle bound and the time each phase after the input steps may take. The longest path the contract
-  # allows is the sum of: each group of concurrent input steps at its slowest member's timeout_seconds, the delegation
-  # read, the copies, the history prune, the after-publish steps and the final status write. A test holds that sum under
-  # bound_seconds, so a timeout raised past the bound fails the build instead of showing as a slow page. The handler
-  # clamps every delegation read, copy, prune and status write to what its phase has left, so these numbers are real
-  # limits. Measured 2026-11-07 on the launching Mac (served publish-status.json): hosts 24 s, pool 18 to 22 s, the
-  # factory floor record 24 s, the simple floor 11 to 12 s, delegation 7 to 8 s, the whole input phase 59 to 60 s; the
+  # OMN-22699: the cycle bound and the time each phase after the input steps may take. The bound and every step's
+  # timeout are the overlay's limits (the keys limits.cycle_bound_seconds and limits.step_timeout_seconds.<step>; the
+  # record step's is limits.step_timeout_seconds.factory_floor, 45 s against the 255 s bound); this contract declares
+  # only the phases. The longest path is the sum of: each group of concurrent input steps at its slowest member's
+  # timeout, the delegation read, the copies, the history prune, the after-publish steps and the final status write.
+  # The handler resolves the limits with the overlay and refuses with PublishLimitBoundError when that sum passes the
+  # bound, so a timeout raised past the bound refuses the publish instead of showing as a slow page. The handler clamps
+  # every delegation read, copy, prune and status write to what its phase has left, so these numbers are real limits.
+  # Measured 2026-11-07 on the launching Mac (served publish-status.json): hosts 24 s, pool 18 to 22 s, the factory
+  # floor record 24 s, the simple floor 11 to 12 s, delegation 7 to 8 s, the whole input phase 59 to 60 s; the
   # process-health rebuild (only when its file is older than 900 s) took 82 s on a lab host. A step that reaches its
   # timeout is recorded failed with the seconds it took.
   cycle:
-    bound_seconds: 240
     delegation_timeout_seconds: 15
     copy_budget_seconds: 40
     history_prune_budget_seconds: 8

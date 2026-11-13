@@ -10,8 +10,8 @@ resolution-markers = [
 
 [manifest]
 overrides = [
-    { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?tag=dev-20261111160725-6cbe67b216fe" },
-    { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261112010628-aa87c2dd6abe" },
+    { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?tag=dev-20261111183916-a85cb916d4c1" },
+    { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261112083258-b0b00a52dd57" },
     { name = "omnibase-spi", git = "https://github.com/OmniNode-ai/omnibase_spi.git?tag=dev-20261108170744-52946639a23a" },
 ]
 
@@ -3041,8 +3041,8 @@ wheels = [
 
 [[package]]
 name = "omnibase-core"
-version = "0.47.75"
-source = { git = "https://github.com/OmniNode-ai/omnibase_core.git?tag=dev-20261111160725-6cbe67b216fe#6cbe67b216fe53d7db97d012d26cd5aa04ff9404" }
+version = "0.47.76"
+source = { git = "https://github.com/OmniNode-ai/omnibase_core.git?tag=dev-20261111183916-a85cb916d4c1#a85cb916d4c1334b63877da178bbfbf3023f168a" }
 dependencies = [
     { name = "blake3" },
     { name = "click" },
@@ -3064,7 +3064,7 @@ dependencies = [
 [[package]]
 name = "omnibase-infra"
 version = "0.38.77"
-source = { git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261112010628-aa87c2dd6abe#aa87c2dd6abef015f758077349eb25f899655692" }
+source = { git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261112083258-b0b00a52dd57#b0b00a52dd57dcc0e2a03631b7bdceebca10c472" }
 dependencies = [
     { name = "a2a-sdk" },
     { name = "aiofiles" },
@@ -3205,10 +3205,10 @@ requires-dist = [
     { name = "graphifyy", marker = "extra == 'dep-health'", specifier = "==0.8.2" },
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "jsonschema", specifier = ">=4.18.0" },
-    { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?tag=dev-20261111160725-6cbe67b216fe" },
-    { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261112010628-aa87c2dd6abe" },
+    { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?tag=dev-20261111183916-a85cb916d4c1" },
+    { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261112083258-b0b00a52dd57" },
     { name = "omnibase-spi", git = "https://github.com/OmniNode-ai/omnibase_spi.git?tag=dev-20261108170744-52946639a23a" },
-    { name = "omninode-memory", git = "https://github.com/OmniNode-ai/omnimemory.git?tag=dev-20261108074331-82c1680fad8a" },
+    { name = "omninode-memory", git = "https://github.com/OmniNode-ai/omnimemory.git?tag=dev-20261112102309-92b9c1a20bef" },
     { name = "packaging", specifier = ">=24.0" },
     { name = "psycopg2-binary", specifier = ">=2.9.10" },
     { name = "pyasn1", specifier = ">=0.6.4" },
@@ -3244,8 +3244,8 @@ parity = [{ name = "mutmut", specifier = ">=3.3,<4" }]
 
 [[package]]
 name = "omninode-memory"
-version = "0.18.12"
-source = { git = "https://github.com/OmniNode-ai/omnimemory.git?tag=dev-20261108074331-82c1680fad8a#82c1680fad8a31627e4b17036faeeefebda26482" }
+version = "0.18.14"
+source = { git = "https://github.com/OmniNode-ai/omnimemory.git?tag=dev-20261112102309-92b9c1a20bef#92b9c1a20bef7bbd32a4e0ba557d116d5c9fbb2d" }
 dependencies = [
     { name = "aiohttp" },
     { name = "alembic" },

@@ -296,6 +296,8 @@ class ModelLabStateOverlay(_Frozen):
     broker_conditions: tuple[str, ...] = Field(min_length=1)
     queue_age_classes: tuple[str, ...] = Field(min_length=1)
     deploy_lag_lookback_days: int = Field(gt=0)
+    # The longest one dev merge may wait from merge to running; past it the deploy_lag row reads NOT WORKING by itself.
+    deploy_lag_ceiling_minutes: int | None = Field(default=None, gt=0)
     require_runner_version: bool
     declared_host_states: tuple[str, ...] = ()
     # Hosts the pool probe does not read; every other host of the floor record needs a disk line in the pool receipt.
