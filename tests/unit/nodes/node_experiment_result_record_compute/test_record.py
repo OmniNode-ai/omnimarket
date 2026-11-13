@@ -280,3 +280,29 @@ def test_handler_no_args_loads_contract_policy() -> None:
     result = _make_result()
     out = handler.handle(_request(result))
     assert out.status is EnumExperimentResultRecordStatus.COMPLETED
+
+
+# --- contract terminal topics ------------------------------------------------
+
+
+_RECORDED_TOPIC = "onex.evt.omnimarket.experiment-arm-result-recorded.v1"  # onex-topic-allow: asserted against the contract
+_REFUSED_TOPIC = "onex.evt.omnimarket.experiment-arm-result-refused.v1"  # onex-topic-allow: asserted against the contract
+
+
+def test_the_contract_declares_the_recorded_and_refused_terminal_topics() -> None:
+    root = Path(__file__).resolve().parents[0]
+    while not (root / "pyproject.toml").is_file():
+        root = root.parent
+    contract_path = (
+        root
+        / "src/omnimarket/nodes/node_experiment_result_record_compute/contract.yaml"
+    )
+    contract = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
+    assert contract["runtime_dispatch"]["terminal_events"]["success"] == _RECORDED_TOPIC
+    assert contract["runtime_dispatch"]["terminal_events"]["failure"] == _REFUSED_TOPIC
+    assert _RECORDED_TOPIC in contract["event_bus"]["publish_topics"]
+    assert _REFUSED_TOPIC in contract["event_bus"]["publish_topics"]
+    result = _make_result(n=60, correct=61, skip_wilson=True)
+    handler = HandlerExperimentResultRecord(policy=_policy())
+    out = handler.handle(_request(result))
+    assert out.status is EnumExperimentResultRecordStatus.FAILED
