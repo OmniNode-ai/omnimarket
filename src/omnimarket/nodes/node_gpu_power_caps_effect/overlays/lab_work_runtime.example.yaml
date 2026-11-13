@@ -26,3 +26,6 @@ hosts:
   - name: example-remote-host
     transport_prefix: []
     caps_unit: gpu-power-caps-example-remote-host
+event_bus:
+  type: kafka
+  lane: example-lane
