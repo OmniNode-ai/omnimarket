@@ -4861,6 +4861,7 @@
   "tests/unit/nodes/node_merge_override_alarm_effect/test_one_verdict_per_merge.py": 2.33,
   "tests/unit/nodes/node_merge_override_alarm_effect/test_override_must_name_head.py": 1.7,
   "tests/unit/nodes/node_merge_override_alarm_effect/test_receipt_share.py": 1.48,
+  "tests/unit/nodes/node_merge_override_alarm_effect/test_settings_before_s19.py": 7.38,
   "tests/unit/nodes/node_merge_override_alarm_effect/test_typed_entries.py": 5.22,
   "tests/unit/nodes/node_merge_sweep_compute/test_main_cli_outputs.py": 0.08,
   "tests/unit/nodes/node_model_comparison_runner/test_node_model_comparison_runner.py": 0.19,
