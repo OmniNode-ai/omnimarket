@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-24307
 title: The floor fill job runs its live profile so its state row is written
-summary: The scheduled floor fill job answered "the live profile is not bound in the runtime yet" for every profile but inmemory, so on the dev runtime the fill kept its state in process memory and floor_fill_state held 0 rows. A due tick on profile live now builds the live fill with the table-backed store, takes the store's connection string from the variable the fill overlay names (never from a file), and answers a failed run event that names the variable when it is unset. The store's connection carries the scan's declared boundary mark.
+summary: The scheduled floor fill job answered "the live profile is not bound in the runtime yet" for every profile but inmemory, so on the dev runtime the fill kept its state in process memory and floor_fill_state held 0 rows. A due tick on profile live now builds the live fill with the table-backed store, takes the store's connection string from the variable the fill overlay names (never from a file), and answers a failed run event that names the variable when it is unset. The store's connection boundary mark and its test come from omnimarket#6065, which merges first.
 is_seam_ticket: true
 interface_change: false
 interfaces_touched: []
@@ -19,8 +19,8 @@ requirements:
     statement: 'AC4: integrated: after a floor fill tick on the dev runtime the floor_fill_state table holds at least one row -- falsifier: psql on dev, select count(*) from public.floor_fill_state, reads 0 today and reads 1 or more after the tick'
 evidence_requirements:
 - kind: tests
-  description: The live profile tests and the store boundary tests pass at the pushed head.
-  command: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_scheduled_effect/tests/test_live_profile.py src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_store_guard_boundary.py -q --no-cov -n 0 -p no:randomly
+  description: The live profile tests pass at the pushed head.
+  command: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_scheduled_effect/tests/test_live_profile.py -q --no-cov -n 0 -p no:randomly
 emergency_bypass:
   enabled: false
   justification: ''
@@ -45,13 +45,13 @@ dod_evidence:
     check_value: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_scheduled_effect/tests/test_live_profile.py -q --no-cov -n 0 -p no:randomly -k "dsn_unset or unreachable or declared_variable"
     cwd: .
 - id: dod-omn24307-ac3-boundary
-  description: 'AC3: the store connection line carries the scan boundary mark and the scan of the store source has no active finding; with the mark removed it reports an active finding (the control).'
+  description: 'AC3: the freestanding imperative-IO scan over this tree has no active finding, so the store connection carries the boundary mark that omnimarket#6065 adds; the scan is the check, so it fails until that pull request has merged and this branch has been rebased on it. The test of the mark and its unmarked control (test_floor_fill_store_guard_boundary.py) is added by that pull request.'
   source: manual
   binds_ac:
   - AC3
   checks:
-  - check_type: test_passes
-    check_value: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_store_guard_boundary.py -q --no-cov -n 0 -p no:randomly
+  - check_type: command
+    check_value: uv run --frozen check-imperative-contracts --repo-root . --allowlist-path imperative-contract-allowlist.yaml --scan-freestanding
     cwd: .
 - id: dod-omn24307-ac4-row-read
   description: 'AC4: after a floor fill tick on the dev runtime the table holds at least one row; the read is a count on the dev database and fails while it reads 0. Hosted CI cannot reach dev, so only the local Done gate runs this unbound check.'
@@ -72,9 +72,9 @@ dod_evidence:
       bash -euo pipefail -c '
       gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/handlers/floor_fill_scheduled_tick.py?ref=$(git rev-parse HEAD)" --jq ".content | gsub(\"\\n\"; \"\") | @base64d | (contains(\"FloorFillStoreDsnUnsetError\") and contains(\"build_live_handler_factory\"))" | grep -qx true'
 - id: dod-omn24307-integration-proof
-  description: The live profile and store boundary tests ran on a lab host at the pushed head through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  description: The live profile tests ran on a lab host at the pushed head through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
   source: manual
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24307 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_scheduled_effect/tests/test_live_profile.py src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_store_guard_boundary.py -q --no-cov -p no:randomly
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24307 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_scheduled_effect/tests/test_live_profile.py -q --no-cov -p no:randomly
