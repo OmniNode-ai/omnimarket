@@ -15,10 +15,10 @@ from omnimarket.handlers.node_overlay_reader import (
     load_structured_overlay,
 )
 from omnimarket.handlers.scheduled_overlay_refusal import ScheduledOverlayRefusalLatch
-from omnimarket.models.model_runtime_tick_schedule import scheduled_fire
-from omnimarket.nodes.node_lab_sli_collect_effect.models.model_lab_sli_collect import (
+from omnimarket.models.lab_sli.model_lab_sli_collect import (
     ModelLabSliCollectRequest,
 )
+from omnimarket.models.model_runtime_tick_schedule import scheduled_fire
 from omnimarket.nodes.node_lab_sli_schedule_compute.models.model_lab_sli_schedule_overlay import (
     ModelLabSliScheduleOverlay,
 )

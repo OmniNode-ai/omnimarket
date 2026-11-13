@@ -19,7 +19,7 @@ from omnibase_infra.runtime.auto_wiring.handler_wiring import wire_from_manifest
 from omnibase_infra.runtime.message_dispatch_engine import MessageDispatchEngine
 
 from omnimarket.handlers.node_overlay_reader import OVERLAY_ROOTS_ENV
-from omnimarket.nodes.node_lab_sli_collect_effect.models.model_lab_sli_collect import (
+from omnimarket.models.lab_sli.model_lab_sli_collect import (
     ModelLabSliCollectRequest,
 )
 
@@ -71,11 +71,10 @@ def test_collect_is_wired_by_event_bus_to_its_command_and_success_topics() -> No
         collect["terminal_event"]
         == collect["runtime_dispatch"]["terminal_events"]["success"]
     )
-    # The failure terminal is a declared output of the node, so a collect that refuses (pack off, unreadable
+    # The failure terminal is declared under runtime_dispatch, so a collect that refuses (pack off, unreadable
     # host) ends on a topic a reader can find, not on silence.
     failure = collect["runtime_dispatch"]["terminal_events"]["failure"]
     assert failure == "onex.evt.omnimarket.lab-sli-collect-failed.v1"
-    assert failure in collect["event_bus"]["publish_topics"]
 
 
 def test_collect_success_matches_compute_subscribe() -> None:

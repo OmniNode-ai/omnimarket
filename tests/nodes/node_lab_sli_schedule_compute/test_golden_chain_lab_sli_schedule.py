@@ -11,10 +11,10 @@ import pytest
 from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 
 from omnimarket.handlers.node_overlay_reader import OVERLAY_ROOTS_ENV
-from omnimarket.models.model_runtime_tick_schedule import ModelRuntimeTickScheduleConfig
-from omnimarket.nodes.node_lab_sli_collect_effect.models.model_lab_sli_collect import (
+from omnimarket.models.lab_sli.model_lab_sli_collect import (
     ModelLabSliCollectRequest,
 )
+from omnimarket.models.model_runtime_tick_schedule import ModelRuntimeTickScheduleConfig
 from omnimarket.nodes.node_lab_sli_schedule_compute import (
     HandlerLabSliSchedule,
     ModelLabSliScheduleOverlay,

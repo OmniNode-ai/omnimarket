@@ -55,7 +55,7 @@ input_model:
   description: The runtime scheduler's tick.
 output_model:
   name: ModelLabSliCollectRequest
-  module: omnimarket.nodes.node_lab_sli_collect_effect.models.model_lab_sli_collect
+  module: omnimarket.models.lab_sli.model_lab_sli_collect
   description: The interval, the host name and the source paths to read.
 
 descriptor:
