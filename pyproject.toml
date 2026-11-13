@@ -751,6 +751,7 @@ node_goal_verification_orchestrator = "omnimarket.nodes.node_goal_verification_o
 node_golden_chain_generator = "omnimarket.nodes.node_golden_chain_generator"
 node_golden_chain_generator_compute = "omnimarket.nodes.node_golden_chain_generator_compute"
 node_golden_chain_sweep = "omnimarket.nodes.node_golden_chain_sweep"
+node_gpu_power_caps_effect = "omnimarket.nodes.node_gpu_power_caps_effect"
 node_green_controller_read_compute = "omnimarket.nodes.node_green_controller_read_compute"
 node_green_draft_clock_compute = "omnimarket.nodes.node_green_draft_clock_compute"
 node_handler_correctness_gate = "omnimarket.nodes.node_handler_correctness_gate"
