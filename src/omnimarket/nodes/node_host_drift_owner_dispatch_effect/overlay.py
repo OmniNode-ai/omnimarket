@@ -14,10 +14,10 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.handlers.node_overlay_reader import load_structured_overlay
-from omnimarket.nodes.node_alarm_owner_responder_compute.models.model_alarm_owner_responder import (
+from omnimarket.events.alarm_owner_responder import (
     ModelAlarmOwnerPolicy,
 )
+from omnimarket.handlers.node_overlay_reader import load_structured_overlay
 
 NODE_NAME = "node_host_drift_owner_dispatch_effect"
 
