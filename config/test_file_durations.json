@@ -310,6 +310,7 @@
   "tests/handlers/test_code_edit_contract_checks.py": 1.99,
   "tests/handlers/test_code_edit_loop_overlay.py": 2.04,
   "tests/handlers/test_edge_bearer_jwt_identity.py": 4.52,
+  "tests/handlers/test_edge_overlay_identity_routes.py": 2.7,
   "tests/handlers/test_overlay_root_declared_refusal.py": 4.94,
   "tests/handlers/test_rules_unit_roots_plist_literal_paths.py": 0.02,
   "tests/handlers/test_runtime_proof_close.py": 0.17,
