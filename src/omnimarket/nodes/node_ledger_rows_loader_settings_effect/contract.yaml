@@ -1,0 +1,75 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Ledger Rows Loader Settings Effect (OMN-24059, cutover plan step L7)
+#
+# How a host runs the ledger rows loader. The plugin's shared ledger readers no longer take the loader
+# command from an environment variable a person sets: this node resolves it from the host's row of the
+# ledger_rows_loader_hosts overlay (the loader command and the call's bound) and carries the loader
+# overlay's file_fallback_allowed flag, found under the overlay roots (ONEX_SKILL_OVERLAY_ROOTS, the roots
+# the one overlay root resolver answers). A host with no row is host-row-missing; a missing or malformed
+# overlay is refused with the overlay named. Never a default command. The reader falls back to the file
+# only when the loader overlay allows it, and counts and prints the reason.
+name: node_ledger_rows_loader_settings_effect
+contract_name: node_ledger_rows_loader_settings_effect
+node_name: node_ledger_rows_loader_settings_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Resolves the loader command of the host it runs on from the ledger_rows_loader_hosts overlay, with
+  the call bound and the loader overlay's file fallback flag. A found row is answered (golden event),
+  a host with no row is host-row-missing and a missing or malformed overlay is refused with the
+  overlay named (error event). No source supplies a default command.
+
+handler:
+  module: omnimarket.nodes.node_ledger_rows_loader_settings_effect.handlers.handler_loader_settings
+  class: HandlerLoaderSettings
+  input_model: omnimarket.nodes.node_ledger_rows_loader_settings_effect.models.model_loader_settings.ModelLoaderSettingsRequest
+
+# HandlerLoaderSettings takes the two overlay sources, the event sink and the clock as constructor
+# parameters, so a reader runs it through its own CLI, not handler_routing.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [event-journal]
+  timeout_ms: 30000
+
+input_model:
+  name: ModelLoaderSettingsRequest
+  module: omnimarket.nodes.node_ledger_rows_loader_settings_effect.models.model_loader_settings
+  description: The host's registry root and its short native name.
+output_model:
+  name: ModelLoaderSettingsResult
+  module: omnimarket.nodes.node_ledger_rows_loader_settings_effect.models.model_loader_settings
+  description: resolved, host-row-missing or refused, with the argv, the call bound, the fallback flag and the event.
+
+runtime_dispatch:
+  external_trigger: true
+
+# The topics by role; the handler reads these and holds no topic string.
+topics:
+  loader_settings_resolved: onex.evt.omnimarket.ledger-rows-loader-settings-resolved.v1
+  loader_settings_refused: onex.evt.omnimarket.ledger-rows-loader-settings-refused.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.ledger-rows-loader-settings-resolved.v1
+  - onex.evt.omnimarket.ledger-rows-loader-settings-refused.v1
+
+overlay:
+  node: ledger_rows_loader_hosts
+  loader_node: node_ledger_rows_loader_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+metadata:
+  ticket: OMN-24059
+  transport_type: inmemory
