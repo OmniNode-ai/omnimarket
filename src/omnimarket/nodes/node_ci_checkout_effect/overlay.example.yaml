@@ -1,0 +1,34 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. The deployment's overlay lives at <root>/node_ci_checkout_effect/overlay.yaml
+# under a root named in ONEX_SKILL_OVERLAY_ROOTS, or the file ONEX_CI_CHECKOUT_OVERLAY names.
+# No key has a default.
+host_name: example-host
+github_owner: example-owner
+sources:
+  - name: bare-mirror
+    path_template: "/srv/git/mirrors/{repo_name}.git"
+    serve_url_template: "file:///srv/git/mirrors/{repo_name}.git"
+  - name: canonical-clone
+    path_template: "/srv/git/clones/{repo_name}"
+    serve_url_template: "file:///srv/git/clones/{repo_name}"
+sync_on_miss: true
+# argv template, run with no shell: {repo} is owner/name, {ref} the request's branch hint (the element and a
+# preceding --branch are dropped when the request names none). The deployment names its host's clone sync here.
+sync_command:
+  - /usr/local/bin/clone-sync
+  - refresh
+  - "{repo}"
+  - "--branch"
+  - "{ref}"
+  - "--wait"
+sync_timeout_seconds: 120
+git_timeout_seconds: 30
+reply_timeout_seconds: 60
+default_profile: inmemory
+profiles:
+  inmemory:
+    kind: inmemory
+  redpanda:
+    kind: kafka
+    lane: example-lane

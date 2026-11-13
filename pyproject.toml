@@ -423,6 +423,7 @@ node_chain_diff_compute = "omnimarket.nodes.node_chain_diff_compute"
 node_changelog_audit_compute = "omnimarket.nodes.node_changelog_audit_compute"
 node_checkpoint_capture_effect = "omnimarket.nodes.node_checkpoint_capture_effect"
 node_checkpoint_compute = "omnimarket.nodes.node_checkpoint_compute"
+node_ci_checkout_effect = "omnimarket.nodes.node_ci_checkout_effect"
 node_ci_fix_effect = "omnimarket.nodes.node_ci_fix_effect"
 node_ci_rerun_effect = "omnimarket.nodes.node_ci_rerun_effect"
 node_ci_state_verdict_compute = "omnimarket.nodes.node_ci_state_verdict_compute"
@@ -1587,6 +1588,8 @@ seed = "omnimarket.cli.cli_seed:seed_command"
 # event. Discovered over installed distributions like the groups above.
 scm = "omnimarket.handlers.scm.scm_cli:scm_group"
 ticket = "omnimarket.handlers.ticket.ticket_cli:ticket_group"
+# `onex ci checkout`: check a repository out at a sha from this host's clones over the bus, never from GitHub (node_ci_checkout_effect).
+ci = "omnimarket.nodes.node_ci_checkout_effect.handlers.adapter_ci_checkout_cli:ci_group"
 # OMN-17427: `onex lab-archive` -- archive lab history older than seven days to Drive
 # under a CPU, IO and bandwidth budget, then free the local copy. A shim over
 # node_lab_history_archive_effect, discovered over installed distributions like the groups above.
