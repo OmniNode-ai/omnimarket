@@ -5261,6 +5261,7 @@
   "tests/unit/nodes/test_omn22385_state_coverage_touched_nodes.py": 0.02,
   "tests/unit/nodes/test_omn8431_overseer_import_migration.py": 0.05,
   "tests/unit/nodes/test_omn8504_overseer_type_hint_resolution.py": 0.14,
+  "tests/unit/nodes/test_overlay_event_bus_omn_eval_nodes.py": 1.5,
   "tests/unit/nodes/test_readiness_gate_orchestrator_terminal_routing.py": 0.4,
   "tests/unit/nodes/test_readiness_gate_orchestrator_walker.py": 0.1,
   "tests/unit/nodes/test_runtime_tick_schedule_fires.py": 13.43,
