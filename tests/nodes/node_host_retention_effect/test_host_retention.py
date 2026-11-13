@@ -599,6 +599,24 @@ def test_the_uv_adapter_runs_only_cache_size_and_cache_prune(
         adapter.prune("uv", "/c/uv-cache", False, 60)
 
 
+def test_uv_adapter_expands_a_home_relative_binary_the_overlay_names(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: list[list[str]] = []
+
+    def fake(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        seen.append(argv)
+        return subprocess.CompletedProcess(argv, 0, "4096\n", "")
+
+    monkeypatch.setattr(subprocess, "run", fake)
+    monkeypatch.setenv("HOME", "/h/unit")
+
+    ProcessUvCache().size_bytes("~/.local/bin/uv", "/c/uv-cache", 60)
+    ProcessUvCache().prune("~/.local/bin/uv", "/c/uv-cache", False, 60)
+
+    assert [argv[0] for argv in seen] == ["/h/unit/.local/bin/uv"] * 2
+
+
 # --------------------------------------------------------------------------------------------- refusals
 
 

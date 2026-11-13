@@ -161,7 +161,11 @@ class ProcessUvCache:
 
     def size_bytes(self, uv_binary: str, cache_dir: str, timeout_s: float) -> int:
         env = {**os.environ, "UV_CACHE_DIR": cache_dir}
-        proc = _run([uv_binary, "cache", "size"], timeout_s=timeout_s, env=env)
+        proc = _run(
+            [os.path.expanduser(uv_binary), "cache", "size"],
+            timeout_s=timeout_s,
+            env=env,
+        )
         if proc.returncode != 0:
             raise OSError(proc.stderr[:200])
         match = re.search(r"\d+", proc.stdout)
@@ -171,7 +175,7 @@ class ProcessUvCache:
 
     def prune(self, uv_binary: str, cache_dir: str, ci: bool, timeout_s: float) -> None:
         env = {**os.environ, "UV_CACHE_DIR": cache_dir}
-        argv = [uv_binary, "cache", "prune"]
+        argv = [os.path.expanduser(uv_binary), "cache", "prune"]
         if ci:
             argv.append("--ci")
         proc = _run(argv, timeout_s=timeout_s, env=env)
