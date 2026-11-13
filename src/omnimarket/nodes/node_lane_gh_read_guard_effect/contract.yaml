@@ -27,7 +27,6 @@ node_version:
   patch: 0
 
 node_type: EFFECT_GENERIC
-runtime_profiles: [main]
 
 description: >
   Judges one PreToolUse call from a lane against the three GitHub read paths
