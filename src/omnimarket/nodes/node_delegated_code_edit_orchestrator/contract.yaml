@@ -109,6 +109,7 @@ broker_acl_grants:
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.delegated-code-edit-completed.v1, operation: DESCRIBE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.delegated-code-edit-failed.v1, operation: WRITE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.delegated-code-edit-failed.v1, operation: DESCRIBE}
+terminal_event: "onex.evt.omnimarket.delegated-code-edit-completed.v1"
 runtime_dispatch:
   command_topic: "onex.cmd.omnimarket.delegated-code-edit-requested.v1"
   terminal_events:

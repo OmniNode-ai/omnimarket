@@ -504,6 +504,9 @@ class HandlerDelegatedCodeEditOrchestrator:
             wall_ms=int((time.monotonic() - started) * 1000),
             summary=state.summary[:1000],
             detail=bound_error(detail, 300),
+            terminal_failure_cause=(
+                None if status == EnumCodeEditStatus.ACCEPTED else status.value
+            ),
         )
         self._ports.write_loop_receipt(
             loop_run_id,
