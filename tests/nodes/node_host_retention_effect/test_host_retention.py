@@ -22,9 +22,9 @@ from omnimarket.nodes.node_host_retention_effect.handlers.handler_host_retention
     load_bounds,
 )
 from omnimarket.nodes.node_host_retention_effect.handlers.host_retention_ports import (
+    DockerCiHostRemove,
+    DockerCiHostState,
     DockerContainerMounts,
-    DockerRunnerRemove,
-    DockerRunnerState,
     ProcessUvCache,
 )
 from omnimarket.nodes.node_temp_retention_effect.handlers.handler_temp_retention import (
@@ -469,7 +469,7 @@ def test_the_container_remove_adapter_refuses_an_unsafe_path_before_running_anyt
     monkeypatch.setattr(subprocess, "run", forbidden)
 
     with pytest.raises(OSError, match=r"is not|has"):
-        DockerRunnerRemove(5).remove("c", "runner", path)
+        DockerCiHostRemove(5).remove("c", "runner", path)
 
 
 def test_the_container_remove_adapter_runs_exactly_one_rm_as_the_runner_user_and_passes_the_path_as_an_argument(
@@ -483,7 +483,7 @@ def test_the_container_remove_adapter_runs_exactly_one_rm_as_the_runner_user_and
 
     monkeypatch.setattr(subprocess, "run", fake)
 
-    DockerRunnerRemove(5).remove(
+    DockerCiHostRemove(5).remove(
         "ci-runner-1", "runner", f"{CONTAINER_WORK}/big; echo pwned"
     )
 
@@ -683,7 +683,7 @@ def test_a_command_that_times_out_or_is_missing_is_an_unreadable_answer_not_a_cr
     monkeypatch.setattr(subprocess, "run", hangs)
     with pytest.raises(OSError, match="no answer"):
         ProcessUvCache().size_bytes("uv", "/c/uv-cache", 1)
-    assert DockerRunnerState(1).is_idle("c") is None
+    assert DockerCiHostState(1).is_idle("c") is None
     assert DockerContainerMounts(1).mount_sources() is None
 
     def missing(argv: list[str], **_kwargs: Any) -> None:
@@ -692,4 +692,4 @@ def test_a_command_that_times_out_or_is_missing_is_an_unreadable_answer_not_a_cr
     monkeypatch.setattr(subprocess, "run", missing)
     with pytest.raises(OSError, match="not installed"):
         ProcessUvCache().prune("uv", "/c/uv-cache", False, 1)
-    assert DockerRunnerState(1).is_idle("c") is None
+    assert DockerCiHostState(1).is_idle("c") is None

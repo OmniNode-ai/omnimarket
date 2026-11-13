@@ -44,14 +44,14 @@ def _run(
         raise OSError(f"{argv[0]}: not installed") from None
 
 
-class RunnerStatePort(Protocol):
+class CiHostStatePort(Protocol):
     """Whether a runner container is idle."""
 
     def is_idle(self, container: str) -> bool | None:  # None = state could not be read
         ...
 
 
-class RunnerRemovePort(Protocol):
+class CiHostRemovePort(Protocol):
     """Remove a path under the home of a runner container user."""
 
     def remove(
@@ -100,7 +100,7 @@ class DiskPort(Protocol):
     def reading(self, path: str) -> ModelDiskReading: ...
 
 
-class DockerRunnerState:
+class DockerCiHostState:
     """A runner is idle when no ``Runner.Worker`` process is running in the container."""
 
     def __init__(self, timeout_s: float) -> None:
@@ -119,7 +119,7 @@ class DockerRunnerState:
         return all("Runner.Worker" not in line for line in proc.stdout.splitlines())
 
 
-class DockerRunnerRemove:
+class DockerCiHostRemove:
     """Remove one path under a runner container user's home, as that user, after refusing unsafe paths.
 
     The path is passed to ``sh`` as an argument (never spliced into the script) and joined to ``$HOME`` inside the container.
@@ -322,8 +322,8 @@ class ShutilDisk:
 class HostRetentionPorts:
     """The seven ports a handler needs, with a ``default()`` of the real adapters."""
 
-    runner_state: RunnerStatePort
-    runner_remove: RunnerRemovePort
+    runner_state: CiHostStatePort
+    runner_remove: CiHostRemovePort
     uv_cache: UvCachePort
     lane_liveness: LaneLivenessPort
     container_mounts: ContainerMountPort
@@ -333,8 +333,8 @@ class HostRetentionPorts:
     @classmethod
     def default(cls, docker_timeout_s: float) -> HostRetentionPorts:
         return cls(
-            runner_state=DockerRunnerState(docker_timeout_s),
-            runner_remove=DockerRunnerRemove(docker_timeout_s),
+            runner_state=DockerCiHostState(docker_timeout_s),
+            runner_remove=DockerCiHostRemove(docker_timeout_s),
             uv_cache=ProcessUvCache(),
             lane_liveness=FilesystemLaneLiveness(),
             container_mounts=DockerContainerMounts(docker_timeout_s),

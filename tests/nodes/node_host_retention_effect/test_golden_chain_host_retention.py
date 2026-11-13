@@ -31,11 +31,9 @@ pytestmark = pytest.mark.unit
 
 
 def node_with(ports_lanes: set[str]) -> NodeHostRetentionEffect:
-    node = NodeHostRetentionEffect()
-    node.handler = HandlerHostRetention(
+    return NodeHostRetentionEffect(
         now=lambda: NOW, ports=make_ports(lanes=FakeLanes(ports_lanes))
     )
-    return node
 
 
 def test_golden_chain_removes_the_old_entry_and_keeps_the_live_lane_one(
@@ -48,6 +46,13 @@ def test_golden_chain_removes_the_old_entry_and_keeps_the_live_lane_one(
     node = node_with({"lane-z"})
     contract = yaml.safe_load(node.contract_path.read_text())
     assert contract["name"] == "node_host_retention_effect"
+    assert (
+        contract["terminal_event"] == "onex.evt.omnimarket.host-retention-completed.v1"
+    )
+    assert contract["runtime_dispatch"]["terminal_events"] == {
+        "success": "onex.evt.omnimarket.host-retention-completed.v1",
+        "failure": "onex.evt.omnimarket.host-retention-failed.v1",
+    }
 
     result = node.handle(
         ModelHostRetentionRequest(

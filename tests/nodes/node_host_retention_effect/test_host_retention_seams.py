@@ -23,8 +23,8 @@ from omnimarket.nodes.node_host_retention_effect.handlers.handler_host_retention
     validate_declarations,
 )
 from omnimarket.nodes.node_host_retention_effect.handlers.host_retention_ports import (
+    DockerCiHostState,
     DockerContainerMounts,
-    DockerRunnerState,
     FilesystemLaneLiveness,
     FilesystemUnitFiles,
 )
@@ -121,12 +121,12 @@ def test_runner_state_seam_reads_a_recorded_docker_top(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     seen = completed(monkeypatch, 0, IDLE)
-    assert DockerRunnerState(5).is_idle("ci-runner-1") is True
+    assert DockerCiHostState(5).is_idle("ci-runner-1") is True
     assert seen == [["docker", "top", "ci-runner-1", "-eo", "pid,args"]]
     completed(monkeypatch, 0, BUSY)
-    assert DockerRunnerState(5).is_idle("ci-runner-1") is False
+    assert DockerCiHostState(5).is_idle("ci-runner-1") is False
     completed(monkeypatch, 1, "")
-    assert DockerRunnerState(5).is_idle("ci-runner-1") is None
+    assert DockerCiHostState(5).is_idle("ci-runner-1") is None
 
 
 def test_container_mounts_seam_reads_recorded_docker_inspect(
