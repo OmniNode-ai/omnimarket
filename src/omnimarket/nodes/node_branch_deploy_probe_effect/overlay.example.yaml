@@ -4,10 +4,8 @@
 probe:
   health_url: http://runtime.example.invalid/health
   health_ok_path: [details, healthy]
-  ssh_host_env: EXAMPLE_RUNTIME_SSH_HOST
-  compose_project: example-project
-  provenance_service: example-runtime
-  provenance_path: /app/build-provenance.json
-  sha_path: [vcs_ref]
+  ready_url: http://runtime.example.invalid/ready
+  provenance_url: http://agent.example.invalid/dev-tag-heartbeat
+  sha_path: [heartbeat, example_repo, running_ref]
   timeout_seconds: 30
 detail_max_chars: 4096
