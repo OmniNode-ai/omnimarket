@@ -181,6 +181,6 @@ def test_the_bus_options_come_from_the_overlay_profile_and_the_named_variable() 
         "bus": "kafka",
         "bus_lane": "dev",
         "kafka_bootstrap": None,
-        "omnibase_path": "/workspace",
+        "omnibase_path": Path("/workspace"),
     }
     assert bus_options(deployment, "inmemory", {})["bus"] == "inmemory"

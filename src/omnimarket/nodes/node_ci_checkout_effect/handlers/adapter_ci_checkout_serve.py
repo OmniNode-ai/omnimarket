@@ -228,7 +228,7 @@ def bus_options(
         "bus": profile.kind,
         "bus_lane": profile.lane,
         "kafka_bootstrap": bootstrap or None,
-        "omnibase_path": root or None,
+        "omnibase_path": Path(root) if root else None,
     }
 
 
