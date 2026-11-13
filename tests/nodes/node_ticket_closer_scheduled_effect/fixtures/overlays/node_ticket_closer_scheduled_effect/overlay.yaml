@@ -1,0 +1,7 @@
+# Test fixture of the ticket closer schedule overlay (the deployed overlay lives in the overlays repository).
+run_interval_seconds: 60
+max_candidates_per_run: 3
+lane: ticket-closer-fixture
+execution_audience: hosted
+done_state: Done
+reading_source: unread

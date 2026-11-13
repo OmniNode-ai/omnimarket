@@ -1,0 +1,101 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Ticket Closer Scheduled (OMN-24138, the closer that runs on the runtime's schedule)
+#
+# The ticket closer as an effect of the one runtime. The runtime scheduler emits onex.intent.platform.runtime-tick.v1
+# far more often than the closer needs; the handler gates on the schedule overlay's run_interval_seconds with an
+# in-process last-run time (the idiom of node_floor_simple_scheduled_effect). When due, it reads the candidate tickets
+# through the source the overlay names, runs the DoD verifier against the overlay's execution audience, reuses the
+# existing flip predicate of node_dod_closeout_sweep_compute including its runtime-proof conjunct, and moves a ticket
+# to the overlay's done state only through the ticket write node when that predicate passes. A verifier that cannot
+# run judges nothing: its ticket is reported and nothing is written.
+name: node_ticket_closer_scheduled_effect
+contract_name: node_ticket_closer_scheduled_effect
+node_name: node_ticket_closer_scheduled_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  On the runtime tick, when due, examines tickets whose change is merged, runs the DoD verifier, and moves a ticket to
+  the overlay's done state only when the existing flip predicate passes; a verifier that cannot run judges nothing. The
+  cadence, the candidate limit, the lane, the audience and the done state are the schedule overlay's; this contract
+  and the handler hold no value.
+
+handler:
+  module: omnimarket.nodes.node_ticket_closer_scheduled_effect.handlers.handler_ticket_closer_scheduled
+  class: HandlerTicketCloserScheduled
+  input_model: omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: ticket_closer.scheduled_close
+      handler:
+        name: HandlerTicketCloserScheduled
+        module: omnimarket.nodes.node_ticket_closer_scheduled_effect.handlers.handler_ticket_closer_scheduled
+      handler_module: omnimarket.nodes.node_ticket_closer_scheduled_effect.handlers.handler_ticket_closer_scheduled
+      event_model: omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick
+      event_type: platform.runtime-tick
+      description: >
+        Gate on the schedule overlay's run_interval_seconds since the last scheduled run; when due, read the candidate
+        tickets, run the DoD verifier, decide each candidate with the flip predicate and move the ones that flip to
+        done.
+
+input_model:
+  name: ModelRuntimeTick
+  module: omnibase_infra.runtime.models.model_runtime_tick
+  description: The runtime scheduler's tick.
+output_model:
+  name: ModelTicketCloserResult
+  module: omnimarket.models.ticket_closer.model_ticket_closer
+  description: "The closer run's result: the candidates examined, the tickets flipped and each outcome."
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: false
+  timeout_ms: 600000
+  side_effects:
+    - reads candidate tickets through the source the schedule overlay names
+    - runs the DoD verifier
+    - moves a ticket to the overlay's done state through the ticket write node only when the flip rule passes
+
+input_subscriptions:
+  - topic: "onex.intent.platform.runtime-tick.v1"
+    operation: "ticket_closer.scheduled_close"
+
+terminal_event: onex.evt.omnimarket.ticket-closer-result.v1
+
+event_bus:
+  subscribe_topics:
+    - "onex.intent.platform.runtime-tick.v1"
+  publish_topics:
+    - "onex.evt.omnimarket.ticket-closer-result.v1"
+
+published_events:
+  - event_type: ModelTicketCloserResult
+    topic: onex.evt.omnimarket.ticket-closer-result.v1
+    description: "One scheduled closer run: the candidates examined, the tickets flipped and each outcome."
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.ticket-closer-result.v1
+
+# Where the schedule reads its settings. The overlays are found under ONEX_SKILL_OVERLAY_ROOTS or the file the env var names.
+runtime:
+  schedule_overlay: {overlay_id: node_ticket_closer_scheduled_effect, file_env: ONEX_TICKET_CLOSER_SCHEDULE_OVERLAY, model: omnimarket.models.ticket_closer.model_ticket_closer.ModelTicketCloserScheduleOverlay}
+
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.ticket-closer-result.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.ticket-closer-result.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.intent.platform.runtime-tick.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.intent.platform.runtime-tick.v1, operation: DESCRIBE}
+
+metadata:
+  ticket: OMN-24138
+  transport_type: kafka

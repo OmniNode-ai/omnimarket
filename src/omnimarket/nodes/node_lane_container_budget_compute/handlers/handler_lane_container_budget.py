@@ -128,6 +128,7 @@ def _judge(
         containers=names,
         detail=f"{len(names)} application containers running, budget {budget}",
         target=declaration.application_container_target,
+        slack=max(budget - len(names), 0),
     )
 
 
@@ -191,6 +192,15 @@ class HandlerLaneContainerBudget:
             lanes=lanes,
             alarms=tuple(_alarm(lane) for lane in lanes if lane.status != "PASS"),
         )
+
+    def closing_check(
+        self, verdict: ModelLaneContainerBudgetVerdict
+    ) -> tuple[ModelLaneContainerBudgetLane, ...]:
+        """The plan's closing comparison of each lane's budget with its live count.
+
+        An empty result means every budget equals its live count.
+        """
+        return tuple(lane for lane in verdict.lanes if lane.slack != 0)
 
     def upsert_alarms(
         self,

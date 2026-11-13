@@ -16,3 +16,6 @@ source_surface: node_code_eval_trial_orchestrator   # core ModelDelegationProven
 unit_lane_prefix: "code-eval-"            # prefix of a unit's lane; the run id follows it
 onex_executable: onex                     # the executable a unit runs: onex code-edit run
 caller_ticket: OMN-23627                  # the ticket every unit's loop request carries, or null
+event_bus:                     # read by onex run-node, not by the node
+  type: kafka
+  lane: dev

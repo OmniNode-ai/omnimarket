@@ -671,6 +671,20 @@ jobs:
             REF="HEAD~1"
           fi
           uv run python -m omnimarket.nodes.node_broker_acl_reconcile_effect.runtime_broker_acl_coverage_gate --base-ref "$REF"
+      # OMN-24121: a producer-consumer pair this change adds or reshapes must match in declared message shape; differences the base
+      # already has are not judged. SYNC with pre-commit hook 'seam-field-diff-gate'. The tests that hold the check run here first.
+      - name: Seam field diff gate (OMN-24121)
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          uv run pytest tests/nodes/node_seam_field_diff_compute tests/nodes/node_seam_field_diff_check_effect -q -n 0 -p no:randomly --no-cov
+          if [ -n "$BASE_REF" ]; then
+            git fetch origin "$BASE_REF" --no-tags
+            REF="origin/$BASE_REF"
+          else
+            REF="HEAD~1"
+          fi
+          env -u PYTHONPATH uv run python -m omnimarket.nodes.node_seam_field_diff_check_effect.runtime_seam_field_diff_check --base-ref "$REF"
       # OMN-17104: SYNC with pre-commit hook 'delegation-wire-public-models'.
       - name: Delegation public models match loader and inference contract
         run: uv run --frozen pytest tests/unit/models/delegation/wire/test_public_exports.py -q -n 0 -p no:randomly --no-cov

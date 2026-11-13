@@ -48,7 +48,13 @@ def _parser() -> argparse.ArgumentParser:
         dest="classes",
         action="append",
         default=[],
-        choices=("lane_scratch", "lane_results", "runner_work", "uv_cache"),
+        choices=(
+            "lane_scratch",
+            "lane_results",
+            "runner_work",
+            "uv_cache",
+            "pre_commit_store",
+        ),
         help="restrict which classes run",
     )
     return parser
