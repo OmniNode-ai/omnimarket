@@ -128,6 +128,26 @@ class ModelInstalledRevisionFact(BaseModel):
     expected_revision: str = Field(min_length=1, pattern=r"\S")
 
 
+class ModelVenvBuildLockIssue(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    code: str = Field(min_length=1)
+    severity: str = Field(min_length=1)
+    message: str = Field(min_length=1)
+
+
+class ModelVenvBuildLockFact(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    kind: Literal["venv_build_lock"] = "venv_build_lock"
+    surface: Literal["venv:build-lock"] = "venv:build-lock"
+    owner: str = ""
+    venv: str = Field(min_length=1)
+    build_lock_path: str = Field(min_length=1)
+    lock_sha256: str = Field(min_length=1)
+    surfaces_judged: int = Field(ge=0)
+    valid: bool
+    issues: tuple[ModelVenvBuildLockIssue, ...] = ()
+
+
 class ModelImportDriftVerdict(BaseModel):
     """Typed class-3 refusal carried on the host-reconcile evaluated event."""
 
@@ -146,7 +166,8 @@ ModelSurfaceFact = Annotated[
     | ModelGatePurityFact
     | ModelPathShadowFact
     | ModelGuardFact
-    | ModelInstalledRevisionFact,
+    | ModelInstalledRevisionFact
+    | ModelVenvBuildLockFact,
     Field(discriminator="kind"),
 ]
 
