@@ -1,0 +1,83 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Schedule Verdict Compute (OMN-19998)
+#
+# Pure compute with one operation:
+#   schedule_verdict.compute: ModelScheduleVerdictRequest -> ModelScheduleVerdictResult
+#                             (every declared job judged by its held state; red when any is
+#                              NEVER_FIRED, OVERDUE or FAILING)
+name: node_schedule_verdict_compute
+contract_name: node_schedule_verdict_compute
+node_name: node_schedule_verdict_compute
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: compute
+lifecycle: experimental
+runtime_profiles: [main]
+
+description: >
+  Judges every declared schedule against its held state. A job with no held state past its interval plus grace
+  reads NEVER_FIRED, a held state older than the window reads OVERDUE, a last failed run reads FAILING, and a
+  fresh completed run reads FIRING. Red when any verdict is NEVER_FIRED, OVERDUE or FAILING. No clock read,
+  no state, no I/O.
+
+handler:
+  module: omnimarket.nodes.node_schedule_verdict_compute.handlers.handler_schedule_verdict
+  class: HandlerScheduleVerdict
+  input_model: omnimarket.models.schedule_trigger.model_schedule_trigger.ModelScheduleVerdictRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: schedule_verdict.compute
+      handler:
+        name: HandlerScheduleVerdict
+        module: omnimarket.nodes.node_schedule_verdict_compute.handlers.handler_schedule_verdict
+      input_model: omnimarket.models.schedule_trigger.model_schedule_trigger.ModelScheduleVerdictRequest
+      output_model: omnimarket.models.schedule_trigger.model_schedule_trigger.ModelScheduleVerdictResult
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 2000
+
+input_model:
+  name: ModelScheduleVerdictRequest
+  module: omnimarket.models.schedule_trigger.model_schedule_trigger
+  description: The now, the observation window, the declarations and the held states.
+output_model:
+  name: ModelScheduleVerdictResult
+  module: omnimarket.models.schedule_trigger.model_schedule_trigger
+  description: The verdicts, the red flag and the reason.
+
+terminal_event: onex.evt.omnimarket.schedule-verdict-computed.v1
+
+input_subscriptions:
+  - topic: onex.cmd.omnimarket.schedule-verdict-requested.v1
+    operation: schedule_verdict.compute
+    event_type: omnimarket.schedule-verdict-requested
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.schedule-verdict-requested.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.schedule-verdict-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.schedule-verdict-computed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.schedule-verdict-computed.v1
+
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.schedule-verdict-computed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.schedule-verdict-computed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.schedule-verdict-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.schedule-verdict-requested.v1, operation: DESCRIBE}
+
+metadata:
+  ticket: OMN-19998
+  transport_type: kafka

@@ -199,6 +199,20 @@ def derived_grants(
     ], len(result.uncovered_topics)
 
 
+def role_logins(
+    settings: Mapping[str, Any], environ: Mapping[str, str]
+) -> dict[str, str]:
+    """The placeholders a principals overlay's roles fill, so no new environment variable is needed."""
+    scope = settings.get("derive_principals_scope")
+    if not scope:
+        return {}
+    try:
+        overlay = load_principals_overlay(scope, environ)
+    except NodeOverlayNotFoundError:
+        return {}
+    return overlay.placeholder_logins()
+
+
 def _run(argv: Sequence[str], timeout: float) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         list(argv), capture_output=True, text=True, timeout=timeout, check=False
@@ -360,7 +374,13 @@ class HandlerBrokerAclReconcile:
                     {tuple(row[key] for key in keys) for row in (*declared, *derived)}
                 )
             ]
-            rendered = render_declaration(declaration, self._environ)
+            rendered = render_declaration(
+                declaration,
+                {
+                    **self._environ,
+                    **role_logins(loaded["broker_acl_reconcile"], self._environ),
+                },
+            )
             timeout = float(loaded["broker_acl_reconcile"]["timeout_seconds"])
             connection = driver_broker_acl.AclConnection.from_mapping(
                 rendered, target, timeout

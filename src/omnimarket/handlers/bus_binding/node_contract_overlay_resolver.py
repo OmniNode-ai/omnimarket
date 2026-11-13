@@ -47,7 +47,7 @@ class NodeContractOverlayResolver:
 
     def resolve_contract_overlay(self, node_id: str) -> ModelNodeContractOverlay:
         """The node's overlay contract section; empty with no path when there is no overlay."""
-        path = node_overlay_path(node_id, self._workspace_root())
+        path = node_overlay_path(node_id, self._workspace_root(), environ=self._environ)
         if path is None or not path.is_file():
             return ModelNodeContractOverlay(node_id=node_id)
         try:
