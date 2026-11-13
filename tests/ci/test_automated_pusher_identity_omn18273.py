@@ -76,7 +76,10 @@ WORKFLOW_TRAILER = "Onex-Workflow:"
 RUN_TRAILER = "Onex-Run:"
 
 # (workflow file, job id) pairs whose pushes must carry the App identity.
-IN_SCOPE: tuple[tuple[str, str], ...] = (("omniclaude-pin-bump.yml", "bump"),)
+IN_SCOPE: tuple[tuple[str, str], ...] = (
+    ("omniclaude-pin-bump.yml", "bump"),
+    ("test-durations-refresh.yml", "refresh"),
+)
 
 # (workflow file, job id) pairs that push a TAG rather than a branch. A tag is a
 # ref, not a commit, so the committer-identity and trailer properties below

@@ -47,7 +47,8 @@ _WORKFLOWS: Final[Path] = _REPO_ROOT / ".github" / "workflows"
 # digest pin and drift workflow in OMN-23008, and three ci.yml setup-uv uses replaced
 # in OMN-21968 (the census path installs uv from PyPI; its cache step uses actions/cache), the removal of
 # the omniclaude pin notice job (its app-token step) from runtime-rebuild-trigger.yml in OMN-23498,
-# and the rate-limit pin move (imperative-contract-guard and kb-doc-gate callers) in OMN-23542.
+# and the rate-limit pin move (imperative-contract-guard and kb-doc-gate callers) in OMN-23542,
+# and the three uses lines of the new test-durations-refresh.yml workflow in OMN-22389.
 _GOLDEN: Final[Path] = (
     Path(__file__).resolve().parent / "fixtures" / "omn20558_workflow_action_refs.json"
 )

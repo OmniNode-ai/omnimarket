@@ -1,0 +1,105 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Test Durations Refresh Effect (OMN-22389)
+#
+# tests/unit/test_ci_shard_plan_record_freshness_omn17427.py fails every open PR
+# once 50 test files are missing from config/test_file_durations.json, and did so
+# three times on 2026-11-03. This is the dev-side refresh: the
+# tree's test files and the committed record in, the unrecorded files and whether
+# the refresh is due out; for a supplement, the record with those files added from
+# one measured run. The counting and the record arithmetic are the pure handler;
+# reading the tree and the record and writing them back is this node's runtime
+# entry point (runtime_test_durations_refresh.py), which is why it is an effect
+# node. The test-durations-refresh workflow invokes that entry point on each push
+# to dev.
+name: "node_test_durations_refresh_effect"
+lifecycle: experimental
+node_type: "effect"
+runtime_profiles:
+  - effects
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: "1.0.0"
+description: >-
+  Durations refresh: reads the tree and the committed record, counts the test files the committed durations record
+  does not hold, says whether a refresh is due, and adds the unrecorded files
+  from one measured run while leaving every existing entry untouched. It never
+  reads or changes the freshness cap.
+# The refresh opens its PR at this many unrecorded files. The freshness test
+# fails at 50, so the gap is the room the refresh PR has to land before any open
+# PR goes red. tests/unit/test_ci_durations_refresh_omn22389.py pins it to at
+# most half of that cap.
+refresh:
+  unrecorded_refresh_at: 20
+input_model:
+  name: "ModelTestDurationsRefreshRequest"
+  module: "omnimarket.nodes.node_test_durations_refresh_effect.models.model_test_durations_refresh"
+  description: "The tree's test files, the committed record and, for a supplement, one measured run."
+output_model:
+  name: "ModelTestDurationsRefreshResult"
+  module: "omnimarket.nodes.node_test_durations_refresh_effect.models.model_test_durations_refresh"
+  description: "The unrecorded files, whether a refresh is due and, for a supplement, the new record."
+
+handler:
+  module: "omnimarket.nodes.node_test_durations_refresh_effect.handlers.handler_test_durations_refresh"
+  class: "HandlerTestDurationsRefresh"
+  input_model: "omnimarket.nodes.node_test_durations_refresh_effect.models.model_test_durations_refresh.ModelTestDurationsRefreshRequest"
+  output_model: "omnimarket.nodes.node_test_durations_refresh_effect.models.model_test_durations_refresh.ModelTestDurationsRefreshResult"
+
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_test_durations_refresh_effect.handlers.handler_test_durations_refresh:HandlerTestDurationsRefresh"
+  handlers:
+    - operation: "refresh_test_durations"
+      handler:
+        name: "HandlerTestDurationsRefresh"
+        module: "omnimarket.nodes.node_test_durations_refresh_effect.handlers.handler_test_durations_refresh"
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.test-durations-refresh-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.test-durations-refresh-completed.v1
+terminal_event: onex.evt.omnimarket.test-durations-refresh-completed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.test-durations-refresh-completed.v1
+
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.test-durations-refresh-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.test-durations-refresh-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.test-durations-refresh-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.test-durations-refresh-completed.v1, operation: DESCRIBE}
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.test-durations-refresh-requested.v1
+  external_trigger: "The test-durations-refresh workflow invokes the node's runtime entry point on each push to dev."
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  runtime_profiles:
+    - effects
+  idempotent: true
+  timeout_ms: 30000
+
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: true
+
+metadata:
+  transport_type: inmemory
+  description: "Test durations refresh EFFECT - keeps the durations record ahead of the freshness cap (OMN-22389)"
+  author: "OmniNode Team"
+  created: "2026-11-03"
+  tags:
+    - "effect"
+    - "ci"
+    - "test-durations"
+    - "OMN-22389"
+  related_tickets:
+    - "OMN-22389"

@@ -276,5 +276,14 @@
     "basis": "the three test files of node_test_duration_record_check_effect, which the record did not hold on dev 474c566dd05e; each timed by the node's own record command (one serial pytest run per file with --no-cov); existing entries left as they were.",
     "runner": "lab host h202, lane redfix-e-3810; the next CI refresh replaces these entries",
     "base_sha": "474c566dd05e84a0094c28f83e823c0cc044db1d"
+  },
+  "supplement_dev_refresh_74af8425401f": {
+    "ticket": "OMN-22389",
+    "recorded_on": "2026-11-04",
+    "files_added": 2,
+    "files_without_measurement": 0,
+    "basis": "Each file summed from its focused Python 3.12 pytest run with --store-durations --no-cov -p no:randomly; existing entries left as they were.",
+    "runner": "lab host h053, serial focused Python 3.12 runs; --store-durations --no-cov -p no:randomly",
+    "base_sha": "74af8425401f7a30081d8d41892a0a61d2ba7058"
   }
 }
