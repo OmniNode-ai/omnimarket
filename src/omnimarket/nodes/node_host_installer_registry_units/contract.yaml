@@ -1399,6 +1399,11 @@ units:
       OMNIBASE_PATH: "{registry_root}"
       ONEX_STATE_DIR: "{registry_root}/.onex_state"
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    # The tick's stability-lane login: the credential env file the service principal mint node delivers (KAFKA_SASL_USERNAME and
+    # KAFKA_SASL_PASSWORD, mode 0400, owned by the unit's account). The lane declares SASL and the account's lane login store holds no
+    # identity for the stability lane, so the runtime's resolver steps aside for these two variables; the dev identity in the store
+    # is never read for this lane. A missing file is not an error (the tick then ends source_unread naming the lane).
+    environment_file: .config/onex/stability-refresh-serve.env
     evidence_file: .local/state/omni/stability-refresh-serve/last-run.json
     state_directory: .onex_state/stability-refresh-serve
   # The Claude token pool rotation tick (OMN-23887), installed the declared way on every host the pool overlay lists: a

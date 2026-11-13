@@ -2431,6 +2431,7 @@
   "tests/nodes/node_stability_lane_refresh_effect/test_stability_lane_real_profile.py": 1.05,
   "tests/nodes/node_stability_lane_refresh_effect/test_stability_lane_refresh.py": 0.05,
   "tests/nodes/node_stability_lane_refresh_effect/test_stability_refresh_serve.py": 3.72,
+  "tests/nodes/node_stability_lane_refresh_effect/test_stability_refresh_serve_env_file.py": 3.7,
   "tests/nodes/node_stability_lane_refresh_effect/test_stability_refresh_topic_seam.py": 3.27,
   "tests/nodes/node_stability_lane_refresh_effect/test_stability_refresh_unit_seam.py": 3.74,
   "tests/nodes/node_stall_responder_compute/test_stall_responder.py": 0.03,
