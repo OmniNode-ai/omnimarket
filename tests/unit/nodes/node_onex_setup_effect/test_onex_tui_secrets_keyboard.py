@@ -98,7 +98,7 @@ async def test_a_typed_key_never_reaches_the_screen_or_the_pane() -> None:
         await _focus(pilot, app, "provider")
         await pilot.press("enter")
         await pilot.pause()
-        # Gemini (first), OpenAI, OpenRouter, Local model: two steps down; the
+        # Gemini (first), OpenAI, OpenRouter, Local Model: two steps down; the
         # list wraps, so more presses would come back round.
         await pilot.press("down", "down")
         await pilot.press("enter")

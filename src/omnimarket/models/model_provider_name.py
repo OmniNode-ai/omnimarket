@@ -14,6 +14,7 @@ ModelProvider = Literal[
     "gemini",
     "openrouter",
     "openai",
+    "reflection",  # OMN-23413: Reflection AI's OpenAI-compatible API, by key
     "anthropic",
     "glm",
     "ollama",

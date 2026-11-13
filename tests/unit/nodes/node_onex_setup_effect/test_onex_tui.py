@@ -477,7 +477,7 @@ async def _open_config[T](
     await pilot.press("enter")
     await pilot.pause()
     assert isinstance(app.screen, SetupScreen)
-    # Nothing fills a server URL in (OMN-23413): pick Local model and type one,
+    # Nothing fills a server URL in (OMN-23413): pick Local Model and type one,
     # as a user does; a hosted test switches provider after this.
     app.screen.query_one("#provider").value = "local"
     await pilot.pause()
@@ -528,7 +528,7 @@ async def test_config_finds_server_models_and_saves_the_ticked_ones(
             "--json",
         )
         text = _log_text(app)
-        assert "Ready: Local model · llama3.2, qwen3:8b" in text
+        assert "Ready: Local Model · llama3.2, qwen3:8b" in text
         assert "Welcome To OmniNode Delegation Onboarding" not in text
 
 
@@ -906,7 +906,7 @@ async def test_model_lists_set_up_models_and_makes_the_choice_first() -> None:
         await pilot.pause()
         table = app.screen.query_one("#models")
         assert [e.model_id for e in table.entries] == ["llama3.2", "qwen3:8b"]
-        assert "Now: llama3.2 (Local model)" in str(
+        assert "Now: llama3.2 (Local Model)" in str(
             app.screen.query_one("#pnow").render()
         )
         assert table.query_one(DataTable).has_focus
@@ -914,7 +914,7 @@ async def test_model_lists_set_up_models_and_makes_the_choice_first() -> None:
         for _ in range(6):
             await pilot.pause()
         assert _actions(runner)[-1] == ("models", "first", "local", "qwen3:8b")
-        assert "qwen3:8b is now tried first (Local model)" in _log_text(app)
+        assert "qwen3:8b is now tried first (Local Model)" in _log_text(app)
 
         # The tab stays open: A goes back to Auto from the same screen.
         await pilot.press("a")
@@ -946,7 +946,7 @@ async def test_clear_empties_the_output() -> None:
 
 def test_config_providers_come_from_the_traits_file_in_its_order() -> None:
     """Nothing hard-coded: the choices, their order, labels and hints are data;
-    Local model is last and no server URL is made up (operator 2026-11-13)."""
+    Local Model is last and no server URL is made up (operator 2026-11-13)."""
     from omnimarket.nodes.node_onex_setup_effect import cli_tui
     from omnimarket.nodes.node_onex_setup_effect.models.model_setup_provider_traits import (
         setup_provider_traits,
@@ -960,6 +960,7 @@ def test_config_providers_come_from_the_traits_file_in_its_order() -> None:
         "gemini",
         "openai",
         "openrouter",
+        "reflection",
         "local",
     ]
     assert [e.provider for e in choices if not cli_tui._hosted(e.provider)] == ["local"]
@@ -1283,13 +1284,13 @@ async def test_model_names_each_local_model_by_the_server_that_runs_it() -> None
         bar = tui_design().model_table.row_bar
         assert (
             cells["saluki:latest"][0]
-            == f"{bar} Local model · Ollama  ollama.test:11434"
+            == f"{bar} Local Model · Ollama  ollama.test:11434"
         )
         assert cells["saluki:latest"][2] == "41K"
         columns = [c.key for c in tui_design().model_table.columns if c.key != "pick"]
         caps = columns.index("capabilities")
         assert "Tools" in cells["saluki:latest"][caps]
-        assert cells["Qwen3.8-27B"][0] == f"{bar} Local model · vLLM  vllm.test:8000"
+        assert cells["Qwen3.8-27B"][0] == f"{bar} Local Model · vLLM  vllm.test:8000"
         assert cells["Qwen3.8-27B"][2] == mark
         assert cells["Qwen3.8-27B"][caps] == mark
         assert not any("?" in c for row in cells.values() for c in row)

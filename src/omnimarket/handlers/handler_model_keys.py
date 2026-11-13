@@ -109,6 +109,7 @@ MODEL_LABELS: dict[str, str] = {
     "gemini": "Gemini",
     "openrouter": "OpenRouter",
     "openai": "OpenAI",
+    "reflection": "Reflection AI",  # OMN-23413
     "anthropic": "Anthropic",
     "glm": "GLM",
     "ollama": "Ollama",
@@ -137,6 +138,7 @@ KEYED_PROVIDERS: tuple[ModelProvider, ...] = (
     "gemini",
     "openrouter",
     "openai",
+    "reflection",
     "anthropic",
     "glm",
     "openai_compatible",

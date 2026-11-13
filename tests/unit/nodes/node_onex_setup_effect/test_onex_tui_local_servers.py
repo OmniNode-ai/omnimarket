@@ -112,9 +112,9 @@ async def test_model_opens_with_one_row_per_server_and_each_its_own_test() -> No
             for e in table.entries
         }
         assert shown == {
-            ("Local model · vLLM", _MODEL, _VLLM, "ready"),
-            ("Local model · llama.cpp", _MODEL, _LLAMA, "untested"),
-            ("Local model · Ollama", "saluki:latest", _OLLAMA, "untested"),
+            ("Local Model · vLLM", _MODEL, _VLLM, "ready"),
+            ("Local Model · llama.cpp", _MODEL, _LLAMA, "untested"),
+            ("Local Model · Ollama", "saluki:latest", _OLLAMA, "untested"),
         }
         assert table.query_one(DataTable).row_count == 3
 
@@ -314,7 +314,7 @@ async def test_a_delegated_task_does_not_change_the_model_shown_as_first() -> No
 
 
 # /config's providers and /model's remove (OMN-23413, operator 2026-11-13):
-#   P1  the provider list was sorted by label, so Local model came second, and
+#   P1  the provider list was sorted by label, so Local Model came second, and
 #       /config opened on it; it is the yaml's order, opening on the first.
 #   P2  the URL field was filled with a made-up 127.0.0.1:11434.
 #   R1  the TUI could not remove a model; one R must remove nothing.

@@ -28,8 +28,11 @@ picker:
   - provider: openrouter
     label: OpenRouter
     hint: Create a key at openrouter.ai/keys.
+  - provider: reflection
+    label: Reflection AI
+    hint: Create a key under API Keys at platform.reflection.ai.
   - provider: local
-    label: Local model
+    label: Local Model
     hint: >-
       Any model server that speaks the OpenAI API: Ollama, vLLM, llama.cpp, LM
       Studio or MLX. Enter its address; its models load on their own and the

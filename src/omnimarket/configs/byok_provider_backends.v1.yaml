@@ -596,6 +596,49 @@ providers:
   # model this row may run, since the endpoint, not the catalogue, says which
   # ids exist. The endpoint's own `/v1/models` checks each one at registration
   # when it has that route.
+  # OMN-23413 (operator 2026-11-13: "add reflection.ai as another provider").
+  # A customer-only surface: the platform holds no Reflection key. Every value
+  # below is from Reflection's developer docs, read 2026-11-13, and matches
+  # models.dev's `reflection` entry: OpenAI-compatible base
+  # https://api.reflection.ai/openai/v1 with a Bearer key (openai-compatibility.md,
+  # authentication.md; GET /models without a key answered 401
+  # missing_credentials); one model, Beam-1.0-501B-A23B, 1,048,576-token context,
+  # 131,072 output (models.md). max_tokens is deprecated for
+  # max_completion_tokens, and both count reasoning tokens; reasoning is
+  # mandatory and defaults to effort max (reasoning.md), so the budget is twice
+  # the API's own 32,768 default and the timeout the long-call one. No key
+  # prefix, rate limit number or per-token price is published, so none is set.
+  # Not yet measured with a key: the measuring host holds none.
+  - provider: reflection
+    key_page: https://platform.reflection.ai/
+    plan: api
+    mirrors_house_rung: false
+    backend_id: byok-reflection
+    endpoint_url: "https://api.reflection.ai/openai/v1/chat/completions"
+    models_url: "https://api.reflection.ai/openai/v1/models"
+    customer_chooses_model: true
+    model_preference:
+      - pattern: 'Beam-(?P<generation>[0-9]+(?:\.[0-9]+)?)-[0-9]+B-A[0-9]+B'
+        tags: [general, large_context]
+    default_models:
+      - "Beam-1.0-501B-A23B"
+    max_retries: 2
+    timeout_ms: 300000
+    max_tokens: 65536
+    token_limit_field: max_completion_tokens
+    limit_model:
+      billing: pay_as_you_go
+      counter_scope: model
+      windows:
+        - window_hours: 24
+          unit: requests
+          limit: null
+          source: >-
+            Reflection rate limits (developers.reflection.ai/rate-limits.md), read
+            2026-11-13: per organization, requests and tokens per minute and per
+            UTC day plus concurrency, with an optional daily token allowance. No
+            numbers are published.
+
   - provider: openai_compatible
     plan: by_url
     mirrors_house_rung: false
