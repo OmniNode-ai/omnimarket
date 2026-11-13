@@ -1,0 +1,36 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. The deployment's overlay lives at <root>/node_host_drift_owner_dispatch_effect/overlay.yaml under a root
+# named in ONEX_SKILL_OVERLAY_ROOTS. No key has a default. The runtime backend reads the checker's state file, reads the
+# live lanes from the ledger over the bus and starts a lane through the remote-lane runner.
+backend: inmemory
+state_path: .onex_state/example-drift/state.json
+dispatch_record_path: .onex_state/example-drift-owner/dispatched.json
+excluded_kinds: [heartbeat]
+excluded_keys: [unit:example-drift]
+alarm:
+  lane: example-drift-owner
+  actor: timer:example-drift-owner
+  friction_class: host-drift
+  condition: host_drift
+  ticket: OMN-1
+  evidence_limit: 300
+policy:
+  alarm_actor: timer:example-drift-owner
+  conditions: [host_drift]
+  owner_required_after_hours: 6
+  redispatch_after_hours: 24
+live_lanes:
+  query_command: [example-onex, ledger, query, --bus-lane, example-lane]
+  lookback_hours: 72
+  row_limit: 50
+  timeout_seconds: 120
+dispatch:
+  interpreter: python3
+  runner_env: EXAMPLE_REMOTE_LANE_RUNNER
+  subcommand: run
+  model: sonnet
+  ticket: OMN-1
+  briefs_dir: .onex_state/example-drift-owner/briefs
+  settle_seconds: 20
+  extra_args: [--parent, example-drift, --priority-class, process-fix]

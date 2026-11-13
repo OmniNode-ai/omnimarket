@@ -391,6 +391,49 @@ units:
       LAB_WORK_HOST_NAME: "{host_name}"
     evidence_file: .local/state/omni/lane-closeout-sweep/last-run.json
     state_directory: .onex_state/lane-closeout-sweep
+  # The host drift owner step (node_host_drift_owner_dispatch_effect, OMN-24239): every 900 s on a Linux lab host it reads the
+  # host drift checker's open items and starts one fix lane per cause no live lane covers. The bounds, the actor, the paths and
+  # the runner's settings are the node's overlay in the overlays repository, found under ONEX_SKILL_OVERLAY_ROOTS; this unit
+  # holds none of them. The runner script is an install input (the request's remote_lane_runner, the path of the remote-lane
+  # runner of the host's plugin checkout), required, so an install that names none is refused and the dispatch command is
+  # never set by hand; the overlay refers to it by variable. The workspace the ledger read opens its bus lane from is the
+  # unit's. The probe runs the module's help request. The 600 s limit is the node contract's timeout_ms and is under the
+  # 900 s interval.
+  host-drift-owner-dispatch-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-host-drift-owner-dispatch
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 900
+      run_timeout_s: 600
+      run_at_load: false
+      description: every 900 s
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_host_drift_owner_dispatch_effect.runtime_host_drift_owner_dispatch
+    entry_file: src/omnimarket/nodes/node_host_drift_owner_dispatch_effect/runtime_host_drift_owner_dispatch.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    # OMN-23323: an overlay root is never a worktree; the installer refuses one, in a default or an override.
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}"
+      OMNIBASE_PATH: "{registry_root}"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    environment_inputs:
+      ONEX_HOST_DRIFT_OWNER_RUNNER: remote_lane_runner
+    required_environment_inputs: [ONEX_HOST_DRIFT_OWNER_RUNNER]
+    evidence_file: .local/state/omni/host-drift-owner-dispatch/last-run.json
+    state_directory: .onex_state/host-drift-owner-dispatch
   # Lane context ledger archive dedupe (OMN-23297, node_lane_ctx_ledger_dedupe_effect): every lab host links the ledger archive
   # rolls of its lane context directories to one shared copy, so the rolls stop filling the runs mount. The runs root, the
   # store directory and the settle window are the node's overlay in the overlays repository; this unit holds none of them. A
