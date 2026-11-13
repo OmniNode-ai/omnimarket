@@ -37,6 +37,7 @@ from textual.theme import Theme
 from textual.timer import Timer
 from textual.widgets import (
     Button,
+    DataTable,
     Input,
     Label,
     OptionList,
@@ -72,9 +73,6 @@ from omnimarket.nodes.node_onex_setup_effect.cli_model_table import (
 )
 from omnimarket.nodes.node_onex_setup_effect.handlers.handler_onex_command import (
     HandlerOnexCommand,
-)
-from omnimarket.nodes.node_onex_setup_effect.handlers.setup_contract_values import (
-    loopback_url,
 )
 from omnimarket.nodes.node_onex_setup_effect.models.model_setup_provider_traits import (
     ModelSetupPickerProvider,
@@ -149,15 +147,6 @@ def _hint(provider: str) -> str:
 
 def _hosted(provider: str) -> bool:
     return not setup_provider_traits().needs_url(provider)
-
-
-def _server_defaults() -> set[str]:
-    return {_default_url(e.provider) for e in _picker() if e.default_port}
-
-
-def _default_url(provider: str) -> str:
-    entry = _entry(provider)
-    return loopback_url(entry.default_port) if entry and entry.default_port else ""
 
 
 class ModelTuiCommand(BaseModel):
@@ -586,7 +575,7 @@ class SetupScreen(_TabbedScreen[tuple[ModelTuiSetupChoice, ...] | None]):
             yield _summary(self._selection)
             yield Label(_say("config_title"))
             choices = _picker()
-            first = next((e for e in choices if e.selected), choices[0])
+            first = choices[0]
             yield Select(
                 [(e.label, e.provider) for e in choices],
                 value=first.provider,
@@ -595,7 +584,7 @@ class SetupScreen(_TabbedScreen[tuple[ModelTuiSetupChoice, ...] | None]):
             )
             yield Input(placeholder=_say("key_placeholder"), password=True, id="key")
             yield Input(
-                value=_default_url(first.provider),
+                value=self._stored_url(first.provider) or "",
                 placeholder=_say("url_placeholder"),
                 id="url",
             )
@@ -668,10 +657,9 @@ class SetupScreen(_TabbedScreen[tuple[ModelTuiSetupChoice, ...] | None]):
         hosted = _hosted(self._provider())
         url = self.query_one("#url", Input)
         # A default the user has not edited follows the provider; a typed URL stays.
-        if not hosted and url.value.strip() in {"", *_server_defaults()}:
-            url.value = self._stored_url(self._provider()) or _default_url(
-                self._provider()
-            )
+        # An empty field offers the server already set up; a typed URL stays.
+        if not hosted and not url.value.strip():
+            url.value = self._stored_url(self._provider()) or ""
         self.query_one("#key").display = hosted
         self.query_one("#url").display = not hosted
 
@@ -1163,11 +1151,14 @@ class ModelPickScreen(_TabbedScreen[tuple[str, str, str] | None]):
     BINDINGS = [
         Binding("escape", "cancel", "Cancel"),
         Binding("a", "auto", "Auto", show=False),
+        Binding("r,delete", "remove", "Remove", show=False),
     ]
 
     def __init__(self, selection: ModelTuiSelection) -> None:
         super().__init__()
         self._selection = selection
+        #: The row R was pressed on once; a second R on it removes the model.
+        self._removing: str | None = None
 
     def compose(self) -> ComposeResult:
         words = tui_design().model_table
@@ -1227,6 +1218,36 @@ class ModelPickScreen(_TabbedScreen[tuple[str, str, str] | None]):
 
     def action_auto(self) -> None:
         self.dismiss(("", "", ""))
+
+    @on(DataTable.RowHighlighted)
+    def _moved(self) -> None:
+        """Moving to another row forgets a pending remove."""
+        if self._removing is not None:
+            self._removing = None
+            self.query_one("#pnote", Static).update("")
+
+    def action_remove(self) -> None:
+        """R asks; R again on the same row removes that model (from that server)."""
+        entry = self.query_one("#models", ModelTable).current()
+        if entry is None:
+            return
+        key = entry_key(entry)
+        named = _on_server(entry.model_id, entry.server_url)
+        if self._removing != key:
+            self._removing = key
+            self.query_one("#pnote", Static).update(
+                Text(
+                    _say(
+                        "remove_confirm", model=named, provider=_label(entry.provider)
+                    ),
+                    style=_style("warning", "bold"),
+                )
+            )
+            return
+        app = self.app
+        self.dismiss(None)
+        if isinstance(app, OnexTui):
+            app.call_later(app.remove_model, entry)
 
     def action_cancel(self) -> None:
         self.dismiss(None)
@@ -1808,6 +1829,35 @@ class OnexTui(App[int]):
             self._write(_say("nothing_set_up"))
             return
         self.push_screen(ModelPickScreen(selection), self._apply_model)
+
+    async def remove_model(self, entry: ModelCatalogEntry) -> None:
+        """Remove one model through the CLI, then show /model again with what is left."""
+        argv = (
+            "models",
+            "remove",
+            entry.provider,
+            "--model",
+            entry.model_id,
+            *(("--url", entry.server_url) if entry.server_url else ()),
+        )
+        code, out, err = await self._runner.capture(argv)
+        glyphs = tui_design().glyphs
+        named = _on_server(entry.model_id, entry.server_url)
+        self._write(
+            Text(
+                f"{glyphs.done} "
+                + _say("removed", model=named, provider=_label(entry.provider)),
+                style=_style("success"),
+            )
+            if not code
+            else Text(
+                f"{glyphs.failed} "
+                + _say("remove_failed", model=named, reason=_last_line(out, err)),
+                style=_style("error"),
+            )
+        )
+        self.run_worker(self._refresh_status(), exclusive=True, group="status")
+        await self._pick_model()
 
     async def _apply_model(self, picked: tuple[str, str, str] | None) -> None:
         if picked is None:

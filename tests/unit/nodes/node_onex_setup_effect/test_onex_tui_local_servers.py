@@ -254,6 +254,8 @@ async def test_config_shows_what_is_set_up_and_offers_the_users_own_server() -> 
         assert "none yet" not in basket
         assert f"{_MODEL} on vllm.test:8000" in basket
         assert f"{_MODEL} on llama.test:8000" in basket
+        app.screen.query_one("#provider").value = "local"
+        await pilot.pause()
         assert app.screen.query_one("#url", Input).value == _VLLM
         summary = str(app.screen.query_one(".summary", Static).render())
         assert "3 models · 3 servers" in summary
@@ -308,3 +310,84 @@ async def test_a_delegated_task_does_not_change_the_model_shown_as_first() -> No
         status = str(app.query_one("#status").render())
         assert "Qwen3.8-27B first" in status
         assert "last run other-model" in status
+
+
+# /config's providers and /model's remove (OMN-23413, operator 2026-11-13):
+#   P1  the provider list was sorted by label, so Local model came second, and
+#       /config opened on it; it is the yaml's order, opening on the first.
+#   P2  the URL field was filled with a made-up 127.0.0.1:11434.
+#   R1  the TUI could not remove a model; one R must remove nothing.
+#   R2  R twice removes only the highlighted server's copy of the model.
+#   R3  R, a move away and back, then R must ask again, not remove.
+
+
+async def test_config_lists_providers_in_yaml_order_and_fills_no_url() -> None:
+    """P1, P2."""
+    from textual.widgets import Input, Select
+
+    from omnimarket.nodes.node_onex_setup_effect.cli_tui import SetupScreen
+    from omnimarket.nodes.node_onex_setup_effect.models.model_setup_provider_traits import (
+        setup_provider_traits,
+    )
+
+    nothing = json.dumps({"provider": "local", "set_up": False, "models": []})
+    app = _app(_Runner([], by_command={("models", "list"): nothing}))
+    async with app.run_test(size=(170, 46)) as pilot:
+        await _open(pilot, "/config")
+        assert isinstance(app.screen, SetupScreen)
+        picker = setup_provider_traits().picker
+        select = app.screen.query_one("#provider", Select)
+        assert select.value == picker[0].provider
+        assert [value for _, value in select._options if value is not Select.BLANK] == [
+            entry.provider for entry in picker
+        ]
+        assert picker[-1].provider == "local"
+        select.value = "local"
+        await pilot.pause()
+        assert app.screen.query_one("#url", Input).value == ""
+
+
+async def _remove_ready(pilot, app: OnexTui, server: str) -> None:
+    await _open(pilot, "/model")
+    table = app.screen.query_one("#models")
+    target = next(e for e in table.entries if e.server_url == server)
+    grid = table.query_one(DataTable)
+    grid.move_cursor(row=grid.get_row_index(entry_key(target)))
+    await pilot.pause()
+
+
+async def test_one_r_asks_and_a_second_removes_only_that_servers_copy() -> None:
+    """R1, R2."""
+    runner = _Runner([], by_command={("models", "list"): _rows()})
+    app = _app(runner)
+    async with app.run_test(size=(170, 46)) as pilot:
+        await _remove_ready(pilot, app, _LLAMA)
+        await pilot.press("r")
+        await pilot.pause()
+        assert not [c for c in runner.calls if c[:2] == ("models", "remove")]
+        note = str(app.screen.query_one("#pnote", Static).render())
+        assert f"{_MODEL} on llama.test:8000" in note
+        await pilot.press("r")
+        for _ in range(6):
+            await pilot.pause()
+        removes = [c for c in runner.calls if c[:2] == ("models", "remove")]
+        assert removes == [
+            ("models", "remove", "local", "--model", _MODEL, "--url", _LLAMA)
+        ]
+
+
+async def test_moving_to_another_row_cancels_a_pending_remove() -> None:
+    """R3."""
+    runner = _Runner([], by_command={("models", "list"): _rows()})
+    app = _app(runner)
+    async with app.run_test(size=(170, 46)) as pilot:
+        await _remove_ready(pilot, app, _LLAMA)
+        await pilot.press("r")
+        await pilot.pause()
+        await pilot.press("up")  # away: the pending remove is forgotten
+        await pilot.pause()
+        await pilot.press("down")  # back to the same row
+        await pilot.pause()
+        await pilot.press("r")  # asks again; it does not remove
+        await pilot.pause()
+        assert not [c for c in runner.calls if c[:2] == ("models", "remove")]

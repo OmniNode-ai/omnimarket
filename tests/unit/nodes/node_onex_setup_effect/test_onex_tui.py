@@ -448,6 +448,12 @@ async def _open_config[T](
     await pilot.press("enter")
     await pilot.pause()
     assert isinstance(app.screen, SetupScreen)
+    # Nothing fills a server URL in (OMN-23413): pick Local model and type one,
+    # as a user does; a hosted test switches provider after this.
+    app.screen.query_one("#provider").value = "local"
+    await pilot.pause()
+    app.screen.query_one("#url").value = _OLLAMA_DEFAULT
+    await pilot.pause()
 
 
 async def test_config_finds_server_models_and_saves_the_ticked_ones(
@@ -927,8 +933,9 @@ async def test_clear_empties_the_output() -> None:
         assert _log_text(app).strip() == ""
 
 
-def test_config_providers_come_from_the_traits_file_sorted_by_label() -> None:
-    """Nothing hard-coded: the choices, labels, hints and ports are data."""
+def test_config_providers_come_from_the_traits_file_in_its_order() -> None:
+    """Nothing hard-coded: the choices, their order, labels and hints are data;
+    Local model is last and no server URL is made up (operator 2026-11-13)."""
     from omnimarket.nodes.node_onex_setup_effect import cli_tui
     from omnimarket.nodes.node_onex_setup_effect.models.model_setup_provider_traits import (
         setup_provider_traits,
@@ -936,21 +943,19 @@ def test_config_providers_come_from_the_traits_file_sorted_by_label() -> None:
 
     traits = setup_provider_traits()
     choices = cli_tui._picker()
-    labels = [entry.label for entry in choices]
-    assert labels == sorted(labels, key=str.lower)
+    assert choices == traits.picker  # the file's order, not sorted
     # One entry for every OpenAI-compatible server: no separate Ollama or vLLM.
     assert [entry.provider for entry in choices] == [
         "gemini",
-        "local",
         "openai",
         "openrouter",
+        "local",
     ]
     assert [e.provider for e in choices if not cli_tui._hosted(e.provider)] == ["local"]
-    assert cli_tui._default_url("local").endswith(":11434")
+    assert not hasattr(cli_tui, "_default_url")  # no made-up server URL
     assert all(entry.hint for entry in choices)
     for entry in choices:
         assert cli_tui._hosted(entry.provider) is not traits.needs_url(entry.provider)
-    assert cli_tui._default_url("openrouter") == ""
     assert "openrouter.ai/keys" in cli_tui._hint("openrouter")
 
 
@@ -1178,16 +1183,11 @@ async def test_models_that_fail_to_add_are_not_called_ready(
         assert "Ready: Local model · big-27b, small-1b" not in text
 
 
-async def test_switching_server_provider_moves_an_unedited_default_but_keeps_a_typed_url() -> (
-    None
-):
-    from omnimarket.nodes.node_onex_setup_effect.cli_tui import _default_url
-
+async def test_switching_provider_keeps_a_typed_url() -> None:
     app = _app(_Runner([]))
     async with app.run_test(size=(120, 44)) as pilot:
         await _open_config(pilot, app)
         screen = app.screen
-        assert screen.query_one("#url").value == _default_url("local")
         screen.query_one("#url").value = "http://gpu-box:8000"
         screen.query_one("#provider").value = "openrouter"
         await pilot.pause()

@@ -19,8 +19,6 @@ class ModelSetupPickerProvider(BaseModel):
     provider: str
     label: str
     hint: str = ""
-    default_port: int | None = None
-    selected: bool = False
 
 
 class ModelSetupProviderTraits(BaseModel):
@@ -41,8 +39,8 @@ class ModelSetupProviderTraits(BaseModel):
         return provider in self.url_required
 
     def picker_providers(self) -> tuple[ModelSetupPickerProvider, ...]:
-        """The /config choices, sorted by label."""
-        return tuple(sorted(self.picker, key=lambda entry: entry.label.lower()))
+        """The /config choices, in the order setup_provider_traits.yaml lists them."""
+        return self.picker
 
     def registration(self, provider: str, *, keyed: bool) -> str:
         """The canonical endpoint owner a selection registers as."""

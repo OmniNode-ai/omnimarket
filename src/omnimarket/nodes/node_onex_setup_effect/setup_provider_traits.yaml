@@ -13,9 +13,10 @@ registers_as:
   ollama:
     keyed: openai_compatible
     keyless: local
-# What the TUI's /config offers. Labels are sorted on load. A provider in
-# url_required asks for its server (default_port on this machine); any other
-# asks for its key. Each hint comes from the provider's own docs
+# What the TUI's /config offers, in this order; /config opens on the first.
+# A provider in url_required asks for its server's URL, which nothing fills in
+# for the user (the server they already use is offered when one is set up);
+# any other asks for its key. Each hint comes from the provider's own docs
 # (aistudio.google.com/docs/api-key, docs.ollama.com/faq, openrouter.ai/docs).
 picker:
   - provider: gemini
@@ -29,9 +30,7 @@ picker:
     hint: Create a key at openrouter.ai/keys.
   - provider: local
     label: Local model
-    default_port: 11434
-    selected: true
     hint: >-
-      Any model server that speaks the OpenAI API: Ollama (port 11434), vLLM
-      (8000), llama.cpp, LM Studio or MLX. Enter its address; its models load
-      on their own and the server is named from its answer.
+      Any model server that speaks the OpenAI API: Ollama, vLLM, llama.cpp, LM
+      Studio or MLX. Enter its address; its models load on their own and the
+      server is named from its answer.

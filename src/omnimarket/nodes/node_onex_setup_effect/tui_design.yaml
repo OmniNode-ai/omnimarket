@@ -165,7 +165,7 @@ model_table:
   auto_label: "Auto: ONEX picks per task (cost and availability)"
   help:
     config: "Tab next screen · Space ticks · Enter moves on · I details · / search · F filter · S sort · Ctrl+S saves · Esc back"
-    model: "Tab next screen · Enter selects · A auto · I details · / search · F filter · S sort · Esc back"
+    model: "Tab next screen · Enter selects · A auto · R remove · I details · / search · F filter · S sort · Esc back"
     delegation: "Tab next screen · Space switches · M mode · I details · Ctrl+S saves · Esc back"
 
 # /delegation (OMN-23413 AC25, AC26): nothing is typed. Each mode names the onex
@@ -216,7 +216,7 @@ tabs:
 words:
   config_title: "Models for delegation: provider, key or URL, then models"
   key_placeholder: "API key"
-  url_placeholder: "Server URL"
+  url_placeholder: "Server URL, such as http://<host>:<port>"
   basket_empty: "Selected: none yet (at least one is needed)"
   basket: "Selected: {choices}"
   loading: "loading {provider} models…"
@@ -236,6 +236,10 @@ words:
   first_model: "{model} ({provider})"
   model_on_server: "{model} on {server}"
   first_failed: "could not change the first model: {reason}"
+  # /model: R asks, R again removes the model (only from its own server).
+  remove_confirm: "Press R again to remove {model} ({provider}); move to another row to keep it."
+  removed: "{model} removed ({provider})"
+  remove_failed: "could not remove {model}: {reason}"
   # /config: what is set up already, shown before anything new is ticked.
   basket_current: "Set up now: {models}. Tick more to add them, or Esc to keep these."
   setting_up: "Setting up {provider} · {models} …"
