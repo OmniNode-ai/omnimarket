@@ -57,7 +57,7 @@ def _run(args: argparse.Namespace) -> int:
         f"outcome={result.outcome.value} ok={result.ok} realm={result.realm} "
         f"lane={result.lane} user={result.user_name or ''} "
         f"tenant_id={result.tenant_id or ''} tenant_slug={result.tenant_slug or ''} "
-        f"expected_secret={result.expected_secret or ''} detail={result.detail}\n"
+        f"detail={result.detail}\n"
     )
     return 0 if result.ok else 1
 

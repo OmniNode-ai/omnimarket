@@ -82,12 +82,11 @@ class HandlerDevIdentityProvision:
             EnumDevIdentityOutcome.READY,
         )
         logger.info(
-            "dev identity provision outcome=%s realm=%s lane=%s user=%s detail=%s",
+            "dev identity provision outcome=%s realm=%s lane=%s user=%s",
             outcome.value,
             self._overlay.keycloak.realm,
             self._overlay.lane,
             user_name,
-            detail,
         )
         return ModelDevIdentityProvisionResult(
             ok=ok,
