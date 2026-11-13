@@ -12,7 +12,7 @@ requirements:
   - id: AC1
     statement: "AC1: a skill-started and a skill-completed record carrying the assistant's own tool-use identifier fold to rows that share one run id, and replaying them lands on the same rows -- falsifier: pytest tests/test_seam_skill_hook_to_skill_lifecycle_fold.py -q fails on the pre-change fold"
   - id: AC2
-    statement: "AC2: a run id that is not text still writes nothing and logs the skip -- falsifier: pytest tests/test_golden_chain_projection_skill_lifecycle.py -q -k skip"
+    statement: "AC2: a run id that is not text still writes nothing and logs the skip -- falsifier: pytest tests/test_seam_skill_hook_to_skill_lifecycle_fold.py -q -k not_text"
 - id: req-omn24324-integrated
   statement: The dev runtime reads healthy with no divergence after the deploy agent rolls the fix.
   acceptance:
@@ -37,13 +37,13 @@ dod_evidence:
     check_value: uv run pytest tests/test_seam_skill_hook_to_skill_lifecycle_fold.py -q -p no:randomly --no-cov
     cwd: .
 - id: dod-omn24324-ac2
-  description: 'AC2: the golden chain test passes at the head, its error cases (a number and a list as ids) write nothing.'
+  description: 'AC2: the seam test error cases (a number, an empty string, a boolean and a list as run ids) write nothing at the head; the test file does not exist at the merge base, so the check fails there.'
   source: manual
   binds_ac:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/test_golden_chain_projection_skill_lifecycle.py -q -p no:randomly --no-cov -k skip
+    check_value: uv run pytest tests/test_seam_skill_hook_to_skill_lifecycle_fold.py -q -p no:randomly --no-cov -k not_text
     cwd: .
 - id: dod-omn24324-ac3
   description: 'hosted proxy for AC3: the golden chain test replays a hook-keyed started and completed pair to the same two rows; the reading on the dev runtime after the roll is posted as a pull request comment naming the head.'
