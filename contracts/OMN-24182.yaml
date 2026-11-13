@@ -64,10 +64,17 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/chains/lane_container_budget tests/nodes/node_factory_floor_compute/test_one_runtime_containers.py -q --no-cov --tb=line"
         cwd: "."
+  - id: "dod-omn24182-ac4-slack-reading"
+    description: "AC4 runs the h201 dev-lane listing recorded on 2026-11-13 through the golden chain on the in-memory bus and requires slack 16 for the dev lane against its declared budget of 19. The runtime run itself is the deploy probe and the integration proof below."
+    source: "manual"
+    binds_ac: ["AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/chains/lane_container_budget/test_chain_lane_container_budget.py -q --no-cov --tb=line"
+        cwd: "."
   - id: "dod-omn24182-ac4-deploy-probe"
     description: "Hosted deploy smoke, runnable on the hosted runner with no lab route, broker or database: dispatch the packaged node_lane_container_budget_compute through the in-process ONEX runtime with a one-container listing against a budget of 19, and require a successful typed receipt whose lane reading carries slack 18. It fails at the merge base, where the reading has no slack field."
     source: "manual"
-    binds_ac: ["AC4"]
     checks:
       - check_type: "command"
         check_value: |
