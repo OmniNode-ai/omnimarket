@@ -14,10 +14,10 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.events.alarm_owner_responder import (
+from omnimarket.handlers.node_overlay_reader import load_structured_overlay
+from omnimarket.models.model_alarm_owner_responder import (
     ModelAlarmOwnerPolicy,
 )
-from omnimarket.handlers.node_overlay_reader import load_structured_overlay
 from omnimarket.models.secret_store.model_secret_store_overlay import (
     ModelSecretStoreOverlay,
 )

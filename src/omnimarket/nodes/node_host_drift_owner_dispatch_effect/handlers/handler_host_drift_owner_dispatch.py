@@ -17,7 +17,7 @@ import re
 from collections.abc import Callable
 from datetime import UTC, datetime
 
-from omnimarket.events.alarm_owner_responder import (
+from omnimarket.models.model_alarm_owner_responder import (
     ModelAlarmOwnerRequest,
 )
 from omnimarket.nodes.node_alarm_owner_responder_compute.handlers.handler_alarm_owner_responder import (
