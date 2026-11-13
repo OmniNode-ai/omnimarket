@@ -43,7 +43,7 @@ input_model:
   module: omnimarket.nodes.node_dev_roll_decision_request_effect.models.model_dev_roll_manifest_event
 output_model:
   name: ModelDevRollFacts
-  module: omnimarket.events.dev_roll.model_dev_roll_facts
+  module: omnimarket.models.dev_roll.model_dev_roll_facts
 
 event_bus:
   version:
@@ -89,7 +89,7 @@ handler_routing:
         module: "omnimarket.nodes.node_dev_roll_decision_request_effect.handlers.handler_dev_roll_decided_observed"
       event_model:
         name: "ModelDevRollDecided"
-        module: "omnimarket.events.dev_roll.model_dev_roll_decided"
+        module: "omnimarket.models.dev_roll.model_dev_roll_decided"
       topic: onex.evt.omnimarket.dev-roll-decided.v1
       description: "A decision of node_dev_roll_request_compute; answered by one observation record."
 

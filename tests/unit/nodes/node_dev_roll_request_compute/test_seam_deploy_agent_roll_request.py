@@ -17,7 +17,7 @@ from typing import Any
 
 import pytest
 
-from omnimarket.events.dev_roll import (
+from omnimarket.models.dev_roll import (
     ModelDevRollDecided,
     ModelDevRollRequest,
     ModelDevTipChanged,

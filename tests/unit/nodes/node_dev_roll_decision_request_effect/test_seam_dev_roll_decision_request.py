@@ -14,7 +14,7 @@ import pytest
 import yaml
 from omnibase_infra.models.model_dev_roll_manifest import ModelDevRollManifest
 
-from omnimarket.events.dev_roll import (
+from omnimarket.models.dev_roll import (
     ModelDevRollDecided,
     ModelDevRollFacts,
     ModelDevRollRecord,

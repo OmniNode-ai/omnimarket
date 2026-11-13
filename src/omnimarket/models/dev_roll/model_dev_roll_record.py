@@ -8,7 +8,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
-from omnimarket.events.dev_roll.enum_dev_roll_health import (
+from omnimarket.models.dev_roll.enum_dev_roll_health import (
     EnumDevRollHealth,
 )
 

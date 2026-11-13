@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from omnimarket.events.dev_roll import (
+from omnimarket.models.dev_roll import (
     EnumDevRollAction,
     EnumDevRollEventRefusal,
     EnumDevRollHealth,

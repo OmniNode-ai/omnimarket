@@ -23,7 +23,7 @@ from uuid import UUID, uuid5
 
 import pytest
 
-from omnimarket.events.dev_roll import (
+from omnimarket.models.dev_roll import (
     EnumDevRollAction,
     EnumDevRollHealth,
     ModelDevRollDecided,

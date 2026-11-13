@@ -18,7 +18,7 @@ import os
 from collections.abc import Mapping
 from uuid import UUID
 
-from omnimarket.events.dev_roll import (
+from omnimarket.models.dev_roll import (
     EnumDevRollAction,
     ModelDevRollDecided,
 )

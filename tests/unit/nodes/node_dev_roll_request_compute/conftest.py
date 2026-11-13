@@ -11,7 +11,7 @@ from uuid import UUID, uuid4
 import pytest
 import yaml
 
-from omnimarket.events.dev_roll import (
+from omnimarket.models.dev_roll import (
     EnumDevRollHealth,
     ModelDevRollFacts,
     ModelDevRollRecord,

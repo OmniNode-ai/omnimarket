@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from omnimarket.events.dev_roll import (
+from omnimarket.models.dev_roll import (
     EnumDevRollAction,
     ModelDevRollDecided,
 )

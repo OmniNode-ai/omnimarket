@@ -8,7 +8,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
-from omnimarket.events.dev_roll.model_dev_tip_changed import (
+from omnimarket.models.dev_roll.model_dev_tip_changed import (
     ModelDevTipChanged,
 )
 

@@ -22,7 +22,7 @@ from collections.abc import Callable, Mapping
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid5
 
-from omnimarket.events.dev_roll import (
+from omnimarket.models.dev_roll import (
     EnumDevRollHealth,
     ModelDevRollFacts,
     ModelDevRollRecord,

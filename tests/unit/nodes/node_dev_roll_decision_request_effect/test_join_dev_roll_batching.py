@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from omnimarket.events.dev_roll import (
+from omnimarket.models.dev_roll import (
     EnumDevRollAction,
     EnumDevRollEventRefusal,
     EnumDevRollHoldReason,
@@ -196,4 +196,4 @@ async def test_failing_control_a_silent_queued_handler_yields_no_decision(
 
 
 def test_the_facts_model_is_the_shared_dev_roll_model() -> None:
-    assert ModelDevRollFacts.__module__.startswith("omnimarket.events.dev_roll")
+    assert ModelDevRollFacts.__module__.startswith("omnimarket.models.dev_roll")

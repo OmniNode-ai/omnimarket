@@ -10,7 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from omnimarket.events.dev_roll import (
+from omnimarket.handlers.node_overlay_reader import NodeOverlayNotFoundError
+from omnimarket.models.dev_roll import (
     EnumDevRollAction,
     EnumDevRollEventRefusal,
     EnumDevRollHealth,
@@ -18,7 +19,6 @@ from omnimarket.events.dev_roll import (
     ModelDevRollDecided,
     ModelDevRollRecord,
 )
-from omnimarket.handlers.node_overlay_reader import NodeOverlayNotFoundError
 from omnimarket.nodes.node_dev_roll_request_compute.handlers import (
     HandlerDevRollRequest,
     decide_dev_roll,
