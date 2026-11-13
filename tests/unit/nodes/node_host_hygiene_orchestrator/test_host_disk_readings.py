@@ -7,6 +7,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from omnimarket.models.model_host_disk_reading import (
+    FailureReason,
     ModelDiskClassReading,
     ModelHostDiskRead,
     ModelHostDiskReadFailed,
@@ -40,14 +41,14 @@ def _read(
 def _failed(
     host: str,
     read_at: datetime,
-    reason: str = "volume_unreadable",
+    reason: FailureReason = "volume_unreadable",
     detail: str = "cannot read",
 ) -> ModelHostDiskReadFailed:
     return ModelHostDiskReadFailed(
         correlation_id="c1",
         host_name=host,
         read_at=read_at,
-        reason=reason,  # type: ignore[arg-type]
+        reason=reason,
         detail=detail,
     )
 
