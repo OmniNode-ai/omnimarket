@@ -398,7 +398,9 @@ units:
   # runner of the host's plugin checkout), required, so an install that names none is refused and the dispatch command is
   # never set by hand; the overlay refers to it by variable. The workspace the ledger read opens its bus lane from is the
   # unit's. The probe runs the module's help request. The 600 s limit is the node contract's timeout_ms and is under the
-  # 900 s interval.
+  # 900 s interval. The key the lane-brief check reads the ticket's text with (the Linear read key) is not in this unit: the node
+  # reads it at each pass from the secret store its overlay names (secret_store and brief_environment), the entry the remote-lane
+  # runner's own store delivery reads, and a pass with the entry absent ends with a named refusal.
   host-drift-owner-dispatch-systemd:
     platform: systemd
     kind: registry_module_tick

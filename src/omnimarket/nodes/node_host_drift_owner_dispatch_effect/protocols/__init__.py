@@ -6,6 +6,8 @@ from __future__ import annotations
 
 from typing import Protocol
 
+from pydantic import SecretStr
+
 from omnimarket.nodes.node_host_drift_owner_dispatch_effect.models import (
     ModelBriefPrepared,
     ModelDriftState,
@@ -20,6 +22,10 @@ class DriftStateUnreadableError(Exception):
 
 class LiveLanesUnreadableError(Exception):
     """The ledger read that shows the live lanes failed; the message names why."""
+
+
+class BriefEnvironmentAbsentError(Exception):
+    """A setting the brief check reads is in neither the unit's environment nor the store; the message names the setting and the folder, never a value."""
 
 
 class ProtocolDriftOpenItems(Protocol):
@@ -56,7 +62,14 @@ class ProtocolLaneRunner(Protocol):
         ...
 
 
+class ProtocolStoreReader(Protocol):
+    async def read(self, folder: str, name: str) -> SecretStr | None:
+        """The value of the store entry named ``name`` in ``folder``; None when the entry is absent or blank."""
+        ...
+
+
 __all__ = [
+    "BriefEnvironmentAbsentError",
     "DriftStateUnreadableError",
     "LiveLanesUnreadableError",
     "ProtocolBriefPreparer",
@@ -64,4 +77,5 @@ __all__ = [
     "ProtocolDriftOpenItems",
     "ProtocolLaneRunner",
     "ProtocolLiveLanes",
+    "ProtocolStoreReader",
 ]

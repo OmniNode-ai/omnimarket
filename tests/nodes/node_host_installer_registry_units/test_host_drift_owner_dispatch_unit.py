@@ -153,3 +153,22 @@ def test_the_runner_gets_the_ledger_write_environment_the_checkers_own_unit_has(
     assert '"ONEX_LEDGER_HOST_NAME=h-example"' in result.rendered
     assert "=/example/ledger/rows.md" in result.rendered
     assert "omnimarket.work_ledger_bus.cli append --bus-lane dev" in result.rendered
+
+
+def test_the_unit_holds_no_linear_key_and_the_nodes_overlay_names_the_store_entry() -> (
+    None
+):
+    from tests.nodes.node_host_drift_owner_dispatch_effect.support import overlay
+
+    declared = load_units()[UNIT]
+    carried = {
+        *declared["environment"],
+        *declared["environment_inputs"],
+        *declared["required_environment_inputs"],
+    }
+    assert not any("LINEAR" in name or "KEY" in name for name in carried)
+    assert "environment_file" not in declared
+    settings = overlay().brief_environment.settings
+    assert [(s.env, s.secret) for s in settings] == [
+        ("EXAMPLE_LINEAR_KEY", "EXAMPLE_LINEAR_KEY")
+    ]

@@ -18,6 +18,9 @@ from omnimarket.events.alarm_owner_responder import (
     ModelAlarmOwnerPolicy,
 )
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
+from omnimarket.models.secret_store.model_secret_store_overlay import (
+    ModelSecretStoreOverlay,
+)
 
 NODE_NAME = "node_host_drift_owner_dispatch_effect"
 
@@ -106,6 +109,22 @@ class ModelBriefSettings(_Frozen):
     sections: ModelBriefSections
 
 
+class ModelStoreEnvSetting(_Frozen):
+    """One environment name the brief check reads, filled from the secret store when the unit's environment has none."""
+
+    env: str = Field(pattern=r"^[A-Za-z_][A-Za-z0-9_]*$")
+    #: The store entry name the value is read from.
+    secret: str = Field(pattern=r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+class ModelBriefEnvironment(_Frozen):
+    """The environment names the brief check reads and where their values come from when the unit's environment has none."""
+
+    #: The store folder the settings' values are read from.
+    folder: str = Field(min_length=1, pattern=r"^/")
+    settings: tuple[ModelStoreEnvSetting, ...] = Field(min_length=1)
+
+
 class ModelDriftOwnerOverlay(_Frozen):
     #: ``inmemory`` records instead of reading files, the ledger and starting lanes; ``runtime`` does all three.
     backend: Literal["inmemory", "runtime"]
@@ -121,6 +140,10 @@ class ModelDriftOwnerOverlay(_Frozen):
     live_lanes: ModelLiveLanesSettings
     dispatch: ModelDispatchSettings
     brief: ModelBriefSettings
+    #: The secret store the brief environment's values are read from when the unit's environment has none.
+    secret_store: ModelSecretStoreOverlay
+    #: The environment names the brief check reads and where their values come from when the unit's environment has none.
+    brief_environment: ModelBriefEnvironment
 
 
 def load_overlay(environ: Mapping[str, str] | None = None) -> ModelDriftOwnerOverlay:
@@ -130,10 +153,12 @@ def load_overlay(environ: Mapping[str, str] | None = None) -> ModelDriftOwnerOve
 __all__ = [
     "NODE_NAME",
     "ModelAlarmCells",
+    "ModelBriefEnvironment",
     "ModelBriefSections",
     "ModelBriefSettings",
     "ModelDispatchSettings",
     "ModelDriftOwnerOverlay",
     "ModelLiveLanesSettings",
+    "ModelStoreEnvSetting",
     "load_overlay",
 ]

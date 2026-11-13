@@ -1533,6 +1533,7 @@
   "tests/nodes/node_host_drift_owner_dispatch_effect/test_golden_chain.py": 2.62,
   "tests/nodes/node_host_drift_owner_dispatch_effect/test_runtime_adapters.py": 2.82,
   "tests/nodes/node_host_drift_owner_dispatch_effect/test_seam.py": 2.65,
+  "tests/nodes/node_host_drift_owner_dispatch_effect/test_store_environment.py": 2.9,
   "tests/nodes/node_host_install_state_reducer/test_contract.py": 3.41,
   "tests/nodes/node_host_install_state_reducer/test_reducer.py": 2.76,
   "tests/nodes/node_host_install_state_reducer/test_seam.py": 2.96,

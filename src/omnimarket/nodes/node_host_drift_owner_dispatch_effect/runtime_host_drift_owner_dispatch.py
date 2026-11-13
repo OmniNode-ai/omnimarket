@@ -25,6 +25,9 @@ from omnimarket.nodes.node_host_drift_owner_dispatch_effect.adapters.runtime_ada
     LedgerQueryLiveLanes,
     SubprocessLanePlacer,
 )
+from omnimarket.nodes.node_host_drift_owner_dispatch_effect.adapters.store_environment import (
+    StoreEnvironmentFiller,
+)
 from omnimarket.nodes.node_host_drift_owner_dispatch_effect.handlers.handler_host_drift_owner_dispatch import (
     HandlerHostDriftOwnerDispatch,
 )
@@ -36,8 +39,10 @@ from omnimarket.nodes.node_host_drift_owner_dispatch_effect.overlay import (
     load_overlay,
 )
 from omnimarket.nodes.node_host_drift_owner_dispatch_effect.protocols import (
+    BriefEnvironmentAbsentError,
     DriftStateUnreadableError,
     LiveLanesUnreadableError,
+    ProtocolStoreReader,
 )
 
 REGISTRY_ROOT_TOKEN = "{registry_root}"
@@ -55,6 +60,7 @@ def _build_inmemory(
     root: Path,
     environ: Mapping[str, str],
     clock: Callable[[], datetime],
+    store: ProtocolStoreReader | None = None,
 ) -> HandlerHostDriftOwnerDispatch:
     dispatch = overlay.dispatch
     briefs = InMemoryBriefPreparer()
@@ -76,6 +82,7 @@ def _build_runtime(
     root: Path,
     environ: Mapping[str, str],
     clock: Callable[[], datetime],
+    store: ProtocolStoreReader | None = None,
 ) -> HandlerHostDriftOwnerDispatch:
     dispatch = overlay.dispatch
     runner_path = environ.get(dispatch.runner_env, "")
@@ -87,6 +94,9 @@ def _build_runtime(
     plugin_root = (
         Path(runner_path).resolve().parents[overlay.brief.runner_root_levels - 1]
     )
+    brief_environ = StoreEnvironmentFiller(
+        overlay.brief_environment, store or _default_store(overlay, environ)
+    ).fill(environ)
     return HandlerHostDriftOwnerDispatch(
         overlay=overlay,
         items=FileDriftOpenItems(root / overlay.state_path),
@@ -107,12 +117,23 @@ def _build_runtime(
             overlay.brief,
             model=dispatch.model,
             ticket=dispatch.ticket,
-            environ=environ,
+            environ=brief_environ,
         ),
         runner=SubprocessLanePlacer(dispatch.settle_seconds, briefs),
         runner_path=runner_path,
         clock=clock,
     )
+
+
+def _default_store(
+    overlay: ModelDriftOwnerOverlay, environ: Mapping[str, str]
+) -> ProtocolStoreReader:
+    from omnimarket.handlers.delegation_scenario_settings import (
+        SecretStoreSettingsReader,
+    )
+
+    home = Path(environ["HOME"]) if "HOME" in environ else Path.home()
+    return SecretStoreSettingsReader(overlay=overlay.secret_store, home=home)
 
 
 _BACKEND_BUILDERS: dict[str, Callable[..., HandlerHostDriftOwnerDispatch]] = {
@@ -127,10 +148,11 @@ def build_handler(
     root: Path,
     environ: Mapping[str, str],
     clock: Callable[[], datetime] = _utc_now,
+    store: ProtocolStoreReader | None = None,
 ) -> HandlerHostDriftOwnerDispatch:
     """The handler wired to the overlay's backend; ``root`` is what the overlay's relative paths are under."""
     return _BACKEND_BUILDERS[overlay.backend](
-        overlay, root=root, environ=environ, clock=clock
+        overlay, root=root, environ=environ, clock=clock, store=store
     )
 
 
@@ -144,7 +166,11 @@ def main(argv: list[str] | None = None) -> int:
     try:
         handler = build_handler(overlay, root=args.registry_root, environ=os.environ)
         result = handler.handle(ModelDriftOwnerRequest(dry_run=args.dry_run))
-    except (DriftStateUnreadableError, LiveLanesUnreadableError) as exc:
+    except (
+        DriftStateUnreadableError,
+        LiveLanesUnreadableError,
+        BriefEnvironmentAbsentError,
+    ) as exc:
         sys.stdout.write(f"host-drift-owner-dispatch UNREADABLE {exc}\n")
         return EXIT_UNREADABLE
     started = sum(lane.started for lane in result.lanes)

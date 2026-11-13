@@ -56,3 +56,18 @@ brief:
     seams: "SEAMS: name every topic, contract or model your change shares and add the test that fails when either side changes shape."
     runtime: "RUNTIME: work is done only when observed running where it runs; name the host, the revision and the receipt."
     delegation: "DELEG: drafts go through the delegation step first; end with a DELEGATION line carrying every run id."
+# The secret store the brief check's environment values are read from when the unit's environment holds none (synthetic).
+secret_store:
+  provider: infisical
+  address: http://example-store.invalid:8880
+  project_id: 00000000-0000-4000-8000-000000000000
+  environment: dev
+  root_folder: /
+  identity_file: .example/.env
+  client_id_ref: EXAMPLE_CLIENT_ID
+  client_secret_ref: EXAMPLE_CLIENT_SECRET
+# The names the lane-brief check reads from its environment and the store entry each is filled from (synthetic).
+brief_environment:
+  folder: /example/lane-env
+  settings:
+    - {env: EXAMPLE_LINEAR_KEY, secret: EXAMPLE_LINEAR_KEY}
