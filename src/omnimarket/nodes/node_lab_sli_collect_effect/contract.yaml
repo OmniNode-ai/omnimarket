@@ -7,10 +7,13 @@
 # node_lab_sli_compute. It decides nothing; every target lives in that node's
 # sli_table.
 #
-# WHO HOSTS THIS NODE. One serve process per lab host (it reads that host's
-# probes, its launchd or systemd units and the PR watcher state). A shared
-# runtime must NOT attach it, so the contract declares runtime_dispatch and no
-# event_bus block, as node_lab_fill_effect does.
+# WHO HOSTS THIS NODE. The runtime on the lab host whose probes it reads (its
+# /proc or vm_stat, its launchd or systemd units, the PR watcher state): the
+# collect request names that host in collector_host, and the host's overlay
+# carries node_lab_sli_schedule_compute's schedule, so only that runtime asks for a
+# collection. The contract declares the event_bus block below because a runtime
+# wires a node only through event_bus.subscribe_topics; with runtime_dispatch alone
+# the node was skipped and nothing could ever consume the command topic (OMN-19998).
 name: "node_lab_sli_collect_effect"
 lifecycle: experimental
 node_type: "EFFECT_GENERIC"
@@ -60,6 +63,13 @@ runtime_dispatch:
   terminal_events:
     success: "onex.cmd.omnimarket.lab-sli-evaluate-requested.v1"
     failure: "onex.evt.omnimarket.lab-sli-collect-failed.v1"
+event_bus:
+  subscribe_topics:
+    - "onex.cmd.omnimarket.lab-sli-collect-requested.v1"
+  publish_topics:
+    - "onex.cmd.omnimarket.lab-sli-evaluate-requested.v1"
+    - "onex.evt.omnimarket.lab-sli-collect-failed.v1"
+terminal_event: "onex.cmd.omnimarket.lab-sli-evaluate-requested.v1"
 config:
   lab_sli_collect:
     merge_window_minutes: 240
@@ -70,3 +80,18 @@ config:
     # volume, of the APFS data volume; the data volume's mount point is read
     # from `mount` at run time.
     fseventsd_dir_name: ".fseventsd"
+
+# BROKER GRANTS (OMN-24005): the runtime login the dev lane's runtime connects as, filled from the environment by the reconcile run
+# (the placeholder the runtime's own schedule nodes use). Rows follow the derivation's operations for a subscriber and a publisher:
+# READ and DESCRIBE the command topic and the consumer group, WRITE and DESCRIBE the success and failure topics.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.lab-sli-collect-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.lab-sli-collect-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.lab-sli-evaluate-requested.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.lab-sli-evaluate-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.lab-sli-collect-failed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.lab-sli-collect-failed.v1, operation: DESCRIBE}
+      - {resource_type: GROUP, pattern: PREFIXED, name: local.omnimarket.node_lab_sli_collect_effect.consume.v1., operation: READ}
+      - {resource_type: GROUP, pattern: PREFIXED, name: local.omnimarket.node_lab_sli_collect_effect.consume.v1., operation: DESCRIBE}

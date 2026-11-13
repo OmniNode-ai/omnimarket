@@ -1,0 +1,69 @@
+schema_version: 1.0.0
+ticket_id: OMN-24264
+title: Make the lab health check start on a schedule
+summary: 'The lab SLI chain (collect, evaluate, alert, board) never ran because nothing sent its first command: no node produced the collect request, and the collect node declared no event bus
+  wiring so no runtime consumed that topic. A new tick-driven node, node_lab_sli_schedule_compute, turns the runtime tick into the collect request once per interval from overlay values (interval, offset,
+  host, state path, disk paths), only when the lab SLI pack is enabled; the collect node now declares its event bus block so the runtime wires it and its success output reaches the evaluate node.'
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- topics
+requirements:
+- id: req-omn24264-lab-sli-schedule
+  statement: The runtime tick starts the lab SLI collection once per interval from overlay values, and the collect node is wired so its output reaches the evaluate node.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a runtime tick on an interval boundary produces exactly one collect request carrying only overlay values, and a tick inside the interval produces none -- falsifier: pytest tests/nodes/node_lab_sli_schedule_compute/test_golden_chain_lab_sli_schedule.py -q'
+  - id: AC2
+    statement: 'AC2: with the schedule node, the collect node and the evaluate node wired on one bus, one tick yields one collect request, one evaluate request and one evaluated verdict, and without the collect
+      node''s event wiring the chain stops after the collect request -- falsifier: pytest tests/nodes/node_lab_sli_schedule_compute/test_seam_lab_sli_chain_bus.py -q'
+  - id: AC3
+    statement: 'AC3: a missing schedule overlay, a broken overlay and a disabled pack are each refused or skipped by name and never read as enabled -- falsifier: pytest tests/nodes/node_lab_sli_schedule_compute/test_error_chain_lab_sli_schedule.py -q'
+  - id: AC4
+    statement: 'AC4: integrated: one lab-sli-evaluated event for a tick in the last interval is read on the dev runtime''s bus, produced by the running schedule node -- falsifier: read onex.evt.omnimarket.lab-sli-evaluated.v1
+      on the dev lane and find no event newer than twice the interval'
+evidence_requirements:
+- kind: tests
+  description: The lab SLI schedule golden, error and seam tests and the existing lab SLI chains pass at the pushed head.
+  command: uv run pytest tests/nodes/node_lab_sli_schedule_compute tests/nodes/node_lab_sli_compute -q -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24264-ac1
+  description: 'AC1: the boundary tick returns one request of overlay values and the mid-interval tick returns none; at the merge base the schedule node does not exist.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lab_sli_schedule_compute/test_golden_chain_lab_sli_schedule.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn24264-ac2
+  description: 'AC2: the three nodes wired on one in-memory bus run tick to verdict, and the control without the collect node stops after the collect request.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lab_sli_schedule_compute/test_seam_lab_sli_chain_bus.py tests/nodes/node_lab_sli_schedule_compute/test_seam_lab_sli_schedule_chain.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn24264-ac3
+  description: 'AC3: the missing overlay, the broken overlay and the disabled or broken pack status each end by name, never as enabled.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lab_sli_schedule_compute/test_error_chain_lab_sli_schedule.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn24264-ac4
+  description: 'hosted proxy for AC4: the schedule tests pass here; the read of one lab-sli-evaluated event on the dev runtime after the branch deploy is posted as a pull request comment naming the head.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lab_sli_schedule_compute -q -p no:randomly --no-cov
+    cwd: .
