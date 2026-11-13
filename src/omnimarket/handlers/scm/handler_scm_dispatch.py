@@ -52,6 +52,12 @@ _W = EnumScmNode.WRITE
 #: The verbs ``onex scm`` serves: every operation slice 1 put on the two
 #: source-control node contracts, named for the gh verb it replaces.
 SCM_VERBS: Final[tuple[ModelScmVerb, ...]] = (
+    ModelScmVerb(
+        verb="runner-group-get",
+        node=_W,
+        operation="runner_group_get",
+        replaces="gh api --method GET /orgs/{o}/actions/runner-groups/{id}",
+    ),
     *(
         ModelScmVerb(verb=v, node=_G, operation=op, replaces=gh, local_read=read)
         for v, op, gh, read in (

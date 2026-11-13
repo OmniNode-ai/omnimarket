@@ -18,6 +18,7 @@ from omnimarket.nodes.node_github_repo_write_effect.models.model_repo_write_io i
     ModelRepoWriteFailed,
     ModelRepoWriteRequest,
     ModelRepoWriteRunner,
+    ModelRepoWriteRunnerGroup,
 )
 from omnimarket.nodes.node_github_repo_write_effect.models.model_repo_write_lease import (
     EnumRepoWriteFenceStatus,
@@ -45,6 +46,7 @@ __all__ = [
     "ModelRepoWriteLease",
     "ModelRepoWriteRequest",
     "ModelRepoWriteRunner",
+    "ModelRepoWriteRunnerGroup",
     "ModelSourceControlHealthStatus",
     "SourceControlOperationNotSupportedError",
     "SourceControlWriteRefusedError",

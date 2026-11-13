@@ -40,6 +40,7 @@ from omnimarket.nodes.node_github_repo_write_effect.services.repo_variable impor
     get_variable_request,
 )
 from omnimarket.nodes.node_github_repo_write_effect.services.runner_registration import (
+    get_runner_group_request,
     list_runners_request,
 )
 from tests.unit.nodes.node_github_repo_write_effect.test_handler_github_repo_write import (
@@ -84,6 +85,7 @@ _REQUEST_FIELDS = frozenset(
         "requested_by_lane",
         "requested_by_run",
         "review_thread_id",
+        "runner_group_id",
         "runner_name",
         "status",
         "thread_comment_id",
@@ -111,6 +113,7 @@ _COMPLETED_FIELDS = frozenset(
         "requested_by_lane",
         "requests",
         "review_id",
+        "runner_group",
         "runner_name",
         "runner_removed",
         "runners",
@@ -560,7 +563,11 @@ def _pin_runner_overlay(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None
         "runner_removals:\n"
         "  entries:\n"
         f"    - organization: {_RUNNER_ORG}\n"
-        f"      name: {_RUNNER_ONE}\n",
+        f"      name: {_RUNNER_ONE}\n"
+        "runner_group_reads:\n"
+        "  entries:\n"
+        f"    - organization: {_RUNNER_ORG}\n"
+        "      group_id: 7\n",
         encoding="utf-8",
     )
     monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path))
@@ -627,3 +634,25 @@ def test_runner_remove_of_a_name_the_overlay_does_not_allow_fails_without_a_call
     failed = ModelRepoWriteFailed.model_validate(answer["result"])
     assert failed.reason is EnumRepoWriteRefusal.RUNNER_NOT_ALLOWED
     assert failed.requests == ()
+
+
+def test_runner_group_get_dry_run_plans_the_group_read_on_the_in_memory_bus(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    result = _runner(monkeypatch, tmp_path, "runner-group-get", "--group-id", "7")
+    assert result.exit_code == 0, result.output
+    answer = json.loads(result.output)
+    assert answer["outcome"] == "completed"
+    completed = ModelRepoWriteCompleted.model_validate(answer["result"])
+    assert completed.operation is EnumRepoWriteOperation.RUNNER_GROUP_GET
+    assert completed.mode is EnumRepoWriteMode.DRY_RUN
+    assert completed.requests == (get_runner_group_request(_RUNNER_ORG, 7),)
+
+
+def test_runner_group_get_outside_the_overlay_is_refused_on_the_in_memory_bus(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    result = _runner(monkeypatch, tmp_path, "runner-group-get", "--group-id", "9")
+    answer = json.loads(result.output)
+    assert answer["outcome"] == "failed"
+    assert answer["result"]["reason"] == "runner_not_allowed"

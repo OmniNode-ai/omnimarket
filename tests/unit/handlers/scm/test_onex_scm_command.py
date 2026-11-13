@@ -538,6 +538,7 @@ _WRITE_ARGS: dict[str, list[str]] = {
     "variable-get": [REPO, "--variable", "LAB_VAR_ONE"],
     "runner-list": [REPO],
     "runner-remove": [REPO, "--runner", "example-runner-1"],
+    "runner-group-get": [REPO, "--group-id", "7"],
 }
 
 
@@ -752,6 +753,7 @@ def _contract_1_2_0_request() -> type[BaseModel]:
             "variable-get",
             "runner-list",
             "runner-remove",
+            "runner-group-get",
         }
     ),
 )
@@ -891,6 +893,35 @@ def test_runner_remove_carries_the_name_and_nothing_else(
     assert payload["expected_head_sha"] is None
     sent = ModelRepoWriteRequest.model_validate(payload)
     assert sent.operation is EnumRepoWriteOperation.RUNNER_REMOVE
+
+
+def test_runner_group_get_carries_the_group_id_and_nothing_else(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bus = FakeBus()
+    _install(monkeypatch, bus)
+    result = _run(
+        ["runner-group-get", *_WRITE_ARGS["runner-group-get"], "--lane", "lane-x"]
+    )
+    assert result.exit_code == 0, result.output
+    payload = bus.published[0][1]["payload"]
+    assert payload["operation"] == "runner_group_get"
+    assert payload["runner_group_id"] == 7
+    assert "runner_name" not in payload
+    assert payload["pr_number"] is None
+    assert payload["expected_head_sha"] is None
+    sent = ModelRepoWriteRequest.model_validate(payload)
+    assert sent.operation is EnumRepoWriteOperation.RUNNER_GROUP_GET
+
+
+def test_runner_group_get_refuses_a_missing_group_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bus = FakeBus()
+    _install(monkeypatch, bus)
+    missing = _run(["runner-group-get", REPO, "--lane", "lane-x"])
+    assert missing.exit_code != 0
+    assert bus.published == []
 
 
 def test_runner_remove_refuses_a_missing_name_and_runner_list_a_name(

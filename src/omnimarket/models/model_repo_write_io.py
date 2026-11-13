@@ -28,6 +28,9 @@ or one failed result. Each operation replaces one ``gh`` verb a lane ran:
   ``gh api --method DELETE /orgs/{o}/actions/runners/{id}``. The organizations
   and runner names a lane may act on are only the overlay's runner_removals
   entries; no runner name is in code.
+- runner_group_get replaces ``gh api --method GET /orgs/{o}/actions/runner-groups/{id}``:
+  it reads one runner group's settings and repositories. The organization and
+  group id it may read are only the overlay's runner_group_reads entries.
 - check_run_create posts a check result to /check-runs.
 - workflow_dispatch replaces ``gh workflow run`` with
   POST /actions/workflows/{w}/dispatches.
@@ -94,6 +97,7 @@ class EnumRepoWriteOperation(StrEnum):
     REPO_VARIABLE_GET = "repo_variable_get"
     RUNNER_LIST = "runner_list"
     RUNNER_REMOVE = "runner_remove"
+    RUNNER_GROUP_GET = "runner_group_get"
     WORKFLOW_DISPATCH = "workflow_dispatch"
     CHECK_RUN_CREATE = "check_run_create"
 
@@ -115,6 +119,7 @@ _OPERATION_ONLY_FIELDS: Final[dict[EnumRepoWriteOperation, tuple[str, ...]]] = {
     EnumRepoWriteOperation.PR_THREAD_RESOLVE: ("review_thread_id",),
     EnumRepoWriteOperation.PR_LABEL: ("add_labels", "remove_labels"),
     EnumRepoWriteOperation.RUNNER_REMOVE: ("runner_name",),
+    EnumRepoWriteOperation.RUNNER_GROUP_GET: ("runner_group_id",),
 }
 
 
@@ -364,6 +369,13 @@ class ModelRepoWriteRequest(BaseModel):
         "overlay's runner_removals, and the runner must be offline and idle "
         "before it is deleted.",
     )
+    runner_group_id: int | None = Field(
+        default=None,
+        gt=0,
+        description="runner_group_get: the runner group's id; the pair "
+        "(repository's organization, runner_group_id) must be an entry of the "
+        "overlay's runner_group_reads.",
+    )
     replaces: tuple[str, ...] | None = Field(
         default=None,
         min_length=1,
@@ -467,8 +479,18 @@ class ModelRepoWriteRequest(BaseModel):
             raise ValueError(
                 "variable_name is read only by repo_variable_set and repo_variable_get"
             )
+        if (
+            op is not EnumRepoWriteOperation.RUNNER_GROUP_GET
+            and self.runner_group_id is not None
+        ):
+            raise ValueError("runner_group_id is read only by runner_group_get")
         if op is EnumRepoWriteOperation.RUNNER_REMOVE and self.runner_name is None:
             missing.append("runner_name")
+        if (
+            op is EnumRepoWriteOperation.RUNNER_GROUP_GET
+            and self.runner_group_id is None
+        ):
+            missing.append("runner_group_id")
         if op is EnumRepoWriteOperation.WORKFLOW_DISPATCH:
             missing += [
                 n
@@ -553,6 +575,19 @@ class _ModelRepoWriteResultBase(BaseModel):
     quota: ModelGithubQuotaReading | None = None
 
 
+class ModelRepoWriteRunnerGroup(BaseModel):
+    """The runner group a runner_group_get read returned."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    id: int
+    name: str
+    allows_public_repositories: bool
+    restricted_to_selected_workflows: bool
+    selected_workflows: tuple[str, ...]
+    repositories: tuple[str, ...]
+
+
 class ModelRepoWriteCompleted(_ModelRepoWriteResultBase):
     """The write ran (or, in dry_run, the calls it would make)."""
 
@@ -593,6 +628,11 @@ class ModelRepoWriteCompleted(_ModelRepoWriteResultBase):
         default=None,
         description="runner_remove only: False (with replayed) when no runner "
         "of that name was registered, True after the DELETE.",
+    )
+    runner_group: ModelRepoWriteRunnerGroup | None = Field(
+        default=None,
+        description="runner_group_get only: the runner group, its settings and "
+        "its repositories, as the organization reports them.",
     )
 
 
@@ -639,5 +679,6 @@ __all__: list[str] = [
     "ModelRepoWriteFailed",
     "ModelRepoWriteRequest",
     "ModelRepoWriteRunner",
+    "ModelRepoWriteRunnerGroup",
     "parse_claim_stamp",
 ]

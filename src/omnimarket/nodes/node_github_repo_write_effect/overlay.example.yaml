@@ -28,6 +28,10 @@ runner_removals:
       name: example-runner-1
     - organization: example-org
       name: example-runner-2
+runner_group_reads:
+  entries:
+    - organization: example-org
+      group_id: 7
 event_bus:
   type: kafka
   lane: example-lane

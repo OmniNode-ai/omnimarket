@@ -20,7 +20,8 @@ A lane does GitHub work through this command and no ``gh`` verb:
   run-view, job-log, run-download, release-list) publish the gateway's typed request.
 - **PR authoring writes** (pr-create, pr-edit, pr-ready, pr-close, pr-comment,
   pr-thread-reply, pr-thread-resolve, pr-review-post, pr-label, workflow-run,
-  check-run-create, variable-set, variable-get, runner-list, runner-remove)
+  check-run-create, variable-set, variable-get, runner-list, runner-remove,
+  runner-group-get)
   publish node_github_repo_write_effect's typed
   request. Its guards apply: quota floor, expected head, idempotency, and the claim pr-close
   needs. pr-edit, pr-ready, pr-close, pr-review-post and pr-label take the expected head from the
@@ -778,6 +779,7 @@ _WRITE_OPTIONS: Final[dict[str, tuple[str, ...]]] = {
     "repo_variable_get": ("variable",),
     "runner_list": (),
     "runner_remove": ("runner",),
+    "runner_group_get": ("runner_group",),
     "pr_review_post": ("body", "body_file"),
     "workflow_dispatch": ("workflow", "ref", "input"),
     "check_run_create": (
@@ -797,6 +799,7 @@ _REPO_SCOPED_WRITES: Final[frozenset[str]] = frozenset(
         "repo_variable_get",
         "runner_list",
         "runner_remove",
+        "runner_group_get",
     }
 )
 _HEAD_FROM_WATCHER: Final[frozenset[str]] = frozenset(
@@ -896,6 +899,14 @@ _OPTION_DECORATORS: Final[
         "organization and this name must be in the write node's overlay "
         "runner_removals, and the runner must be offline and idle before it "
         "is deleted.",
+    ),
+    "runner_group": click.option(
+        "--group-id",
+        "runner_group_id",
+        required=True,
+        type=click.IntRange(min=1),
+        help="The runner group's id. The pair of the repository's organization "
+        "and this id must be in the write node's overlay runner_group_reads.",
     ),
     "add_label": click.option(
         "--add", "add_labels", multiple=True, help="A label to add (repeatable)."

@@ -73,6 +73,8 @@ from omnimarket.nodes.node_github_repo_write_effect.overlay import (
     ModelRepoVariablesOverlay,
     ModelRepoWriteOverlay,
     ModelRunnerEntry,
+    ModelRunnerGroupEntry,
+    ModelRunnerGroupReadOverlay,
     ModelRunnerRemovalOverlay,
 )
 from omnimarket.nodes.node_github_repo_write_effect.services.pr_label import (
@@ -83,6 +85,8 @@ from omnimarket.nodes.node_github_repo_write_effect.services.repo_variable impor
     get_variable_request,
 )
 from omnimarket.nodes.node_github_repo_write_effect.services.runner_registration import (
+    get_runner_group_request,
+    list_runner_group_repositories_request,
     list_runners_request,
 )
 
@@ -798,6 +802,92 @@ async def test_an_online_runner_is_published_as_failed_with_no_delete() -> None:
     assert failed.terminal_failure_cause is EnumRepoWriteRefusal.RUNNER_ONLINE
 
 
+async def test_a_runner_group_get_is_published_as_completed() -> None:
+    group_body = {
+        "id": 7,
+        "name": "example-group",
+        "allows_public_repositories": False,
+        "restricted_to_selected_workflows": True,
+        "selected_workflows": [
+            "example-org/example-repo/.github/workflows/build.yml@refs/heads/main"
+        ],
+    }
+    group_req = get_runner_group_request(_RUNNER_ORG, 7)
+    repos_req = list_runner_group_repositories_request(_RUNNER_ORG, 7, 1)
+    repos_body = {
+        "total_count": 1,
+        "repositories": [{"full_name": "example-org/example-repo"}],
+    }
+    fake = _Recorded(
+        [
+            (
+                group_req,
+                ModelGithubHttpResponse(status=200, headers=_HEADERS, body=group_body),
+            ),
+            (
+                repos_req,
+                ModelGithubHttpResponse(status=200, headers=_HEADERS, body=repos_body),
+            ),
+        ]
+    )
+    handler = HandlerGithubRepoWriteEffect(
+        fake,
+        clock=_CLOCK.timestamp,
+        overlay=ModelRepoWriteOverlay(
+            pr_label=ModelPrLabelOverlay(allowed_labels=(_LABEL,)),
+            runner_group_reads=ModelRunnerGroupReadOverlay(
+                entries=(ModelRunnerGroupEntry(organization=_RUNNER_ORG, group_id=7),)
+            ),
+        ),
+    )
+    broker, correlation_id = await _run(
+        handler,
+        _runner_command(EnumRepoWriteOperation.RUNNER_GROUP_GET, runner_group_id=7),
+    )
+    (envelope,) = _on(broker, _COMPLETED)
+    assert envelope.correlation_id == correlation_id
+    completed = ModelRepoWriteCompleted.model_validate(envelope.payload)
+    assert completed.operation is EnumRepoWriteOperation.RUNNER_GROUP_GET
+    assert completed.mode is EnumRepoWriteMode.ENFORCE
+    assert completed.runner_group is not None
+    assert completed.runner_group.id == 7
+    assert completed.runner_group.name == "example-group"
+    assert completed.runner_group.allows_public_repositories is False
+    assert completed.runner_group.restricted_to_selected_workflows is True
+    assert completed.runner_group.selected_workflows == (
+        "example-org/example-repo/.github/workflows/build.yml@refs/heads/main",
+    )
+    assert completed.runner_group.repositories == ("example-org/example-repo",)
+    assert completed.requests == (group_req, repos_req)
+    assert fake.sent == [group_req, repos_req]
+    assert fake.exchanges == []
+    assert _on(broker, _FAILED) == []
+
+
+async def test_a_runner_group_outside_the_overlay_is_published_as_failed() -> None:
+    fake = _Recorded([])
+    handler = HandlerGithubRepoWriteEffect(
+        fake,
+        clock=_CLOCK.timestamp,
+        overlay=ModelRepoWriteOverlay(
+            pr_label=ModelPrLabelOverlay(allowed_labels=(_LABEL,)),
+            runner_group_reads=ModelRunnerGroupReadOverlay(
+                entries=(ModelRunnerGroupEntry(organization=_RUNNER_ORG, group_id=7),)
+            ),
+        ),
+    )
+    broker, _ = await _run(
+        handler,
+        _runner_command(EnumRepoWriteOperation.RUNNER_GROUP_GET, runner_group_id=9),
+    )
+    assert fake.sent == []
+    assert _on(broker, _COMPLETED) == []
+    (envelope,) = _on(broker, _FAILED)
+    failed = ModelRepoWriteFailed.model_validate(envelope.payload)
+    assert failed.reason is EnumRepoWriteRefusal.RUNNER_NOT_ALLOWED
+    assert failed.terminal_failure_cause is EnumRepoWriteRefusal.RUNNER_NOT_ALLOWED
+
+
 def test_the_contract_declares_the_runner_operations() -> None:
     contract = yaml.safe_load(_CONTRACT.read_text(encoding="utf-8"))
     entries = {entry["name"]: entry for entry in contract["operations"]}
@@ -806,6 +896,10 @@ def test_the_contract_declares_the_runner_operations() -> None:
         (
             "runner_remove",
             "replaces gh api --method DELETE /orgs/{o}/actions/runners/{id}.",
+        ),
+        (
+            "runner_group_get",
+            "replaces gh api --method GET /orgs/{o}/actions/runner-groups/{id}.",
         ),
     ):
         assert entries[name]["transport"] == "rest"

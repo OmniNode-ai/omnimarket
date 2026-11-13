@@ -56,6 +56,7 @@ LANE_WRITES: dict[str, str] = {
     "variable get": "repo_variable_get",
     "api --method GET /orgs/{o}/actions/runners": "runner_list",
     "api --method DELETE /orgs/{o}/actions/runners/{id}": "runner_remove",
+    "api --method GET /orgs/{o}/actions/runner-groups/{id}": "runner_group_get",
 }
 _REGISTRY_OWNER = "OmniNode-ai"
 

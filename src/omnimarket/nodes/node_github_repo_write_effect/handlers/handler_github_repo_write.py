@@ -164,6 +164,7 @@ from omnimarket.nodes.node_github_repo_write_effect.models import (
     ModelRepoWriteFailed,
     ModelRepoWriteRequest,
     ModelRepoWriteRunner,
+    ModelRepoWriteRunnerGroup,
 )
 from omnimarket.nodes.node_github_repo_write_effect.models.model_repo_write_config import (
     ModelRepoWriteCredentialChoice,
@@ -204,6 +205,8 @@ from omnimarket.nodes.node_github_repo_write_effect.services.repo_variable impor
 )
 from omnimarket.nodes.node_github_repo_write_effect.services.runner_registration import (
     delete_runner_request,
+    get_runner_group_request,
+    list_runner_group_repositories_request,
     list_runners_request,
 )
 
@@ -378,6 +381,7 @@ class _Run:
         variable_digest: str | None = None,
         variable_in_sync: bool | None = None,
         runners: tuple[ModelRepoWriteRunner, ...] | None = None,
+        runner_group: ModelRepoWriteRunnerGroup | None = None,
         runner_name: str | None = None,
         runner_removed: bool | None = None,
     ) -> ModelRepoWriteCompleted:
@@ -404,6 +408,7 @@ class _Run:
             variable_digest=variable_digest,
             variable_in_sync=variable_in_sync,
             runners=runners,
+            runner_group=runner_group,
             runner_name=runner_name,
             runner_removed=runner_removed,
         )
@@ -645,6 +650,7 @@ class HandlerGithubRepoWriteEffect:
         if request.operation not in (
             EnumRepoWriteOperation.RUNNER_LIST,
             EnumRepoWriteOperation.RUNNER_REMOVE,
+            EnumRepoWriteOperation.RUNNER_GROUP_GET,
         ):
             return None
         try:
@@ -656,6 +662,35 @@ class HandlerGithubRepoWriteEffect:
                 EnumRepoWriteRefusal.RUNNER_NOT_ALLOWED,
                 f"no runner overlay is configured: {exc}",
             )
+        organization, _ = split_repository(request.repo)
+        lowered_organization = organization.lower()
+        if request.operation is EnumRepoWriteOperation.RUNNER_GROUP_GET:
+            group_reads = self._write_overlay.runner_group_reads
+            if group_reads is None:
+                return self._preflight_refusal(
+                    request,
+                    EnumRepoWriteRefusal.RUNNER_NOT_ALLOWED,
+                    "the node's overlay declares no runner_group_reads; no call made",
+                )
+            group_id = request.runner_group_id
+            if group_id is None:  # defensive; the request validator enforces this
+                return self._preflight_refusal(
+                    request,
+                    EnumRepoWriteRefusal.RUNNER_NOT_ALLOWED,
+                    "runner_group_get requires runner_group_id; no call made",
+                )
+            if any(
+                entry.organization.lower() == lowered_organization
+                and entry.group_id == group_id
+                for entry in group_reads.entries
+            ):
+                return None
+            return self._preflight_refusal(
+                request,
+                EnumRepoWriteRefusal.RUNNER_NOT_ALLOWED,
+                f"runner group {group_id} on organization {organization} is not in "
+                "the node's runner_group_reads overlay; no call made",
+            )
         overlay = self._write_overlay.runner_removals
         if overlay is None:
             return self._preflight_refusal(
@@ -663,8 +698,6 @@ class HandlerGithubRepoWriteEffect:
                 EnumRepoWriteRefusal.RUNNER_NOT_ALLOWED,
                 "the node's overlay declares no runner_removals; no call made",
             )
-        organization, _ = split_repository(request.repo)
-        lowered_organization = organization.lower()
         if request.operation is EnumRepoWriteOperation.RUNNER_LIST:
             if any(
                 entry.organization.lower() == lowered_organization
@@ -818,6 +851,7 @@ class HandlerGithubRepoWriteEffect:
             EnumRepoWriteOperation.REPO_VARIABLE_GET,
             EnumRepoWriteOperation.RUNNER_LIST,
             EnumRepoWriteOperation.RUNNER_REMOVE,
+            EnumRepoWriteOperation.RUNNER_GROUP_GET,
         ):
             self._done[key] = (digests, result)
             while len(self._done) > _IDEMPOTENCY_RECORD_SIZE:
@@ -1040,6 +1074,8 @@ class HandlerGithubRepoWriteEffect:
             return await _runner_list(run)
         if op is EnumRepoWriteOperation.RUNNER_REMOVE:
             return await _runner_remove(run)
+        if op is EnumRepoWriteOperation.RUNNER_GROUP_GET:
+            return await _runner_group_get(run)
         if op is EnumRepoWriteOperation.PR_REVIEW_POST:
             return await _pr_review_post(run)
         if op is EnumRepoWriteOperation.CHECK_RUN_CREATE:
@@ -1427,6 +1463,64 @@ async def _runner_list(run: _Run) -> ModelRepoWriteCompleted:
     return run.completed(runners=tuple(await _runners_pages(run, organization)))
 
 
+async def _runner_group_get(run: _Run) -> ModelRepoWriteCompleted:
+    """One runner group's settings and every repository it is open to.
+
+    The group id is the request's ``runner_group_id``; the repositories are paged
+    100 at a time and a shorter page ends the paging. A body that lacks a field
+    the model needs is refused, never filled with a default: a half-read group
+    must not read as an exposed or an unexposed one.
+    """
+    c = run.command
+    organization, _ = split_repository(c.repo)
+    group_id = c.runner_group_id or 0
+    meta = (await run.send(get_runner_group_request(organization, group_id))).body or {}
+    repositories: list[str] = []
+    page = 1
+    while True:
+        body = (
+            await run.send(
+                list_runner_group_repositories_request(organization, group_id, page)
+            )
+        ).body or {}
+        listed = body.get("repositories")
+        entries = listed if isinstance(listed, list) else []
+        repositories.extend(
+            str(entry["full_name"])
+            for entry in entries
+            if isinstance(entry, dict) and entry.get("full_name")
+        )
+        if len(entries) < _RUNNERS_PAGE_SIZE:
+            break
+        page += 1
+    name = meta.get("name")
+    allows_public = meta.get("allows_public_repositories")
+    restricted = meta.get("restricted_to_selected_workflows")
+    selected = meta.get("selected_workflows")
+    if (
+        not isinstance(name, str)
+        or not isinstance(allows_public, bool)
+        or not isinstance(restricted, bool)
+    ):
+        raise run.refused(
+            EnumRepoWriteRefusal.GITHUB_REFUSED,
+            f"runner group {group_id} on {organization} answered a body without "
+            "name, allows_public_repositories and restricted_to_selected_workflows",
+        )
+    return run.completed(
+        runner_group=ModelRepoWriteRunnerGroup(
+            id=group_id,
+            name=name,
+            allows_public_repositories=allows_public,
+            restricted_to_selected_workflows=restricted,
+            selected_workflows=tuple(
+                str(w) for w in (selected if isinstance(selected, list) else ())
+            ),
+            repositories=tuple(repositories),
+        )
+    )
+
+
 async def _runner_remove(run: _Run) -> ModelRepoWriteCompleted:
     c = run.command
     name = c.runner_name or ""
@@ -1545,6 +1639,14 @@ def planned_requests(
         # runner is offline and idle; the DELETE it may send is only known
         # after that read answers.
         return (list_runners_request(split_repository(c.repo)[0], 1),)
+    if op is EnumRepoWriteOperation.RUNNER_GROUP_GET:
+        # The repositories read follows the group read; its first page is only
+        # known to be needed once the group answers, so a plan shows the group read.
+        return (
+            get_runner_group_request(
+                split_repository(c.repo)[0], c.runner_group_id or 0
+            ),
+        )
     if op is EnumRepoWriteOperation.PR_LABEL:
         return (
             pull_request_request(c.repo, n),

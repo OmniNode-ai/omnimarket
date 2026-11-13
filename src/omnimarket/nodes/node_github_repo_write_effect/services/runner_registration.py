@@ -29,3 +29,23 @@ def delete_runner_request(organization: str, runner_id: int) -> ModelGithubHttpR
         method="DELETE",
         path=f"/orgs/{organization}/actions/runners/{runner_id}",
     )
+
+
+def get_runner_group_request(
+    organization: str, group_id: int
+) -> ModelGithubHttpRequest:
+    """One self-hosted runner group by its id."""
+    return ModelGithubHttpRequest(
+        method="GET",
+        path=f"/orgs/{organization}/actions/runner-groups/{group_id}",
+    )
+
+
+def list_runner_group_repositories_request(
+    organization: str, group_id: int, page: int
+) -> ModelGithubHttpRequest:
+    """One page of the repositories a runner group can access."""
+    return ModelGithubHttpRequest(
+        method="GET",
+        path=f"/orgs/{organization}/actions/runner-groups/{group_id}/repositories?per_page=100&page={page}",
+    )
