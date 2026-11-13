@@ -1,0 +1,45 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract — node_seam_field_diff_compute (OMN-24121)
+---
+name: node_seam_field_diff_compute
+lifecycle: experimental
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Pure seam field diff: compares the declared message shape a producer
+  publishes with the declared shape a consumer validates, per
+  (topic, producer, consumer) pair, and reports what is new compared
+  with the base branch. No I/O.
+
+handler:
+  module: omnimarket.nodes.node_seam_field_diff_compute.handlers.handler_seam_field_diff
+  class: HandlerSeamFieldDiff
+  input_model: omnimarket.models.seam_field_diff.model_seam_field_diff.ModelSeamFieldDiffRequest
+  output_model: omnimarket.models.seam_field_diff.model_seam_field_diff.ModelSeamFieldDiffVerdict
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: diff_seam_fields
+      handler:
+        name: HandlerSeamFieldDiff
+        module: omnimarket.nodes.node_seam_field_diff_compute.handlers.handler_seam_field_diff
+      input_model: omnimarket.models.seam_field_diff.model_seam_field_diff.ModelSeamFieldDiffRequest
+      output_model: omnimarket.models.seam_field_diff.model_seam_field_diff.ModelSeamFieldDiffVerdict
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 500
+  runtime_profiles:
+    - main
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.seam-field-diff-requested.v1
+
+metadata:
+  transport_type: kafka

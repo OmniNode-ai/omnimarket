@@ -244,14 +244,10 @@ event_bus:
   # node-owned dlq_topic below rather than being folded into a wrong row.
   subscribe_topics:
     - onex.cmd.omnimarket.pr-lifecycle-sweep-start.v1
-    # OMN-16939 / AC6: two owners on this topic is CORRECT, not drift. The boot-time
-    # "Duplicate topic ownership detected ... owners=('node_pr_lifecycle_state_reducer',
-    # 'node_pr_lifecycle_triage_compute') level=intra-package" warning describes ordinary
-    # pub/sub fan-out: node_pr_lifecycle_triage_compute (COMPUTE) classifies the inventory
-    # and emits pr-lifecycle-triage-completed, while this REDUCER independently folds the
-    # same event into the FSM (inventorying -> triaged). They consume under separate
-    # consumer groups (each derived from its own node name), so both receive every message
-    # — neither starves the other. Collapsing to one owner would delete a real consumer.
+    # node_pr_lifecycle_triage_compute no longer subscribes the inventory topic
+    # (OMN-24121): its route validated every payload into ModelPrTriageInput,
+    # which the inventory event cannot satisfy, and the orchestrator calls triage
+    # in process. This reducer folds the inventory event into the FSM itself.
     - onex.evt.omnimarket.pr-lifecycle-inventory-completed.v1
     - onex.evt.omnimarket.pr-lifecycle-triage-completed.v1
     - onex.evt.omnimarket.pr-lifecycle-fix-completed.v1

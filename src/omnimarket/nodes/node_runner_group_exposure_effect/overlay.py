@@ -26,6 +26,9 @@ from omnimarket.models.runner_group_exposure import (
     ModelGroupWorkflowFile,
     ModelRunnerGroupFacts,
 )
+from omnimarket.models.secret_store.model_secret_store_overlay import (
+    ModelSecretStoreOverlay,
+)
 from omnimarket.nodes.node_reading_writer_effect.overlay import ModelLedgerAppendRoute
 
 NODE_NAME = "node_runner_group_exposure_effect"
@@ -53,6 +56,17 @@ class ModelInMemorySource(BaseModel):
     fixture: ModelInMemoryFixture
 
 
+class ModelMintSecretStore(BaseModel):
+    """The secret store the App id and key are read from, and the folder that holds both."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: The store block: addressing and the NAMES of the machine identity's credentials, never a value.
+    secret_store: ModelSecretStoreOverlay
+    #: The store folder holding the App id and the App private key.
+    folder: str = Field(pattern=r"^/")
+
+
 class ModelTokenMint(BaseModel):
     """The GitHub App the source MINTS an installation token from, once per read.
 
@@ -67,6 +81,9 @@ class ModelTokenMint(BaseModel):
     app_id_secret: str = Field(min_length=1)
     #: The NAME of the secret-store reference holding the App private key; never a value.
     private_key_secret: str = Field(min_length=1)
+    #: Where the two secrets are read from. Null keeps the process environment (or the lane's store);
+    #: a block reads them through that store with the machine's identity file and nothing else.
+    store: ModelMintSecretStore | None
 
 
 class ModelGithubSource(BaseModel):
@@ -86,6 +103,9 @@ class ModelGithubSource(BaseModel):
     #: When set, the source MINTS a fresh installation token once per read instead of reading
     #: ``token_env``; the fields name secret-store references, never values.
     token_mint: ModelTokenMint | None
+    #: The NAME of the App permission the organization read of the group needs, named in a
+    #: refusal; never a value.
+    org_read_permission: str = Field(min_length=1)
     #: Calls one read may make; the call past it is not made.
     max_calls: int = Field(ge=1)
     timeout_seconds: float = Field(gt=0)
@@ -182,6 +202,7 @@ __all__ = [
     "ModelGithubSource",
     "ModelInMemoryFixture",
     "ModelInMemorySource",
+    "ModelMintSecretStore",
     "ModelTokenMint",
     "load_overlay",
     "load_reading_overlay",

@@ -15,7 +15,6 @@ import os
 import re
 import time
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -26,8 +25,16 @@ from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
     load_structured_overlay,
 )
+from omnimarket.nodes.node_host_retention_effect.handlers.host_retention_pass import (
+    _Pass,
+)
 from omnimarket.nodes.node_host_retention_effect.handlers.host_retention_ports import (
     HostRetentionPorts,
+    PreCommitStorePort,
+    read_references_portable,
+)
+from omnimarket.nodes.node_host_retention_effect.handlers.host_retention_uv_cache_cap import (
+    evict_over_cap,
 )
 from omnimarket.nodes.node_host_retention_effect.models.model_host_retention import (
     ModelAgeClass,
@@ -39,9 +46,9 @@ from omnimarket.nodes.node_host_retention_effect.models.model_host_retention imp
     ModelHostRetentionResult,
     ModelRetentionBounds,
     ModelRetentionItem,
-    ModelRetentionKept,
     ModelRunnerGroup,
     ModelRunnerMount,
+    ModelUvBucketBound,
     ModelUvCache,
 )
 from omnimarket.nodes.node_temp_retention_effect.handlers.handler_temp_retention import (
@@ -49,7 +56,6 @@ from omnimarket.nodes.node_temp_retention_effect.handlers.handler_temp_retention
     _held_names,
     _remove,
     _scan,
-    read_process_references,
     tree_bytes,
 )
 
@@ -143,6 +149,14 @@ def validate_declarations(
                 f"{age.name}: keep_days {age.keep_days} is below the contract minimum "
                 f"{bounds.min_keep_days}"
             )
+        if (
+            age.kind == "pre_commit_store"
+            and age.index_db is not None
+            and Path(age.index_db).parent != Path(age.root)
+        ):
+            refusals.append(
+                f"{age.name}: index_db {age.index_db!r} must sit directly inside the root"
+            )
     for group in row.runner_groups:
         for runner_id in group.ids:
             if not _RUNNER_ID.fullmatch(runner_id):
@@ -180,39 +194,25 @@ def validate_declarations(
             )
         except RefusalError as exc:
             refusals.append(str(exc))
+        cap = cache.cap
+        if cap is not None:
+            for bucket in cap.buckets:
+                if bucket not in bounds.uv_evictable_buckets:
+                    refusals.append(
+                        f"uv cache {cache.path}: cap bucket {bucket!r} is not named by "
+                        f"the contract, which allows only "
+                        f"{', '.join(sorted(bounds.uv_evictable_buckets)) or 'none'}"
+                    )
+            if cap.keep_days < bounds.min_keep_days:
+                refusals.append(
+                    f"uv cache {cache.path}: cap keep_days {cap.keep_days} is below the "
+                    f"contract minimum {bounds.min_keep_days}"
+                )
     return refusals
 
 
 _GIB = 2**30
 _DAY = 86400
-
-
-@dataclass
-class _Pass:
-    """What one pass has found so far; every list is exact, nothing is capped."""
-
-    items: list[ModelRetentionItem] = field(default_factory=list)
-    kept: list[ModelRetentionKept] = field(default_factory=list)
-    errors: list[str] = field(default_factory=list)
-    removed: dict[str, int] = field(default_factory=dict)
-    freed: dict[str, int] = field(default_factory=dict)
-    ran: list[str] = field(default_factory=list)
-
-    def keep(self, class_name: str, path: str, reason: str) -> None:
-        self.kept.append(
-            ModelRetentionKept(class_name=class_name, path=path, reason=reason)
-        )
-
-    def propose(self, item: ModelRetentionItem) -> None:
-        self.items.append(item)
-
-    def done(self, class_name: str, freed: int) -> None:
-        self.removed[class_name] = self.removed.get(class_name, 0) + 1
-        self.freed[class_name] = self.freed.get(class_name, 0) + freed
-
-    def begin(self, class_name: str) -> None:
-        if class_name not in self.ran:
-            self.ran.append(class_name)
 
 
 def _held_by_mount(entry: Path, sources: set[str]) -> bool:
@@ -232,6 +232,7 @@ def _age_class(
     live: set[str],
     mounts: set[str],
     unit_refs: ProcessReferences,
+    store: PreCommitStorePort,
     out: _Pass,
 ) -> None:
     root = Path(age.root)
@@ -253,8 +254,13 @@ def _age_class(
         reason: str | None = None
         if info.st_uid != uid:
             reason = "foreign_owner"
-        elif any(p.fullmatch(entry.name) for p in protected) or (
-            entry.name in bounds.protected_leaf_names_always
+        elif (
+            (
+                age.kind == "pre_commit_store"
+                and (entry.is_symlink() or not entry.is_dir())
+            )
+            or any(p.fullmatch(entry.name) for p in protected)
+            or (entry.name in bounds.protected_leaf_names_always)
         ):
             reason = "protected"
         elif entry.name in held:
@@ -282,6 +288,15 @@ def _age_class(
         )
         if dry_run:
             continue
+        if age.kind == "pre_commit_store" and age.index_db is not None:
+            try:
+                result = store.forget(age.index_db, path)
+            except OSError as exc:
+                out.errors.append(f"{entry}: {type(exc).__name__}")
+                continue
+            if result == "locked":
+                out.keep(age.name, path, "store_locked")
+                continue
         try:
             _remove(entry, uid)
         except OSError as exc:
@@ -380,7 +395,14 @@ def _runner_group(
 
 
 def _uv_cache(
-    cache: ModelUvCache, *, dry_run: bool, ports: HostRetentionPorts, out: _Pass
+    cache: ModelUvCache,
+    *,
+    now: float,
+    dry_run: bool,
+    buckets: dict[str, ModelUvBucketBound],
+    refs: ProcessReferences | None,
+    ports: HostRetentionPorts,
+    out: _Pass,
 ) -> None:
     out.begin(UV_CACHE)
     if not Path(cache.path).is_dir():
@@ -394,6 +416,8 @@ def _uv_cache(
         out.errors.append(f"{cache.path}: {type(exc).__name__}")
         return
     if size < cache.min_gib * _GIB:
+        # Below min_gib the cache is also under cap_gib (the model validates cap_gib >= min_gib),
+        # so the cap pass has nothing to do here either.
         out.keep(UV_CACHE, cache.path, "below_min")
         return
     out.propose(
@@ -406,7 +430,19 @@ def _uv_cache(
         )
     )
     if dry_run:
+        # The prune never ran, so the cap pass measures with the size read before it.
+        evict_over_cap(
+            cache,
+            size_after=size,
+            now=now,
+            dry_run=True,
+            buckets=buckets,
+            refs=refs,
+            ports=ports,
+            out=out,
+        )
         return
+    after = size
     try:
         ports.uv_cache.prune(
             cache.uv_binary, cache.path, cache.ci_prune, cache.timeout_seconds
@@ -415,9 +451,20 @@ def _uv_cache(
             cache.uv_binary, cache.path, cache.timeout_seconds
         )
     except OSError as exc:
+        # The cap has its own guards and does not depend on the prune: it measures from the size read before the prune.
         out.errors.append(f"{cache.path}: {type(exc).__name__}")
-        return
-    out.done(UV_CACHE, max(0, size - after))
+    else:
+        out.done(UV_CACHE, max(0, size - after))
+    evict_over_cap(
+        cache,
+        size_after=after,
+        now=now,
+        dry_run=False,
+        buckets=buckets,
+        refs=refs,
+        ports=ports,
+        out=out,
+    )
 
 
 def _disk_readings(
@@ -451,7 +498,7 @@ class HandlerHostRetention:
         self,
         *,
         now: Callable[[], float] = time.time,
-        references: Callable[[], ProcessReferences | None] = read_process_references,
+        references: Callable[[], ProcessReferences | None] = read_references_portable,
         ports: HostRetentionPorts | None = None,
         uid: int | None = None,
     ) -> None:
@@ -490,8 +537,13 @@ class HandlerHostRetention:
         now = self.now()
         unreadable = 0
         age_classes = [age for age in row.age_classes if runs(age.kind)]
+        # The uv cache cap pass guards its evictions with the same process references the age
+        # classes read, so it is read once for both (and not at all when neither needs it).
+        wants_uv_cap = runs("uv_cache") and any(
+            cache.cap is not None for cache in row.uv_caches
+        )
+        refs = self.references() if (age_classes or wants_uv_cap) else None
         if age_classes:
-            refs = self.references()
             live = ports.lane_liveness.live_lanes(row.lane_run_roots, row.receipt_roots)
             mounts = (
                 ports.container_mounts.mount_sources()
@@ -526,6 +578,7 @@ class HandlerHostRetention:
                         live=live,
                         mounts=mounts,
                         unit_refs=ProcessReferences(blobs=units),
+                        store=ports.pre_commit_store,
                         out=out,
                     )
         if runs("runner_work"):
@@ -539,7 +592,15 @@ class HandlerHostRetention:
                 )
         if runs("uv_cache"):
             for cache in row.uv_caches:
-                _uv_cache(cache, dry_run=request.dry_run, ports=ports, out=out)
+                _uv_cache(
+                    cache,
+                    now=now,
+                    dry_run=request.dry_run,
+                    buckets=bounds.uv_evictable_buckets,
+                    refs=refs,
+                    ports=ports,
+                    out=out,
+                )
         totals = tuple(
             ModelClassTotals(
                 class_name=name,

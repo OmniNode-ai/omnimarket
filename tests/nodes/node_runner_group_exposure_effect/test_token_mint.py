@@ -70,10 +70,11 @@ def server() -> Iterator[_Server]:
 MINTED = "ghs_minted_example_0123456789"
 APP_ID_REF = "EXAMPLE_APP_ID"
 KEY_REF = "EXAMPLE_APP_PRIVATE_KEY"
-MINT = {
+MINT: dict[str, Any] = {
     "org": "example-org",
     "app_id_secret": APP_ID_REF,
     "private_key_secret": KEY_REF,
+    "store": None,
 }
 
 
@@ -109,6 +110,7 @@ def _handler(
         "group_labels": ["example-private-group"],
         "token_env": TOKEN_ENV,
         "token_mint": MINT,
+        "org_read_permission": "example_org_permission_read",
         "max_calls": 60,
         "timeout_seconds": 5,
     }
@@ -196,6 +198,7 @@ def test_error_chain_a_declared_mint_with_no_minter_is_refused_at_construction()
         group_labels=("example-private-group",),
         token_env=TOKEN_ENV,
         token_mint=ModelTokenMint(**MINT),
+        org_read_permission="example_org_permission_read",
         max_calls=1,
         timeout_seconds=1,
     )

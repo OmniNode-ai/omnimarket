@@ -1,0 +1,112 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodeWorkflowContractCatalogEffect
+#
+# GET /v1/workflows/contracts: advertise the servable workflow types and their
+# payload schemas to an authenticated tenant, before it submits. The runtime
+# serves the node's ASGI app on its own HTTP port through the http_mount block
+# below. The route, its refusals and the topics a catalog entry may bind are
+# declared here; the catalog itself is deployment data carried by a lane overlay
+# document, never code. The caller is resolved by the bound
+# ProtocolHttpTenantIdentity; with none bound the mount refuses every request.
+name: "node_workflow_contract_catalog_effect"
+contract_name: "node_workflow_contract_catalog_effect"
+node_name: "node_workflow_contract_catalog_effect"
+node_type: "EFFECT_GENERIC"
+runtime_profiles:
+  - effects
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: "0.1.0"
+# Experimental until callers are served by this route: the node is an HTTP
+# boundary and declares no bus topics, which the node liveness gate accepts only
+# for an experimental or deprecated contract.
+lifecycle: experimental
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles:
+    - effects
+  idempotent: true
+description: >
+  Serves GET /v1/workflows/contracts from the runtime's contract-declared HTTP
+  mount. Resolves the caller through the bound tenant identity resolver first and
+  reads the catalog only for a resolved tenant: an unresolved caller is refused
+  401 and an unbound resolver 503, both before any catalog read. The catalog is
+  validated on every read (non-empty, unique, canonical command topics, closed
+  payload schemas, not all fenced) and an invalid or absent catalog answers 503,
+  never an empty list. Fenced entries are never advertised.
+
+input_model:
+  name: "ModelCatalogRequest"
+  module: "omnimarket.nodes.node_workflow_contract_catalog_effect.models.model_workflow_contract_catalog"
+  description: "One catalog read: the request headers the identity resolver reads."
+output_model:
+  name: "ModelCatalogResponse"
+  module: "omnimarket.nodes.node_workflow_contract_catalog_effect.models.model_workflow_contract_catalog"
+  description: "The status and JSON body the HTTP adapter renders."
+
+# The narrowest prefix, equal to the route path: private sibling routes under
+# /v1/workflows can be mounted later without an overlap. The mounted app sees
+# the request path unchanged.
+http_mount:
+  factory: "omnimarket.nodes.node_workflow_contract_catalog_effect.handlers.http_app:create_app"
+  path_prefix: "/v1/workflows/contracts"
+
+# Interfaces the handler asks for; the hosted edge binds the caller resolver.
+handler_dependencies:
+  - omnimarket.protocols.protocol_http_tenant_identity.ProtocolHttpTenantIdentity
+  - omnimarket.protocols.protocol_overlay_document.ProtocolOverlayDocument
+
+http_route:
+  handler:
+    name: HandlerWorkflowContractCatalog
+    module: omnimarket.nodes.node_workflow_contract_catalog_effect.handlers.handler_workflow_contract_catalog
+  path: "/v1/workflows/contracts"
+  methods: [GET]
+  # The named overlay document that carries the catalog.
+  catalog_document: workflow_contracts
+  # A credential header present and non-empty means "presented but did not resolve".
+  credential_headers: [x-api-key, authorization]
+  # Topic constants a catalog entry may name. Only command topics belong here.
+  command_topics:
+    DELEGATION_INFERENCE_REQUEST_TOPIC: "onex.cmd.omnibase-infra.delegation-inference-request.v1"
+    DELEGATION_REQUEST_TOPIC: "onex.cmd.omnibase-infra.delegation-request.v1"
+    PUSH_VALIDATION_REQUEST_TOPIC: "onex.cmd.omnimarket.push-validation-requested.v1"
+    HOOK_EVENT_CAPTURE_REQUEST_TOPIC: "onex.cmd.omnimarket.hook-event-capture-requested.v1"
+    DELEGATE_SKILL_REQUEST_TOPIC: "onex.cmd.omnimarket.delegate-skill.v1"
+  refusals:
+    credential_absent:
+      status_code: 401
+      detail: "Unauthorized"
+      code: "auth.credential.absent"
+    credential_invalid:
+      status_code: 401
+      detail: "Unauthorized"
+      code: "auth.credential.invalid"
+    resolver_unbound:
+      status_code: 503
+      detail: "OIDC authentication is not configured"
+    catalog_unavailable:
+      status_code: 503
+      detail: "workflow contract catalog is unavailable"
+
+capabilities:
+  - name: "workflow_contract_catalog_http"
+    description: "Serve GET /v1/workflows/contracts on the runtime's port to an authenticated tenant."
+  - name: "workflow_contract_catalog_fail_closed"
+    description: "Refuse an unresolved caller, an unbound resolver and an invalid catalog before advertising anything."
+metadata:
+  description: "Workflow contract catalog read served from the runtime."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-11-03"
+  ticket: "OMN-24221"
+  tags:
+    - "effect"
+    - "http"
+    - "workflow-contracts"

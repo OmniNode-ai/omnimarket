@@ -19,5 +19,21 @@ source:
     org: example-org
     app_id_secret: EXAMPLE_APP_ID
     private_key_secret: EXAMPLE_APP_PRIVATE_KEY
+    # Where the App id and key are read from. null reads the two names from the process environment;
+    # a block reads them from that store folder with the machine identity file (names and addresses only).
+    store:
+      folder: /example
+      secret_store:
+        provider: infisical
+        address: http://192.0.2.10:8880
+        project_id: 00000000-0000-4000-8000-000000000000
+        environment: dev
+        plain_http_hosts: [192.0.2.10]
+        root_folder: /
+        identity_file: .omnibase/.env
+        client_id_ref: EXAMPLE_CLIENT_ID
+        client_secret_ref: EXAMPLE_CLIENT_SECRET
+  # The NAME of the App permission the organization read of the group needs; a refusal names it.
+  org_read_permission: example_org_permission_read
   max_calls: 40
   timeout_seconds: 10
