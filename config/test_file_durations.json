@@ -4645,6 +4645,7 @@
   "tests/unit/nodes/node_event_emit_effect/test_capture_redaction_omn17209.py": 2.54,
   "tests/unit/nodes/node_event_emit_effect/test_content_capture_omn19550.py": 0.51,
   "tests/unit/nodes/node_event_emit_effect/test_content_event_id.py": 0.01,
+  "tests/unit/nodes/node_event_emit_effect/test_content_redact_before_emit_omn24062.py": 2.27,
   "tests/unit/nodes/node_event_emit_effect/test_contract_compliance.py": 0.66,
   "tests/unit/nodes/node_event_emit_effect/test_egress_admission_omn17201.py": 0.05,
   "tests/unit/nodes/node_event_emit_effect/test_emit_yaml_loading_omn21305.py": 0.38,
