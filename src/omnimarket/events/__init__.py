@@ -17,6 +17,11 @@ from omnimarket.events.design_to_plan import (
 )
 from omnimarket.events.emit_client import EmitClient, default_socket_path
 from omnimarket.events.evidence_dashboard import ModelDashboardProjectionEvent
+from omnimarket.events.experiment_arm_result import (
+    ModelExperimentArmResult,
+    ModelExperimentArmResultRecorded,
+    experiment_arm_result_id_for,
+)
 from omnimarket.events.generation import (
     EnumGoldenChainGenerationStatus,
     EnumTestGenerationStatus,
@@ -119,6 +124,8 @@ __all__ = [
     "ModelDelegationJudgeVerdictEvent",
     "ModelDeployRebuildCommand",
     "ModelDeployRebuildCompleted",
+    "ModelExperimentArmResult",
+    "ModelExperimentArmResultRecorded",
     "ModelGeneratedTestFile",
     "ModelGoldenChainGenerationRequest",
     "ModelGoldenChainGenerationResult",
@@ -156,6 +163,7 @@ __all__ = [
     "default_socket_path",
     "evaluate_prod_digest_gate",
     "evaluate_prod_promotion_gate",
+    "experiment_arm_result_id_for",
     "judged_acceptance_event_id_for",
     "lane_target",
     "sha256_json",

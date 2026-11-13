@@ -1,0 +1,19 @@
+name: node_experiment_result_record_compute
+version: "1.0.0"
+description: "Pure check of one experiment-arm result against cross-field rules — no LLM calls, no I/O"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_experiment_result_record_compute: "omnimarket.nodes.node_experiment_result_record_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+dependencies:
+  - "omnibase_core>=0.40.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "experiment", "result", "record", "deterministic"]
+pack: "core"
+display_name: "Experiment Result Record"
+node_role: "compute"
