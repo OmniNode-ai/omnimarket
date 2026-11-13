@@ -45,28 +45,24 @@ def row(
 
 
 def request(
-    host: str, rows: tuple[ModelLabSshHostRow, ...], **over: object
+    host: str, rows: tuple[ModelLabSshHostRow, ...], *, check_s: int = 5
 ) -> ModelLabSshProbeRequest:
-    fields: dict[str, object] = {
-        "host": host,
-        "rows": rows,
-        "bound_sh": BOUND_SH,
-        "path_export": 'export PATH="$HOME/bin:$PATH"',
-        "cache_dir": CACHE_DIR,
-        "check_s": 5,
-        "connect_s": 2,
-        "fresh_min": 10,
-        "lock_min": 3,
-        "destination_pattern": PATTERN,
-    }
-    fields.update(over)
-    return ModelLabSshProbeRequest(**fields)  # type: ignore[arg-type]
+    return ModelLabSshProbeRequest(
+        host=host,
+        rows=rows,
+        bound_sh=BOUND_SH,
+        path_export='export PATH="$HOME/bin:$PATH"',
+        cache_dir=CACHE_DIR,
+        check_s=check_s,
+        connect_s=2,
+        fresh_min=10,
+        lock_min=3,
+        destination_pattern=PATTERN,
+    )
 
 
-def render(
-    host: str, rows: tuple[ModelLabSshHostRow, ...], **over: object
-) -> ModelLabSshProbeScript:
-    return HandlerLabSshProbe().handle(request(host, rows, **over))
+def render(host: str, rows: tuple[ModelLabSshHostRow, ...]) -> ModelLabSshProbeScript:
+    return HandlerLabSshProbe().handle(request(host, rows))
 
 
 def home(answers: tuple[str, ...]) -> tuple[Path, dict[str, str]]:
