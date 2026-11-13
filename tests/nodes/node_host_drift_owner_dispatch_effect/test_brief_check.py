@@ -14,17 +14,23 @@ runs real subprocesses against stand-ins for the lane-brief scripts and the runn
 from __future__ import annotations
 
 import hashlib
+import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from subprocess import CompletedProcess, TimeoutExpired
 
 import pytest
 
+from omnimarket.nodes.node_host_drift_owner_dispatch_effect.adapters.inmemory_adapters import (
+    InMemoryBriefPreparer,
+)
 from omnimarket.nodes.node_host_drift_owner_dispatch_effect.adapters.runtime_adapters import (
     LaneBriefPreparer,
     SubprocessLanePlacer,
 )
 from omnimarket.nodes.node_host_drift_owner_dispatch_effect.handlers.handler_host_drift_owner_dispatch import (
+    HandlerHostDriftOwnerDispatch,
     render_brief,
 )
 from omnimarket.nodes.node_host_drift_owner_dispatch_effect.models import (
@@ -32,9 +38,11 @@ from omnimarket.nodes.node_host_drift_owner_dispatch_effect.models import (
     ModelDriftOwnerRequest,
 )
 
-from .support import item, overlay, rig
+from .support import NOW, RUNNER_PATH, item, overlay, rig
 
 pytestmark = pytest.mark.unit
+
+Run = Callable[..., CompletedProcess[str]]
 
 CAUSE = "host-drift:h-example:env-file:host-env"
 LEDGER = "/example/ledger.md"
@@ -81,7 +89,7 @@ if not stamp.is_file():
 
 
 def _preparer(
-    tmp_path: Path, *, run: object | None = None, ledger: str | None = LEDGER
+    tmp_path: Path, *, run: Run | None = None, ledger: str | None = LEDGER
 ) -> LaneBriefPreparer:
     root = tmp_path / "plugin"
     (root / "skills/lane-brief/scripts").mkdir(parents=True, exist_ok=True)
@@ -89,7 +97,6 @@ def _preparer(
     (root / "skills/lane-brief/scripts/lane_brief.py").write_text(LANE_BRIEF)
     (root / "scripts/lane_rules_block.py").write_text(RULES)
     environ = {"EXAMPLE_LEDGER_PATH": ledger, "STAMP_DIR": str(tmp_path / "stamps")}
-    kwargs = {} if run is None else {"run": run}
     return LaneBriefPreparer(
         tmp_path / "briefs",
         root,
@@ -97,7 +104,7 @@ def _preparer(
         model="sonnet",
         ticket="OMN-1",
         environ={k: v for k, v in environ.items() if v is not None},
-        **kwargs,  # type: ignore[arg-type]
+        run=run if run is not None else subprocess.run,
     )
 
 
@@ -166,19 +173,28 @@ def test_the_runner_refuses_a_brief_the_check_never_stamped() -> None:
     """The control for the h053 reading: the runner side of the seam refuses the unstamped bytes, whatever the node says."""
 
     class _Liar:
-        def __init__(self, inner: object) -> None:
+        def __init__(self, inner: InMemoryBriefPreparer) -> None:
             self._inner = inner
 
         def prepare(self, *, lane: str, name: str, text: str) -> ModelBriefPrepared:
-            self._inner.briefs[name] = text  # type: ignore[attr-defined]
+            self._inner.briefs[name] = text
             digest = hashlib.sha256(text.encode()).hexdigest()
             return ModelBriefPrepared(
                 path=f"memory://{name}", passed=True, sha256=digest, detail=""
             )
 
     r = rig((item(),))
-    r.handler._briefs = _Liar(r.briefs)  # type: ignore[assignment]
-    (lane,) = r.handler.handle(ModelDriftOwnerRequest(dry_run=False)).lanes
+    handler = HandlerHostDriftOwnerDispatch(
+        overlay=overlay(),
+        items=r.items,
+        live=r.live,
+        record=r.record,
+        briefs=_Liar(r.briefs),
+        runner=r.runner,
+        runner_path=RUNNER_PATH,
+        clock=lambda: NOW,
+    )
+    (lane,) = handler.handle(ModelDriftOwnerRequest(dry_run=False)).lanes
     assert not lane.started
     assert "REMOTE-LANE-BRIEF-UNCHECKED" in lane.detail
     assert r.record.record == {}
@@ -256,23 +272,32 @@ def test_a_missing_ledger_path_is_a_brief_that_did_not_pass(tmp_path: Path) -> N
     assert prepared.sha256 == ""
 
 
-def _scripted(outcomes: dict[str, list[CompletedProcess[str] | Exception]]) -> object:
-    """A ``run`` that answers each lane-brief sub-command from its list, in order."""
-    calls: list[list[str]] = []
+class _Scripted:
+    """A ``run`` that answers each lane-brief sub-command from its list, in order, and keeps the commands it was given."""
 
-    def run(argv: list[str], **_: object) -> CompletedProcess[str]:
-        calls.append(argv)
+    def __init__(
+        self, outcomes: dict[str, list[CompletedProcess[str] | Exception]]
+    ) -> None:
+        self.outcomes = outcomes
+        self.calls: list[list[str]] = []
+
+    def __call__(self, argv: list[str], **_: object) -> CompletedProcess[str]:
+        self.calls.append(argv)
         key = next(
             (w for w in ("ticket-text", "constraints", "check") if w in argv),
             "rules",
         )
-        answer = outcomes[key].pop(0) if len(outcomes[key]) > 1 else outcomes[key][0]
+        pending = self.outcomes[key]
+        answer = pending.pop(0) if len(pending) > 1 else pending[0]
         if isinstance(answer, Exception):
             raise answer
         return answer
 
-    run.calls = calls  # type: ignore[attr-defined]
-    return run
+
+def _scripted(
+    outcomes: dict[str, list[CompletedProcess[str] | Exception]],
+) -> _Scripted:
+    return _Scripted(outcomes)
 
 
 def _done(code: int, out: str = "", err: str = "") -> CompletedProcess[str]:
@@ -320,7 +345,7 @@ def test_a_ledger_row_between_the_3a_read_and_the_check_is_one_regeneration(
     )
     prepared = _preparer(tmp_path, run=run).prepare(lane="x", name="b.md", text=_task())
     assert prepared.passed
-    assert sum("constraints" in call for call in run.calls) == 2  # type: ignore[attr-defined]
+    assert sum("constraints" in call for call in run.calls) == 2
 
 
 def test_the_check_command_carries_the_overlays_values(tmp_path: Path) -> None:
@@ -333,12 +358,12 @@ def test_the_check_command_carries_the_overlays_values(tmp_path: Path) -> None:
         }
     )
     _preparer(tmp_path, run=run).prepare(lane="x", name="b.md", text=_task())
-    check = next(c for c in run.calls if "check" in c)  # type: ignore[attr-defined]
+    check = next(c for c in run.calls if "check" in c)
     assert check[check.index("--ledger") + 1] == LEDGER
     assert "--recompute" in check
     assert "--lab" in check
     assert check[check.index("--where") + 1] == "lab"
-    constraints = next(c for c in run.calls if "constraints" in c)  # type: ignore[attr-defined]
+    constraints = next(c for c in run.calls if "constraints" in c)
     assert constraints[constraints.index("--score") + 1] == "9"
     assert constraints[constraints.index("--dims") + 1] == "S2A1R1V2N1C1J1"
     assert constraints[constraints.index("--model") + 1] == "sonnet"
