@@ -295,6 +295,7 @@
   "tests/golden_chains/superseded_run_cancel/test_golden_chain_superseded_run_cancel.py": 0.23,
   "tests/handlers/bus_binding/test_bus_binding_outbox_refused_guard.py": 0.17,
   "tests/handlers/bus_binding/test_bus_binding_outbox_refused_wired.py": 0.7,
+  "tests/handlers/bus_binding/test_outbox_refused_receipt_reuse.py": 2.56,
   "tests/handlers/bus_binding/test_replay_loss_omn20275.py": 0.1,
   "tests/handlers/claim_index/test_claim_index.py": 4.52,
   "tests/handlers/ledger_row_grammar/test_ledger_claim_contract_omn20029.py": 0.11,
