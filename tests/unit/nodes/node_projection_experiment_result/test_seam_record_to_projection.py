@@ -41,7 +41,7 @@ from omnibase_infra.runtime.auto_wiring.models import ModelAutoWiringManifest
 from omnibase_infra.runtime.message_dispatch_engine import MessageDispatchEngine
 from pydantic import ValidationError
 
-from omnimarket.events.experiment_arm_result import (
+from omnimarket.models.experiment_result.model_experiment_arm_result import (
     ModelExperimentArmResult,
     ModelExperimentArmResultRecorded,
 )

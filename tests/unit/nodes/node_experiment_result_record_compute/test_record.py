@@ -13,13 +13,13 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from omnimarket.events.experiment_arm_result import (
-    ModelExperimentArmResult,
-    experiment_arm_result_id_for,
-)
 from omnimarket.handlers.node_overlay_reader import (
     OVERLAY_ROOTS_ENV,
     NodeOverlayError,
+)
+from omnimarket.models.experiment_result.model_experiment_arm_result import (
+    ModelExperimentArmResult,
+    experiment_arm_result_id_for,
 )
 from omnimarket.nodes.node_experiment_result_record_compute.handlers.handler_experiment_result_record import (
     HandlerExperimentResultRecord,
@@ -225,9 +225,8 @@ def test_policy_refuses_empty_refused_engines() -> None:
 
 def test_policy_refuses_missing_confidence_z() -> None:
     with pytest.raises(ValidationError):
-        ModelExperimentResultPolicy(  # type: ignore[call-arg]
-            interval_tolerance=0.001,
-            refused_engines=("claude",),
+        ModelExperimentResultPolicy(
+            **{"interval_tolerance": 0.001, "refused_engines": ("claude",)}
         )
 
 

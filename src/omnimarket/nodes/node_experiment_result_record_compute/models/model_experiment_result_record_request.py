@@ -6,7 +6,9 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict
 
-from omnimarket.events.experiment_arm_result import ModelExperimentArmResult
+from omnimarket.models.experiment_result.model_experiment_arm_result import (
+    ModelExperimentArmResult,
+)
 
 
 class ModelExperimentResultRecordRequest(BaseModel):

@@ -10,7 +10,7 @@ from uuid import UUID
 import pytest
 from pydantic import ValidationError
 
-from omnimarket.events.experiment_arm_result import (
+from omnimarket.models.experiment_result.model_experiment_arm_result import (
     ModelExperimentArmResult,
     experiment_arm_result_id_for,
 )

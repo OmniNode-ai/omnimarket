@@ -4,7 +4,9 @@
 
 from pydantic import ConfigDict
 
-from omnimarket.events.experiment_arm_result import ModelExperimentArmResultRecorded
+from omnimarket.models.experiment_result.model_experiment_arm_result import (
+    ModelExperimentArmResultRecorded,
+)
 
 
 class ModelExperimentResultProjectionRequest(ModelExperimentArmResultRecorded):

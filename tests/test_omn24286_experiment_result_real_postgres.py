@@ -18,7 +18,9 @@ from uuid import UUID, uuid4
 import asyncpg
 import pytest
 
-from omnimarket.events.experiment_arm_result import ModelExperimentArmResult
+from omnimarket.models.experiment_result.model_experiment_arm_result import (
+    ModelExperimentArmResult,
+)
 from omnimarket.nodes.node_projection_experiment_result.handlers.handler_experiment_result_writer import (
     _UPSERT,
 )
@@ -56,7 +58,7 @@ async def _connect_or_skip() -> asyncpg.Connection:
         dsn = f"postgresql://{quote_plus(user)}:{quote_plus(secret)}@{host}:{port}/{db}"
     try:
         return await asyncpg.connect(dsn, timeout=10)
-    except (OSError, asyncpg.PostgresError) as exc:  # pragma: no cover
+    except (OSError, asyncpg.PostgresError) as exc:
         pytest.skip(f"no reachable Postgres for the write-path proof: {exc}")
 
 

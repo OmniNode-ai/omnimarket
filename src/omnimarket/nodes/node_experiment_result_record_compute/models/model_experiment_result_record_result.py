@@ -8,7 +8,9 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
-from omnimarket.events.experiment_arm_result import ModelExperimentArmResult
+from omnimarket.models.experiment_result.model_experiment_arm_result import (
+    ModelExperimentArmResult,
+)
 from omnimarket.nodes.node_experiment_result_record_compute.models.enum_experiment_result_record_status import (
     EnumExperimentResultRecordStatus,
 )

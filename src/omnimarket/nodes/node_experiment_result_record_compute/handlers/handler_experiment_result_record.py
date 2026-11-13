@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import math
 
-from omnimarket.events.experiment_arm_result import (
+from omnimarket.models.experiment_result.model_experiment_arm_result import (
     experiment_arm_result_id_for,
 )
 from omnimarket.nodes.node_experiment_result_record_compute.models.enum_experiment_result_record_status import (

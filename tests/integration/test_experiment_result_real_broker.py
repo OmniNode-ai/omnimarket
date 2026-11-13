@@ -23,7 +23,9 @@ from uuid import uuid4
 
 import pytest
 
-from omnimarket.events.experiment_arm_result import ModelExperimentArmResult
+from omnimarket.models.experiment_result.model_experiment_arm_result import (
+    ModelExperimentArmResult,
+)
 
 pytestmark = [pytest.mark.integration, pytest.mark.kafka]
 

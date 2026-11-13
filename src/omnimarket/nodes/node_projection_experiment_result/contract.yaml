@@ -24,8 +24,8 @@ description: >
   history; a redelivered event changes nothing. Served on the evals
   projection snapshot topic for the factory floor Model tests tab.
 handler:
-  module: omnimarket.nodes.node_projection_experiment_result.handlers.handler_experiment_result_writer
-  class: ExperimentResultProjectionWriter
+  module: omnimarket.nodes.node_projection_experiment_result.handlers.handler_projection_experiment_result
+  class: HandlerProjectionExperimentResult
 handler_routing:
   routing_strategy: operation_match
   handlers:

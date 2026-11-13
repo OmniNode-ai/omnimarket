@@ -8,14 +8,16 @@ import asyncio
 import math
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 import pytest
 import yaml
 from pydantic import ValidationError
 
-from omnimarket.events.experiment_arm_result import ModelExperimentArmResult
+from omnimarket.models.experiment_result.model_experiment_arm_result import (
+    ModelExperimentArmResult,
+)
 from omnimarket.nodes.node_experiment_result_record_compute.models import (
     EnumExperimentResultRecordStatus,
     ModelExperimentResultRecordResult,
@@ -151,7 +153,7 @@ class _Store:
 def _writer() -> tuple[ExperimentResultProjectionWriter, _Store]:
     writer = ExperimentResultProjectionWriter()
     store = _Store()
-    writer._db = store  # type: ignore[assignment]
+    cast(Any, writer)._db = store
     return writer, store
 
 
