@@ -1,0 +1,53 @@
+schema_version: 1.0.0
+ticket_id: OMN-24240
+title: Repair a lab copy of a repository that git wrongly treats as empty
+summary: The canonical clone dirty-converge tick clears core.bare on a clone that holds a working tree and converges it to its upstream tip. A true bare mirror (no .git directory inside), a clone a lane has claimed or a process is using, a clone refused for less than the declared age, and a clone under an image build lock are left alone with the reason named. The same clone sat at core.bare=true on a lab host for nearly six days, 271 commits behind, refused every three minutes and never repaired.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24240-bare-clone-repair
+  statement: A canonical clone that git treats as bare while it holds a working tree is repaired and converged by the host's converge tick instead of staying refused.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a copy flagged as empty to git but holding a working checkout is repaired and brought to the upstream tip by the converge tick -- falsifier: uv run --frozen pytest tests/unit/clone_dirty_converge -k bare fails on the base revision'
+  - id: AC2
+    statement: 'AC2: a copy that is really a bare mirror, one a lane is using, or one younger than the declared age is left alone with the reason named -- falsifier: uv run --frozen pytest tests/unit/clone_dirty_converge -k "true_bare_mirror or below_the_age or open_claim or process_works_inside" fails when the guard is removed'
+  - id: AC3
+    statement: 'AC3: integrated: on the main lab server the stale copy that git treated as bare is at the upstream tip after the converge timer next tick and the host drift reading no longer lists a bare clone -- falsifier: git rev-parse --is-bare-repository in that copy prints true, or the drift status line still names it'
+evidence_requirements:
+- kind: tests
+  description: The converge tick tests, the bare-clone cases included.
+  command: uv run --frozen pytest tests/unit/clone_dirty_converge -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24240-ac1-ac2
+  description: The bare-clone cases of the converge tick tests pass; each fails on the base revision, which holds no bare handling.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/clone_dirty_converge -q --no-cov -k "bare"
+    cwd: .
+- id: dod-omn24240-ac3
+  description: The live read on the main lab server after the branch is installed through the host installer is recorded in the pull request comment that names the head.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/clone_dirty_converge -q --no-cov
+    cwd: .
+- id: dod-omn24240-integration-proof
+  description: Run this pull request's own tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24240 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/clone_dirty_converge -q --no-cov
+    cwd: .

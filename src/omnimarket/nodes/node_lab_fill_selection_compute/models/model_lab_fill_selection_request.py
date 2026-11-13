@@ -6,6 +6,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from pydantic import BaseModel, ConfigDict, Field
+
 from omnimarket.models.lab_fill import ModelLabFillPrLandFacts
 
 from .model_lab_fill_deployment import ModelLabFillDeployment
@@ -70,15 +72,18 @@ class ModelLabFillInputBaseline:
     recorded_at: str
 
 
-@dataclass(frozen=True, slots=True)
-class ModelLabFillSelectionRequest:
+class ModelLabFillSelectionRequest(BaseModel):
     """All facts needed for deterministic selection and baseline retention."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     now: str
     candidates: tuple[ModelLabFillCandidateInput, ...]
     ledger_lines: tuple[str, ...]
     deployment: ModelLabFillDeployment
-    controller: ModelLandingControllerFacts = ModelLandingControllerFacts()
+    controller: ModelLandingControllerFacts = Field(
+        default_factory=ModelLandingControllerFacts
+    )
     baselines: tuple[ModelLabFillInputBaseline, ...] = ()
     closed_prs: tuple[str, ...] = ()
     landing_lane: str = "landing-controller"
