@@ -14,6 +14,9 @@ from uuid import NAMESPACE_URL, uuid5
 from pydantic import BaseModel
 
 from omnimarket.handlers.work_ledger_text import ledger_row_stamp
+from omnimarket.models.github_pr_status_poll import (
+    ModelGitHubPrStatusPollEvent,
+)
 from omnimarket.models.model_github_pr_state_observation import (
     ModelGitHubPrStateObservation,
 )
@@ -107,10 +110,17 @@ class HandlerBranchClaimCheck:
         self, request: ModelGitHubPrStateObservation
     ) -> ModelBranchClaimCheckResult: ...
 
-    def handle(self, request: BaseModel) -> ModelBranchClaimCheckResult:
+    @overload
+    def handle(self, request: ModelGitHubPrStatusPollEvent) -> None: ...
+
+    def handle(self, request: BaseModel) -> ModelBranchClaimCheckResult | None:
         # The runtime selects the typed def-B arm from a BaseModel class, not
         # a union annotation. Each topic's event_model supplies its concrete
-        # payload; overloads keep the two accepted inputs explicit to callers.
+        # payload; overloads keep the accepted inputs explicit to callers.
+        if isinstance(request, ModelGitHubPrStatusPollEvent):
+            # The poller's pr-status shape carries no head sha, head ref or CI
+            # verdict, so the claim check has nothing to decide on it: no result.
+            return None
         if not isinstance(
             request, (ModelBranchClaimCheckRequest, ModelGitHubPrStateObservation)
         ):

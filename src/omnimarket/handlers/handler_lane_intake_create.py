@@ -30,7 +30,7 @@ from omnimarket.models.model_lane_intake_create import (
     ModelLaneIntakeCreateSettings,
 )
 from omnimarket.models.scm import ModelScmTerminal, ModelScmTopics
-from omnimarket.nodes.node_linear_ticket_write_effect.models.model_ticket_write_io import (
+from omnimarket.models.ticket_write_io import (
     ModelTicketWriteCompleted,
     ModelTicketWriteFailed,
     ModelTicketWriteRequest,
