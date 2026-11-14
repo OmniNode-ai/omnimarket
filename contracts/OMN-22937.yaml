@@ -36,6 +36,9 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/contract/test_gate_store_contract.py -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
+  - check_type: command
+    check_value: grep -q 'tests/contract/test_gate_store_contract.py' config/test_file_durations.json
+    cwd: .
 - id: dod-omn22937-ac2
   description: 'AC2: the safety-write-first check passes on the twin and a store that ignores the recorded stop fails it with "a start passed a stop".'
   source: manual
@@ -45,6 +48,9 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/contract/test_gate_store_contract.py -q -n 0 --no-cov -p no:cacheprovider -k safety_write_first
     cwd: .
+  - check_type: command
+    check_value: grep -q 'tests/contract/test_gate_store_contract.py' config/test_file_durations.json
+    cwd: .
 - id: dod-omn22937-ac3
   description: 'AC3: the suite file matches the hash frozen beside it, and an appended byte or a weakened assertion fails the check.'
   source: manual
@@ -53,4 +59,7 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/contract/test_gate_store_suite_hash.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+  - check_type: command
+    check_value: grep -q 'tests/contract/test_gate_store_suite_hash.py' config/test_file_durations.json
     cwd: .
