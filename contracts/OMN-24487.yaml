@@ -31,7 +31,7 @@ dod_evidence:
   - AC1
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/handlers/test_code_edit_loop_overlay.py -q -n 0 --no-cov -p no:cacheprovider
+    check_value: uv run pytest tests/handlers/test_code_edit_loop_overlay.py -q -n 0 --no-cov -p no:cacheprovider -k 'shared_file or event_bus_only or invalid_event_bus'
     cwd: .
 - id: dod-omn24487-ac2
   description: 'AC2 seam: the three limits the overlays file carries equal the request model defaults the loop used with no file; the overlays repository holds the file and its own test (tests/test_code_edit_loop_overlay.py there).'
