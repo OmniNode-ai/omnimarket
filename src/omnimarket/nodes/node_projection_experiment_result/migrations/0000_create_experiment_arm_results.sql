@@ -144,3 +144,10 @@ END$$;
 
 CREATE INDEX IF NOT EXISTS experiment_arm_results_tenant_experiment_measured_idx
     ON public.experiment_arm_results (tenant_id, experiment_id, measured_at DESC);
+
+ALTER TABLE public.experiment_arm_results ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON public.experiment_arm_results;
+CREATE POLICY tenant_isolation ON public.experiment_arm_results
+  FOR ALL
+  USING (tenant_id = current_setting('app.tenant_id', true)::uuid)
+  WITH CHECK (tenant_id = current_setting('app.tenant_id', true)::uuid);
