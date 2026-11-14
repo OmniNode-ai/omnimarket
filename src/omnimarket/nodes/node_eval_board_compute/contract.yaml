@@ -1,0 +1,70 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Eval Board Compute
+#
+# The Model tests tab's content (OMN-24174, plan task T8). Pure compute:
+# handle(ModelEvalBoardRequest) -> ModelEvalBoardRecord. The snapshot is the eval-results
+# projection's; the display overlay names the models, their labels and the thresholds. The
+# floor publish step draws the record; this node reads no file, no clock and no bus.
+name: node_eval_board_compute
+contract_name: node_eval_board_compute
+node_name: node_eval_board_compute
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: compute
+lifecycle: experimental
+runtime_profiles: []
+
+description: >
+  Turns the eval-results projection's snapshot and the display overlay into the Model tests
+  tab: a headline sentence, a line per model over time with markers where the model version,
+  prompt or scorer changed, a size grid, a live work panel, definitions and a footer. Every
+  rate is a stored rate row; the only judgment made here is a size cell's reliable or not,
+  by the capability map's own range evaluator. Pure and deterministic.
+
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: HandlerEvalBoard
+        module: omnimarket.nodes.node_eval_board_compute.handlers.handler_eval_board
+      event_model: omnimarket.nodes.node_eval_board_compute.models.model_eval_board_request.ModelEvalBoardRequest
+      event_type: eval-board.compute
+
+handler:
+  module: omnimarket.nodes.node_eval_board_compute.handlers.handler_eval_board
+  class: HandlerEvalBoard
+  input_model: omnimarket.nodes.node_eval_board_compute.models.model_eval_board_request.ModelEvalBoardRequest
+  output_model: omnimarket.nodes.node_eval_board_compute.models.model_eval_board_record.ModelEvalBoardRecord
+
+input_model:
+  name: ModelEvalBoardRequest
+  module: omnimarket.nodes.node_eval_board_compute.models.model_eval_board_request
+  description: The projection's snapshot and the display overlay.
+
+output_model:
+  name: ModelEvalBoardRecord
+  module: omnimarket.nodes.node_eval_board_compute.models.model_eval_board_record
+  description: The tab's record, with no id-shaped token and no percentage without its count.
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 30000
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+runtime_dispatch:
+  external_trigger: the factory floor publish step (a later task) calls HandlerEvalBoard.handle with the projection bundle's snapshot and the overlay loaded at start.
+
+metadata:
+  description: "Model tests tab content, computed from the eval-results projection"
+  author: "OmniNode Team"
+  license: MIT
+  created: "2026-11-14"
+  tags: [compute, eval-board, pure]
+  related_tickets: ["OMN-24174"]

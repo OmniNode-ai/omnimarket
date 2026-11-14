@@ -1,0 +1,83 @@
+schema_version: 1.0.0
+ticket_id: OMN-24174
+title: 'Evals: the Model tests tab''s content, computed from the projection'
+summary: A new pure compute node turns the eval-results projection's snapshot and the display overlay into the Model tests tab's record - a headline sentence, a line per model over time with change markers, a size grid, a live work panel, definitions and a footer - with no id-shaped text, never a bare percentage, and size verdicts that equal the capability map's.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn24174-eval-board-compute
+  statement: The tab's content is computed from the projection's snapshot alone; each point is one stored run-rate row, a change of model version, prompt or scorer is a marker, a new task sample starts a new line, a size is named only when it and every smaller size clear the capability map's routing line, and a rate from too few tasks never reads as a number.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: every point is one run-rate row and a size is named only when it and every smaller size clear -- falsifier: a fixture with two rows for one run date asserts two points; a fixture where medium clears and small does not names no size, and one where small and large clear and medium does not reads reliable up to small'
+  - id: AC2
+    statement: 'AC2: a marker sits at a model revision change and a new task sample ends the line and starts a new one at a new set of test tasks marker -- falsifier: a fixture with two revisions and one with two task sample digests give the marker and two series'
+  - id: AC3
+    statement: 'AC3: each size cell''s verdict equals the capability map''s for the same rows, and below the minimum count nothing reads as zero -- falsifier: a test running both on one fixture; a fixture with 9 tasks on a Chart 1 point, a size cell and a live work row each reads too few tasks to read with no percentage'
+  - id: AC4
+    statement: 'AC4: the rendered record matches its golden file and contains no id-shaped token, no 90 percent line on Chart 1, and at most one sentence above and one below each chart -- falsifier: `uv run pytest tests/nodes/node_eval_board_compute -q` fails on the golden file for any of these'
+  - id: AC5
+    statement: 'AC5: integrated: the record built from the live dev snapshot has a Chart 1 series for each model in the display overlay that has a closed tracking run -- falsifier: the dev snapshot read beside the record built from it'
+evidence_requirements:
+- kind: tests
+  description: The eval board compute tests pass at the pushed head.
+  command: uv run --frozen pytest tests/nodes/node_eval_board_compute -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24174-ac1
+  description: 'AC1: two rows for one run date are two points, and a size is named only when it and every smaller size clear (medium clearing with small failing names none; small and large clearing with medium failing reads reliable up to small)'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_eval_board_compute/test_points_and_sizes.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24174-ac2
+  description: 'AC2: two model revisions give one line and a marker, and two task sample digests give two lines and the new set of test tasks marker'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_eval_board_compute/test_markers.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24174-ac3
+  description: 'AC3: each size cell verdict equals the capability map fold verdict on the same rows (the fixtures between them read met, missed and refused), and nine tasks on a size cell and a live work row read too few tasks to read with no percentage'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_eval_board_compute/test_minimum_count_and_capability_map.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24174-ac4
+  description: 'AC4: the record matches its golden file, carries no id-shaped token, has no 90 percent line on Chart 1 and at most one sentence above and below each chart'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_eval_board_compute/test_golden_record.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24174-ac5
+  description: 'hosted proxy for AC5: a recorded snapshot gives a Chart 1 series for each overlay model with a closed run and none for a model with only a void run or outside the overlay; the reading of the live dev snapshot beside the record built from it is not made by this change, because the projection''s dev snapshot is not published yet'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_eval_board_compute/test_golden_record.py -q --no-cov -n 0 -p no:randomly -k every_overlay_model
+    cwd: .
+- id: dod-omn24174-integration-proof
+  description: the eval board compute tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24174 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_eval_board_compute -q --no-cov -n 0 -p no:randomly
