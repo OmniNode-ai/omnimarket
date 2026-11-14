@@ -24,6 +24,14 @@
                                         streak of breaching runs reaches the persistence bound, and the alarms are delivered.
 ``work-ledger-projection-stale-probe``  the same read, keeping no streak and delivering nothing.
 
+``lane-drift`` and ``container-unhealthy``  read one lane census snapshot; a finding of the condition alarms, a snapshot that is
+                            unreadable, invalid or stale is INDETERMINATE, and the alarms are delivered.
+``lab-pass-receipt``        read the lab-pass receipt of the sha the lane runs; a failed receipt alarms, an absent, stale or malformed one
+                            is INDETERMINATE, and the alarms are delivered.
+``stale-indeterminate``     alarm a watched condition whose last runs all read INDETERMINATE (the overlay's ``stale_indeterminate``).
+Each of these has a ``-probe`` form that keeps nothing and delivers nothing (OMN-24425). The verbs that predate them append each run to the
+overlay's ``verdict_record`` through ``journal_exit`` so the stale-indeterminate verb can read them.
+
 ``schedule ... --condition <verb>``  the same verbs for a condition's own schedule (the overlay's ``condition_schedules``).
 
 ``--fault`` injects a drill fault (planted-lag, unknown-node, manifest-down); a drill never keeps its sample.
@@ -175,6 +183,12 @@ from omnimarket.nodes.node_lab_alarm.overlay import (
 from omnimarket.nodes.node_lab_alarm.protocols import (
     ProtocolGroupLagReader,
     ProtocolListenerProbe,
+)
+from omnimarket.nodes.node_lab_alarm.runtime_lab_alarm_conditions import (
+    CONDITION_VERBS,
+    add_condition_parsers,
+    journal_exit,
+    run_condition_verb,
 )
 from omnimarket.nodes.node_lab_alarm_deliver_effect.handlers.handler_lab_alarm_deliver import (
     HandlerLabAlarmDeliver,
@@ -890,6 +904,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             choices=[f.value for f in EnumWorkLedgerProjectionStaleFault],
             default="none",
         )
+    add_condition_parsers(sub)
     schedule = sub.add_parser("schedule")
     schedule.add_argument(
         "action", choices=("install", "uninstall", "status", "run-now")
@@ -932,19 +947,33 @@ def main(argv: Sequence[str] | None = None) -> int:
         return run_broker_listener(
             args.verb, EnumBrokerListenerFault(args.fault), overlay=overlay
         )
+    if args.verb in CONDITION_VERBS:
+        return run_condition_verb(args.verb, args.fault, overlay=overlay)
     if args.verb.startswith("delegation-chain-canary"):
-        return run_delegation_chain_canary(
-            args.verb, EnumDelegationChainCanaryFault(args.fault), overlay=overlay
+        return journal_exit(
+            args.verb,
+            run_delegation_chain_canary(
+                args.verb, EnumDelegationChainCanaryFault(args.fault), overlay=overlay
+            ),
+            overlay=overlay,
         )
     if args.verb.startswith("work-ledger-projection-stale"):
-        return run_work_ledger_projection_stale(
+        return journal_exit(
             args.verb,
-            EnumWorkLedgerProjectionStaleFault(args.fault),
+            run_work_ledger_projection_stale(
+                args.verb,
+                EnumWorkLedgerProjectionStaleFault(args.fault),
+                overlay=overlay,
+            ),
             overlay=overlay,
         )
     if args.verb.startswith("dev-tag-heartbeat"):
-        return run_dev_tag_heartbeat(
-            args.verb, EnumDevTagHeartbeatFault(args.fault), overlay=overlay
+        return journal_exit(
+            args.verb,
+            run_dev_tag_heartbeat(
+                args.verb, EnumDevTagHeartbeatFault(args.fault), overlay=overlay
+            ),
+            overlay=overlay,
         )
     if args.verb.startswith("effects-held"):
         return run_effects_held(

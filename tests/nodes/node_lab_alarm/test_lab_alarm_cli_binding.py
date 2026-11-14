@@ -32,6 +32,10 @@ _OPERATIONS = {
     "dev_tag_heartbeat",
     "delegation_chain_canary",
     "work_ledger_projection_stale",
+    "lane_drift",
+    "container_unhealthy",
+    "lab_pass_receipt",
+    "stale_indeterminate",
 }
 _BOOT_INJECTABLE = {"event_bus", "container", "ownership_query"}
 

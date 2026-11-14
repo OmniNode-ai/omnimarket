@@ -59,6 +59,18 @@ description: >
   breach, alarming after persist_runs consecutive runs; an unreadable file or projection is INDETERMINATE. It measures
   file-versus-projection freshness only, never the liveness of the emit path.
 
+  The lane-drift and container-unhealthy conditions (HandlerLaneCensus, verbs lane-drift and container-unhealthy, OMN-24425)
+  read one lane census snapshot, from the overlay's file or declared command. A finding of container_unhealthy kind alarms the
+  second condition; every other finding alarms the first, one alarm per snapshot named by its alert key. A snapshot that is
+  unreadable, invalid, of another event type, with a mismatched alert key, or older than the overlay's bound is INDETERMINATE.
+
+  The lab-pass-receipt condition (HandlerLabPassReceipt, verb lab-pass-receipt) reads the sha the lane runs from the deploy
+  agent and the lab-pass receipt of exactly that sha through the GitHub gateway node. A FAIL receipt is an ALARM; an unresolved sha,
+  an absent, stale (another commit or lane) or malformed receipt, or a surface that cannot be read is INDETERMINATE.
+
+  The stale-indeterminate condition (HandlerStaleIndeterminate, verb stale-indeterminate) reads the run records of the overlay's
+  watched conditions. A condition whose last after_runs runs all read INDETERMINATE, with no OK and no ALARM between them, alarms.
+
 handler:
   module: omnimarket.nodes.node_lab_alarm.handlers.handler_broker_lag
   class: HandlerBrokerLag
@@ -89,6 +101,22 @@ cli_handlers:
     handler:
       name: HandlerWorkLedgerProjectionStale
       module: omnimarket.nodes.node_lab_alarm.handlers.handler_work_ledger_projection_stale
+  - operation: lane_drift
+    handler:
+      name: HandlerLaneCensus
+      module: omnimarket.nodes.node_lab_alarm.handlers.handler_lane_census
+  - operation: container_unhealthy
+    handler:
+      name: HandlerLaneCensus
+      module: omnimarket.nodes.node_lab_alarm.handlers.handler_lane_census
+  - operation: lab_pass_receipt
+    handler:
+      name: HandlerLabPassReceipt
+      module: omnimarket.nodes.node_lab_alarm.handlers.handler_lab_pass_receipt
+  - operation: stale_indeterminate
+    handler:
+      name: HandlerStaleIndeterminate
+      module: omnimarket.nodes.node_lab_alarm.handlers.handler_stale_indeterminate
 
 # HandlerEffectsHeld (omnimarket.nodes.node_lab_alarm.handlers.handler_effects_held, input
 # ModelEffectsHeldCommand) takes its overlay settings, group reader, state store, lane dispatcher and clock
@@ -147,6 +175,22 @@ topics:
   work_ledger_projection_stale_run_started: onex.evt.omnimarket.lab-alarm-work-ledger-projection-stale-started.v1
   work_ledger_projection_stale_run_completed: onex.evt.omnimarket.lab-alarm-work-ledger-projection-stale-completed.v1
   work_ledger_projection_stale_run_failed: onex.evt.omnimarket.lab-alarm-work-ledger-projection-stale-failed.v1
+  lane_drift_requested: onex.cmd.omnimarket.lab-alarm-lane-drift-requested.v1
+  lane_drift_run_started: onex.evt.omnimarket.lab-alarm-lane-drift-started.v1
+  lane_drift_run_completed: onex.evt.omnimarket.lab-alarm-lane-drift-completed.v1
+  lane_drift_run_failed: onex.evt.omnimarket.lab-alarm-lane-drift-failed.v1
+  container_unhealthy_requested: onex.cmd.omnimarket.lab-alarm-container-unhealthy-requested.v1
+  container_unhealthy_run_started: onex.evt.omnimarket.lab-alarm-container-unhealthy-started.v1
+  container_unhealthy_run_completed: onex.evt.omnimarket.lab-alarm-container-unhealthy-completed.v1
+  container_unhealthy_run_failed: onex.evt.omnimarket.lab-alarm-container-unhealthy-failed.v1
+  lab_pass_receipt_requested: onex.cmd.omnimarket.lab-alarm-lab-pass-receipt-requested.v1
+  lab_pass_receipt_run_started: onex.evt.omnimarket.lab-alarm-lab-pass-receipt-started.v1
+  lab_pass_receipt_run_completed: onex.evt.omnimarket.lab-alarm-lab-pass-receipt-completed.v1
+  lab_pass_receipt_run_failed: onex.evt.omnimarket.lab-alarm-lab-pass-receipt-failed.v1
+  stale_indeterminate_requested: onex.cmd.omnimarket.lab-alarm-stale-indeterminate-requested.v1
+  stale_indeterminate_run_started: onex.evt.omnimarket.lab-alarm-stale-indeterminate-started.v1
+  stale_indeterminate_run_completed: onex.evt.omnimarket.lab-alarm-stale-indeterminate-completed.v1
+  stale_indeterminate_run_failed: onex.evt.omnimarket.lab-alarm-stale-indeterminate-failed.v1
 
 event_bus:
   subscribe_topics: []
@@ -174,6 +218,18 @@ externally_consumed_topics:
   - onex.evt.omnimarket.lab-alarm-work-ledger-projection-stale-started.v1
   - onex.evt.omnimarket.lab-alarm-work-ledger-projection-stale-completed.v1
   - onex.evt.omnimarket.lab-alarm-work-ledger-projection-stale-failed.v1
+  - onex.evt.omnimarket.lab-alarm-lane-drift-started.v1
+  - onex.evt.omnimarket.lab-alarm-lane-drift-completed.v1
+  - onex.evt.omnimarket.lab-alarm-lane-drift-failed.v1
+  - onex.evt.omnimarket.lab-alarm-container-unhealthy-started.v1
+  - onex.evt.omnimarket.lab-alarm-container-unhealthy-completed.v1
+  - onex.evt.omnimarket.lab-alarm-container-unhealthy-failed.v1
+  - onex.evt.omnimarket.lab-alarm-lab-pass-receipt-started.v1
+  - onex.evt.omnimarket.lab-alarm-lab-pass-receipt-completed.v1
+  - onex.evt.omnimarket.lab-alarm-lab-pass-receipt-failed.v1
+  - onex.evt.omnimarket.lab-alarm-stale-indeterminate-started.v1
+  - onex.evt.omnimarket.lab-alarm-stale-indeterminate-completed.v1
+  - onex.evt.omnimarket.lab-alarm-stale-indeterminate-failed.v1
 
 overlay:
   node: node_lab_alarm
