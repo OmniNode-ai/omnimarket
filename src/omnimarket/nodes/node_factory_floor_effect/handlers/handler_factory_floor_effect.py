@@ -90,6 +90,10 @@ from omnimarket.nodes.node_factory_floor_effect.source_loader import (
     runner_fleet_cause,
     write_result,
 )
+from omnimarket.nodes.node_pool_usage_verdict_compute.handlers.floor_account_verdicts import (
+    account_verdicts_from_floor,
+    policy_or_none,
+)
 from omnimarket.nodes.node_source_read_cache_effect.handlers.cached_source_reader import (
     CachedSourceReader,
 )
@@ -518,6 +522,10 @@ class HandlerFactoryFloorEffect:
                 placement.cause,
             ),
         )
+        token_pools = load_token_pools(token_glob.parent, token_glob.name)
+        account_verdicts = account_verdicts_from_floor(
+            cloud_accounts, token_pools, now, policy_or_none()
+        )
         compute_request = ModelFactoryFloorRequest(
             generated_at=now,
             config=config,
@@ -587,7 +595,8 @@ class HandlerFactoryFloorEffect:
                 codex=codex,
                 glm=glm,
                 lab_rungs=lab_rungs,
-                token_pools=load_token_pools(token_glob.parent, token_glob.name),
+                token_pools=token_pools,
+                account_verdicts=account_verdicts,
             ),
             host_drift=host_drift,
             host_drift_cause=""

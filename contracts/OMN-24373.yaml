@@ -1,0 +1,71 @@
+schema_version: 1.0.0
+ticket_id: OMN-24373
+title: Stop the graphics card power limit job from freezing the development system
+summary: The GPU power caps node's handler was synchronous and, with the lab_work backend, waited on a lab host's receipt on the runtime's event loop (and on nvidia-smi with the subprocess backend); a request to it would freeze every request topic the way the host hygiene tick did. The handler is now a coroutine that runs its blocking work on a worker thread, and a runtime-level guard fails when a handler that waits on a lab receipt is synchronous or holds the loop past the bound in its overlay
+is_seam_ticket: false
+interface_change: false
+requirements:
+- id: req-omn24373-caps-off-loop
+  statement: The GPU power caps node's handler is a coroutine and runs its blocking dispatch on a worker thread, so the runtime's event loop keeps serving while a lab host's receipt is awaited; no cap value or machine setting changes.
+  acceptance:
+  - id: AC1
+    statement: "AC1: the GPU power caps node's handler runs its lab-work send off the runtime's event loop -- falsifier: the new test that blocks the sender on a release event and runs the request passes with the change, and the control that sends on the loop thread reads the loop starved"
+  - id: AC2
+    statement: "AC2: a runtime-level guard test fails when a handler that waits on a lab receipt blocks the loop longer than the bound named in its overlay -- falsifier: the guard test run against the handler as it stands on dev reads red, and green with the change"
+  - id: AC3
+    statement: "AC3: the existing GPU power caps golden and error-chain tests still pass with no assertion changed and no cap value changed -- falsifier: the focused node test directory run on the pushed head, red when any assertion or cap value is edited or the handler is made synchronous again"
+  - id: AC4
+    statement: "AC4: integrated: the dev runtime running the change attaches the GPU power caps node and answers a GitHub write through the write node with a terminal event while a power-caps request is in flight -- falsifier: the dev runtime log shows no multi-minute silence after the request is sent, and one onex scm pr-comment --dry-run answers instead of no_terminal"
+evidence_requirements:
+- kind: tests
+  description: The focused GPU power caps tests and the runtime loop guard at the pushed head; the loop-freedom test and the guard's controls read the loop held when the work runs on the loop thread.
+  command: env -u PYTHONPATH uv run --frozen pytest tests/unit/nodes/node_gpu_power_caps_effect tests/unit/runtime_guard -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24373-ac1-loop-free
+  description: The request runs its send off the event loop (new test) and a send run directly on the loop thread starves the loop (control).
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_gpu_power_caps_effect/test_gpu_power_caps_loop_free.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24373-ac2-guard
+  description: The runtime loop guard discovers the nodes that wait on a lab receipt, requires a coroutine handle of each, and reads the loop gap of the hygiene tick and the power caps request against the overlay's bound; its controls read the gap past the bound.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/runtime_guard -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24373-ac3-node-tests
+  description: The GPU power caps golden, error, seam and chain tests over the in-memory bus, with the call sites made async or run to completion and no assertion changed.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_gpu_power_caps_effect -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24373-ac4-hosted-readback
+  description: The golden chain over the in-memory bus and the loop guard run on a hosted runner; the running-runtime reading (a dev runtime booted from the change, no silence after a power-caps request, a write through the write node answering) is read from the lab receipt comment on the ticket.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_gpu_power_caps_effect/test_gpu_power_caps_chain.py tests/unit/runtime_guard -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24373-integration-proof
+  description: The pushed head ran the focused GPU power caps tests and the runtime loop guard on a lab host through the lab work runner and exited 0. The running-runtime reading (a dev runtime booted from the change, no silence after a power-caps request, a write through the write node answering) is read from the lab receipt comment on the ticket.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24373 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_gpu_power_caps_effect tests/unit/runtime_guard -q --no-cov -n 0 -p no:randomly
+    cwd: .

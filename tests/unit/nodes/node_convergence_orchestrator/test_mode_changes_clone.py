@@ -201,7 +201,7 @@ class InProcessHostSender:
         )
 
 
-def run_once(registry: Registry, mode: str) -> ModelConvergenceRunCompleted:
+async def run_once(registry: Registry, mode: str) -> ModelConvergenceRunCompleted:
     data: dict[str, Any] = yaml.safe_load(
         (NODE_DIR / "overlays" / "in_memory.yaml").read_text()
     )
@@ -213,7 +213,7 @@ def run_once(registry: Registry, mode: str) -> ModelConvergenceRunCompleted:
         sender=InProcessHostSender(registry),
         clock=lambda: T0,
     )
-    output = handler.handle(
+    output = await handler.handle(
         ModelRuntimeTick(
             now=T0,
             tick_id=uuid.uuid4(),
@@ -229,13 +229,13 @@ def run_once(registry: Registry, mode: str) -> ModelConvergenceRunCompleted:
     return run
 
 
-def test_observe_leaves_every_clone_byte_identical_and_names_what_act_would_do(
+async def test_observe_leaves_every_clone_byte_identical_and_names_what_act_would_do(
     tmp_path: Path,
 ) -> None:
     registry = Registry(tmp_path)
     before = registry.states()
 
-    run = run_once(registry, "observe")
+    run = await run_once(registry, "observe")
 
     assert registry.states() == before
     (host,) = run.hosts
@@ -252,13 +252,13 @@ def test_observe_leaves_every_clone_byte_identical_and_names_what_act_would_do(
     assert run.outcome is EnumConvergenceRunOutcome.FAILED
 
 
-def test_act_changes_the_parked_clone_and_still_refuses_the_dirty_one_untouched(
+async def test_act_changes_the_parked_clone_and_still_refuses_the_dirty_one_untouched(
     tmp_path: Path,
 ) -> None:
     registry = Registry(tmp_path)
     before = registry.states()
 
-    run = run_once(registry, "act")
+    run = await run_once(registry, "act")
 
     after = registry.states()
     assert after["parked"] != before["parked"]
@@ -273,14 +273,14 @@ def test_act_changes_the_parked_clone_and_still_refuses_the_dirty_one_untouched(
     assert run.outcome is EnumConvergenceRunOutcome.FAILED
 
 
-def test_the_failing_control_a_run_that_acts_while_the_overlay_says_observe_is_caught(
+async def test_the_failing_control_a_run_that_acts_while_the_overlay_says_observe_is_caught(
     tmp_path: Path,
 ) -> None:
     """Positive control for the byte-identical check: running the act form really does change the registry."""
     registry = Registry(tmp_path)
     before = registry.states()
 
-    run_once(registry, "act")
+    await run_once(registry, "act")
 
     assert registry.states() != before
 
