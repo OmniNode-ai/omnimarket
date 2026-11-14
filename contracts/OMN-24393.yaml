@@ -18,6 +18,8 @@ requirements:
     statement: 'AC3: the publish runs the history step beside the tracker and serves delegation-history.json, also on a refused cycle, and the node and the publish agree on the path -- falsifier: pytest tests/nodes/node_factory_floor_publish_effect/test_delegation_history_step.py -q'
   - id: AC4
     statement: 'AC4: integrated: after the merge and the next board publish, the delegation-history.json served on the h051 web host has models, series and experiments all filled and its sources all read -- falsifier: fetch the file from the h051 web host and read counts.models, counts.series and counts.experiments (any zero fails)'
+  - id: AC5
+    statement: 'AC5: a publish step that is not required and has no step_timeout_seconds key is skipped as unread and the other steps still run, while a required step with no key still refuses -- falsifier: pytest tests/nodes/node_factory_floor_publish_effect/test_step_limit_unread.py -q'
 evidence_requirements:
 - kind: tests
   description: The delegation history compute, effect and publish step tests pass at the pushed head.
@@ -62,6 +64,15 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_floor_delegation_history_effect -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn24393-ac5
+  description: 'AC5: a missing step time limit marks only that step unread; at the merge base the same test fails 3 of 5.'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_step_limit_unread.py -q -p no:randomly --no-cov
     cwd: .
 - id: dod-omn24393-integration-proof
   description: the delegation history tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
