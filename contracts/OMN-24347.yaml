@@ -1,0 +1,66 @@
+schema_version: 1.0.0
+ticket_id: OMN-24347
+title: Lab fill holds tickets whose last lane found nothing to do
+summary: 'Between 00:10Z and 00:30Z on 2026-11-14 about 35 lab-fill lanes ended with nothing to do and the fill sent the same ticket again each fire: the lane''s newest TERMINAL was skipped-already-built, done or blocked on a start criterion. The selection node holds a ticket whose newest lane TERMINAL outcome is in the overlay''s terminal_hold_outcomes inside terminal_hold_window_hours until the ticket''s updated_at or the candidate''s criterion_changed_at is later than that TERMINAL; skipped-already-built with falsifiers=pass keeps the closer route, with falsifiers=fail or no cell it goes to the new readback list, done and blocked get the new reason terminal-held. The lane brief''s AUTHORITY line cites the ticket of the ruling''s own ledger row (authority_ticket, read by ruling_row_ticket) instead of the run''s parent ticket.'
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- events
+- public_api
+requirements:
+- id: req-omn24347-hold-terminal-outcomes
+  statement: The lab fill selection does not send a ticket again while its newest lane TERMINAL carries an overlay-named outcome, inside the overlay window, and neither the ticket nor its start criterion changed since; and the lane brief cites the ruling row's own ticket.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a ticket whose newest lab-fill lane TERMINAL is skipped-already-built, done or blocked is held, not dispatched, until its updated_at or its start-criterion change stamp is later than that TERMINAL or the overlay window ends, and a hold-off deployment dispatches it -- falsifier: uv run --frozen pytest tests/nodes/node_lab_fill_selection_compute/test_lab_fill_terminal_hold.py -q fails when the hold function returns None'
+  - id: AC2
+    statement: 'AC2: skipped-already-built with falsifiers=pass keeps the closer route and with falsifiers=fail or no cell goes to the single readback list, the same on the selection and on the closer reader for the same ledger rows -- falsifier: uv run --frozen pytest tests/nodes/node_lab_fill_selection_compute/test_seam_fill_ledger_closer.py -q fails when the falsifiers cell is misspelt on one side only'
+  - id: AC3
+    statement: 'AC3: the lane brief''s AUTHORITY line cites the ticket of the ruling''s own ledger row, and a missing or conflicting ruling row is refused -- falsifier: uv run --frozen pytest tests/nodes/node_lab_fill_plan_compute/test_lab_fill_authority_ticket.py -q fails when the line prints the parent ticket'
+  - id: AC4
+    statement: 'AC4: integrated: two consecutive lab-fill ticks in the running runtime after the change send no ticket twice with the same result -- falsifier: the ledger shows two CLAIM rows for one ticket whose earlier TERMINAL carried a held outcome and whose ticket did not change in between'
+evidence_requirements:
+- kind: tests
+  description: 'The terminal hold tests, the ledger-to-selection-and-closer seam tests and the authority ticket tests at the pushed head; they fail at origin/dev where the hold, the readback list and the ruling-row ticket do not exist.'
+  command: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_lab_fill_selection_compute tests/nodes/node_lab_fill_plan_compute/test_lab_fill_authority_ticket.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24347-ac1-terminal-hold
+  description: 'The terminal hold tests on the 2026-11-14 rows: held and released cases, the hold-off deployment control, the window, the overlay error cases and the golden chain of six tickets.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_lab_fill_selection_compute/test_lab_fill_terminal_hold.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24347-ac2-seam
+  description: 'The seam tests that read the same verbatim ledger rows through the selection and through the closer reader, with the misspelt-cell control and the unreadable-row case.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_lab_fill_selection_compute/test_seam_fill_ledger_closer.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24347-ac3-authority-ticket
+  description: 'The authority ticket tests, with the parent-ticket control and the refusals of a missing, ticketless or conflicting ruling row.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_lab_fill_plan_compute/test_lab_fill_authority_ticket.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24347-ac4-selection-node-tests
+  description: 'The whole selection node test directory at the pushed head. The running-runtime reading (two lab-fill ticks after the live caller uses this node) is read from the lab receipt comment on the ticket.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_lab_fill_selection_compute -q --no-cov -n 0 -p no:randomly
+    cwd: .
