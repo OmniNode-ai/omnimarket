@@ -245,17 +245,31 @@ def test_a_local_endpoint_missing_its_endpoint_refuses(
 def test_a_local_endpoint_naming_a_credential_refuses(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A local GPU endpoint has no provider key: a row naming a credential refuses, naming the id."""
+    """A local endpoint names its key through secret_ref only: api_key_env refuses, naming the id."""
     _write_overlay(
-        tmp_path, monkeypatch, _local_endpoints_one(secret_ref="llm.hosted.api_key")
+        tmp_path, monkeypatch, _local_endpoints_one(api_key_env="LLM_HOSTED_API_KEY")
     )
     with pytest.raises(ProtocolConfigurationError) as exc:
         _backends(tmp_path)
     msg = str(exc.value)
     assert "local-coder" in msg
-    assert "must not name a credential" in msg
-    assert "llm.hosted.api_key" not in msg
+    assert "must not name api_key_ref or api_key_env" in msg
+    assert "LLM_HOSTED_API_KEY" not in msg
     assert GPU_A not in msg
+
+
+def test_a_local_endpoint_behind_a_key_names_it_through_secret_ref(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """OMN-23329: a local endpoint behind a key of its own declares it as secret_ref."""
+    _write_overlay(
+        tmp_path,
+        monkeypatch,
+        _local_endpoints_one(secret_ref="llm.local_small.api_key"),
+    )
+    row = next(b for b in _backends(tmp_path) if b["backend_id"] == "local-coder")
+    assert row["secret_ref"] == "llm.local_small.api_key"
+    assert row["endpoint_url"] == GPU_A
 
 
 def test_a_local_endpoint_pinned_only_refuses(

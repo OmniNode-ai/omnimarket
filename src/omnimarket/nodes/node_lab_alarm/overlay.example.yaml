@@ -69,3 +69,93 @@ effects_held:
 broker_listener:
   bootstrap_servers: example-host:9092
   timeout_seconds: 10
+# The dev-tag heartbeat condition (OMN-24400). Needed by the dev-tag-heartbeat verbs only; the other verbs run without it.
+# The deploy agent re-reads every followed repository each minute and publishes a beat every 15 minutes, so the alarm script's
+# 30 minute bound (two publish periods) is held here as data. A repository alarms only after persist_runs consecutive
+# breaching runs: no single-run alarm.
+dev_tag_heartbeat:
+  agent_url: http://example-host:8098
+  endpoint_path: /dev-tag-heartbeat
+  repositories: [examplepkg]
+  max_age_seconds: 1800
+  timeout_seconds: 10
+  persistence:
+    persist_runs: 3
+    streak_path: .onex_state/lab-alarm/dev-tag-heartbeat-streaks.json
+# The delegation chain canary condition (OMN-24400). Needed by the delegation-chain-canary verbs only. The newest completed run of
+# the workflow decides, in both directions; the alarm script's 180 minute bound (one two-hour period plus slack) is held here as data.
+delegation_chain_canary:
+  repository: example-org/example-repo
+  workflow: example-canary.yml
+  branch: main
+  events: [schedule]
+  max_age_seconds: 10800
+  per_page: 20
+  timeout_seconds: 45
+  persistence:
+    persist_runs: 3
+    streak_path: .onex_state/lab-alarm/delegation-chain-canary-streaks.json
+# The work-ledger projection condition (OMN-24400). Needed by the work-ledger-projection-stale verbs only. The alarm script's 30 minute
+# bound and 256 KiB tail are held here as data; projection_window_seconds is how far back the projection is asked for its newest row.
+work_ledger_projection_stale:
+  ledger_path: .onex_state/example-ledger.md
+  tail_bytes: 262144
+  row_types: [CLAIM, STATUS, TERMINAL]
+  projection_name: example.work_ledger_rows
+  max_lag_seconds: 1800
+  projection_window_seconds: 86400
+  timeout_seconds: 30
+  persistence:
+    persist_runs: 3
+    streak_path: .onex_state/lab-alarm/work-ledger-projection-streaks.json
+# One schedule per condition (OMN-24400), keyed by the verb its unit runs; the schedule block above stays the broker lag's.
+# Each has its own unit name and launchd label (two schedules never share one) and logs under its verb.
+condition_schedules:
+  dev-tag-heartbeat:
+    unit_name: example-lab-alarm-dev-tag-heartbeat
+    launchd_label: example.lab-alarm-dev-tag-heartbeat
+    state_directory: .onex_state/lab-alarm
+    interval_seconds: 600
+    timeout_seconds: 120
+    hosts:
+      - name: example-mac
+        scheduler: launchd
+        venv: examplepkg/.venv
+        environment:
+          EXAMPLE_SETTING: $OMNI_HOME/example
+      - name: example-linux
+        scheduler: systemd-user
+        venv: examplepkg/.venv
+        environment: {}
+  delegation-chain-canary:
+    unit_name: example-lab-alarm-delegation-chain-canary
+    launchd_label: example.lab-alarm-delegation-chain-canary
+    state_directory: .onex_state/lab-alarm
+    interval_seconds: 900
+    timeout_seconds: 120
+    hosts:
+      - name: example-mac
+        scheduler: launchd
+        venv: examplepkg/.venv
+        environment:
+          EXAMPLE_SETTING: $OMNI_HOME/example
+      - name: example-linux
+        scheduler: systemd-user
+        venv: examplepkg/.venv
+        environment: {}
+  work-ledger-projection-stale:
+    unit_name: example-lab-alarm-work-ledger-projection-stale
+    launchd_label: example.lab-alarm-work-ledger-projection-stale
+    state_directory: .onex_state/lab-alarm
+    interval_seconds: 900
+    timeout_seconds: 120
+    hosts:
+      - name: example-mac
+        scheduler: launchd
+        venv: examplepkg/.venv
+        environment:
+          EXAMPLE_SETTING: $OMNI_HOME/example
+      - name: example-linux
+        scheduler: systemd-user
+        venv: examplepkg/.venv
+        environment: {}
