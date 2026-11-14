@@ -2,10 +2,11 @@
 # SPDX-License-Identifier: MIT
 """The Delegation tab draws four views from delegation-history.json: models, success over time, experiments, scenarios.
 
-The chain: a history document (the fixture of the seam between the data lane and the page lane), the page's own script under
-node, and the markup each view leaves. The failing controls are a history with one experiment arm missing a field the page
-reads (the view must say so, never draw a number), an unreadable history (the views say no history and the scenarios still
-draw), and a field the page reads that the schema does not have (the schema test fails).
+The chain: the history document the data lane's fold produces (the fixture of the seam between the data lane and the page lane,
+read through the data lane's own schema model), the page's own script under node, and the markup each view leaves. The failing
+controls are a history with one experiment arm missing a field the page reads (the view must say so, never draw a number), an
+unreadable history (the views say no history and the scenarios still draw), and a field the page reads that the schema model does
+not have (the schema test fails).
 """
 
 from __future__ import annotations
@@ -15,11 +16,15 @@ import json
 import re
 import shutil
 import subprocess
+import tempfile
 import textwrap
 from pathlib import Path
 
 import pytest
 
+from omnimarket.nodes.node_floor_delegation_history_compute.models import (
+    model_delegation_history as schema,
+)
 from tests.nodes.node_factory_floor_publish_effect.test_compare_page import NODE_DIR
 from tests.nodes.node_factory_floor_publish_effect.test_delegation_page import (
     _tracker,
@@ -28,15 +33,17 @@ from tests.nodes.node_factory_floor_publish_effect.test_delegation_page import (
 pytestmark = pytest.mark.unit
 
 PAGE = NODE_DIR / "page/delegation.html"
-FIXTURE = Path(__file__).parent / "fixtures/delegation_history_page_fixture.json"
-SCHEMA_ID = "omnimarket.floor_delegation_history.v1"
-HISTORY_NOW = "2026-11-14T03:05:00+00:00"
+FIXTURE = (
+    Path(__file__).parents[1]
+    / "node_floor_delegation_history_compute/fixtures/delegation-history.fixture.json"
+)
+HISTORY_NOW = "2026-11-14T03:00:00+00:00"
 
 HARNESS = textwrap.dedent(
     """
     const fs = require("fs");
-    const [pagePath, filesJson, nowIso] = process.argv.slice(1);
-    const files = JSON.parse(filesJson);
+    const [pagePath, filesPath, nowIso] = process.argv.slice(1);
+    const files = JSON.parse(fs.readFileSync(filesPath, "utf8"));
     const src = fs.readFileSync(pagePath, "utf8");
     const script = /<script>([\\s\\S]*?)<\\/script>/.exec(src)[1];
     const els = {};
@@ -82,50 +89,66 @@ def _render(
         files["delegation-tracker.json"] = _tracker(red_scenario=False).decode()
     if history is not None:
         files["delegation-history.json"] = json.dumps(history)
-    out = subprocess.run(
-        [node, "-e", HARNESS, str(PAGE), json.dumps(files), now or HISTORY_NOW],
-        capture_output=True,
-        text=True,
-        check=True,
-        timeout=60,
-        env={"PAGE_CLICKS": clicks, "PATH": "/usr/bin:/bin"},
-    )
+    # the history document is large: it goes to the script as a file, never as an argument
+    with tempfile.TemporaryDirectory() as tmp:
+        files_path = Path(tmp) / "files.json"
+        files_path.write_text(json.dumps(files), encoding="utf-8")
+        out = subprocess.run(
+            [node, "-e", HARNESS, str(PAGE), str(files_path), now or HISTORY_NOW],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=60,
+            env={"PAGE_CLICKS": clicks, "PATH": "/usr/bin:/bin"},
+        )
     return json.loads(out.stdout)
+
+
+def test_the_fixture_conforms_to_the_data_lanes_schema_model() -> None:
+    """The page is built against a document that the data lane's own model accepts, so a schema change turns this red."""
+    doc = schema.ModelDelegationHistory.model_validate(_history())
+    assert doc.schema_id == schema.SCHEMA_ID
 
 
 def test_golden_every_view_is_drawn_from_the_fixture() -> None:
     doc = _history()
     drawn = _render(doc)["els"]
     assert drawn["halert"] == ""
-    # models: one row per model, with engine, host, settings, price, the 14-day success and its interval
+    # models: one row per model, with engine, host, settings, price, the success over the window and its interval
     for m in doc["models"]:
-        assert m["model_id"] in drawn["models"]
+        assert m["id"] in drawn["models"]
     assert drawn["models"].count("<tr><td") == len(doc["models"])
     assert "no price (local)" in drawn["models"]
-    assert "$0.600 in / $2.20 out per M tokens" in drawn["models"]
-    assert "65536 ctx, Q4_K_M, thinking off" in drawn["models"]
+    assert "$0.500 in / $2.00 out per M tokens" in drawn["models"]
+    assert "131072 ctx, thinking on" in drawn["models"]
+    assert "65536 ctx, Q3_K Medium, thinking off" in drawn["models"]
     assert re.search(r"\d+ % to \d+ %, n=\d+", drawn["models"])
     assert f"{len(doc['models'])} models" in drawn["msum"]
-    # success over time: one card per task kind, a polyline and a band per line, hover text carries n
-    kinds = sorted({r["task_kind"] for r in doc["series"]})
+    # success over time: one card per task kind (the all-kinds entry is not a card), a polyline and a band per line
+    kinds = sorted({r["task_kind"] for r in doc["series"]} - {"*"})
     assert drawn["success"].count('<section class="card">') == len(kinds)
     assert "<polyline" in drawn["success"]
     assert "<polygon" in drawn["success"]
     assert re.search(
-        r"<title>qwen3\.8-27b 2026-11-\d\d: \d+ % \(n=\d+\)</title>", drawn["success"]
+        r"<title>Model-X@192\.0\.2\.10 2026-\d\d-\d\d: \d+ % \(n=\d+\)</title>",
+        drawn["success"],
     )
     assert f"{len(kinds)} task kinds" in drawn["ssumh"]
-    # experiments: a card per experiment, newest first, the baseline line, the verdict and the p value
+    # experiments: a card per experiment, newest first, the verdict where the report states one, the paired tests
     exps = sorted(doc["experiments"], key=lambda e: e["date"], reverse=True)
     assert drawn["experiments"].count('class="card exp"') == len(exps)
     assert drawn["experiments"].index(exps[0]["question"]) < drawn["experiments"].index(
-        exps[1]["question"]
+        exps[-1]["question"]
     )
-    assert "baseline 58 %" in drawn["experiments"]
-    assert "baseline 31 %" in drawn["experiments"]
-    for e in exps:
-        assert e["verdict"] in drawn["experiments"]
-    assert "p=0.00004" in drawn["experiments"] or "p=4.0e-5" in drawn["experiments"]
+    assert exps[0]["verdict"][:60] in drawn["experiments"]
+    assert "no verdict stated" in drawn["experiments"]
+    paired = exps[0]["paired"][0]
+    assert f"{paired['arm_a']} vs {paired['arm_b']}" in drawn["experiments"]
+    assert "exact McNemar" in drawn["experiments"]
+    for view in ("models", "success", "experiments"):
+        assert "NaN" not in drawn[view]
+        assert "undefined" not in drawn[view]
+        assert "null" not in drawn[view]
     # scenarios: the nine tracker scenarios are kept, each with its pass history strip
     assert drawn["scn"].count('data-open="scn:') == 9
     assert drawn["scn"].count('class="strip"') >= 1
@@ -156,17 +179,29 @@ def test_error_a_history_with_another_schema_id_is_refused_not_drawn() -> None:
     assert "No history to draw." in drawn["models"]
 
 
+def test_error_a_source_that_failed_is_named_in_the_banner() -> None:
+    doc = _history()
+    doc["sources"][1] = {"id": "routing_overlay", "ok": False, "detail": "unreadable"}
+    banner = _render(doc)["els"]["halert"]
+    assert "routing_overlay" in banner
+    assert "unreadable" in banner
+
+
 def test_failing_control_an_experiment_with_a_missing_field_is_never_drawn_as_a_number() -> (
     None
 ):
-    doc = _history()
-    bad = copy.deepcopy(doc)
+    bad = copy.deepcopy(_history())
     for arm in bad["experiments"][0]["arms"]:
-        del arm["ci_lo"]
+        arm["wilson_low"] = None
+        arm["wilson_high"] = None
+    for r in bad["series"]:
+        for point in r["days"]:
+            point["success"] = {"rate": None, "wilson_low": None, "wilson_high": None}
     drawn = _render(bad)["els"]
-    # the field the whiskers need is gone; the page must not invent a number for it
-    assert "NaN" not in drawn["experiments"]
-    assert "undefined" not in drawn["experiments"]
+    # the fields the whiskers and the band need are gone; the page must not invent a number for them
+    for view in ("models", "success", "experiments"):
+        assert "NaN" not in drawn[view]
+        assert "undefined" not in drawn[view]
 
 
 def test_the_view_switch_shows_one_view_and_hides_the_others() -> None:
@@ -196,33 +231,41 @@ def test_light_and_dark_and_phone_width_are_declared() -> None:
     )  # chart colours come from the page variables
 
 
-def _schema_fields(doc: dict) -> dict[str, set[str]]:
-    """Section -> the field names the schema carries, read from a document that conforms to it."""
-    return {
-        "top": set(doc),
-        "models": set().union(*(set(m) for m in doc["models"])),
-        "series": set().union(*(set(r) for r in doc["series"])),
-        "experiments": set().union(*(set(e) for e in doc["experiments"])),
-        "arms": set().union(*(set(a) for e in doc["experiments"] for a in e["arms"])),
-    }
+# the section of READS -> the data lane's model class that carries those fields
+SECTION_MODELS = {
+    "top": schema.ModelDelegationHistory,
+    "models": schema.ModelHistoryModel,
+    "series": schema.ModelSeries,
+    "points": schema.ModelSeriesPoint,
+    "success": schema.ModelSuccess,
+    "experiments": schema.ModelExperiment,
+    "task_set": schema.ModelTaskSet,
+    "baseline": schema.ModelBaseline,
+    "arms": schema.ModelArm,
+    "paired": schema.ModelPairedTest,
+    "sources": schema.ModelHistorySource,
+}
 
 
-def test_every_field_the_page_reads_is_in_the_schema() -> None:
+def _schema_fields() -> dict[str, set[str]]:
+    return {name: set(cls.model_fields) for name, cls in SECTION_MODELS.items()}
+
+
+def test_every_field_the_page_reads_is_in_the_schema_model() -> None:
     reads = _render(_history())["reads"]
-    schema = _schema_fields(_history())
+    assert set(reads) <= set(SECTION_MODELS), "a READS section has no schema model"
+    schema_fields = _schema_fields()
     for section, names in reads.items():
-        missing = sorted(set(names) - schema[section])
+        missing = sorted(set(names) - schema_fields[section])
         assert not missing, (
-            f"the page reads {missing} in {section}, which the schema does not carry"
+            f"the page reads {missing} in {section}, which the schema model does not carry"
         )
 
 
 def test_failing_control_a_field_the_page_reads_but_the_schema_lacks_fails_the_check() -> (
     None
 ):
-    doc = _history()
-    for m in doc["models"]:
-        del m["quantization"]
     reads = _render(_history())["reads"]
-    schema = _schema_fields(doc)
-    assert "quantization" in set(reads["models"]) - schema["models"]
+    schema_fields = _schema_fields()
+    schema_fields["models"].discard("quantization")
+    assert "quantization" in set(reads["models"]) - schema_fields["models"]

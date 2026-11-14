@@ -1,0 +1,28 @@
+database:
+  ssh_host_env: ONEX_RUNTIME_SSH_HOST
+  compose_project: omnibase-infra
+  service: postgres
+  database: omnidash_analytics
+  db_user: postgres
+reports:
+  sources:
+    - {id: hosta, ssh_target: null, root: /registry/hosta-reports}
+    - {id: hostb, ssh_target: lab-b, root: /registry/hostb-reports}
+  stamped_globs: ["exp-*-????-??-??T????Z.md", "*-exp-*-????-??-??T????Z.md"]
+  directory_globs: ["exp-*/result.md"]
+  hash_markers: ["u_items.json", "items.json", "task set", "truth set", "hashed"]
+policy:
+  window_days: 14
+  fallback_engine: other
+  engine_rules:
+    - {kind: local, backend_prefixes: ["local-", "eval-local-"]}
+    - {kind: GLM, backend_prefixes: ["harness:claude-glm"], model_prefixes: ["glm"]}
+    - {kind: Claude, backend_prefixes: ["harness:claude:"], model_prefixes: ["claude"]}
+    - {kind: Codex, backend_prefixes: ["harness:codex"], model_prefixes: ["gpt-", "codex"]}
+  not_a_model_backend_ids: ["not routed"]
+  not_a_model_name_prefixes: ["not routed", "none", "stub-", "lab-dead", "probe-", "gemini-replay", "gemini-tested", "openai-replay", "openai-tested", "openrouter-tested", "byok-model-unresolved", "fast-cloud-model", "Qwen@local.example"]
+  serving:
+    - {backend_id: eval-local-gpu2-qwen3-8-27b-q3km-llamacpp, quantization: "Q3_K Medium", recorded_in: "delegation_routing overlay comment"}
+  arm_rules:
+    - {label_pattern: "^local[_ ]?(zero|201|few)", backend_id: eval-local-gpu1-qwen3-8-27b-vllm}
+    - {label_pattern: "^local202", backend_id: eval-local-gpu2-qwen3-8-27b-q3km-llamacpp}

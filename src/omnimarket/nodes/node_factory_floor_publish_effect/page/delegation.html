@@ -215,14 +215,20 @@ function strip(items){
 }
 
 // ---- the history document (delegation-history.json): models, series, experiments. Every field the page reads is named in READS;
-// a test holds each name against the data lane's schema model, so a field renamed there fails here --------------------------
+// a test holds each name against the data lane's schema model (node_floor_delegation_history_compute), so a field renamed there fails here
 const HISTORY = "delegation-history.json", HISTORY_SCHEMA = "omnimarket.floor_delegation_history.v1", HIST_MAX_AGE_S = 10800;
 const READS = {
-  top: ["schema_id", "generated_at", "models", "series", "experiments"],
-  models: ["model_id", "engine_kind", "host", "context", "quantization", "thinking", "price_in_per_mtok", "price_out_per_mtok", "first_seen", "last_seen"],
-  series: ["model_id", "task_kind", "grain", "bucket", "attempts", "accepted", "rejected", "timeouts", "latency_p50_ms", "latency_p95_ms", "cost_usd", "success_lo", "success_hi"],
-  experiments: ["experiment_id", "question", "task_set_hash", "n", "majority_baseline", "arms", "paired_test", "p_value", "verdict", "date"],
-  arms: ["model_id", "settings", "correct", "accuracy", "ci_lo", "ci_hi", "latency_p50_ms", "gpu_seconds"]
+  top: ["schema_id", "generated_at", "models", "series", "experiments", "sources"],
+  models: ["id", "engine_kind", "host", "context_tokens", "quantization", "thinking", "price_in_usd_per_mtok", "price_out_usd_per_mtok", "last_seen"],
+  series: ["model", "task_kind", "days", "total"],
+  points: ["bucket", "attempts", "accepted", "p50_latency_ms", "cost_usd", "success"],
+  success: ["rate", "wilson_low", "wilson_high"],
+  experiments: ["id", "question", "task_set", "n", "majority_baseline", "arms", "paired", "verdict", "date"],
+  task_set: ["hash"],
+  baseline: ["accuracy"],
+  arms: ["label", "settings", "accuracy", "wilson_low", "wilson_high", "p50_latency_s", "gpu_seconds"],
+  paired: ["test", "arm_a", "arm_b", "p_value"],
+  sources: ["id", "ok", "detail"]
 };
 let hist = null, hfailure = "";
 const histRenderable = d => !!d && typeof d === "object" && d.schema_id === HISTORY_SCHEMA && Number.isFinite(Date.parse(d.generated_at)) && Array.isArray(d.models) && Array.isArray(d.series) && Array.isArray(d.experiments);
@@ -239,35 +245,35 @@ async function loadHistory(){
 const money = x => x == null || !Number.isFinite(x) ? "n/a" : "$" + (x < 1 ? x.toFixed(3) : x.toFixed(2));
 const secs = ms => ms == null || !Number.isFinite(ms) ? "n/a" : ms < 10000 ? (ms / 1000).toFixed(1) + " s" : Math.round(ms / 1000) + " s";
 const day = iso => String(iso).slice(0, 10);
-function medianOf(vals){ const v = vals.filter(Number.isFinite).sort((a, b) => a - b); return v.length ? (v[(v.length - 1) >> 1] + v[v.length >> 1]) / 2 : null; }
-const sumOf = (rows, k) => rows.reduce((t, r) => t + (Number(r[k]) || 0), 0);
 function priceText(m){
-  if (m.price_in_per_mtok == null && m.price_out_per_mtok == null) return "no price (local)";
-  return money(m.price_in_per_mtok) + " in / " + money(m.price_out_per_mtok) + " out per M tokens";
+  if (!m.price_in_usd_per_mtok && !m.price_out_usd_per_mtok) return "no price (local)";
+  return money(m.price_in_usd_per_mtok) + " in / " + money(m.price_out_usd_per_mtok) + " out per M tokens";
 }
 function settingsText(m){
-  return [m.context != null ? m.context + " ctx" : "", m.quantization || "", m.thinking == null ? "" : (m.thinking ? "thinking on" : "thinking off")].filter(Boolean).join(", ") || "not recorded";
+  return [m.context_tokens != null ? m.context_tokens + " ctx" : "", m.quantization || "", m.thinking === "on" ? "thinking on" : m.thinking === "off" ? "thinking off" : ""].filter(Boolean).join(", ") || "not recorded";
 }
+// the entry of one model and one task kind ("*" is every task kind of the model together)
+const seriesOf = (model, kind) => hist.series.find(r => r.model === model && r.task_kind === kind);
 function drawModels(){
-  const days = hist.series.filter(r => r.grain === "day");
   const rows = hist.models.map(m => {
-    const mine = days.filter(r => r.model_id === m.model_id), att = sumOf(mine, "attempts"), acc = sumOf(mine, "accepted"), w = wilson(acc, att);
-    return `<tr><td class="l"><b>${esc(m.model_id)}</b></td><td class="l">${esc(m.engine_kind)}</td><td class="l">${esc(m.host)}</td><td class="l">${esc(settingsText(m))}</td><td class="l">${esc(priceText(m))}</td>`
-      + `<td>${att ? esc(pc(acc / att)) + `<small>${esc(pc(w.lo))} to ${esc(pc(w.hi))}, n=${att}</small>` : "no attempts"}</td>`
-      + `<td>${esc(secs(medianOf(mine.map(r => r.latency_p50_ms))))}</td><td>${acc ? esc(money(sumOf(mine, "cost_usd") / acc)) : "n/a"}</td><td>${esc(m.last_seen ? ago(since(m.last_seen)) : "never")}</td></tr>`;
+    const all = seriesOf(m.id, "*"), tot = all && all.total, rate = tot && tot.attempts && tot.success ? tot.success : null;
+    return `<tr><td class="l"><b>${esc(m.id)}</b></td><td class="l">${esc(m.engine_kind)}</td><td class="l">${esc(m.host == null ? "hosted" : m.host)}</td><td class="l">${esc(settingsText(m))}</td><td class="l">${esc(priceText(m))}</td>`
+      + `<td>${rate && rate.rate != null ? esc(pc(rate.rate)) + `<small>${esc(pc(rate.wilson_low))} to ${esc(pc(rate.wilson_high))}, n=${esc(tot.attempts)}</small>` : "no attempts"}</td>`
+      + `<td>${esc(secs(tot ? tot.p50_latency_ms : null))}</td><td>${tot && tot.accepted ? esc(money(tot.cost_usd / tot.accepted)) : "n/a"}</td><td>${esc(m.last_seen ? ago(since(m.last_seen)) : "never")}</td></tr>`;
   }).join("");
-  $("msum").textContent = hist.models.length + " models, last 14 days";
-  $("models").innerHTML = hist.models.length ? `<div class="tw"><table class="mt"><thead><tr><th class="l">Model</th><th class="l">Engine</th><th class="l">Host</th><th class="l">Settings</th><th class="l">Price</th><th>Success, 14 days</th><th>p50 latency</th><th>Cost per accepted</th><th>Last seen</th></tr></thead><tbody>${rows}</tbody></table></div>` : `<p class="empty">No model has been seen.</p>`;
+  $("msum").textContent = hist.models.length + " models, last " + (hist.window_days || 14) + " days";
+  $("models").innerHTML = hist.models.length ? `<div class="tw"><table class="mt"><thead><tr><th class="l">Model</th><th class="l">Engine</th><th class="l">Host</th><th class="l">Settings</th><th class="l">Price</th><th>Success, window</th><th>p50 latency</th><th>Cost per accepted</th><th>Last seen</th></tr></thead><tbody>${rows}</tbody></table></div>` : `<p class="empty">No model has been seen.</p>`;
 }
 function drawSuccess(){
-  const kinds = [...new Set(hist.series.map(r => r.task_kind))].sort(), ids = hist.models.map(m => m.model_id);
-  const dayRows = hist.series.filter(r => r.grain === "day"), xs = [...new Set(dayRows.map(r => day(r.bucket)))].sort();
+  const kinds = [...new Set(hist.series.map(r => r.task_kind))].filter(k => k !== "*").sort(), ids = hist.models.map(m => m.id);
+  const xs = [...new Set(hist.series.filter(r => r.task_kind !== "*").flatMap(r => r.days.map(q => day(q.bucket))))].sort();
   $("ssumh").textContent = kinds.length + " task kinds, per day, UTC";
   $("success").innerHTML = kinds.length ? `<div class="charts">` + kinds.map(k => {
-    const mine = dayRows.filter(r => r.task_kind === k), used = ids.filter(id => mine.some(r => r.model_id === id));
-    const pts = (id, f) => xs.map(x => { const r = mine.find(q => q.model_id === id && day(q.bucket) === x); return r && r.attempts ? f(r) : null; });
-    const sr = used.map(id => ({name: id, idx: ids.indexOf(id), points: pts(id, r => ({y: r.accepted / r.attempts, lo: r.success_lo, hi: r.success_hi, n: r.attempts}))}));
-    const lr = used.map(id => ({name: id, idx: ids.indexOf(id), points: pts(id, r => ({y: r.latency_p50_ms / 1000, n: r.attempts}))}));
+    const mine = hist.series.filter(r => r.task_kind === k), used = ids.filter(id => mine.some(r => r.model === id));
+    const at = (id, x) => { const r = mine.find(q => q.model === id), q = r && r.days.find(z => day(z.bucket) === x); return q && q.attempts ? q : null; };
+    const pts = (id, f) => xs.map(x => { const q = at(id, x); return q ? f(q) : null; });
+    const sr = used.map(id => ({name: id, idx: ids.indexOf(id), points: pts(id, q => q.success && q.success.rate != null ? {y: q.success.rate, lo: q.success.wilson_low, hi: q.success.wilson_high, n: q.attempts} : null)}));
+    const lr = used.map(id => ({name: id, idx: ids.indexOf(id), points: pts(id, q => q.p50_latency_ms != null ? {y: q.p50_latency_ms / 1000, n: q.attempts} : null)}));
     const lmax = Math.max(1, ...lr.flatMap(s => s.points.filter(Boolean).map(p => p.y)));
     return `<section class="card"><h2>${esc(k)}</h2><p>Accepted over attempts per day; the band is the 95 % interval.</p>`
       + lineChart({title: k + " success rate per day", xs, series: sr, yMax: 1, yFmt: pc, band: true})
@@ -279,11 +285,14 @@ function drawExperiments(){
   const ex = hist.experiments.slice().sort((a, b) => String(b.date).localeCompare(String(a.date)));
   $("esum").textContent = ex.length + " experiments, newest first";
   $("experiments").innerHTML = ex.length ? `<div class="charts">` + ex.map(e => {
-    const rows = e.arms.map(a => ({label: a.model_id + (a.settings ? " (" + a.settings + ")" : ""), value: a.accuracy, lo: a.ci_lo, hi: a.ci_hi, n: e.n}));
-    const gpu = e.arms.map(a => a.model_id + " " + (a.gpu_seconds == null ? "n/a" : Math.round(a.gpu_seconds) + " GPU s") + ", p50 " + secs(a.latency_p50_ms)).join("; ");
-    return `<section class="card exp"><h2>${esc(e.question)} <small>${esc(day(e.date))}</small></h2><p>n=${esc(e.n)}, majority baseline ${esc(pc(e.majority_baseline))}, task set ${esc(String(e.task_set_hash).slice(0, 12))}.</p>`
-      + barWhiskerChart({title: e.experiment_id + " accuracy by arm", rows, baseline: e.majority_baseline, xFmt: pc})
-      + `<p class="verdict">${esc(e.verdict)}</p><p>${esc(e.paired_test)}, p=${esc(e.p_value == null ? "n/a" : Number(e.p_value).toPrecision(2))}</p><p>${esc(gpu)}</p></section>`;
+    const base = e.majority_baseline ? e.majority_baseline.accuracy : null;
+    const rows = e.arms.map(a => ({label: a.label + (a.settings ? " (" + a.settings + ")" : ""), value: a.accuracy, lo: a.wilson_low, hi: a.wilson_high, n: a.n}));
+    const gpu = e.arms.map(a => a.label + " " + (a.gpu_seconds == null ? "n/a" : Math.round(a.gpu_seconds) + " GPU s") + ", p50 " + (a.p50_latency_s == null ? "n/a" : a.p50_latency_s + " s")).join("; ");
+    const hash = e.task_set && e.task_set.hash ? "task set " + String(e.task_set.hash).slice(0, 12) : "no task set hash";
+    const tests = (e.paired || []).map(q => `<li>${esc(q.test)}: ${esc(q.arm_a)} vs ${esc(q.arm_b)}, p=${esc(q.p_value == null ? "n/a" : Number(q.p_value).toPrecision(2))}</li>`).join("");
+    return `<section class="card exp"><h2>${esc(e.question)} <small>${esc(day(e.date))}</small></h2><p>n=${esc(e.n)}, ${base == null ? "no majority baseline stated" : "majority baseline " + esc(pc(base))}, ${esc(hash)}.</p>`
+      + barWhiskerChart({title: e.id + " accuracy by arm", rows, baseline: base, xFmt: pc})
+      + `<p class="verdict">${esc(e.verdict == null ? "no verdict stated" : e.verdict)}</p>${tests ? `<ul>${tests}</ul>` : ""}<p>${esc(gpu)}</p></section>`;
   }).join("") + `</div>` : `<p class="empty">No experiment has been recorded.</p>`;
 }
 function drawHistory(){
@@ -293,8 +302,9 @@ function drawHistory(){
     for (const id of ["models", "success", "experiments"]) $(id).innerHTML = `<p class="empty">No history to draw.</p>`;
     return;
   }
-  const age = since(hist.generated_at);
-  a.innerHTML = hfailure ? `<div class="frozen">The last history refresh failed (${esc(hfailure)}); this is the history from ${ago(age)}.</div>` : age > HIST_MAX_AGE_S ? `<div class="frozen">The history is ${ago(age)} old, the limit is ${Math.floor(HIST_MAX_AGE_S / 3600)} h. Everything in these views is old.</div>` : "";
+  const age = since(hist.generated_at), failed = (hist.sources || []).filter(s => !s.ok).map(s => esc(s.id) + ": " + esc(s.detail));
+  a.innerHTML = (hfailure ? `<div class="frozen">The last history refresh failed (${esc(hfailure)}); this is the history from ${ago(age)}.</div>` : age > HIST_MAX_AGE_S ? `<div class="frozen">The history is ${ago(age)} old, the limit is ${Math.floor(HIST_MAX_AGE_S / 3600)} h. Everything in these views is old.</div>` : "")
+    + (failed.length ? `<div class="frozen">A source of the history could not be read, so a view above is short: ${failed.join("; ")}.</div>` : "");
   drawModels(); drawSuccess(); drawExperiments();
 }
 
