@@ -1,0 +1,61 @@
+schema_version: 1.0.0
+ticket_id: OMN-24357
+title: The ledger serve takes the dev runtime login as a writer from the append node overlay
+summary: 'The work-ledger serve took its writers from the installer list and the developer principal overlay''s machine rows, so the dev runtime''s own login, which is neither, was never a writer and its rows were refused. The append node''s contract now declares a service_writers overlay (node_work_ledger_append_effect/overlay.yaml, list service_writers), found under ONEX_SKILL_OVERLAY_ROOTS and then in the overlays clone beside the workspace config root. The serve follows it like the principal overlay and serves its logins beside the other writers; a malformed or deleted file keeps the writers already served.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24357-service-writers
+  statement: A service login declared in the append node's overlay is served as a writer by the running serve, without a reinstall, and its rows are attributed to it.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a service login declared in the append node''s overlay is served as a writer without a reinstall, its rows are appended and attributed to it, and the same login before the declaration is refused -- falsifier: uv run pytest tests/unit/work_ledger_bus/test_service_writers.py -q -k declared_service_login fails at the merge base'
+  - id: AC2
+    statement: 'AC2: a malformed or deleted overlay keeps the writers already served, and the overlay is found under the declared roots then the clone beside the workspace config root -- falsifier: uv run pytest tests/unit/work_ledger_bus/test_service_writers.py -q -k "malformed or falls_back or unioned" fails at the merge base'
+  - id: AC4
+    statement: 'AC4: integrated: one ledger row appended by the dev runtime login on the dev bus is written to the ledger and read back in the work-ledger projection -- falsifier: the append run ends refused with unknown writer principal, or the row is absent on read back'
+evidence_requirements:
+- kind: tests
+  description: The service writer tests and the existing writer overlay tests pass at the pushed head.
+  command: uv run pytest tests/unit/work_ledger_bus/test_service_writers.py tests/unit/work_ledger_bus/test_writer_overlay_watch.py -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24357-ac1
+  description: 'AC1: on an in-memory bus the login''s row is refused with unknown writer principal before the overlay declares it, and after the declaration the watch subscribes its topic, the row is appended and the receipt and the ledger row name the login.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/work_ledger_bus/test_service_writers.py -k declared_service_login -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24357-ac2
+  description: 'AC2: a malformed or deleted service overlay leaves the served writers unchanged; the overlay is found under a declared root first and then in the clone beside the workspace config root; the served set is the union of the installer writers, the principal overlay''s machine rows and the service logins.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/work_ledger_bus/test_service_writers.py -k "malformed or falls_back or unioned" -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24357-ac4
+  description: 'hosted proxy for AC4: the service writer tests and the existing writer overlay tests pass; the dev bus append by the dev runtime login and its projection read back need the dev broker rows applied by the operator and a dev runtime rollout, and are named in the pull request as not yet run.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/work_ledger_bus/test_service_writers.py tests/unit/work_ledger_bus/test_writer_overlay_watch.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24357-integration-proof
+  description: the service writer tests and the existing writer overlay tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24357 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/work_ledger_bus/test_service_writers.py tests/unit/work_ledger_bus/test_writer_overlay_watch.py -q --no-cov
+    cwd: .

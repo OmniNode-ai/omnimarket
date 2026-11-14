@@ -89,6 +89,16 @@ writer_overlay:
   default_role: "developer"
   roles: ["machine"]
   refresh_seconds: 60
+# OMN-24357: a service login (the dev runtime's own login) is no developer or machine row, so it is declared in this
+# node's own overlay, `<overlay_id>/overlay.yaml`, as the list `service_writers` (ModelServiceWritersOverlay). The overlay is found under the first root of
+# ONEX_SKILL_OVERLAY_ROOTS that holds it, else in the clone named `clone_dir` beside the directory `writer_overlay.root_env`
+# names (the clone's overlays live under `clone_subdir`). It is followed like the developer overlay, every
+# `writer_overlay.refresh_seconds`, and its writers are served beside the install-time and machine writers. A malformed
+# or deleted overlay keeps the service writers already served.
+service_writers:
+  overlay_id: "node_work_ledger_append_effect"
+  clone_dir: "overlays"
+  clone_subdir: "overlays"
 # OMN-20275: the serve host watches that its consumers hold partition assignments. When they do not for
 # `unhealthy_probes_before_degraded` probes in a row the host reports degraded, raises one alarm for the
 # episode and drops and retakes every subscription, waiting `backoff_initial_seconds` growing by
