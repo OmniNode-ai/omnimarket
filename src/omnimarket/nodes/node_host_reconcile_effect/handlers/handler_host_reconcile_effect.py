@@ -61,6 +61,7 @@ from .retired_repositories import (
     load_retirement_policy,
     retired_repository_findings,
 )
+from .venv_build_lock_facts import venv_build_lock_fact
 
 
 def _parse_guard_readback(stdout: str) -> tuple[str, str, int, tuple[str, ...]]:
@@ -879,6 +880,16 @@ class _ReconcilePass:
                     else head_now
                 )
                 self.movement("venv:omnimarket", before_commit, observed, target)
+        if sp is not None:
+            lock_fact = venv_build_lock_fact(
+                venv, sp, self.root / "omnibase_infra/uv.lock"
+            )
+            if lock_fact is None:
+                self.say(
+                    f"venv:build-lock: no .built-from marker in {venv}; the lock check was skipped"
+                )
+            else:
+                self.facts.append(lock_fact)
         gate = self.root / "omnibase_infra/.venv"
         gate_sp = self.site_packages(gate)
         if gate_sp:

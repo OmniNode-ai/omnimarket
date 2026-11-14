@@ -1,0 +1,67 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_service_principal_mint_effect
+lifecycle: experimental
+node_type: EFFECT_GENERIC
+runtime_profiles: []
+dependency_ownership:
+  - overlay
+  - admin
+  - vault
+  - delivery
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: >
+  Mint one broker login for a named internal service (OMN-24256). The overlay declares the login,
+  its secret store folder and key, and the hosts and folders that receive its credential file. The
+  node lists the broker's logins, generates the password straight into the secret store create-only,
+  creates the login with the password read back from the store, and delivers a credential env file
+  to each declared read-only folder with the declared owner and mode. It never replaces an existing
+  login's password: a login that exists with no stored password is refused, naming nothing it holds.
+  The password appears in no result, log line, exception or command line of the caller.
+input_model:
+  name: ModelServicePrincipalMintRequest
+  module: omnimarket.nodes.node_service_principal_mint_effect.models.model_service_principal_mint
+  description: The declared principal name and an optional check-only flag.
+output_model:
+  name: ModelServicePrincipalMintResult
+  module: omnimarket.nodes.node_service_principal_mint_effect.models.model_service_principal_mint
+  description: Created, exists, would-create, refused or failed, with one reading per delivery and no secret.
+handler:
+  module: omnimarket.nodes.node_service_principal_mint_effect.handlers.handler_service_principal_mint
+  class: HandlerServicePrincipalMint
+  input_model: omnimarket.nodes.node_service_principal_mint_effect.models.model_service_principal_mint.ModelServicePrincipalMintRequest
+  output_model: omnimarket.nodes.node_service_principal_mint_effect.models.model_service_principal_mint.ModelServicePrincipalMintResult
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: The onex-service-principal-mint console script (runtime_service_principal_mint) on a lab host that holds
+    the secret store identity and an ssh path to the broker host; the overlay file is read from ONEX_SKILL_OVERLAY_ROOTS.
+descriptor:
+  node_archetype: effect
+  purity: side_effect
+  idempotent: true
+  runtime_profiles: []
+  timeout_ms: 300000
+  side_effects:
+  - lists the broker's SCRAM logins over ssh to the broker host, as the broker superuser read on that host only
+  - creates one SCRAM login on that broker when it is absent
+  - creates one secret store key create-only (an existing key is never read out or replaced by this effect)
+  - writes one credential env file per declared delivery over ssh with the declared owner and mode
+metadata:
+  transport_type: local
+  ticket: OMN-24256
+  execution_locus: host-local
+  description: The service login mint of the ci-ledger-read wave (parent OMN-19998).
+  author: OmniNode Team
+  tags:
+  - effect
+  - broker
+  - credentials
+  - service-principal
+  related_tickets:
+  - OMN-24256

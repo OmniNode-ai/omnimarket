@@ -515,11 +515,16 @@ def build_bays(machines: tuple[ModelFloorMachine, ...]) -> tuple[ModelFloorBay, 
     because a unit of lab work takes a slot of the same cap as a lane does. Free is the machine's own free figure, the
     pool reading's lane slots, which is zero for a host the reading refuses, so a host the bars refuse is never drawn
     as room. The bay's slots are those two added together: a refused host adds only what runs on it. A machine the pool
-    did not read (unread, in repair or out of selection) or read too long ago has no free bay: its count is the lanes
-    the ledger places there, its slots are its cap, and it is marked stale rather than shown as room.
+    did not read or read too long ago has no free bay: its count is the lanes the ledger places there, its slots are
+    its cap, and it is marked stale rather than shown as room — unread, repair and stale machines all still draw a bay,
+    so a machine down for repair keeps its stale bay. A machine out of selection (parked by the host table) is not
+    drawn as a bay at all: a parked host has no room and is not an unread machine.
     """
     bays: list[ModelFloorBay] = []
     for machine in sorted(machines, key=lambda m: m.host):
+        if machine.state == "out":
+            # A parked host (available false, not in repair) has no room and is not an unread machine: no bay at all.
+            continue
         stale = machine.state != "read" or machine.stale
         running = max(machine.lanes_placed, machine.units_placed or 0)
         if stale:

@@ -10,6 +10,9 @@ from typing import Any
 import yaml
 
 from omnimarket.models.model_projection_request import ModelProjectionRequest
+from omnimarket.nodes.node_projection_intent_classification.handlers.handler_projection_intent_classification import (
+    read_runtime_failure_notice,
+)
 from omnimarket.projection.runner import (
     BaseProjectionRunner,
     MessageMeta,
@@ -75,6 +78,17 @@ class IntentClassificationProjectionRunner(BaseProjectionRunner):
     async def project_event(
         self, topic: str, data: dict[str, Any], meta: MessageMeta
     ) -> bool:
+        notice = read_runtime_failure_notice(data)
+        if notice is not None:
+            logger.info(
+                "intent-classification runner: runtime failure notice "
+                "(failure_class=%s, origin_topic=%s, correlation_id=%s) is not "
+                "an intent classification and is not projected",
+                notice.failure_class,
+                notice.origin_topic,
+                notice.correlation_id,
+            )
+            return True
         correlation_id = (
             data.get("correlation_id")
             or data.get("correlationId")
