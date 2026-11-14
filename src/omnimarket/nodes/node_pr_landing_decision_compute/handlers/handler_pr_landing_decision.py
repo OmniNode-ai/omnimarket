@@ -154,6 +154,9 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_live
     EnumLivenessRead,
     ModelLandingLivenessUnread,
 )
+from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_review import (
+    EnumReviewGateVerdict,
+)
 from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_state import (
     ModelLandingCauseAttempt,
     ModelLandingCausePair,
@@ -166,6 +169,10 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_stat
     ModelLandingRebuildRecord,
     ModelLandingUncovered,
     ModelLandingVerdictRerun,
+)
+from omnimarket.nodes.node_pr_landing_decision_compute.review_gate import (
+    SKIP_FOR_REVIEW,
+    read_review_gate,
 )
 
 _INVALID_REASON: dict[EnumLandingResultKind, EnumLandingOutcomeReason] = {
@@ -1685,11 +1692,16 @@ def _merge(t: _Tick, p: ModelLandingPrFacts) -> None:
     """Merge pinned to the head; a runtime PR lands only holding the token (R6).
 
     A PR that carries a lab-bound check lands only on a pass of the current attempt on this exact head (J8): any
-    other reading holds the head with its own named reason.
+    other reading holds the head with its own named reason. A new-work PR lands only on a CLEAN review verdict for
+    its exact head: any other review reading holds the head with its own named reason.
     """
     reading = read_lab_check(p, t.now, t.facts.policy)
     if reading is not None and reading.verdict is not EnumLabCheckVerdict.PASS:
         t.skips[p.pr] = SKIP_FOR_VERDICT[reading.verdict]
+        return
+    review = read_review_gate(p, t.facts.policy)
+    if review is not None and review.verdict is not EnumReviewGateVerdict.PASS:
+        t.skips[p.pr] = SKIP_FOR_REVIEW[review.verdict]
         return
     undeclared = _liveness_undeclared(p)
     if undeclared:

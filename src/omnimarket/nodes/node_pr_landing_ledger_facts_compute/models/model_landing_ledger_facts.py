@@ -18,6 +18,9 @@ from omnimarket.models.landing_ledger_row import (
     ModelLandingLedgerRow,
     ModelLandingLedgerRows,
 )
+from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_review import (
+    ModelLandingReviewFacts,
+)
 
 
 class ModelLandingCauseFix(BaseModel):
@@ -66,6 +69,10 @@ class ModelLandingLedgerFacts(BaseModel):
     lab_passes: dict[str, tuple[str, ...]] = Field(
         description="repo#n -> every head a lab proof PASS readback recorded."
     )
+    review: dict[str, ModelLandingReviewFacts] = Field(
+        default_factory=dict,
+        description="repo#n -> the review fact of each PR a STATUS row marks as new work or a reviewer lane gave a verdict on. A PR named by no row has no entry: the caller sends new_work false for it.",
+    )
     drain_lane: str = Field(description="The live repo drain lane, or ''.")
 
 
@@ -75,4 +82,5 @@ __all__: list[str] = [
     "ModelLandingLedgerFacts",
     "ModelLandingLedgerRow",
     "ModelLandingLedgerRows",
+    "ModelLandingReviewFacts",
 ]
