@@ -85,9 +85,17 @@ class HandlerClaudeTokenPoolStatusView:
 
     @staticmethod
     def _declares(host: str, overlay: ModelRotationOverlay) -> bool:
-        """Whether the overlay declares ``host``: its own pool file is then authoritative."""
+        """Whether the overlay declares ``host``: its own pool file is then authoritative.
+
+        A host answers to its overlay name or, for the marks source, to the address the overlay dials it
+        by (the source's own native hostname is not its overlay name), so the source never reads itself over ssh.
+        """
+        source = overlay.marks_source
+        source_address = (source.ssh_target or "").split(".", 1)[0]
         return (
-            host in {h.name for h in overlay.hosts} or host == overlay.marks_source.host
+            host in {h.name for h in overlay.hosts}
+            or host == source.host
+            or (source_address != "" and host == source_address)
         )
 
     def _status(self) -> ModelClaudeTokenPoolResult:

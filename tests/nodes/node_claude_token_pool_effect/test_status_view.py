@@ -309,3 +309,17 @@ def test_named_break_the_old_local_pool_answer_names_the_stale_revoke(
     revoked = result.revoked
     assert revoked is not None
     assert "onexbot" not in revoked
+
+
+def test_the_marks_source_host_answers_to_the_address_the_overlay_dials_it_by(
+    tmp_path: Path,
+) -> None:
+    """h053's native hostname is hp-gen9, the overlay's ssh_target: it reads its own pool and never dials itself."""
+    rig = Rig(tmp_path, host="hp-gen9")
+    body = overlay().model_dump()
+    body["marks_source"]["ssh_target"] = "hp-gen9"
+    result = rig.view(ModelRotationOverlay.model_validate(body)).handle(
+        ModelPoolStatusViewRequest(host="hp-gen9")
+    )
+    assert result.basis == "local_pool"
+    assert rig.source.calls == 0

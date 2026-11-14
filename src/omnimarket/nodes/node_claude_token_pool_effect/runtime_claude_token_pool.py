@@ -310,6 +310,7 @@ def run_status(
     name = host or socket.gethostname().split(".")[0]
     claude_pool = pool or HandlerClaudeTokenPool(host=name)
     source = declared.marks_source if declared is not None else None
+    source_address = (source.ssh_target or "").split(".", 1)[0] if source else ""
     handler = HandlerClaudeTokenPoolStatusView(
         pool=claude_pool,
         overlay=declared,
@@ -317,7 +318,7 @@ def run_status(
             home=home or Path.home(),
             mirror_path=source.mirror_path if source is not None else "",
             ssh_target=None
-            if source is None or source.host == name
+            if source is None or name in (source.host, source_address)
             else source.ssh_target,
         ),
         local_copy_written_at=claude_pool.written_at,
