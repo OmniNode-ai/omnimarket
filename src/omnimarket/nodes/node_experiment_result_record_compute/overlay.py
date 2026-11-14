@@ -10,7 +10,7 @@ from omnimarket.handlers.handler_packaged_contract_loader import (
     load_packaged_contract_section,
 )
 from omnimarket.handlers.node_overlay_reader import (
-    find_node_overlay,
+    NodeOverlayNotFoundError,
     load_structured_overlay,
 )
 from omnimarket.nodes.node_experiment_result_record_compute.models.model_experiment_result_overlay import (
@@ -30,10 +30,12 @@ def load_policy(
 
     An invalid selected overlay refuses; it never falls back to the contract values.
     """
-    if find_node_overlay(NODE_NAME, environ) is not None:
+    try:
         return load_structured_overlay(
             NODE_NAME, ModelExperimentResultOverlay, environ
         ).policy
+    except NodeOverlayNotFoundError:
+        pass
     return ModelExperimentResultPolicy.model_validate(
         load_packaged_contract_section(NODE_NAME, "config")
     )
