@@ -48,6 +48,7 @@ from omnimarket.delegation.rubric.tool_use_transcript import (
     declared_tools_from_schemas,
     recorded_calls_request,
 )
+from omnimarket.handlers import delegate_receipt_fields as receipt_fields
 from omnimarket.handlers import delegate_retry_cause as retry_causes
 from omnimarket.inference.bridge_config_loader import resolve_bifrost_backend
 from omnimarket.nodes.node_delegated_code_edit_orchestrator import (
@@ -180,14 +181,6 @@ def _read_delegate_receipt(path: Path) -> _DelegateReceipt:
     def block(value: object) -> dict[str, object]:
         return cast("dict[str, object]", value) if isinstance(value, dict) else {}
 
-    def tokens(value: object) -> int:
-        if not isinstance(value, (str, int, float)):
-            return 0
-        try:
-            return int(value)
-        except (ValueError, OverflowError):
-            return 0
-
     try:
         receipt = block(json.loads(path.read_text()))
     except (OSError, ValueError, UnicodeError, RecursionError):
@@ -207,31 +200,19 @@ def _read_delegate_receipt(path: Path) -> _DelegateReceipt:
     null_terminal = "terminal_payload" in result and result["terminal_payload"] is None
     if null_terminal:
         failures.append("terminal_payload is null")
-    retry_cause = retry_causes.delegate_retry_cause(receipt, null_terminal)
-    revision = next(
-        (
-            str(found)
-            for found in (
-                receipt.get("model_revision"),
-                result.get("model_revision"),
-                terminal.get("model_revision"),
-                metrics.get("model_revision"),
-            )
-            if isinstance(found, str) and found.strip()
-        ),
-        "",
-    )
     return _DelegateReceipt(
         model=str(receipt.get("model") or ""),
-        model_revision=revision,
-        tokens_in=tokens(metrics.get("input_tokens")),
-        tokens_out=tokens(metrics.get("output_tokens")),
+        model_revision=receipt_fields.model_revision(
+            receipt, result, terminal, metrics
+        ),
+        tokens_in=receipt_fields.tokens(metrics.get("input_tokens")),
+        tokens_out=receipt_fields.tokens(metrics.get("output_tokens")),
         failure="; ".join(
             text
             for value in failures
             if value and (text := " ".join(str(value).split()))
         ),
-        retry_cause=retry_cause,
+        retry_cause=retry_causes.delegate_retry_cause(receipt, null_terminal),
         vetoed=receipt.get("terminal_failure_reason") == "quality_veto",
     )
 

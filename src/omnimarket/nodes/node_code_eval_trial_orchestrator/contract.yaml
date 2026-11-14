@@ -124,6 +124,8 @@ published_events:
 # runtime_dispatch.command_topic on a lab host's `onex lab-work serve`, which is no event_bus subscription.
 externally_consumed_topics:
   - onex.cmd.omnimarket.lab-work-unit-requested.v1
+  # The trace parts are read off the broker by the eval record store (OMN-24173), outside this node graph.
+  - onex.evt.omnimarket.eval-item-traced.v1
 handler_routing:
   routing_strategy: "payload_type_match"
   handlers:
