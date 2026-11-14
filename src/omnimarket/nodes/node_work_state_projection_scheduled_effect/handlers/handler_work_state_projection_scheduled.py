@@ -11,17 +11,20 @@ next tick tries again. Nothing here names a cadence, a path or a host.
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime, timedelta
 
 from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 
 from omnimarket.handlers.node_overlay_reader import (
+    NodeOverlayError,
     NodeOverlayNotFoundError,
     load_structured_overlay,
 )
 from omnimarket.handlers.scheduled_overlay_refusal import ScheduledOverlayRefusalLatch
+from omnimarket.handlers.scheduled_run_guard import ScheduledRunGuard
 from omnimarket.models.work_state_projection import (
     EnumSourceReading,
     EnumWorkStateProjectorProfile,
@@ -42,6 +45,8 @@ from omnimarket.nodes.node_work_state_projection_scheduled_effect.protocols.prot
 
 SCHEDULE_OVERLAY_ID = "node_work_state_projection_scheduled_effect"
 SCHEDULE_OVERLAY_FILE_ENV = "ONEX_WORK_STATE_SCHEDULE_OVERLAY"
+
+logger = logging.getLogger(__name__)
 
 
 def projector_for(
@@ -90,13 +95,15 @@ class HandlerWorkStateProjectionScheduled:
         schedule: ModelWorkStateScheduleOverlay | None = None,
         projector: ProtocolWorkStateProjector | None = None,
         environ: Mapping[str, str] | None = None,
+        clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         self._schedule = schedule
         self._projector = projector
         self._environ = environ
+        self._clock = clock
         self._last_run: datetime | None = None
         self._refusals = ScheduledOverlayRefusalLatch(SCHEDULE_OVERLAY_ID)
-        self._running = False
+        self._guard = ScheduledRunGuard()
 
     def _env(self) -> Mapping[str, str]:
         return os.environ if self._environ is None else self._environ
@@ -148,13 +155,43 @@ class HandlerWorkStateProjectionScheduled:
     ) -> ModelWorkStateProjectedEvent | None:
         """The runtime calls this on its event loop, and handle blocks on the projector's reads.
 
-        So the run executes on a worker thread; a tick that arrives while one run is in flight starts no
-        second run and returns None.
+        So the run executes on a worker thread. A tick that arrives while a run is in flight logs and
+        starts no second run; once the run outlives its overlay interval the tick is refused with an
+        error that names the age.
         """
-        if self._running:
-            return None
-        self._running = True
+        age = self._guard.try_acquire(self._clock())
+        if age is not None:
+            return self._overlapping(age)
+        return await asyncio.to_thread(self._run_guarded, request)
+
+    def _run_guarded(
+        self, request: ModelRuntimeTick
+    ) -> ModelWorkStateProjectedEvent | None:
         try:
-            return await asyncio.to_thread(self.handle, request)
+            return self.handle(request)
         finally:
-            self._running = False
+            self._guard.release()
+
+    def _overlapping(self, age: float) -> ModelWorkStateProjectedEvent | None:
+        try:
+            interval: int | None = self._schedule_overlay().run_interval_seconds
+        except NodeOverlayError:
+            interval = None
+        if interval is None or age < interval:
+            logger.warning(
+                "%s: tick skipped, the previous run has been in flight for %.1f s",
+                SCHEDULE_OVERLAY_ID,
+                age,
+            )
+            return None
+        logger.error(
+            "%s: the previous run has been in flight for %.1f s, "
+            "longer than its %s s interval",
+            SCHEDULE_OVERLAY_ID,
+            age,
+            interval,
+        )
+        raise RuntimeError(
+            f"{SCHEDULE_OVERLAY_ID}: the previous run has been in flight for {age:.0f} s, "
+            f"longer than its {interval} s interval"
+        )
