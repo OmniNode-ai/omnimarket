@@ -10,6 +10,7 @@ next tick tries again. Nothing here names a cadence, a path or a host.
 
 from __future__ import annotations
 
+import asyncio
 import os
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
@@ -95,6 +96,7 @@ class HandlerWorkStateProjectionScheduled:
         self._environ = environ
         self._last_run: datetime | None = None
         self._refusals = ScheduledOverlayRefusalLatch(SCHEDULE_OVERLAY_ID)
+        self._running = False
 
     def _env(self) -> Mapping[str, str]:
         return os.environ if self._environ is None else self._environ
@@ -140,3 +142,19 @@ class HandlerWorkStateProjectionScheduled:
             tick_id=str(request.tick_id),
             projector=schedule.projector,
         )
+
+    async def handle_async(
+        self, request: ModelRuntimeTick
+    ) -> ModelWorkStateProjectedEvent | None:
+        """The runtime calls this on its event loop, and handle blocks on the projector's reads.
+
+        So the run executes on a worker thread; a tick that arrives while one run is in flight starts no
+        second run and returns None.
+        """
+        if self._running:
+            return None
+        self._running = True
+        try:
+            return await asyncio.to_thread(self.handle, request)
+        finally:
+            self._running = False
