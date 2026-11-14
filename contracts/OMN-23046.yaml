@@ -41,13 +41,13 @@ dod_evidence:
     check_value: 'uv run --frozen pytest tests/ci/test_tessl_slice2_skipped_findings_omn23046.py -q --no-cov -n 0 -p no:randomly'
     cwd: .
 - id: dod-omn23046-deploy-readback
-  description: "The pushed branch carries the landing tick's typed tick_stage_raised failure in the orchestrator model; this reads the branch's model file through the GitHub contents API and fails when the fix is absent."
+  description: "The pushed branch carries the landing tick's typed tick_stage_raised failure in the orchestrator model; this reads the model file at the checked-out commit through the GitHub contents API and fails where the fix is absent, as at the merge base."
   source: manual
   binds_ac:
   - AC1
   checks:
   - check_type: command
-    check_value: "gh api 'repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_pr_landing_tick_orchestrator/models/model_tick_orchestrator.py?ref=omn-23046-tessl-slice-2-fixes' --jq .content | base64 -d | grep tick_stage_raised > /dev/null"
+    check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_pr_landing_tick_orchestrator/models/model_tick_orchestrator.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep tick_stage_raised > /dev/null"
     cwd: .
 - id: dod-omn23046-integration-proof
   description: The pushed head ran the added tests on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
