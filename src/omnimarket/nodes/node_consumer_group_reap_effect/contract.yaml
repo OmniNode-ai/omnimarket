@@ -53,9 +53,6 @@ event_bus:
 terminal_event: onex.evt.omnimarket.consumer-group-reap-completed.v1
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.consumer-group-reap-requested.v1
-externally_produced_topics:
-  - topic: onex.cmd.omnimarket.consumer-group-reap-requested.v1
-    producer: "the consumer group guard's orchestration, which builds one command from each reducer record that names groups"
 externally_consumed_topics:
   - onex.evt.omnimarket.consumer-group-reap-completed.v1
 

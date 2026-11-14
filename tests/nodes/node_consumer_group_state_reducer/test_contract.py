@@ -29,7 +29,8 @@ def test_topics_and_terminal_event() -> None:
         "publish_topics": [STATE_TOPIC],
     }
     assert doc["terminal_event"] == STATE_TOPIC
-    assert doc["externally_consumed_topics"] == [STATE_TOPIC]
+    # the state topic is consumed in-repo by node_consumer_group_reap_orchestrator, so it is not external
+    assert "externally_consumed_topics" not in doc
     assert doc["node_type"] == "reducer"
     assert doc["descriptor"]["purity"] == "pure"
 

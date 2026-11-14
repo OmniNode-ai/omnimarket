@@ -1,0 +1,83 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Consumer group reap ORCHESTRATOR (OMN-23992)
+#
+# The step between the reducer and the reap effect. Each consumer group state record the reducer publishes that names
+# groups past the overlay bound becomes one typed reap command on the reap effect's command topic. The command is built
+# from the record (decided_by the reducer, carrying the reducer's decision digest), so the reap effect can prove where the
+# decision came from. A record that names no group emits nothing. No file, no I/O, no overlay: the bound and the patterns
+# are the reducer's.
+---
+name: node_consumer_group_reap_orchestrator
+lifecycle: experimental
+node_type: orchestrator
+runtime_profiles:
+  - effects
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: 1.0.0
+description: >
+  Consumer group reap orchestrator. Builds one reap command from each reducer record that names reapable groups and
+  publishes it for the reap effect; emits nothing for a record with no group due.
+contract_name: node_consumer_group_reap_orchestrator
+node_name: node_consumer_group_reap_orchestrator
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: consumer_group.state.record
+      topic: onex.evt.omnimarket.consumer-group-state-updated.v1
+      message_category: event
+      handler:
+        name: HandlerGroupReapOrchestrator
+        module: omnimarket.nodes.node_consumer_group_reap_orchestrator.handlers.handler_group_reap_orchestrator
+      event_model:
+        name: ModelGroupStateRecord
+        module: omnimarket.models.consumer_group_state
+
+input_model:
+  name: ModelGroupStateRecord
+  module: omnimarket.models.consumer_group_state
+output_model:
+  name: ModelGroupReapCommand
+  module: omnimarket.models.consumer_group_reap
+
+handler:
+  module: omnimarket.nodes.node_consumer_group_reap_orchestrator.handlers.handler_group_reap_orchestrator
+  class: HandlerGroupReapOrchestrator
+  input_model: omnimarket.models.consumer_group_state.ModelGroupStateRecord
+  output_model: omnimarket.models.consumer_group_reap.ModelGroupReapCommand
+
+descriptor:
+  node_archetype: orchestrator
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.consumer-group-state-updated.v1
+  publish_topics:
+    - onex.cmd.omnimarket.consumer-group-reap-requested.v1
+published_events:
+  - topic: onex.cmd.omnimarket.consumer-group-reap-requested.v1
+    event_type: ModelGroupReapCommand
+
+broker_acl_grants:
+  - principal: "${ONEX_ACL_CONSUMER_GROUP_REAP_ORCHESTRATOR_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.consumer-group-state-updated.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.consumer-group-state-updated.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.consumer-group-reap-requested.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.consumer-group-reap-requested.v1, operation: DESCRIBE}
+
+dependencies:
+  packages:
+    - "omnibase_core>=0.39.0"
+
+metadata:
+  transport_type: kafka
+  description: "Consumer group reap orchestrator"
+  author: "OmniNode Platform Team"
+  ticket: OMN-23992
+  related_tickets:
+    - "OMN-23992"

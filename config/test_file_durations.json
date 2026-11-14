@@ -883,6 +883,8 @@
   "tests/nodes/node_consumer_group_reap_effect/test_no_file.py": 2.15,
   "tests/nodes/node_consumer_group_reap_effect/test_seam_broker.py": 2.07,
   "tests/nodes/node_consumer_group_reap_effect/test_seam_reducer.py": 1.97,
+  "tests/nodes/node_consumer_group_reap_orchestrator/test_contract.py": 1.5,
+  "tests/nodes/node_consumer_group_reap_orchestrator/test_golden_chain_reap_orchestrator.py": 3.0,
   "tests/nodes/node_consumer_group_state_reducer/test_contract.py": 2.01,
   "tests/nodes/node_consumer_group_state_reducer/test_no_file.py": 2.01,
   "tests/nodes/node_consumer_group_state_reducer/test_overlay.py": 2.25,

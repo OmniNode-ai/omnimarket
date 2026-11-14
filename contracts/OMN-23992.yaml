@@ -68,7 +68,7 @@ dod_evidence:
   - AC3
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/nodes/node_consumer_group_guard_effect/test_reap_chain_events.py tests/nodes/node_consumer_group_reap_effect/test_seam_reducer.py tests/nodes/node_consumer_group_guard_effect/test_census_event.py -q --no-cov -n 0 -p no:randomly
+    check_value: uv run --frozen pytest tests/nodes/node_consumer_group_guard_effect/test_reap_chain_events.py tests/nodes/node_consumer_group_reap_effect/test_seam_reducer.py tests/nodes/node_consumer_group_guard_effect/test_census_event.py tests/nodes/node_consumer_group_reap_orchestrator -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn23992-ac4
   description: Every setting is a required overlay value with no default and an absent key refuses the load, for the reducer and for the reap effect.

@@ -65,8 +65,6 @@ event_bus:
 externally_produced_topics:
   - topic: onex.evt.omnimarket.consumer-group-census.v1
     producer: "node_consumer_group_guard_effect's tick, which publishes one census event per run directly -- not a node contract"
-externally_consumed_topics:
-  - onex.evt.omnimarket.consumer-group-state-updated.v1
 
 broker_acl_grants:
   - principal: "${ONEX_ACL_CONSUMER_GROUP_STATE_PRINCIPAL}"
