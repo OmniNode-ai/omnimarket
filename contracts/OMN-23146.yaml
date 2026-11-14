@@ -28,21 +28,15 @@ emergency_bypass:
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
-  - id: dod-omn23146-ac1
-    description: The AC1 falsifier of the ticket passes.
+  - id: dod-omn23146-ac1-ac2
+    description: The AC1 and AC2 falsifiers of the ticket pass together. AC1 adds tests only on an unchanged quarantine handler, so it is bound with AC2, whose test fails at the merge base.
     source: manual
     execution_scope: hosted_and_local
-    binds_ac: [AC1]
+    binds_ac: [AC1, AC2]
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest src/omnimarket/nodes/node_code_quarantine_effect -q --no-cov -k stage_1_batch
         cwd: .
-  - id: dod-omn23146-ac2
-    description: The AC2 falsifier of the ticket passes.
-    source: manual
-    execution_scope: hosted_and_local
-    binds_ac: [AC2]
-    checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest src/omnimarket/nodes/node_public_consumer_check_compute -q --no-cov -k archived_repository_mention
         cwd: .
