@@ -51,7 +51,6 @@ dod_evidence:
   - id: dod-omn24406-deploy
     description: 'Deploy probe the hosted runner can run: the installer handler at the checked-out commit on GitHub carries the host table ledger fallback; the method does not exist at the merge base, so the probe fails there.'
     source: manual
-    binds_ac: [AC1]
     checks:
       - check_type: command
         check_value: >-
