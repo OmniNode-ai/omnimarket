@@ -104,7 +104,11 @@ class HttpHeartbeatSource:
         if not self._url.startswith("http://"):
             raise HeartbeatUnreadableError(f"{self._url!r} is not an http URL")
         try:
-            with urllib.request.urlopen(self._url, timeout=self._timeout) as response:
+            with (
+                urllib.request.urlopen(  # no-contract-check: the deploy agent's heartbeat read; port boundary, url injected by the overlay-built reader
+                    self._url, timeout=self._timeout
+                ) as response
+            ):
                 if response.status != 200:
                     raise HeartbeatUnreadableError(
                         f"the agent answered HTTP {response.status}"
