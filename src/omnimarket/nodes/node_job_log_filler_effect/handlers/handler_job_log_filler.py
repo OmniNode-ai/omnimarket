@@ -226,7 +226,23 @@ class HandlerJobLogFiller:
         return self._overlay
 
     def fill(self, request: ModelJobLogFillRequest) -> ModelJobLogFillResult:
-        overlay = self.overlay
+        try:
+            overlay = self.overlay
+        except Exception as exc:
+            # A host with no overlay answers a failed terminal event naming why, never a
+            # handler error that the runtime would dead-letter on every scheduled pass.
+            return ModelJobLogFillResult(
+                correlation_id=request.correlation_id,
+                status=EnumJobLogFillStatus.FAILED,
+                profile=request.profile or "unresolved",
+                considered=0,
+                filled=0,
+                already_cached=0,
+                failed=0,
+                deferred=0,
+                stale_skipped=0,
+                error=f"overlay unreadable: {type(exc).__name__}: {exc}"[-2000:],
+            )
         overlay.profile(request.profile)  # an unknown profile refuses before any read
         profile_name = request.profile or overlay.default_profile
         try:

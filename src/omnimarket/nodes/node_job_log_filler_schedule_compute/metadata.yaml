@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_job_log_filler_schedule_compute
+version: "0.1.0"
+description: "Runtime-tick schedule that asks node_job_log_filler_effect for one fill pass of the job-log cache per interval"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_job_log_filler_schedule_compute: "omnimarket.nodes.node_job_log_filler_schedule_compute"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "omnibase_infra"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "job-log", "cache", "schedule", "OMN-23113"]
+pack: "pipeline"
+display_name: "Job Log Filler Schedule"
+node_role: "compute"

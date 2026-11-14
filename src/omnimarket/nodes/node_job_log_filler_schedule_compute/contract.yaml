@@ -1,0 +1,86 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Job Log Filler Schedule Compute (OMN-23113)
+#
+# Pure definition-B compute: handle(ModelRuntimeTick) -> ModelJobLogFillRequest | None.
+# The producer of node_job_log_filler_effect's command topic. node_job_log_filler_effect
+# (OMN-23032) fills the gateway's job-log cache from the red jobs of open pull requests,
+# but nothing declared what runs it, so a lane's cache-only `onex scm job-log` read of a
+# red job answered with a miss for ever. This node subscribes to the platform runtime tick
+# and, once per interval, returns the typed fill request, which the runtime publishes to
+# the filler's command topic. It runs in the one runtime, never from a launchd unit.
+# Stateless: the window comes from the tick's own clock, so a restart cannot repeat a window.
+name: node_job_log_filler_schedule_compute
+contract_name: node_job_log_filler_schedule_compute
+node_name: node_job_log_filler_schedule_compute
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: compute
+lifecycle: experimental
+runtime_profiles: [main]
+
+description: >
+  Interval schedule for the job-log filler. Subscribes to the platform runtime tick;
+  the tick that opens a window of config.job_log_filler.schedule returns one fill
+  request (profile, repository narrowing and read cap from config.job_log_filler),
+  every other tick returns nothing. No clock read, no state, no I/O.
+
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: HandlerJobLogFillerSchedule
+        module: omnimarket.nodes.node_job_log_filler_schedule_compute.handlers.handler_job_log_filler_schedule
+      event_model: omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick
+      event_type: platform.runtime-tick
+
+handler:
+  module: omnimarket.nodes.node_job_log_filler_schedule_compute.handlers.handler_job_log_filler_schedule
+  class: HandlerJobLogFillerSchedule
+  input_model: omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+
+input_subscriptions:
+  - topic: "onex.intent.platform.runtime-tick.v1"
+    operation: "job_log_filler_schedule"
+
+output_model:
+  name: ModelJobLogFillRequest
+  module: omnimarket.nodes.node_job_log_filler_effect.models.model_job_log_filler
+  description: The fill pass for the window this tick opens, or no output on any other tick.
+
+config:
+  job_log_filler:
+    schedule:
+      workflow: job-log-filler
+      interval_seconds: 180
+      offset_seconds: 45
+    # null: the filler's own overlay default_profile decides how the pass reads and fills.
+    profile: null
+    # empty: every repository the PR watcher state holds; owner/name entries narrow the pass.
+    repos: []
+    # null: the filler's overlay cap max_reads_per_pass; a number only lowers it.
+    max_reads: null
+
+# The command the runtime publishes on the handler's behalf when a window opens.
+terminal_event: onex.cmd.omnimarket.job-log-filler-requested.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.intent.platform.runtime-tick.v1
+  publish_topics:
+    - onex.cmd.omnimarket.job-log-filler-requested.v1
+
+reading:
+  name: job_log_filler_schedule_fires
+  description: "Fill requests published per hour against the 3600 / interval_seconds the schedule owes; a hosted filler that never receives one leaves the lane's cache-only read answering a miss."
+  injected_fault: "A tick stream with no tick in the window (planted in tests as an off-window tick): no request reaches the filler's command topic and no job is filled."
+
+metadata:
+  description: "Runtime-tick schedule of the job-log filler"
+  author: "OmniNode Team"
