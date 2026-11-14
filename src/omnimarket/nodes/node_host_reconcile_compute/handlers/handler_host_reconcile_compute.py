@@ -182,6 +182,33 @@ class HandlerHostReconcileCompute:
                     else ""
                 )
             )
+        if fact.kind == "venv_build_lock":
+            if fact.surfaces_judged == 0:
+                return (
+                    "INDETERMINATE",
+                    f"{fact.venv}: the build-lock validator judged no surface, so the lock check proves nothing",
+                )
+            if not fact.valid:
+                detail = "; ".join(
+                    issue.message for issue in fact.issues if issue.severity != "info"
+                )
+                if not detail:
+                    detail = "validator reported invalid"
+                return (
+                    "LOCK_MISMATCH",
+                    f"{fact.venv} does not match the lock it was built from "
+                    f"({fact.build_lock_path}, sha256 {fact.lock_sha256[:12]}): {detail}",
+                )
+            suffix = (
+                "; " + "; ".join(issue.message for issue in fact.issues)
+                if fact.issues
+                else ""
+            )
+            return (
+                "ALREADY_AT_TARGET",
+                f"{fact.venv} matches the lock it was built from "
+                f"({fact.build_lock_path}, sha256 {fact.lock_sha256[:12]}){suffix}",
+            )
         if fact.drifted:
             return "DRIFT", (
                 f"the installed canonical-clone guard at {fact.live_dir} "
@@ -196,7 +223,7 @@ class HandlerHostReconcileCompute:
 
     @staticmethod
     def _premise(surface: str) -> bool:
-        return surface != "venv:gate-purity" and (
+        return surface not in {"venv:gate-purity", "venv:build-lock"} and (
             surface.startswith("venv:")
             or surface
             in {

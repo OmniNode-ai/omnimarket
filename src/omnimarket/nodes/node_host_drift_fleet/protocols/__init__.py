@@ -2,12 +2,18 @@
 # SPDX-License-Identifier: MIT
 """Injected bus and projection storage boundaries."""
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from typing import Protocol
 
 from omnibase_infra.event_bus.models.model_event_message import ModelEventMessage
 
 from ..models import ModelHostDriftFleetView
+
+
+class ProtocolHostDriftParkedSource(Protocol):
+    """The parked hosts: host -> the host table's reason; raises when the table cannot be read."""
+
+    def parked_hosts(self) -> Mapping[str, str]: ...
 
 
 class ProtocolHostDriftFleetBus(Protocol):

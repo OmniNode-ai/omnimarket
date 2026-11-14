@@ -57,6 +57,8 @@ inputs:
     description: >
       Observed host surfaces in recording order, including installed_revision facts
       with component_name, installed_revision and expected_revision.
+      A venv_build_lock fact carries the core build-lock validator's verdict on a venv
+      (valid, surfaces_judged and its issues); an invalid one is judged LOCK_MISMATCH.
 outputs:
   surfaces:
     type: list[object]

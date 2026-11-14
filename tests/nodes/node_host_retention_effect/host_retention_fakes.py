@@ -22,6 +22,7 @@ from omnimarket.nodes.node_host_retention_effect.models.model_host_retention imp
     ModelDiskReading,
     ModelHostRetentionRequest,
     ModelHostRetentionResult,
+    ModelUvArchiveEntry,
 )
 from omnimarket.nodes.node_temp_retention_effect.handlers.handler_temp_retention import (
     ProcessReferences,
@@ -81,6 +82,59 @@ class FakeUv:
         if self.fail:
             raise OSError("uv refused")
         self.prunes.append((uv_binary, cache_dir, ci))
+
+
+class FakeUvArchive:
+    """The uv archive port. ``entries`` is a list (the ``archive-v0`` bucket) or a dict bucket -> list; the port records each scan
+    (bucket folder, depth) and each removed ``bucket/name``, can fail a scan (all, or the buckets named in ``fail_buckets``) or a
+    remove, and really deletes the folder when given a cache ``root``."""
+
+    def __init__(
+        self,
+        entries: list[ModelUvArchiveEntry]
+        | dict[str, list[ModelUvArchiveEntry]]
+        | None = None,
+        *,
+        fail_scan: bool = False,
+        fail_buckets: tuple[str, ...] = (),
+        fail_remove: bool = False,
+        root: Path | None = None,
+    ) -> None:
+        if entries is None:
+            entries = {}
+        self.entries = entries if isinstance(entries, dict) else {"archive-v0": entries}
+        self.fail_scan = fail_scan
+        self.fail_buckets = fail_buckets
+        self.fail_remove = fail_remove
+        self.root = root
+        self.scans: list[tuple[str, int]] = []
+        self.removed: list[str] = []
+
+    def _bucket(self, bucket_dir: str) -> str:
+        for bucket in self.entries:
+            if bucket_dir.endswith("/" + bucket):
+                return bucket
+        return ""
+
+    def scan(
+        self, bucket_dir: str, depth: int, timeout_s: float
+    ) -> list[ModelUvArchiveEntry]:
+        self.scans.append((bucket_dir, depth))
+        bucket = self._bucket(bucket_dir)
+        if (
+            self.fail_scan
+            or (bucket and bucket in self.fail_buckets)
+            or any(bucket_dir.endswith("/" + name) for name in self.fail_buckets)
+        ):
+            raise OSError("scan refused")
+        return list(self.entries.get(bucket, []))
+
+    def remove(self, bucket_dir: str, name: str) -> None:
+        if self.fail_remove:
+            raise OSError("remove refused")
+        self.removed.append(f"{self._bucket(bucket_dir)}/{name}")
+        if self.root is not None:
+            shutil.rmtree(self.root / name, ignore_errors=True)
 
 
 class FakeLanes:
@@ -147,6 +201,7 @@ def make_ports(
     runner_state: Any = None,
     runner_remove: Any = None,
     uv: Any = None,
+    uv_archive: Any = None,
     lanes: Any = None,
     mounts: Any = None,
     units: Any = None,
@@ -156,6 +211,7 @@ def make_ports(
         runner_state=runner_state or FakeRunnerState(),
         runner_remove=runner_remove or FakeRunnerRemove(),
         uv_cache=uv or FakeUv(),
+        uv_archive=uv_archive or FakeUvArchive(),
         lane_liveness=lanes or FakeLanes(set()),
         container_mounts=mounts or FakeMounts(set()),
         unit_files=units or FakeUnits([]),
