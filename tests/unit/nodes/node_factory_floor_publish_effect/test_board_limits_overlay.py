@@ -103,10 +103,9 @@ def test_the_contract_declares_no_step_limit_and_no_cycle_bound() -> None:
 
 def test_an_unresolved_runtime_refuses_to_read_a_limit() -> None:
     rt = load_runtime()
-    with pytest.raises(
-        PublishLimitMissingError, match=r"limits\.step_timeout_seconds\.hosts"
-    ):
-        rt.declared_longest_path()
+    # A step with no resolved limit is drawn unread, so the longest path counts only resolved steps (OMN-24393).
+    assert not any(s.limit_resolved for s in rt.steps)
+    rt.declared_longest_path()
     with pytest.raises(PublishLimitMissingError, match=r"limits\.cycle_bound_seconds"):
         rt.bound()
 
