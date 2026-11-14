@@ -38,7 +38,6 @@ def test_environment_wins_over_overlay(overlay: dict[str, str]) -> None:
 
 def test_explicit_registry_roots_win(overlay: dict[str, str]) -> None:
     script = capability_probe_sh(
-        [],
         bound="",
         path_export="",
         registry_roots=["/srv/explicit"],
@@ -52,9 +51,7 @@ def test_explicit_registry_roots_win(overlay: dict[str, str]) -> None:
 @pytest.mark.parametrize("roots", [None, []])
 def test_missing_or_empty_registry_roots_refuse(roots: list[str] | None) -> None:
     with pytest.raises(NodeOverlayError) as error:
-        capability_probe_sh(
-            [], bound="", path_export="", registry_roots=roots, environ={}
-        )
+        capability_probe_sh(bound="", path_export="", registry_roots=roots, environ={})
     message = str(error.value)
     assert "lab_hosts.registry_root_candidates" in message
     assert "ONEX_REGISTRY_ROOT" in message
@@ -67,7 +64,7 @@ def test_missing_or_empty_registry_roots_refuse(roots: list[str] | None) -> None
 def test_bad_explicit_candidate_refuses(candidate: str) -> None:
     with pytest.raises(NodeOverlayError, match="registry_root_candidates"):
         capability_probe_sh(
-            [], bound="", path_export="", registry_roots=[candidate], environ={}
+            bound="", path_export="", registry_roots=[candidate], environ={}
         )
 
 
@@ -96,7 +93,7 @@ def test_unreadable_overlay_names_path_and_exception_only(
 
 
 def test_rendered_probe_quotes_registry_roots(overlay: dict[str, str]) -> None:
-    script = capability_probe_sh([], bound="", path_export="", environ=overlay)
+    script = capability_probe_sh(bound="", path_export="", environ=overlay)
     assert (
         'else for r in "${PARITY_H:-}" "${ONEX_REGISTRY_ROOT:-}" "$HOME/registry-a" "/srv/registry-b"; do'
         in script
