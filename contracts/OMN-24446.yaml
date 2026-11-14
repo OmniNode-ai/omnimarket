@@ -50,3 +50,12 @@ dod_evidence:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --host h201 --lane dod-ac5-24446 --kind test -- bash -c 'test "$(docker logs --since 5m omninode-runtime 2>&1 | grep -c "Skipping replayed record on onex.intent.platform.runtime-tick.v1")" = 0'
     cwd: .
+- id: dod-omn24446-ac5-hosted-proxy
+  description: 'hosted proxy for AC5: with no overlay on any runtime-tick-bound handler the seam test reads zero handlers that raise, which is the source of the skip lines; the dev log read itself is the unbound integration proof item above.'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_seam_runtime_tick_overlay_refusal.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
