@@ -59,7 +59,7 @@ handler_routing:
       handler:
         name: "HandlerDelegationTaskKindGuard"
         module: "omnimarket.nodes.node_delegation_task_kind_guard_compute.handlers.handler_task_kind_guard"
-# No event_bus and no runtime_dispatch: the caller that scores a local answer invokes the handler in process, like the
+# The event_bus lists no topic and runtime_dispatch names a direct invocation: the caller that scores a local answer invokes the handler in process, like the
 # landing controller does the decision node. A topic would need broker permission rows in the overlays repository
 # (broker-acl-coverage-gate); add the topics and the rows together when a bus caller exists.
 event_bus:

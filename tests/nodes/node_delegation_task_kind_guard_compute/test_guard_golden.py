@@ -150,5 +150,5 @@ def test_the_contract_names_the_handler_and_declares_no_topic() -> None:
         for h in contract["handler_routing"]["handlers"]
     }
     assert operations == {"guard_task_kind_answer": "HandlerDelegationTaskKindGuard"}
-    assert "event_bus" not in contract
-    assert "runtime_dispatch" not in contract
+    assert contract["event_bus"] == {"subscribe_topics": [], "publish_topics": []}
+    assert contract["runtime_dispatch"]["external_trigger"]
