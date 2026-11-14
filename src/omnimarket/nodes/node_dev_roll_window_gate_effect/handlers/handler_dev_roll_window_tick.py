@@ -29,10 +29,10 @@ from omnimarket.models.dev_roll import (
     EnumDevRollHealth,
     ModelDevRollFacts,
     ModelDevRollRecord,
+    ModelDevRollRefused,
     ModelDevTipChanged,
 )
 from omnimarket.nodes.node_dev_roll_request_compute.handlers import decide_dev_roll
-from omnimarket.nodes.node_dev_roll_request_compute.models import ModelDevRollRefused
 from omnimarket.nodes.node_dev_roll_window_gate_effect.handlers.gate_context import (
     DevRollGateContext,
 )

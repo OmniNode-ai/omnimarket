@@ -23,6 +23,7 @@ from omnimarket.events.runtime_deployment import (
     EnumRuntimeLane,
     ModelDeployPublishCommand,
 )
+from omnimarket.handlers.node_overlay_reader import NodeOverlayNotFoundError
 from omnimarket.nodes.node_dev_roll_window_gate_effect.handlers.gate_context import (
     DevRollGateContext,
 )
@@ -90,7 +91,14 @@ class HandlerDevRollWindowHold:
         return [refusal, request.model_copy(update={"roll_window_released": True})]
 
     def handle(self, request: ModelDeployPublishCommand) -> Result:
-        policy = self._context.policy()
+        try:
+            policy = self._context.policy()
+        except NodeOverlayNotFoundError:
+            # No gate overlay installed: never drop a command; pass it straight on.
+            # The shared runtime-tick topic also reaches this handler: a tick has nothing to pass on.
+            if isinstance(request, ModelDeployPublishCommand):
+                return [request.model_copy(update={"roll_window_released": True})]
+            return []
         now = self._context.now()
         if policy.mode == "off":
             return self._refused(

@@ -28,6 +28,8 @@ description: >
   for the bound. Records each roll's finish and health from the deploy agent's completion event.
 descriptor:
   node_archetype: effect
+  runtime_profiles:
+    - effects
   purity: impure
   idempotent: true
   timeout_ms: 10000
