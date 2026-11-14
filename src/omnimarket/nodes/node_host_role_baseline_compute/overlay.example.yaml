@@ -30,3 +30,7 @@ roles:
     systemd_units: []
     clones: []
     python: "3.13"
+# Optional (OMN-24410): the bus `onex run-node` reaches this node on; read from this file by the client.
+event_bus:
+  type: kafka
+  lane: example-lane

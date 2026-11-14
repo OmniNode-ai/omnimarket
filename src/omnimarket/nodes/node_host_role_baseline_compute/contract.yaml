@@ -57,6 +57,7 @@ runtime_dispatch:
 externally_consumed_topics:
   - onex.evt.omnimarket.host-role-baseline-derived.v1
 
+# The overlay may name an optional event_bus key (OMN-24410) that `onex run-node` reads to reach this node.
 overlay:
   node: node_host_role_baseline_compute
   roots_env: ONEX_SKILL_OVERLAY_ROOTS

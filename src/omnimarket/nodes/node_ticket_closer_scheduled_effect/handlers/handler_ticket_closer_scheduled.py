@@ -12,6 +12,7 @@ reported and nothing is written. Nothing here names a cadence, a path or a host.
 
 from __future__ import annotations
 
+import asyncio
 import os
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
@@ -114,6 +115,7 @@ class HandlerTicketCloserScheduled:
         self._bound: CloserParts | None = None
         self._environ = environ
         self._last_run: datetime | None = None
+        self._running = False
         self._refusals = ScheduledOverlayRefusalLatch(SCHEDULE_OVERLAY_ID)
 
     def _env(self) -> Mapping[str, str]:
@@ -151,7 +153,7 @@ class HandlerTicketCloserScheduled:
             proof = proof.model_copy(update={"receipts": (*proof.receipts, receipt)})
         return proof
 
-    def handle(self, request: ModelRuntimeTick) -> ModelTicketCloserResult | None:
+    async def handle(self, request: ModelRuntimeTick) -> ModelTicketCloserResult | None:
         try:
             schedule = self._schedule_overlay()
         except NodeOverlayNotFoundError as exc:
@@ -163,6 +165,22 @@ class HandlerTicketCloserScheduled:
             seconds=schedule.run_interval_seconds
         ):
             return None
+        # A run waits on the ticket node for up to the overlay's timeout per call, and the runtime calls handle on its event
+        # loop, so the run goes to a worker thread; a tick that arrives while one is in flight starts no second run.
+        if self._running:
+            return None
+        self._running = True
+        try:
+            return await asyncio.to_thread(self._run, request, schedule, now)
+        finally:
+            self._running = False
+
+    def _run(
+        self,
+        request: ModelRuntimeTick,
+        schedule: ModelTicketCloserScheduleOverlay,
+        now: datetime,
+    ) -> ModelTicketCloserResult | None:
         source, verifier, writer = self._source, self._verifier, self._writer
         if (
             not self._injected
