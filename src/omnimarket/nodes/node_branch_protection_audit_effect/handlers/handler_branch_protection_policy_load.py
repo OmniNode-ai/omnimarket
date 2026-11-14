@@ -11,6 +11,9 @@ from omnimarket.nodes.node_branch_protection_audit_effect.models import (
     ModelBranchProtectionPolicyLoadRequest,
 )
 
+# The one overlay list whose entries are mappings, not strings.
+_STRUCTURED_KEY = "landing_branches"
+
 
 class BranchProtectionOverlayError(ValueError):
     """An overlay cannot supply a valid audit policy."""
@@ -44,12 +47,21 @@ class HandlerBranchProtectionPolicyLoad:
                 f"overlay schema_version must be {OVERLAY_SCHEMA_VERSION!r}"
             )
         fields = ModelBranchProtectionAuditPolicy.model_fields
-        updates: dict[str, tuple[str, ...]] = {}
+        updates: dict[str, object] = {}
         for key, value in raw.items():
             if key == "schema_version":
                 continue
             if not isinstance(key, str) or key not in fields:
                 raise BranchProtectionOverlayError(f"overlay unknown key: {key!r}")
+            if key == _STRUCTURED_KEY:
+                if not isinstance(value, list) or not all(
+                    isinstance(item, dict) for item in value
+                ):
+                    raise BranchProtectionOverlayError(
+                        f"overlay {key} must be a list of mappings"
+                    )
+                updates[key] = tuple(value)
+                continue
             if not isinstance(value, list) or not all(
                 isinstance(item, str) for item in value
             ):
