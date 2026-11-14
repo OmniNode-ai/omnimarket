@@ -43,6 +43,15 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_dev_deploy_reading_effect -q --no-cov -p no:randomly
     cwd: .
+- id: dod-omn23603-lineage-chain-files
+  description: Runs the lineage golden chain and error chain tests where this change moved them, with their named mutations as the failing control.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_dev_deploy_reading_compute/test_golden_chain_dev_deploy_reading_compute.py tests/nodes/node_dev_deploy_reading_compute/test_error_chain_dev_deploy_reading_compute.py -q --no-cov -p no:randomly
+    cwd: .
 - id: dod-omn23603-integration-proof-lab
   description: 'Integrated: on a lab host the piece 11 reading node runs its read-only probe verb once at the pushed head under the deployed overlay (ONEX_SKILL_OVERLAY_ROOTS naming the overlays checkout, carrying the lineage section) and prints the reading run event with the lineage rule applied. Hosted CI cannot reach the lab runtime, so only the local Done gate runs this unbound item.'
   source: manual

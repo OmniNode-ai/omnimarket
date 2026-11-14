@@ -1,0 +1,103 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Convergence Orchestrator (OMN-24198)
+#
+# On a runtime tick sends one convergence command per declared host as a lab work unit and publishes
+# one run event holding one typed result per host. The hosts, the mode (observe or act), the commands,
+# the repository and commit the units run at and the cadence are all in the node's overlay. While the
+# host timers that run the same job exist the overlay's mode is observe: the observe command reads the
+# clones and changes none; the overlay value act is set in the same change that retires the timers.
+name: node_convergence_orchestrator
+lifecycle: experimental
+node_type: orchestrator
+runtime_profiles:
+- effects
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: On a runtime tick sends one convergence command per host as a lab work unit and
+  publishes one typed result per host; observe mode changes nothing, act mode converges.
+contract_name: node_convergence_orchestrator
+node_name: node_convergence_orchestrator
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+  - operation: convergence.scheduled_run
+    topic: onex.intent.platform.runtime-tick.v1
+    handler:
+      name: HandlerConvergenceScheduled
+      module: omnimarket.nodes.node_convergence_orchestrator.handlers.handler_convergence_scheduled
+    event_model:
+      name: ModelRuntimeTick
+      module: omnibase_infra.runtime.models.model_runtime_tick
+    event_type: platform.runtime-tick
+input_subscriptions:
+- topic: onex.intent.platform.runtime-tick.v1
+  operation: convergence.scheduled_run
+event_bus:
+  subscribe_topics:
+  - onex.intent.platform.runtime-tick.v1
+  publish_topics:
+  - onex.evt.omnimarket.convergence-run-completed.v1
+  - onex.evt.omnimarket.schedule-run.v1
+terminal_event: onex.evt.omnimarket.convergence-run-completed.v1
+published_events:
+- topic: onex.evt.omnimarket.convergence-run-completed.v1
+  event_type: ModelConvergenceRunCompleted
+- topic: onex.evt.omnimarket.schedule-run.v1
+  event_type: ModelScheduleRunEvent
+externally_consumed_topics:
+- onex.evt.omnimarket.convergence-run-completed.v1
+- onex.evt.omnimarket.schedule-run.v1
+# The seam with the lab-work serve unit (node_lab_work_unit_effect): the orchestrator publishes the
+# command on its command topic and reads the receipt on its terminal topics, through the lab-work caller.
+lab_work_seam:
+  command_topic: onex.cmd.omnimarket.lab-work-unit-requested.v1
+  receipt_topics:
+  - onex.evt.omnimarket.lab-work-unit-completed.v1
+  - onex.evt.omnimarket.lab-work-unit-failed.v1
+  capacity_topic: onex.evt.omnimarket.lab-host-capacity-advertised.v1
+runtime:
+  schedule_overlay:
+    overlay_id: node_convergence_orchestrator
+    model: omnimarket.models.model_convergence_orchestrator.ModelConvergenceOrchestratorOverlay
+overlay_profiles:
+  in_memory: overlays/in_memory.yaml
+  lab_work: overlays/lab_work.example.yaml
+descriptor:
+  node_archetype: orchestrator
+  purity: effectful
+  idempotent: false
+  timeout_ms: 3600000
+  side_effects:
+  - sends one lab work unit per host, which runs the mode's convergence command there; in observe mode the command reads and changes nothing
+metadata:
+  transport_type: kafka
+  ticket: OMN-24198
+  description: Sends one convergence command per host on a runtime tick and publishes one typed result per host.
+  created: '2026-11-14'
+  tags:
+  - convergence
+  - canonical-clone
+  - orchestrator
+broker_acl_grants:
+- principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+  grants:
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.intent.platform.runtime-tick.v1, operation: READ}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.intent.platform.runtime-tick.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.convergence-run-completed.v1, operation: WRITE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.convergence-run-completed.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.schedule-run.v1, operation: WRITE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.schedule-run.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.lab-work-unit-requested.v1, operation: WRITE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.lab-work-unit-requested.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.lab-work-unit-completed.v1, operation: READ}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.lab-work-unit-completed.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.lab-work-unit-failed.v1, operation: READ}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.lab-work-unit-failed.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.lab-host-capacity-advertised.v1, operation: READ}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.lab-host-capacity-advertised.v1, operation: DESCRIBE}
+  - {resource_type: GROUP, pattern: PREFIXED, name: local.omnimarket.node_convergence_orchestrator.consume.v1., operation: READ}
+  - {resource_type: GROUP, pattern: PREFIXED, name: local.omnimarket.node_convergence_orchestrator.consume.v1., operation: DESCRIBE}

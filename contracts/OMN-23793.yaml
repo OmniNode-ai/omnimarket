@@ -1,0 +1,57 @@
+schema_version: 1.0.0
+ticket_id: OMN-23793
+title: The branch protection audit reports a landing branch without the landing-only merge ruleset or with extra bypass actors
+summary: The audit policy gains landing_branches, each repository's landing branch and its declared bypass actors. The audit reports a finding when a declared landing branch has no active branch ruleset with the update rule, when that ruleset's bypass actors differ from the declared set, or when the rulesets cannot be read. The overlay loader accepts the new list as mappings.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23793-landing-only-ruleset
+  statement: A declared landing branch without an active update-restricting ruleset, or with bypass actors that differ from the declared set, is reported as a finding; an exact match passes and an undeclared repository is not judged.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a fixture with the landing-only ruleset missing, and one with an extra bypass actor, each yield the finding -- falsifier: uv run pytest tests/unit/nodes/node_branch_protection_audit_effect -q -k landing_only_ruleset'
+  - id: AC2
+    statement: 'AC2: integrated: done only when running and observed where it runs: the audit from the merged revision run over the fleet after S22''s pilot reports no finding for the pilot and one for a repository not yet switched -- falsifier: the audit''s report read on the dev lane, the output pasted in the pull request'
+evidence_requirements:
+- kind: tests
+  description: The landing-only ruleset tests and the overlay loader tests at the pushed head. The control test shows both fixtures audit clean when no landing branch is declared.
+  command: uv run pytest tests/unit/nodes/node_branch_protection_audit_effect tests/nodes/node_branch_protection_audit_effect -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23793-ac1-landing-only
+  description: The missing-ruleset and extra-bypass-actor fixtures each yield the finding at the pushed head; the control without the declared landing branch yields none. It is also the hosted-runnable control for AC2, whose fleet reading is the unbound local item below.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_branch_protection_audit_effect -q --no-cov -n 0 -p no:randomly -k landing_only_ruleset
+    cwd: .
+- id: dod-omn23793-overlay-loader
+  description: The overlay loader accepts landing_branches as mappings and refuses other shapes.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_branch_protection_audit_effect/test_branch_protection_policy_load.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23793-ac2-fleet-audit
+  description: The audit from the merged revision, run over the fleet with the deployment overlay that declares each landing branch, reports no finding for the pilot and one for a repository not yet switched. Hosted CI cannot reach the fleet, so only the local Done gate runs this unbound check; it fails closed while the overlay path is unset. Open until the pilot (the prerequisite ticket's switch) has run.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'uv run --frozen python -m omnimarket.nodes.node_branch_protection_audit_effect --overlay-required --overlay "${BRANCH_PROTECTION_AUDIT_OVERLAY:?}" --branches dev'
+    cwd: .
+- id: dod-omn23793-integration-proof
+  description: The pushed head ran the landing-only ruleset tests and the overlay loader tests on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23793 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_branch_protection_audit_effect tests/nodes/node_branch_protection_audit_effect -q --no-cov'
+    cwd: .

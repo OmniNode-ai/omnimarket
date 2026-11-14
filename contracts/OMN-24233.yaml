@@ -1,0 +1,61 @@
+schema_version: 1.0.0
+ticket_id: OMN-24233
+title: The pause check decision runs as a market node with a live-log hold read
+summary: node_pause_check_findings_compute decides the findings of pr-land's pause check (LABEL, PARKED, HOLD, PR-ROW, REPO-PAUSE, ORDER, CONTEXT) for a batch of pull requests, a Python port of the awk of pause_check.sh. Its command reads the ledger file once, reads the bus-fed holds answer once through node_work_ledger_reader_effect and node_ledger_hold_verdict_effect, and lets that answer replace the file's HOLD findings (source=node). A read that did not answer falls back to the file's HOLD findings while the hold verdict overlay allows it, counted and stamped source=file-fallback; a retired fallback or a hold line it cannot read is UNDECIDED, a stop, never CLEAR. The plugin's two scripts call it in the next pull request.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24233-pause-check-node
+  statement: The pause check decides HELD, CLEAR or cannot-decide for a batch of pull requests from one live-log read, as a node, so the shell script and the drain map can drop their own hold parsing.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a new step decides HELD, CLEAR or cannot-decide for a batch of pull requests from one live-log read, with the text copy as a counted fallback, and gives the old script''s answers on its 22 tests. -- falsifier: uv run pytest tests/unit/nodes/node_pause_check_findings_compute with a control that returns CLEAR for a hold present only in the live log and must fail'
+  - id: AC2
+    statement: 'AC2: a hold with no id, a hold lifted for one pull request only and a failed read each give the old script''s answer, and a failed read is never clear. -- falsifier: the same test file, with a control that treats a failed read as clear and must fail'
+  - id: AC3
+    statement: 'AC3: integrated: on a lab host the step run from its branch answers HELD for a pull request with a real open hold and CLEAR for one without, from the live log, with the fallback count 0. -- falsifier: run the step on h053 and read the source=node cell and the fallback count in its output; source=file-fallback fails it'
+evidence_requirements:
+- kind: tests
+  description: The pause check findings node tests, the 22 parity cases, the runtime and the seams included.
+  command: uv run --frozen pytest tests/unit/nodes/node_pause_check_findings_compute -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24233-ac1
+  description: The 22 parity cases and the runtime tests pass; the named control (the file's hold read as the answer) fails.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_pause_check_findings_compute -q --no-cov
+    cwd: .
+- id: dod-omn24233-ac2
+  description: The hold shapes and the failed-read tests pass.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_pause_check_findings_compute -q --no-cov -k "legacy or release or undecided or fault"
+    cwd: .
+- id: dod-omn24233-ac3
+  description: The live reading on h053 from the branch is in the pull request Lab line; the node tests behind it pass.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_pause_check_findings_compute -q --no-cov
+    cwd: .
+- id: dod-omn24233-integration-proof
+  description: Run this pull request's own tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24233 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_pause_check_findings_compute -q --no-cov
+    cwd: .

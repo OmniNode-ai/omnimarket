@@ -1,0 +1,32 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. The deployment's baselines live at <root>/node_host_role_baseline_compute/overlay.yaml under a root named
+# in ONEX_SKILL_OVERLAY_ROOTS. `base` is what every host carries; each role adds to it. A role the host table declares and this
+# file does not list is refused (no-baseline).
+defaults:
+  python: "3.12"
+  git_remote_template: https://example.invalid/{repo}.git
+  unit_prefix: example-
+base:
+  systemd_units: [example-drift.timer, example-serve.service]
+  clones:
+    - {repo: Example-Org/core, ref: main, path: $OMNI_HOME/core}
+  python: null
+roles:
+  lab-worker:
+    systemd_units: [example-tmp-reaper.timer]
+    clones: []
+    python: null
+  gpu-model:
+    systemd_units: [example-model.service]
+    clones: []
+    python: null
+  runtime-host:
+    systemd_units: [example-deploy-agent.service]
+    clones:
+      - {repo: Example-Org/infra, ref: dev, path: $OMNI_HOME/infra}
+    python: null
+  operator-mac:
+    systemd_units: []
+    clones: []
+    python: "3.13"
