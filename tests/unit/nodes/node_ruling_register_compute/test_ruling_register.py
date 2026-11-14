@@ -18,6 +18,7 @@ import pytest
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.models.model_ruling_register import (
     EnumReadStatus,
+    EnumRulingExpect,
     EnumRulingVerdict,
     ModelRulingExpect,
     ModelRulingRead,
@@ -57,7 +58,9 @@ def row(
         read=ModelRulingRead(
             host="host-a",
             argv=("example-command",),
-            expect=ModelRulingExpect(kind=kind, value=value, bound=bound),  # type: ignore[arg-type]
+            expect=ModelRulingExpect(
+                kind=EnumRulingExpect(kind), value=value, bound=bound
+            ),
         ),
         owner=owner,
         fix=f"fix {row_id}",
