@@ -152,6 +152,7 @@ def test_self_accepted_is_proposal_when_the_binding_carries_no_acceptance() -> N
     )
 
 
+@pytest.mark.usefixtures("standard_form_read")
 def test_binding_with_acceptance_time_but_no_acceptor_is_refused_by_the_model(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

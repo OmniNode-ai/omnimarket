@@ -315,6 +315,9 @@ class TestEvidenceCollector:
             ],
         )
         data = yaml.safe_load(contract.read_text())
+        # OMN-23771: the replayed verifier runs in a subprocess and reads the
+        # contract through omnibase_core's model, which requires a title.
+        data["title"] = "Replay provisions the pinned sibling"
         data["requirements"] = [
             {
                 "id": "req-sibling",
@@ -1887,6 +1890,7 @@ class TestHandlerWithCollector:
 
 
 @pytest.mark.unit
+@pytest.mark.usefixtures("standard_form_read")
 class TestStandardContractSchema:
     """OMN-23771 AC1 and AC2: the contract is loaded through the core model."""
 

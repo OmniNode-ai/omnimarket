@@ -28,6 +28,8 @@ from tests.unit.nodes.node_dod_verify.omn_23771_standard_contract_world import (
     write_contract,
 )
 
+pytestmark = pytest.mark.usefixtures("standard_form_read")
+
 CUTOVER_ENV = "DOD_VERIFY_STANDARD_TICKET_CUTOVER"
 
 

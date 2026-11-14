@@ -31,6 +31,9 @@ from omnimarket.nodes.node_dod_verify.models.model_durable_evidence_gate import 
 from omnimarket.nodes.node_dod_verify.services.evidence_collector import (
     EvidenceCollector,
 )
+from omnimarket.nodes.node_dod_verify.services.standard_ticket_contract import (
+    StandardContractJudgement,
+)
 
 
 class EmptyLocalSource(DodEvidenceLocalSource):
@@ -84,3 +87,32 @@ def _no_live_durable_gate(monkeypatch: pytest.MonkeyPatch) -> None:
     host's OCC clone; a suite that does not test the gate runs none of them.
     The repo-first suite restores the real method and injects its probes."""
     monkeypatch.setattr(EvidenceCollector, "run_durable_gate", lambda _self: None)
+
+
+@pytest.fixture
+def standard_form_read() -> None:
+    """Opt in to OMN-23771's standard-form read of the contract.
+
+    A test that names this fixture (``usefixtures``) runs the real read: the core
+    model, the fingerprint, the cutover and the repository rule.
+    """
+
+
+@pytest.fixture(autouse=True)
+def _legacy_fixtures_skip_standard_form(
+    request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """OMN-23771: the collector's own defensive paths are tested with minimal and
+    deliberately malformed contracts (a ``command`` key, no title, a non-string
+    id) that omnibase_core's ModelTicketContract refuses before those paths run.
+    Those suites exercise the verifier's checks, not the standard form, so the
+    read is a no-op for them; the tests that assert it name ``standard_form_read``.
+    Moving each legacy fixture onto a contract the model accepts is follow-up work.
+    """
+    if "standard_form_read" in request.fixturenames:
+        return
+    monkeypatch.setattr(
+        EvidenceCollector,
+        "_judge_standard_form",
+        lambda _self, *_args, **_kwargs: StandardContractJudgement(),
+    )
