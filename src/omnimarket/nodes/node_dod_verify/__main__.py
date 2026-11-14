@@ -507,6 +507,16 @@ def main() -> None:
         help="Override path to contract YAML (default: auto-discovered from ticket ID)",
     )
     parser.add_argument(
+        "--full-contract-path",
+        type=str,
+        default=None,
+        help=(
+            "Path to the complete head contract YAML. The standard-ticket rules read "
+            "it when --contract-path is a scoped copy; the checks still run from "
+            "--contract-path. Needs --contract-path."
+        ),
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         default=False,
@@ -554,6 +564,7 @@ def main() -> None:
         delegation_correlation_id=args.delegation_correlation_id,
         ticket_id=args.ticket_id,
         contract_path=args.contract_path,
+        full_contract_path=args.full_contract_path,
         dry_run=args.dry_run,
         execution_audience=args.execution_audience,
         requested_at=datetime.now(tz=UTC),

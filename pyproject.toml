@@ -153,8 +153,10 @@ dependencies = [
     # cause enum carries returned_to_caller (core#2081). Raised in BOTH places.
     # OMN-22385: floor raised 0.47.53 -> 0.47.60, the first release that carries the
     # PR OCC stamp schema (core#2173), so no module imports omnibase-compat.
-    # Raised in BOTH places.
-    "omnibase-core>=0.47.60,<0.48.0",
+    # OMN-23771: floor raised 0.47.60 -> 0.47.74, the first release that carries the
+    # schema 1.1.0 standard ticket form and its plain-hash fingerprint (core#2308),
+    # which dod-verify checks. Raised in BOTH places.
+    "omnibase-core>=0.47.74,<0.48.0",
     "omnibase-spi>=0.23.3,<0.24.0",
     # OMN-17549: floor raised 0.38.15 -> 0.38.16. 0.38.16 carries the OMN-17379
     # fail-closed projection guard -- a projection handler that consumes an
@@ -1868,8 +1870,10 @@ override-dependencies = [
     # cause enum carries returned_to_caller (core#2081). Raised in BOTH places.
     # OMN-22385: floor raised 0.47.53 -> 0.47.60, the first release that carries the
     # PR OCC stamp schema (core#2173), so no module imports omnibase-compat.
-    # Raised in BOTH places.
-    "omnibase-core>=0.47.60,<0.48.0",
+    # OMN-23771: floor raised 0.47.60 -> 0.47.74, the first release that carries the
+    # schema 1.1.0 standard ticket form and its plain-hash fingerprint (core#2308),
+    # which dod-verify checks. Raised in BOTH places.
+    "omnibase-core>=0.47.74,<0.48.0",
     "omnibase-spi>=0.23.3,<0.24.0",
     # OMN-18159: raised in lockstep with the dependency floor above --
     # 0.38.22 is the first release whose derived topology grants let the

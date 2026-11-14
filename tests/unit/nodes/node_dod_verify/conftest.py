@@ -84,3 +84,22 @@ def _no_live_durable_gate(monkeypatch: pytest.MonkeyPatch) -> None:
     host's OCC clone; a suite that does not test the gate runs none of them.
     The repo-first suite restores the real method and injects its probes."""
     monkeypatch.setattr(EvidenceCollector, "run_durable_gate", lambda _self: None)
+
+
+@pytest.fixture(autouse=True)
+def _no_ambient_standard_ticket_cutover(monkeypatch: pytest.MonkeyPatch) -> None:
+    """OMN-23771: a host's real node_dod_verify overlay must not judge a fixture contract.
+
+    The overlay names the standard-ticket cutover; with one in the ambient roots every
+    minimal fixture contract in this directory would be held to the standard form. A
+    test that wants a cutover names its own root.
+    """
+    import os
+    from pathlib import Path
+
+    roots = [
+        root
+        for root in os.environ.get("ONEX_SKILL_OVERLAY_ROOTS", "").split(os.pathsep)
+        if root and not (Path(root) / "node_dod_verify" / "overlay.yaml").is_file()
+    ]
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", os.pathsep.join(roots))
