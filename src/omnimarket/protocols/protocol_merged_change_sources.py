@@ -39,3 +39,20 @@ class ProtocolMergedChangeSources(Protocol):
     def read_runtime(self, runners: Sequence[ModelMcrRunner]) -> ModelMcrRuntimeFacts:
         """Loaded nodes, subscriptions, published results and unit runs, with the groups not read named."""
         ...
+
+
+@runtime_checkable
+class ProtocolMergedChangeRuntimeReader(Protocol):
+    """The reads that need the runtime host: its container and units, and its checkouts."""
+
+    def read(
+        self, runners: Sequence[ModelMcrRunner]
+    ) -> tuple[ModelMcrRuntimeFacts, datetime | None]:
+        """The runtime facts and when the running build started (None: not read)."""
+        ...
+
+    def checkout_ancestry(
+        self, path: str, shas: Sequence[str]
+    ) -> dict[str, bool | None]:
+        """Whether each sha is in the history of the checkout's head on the runtime host (None: it could not say)."""
+        ...

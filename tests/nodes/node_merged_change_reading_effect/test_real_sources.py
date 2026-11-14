@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import os
 import subprocess
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -18,6 +18,7 @@ from omnibase_core.validators.no_unguarded_git_subprocess import (
 
 from omnimarket.models.model_merged_change_reading import (
     ModelMcrChange,
+    ModelMcrRunner,
     ModelMcrRuntimeFacts,
 )
 from omnimarket.models.model_merged_running_count import (
@@ -185,15 +186,19 @@ class _StoreRuntime:
     def __init__(self, answers: dict[str, bool | None], fail: bool = False) -> None:
         self.answers = answers
         self.fail = fail
-        self.asked: list[tuple[str, list[str]]] = []
+        self.asked: list[tuple[str, Sequence[str]]] = []
 
-    def checkout_ancestry(self, path: str, shas: list[str]) -> dict[str, bool | None]:
+    def checkout_ancestry(
+        self, path: str, shas: Sequence[str]
+    ) -> dict[str, bool | None]:
         self.asked.append((path, shas))
         if self.fail:
             raise ValueError("host unreachable")
         return {s: self.answers.get(s) for s in shas}
 
-    def read(self, runners: object) -> tuple[ModelMcrRuntimeFacts, None]:
+    def read(
+        self, runners: Sequence[ModelMcrRunner]
+    ) -> tuple[ModelMcrRuntimeFacts, datetime | None]:
         return ModelMcrRuntimeFacts(), None
 
 
@@ -207,7 +212,7 @@ def _store_source(runtime: _StoreRuntime, tmp_path: Path) -> SourceMergedChangeR
         ),
         provenance=None,
         provenance_repos=(),
-        runtime=runtime,  # type: ignore[arg-type]
+        runtime=runtime,
         labels=labels(),
         home=tmp_path,
     )

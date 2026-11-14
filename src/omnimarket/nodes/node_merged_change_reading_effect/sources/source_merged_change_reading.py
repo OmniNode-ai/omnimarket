@@ -25,11 +25,11 @@ from omnimarket.nodes.node_merged_change_reading_effect.models.model_merged_chan
     ModelMcrLogLabels,
     ModelMcrRunnerOverlay,
 )
-from omnimarket.nodes.node_merged_change_reading_effect.sources.source_runtime_log import (
-    SourceRuntimeFacts,
-)
 from omnimarket.nodes.node_merged_running_count_effect.sources.source_deployed_provenance import (
     SourceDeployedProvenance,
+)
+from omnimarket.protocols.protocol_merged_change_sources import (
+    ProtocolMergedChangeRuntimeReader,
 )
 
 
@@ -42,7 +42,7 @@ class SourceMergedChangeReading:
         runners: ModelMcrRunnerOverlay,
         provenance: SourceDeployedProvenance | None,
         provenance_repos: Sequence[str],
-        runtime: SourceRuntimeFacts | None,
+        runtime: ProtocolMergedChangeRuntimeReader | None,
         labels: ModelMcrLogLabels,
         home: Path,
     ) -> None:
