@@ -26,6 +26,8 @@ LOG_TEXT = "\n".join(
         "2026-11-14 09:04:08 [INFO] omnibase_infra.runtime.service_dispatch_result_applier: Published output event to onex.evt.omnimarket.schedule-run.v1 (correlation_id=1e76d90a-5830-4194-8ce0-b86bc210f02c)",
         "2026-11-14 09:07:30 [INFO] omnibase_infra.runtime.service_dispatch_result_applier: Published output event to onex.evt.omnimarket.schedule-run.v1 (correlation_id=75fba0af-0000-4000-8000-000000000000)",
         "2026-11-14 09:06:36 [INFO] omnibase_infra.runtime.service_dispatch_result_applier: Published output event to onex.evt.omnimarket.lab-alarm-checked.v1 (correlation_id=3b3b3b3b-0000-4000-8000-000000000000)",
+        "2026-11-14 09:02:12 [WARNING] omnibase_infra.services.service_runtime_health_monitor: Runtime health check: status=DEGRADED contracts=1375 errors=0 consumer_groups=2390 empty=0",
+        "2026-11-14 09:07:18 [INFO] omnibase_infra.services.service_runtime_health_monitor: Runtime health check: status=HEALTHY contracts=1375 errors=0 consumer_groups=2340 empty=0",
         "2026-11-14 08:57:59 [INFO] omnibase_infra.runtime.auto_wiring.handler_wiring: Auto-wiring (deferred): skipping Kafka subscription for contract 'node_start_path_census_compute' because its wiring outcome is skipped",
     ]
 )

@@ -229,3 +229,17 @@ def test_error_manifest_unreachable_keeps_the_log_lines() -> None:
     facts, _ = _manifest_source(ssh, "http://127.0.0.1:8085/m").read([])
     assert len(facts.loaded_nodes) == 2
     assert facts.unread == ()
+
+
+def test_a_runtime_that_is_not_healthy_reads_joins_and_publishes_unread() -> None:
+    """The first live read after a roll called every topic node unsubscribed while the runtime was still attaching."""
+    degraded = LOG_TEXT.replace("status=HEALTHY", "status=DEGRADED")
+    booting = "\n".join(
+        line for line in LOG_TEXT.splitlines() if "Runtime health check" not in line
+    )
+    for text in (degraded, booting):
+        facts = parse_runtime_log(text, labels())
+        assert set(facts.unread) == {"subscriptions", "published"}
+        # what was seen still counts
+        assert len(facts.subscriptions) == 1
+    assert parse_runtime_log(LOG_TEXT, labels()).unread == ()

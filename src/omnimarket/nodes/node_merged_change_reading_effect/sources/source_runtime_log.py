@@ -53,6 +53,8 @@ def parse_runtime_log(text: str, labels: ModelMcrLogLabels) -> ModelMcrRuntimeFa
     loaded_re = re.compile(labels.loaded_pattern)
     joined_re = re.compile(labels.subscribed_pattern)
     published_re = re.compile(labels.published_pattern)
+    health_re = re.compile(labels.health_pattern)
+    health = ""
     loaded: dict[str, datetime] = {}
     joined: dict[tuple[str, str], datetime] = {}
     published: dict[str, tuple[datetime, int]] = {}
@@ -65,12 +67,20 @@ def parse_runtime_log(text: str, labels: ModelMcrLogLabels) -> ModelMcrRuntimeFa
         if hit:
             joined[(hit["node"], hit["topic"])] = _stamp(hit["ts"], labels)
             continue
+        hit = health_re.search(line)
+        if hit:
+            health = hit["status"]
+            continue
         hit = published_re.search(line)
         if hit:
             at = _stamp(hit["ts"], labels)
             last, count = published.get(hit["topic"], (at, 0))
             published[hit["topic"]] = (max(last, at), count + 1)
+    # A runtime that is booting or degraded has not attached every consumer: what it has not joined or published yet
+    # is not a fact. The facts it did show still count; only their absence is unread.
+    settled = health == labels.healthy_status
     return ModelMcrRuntimeFacts(
+        unread=() if settled else ("subscriptions", "published"),
         loaded_nodes=tuple(
             ModelMcrLoadedNode(node=n, loaded_at=at) for n, at in sorted(loaded.items())
         ),
@@ -206,6 +216,7 @@ class SourceRuntimeFacts:
                 self._overlay.ssh_host_env, script, self._labels.docker_timeout_seconds
             )
             facts = parse_runtime_log(text, self._labels)
+            unread.extend(facts.unread)
             started = self.build_started_at()
         except (OSError, ValueError, subprocess.SubprocessError):
             unread.extend(("loaded_nodes", "subscriptions", "published"))

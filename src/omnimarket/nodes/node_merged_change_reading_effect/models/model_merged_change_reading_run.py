@@ -86,6 +86,8 @@ class ModelMcrLogLabels(BaseModel):
     loaded_pattern: str = Field(min_length=1)
     subscribed_pattern: str = Field(min_length=1)
     published_pattern: str = Field(min_length=1)
+    health_pattern: str = Field(min_length=1)
+    healthy_status: str = Field(min_length=1)
     started_at_template: str = Field(min_length=1)
     docker_timeout_seconds: int = Field(gt=0)
     manifest_contracts_key: str = Field(min_length=1)
