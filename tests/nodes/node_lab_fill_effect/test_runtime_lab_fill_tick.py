@@ -49,6 +49,7 @@ HELD_TICKET_LINE = "2026-11-10T10:25:00Z | MSG | from=fix-1 | to=landing-control
 def tick_overlay(root: Path, **changes: Any) -> dict[str, Any]:
     """The unit's overlay document: synthetic values, every path under ``root``."""
     document: dict[str, Any] = {
+        "apply": True,
         "parent": "orchestrator-bb1a",
         "parent_ticket": "OMN-17427",
         "authority_ruling": "2026-10-17T09:03:06Z",
@@ -204,3 +205,17 @@ def test_the_probe_loads_nothing(tmp_path: Path) -> None:
     assert main(["--probe"], environ={}, stdout=out) == 0
     assert json.loads(out.getvalue()) == {"status": "probe_ok"}
     assert not (tmp_path / "state").exists()
+
+
+def test_an_overlay_that_does_not_apply_plans_without_launching(tmp_path: Path) -> None:
+    """The plan-only read of a pass: the lanes are planned from the snapshot's slots and none is launched."""
+    env = write_unit(tmp_path, apply=False)
+    write_snapshot(tmp_path)
+    code, out, err, runner = run(env, tmp_path)
+    assert code == 0
+    result = json.loads(out)
+    assert result["outcome"] == "planned"
+    assert result["free_slots"] == 2
+    assert len(result["dispatched"]) == 2
+    assert runner.calls == []
+    assert "outcome=planned free_slots=2 placed=0" in err

@@ -32,6 +32,8 @@ class ModelLabFillTickOverlay(BaseModel):
 
     model_config = _FROZEN
 
+    # True: the tick launches its lanes; False: it only plans them (a read of what a pass would do, launching nothing).
+    apply: bool
     parent: str = Field(pattern=LANE_PATTERN)
     parent_ticket: str = Field(pattern=r"^OMN-[0-9]+$")
     authority_ruling: str = Field(pattern=r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]{8}Z$")
@@ -98,7 +100,7 @@ class ModelLabFillTickOverlay(BaseModel):
         return ModelLabFillTickRequest(
             run_key=run_key,
             fire_id=fire_id,
-            apply=True,
+            apply=self.apply,
             hosts=hosts,
             ledger_path=ledger_path,
             approved_work_path=approved_work_path,
