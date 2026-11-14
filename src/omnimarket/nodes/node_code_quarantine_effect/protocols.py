@@ -11,6 +11,7 @@ from omnimarket.nodes.node_code_quarantine_effect.models import (
     ModelCatalogRow,
     ModelQuarantineEvent,
     ModelQuarantineRecord,
+    ModelStage2Event,
 )
 
 
@@ -61,3 +62,19 @@ class ProtocolClock(Protocol):
 
 class ProtocolQuarantineReporter(Protocol):
     def report(self, event: ModelQuarantineEvent) -> None: ...
+
+
+class LoadedCopyUnreadableError(Exception):
+    """Dev's loaded copy of a contract name could not be read: no answer, which is never "no copy is loaded"."""
+
+
+class ProtocolLoadedCopyReader(Protocol):
+    def loaded_repository(self, contract_name: str) -> str:
+        """The repository whose copy of the contract name dev loads; empty when the reading shows dev loads none.
+
+        Raises ``LoadedCopyUnreadableError`` when the reading cannot be made or does not cover the name.
+        """
+
+
+class ProtocolStage2Reporter(Protocol):
+    def report(self, event: ModelStage2Event) -> None: ...

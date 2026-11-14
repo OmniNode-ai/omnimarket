@@ -1,0 +1,40 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. A deployment's real overlay lives in the overlays repository.
+state:
+  home_env: OMNI_HOME
+  state_relpath: .onex_state/morning-workflows
+  results_dirname: results
+  latest_filename: lab-fill-latest.json
+  snapshot_relpath: .claude_scratch/plans-today
+  snapshot_name_template: linear-{date}.json
+  date_format: "%Y-%m-%d"
+alert:
+  lib_env: ONEX_ALERT_CHANNEL_LIB
+  lib_relpath: omniclaude/plugins/onex/hooks/scripts/alert-channel.sh
+  function: alert_channel_send
+  shell: /bin/bash
+  timeout_seconds: 60
+  unavailable_exit: 3
+policy:
+  workflow: lab-fill
+  results_version: 1
+  truncated_marker: WORKFLOW_RESULT_TRUNCATED
+  refused_pattern: "hit your .*limit|usage limit reached|out of extra usage"
+  refused_line_max_chars: 160
+  alert_text_max_chars: 700
+  no_result_phases: [failed, timeout, abandoned_background]
+  degraded_exit: 70
+  invalid_exit: 65
+  class_truncated: workflow-result-truncated
+  class_refused: lab-fill-claude-refused
+  class_no_result: lab-fill-no-result
+  class_blind: lab-fill-blind
+  class_undelivered: lab-idle-alert-undelivered
+  class_friction_missing: lab-idle-friction-missing
+  truncated_notice_template: "{workflow} degraded: class={degraded_class}; the Workflow result was cut before the agent read it and no summary was built (full result file: {result_file})"
+  refused_alert_template: "LAB FILL REFUSED fire={fire_id} the Claude run was refused for a usage limit and dispatched nothing (free slots unread): {refused_line}"
+  no_result_alert_template: "LAB FILL NO RESULT fire={fire_id} phase={phase} exit={exit}: the fire wrote no result, so its free slots and dispatches are unread; run log {run_log}"
+  idle_alert_template: "floor row stoppage:lab-idle | {cause}free-slots={free_slots} eligible={eligible} dispatched={dispatched} | full reasons in {latest} | {alert_text}"
+  snapshot_cause_template: "cause=linear-snapshot-absent:{snapshot_name} | "
+  eligible_unread: unread

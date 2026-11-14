@@ -151,6 +151,10 @@ async def _write(
     return len(returned)
 
 
+def _without_event_id(event: dict[str, Any]) -> dict[str, Any]:
+    return {k: v for k, v in event.items() if k != "event_id"}
+
+
 async def _count(conn: asyncpg.Connection, schema: str) -> int:
     return int(await conn.fetchval(f"SELECT count(*) FROM {schema}.skill_executions"))
 
@@ -213,6 +217,26 @@ async def test_started_and_completed_rows_join_on_run_id() -> None:
         ) == ("partial", 1250, "Timeout", True)
         assert {r["tenant_id"] for r in rows} == {_TENANT}
         assert all(r["received_at"] is not None for r in rows)
+
+    await _with_scratch_schema(body)
+
+
+@pytest.mark.integration
+async def test_hook_keyed_rows_join_on_the_derived_run_id_and_replay_to_the_same_rows() -> (
+    None
+):
+    """The skill hook keys a run by Claude's tool_use_id, not a UUID (OMN-19998)."""
+
+    async def body(conn: asyncpg.Connection, schema: str) -> None:
+        stream = [
+            (_STARTED_TOPIC, _without_event_id(_started(run_id="toolu_01hook"))),
+            (_COMPLETED_TOPIC, _without_event_id(_completed(run_id="toolu_01hook"))),
+        ]
+        assert [await _write(conn, schema, t, e) for t, e in stream] == [1, 1]
+        rows = await conn.fetch(f"SELECT run_id FROM {schema}.skill_executions")
+        assert len({r["run_id"] for r in rows}) == 1
+        assert [await _write(conn, schema, t, e) for t, e in stream] == [0, 0]
+        assert await _count(conn, schema) == 2
 
     await _with_scratch_schema(body)
 

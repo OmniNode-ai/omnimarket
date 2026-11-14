@@ -15,6 +15,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.enums.enum_eval_unscorable_reason import EnumEvalUnscorableReason
 from omnimarket.models.code_eval_trial.model_code_eval_run_closed import (
     ModelCodeEvalRunClosed,
 )
@@ -32,6 +33,7 @@ from omnimarket.models.enum_code_score import (
     EnumCodeScoreSource,
     EnumCodeScoreVerdict,
 )
+from omnimarket.models.eval_item.model_eval_item_traced import ModelEvalCheckTrace
 
 
 class ModelResolvedTask(BaseModel):
@@ -68,6 +70,8 @@ class ModelUnitAnsweredMessage(BaseModel):
     #: The loop result's status; None when the receipt carried no code_edit_result.
     loop_status: str | None = None
     duration_s: float = Field(default=0.0, ge=0)
+    #: The model revision the endpoint reported for the try's turns; empty when it reported none.
+    model_revision: str = ""
 
 
 class ModelUnitFailedMessage(BaseModel):
@@ -88,6 +92,8 @@ class ModelScoreAnsweredMessage(BaseModel):
     try_ordinal: int = Field(default=1, ge=1)
     verdict: EnumCodeScoreVerdict
     source: EnumCodeScoreSource | None = None
+    #: Each check's command, exit code and whole output, for the try's trace.
+    checks: tuple[ModelEvalCheckTrace, ...] = ()
 
 
 class ModelNudgeMessage(BaseModel):
@@ -157,6 +163,17 @@ class ModelVerdictRow(BaseModel):
     loop_status: str = ""
     duration_s: float = 0.0
     timed_out_with_diff: bool = False
+    #: The revision the endpoint reported for this try (empty: none, or a control).
+    model_revision: str = ""
+    #: The typed cause the driver named for an unscorable try (revision_unobserved, registration_mismatch).
+    reason: EnumEvalUnscorableReason | None = None
+    #: The diff this try produced and each check's whole output: what the trace keeps.
+    draft_diff: str = ""
+    checks: tuple[ModelEvalCheckTrace, ...] = ()
+    #: Infrastructure retries spent before this attempt (0: the first attempt of its ordinal).
+    attempt: int = 0
+    #: This attempt was infrastructure-unscorable and is scored or generated again: it gets a trace, no result row.
+    superseded: bool = False
 
 
 class ModelCodeEvalReduceOutput(BaseModel):

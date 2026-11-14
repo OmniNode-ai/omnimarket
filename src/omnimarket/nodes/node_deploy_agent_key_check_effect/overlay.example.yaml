@@ -1,0 +1,5 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. A deployment's real overlay lives in the overlays repository.
+agent_key_secret_env: EXAMPLE_DEPLOY_AGENT_EXPECTED_KEY
+detail_max_chars: 4096

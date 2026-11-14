@@ -52,8 +52,24 @@ class ProtocolReleaseTagCheck(Protocol):
     def has_tag(self, repo: str, tag: str) -> bool: ...
 
 
+class ProtocolBusRequestReader(Protocol):
+    """Reads the raw request strings of the serve tick's request topic."""
+
+    def read(self, topic: str) -> list[str]: ...
+
+
+class ProtocolBusEventPublisher(Protocol):
+    """Publishes the serve tick's answer events back on the bus."""
+
+    def publish(
+        self, topic: str, body_bytes: bytes, key: str | None = None
+    ) -> None: ...
+
+
 __all__ = [
     "ProtocolAppliedPinStore",
+    "ProtocolBusEventPublisher",
+    "ProtocolBusRequestReader",
     "ProtocolLaneHealth",
     "ProtocolPinSource",
     "ProtocolRefreshRunner",

@@ -24,6 +24,13 @@ class EnumCloserAction(StrEnum):
     WRITE_REFUSED = "write_refused"
 
 
+class EnumCloserReadingSource(StrEnum):
+    """The reading profile the schedule binds: where the closer's readings come from."""
+
+    UNREAD = "unread"
+    CONTRACT_CLONES = "contract_clones"
+
+
 class ModelTicketCloserScheduleOverlay(BaseModel):
     """The closer schedule's overlay: the cadence of the scheduled run and where its readings come from."""
 
@@ -42,9 +49,38 @@ class ModelTicketCloserScheduleOverlay(BaseModel):
         min_length=1,
         description="The ticket state the closer moves a flipped ticket into.",
     )
-    reading_source: str = Field(
-        pattern=r"^[a-z][a-z0-9_]*$",
+    reading_source: EnumCloserReadingSource = Field(
         description="The reading profile the schedule binds: unread (in-memory default) or a bound profile.",
+    )
+    home_env: str | None = Field(
+        default=None,
+        description=(
+            "The environment variable whose value is the registry root path the bound "
+            "profile's clone readings sit under; None keeps the in-memory defaults."
+        ),
+    )
+    bus_lane: str | None = Field(
+        default=None,
+        description=(
+            "The declared bus lane the closer's ticket calls publish on; None keeps the "
+            "in-memory defaults."
+        ),
+    )
+    ticket_timeout_seconds: float | None = Field(
+        default=None,
+        gt=0,
+        description=(
+            "How long one ticket bus call waits for the ticket write node's terminal "
+            "event; None keeps the in-memory defaults."
+        ),
+    )
+    scan_limit: int | None = Field(
+        default=None,
+        gt=0,
+        description=(
+            "How many contract ids one run's candidate reading scans at most; None "
+            "keeps the in-memory defaults."
+        ),
     )
 
 
@@ -111,10 +147,13 @@ class ModelTicketCloserResult(BaseModel):
     examined: int
     flipped: int
     outcomes: tuple[ModelCloserTicketOutcome, ...]
+    # Why the reading was unread when candidates_read is False; empty on a read run.
+    unread_reason: str = ""
 
 
 __all__ = [
     "EnumCloserAction",
+    "EnumCloserReadingSource",
     "ModelCloserCandidate",
     "ModelCloserTicketOutcome",
     "ModelCloserVerifyReading",

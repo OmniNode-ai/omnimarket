@@ -112,6 +112,41 @@ class ModelRunnerGroup(_Frozen):
         return self
 
 
+class ModelUvCacheCap(_Frozen):
+    """The size cap of a uv cache.
+
+    When the cache still holds more than ``cap_gib`` after the prune, the whole entries of each bucket
+    (a path relative to the cache, whose depth the contract declares) are evicted oldest first until the
+    cache is at or under the cap. An entry changed inside ``keep_days`` is never evicted.
+    """
+
+    cap_gib: float = Field(gt=0)
+    buckets: Annotated[tuple[NonEmptyStr, ...], Field(min_length=1)]
+    keep_days: float = Field(gt=0)
+
+    @model_validator(mode="after")
+    def buckets_are_relative_paths(self) -> Self:
+        for bucket in self.buckets:
+            parts = bucket.split("/")
+            if any(part in ("", ".", "..") for part in parts):
+                raise ValueError(
+                    f"bucket {bucket!r} must be a relative path of plain folder names"
+                )
+        if len(set(self.buckets)) != len(self.buckets):
+            raise ValueError("a bucket is declared more than once")
+        return self
+
+
+class ModelUvArchiveEntry(_Frozen):
+    """One whole entry of a uv cache bucket: ``name`` is its path relative to the bucket."""
+
+    name: str
+    bytes: int = Field(ge=0)
+    newest_mtime: float
+    linked: bool
+    special: bool = False
+
+
 class ModelUvCache(_Frozen):
     """One uv cache directory to prune when it exceeds ``min_gib``."""
 
@@ -122,6 +157,15 @@ class ModelUvCache(_Frozen):
     timeout_seconds: float = Field(
         gt=0
     )  # `uv cache size` walks every file of the cache and can take minutes
+    cap: ModelUvCacheCap | None = None
+
+    @model_validator(mode="after")
+    def cap_not_below_min(self) -> Self:
+        if self.cap is not None and self.cap.cap_gib < self.min_gib:
+            raise ValueError(
+                f"cap_gib {self.cap.cap_gib} must be at least min_gib {self.min_gib}"
+            )
+        return self
 
 
 class ModelHostRetention(_Frozen):
@@ -158,6 +202,18 @@ class ModelHostRetentionOverlay(_Frozen):
     hosts: Annotated[tuple[ModelHostRetention, ...], Field(min_length=1)]
 
 
+class ModelUvBucketBound(_Frozen):
+    """A folder of a uv cache whose entries a cap may evict, as the contract declares it.
+
+    ``depth`` is how many levels under the folder a whole entry sits. ``keep_linked`` keeps an entry in which any file has
+    more than one hard link: in ``archive-v0`` that is a virtual environment sharing the unpacked wheel, but a git checkout is
+    hard-linked to uv's own git database (never to a virtual environment), so there the link says nothing and is not a guard.
+    """
+
+    depth: int = Field(ge=1, le=3)
+    keep_linked: bool
+
+
 class ModelRetentionBounds(_Frozen):
     """What an overlay may not exceed, owned by the contract."""
 
@@ -177,6 +233,9 @@ class ModelRetentionBounds(_Frozen):
     ]
     allowed_container_roots: Annotated[tuple[NonEmptyStr, ...], Field(min_length=1)]
     protected_leaf_names_always: tuple[NonEmptyStr, ...] = ()
+    uv_evictable_buckets: dict[NonEmptyStr, ModelUvBucketBound] = Field(
+        default_factory=dict
+    )  # bucket path relative to a uv cache -> how its whole entries are found and guarded
 
 
 class ModelHostRetentionRequest(_Frozen):
@@ -227,6 +286,7 @@ class ModelRetentionKept(_Frozen):
         "runner_state_unknown",
         "foreign_owner",
         "special_file",
+        "linked_by_venv",
         "protected",
         "under_budget",
         "below_min",

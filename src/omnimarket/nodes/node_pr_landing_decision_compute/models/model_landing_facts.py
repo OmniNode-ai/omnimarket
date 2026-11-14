@@ -614,8 +614,12 @@ class ModelLandingPolicy(BaseModel):
             "CI Summary",
             "Hostile Reviewer (adversarial gate)",
             "Hostile Review Gate",
+            "Repo Evidence Dependency",
         ),
-        description="Follower checks and the reviewer pool: never clustered.",
+        description=(
+            "Follower checks and the reviewer pool: never clustered. Also holds "
+            "the checks that only mirror another check's verdict."
+        ),
     )
     max_cause_workers: int = Field(default=4, ge=0, description="Fleet-wide.")
     max_cause_workers_per_repo: int = Field(default=2, ge=0)

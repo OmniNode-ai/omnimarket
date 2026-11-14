@@ -26,6 +26,10 @@ class EnumExposureReadFailure(StrEnum):
     BUDGET_EXHAUSTED = "budget-exhausted"
     UNREADABLE = "unreadable"
     TOKEN_MINT_FAILED = "token-mint-failed"
+    #: The write node, asked over the bus for the group, did not answer (no bus, no consumer, no terminal).
+    WRITE_NODE_UNAVAILABLE = "write-node-unavailable"
+    #: The write node answered with a refusal (an overlay that does not name the group, an older node).
+    GROUP_READ_REFUSED = "group-read-refused"
 
 
 class ModelRunnerGroupFacts(BaseModel):

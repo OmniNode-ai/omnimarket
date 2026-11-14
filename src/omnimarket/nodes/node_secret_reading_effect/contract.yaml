@@ -84,7 +84,10 @@ externally_consumed_topics:
 schedule:
   unit_name: onex-secret-reading-hourly
   state_directory: .onex_state/secret-reading
-  timeout_seconds: 300
+  # A full pass scans several thousand log and ledger surfaces and ran 257 s on the one hour it finished under a 300 s limit;
+  # five of six passes the same evening were killed at 300 s and wrote no row. 540 s lets a pass started at the latest :06 finish
+  # by :15, when the reading writer's tick reads the row (cadence below).
+  timeout_seconds: 540
   cadence:
     on_calendar: "*-*-* *:05:00"
     randomized_delay: 60s

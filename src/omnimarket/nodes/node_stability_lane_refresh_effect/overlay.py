@@ -22,6 +22,19 @@ _ENV_NAME = re.compile(r"^[A-Z][A-Z0-9_]*$")
 _SECRET_NAME = re.compile(r"(KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL)")
 
 
+class ModelStabilityServeOverlay(BaseModel):
+    """The bus lane and consumer settings of the serve tick that reads the request topic."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    bus_lane: str = Field(min_length=1)
+    workspace_root: str = Field(min_length=1)
+    consumer_group: str = Field(min_length=1)
+    max_records: int = Field(ge=1)
+    read_timeout_s: float = Field(gt=0)
+    join_timeout_s: float = Field(gt=0)
+
+
 class ModelStabilityHostOverlay(BaseModel):
     """One host's addresses, box id, consumer groups, ports and caps, and where its pin and tools live."""
 
@@ -54,6 +67,8 @@ class ModelStabilityHostOverlay(BaseModel):
     deploy_reason: str = Field(min_length=1)
     refresh_timeout_seconds: int = Field(gt=0)
     health_timeout_seconds: int = Field(gt=0)
+    #: The bus lane and consumer settings of the serve tick; absent on overlays that do not run it.
+    serve: ModelStabilityServeOverlay | None = None
 
     @field_validator("ports", "caps", "consumer_groups")
     @classmethod
@@ -92,4 +107,9 @@ def load_overlay(environ: Mapping[str, str] | None = None) -> ModelStabilityHost
     return load_structured_overlay(NODE_NAME, ModelStabilityHostOverlay, environ)
 
 
-__all__ = ["NODE_NAME", "ModelStabilityHostOverlay", "load_overlay"]
+__all__ = [
+    "NODE_NAME",
+    "ModelStabilityHostOverlay",
+    "ModelStabilityServeOverlay",
+    "load_overlay",
+]
