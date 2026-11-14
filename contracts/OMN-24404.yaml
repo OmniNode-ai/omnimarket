@@ -49,6 +49,14 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run pytest -q src/omnimarket/nodes/node_host_drift_plugin_revision_orchestrator/tests/test_golden_chain.py -k omni
         cwd: .
+  - id: dod-omn24404-deploy
+    description: Deploy check the hosted runner can run - the packaged plugin sync policy overlay that the deployed runtime loads carries the version_differs rule and the rules effect tests pass against it; with the rule removed from the overlay the test fails.
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: env DEPLOY_CHECK=packaged-plugin-sync-policy uv run pytest -q src/omnimarket/nodes/node_host_drift_plugin_rules_effect/tests/test_golden_chain.py -k version_differs
+        cwd: .
   - id: dod-omn24404-integration-proof
     description: The pushed head ran the three node test directories on a lab host through the bus and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
     source: manual
