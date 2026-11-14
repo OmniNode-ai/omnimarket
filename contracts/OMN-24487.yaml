@@ -1,0 +1,52 @@
+schema_version: 1.0.0
+ticket_id: OMN-24487
+title: 'Code edit route starts: the shared settings file is accepted by the loop reader'
+summary: The overlay of node_delegated_code_edit_orchestrator (overlays#507) holds the event_bus the bus overlay reader needs, and the loop's own reader (ModelCodeEditLoopOverlay, extra=forbid) refused that file on the key, so onex code-edit run ended on "overlay is invalid" on h051 and h053 before any turn ran, and the code step fell through to the lab agent and GLM. The loop overlay model gains the optional event_bus key, which the loop never reads, the way the other overlay models that share a file with the bus reader carry it. The overlays side (the three limits in the file and the pin to this model) is a separate pull request of the same ticket. Not in this change - the lab agent (crush) absent on h053, the GLM time limit and the DELEGATION line closeout, which the lane report names with their readings.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24487-shared-overlay
+  statement: The loop overlay reader accepts the one overlay file the bus reader also reads, with its three required limits, and still refuses a file that lacks a required limit or carries an invalid bus.
+  acceptance:
+  - id: AC1
+    statement: "AC1: the loop settings reader accepts the shared settings file that also carries the bus declaration, and refuses a file missing a required limit -- falsifier: pytest tests/handlers/test_code_edit_loop_overlay.py -q"
+  - id: AC2
+    statement: "AC2: the settings file in the overlays repository carries the three limits with the values the helper used before it had a file, and loads through the pinned reader -- falsifier: pytest tests/test_code_edit_loop_overlay.py -q in the overlays repository"
+  - id: AC3
+    statement: "AC3: integrated: on a lab host the code edit route runs one small task from its branch with no overlay refusal -- falsifier: delegation_step.py code --glm last on h051 shows engine code_edit with status ok, not status failed with \"is invalid for node_delegated_code_edit_orchestrator\""
+evidence_requirements:
+- kind: tests
+  description: The loop overlay reader tests at the pushed head; three of the seven fail against the model before this change.
+  command: uv run pytest tests/handlers/test_code_edit_loop_overlay.py -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24487-ac1
+  description: 'AC1: the shared-file tests pass with the change; against the model before it three of the seven fail (the shared file is refused on event_bus).'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/handlers/test_code_edit_loop_overlay.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24487-integration-proof
+  description: 'AC3 lab proxy: the loop overlay tests run on a lab host at the pushed head; the delegation step code route on h051 and h053 from the branch is read in the pull request comment and is not claimed by this local check'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24487 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/handlers/test_code_edit_loop_overlay.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn24487-ac3-hosted-proxy
+  description: 'hosted proxy for AC3: the shared-file test reads one document through the loop reader and the bus reader and both name the same bus.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/handlers/test_code_edit_loop_overlay.py -q -n 0 --no-cov -p no:cacheprovider -k shared_file
+    cwd: .
