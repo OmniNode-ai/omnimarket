@@ -67,6 +67,23 @@ def _read_duration_map(path: Path) -> dict[str, float]:
     return {str(key): float(value) for key, value in data.items()}
 
 
+def read_record(path: Path) -> dict[str, float]:
+    """The shared list merged with the per-file entries beside it (OMN-23537).
+
+    A change that adds a test file records it as one small file under
+    ``<record stem>.d/`` (``config/test_file_durations.d/``), so two changes never edit
+    the same path. The shared list wins when both hold a file, because a refresh of the
+    list is the newer measurement.
+    """
+    merged: dict[str, float] = {}
+    entries = path.parent / f"{path.stem}.d"
+    if entries.is_dir():
+        for entry in sorted(entries.glob("*.json")):
+            merged.update(_read_duration_map(entry))
+    merged.update(_read_duration_map(path))
+    return merged
+
+
 def merge_durations(artifacts_dir: Path) -> dict[str, float]:
     shard_files = sorted(artifacts_dir.glob(".test_durations.*"))
     if not shard_files:
@@ -219,7 +236,7 @@ def _cmd_record(args: argparse.Namespace) -> int:
 def _plan(
     root: Path, record_path: Path, splits: int
 ) -> tuple[dict[str, float], list[str], list[list[str]]]:
-    record = _read_duration_map(record_path)
+    record = read_record(record_path)
     files = discover_test_files(root)
     if not files:
         raise SystemExit(f"no test files found under {root / TESTS_DIR}")
