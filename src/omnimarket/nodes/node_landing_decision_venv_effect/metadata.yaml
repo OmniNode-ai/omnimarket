@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_landing_decision_venv_effect
+version: 1.0.0
+description: Builds the landing controller's decision environment with the pinned libraries and refuses one whose versions differ from the pin.
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+pack: operator_tooling
+node_role: effect
+display_name: Landing Decision Environment Effect
+entry_points:
+  onex.nodes:
+    node_landing_decision_venv_effect: omnimarket.nodes.node_landing_decision_venv_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies: []
+license: MIT
+tags: [effect, operator, environment]
