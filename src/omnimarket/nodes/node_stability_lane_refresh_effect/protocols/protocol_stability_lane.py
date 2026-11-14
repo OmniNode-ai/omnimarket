@@ -52,6 +52,12 @@ class ProtocolReleaseTagCheck(Protocol):
     def has_tag(self, repo: str, tag: str) -> bool: ...
 
 
+class ProtocolDiskFree(Protocol):
+    """The free bytes of the volume holding a path. Raises ``OSError`` when it cannot be read."""
+
+    def free_bytes(self, path: str) -> int: ...
+
+
 class ProtocolBusRequestReader(Protocol):
     """Reads the raw request strings of the serve tick's request topic."""
 
@@ -70,6 +76,7 @@ __all__ = [
     "ProtocolAppliedPinStore",
     "ProtocolBusEventPublisher",
     "ProtocolBusRequestReader",
+    "ProtocolDiskFree",
     "ProtocolLaneHealth",
     "ProtocolPinSource",
     "ProtocolRefreshRunner",
