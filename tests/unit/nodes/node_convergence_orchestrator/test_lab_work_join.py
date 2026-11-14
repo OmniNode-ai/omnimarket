@@ -11,7 +11,6 @@ these red. The real-broker run of the same join is the integrated check on the l
 
 from __future__ import annotations
 
-import asyncio
 import contextlib
 import datetime as dt
 import os
@@ -144,7 +143,7 @@ def overlay_for(
     return ModelConvergenceOrchestratorOverlay.model_validate(data)
 
 
-def run_chain(
+async def run_chain(
     overlay: ModelConvergenceOrchestratorOverlay, url_base: str, tmp_path: Path
 ) -> ModelConvergenceRunCompleted:
     work_root = tmp_path / "work"
@@ -157,7 +156,7 @@ def run_chain(
         sender=sender,
         clock=lambda: T0,
     )
-    output = handler.handle(
+    output = await handler.handle(
         ModelRuntimeTick(
             now=T0,
             tick_id=uuid.uuid4(),
@@ -181,7 +180,7 @@ async def test_the_three_hosts_each_answer_with_their_own_typed_result_from_the_
     url_base, sha = make_origin(tmp_path)
     overlay = overlay_for(sha, "observe", str(registry.home))
 
-    run = await asyncio.to_thread(run_chain, overlay, url_base, tmp_path)
+    run = await run_chain(overlay, url_base, tmp_path)
 
     assert sorted(h.host for h in run.hosts) == sorted(HOSTS)
     for host in run.hosts:
@@ -204,7 +203,7 @@ async def test_a_host_command_the_serve_refuses_fails_that_run_and_is_never_read
         sha, "observe", str(registry.home), argv=["/bin/not-allowed-here"]
     )
 
-    run = await asyncio.to_thread(run_chain, overlay, url_base, tmp_path)
+    run = await run_chain(overlay, url_base, tmp_path)
 
     assert {h.outcome for h in run.hosts} == {EnumConvergenceHostOutcome.FAILED}
     assert run.outcome is EnumConvergenceRunOutcome.FAILED

@@ -1,0 +1,20 @@
+name: node_seam_crossing_name_compute
+version: "1.0.0"
+description: "Pure seam crossing naming: rule R then a deterministic key check, no model"
+omnibase_core_compat: ">=0.42.0,<0.43.0"
+entry_points:
+  onex.nodes:
+    node_seam_crossing_name_compute: "omnimarket.nodes.node_seam_crossing_name_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+dependencies:
+  - "omnibase_core>=0.42.0,<0.43.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "seam-graph", "deterministic", "seam-crossing-name"]
+pack: "seams"
+display_name: "Seam Crossing Name Compute"
+node_role: "compute"
+ticket: "OMN-24350"

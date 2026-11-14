@@ -1,0 +1,40 @@
+EvalTrackingSchedule design verdict (OMN-24177, plan task T13)
+===============================================================
+
+Model: EvalTrackingSchedule.tla sha256=80616bf38313ab8fdef28b0f91ed4ac4d802413d304f053e2c20e06004a4fa2b
+Receipts: formal/eval_tracking_schedule/results/SUMMARY.txt (TLC 2.19, host h201, 2026-11-14)
+
+Result
+------
+base  (deterministic run id, driver no-op on a recorded run id, atomic start and record, window
+       read as the one the clock is in, no make-up, each model on its own cadence)
+       PASS  no error found; checks StartedOnce, OneRunPerWindow, NeverEarly, NoMakeUp
+M1  run id fresh per send, not the window                        violates OneRunPerWindow
+M2  driver has no no-op on a recorded run id                     violates StartedOnce
+M3  driver starts and records in two steps and may crash between violates StartedOnce
+M4  a tick reads the nearest window, not the one it is in        violates NeverEarly
+M5  a tick also names every earlier window                       violates NoMakeUp
+M6  every model uses the shortest cadence                        violates NeverEarly
+wit_noop_hit, wit_lost_then_started, wit_window_skipped: each violates its "not reached"
+invariant, so the no-op, the lost-send-then-resend and the jumped-over window are all reachable
+in the base run and its passing is not vacuous.
+
+Requirements the build answers to
+---------------------------------
+1. The run id is a function of the window (record, model, cadence, window index), never of the
+   send. (M1)
+2. The trial driver drops a request for a run id it holds (orchestration/leg.py, and the reducer's
+   _run, both "run_already_started"). This is the only thing that keeps a repeated send from a
+   second run; the golden chain test goes red with both guards removed. (M2)
+3. The driver's row for a run and the run's start are one step. The model's base assumes it; M3
+   shows a driver that starts first and records after, and crashes between them, runs twice.
+   Residual: whether the orchestrator's emissions and its state_io row flush are one step is a
+   runtime property this model does not read. The per-run unit ids are derived from the run id
+   (the orchestrator's redelivery tests), so a repeated start names the same units; the first
+   window on dev is watched for a second run (ticket risk line).
+4. A tick names the window the clock is in, counted from the record's epoch. (M4)
+5. A window no tick was in is never run. (M5)
+6. Each model reads its own cadence. (M6)
+
+Lane's reading (no independent reviewer yet): the design holds for the six requirements above; requirement 3's residual is
+named, not closed.

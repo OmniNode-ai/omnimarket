@@ -108,7 +108,9 @@ def test_provenance_reaches_every_delegate_turn_argv(tmp_path: Path) -> None:
     assert turn[turn.index("--source-surface") + 1] == SURFACE
 
 
-def test_a_request_without_provenance_adds_no_flags(tmp_path: Path) -> None:
+def test_a_request_without_provenance_is_sent_unclassified_with_no_surface(
+    tmp_path: Path,
+) -> None:
     request = ModelDelegatedCodeEditRequest(
         correlation_id=str(uuid.uuid4()),
         task="t",
@@ -117,7 +119,7 @@ def test_a_request_without_provenance_adds_no_flags(tmp_path: Path) -> None:
         checks=(ModelDeclaredCheck(name="c", argv=("true",)),),
     )
     turn = _turn_argv(tmp_path, request)
-    assert "--traffic-class" not in turn
+    assert turn[turn.index("--traffic-class") + 1] == "unclassified"
     assert "--source-surface" not in turn
 
 
@@ -158,6 +160,6 @@ def test_a_draft_without_provenance_writes_no_null_fields_for_an_older_loop(
         unit, tmp_path / "tree", tmp_path / "state"
     )
     written = json.loads(Path(argv[argv.index("--request") + 1]).read_text())
-    assert "traffic_class" not in written
+    assert written["traffic_class"] == "unclassified"
     assert "source_surface" not in written
     assert "ticket" not in written

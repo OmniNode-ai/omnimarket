@@ -861,10 +861,11 @@ function renderLimits(record){
       const unknown = new Set(row.unknown_fields || []);
       const known = row.values || {};
       const keys = row.kind === "host_account_pool"
-        ? ["usable", "limited", "limited_until", "revoked", "total"].filter(key => Object.hasOwn(known, key))
+        ? ["accounts_usable", "accounts_draining", "accounts_limited", "accounts_unknown", "usable", "limited", "limited_until", "revoked", "total"].filter(key => Object.hasOwn(known, key))
         : Object.keys(known);
       values = keys.filter(key => !unknown.has(key)).map(key => {
-        const label = row.kind === "host_account_pool" && key === "revoked" ? "revoked (not capacity)" : key;
+        const accountLabels = {accounts_usable: "usable accounts", accounts_draining: "of which draining", accounts_limited: "limited accounts", accounts_unknown: "unknown accounts (no recent reading)"};
+        const label = row.kind === "host_account_pool" && key === "revoked" ? "revoked (not capacity)" : (row.kind === "host_account_pool" && accountLabels[key]) || key;
         return `<div>${esc(label)}: ${esc(valueText(key, known[key]))}</div>`;
       }).join("") + Array.from(unknown, key => `<div class="muted">${esc(key)}: UNKNOWN</div>`).join("");
     }

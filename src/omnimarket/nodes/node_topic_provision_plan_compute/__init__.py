@@ -1,23 +1,25 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Declarative entry point for the broker topic provision plan."""
+"""Topic provision plan compute: which broker topics a runtime must provision.
 
-from pathlib import Path
+``HandlerTopicProvisionPlan.handle(ModelTopicProvisionRequest) ->
+ModelTopicProvisionPlan`` (definition-B). A topic is provisioned only for a
+contract the running runtime profile actually loads, instead of every contract
+installed. Pure and deterministic; no I/O in the handler.
+"""
 
-from .handlers.handler_topic_provision_plan import HandlerTopicProvisionPlan
-from .models.model_topic_provision_plan import (
-    ModelTopicProvisionPlanRequest,
-    ModelTopicProvisionPlanResult,
+from omnimarket.nodes.node_topic_provision_plan_compute.handlers.handler_topic_provision_plan import (
+    HandlerTopicProvisionPlan,
+    plan_topic_provision,
 )
 
 
-class NodeTopicProvisionPlanCompute:
-    contract_path = Path(__file__).with_name("contract.yaml")
+class NodeTopicProvisionPlanCompute(HandlerTopicProvisionPlan):
+    """ONEX entry-point wrapper for HandlerTopicProvisionPlan."""
 
-    def __init__(self) -> None:
-        self.handler = HandlerTopicProvisionPlan()
 
-    def handle(
-        self, request: ModelTopicProvisionPlanRequest
-    ) -> ModelTopicProvisionPlanResult:
-        return self.handler.handle(request)
+__all__ = [
+    "HandlerTopicProvisionPlan",
+    "NodeTopicProvisionPlanCompute",
+    "plan_topic_provision",
+]

@@ -15,6 +15,7 @@ from omnimarket.nodes.node_code_quarantine_effect.tests import (
 from omnimarket.nodes.node_code_quarantine_effect.tests.chains import (
     error_chain,
     golden_chain,
+    stage_four_chain,
 )
 from omnimarket.nodes.node_code_quarantine_effect.tests.support import (
     MUTATIONS,
@@ -36,6 +37,10 @@ RED_UNDER: dict[str, str] = {
     "skip-tag-check": "error",
     "skip-catalog-check": "error",
     "remove-before-days": "error",
+    "accept-tests-alone": "stage4",
+    "leave-referencing-tests-behind": "stage4",
+    "skip-rare-path-drills-read": "stage4",
+    "skip-rare-path-using-drill": "stage4",
 }
 
 
@@ -47,9 +52,13 @@ def test_error_chain(rig: Rig) -> None:
     error_chain(rig)
 
 
+def test_stage_four_chain(rig: Rig) -> None:
+    stage_four_chain(rig)
+
+
 def test_chain_mutation_table_covers_every_named_mutation() -> None:
     assert set(RED_UNDER) == set(MUTATIONS)
-    assert {"golden", "error"} <= set(RED_UNDER.values())
+    assert {"golden", "error", "stage4"} <= set(RED_UNDER.values())
 
 
 @pytest.mark.parametrize("mutation", sorted(RED_UNDER))
@@ -57,7 +66,8 @@ def test_chain_mutation_turns_its_chain_red(
     make_rig: RigFactory, mutation: str
 ) -> None:
     mutant = mutated_handler_class(mutation)
-    chain = golden_chain if RED_UNDER[mutation] == "golden" else error_chain
+    chains = {"golden": golden_chain, "error": error_chain, "stage4": stage_four_chain}
+    chain = chains[RED_UNDER[mutation]]
     with pytest.raises(AssertionError):
         chain(make_rig(mutant))
 
@@ -113,6 +123,26 @@ def _acceptance_red_cases() -> list[tuple[str, str, Callable[[Rig], None]]]:
             "skip-catalog-check",
             acceptance.test_removal_needs_tag_and_catalog,
         ),
+        (
+            "stage_4_tests_go_with_module",
+            "accept-tests-alone",
+            acceptance.test_stage_4_tests_go_with_module,
+        ),
+        (
+            "stage_4_tests_go_with_module",
+            "leave-referencing-tests-behind",
+            acceptance.test_stage_4_tests_go_with_module,
+        ),
+        (
+            "stage_4_skill_rare_path",
+            "skip-rare-path-drills-read",
+            acceptance.test_stage_4_skill_rare_path,
+        ),
+        (
+            "stage_4_skill_rare_path",
+            "skip-rare-path-using-drill",
+            acceptance.test_stage_4_skill_rare_path,
+        ),
     ]
 
 
@@ -131,6 +161,8 @@ def test_chain_mutation_turns_the_acceptance_read_red(
         "quarantine_starts_clock",
         "failure_restores_and_resets",
         "removal_needs_tag_and_catalog",
+        "stage_4_tests_go_with_module",
+        "stage_4_skill_rare_path",
     }
     with pytest.raises(AssertionError):
         run(make_rig(mutated_handler_class(mutation)))
