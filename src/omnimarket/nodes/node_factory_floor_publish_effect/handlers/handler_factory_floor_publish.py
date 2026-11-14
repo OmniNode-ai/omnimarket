@@ -480,7 +480,14 @@ class HandlerFactoryFloorPublish:
         simple_reads = self._read_simple(home / rt.simple_reads_relpath)
         compare_page = (NODE_DIR / rt.compare_page_relpath).read_bytes()
         compare_data = self._read_simple(home / rt.compare_data_relpath)
-        tracker_page = (NODE_DIR / rt.delegation_tracker_page_relpath).read_bytes()
+        tracker_page = (
+            (NODE_DIR / rt.delegation_tracker_page_relpath)
+            .read_bytes()
+            .replace(
+                b"__HISTORY_MAX_AGE_S__",
+                str(rt.delegation_history_max_age_seconds).encode(),
+            )
+        )
         tracker_data = self._read_simple(home / rt.delegation_tracker_data_relpath)
         history_data = self._read_simple(home / rt.delegation_history_data_relpath)
         floor_page = (NODE_DIR / rt.floor_page_relpath).read_bytes()

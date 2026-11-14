@@ -12,11 +12,15 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+import tempfile
 import textwrap
 from pathlib import Path
 
 import pytest
 
+from omnimarket.nodes.node_factory_floor_publish_effect.handlers.handler_factory_floor_publish import (
+    load_runtime,
+)
 from omnimarket.nodes.node_floor_delegation_effect.handlers.adapter_delegation_tracker import (
     build_tracker,
 )
@@ -46,6 +50,14 @@ from tests.nodes.node_floor_delegation_effect.support import (
 pytestmark = pytest.mark.unit
 
 PAGE = NODE_DIR / "page/delegation.html"
+TOKEN = b"__HISTORY_MAX_AGE_S__"
+
+
+def published_page() -> bytes:
+    """The page as the publisher serves it: the history age limit token replaced from the node contract's runtime block."""
+    return PAGE.read_bytes().replace(
+        TOKEN, str(load_runtime().delegation_history_max_age_seconds).encode()
+    )
 
 
 def _tracker(*, red_scenario: bool) -> bytes:
@@ -83,7 +95,8 @@ def test_the_publisher_serves_the_delegation_page_and_the_tracker(
     served = _publish_and_read(
         tmp_path, ("delegation.html", "delegation-tracker.json", "publish-status.json")
     )
-    assert served["delegation.html"] == PAGE.read_bytes()
+    assert served["delegation.html"] == published_page()
+    assert TOKEN not in served["delegation.html"]
     doc = json.loads(served["delegation-tracker.json"])
     assert doc["shippable"] is False
     assert doc["blocking"] == ["R2", "R7"]
@@ -144,21 +157,24 @@ def _render(doc: bytes | None, clicks: tuple[str, ...] = ()) -> dict:
     node = shutil.which("node")
     assert node, "the delegation page render test requires Node.js"
     files = {} if doc is None else {"delegation-tracker.json": doc.decode()}
-    out = subprocess.run(
-        [
-            node,
-            "-e",
-            HARNESS,
-            str(PAGE),
-            json.dumps(files),
-            NOW.isoformat(),
-            json.dumps(list(clicks)),
-        ],
-        capture_output=True,
-        text=True,
-        check=True,
-        timeout=60,
-    )
+    with tempfile.TemporaryDirectory() as tmp:
+        served = Path(tmp) / "delegation.html"
+        served.write_bytes(published_page())
+        out = subprocess.run(
+            [
+                node,
+                "-e",
+                HARNESS,
+                str(served),
+                json.dumps(files),
+                NOW.isoformat(),
+                json.dumps(list(clicks)),
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=60,
+        )
     return json.loads(out.stdout)
 
 

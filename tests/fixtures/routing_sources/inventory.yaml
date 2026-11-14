@@ -126,6 +126,8 @@ sources:
     precedence:
       probe: adr_segmentation_bridge_key
 not_routing_resolution_sites:
+  - site: "src/omnimarket/nodes/node_topic_provision_plan_compute/overlay.py:find_node_overlay(NODE_NAME)"
+    reason: finds the overlay file of the topic provision plan to read its provision rules and broker topic prefixes; it chooses no backend, model, tier or provider
   - site: "src/omnimarket/handlers/delegation_scenario_settings.py:find_node_overlay(overlay_id)"
     reason: finds the overlay document of a readiness scenario to read its secret store block (the store address, project, environment and identity file); it names where a probe key is read and generated and chooses no backend, model, tier or provider
   - site: "src/omnimarket/nodes/node_work_state_projection_effect/runtime_work_state.py:find_node_overlay(overlay_id)"
@@ -134,6 +136,8 @@ not_routing_resolution_sites:
     reason: finds the row of this host in the projection read node overlay to read the projection read binding (the address of the projection store a read node queries); it is an address and chooses no backend, model, tier or provider
   - site: "src/omnimarket/nodes/node_overlay_main_load_check_effect/handlers/handler_overlay_main_load_check.py:find_node_overlay(node)"
     reason: finds each pinned node's overlay document in the overlays main checkout to prove the document loads through the node's own model; it only reads and validates and chooses no backend, model, tier or provider
+  - site: "src/omnimarket/handlers/work_ledger_consume/service_writers.py:find_node_overlay(policy.overlay_id)"
+    reason: finds the work ledger append node overlay to read the service logins it declares as writers; it admits ledger writers and chooses no backend, model, tier or provider
   - site: "src/omnimarket/handlers/goal_scope_overlay.py:find_node_overlay(overlay_id)"
     reason: finds the goal scope ticket rule and ticket scope overlay documents, store first and then the plugin path, to read the goal's root tickets, depth and listed projects for the goal-scope admission; it chooses no backend, model, tier or provider
   - site: "src/omnimarket/nodes/node_host_tree_install_effect/handlers/handler_tree_install.py:resolve_overlay_file(NODE_DIR.name)"
@@ -154,6 +158,10 @@ not_routing_resolution_sites:
     reason: finds the overlay file of the iLO Redfish node to resolve the pinned-certificate directory beside it; the overlay holds host endpoints and credentials and chooses no backend, model or tier
   - site: "src/omnimarket/nodes/node_pr_landing_decision_compute/overlay.py:find_node_overlay(NODE_NAME)"
     reason: assigns the named human or lane accountable for exhausted landing work; the typed owner contains no backend, model, tier or provider selection
+  - site: "src/omnimarket/nodes/node_compose_project_census_compute/overlay.py:find_node_overlay(NODE_NAME)"
+    reason: reads the policy of the per-project compose check of the lane census (the clone roots, release roots, declared projects and images, and container name patterns of each lab host); it judges where a compose file lives and chooses no backend, model, tier or provider
+  - site: "src/omnimarket/nodes/node_lane_census_effect/__main__.py:find_node_overlay(COMPOSE_CENSUS_NODE)"
+    reason: asks whether the compose project policy overlay is declared on this host so the census run skips the per-project check when it is not; the overlay chooses no backend, model, tier or provider
   - site: "src/omnimarket/nodes/node_remote_lane_close_compute/overlay.py:find_node_overlay(NODE_NAME)"
     reason: the policy of a remote lane's typed needs cell and report text (the action set, the target pattern, the report length and the outcomes that must carry a cell); it reads a closing message and chooses no backend, model, tier or provider
   - site: "src/omnimarket/nodes/node_machine_grant_role_compute/handlers/handler_machine_grant_role.py:find_node_overlay(overlay_id())"
@@ -242,6 +250,8 @@ not_routing_resolution_sites:
     reason: the umbrella ticket set a PR-opening lane is refused on; a ticket list, not a route for delegated work
   - site: "src/omnimarket/nodes/node_launch_validity_compute/overlay.py:find_node_overlay(OVERLAY_ID)"
     reason: the mode, bus transport and read-age limit of the launch validity check; it decides whether a lane's target is still valid and chooses no backend, model or tier
+  - site: "src/omnimarket/nodes/node_seam_crossing_name_compute/overlay.py:find_node_overlay(NODE_NAME)"
+    reason: the three label strings that name a seam crossing's class (missing field, undeclared key, clean); it shapes a text label and chooses no backend, model or tier
   - site: "src/omnimarket/nodes/node_standup_retrospective_compute/overlay.py:find_node_overlay(OVERLAY_ID)"
     reason: the retrospective weekday, role vocabulary, draft state, credit grammar, wording and bus transport of the Friday stand-up section; it shapes a text sheet and chooses no backend, model or tier
   - site: "src/omnimarket/nodes/node_omnidash_host_effect/handlers/adapter_omnidash_host_install.py:find_node_overlay(NODE_NAME)"

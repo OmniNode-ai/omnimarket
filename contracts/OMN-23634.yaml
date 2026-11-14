@@ -43,6 +43,14 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/handlers/scm/test_scm_duplicate_guard_replaces.py tests/unit/handlers/scm/test_scm_write_seam_shapes.py -q --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn23634-aged-out-replaced-read"
+    description: "A replaces entry the PR watcher state no longer holds (a change closed days ago) is read from the gateway merged_pr operation, so the live dry run no longer answers unreadable for the aged-out closed draft. The tests drive the real CLI over a real git origin with the draft removed from the watcher state and the gateway answering from the real dispatcher on a recorded REST exchange: closed and unmerged sets the overlaps aside, open and merged are refused with their typed reasons, an unreadable gateway is refused as unreadable, and an entry the watcher holds never opens the bus. At the merge base the set-aside, still_open and merged cases fail, so the control fails there."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/handlers/scm/test_scm_duplicate_guard_replaces_gateway.py tests/unit/handlers/scm/test_scm_duplicate_guard_replaces.py tests/unit/handlers/scm/test_scm_duplicate_guard_gateway_source.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn23634-integration-proof"
     description: "Run the measured-case fixture and the seam test on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check; the hosted proxy above binds AC3. The real dry run of pr-create against the live pull requests is read after the deploy agent rolls the merged code."
     source: "manual"

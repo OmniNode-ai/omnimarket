@@ -1,0 +1,2419 @@
+{
+ "source": "throughput_tick.py write_heartbeat, record_open_count, record_repo_status and the goal record's write, run over 20 hourly ticks",
+ "ticks": [
+  {
+   "request": {
+    "state_dir": "/tmp/ref23734/run2",
+    "heartbeat": {
+     "stamp": "2026-11-10T00:17:00Z",
+     "pid": 4242
+    },
+    "open_count": {
+     "history": [],
+     "at": "2026-11-10T00:17:00Z",
+     "count": 116,
+     "basis": "open-nondraft-in-scope-v1"
+    },
+    "repo_status": {
+     "verdicts": [
+      {
+       "repo": "omnipaused",
+       "opened_at": "2026-11-10T00:09:00Z",
+       "verdict": "merging_normally",
+       "event": true,
+       "cause": "c2"
+      },
+      {
+       "repo": "omnipilot",
+       "opened_at": "2026-11-09T23:01:00Z",
+       "verdict": "merging_normally",
+       "event": true,
+       "cause": "c4"
+      }
+     ],
+     "at": "2026-11-10T00:17:00Z"
+    },
+    "goal_record": {
+     "at": "2026-11-10T00:17:00Z",
+     "digest": {
+      "flipped": [],
+      "open_fell": null,
+      "rate_ok": false,
+      "unowned": [],
+      "waiting": [
+       "omniclaude#7",
+       "omniclaude#8",
+       "omnimarket#1",
+       "omnimarket#10",
+       "omnimarket#11",
+       "omnimarket#2",
+       "omnimarket#4",
+       "omnimarket#5",
+       "omnimarket#6",
+       "omnimarket#8",
+       "omnimarket#9",
+       "omnipilot#4"
+      ]
+     },
+     "drafted_seen": [
+      "omnimarket#20",
+      "omnimarket#21",
+      "omnimarket#22",
+      "omnimarket#25",
+      "omnipaused#30"
+     ],
+     "merges": 3,
+     "open_history": [
+      [
+       "2026-11-10T00:17:00Z",
+       14
+      ]
+     ]
+    }
+   },
+   "files_after": {
+    "throughput-tick.heartbeat": "2026-11-10T00:17:00Z pid=4242\n",
+    "throughput-tick.open-history.json": "{\"history\": [{\"at\": \"2026-11-10T00:17:00Z\", \"open\": 116, \"basis\": \"open-nondraft-in-scope-v1\"}]}\n",
+    "throughput-tick.repo-status.json": "{\"open_units\": [{\"repo\": \"omnipaused\", \"opened_at\": \"2026-11-10T00:09:00Z\", \"verdict\": \"merging_normally\"}, {\"repo\": \"omnipilot\", \"opened_at\": \"2026-11-09T23:01:00Z\", \"verdict\": \"merging_normally\"}]}\n",
+    "throughput-tick.repo-status-events.jsonl": "{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T00:17:00Z\", \"repo\": \"omnipaused\", \"opened_at\": \"2026-11-10T00:09:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c2\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T00:17:00Z\", \"repo\": \"omnipilot\", \"opened_at\": \"2026-11-09T23:01:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c4\"}\n",
+    "goal-check.json": "{\"at\": \"2026-11-10T00:17:00Z\", \"digest\": {\"flipped\": [], \"open_fell\": null, \"rate_ok\": false, \"unowned\": [], \"waiting\": [\"omniclaude#7\", \"omniclaude#8\", \"omnimarket#1\", \"omnimarket#10\", \"omnimarket#11\", \"omnimarket#2\", \"omnimarket#4\", \"omnimarket#5\", \"omnimarket#6\", \"omnimarket#8\", \"omnimarket#9\", \"omnipilot#4\"]}, \"drafted_seen\": [\"omnimarket#20\", \"omnimarket#21\", \"omnimarket#22\", \"omnimarket#25\", \"omnipaused#30\"], \"merges\": 3, \"open_history\": [[\"2026-11-10T00:17:00Z\", 14]]}\n"
+   }
+  },
+  {
+   "request": {
+    "state_dir": "/tmp/ref23734/run2",
+    "heartbeat": {
+     "stamp": "2026-11-10T01:17:00Z",
+     "pid": 4242
+    },
+    "open_count": {
+     "history": [
+      {
+       "at": "2026-11-10T00:17:00Z",
+       "open": 116
+      }
+     ],
+     "at": "2026-11-10T01:17:00Z",
+     "count": 180,
+     "basis": "open-nondraft-in-scope-v1"
+    },
+    "repo_status": {
+     "verdicts": [
+      {
+       "repo": "omnipaused",
+       "opened_at": "2026-11-09T23:59:00Z",
+       "verdict": "merge_queue_ejecting",
+       "event": true,
+       "cause": "c1"
+      },
+      {
+       "repo": "omniclaude",
+       "opened_at": "2026-11-10T00:04:00Z",
+       "verdict": "merge_queue_ejecting"
+      }
+     ],
+     "at": "2026-11-10T01:17:00Z"
+    },
+    "goal_record": {
+     "at": "2026-11-10T01:17:00Z",
+     "digest": {
+      "flipped": [
+       "omnimarket#21"
+      ],
+      "open_fell": null,
+      "rate_ok": false,
+      "unowned": [
+       "repo-status:omnimarket"
+      ],
+      "waiting": [
+       "omniclaude#7",
+       "omniclaude#8",
+       "omnimarket#1",
+       "omnimarket#10",
+       "omnimarket#11",
+       "omnimarket#2",
+       "omnimarket#4",
+       "omnimarket#5",
+       "omnimarket#6",
+       "omnimarket#8",
+       "omnimarket#9",
+       "omnipilot#3",
+       "omnipilot#4"
+      ]
+     },
+     "drafted_seen": [
+      "omnibase_infra#40",
+      "omnimarket#21",
+      "omnimarket#22",
+      "omnimarket#23",
+      "omnimarket#24",
+      "omnimarket#25",
+      "omnipaused#30"
+     ],
+     "merges": 0,
+     "open_history": [
+      [
+       "2026-11-10T00:17:00Z",
+       14
+      ],
+      [
+       "2026-11-10T01:17:00Z",
+       14
+      ]
+     ]
+    }
+   },
+   "files_after": {
+    "throughput-tick.heartbeat": "2026-11-10T01:17:00Z pid=4242\n",
+    "throughput-tick.open-history.json": "{\"history\": [{\"at\": \"2026-11-10T00:17:00Z\", \"open\": 116, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T01:17:00Z\", \"open\": 180, \"basis\": \"open-nondraft-in-scope-v1\"}]}\n",
+    "throughput-tick.repo-status.json": "{\"open_units\": [{\"repo\": \"omnipaused\", \"opened_at\": \"2026-11-09T23:59:00Z\", \"verdict\": \"merge_queue_ejecting\"}, {\"repo\": \"omniclaude\", \"opened_at\": \"2026-11-10T00:04:00Z\", \"verdict\": \"merge_queue_ejecting\"}]}\n",
+    "throughput-tick.repo-status-events.jsonl": "{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T00:17:00Z\", \"repo\": \"omnipaused\", \"opened_at\": \"2026-11-10T00:09:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c2\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T00:17:00Z\", \"repo\": \"omnipilot\", \"opened_at\": \"2026-11-09T23:01:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c4\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T01:17:00Z\", \"repo\": \"omnipaused\", \"opened_at\": \"2026-11-09T23:59:00Z\", \"verdict\": \"merge_queue_ejecting\", \"event\": true, \"cause\": \"c1\"}\n",
+    "goal-check.json": "{\"at\": \"2026-11-10T01:17:00Z\", \"digest\": {\"flipped\": [\"omnimarket#21\"], \"open_fell\": null, \"rate_ok\": false, \"unowned\": [\"repo-status:omnimarket\"], \"waiting\": [\"omniclaude#7\", \"omniclaude#8\", \"omnimarket#1\", \"omnimarket#10\", \"omnimarket#11\", \"omnimarket#2\", \"omnimarket#4\", \"omnimarket#5\", \"omnimarket#6\", \"omnimarket#8\", \"omnimarket#9\", \"omnipilot#3\", \"omnipilot#4\"]}, \"drafted_seen\": [\"omnibase_infra#40\", \"omnimarket#21\", \"omnimarket#22\", \"omnimarket#23\", \"omnimarket#24\", \"omnimarket#25\", \"omnipaused#30\"], \"merges\": 0, \"open_history\": [[\"2026-11-10T00:17:00Z\", 14], [\"2026-11-10T01:17:00Z\", 14]]}\n"
+   }
+  },
+  {
+   "request": {
+    "state_dir": "/tmp/ref23734/run2",
+    "heartbeat": {
+     "stamp": "2026-11-10T02:00:00Z",
+     "pid": 4242
+    },
+    "open_count": {
+     "history": [
+      {
+       "at": "2026-11-10T00:17:00Z",
+       "open": 116
+      },
+      {
+       "at": "2026-11-10T01:17:00Z",
+       "open": 180
+      }
+     ],
+     "at": "2026-11-10T02:00:00Z",
+     "count": 93,
+     "basis": "open-nondraft-in-scope-v1"
+    },
+    "repo_status": {
+     "verdicts": [],
+     "at": "2026-11-10T02:00:00Z"
+    },
+    "goal_record": {
+     "at": "2026-11-10T02:00:00Z",
+     "digest": {
+      "flipped": [
+       "omnimarket#21",
+       "omnimarket#22",
+       "omnimarket#24"
+      ],
+      "open_fell": null,
+      "rate_ok": false,
+      "unowned": [],
+      "waiting": [
+       "omniclaude#7",
+       "omnimarket#1",
+       "omnimarket#10",
+       "omnimarket#11",
+       "omnimarket#2",
+       "omnimarket#4",
+       "omnimarket#5",
+       "omnimarket#6",
+       "omnimarket#8",
+       "omnimarket#9",
+       "omnipilot#3",
+       "omnipilot#4"
+      ]
+     },
+     "drafted_seen": [
+      "omnibase_infra#40",
+      "omnimarket#21",
+      "omnimarket#22",
+      "omnimarket#23",
+      "omnimarket#24",
+      "omnimarket#25",
+      "omnipaused#30"
+     ],
+     "merges": 0,
+     "open_history": [
+      [
+       "2026-11-10T00:17:00Z",
+       14
+      ],
+      [
+       "2026-11-10T01:17:00Z",
+       14
+      ],
+      [
+       "2026-11-10T02:00:00Z",
+       13
+      ]
+     ]
+    }
+   },
+   "files_after": {
+    "throughput-tick.heartbeat": "2026-11-10T02:00:00Z pid=4242\n",
+    "throughput-tick.open-history.json": "{\"history\": [{\"at\": \"2026-11-10T00:17:00Z\", \"open\": 116, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T01:17:00Z\", \"open\": 180, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T02:00:00Z\", \"open\": 93, \"basis\": \"open-nondraft-in-scope-v1\"}]}\n",
+    "throughput-tick.repo-status.json": "{\"open_units\": []}\n",
+    "throughput-tick.repo-status-events.jsonl": "{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T00:17:00Z\", \"repo\": \"omnipaused\", \"opened_at\": \"2026-11-10T00:09:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c2\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T00:17:00Z\", \"repo\": \"omnipilot\", \"opened_at\": \"2026-11-09T23:01:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c4\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T01:17:00Z\", \"repo\": \"omnipaused\", \"opened_at\": \"2026-11-09T23:59:00Z\", \"verdict\": \"merge_queue_ejecting\", \"event\": true, \"cause\": \"c1\"}\n",
+    "goal-check.json": "{\"at\": \"2026-11-10T02:00:00Z\", \"digest\": {\"flipped\": [\"omnimarket#21\", \"omnimarket#22\", \"omnimarket#24\"], \"open_fell\": null, \"rate_ok\": false, \"unowned\": [], \"waiting\": [\"omniclaude#7\", \"omnimarket#1\", \"omnimarket#10\", \"omnimarket#11\", \"omnimarket#2\", \"omnimarket#4\", \"omnimarket#5\", \"omnimarket#6\", \"omnimarket#8\", \"omnimarket#9\", \"omnipilot#3\", \"omnipilot#4\"]}, \"drafted_seen\": [\"omnibase_infra#40\", \"omnimarket#21\", \"omnimarket#22\", \"omnimarket#23\", \"omnimarket#24\", \"omnimarket#25\", \"omnipaused#30\"], \"merges\": 0, \"open_history\": [[\"2026-11-10T00:17:00Z\", 14], [\"2026-11-10T01:17:00Z\", 14], [\"2026-11-10T02:00:00Z\", 13]]}\n"
+   }
+  },
+  {
+   "request": {
+    "state_dir": "/tmp/ref23734/run2",
+    "heartbeat": {
+     "stamp": "2026-11-10T03:17:00Z",
+     "pid": 4242
+    },
+    "open_count": {
+     "history": [
+      {
+       "at": "2026-11-10T00:17:00Z",
+       "open": 116
+      },
+      {
+       "at": "2026-11-10T01:17:00Z",
+       "open": 180
+      },
+      {
+       "at": "2026-11-10T02:00:00Z",
+       "open": 93
+      }
+     ],
+     "at": "2026-11-10T03:17:00Z",
+     "count": 156,
+     "basis": "open-nondraft-in-scope-v1"
+    }
+   },
+   "files_after": {
+    "throughput-tick.heartbeat": "2026-11-10T03:17:00Z pid=4242\n",
+    "throughput-tick.open-history.json": "{\"history\": [{\"at\": \"2026-11-10T00:17:00Z\", \"open\": 116, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T01:17:00Z\", \"open\": 180, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T02:00:00Z\", \"open\": 93, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T03:17:00Z\", \"open\": 156, \"basis\": \"open-nondraft-in-scope-v1\"}]}\n",
+    "throughput-tick.repo-status.json": "{\"open_units\": []}\n",
+    "throughput-tick.repo-status-events.jsonl": "{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T00:17:00Z\", \"repo\": \"omnipaused\", \"opened_at\": \"2026-11-10T00:09:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c2\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T00:17:00Z\", \"repo\": \"omnipilot\", \"opened_at\": \"2026-11-09T23:01:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c4\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T01:17:00Z\", \"repo\": \"omnipaused\", \"opened_at\": \"2026-11-09T23:59:00Z\", \"verdict\": \"merge_queue_ejecting\", \"event\": true, \"cause\": \"c1\"}\n",
+    "goal-check.json": "{\"at\": \"2026-11-10T02:00:00Z\", \"digest\": {\"flipped\": [\"omnimarket#21\", \"omnimarket#22\", \"omnimarket#24\"], \"open_fell\": null, \"rate_ok\": false, \"unowned\": [], \"waiting\": [\"omniclaude#7\", \"omnimarket#1\", \"omnimarket#10\", \"omnimarket#11\", \"omnimarket#2\", \"omnimarket#4\", \"omnimarket#5\", \"omnimarket#6\", \"omnimarket#8\", \"omnimarket#9\", \"omnipilot#3\", \"omnipilot#4\"]}, \"drafted_seen\": [\"omnibase_infra#40\", \"omnimarket#21\", \"omnimarket#22\", \"omnimarket#23\", \"omnimarket#24\", \"omnimarket#25\", \"omnipaused#30\"], \"merges\": 0, \"open_history\": [[\"2026-11-10T00:17:00Z\", 14], [\"2026-11-10T01:17:00Z\", 14], [\"2026-11-10T02:00:00Z\", 13]]}\n"
+   }
+  },
+  {
+   "request": {
+    "state_dir": "/tmp/ref23734/run2",
+    "heartbeat": {
+     "stamp": "2026-11-10T04:00:00Z",
+     "pid": 4242
+    },
+    "open_count": {
+     "history": [
+      {
+       "at": "2026-11-10T00:17:00Z",
+       "open": 116
+      },
+      {
+       "at": "2026-11-10T01:17:00Z",
+       "open": 180
+      },
+      {
+       "at": "2026-11-10T02:00:00Z",
+       "open": 93
+      },
+      {
+       "at": "2026-11-10T03:17:00Z",
+       "open": 156
+      }
+     ],
+     "at": "2026-11-10T04:00:00Z",
+     "count": 177,
+     "basis": "open-nondraft-in-scope-v1"
+    },
+    "repo_status": {
+     "verdicts": [],
+     "at": "2026-11-10T04:00:00Z"
+    },
+    "goal_record": {
+     "at": "2026-11-10T04:00:00Z",
+     "digest": {
+      "flipped": [
+       "omnibase_infra#40",
+       "omnimarket#22",
+       "omnimarket#24",
+       "omnimarket#25",
+       "omnipaused#30"
+      ],
+      "open_fell": null,
+      "rate_ok": false,
+      "unowned": [
+       "repo-status:omnimarket",
+       "stuck-owner:omnibase_infra@main"
+      ],
+      "waiting": [
+       "omnibase_infra#11",
+       "omnimarket#1",
+       "omnimarket#11",
+       "omnimarket#2",
+       "omnimarket#4",
+       "omnimarket#5",
+       "omnimarket#6",
+       "omnimarket#8",
+       "omnimarket#9",
+       "omnipilot#3"
+      ]
+     },
+     "drafted_seen": [
+      "omnibase_infra#40",
+      "omnimarket#21",
+      "omnimarket#22",
+      "omnimarket#24",
+      "omnimarket#25",
+      "omnipaused#30"
+     ],
+     "merges": 0,
+     "open_history": [
+      [
+       "2026-11-10T00:17:00Z",
+       14
+      ],
+      [
+       "2026-11-10T01:17:00Z",
+       14
+      ],
+      [
+       "2026-11-10T02:00:00Z",
+       13
+      ],
+      [
+       "2026-11-10T04:00:00Z",
+       10
+      ]
+     ]
+    }
+   },
+   "files_after": {
+    "throughput-tick.heartbeat": "2026-11-10T04:00:00Z pid=4242\n",
+    "throughput-tick.open-history.json": "{\"history\": [{\"at\": \"2026-11-10T00:17:00Z\", \"open\": 116, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T01:17:00Z\", \"open\": 180, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T02:00:00Z\", \"open\": 93, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T03:17:00Z\", \"open\": 156, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T04:00:00Z\", \"open\": 177, \"basis\": \"open-nondraft-in-scope-v1\"}]}\n",
+    "throughput-tick.repo-status.json": "{\"open_units\": []}\n",
+    "throughput-tick.repo-status-events.jsonl": "{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T00:17:00Z\", \"repo\": \"omnipaused\", \"opened_at\": \"2026-11-10T00:09:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c2\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T00:17:00Z\", \"repo\": \"omnipilot\", \"opened_at\": \"2026-11-09T23:01:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c4\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T01:17:00Z\", \"repo\": \"omnipaused\", \"opened_at\": \"2026-11-09T23:59:00Z\", \"verdict\": \"merge_queue_ejecting\", \"event\": true, \"cause\": \"c1\"}\n",
+    "goal-check.json": "{\"at\": \"2026-11-10T04:00:00Z\", \"digest\": {\"flipped\": [\"omnibase_infra#40\", \"omnimarket#22\", \"omnimarket#24\", \"omnimarket#25\", \"omnipaused#30\"], \"open_fell\": null, \"rate_ok\": false, \"unowned\": [\"repo-status:omnimarket\", \"stuck-owner:omnibase_infra@main\"], \"waiting\": [\"omnibase_infra#11\", \"omnimarket#1\", \"omnimarket#11\", \"omnimarket#2\", \"omnimarket#4\", \"omnimarket#5\", \"omnimarket#6\", \"omnimarket#8\", \"omnimarket#9\", \"omnipilot#3\"]}, \"drafted_seen\": [\"omnibase_infra#40\", \"omnimarket#21\", \"omnimarket#22\", \"omnimarket#24\", \"omnimarket#25\", \"omnipaused#30\"], \"merges\": 0, \"open_history\": [[\"2026-11-10T00:17:00Z\", 14], [\"2026-11-10T01:17:00Z\", 14], [\"2026-11-10T02:00:00Z\", 13], [\"2026-11-10T04:00:00Z\", 10]]}\n"
+   }
+  },
+  {
+   "request": {
+    "state_dir": "/tmp/ref23734/run2",
+    "heartbeat": {
+     "stamp": "2026-11-10T05:05:00Z",
+     "pid": 4242
+    },
+    "repo_status": {
+     "verdicts": [
+      {
+       "repo": "omnibase_infra",
+       "opened_at": "2026-11-10T00:47:00Z",
+       "verdict": "waiting_on_ci",
+       "event": true,
+       "cause": "c6"
+      },
+      {
+       "repo": "omniclaude",
+       "opened_at": "2026-11-10T01:42:00Z",
+       "verdict": "shared_red_unowned"
+      }
+     ],
+     "at": "2026-11-10T05:05:00Z"
+    }
+   },
+   "files_after": {
+    "throughput-tick.heartbeat": "2026-11-10T05:05:00Z pid=4242\n",
+    "throughput-tick.open-history.json": "{\"history\": [{\"at\": \"2026-11-10T00:17:00Z\", \"open\": 116, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T01:17:00Z\", \"open\": 180, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T02:00:00Z\", \"open\": 93, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T03:17:00Z\", \"open\": 156, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T04:00:00Z\", \"open\": 177, \"basis\": \"open-nondraft-in-scope-v1\"}]}\n",
+    "throughput-tick.repo-status.json": "{\"open_units\": [{\"repo\": \"omnibase_infra\", \"opened_at\": \"2026-11-10T00:47:00Z\", \"verdict\": \"waiting_on_ci\"}, {\"repo\": \"omniclaude\", \"opened_at\": \"2026-11-10T01:42:00Z\", \"verdict\": \"shared_red_unowned\"}]}\n",
+    "throughput-tick.repo-status-events.jsonl": "{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T00:17:00Z\", \"repo\": \"omnipaused\", \"opened_at\": \"2026-11-10T00:09:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c2\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T00:17:00Z\", \"repo\": \"omnipilot\", \"opened_at\": \"2026-11-09T23:01:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c4\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T01:17:00Z\", \"repo\": \"omnipaused\", \"opened_at\": \"2026-11-09T23:59:00Z\", \"verdict\": \"merge_queue_ejecting\", \"event\": true, \"cause\": \"c1\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T05:05:00Z\", \"repo\": \"omnibase_infra\", \"opened_at\": \"2026-11-10T00:47:00Z\", \"verdict\": \"waiting_on_ci\", \"event\": true, \"cause\": \"c6\"}\n",
+    "goal-check.json": "{\"at\": \"2026-11-10T04:00:00Z\", \"digest\": {\"flipped\": [\"omnibase_infra#40\", \"omnimarket#22\", \"omnimarket#24\", \"omnimarket#25\", \"omnipaused#30\"], \"open_fell\": null, \"rate_ok\": false, \"unowned\": [\"repo-status:omnimarket\", \"stuck-owner:omnibase_infra@main\"], \"waiting\": [\"omnibase_infra#11\", \"omnimarket#1\", \"omnimarket#11\", \"omnimarket#2\", \"omnimarket#4\", \"omnimarket#5\", \"omnimarket#6\", \"omnimarket#8\", \"omnimarket#9\", \"omnipilot#3\"]}, \"drafted_seen\": [\"omnibase_infra#40\", \"omnimarket#21\", \"omnimarket#22\", \"omnimarket#24\", \"omnimarket#25\", \"omnipaused#30\"], \"merges\": 0, \"open_history\": [[\"2026-11-10T00:17:00Z\", 14], [\"2026-11-10T01:17:00Z\", 14], [\"2026-11-10T02:00:00Z\", 13], [\"2026-11-10T04:00:00Z\", 10]]}\n"
+   }
+  },
+  {
+   "request": {
+    "state_dir": "/tmp/ref23734/run2",
+    "heartbeat": {
+     "stamp": "2026-11-10T06:17:00Z",
+     "pid": 4242
+    },
+    "open_count": {
+     "history": [
+      {
+       "at": "2026-11-10T00:17:00Z",
+       "open": 116
+      },
+      {
+       "at": "2026-11-10T01:17:00Z",
+       "open": 180
+      },
+      {
+       "at": "2026-11-10T02:00:00Z",
+       "open": 93
+      },
+      {
+       "at": "2026-11-10T03:17:00Z",
+       "open": 156
+      },
+      {
+       "at": "2026-11-10T04:00:00Z",
+       "open": 177
+      }
+     ],
+     "at": "2026-11-10T06:17:00Z",
+     "count": 158,
+     "basis": "open-nondraft-in-scope-v1"
+    },
+    "repo_status": {
+     "verdicts": [
+      {
+       "repo": "omnibase_infra",
+       "opened_at": "2026-11-10T05:03:00Z",
+       "verdict": "parked_or_escalated"
+      },
+      {
+       "repo": "omnimarket",
+       "opened_at": "2026-11-10T02:46:00Z",
+       "verdict": "waiting_on_ci",
+       "event": true,
+       "cause": "c5"
+      }
+     ],
+     "at": "2026-11-10T06:17:00Z"
+    },
+    "goal_record": {
+     "at": "2026-11-10T06:17:00Z",
+     "digest": {
+      "flipped": [
+       "omnimarket#21",
+       "omnimarket#24"
+      ],
+      "open_fell": true,
+      "rate_ok": false,
+      "unowned": [
+       "repo-status:omnimarket"
+      ],
+      "waiting": [
+       "omnibase_infra#11",
+       "omniclaude#7",
+       "omniclaude#8",
+       "omnimarket#1",
+       "omnimarket#11",
+       "omnimarket#4",
+       "omnimarket#5",
+       "omnimarket#6",
+       "omnimarket#8",
+       "omnimarket#9",
+       "omnipilot#3"
+      ]
+     },
+     "drafted_seen": [
+      "omnimarket#21",
+      "omnimarket#22",
+      "omnimarket#24",
+      "omnipaused#30"
+     ],
+     "merges": 0,
+     "open_history": [
+      [
+       "2026-11-10T00:17:00Z",
+       14
+      ],
+      [
+       "2026-11-10T01:17:00Z",
+       14
+      ],
+      [
+       "2026-11-10T02:00:00Z",
+       13
+      ],
+      [
+       "2026-11-10T04:00:00Z",
+       10
+      ],
+      [
+       "2026-11-10T06:17:00Z",
+       11
+      ]
+     ]
+    }
+   },
+   "files_after": {
+    "throughput-tick.heartbeat": "2026-11-10T06:17:00Z pid=4242\n",
+    "throughput-tick.open-history.json": "{\"history\": [{\"at\": \"2026-11-10T00:17:00Z\", \"open\": 116, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T01:17:00Z\", \"open\": 180, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T02:00:00Z\", \"open\": 93, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T03:17:00Z\", \"open\": 156, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T04:00:00Z\", \"open\": 177, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T06:17:00Z\", \"open\": 158, \"basis\": \"open-nondraft-in-scope-v1\"}]}\n",
+    "throughput-tick.repo-status.json": "{\"open_units\": [{\"repo\": \"omnibase_infra\", \"opened_at\": \"2026-11-10T05:03:00Z\", \"verdict\": \"parked_or_escalated\"}, {\"repo\": \"omnimarket\", \"opened_at\": \"2026-11-10T02:46:00Z\", \"verdict\": \"waiting_on_ci\"}]}\n",
+    "throughput-tick.repo-status-events.jsonl": "{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T00:17:00Z\", \"repo\": \"omnipaused\", \"opened_at\": \"2026-11-10T00:09:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c2\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T00:17:00Z\", \"repo\": \"omnipilot\", \"opened_at\": \"2026-11-09T23:01:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c4\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T01:17:00Z\", \"repo\": \"omnipaused\", \"opened_at\": \"2026-11-09T23:59:00Z\", \"verdict\": \"merge_queue_ejecting\", \"event\": true, \"cause\": \"c1\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T05:05:00Z\", \"repo\": \"omnibase_infra\", \"opened_at\": \"2026-11-10T00:47:00Z\", \"verdict\": \"waiting_on_ci\", \"event\": true, \"cause\": \"c6\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T06:17:00Z\", \"repo\": \"omnimarket\", \"opened_at\": \"2026-11-10T02:46:00Z\", \"verdict\": \"waiting_on_ci\", \"event\": true, \"cause\": \"c5\"}\n",
+    "goal-check.json": "{\"at\": \"2026-11-10T06:17:00Z\", \"digest\": {\"flipped\": [\"omnimarket#21\", \"omnimarket#24\"], \"open_fell\": true, \"rate_ok\": false, \"unowned\": [\"repo-status:omnimarket\"], \"waiting\": [\"omnibase_infra#11\", \"omniclaude#7\", \"omniclaude#8\", \"omnimarket#1\", \"omnimarket#11\", \"omnimarket#4\", \"omnimarket#5\", \"omnimarket#6\", \"omnimarket#8\", \"omnimarket#9\", \"omnipilot#3\"]}, \"drafted_seen\": [\"omnimarket#21\", \"omnimarket#22\", \"omnimarket#24\", \"omnipaused#30\"], \"merges\": 0, \"open_history\": [[\"2026-11-10T00:17:00Z\", 14], [\"2026-11-10T01:17:00Z\", 14], [\"2026-11-10T02:00:00Z\", 13], [\"2026-11-10T04:00:00Z\", 10], [\"2026-11-10T06:17:00Z\", 11]]}\n"
+   }
+  },
+  {
+   "request": {
+    "state_dir": "/tmp/ref23734/run2",
+    "heartbeat": {
+     "stamp": "2026-11-10T07:00:00Z",
+     "pid": 4242
+    },
+    "open_count": {
+     "history": [
+      {
+       "at": "2026-11-10T00:17:00Z",
+       "open": 116
+      },
+      {
+       "at": "2026-11-10T01:17:00Z",
+       "open": 180
+      },
+      {
+       "at": "2026-11-10T02:00:00Z",
+       "open": 93
+      },
+      {
+       "at": "2026-11-10T03:17:00Z",
+       "open": 156
+      },
+      {
+       "at": "2026-11-10T04:00:00Z",
+       "open": 177
+      },
+      {
+       "at": "2026-11-10T06:17:00Z",
+       "open": 158
+      }
+     ],
+     "at": "2026-11-10T07:00:00Z",
+     "count": 189,
+     "basis": "open-nondraft-in-scope-v1"
+    },
+    "goal_record": {
+     "at": "2026-11-10T07:00:00Z",
+     "digest": {
+      "flipped": [],
+      "open_fell": true,
+      "rate_ok": true,
+      "unowned": [],
+      "waiting": [
+       "omnibase_infra#11",
+       "omnimarket#1",
+       "omnimarket#11",
+       "omnimarket#4",
+       "omnimarket#5",
+       "omnimarket#6",
+       "omnimarket#9",
+       "omnipilot#3"
+      ]
+     },
+     "drafted_seen": [
+      "omnimarket#21",
+      "omnimarket#22",
+      "omnimarket#24",
+      "omnipaused#30"
+     ],
+     "merges": 1,
+     "open_history": [
+      [
+       "2026-11-10T00:17:00Z",
+       14
+      ],
+      [
+       "2026-11-10T01:17:00Z",
+       14
+      ],
+      [
+       "2026-11-10T02:00:00Z",
+       13
+      ],
+      [
+       "2026-11-10T04:00:00Z",
+       10
+      ],
+      [
+       "2026-11-10T06:17:00Z",
+       11
+      ],
+      [
+       "2026-11-10T07:00:00Z",
+       8
+      ]
+     ]
+    }
+   },
+   "files_after": {
+    "throughput-tick.heartbeat": "2026-11-10T07:00:00Z pid=4242\n",
+    "throughput-tick.open-history.json": "{\"history\": [{\"at\": \"2026-11-10T00:17:00Z\", \"open\": 116, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T01:17:00Z\", \"open\": 180, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T02:00:00Z\", \"open\": 93, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T03:17:00Z\", \"open\": 156, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T04:00:00Z\", \"open\": 177, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T06:17:00Z\", \"open\": 158, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T07:00:00Z\", \"open\": 189, \"basis\": \"open-nondraft-in-scope-v1\"}]}\n",
+    "throughput-tick.repo-status.json": "{\"open_units\": [{\"repo\": \"omnibase_infra\", \"opened_at\": \"2026-11-10T05:03:00Z\", \"verdict\": \"parked_or_escalated\"}, {\"repo\": \"omnimarket\", \"opened_at\": \"2026-11-10T02:46:00Z\", \"verdict\": \"waiting_on_ci\"}]}\n",
+    "throughput-tick.repo-status-events.jsonl": "{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T00:17:00Z\", \"repo\": \"omnipaused\", \"opened_at\": \"2026-11-10T00:09:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c2\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T00:17:00Z\", \"repo\": \"omnipilot\", \"opened_at\": \"2026-11-09T23:01:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c4\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T01:17:00Z\", \"repo\": \"omnipaused\", \"opened_at\": \"2026-11-09T23:59:00Z\", \"verdict\": \"merge_queue_ejecting\", \"event\": true, \"cause\": \"c1\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T05:05:00Z\", \"repo\": \"omnibase_infra\", \"opened_at\": \"2026-11-10T00:47:00Z\", \"verdict\": \"waiting_on_ci\", \"event\": true, \"cause\": \"c6\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T06:17:00Z\", \"repo\": \"omnimarket\", \"opened_at\": \"2026-11-10T02:46:00Z\", \"verdict\": \"waiting_on_ci\", \"event\": true, \"cause\": \"c5\"}\n",
+    "goal-check.json": "{\"at\": \"2026-11-10T07:00:00Z\", \"digest\": {\"flipped\": [], \"open_fell\": true, \"rate_ok\": true, \"unowned\": [], \"waiting\": [\"omnibase_infra#11\", \"omnimarket#1\", \"omnimarket#11\", \"omnimarket#4\", \"omnimarket#5\", \"omnimarket#6\", \"omnimarket#9\", \"omnipilot#3\"]}, \"drafted_seen\": [\"omnimarket#21\", \"omnimarket#22\", \"omnimarket#24\", \"omnipaused#30\"], \"merges\": 1, \"open_history\": [[\"2026-11-10T00:17:00Z\", 14], [\"2026-11-10T01:17:00Z\", 14], [\"2026-11-10T02:00:00Z\", 13], [\"2026-11-10T04:00:00Z\", 10], [\"2026-11-10T06:17:00Z\", 11], [\"2026-11-10T07:00:00Z\", 8]]}\n"
+   }
+  },
+  {
+   "request": {
+    "state_dir": "/tmp/ref23734/run2",
+    "heartbeat": {
+     "stamp": "2026-11-10T08:00:00Z",
+     "pid": 4242
+    },
+    "open_count": {
+     "history": [
+      {
+       "at": "2026-11-10T00:17:00Z",
+       "open": 116
+      },
+      {
+       "at": "2026-11-10T01:17:00Z",
+       "open": 180
+      },
+      {
+       "at": "2026-11-10T02:00:00Z",
+       "open": 93
+      },
+      {
+       "at": "2026-11-10T03:17:00Z",
+       "open": 156
+      },
+      {
+       "at": "2026-11-10T04:00:00Z",
+       "open": 177
+      },
+      {
+       "at": "2026-11-10T06:17:00Z",
+       "open": 158
+      },
+      {
+       "at": "2026-11-10T07:00:00Z",
+       "open": 189
+      }
+     ],
+     "at": "2026-11-10T08:00:00Z",
+     "count": 130,
+     "basis": "open-nondraft-in-scope-v1"
+    },
+    "repo_status": {
+     "verdicts": [
+      {
+       "repo": "omnipilot",
+       "opened_at": "2026-11-10T06:06:00Z",
+       "verdict": "merge_queue_ejecting",
+       "event": true,
+       "cause": "c7"
+      }
+     ],
+     "at": "2026-11-10T08:00:00Z"
+    },
+    "goal_record": {
+     "at": "2026-11-10T08:00:00Z",
+     "digest": {
+      "flipped": [
+       "omnimarket#21",
+       "omnimarket#22"
+      ],
+      "open_fell": true,
+      "rate_ok": true,
+      "unowned": [
+       "stuck-owner:omnibase_infra@main"
+      ],
+      "waiting": [
+       "omnibase_infra#11",
+       "omnimarket#1",
+       "omnimarket#11",
+       "omnimarket#4",
+       "omnimarket#5",
+       "omnimarket#6",
+       "omnimarket#9",
+       "omnipilot#3"
+      ]
+     },
+     "drafted_seen": [
+      "omnimarket#21",
+      "omnimarket#22",
+      "omnimarket#24",
+      "omnipaused#30"
+     ],
+     "merges": 0,
+     "open_history": [
+      [
+       "2026-11-10T00:17:00Z",
+       14
+      ],
+      [
+       "2026-11-10T01:17:00Z",
+       14
+      ],
+      [
+       "2026-11-10T02:00:00Z",
+       13
+      ],
+      [
+       "2026-11-10T04:00:00Z",
+       10
+      ],
+      [
+       "2026-11-10T06:17:00Z",
+       11
+      ],
+      [
+       "2026-11-10T07:00:00Z",
+       8
+      ],
+      [
+       "2026-11-10T08:00:00Z",
+       8
+      ]
+     ]
+    }
+   },
+   "files_after": {
+    "throughput-tick.heartbeat": "2026-11-10T08:00:00Z pid=4242\n",
+    "throughput-tick.open-history.json": "{\"history\": [{\"at\": \"2026-11-10T00:17:00Z\", \"open\": 116, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T01:17:00Z\", \"open\": 180, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T02:00:00Z\", \"open\": 93, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T03:17:00Z\", \"open\": 156, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T04:00:00Z\", \"open\": 177, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T06:17:00Z\", \"open\": 158, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T07:00:00Z\", \"open\": 189, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T08:00:00Z\", \"open\": 130, \"basis\": \"open-nondraft-in-scope-v1\"}]}\n",
+    "throughput-tick.repo-status.json": "{\"open_units\": [{\"repo\": \"omnipilot\", \"opened_at\": \"2026-11-10T06:06:00Z\", \"verdict\": \"merge_queue_ejecting\"}]}\n",
+    "throughput-tick.repo-status-events.jsonl": "{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T00:17:00Z\", \"repo\": \"omnipaused\", \"opened_at\": \"2026-11-10T00:09:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c2\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T00:17:00Z\", \"repo\": \"omnipilot\", \"opened_at\": \"2026-11-09T23:01:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c4\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T01:17:00Z\", \"repo\": \"omnipaused\", \"opened_at\": \"2026-11-09T23:59:00Z\", \"verdict\": \"merge_queue_ejecting\", \"event\": true, \"cause\": \"c1\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T05:05:00Z\", \"repo\": \"omnibase_infra\", \"opened_at\": \"2026-11-10T00:47:00Z\", \"verdict\": \"waiting_on_ci\", \"event\": true, \"cause\": \"c6\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T06:17:00Z\", \"repo\": \"omnimarket\", \"opened_at\": \"2026-11-10T02:46:00Z\", \"verdict\": \"waiting_on_ci\", \"event\": true, \"cause\": \"c5\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T08:00:00Z\", \"repo\": \"omnipilot\", \"opened_at\": \"2026-11-10T06:06:00Z\", \"verdict\": \"merge_queue_ejecting\", \"event\": true, \"cause\": \"c7\"}\n",
+    "goal-check.json": "{\"at\": \"2026-11-10T08:00:00Z\", \"digest\": {\"flipped\": [\"omnimarket#21\", \"omnimarket#22\"], \"open_fell\": true, \"rate_ok\": true, \"unowned\": [\"stuck-owner:omnibase_infra@main\"], \"waiting\": [\"omnibase_infra#11\", \"omnimarket#1\", \"omnimarket#11\", \"omnimarket#4\", \"omnimarket#5\", \"omnimarket#6\", \"omnimarket#9\", \"omnipilot#3\"]}, \"drafted_seen\": [\"omnimarket#21\", \"omnimarket#22\", \"omnimarket#24\", \"omnipaused#30\"], \"merges\": 0, \"open_history\": [[\"2026-11-10T00:17:00Z\", 14], [\"2026-11-10T01:17:00Z\", 14], [\"2026-11-10T02:00:00Z\", 13], [\"2026-11-10T04:00:00Z\", 10], [\"2026-11-10T06:17:00Z\", 11], [\"2026-11-10T07:00:00Z\", 8], [\"2026-11-10T08:00:00Z\", 8]]}\n"
+   }
+  },
+  {
+   "request": {
+    "state_dir": "/tmp/ref23734/run2",
+    "heartbeat": {
+     "stamp": "2026-11-10T09:17:00Z",
+     "pid": 4242
+    },
+    "open_count": {
+     "history": [
+      {
+       "at": "2026-11-10T00:17:00Z",
+       "open": 116
+      },
+      {
+       "at": "2026-11-10T01:17:00Z",
+       "open": 180
+      },
+      {
+       "at": "2026-11-10T02:00:00Z",
+       "open": 93
+      },
+      {
+       "at": "2026-11-10T03:17:00Z",
+       "open": 156
+      },
+      {
+       "at": "2026-11-10T04:00:00Z",
+       "open": 177
+      },
+      {
+       "at": "2026-11-10T06:17:00Z",
+       "open": 158
+      },
+      {
+       "at": "2026-11-10T07:00:00Z",
+       "open": 189
+      },
+      {
+       "at": "2026-11-10T08:00:00Z",
+       "open": 130
+      }
+     ],
+     "at": "2026-11-10T09:17:00Z",
+     "count": 91,
+     "basis": "open-nondraft-in-scope-v1"
+    },
+    "repo_status": {
+     "verdicts": [
+      {
+       "repo": "omniclaude",
+       "opened_at": "2026-11-10T05:29:00Z",
+       "verdict": "waiting_on_ci",
+       "event": true,
+       "cause": "c8"
+      }
+     ],
+     "at": "2026-11-10T09:17:00Z"
+    },
+    "goal_record": {
+     "at": "2026-11-10T09:17:00Z",
+     "digest": {
+      "flipped": [
+       "omnimarket#24"
+      ],
+      "open_fell": true,
+      "rate_ok": true,
+      "unowned": [],
+      "waiting": [
+       "omnibase_infra#11",
+       "omniclaude#8",
+       "omnimarket#1",
+       "omnimarket#11",
+       "omnimarket#4",
+       "omnimarket#5",
+       "omnimarket#6",
+       "omnipilot#3"
+      ]
+     },
+     "drafted_seen": [
+      "omnimarket#21",
+      "omnimarket#24",
+      "omnipaused#30"
+     ],
+     "merges": 0,
+     "open_history": [
+      [
+       "2026-11-10T00:17:00Z",
+       14
+      ],
+      [
+       "2026-11-10T01:17:00Z",
+       14
+      ],
+      [
+       "2026-11-10T02:00:00Z",
+       13
+      ],
+      [
+       "2026-11-10T04:00:00Z",
+       10
+      ],
+      [
+       "2026-11-10T06:17:00Z",
+       11
+      ],
+      [
+       "2026-11-10T07:00:00Z",
+       8
+      ],
+      [
+       "2026-11-10T08:00:00Z",
+       8
+      ],
+      [
+       "2026-11-10T09:17:00Z",
+       8
+      ]
+     ]
+    }
+   },
+   "files_after": {
+    "throughput-tick.heartbeat": "2026-11-10T09:17:00Z pid=4242\n",
+    "throughput-tick.open-history.json": "{\"history\": [{\"at\": \"2026-11-10T00:17:00Z\", \"open\": 116, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T01:17:00Z\", \"open\": 180, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T02:00:00Z\", \"open\": 93, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T03:17:00Z\", \"open\": 156, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T04:00:00Z\", \"open\": 177, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T06:17:00Z\", \"open\": 158, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T07:00:00Z\", \"open\": 189, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T08:00:00Z\", \"open\": 130, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T09:17:00Z\", \"open\": 91, \"basis\": \"open-nondraft-in-scope-v1\"}]}\n",
+    "throughput-tick.repo-status.json": "{\"open_units\": [{\"repo\": \"omniclaude\", \"opened_at\": \"2026-11-10T05:29:00Z\", \"verdict\": \"waiting_on_ci\"}]}\n",
+    "throughput-tick.repo-status-events.jsonl": "{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T00:17:00Z\", \"repo\": \"omnipaused\", \"opened_at\": \"2026-11-10T00:09:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c2\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T00:17:00Z\", \"repo\": \"omnipilot\", \"opened_at\": \"2026-11-09T23:01:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c4\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T01:17:00Z\", \"repo\": \"omnipaused\", \"opened_at\": \"2026-11-09T23:59:00Z\", \"verdict\": \"merge_queue_ejecting\", \"event\": true, \"cause\": \"c1\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T05:05:00Z\", \"repo\": \"omnibase_infra\", \"opened_at\": \"2026-11-10T00:47:00Z\", \"verdict\": \"waiting_on_ci\", \"event\": true, \"cause\": \"c6\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T06:17:00Z\", \"repo\": \"omnimarket\", \"opened_at\": \"2026-11-10T02:46:00Z\", \"verdict\": \"waiting_on_ci\", \"event\": true, \"cause\": \"c5\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T08:00:00Z\", \"repo\": \"omnipilot\", \"opened_at\": \"2026-11-10T06:06:00Z\", \"verdict\": \"merge_queue_ejecting\", \"event\": true, \"cause\": \"c7\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T09:17:00Z\", \"repo\": \"omniclaude\", \"opened_at\": \"2026-11-10T05:29:00Z\", \"verdict\": \"waiting_on_ci\", \"event\": true, \"cause\": \"c8\"}\n",
+    "goal-check.json": "{\"at\": \"2026-11-10T09:17:00Z\", \"digest\": {\"flipped\": [\"omnimarket#24\"], \"open_fell\": true, \"rate_ok\": true, \"unowned\": [], \"waiting\": [\"omnibase_infra#11\", \"omniclaude#8\", \"omnimarket#1\", \"omnimarket#11\", \"omnimarket#4\", \"omnimarket#5\", \"omnimarket#6\", \"omnipilot#3\"]}, \"drafted_seen\": [\"omnimarket#21\", \"omnimarket#24\", \"omnipaused#30\"], \"merges\": 0, \"open_history\": [[\"2026-11-10T00:17:00Z\", 14], [\"2026-11-10T01:17:00Z\", 14], [\"2026-11-10T02:00:00Z\", 13], [\"2026-11-10T04:00:00Z\", 10], [\"2026-11-10T06:17:00Z\", 11], [\"2026-11-10T07:00:00Z\", 8], [\"2026-11-10T08:00:00Z\", 8], [\"2026-11-10T09:17:00Z\", 8]]}\n"
+   }
+  },
+  {
+   "request": {
+    "state_dir": "/tmp/ref23734/run2",
+    "heartbeat": {
+     "stamp": "2026-11-10T10:17:00Z",
+     "pid": 4242
+    },
+    "open_count": {
+     "history": [
+      {
+       "at": "2026-11-10T00:17:00Z",
+       "open": 116
+      },
+      {
+       "at": "2026-11-10T01:17:00Z",
+       "open": 180
+      },
+      {
+       "at": "2026-11-10T02:00:00Z",
+       "open": 93
+      },
+      {
+       "at": "2026-11-10T03:17:00Z",
+       "open": 156
+      },
+      {
+       "at": "2026-11-10T04:00:00Z",
+       "open": 177
+      },
+      {
+       "at": "2026-11-10T06:17:00Z",
+       "open": 158
+      },
+      {
+       "at": "2026-11-10T07:00:00Z",
+       "open": 189
+      },
+      {
+       "at": "2026-11-10T08:00:00Z",
+       "open": 130
+      },
+      {
+       "at": "2026-11-10T09:17:00Z",
+       "open": 91
+      }
+     ],
+     "at": "2026-11-10T10:17:00Z",
+     "count": 105,
+     "basis": "open-nondraft-in-scope-v1"
+    },
+    "repo_status": {
+     "verdicts": [
+      {
+       "repo": "omnimarket",
+       "opened_at": "2026-11-10T10:14:00Z",
+       "verdict": "merging_normally",
+       "event": true,
+       "cause": "c6"
+      }
+     ],
+     "at": "2026-11-10T10:17:00Z"
+    },
+    "goal_record": {
+     "at": "2026-11-10T10:17:00Z",
+     "digest": {
+      "flipped": [],
+      "open_fell": true,
+      "rate_ok": true,
+      "unowned": [],
+      "waiting": [
+       "omnibase_infra#11",
+       "omnimarket#1",
+       "omnimarket#11",
+       "omnimarket#4",
+       "omnimarket#5",
+       "omnipilot#3"
+      ]
+     },
+     "drafted_seen": [
+      "omnimarket#21",
+      "omnimarket#24",
+      "omnipaused#30"
+     ],
+     "merges": 1,
+     "open_history": [
+      [
+       "2026-11-10T00:17:00Z",
+       14
+      ],
+      [
+       "2026-11-10T01:17:00Z",
+       14
+      ],
+      [
+       "2026-11-10T02:00:00Z",
+       13
+      ],
+      [
+       "2026-11-10T04:00:00Z",
+       10
+      ],
+      [
+       "2026-11-10T06:17:00Z",
+       11
+      ],
+      [
+       "2026-11-10T07:00:00Z",
+       8
+      ],
+      [
+       "2026-11-10T08:00:00Z",
+       8
+      ],
+      [
+       "2026-11-10T09:17:00Z",
+       8
+      ],
+      [
+       "2026-11-10T10:17:00Z",
+       6
+      ]
+     ]
+    }
+   },
+   "files_after": {
+    "throughput-tick.heartbeat": "2026-11-10T10:17:00Z pid=4242\n",
+    "throughput-tick.open-history.json": "{\"history\": [{\"at\": \"2026-11-10T00:17:00Z\", \"open\": 116, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T01:17:00Z\", \"open\": 180, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T02:00:00Z\", \"open\": 93, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T03:17:00Z\", \"open\": 156, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T04:00:00Z\", \"open\": 177, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T06:17:00Z\", \"open\": 158, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T07:00:00Z\", \"open\": 189, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T08:00:00Z\", \"open\": 130, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T09:17:00Z\", \"open\": 91, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T10:17:00Z\", \"open\": 105, \"basis\": \"open-nondraft-in-scope-v1\"}]}\n",
+    "throughput-tick.repo-status.json": "{\"open_units\": [{\"repo\": \"omnimarket\", \"opened_at\": \"2026-11-10T10:14:00Z\", \"verdict\": \"merging_normally\"}]}\n",
+    "throughput-tick.repo-status-events.jsonl": "{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T00:17:00Z\", \"repo\": \"omnipaused\", \"opened_at\": \"2026-11-10T00:09:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c2\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T00:17:00Z\", \"repo\": \"omnipilot\", \"opened_at\": \"2026-11-09T23:01:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c4\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T01:17:00Z\", \"repo\": \"omnipaused\", \"opened_at\": \"2026-11-09T23:59:00Z\", \"verdict\": \"merge_queue_ejecting\", \"event\": true, \"cause\": \"c1\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T05:05:00Z\", \"repo\": \"omnibase_infra\", \"opened_at\": \"2026-11-10T00:47:00Z\", \"verdict\": \"waiting_on_ci\", \"event\": true, \"cause\": \"c6\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T06:17:00Z\", \"repo\": \"omnimarket\", \"opened_at\": \"2026-11-10T02:46:00Z\", \"verdict\": \"waiting_on_ci\", \"event\": true, \"cause\": \"c5\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T08:00:00Z\", \"repo\": \"omnipilot\", \"opened_at\": \"2026-11-10T06:06:00Z\", \"verdict\": \"merge_queue_ejecting\", \"event\": true, \"cause\": \"c7\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T09:17:00Z\", \"repo\": \"omniclaude\", \"opened_at\": \"2026-11-10T05:29:00Z\", \"verdict\": \"waiting_on_ci\", \"event\": true, \"cause\": \"c8\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T10:17:00Z\", \"repo\": \"omnimarket\", \"opened_at\": \"2026-11-10T10:14:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c6\"}\n",
+    "goal-check.json": "{\"at\": \"2026-11-10T10:17:00Z\", \"digest\": {\"flipped\": [], \"open_fell\": true, \"rate_ok\": true, \"unowned\": [], \"waiting\": [\"omnibase_infra#11\", \"omnimarket#1\", \"omnimarket#11\", \"omnimarket#4\", \"omnimarket#5\", \"omnipilot#3\"]}, \"drafted_seen\": [\"omnimarket#21\", \"omnimarket#24\", \"omnipaused#30\"], \"merges\": 1, \"open_history\": [[\"2026-11-10T00:17:00Z\", 14], [\"2026-11-10T01:17:00Z\", 14], [\"2026-11-10T02:00:00Z\", 13], [\"2026-11-10T04:00:00Z\", 10], [\"2026-11-10T06:17:00Z\", 11], [\"2026-11-10T07:00:00Z\", 8], [\"2026-11-10T08:00:00Z\", 8], [\"2026-11-10T09:17:00Z\", 8], [\"2026-11-10T10:17:00Z\", 6]]}\n"
+   }
+  },
+  {
+   "request": {
+    "state_dir": "/tmp/ref23734/run2",
+    "heartbeat": {
+     "stamp": "2026-11-10T11:05:00Z",
+     "pid": 4242
+    },
+    "goal_record": {
+     "at": "2026-11-10T11:05:00Z",
+     "digest": {
+      "flipped": [
+       "omnipaused#30"
+      ],
+      "open_fell": false,
+      "rate_ok": false,
+      "unowned": [],
+      "waiting": [
+       "omnibase_infra#11",
+       "omniclaude#8",
+       "omnimarket#1",
+       "omnimarket#10",
+       "omnimarket#11",
+       "omnimarket#12",
+       "omnimarket#2",
+       "omnimarket#3",
+       "omnimarket#4",
+       "omnimarket#5",
+       "omnimarket#6",
+       "omnimarket#7",
+       "omnimarket#8",
+       "omnimarket#9",
+       "omnipilot#3",
+       "omnipilot#4"
+      ]
+     },
+     "drafted_seen": [
+      "omnimarket#24",
+      "omnipaused#30"
+     ],
+     "merges": 0,
+     "open_history": [
+      [
+       "2026-11-10T00:17:00Z",
+       14
+      ],
+      [
+       "2026-11-10T01:17:00Z",
+       14
+      ],
+      [
+       "2026-11-10T02:00:00Z",
+       13
+      ],
+      [
+       "2026-11-10T04:00:00Z",
+       10
+      ],
+      [
+       "2026-11-10T06:17:00Z",
+       11
+      ],
+      [
+       "2026-11-10T07:00:00Z",
+       8
+      ],
+      [
+       "2026-11-10T08:00:00Z",
+       8
+      ],
+      [
+       "2026-11-10T09:17:00Z",
+       8
+      ],
+      [
+       "2026-11-10T10:17:00Z",
+       6
+      ],
+      [
+       "2026-11-10T11:05:00Z",
+       16
+      ]
+     ]
+    }
+   },
+   "files_after": {
+    "throughput-tick.heartbeat": "2026-11-10T11:05:00Z pid=4242\n",
+    "throughput-tick.open-history.json": "{\"history\": [{\"at\": \"2026-11-10T00:17:00Z\", \"open\": 116, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T01:17:00Z\", \"open\": 180, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T02:00:00Z\", \"open\": 93, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T03:17:00Z\", \"open\": 156, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T04:00:00Z\", \"open\": 177, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T06:17:00Z\", \"open\": 158, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T07:00:00Z\", \"open\": 189, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T08:00:00Z\", \"open\": 130, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T09:17:00Z\", \"open\": 91, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T10:17:00Z\", \"open\": 105, \"basis\": \"open-nondraft-in-scope-v1\"}]}\n",
+    "throughput-tick.repo-status.json": "{\"open_units\": [{\"repo\": \"omnimarket\", \"opened_at\": \"2026-11-10T10:14:00Z\", \"verdict\": \"merging_normally\"}]}\n",
+    "throughput-tick.repo-status-events.jsonl": "{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T00:17:00Z\", \"repo\": \"omnipaused\", \"opened_at\": \"2026-11-10T00:09:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c2\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T00:17:00Z\", \"repo\": \"omnipilot\", \"opened_at\": \"2026-11-09T23:01:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c4\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T01:17:00Z\", \"repo\": \"omnipaused\", \"opened_at\": \"2026-11-09T23:59:00Z\", \"verdict\": \"merge_queue_ejecting\", \"event\": true, \"cause\": \"c1\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T05:05:00Z\", \"repo\": \"omnibase_infra\", \"opened_at\": \"2026-11-10T00:47:00Z\", \"verdict\": \"waiting_on_ci\", \"event\": true, \"cause\": \"c6\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T06:17:00Z\", \"repo\": \"omnimarket\", \"opened_at\": \"2026-11-10T02:46:00Z\", \"verdict\": \"waiting_on_ci\", \"event\": true, \"cause\": \"c5\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T08:00:00Z\", \"repo\": \"omnipilot\", \"opened_at\": \"2026-11-10T06:06:00Z\", \"verdict\": \"merge_queue_ejecting\", \"event\": true, \"cause\": \"c7\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T09:17:00Z\", \"repo\": \"omniclaude\", \"opened_at\": \"2026-11-10T05:29:00Z\", \"verdict\": \"waiting_on_ci\", \"event\": true, \"cause\": \"c8\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T10:17:00Z\", \"repo\": \"omnimarket\", \"opened_at\": \"2026-11-10T10:14:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c6\"}\n",
+    "goal-check.json": "{\"at\": \"2026-11-10T11:05:00Z\", \"digest\": {\"flipped\": [\"omnipaused#30\"], \"open_fell\": false, \"rate_ok\": false, \"unowned\": [], \"waiting\": [\"omnibase_infra#11\", \"omniclaude#8\", \"omnimarket#1\", \"omnimarket#10\", \"omnimarket#11\", \"omnimarket#12\", \"omnimarket#2\", \"omnimarket#3\", \"omnimarket#4\", \"omnimarket#5\", \"omnimarket#6\", \"omnimarket#7\", \"omnimarket#8\", \"omnimarket#9\", \"omnipilot#3\", \"omnipilot#4\"]}, \"drafted_seen\": [\"omnimarket#24\", \"omnipaused#30\"], \"merges\": 0, \"open_history\": [[\"2026-11-10T00:17:00Z\", 14], [\"2026-11-10T01:17:00Z\", 14], [\"2026-11-10T02:00:00Z\", 13], [\"2026-11-10T04:00:00Z\", 10], [\"2026-11-10T06:17:00Z\", 11], [\"2026-11-10T07:00:00Z\", 8], [\"2026-11-10T08:00:00Z\", 8], [\"2026-11-10T09:17:00Z\", 8], [\"2026-11-10T10:17:00Z\", 6], [\"2026-11-10T11:05:00Z\", 16]]}\n"
+   }
+  },
+  {
+   "request": {
+    "state_dir": "/tmp/ref23734/run2",
+    "heartbeat": {
+     "stamp": "2026-11-10T12:17:00Z",
+     "pid": 4242
+    },
+    "open_count": {
+     "history": [
+      {
+       "at": "2026-11-10T00:17:00Z",
+       "open": 116
+      },
+      {
+       "at": "2026-11-10T01:17:00Z",
+       "open": 180
+      },
+      {
+       "at": "2026-11-10T02:00:00Z",
+       "open": 93
+      },
+      {
+       "at": "2026-11-10T03:17:00Z",
+       "open": 156
+      },
+      {
+       "at": "2026-11-10T04:00:00Z",
+       "open": 177
+      },
+      {
+       "at": "2026-11-10T06:17:00Z",
+       "open": 158
+      },
+      {
+       "at": "2026-11-10T07:00:00Z",
+       "open": 189
+      },
+      {
+       "at": "2026-11-10T08:00:00Z",
+       "open": 130
+      },
+      {
+       "at": "2026-11-10T09:17:00Z",
+       "open": 91
+      },
+      {
+       "at": "2026-11-10T10:17:00Z",
+       "open": 105
+      }
+     ],
+     "at": "2026-11-10T12:17:00Z",
+     "count": 82,
+     "basis": "open-nondraft-in-scope-v1"
+    },
+    "repo_status": {
+     "verdicts": [
+      {
+       "repo": "omnipilot",
+       "opened_at": "2026-11-10T08:19:00Z",
+       "verdict": "parked_or_escalated",
+       "event": true,
+       "cause": "c9"
+      }
+     ],
+     "at": "2026-11-10T12:17:00Z"
+    },
+    "goal_record": {
+     "at": "2026-11-10T12:17:00Z",
+     "digest": {
+      "flipped": [
+       "omnimarket#24"
+      ],
+      "open_fell": false,
+      "rate_ok": false,
+      "unowned": [
+       "repo-status:omnipilot"
+      ],
+      "waiting": [
+       "omnibase_infra#11",
+       "omnimarket#1",
+       "omnimarket#10",
+       "omnimarket#11",
+       "omnimarket#12",
+       "omnimarket#2",
+       "omnimarket#3",
+       "omnimarket#4",
+       "omnimarket#5",
+       "omnimarket#6",
+       "omnimarket#7",
+       "omnimarket#8",
+       "omnimarket#9",
+       "omnipilot#3",
+       "omnipilot#4"
+      ]
+     },
+     "drafted_seen": [
+      "omnimarket#24",
+      "omnipaused#30"
+     ],
+     "merges": 0,
+     "open_history": [
+      [
+       "2026-11-10T00:17:00Z",
+       14
+      ],
+      [
+       "2026-11-10T01:17:00Z",
+       14
+      ],
+      [
+       "2026-11-10T02:00:00Z",
+       13
+      ],
+      [
+       "2026-11-10T04:00:00Z",
+       10
+      ],
+      [
+       "2026-11-10T06:17:00Z",
+       11
+      ],
+      [
+       "2026-11-10T07:00:00Z",
+       8
+      ],
+      [
+       "2026-11-10T08:00:00Z",
+       8
+      ],
+      [
+       "2026-11-10T09:17:00Z",
+       8
+      ],
+      [
+       "2026-11-10T10:17:00Z",
+       6
+      ],
+      [
+       "2026-11-10T11:05:00Z",
+       16
+      ],
+      [
+       "2026-11-10T12:17:00Z",
+       15
+      ]
+     ]
+    }
+   },
+   "files_after": {
+    "throughput-tick.heartbeat": "2026-11-10T12:17:00Z pid=4242\n",
+    "throughput-tick.open-history.json": "{\"history\": [{\"at\": \"2026-11-10T00:17:00Z\", \"open\": 116, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T01:17:00Z\", \"open\": 180, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T02:00:00Z\", \"open\": 93, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T03:17:00Z\", \"open\": 156, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T04:00:00Z\", \"open\": 177, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T06:17:00Z\", \"open\": 158, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T07:00:00Z\", \"open\": 189, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T08:00:00Z\", \"open\": 130, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T09:17:00Z\", \"open\": 91, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T10:17:00Z\", \"open\": 105, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T12:17:00Z\", \"open\": 82, \"basis\": \"open-nondraft-in-scope-v1\"}]}\n",
+    "throughput-tick.repo-status.json": "{\"open_units\": [{\"repo\": \"omnipilot\", \"opened_at\": \"2026-11-10T08:19:00Z\", \"verdict\": \"parked_or_escalated\"}]}\n",
+    "throughput-tick.repo-status-events.jsonl": "{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T00:17:00Z\", \"repo\": \"omnipaused\", \"opened_at\": \"2026-11-10T00:09:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c2\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T00:17:00Z\", \"repo\": \"omnipilot\", \"opened_at\": \"2026-11-09T23:01:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c4\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T01:17:00Z\", \"repo\": \"omnipaused\", \"opened_at\": \"2026-11-09T23:59:00Z\", \"verdict\": \"merge_queue_ejecting\", \"event\": true, \"cause\": \"c1\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T05:05:00Z\", \"repo\": \"omnibase_infra\", \"opened_at\": \"2026-11-10T00:47:00Z\", \"verdict\": \"waiting_on_ci\", \"event\": true, \"cause\": \"c6\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T06:17:00Z\", \"repo\": \"omnimarket\", \"opened_at\": \"2026-11-10T02:46:00Z\", \"verdict\": \"waiting_on_ci\", \"event\": true, \"cause\": \"c5\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T08:00:00Z\", \"repo\": \"omnipilot\", \"opened_at\": \"2026-11-10T06:06:00Z\", \"verdict\": \"merge_queue_ejecting\", \"event\": true, \"cause\": \"c7\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T09:17:00Z\", \"repo\": \"omniclaude\", \"opened_at\": \"2026-11-10T05:29:00Z\", \"verdict\": \"waiting_on_ci\", \"event\": true, \"cause\": \"c8\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T10:17:00Z\", \"repo\": \"omnimarket\", \"opened_at\": \"2026-11-10T10:14:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c6\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T12:17:00Z\", \"repo\": \"omnipilot\", \"opened_at\": \"2026-11-10T08:19:00Z\", \"verdict\": \"parked_or_escalated\", \"event\": true, \"cause\": \"c9\"}\n",
+    "goal-check.json": "{\"at\": \"2026-11-10T12:17:00Z\", \"digest\": {\"flipped\": [\"omnimarket#24\"], \"open_fell\": false, \"rate_ok\": false, \"unowned\": [\"repo-status:omnipilot\"], \"waiting\": [\"omnibase_infra#11\", \"omnimarket#1\", \"omnimarket#10\", \"omnimarket#11\", \"omnimarket#12\", \"omnimarket#2\", \"omnimarket#3\", \"omnimarket#4\", \"omnimarket#5\", \"omnimarket#6\", \"omnimarket#7\", \"omnimarket#8\", \"omnimarket#9\", \"omnipilot#3\", \"omnipilot#4\"]}, \"drafted_seen\": [\"omnimarket#24\", \"omnipaused#30\"], \"merges\": 0, \"open_history\": [[\"2026-11-10T00:17:00Z\", 14], [\"2026-11-10T01:17:00Z\", 14], [\"2026-11-10T02:00:00Z\", 13], [\"2026-11-10T04:00:00Z\", 10], [\"2026-11-10T06:17:00Z\", 11], [\"2026-11-10T07:00:00Z\", 8], [\"2026-11-10T08:00:00Z\", 8], [\"2026-11-10T09:17:00Z\", 8], [\"2026-11-10T10:17:00Z\", 6], [\"2026-11-10T11:05:00Z\", 16], [\"2026-11-10T12:17:00Z\", 15]]}\n"
+   }
+  },
+  {
+   "request": {
+    "state_dir": "/tmp/ref23734/run2",
+    "heartbeat": {
+     "stamp": "2026-11-10T13:17:00Z",
+     "pid": 4242
+    },
+    "open_count": {
+     "history": [
+      {
+       "at": "2026-11-10T00:17:00Z",
+       "open": 116
+      },
+      {
+       "at": "2026-11-10T01:17:00Z",
+       "open": 180
+      },
+      {
+       "at": "2026-11-10T02:00:00Z",
+       "open": 93
+      },
+      {
+       "at": "2026-11-10T03:17:00Z",
+       "open": 156
+      },
+      {
+       "at": "2026-11-10T04:00:00Z",
+       "open": 177
+      },
+      {
+       "at": "2026-11-10T06:17:00Z",
+       "open": 158
+      },
+      {
+       "at": "2026-11-10T07:00:00Z",
+       "open": 189
+      },
+      {
+       "at": "2026-11-10T08:00:00Z",
+       "open": 130
+      },
+      {
+       "at": "2026-11-10T09:17:00Z",
+       "open": 91
+      },
+      {
+       "at": "2026-11-10T10:17:00Z",
+       "open": 105
+      },
+      {
+       "at": "2026-11-10T12:17:00Z",
+       "open": 82
+      }
+     ],
+     "at": "2026-11-10T13:17:00Z",
+     "count": 115,
+     "basis": "open-nondraft-in-scope-v1"
+    },
+    "repo_status": {
+     "verdicts": [
+      {
+       "repo": "omnibase_infra",
+       "opened_at": "2026-11-10T11:54:00Z",
+       "verdict": "waiting_on_ci"
+      }
+     ],
+     "at": "2026-11-10T13:17:00Z"
+    },
+    "goal_record": {
+     "at": "2026-11-10T13:17:00Z",
+     "digest": {
+      "flipped": [
+       "omnimarket#24",
+       "omnipaused#30"
+      ],
+      "open_fell": false,
+      "rate_ok": false,
+      "unowned": [],
+      "waiting": [
+       "omnibase_infra#11",
+       "omnimarket#1",
+       "omnimarket#11",
+       "omnimarket#12",
+       "omnimarket#2",
+       "omnimarket#3",
+       "omnimarket#4",
+       "omnimarket#5",
+       "omnimarket#6",
+       "omnimarket#7",
+       "omnimarket#8",
+       "omnimarket#9",
+       "omnipilot#3",
+       "omnipilot#4"
+      ]
+     },
+     "drafted_seen": [
+      "omnimarket#24",
+      "omnipaused#30"
+     ],
+     "merges": 0,
+     "open_history": [
+      [
+       "2026-11-10T00:17:00Z",
+       14
+      ],
+      [
+       "2026-11-10T01:17:00Z",
+       14
+      ],
+      [
+       "2026-11-10T02:00:00Z",
+       13
+      ],
+      [
+       "2026-11-10T04:00:00Z",
+       10
+      ],
+      [
+       "2026-11-10T06:17:00Z",
+       11
+      ],
+      [
+       "2026-11-10T07:00:00Z",
+       8
+      ],
+      [
+       "2026-11-10T08:00:00Z",
+       8
+      ],
+      [
+       "2026-11-10T09:17:00Z",
+       8
+      ],
+      [
+       "2026-11-10T10:17:00Z",
+       6
+      ],
+      [
+       "2026-11-10T11:05:00Z",
+       16
+      ],
+      [
+       "2026-11-10T12:17:00Z",
+       15
+      ],
+      [
+       "2026-11-10T13:17:00Z",
+       14
+      ]
+     ]
+    }
+   },
+   "files_after": {
+    "throughput-tick.heartbeat": "2026-11-10T13:17:00Z pid=4242\n",
+    "throughput-tick.open-history.json": "{\"history\": [{\"at\": \"2026-11-10T00:17:00Z\", \"open\": 116, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T01:17:00Z\", \"open\": 180, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T02:00:00Z\", \"open\": 93, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T03:17:00Z\", \"open\": 156, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T04:00:00Z\", \"open\": 177, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T06:17:00Z\", \"open\": 158, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T07:00:00Z\", \"open\": 189, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T08:00:00Z\", \"open\": 130, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T09:17:00Z\", \"open\": 91, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T10:17:00Z\", \"open\": 105, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T12:17:00Z\", \"open\": 82, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T13:17:00Z\", \"open\": 115, \"basis\": \"open-nondraft-in-scope-v1\"}]}\n",
+    "throughput-tick.repo-status.json": "{\"open_units\": [{\"repo\": \"omnibase_infra\", \"opened_at\": \"2026-11-10T11:54:00Z\", \"verdict\": \"waiting_on_ci\"}]}\n",
+    "throughput-tick.repo-status-events.jsonl": "{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T00:17:00Z\", \"repo\": \"omnipaused\", \"opened_at\": \"2026-11-10T00:09:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c2\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T00:17:00Z\", \"repo\": \"omnipilot\", \"opened_at\": \"2026-11-09T23:01:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c4\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T01:17:00Z\", \"repo\": \"omnipaused\", \"opened_at\": \"2026-11-09T23:59:00Z\", \"verdict\": \"merge_queue_ejecting\", \"event\": true, \"cause\": \"c1\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T05:05:00Z\", \"repo\": \"omnibase_infra\", \"opened_at\": \"2026-11-10T00:47:00Z\", \"verdict\": \"waiting_on_ci\", \"event\": true, \"cause\": \"c6\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T06:17:00Z\", \"repo\": \"omnimarket\", \"opened_at\": \"2026-11-10T02:46:00Z\", \"verdict\": \"waiting_on_ci\", \"event\": true, \"cause\": \"c5\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T08:00:00Z\", \"repo\": \"omnipilot\", \"opened_at\": \"2026-11-10T06:06:00Z\", \"verdict\": \"merge_queue_ejecting\", \"event\": true, \"cause\": \"c7\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T09:17:00Z\", \"repo\": \"omniclaude\", \"opened_at\": \"2026-11-10T05:29:00Z\", \"verdict\": \"waiting_on_ci\", \"event\": true, \"cause\": \"c8\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T10:17:00Z\", \"repo\": \"omnimarket\", \"opened_at\": \"2026-11-10T10:14:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c6\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T12:17:00Z\", \"repo\": \"omnipilot\", \"opened_at\": \"2026-11-10T08:19:00Z\", \"verdict\": \"parked_or_escalated\", \"event\": true, \"cause\": \"c9\"}\n",
+    "goal-check.json": "{\"at\": \"2026-11-10T13:17:00Z\", \"digest\": {\"flipped\": [\"omnimarket#24\", \"omnipaused#30\"], \"open_fell\": false, \"rate_ok\": false, \"unowned\": [], \"waiting\": [\"omnibase_infra#11\", \"omnimarket#1\", \"omnimarket#11\", \"omnimarket#12\", \"omnimarket#2\", \"omnimarket#3\", \"omnimarket#4\", \"omnimarket#5\", \"omnimarket#6\", \"omnimarket#7\", \"omnimarket#8\", \"omnimarket#9\", \"omnipilot#3\", \"omnipilot#4\"]}, \"drafted_seen\": [\"omnimarket#24\", \"omnipaused#30\"], \"merges\": 0, \"open_history\": [[\"2026-11-10T00:17:00Z\", 14], [\"2026-11-10T01:17:00Z\", 14], [\"2026-11-10T02:00:00Z\", 13], [\"2026-11-10T04:00:00Z\", 10], [\"2026-11-10T06:17:00Z\", 11], [\"2026-11-10T07:00:00Z\", 8], [\"2026-11-10T08:00:00Z\", 8], [\"2026-11-10T09:17:00Z\", 8], [\"2026-11-10T10:17:00Z\", 6], [\"2026-11-10T11:05:00Z\", 16], [\"2026-11-10T12:17:00Z\", 15], [\"2026-11-10T13:17:00Z\", 14]]}\n"
+   }
+  },
+  {
+   "request": {
+    "state_dir": "/tmp/ref23734/run2",
+    "heartbeat": {
+     "stamp": "2026-11-10T14:00:00Z",
+     "pid": 4242
+    },
+    "open_count": {
+     "history": [
+      {
+       "at": "2026-11-10T00:17:00Z",
+       "open": 116
+      },
+      {
+       "at": "2026-11-10T01:17:00Z",
+       "open": 180
+      },
+      {
+       "at": "2026-11-10T02:00:00Z",
+       "open": 93
+      },
+      {
+       "at": "2026-11-10T03:17:00Z",
+       "open": 156
+      },
+      {
+       "at": "2026-11-10T04:00:00Z",
+       "open": 177
+      },
+      {
+       "at": "2026-11-10T06:17:00Z",
+       "open": 158
+      },
+      {
+       "at": "2026-11-10T07:00:00Z",
+       "open": 189
+      },
+      {
+       "at": "2026-11-10T08:00:00Z",
+       "open": 130
+      },
+      {
+       "at": "2026-11-10T09:17:00Z",
+       "open": 91
+      },
+      {
+       "at": "2026-11-10T10:17:00Z",
+       "open": 105
+      },
+      {
+       "at": "2026-11-10T12:17:00Z",
+       "open": 82
+      },
+      {
+       "at": "2026-11-10T13:17:00Z",
+       "open": 115
+      }
+     ],
+     "at": "2026-11-10T14:00:00Z",
+     "count": 88,
+     "basis": "open-nondraft-in-scope-v1"
+    },
+    "repo_status": {
+     "verdicts": [
+      {
+       "repo": "omniclaude",
+       "opened_at": "2026-11-10T13:32:00Z",
+       "verdict": "merge_queue_ejecting"
+      },
+      {
+       "repo": "omnipaused",
+       "opened_at": "2026-11-10T12:08:00Z",
+       "verdict": "base_branch_red",
+       "event": true,
+       "cause": "c9"
+      },
+      {
+       "repo": "omnipilot",
+       "opened_at": "2026-11-10T13:06:00Z",
+       "verdict": "merging_normally",
+       "event": true,
+       "cause": "c2"
+      },
+      {
+       "repo": "omnimarket",
+       "opened_at": "2026-11-10T11:16:00Z",
+       "verdict": "merge_queue_ejecting"
+      }
+     ],
+     "at": "2026-11-10T14:00:00Z"
+    },
+    "goal_record": {
+     "at": "2026-11-10T14:00:00Z",
+     "digest": {
+      "flipped": [
+       "omnimarket#24",
+       "omnipaused#30"
+      ],
+      "open_fell": false,
+      "rate_ok": false,
+      "unowned": [],
+      "waiting": [
+       "omnibase_infra#11",
+       "omniclaude#8",
+       "omnimarket#1",
+       "omnimarket#11",
+       "omnimarket#12",
+       "omnimarket#3",
+       "omnimarket#4",
+       "omnimarket#5",
+       "omnimarket#6",
+       "omnimarket#7",
+       "omnimarket#8",
+       "omnimarket#9",
+       "omnipilot#3",
+       "omnipilot#4"
+      ]
+     },
+     "drafted_seen": [
+      "omnimarket#24",
+      "omnipaused#30"
+     ],
+     "merges": 0,
+     "open_history": [
+      [
+       "2026-11-10T00:17:00Z",
+       14
+      ],
+      [
+       "2026-11-10T01:17:00Z",
+       14
+      ],
+      [
+       "2026-11-10T02:00:00Z",
+       13
+      ],
+      [
+       "2026-11-10T04:00:00Z",
+       10
+      ],
+      [
+       "2026-11-10T06:17:00Z",
+       11
+      ],
+      [
+       "2026-11-10T07:00:00Z",
+       8
+      ],
+      [
+       "2026-11-10T08:00:00Z",
+       8
+      ],
+      [
+       "2026-11-10T09:17:00Z",
+       8
+      ],
+      [
+       "2026-11-10T10:17:00Z",
+       6
+      ],
+      [
+       "2026-11-10T11:05:00Z",
+       16
+      ],
+      [
+       "2026-11-10T12:17:00Z",
+       15
+      ],
+      [
+       "2026-11-10T13:17:00Z",
+       14
+      ],
+      [
+       "2026-11-10T14:00:00Z",
+       14
+      ]
+     ]
+    }
+   },
+   "files_after": {
+    "throughput-tick.heartbeat": "2026-11-10T14:00:00Z pid=4242\n",
+    "throughput-tick.open-history.json": "{\"history\": [{\"at\": \"2026-11-10T01:17:00Z\", \"open\": 180, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T02:00:00Z\", \"open\": 93, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T03:17:00Z\", \"open\": 156, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T04:00:00Z\", \"open\": 177, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T06:17:00Z\", \"open\": 158, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T07:00:00Z\", \"open\": 189, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T08:00:00Z\", \"open\": 130, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T09:17:00Z\", \"open\": 91, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T10:17:00Z\", \"open\": 105, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T12:17:00Z\", \"open\": 82, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T13:17:00Z\", \"open\": 115, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T14:00:00Z\", \"open\": 88, \"basis\": \"open-nondraft-in-scope-v1\"}]}\n",
+    "throughput-tick.repo-status.json": "{\"open_units\": [{\"repo\": \"omniclaude\", \"opened_at\": \"2026-11-10T13:32:00Z\", \"verdict\": \"merge_queue_ejecting\"}, {\"repo\": \"omnipaused\", \"opened_at\": \"2026-11-10T12:08:00Z\", \"verdict\": \"base_branch_red\"}, {\"repo\": \"omnipilot\", \"opened_at\": \"2026-11-10T13:06:00Z\", \"verdict\": \"merging_normally\"}, {\"repo\": \"omnimarket\", \"opened_at\": \"2026-11-10T11:16:00Z\", \"verdict\": \"merge_queue_ejecting\"}]}\n",
+    "throughput-tick.repo-status-events.jsonl": "{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T00:17:00Z\", \"repo\": \"omnipaused\", \"opened_at\": \"2026-11-10T00:09:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c2\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T00:17:00Z\", \"repo\": \"omnipilot\", \"opened_at\": \"2026-11-09T23:01:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c4\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T01:17:00Z\", \"repo\": \"omnipaused\", \"opened_at\": \"2026-11-09T23:59:00Z\", \"verdict\": \"merge_queue_ejecting\", \"event\": true, \"cause\": \"c1\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T05:05:00Z\", \"repo\": \"omnibase_infra\", \"opened_at\": \"2026-11-10T00:47:00Z\", \"verdict\": \"waiting_on_ci\", \"event\": true, \"cause\": \"c6\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T06:17:00Z\", \"repo\": \"omnimarket\", \"opened_at\": \"2026-11-10T02:46:00Z\", \"verdict\": \"waiting_on_ci\", \"event\": true, \"cause\": \"c5\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T08:00:00Z\", \"repo\": \"omnipilot\", \"opened_at\": \"2026-11-10T06:06:00Z\", \"verdict\": \"merge_queue_ejecting\", \"event\": true, \"cause\": \"c7\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T09:17:00Z\", \"repo\": \"omniclaude\", \"opened_at\": \"2026-11-10T05:29:00Z\", \"verdict\": \"waiting_on_ci\", \"event\": true, \"cause\": \"c8\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T10:17:00Z\", \"repo\": \"omnimarket\", \"opened_at\": \"2026-11-10T10:14:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c6\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T12:17:00Z\", \"repo\": \"omnipilot\", \"opened_at\": \"2026-11-10T08:19:00Z\", \"verdict\": \"parked_or_escalated\", \"event\": true, \"cause\": \"c9\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T14:00:00Z\", \"repo\": \"omnipaused\", \"opened_at\": \"2026-11-10T12:08:00Z\", \"verdict\": \"base_branch_red\", \"event\": true, \"cause\": \"c9\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T14:00:00Z\", \"repo\": \"omnipilot\", \"opened_at\": \"2026-11-10T13:06:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c2\"}\n",
+    "goal-check.json": "{\"at\": \"2026-11-10T14:00:00Z\", \"digest\": {\"flipped\": [\"omnimarket#24\", \"omnipaused#30\"], \"open_fell\": false, \"rate_ok\": false, \"unowned\": [], \"waiting\": [\"omnibase_infra#11\", \"omniclaude#8\", \"omnimarket#1\", \"omnimarket#11\", \"omnimarket#12\", \"omnimarket#3\", \"omnimarket#4\", \"omnimarket#5\", \"omnimarket#6\", \"omnimarket#7\", \"omnimarket#8\", \"omnimarket#9\", \"omnipilot#3\", \"omnipilot#4\"]}, \"drafted_seen\": [\"omnimarket#24\", \"omnipaused#30\"], \"merges\": 0, \"open_history\": [[\"2026-11-10T00:17:00Z\", 14], [\"2026-11-10T01:17:00Z\", 14], [\"2026-11-10T02:00:00Z\", 13], [\"2026-11-10T04:00:00Z\", 10], [\"2026-11-10T06:17:00Z\", 11], [\"2026-11-10T07:00:00Z\", 8], [\"2026-11-10T08:00:00Z\", 8], [\"2026-11-10T09:17:00Z\", 8], [\"2026-11-10T10:17:00Z\", 6], [\"2026-11-10T11:05:00Z\", 16], [\"2026-11-10T12:17:00Z\", 15], [\"2026-11-10T13:17:00Z\", 14], [\"2026-11-10T14:00:00Z\", 14]]}\n"
+   }
+  },
+  {
+   "request": {
+    "state_dir": "/tmp/ref23734/run2",
+    "heartbeat": {
+     "stamp": "2026-11-10T15:17:00Z",
+     "pid": 4242
+    },
+    "open_count": {
+     "history": [
+      {
+       "at": "2026-11-10T01:17:00Z",
+       "open": 180
+      },
+      {
+       "at": "2026-11-10T02:00:00Z",
+       "open": 93
+      },
+      {
+       "at": "2026-11-10T03:17:00Z",
+       "open": 156
+      },
+      {
+       "at": "2026-11-10T04:00:00Z",
+       "open": 177
+      },
+      {
+       "at": "2026-11-10T06:17:00Z",
+       "open": 158
+      },
+      {
+       "at": "2026-11-10T07:00:00Z",
+       "open": 189
+      },
+      {
+       "at": "2026-11-10T08:00:00Z",
+       "open": 130
+      },
+      {
+       "at": "2026-11-10T09:17:00Z",
+       "open": 91
+      },
+      {
+       "at": "2026-11-10T10:17:00Z",
+       "open": 105
+      },
+      {
+       "at": "2026-11-10T12:17:00Z",
+       "open": 82
+      },
+      {
+       "at": "2026-11-10T13:17:00Z",
+       "open": 115
+      },
+      {
+       "at": "2026-11-10T14:00:00Z",
+       "open": 88
+      }
+     ],
+     "at": "2026-11-10T15:17:00Z",
+     "count": 155,
+     "basis": "open-nondraft-in-scope-v1"
+    },
+    "goal_record": {
+     "at": "2026-11-10T15:17:00Z",
+     "digest": {
+      "flipped": [
+       "omnimarket#24"
+      ],
+      "open_fell": false,
+      "rate_ok": false,
+      "unowned": [],
+      "waiting": [
+       "omnibase_infra#11",
+       "omniclaude#8",
+       "omnimarket#1",
+       "omnimarket#11",
+       "omnimarket#12",
+       "omnimarket#3",
+       "omnimarket#4",
+       "omnimarket#6",
+       "omnimarket#7",
+       "omnimarket#8",
+       "omnipilot#3",
+       "omnipilot#4"
+      ]
+     },
+     "drafted_seen": [
+      "omnimarket#24",
+      "omnipaused#30"
+     ],
+     "merges": 2,
+     "open_history": [
+      [
+       "2026-11-10T00:17:00Z",
+       14
+      ],
+      [
+       "2026-11-10T01:17:00Z",
+       14
+      ],
+      [
+       "2026-11-10T02:00:00Z",
+       13
+      ],
+      [
+       "2026-11-10T04:00:00Z",
+       10
+      ],
+      [
+       "2026-11-10T06:17:00Z",
+       11
+      ],
+      [
+       "2026-11-10T07:00:00Z",
+       8
+      ],
+      [
+       "2026-11-10T08:00:00Z",
+       8
+      ],
+      [
+       "2026-11-10T09:17:00Z",
+       8
+      ],
+      [
+       "2026-11-10T10:17:00Z",
+       6
+      ],
+      [
+       "2026-11-10T11:05:00Z",
+       16
+      ],
+      [
+       "2026-11-10T12:17:00Z",
+       15
+      ],
+      [
+       "2026-11-10T13:17:00Z",
+       14
+      ],
+      [
+       "2026-11-10T14:00:00Z",
+       14
+      ],
+      [
+       "2026-11-10T15:17:00Z",
+       12
+      ]
+     ]
+    }
+   },
+   "files_after": {
+    "throughput-tick.heartbeat": "2026-11-10T15:17:00Z pid=4242\n",
+    "throughput-tick.open-history.json": "{\"history\": [{\"at\": \"2026-11-10T02:00:00Z\", \"open\": 93, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T03:17:00Z\", \"open\": 156, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T04:00:00Z\", \"open\": 177, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T06:17:00Z\", \"open\": 158, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T07:00:00Z\", \"open\": 189, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T08:00:00Z\", \"open\": 130, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T09:17:00Z\", \"open\": 91, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T10:17:00Z\", \"open\": 105, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T12:17:00Z\", \"open\": 82, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T13:17:00Z\", \"open\": 115, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T14:00:00Z\", \"open\": 88, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T15:17:00Z\", \"open\": 155, \"basis\": \"open-nondraft-in-scope-v1\"}]}\n",
+    "throughput-tick.repo-status.json": "{\"open_units\": [{\"repo\": \"omniclaude\", \"opened_at\": \"2026-11-10T13:32:00Z\", \"verdict\": \"merge_queue_ejecting\"}, {\"repo\": \"omnipaused\", \"opened_at\": \"2026-11-10T12:08:00Z\", \"verdict\": \"base_branch_red\"}, {\"repo\": \"omnipilot\", \"opened_at\": \"2026-11-10T13:06:00Z\", \"verdict\": \"merging_normally\"}, {\"repo\": \"omnimarket\", \"opened_at\": \"2026-11-10T11:16:00Z\", \"verdict\": \"merge_queue_ejecting\"}]}\n",
+    "throughput-tick.repo-status-events.jsonl": "{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T00:17:00Z\", \"repo\": \"omnipaused\", \"opened_at\": \"2026-11-10T00:09:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c2\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T00:17:00Z\", \"repo\": \"omnipilot\", \"opened_at\": \"2026-11-09T23:01:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c4\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T01:17:00Z\", \"repo\": \"omnipaused\", \"opened_at\": \"2026-11-09T23:59:00Z\", \"verdict\": \"merge_queue_ejecting\", \"event\": true, \"cause\": \"c1\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T05:05:00Z\", \"repo\": \"omnibase_infra\", \"opened_at\": \"2026-11-10T00:47:00Z\", \"verdict\": \"waiting_on_ci\", \"event\": true, \"cause\": \"c6\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T06:17:00Z\", \"repo\": \"omnimarket\", \"opened_at\": \"2026-11-10T02:46:00Z\", \"verdict\": \"waiting_on_ci\", \"event\": true, \"cause\": \"c5\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T08:00:00Z\", \"repo\": \"omnipilot\", \"opened_at\": \"2026-11-10T06:06:00Z\", \"verdict\": \"merge_queue_ejecting\", \"event\": true, \"cause\": \"c7\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T09:17:00Z\", \"repo\": \"omniclaude\", \"opened_at\": \"2026-11-10T05:29:00Z\", \"verdict\": \"waiting_on_ci\", \"event\": true, \"cause\": \"c8\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T10:17:00Z\", \"repo\": \"omnimarket\", \"opened_at\": \"2026-11-10T10:14:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c6\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T12:17:00Z\", \"repo\": \"omnipilot\", \"opened_at\": \"2026-11-10T08:19:00Z\", \"verdict\": \"parked_or_escalated\", \"event\": true, \"cause\": \"c9\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T14:00:00Z\", \"repo\": \"omnipaused\", \"opened_at\": \"2026-11-10T12:08:00Z\", \"verdict\": \"base_branch_red\", \"event\": true, \"cause\": \"c9\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T14:00:00Z\", \"repo\": \"omnipilot\", \"opened_at\": \"2026-11-10T13:06:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c2\"}\n",
+    "goal-check.json": "{\"at\": \"2026-11-10T15:17:00Z\", \"digest\": {\"flipped\": [\"omnimarket#24\"], \"open_fell\": false, \"rate_ok\": false, \"unowned\": [], \"waiting\": [\"omnibase_infra#11\", \"omniclaude#8\", \"omnimarket#1\", \"omnimarket#11\", \"omnimarket#12\", \"omnimarket#3\", \"omnimarket#4\", \"omnimarket#6\", \"omnimarket#7\", \"omnimarket#8\", \"omnipilot#3\", \"omnipilot#4\"]}, \"drafted_seen\": [\"omnimarket#24\", \"omnipaused#30\"], \"merges\": 2, \"open_history\": [[\"2026-11-10T00:17:00Z\", 14], [\"2026-11-10T01:17:00Z\", 14], [\"2026-11-10T02:00:00Z\", 13], [\"2026-11-10T04:00:00Z\", 10], [\"2026-11-10T06:17:00Z\", 11], [\"2026-11-10T07:00:00Z\", 8], [\"2026-11-10T08:00:00Z\", 8], [\"2026-11-10T09:17:00Z\", 8], [\"2026-11-10T10:17:00Z\", 6], [\"2026-11-10T11:05:00Z\", 16], [\"2026-11-10T12:17:00Z\", 15], [\"2026-11-10T13:17:00Z\", 14], [\"2026-11-10T14:00:00Z\", 14], [\"2026-11-10T15:17:00Z\", 12]]}\n"
+   }
+  },
+  {
+   "request": {
+    "state_dir": "/tmp/ref23734/run2",
+    "heartbeat": {
+     "stamp": "2026-11-10T16:00:00Z",
+     "pid": 4242
+    },
+    "open_count": {
+     "history": [
+      {
+       "at": "2026-11-10T02:00:00Z",
+       "open": 93
+      },
+      {
+       "at": "2026-11-10T03:17:00Z",
+       "open": 156
+      },
+      {
+       "at": "2026-11-10T04:00:00Z",
+       "open": 177
+      },
+      {
+       "at": "2026-11-10T06:17:00Z",
+       "open": 158
+      },
+      {
+       "at": "2026-11-10T07:00:00Z",
+       "open": 189
+      },
+      {
+       "at": "2026-11-10T08:00:00Z",
+       "open": 130
+      },
+      {
+       "at": "2026-11-10T09:17:00Z",
+       "open": 91
+      },
+      {
+       "at": "2026-11-10T10:17:00Z",
+       "open": 105
+      },
+      {
+       "at": "2026-11-10T12:17:00Z",
+       "open": 82
+      },
+      {
+       "at": "2026-11-10T13:17:00Z",
+       "open": 115
+      },
+      {
+       "at": "2026-11-10T14:00:00Z",
+       "open": 88
+      },
+      {
+       "at": "2026-11-10T15:17:00Z",
+       "open": 155
+      }
+     ],
+     "at": "2026-11-10T16:00:00Z",
+     "count": 130,
+     "basis": "open-nondraft-in-scope-v1"
+    },
+    "repo_status": {
+     "verdicts": [
+      {
+       "repo": "omnimarket",
+       "opened_at": "2026-11-10T14:05:00Z",
+       "verdict": "parked_or_escalated"
+      },
+      {
+       "repo": "omnipaused",
+       "opened_at": "2026-11-10T11:39:00Z",
+       "verdict": "merging_normally",
+       "event": true,
+       "cause": "c8"
+      }
+     ],
+     "at": "2026-11-10T16:00:00Z"
+    },
+    "goal_record": {
+     "at": "2026-11-10T16:00:00Z",
+     "digest": {
+      "flipped": [],
+      "open_fell": false,
+      "rate_ok": false,
+      "unowned": [
+       "stuck-owner:omnibase_infra@main"
+      ],
+      "waiting": [
+       "omnibase_infra#11",
+       "omnimarket#1",
+       "omnimarket#11",
+       "omnimarket#12",
+       "omnimarket#3",
+       "omnimarket#4",
+       "omnimarket#6",
+       "omnimarket#7",
+       "omnimarket#8",
+       "omnipilot#3",
+       "omnipilot#4"
+      ]
+     },
+     "drafted_seen": [
+      "omnimarket#24",
+      "omnipaused#30"
+     ],
+     "merges": 1,
+     "open_history": [
+      [
+       "2026-11-10T00:17:00Z",
+       14
+      ],
+      [
+       "2026-11-10T01:17:00Z",
+       14
+      ],
+      [
+       "2026-11-10T02:00:00Z",
+       13
+      ],
+      [
+       "2026-11-10T04:00:00Z",
+       10
+      ],
+      [
+       "2026-11-10T06:17:00Z",
+       11
+      ],
+      [
+       "2026-11-10T07:00:00Z",
+       8
+      ],
+      [
+       "2026-11-10T08:00:00Z",
+       8
+      ],
+      [
+       "2026-11-10T09:17:00Z",
+       8
+      ],
+      [
+       "2026-11-10T10:17:00Z",
+       6
+      ],
+      [
+       "2026-11-10T11:05:00Z",
+       16
+      ],
+      [
+       "2026-11-10T12:17:00Z",
+       15
+      ],
+      [
+       "2026-11-10T13:17:00Z",
+       14
+      ],
+      [
+       "2026-11-10T14:00:00Z",
+       14
+      ],
+      [
+       "2026-11-10T15:17:00Z",
+       12
+      ],
+      [
+       "2026-11-10T16:00:00Z",
+       11
+      ]
+     ]
+    }
+   },
+   "files_after": {
+    "throughput-tick.heartbeat": "2026-11-10T16:00:00Z pid=4242\n",
+    "throughput-tick.open-history.json": "{\"history\": [{\"at\": \"2026-11-10T03:17:00Z\", \"open\": 156, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T04:00:00Z\", \"open\": 177, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T06:17:00Z\", \"open\": 158, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T07:00:00Z\", \"open\": 189, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T08:00:00Z\", \"open\": 130, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T09:17:00Z\", \"open\": 91, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T10:17:00Z\", \"open\": 105, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T12:17:00Z\", \"open\": 82, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T13:17:00Z\", \"open\": 115, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T14:00:00Z\", \"open\": 88, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T15:17:00Z\", \"open\": 155, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T16:00:00Z\", \"open\": 130, \"basis\": \"open-nondraft-in-scope-v1\"}]}\n",
+    "throughput-tick.repo-status.json": "{\"open_units\": [{\"repo\": \"omnimarket\", \"opened_at\": \"2026-11-10T14:05:00Z\", \"verdict\": \"parked_or_escalated\"}, {\"repo\": \"omnipaused\", \"opened_at\": \"2026-11-10T11:39:00Z\", \"verdict\": \"merging_normally\"}]}\n",
+    "throughput-tick.repo-status-events.jsonl": "{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T00:17:00Z\", \"repo\": \"omnipaused\", \"opened_at\": \"2026-11-10T00:09:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c2\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T00:17:00Z\", \"repo\": \"omnipilot\", \"opened_at\": \"2026-11-09T23:01:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c4\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T01:17:00Z\", \"repo\": \"omnipaused\", \"opened_at\": \"2026-11-09T23:59:00Z\", \"verdict\": \"merge_queue_ejecting\", \"event\": true, \"cause\": \"c1\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T05:05:00Z\", \"repo\": \"omnibase_infra\", \"opened_at\": \"2026-11-10T00:47:00Z\", \"verdict\": \"waiting_on_ci\", \"event\": true, \"cause\": \"c6\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T06:17:00Z\", \"repo\": \"omnimarket\", \"opened_at\": \"2026-11-10T02:46:00Z\", \"verdict\": \"waiting_on_ci\", \"event\": true, \"cause\": \"c5\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T08:00:00Z\", \"repo\": \"omnipilot\", \"opened_at\": \"2026-11-10T06:06:00Z\", \"verdict\": \"merge_queue_ejecting\", \"event\": true, \"cause\": \"c7\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T09:17:00Z\", \"repo\": \"omniclaude\", \"opened_at\": \"2026-11-10T05:29:00Z\", \"verdict\": \"waiting_on_ci\", \"event\": true, \"cause\": \"c8\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T10:17:00Z\", \"repo\": \"omnimarket\", \"opened_at\": \"2026-11-10T10:14:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c6\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T12:17:00Z\", \"repo\": \"omnipilot\", \"opened_at\": \"2026-11-10T08:19:00Z\", \"verdict\": \"parked_or_escalated\", \"event\": true, \"cause\": \"c9\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T14:00:00Z\", \"repo\": \"omnipaused\", \"opened_at\": \"2026-11-10T12:08:00Z\", \"verdict\": \"base_branch_red\", \"event\": true, \"cause\": \"c9\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T14:00:00Z\", \"repo\": \"omnipilot\", \"opened_at\": \"2026-11-10T13:06:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c2\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T16:00:00Z\", \"repo\": \"omnipaused\", \"opened_at\": \"2026-11-10T11:39:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c8\"}\n",
+    "goal-check.json": "{\"at\": \"2026-11-10T16:00:00Z\", \"digest\": {\"flipped\": [], \"open_fell\": false, \"rate_ok\": false, \"unowned\": [\"stuck-owner:omnibase_infra@main\"], \"waiting\": [\"omnibase_infra#11\", \"omnimarket#1\", \"omnimarket#11\", \"omnimarket#12\", \"omnimarket#3\", \"omnimarket#4\", \"omnimarket#6\", \"omnimarket#7\", \"omnimarket#8\", \"omnipilot#3\", \"omnipilot#4\"]}, \"drafted_seen\": [\"omnimarket#24\", \"omnipaused#30\"], \"merges\": 1, \"open_history\": [[\"2026-11-10T00:17:00Z\", 14], [\"2026-11-10T01:17:00Z\", 14], [\"2026-11-10T02:00:00Z\", 13], [\"2026-11-10T04:00:00Z\", 10], [\"2026-11-10T06:17:00Z\", 11], [\"2026-11-10T07:00:00Z\", 8], [\"2026-11-10T08:00:00Z\", 8], [\"2026-11-10T09:17:00Z\", 8], [\"2026-11-10T10:17:00Z\", 6], [\"2026-11-10T11:05:00Z\", 16], [\"2026-11-10T12:17:00Z\", 15], [\"2026-11-10T13:17:00Z\", 14], [\"2026-11-10T14:00:00Z\", 14], [\"2026-11-10T15:17:00Z\", 12], [\"2026-11-10T16:00:00Z\", 11]]}\n"
+   }
+  },
+  {
+   "request": {
+    "state_dir": "/tmp/ref23734/run2",
+    "heartbeat": {
+     "stamp": "2026-11-10T17:00:00Z",
+     "pid": 4242
+    },
+    "repo_status": {
+     "verdicts": [],
+     "at": "2026-11-10T17:00:00Z"
+    },
+    "goal_record": {
+     "at": "2026-11-10T17:00:00Z",
+     "digest": {
+      "flipped": [
+       "omnimarket#24"
+      ],
+      "open_fell": false,
+      "rate_ok": false,
+      "unowned": [],
+      "waiting": [
+       "omnibase_infra#11",
+       "omniclaude#8",
+       "omnimarket#1",
+       "omnimarket#11",
+       "omnimarket#12",
+       "omnimarket#3",
+       "omnimarket#4",
+       "omnimarket#6",
+       "omnimarket#7",
+       "omnimarket#8",
+       "omnipilot#3",
+       "omnipilot#4"
+      ]
+     },
+     "drafted_seen": [
+      "omnimarket#24",
+      "omnipaused#30"
+     ],
+     "merges": 0,
+     "open_history": [
+      [
+       "2026-11-10T00:17:00Z",
+       14
+      ],
+      [
+       "2026-11-10T01:17:00Z",
+       14
+      ],
+      [
+       "2026-11-10T02:00:00Z",
+       13
+      ],
+      [
+       "2026-11-10T04:00:00Z",
+       10
+      ],
+      [
+       "2026-11-10T06:17:00Z",
+       11
+      ],
+      [
+       "2026-11-10T07:00:00Z",
+       8
+      ],
+      [
+       "2026-11-10T08:00:00Z",
+       8
+      ],
+      [
+       "2026-11-10T09:17:00Z",
+       8
+      ],
+      [
+       "2026-11-10T10:17:00Z",
+       6
+      ],
+      [
+       "2026-11-10T11:05:00Z",
+       16
+      ],
+      [
+       "2026-11-10T12:17:00Z",
+       15
+      ],
+      [
+       "2026-11-10T13:17:00Z",
+       14
+      ],
+      [
+       "2026-11-10T14:00:00Z",
+       14
+      ],
+      [
+       "2026-11-10T15:17:00Z",
+       12
+      ],
+      [
+       "2026-11-10T16:00:00Z",
+       11
+      ],
+      [
+       "2026-11-10T17:00:00Z",
+       12
+      ]
+     ]
+    }
+   },
+   "files_after": {
+    "throughput-tick.heartbeat": "2026-11-10T17:00:00Z pid=4242\n",
+    "throughput-tick.open-history.json": "{\"history\": [{\"at\": \"2026-11-10T03:17:00Z\", \"open\": 156, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T04:00:00Z\", \"open\": 177, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T06:17:00Z\", \"open\": 158, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T07:00:00Z\", \"open\": 189, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T08:00:00Z\", \"open\": 130, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T09:17:00Z\", \"open\": 91, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T10:17:00Z\", \"open\": 105, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T12:17:00Z\", \"open\": 82, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T13:17:00Z\", \"open\": 115, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T14:00:00Z\", \"open\": 88, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T15:17:00Z\", \"open\": 155, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T16:00:00Z\", \"open\": 130, \"basis\": \"open-nondraft-in-scope-v1\"}]}\n",
+    "throughput-tick.repo-status.json": "{\"open_units\": []}\n",
+    "throughput-tick.repo-status-events.jsonl": "{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T00:17:00Z\", \"repo\": \"omnipaused\", \"opened_at\": \"2026-11-10T00:09:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c2\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T00:17:00Z\", \"repo\": \"omnipilot\", \"opened_at\": \"2026-11-09T23:01:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c4\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T01:17:00Z\", \"repo\": \"omnipaused\", \"opened_at\": \"2026-11-09T23:59:00Z\", \"verdict\": \"merge_queue_ejecting\", \"event\": true, \"cause\": \"c1\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T05:05:00Z\", \"repo\": \"omnibase_infra\", \"opened_at\": \"2026-11-10T00:47:00Z\", \"verdict\": \"waiting_on_ci\", \"event\": true, \"cause\": \"c6\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T06:17:00Z\", \"repo\": \"omnimarket\", \"opened_at\": \"2026-11-10T02:46:00Z\", \"verdict\": \"waiting_on_ci\", \"event\": true, \"cause\": \"c5\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T08:00:00Z\", \"repo\": \"omnipilot\", \"opened_at\": \"2026-11-10T06:06:00Z\", \"verdict\": \"merge_queue_ejecting\", \"event\": true, \"cause\": \"c7\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T09:17:00Z\", \"repo\": \"omniclaude\", \"opened_at\": \"2026-11-10T05:29:00Z\", \"verdict\": \"waiting_on_ci\", \"event\": true, \"cause\": \"c8\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T10:17:00Z\", \"repo\": \"omnimarket\", \"opened_at\": \"2026-11-10T10:14:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c6\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T12:17:00Z\", \"repo\": \"omnipilot\", \"opened_at\": \"2026-11-10T08:19:00Z\", \"verdict\": \"parked_or_escalated\", \"event\": true, \"cause\": \"c9\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T14:00:00Z\", \"repo\": \"omnipaused\", \"opened_at\": \"2026-11-10T12:08:00Z\", \"verdict\": \"base_branch_red\", \"event\": true, \"cause\": \"c9\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T14:00:00Z\", \"repo\": \"omnipilot\", \"opened_at\": \"2026-11-10T13:06:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c2\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T16:00:00Z\", \"repo\": \"omnipaused\", \"opened_at\": \"2026-11-10T11:39:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c8\"}\n",
+    "goal-check.json": "{\"at\": \"2026-11-10T17:00:00Z\", \"digest\": {\"flipped\": [\"omnimarket#24\"], \"open_fell\": false, \"rate_ok\": false, \"unowned\": [], \"waiting\": [\"omnibase_infra#11\", \"omniclaude#8\", \"omnimarket#1\", \"omnimarket#11\", \"omnimarket#12\", \"omnimarket#3\", \"omnimarket#4\", \"omnimarket#6\", \"omnimarket#7\", \"omnimarket#8\", \"omnipilot#3\", \"omnipilot#4\"]}, \"drafted_seen\": [\"omnimarket#24\", \"omnipaused#30\"], \"merges\": 0, \"open_history\": [[\"2026-11-10T00:17:00Z\", 14], [\"2026-11-10T01:17:00Z\", 14], [\"2026-11-10T02:00:00Z\", 13], [\"2026-11-10T04:00:00Z\", 10], [\"2026-11-10T06:17:00Z\", 11], [\"2026-11-10T07:00:00Z\", 8], [\"2026-11-10T08:00:00Z\", 8], [\"2026-11-10T09:17:00Z\", 8], [\"2026-11-10T10:17:00Z\", 6], [\"2026-11-10T11:05:00Z\", 16], [\"2026-11-10T12:17:00Z\", 15], [\"2026-11-10T13:17:00Z\", 14], [\"2026-11-10T14:00:00Z\", 14], [\"2026-11-10T15:17:00Z\", 12], [\"2026-11-10T16:00:00Z\", 11], [\"2026-11-10T17:00:00Z\", 12]]}\n"
+   }
+  },
+  {
+   "request": {
+    "state_dir": "/tmp/ref23734/run2",
+    "heartbeat": {
+     "stamp": "2026-11-10T18:05:00Z",
+     "pid": 4242
+    },
+    "open_count": {
+     "history": [
+      {
+       "at": "2026-11-10T03:17:00Z",
+       "open": 156
+      },
+      {
+       "at": "2026-11-10T04:00:00Z",
+       "open": 177
+      },
+      {
+       "at": "2026-11-10T06:17:00Z",
+       "open": 158
+      },
+      {
+       "at": "2026-11-10T07:00:00Z",
+       "open": 189
+      },
+      {
+       "at": "2026-11-10T08:00:00Z",
+       "open": 130
+      },
+      {
+       "at": "2026-11-10T09:17:00Z",
+       "open": 91
+      },
+      {
+       "at": "2026-11-10T10:17:00Z",
+       "open": 105
+      },
+      {
+       "at": "2026-11-10T12:17:00Z",
+       "open": 82
+      },
+      {
+       "at": "2026-11-10T13:17:00Z",
+       "open": 115
+      },
+      {
+       "at": "2026-11-10T14:00:00Z",
+       "open": 88
+      },
+      {
+       "at": "2026-11-10T15:17:00Z",
+       "open": 155
+      },
+      {
+       "at": "2026-11-10T16:00:00Z",
+       "open": 130
+      }
+     ],
+     "at": "2026-11-10T18:05:00Z",
+     "count": 130,
+     "basis": "open-nondraft-in-scope-v1"
+    },
+    "repo_status": {
+     "verdicts": [],
+     "at": "2026-11-10T18:05:00Z"
+    },
+    "goal_record": {
+     "at": "2026-11-10T18:05:00Z",
+     "digest": {
+      "flipped": [],
+      "open_fell": true,
+      "rate_ok": true,
+      "unowned": [
+       "repo-status:omnipilot"
+      ],
+      "waiting": [
+       "omnibase_infra#11",
+       "omnimarket#1",
+       "omnimarket#11",
+       "omnimarket#12",
+       "omnimarket#3",
+       "omnimarket#4",
+       "omnimarket#8",
+       "omnipilot#3",
+       "omnipilot#4"
+      ]
+     },
+     "drafted_seen": [
+      "omnimarket#24",
+      "omnipaused#30"
+     ],
+     "merges": 1,
+     "open_history": [
+      [
+       "2026-11-10T00:17:00Z",
+       14
+      ],
+      [
+       "2026-11-10T01:17:00Z",
+       14
+      ],
+      [
+       "2026-11-10T02:00:00Z",
+       13
+      ],
+      [
+       "2026-11-10T04:00:00Z",
+       10
+      ],
+      [
+       "2026-11-10T06:17:00Z",
+       11
+      ],
+      [
+       "2026-11-10T07:00:00Z",
+       8
+      ],
+      [
+       "2026-11-10T08:00:00Z",
+       8
+      ],
+      [
+       "2026-11-10T09:17:00Z",
+       8
+      ],
+      [
+       "2026-11-10T10:17:00Z",
+       6
+      ],
+      [
+       "2026-11-10T11:05:00Z",
+       16
+      ],
+      [
+       "2026-11-10T12:17:00Z",
+       15
+      ],
+      [
+       "2026-11-10T13:17:00Z",
+       14
+      ],
+      [
+       "2026-11-10T14:00:00Z",
+       14
+      ],
+      [
+       "2026-11-10T15:17:00Z",
+       12
+      ],
+      [
+       "2026-11-10T16:00:00Z",
+       11
+      ],
+      [
+       "2026-11-10T17:00:00Z",
+       12
+      ],
+      [
+       "2026-11-10T18:05:00Z",
+       9
+      ]
+     ]
+    }
+   },
+   "files_after": {
+    "throughput-tick.heartbeat": "2026-11-10T18:05:00Z pid=4242\n",
+    "throughput-tick.open-history.json": "{\"history\": [{\"at\": \"2026-11-10T04:00:00Z\", \"open\": 177, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T06:17:00Z\", \"open\": 158, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T07:00:00Z\", \"open\": 189, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T08:00:00Z\", \"open\": 130, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T09:17:00Z\", \"open\": 91, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T10:17:00Z\", \"open\": 105, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T12:17:00Z\", \"open\": 82, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T13:17:00Z\", \"open\": 115, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T14:00:00Z\", \"open\": 88, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T15:17:00Z\", \"open\": 155, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T16:00:00Z\", \"open\": 130, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T18:05:00Z\", \"open\": 130, \"basis\": \"open-nondraft-in-scope-v1\"}]}\n",
+    "throughput-tick.repo-status.json": "{\"open_units\": []}\n",
+    "throughput-tick.repo-status-events.jsonl": "{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T00:17:00Z\", \"repo\": \"omnipaused\", \"opened_at\": \"2026-11-10T00:09:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c2\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T00:17:00Z\", \"repo\": \"omnipilot\", \"opened_at\": \"2026-11-09T23:01:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c4\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T01:17:00Z\", \"repo\": \"omnipaused\", \"opened_at\": \"2026-11-09T23:59:00Z\", \"verdict\": \"merge_queue_ejecting\", \"event\": true, \"cause\": \"c1\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T05:05:00Z\", \"repo\": \"omnibase_infra\", \"opened_at\": \"2026-11-10T00:47:00Z\", \"verdict\": \"waiting_on_ci\", \"event\": true, \"cause\": \"c6\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T06:17:00Z\", \"repo\": \"omnimarket\", \"opened_at\": \"2026-11-10T02:46:00Z\", \"verdict\": \"waiting_on_ci\", \"event\": true, \"cause\": \"c5\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T08:00:00Z\", \"repo\": \"omnipilot\", \"opened_at\": \"2026-11-10T06:06:00Z\", \"verdict\": \"merge_queue_ejecting\", \"event\": true, \"cause\": \"c7\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T09:17:00Z\", \"repo\": \"omniclaude\", \"opened_at\": \"2026-11-10T05:29:00Z\", \"verdict\": \"waiting_on_ci\", \"event\": true, \"cause\": \"c8\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T10:17:00Z\", \"repo\": \"omnimarket\", \"opened_at\": \"2026-11-10T10:14:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c6\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T12:17:00Z\", \"repo\": \"omnipilot\", \"opened_at\": \"2026-11-10T08:19:00Z\", \"verdict\": \"parked_or_escalated\", \"event\": true, \"cause\": \"c9\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T14:00:00Z\", \"repo\": \"omnipaused\", \"opened_at\": \"2026-11-10T12:08:00Z\", \"verdict\": \"base_branch_red\", \"event\": true, \"cause\": \"c9\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T14:00:00Z\", \"repo\": \"omnipilot\", \"opened_at\": \"2026-11-10T13:06:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c2\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T16:00:00Z\", \"repo\": \"omnipaused\", \"opened_at\": \"2026-11-10T11:39:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c8\"}\n",
+    "goal-check.json": "{\"at\": \"2026-11-10T18:05:00Z\", \"digest\": {\"flipped\": [], \"open_fell\": true, \"rate_ok\": true, \"unowned\": [\"repo-status:omnipilot\"], \"waiting\": [\"omnibase_infra#11\", \"omnimarket#1\", \"omnimarket#11\", \"omnimarket#12\", \"omnimarket#3\", \"omnimarket#4\", \"omnimarket#8\", \"omnipilot#3\", \"omnipilot#4\"]}, \"drafted_seen\": [\"omnimarket#24\", \"omnipaused#30\"], \"merges\": 1, \"open_history\": [[\"2026-11-10T00:17:00Z\", 14], [\"2026-11-10T01:17:00Z\", 14], [\"2026-11-10T02:00:00Z\", 13], [\"2026-11-10T04:00:00Z\", 10], [\"2026-11-10T06:17:00Z\", 11], [\"2026-11-10T07:00:00Z\", 8], [\"2026-11-10T08:00:00Z\", 8], [\"2026-11-10T09:17:00Z\", 8], [\"2026-11-10T10:17:00Z\", 6], [\"2026-11-10T11:05:00Z\", 16], [\"2026-11-10T12:17:00Z\", 15], [\"2026-11-10T13:17:00Z\", 14], [\"2026-11-10T14:00:00Z\", 14], [\"2026-11-10T15:17:00Z\", 12], [\"2026-11-10T16:00:00Z\", 11], [\"2026-11-10T17:00:00Z\", 12], [\"2026-11-10T18:05:00Z\", 9]]}\n"
+   }
+  },
+  {
+   "request": {
+    "state_dir": "/tmp/ref23734/run2",
+    "heartbeat": {
+     "stamp": "2026-11-10T19:05:00Z",
+     "pid": 4242
+    },
+    "open_count": {
+     "history": [
+      {
+       "at": "2026-11-10T04:00:00Z",
+       "open": 177
+      },
+      {
+       "at": "2026-11-10T06:17:00Z",
+       "open": 158
+      },
+      {
+       "at": "2026-11-10T07:00:00Z",
+       "open": 189
+      },
+      {
+       "at": "2026-11-10T08:00:00Z",
+       "open": 130
+      },
+      {
+       "at": "2026-11-10T09:17:00Z",
+       "open": 91
+      },
+      {
+       "at": "2026-11-10T10:17:00Z",
+       "open": 105
+      },
+      {
+       "at": "2026-11-10T12:17:00Z",
+       "open": 82
+      },
+      {
+       "at": "2026-11-10T13:17:00Z",
+       "open": 115
+      },
+      {
+       "at": "2026-11-10T14:00:00Z",
+       "open": 88
+      },
+      {
+       "at": "2026-11-10T15:17:00Z",
+       "open": 155
+      },
+      {
+       "at": "2026-11-10T16:00:00Z",
+       "open": 130
+      },
+      {
+       "at": "2026-11-10T18:05:00Z",
+       "open": 130
+      }
+     ],
+     "at": "2026-11-10T19:05:00Z",
+     "count": 189,
+     "basis": "open-nondraft-in-scope-v1"
+    },
+    "goal_record": {
+     "at": "2026-11-10T19:05:00Z",
+     "digest": {
+      "flipped": [],
+      "open_fell": true,
+      "rate_ok": true,
+      "unowned": [],
+      "waiting": [
+       "omnibase_infra#11",
+       "omnimarket#1",
+       "omnimarket#11",
+       "omnimarket#12",
+       "omnimarket#3",
+       "omnimarket#4",
+       "omnimarket#8",
+       "omnipilot#3",
+       "omnipilot#4"
+      ]
+     },
+     "drafted_seen": [
+      "omnimarket#24",
+      "omnipaused#30"
+     ],
+     "merges": 0,
+     "open_history": [
+      [
+       "2026-11-10T00:17:00Z",
+       14
+      ],
+      [
+       "2026-11-10T01:17:00Z",
+       14
+      ],
+      [
+       "2026-11-10T02:00:00Z",
+       13
+      ],
+      [
+       "2026-11-10T04:00:00Z",
+       10
+      ],
+      [
+       "2026-11-10T06:17:00Z",
+       11
+      ],
+      [
+       "2026-11-10T07:00:00Z",
+       8
+      ],
+      [
+       "2026-11-10T08:00:00Z",
+       8
+      ],
+      [
+       "2026-11-10T09:17:00Z",
+       8
+      ],
+      [
+       "2026-11-10T10:17:00Z",
+       6
+      ],
+      [
+       "2026-11-10T11:05:00Z",
+       16
+      ],
+      [
+       "2026-11-10T12:17:00Z",
+       15
+      ],
+      [
+       "2026-11-10T13:17:00Z",
+       14
+      ],
+      [
+       "2026-11-10T14:00:00Z",
+       14
+      ],
+      [
+       "2026-11-10T15:17:00Z",
+       12
+      ],
+      [
+       "2026-11-10T16:00:00Z",
+       11
+      ],
+      [
+       "2026-11-10T17:00:00Z",
+       12
+      ],
+      [
+       "2026-11-10T18:05:00Z",
+       9
+      ],
+      [
+       "2026-11-10T19:05:00Z",
+       9
+      ]
+     ]
+    }
+   },
+   "files_after": {
+    "throughput-tick.heartbeat": "2026-11-10T19:05:00Z pid=4242\n",
+    "throughput-tick.open-history.json": "{\"history\": [{\"at\": \"2026-11-10T06:17:00Z\", \"open\": 158, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T07:00:00Z\", \"open\": 189, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T08:00:00Z\", \"open\": 130, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T09:17:00Z\", \"open\": 91, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T10:17:00Z\", \"open\": 105, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T12:17:00Z\", \"open\": 82, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T13:17:00Z\", \"open\": 115, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T14:00:00Z\", \"open\": 88, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T15:17:00Z\", \"open\": 155, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T16:00:00Z\", \"open\": 130, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T18:05:00Z\", \"open\": 130, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-10T19:05:00Z\", \"open\": 189, \"basis\": \"open-nondraft-in-scope-v1\"}]}\n",
+    "throughput-tick.repo-status.json": "{\"open_units\": []}\n",
+    "throughput-tick.repo-status-events.jsonl": "{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T00:17:00Z\", \"repo\": \"omnipaused\", \"opened_at\": \"2026-11-10T00:09:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c2\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T00:17:00Z\", \"repo\": \"omnipilot\", \"opened_at\": \"2026-11-09T23:01:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c4\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T01:17:00Z\", \"repo\": \"omnipaused\", \"opened_at\": \"2026-11-09T23:59:00Z\", \"verdict\": \"merge_queue_ejecting\", \"event\": true, \"cause\": \"c1\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T05:05:00Z\", \"repo\": \"omnibase_infra\", \"opened_at\": \"2026-11-10T00:47:00Z\", \"verdict\": \"waiting_on_ci\", \"event\": true, \"cause\": \"c6\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T06:17:00Z\", \"repo\": \"omnimarket\", \"opened_at\": \"2026-11-10T02:46:00Z\", \"verdict\": \"waiting_on_ci\", \"event\": true, \"cause\": \"c5\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T08:00:00Z\", \"repo\": \"omnipilot\", \"opened_at\": \"2026-11-10T06:06:00Z\", \"verdict\": \"merge_queue_ejecting\", \"event\": true, \"cause\": \"c7\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T09:17:00Z\", \"repo\": \"omniclaude\", \"opened_at\": \"2026-11-10T05:29:00Z\", \"verdict\": \"waiting_on_ci\", \"event\": true, \"cause\": \"c8\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T10:17:00Z\", \"repo\": \"omnimarket\", \"opened_at\": \"2026-11-10T10:14:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c6\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T12:17:00Z\", \"repo\": \"omnipilot\", \"opened_at\": \"2026-11-10T08:19:00Z\", \"verdict\": \"parked_or_escalated\", \"event\": true, \"cause\": \"c9\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T14:00:00Z\", \"repo\": \"omnipaused\", \"opened_at\": \"2026-11-10T12:08:00Z\", \"verdict\": \"base_branch_red\", \"event\": true, \"cause\": \"c9\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T14:00:00Z\", \"repo\": \"omnipilot\", \"opened_at\": \"2026-11-10T13:06:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c2\"}\n{\"kind\": \"repo-status-verdict\", \"at\": \"2026-11-10T16:00:00Z\", \"repo\": \"omnipaused\", \"opened_at\": \"2026-11-10T11:39:00Z\", \"verdict\": \"merging_normally\", \"event\": true, \"cause\": \"c8\"}\n",
+    "goal-check.json": "{\"at\": \"2026-11-10T19:05:00Z\", \"digest\": {\"flipped\": [], \"open_fell\": true, \"rate_ok\": true, \"unowned\": [], \"waiting\": [\"omnibase_infra#11\", \"omnimarket#1\", \"omnimarket#11\", \"omnimarket#12\", \"omnimarket#3\", \"omnimarket#4\", \"omnimarket#8\", \"omnipilot#3\", \"omnipilot#4\"]}, \"drafted_seen\": [\"omnimarket#24\", \"omnipaused#30\"], \"merges\": 0, \"open_history\": [[\"2026-11-10T00:17:00Z\", 14], [\"2026-11-10T01:17:00Z\", 14], [\"2026-11-10T02:00:00Z\", 13], [\"2026-11-10T04:00:00Z\", 10], [\"2026-11-10T06:17:00Z\", 11], [\"2026-11-10T07:00:00Z\", 8], [\"2026-11-10T08:00:00Z\", 8], [\"2026-11-10T09:17:00Z\", 8], [\"2026-11-10T10:17:00Z\", 6], [\"2026-11-10T11:05:00Z\", 16], [\"2026-11-10T12:17:00Z\", 15], [\"2026-11-10T13:17:00Z\", 14], [\"2026-11-10T14:00:00Z\", 14], [\"2026-11-10T15:17:00Z\", 12], [\"2026-11-10T16:00:00Z\", 11], [\"2026-11-10T17:00:00Z\", 12], [\"2026-11-10T18:05:00Z\", 9], [\"2026-11-10T19:05:00Z\", 9]]}\n"
+   }
+  }
+ ]
+}

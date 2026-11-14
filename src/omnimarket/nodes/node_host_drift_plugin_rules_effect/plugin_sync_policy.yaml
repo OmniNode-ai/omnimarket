@@ -1,0 +1,29 @@
+# The plugin rules of the host-drift sync policy (operator RULING 2026-10-07T07:11:23Z, OMN-20689),
+# moved here from the frozen internal host-drift package (RULING 2026-11-03T18:40:27Z). First matching rule wins; an item no
+# rule matches is ALERT_ONLY. Every plugin syncs by REVISION: a plugin whose installed revision lacks
+# the merged tip of its repository's ref (observed "plugin-behind:") is installed from that tip on the
+# next check, whatever its version string says.
+schema: host-drift-plugin-sync-rules.v1
+rules:
+  # The omni plugin: a same-version tree that differs from its shipped revision is reinstalled at that
+  # revision, only between lanes (OMN-20846).
+  - {match: "plugin:omni@omninode-internal", kinds: [plugin], observed_contains: ["tree modified"], sync_class: SAFE, action: repair-plugin, between_lanes: true}
+  # A merged version that differs from the installed one is repaired by the plugin's own update, whether
+  # or not the installed revision also lacks the merged tip (OMN-24404, moved from the frozen repository's
+  # OMN-24194, RULING 2026-11-03T18:40:27Z). On h101 on 2026-11-13 the tree install put the 0.4.476 tree
+  # into the 0.4.475 cache path three times and left the installed record at 0.4.475 until a person ran
+  # the plugin update. It precedes the plugin-behind rule.
+  - {match: "plugin:omni@omninode-internal", kinds: [plugin], version_differs: true, sync_class: SAFE, action: update-plugin}
+  # Behind the merged tip at the merged version: the tree install from that tip, with the installed revision merged in so
+  # branch-installed fixes stay until they merge (OMN-20497). It does not wait for lanes.
+  - {match: "plugin:omni@omninode-internal", kinds: [plugin], observed_contains: ["plugin-behind:"], sync_class: SAFE, action: install-plugin-tree}
+  # Behind main past placement's bound with nothing newer for a marketplace update to fetch: the tree
+  # install from the tip of main, only between lanes (OMN-17427).
+  - {match: "plugin:omni@omninode-internal", kinds: [plugin], observed_contains: ["plugin-stale:"], sync_class: SAFE, action: install-plugin-tree, between_lanes: true}
+  # Every other plugin (onex-overlays is data only) syncs by revision too: behind the tip or stale past
+  # placement's bound is installed from the tip, by the data-plugin sync node. A version string that
+  # matches the marketplace is not evidence the content does (h101 and h105 read onex-overlays 12
+  # commits behind the merged tip at 0.1.30, OMN-20689).
+  - {match: "plugin:*", kinds: [plugin], observed_contains: ["plugin-behind:", "plugin-stale:"], sync_class: SAFE, action: install-plugin-tree}
+  # A plugin with a different version and no resolvable revision falls back to the marketplace update.
+  - {match: "plugin:*", kinds: [plugin], sync_class: SAFE, action: update-plugin}

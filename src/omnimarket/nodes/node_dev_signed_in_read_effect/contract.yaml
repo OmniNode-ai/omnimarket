@@ -1,0 +1,75 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Dev Signed-In Read Effect (OMN-24345, the dev lanes' signed-in read check)
+#
+# Signs the one named dev probe user in with the password grant (password read from the secret store by reference) and
+# makes the ONE read the overlay declares with that user's bearer, then reports the HTTP status and the data state of the
+# answer. The result carries names, a status and a data state only: never a token, a password or a row. Any lane or realm
+# the dev_only block does not declare is refused before any secret read or HTTP call.
+name: node_dev_signed_in_read_effect
+contract_name: node_dev_signed_in_read_effect
+node_name: node_dev_signed_in_read_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Reads one signed-in answer from the dev onex-api. The dev-only guard refuses, with no side effect, any command lane,
+  overlay lane or Keycloak realm the dev_only block does not declare. A run reads the dev user's password from the secret
+  store, signs in with the password grant, asks the declared route with the user's bearer and reports the HTTP status and
+  the answer's data state; a probe stops at the password read and answers ready. Every failure is a typed result.
+
+handler:
+  module: omnimarket.nodes.node_dev_signed_in_read_effect.handlers.handler_dev_signed_in_read
+  class: HandlerDevSignedInRead
+  input_model: omnimarket.nodes.node_dev_signed_in_read_effect.models.model_dev_signed_in_read.ModelDevSignedInReadCommand
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [secret-store-read, keycloak-token-request, api-read]
+  timeout_ms: 120000
+
+input_model:
+  name: ModelDevSignedInReadCommand
+  module: omnimarket.nodes.node_dev_signed_in_read_effect.models.model_dev_signed_in_read
+  description: Which lane acts, and whether to call anything.
+output_model:
+  name: ModelDevSignedInReadResult
+  module: omnimarket.nodes.node_dev_signed_in_read_effect.models.model_dev_signed_in_read
+  description: The outcome, the realm and lane, the user, the read's HTTP status and data state; never a token, a password or a row.
+
+terminal_event: onex.evt.omnimarket.dev-signed-in-read-completed.v1
+
+runtime_dispatch:
+  external_trigger: true
+
+topics:
+  command: onex.cmd.omnimarket.dev-signed-in-read-requested.v1
+  completed: onex.evt.omnimarket.dev-signed-in-read-completed.v1
+  failed: onex.evt.omnimarket.dev-signed-in-read-failed.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.dev-signed-in-read-completed.v1
+  - onex.evt.omnimarket.dev-signed-in-read-failed.v1
+
+overlay:
+  node: node_dev_signed_in_read_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+dev_only:
+  lane: dev
+  realms:
+    - omninode
+
+metadata:
+  ticket: OMN-24345
+  transport_type: inmemory

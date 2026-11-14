@@ -71,11 +71,11 @@ dialog::backdrop{background:rgba(20,24,28,.45)}
 .views button{font-size:15px;font-weight:650;padding:7px 14px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--mute)}
 .views button[aria-pressed="true"]{color:var(--ink);border-color:var(--blue);box-shadow:inset 0 -3px 0 var(--blue)}
 .view[hidden]{display:none}
-.chart{width:100%;height:auto;display:block;font:11px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:var(--mute)}
+.chart{width:100%;height:auto;display:block;font:12px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:var(--mute)}
 .chart text{fill:var(--mute)}
 .charts{display:grid;grid-template-columns:repeat(auto-fill,minmax(420px,1fr));gap:12px}
 .legend{display:flex;gap:12px;flex-wrap:wrap;font-size:13px;color:var(--mute);margin:4px 0 0}
-.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+.legend svg{vertical-align:middle;margin-right:4px}
 .tw{overflow-x:auto;background:var(--card);border:1px solid var(--line);border-radius:8px}
 .mt{width:100%;border-collapse:collapse;font-size:14px;min-width:760px}
 .mt th,.mt td{padding:7px 10px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
@@ -122,7 +122,8 @@ dialog::backdrop{background:rgba(20,24,28,.45)}
 "use strict";
 const DATA = "delegation-tracker.json", MAX_AGE_S = 900, REFRESH_MS = 30000;
 const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const ago = s => s == null ? "never" : s < 120 ? s + " s ago" : s < 7200 ? Math.floor(s / 60) + " min ago" : s < 172800 ? Math.floor(s / 3600) + " h ago" : Math.floor(s / 86400) + " d ago";
+const dur = s => s < 120 ? s + " s" : s < 7200 ? Math.floor(s / 60) + " min" : s < 172800 ? Math.floor(s / 3600) + " h" : Math.floor(s / 86400) + " d";
+const ago = s => s == null ? "never" : dur(s) + " ago";
 const since = iso => { const t = Date.parse(iso); return Number.isFinite(t) ? Math.max(0, Math.floor((Date.now() - t) / 1000)) : null; };
 const safe = u => /^https:\/\//.test(String(u || "")) ? u : "";
 const $ = id => document.getElementById(id);
@@ -172,13 +173,11 @@ function drawCards(){
 // ---- inline SVG charts: pure functions from numbers to a string; no library, colours from the page's variables ----------------
 const pc = x => x == null || !Number.isFinite(x) ? "n/a" : Math.round(x * 100) + " %";
 const sv = i => "var(--s" + (i % 8) + ")";
-function wilson(k, n){
-  if (!n) return null;
-  const z = 1.96, p = k / n, d = 1 + z * z / n, c = p + z * z / (2 * n), m = z * Math.sqrt(p * (1 - p) / n + z * z / (4 * n * n));
-  return {lo: Math.max(0, (c - m) / d), hi: Math.min(1, (c + m) / d)};
-}
+// 8 colours x 3 line styles = 24 looks, so no two series of one chart share both (a chart draws a model once, indexed among its own models)
+const DASHES = ["", "6 3", "2 3"], dash = i => DASHES[Math.floor(i / 8) % DASHES.length];
+const dashAttr = i => dash(i) ? ` stroke-dasharray="${dash(i)}"` : "";
 function lineChart(o){
-  const W = 480, H = 190, L = 38, R = 8, T = 8, B = 24, pw = W - L - R, ph = H - T - B, xs = o.xs, ymax = o.yMax || 1;
+  const W = 360, H = 170, L = 38, R = 8, T = 8, B = 24, pw = W - L - R, ph = H - T - B, xs = o.xs, ymax = o.yMax || 1;
   const X = i => L + (xs.length < 2 ? pw / 2 : pw * i / (xs.length - 1)), Y = v => T + ph * (1 - Math.min(v, ymax) / ymax);
   if (!o.series.some(s => s.points.some(p => p))) return `<p class="empty">No data in the window.</p>`;
   let g = "";
@@ -186,7 +185,7 @@ function lineChart(o){
   for (const i of [0, Math.floor((xs.length - 1) / 2), xs.length - 1]) g += `<text x="${X(i)}" y="${H - 6}" text-anchor="${i === 0 ? "start" : i === xs.length - 1 ? "end" : "middle"}">${esc(xs[i])}</text>`;
   for (const s of o.series) {
     const col = sv(s.idx); let run = [], line = "", dots = "", band = "";
-    const flush = () => { if (run.length > 1) { line += `<polyline fill="none" stroke="${col}" stroke-width="2" points="${run.map(r => X(r.i) + "," + Y(r.p.y)).join(" ")}"/>`;
+    const flush = () => { if (run.length > 1) { line += `<polyline fill="none" stroke="${col}" stroke-width="2"${dashAttr(s.idx)} points="${run.map(r => X(r.i) + "," + Y(r.p.y)).join(" ")}"/>`;
       if (o.band && run.every(r => r.p.lo != null && r.p.hi != null)) band += `<polygon fill="${col}" fill-opacity=".15" points="${run.map(r => X(r.i) + "," + Y(r.p.hi)).join(" ")} ${run.slice().reverse().map(r => X(r.i) + "," + Y(r.p.lo)).join(" ")}"/>`; } run = []; };
     s.points.forEach((p, i) => { if (!p) return flush(); run.push({i, p}); dots += `<circle cx="${X(i)}" cy="${Y(p.y)}" r="3" fill="${col}"><title>${esc(s.name + " " + xs[i] + ": " + o.yFmt(p.y) + " (n=" + p.n + ")")}</title></circle>`; if (s.points[i + 1] === undefined || !s.points[i + 1]) flush(); });
     g += band + line + dots;
@@ -195,10 +194,10 @@ function lineChart(o){
 }
 function barWhiskerChart(o){
   if (!o.rows.length) return `<p class="empty">No arms.</p>`;
-  const W = 480, L = 150, R = 56, RH = 26, T = 6, pw = W - L - R, H = T + RH * o.rows.length + 22, X = v => L + pw * Math.min(Math.max(v, 0), 1);
+  const W = 360, L = 118, R = 50, RH = 26, T = 6, pw = W - L - R, H = T + RH * o.rows.length + 22, X = v => L + pw * Math.min(Math.max(v, 0), 1);
   let g = "";
   o.rows.forEach((r, i) => {
-    const y = T + RH * i, mid = y + RH / 2, name = r.label.length > 24 ? r.label.slice(0, 23) + "…" : r.label;
+    const y = T + RH * i, mid = y + RH / 2, name = r.label.length > 18 ? r.label.slice(0, 17) + "…" : r.label;
     const okv = Number.isFinite(r.value), oki = okv && Number.isFinite(r.lo) && Number.isFinite(r.hi);
     g += `<g><title>${esc(r.label + ": " + (okv ? o.xFmt(r.value) : "not recorded") + (oki ? " (" + o.xFmt(r.lo) + " to " + o.xFmt(r.hi) + ")" : ", no interval recorded") + ", n=" + r.n)}</title><text x="${L - 6}" y="${mid + 4}" text-anchor="end">${esc(name)}</text>`
       + (okv ? `<rect x="${L}" y="${y + 4}" width="${Math.max(1, X(r.value) - L)}" height="${RH - 12}" fill="${sv(i)}" fill-opacity=".55"/>` : "")
@@ -211,27 +210,15 @@ function barWhiskerChart(o){
 function strip(items){
   const run = (items || []).slice().reverse(), ok = run.filter(x => x === "pass").length;
   if (!run.length) return `<span class="empty">no runs yet</span>`;
-  return `<svg class="strip" viewBox="0 0 ${run.length * 10} 10" width="${run.length * 10}" height="10" role="img" aria-label="${run.length} runs, ${ok} passed">${run.map((x, i) => `<rect x="${i * 10 + 1}" y="1" width="8" height="8" rx="1" fill="${x === "pass" ? "var(--green)" : "var(--red)"}"><title>${x}</title></rect>`).join("")}</svg>`;
+  return `<svg class="strip" viewBox="0 0 ${run.length * 10} 10" width="${run.length * 10}" height="10" role="img" aria-label="${run.length} runs, ${ok} passed">${run.map((x, i) => `<rect x="${i * 10 + 1}" y="1" width="8" height="8" rx="1" fill="${x === "pass" ? "var(--green)" : "var(--red)"}"><title>${esc(x)}</title></rect>`).join("")}</svg>`;
 }
 
-// ---- the history document (delegation-history.json): models, series, experiments. Every field the page reads is named in READS;
-// a test holds each name against the data lane's schema model (node_floor_delegation_history_compute), so a field renamed there fails here
-const HISTORY = "delegation-history.json", HISTORY_SCHEMA = "omnimarket.floor_delegation_history.v1", HIST_MAX_AGE_S = 10800;
-const READS = {
-  top: ["schema_id", "generated_at", "models", "series", "experiments", "sources"],
-  models: ["id", "engine_kind", "host", "context_tokens", "quantization", "thinking", "price_in_usd_per_mtok", "price_out_usd_per_mtok", "last_seen"],
-  series: ["model", "task_kind", "days", "total"],
-  points: ["bucket", "attempts", "accepted", "p50_latency_ms", "cost_usd", "success"],
-  success: ["rate", "wilson_low", "wilson_high"],
-  experiments: ["id", "question", "task_set", "n", "majority_baseline", "arms", "paired", "verdict", "date"],
-  task_set: ["hash"],
-  baseline: ["accuracy"],
-  arms: ["label", "settings", "accuracy", "wilson_low", "wilson_high", "p50_latency_s", "gpu_seconds"],
-  paired: ["test", "arm_a", "arm_b", "p_value"],
-  sources: ["id", "ok", "detail"]
-};
+// ---- the history document (delegation-history.json): models, series, experiments. A test records every field this page reads and holds
+// each name against the schema model of omnimarket.models.floor_delegation_history, so a field renamed there fails here.
+// HIST_MAX_AGE_S: the token is replaced at publish time with delegation_history_max_age_seconds from the node contract.
+const HISTORY = "delegation-history.json", HISTORY_SCHEMA = "omnimarket.floor_delegation_history.v1", HIST_MAX_AGE_S = __HISTORY_MAX_AGE_S__;
 let hist = null, hfailure = "";
-const histRenderable = d => !!d && typeof d === "object" && d.schema_id === HISTORY_SCHEMA && Number.isFinite(Date.parse(d.generated_at)) && Array.isArray(d.models) && Array.isArray(d.series) && Array.isArray(d.experiments);
+const histRenderable = d => !!d && typeof d === "object" && d.schema_id === HISTORY_SCHEMA && Number.isFinite(Date.parse(d.generated_at)) && Array.isArray(d.models) && Array.isArray(d.series) && Array.isArray(d.experiments) && Number.isFinite(d.window_days) && d.window_days > 0;
 async function loadHistory(){
   try {
     const r = await fetch(HISTORY, {cache: "no-store"});
@@ -246,7 +233,9 @@ const money = x => x == null || !Number.isFinite(x) ? "n/a" : "$" + (x < 1 ? x.t
 const secs = ms => ms == null || !Number.isFinite(ms) ? "n/a" : ms < 10000 ? (ms / 1000).toFixed(1) + " s" : Math.round(ms / 1000) + " s";
 const day = iso => String(iso).slice(0, 10);
 function priceText(m){
-  if (!m.price_in_usd_per_mtok && !m.price_out_usd_per_mtok) return "no price (local)";
+  const free = x => x == null || x === 0;
+  if (m.engine_kind === "local" && free(m.price_in_usd_per_mtok) && free(m.price_out_usd_per_mtok)) return "no price (local)";
+  if (m.price_in_usd_per_mtok == null && m.price_out_usd_per_mtok == null) return "price not recorded";
   return money(m.price_in_usd_per_mtok) + " in / " + money(m.price_out_usd_per_mtok) + " out per M tokens";
 }
 function settingsText(m){
@@ -261,7 +250,7 @@ function drawModels(){
       + `<td>${rate && rate.rate != null ? esc(pc(rate.rate)) + `<small>${esc(pc(rate.wilson_low))} to ${esc(pc(rate.wilson_high))}, n=${esc(tot.attempts)}</small>` : "no attempts"}</td>`
       + `<td>${esc(secs(tot ? tot.p50_latency_ms : null))}</td><td>${tot && tot.accepted ? esc(money(tot.cost_usd / tot.accepted)) : "n/a"}</td><td>${esc(m.last_seen ? ago(since(m.last_seen)) : "never")}</td></tr>`;
   }).join("");
-  $("msum").textContent = hist.models.length + " models, last " + (hist.window_days || 14) + " days";
+  $("msum").textContent = hist.models.length + " models, last " + hist.window_days + " days";
   $("models").innerHTML = hist.models.length ? `<div class="tw"><table class="mt"><thead><tr><th class="l">Model</th><th class="l">Engine</th><th class="l">Host</th><th class="l">Settings</th><th class="l">Price</th><th>Success, window</th><th>p50 latency</th><th>Cost per accepted</th><th>Last seen</th></tr></thead><tbody>${rows}</tbody></table></div>` : `<p class="empty">No model has been seen.</p>`;
 }
 function drawSuccess(){
@@ -272,13 +261,13 @@ function drawSuccess(){
     const mine = hist.series.filter(r => r.task_kind === k), used = ids.filter(id => mine.some(r => r.model === id));
     const at = (id, x) => { const r = mine.find(q => q.model === id), q = r && r.days.find(z => day(z.bucket) === x); return q && q.attempts ? q : null; };
     const pts = (id, f) => xs.map(x => { const q = at(id, x); return q ? f(q) : null; });
-    const sr = used.map(id => ({name: id, idx: ids.indexOf(id), points: pts(id, q => q.success && q.success.rate != null ? {y: q.success.rate, lo: q.success.wilson_low, hi: q.success.wilson_high, n: q.attempts} : null)}));
-    const lr = used.map(id => ({name: id, idx: ids.indexOf(id), points: pts(id, q => q.p50_latency_ms != null ? {y: q.p50_latency_ms / 1000, n: q.attempts} : null)}));
+    const sr = used.map(id => ({name: id, idx: used.indexOf(id), points: pts(id, q => q.success && q.success.rate != null ? {y: q.success.rate, lo: q.success.wilson_low, hi: q.success.wilson_high, n: q.attempts} : null)}));
+    const lr = used.map(id => ({name: id, idx: used.indexOf(id), points: pts(id, q => q.p50_latency_ms != null ? {y: q.p50_latency_ms / 1000, n: q.attempts} : null)}));
     const lmax = Math.max(1, ...lr.flatMap(s => s.points.filter(Boolean).map(p => p.y)));
     return `<section class="card"><h2>${esc(k)}</h2><p>Accepted over attempts per day; the band is the 95 % interval.</p>`
       + lineChart({title: k + " success rate per day", xs, series: sr, yMax: 1, yFmt: pc, band: true})
       + `<p>Median latency per day.</p>` + lineChart({title: k + " median latency per day", xs, series: lr, yMax: lmax, yFmt: v => v.toFixed(1) + " s", band: false})
-      + `<div class="legend">${used.map(id => `<span><i style="background:${sv(ids.indexOf(id))}"></i>${esc(id)}</span>`).join("")}</div></section>`;
+      + `<div class="legend">${used.map((id, i) => `<span><svg width="22" height="10" viewBox="0 0 22 10" aria-hidden="true"><line x1="0" x2="22" y1="5" y2="5" stroke="${sv(i)}" stroke-width="3"${dashAttr(i)}/></svg>${esc(id)}</span>`).join("")}</div></section>`;
   }).join("") + `</div>` : `<p class="empty">No attempts in the window.</p>`;
 }
 function drawExperiments(){
@@ -300,11 +289,17 @@ function drawHistory(){
   if (!hist) {
     a.innerHTML = `<div class="frozen">The delegation history cannot be read (${esc(hfailure)}). The models, success and experiments views are empty until it can.</div>`;
     for (const id of ["models", "success", "experiments"]) $(id).innerHTML = `<p class="empty">No history to draw.</p>`;
+    for (const id of ["msum", "ssumh", "esum"]) $(id).textContent = "";
     return;
   }
   const age = since(hist.generated_at), failed = (hist.sources || []).filter(s => !s.ok).map(s => esc(s.id) + ": " + esc(s.detail));
-  a.innerHTML = (hfailure ? `<div class="frozen">The last history refresh failed (${esc(hfailure)}); this is the history from ${ago(age)}.</div>` : age > HIST_MAX_AGE_S ? `<div class="frozen">The history is ${ago(age)} old, the limit is ${Math.floor(HIST_MAX_AGE_S / 3600)} h. Everything in these views is old.</div>` : "")
+  a.innerHTML = (hfailure ? `<div class="frozen">The last history refresh failed (${esc(hfailure)}); this is the history from ${ago(age)}.</div>` : age > HIST_MAX_AGE_S ? `<div class="frozen">The history is ${dur(age)} old, the limit is ${Math.floor(HIST_MAX_AGE_S / 3600)} h. Everything in these views is old.</div>` : "")
     + (failed.length ? `<div class="frozen">A source of the history could not be read, so a view above is short: ${failed.join("; ")}.</div>` : "");
+  if (age == null || age > HIST_MAX_AGE_S) {
+    for (const id of ["models", "success", "experiments"]) $(id).innerHTML = `<p class="empty">The history is too old to draw (${esc(dur(age == null ? 0 : age))} old); no number is shown.</p>`;
+    for (const id of ["msum", "ssumh", "esum"]) $(id).textContent = "";
+    return;
+  }
   drawModels(); drawSuccess(); drawExperiments();
 }
 
@@ -421,7 +416,7 @@ function drawAlert(){
   document.title = (failure || age > MAX_AGE_S ? "STALE " : "") + "Factory floor: delegation" + (doc.shippable ? " (shippable)" : " (not shippable)");
   let a = "";
   if (failure) a += `<div class="frozen">The last refresh failed (${esc(failure)}); this is the tracker from ${ago(age)}.</div>`;
-  else if (age > MAX_AGE_S) a += `<div class="frozen">The tracker is ${ago(age)} old, the limit is ${Math.floor(MAX_AGE_S / 60)} min. Everything below is old.</div>`;
+  else if (age > MAX_AGE_S) a += `<div class="frozen">The tracker is ${dur(age)} old, the limit is ${Math.floor(MAX_AGE_S / 60)} min. Everything below is old.</div>`;
   const bad = doc.sources.filter(s => !s.ok);
   if (bad.length) a += `<div class="frozen warn">${esc(bad.map(s => s.title).join(", "))} could not be read fresh; rows that depend on ${bad.length > 1 ? "them are" : "it is"} drawn unread.</div>`;
   $("alert").innerHTML = a;
@@ -443,6 +438,7 @@ function showView(name){
   const bar = $("views"); if (bar && bar.querySelectorAll) for (const b of bar.querySelectorAll("button")) b.setAttribute("aria-pressed", String(b.dataset.view === v));
   if (window.location && window.location.hash !== "#" + v) { try { window.location.hash = v; } catch (e) { /* a page with no address bar */ } }
 }
+if (window.addEventListener) window.addEventListener("hashchange", () => showView(window.location.hash.slice(1)));
 document.addEventListener("click", e => {
   const t = e.target && e.target.closest ? e.target.closest("[data-open],[data-page],[data-view]") : null;
   if (!t) return;

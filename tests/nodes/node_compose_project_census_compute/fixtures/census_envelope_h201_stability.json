@@ -1,0 +1,50 @@
+[
+ {
+  "Names": "stack-infra-canary-keycloak",
+  "State": "running",
+  "Status": "running",
+  "Image": "quay.io/keycloak/keycloak:26.3.3",
+  "Labels": {
+   "com.docker.compose.project": "stack-infra-canary",
+   "com.docker.compose.project.config_files": "/srv/user/.state/infra/deployed/0.38.57/docker/docker-compose.infra.yml,/srv/user/.state/infra/deployed/0.38.57/docker/docker-compose.canary.yml",
+   "com.docker.compose.project.working_dir": "/srv/user/.state/infra/deployed/0.38.57/docker",
+   "com.docker.compose.service": "keycloak"
+  }
+ },
+ {
+  "Names": "stack-infra-canary-postgres",
+  "State": "running",
+  "Status": "running",
+  "Image": "postgres:16-alpine",
+  "Labels": {
+   "com.docker.compose.project": "stack-infra-canary",
+   "com.docker.compose.project.config_files": "/srv/user/.state/infra/deployed/0.38.63/docker/docker-compose.infra.yml,/srv/user/.state/infra/deployed/0.38.63/docker/docker-compose.canary.yml",
+   "com.docker.compose.project.working_dir": "/srv/user/.state/infra/deployed/0.38.63/docker",
+   "com.docker.compose.service": "postgres"
+  }
+ },
+ {
+  "Names": "stack-infra-canary-redpanda",
+  "State": "running",
+  "Status": "running",
+  "Image": "redpandadata/redpanda:v24.2.7",
+  "Labels": {
+   "com.docker.compose.project": "stack-infra-canary",
+   "com.docker.compose.project.config_files": "/srv/user/.state/infra/deployed/0.38.63/docker/docker-compose.infra.yml,/srv/user/.state/infra/deployed/0.38.63/docker/docker-compose.canary.yml",
+   "com.docker.compose.project.working_dir": "/srv/user/.state/infra/deployed/0.38.63/docker",
+   "com.docker.compose.service": "redpanda"
+  }
+ },
+ {
+  "Names": "stack-infra-canary-valkey",
+  "State": "running",
+  "Status": "running",
+  "Image": "valkey/valkey:8.0-alpine",
+  "Labels": {
+   "com.docker.compose.project": "stack-infra-canary",
+   "com.docker.compose.project.config_files": "/srv/user/.state/infra/deployed/0.38.57/docker/docker-compose.infra.yml,/srv/user/.state/infra/deployed/0.38.57/docker/docker-compose.canary.yml",
+   "com.docker.compose.project.working_dir": "/srv/user/.state/infra/deployed/0.38.57/docker",
+   "com.docker.compose.service": "valkey"
+  }
+ }
+]

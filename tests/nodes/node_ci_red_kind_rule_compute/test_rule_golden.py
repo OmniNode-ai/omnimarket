@@ -273,3 +273,91 @@ def test_the_contract_names_the_handler_and_declares_local_invocation_with_no_bu
     assert operations == {"classify_ci_red_kind_by_rule": "HandlerCiRedKindRule"}
     assert contract["event_bus"] == {"subscribe_topics": [], "publish_topics": []}
     assert contract["metadata"]["transport_type"] == "local"
+
+
+ERROR_LINE_504 = "##[error]Unexpected HTTP response: 504"
+
+
+def test_an_actions_504_error_line_in_the_log_is_matched_by_rule_two_with_no_model_call() -> (
+    None
+):
+    handler = _handler()
+    answer = handler.handle(
+        ModelCiRedKindRuleRequest(check_name="Tests", log_excerpt=ERROR_LINE_504)
+    )
+    assert answer.ok is True
+    assert answer.matched is True
+    assert answer.kind == "runner-infra"
+    assert answer.rule_index == 2
+    assert answer.model_call_required is False
+    assert answer.refusal is None
+
+
+@pytest.mark.parametrize("code", ["500", "502", "503", "504"])
+def test_every_5xx_actions_error_line_is_matched(code: str) -> None:
+    handler = _handler()
+    answer = handler.handle(
+        ModelCiRedKindRuleRequest(
+            check_name="Tests",
+            log_excerpt=f"##[error]Unexpected HTTP response: {code}",
+        )
+    )
+    assert answer.matched is True
+    assert answer.kind == "runner-infra"
+
+
+@pytest.mark.parametrize(
+    "excerpt",
+    [
+        pytest.param("Unexpected HTTP response: 504", id="retry-text-with-no-marker"),
+        pytest.param("##[error]Unexpected HTTP response: 404", id="a-4xx-code"),
+        pytest.param("", id="an-empty-excerpt"),
+    ],
+)
+def test_a_log_that_is_not_an_actions_5xx_error_line_is_not_matched(
+    excerpt: str,
+) -> None:
+    handler = _handler()
+    answer = handler.handle(
+        ModelCiRedKindRuleRequest(check_name="Tests", log_excerpt=excerpt)
+    )
+    assert answer.matched is False
+    assert answer.model_call_required is True
+
+
+def test_a_rule_that_sets_both_patterns_needs_both_found() -> None:
+    overlay = _overlay_for(
+        [
+            {
+                "kind": "both-kind",
+                "check_name_pattern": "Tests",
+                "log_pattern": "boom",
+                "ignore_case": False,
+            },
+        ]
+    )
+    handler = HandlerCiRedKindRule(load_overlay=lambda: overlay)
+    both = handler.handle(
+        ModelCiRedKindRuleRequest(check_name="Tests", log_excerpt="boom")
+    )
+    name_only = handler.handle(
+        ModelCiRedKindRuleRequest(check_name="Tests", log_excerpt="quiet")
+    )
+    log_only = handler.handle(
+        ModelCiRedKindRuleRequest(check_name="Lint", log_excerpt="boom")
+    )
+    assert both.matched is True
+    assert both.kind == "both-kind"
+    assert name_only.matched is False
+    assert log_only.matched is False
+
+
+def test_a_name_rule_declared_before_a_log_rule_wins_when_both_would_match() -> None:
+    handler = _handler()
+    answer = handler.handle(
+        ModelCiRedKindRuleRequest(
+            check_name="delegation-health-check", log_excerpt=ERROR_LINE_504
+        )
+    )
+    assert answer.kind == "delegation-health-gate"
+    assert answer.rule_index == 0

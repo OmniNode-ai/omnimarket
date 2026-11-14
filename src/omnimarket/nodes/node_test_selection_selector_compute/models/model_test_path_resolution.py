@@ -8,6 +8,7 @@ YAML and re-exports them.
 
 from __future__ import annotations
 
+from fnmatch import fnmatchcase
 from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -21,6 +22,28 @@ class ModelAdjacencyEntry(BaseModel):
 class ModelThresholds(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     modules_changed_for_full_suite: int = Field(..., ge=1)
+
+
+class ModelPathTriggeredTests(BaseModel):
+    """Tests a narrowed selection must also run when a changed file matches a glob."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    changed_globs: list[str] = Field(..., min_length=1)
+    """Repo-relative fnmatch patterns; one changed file matching any of them triggers."""
+    selected_paths: list[str] = Field(..., min_length=1)
+    """Test directories (trailing slash) or test files under tests/ to add."""
+
+    @model_validator(mode="after")
+    def validate_selected_paths(self) -> ModelPathTriggeredTests:
+        for path in self.selected_paths:
+            if not path.startswith("tests/") or not path.endswith(("/", ".py")):
+                raise ValueError(
+                    f"path_triggered_selected_paths entry '{path}' must be a "
+                    "directory under tests/ with a trailing slash, or a test "
+                    "file ending in .py"
+                )
+        return self
 
 
 class ModelAdjacencyMap(BaseModel):
@@ -48,6 +71,20 @@ class ModelAdjacencyMap(BaseModel):
     deliberately NOT filtered against the on-disk tree: a missing directory
     must surface as a loud pytest collection error, never as a silent drop
     that turns the gate vacuous.
+    """
+
+    path_triggered_selected_paths: list[ModelPathTriggeredTests] = Field(
+        default_factory=list
+    )
+    """Tests appended to a narrowed selection when a changed file matches a glob.
+
+    A repo-wide check that only a kind of change can break belongs here, not in
+    ``always_selected_paths``: the node inventory test walks every node
+    directory, contract and ``onex.nodes`` entry point, so a node contract
+    change that narrowed to the node's own tests skipped it, and the guard that
+    reads the same list as the drift gate went red only after the push. Like
+    ``always_selected_paths`` the entries are NOT filtered against the on-disk
+    tree: a missing test must surface as a loud pytest collection error.
     """
 
     node_scoped_modules: list[str] = Field(default_factory=list)
@@ -96,6 +133,20 @@ class ModelAdjacencyMap(BaseModel):
                         f"adjacency['{module}'].reverse_deps references unknown module '{dep}'"
                     )
         return self
+
+    def narrowed_extra_paths(self, changed_files: list[str]) -> set[str]:
+        """Always-selected tests plus those a matching changed file triggers."""
+        triggered = {
+            path
+            for trigger in self.path_triggered_selected_paths
+            if any(
+                fnmatchcase(changed, pattern)
+                for changed in changed_files
+                for pattern in trigger.changed_globs
+            )
+            for path in trigger.selected_paths
+        }
+        return set(self.always_selected_paths) | triggered
 
 
 class ModelPathResolutionRequest(BaseModel):

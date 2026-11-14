@@ -11,8 +11,10 @@ import os
 import socket
 import sys
 from collections.abc import Awaitable, Callable
-from typing import Never
+from typing import Final, Never
 
+from omnimarket.handlers.bus_binding.node_broker import resolve_dialable_broker
+from omnimarket.models.bus_binding.model_node_broker import ModelNodeBroker
 from omnimarket.nodes.node_capture_silence_watch_effect.container.container_capture_silence_watch_effect import (
     build_handler_capture_silence_watch,
 )
@@ -24,6 +26,8 @@ from omnimarket.nodes.node_capture_silence_watch_effect.models import (
     ModelCaptureWatchTrigger,
 )
 from omnimarket.topic_namespace import apply_topic_namespace
+
+NODE_NAME: Final[str] = "node_capture_silence_watch_effect"
 
 
 class _Parser(argparse.ArgumentParser):
@@ -40,27 +44,36 @@ def build_handler(
     )
 
 
+def _client_kwargs(broker: ModelNodeBroker) -> dict[str, str]:
+    """The aiokafka SASL options a declared broker sets, without unset keys."""
+    kwargs: dict[str, str] = {}
+    if broker.sasl_mechanism is not None:
+        kwargs["sasl_mechanism"] = broker.sasl_mechanism
+    if broker.sasl_username is not None:
+        kwargs["sasl_plain_username"] = broker.sasl_username
+    if broker.sasl_password is not None:
+        kwargs["sasl_plain_password"] = broker.sasl_password.get_secret_value()
+    return kwargs
+
+
 async def _publish(topic: str, payload: bytes, *, dry_run: bool) -> None:
-    """Send each event immediately, or print its topic-addressed JSON to stderr."""
-    brokers = os.environ.get("KAFKA_BROKERS") or os.environ.get(
-        "KAFKA_BOOTSTRAP_SERVERS"
-    )
-    if brokers and not dry_run:
-        await _publish_kafka(brokers, topic, payload)
-    else:
+    """Send each event over the declared broker, or print its topic-addressed JSON to stderr."""
+    if dry_run:
         sys.stderr.write(
             json.dumps({"topic": topic, "payload": json.loads(payload)}) + "\n"
         )
+        return
+    broker = resolve_dialable_broker(NODE_NAME)
+    await _publish_kafka(broker, topic, payload)
 
 
-async def _publish_kafka(brokers: str, topic: str, payload: bytes) -> None:
+async def _publish_kafka(broker: ModelNodeBroker, topic: str, payload: bytes) -> None:
     from aiokafka import AIOKafkaProducer
-    from omnibase_infra.event_bus.kafka_auth import (
-        build_aiokafka_auth_kwargs_from_env,
-    )
 
     producer = AIOKafkaProducer(
-        bootstrap_servers=brokers, **build_aiokafka_auth_kwargs_from_env()
+        bootstrap_servers=broker.bootstrap_servers,
+        security_protocol=broker.security_protocol or "PLAINTEXT",
+        **_client_kwargs(broker),
     )
     await producer.start()
     try:

@@ -1,0 +1,67 @@
+schema_version: 1.0.0
+ticket_id: OMN-24406
+title: An install that names no ledger path reads the ledger the lab host table's row declares
+summary: Moves the behaviour of the frozen host drift installer change (OMN-23598) into the host installer registry node. When neither the install request nor the installing shell names a ledger path, the installer reads the ledger_path the lab host table's row for the host declares, instead of refusing; a row that declares none, an unlisted host and an unreadable table still refuse.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn24406-ledger-from-host-table
+    statement: An install whose unit takes the ledger path as a request input reads the host table's declared ledger for the host when the request and the shell name none, and still refuses when nothing declares one.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: an install of a unit that needs a ledger path, with none in the request or the shell and a host table row that declares one, renders the unit with that ledger and a request or shell value still wins over the row -- falsifier: uv run pytest tests/nodes/node_host_installer_registry_units/test_ledger_path_from_host_table.py -q -k host_table_ledger_path fails with the host table fallback removed from the installer'
+      - id: AC2
+        statement: 'AC2: a row that declares no ledger_path, a host the table does not list and a table that cannot be read each refuse the install naming the missing input or the unreadable table -- falsifier: uv run pytest tests/nodes/node_host_installer_registry_units/test_ledger_path_from_host_table.py -q -k "refuse or unreadable or row_ignored" fails if any of the three installs succeeds'
+      - id: AC3
+        statement: 'AC3: integrated: the installer run from the branch on a lab host reads the host row''s ledger for a host-drift-owner-dispatch-systemd dry run with no ledger path supplied -- falsifier: the lab-work receipt of the focused tests at the pushed head shows exit 0 on a lab host, and a dry run of the unit with the ledger unset prints the host row''s ledger path'
+evidence_requirements:
+  - kind: tests
+    description: The new ledger-from-host-table tests and the host drift owner dispatch unit tests pass at the pushed head; with the installer restored from the base branch the new golden and precedence tests fail.
+    command: uv run pytest -q tests/nodes/node_host_installer_registry_units/test_ledger_path_from_host_table.py tests/nodes/node_host_installer_registry_units/test_host_drift_owner_dispatch_unit.py
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn24406-ac1
+    description: A declared row fills the rendered unit, a declared absolute path is used as is, and the request value and the shell variable still win over the row.
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest -q tests/nodes/node_host_installer_registry_units/test_ledger_path_from_host_table.py -k host_table_ledger_path
+        cwd: .
+  - id: dod-omn24406-ac2
+    description: A row with no ledger_path, an unlisted host and an unreadable table each refuse; the failing control shows the row is what the install reads.
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest -q tests/nodes/node_host_installer_registry_units/test_ledger_path_from_host_table.py -k "refuse or unreadable or row_ignored"
+        cwd: .
+  - id: dod-omn24406-seams
+    description: The host table row model and the installer's environment inputs meet at the ledger_path field; the existing owner dispatch unit tests and the overlay-root tests fail if either side changes shape.
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest -q tests/nodes/node_host_installer_registry_units/test_ledger_path_from_host_table.py tests/nodes/node_host_installer_registry_units/test_host_drift_owner_dispatch_unit.py tests/nodes/node_host_installer_registry_units/test_overlay_root_declared_by_host_table.py
+        cwd: .
+  - id: dod-omn24406-deploy
+    description: 'Deploy probe the hosted runner can run: the installer handler at the checked-out commit on GitHub carries the host table ledger fallback; the method does not exist at the merge base, so the probe fails there.'
+    source: manual
+    checks:
+      - check_type: command
+        check_value: >-
+          bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_host_installer_registry_units/handlers/handler_registry_units.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "host_table_ledger_path" > /dev/null'
+        cwd: .
+  - id: dod-omn24406-integration-proof
+    description: The pushed head ran the installer tests on a lab host through the bus and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: >-
+          uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane port-internal-6803 -- uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_ledger_path_from_host_table.py tests/nodes/node_host_installer_registry_units/test_host_drift_owner_dispatch_unit.py -q
+        cwd: .

@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_throughput_tick_facts_effect
+version: "1.0.0"
+description: The hourly check's facts read (landing controller launchd state, controller files, PR watcher state, landing floors, the tick's own history rows and the goal check's inputs)
+omnibase_core_compat: ">=0.47.28,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_throughput_tick_facts_effect: omnimarket.nodes.node_throughput_tick_facts_effect
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  side_effect_class: read_only
+dependencies:
+  - pydantic>=2.11.0
+authors: [OmniNode Team]
+license: MIT
+tags: [effect, throughput, tick, facts, launchd]
+node_role: effect
+pack: "routing"
+display_name: "Throughput Tick Facts Effect"

@@ -20,7 +20,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
-from omnimarket.nodes.node_floor_delegation_history_compute.models.model_delegation_history import (
+from omnimarket.models.floor_delegation_history import (
     SCHEMA_ID,
     EngineKind,
     ModelArm,
@@ -37,7 +37,7 @@ from omnimarket.nodes.node_floor_delegation_history_compute.models.model_delegat
     ModelTaskSet,
     Thinking,
 )
-from omnimarket.nodes.node_floor_delegation_history_compute.models.model_history_request import (
+from omnimarket.models.floor_history_request import (
     ModelAttemptCounts,
     ModelBackendSettings,
     ModelHistoryPolicy,

@@ -80,10 +80,9 @@ class ModelLaneResultSweepOverlay(BaseModel):
             {
                 **join,
                 "deadline": self.publish.action_deadline_seconds,
-                "rules": sorted(
-                    str(row.get("id", ""))
-                    for row in self.error_rule_document.get("error_rules", [])
-                ),
+                "source": self.source,
+                "producer": self.producer,
+                "rules": self.error_rule_document.get("error_rules", []),
                 "normalizer": self.normalizer_facts.model_dump(mode="json"),
                 "outcomes": {
                     k: v.value for k, v in sorted(self.outcome_classes.items())

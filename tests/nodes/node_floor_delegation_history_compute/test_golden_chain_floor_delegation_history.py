@@ -13,18 +13,18 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
+from omnimarket.models.floor_delegation_history import (
+    SCHEMA_ID,
+    ModelDelegationHistory,
+    ModelSeriesPoint,
+    ModelSuccess,
+)
 from omnimarket.nodes.node_floor_delegation_history_compute.handlers import (
     handler_floor_delegation_history as handler_module,
 )
 from omnimarket.nodes.node_floor_delegation_history_compute.handlers.handler_floor_delegation_history import (
     HandlerFloorDelegationHistory,
     wilson,
-)
-from omnimarket.nodes.node_floor_delegation_history_compute.models.model_delegation_history import (
-    SCHEMA_ID,
-    ModelDelegationHistory,
-    ModelSeriesPoint,
-    ModelSuccess,
 )
 
 from .support import LOCAL_HOST, NOW, POLICY, SECOND_HOST, attempts, request, seen
