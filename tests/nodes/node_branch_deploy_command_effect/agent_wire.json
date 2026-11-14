@@ -43,5 +43,11 @@
    "open_pr": "omnibase_infra#5917@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   },
   "signature": "9b1d3a31ffed12aedb33c97a3b7d94ea2a935438690cf2cb6f7ce7713a0a21f9"
+ },
+ "key_check_vector": {
+  "secret": "fixture-key",
+  "label": "deploy-agent-key-check-v1",
+  "check": "6dce9bc99db04417",
+  "source": "deploy_agent.auth.key_check_value of omnibase_infra branch omn-24397-agent-key-check (OMN-24397)"
  }
 }

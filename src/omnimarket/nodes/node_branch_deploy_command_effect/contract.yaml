@@ -15,9 +15,12 @@ node_version: {major: 1, minor: 0, patch: 0}
 
 description: >
   Branch deploy command effect. Builds the deploy agent's rebuild command envelope from a typed request and the overlay,
-  signs it with the signing key named by the overlay, and publishes it to the deploy agent's command topic. A published
-  command is status published; a missing signing key is refused before anything is published; a publish error is failed
-  with the error class as detail. The detail is cut to the overlay bound.
+  signs it with the signing key named by the overlay, and publishes it to the deploy agent's command topic. Before it
+  publishes, it reads the deploy agent's health page and compares the agent's key check value with the check value of its
+  own signing key (OMN-24396). A published command is status published; a missing signing key, a signing key that differs
+  from the agent's, an unreadable health page, a page with no key check value and an overlay that does not configure the
+  read are each refused before anything is published; a publish error is failed with the error class as detail. The
+  detail is cut to the overlay bound.
 
 handler_routing:
   routing_strategy: payload_type_match
@@ -79,7 +82,7 @@ externally_consumed_topics:
 secret_dependencies:
   DEPLOY_AGENT_HMAC_SECRET:
     required: true
-    description: "Shared HMAC secret the deploy agent verifies on every command; the overlay's hmac_secret_env names the variable the runtime fills from the secret store."
+    description: "Shared HMAC secret the deploy agent verifies on every command; the overlay's hmac_secret_env names the variable the runtime fills from the secret store. Its one-way check value is compared with the deploy agent's health page before every publish."
 
 dependencies:
   packages:

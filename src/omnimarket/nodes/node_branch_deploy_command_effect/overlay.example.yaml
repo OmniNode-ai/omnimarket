@@ -5,3 +5,6 @@ hmac_secret_env: EXAMPLE_DEPLOY_AGENT_SIGNING_KEY
 scope: runtime
 build_source: workspace
 detail_max_chars: 4096
+agent_health_url: http://agent.example.invalid:8098/health
+agent_health_timeout_seconds: 10
+agent_key_check_field: hmac_key_check

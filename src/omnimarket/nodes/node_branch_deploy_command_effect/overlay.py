@@ -6,7 +6,9 @@ Found at ``<root>/node_branch_deploy_command_effect/overlay.yaml`` under a root 
 package ships ``overlay.example.yaml`` with synthetic values. Nothing here has a default: an absent key refuses the load —
 except ``hmac_secret_env`` alone, tolerated absent during the transition to the overlays change (OMN-24085), because
 overlays main still holds the old subprocess-trigger document. ``hmac_secret_env`` is the NAME of the environment
-variable the runtime fills from the secret store, never a value.
+variable the runtime fills from the secret store, never a value. ``agent_health_url``, ``agent_health_timeout_seconds`` and
+``agent_key_check_field`` are tolerated absent for the same reason (OMN-24396): the handler refuses to publish while any
+of the three is absent, because it cannot then check the signing key against the deploy agent's key.
 """
 
 from __future__ import annotations
@@ -23,7 +25,10 @@ NODE_NAME = "node_branch_deploy_command_effect"
 class ModelBranchDeployCommandOverlay(BaseModel):
     """``hmac_secret_env`` is the env var name the runtime fills with the deploy agent's signing key (absent means the
     overlay does not name the signing key variable yet, tolerated only during the OMN-24085 transition); ``scope`` and
-    ``build_source`` the scope and build-source flags; ``detail_max_chars`` the longest detail kept."""
+    ``build_source`` the scope and build-source flags; ``detail_max_chars`` the longest detail kept; ``agent_health_url``
+    the deploy agent's health page, ``agent_health_timeout_seconds`` the bound of that one read and ``agent_key_check_field``
+    the health field that carries the agent's key check value (each absent means the key check is not configured, and the
+    handler refuses to publish)."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -31,6 +36,9 @@ class ModelBranchDeployCommandOverlay(BaseModel):
     scope: str = Field(min_length=1)
     build_source: str = Field(min_length=1)
     detail_max_chars: int = Field(ge=1)
+    agent_health_url: str | None = Field(default=None, min_length=1)
+    agent_health_timeout_seconds: float | None = Field(default=None, gt=0)
+    agent_key_check_field: str | None = Field(default=None, min_length=1)
 
     # These four keys belong to the retired subprocess trigger; they are read by nothing and are removed, with
     # hmac_secret_env made required again, in the change that follows the overlays change (OMN-24085 follow-up).
