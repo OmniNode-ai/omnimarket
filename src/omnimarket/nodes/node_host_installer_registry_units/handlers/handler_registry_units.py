@@ -778,6 +778,11 @@ class HandlerRegistryUnits:
                 f"{unit['label']} declares environment_file {unit['environment_file']!r}; "
                 "launchd units do not support an environment file, declare the variables instead"
             )
+        if unit.get("kill_mode"):
+            raise ValueError(
+                f"{unit['label']} declares kill_mode {unit['kill_mode']!r}; "
+                "launchd units do not support a kill mode, keep every process in the job's own care"
+            )
         if unit.get("declared_files"):
             raise ValueError(
                 f"{unit['label']} declares declared_files; only systemd units may declare them"
@@ -1040,6 +1045,23 @@ class HandlerRegistryUnits:
             )
         return f"EnvironmentFile=-{self.systemd_value(path)}"
 
+    def kill_mode(self, unit: dict[str, Any]) -> str:
+        """The KillMode line of a systemd unit that declares one, else nothing.
+
+        A oneshot service that starts processes meant to outlive it (the drift owner's dispatch starts lane
+        runners) declares ``process``: with systemd's default ``control-group`` the exit of the main process
+        SIGTERMs every process left in the unit's cgroup. ``mixed`` is the other mode a unit may name; anything
+        else is refused rather than written as a line systemd would reject or misread.
+        """
+        declared = str(unit.get("kill_mode") or "")
+        if not declared:
+            return ""
+        if declared not in ("mixed", "process"):
+            raise ValueError(
+                f"{unit['label']} declares kill_mode {declared!r}; it must be one of: mixed, process"
+            )
+        return f"\nKillMode={declared}"
+
     def render_systemd(
         self,
         request: ModelRegistryUnitsRequest,
@@ -1085,6 +1107,7 @@ class HandlerRegistryUnits:
         service = service.replace(
             "__ENVIRONMENT_FILE__", self.environment_file(request, unit)
         )
+        service = service.replace("__KILL_MODE__", self.kill_mode(unit))
         service = service.replace(
             "__TICK_SYNC_ARGS__", '"--no-sync"' if unit.get("tick_no_sync") else ""
         )
