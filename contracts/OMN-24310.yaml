@@ -1,0 +1,60 @@
+schema_version: 1.0.0
+ticket_id: OMN-24310
+title: deploy-gate takes the pull request body from the event, not from a GitHub read
+summary: 'Child of OMN-19998. omnimarket''s deploy-gate workflow read the pull request body with gh pr view, a GitHub read that a lab runner refuses (the OMN-19856 hook) and that fails on a runner that cannot reach the GitHub API; the same call failed the cloud owner''s deploy-gate with "could not read the body". The step now takes the body from github.event.pull_request.body through the PR_BODY environment value and its script makes no gh pr view call. The changed-file read (gh pr diff) is unchanged and is not part of this change. Seam: the event payload body field to the gate script environment value.'
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- events
+requirements:
+- id: req-omn24310-ac1
+  statement: 'the deploy-gate step takes the pull request body from the event payload through an environment value and its script never calls gh pr view'
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the deploy-gate step takes the pull request body from the event payload through an environment value and its script never calls gh pr view -- falsifier: pytest tests/unit/workflows/test_deploy_gate_body_from_event.py -q fails when the script goes back to calling gh pr view for the body'
+- id: req-omn24310-ac2
+  statement: 'the validator still receives the body when a gh pr view stub fails, and an empty or null body still reaches it'
+  acceptance:
+  - id: AC2
+    statement: 'AC2: the validator still receives the body when a gh pr view stub fails, and an empty or null body still reaches it -- falsifier: pytest tests/unit/workflows/test_deploy_gate_body_from_event.py tests/unit/workflows/test_deploy_gate_reads_pr_title_omn20413.py -q fails when the PR_BODY environment value is dropped from the step'
+- id: req-omn24310-ac3
+  statement: 'integrated: the deploy-gate run on this pull request''s head in the running CI passes its Run deploy gate step with no gh pr view line and no refusal in the step log'
+  acceptance:
+  - id: AC3
+    statement: 'AC3: integrated: the deploy-gate run on this pull request''s head in the running CI passes its Run deploy gate step with no gh pr view line and no refusal in the step log, read from the job log after the run -- falsifier: the Run deploy gate step log shows a gh pr view call or a refusal message'
+evidence_requirements:
+- kind: tests
+  description: The two workflow test files pass at the pushed head. Against the previous workflow file the new tests fail 6 of 6.
+  command: uv run --frozen pytest tests/unit/workflows/test_deploy_gate_body_from_event.py tests/unit/workflows/test_deploy_gate_reads_pr_title_omn20413.py -q -p no:cacheprovider --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24310-ac1
+  description: 'The new test file passes: the step env carries PR_BODY from the event payload, the script text holds no gh pr view, and a gh pr view stub that fails and records a marker is never called. At the previous workflow file the same tests fail 6 of 6.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/workflows/test_deploy_gate_body_from_event.py -q -p no:cacheprovider --no-cov
+    cwd: .
+- id: dod-omn24310-ac2
+  description: 'The validator receives the body with a failing gh pr view stub, an empty body and a null body reach it, and the existing title test still passes with the body passed through PR_BODY.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/workflows/test_deploy_gate_body_from_event.py tests/unit/workflows/test_deploy_gate_reads_pr_title_omn20413.py -q -p no:cacheprovider --no-cov
+    cwd: .
+- id: dod-omn24310-ac3
+  description: 'The integrated reading is the pull_request run of this workflow on the pushed head, read from its job log after the run and posted as the pull request Lab comment; AC3 stays open until then. Hosted proxy: the two workflow test files pass at the head.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/workflows/test_deploy_gate_body_from_event.py -q -p no:cacheprovider --no-cov
+    cwd: .

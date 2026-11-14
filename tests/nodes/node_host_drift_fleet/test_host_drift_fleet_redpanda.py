@@ -28,7 +28,10 @@ from omnibase_infra.event_bus.models.model_event_headers import ModelEventHeader
 from omnibase_infra.event_bus.models.model_event_message import ModelEventMessage
 
 from omnimarket.nodes.node_host_drift_fleet import HandlerHostDriftFleet
-from omnimarket.nodes.node_host_drift_fleet.models import ModelHostDriftFleetRequest
+from omnimarket.nodes.node_host_drift_fleet.models import (
+    ModelHostDriftFleetRequest,
+    ModelHostDriftFleetView,
+)
 from tests import conftest as shared_fixtures
 from tests.bus_lane_guard import assert_broker_in_declared_lane
 
@@ -149,6 +152,40 @@ class _KafkaGroupBus:
             self.callbacks.clear()
 
 
+class FailAfterDelivery:
+    """Wrap a bus and fail the last topic's subscribe after delivery."""
+
+    def __init__(self, wrapped: _KafkaGroupBus, topics: tuple[str, ...]) -> None:
+        self._wrapped = wrapped
+        self._topics = topics
+
+    async def close(self) -> None:
+        await self._wrapped.close()
+
+    async def subscribe(
+        self,
+        topic: str,
+        on_message: Callable[[ModelEventMessage], Awaitable[None]],
+        *,
+        group_id: str,
+        auto_offset_reset: str,
+    ) -> Callable[[], Awaitable[None]]:
+        stop = await self._wrapped.subscribe(
+            topic,
+            on_message,
+            group_id=group_id,
+            auto_offset_reset=auto_offset_reset,
+        )
+        if topic == self._topics[-1]:
+            await asyncio.sleep(3)
+            raise ConnectionError("injected after delivery")
+        return stop
+
+
+def last_heartbeat(view: ModelHostDriftFleetView, host: str) -> datetime | None:
+    return next(h for h in view.hosts if h.host == host).last_heartbeat_at
+
+
 async def test_host_drift_fleet_replays_groups_per_call_redpanda(
     fleet_bootstrap: str,
     kafka_integration_bus: EventBusKafka,
@@ -235,3 +272,100 @@ async def test_host_drift_fleet_replays_groups_per_call_redpanda(
                     await admin.delete_topics(list(physical_topics))
                 finally:
                     await admin.close()
+
+
+async def test_host_drift_fleet_failed_read_keeps_delivered_events_redpanda(
+    fleet_bootstrap: str,
+    kafka_integration_bus: EventBusKafka,
+) -> None:
+    suffix = uuid4().hex
+    topics = tuple(
+        f"fleet-failed-{kind}-{suffix}" for kind in ("heartbeat", "resolved")
+    )
+    prefix = f"fleet-failed.{suffix}"
+    config = overlay(consumer_group_prefix=prefix, read_window_seconds=10)
+    physical_topics = tuple(
+        kafka_integration_bus.resolve_bus_binding(topic).physical_topic
+        for topic in topics
+    )
+    admin = _Admin(bootstrap_servers=fleet_bootstrap)
+    await admin.start()
+
+    async def own_groups() -> set[str]:
+        return {
+            str(group[0])
+            for group in await admin.list_consumer_groups()
+            if str(group[0]).startswith(prefix + ".")
+        }
+
+    wrapper = FailAfterDelivery(
+        _KafkaGroupBus(fleet_bootstrap, topics, physical_topics), topics
+    )
+    store = MemoryStore()
+
+    try:
+        response = await admin.create_topics(
+            [
+                NewTopic(topic, num_partitions=1, replication_factor=1)
+                for topic in physical_topics
+            ]
+        )
+        assert all(code == 0 for _, code, *_ in response.topic_errors)
+        for host in config.hosts:
+            value = json.dumps(
+                {"payload": heartbeat(host).model_dump(mode="json")}
+            ).encode()
+            await kafka_integration_bus.publish(topics[0], None, value)
+
+        handler = HandlerHostDriftFleet(
+            bus=wrapper,
+            state_store=store,
+            topics=topics,
+            clock=lambda: datetime.now(UTC),
+        )
+        result = await handler.handle(
+            ModelHostDriftFleetRequest(
+                host=config.hosts[0],
+                previous=None,
+                now=datetime.now(UTC),
+                overlay=config,
+            )
+        )
+        assert not result.read_ok
+        assert "injected after delivery" in result.error
+        assert result.events_read >= len(config.hosts)
+        for host in config.hosts:
+            assert last_heartbeat(result.view, host) is not None
+        assert store.view == result.view
+        await wrapper.close()
+
+        bus2 = _KafkaGroupBus(fleet_bootstrap, topics, physical_topics)
+        handler2 = HandlerHostDriftFleet(
+            bus=bus2,
+            state_store=store,
+            topics=topics,
+            clock=lambda: datetime.now(UTC),
+        )
+        result2 = await handler2.handle(
+            ModelHostDriftFleetRequest(
+                host=config.hosts[0],
+                previous=None,
+                now=datetime.now(UTC),
+                overlay=config,
+            )
+        )
+        assert result2.read_ok, result2.error
+        for host in config.hosts:
+            assert last_heartbeat(result2.view, host) is not None
+        assert result2.consumer_group == f"{prefix}.{config.hosts[0]}"
+        await bus2.close()
+    finally:
+        try:
+            groups = await own_groups()
+            if groups:
+                await admin.delete_consumer_groups(sorted(groups))
+        finally:
+            try:
+                await admin.delete_topics(list(physical_topics))
+            finally:
+                await admin.close()
