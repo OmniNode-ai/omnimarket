@@ -70,3 +70,13 @@ def test_local_invocation_check_rejects_a_missing_trigger() -> None:
     ok, message = _local_invocation_check(contract)
     assert ok is True
     assert message
+
+
+def test_local_invocation_check_allows_published_topics_but_not_subscriptions() -> None:
+    contract = copy.deepcopy(_contract_for("node_captured_secret_store_effect"))
+    contract["event_bus"] = {"subscribe_topics": [], "publish_topics": ["a.b.c.v1"]}
+    assert _local_invocation_check(contract) == (True, "")
+    contract["event_bus"] = {"subscribe_topics": ["a.b.c.v1"], "publish_topics": []}
+    ok, message = _local_invocation_check(contract)
+    assert ok is True
+    assert "no subscribed bus topics" in message

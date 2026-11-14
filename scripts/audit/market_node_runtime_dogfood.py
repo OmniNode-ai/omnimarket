@@ -130,8 +130,8 @@ def _local_invocation_check(contract: dict[str, Any]) -> tuple[bool, str]:
         if not isinstance(trigger, str) or not trigger.strip():
             raise ValueError("local invocation lacks an external trigger")
         event_bus = contract["event_bus"]
-        if event_bus != {"subscribe_topics": [], "publish_topics": []}:
-            raise ValueError("local invocation must declare empty bus topics")
+        if event_bus.get("subscribe_topics") != []:
+            raise ValueError("local invocation must declare no subscribed bus topics")
         if contract["descriptor"]["runtime_profiles"] != []:
             raise ValueError("local invocation cannot claim a deployed runtime profile")
         handler = contract["handler"]
