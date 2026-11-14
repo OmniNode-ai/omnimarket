@@ -1,0 +1,38 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Host transport settings and declared steps of the host bring-up run (OMN-19130).
+#
+# Loaded by load_host_shell_overlay into ModelHostShellOverlay. Each step binds a
+# target of the bring-up graph to one shell primitive with typed parameters; the
+# primitive renders the probe and the apply, so no step holds shell text. A
+# target with no step here reads unknown, never satisfied.
+#
+# ssh never accepts an unknown host key: confirming one is the host-key person
+# step of the graph, so an unknown key reads as the transport not answering.
+ssh_options:
+  - StrictHostKeyChecking=yes
+connect_timeout_s: 10
+probe_timeout_s: 30
+action_timeout_s: 120
+hosts:
+  # h202, back from repair. The hand steps of its return that a shell can read,
+  # as declared steps: the launching host reaches it by its lab alias, logs in
+  # by key, and sudo -n answers. Its hostname value is a private-network name,
+  # so its hostname step belongs in the private overlay, not here.
+  - host: h202
+    transport: {kind: ssh, target: h202}
+    steps:
+      - {target: ssh-config, primitive: transport_answers}
+      - {target: key-login, primitive: transport_answers}
+      - {target: root-access, primitive: privilege_answers}
+  # h053, run from h053 itself. The drive switch is the data-moved target: the
+  # lab run directory's topmost mount is the ext4 drive, not the RAM filesystem.
+  - host: h053
+    transport: {kind: local}
+    steps:
+      - {target: root-access, primitive: privilege_answers}
+      - target: data-moved
+        primitive: mount_source
+        path: /data/lab-run/runs
+        fstype: ext4
+        source: /dev/nvme0n1p1
