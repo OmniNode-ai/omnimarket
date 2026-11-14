@@ -31,7 +31,6 @@ from tests.nodes.node_ticket_closer_scheduled_effect.test_golden_chain_ticket_cl
     T0,
     Source,
     Writer,
-    handler,
     schedule,
     tick,
 )
@@ -76,13 +75,22 @@ def _candidate() -> ModelCloserCandidate:
     )
 
 
+def _closer(verifier: _BlockingVerifier) -> HandlerTicketCloserScheduled:
+    return HandlerTicketCloserScheduled(
+        schedule=schedule(),
+        source=Source([_candidate()]),
+        verifier=verifier,
+        writer=Writer(),
+    )
+
+
 def _after_the_interval() -> timedelta:
     return timedelta(seconds=schedule().run_interval_seconds + 1)
 
 
 async def test_the_tick_leaves_the_event_loop_free_while_the_verifier_waits() -> None:
     verifier = _BlockingVerifier()
-    closer = handler(Source([_candidate()]), verifier, Writer())
+    closer = _closer(verifier)
 
     task = asyncio.create_task(closer.handle(tick(T0)))
     await asyncio.sleep(0.05)
@@ -110,7 +118,7 @@ async def test_control_a_run_on_the_loop_thread_holds_the_loop() -> None:
 
 async def test_a_tick_after_the_interval_during_a_run_starts_no_second_run() -> None:
     verifier = _BlockingVerifier()
-    closer = handler(Source([_candidate()]), verifier, Writer())
+    closer = _closer(verifier)
 
     first = asyncio.create_task(closer.handle(tick(T0)))
     await asyncio.sleep(0.05)
@@ -125,7 +133,7 @@ async def test_a_tick_after_the_interval_during_a_run_starts_no_second_run() -> 
 
 async def test_control_with_the_in_flight_flag_cleared_a_second_run_starts() -> None:
     verifier = _BlockingVerifier()
-    closer = handler(Source([_candidate()]), verifier, Writer())
+    closer = _closer(verifier)
 
     first = asyncio.create_task(closer.handle(tick(T0)))
     await asyncio.sleep(0.05)
@@ -147,7 +155,7 @@ async def test_error_a_run_that_raises_releases_the_in_flight_flag() -> None:
         await closer.handle(tick(T0))
     assert closer._running is False
 
-    closer = handler(Source([_candidate()]), _BlockingVerifier(0.1), Writer())
+    closer = _closer(_BlockingVerifier(0.1))
     assert await closer.handle(tick(T0)) is not None
 
 

@@ -52,6 +52,7 @@
   "tests/chains/test_piece15_chain.py": 7.03,
   "tests/chains/test_piece15_synthetic.py": 1.74,
   "tests/chains/test_projection_arm_constructs.py": 1.59,
+  "tests/chains/ticket_closer/test_golden_chain_ticket_closer_runtime_tick.py": 14.4,
   "tests/ci/test_action_pin_wiring_omn17427.py": 0.17,
   "tests/ci/test_aggregate_coverage_artifacts.py": 6.31,
   "tests/ci/test_aislop_sweep_gate_wiring.py": 1.0,
