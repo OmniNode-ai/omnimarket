@@ -14,7 +14,7 @@ from __future__ import annotations
 import json
 import logging
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from omnimarket.enums.enum_check_proof_class import EnumCheckProofClass
 from omnimarket.enums.enum_dod_acceptance_basis import EnumDodAcceptanceBasis
@@ -223,18 +223,20 @@ class HandlerDodVerify:
                         execution_audience=execution_audience,
                     )
                 else:
-                    # OMN-23771: only passed when set, so a stub collector that
+                    # OMN-23771, OMN-23774: only passed when set, so a stub collector that
                     # predates the argument is called as it always was.
-                    full_contract = (
-                        {"full_contract_path": command.full_contract_path}
-                        if command.full_contract_path is not None
-                        else {}
-                    )
+                    standard_inputs: dict[str, Any] = {}
+                    if command.full_contract_path is not None:
+                        standard_inputs["full_contract_path"] = (
+                            command.full_contract_path
+                        )
+                    if command.changed_paths is not None:
+                        standard_inputs["changed_paths"] = command.changed_paths
                     evidence_results = collector.collect(
                         ticket_id=command.ticket_id,
                         contract_path=command.contract_path,
                         execution_audience=execution_audience,
-                        **full_contract,
+                        **standard_inputs,
                     )
                 # ``getattr`` because ``_make_collector`` is the documented seam a
                 # dozen suites replace with a stub; a stub that never derived

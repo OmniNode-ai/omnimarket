@@ -38,6 +38,17 @@ def build_verify_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--changed-paths-file",
+        type=Path,
+        default=None,
+        help=(
+            "File listing the paths the pull request changes, one per line (for "
+            "example `git diff --name-only <base>...HEAD`). The standard-ticket rules "
+            "refuse a runtime-affecting change whose contract has no integrated "
+            "criterion. Needs --contract-path."
+        ),
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         default=False,
@@ -74,3 +85,17 @@ def build_verify_parser() -> argparse.ArgumentParser:
         ),
     )
     return parser
+
+
+def read_changed_paths(path: Path | None) -> list[str] | None:
+    """The paths in a ``--changed-paths-file``, or ``None`` when none was given.
+
+    An unreadable file raises: a missing list must not read as an empty one.
+    """
+    if path is None:
+        return None
+    return [
+        line.strip()
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]

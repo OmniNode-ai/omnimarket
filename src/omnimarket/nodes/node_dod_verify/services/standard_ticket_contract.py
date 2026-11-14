@@ -14,11 +14,16 @@ from __future__ import annotations
 
 import os
 import re
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from datetime import date
 from pathlib import Path
 from typing import Any
 
+from omnibase_core.enums.enum_proof_class import EnumProofClass
+from omnibase_core.models.ticket.model_contract_dod_item import (
+    BINDS_AC_LABEL_RE,
+    is_integration_check_type,
+)
 from omnibase_core.models.ticket.model_ticket_contract import ModelTicketContract
 from pydantic import ValidationError
 
@@ -42,6 +47,7 @@ CONTRACT_SCHEMA_INVALID = "contract_schema_invalid"
 CONTRACT_NOT_SYNCED = "contract_not_synced"
 TICKET_NOT_STANDARD = "ticket_not_standard"
 CONTRACT_IN_SECOND_REPOSITORY = "contract_in_second_repository"
+INTEGRATION_ITEM_MISSING = "integration_item_missing"
 GRANDFATHERED = "grandfathered"
 CUTOVER_UNREADABLE = "standard_ticket_cutover_unreadable"
 
@@ -158,17 +164,87 @@ def _schema_errors(exc: ValidationError) -> str:
     )
 
 
+def _label(value: str) -> str:
+    """Fold ``ac-1``, ``AC 1`` and ``AC1`` to one form, as binds_ac labels do."""
+    match = BINDS_AC_LABEL_RE.match(value.strip())
+    if match is None:
+        return value.strip().lower()
+    return f"{match.group(1).lower()}{int(match.group(2))}"
+
+
+def has_bound_integrated_criterion(contract: ModelTicketContract) -> bool:
+    """True when an integrated criterion is bound to a dod_evidence item that observes.
+
+    Read the way the core model reads it: the criterion states ``integrated``, and a
+    dod_evidence item with an integration check type binds it through ``binds_ac``.
+    """
+    integrated = {
+        _label(criterion.id)
+        for requirement in contract.requirements
+        for criterion in requirement.acceptance
+        if criterion.integrated
+    }
+    return any(
+        any(is_integration_check_type(check.check_type) for check in item.checks)
+        and integrated & {_label(bound) for bound in item.binds_ac}
+        for item in contract.dod_evidence
+    )
+
+
+def integration_item_refusal(
+    ticket_id: str,
+    contract: ModelTicketContract,
+    changed_paths: Iterable[str],
+) -> ModelEvidenceCheckResult | None:
+    """Refuse a runtime-affecting change whose contract carries no integrated criterion.
+
+    The paths are classified by the core model's own ``classify_runtime_change``; this
+    adds no second list of runtime paths. A contract that declares itself code-only
+    while its change reaches runtime code is the case this catches.
+    """
+    paths = list(changed_paths)
+    if not ModelTicketContract.classify_runtime_change(paths):
+        return None
+    if has_bound_integrated_criterion(contract):
+        return None
+    declared = (
+        contract.proof_class.value
+        if isinstance(contract.proof_class, EnumProofClass)
+        else "not declared"
+    )
+    return _refusal(
+        INTEGRATION_ITEM_MISSING,
+        ticket_id,
+        f"the change touches runtime code ({_runtime_examples(paths)}) but the "
+        f"contract (proof_class {declared}) has no integrated criterion bound, "
+        "through binds_ac, to a dod_evidence item with an integration check "
+        "(behavior_proven or endpoint); add an "
+        "integrated criterion that is proven where the change runs.",
+    )
+
+
+def _runtime_examples(paths: list[str]) -> str:
+    runtime = [
+        path for path in paths if ModelTicketContract.classify_runtime_change([path])
+    ]
+    shown = ", ".join(runtime[:3])
+    return shown + (f" and {len(runtime) - 3} more" if len(runtime) > 3 else "")
+
+
 def standard_ticket_refusals(
     ticket_id: str,
     full_contract: Mapping[str, Any],
     cutover: ModelStandardTicketCutover,
     repository: str | None,
+    changed_paths: Iterable[str] | None = None,
 ) -> list[ModelEvidenceCheckResult]:
     """Every refusal the complete head contract earns; empty when it is accepted.
 
     A contract the core model refuses stops there. Past that, a ticket below the
     cutover is accepted; one at or above it must be schema 1.1.0, carry a fingerprint
     equal to the hash of its own content, and name the repository being verified.
+    With ``changed_paths`` it must also carry an integrated criterion when the change
+    reaches runtime code (OMN-23774).
     """
     try:
         contract = ModelTicketContract.model_validate(dict(full_contract))
@@ -217,6 +293,10 @@ def standard_ticket_refusals(
                 "child ticket per repository.",
             )
         )
+    if changed_paths is not None:
+        integration = integration_item_refusal(ticket_id, contract, changed_paths)
+        if integration is not None:
+            refusals.append(integration)
     return refusals
 
 
@@ -227,11 +307,14 @@ __all__: list[str] = [
     "CUTOVER_DATE_FIELD",
     "CUTOVER_FIRST_TICKET_FIELD",
     "GRANDFATHERED",
+    "INTEGRATION_ITEM_MISSING",
     "NODE_NAME",
     "STANDARD_EVIDENCE_ID",
     "TICKET_NOT_STANDARD",
     "cutover_unreadable_refusal",
     "grandfathered_record",
+    "has_bound_integrated_criterion",
+    "integration_item_refusal",
     "is_grandfathered",
     "load_cutover",
     "schema_refusal",

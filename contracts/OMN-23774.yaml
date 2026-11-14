@@ -1,0 +1,53 @@
+---
+schema_version: 1.0.0
+ticket_id: OMN-23774
+title: dod-verify refuses a runtime-affecting change whose standard contract has no integrated criterion
+summary: Task S14 of the standard-tickets plan. dod-verify gains --changed-paths-file (the paths the pull request changes) and classifies them with the core ModelTicketContract.classify_runtime_change. For a ticket at or above the standard-ticket cutover, a runtime-affecting change whose contract has no integrated criterion bound to a behavior_proven or endpoint item is refused integration_item_missing. Absent the paths, the rule does not run.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23774-integration-item-missing
+  statement: dod-verify refuses a runtime-affecting change whose contract declares no integrated criterion, using the core model's own runtime-change classifier.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a runtime-affecting diff whose 1.1.0 contract is code-only is refused integration_item_missing -- falsifier: uv run pytest tests/unit/nodes/node_dod_verify -q -k integration_item_missing'
+  - id: AC2
+    statement: 'AC2: integrated: done only when running and observed where it runs: the node from the merged revision run on a lab host on a planted runtime change refuses integration_item_missing -- falsifier: the node''s verdict on the planted head on the lab host, the output pasted in the pull request'
+evidence_requirements:
+- kind: tests
+  description: The integration_item_missing refusal, its controls and the changed-paths input tests pass at the pushed head.
+  command: uv run --frozen pytest tests/unit/nodes/node_dod_verify/test_omn_23774_integration_item_missing.py tests/unit/nodes/node_dod_verify/test_omn_23771_standard_ticket_contract.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23774-ac1
+  description: 'AC1: a runtime-affecting diff whose 1.1.0 contract is code-only is refused integration_item_missing'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_dod_verify/test_omn_23774_integration_item_missing.py -q --no-cov -n 0 -p no:randomly -k integration_item_missing
+    cwd: .
+- id: dod-omn23774-integration-proof
+  description: 'AC2: the node from the pushed head, run on a lab host with --execution-audience hosted and --changed-paths-file naming a runtime path against a code-only 1.1.0 contract, refuses integration_item_missing and exits 1. Hosted CI cannot reach the lab, so only the local Done gate runs this check.'
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: command
+    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23774 -- uv run --frozen pytest tests/unit/nodes/node_dod_verify/test_omn_23774_integration_item_missing.py -q --no-cov -n 0 -p no:randomly -k cli_reads_changed_paths_file
+    cwd: .
+- id: dod-omn23774-deploy-check
+  description: 'Deploy check: the node_dod_verify entry point of the pushed head exposes --changed-paths-file and refuses integration_item_missing, run by the hosted runner with no lab access. Fails if the deployed CLI option or the refusal is removed.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: env DEPLOY_SURFACE=node_dod_verify uv run --frozen pytest tests/unit/nodes/node_dod_verify/test_omn_23774_integration_item_missing.py -q --no-cov -n 0 -p no:randomly -k "cli_reads_changed_paths_file or integration_item_missing"
+    cwd: .

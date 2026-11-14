@@ -78,7 +78,10 @@ from omnimarket.nodes.node_dod_verify.models.model_occ_replay import (
     ModelOccReplayRecord,
     ModelOccReplayRequest,
 )
-from omnimarket.nodes.node_dod_verify.services.cli_parser import build_verify_parser
+from omnimarket.nodes.node_dod_verify.services.cli_parser import (
+    build_verify_parser,
+    read_changed_paths,
+)
 from omnimarket.nodes.node_dod_verify.services.evidence_home import (
     open_receipt_destinations,
 )
@@ -503,6 +506,7 @@ def main() -> None:
         ticket_id=args.ticket_id,
         contract_path=args.contract_path,
         full_contract_path=args.full_contract_path,
+        changed_paths=read_changed_paths(args.changed_paths_file),
         dry_run=args.dry_run,
         execution_audience=args.execution_audience,
         requested_at=datetime.now(tz=UTC),
