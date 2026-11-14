@@ -8,7 +8,8 @@ a default: an absent key refuses the load and names it, with one exception: ``ef
 block of the effects-held verbs only, so an overlay that lacks it still loads and the broker lag read
 (the verb the schedule runs) keeps reporting; the effects-held verbs refuse it themselves (OMN-23340).
 ``broker_listener`` is the same: the block of the broker-listener verbs only, and those verbs refuse
-it themselves, and so is ``dev_tag_heartbeat``.
+it themselves, and so is ``dev_tag_heartbeat``, ``lane_census``, ``lab_pass_receipt``,
+``stale_indeterminate`` and ``verdict_record`` (OMN-24425): each is the block of its own verbs.
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
+from omnimarket.models.model_github_gateway_io import MAX_ARTIFACT_MAX_BYTES
 
 NODE_NAME = "node_lab_alarm"
 
@@ -162,6 +164,10 @@ SCHEDULABLE_VERBS = (
     "dev-tag-heartbeat",
     "delegation-chain-canary",
     "work-ledger-projection-stale",
+    "lane-drift",
+    "container-unhealthy",
+    "lab-pass-receipt",
+    "stale-indeterminate",
 )
 
 
@@ -276,6 +282,75 @@ class ModelWorkLedgerProjectionStaleSettings(BaseModel):
     persistence: ModelConditionPersistence
 
 
+class ModelLaneCensusSettings(BaseModel):
+    """The lane census conditions (OMN-24425): lane_drift and container_unhealthy read one census snapshot."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: The snapshot JSON file read when no command is declared; the injection seam of the old script's state-directory fixture.
+    snapshot_path: str = Field(min_length=1)
+    #: argv whose stdout is the snapshot; declared, the run executes it instead of reading the file.
+    snapshot_command: tuple[str, ...] | None = None
+    #: The oldest ``emitted_at`` accepted: the old ``census_max_age_minutes`` (120) in seconds.
+    max_age_seconds: float = Field(gt=0)
+    #: The command's bound: the old script's 15 seconds.
+    timeout_seconds: float = Field(gt=0)
+
+
+class ModelLabPassReceiptSettings(BaseModel):
+    """The lab-pass receipt condition (OMN-24425): the receipt of the sha the lane runs."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: ``owner/name`` whose workflow uploads the receipt artifact, the old config key ``repo``.
+    repository: str = Field(min_length=1)
+    #: The workflow file that uploads the receipt artifact.
+    workflow: str = Field(min_length=1)
+    #: The receipt lane value; the artifact is named ``lab-pass-receipt-<lane>-<sha>``.
+    lane: str = Field(min_length=1)
+    #: The deploy agent's base URL; ``GET <agent_url>/health`` carries ``loaded_code_sha``, the old ``agent_url``.
+    agent_url: str = Field(min_length=1)
+    #: The runtime ``/ready`` URL, tried when the agent answers no sha, the old ``ready_url``.
+    ready_url: str | None = None
+    #: Workflow runs read at the sha, newest first.
+    runs_limit: int = Field(ge=1)
+    #: The largest artifact archive fetched; the gateway refuses more than its own cap, so the overlay does too.
+    max_archive_bytes: int = Field(ge=1, le=MAX_ARTIFACT_MAX_BYTES)
+    timeout_seconds: float = Field(gt=0)
+
+
+class ModelWatchedCondition(BaseModel):
+    """One condition the stale-indeterminate verb watches, and the run record that holds its runs."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: The condition name its run record carries.
+    condition: str = Field(min_length=1)
+    record_path: str = Field(min_length=1)
+
+
+class ModelStaleIndeterminateSettings(BaseModel):
+    """The stale-indeterminate condition (OMN-24425): a watched condition that has read INDETERMINATE run after run."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    watched: tuple[ModelWatchedCondition, ...] = Field(min_length=1)
+    #: Consecutive INDETERMINATE runs of one condition, newest first, with no OK or ALARM between them, before it alarms.
+    #: Replaces the old script's 24 hour age: a run count needs no clock and follows each condition's own schedule.
+    after_runs: int = Field(ge=2)
+    #: How much of the end of each run-record file is read.
+    tail_bytes: int = Field(ge=1)
+
+
+class ModelVerdictRecordSettings(BaseModel):
+    """The run record every journaled verb appends to, in the shape the broker lag record has."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: One file: ``{"finished_at", "reports": [{"condition", "outcome", "evidence"}]}`` per line.
+    path: str = Field(min_length=1)
+
+
 class ModelAlarmDeliveryWiring(BaseModel):
     """Names that this node's alarms are delivered through node_lab_alarm_deliver_effect (OMN-23906).
 
@@ -308,6 +383,14 @@ class ModelLabAlarmOverlay(BaseModel):
     delegation_chain_canary: ModelDelegationChainCanarySettings | None = None
     #: Read by the work-ledger-projection-stale verbs alone; absent, the overlay still loads and the other verbs run.
     work_ledger_projection_stale: ModelWorkLedgerProjectionStaleSettings | None = None
+    #: Read by the lane-drift and container-unhealthy verbs alone; absent, the overlay still loads and the other verbs run.
+    lane_census: ModelLaneCensusSettings | None = None
+    #: Read by the lab-pass-receipt verbs alone; absent, the overlay still loads and the other verbs run.
+    lab_pass_receipt: ModelLabPassReceiptSettings | None = None
+    #: Read by the stale-indeterminate verbs alone; absent, the overlay still loads and the other verbs run.
+    stale_indeterminate: ModelStaleIndeterminateSettings | None = None
+    #: Where the journaled verbs append their runs, which the stale-indeterminate verb reads; absent, no verb journals.
+    verdict_record: ModelVerdictRecordSettings | None = None
     #: One schedule per condition, keyed by the verb its unit runs (OMN-24400); the ``schedule`` block stays the broker lag's.
     #: Absent, only the broker lag has a schedule.
     condition_schedules: dict[str, ModelLabAlarmSchedule] | None = None
@@ -355,10 +438,15 @@ __all__ = [
     "ModelLabAlarmOverlay",
     "ModelLabAlarmSchedule",
     "ModelLabAlarmScheduleHost",
+    "ModelLabPassReceiptSettings",
     "ModelLagGrowthRule",
     "ModelLagSettings",
+    "ModelLaneCensusSettings",
     "ModelManifestResilience",
     "ModelManifestSettings",
+    "ModelStaleIndeterminateSettings",
+    "ModelVerdictRecordSettings",
+    "ModelWatchedCondition",
     "ModelWorkLedgerProjectionStaleSettings",
     "load_overlay",
 ]

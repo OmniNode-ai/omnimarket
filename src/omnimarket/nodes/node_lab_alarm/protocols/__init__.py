@@ -176,8 +176,57 @@ class ProtocolAlarmDelivery(Protocol):
         ...
 
 
+class CensusUnreadableError(Exception):
+    """The census snapshot could not be read: no file, the command failed or timed out, or the text is not JSON."""
+
+
+class ProtocolCensusSource(Protocol):
+    def read(self) -> Mapping[str, Any]:
+        """The lane census snapshot document; raises CensusUnreadableError when it cannot be read."""
+        ...
+
+
+class ShaUnresolvedError(Exception):
+    """No surface answered the sha the lane runs."""
+
+
+class ProtocolDeliveredShaSource(Protocol):
+    def read(self) -> tuple[str, str]:
+        """The sha the lane runs and the surface that answered; raises ShaUnresolvedError."""
+        ...
+
+
+class ReceiptSurfaceUnreadableError(Exception):
+    """The receipt surface could not be read: the gateway did not answer or answered something untyped."""
+
+
+class ReceiptAbsentError(Exception):
+    """The surface answered and holds no unexpired receipt for the sha."""
+
+
+class ReceiptMalformedError(Exception):
+    """A receipt was found and cannot be trusted: not a zip, not exactly one receipt.json, not JSON."""
+
+
+class ProtocolLabPassReceiptSource(Protocol):
+    def read(self, sha: str) -> Mapping[str, Any]:
+        """The receipt's JSON object for exactly this sha; raises ReceiptSurfaceUnreadableError, ReceiptAbsentError or ReceiptMalformedError."""
+        ...
+
+
+class RunRecordUnreadableError(Exception):
+    """A watched run-record file exists and cannot be read."""
+
+
+class ProtocolRunRecordReader(Protocol):
+    def recent_outcomes(self, condition: str, count: int) -> tuple[str, ...]:
+        """The outcomes of the newest ``count`` runs of the condition, newest first, fewer when fewer exist; raises RunRecordUnreadableError."""
+        ...
+
+
 __all__ = [
     "CanaryRunsUnreadableError",
+    "CensusUnreadableError",
     "EffectsGroupReadError",
     "GroupNeverCommittedError",
     "GroupUnreadableError",
@@ -191,18 +240,27 @@ __all__ = [
     "ProjectionUnreadableError",
     "ProtocolAlarmDelivery",
     "ProtocolCanaryRunSource",
+    "ProtocolCensusSource",
+    "ProtocolDeliveredShaSource",
     "ProtocolEffectsGroupReader",
     "ProtocolGroupLagReader",
     "ProtocolGrowthStreakStore",
     "ProtocolHeartbeatSource",
     "ProtocolHeldStateStore",
+    "ProtocolLabPassReceiptSource",
     "ProtocolLaneDispatcher",
     "ProtocolLedgerNewestReader",
     "ProtocolListenerProbe",
     "ProtocolManifestCache",
     "ProtocolManifestSource",
     "ProtocolProjectionNewestReader",
+    "ProtocolRunRecordReader",
     "ProtocolRunRecordStore",
     "ProtocolSampleStore",
+    "ReceiptAbsentError",
+    "ReceiptMalformedError",
+    "ReceiptSurfaceUnreadableError",
+    "RunRecordUnreadableError",
     "RunRecordUnwritableError",
+    "ShaUnresolvedError",
 ]

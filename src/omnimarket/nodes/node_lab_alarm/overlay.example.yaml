@@ -108,6 +108,34 @@ work_ledger_projection_stale:
   persistence:
     persist_runs: 3
     streak_path: .onex_state/lab-alarm/work-ledger-projection-streaks.json
+# The lane census conditions (OMN-24425): lane-drift and container-unhealthy read one census snapshot. Needed by those verbs only.
+# The old script's 120 minute age bound and 15 second command bound are held here as data. Declaring snapshot_command replaces the file read:
+# snapshot_command: [example-census-snapshot]
+lane_census:
+  snapshot_path: .onex_state/lab-alarm/lane-census.json
+  max_age_seconds: 7200
+  timeout_seconds: 15
+# The lab-pass receipt condition (OMN-24425). Needed by the lab-pass-receipt verbs only. The sha the lane runs comes from the deploy
+# agent (ready_url is tried when it answers none); the receipt is the artifact lab-pass-receipt-<lane>-<sha> of the workflow's runs at that sha.
+lab_pass_receipt:
+  repository: example-org/example-repo
+  workflow: example-rebuild.yml
+  lane: example-receipt-lane
+  agent_url: http://example-host:8098
+  ready_url: http://example-host:8085/ready
+  runs_limit: 20
+  max_archive_bytes: 262144
+  timeout_seconds: 30
+# The stale-indeterminate condition (OMN-24425): a watched condition whose last after_runs runs all read INDETERMINATE alarms.
+stale_indeterminate:
+  watched:
+    - {condition: dev_tag_heartbeat, record_path: .onex_state/lab-alarm/verdicts.jsonl}
+    - {condition: consumer_group_lag, record_path: .onex_state/lab-alarm/broker-lag-runs.jsonl}
+  after_runs: 6
+  tail_bytes: 262144
+# Where the journaled verbs append each finished run, for the stale-indeterminate verb to read.
+verdict_record:
+  path: .onex_state/lab-alarm/verdicts.jsonl
 # One schedule per condition (OMN-24400), keyed by the verb its unit runs; the schedule block above stays the broker lag's.
 # Each has its own unit name and launchd label (two schedules never share one) and logs under its verb.
 condition_schedules:
@@ -148,6 +176,70 @@ condition_schedules:
     launchd_label: example.lab-alarm-work-ledger-projection-stale
     state_directory: .onex_state/lab-alarm
     interval_seconds: 900
+    timeout_seconds: 120
+    hosts:
+      - name: example-mac
+        scheduler: launchd
+        venv: examplepkg/.venv
+        environment:
+          EXAMPLE_SETTING: $OMNI_HOME/example
+      - name: example-linux
+        scheduler: systemd-user
+        venv: examplepkg/.venv
+        environment: {}
+  lane-drift:
+    unit_name: example-lab-alarm-lane-drift
+    launchd_label: example.lab-alarm-lane-drift
+    state_directory: .onex_state/lab-alarm
+    interval_seconds: 900
+    timeout_seconds: 120
+    hosts:
+      - name: example-mac
+        scheduler: launchd
+        venv: examplepkg/.venv
+        environment:
+          EXAMPLE_SETTING: $OMNI_HOME/example
+      - name: example-linux
+        scheduler: systemd-user
+        venv: examplepkg/.venv
+        environment: {}
+  container-unhealthy:
+    unit_name: example-lab-alarm-container-unhealthy
+    launchd_label: example.lab-alarm-container-unhealthy
+    state_directory: .onex_state/lab-alarm
+    interval_seconds: 900
+    timeout_seconds: 120
+    hosts:
+      - name: example-mac
+        scheduler: launchd
+        venv: examplepkg/.venv
+        environment:
+          EXAMPLE_SETTING: $OMNI_HOME/example
+      - name: example-linux
+        scheduler: systemd-user
+        venv: examplepkg/.venv
+        environment: {}
+  lab-pass-receipt:
+    unit_name: example-lab-alarm-lab-pass-receipt
+    launchd_label: example.lab-alarm-lab-pass-receipt
+    state_directory: .onex_state/lab-alarm
+    interval_seconds: 900
+    timeout_seconds: 120
+    hosts:
+      - name: example-mac
+        scheduler: launchd
+        venv: examplepkg/.venv
+        environment:
+          EXAMPLE_SETTING: $OMNI_HOME/example
+      - name: example-linux
+        scheduler: systemd-user
+        venv: examplepkg/.venv
+        environment: {}
+  stale-indeterminate:
+    unit_name: example-lab-alarm-stale-indeterminate
+    launchd_label: example.lab-alarm-stale-indeterminate
+    state_directory: .onex_state/lab-alarm
+    interval_seconds: 1800
     timeout_seconds: 120
     hosts:
       - name: example-mac
