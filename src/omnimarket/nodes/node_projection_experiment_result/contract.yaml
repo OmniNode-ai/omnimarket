@@ -1,0 +1,161 @@
+---
+name: node_projection_experiment_result
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+# OMN-17556: this projection writes a TENANT-domain table, so its handler
+# resolves the tenant_projection binding. That binding's credential is a
+# store-resolved secret_ref read through SecretResolver at the binding
+# boundary, and exactly one process holds it: the consolidated writer that
+# boots RUNTIME_PROFILE=tenant-projection and owns every TENANT-domain
+# projection contract. `tenant-projection` is a registered, consumer-attached
+# runtime profile, so this contract is drained by that writer and is
+# deliberately absent from `main` and `effects` -- neither of those processes
+# carries the credential, and per the 2026-09-03 operator ruling neither ever
+# will as a container env var. This is the permanent ownership boundary, not
+# a temporary orphaning.
+# OMN-19998: moved off main, which boots without that credential on a lab lane.
+runtime_profiles: [tenant-projection]
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_projection_experiment_result.models.model_experiment_result_projection.ModelExperimentResultProjectionRequest
+description: >
+  OMN-19998. Rule-7a projection of recorded experiment-arm results, one row
+  per (tenant_id, experiment_id, arm, model_id, measured_at). A new
+  measured_at for the same arm is a NEW row, so accuracy over time keeps its
+  history; a redelivered event changes nothing. Served on the evals
+  projection snapshot topic for the factory floor Model tests tab.
+handler:
+  module: omnimarket.nodes.node_projection_experiment_result.handlers.handler_projection_experiment_result
+  class: HandlerProjectionExperimentResult
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    # Only the writer is routed (OMN-19833). A routed pure fold is handed the raw
+    # event beside the writer, cannot report a write, and fails or runs on defaults
+    # when its request wraps the event. The writer calls the fold in process (rule 7a).
+    - operation: experiment_result_projection_writer
+      handler:
+        name: ExperimentResultProjectionWriter
+        module: omnimarket.nodes.node_projection_experiment_result.handlers.handler_experiment_result_writer
+      handler_module: omnimarket.nodes.node_projection_experiment_result.handlers.handler_experiment_result_writer
+terminal_event: onex.evt.omnimarket.projection-experiment-result-applied.v1
+golden_path:
+  - "Receive a recorded experiment-arm-result event with producer-assigned measured_at"
+  - "Fold accuracy, advantage over baseline and the Wilson-interval verdict in process"
+  - "Insert under the event tenant, refusing a redelivered (tenant_id, experiment_id, arm, model_id, measured_at)"
+  - "Publish one keyed snapshot delta per new row"
+  - "Return row counts and identities for the runtime to publish"
+dod_evidence:
+  - test: tests/test_golden_chain_projection_experiment_result.py::test_golden_one_row_and_derived_metrics
+    description: "One recorded event writes one row with accuracy, advantage and the interval verdict; a stronger arm clears the baseline"
+  - test: tests/test_golden_chain_projection_experiment_result.py::test_a_redelivered_event_refuses_and_changes_nothing
+    description: "A redelivered event writes no row and is counted by the ordering guard"
+  - test: tests/test_golden_chain_projection_experiment_result.py::test_a_later_measured_at_is_a_new_row
+    description: "A later measured_at for the same arm is a second row, so accuracy keeps its history"
+  - test: tests/test_golden_chain_projection_experiment_result.py::test_another_tenant_is_a_separate_row
+    description: "Another tenant is a separate row"
+  - test: tests/test_golden_chain_projection_experiment_result.py::test_a_malformed_event_fails_closed_and_writes_no_row
+    description: "A missing or malformed hash raises ValidationError and writes no row; the runtime routes it to the DLQ"
+  - test: tests/test_golden_chain_projection_experiment_result.py::test_one_snapshot_delta_per_new_row_and_none_for_a_refused_redelivery
+    description: "The writer publishes one snapshot delta per new row and none for a refused redelivery"
+  - test: tests/test_golden_chain_projection_experiment_result.py::test_the_contract_declares_the_topics_the_writer_subscribes
+    description: "The contract declares the subscribed, published and DLQ topics the writer binds"
+  - test: tests/test_golden_chain_projection_experiment_result.py::test_the_contract_columns_match_the_row_model
+    description: "The served exposure columns are the row model's fields in order plus projection_cursor"
+  - test: tests/test_golden_chain_projection_experiment_result.py::test_sql_seam_matches_the_writer_insert_columns
+    description: "The migration's table columns and the writer's INSERT columns stay in lockstep"
+  - test: tests/test_golden_chain_projection_experiment_result.py::test_control_the_fold_never_reads_a_clock
+    description: "Replay derives identical rows without consulting a clock"
+db_io:
+  db_tables:
+    - name: experiment_arm_results
+      database_ref: application
+      schema: public
+      migration: "0000_create_experiment_arm_results.sql"
+      access: read_write
+      role: experiment_arm_results
+  dedupe_key: [tenant_id, experiment_id, arm, model_id, measured_at]
+  ordering_key: measured_at
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.experiment-arm-result-recorded.v1
+  publish_topics:
+    - onex.evt.omnimarket.projection-experiment-result-applied.v1
+    # Projection-API snapshot topic: the results table is served by the projection API.
+    - onex.snapshot.projection.eval.experiment-results.v1  # onex-topic-allow: projection snapshot topic
+  dlq_topics:
+    - onex.dlq.omnimarket.projection-experiment-result-malformed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-experiment-result-applied.v1
+  - onex.snapshot.projection.eval.experiment-results.v1  # onex-topic-allow: projection snapshot topic
+projection_api:
+  expose: true
+  exposures:
+    - topic: onex.snapshot.projection.eval.experiment-results.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      topic_config:
+        kafka_config:
+          "cleanup.policy": "compact"
+      key_grain: "mutable"
+      table: experiment_arm_results
+      schema: public
+      columns:
+        - tenant_id
+        - experiment_id
+        - arm
+        - model_id
+        - engine
+        - n
+        - correct
+        - accuracy
+        - wilson_low
+        - wilson_high
+        - baseline_accuracy
+        - advantage_over_baseline
+        - clears_baseline
+        - latency_p50_ms
+        - latency_p90_ms
+        - gpu_seconds
+        - corpus_sha256
+        - truth_sha256
+        - report_ref
+        - measured_at
+        - projection_cursor
+      order_by: "measured_at DESC, projection_cursor DESC"
+      # The dashboard reads one experiment's accuracy over time. Without
+      # `since`, select the top rows by measured_at DESC over the whole set;
+      # `since` still walks the cursor.
+      page_selection: "order_by"
+      cursor_column: projection_cursor
+      freshness_column: measured_at
+      # Served from the bus: the writer publishes one keyed row delta per
+      # row it inserts, keyed by the table's own conflict key.
+      bus_backed: true
+      key_columns:
+        - tenant_id
+        - experiment_id
+        - arm
+        - model_id
+        - measured_at
+      tenant_column: tenant_id
+      consumers: none
+      consumers_reason: >-
+        The evals dashboard tab (the factory floor Model tests tab) reads
+        this snapshot; that change adds the reader and deletes this opt-out.
+metadata:
+  transport_type: kafka
+  widget_topics:
+    - onex.snapshot.projection.eval.experiment-results.v1  # onex-topic-allow: projection snapshot topic
+
+# The dev runtime's own rows (OMN-24286): the topics this node reads and writes, as the broker coverage gate reads them.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.experiment-arm-result-recorded.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.experiment-arm-result-recorded.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.projection-experiment-result-applied.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.projection-experiment-result-applied.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.snapshot.projection.eval.experiment-results.v1, operation: WRITE}  # onex-topic-allow: projection snapshot topic
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.snapshot.projection.eval.experiment-results.v1, operation: DESCRIBE}  # onex-topic-allow: projection snapshot topic
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.dlq.omnimarket.projection-experiment-result-malformed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.dlq.omnimarket.projection-experiment-result-malformed.v1, operation: DESCRIBE}
+      - {resource_type: GROUP, pattern: PREFIXED, name: local.omnimarket.node_projection_experiment_result.consume.v1., operation: READ}
+      - {resource_type: GROUP, pattern: PREFIXED, name: local.omnimarket.node_projection_experiment_result.consume.v1., operation: DESCRIBE}

@@ -1,0 +1,25 @@
+name: node_projection_experiment_result
+version: "1.0.0"
+description: "Tenant-scoped projection of recorded experiment-arm results with accuracy history, Wilson-interval baseline verdicts and a bus-backed evals snapshot."
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: write_db
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pyyaml>=6.0"
+tags: [projection, experiment, evaluation, reducer]
+ownership:
+  experiment_arm_results:
+    ddl_owner: omnimarket.nodes.node_projection_experiment_result
+    table_role: projection_read_model
+    create_migration: "migrations/0000_create_experiment_arm_results.sql"
+    duplicate_migration_policy: forbid_cross_repo_create_table
+    non_owner_repos: [omnibase_infra]
+    rationale: "omnimarket owns the projection; omnibase_infra applies its migrations."
+pack: "data"
+display_name: "Projection: Experiment Result"
+node_role: "reducer"

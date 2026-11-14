@@ -139,7 +139,7 @@
     "extension": 1,
     "function": 15,
     "sequence": 43,
-    "table": 148,
+    "table": 149,
     "view": 11
   },
   "relations": [
@@ -6089,6 +6089,58 @@
     },
     {
       "accessor_nodes": [
+        "node_projection_experiment_result"
+      ],
+      "authoritative_sources": [
+        "src/omnimarket/nodes/node_projection_experiment_result/migrations/0000_create_experiment_arm_results.sql"
+      ],
+      "blocked_reasons": [],
+      "classification_evidence": "contract.yaml -> db_io.db_tables schema",
+      "classification_status": "classified",
+      "constraints": [
+        "experiment_arm_results_correct_check"
+      ],
+      "contract_sources": [
+        "src/omnimarket/nodes/node_projection_experiment_result/contract.yaml"
+      ],
+      "current_schema": [
+        "public"
+      ],
+      "dependencies": [],
+      "dependent_objects": [],
+      "domain": "TENANT",
+      "dsn_consumers": [
+        "OMNIDASH_ANALYTICS_DB_URL"
+      ],
+      "foreign_keys": [],
+      "grants": [
+        "SELECT TO app_dashboard",
+        "SELECT, INSERT, UPDATE TO tenant_projection_writer"
+      ],
+      "indexes": [
+        "experiment_arm_results_tenant_experiment_measured_idx"
+      ],
+      "internal_tenant_column_transform": null,
+      "keys": [
+        "PRIMARY KEY (tenant_id, experiment_id, arm, model_id, measured_at)"
+      ],
+      "kind": "table",
+      "migration_root": "src/omnimarket/nodes",
+      "migration_stream": "node:node_projection_experiment_result",
+      "name": "experiment_arm_results",
+      "owner_declaration": "node_projection_experiment_result",
+      "partitioning": [],
+      "producer": "node_projection_experiment_result",
+      "readers": [
+        "node_projection_experiment_result"
+      ],
+      "target_schema": "public",
+      "writers": [
+        "node_projection_experiment_result"
+      ]
+    },
+    {
+      "accessor_nodes": [
         "node_omnigate_projection",
         "service:omnimarket_projection_migration_runner"
       ],
@@ -11962,8 +12014,8 @@
     "parity_status": "blocked",
     "physical_database": "omnidash_analytics",
     "reason": "the retained census contains counts but not a complete object-name export; repository migrations therefore cannot prove name-for-name live parity without a fresh authorized catalog read",
-    "source_created_tables": 133,
-    "source_declared_tables": 148
+    "source_created_tables": 134,
+    "source_declared_tables": 149
   },
   "runtime_evidence": {
     "dsn_key_provenance": {
@@ -11979,7 +12031,7 @@
       "status": "blocked"
     },
     "live_catalog_parity": {
-      "reason": "repository sources contain 133 CREATE TABLE objects while the retained live census reports 86 base tables; exact overlap and the at-least-0-table gap require an authorized catalog read",
+      "reason": "repository sources contain 134 CREATE TABLE objects while the retained live census reports 86 base tables; exact overlap and the at-least-0-table gap require an authorized catalog read",
       "status": "blocked"
     }
   },
