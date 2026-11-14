@@ -2815,6 +2815,7 @@
   "tests/test_capability_map_grid_run_real_postgres_omn21434.py": 2.0,
   "tests/test_capability_map_real_postgres_omn20169.py": 0.38,
   "tests/test_capture_item_identity_effect.py": 0.71,
+  "tests/test_capture_silence_watch_broker_binding.py": 1.5,
   "tests/test_capture_topic_registry_contract.py": 0.14,
   "tests/test_catalog_generator.py": 0.37,
   "tests/test_catalog_validator.py": 0.17,

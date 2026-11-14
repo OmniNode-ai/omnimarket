@@ -514,6 +514,9 @@ units:
       # The node's overlay (overlays repository, node_capture_silence_watch_effect) holds the secret_store block the password
       # reference is resolved through: the overlays clone the host's lab_hosts row declares, and nothing else.
       ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}"
+      # OMN-24342: the node publishes its alarms through the broker its overlay's event_bus declares (a lane id); the lane declaration
+      # table (config/lab/ci_bus_lanes.yaml) that names the lane's broker is found under this root. No KAFKA_* variable names a broker.
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
     # OMN-24325: the database address (no password) and the reference of the login's password are request inputs persisted in the unit, so no
     # environment file has to hold them; the node reads the reference through its overlay's secret store block (reads_source.password_ref_env).
     # A unit installed without either ends INDETERMINATE (exit 3) every tick, so both are required.
