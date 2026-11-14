@@ -1445,6 +1445,7 @@ node_ticket_closer_scheduled_effect = "omnimarket.nodes.node_ticket_closer_sched
 node_ticket_compiler = "omnimarket.nodes.node_ticket_compiler"
 node_ticket_contract_merge_compute = "omnimarket.nodes.node_ticket_contract_merge_compute"
 node_ticket_contract_prerequisite_effect = "omnimarket.nodes.node_ticket_contract_prerequisite_effect"
+node_ticket_contract_render_compute = "omnimarket.nodes.node_ticket_contract_render_compute"
 node_ticket_pipeline = "omnimarket.nodes.node_ticket_pipeline"
 node_ticket_plan_compute = "omnimarket.nodes.node_ticket_plan_compute"
 node_ticket_query = "omnimarket.nodes.node_ticket_query"

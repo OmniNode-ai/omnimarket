@@ -2661,6 +2661,7 @@
   "tests/nodes/node_ticket_contract_prerequisite_effect/test_stale_base_omn21887.py": 3.81,
   "tests/nodes/node_ticket_contract_prerequisite_effect/test_umbrella_append_omn19998.py": 0.68,
   "tests/nodes/node_ticket_contract_prerequisite_effect/test_unreadable_diff_fails_closed_omn22610.py": 0.1,
+  "tests/nodes/node_ticket_contract_render_compute/test_golden_chain_ticket_contract_render.py": 6.4,
   "tests/nodes/node_ticket_query/test_store_resolved_ticket_read.py": 0.17,
   "tests/nodes/node_ticket_text_effect/test_ticket_text.py": 0.01,
   "tests/nodes/node_ticketing_epic_org_orchestrator/test_ticketing_epic_org_orchestrator.py": 0.12,
