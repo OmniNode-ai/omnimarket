@@ -1377,6 +1377,7 @@ node_standalone_service_redeploy_effect = "omnimarket.nodes.node_standalone_serv
 node_standup_draft_check_compute = "omnimarket.nodes.node_standup_draft_check_compute"
 node_standup_retrospective_compute = "omnimarket.nodes.node_standup_retrospective_compute"
 node_start_admission_effect = "omnimarket.nodes.node_start_admission_effect"
+node_start_path_census_compute = "omnimarket.nodes.node_start_path_census_compute"
 node_start_path_drill_effect = "omnimarket.nodes.node_start_path_drill_effect"
 node_state_persist_effect = "omnimarket.nodes.node_state_persist_effect"
 node_stop_drill_effect = "omnimarket.nodes.node_stop_drill_effect"
