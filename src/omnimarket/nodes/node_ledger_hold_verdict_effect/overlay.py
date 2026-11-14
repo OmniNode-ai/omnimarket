@@ -12,7 +12,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
-from omnimarket.nodes.node_ledger_hold_verdict_effect.models import (
+from omnimarket.models.hold_verdict import (
     ModelHoldVerdictOverlay,
 )
 
