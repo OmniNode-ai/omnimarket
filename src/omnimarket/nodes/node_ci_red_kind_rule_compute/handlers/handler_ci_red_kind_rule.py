@@ -2,12 +2,13 @@
 # SPDX-License-Identifier: MIT
 """Name the kind of a failed check from its name by an overlay rule table, before any model call.
 
-The rule table (each rule's kind, its pattern over check names, and its
-case-sensitivity) comes from the overlay; nothing here names a pattern, a
-kind or a check. An overlay that is missing, unreadable or invalid is a
+The rule table (each rule's kind, its pattern over check names, its pattern
+over the failed job's log excerpt, and its case-sensitivity) comes from the
+overlay; nothing here names a pattern, a kind or a check. An overlay that is missing, unreadable or invalid is a
 typed refusal; an absent overlay is ``OVERLAY_UNBOUND`` and a broken one is
 ``OVERLAY_INVALID``. Rules are tried in declared order and the first whose
-pattern is found in the failed check's name decides the kind; a name no
+every pattern is found in its own field (the check name, the log excerpt) decides
+the kind; a name no
 rule finds is answered as needing the model.
 """
 
@@ -28,6 +29,7 @@ from omnimarket.nodes.node_ci_red_kind_rule_compute.models.model_ci_red_kind_rul
     ModelCiRedKindRuleAnswer,
 )
 from omnimarket.nodes.node_ci_red_kind_rule_compute.models.model_ci_red_kind_rule_overlay import (
+    ModelCiRedKindRule,
     ModelCiRedKindRuleOverlay,
 )
 from omnimarket.nodes.node_ci_red_kind_rule_compute.models.model_ci_red_kind_rule_request import (
@@ -66,8 +68,7 @@ class HandlerCiRedKindRule:
         except NodeOverlayError as exc:
             return self._refusal(EnumCiRedKindRuleRefusal.OVERLAY_INVALID, str(exc))
         for index, rule in enumerate(overlay.rules):
-            flags = re.IGNORECASE if rule.ignore_case else 0
-            if re.compile(rule.check_name_pattern, flags).search(request.check_name):
+            if self._rule_matches(rule, request):
                 return ModelCiRedKindRuleAnswer(
                     ok=True,
                     matched=True,
@@ -85,6 +86,22 @@ class HandlerCiRedKindRule:
             model_call_required=True,
             refusal=None,
             detail="",
+        )
+
+    @staticmethod
+    def _rule_matches(
+        rule: ModelCiRedKindRule,
+        request: ModelCiRedKindRuleRequest,
+    ) -> bool:
+        flags = re.IGNORECASE if rule.ignore_case else 0
+        fields = (
+            (rule.check_name_pattern, request.check_name),
+            (rule.log_pattern, request.log_excerpt),
+        )
+        return all(
+            re.compile(pattern, flags).search(text)
+            for pattern, text in fields
+            if pattern is not None
         )
 
     def _refusal(
