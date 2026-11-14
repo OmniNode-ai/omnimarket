@@ -135,6 +135,15 @@ def test_control_rise_is_caught_and_equal_is_not() -> None:
     assert broken.findings == (EnumBypassFinding.CATEGORY_ROSE,)
 
 
+def test_contract_declares_the_terminal_topics() -> None:
+    contract = yaml.safe_load(CONTRACT.read_text(encoding="utf-8"))
+    terminal = contract["runtime_dispatch"]["terminal_events"]
+    assert (
+        terminal["success"] == "onex.evt.omnimarket.effect-bypass-ratchet-completed.v1"
+    )
+    assert terminal["failure"] == "onex.evt.omnimarket.effect-bypass-ratchet-failed.v1"
+
+
 def test_contract_names_a_handler_and_models_that_resolve() -> None:
     contract = yaml.safe_load(CONTRACT.read_text(encoding="utf-8"))
     handler = contract["handler"]

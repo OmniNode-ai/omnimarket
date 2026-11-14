@@ -32,6 +32,11 @@ from omnimarket.nodes.node_effect_bypass_scan_effect.runtime_bypass_scan import 
 
 pytestmark = pytest.mark.unit
 
+CONTRACT = (
+    Path(__file__).resolve().parents[4]
+    / "src/omnimarket/nodes/node_effect_bypass_scan_effect/contract.yaml"
+)
+
 # One call per category, each spelled the way a caller would write it.
 LINES: dict[EnumBypassCategory, tuple[str, str]] = {
     EnumBypassCategory.GH_CLI: ("a.sh", "gh pr list --repo x/y"),
@@ -218,6 +223,16 @@ def test_glob_translation() -> None:
     assert not glob_to_regex("tests/**").match("src/tests_helper.py")
     assert glob_to_regex("**/test_*.py").match("a/test_x.py")
     assert not glob_to_regex("*.md").match("a/b.md")
+
+
+def test_contract_declares_its_terminal_topics() -> None:
+    contract = yaml.safe_load(CONTRACT.read_text(encoding="utf-8"))
+    assert contract["terminal_event"] == (
+        "onex.evt.omnimarket.effect-bypass-scan-completed.v1"
+    )
+    assert contract["topics"]["effect_bypass_scan_failed"] == (
+        "onex.evt.omnimarket.effect-bypass-scan-failed.v1"
+    )
 
 
 def test_the_policy_carries_every_category() -> None:

@@ -19,7 +19,7 @@ description: >-
   where a missing file is not an error and an absolute path, one that climbs out of the home, or one holding a
   character an unquoted systemd word cannot carry is refused (a launchd unit declaring one is refused too). A unit may declare a config_file: a document rendered from the request (refused when a placeholder is left
   unfilled) and written at the path of the environment variable it names, mode 0600, keeping the differing file it
-  replaces. A unit with tick_no_sync prepares its environment at installation and reuses it on each timer tick. A unit that declares
+  replaces. A systemd unit may declare declared_files: JSON files under the home, each rendered from the request's home, registry root and marketplace root (refused when a placeholder is left unfilled or a path is not under the home) and written at install, mode 0600 by default, keeping the differing file it replaces as <name>.previous. A unit with tick_no_sync prepares its environment at installation and reuses it on each timer tick. A unit that declares
   run_timeout_s runs under a wrapper that ends a hung run and exits 124, because launchd has no run limit for a timer job, and ends its run
   on TERM, INT and HUP, so an unload ends it too. A unit that declares tick_lock_file has a tick that holds that file in its evidence directory
   while it runs: an install or uninstall waits for a running tick to end after the unload, then stops it, and refuses the install of one it cannot stop.
@@ -435,6 +435,25 @@ units:
       # own unit does (OMN-24239; the first tick on h053 failed every placement with "set ONEX_LEDGER_PATH").
       ONEX_LEDGER_WRITE_VIA: "bus"
       ONEX_LEDGER_BUS_APPEND_COMMAND: "{registry_root}/omnimarket/.venv/bin/python -m omnimarket.work_ledger_bus.cli append --bus-lane dev --omnibase-path {registry_root}"
+      # The directory the remote-lane runner reads its plugin config from (--claude-dir), written by declared_files below (OMN-24423).
+      ONEX_HOST_DRIFT_OWNER_CLAUDE_DIR: "{home}/.config/onex/lane-claude"
+    # The runner resolves the plugins it ships to a lane from settings.json and plugins/known_marketplaces.json under the directory
+    # named by --claude-dir. A lab host has no such config in its own claude directory, so the unit gets a dedicated one that names
+    # the host's plugin marketplace clone (the request's marketplace_root), and every other lane's own claude directory is left as it
+    # is (OMN-24423).
+    declared_files:
+      - path: "{home}/.config/onex/lane-claude/settings.json"
+        mode: "0600"
+        document: {}
+      - path: "{home}/.config/onex/lane-claude/plugins/known_marketplaces.json"
+        mode: "0600"
+        document:
+          omninode-internal:
+            source:
+              source: directory
+              path: "{marketplace_root}"
+            installLocation: "{marketplace_root}"
+            lastUpdated: "2026-11-14T00:00:00.000Z"
     environment_inputs:
       ONEX_HOST_DRIFT_OWNER_RUNNER: remote_lane_runner
       ONEX_LEDGER_HOST_NAME: ledger_host_name

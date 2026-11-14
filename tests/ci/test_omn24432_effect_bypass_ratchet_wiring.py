@@ -28,7 +28,7 @@ JOB_ID = "effect-bypass-ratchet"
 JOB_NAME = "Effect Bypass Ratchet (OMN-24432)"
 HOOK_ID = "effect-bypass-ratchet"
 MODULE = "omnimarket.nodes.node_effect_bypass_scan_effect"
-BASELINE = ".onex_ratchets/effect_bypass_baseline.yaml"
+BASELINE = ".onex_ratchets/effect_bypass_ceiling.yaml"
 
 
 def _job() -> dict[str, Any]:

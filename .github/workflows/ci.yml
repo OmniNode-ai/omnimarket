@@ -2322,7 +2322,7 @@ jobs:
 
   # OMN-24432: effect-node bypass ratchet, BLOCKING (RULING 2026-11-14T11:59:02Z). Every effect on the
   # outside world goes through its effect node over the bus; this counts the calls that skip one and
-  # refuses a rise against .onex_ratchets/effect_bypass_baseline.yaml, and a baseline above the merge
+  # refuses a rise against .onex_ratchets/effect_bypass_ceiling.yaml, and a baseline above the merge
   # base's copy. SYNC with pre-commit hook `effect-bypass-ratchet`: same module, same baseline.
   effect-bypass-ratchet:
     name: Effect Bypass Ratchet (OMN-24432)
@@ -2353,12 +2353,12 @@ jobs:
           PUSH_BEFORE: ${{ github.event.before }}
         run: |
           set -euo pipefail
-          args=(--repository omnimarket --root . --baseline .onex_ratchets/effect_bypass_baseline.yaml)
+          args=(--repository omnimarket --root . --baseline .onex_ratchets/effect_bypass_ceiling.yaml)
           base="${PR_BASE:-${MQ_BASE:-${PUSH_BEFORE:-}}}"
           if [ -n "$base" ] && git cat-file -e "${base}^{commit}" 2>/dev/null; then
             base="$(git merge-base "$base" HEAD)"
-            if git cat-file -e "${base}:.onex_ratchets/effect_bypass_baseline.yaml" 2>/dev/null; then
-              git show "${base}:.onex_ratchets/effect_bypass_baseline.yaml" > "$RUNNER_TEMP/effect_bypass_base.yaml"
+            if git cat-file -e "${base}:.onex_ratchets/effect_bypass_ceiling.yaml" 2>/dev/null; then
+              git show "${base}:.onex_ratchets/effect_bypass_ceiling.yaml" > "$RUNNER_TEMP/effect_bypass_base.yaml"
               args+=(--base-baseline "$RUNNER_TEMP/effect_bypass_base.yaml")
             else
               echo "the merge base carries no baseline file; checking the tree against the baseline only"

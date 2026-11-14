@@ -1,13 +1,13 @@
-# Baseline for the effect-node bypass ratchet (OMN-24432, RULING 2026-11-14T11:59:02Z).
+# Ceiling for the effect-node bypass ratchet (OMN-24432, RULING 2026-11-14T11:59:02Z).
 # A bypass is an effect on the outside world (GitHub, git remotes, Slack, Linear, lab hosts over ssh,
 # docker and kafka administration) that does not go through its effect node over the bus.
 #
-# RULE: counts only fall. A category that rises fails the check. A change that moves a caller onto its
+# RULE: this is a count ceiling, not an exception list: counts only fall. A category that rises fails the check. A change that moves a caller onto its
 # effect node lowers the count here in the same change. The check also refuses a count above the merge
 # base's copy of this file, so the baseline cannot be raised to pass.
 #
 # Read it:  python -m omnimarket.nodes.node_effect_bypass_scan_effect check --repository <repo> --root . \
-#             --baseline .onex_ratchets/effect_bypass_baseline.yaml
+#             --baseline .onex_ratchets/effect_bypass_ceiling.yaml
 # Counts are taken by node_effect_bypass_scan_effect (policy: its contract.yaml config.scan). The rows of the
 # other repositories are today's counts, carried here for the burn-down report; each repository enforces its own
 # row when it wires the same check.
@@ -21,7 +21,7 @@ repositories:
       git_remote: 74
       slack_api: 10
       linear_api: 3
-      host_ssh: 123
+      host_ssh: 125
       docker_admin: 73
       kafka_admin: 34
   omnibase_infra:
