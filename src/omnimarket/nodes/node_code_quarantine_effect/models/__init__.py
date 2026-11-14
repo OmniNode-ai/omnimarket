@@ -26,8 +26,22 @@ from omnimarket.nodes.node_code_quarantine_effect.models.model_code_quarantine i
     ModelRemovalEvidence,
     one_line,
 )
+from omnimarket.nodes.node_code_quarantine_effect.models.model_stage2_duplicates import (
+    KEPT_DISPOSITIONS,
+    EnumStage2Disposition,
+    EnumStage2Mode,
+    ModelDuplicateCopy,
+    ModelDuplicateGroup,
+    ModelRepositoryTag,
+    ModelStage2CopyOutcome,
+    ModelStage2Event,
+    ModelStage2GroupResult,
+    ModelStage2Request,
+    ModelStage2Result,
+)
 
 __all__ = [
+    "KEPT_DISPOSITIONS",
     "OK_OUTCOMES",
     "EnumEntityKind",
     "EnumEntityState",
@@ -35,7 +49,11 @@ __all__ = [
     "EnumQuarantineBackend",
     "EnumQuarantineMode",
     "EnumQuarantineOutcome",
+    "EnumStage2Disposition",
+    "EnumStage2Mode",
     "ModelCatalogRow",
+    "ModelDuplicateCopy",
+    "ModelDuplicateGroup",
     "ModelFilesBackend",
     "ModelGateCommand",
     "ModelInMemoryBackend",
@@ -49,5 +67,11 @@ __all__ = [
     "ModelRarePathCheck",
     "ModelRemovalBatch",
     "ModelRemovalEvidence",
+    "ModelRepositoryTag",
+    "ModelStage2CopyOutcome",
+    "ModelStage2Event",
+    "ModelStage2GroupResult",
+    "ModelStage2Request",
+    "ModelStage2Result",
     "one_line",
 ]
