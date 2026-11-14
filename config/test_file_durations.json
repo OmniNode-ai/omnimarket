@@ -258,8 +258,6 @@
   "tests/classifier/test_seed_harness.py": 0.06,
   "tests/cli/test_code_edit_cli_limits.py": 1.83,
   "tests/cli/test_pr_state.py": 7.92,
-  "tests/contract/test_gate_store_contract.py": 3.05,
-  "tests/contract/test_gate_store_suite_hash.py": 2.2,
   "tests/contracts/test_omn19998_check_cwd.py": 0.28,
   "tests/delegation_golden/test_code_case_names_its_artifact.py": 0.04,
   "tests/delegation_golden/test_corpus_boundary_conformance.py": 0.7,
