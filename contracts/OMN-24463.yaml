@@ -30,7 +30,7 @@ dod_evidence:
       - AC2
     checks:
       - check_type: test_passes
-        check_value: uv run pytest tests/nodes/node_branch_deploy_command_effect/test_overlay_ref_seam_omn24216.py -q -p no:randomly --no-cov
+        check_value: uv run pytest tests/nodes/node_branch_deploy_command_effect/test_send_from_outside_runtime.py -q -p no:randomly --no-cov -k 'example_overlay_event_bus or without_lane'
         cwd: .
   - id: dod-omn24463-ac3
     description: 'AC3: the sender entry publishes the signed command with no runtime, and refuses and fails by name in the error chain'
