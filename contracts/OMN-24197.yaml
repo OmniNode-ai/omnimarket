@@ -1,0 +1,71 @@
+schema_version: 1.0.0
+ticket_id: OMN-24197
+title: Run the host drift check from the shared workflow system on the four lab machines
+summary: 'First slice, node_host_drift_orchestrator in omnimarket: on a runtime tick gated by its overlay''s run interval it sends the host drift check to each declared lab host as one lab work unit and publishes one run event with one typed verdict per host plus one schedule run event. A host that sends no result inside the overlay timeout fails the run and is named; two deliveries of one tick send one set of units; a run that stops between its claim and its send ends failed and the next tick sends again. Every host, command word, timeout and transport is in the node overlay. Not in this change: the real overlay naming the four hosts (overlays repository), the move of the old drift node out of its private repository, the real-broker seam run, the dev runtime reading and the retirement of the four host timers.'
+is_seam_ticket: true
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24197-host-drift-orchestrator
+  statement: A scheduled orchestrator in the runtime sends the host drift check to each declared lab host over the lab-work service and publishes one typed verdict per host.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: given a runtime tick and an overlay naming h051, h053, h201 and h202, the scheduled entry sends one lab-work command to each of the four hosts and ends with one drift verdict event naming each host -- falsifier: the focused test for the scheduled entry fails on origin/dev without the change (no scheduled entry exists) and passes with it'
+  - id: AC2
+    statement: 'AC2: a host that sends no result inside the overlay timeout ends the run failed, naming that host and carrying the other hosts'' results -- falsifier: the error chain test with one injected silent host asserts a failed terminal, and the same test with all four answering asserts completed'
+  - id: AC3
+    statement: 'AC3: two concurrent deliveries of one tick send one set of four commands, and a run stopped between its claim and its send ends failed at its timeout so the next tick retries -- falsifier: a test delivering the tick twice counts four commands, not eight'
+  - id: AC4
+    statement: 'AC4: the seam with the lab-work command and result topics and with the hygiene orchestrator''s command model fails when either side changes shape, run on the in-memory bus and on the real broker -- falsifier: renaming one field of the result model on either side turns the join test red on both buses'
+evidence_requirements:
+- kind: tests
+  description: The node's focused tests pass at the pushed head.
+  command: uv run --frozen pytest tests/unit/nodes/node_host_drift_orchestrator tests/chains/host_drift -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24197-ac1
+  description: 'AC1: a due tick sends one unit to each declared host and publishes one run result with one verdict per host'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_host_drift_orchestrator/test_scheduled_run.py tests/chains/host_drift -q --no-cov -n 0 -p no:randomly -k "golden or each_unit"
+    cwd: .
+- id: dod-omn24197-ac2
+  description: 'AC2: one silent host fails the run and is named with the other hosts'' verdicts carried; all four answering completes'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_host_drift_orchestrator/test_scheduled_run.py tests/chains/host_drift -q --no-cov -n 0 -p no:randomly -k "silent"
+    cwd: .
+- id: dod-omn24197-ac3
+  description: 'AC3: two deliveries of one tick, sequential and concurrent, send four units, and a run stopped after its claim ends failed and the next tick sends again'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_host_drift_orchestrator/test_scheduled_run.py tests/chains/host_drift -q --no-cov -n 0 -p no:randomly -k "two_deliveries or two_concurrent or stopped"
+    cwd: .
+- id: dod-omn24197-ac4
+  description: 'hosted proxy for AC4: the seam tests and the in-memory chain pass here; the real-broker run of the same join is not in this change'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_host_drift_orchestrator/test_contract_seams.py tests/chains/host_drift -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24197-integration-proof
+  description: the focused tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24197 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_host_drift_orchestrator tests/chains/host_drift -q --no-cov -n 0 -p no:randomly
