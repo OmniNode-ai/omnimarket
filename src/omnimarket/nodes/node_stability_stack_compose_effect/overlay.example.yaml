@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic example overlay for node_stability_stack_compose_effect. Copy to
+# overlay.yaml under an ONEX_SKILL_OVERLAY_ROOTS root and edit per deployment.
+local_host: lab-box-example
+docker_binary: container-cli-example
+render_dir_env: EXAMPLE_STACK_RENDER_DIR
+command_timeout_seconds: 120
+up_wait_seconds: 90
+health_timeout_seconds: 10
+event_timeout_seconds: 30

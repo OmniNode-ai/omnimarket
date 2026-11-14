@@ -1,0 +1,68 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. A deployment's real overlay lives in the overlays repository.
+tag_pattern: "^dev-merge-[0-9]{8}$"
+stacks:
+  - name: example-stability-stack
+    host: example-host-a
+    compose_project: example_stability_stack
+    source_dir_env: EXAMPLE_STACK_SOURCE_DIR
+    compose_files:
+      - docker-compose.yml
+      - docker-compose.example.yaml
+    # Text pairs applied to each compose file when it is rendered; the container
+    # and volume names below are the names AFTER these rewrites.
+    name_rewrites:
+      - - example_template
+        - example-stability-stack
+    env:
+      - - EXAMPLE_STACK_WEB_IMAGE
+        - example-registry.example.invalid/example/web:dev-merge-20261112
+      - - EXAMPLE_STACK_DB_IMAGE
+        - example-registry.example.invalid/example/db:dev-merge-20261112
+    # Compose variable name -> published host port.
+    ports:
+      - - EXAMPLE_STACK_WEB_PORT
+        - 41080
+      - - EXAMPLE_STACK_DB_PORT
+        - 45432
+      - - EXAMPLE_STACK_BROKER_PORT
+        - 40992
+    container_names:
+      - example-stability-stack-web
+      - example-stability-stack-db
+      - example-stability-stack-broker
+    volumes:
+      - example-stability-stack-data
+    release_tag: dev-merge-20261112
+    # Bring-up order.
+    tiers:
+      - name: stateful
+        services:
+          - example_db
+          - example_broker
+      - name: serving
+        services:
+          - example_web
+    health_reads:
+      - container: example-stability-stack-web
+        port_key: EXAMPLE_STACK_WEB_PORT
+        path: /health
+        expect_status: 200
+    event_roundtrip:
+      broker_container: example-stability-stack-broker
+      topic: onex.evt.example.stability-stack-example.v1
+      message: example stability stack roundtrip probe
+    remove_volumes_on_down: false
+reserved:
+  - name: example-neighbour-stack
+    host: example-host-b
+    compose_project: example_neighbour_stack
+    container_names:
+      - example-neighbour-stack-api
+      - example-neighbour-stack-worker
+    volumes:
+      - example-neighbour-stack-data
+    ports:
+      - 51080
+      - 55432
