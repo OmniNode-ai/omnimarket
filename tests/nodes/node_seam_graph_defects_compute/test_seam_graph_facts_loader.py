@@ -458,13 +458,9 @@ def test_seam_contract_topics_match_loader() -> None:
     assert re.fullmatch(ANY_TOPIC_PATTERN, command_topic)
     for topic in terminal_events.values():
         assert re.fullmatch(ANY_TOPIC_PATTERN, topic)
-    # The projection's topic is a well-formed versioned topic literal. The
-    # scan rule's evt|cmd grammar can never match a snapshot literal, so this
-    # seam holds it to the repo's broad topic grammar instead.
-    projection_topic = contract["projection_api"]["topic"]
-    assert isinstance(projection_topic, str)
-    assert projection_topic != ""
-    assert re.fullmatch(ANY_TOPIC_PATTERN, projection_topic)
+    # The key-grain gate refuses a projection block with no table; the report
+    # travels on the completed event until a projection node serves it.
+    assert "projection_api" not in contract
 
 
 def test_seam_real_node_contract_read_by_the_loader() -> None:

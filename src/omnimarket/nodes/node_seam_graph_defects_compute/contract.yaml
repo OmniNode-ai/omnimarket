@@ -86,18 +86,6 @@ event_bus:
 # consumes a command.
 runtime_profiles:
   - main
-# The report is served from the bus-fed SnapshotCache, never from a Postgres
-# table: the graph exists only while the scan runs, so the block carries no
-# table, schema or columns.
-projection_api:
-  expose: true
-  topic: "onex.snapshot.omnimarket.seam-graph-defects.v1"  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
-  topic_config:
-    kafka_config:
-      "cleanup.policy": "compact"
-  key_grain: "mutable"
-  limit: 100
-  bus_backed: true
 descriptor:
   node_archetype: compute
   purity: pure
