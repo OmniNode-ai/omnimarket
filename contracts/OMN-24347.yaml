@@ -64,3 +64,12 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_lab_fill_selection_compute -q --no-cov -n 0 -p no:randomly
     cwd: .
+
+- id: dod-omn24347-ac4-integration-proof
+  description: 'The pushed head ran the selection node tests, the seam tests and the authority ticket tests on a lab host through the lab work runner and exited 0. It binds no acceptance criterion: the running-runtime reading (AC4) is read from two lab-fill ticks after the live caller uses this node.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24347 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_lab_fill_selection_compute tests/nodes/node_lab_fill_plan_compute/test_lab_fill_authority_ticket.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
