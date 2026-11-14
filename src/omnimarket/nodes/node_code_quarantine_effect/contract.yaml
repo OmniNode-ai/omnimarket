@@ -14,6 +14,17 @@ node_version: {major: 1, minor: 0, patch: 0}
 description: Quarantines unused code with its tests, restores it on a red gate, and removes it only with a tag and a catalog row.
 input_model: omnimarket.nodes.node_code_quarantine_effect.models.model_code_quarantine.ModelQuarantineRequest
 output_model: omnimarket.nodes.node_code_quarantine_effect.models.model_code_quarantine.ModelQuarantineResult
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: code_quarantine
+      handler:
+        name: HandlerCodeQuarantine
+        module: omnimarket.nodes.node_code_quarantine_effect.handlers.handler_code_quarantine
+    - operation: code_quarantine_stage2_duplicates
+      handler:
+        name: HandlerStage2Duplicates
+        module: omnimarket.nodes.node_code_quarantine_effect.handlers.handler_stage2_duplicates
 handler:
   module: omnimarket.nodes.node_code_quarantine_effect.handlers.handler_code_quarantine
   class: HandlerCodeQuarantine
