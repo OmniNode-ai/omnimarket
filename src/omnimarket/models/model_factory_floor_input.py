@@ -306,6 +306,8 @@ class ModelFloorHostRow(BaseModel):
     cap: int | None = None
     available: bool = True
     unavailable_reason: str = ""
+    # The machine the publisher runs on: out of placement, still heartbeats.
+    local: bool = False
 
 
 class ModelFloorDriftHost(BaseModel):
