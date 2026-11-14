@@ -1168,6 +1168,7 @@ node_projection_delegation_eval = "omnimarket.nodes.node_projection_delegation_e
 node_projection_delegation_inference_response = "omnimarket.nodes.node_projection_delegation_inference_response"
 node_projection_delegation_judged_acceptance = "omnimarket.nodes.node_projection_delegation_judged_acceptance"
 node_projection_dep_health = "omnimarket.nodes.node_projection_dep_health"
+node_projection_dlq_redrive_effect = "omnimarket.nodes.node_projection_dlq_redrive_effect"
 node_projection_dod_verdict = "omnimarket.nodes.node_projection_dod_verdict"
 node_projection_event_chain = "omnimarket.nodes.node_projection_event_chain"
 node_projection_freshness_alert_effect = "omnimarket.nodes.node_projection_freshness_alert_effect"
