@@ -1,0 +1,67 @@
+schema_version: 1.0.0
+ticket_id: OMN-24289
+title: The factory board and host drift check treat a parked host as parked, not as a failing machine
+summary: 'The lab host table marks a parked host available: false, yet the host drift fold alerted that it had never reported a heartbeat and the factory floor drew a stale bay and a never-reported heartbeat
+  cell for it. The drift fold now takes the parked hosts from the host table through an injected source: a parked host is never required, raises no alert and is listed as parked with the table reason; an
+  unreadable table leaves every host required. The floor draws no bay for a machine the table parks and reads its heartbeat cells as no heartbeat expected; a host in repair keeps its stale bay and an available
+  host without a heartbeat still reads never reported. Not in this change: the overlay machines list and the drift fleet overlay host list.'
+is_seam_ticket: true
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24289-parked
+  statement: A host the lab host table marks unavailable is listed as parked with the table's reason and never counted as a failing or missing machine by the host drift fold or the factory floor.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the host drift fold never requires a heartbeat from a host the lab host table marks unavailable, raises no alert for it and lists it as parked with the table''s reason; an unreadable table keeps
+      every host required and says so -- falsifier: pytest tests/nodes/node_host_drift_fleet/test_parked_hosts.py -q (the control without the parked set alerts "never reported")'
+  - id: AC2
+    statement: 'AC2: the factory floor draws no bay for a host the table parks and its heartbeat and drift cells say no heartbeat is expected, while a host in repair keeps its stale bay and an available host
+      with no heartbeat still reads "never reported" -- falsifier: pytest tests/nodes/node_factory_floor_compute/test_parked_host_floor.py -q (the build_bays skip removed fails the golden)'
+  - id: AC3
+    statement: 'AC3: integrated: after the branch revision runs in the publisher and the drift fold, the served factory-floor.json has no bays row and no "never reported" heartbeat reason for the parked host,
+      and the host drift status line names it as parked, not required -- falsifier: curl of factory-floor.json on the serving hosts and the host drift status line read after the install'
+evidence_requirements:
+- kind: tests
+  description: The parked host tests pass at the pushed head.
+  command: uv run pytest tests/nodes/node_host_drift_fleet/test_parked_hosts.py tests/nodes/node_factory_floor_compute/test_parked_host_floor.py -q -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24289-ac1
+  description: 'AC1: the golden, the control and the error chain of the drift fold; with the fold change removed five of the nine parked host tests fail.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_drift_fleet/test_parked_hosts.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn24289-ac2
+  description: 'AC2: the golden, the repair and available-host controls and the unread-table error chain of the floor compute.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_factory_floor_compute/test_parked_host_floor.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn24289-ac3
+  description: 'hosted proxy for AC3: the parked host tests pass here; the read of the served board and the drift status line after the install is posted as a pull request comment naming the head.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_drift_fleet/test_parked_hosts.py tests/nodes/node_factory_floor_compute/test_parked_host_floor.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn24289-integration-proof
+  description: the parked host tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24289 --kind test -- env PYTHONDONTWRITEBYTECODE=1
+      uv run --frozen pytest tests/nodes/node_host_drift_fleet/test_parked_hosts.py tests/nodes/node_factory_floor_compute/test_parked_host_floor.py -q --no-cov -p no:randomly
