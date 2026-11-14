@@ -8,9 +8,11 @@ import json
 
 import pytest
 
-from omnimarket.nodes.node_lab_fill_fire_outcome_compute.models import (
-    ModelLabFillFireOutcomePolicy,
+from omnimarket.models.lab_fill.model_lab_fill_fire_outcome import (
     ModelLabFillFireOutcomeRequest,
+)
+from omnimarket.models.lab_fill.model_lab_fill_fire_outcome_policy import (
+    ModelLabFillFireOutcomePolicy,
 )
 
 FIRE_ID = "20261113T060000Z-lab-fill"

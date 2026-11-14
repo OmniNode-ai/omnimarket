@@ -17,12 +17,12 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from omnimarket.nodes.node_lab_fill_fire_outcome_compute.handlers.handler_lab_fill_fire_outcome import (
-    HandlerLabFillFireOutcome,
-)
-from omnimarket.nodes.node_lab_fill_fire_outcome_compute.models import (
+from omnimarket.models.lab_fill.model_lab_fill_fire_outcome import (
     ModelLabFillFireOutcomeRequest,
     ModelLabFillFireOutcomeResult,
+)
+from omnimarket.nodes.node_lab_fill_fire_outcome_compute.handlers.handler_lab_fill_fire_outcome import (
+    HandlerLabFillFireOutcome,
 )
 from omnimarket.nodes.node_lab_fill_launcher_effect.models import (
     ModelLabFillLauncherResult,

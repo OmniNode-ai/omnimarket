@@ -9,13 +9,13 @@ delivers it and judges again), and publishes the validated result.
 
 from __future__ import annotations
 
+from omnimarket.models.lab_fill.model_lab_fill_fire_outcome import (
+    ModelLabFillFireOutcomeRequest,
+)
 from omnimarket.nodes.node_lab_fill_fire_outcome_compute.handlers.handler_lab_fill_fire_outcome import (
     HandlerLabFillFireOutcome,
     first_refused_line,
     first_word_marker_seen,
-)
-from omnimarket.nodes.node_lab_fill_fire_outcome_compute.models.model_lab_fill_fire_outcome import (
-    ModelLabFillFireOutcomeRequest,
 )
 from omnimarket.nodes.node_lab_fill_launcher_effect.models.model_lab_fill_launcher import (
     ModelLabFillLauncherRequest,

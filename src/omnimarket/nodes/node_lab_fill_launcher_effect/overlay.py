@@ -15,7 +15,7 @@ from collections.abc import Mapping
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
-from omnimarket.nodes.node_lab_fill_fire_outcome_compute.models.model_lab_fill_fire_outcome_policy import (
+from omnimarket.models.lab_fill.model_lab_fill_fire_outcome_policy import (
     ModelLabFillFireOutcomePolicy,
 )
 

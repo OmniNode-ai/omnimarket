@@ -11,10 +11,14 @@ from typing import Any
 import pytest
 import yaml
 
-from omnimarket.nodes.node_lab_fill_fire_outcome_compute.models import (
+from omnimarket.models.lab_fill.enum_lab_fill_fire_outcome import (
     EnumLabFillResultChannel,
-    ModelLabFillFireOutcomePolicy,
+)
+from omnimarket.models.lab_fill.model_lab_fill_fire_outcome import (
     ModelLabFillFireOutcomeResult,
+)
+from omnimarket.models.lab_fill.model_lab_fill_fire_outcome_policy import (
+    ModelLabFillFireOutcomePolicy,
 )
 
 from .conftest import make_request

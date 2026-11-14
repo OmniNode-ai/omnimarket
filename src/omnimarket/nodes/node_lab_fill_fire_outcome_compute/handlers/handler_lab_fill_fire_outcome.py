@@ -37,16 +37,16 @@ from __future__ import annotations
 import json
 import re
 
-from omnimarket.nodes.node_lab_fill_fire_outcome_compute.models.enum_lab_fill_fire_outcome import (
+from omnimarket.models.lab_fill.enum_lab_fill_fire_outcome import (
     EnumLabFillAlertCategory,
     EnumLabFillResultChannel,
 )
-from omnimarket.nodes.node_lab_fill_fire_outcome_compute.models.model_lab_fill_fire_outcome import (
+from omnimarket.models.lab_fill.model_lab_fill_fire_outcome import (
     ModelLabFillFireAlert,
     ModelLabFillFireOutcomeRequest,
     ModelLabFillFireOutcomeResult,
 )
-from omnimarket.nodes.node_lab_fill_fire_outcome_compute.models.model_lab_fill_fire_outcome_policy import (
+from omnimarket.models.lab_fill.model_lab_fill_fire_outcome_policy import (
     ModelLabFillFireOutcomePolicy,
 )
 

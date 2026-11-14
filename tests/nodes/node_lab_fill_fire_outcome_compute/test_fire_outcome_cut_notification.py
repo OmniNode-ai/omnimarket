@@ -11,12 +11,14 @@ from __future__ import annotations
 
 import pytest
 
+from omnimarket.models.lab_fill.enum_lab_fill_fire_outcome import (
+    EnumLabFillResultChannel,
+)
+from omnimarket.models.lab_fill.model_lab_fill_fire_outcome_policy import (
+    ModelLabFillFireOutcomePolicy,
+)
 from omnimarket.nodes.node_lab_fill_fire_outcome_compute.handlers.handler_lab_fill_fire_outcome import (
     HandlerLabFillFireOutcome,
-)
-from omnimarket.nodes.node_lab_fill_fire_outcome_compute.models import (
-    EnumLabFillResultChannel,
-    ModelLabFillFireOutcomePolicy,
 )
 
 from .conftest import make_request

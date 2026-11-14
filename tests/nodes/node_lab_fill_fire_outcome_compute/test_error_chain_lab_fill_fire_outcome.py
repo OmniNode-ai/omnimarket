@@ -12,14 +12,16 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
+from omnimarket.models.lab_fill.enum_lab_fill_fire_outcome import (
+    EnumLabFillAlertCategory,
+)
+from omnimarket.models.lab_fill.model_lab_fill_fire_outcome_policy import (
+    ModelLabFillFireOutcomePolicy,
+)
 from omnimarket.nodes.node_lab_fill_fire_outcome_compute.handlers.handler_lab_fill_fire_outcome import (
     HandlerLabFillFireOutcome,
     first_refused_line,
     first_word_marker_seen,
-)
-from omnimarket.nodes.node_lab_fill_fire_outcome_compute.models import (
-    EnumLabFillAlertCategory,
-    ModelLabFillFireOutcomePolicy,
 )
 
 from .conftest import POLICY_VALUES, make_request

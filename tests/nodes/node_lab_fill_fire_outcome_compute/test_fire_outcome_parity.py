@@ -14,11 +14,11 @@ from typing import Any
 
 import pytest
 
+from omnimarket.models.lab_fill.model_lab_fill_fire_outcome_policy import (
+    ModelLabFillFireOutcomePolicy,
+)
 from omnimarket.nodes.node_lab_fill_fire_outcome_compute.handlers.handler_lab_fill_fire_outcome import (
     HandlerLabFillFireOutcome,
-)
-from omnimarket.nodes.node_lab_fill_fire_outcome_compute.models import (
-    ModelLabFillFireOutcomePolicy,
 )
 
 from .conftest import LATEST_PATH, make_request, valid_result, with_result
