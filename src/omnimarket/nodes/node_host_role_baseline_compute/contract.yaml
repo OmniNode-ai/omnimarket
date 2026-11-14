@@ -40,7 +40,7 @@ descriptor:
   purity: pure
   idempotent: true
   timeout_ms: 5000
-  runtime_profiles: [main]
+  runtime_profiles: [effects]
 
 terminal_event: onex.evt.omnimarket.host-role-baseline-derived.v1
 

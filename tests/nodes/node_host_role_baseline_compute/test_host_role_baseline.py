@@ -85,10 +85,10 @@ def test_the_registry_root_and_ssh_target_are_the_requests_and_the_rest_is_the_o
     None
 ):
     profile = _derive(
-        "h", EnumHostRole.OPERATOR_MAC, registry_root="/Users/x/reg"
+        "h", EnumHostRole.OPERATOR_MAC, registry_root="/srv/x/reg"
     ).profile
     assert profile is not None
-    assert profile.registry_root == "/Users/x/reg"
+    assert profile.registry_root == "/srv/x/reg"
     assert profile.ssh_target is None
     assert profile.python == "3.13"  # the role's own interpreter
     assert profile.unit_prefix == "example-"

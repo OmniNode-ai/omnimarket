@@ -35,18 +35,18 @@ requirements:
     acceptance:
       - id: "AC1"
         statement: |-
-          AC1: each receipt action carries untruncated arguments and written_sha256, and a resumed v2 receipt restores them -- falsifier: env -u PYTHONPATH uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_receipt_action_arguments.py -q
+          AC1: each receipt action carries untruncated arguments and written_sha256, and a resumed v2 receipt restores them -- falsifier: uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_receipt_action_arguments.py -q
   - id: "req-replay-rebuilds-worktree"
     statement: |-
       A v2 receipt must replay into a fresh directory with the same file digests, and refuse a v1 receipt or a forged digest.
     acceptance:
       - id: "AC2"
         statement: |-
-          AC2: replay_worktree reproduces the live per-file sha256 after each turn, raises ReplayMismatchError on a forged digest and ReplayRefusedError on a v1 receipt -- falsifier: env -u PYTHONPATH uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_replay.py -q
+          AC2: replay_worktree reproduces the live per-file sha256 after each turn, raises ReplayMismatchError on a forged digest and ReplayRefusedError on a v1 receipt -- falsifier: uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_replay.py -q
 evidence_requirements:
   - kind: "tests"
     description: "The receipt-arguments and replay tests pass."
-    command: "env -u PYTHONPATH uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_receipt_action_arguments.py tests/nodes/node_delegated_code_edit_orchestrator/test_replay.py -q"
+    command: "uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_receipt_action_arguments.py tests/nodes/node_delegated_code_edit_orchestrator/test_replay.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -74,7 +74,7 @@ dod_evidence:
     binds_ac: ["AC1"]
     checks:
       - check_type: "test_passes"
-        check_value: "env -u PYTHONPATH uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_receipt_action_arguments.py::test_every_action_keeps_untruncated_arguments tests/nodes/node_delegated_code_edit_orchestrator/test_receipt_action_arguments.py::test_written_files_carry_the_sha256_after_the_action tests/nodes/node_delegated_code_edit_orchestrator/test_receipt_action_arguments.py::test_reads_refused_and_finish_actions_carry_an_empty_digest_map -q --no-cov"
+        check_value: "uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_receipt_action_arguments.py::test_every_action_keeps_untruncated_arguments tests/nodes/node_delegated_code_edit_orchestrator/test_receipt_action_arguments.py::test_written_files_carry_the_sha256_after_the_action tests/nodes/node_delegated_code_edit_orchestrator/test_receipt_action_arguments.py::test_reads_refused_and_finish_actions_carry_an_empty_digest_map -q --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn20483-ac2-accepted-20261113t1945z"
     description: "AC2 accepted binding: the replayed worktree equals the live worktree by per-file sha256 after every turn of a scripted loop with edit, write and refused actions."
@@ -82,7 +82,7 @@ dod_evidence:
     binds_ac: ["AC2"]
     checks:
       - check_type: "test_passes"
-        check_value: "env -u PYTHONPATH uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_replay.py::test_replay_equals_the_live_worktree_after_every_turn -q --no-cov"
+        check_value: "uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_replay.py::test_replay_equals_the_live_worktree_after_every_turn -q --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn20483-ac3-accepted-20261113t1945z"
     description: "AC3 accepted binding: a recorded sha256 that does not match the rebuilt file raises ReplayMismatchError at that turn and nothing past that turn is written."
@@ -90,7 +90,7 @@ dod_evidence:
     binds_ac: ["AC3"]
     checks:
       - check_type: "test_passes"
-        check_value: "env -u PYTHONPATH uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_replay.py::test_a_digest_mismatch_raises_and_writes_nothing_beyond_that_turn -q --no-cov"
+        check_value: "uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_replay.py::test_a_digest_mismatch_raises_and_writes_nothing_beyond_that_turn -q --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn20483-ac4-accepted-20261113t1945z"
     description: "AC4 accepted binding: replay refuses a v1 receipt with a reason naming v1 and arguments, resume of a v1 receipt still works, and the existing resume tests pass."
@@ -98,5 +98,5 @@ dod_evidence:
     binds_ac: ["AC4"]
     checks:
       - check_type: "test_passes"
-        check_value: "env -u PYTHONPATH uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_replay.py::test_a_v1_receipt_is_refused_with_its_reason tests/nodes/node_delegated_code_edit_orchestrator/test_receipt_action_arguments.py::test_resume_of_a_v1_receipt_still_works tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py -k \"v1 or resume\" -q --no-cov"
+        check_value: "uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_replay.py::test_a_v1_receipt_is_refused_with_its_reason tests/nodes/node_delegated_code_edit_orchestrator/test_receipt_action_arguments.py::test_resume_of_a_v1_receipt_still_works tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py -k \"v1 or resume\" -q --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
