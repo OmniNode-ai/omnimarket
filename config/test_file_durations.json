@@ -5687,6 +5687,7 @@
   "tests/unit/test_dispatch_worker_persists_dispatch_record.py": 0.06,
   "tests/unit/test_duration_record_entries_omn23538.py": 0.05,
   "tests/unit/test_ensure_sub_handlers_di.py": 0.1,
+  "tests/unit/test_eval_item_scored.py": 3.49,
   "tests/unit/test_factory_floor_limits.py": 0.17,
   "tests/unit/test_factory_floor_limits_loaders.py": 0.17,
   "tests/unit/test_factory_floor_page_limits.py": 0.17,
