@@ -1439,6 +1439,7 @@
   "tests/nodes/node_floor_simple_effect/test_go_state_floor_simple.py": 0.25,
   "tests/nodes/node_floor_simple_effect/test_goal_scope_floor_simple.py": 0.1,
   "tests/nodes/node_floor_simple_effect/test_golden_chain_floor_simple.py": 0.35,
+  "tests/nodes/node_floor_simple_effect/test_handoff_refusals_omn23242.py": 3.26,
   "tests/nodes/node_floor_simple_effect/test_harness_reading_floor_simple.py": 0.14,
   "tests/nodes/node_floor_simple_effect/test_holdup_owners_floor_simple.py": 0.09,
   "tests/nodes/node_floor_simple_effect/test_hosts_own_load_floor_simple.py": 11.03,
