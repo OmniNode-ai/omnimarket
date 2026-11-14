@@ -1,0 +1,30 @@
+name: node_ticket_hand_edit_alarm_effect
+version: "1.0.0"
+description: >
+  Reads the Linear issues changed since its cursor on the runtime heartbeat, at most once
+  per overlay interval, and compares each standard ticket with the node's own write record
+  (the newest ticket-contract-written event per ticket). A ticket that differs, a block
+  that no longer recomputes, or a description revised by an actor other than the ticket
+  node's identity emits one typed ticket_hand_edit error event, one Slack publish command
+  and one open-findings row. An unreadable source is detector_unreadable with the same alarm.
+omnibase_core_compat: ">=0.47.28,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_ticket_hand_edit_alarm_effect: omnimarket.nodes.node_ticket_hand_edit_alarm_effect
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: publish_event
+dependencies:
+  - omnibase_infra
+  - "pydantic>=2.11.0"
+  - "pyyaml>=6.0"
+  - "psycopg2-binary>=2.9"
+authors: [OmniNode Team]
+license: MIT
+tags: [effect, observability, alerting, ticket, linear]
+pack: "liveness"
+display_name: "Effect: Ticket Hand Edit Alarm"
+node_role: "effect"
