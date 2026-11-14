@@ -8,7 +8,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
-from omnimarket.nodes.node_dev_roll_request_compute.models.enum_dev_roll_event_refusal import (
+from omnimarket.models.dev_roll.enum_dev_roll_event_refusal import (
     EnumDevRollEventRefusal,
 )
 

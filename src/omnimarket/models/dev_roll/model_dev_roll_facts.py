@@ -9,10 +9,10 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
-from omnimarket.nodes.node_dev_roll_request_compute.models.model_dev_roll_record import (
+from omnimarket.models.dev_roll.model_dev_roll_record import (
     ModelDevRollRecord,
 )
-from omnimarket.nodes.node_dev_roll_request_compute.models.model_dev_tip_changed import (
+from omnimarket.models.dev_roll.model_dev_tip_changed import (
     ModelDevTipChanged,
 )
 
