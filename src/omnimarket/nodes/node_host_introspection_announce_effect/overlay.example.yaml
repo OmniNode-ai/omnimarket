@@ -1,0 +1,34 @@
+# host_introspection/overlay.yaml (OMN-19998): every value the host announcer reads with. Shape and starting values; the
+# deployment owner holds the real file in the overlays repository. No value is written in code.
+cadence_seconds: 30
+probe_timeout_seconds: 10
+# Tools the capacity reading looks for on the PATH (the account tools below must be among them):
+capacity_tools: [git, uv, gh, claude, claude-login, codex, docker]
+# The capacity reading's worker pool; the slot cap stays the capacity effect's to compute:
+max_units: 1
+runtimes:
+  - name: python
+    argv: [python3, --version]
+    value_regex: 'Python (\S+)'
+  - name: docker
+    argv: [docker, --version]
+    value_regex: 'Docker version ([^,\s]+)'
+  - name: claude
+    argv: [claude, --version]
+    value_regex: '^(\S+)'
+  - name: uv
+    argv: [uv, --version]
+    value_regex: 'uv (\S+)'
+software:
+  - name: omnimarket
+    kind: package
+    version:
+      name: omnimarket-version
+      argv: [$OMNI_HOME/omnimarket/.venv/bin/python, -c, "import importlib.metadata as m; print(m.version('omnimarket'))"]
+clone_commit_argv: [git, -C, "{path}", rev-parse, HEAD]
+gpu_query_argv: [nvidia-smi, "--query-gpu=name,memory.total,memory.used", "--format=csv,noheader,nounits"]
+model_endpoint_template: "http://{host}:{port}"
+model_list_path: /v1/models
+lane_accounts:
+  - account_name: claude
+    tool: claude-login
