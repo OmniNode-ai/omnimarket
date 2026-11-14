@@ -24,7 +24,7 @@ deadline in an evidence kind) and B5 (the holder check always passes).
 from __future__ import annotations
 
 from collections import deque
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Final
 
 import pytest
@@ -37,6 +37,7 @@ from omnimarket.nodes.node_lease_receipt_reducer.handlers.handler_lease_receipt_
 )
 from omnimarket.nodes.node_lease_receipt_reducer.models.enum_lease import (
     EnumLeaseOperation,
+    EnumLeaseReason,
     EnumLeaseReleaseRule,
     EnumLeaseStatus,
 )
@@ -49,6 +50,7 @@ from omnimarket.nodes.node_lease_receipt_reducer.models.model_lease_reduce impor
     ModelLeaseReduceOutput,
 )
 from omnimarket.nodes.node_lease_receipt_reducer.models.model_lease_table import (
+    ModelLeaseEntry,
     ModelLeaseTable,
 )
 from tests.unit.nodes.node_lease_receipt_reducer.support import (
@@ -275,9 +277,14 @@ def test_control_b3_release_on_the_deadline_in_an_evidence_kind_is_found(
 ) -> None:
     original = reducer_module._release_allowed
 
-    def on_deadline(kind, lease, now, evidence):  # type: ignore[no-untyped-def]
+    def on_deadline(
+        kind: ModelLeaseKindConfig,
+        lease: ModelLeaseEntry,
+        now: datetime,
+        evidence: bool,
+    ) -> EnumLeaseReason:
         if now >= lease.deadline_at:
-            return reducer_module.EnumLeaseReason.NONE
+            return EnumLeaseReason.NONE
         return original(kind, lease, now, evidence)
 
     monkeypatch.setattr(reducer_module, "_release_allowed", on_deadline)

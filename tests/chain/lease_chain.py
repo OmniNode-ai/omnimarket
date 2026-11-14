@@ -72,7 +72,6 @@ LEASE_CONTRACT: Final = (
 BOOTSTRAP_ENV: Final = "LEASE_CHAIN_BOOTSTRAP"
 LANE_ENV: Final = "LEASE_CHAIN_LANE"
 ROOT_ENV: Final = "LEASE_CHAIN_REGISTRY_ROOT"
-MUTATE_ENV: Final = "LEASE_CHAIN_MUTATE"
 RECEIPT_DIR_ENV: Final = "LEASE_CHAIN_RECEIPT_DIR"
 
 # The packaged default overlay's one kind and its admitted caller; the tests
@@ -441,14 +440,3 @@ def lease_overlay(request: pytest.FixtureRequest) -> ModelLeaseChainOverlay:
     if chosen.profile == "redpanda" and not (chosen.bootstrap or chosen.lane):
         pytest.skip(f"no broker: {LANE_ENV} and {BOOTSTRAP_ENV} name none")
     return chosen
-
-
-@pytest.fixture(autouse=True)
-def injected_break() -> Iterator[None]:
-    """Run the whole suite under one named mutation, to read it fail for real."""
-    name = os.environ.get(MUTATE_ENV)
-    if not name:
-        yield
-        return
-    with MUTATIONS[name]():
-        yield

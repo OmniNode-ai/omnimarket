@@ -55,14 +55,16 @@ from tests.chain.lease_chain import (
     MUTATIONS,
     LeaseBus,
     ModelLeaseChainOverlay,
-    injected_break,  # noqa: F401  (autouse fixture, collected from this module)
-    lease_overlay,  # noqa: F401  (the profile fixture, collected from this module)
+    lease_overlay,
     lease_topics,
     make_command,
     make_lease_bus,
 )
 
 pytestmark = pytest.mark.unit
+
+# The profile fixture is collected from this module: naming it here is its use.
+__all__ = ["lease_overlay"]
 
 NOW = datetime(2026, 11, 14, 12, 0, 0, tzinfo=UTC)
 SUBJECT = "OmniNode-ai/omnimarket#24484"
@@ -166,7 +168,7 @@ async def drive_revoked(
 
 
 def test_error_receipt_of_a_revoked_epoch_is_refused(
-    lease_overlay: ModelLeaseChainOverlay,  # noqa: F811
+    lease_overlay: ModelLeaseChainOverlay,
 ) -> None:
     asyncio.run(drive_revoked(lease_overlay))
     # the lease row gone, the table's revoked-epoch bookkeeping refuses alone
@@ -174,7 +176,7 @@ def test_error_receipt_of_a_revoked_epoch_is_refused(
 
 
 def test_control_the_revoked_epoch_chain_fails_when_nothing_is_revoked(
-    lease_overlay: ModelLeaseChainOverlay,  # noqa: F811
+    lease_overlay: ModelLeaseChainOverlay,
 ) -> None:
     with MUTATIONS["revoked-not-refused"](), pytest.raises(AssertionError):
         asyncio.run(drive_revoked(lease_overlay, released=True))
@@ -245,13 +247,13 @@ async def drive_stale(overlay: ModelLeaseChainOverlay) -> None:
 
 
 def test_error_receipt_of_a_stale_epoch_is_refused(
-    lease_overlay: ModelLeaseChainOverlay,  # noqa: F811
+    lease_overlay: ModelLeaseChainOverlay,
 ) -> None:
     asyncio.run(drive_stale(lease_overlay))
 
 
 def test_control_the_stale_chain_fails_when_the_grant_does_not_raise_the_counter(
-    lease_overlay: ModelLeaseChainOverlay,  # noqa: F811
+    lease_overlay: ModelLeaseChainOverlay,
 ) -> None:
     """Without the counter raise the chain cannot build the stale shape at all: the
     grant writes an epoch the table's own shape refuses, and the bus raises."""
@@ -298,13 +300,13 @@ async def drive_holder_run(overlay: ModelLeaseChainOverlay) -> None:
 
 
 def test_error_receipt_from_a_run_that_is_not_the_holder_is_refused(
-    lease_overlay: ModelLeaseChainOverlay,  # noqa: F811
+    lease_overlay: ModelLeaseChainOverlay,
 ) -> None:
     asyncio.run(drive_holder_run(lease_overlay))
 
 
 def test_control_the_holder_run_chain_fails_when_any_run_may_present(
-    lease_overlay: ModelLeaseChainOverlay,  # noqa: F811
+    lease_overlay: ModelLeaseChainOverlay,
 ) -> None:
     """With every equal epoch accepted from any run the receipt is recorded and the
     refusal assertion is red."""
@@ -351,13 +353,13 @@ async def drive_release_evidence(overlay: ModelLeaseChainOverlay) -> None:
 
 
 def test_error_release_without_evidence_is_refused_past_the_deadline(
-    lease_overlay: ModelLeaseChainOverlay,  # noqa: F811
+    lease_overlay: ModelLeaseChainOverlay,
 ) -> None:
     asyncio.run(drive_release_evidence(lease_overlay))
 
 
 def test_control_the_release_chain_fails_when_the_deadline_releases(
-    lease_overlay: ModelLeaseChainOverlay,  # noqa: F811
+    lease_overlay: ModelLeaseChainOverlay,
 ) -> None:
     """With an evidence kind releasing on the clock the release is recorded and the
     refusal assertion is red."""
@@ -402,13 +404,13 @@ async def drive_outside_caller(overlay: ModelLeaseChainOverlay) -> None:
 
 
 def test_error_an_outside_caller_is_refused_before_the_command_is_read(
-    lease_overlay: ModelLeaseChainOverlay,  # noqa: F811
+    lease_overlay: ModelLeaseChainOverlay,
 ) -> None:
     asyncio.run(drive_outside_caller(lease_overlay))
 
 
 def test_control_the_outside_caller_chain_fails_when_the_reason_is_wrong(
-    lease_overlay: ModelLeaseChainOverlay,  # noqa: F811
+    lease_overlay: ModelLeaseChainOverlay,
 ) -> None:
     """No named break reaches the admission check — it runs before the operation's
     rules — so this control breaks the expected reason instead, the way the landing

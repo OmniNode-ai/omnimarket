@@ -33,8 +33,7 @@ from tests.chain.lease_chain import (
     LANDING_KIND,
     MUTATIONS,
     ModelLeaseChainOverlay,
-    injected_break,  # noqa: F401  (autouse fixture, collected from this module)
-    lease_overlay,  # noqa: F401  (the profile fixture, collected from this module)
+    lease_overlay,
     lease_topics,
     make_command,
     make_lease_bus,
@@ -42,6 +41,9 @@ from tests.chain.lease_chain import (
 )
 
 pytestmark = pytest.mark.unit
+
+# The profile fixture is collected from this module: naming it here is its use.
+__all__ = ["lease_overlay"]
 
 NOW = datetime(2026, 11, 14, 12, 0, 0, tzinfo=UTC)
 SUBJECT = "OmniNode-ai/omnimarket#24484"
@@ -117,7 +119,7 @@ async def drive_golden(
 
 
 def test_golden_acquire_receipt_release_over_the_bus(
-    lease_overlay: ModelLeaseChainOverlay,  # noqa: F811
+    lease_overlay: ModelLeaseChainOverlay,
     tmp_path: Path,
 ) -> None:
     results = asyncio.run(drive_golden(lease_overlay, tmp_path))
@@ -132,7 +134,7 @@ def test_golden_acquire_receipt_release_over_the_bus(
 
 
 def test_control_the_golden_chain_fails_when_the_grant_does_not_raise_the_counter(
-    lease_overlay: ModelLeaseChainOverlay,  # noqa: F811
+    lease_overlay: ModelLeaseChainOverlay,
     tmp_path: Path,
 ) -> None:
     with MUTATIONS["no-epoch-raise"](), pytest.raises(AssertionError):

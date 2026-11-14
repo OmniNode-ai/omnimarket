@@ -21,6 +21,7 @@ from collections.abc import Iterable
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Final
+from unittest.mock import patch
 
 import pytest
 import yaml
@@ -85,11 +86,8 @@ def _operations_of_run(spec: dict[str, Any]) -> list[EnumLeaseOperation]:
         seen.append(request.operation)
         return real(self, request)
 
-    HandlerLeaseReceiptReducer.handle = spy  # type: ignore[method-assign]
-    try:
+    with patch.object(HandlerLeaseReceiptReducer, "handle", spy):
         run_scenario(spec)
-    finally:
-        HandlerLeaseReceiptReducer.handle = real  # type: ignore[method-assign]
     return seen
 
 

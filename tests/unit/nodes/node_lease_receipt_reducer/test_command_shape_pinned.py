@@ -11,6 +11,7 @@ owners, before either side is first to fail at runtime.
 from __future__ import annotations
 
 import pytest
+from pydantic import BaseModel
 
 from omnimarket.nodes.node_lease_receipt_reducer.models.model_lease_reduce import (
     ModelLeaseCaller,
@@ -26,7 +27,7 @@ from omnimarket.nodes.node_lease_receipt_reducer.models.model_lease_table import
 
 pytestmark = pytest.mark.unit
 
-PINNED = {
+PINNED: dict[type[BaseModel], set[str]] = {
     ModelLeaseCaller: {"principal", "channel"},
     ModelLeaseReduceInput: {
         "correlation_id",
@@ -74,8 +75,8 @@ PINNED = {
 
 
 @pytest.mark.parametrize("model", list(PINNED), ids=lambda m: m.__name__)
-def test_the_shape_is_pinned(model: type) -> None:
-    assert set(model.model_fields) == PINNED[model]  # type: ignore[attr-defined]
+def test_the_shape_is_pinned(model: type[BaseModel]) -> None:
+    assert set(model.model_fields) == PINNED[model]
 
 
 def test_control_an_added_field_is_red() -> None:
