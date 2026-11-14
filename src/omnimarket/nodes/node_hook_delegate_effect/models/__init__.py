@@ -3,6 +3,8 @@
 """Models for node_hook_delegate_effect."""
 
 from .model_hook_delegate import (
+    DECLINE_TOKEN,
+    SUBAGENT_RULES,
     EnumDelegateCliState,
     EnumHookDelegateOutcome,
     ModelDelegateCliRun,
@@ -16,6 +18,8 @@ from .model_prompt_delegate import (
 )
 
 __all__ = [
+    "DECLINE_TOKEN",
+    "SUBAGENT_RULES",
     "EnumDelegateCliState",
     "EnumHookDelegateOutcome",
     "EnumPromptDelegateOutcome",

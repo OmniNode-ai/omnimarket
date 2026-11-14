@@ -21,6 +21,8 @@ class EnumPromptDelegateOutcome(StrEnum):
     SKIPPED = "skipped"
     #: omniclaude's sensitivity gate kept the prompt local.
     SENSITIVE = "sensitive"
+    #: The prompt carries a pasted image ("[Image #N]"), which only Claude sees.
+    HAS_IMAGE = "has_image"
     #: The delegation ran and gave no answer; ``detail`` names the hook outcome.
     NOT_ANSWERED = "not_answered"
 

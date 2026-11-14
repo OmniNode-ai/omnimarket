@@ -8,12 +8,23 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
+#: The reply sentinel a delegated model gives when it cannot do the task; a reply
+#: that declares it is DECLINED and goes to Claude (OMN-23413 AC33). Not a secret.
+DECLINE_TOKEN = "CANNOT_ANSWER"
+
+#: What a subagent task's model is told (OMN-23413). Claude's subagent could read
+#: and search the user's files, run commands and use tools; the delegated model
+#: cannot, so such a task is declined and the real subagent runs instead.
+SUBAGENT_RULES = f"""You do a task that a coding assistant (Claude Code) would otherwise give to one of its subagents. That subagent could read and search the user's files, run commands and use tools; you cannot.
+- If the task needs any of that (reading, searching or editing the user's files or repository, running commands or tests, browsing the web, or checking live system state), or you are not confident your result is correct, reply with exactly one line: {DECLINE_TOKEN}: followed by a reason of at most five words, such as "needs the user's files". That line is your whole reply: no explanation before or after it, no apology.
+- Otherwise do the task from the text you were given and reply with the result only.
+- No preamble. Never claim to have read, run, edited or checked anything."""
+
 
 class EnumHookDelegateOutcome(StrEnum):
     """Only ANSWERED blocks the subagent; every other outcome passes it through."""
 
     ANSWERED = "answered"
-    GATEWAY_OWNS_SESSION = "gateway_owns_session"
     NO_ONEX = "no_onex"
     TIMED_OUT = "timed_out"
     FAILED = "failed"
@@ -75,7 +86,13 @@ class ModelHookDelegateRequest(BaseModel):
         prompt = tool_input.get("prompt") if isinstance(tool_input, dict) else None
         task = prompt if isinstance(prompt, str) and prompt.strip() else tool_text
         return cls.model_validate(
-            {"task": task, "intent": str(intent or ""), "timeout_seconds": timeout}
+            {
+                "task": task,
+                "intent": str(intent or ""),
+                "timeout_seconds": timeout,
+                "decline_token": DECLINE_TOKEN,
+                "system_prompt": SUBAGENT_RULES,
+            }
         )
 
 

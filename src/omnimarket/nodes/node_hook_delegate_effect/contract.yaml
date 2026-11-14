@@ -11,17 +11,19 @@ node_version:
   minor: 0
   patch: 0
 description: >
-  Answer one delegated Claude Code prompt or subagent task. omniclaude's PreToolUse hook classifies an
-  Agent/Task call and hands a delegatable one here, in process. The effect runs onex delegate with the
-  task class the classifier's intent maps to, within the request's time limit, and returns the answer, the
-  model and the run id. Every other outcome (no onex on PATH, a run that failed, timed out or gave no
-  answer, the ONEX gateway already routing the session) is returned so the hook passes the task through to
+  Answer one delegated Claude Code prompt or subagent task. omniclaude's subagent hook
+  (onex_delegate_subagents.sh, PreToolUse Agent/Task) classifies an Agent/Task call and hands a
+  delegatable one here, in process. The effect runs onex delegate with the task class the classifier's
+  intent maps to, the subagent rules and the decline token, within the request's time limit, and returns
+  the answer, the model and the run id. The rules tell the model it cannot read files, run commands or use
+  tools, so a task that needs them is declined and the real subagent runs. Every other outcome (no onex on PATH, a run that failed, timed out or gave no
+  answer) is returned so the hook passes the task through to
   Claude Code: a subagent is never blocked without an answer. When the request carries a decline token and
   the model's reply declares it, the outcome is declined, even if onex delegate's quality gates vetoed
   that short reply. Accepted answers are reused for identical tasks within a session turn; every new
   prompt invalidates the previous turn's answers. The prompt_delegate operation (OMN-23413 AC33) takes
-  every prompt omniclaude's UserPromptSubmit hook submits: slash commands, prompts starting with @claude
-  and sensitive prompts go to Claude; any other prompt is delegated with the recent conversation, its own
+  every prompt omniclaude's prompt hook (onex_delegate_prompts.sh, UserPromptSubmit) submits: slash
+  commands, prompts starting with @claude, sensitive prompts and prompts with a pasted image go to Claude; any other prompt is delegated with the recent conversation, its own
   rules, criteria, token cap, 90 s limit and decline token. It returns the hook's whole output: a block
   carrying an accepted answer, so Claude Code makes no model call, or, when the prompt passes to Claude,
   the delegated exchanges Claude has not yet seen, once.

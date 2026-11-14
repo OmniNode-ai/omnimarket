@@ -229,6 +229,10 @@ def test_a_shorter_hook_limit_wins() -> None:
         ("/model", {}, EnumPromptDelegateOutcome.SLASH_COMMAND),
         ("   ", {}, EnumPromptDelegateOutcome.EMPTY),
         ("my key is sk-...", {"sensitive": True}, EnumPromptDelegateOutcome.SENSITIVE),
+        # Claude Code puts only "[Image #N]" in the prompt text; the image itself
+        # never reaches a delegated model (read in this Mac's transcripts).
+        ("[Image #1] why is this red?", {}, EnumPromptDelegateOutcome.HAS_IMAGE),
+        ("what is in [Image #12]", {}, EnumPromptDelegateOutcome.HAS_IMAGE),
     ],
 )
 def test_some_prompts_go_to_claude_without_delegating(

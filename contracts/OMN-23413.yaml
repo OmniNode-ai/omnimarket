@@ -137,45 +137,26 @@ requirements:
       package and thin bootstrap. Capture version, package hashes, plugin versions, effective non-secret
       configuration, outcomes, receipts, terminal evidence and dashboard/Claude proof in a repeatable
       artifact. Mocked servers prove fault controls; they do not replace actual model proof.'
-- id: req-omn23413-ac11
-  statement: 'Claude settings ownership. Evidence: real CLI settings capture and enable/rerun/disable
-    preservation tests. Reviewed opt-in states destination/model and known/unknown billing; canonical
-    secret references, atomic backup/merge, conflict checks and no-op rerun. Disable restores only still-owned
-    values. Preserve login, policy and later edits; never kill existing Claude sessions.'
-  acceptance:
-  - id: AC11
-    statement: 'Claude settings ownership. Evidence: real CLI settings capture and enable/rerun/disable
-      preservation tests. Reviewed opt-in states destination/model and known/unknown billing; canonical
-      secret references, atomic backup/merge, conflict checks and no-op rerun. Disable restores only still-owned
-      values. Preserve login, policy and later edits; never kill existing Claude sessions.'
-- id: req-omn23413-ac12
-  statement: 'Claude request compatibility. Evidence: actual Claude request captures plus protocol, outage
-    and bypass controls. Actual supported CLI main/tool/subagent, compaction and background requests traverse
-    the gateway, preserve protocol and streaming/cancellation/errors, and join per-request metadata to
-    actual receipts and dashboard projections. Outage/auth/routing errors fail visibly without direct
-    fallback. Capability checks and direct-bypass controls must detect deliberate breaks.'
-  acceptance:
-  - id: AC12
-    statement: 'Claude request compatibility. Evidence: actual Claude request captures plus protocol,
-      outage and bypass controls. Actual supported CLI main/tool/subagent, compaction and background requests
-      traverse the gateway, preserve protocol and streaming/cancellation/errors, and join per-request
-      metadata to actual receipts and dashboard projections. Outage/auth/routing errors fail visibly without
-      direct fallback. Capability checks and direct-bypass controls must detect deliberate breaks.'
 - id: req-omn23413-ac22
   statement: '/config selects models from a live list, never a typed id. After the provider and its key or URL, the provider''s models load on their own and show provider, model, context, price (USD per 1M tokens, in / out), capabilities and status, with search, filter, sort and a details view. Any number can be ticked; every ticked model is stored in order and used by delegation. Values no source states show "-", never zero or "no". A model on the user''s own server is named by that server (Ollama or vLLM) with the context and capabilities it reports.'
   acceptance:
   - id: AC22
     statement: '/config selects models from a live list, never a typed id. After the provider and its key or URL, the provider''s models load on their own and show provider, model, context, price (USD per 1M tokens, in / out), capabilities and status, with search, filter, sort and a details view. Any number can be ticked; every ticked model is stored in order and used by delegation. Values no source states show "-", never zero or "no". A model on the user''s own server is named by that server (Ollama or vLLM) with the context and capabilities it reports.'
 - id: req-omn23413-ac25
-  statement: '/delegation needs no typed input and refuses without a model. It shows the selected models with the same table and one switch: through the delegation hook, or through the gateway setup starts for a selected model whose connection speaks native Anthropic Messages. With no selected model nothing is enabled and the reason is shown. onex claude enable with no flags uses the gateway setup started.'
+  statement: '/delegation needs no typed input and refuses without a model. It shows selected models and one delegation switch for ordinary prompts and Agent/Task calls under bit 11. CLI and TUI install and remove both hooks together without changing Claude model, aliases, provider, authentication, permissions or unrelated settings.'
   acceptance:
   - id: AC25
-    statement: '/delegation needs no typed input and refuses without a model. It shows the selected models with the same table and one switch: through the delegation hook, or through the gateway setup starts for a selected model whose connection speaks native Anthropic Messages. With no selected model nothing is enabled and the reason is shown. onex claude enable with no flags uses the gateway setup started.'
+    statement: '/delegation needs no typed input and refuses without a model. It shows selected models and one delegation switch for ordinary prompts and Agent/Task calls under bit 11. CLI and TUI install and remove both hooks together without changing Claude model, aliases, provider, authentication, permissions or unrelated settings.'
 - id: req-omn23413-ac27
   statement: 'One catalogue, no hard-coded lists. /model, /config and /delegation read the same entries; the providers, capabilities, columns and words come from configuration. /model chooses the first model or Auto.'
   acceptance:
   - id: AC27
     statement: 'One catalogue, no hard-coded lists. /model, /config and /delegation read the same entries; the providers, capabilities, columns and words come from configuration. /model chooses the first model or Auto.'
+- id: req-omn23413-ac33
+  statement: Every ordinary prompt goes to delegation first when bit 11 is enabled; documented slash and @claude skips remain native. A quality-passed answer is shown with model and full run ID without native Claude inference. Decline via the fixed CANNOT_ANSWER marker, failure, timeout, quality veto or OFF continues to Claude. Bounded delegated history is deduplicated by run ID and delivered once on the next native turn. onex delegation on/off and the TUI switch add/remove prompt and Agent/Task hooks together while preserving Claude settings. Real inference and token receipt evidence is required separately from deterministic process controls.
+  acceptance:
+  - id: AC33
+    statement: Every ordinary prompt goes to delegation first when bit 11 is enabled; documented slash and @claude skips remain native. A quality-passed answer is shown with model and full run ID without native Claude inference. Decline via the fixed CANNOT_ANSWER marker, failure, timeout, quality veto or OFF continues to Claude. Bounded delegated history is deduplicated by run ID and delivered once on the next native turn. onex delegation on/off and the TUI switch add/remove prompt and Agent/Task hooks together while preserving Claude settings. Real inference and token receipt evidence is required separately from deterministic process controls.
 evidence_requirements:
 - kind: tests
   description: Run fixture controls plus required installed-wheel and actual model/Claude evidence; preserve
@@ -261,7 +242,7 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_setup_plugins.py tests/unit/nodes/node_onex_setup_effect/test_setup_plugin_lifecycle.py
       tests/unit/nodes/node_onex_setup_effect/test_setup_legacy_hooks.py tests/e2e/test_setup_plugin_lifecycle_cli.py
-      tests/e2e/test_claude_gateway_hook_install.py -q --no-cov -n 0 -p no:randomly
+      -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn23413-ac7-optional-components
   description: Selected local stack and tenant endpoint registration reconcile through their owners and
@@ -313,36 +294,6 @@ dod_evidence:
     check_value: uv run pytest tests/e2e/test_setup_close_evidence.py tests/e2e/test_setup_packaged_journey.py
       -q --no-cov -n 0 -p no:randomly
     cwd: .
-- id: dod-omn23413-ac11-claude-settings
-  description: 'Gateway enable/rerun/disable: atomic backup and merge, conflicts refused, no-op rerun,
-    disable restores only still-owned values and keeps later edits. The ownership journal holds the compact
-    "phase":"enabled" text the legacy delegation runner stands down on, and the saved hook mask is never
-    written, so disable leaves the user''s bit-11 choice as it was.'
-  source: manual
-  execution_scope: hosted_and_local
-  binds_ac:
-  - AC11
-  checks:
-  - check_type: test_passes
-    check_value: uv run pytest tests/unit/nodes/node_claude_code_binding_install_effect/test_gateway_settings.py
-      tests/unit/nodes/node_claude_code_binding_install_effect/test_gateway_probe.py tests/unit/cli/test_claude_gateway_command.py
-      -q --no-cov -n 0 -p no:randomly
-    cwd: .
-- id: dod-omn23413-ac12-claude-requests
-  description: Gateway protocol, streaming, outage, auth and bypass controls fail visibly without direct
-    fallback; per request the gateway walks its ordered native-Messages ladder, serving from the next
-    backend under that backend's model with its own receipt, never calling a non-native backend and never
-    retrying a client error. Actual Claude captures are the local actual-claude item.
-  source: manual
-  execution_scope: hosted_and_local
-  binds_ac:
-  - AC12
-  checks:
-  - check_type: test_passes
-    check_value: uv run pytest tests/unit/nodes/node_llm_delegation_call_effect/test_claude_gateway.py
-      tests/unit/nodes/node_llm_delegation_call_effect/test_claude_gateway_ladder.py tests/e2e/test_claude_gateway_hook.py
-      tests/e2e/test_claude_gateway_evidence.py -q --no-cov -n 0 -p no:randomly
-    cwd: .
 - id: dod-omn23413-portable-controls
   description: Pure inventory/schema and isolated connection-store controls remain portable; they do not
     establish supported-macOS installed readiness.
@@ -385,19 +336,17 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/e2e/test_setup_external_plugin_cli.py tests/e2e/test_setup_plugin_lifecycle_cli.py
-      tests/e2e/test_setup_claude_hook_component.py tests/e2e/test_claude_gateway_hook_install.py -q --no-cov
-      -n 0 -p no:randomly
+      tests/e2e/test_setup_claude_hook_component.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn23413-optional-components
-  description: Selected stack and gateway isolated lifecycle fixtures reject changed routes, missing capability,
+  description: Selected stack isolated lifecycle fixtures reject changed routes, missing capability,
     credentials and concurrent writers. Not operator account or actual model proof. Local supported-macOS
     proof only; the hosted items below carry the criterion bindings.
   source: manual
   execution_scope: local_done_gate
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/e2e/test_setup_local_stack.py tests/e2e/test_setup_gateway_lifecycle.py
-      -q --no-cov -n 0 -p no:randomly
+    check_value: uv run pytest tests/e2e/test_setup_local_stack.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn23413-resume-config
   description: Migration, interrupted workflow retry, no-op, exported-profile intake and unattended terminal
@@ -426,7 +375,7 @@ dod_evidence:
 - id: dod-omn23413-installed-journey
   description: 'Required installed-wheel suite, never all-skips: exact package bytes/hashes, clean/existing
     settings, local Claude assets, named receipts, authenticated same-run dashboard projection, config
-    profile roundtrip, fallback, plugins, gateway fixture and no-op. Protocol fixtures are labeled. PATH
+    profile roundtrip, fallback, plugins and no-op. Protocol fixtures are labeled. PATH
     child tracing does not observe absolute executable paths. Missing inputs fail. Local supported-macOS
     proof only; the hosted items below carry the criterion bindings.'
   source: manual
@@ -437,7 +386,7 @@ dod_evidence:
       -n "$ONEX_TEST_CORE_WHEEL" && test -n "$ONEX_TEST_CLAUDE_WHEEL" && exec "$(dirname "$ONEX_TEST_CLI")/python"
       -m pytest tests/e2e/test_setup_packaged_journey.py::test_built_package_setup_delegation_dashboard_journey
       tests/e2e/test_named_connections_cli.py tests/e2e/test_setup_external_plugin_cli.py tests/e2e/test_setup_plugin_lifecycle_cli.py
-      tests/e2e/test_setup_gateway_lifecycle.py -q --no-cov -n 0 -p no:randomly'
+      -q --no-cov -n 0 -p no:randomly'
     cwd: .
 - id: dod-omn23413-actual-model-close
   description: Actual operator-selected model receipt must match the explicit endpoint/model. Missing
@@ -450,21 +399,6 @@ dod_evidence:
   - check_type: command
     check_value: env ONEX_E2E_REQUIRE_COMPLETE=1 uv run pytest tests/e2e/test_setup_close_evidence.py::test_required_customer_evidence_close_probe
       -q --no-cov -n 0 -p no:randomly
-    cwd: .
-- id: dod-omn23413-actual-claude
-  description: Actual installed Claude main/Read/Agent captures, settings preservation, bypass refusal
-    and actual native model proof. Explicit endpoint/binary prerequisites prevent all-skips. Compaction/background
-    capture and account evidence remain pending; this binding alone does not establish all AC12 clauses.
-    AC12 remains deliberately unbound until every required request category has executable proof. Local
-    supported-macOS proof only; the hosted items below carry the criterion bindings.
-  source: manual
-  execution_scope: local_done_gate
-  checks:
-  - check_type: command
-    check_value: env -u PYTHONPATH ONEX_E2E_REQUIRE_COMPLETE=1 sh -c 'command -v claude >/dev/null &&
-      test -n "$ONEX_NATIVE_MESSAGES_ENDPOINT" && test -n "$ONEX_NATIVE_MESSAGES_MODEL" && exec "$(dirname
-      "$ONEX_TEST_CLI")/python" -m pytest tests/e2e/test_claude_gateway_real_client.py tests/e2e/test_claude_gateway_local_model.py
-      -q --no-cov -n 0 -p no:randomly'
     cwd: .
 - id: dod-omn23413-integration-proof
   description: A registered custom endpoint is stored, projected and read back through real Postgres in
@@ -490,14 +424,14 @@ dod_evidence:
     check_value: 'uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui.py tests/unit/handlers/test_local_model_details.py -q --no-cov -n 0 -p no:randomly -k "config or server or ticked or searchable or key"'
     cwd: .
 - id: dod-omn23413-ac25-delegation-no-typed-input
-  description: '/delegation shows the selection, switches through the hook or the setup gateway, and refuses without a model; onex claude enable defaults to setup''s gateway.'
+  description: '/delegation uses one prompt and Agent/Task hook switch, refuses without a model, and preserves Claude settings.'
   source: manual
   execution_scope: hosted_and_local
   binds_ac:
   - AC25
   checks:
   - check_type: test_passes
-    check_value: 'uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui.py tests/unit/cli/test_claude_gateway_command.py -q --no-cov -n 0 -p no:randomly -k "delegation or gateway_mode or enable"'
+    check_value: 'uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui.py tests/unit/nodes/node_onex_setup_effect/test_cli_delegation.py tests/unit/nodes/node_onex_setup_effect/test_combined_delegation.py -q --no-cov -n 0 -p no:randomly -k "delegation"'
     cwd: .
 - id: dod-omn23413-ac27-one-catalogue
   description: 'One catalogue for every screen, data-driven words, unknown never free, and /model first or Auto.'
@@ -519,4 +453,25 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: 'uv run pytest tests/unit/cli/test_local_model_by_server_omn23413.py tests/unit/nodes/node_onex_setup_effect/test_onex_tui_local_servers.py -q --no-cov -n 0 -p no:randomly'
+    cwd: .
+
+- id: dod-omn23413-ac33-installed-prompt-controls
+  description: Required isolated installed-hook journey executes accepted prompt blocking, fixed decline,
+    quality veto, process failure, timeout, OFF and skip controls, history delivery once, Agent/Task
+    reuse and unchanged Claude configuration. Requires the companion omniclaude source or unpacked
+    wheel customer resource root via ONEX_COMBINED_HOOK_SOURCE; missing assets fail. The same required
+    command also checks the TUI and joins a captured real prompt receipt to exactly one measured-usage
+    delegation_events row and the actual native Claude result with zero native turns or cost.
+    ONEX_PROMPT_PROOF_RECEIPT, ONEX_PROMPT_PROOF_DATABASE, ONEX_PROMPT_PROOF_CLAUDE and
+    ONEX_PROMPT_PROOF_MODEL are mandatory. The capture readback runs no new inference; deterministic
+    fixtures alone cannot pass this binding.
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC33
+  checks:
+  - check_type: test_passes
+    check_value: env ONEX_E2E_REQUIRE_COMPLETE=1 uv run pytest tests/e2e/test_combined_hook_journey.py
+      tests/e2e/test_prompt_hook_lifecycle.py tests/e2e/test_prompt_delegation_real_evidence.py
+      tests/unit/nodes/node_onex_setup_effect/test_onex_tui.py -q --no-cov -n 0 -p no:randomly
     cwd: .

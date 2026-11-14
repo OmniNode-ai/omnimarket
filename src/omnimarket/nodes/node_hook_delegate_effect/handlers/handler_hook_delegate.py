@@ -33,10 +33,6 @@ from omnimarket.nodes.node_hook_delegate_effect.protocols.protocol_delegate_cli 
 if TYPE_CHECKING:
     from omnibase_core.container import ModelONEXContainer
 
-#: Written by `onex claude enable`. While it says enabled, the ONEX gateway
-#: already routes the session, so the hook delegates nothing.
-GATEWAY_JOURNAL = Path(".onex") / "claude_gateway.json"
-
 #: The classifier's intent as an `onex delegate` task class. Without one,
 #: onex delegate guesses, and a prose question judged as code_generation was
 #: vetoed for not compiling. An intent with no matching public class (debug,
@@ -56,18 +52,6 @@ _PASS_THROUGH = {
     EnumDelegateCliState.TIMED_OUT: EnumHookDelegateOutcome.TIMED_OUT,
     EnumDelegateCliState.NOT_STARTED: EnumHookDelegateOutcome.FAILED,
 }
-
-
-def gateway_owns_session(home: Path) -> bool:
-    """The gateway journal says enabled; an unreadable journal counts as enabled."""
-    try:
-        return bool(
-            json.loads((home / GATEWAY_JOURNAL).read_text()).get("phase") == "enabled"
-        )
-    except FileNotFoundError:
-        return False
-    except (OSError, ValueError, AttributeError):
-        return True
 
 
 class HandlerHookDelegate:
@@ -106,10 +90,6 @@ class HandlerHookDelegate:
             self._save_turn(path, {})
 
     def handle(self, request: ModelHookDelegateRequest) -> ModelHookDelegateResult:
-        if gateway_owns_session(Path.home()):
-            return ModelHookDelegateResult(
-                outcome=EnumHookDelegateOutcome.GATEWAY_OWNS_SESSION
-            )
         path = self._turn_file(request.session_id)
         if not request.session_id or not path.is_file():
             return self._delegate(request)

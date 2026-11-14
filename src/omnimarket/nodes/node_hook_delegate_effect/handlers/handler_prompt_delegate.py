@@ -21,6 +21,7 @@ import fcntl
 import hashlib
 import json
 import os
+import re
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -31,6 +32,7 @@ from omnimarket.nodes.node_hook_delegate_effect.handlers.handler_hook_delegate i
     HandlerHookDelegate,
 )
 from omnimarket.nodes.node_hook_delegate_effect.models import (
+    DECLINE_TOKEN,
     EnumHookDelegateOutcome,
     EnumPromptDelegateOutcome,
     ModelHookDelegateRequest,
@@ -41,8 +43,10 @@ from omnimarket.nodes.node_hook_delegate_effect.models import (
 if TYPE_CHECKING:
     from omnibase_core.container import ModelONEXContainer
 
-DECLINE_TOKEN = "CANNOT_ANSWER"  # a reply sentinel, not a secret
 SKIP_PREFIX = "@claude"
+#: How Claude Code writes a pasted image into the prompt text; the image itself
+#: is never in the hook's input, so a delegated model could only guess at it.
+_IMAGE = re.compile(r"\[Image #\d+\]")
 #: Recent conversation given to the delegated model.
 CONTEXT_CHARS = 3000
 #: Delegated history handed to Claude in one turn.
@@ -92,6 +96,8 @@ def skip_reason(prompt: str) -> EnumPromptDelegateOutcome | None:
         return EnumPromptDelegateOutcome.SLASH_COMMAND
     if text[: len(SKIP_PREFIX)].lower() == SKIP_PREFIX:
         return EnumPromptDelegateOutcome.SKIPPED
+    if _IMAGE.search(text):
+        return EnumPromptDelegateOutcome.HAS_IMAGE
     return None
 
 
