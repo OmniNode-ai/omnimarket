@@ -15,7 +15,7 @@ import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from urllib.parse import quote, quote_plus
 from uuid import uuid4
 
@@ -98,7 +98,7 @@ async def _migrated_schema() -> AsyncIterator[
         )
     try:
         admin = await asyncpg.connect(_dsn())
-    except (OSError, asyncpg.PostgresError) as exc:  # pragma: no cover - infrastructure
+    except (OSError, asyncpg.PostgresError) as exc:
         pytest.skip(f"no reachable Postgres for OMN-24171: {exc}")
     schema = f"omn24171_{uuid4().hex[:16]}"
     pool: asyncpg.Pool | None = None
@@ -119,7 +119,7 @@ async def _migrated_schema() -> AsyncIterator[
             f"{_dsn()}?options={options}", min_size=1, max_size=3
         )
         inner = AsyncpgAdapter(dsn=_dsn())
-        inner._pool = pool  # type: ignore[attr-defined]
+        cast(Any, inner)._pool = pool
         yield _SchemaAdapter(inner), admin
     finally:
         if pool is not None:
@@ -162,7 +162,7 @@ async def _digest(db: _SchemaAdapter) -> list[str]:
 async def test_the_golden_chain_fills_the_tables_and_replay_changes_nothing() -> None:
     async with _migrated_schema() as (db, _admin):
         writer = EvalResultsProjectionWriter(overlay=overlay(), clock=lambda: at(100))
-        writer._db = db  # type: ignore[assignment]
+        cast(Any, writer)._db = db
         published: list[dict[str, Any]] = []
 
         async def publish(_topic: str, value: bytes) -> None:

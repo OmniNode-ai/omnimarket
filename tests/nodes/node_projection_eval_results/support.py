@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 from omnimarket.events.context_roi import (
@@ -342,7 +342,7 @@ def make_writer(
         clock=clock or (lambda: at(100)),
         store_factory=lambda _db: store,
     )
-    writer._db = FakeDb()  # type: ignore[assignment]
+    cast(Any, writer)._db = FakeDb()
     published: list[tuple[str, dict[str, Any]]] = []
 
     async def publish(topic: str, value: bytes) -> None:
