@@ -21,14 +21,18 @@ from omnimarket.nodes.node_host_storage_effect.handlers.protocols import (
 )
 from omnimarket.nodes.node_host_storage_effect.models.model_host_storage import (
     EnumHostStorageBackend,
+    EnumHostStorageEntryOutcome,
     EnumHostStorageOutcome,
     EnumHostStorageRefusal,
     ModelHostStorageRequest,
     ModelHostStorageResult,
 )
 from omnimarket.nodes.node_host_storage_effect.models.model_host_storage_overlay import (
+    ENTRY_KINDS,
     NODE_NAME,
     ModelHostStorageOverlay,
+    ModelStorageCommand,
+    ModelStorageHost,
 )
 
 
@@ -68,6 +72,12 @@ class HandlerHostStorage:
         return self._backend_value
 
     def handle(self, request: ModelHostStorageRequest) -> ModelHostStorageResult:
+        result = self._decide_and_run(request)
+        return result.model_copy(update={"correlation_id": request.correlation_id})
+
+    def _decide_and_run(
+        self, request: ModelHostStorageRequest
+    ) -> ModelHostStorageResult:
         host = self._overlay.host(request.host)
         if host is None:
             return self._refused(
@@ -88,6 +98,19 @@ class HandlerHostStorage:
                 EnumHostStorageRefusal.COMMAND_NOT_DECLARED_FOR_HOST,
                 "the host's row does not list this command",
             )
+        is_entry_command = command.kind in ENTRY_KINDS
+        if is_entry_command and not request.entries:
+            return self._refused(
+                request,
+                EnumHostStorageRefusal.ENTRIES_REQUIRED,
+                "an entry command names the entries to remove; none were sent",
+            )
+        if not is_entry_command and request.entries:
+            return self._refused(
+                request,
+                EnumHostStorageRefusal.ENTRIES_NOT_ACCEPTED,
+                "this command takes no entries",
+            )
         before = self._backend.free_bytes(host, command.measured_path)
         if before is None:
             return self._refused(
@@ -95,6 +118,8 @@ class HandlerHostStorage:
                 EnumHostStorageRefusal.FREE_BYTES_UNREADABLE,
                 "free bytes before the command could not be read; nothing ran",
             )
+        if is_entry_command:
+            return self._handle_entries(request, host, command, before)
         run = self._backend.run(host, command)
         after = self._backend.free_bytes(host, command.measured_path)
         ok = run.exit_code == 0 and not run.timed_out
@@ -116,6 +141,50 @@ class HandlerHostStorage:
             timed_out=run.timed_out,
             free_bytes_before=before,
             free_bytes_after=after,
+        )
+
+    def _handle_entries(
+        self,
+        request: ModelHostStorageRequest,
+        host: ModelStorageHost,
+        command: ModelStorageCommand,
+        before: int,
+    ) -> ModelHostStorageResult:
+        run = self._backend.remove_entries(host, command, request.entries)
+        after = self._backend.free_bytes(host, command.measured_path)
+        rows = run.entry_results
+        removed = [r for r in rows if r.outcome is EnumHostStorageEntryOutcome.REMOVED]
+        failed = [r for r in rows if r.outcome is EnumHostStorageEntryOutcome.FAILED]
+        refusal = None
+        if len(removed) == len(rows):
+            outcome = EnumHostStorageOutcome.OK
+            detail = None
+        elif removed:
+            outcome = EnumHostStorageOutcome.PARTIAL
+            detail = f"removed {len(removed)} of {len(rows)} entries"
+        elif failed:
+            outcome = EnumHostStorageOutcome.FAILED
+            detail = f"no entry removed; {len(failed)} failed"
+        else:
+            outcome = EnumHostStorageOutcome.REFUSED
+            refusal = EnumHostStorageRefusal.ALL_ENTRIES_REFUSED
+            detail = "every named entry was refused; nothing was removed"
+        if after is None and outcome in (
+            EnumHostStorageOutcome.OK,
+            EnumHostStorageOutcome.PARTIAL,
+        ):
+            outcome = EnumHostStorageOutcome.COMPLETED_UNOBSERVED
+            detail = "entries removed; free bytes after the command could not be read"
+        return ModelHostStorageResult(
+            host=request.host,
+            command=request.command,
+            outcome=outcome,
+            refusal=refusal,
+            detail=detail,
+            timed_out=run.timed_out,
+            free_bytes_before=before,
+            free_bytes_after=after,
+            entry_results=rows,
         )
 
     @staticmethod

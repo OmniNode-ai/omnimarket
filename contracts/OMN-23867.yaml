@@ -1,0 +1,84 @@
+schema_version: 1.0.0
+ticket_id: OMN-23867
+title: The host disk node removes only what it is told to, refuses anything unsafe, and replaces the hourly disk scripts on the lab hosts
+summary: 'node_host_storage_effect gains typed entry commands (remove_entries for package cache entries and lab-run folders, remove_worktrees for worktrees with lease markers) beside its declared argv commands (a docker class prune). Each named entry is judged alone: refused outside the roots the host declares (symlinks and .. resolved), refused in use (a live process holds it, or a lease marker is present), refused not found, failed, or removed with the bytes it gave back. Every root, command, timeout and host is an overlay value. The install on the lab hosts, the move of the old scripts'' execution behind these commands and the follow-on ticket are not in this change.'
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn23867-effect
+  statement: The host storage effect removes only the entries it is sent, refuses anything outside its declared roots or in use, and reports a typed row per entry.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the effect executes only a typed command it is sent and runs nothing on a timer or by its own choice; a command for a host or class the overlay does not declare is refused typed -- falsifier: uv run pytest tests/nodes/node_host_storage_effect/test_typed_disk_commands.py -q'
+  - id: AC2
+    statement: 'AC2: the effect refuses any entry outside its declared roots (including through a symlink or a relative path) and any entry in use, tested with a live environment: a real process holding a cache entry and a real worktree with a lease, on a lab host or a live sandbox, both refused while the free ones are removed -- falsifier: uv run pytest tests/nodes/node_host_storage_effect/test_disk_command_safety_live.py -q red on a build that skips the root or the in-use check'
+  - id: AC3
+    statement: 'AC3: every root, command, timeout and host comes from overlays/node_host_storage_effect/overlay.yaml in the overlays repository; the effect has no path default of its own -- falsifier: uv run pytest tests/nodes/node_host_storage_effect/test_disk_overlay_only.py -q'
+  - id: AC4
+    statement: 'AC4: failing control: an injected break that removes the root check turns the safety test red, and an injected break that drops the typed result turns the golden test red -- falsifier: uv run pytest tests/nodes/node_host_storage_effect/test_disk_command_controls.py -q'
+  - id: AC5
+    statement: 'AC5: golden chain and error chain tests (command, entries removed, result with freed bytes; and refused outside root, refused in use, partial failure) pass on the in-memory bus and on the real dev broker overlay -- falsifier: uv run pytest tests/chains/host_disk/test_chain_host_disk_effect.py -q with both overlays'
+evidence_requirements:
+- kind: tests
+  description: The typed command, safety, overlay-only and control suites and the golden and error chains (AC1 to AC5, in-memory half).
+  command: uv run pytest tests/nodes/node_host_storage_effect tests/chains/host_disk/test_chain_host_disk_effect.py tests/unit/nodes/node_host_storage_effect -q -n 0 -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23867-ac1
+  description: 'AC1 is the typed commands: a docker class prune, the entry commands, the typed refusals of an undeclared host or class, and no scheduler in the node.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_storage_effect/test_typed_disk_commands.py -q -n 0 -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn23867-ac2
+  description: 'AC2 is the live safety run: real holder processes, a real leased worktree, symlink and relative entries; refused entries survive and free ones are removed.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_storage_effect/test_disk_command_safety_live.py -q -n 0 -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn23867-ac3
+  description: 'AC3 is the overlay-only effect: no overlay root refuses to start, roots move with the overlay, and no path literal is in the node''s sources. The deployment''s overlay.yaml lives in the overlays repository, which this repository does not hold; it is left for that repository''s change (see the pull request).'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_storage_effect/test_disk_overlay_only.py -q -n 0 -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn23867-ac4
+  description: 'AC4 is the failing controls: a removed root check, a removed in-use check, a removed lease check and a dropped typed result each turn the scenario red, and the intact build passes it.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_storage_effect/test_disk_command_controls.py -q -n 0 -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn23867-ac5
+  description: 'AC5 in-memory half is the golden and error chains on the in-memory bus; the dev broker half needs HOST_DISK_CHAIN_LANE and HOST_DISK_CHAIN_ROOT and the broker ACL rows for the node''s two topics (measured on h202 on 2026-11-14: the broker refused the node''s result topic with TopicAuthorizationFailedError for this lane''s login, as it did the host disk reading chain), so it is unmet until those rows are applied.'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/chains/host_disk/test_chain_host_disk_effect.py -q -n 0 -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn23867-integration-proof
+  description: Run the node suites and the chain on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. The install on h202 through the host installer, the scheduled run and the other pooled hosts (AC6) and the follow-on ticket (AC7) are not part of this change.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23867 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_host_storage_effect tests/chains/host_disk/test_chain_host_disk_effect.py -q --no-cov
+    cwd: .
