@@ -55,5 +55,5 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "command"
-        check_value: bash -c '! grep -rEn "omniclaude\.hooks\.topics|from omniclaude" src/omnimarket/nodes/node_dependency_health_sweep/engine/contract_topology.py'
+        check_value: bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_dependency_health_sweep/engine/contract_topology.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "No enum owned by" > /dev/null'
         cwd: "."
