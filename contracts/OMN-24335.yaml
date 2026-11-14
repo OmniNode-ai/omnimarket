@@ -34,13 +34,13 @@ dod_evidence:
     check_value: uv run pytest tests/ci/test_node_entry_point_guard_wiring.py -q -n 0 --no-cov -p no:randomly
     cwd: .
 - id: dod-omn24335-ac2
-  description: 'hosted proxy for AC2: the wiring test proves by syntax tree that the step selects the real inventory case, which asserts a clean tree and reports a dropped entry point. The case itself exceeds the hosted verifier 30 s per-check ceiling, so the lab integration-proof item runs it.'
+  description: 'hosted proxy for AC2: the wiring test proves the lint job carries the step (it fails at the base ci.yml, which has none) and proves by syntax tree that the step selects the real inventory case, which asserts a clean tree and reports a dropped entry point. The case itself exceeds the hosted verifier 30 s per-check ceiling, so the lab integration-proof item runs it.'
   source: manual
   binds_ac:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/ci/test_node_entry_point_guard_wiring.py -k selector_reality -q -n 0 --no-cov -p no:randomly
+    check_value: uv run pytest tests/ci/test_node_entry_point_guard_wiring.py -k "selector_reality or real_workflow_is_clean" -q -n 0 --no-cov -p no:randomly
     cwd: .
 - id: dod-omn24335-ac3
   description: 'hosted proxy for AC3: the registry test passes; the CI read of the test branch pair (red without the entry point, green with it) is posted as a comment on the pull request.'
