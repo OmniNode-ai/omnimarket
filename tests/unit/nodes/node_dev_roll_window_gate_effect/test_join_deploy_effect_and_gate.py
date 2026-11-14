@@ -102,7 +102,9 @@ class Pair:
     async def _pump(self) -> None:
         held = self.bus.on(TOPIC_DEV_ROLL_HOLD)
         for payload in held[self._forwarded :]:
-            self.gate.hold.handle(ModelDeployPublishCommand.model_validate(payload))
+            self.gate.hold.handle(
+                ModelDeployPublishCommand.model_validate(payload["payload"])
+            )
         self._forwarded = len(held)
 
     def rebuilds(self) -> list[dict[str, Any]]:
@@ -177,7 +179,9 @@ async def test_a_command_the_gate_cannot_hold_still_reaches_the_agent(
     odd = command(git_ref="origin/dev")
     await pair.deploy(odd)
     out = pair.gate.hold.handle(
-        ModelDeployPublishCommand.model_validate(pair.bus.on(TOPIC_DEV_ROLL_HOLD)[0])
+        ModelDeployPublishCommand.model_validate(
+            pair.bus.on(TOPIC_DEV_ROLL_HOLD)[0]["payload"]
+        )
     )
     assert isinstance(out, list)
     passed = out[1]

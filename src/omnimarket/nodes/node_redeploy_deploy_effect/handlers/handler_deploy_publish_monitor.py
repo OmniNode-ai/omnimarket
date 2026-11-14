@@ -381,10 +381,18 @@ class HandlerDeployPublishMonitor:
             and not command.roll_window_released
             and _dev_roll_gate_live()
         ):
+            # Enveloped: the gate node consumes through the runtime dispatch, which
+            # refuses a bare payload (unlike the deploy agent's rebuild-requested topic).
+            hold_envelope: ModelEventEnvelope[Any] = ModelEventEnvelope(
+                payload=command.model_dump(mode="json"),
+                correlation_id=command.correlation_id,
+                event_type=TOPIC_DEV_ROLL_HOLD,
+                payload_type=type(command).__name__,
+            )
             await self._bus.publish(
                 TOPIC_DEV_ROLL_HOLD,
                 key=str(command.correlation_id).encode(),
-                value=command.model_dump_json().encode(),
+                value=hold_envelope.model_dump_json().encode(),
                 headers=_headers_for(TOPIC_DEV_ROLL_HOLD, command.correlation_id),
             )
             logger.info(

@@ -104,7 +104,10 @@ async def test_live_gate_sends_a_dev_command_to_the_hold_topic_and_never_to_the_
     await HandlerDeployPublishMonitor(bus).handle(envelope(item))
     assert [t for t, _ in bus.sent] == [TOPIC_DEV_ROLL_HOLD]
     assert bus.on(TOPIC_REBUILD_REQUESTED) == []
-    assert bus.on(TOPIC_DEV_ROLL_HOLD)[0]["correlation_id"] == str(item.correlation_id)
+    (held,) = bus.on(TOPIC_DEV_ROLL_HOLD)
+    assert held["event_type"] == TOPIC_DEV_ROLL_HOLD
+    assert held["payload_type"] == "ModelDeployPublishCommand"
+    assert held["payload"]["correlation_id"] == str(item.correlation_id)
 
 
 async def test_a_released_command_is_published_to_the_agent_and_not_held_again(
