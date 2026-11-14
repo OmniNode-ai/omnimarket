@@ -1,0 +1,90 @@
+schema_version: 1.0.0
+ticket_id: OMN-24345
+title: A step that signs the dev test user in and reads one answer
+summary: 'Adds node_dev_signed_in_read_effect: it reads the dev probe user''s password from the secret store, signs in with the password grant at the overlay-declared Keycloak, makes the one read the overlay
+  declares (the hook-events by-correlation route) with the user''s bearer and reports the HTTP status and the answer''s data state. The dev-only guard refuses any other lane or realm before any secret read
+  or HTTP call; every failure is typed; no token, password or row is ever returned. Seam tests hold the overlay''s route, query names and data states to the by-correlation read node and its user to the
+  identity node''s overlay.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24345-signed-in-read
+  statement: A declared dev node signs the dev probe user in and makes one signed-in read, typed in every outcome, so the signed-in hook-events read is observed on the dev runtime without a hand-made request.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: node_dev_signed_in_read_effect signs the dev probe user in with the password grant and reads the declared route with that bearer, answering a typed outcome that names the HTTP status
+      and the data state and never a token or a password -- falsifier: pytest tests/nodes/node_dev_signed_in_read_effect -q fails when the handler is reverted to the base revision'
+  - id: AC2
+    statement: 'AC2: every refusal is typed and happens before any call that could change state: a lane other than dev, a realm not declared, a missing password, a refused grant, no response, a 401 or 403
+      from the read, an unreadable body -- falsifier: the error chain test fails when any one guard is removed'
+  - id: AC3
+    statement: 'AC3: the overlay''s user, client, password key, route path and query names match the identity node''s overlay and the by-correlation read node''s contract -- falsifier: the seam test fails
+      when any one of them is renamed alone'
+  - id: AC4
+    statement: 'AC4: integrated: run once on the dev host from the stored overlays after the identity node, the step answers ok=True with the read''s HTTP status and data state, read from the run receipt
+      on that host -- falsifier: the same run with lane stability answers refused_not_dev'
+evidence_requirements:
+- kind: tests
+  description: The node focused tests at the pushed head. The failing controls are the dev-only guard removed (three refusal tests fail), the read sent without its bearer (fourteen tests fail) and a renamed
+    route fact in the overlay (the seam tests fail).
+  command: uv run --frozen pytest tests/nodes/node_dev_signed_in_read_effect -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24345-ac1-golden
+  description: 'The golden chain passes at the pushed head: sign-in then one read, no secret in any dump, repr or log, every data state carried.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_dev_signed_in_read_effect/test_golden_chain_dev_signed_in_read.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24345-ac2-error-chain
+  description: 'The error chain passes at the pushed head: the guard first, then each typed refusal.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_dev_signed_in_read_effect/test_error_chain_dev_signed_in_read.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24345-ac3-seam
+  description: 'The seam tests pass at the pushed head: the overlay''s route facts equal the by-correlation read node''s, its user equals the identity node''s.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_dev_signed_in_read_effect/test_seam_read_route.py uv run --frozen pytest tests/nodes/node_dev_signed_in_read_effect/test_overlay.py -q --no-cov -n
+      0 -p no:randomly
+    cwd: .
+- id: dod-omn24345-ac4-probe-chain
+  description: The golden chain run answers read_accepted at the pushed head; the live run on the development host is the unbound runtime check below.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_dev_signed_in_read_effect/test_golden_chain_dev_signed_in_read.py -k run_signs_in -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24345-ac4-runtime
+  description: The node, run on the development host from the pushed branch where the dev overlay is installed, answers read_accepted with the read status and data state. Hosted CI cannot reach the lab,
+    so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env -u PYTHONPATH uv run --frozen python -m omnimarket.nodes.node_dev_signed_in_read_effect run --lane dev | grep -q "outcome=read_accepted"
+    cwd: .
+- id: dod-omn24345-integration-proof
+  description: The pushed head ran the node tests on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24345 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_dev_signed_in_read_effect -q --no-cov
+    cwd: .
