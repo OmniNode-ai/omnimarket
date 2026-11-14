@@ -277,7 +277,9 @@ def test_cli_exit_code_follows_the_result(
 
 def test_registered_node_declares_the_completion_topic() -> None:
     contract = yaml.safe_load((NODE_DIR / "contract.yaml").read_text(encoding="utf-8"))
-    assert contract["terminal_event"] in contract["externally_consumed_topics"]
+    topic = "onex.evt.omnimarket.landing-decision-venv-completed.v1"
+    assert contract["terminal_event"] == topic
+    assert topic in contract["externally_consumed_topics"]
     assert contract["metadata"]["ticket"] == "OMN-24408"
     pyproject = (NODE_DIR.parents[3] / "pyproject.toml").read_text(encoding="utf-8")
     assert (
