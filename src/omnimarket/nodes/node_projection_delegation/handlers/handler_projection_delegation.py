@@ -32,7 +32,9 @@ import logging
 from collections.abc import Iterable, Mapping
 from datetime import UTC, datetime
 from decimal import Decimal
+from enum import Enum
 from pathlib import Path
+from typing import Protocol
 
 import yaml
 from omnibase_core.enums.enum_delegation_terminal_failure_cause import (
@@ -373,6 +375,9 @@ class ModelProjectionTaskDelegatedEvent(BaseModel):
     requested_model: str | None = Field(default=None)
     queue_wait_ms: int | None = Field(default=None, ge=0, strict=True)
     execution_ms: int | None = Field(default=None, ge=0, strict=True)
+    # OMN-18534: the terminal's total inference calls (migration 0069); 0 is a
+    # delegation that failed before any turn, None is a count nobody reported.
+    turn_count: int | None = Field(default=None, ge=0, strict=True)
     quality_gates_checked: list[str] | None = Field(default=None)
     quality_gates_failed: list[str] | None = Field(default=None)
     quality_gate_detail: str | None = Field(default=None)
@@ -1073,12 +1078,7 @@ class HandlerProjectionDelegation:
         # OMN-19448: keep the disposition the terminal declared, just as the
         # canonical terminal path does. Older terminals omit the pair, so do
         # not erase an earlier terminal's evidence with missing values.
-        for column, terminal_disposition in (
-            ("operational_outcome", event.operational_outcome),
-            ("content_verdict", event.content_verdict),
-        ):
-            if terminal_disposition is not None:
-                row[column] = terminal_disposition.value
+        _stamp_terminal_dispositions(row, event)
         row["attempt_history"] = [
             attempt.model_dump(mode="json") for attempt in reduction.attempt_history
         ]
@@ -1089,6 +1089,7 @@ class HandlerProjectionDelegation:
             event.queue_wait_ms,
             event.execution_duration_ms,
         )
+        _stamp_terminal_turn_count(row, event.attempts_count)
         # OMN-19448: the trace id the terminal copied from its command (OMN-19437).
         if event.trace_id is not None:
             row["trace_id"] = str(event.trace_id)
@@ -1762,6 +1763,7 @@ def _canonical_result_to_task_delegated_payload(
         "requested_model": _blank_to_none(payload.get("requested_model")),
         "queue_wait_ms": _nonnegative_int_or_none(payload.get("queue_wait_ms")),
         "execution_ms": _nonnegative_int_or_none(payload.get("execution_duration_ms")),
+        "turn_count": _nonnegative_int_or_none(payload.get("attempts_count")),
         "quality_gates_failed": [failure_reason]
         if failure_reason and not quality_passed
         else [],
@@ -2088,7 +2090,7 @@ def _preserve_existing_evidence(
             if key == "finish_reason" and row.get("truncated") is None:
                 row["truncated"] = existing.get("truncated")
     # A measured zero is evidence, so only None may inherit a stored timing.
-    for key in ("queue_wait_ms", "execution_ms"):
+    for key in ("queue_wait_ms", "execution_ms", "turn_count"):
         if row.get(key) is None and existing.get(key) is not None:
             row[key] = existing[key]
     if bool(existing.get("request_override_applied")):
@@ -2235,6 +2237,7 @@ def _stamp_terminal_trace_and_routing(
     _stamp_terminal_timing_and_requested_model(
         row, event.requested_model, event.queue_wait_ms, event.execution_ms
     )
+    _stamp_terminal_turn_count(row, event.turn_count)
 
 
 def _nonnegative_int_or_none(value: object) -> int | None:
@@ -2279,6 +2282,34 @@ def _stamp_unmeasured_latency(
     for key in ("latency_ms", "delegation_latency_ms"):
         if _is_zero(row.get(key)):
             row[key] = duration
+
+
+class _DeclaredDisposition(Protocol):
+    """A terminal that may carry the declared operational outcome and verdict."""
+
+    @property
+    def operational_outcome(self) -> Enum | None: ...
+
+    @property
+    def content_verdict(self) -> Enum | None: ...
+
+
+def _stamp_terminal_dispositions(
+    row: dict[str, object], event: _DeclaredDisposition
+) -> None:
+    """Name the declared disposition pair; an omitted value leaves the column alone."""
+    for column, terminal_disposition in (
+        ("operational_outcome", event.operational_outcome),
+        ("content_verdict", event.content_verdict),
+    ):
+        if terminal_disposition is not None:
+            row[column] = terminal_disposition.value
+
+
+def _stamp_terminal_turn_count(row: dict[str, object], turn_count: int | None) -> None:
+    """Name the terminal's total inference calls; a reported zero is stored (0069)."""
+    if turn_count is not None:
+        row["turn_count"] = turn_count
 
 
 def _blank_to_none(value: object) -> str | None:

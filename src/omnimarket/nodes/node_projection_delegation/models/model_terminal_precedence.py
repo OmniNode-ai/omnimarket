@@ -59,6 +59,7 @@ _TERMINAL_OWNED_COLUMNS = (
     "requested_model",
     "queue_wait_ms",
     "execution_ms",
+    "turn_count",
 )
 
 

@@ -1,0 +1,72 @@
+schema_version: 1.0.0
+ticket_id: OMN-18534
+title: 'W7-2: Turn count is recorded per delegation as a first-class metric'
+summary: 'Migration 0069 adds a nullable turn_count column to delegation_events. Both terminal writers store the terminal''s attempts_count in it: the total inference calls including escalated rungs, retries and compliance repairs, 0 for a delegation that failed before any turn. The node contract exposes the column, the terminal owns it, and a sparse later terminal keeps a recorded count. The omnibase_infra vendored copy of 0068 lands first in its own pull request.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn18534-turn-count
+  statement: Each delegation record carries its turn count as a typed column written from the terminal, on the local and the escalated path, with a delegation that failed before any turn recording zero, and the projection exposes it to the surface that reads it.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: turn count is a typed field on the delegation record, not derived at read time -- falsifier: a consumer computes it from a log'
+  - id: AC2
+    statement: 'AC2: it is present on both the local and the escalated path -- falsifier: an escalated delegation whose record omits it or reports the pre-escalation count'
+  - id: AC3
+    statement: 'AC3: a delegation that fails before any turn records zero rather than absent -- falsifier: a null that a report renders as zero'
+  - id: AC4
+    statement: 'AC4: the projection carries it through to the surface that reads it -- falsifier: the field exists on the event and not on the projection'
+evidence_requirements:
+- kind: tests
+  description: The turn count column tests
+  command: uv run --frozen pytest tests/unit/delegation/test_terminal_turn_count_omn18534.py -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn18534-typed-column-ac1
+  description: Migration 0069 adds the nullable integer turn_count column idempotently with a rollback and is the only migration that adds it; the terminal writes it as a stored column, and the local sqlite store declares it before any terminal is projected.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_terminal_turn_count_omn18534.py -q --no-cov -p no:randomly -k "only_migration_0069 or declares_a_nullable_integer_column or different_counts"
+    cwd: .
+- id: dod-omn18534-escalated-path-ac2
+  description: A single-turn and an escalated delegation store different counts; the escalated record carries the total calls (3) and not the escalation count (1), on the delegate-skill and the canonical terminal.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_terminal_turn_count_omn18534.py -q --no-cov -p no:randomly -k "different_counts or pre_escalation or canonical_escalated or canonical_terminal_stores"
+    cwd: .
+- id: dod-omn18534-zero-not-absent-ac3
+  description: A delegation refused before dispatch stores turn_count 0, not NULL, and a sparse later terminal does not erase a recorded zero; a malformed count is stored as NULL and never coerced to zero.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_terminal_turn_count_omn18534.py -q --no-cov -p no:randomly -k "before_any_turn or sparse_later or rejects_non_integer or reported_no_count"
+    cwd: .
+- id: dod-omn18534-projection-ac4
+  description: The node contract's projection columns list turn_count, the terminal owns the column, and the async runner binds it into the INSERT and keeps a recorded zero.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_terminal_turn_count_omn18534.py -q --no-cov -p no:randomly -k "projection_contract_exposes or async_runner"
+    cwd: .
+- id: dod-omn18534-integration-proof
+  description: On a lab host at the pushed head, runs the turn count unit tests and the real-Postgres twin through the lab work runner; the twin applies migration 0069 to a disposable schema, projects an escalated terminal (3 calls), a refused-before-dispatch terminal (0) and a canonical terminal, and reads the column back. Hosted CI runs the same twin against its Postgres service; only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-18534 --kind test -- uv run --frozen pytest tests/unit/delegation/test_terminal_turn_count_omn18534.py tests/test_omn18534_turn_count_real_postgres.py -q --no-cov -p no:randomly'
+    cwd: .
