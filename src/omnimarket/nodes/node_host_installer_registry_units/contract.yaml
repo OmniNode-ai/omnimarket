@@ -101,6 +101,30 @@ command_line:
 # only when a unit's environment names it and no path override replaces that variable; a host row that declares no
 # overlays clone refuses the install with the host named.
 units:
+  stall-probe-6803-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-stall-probe-6803
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 86400
+      run_timeout_s: 60
+      run_at_load: false
+      description: throwaway probe, every 86400 s, never ticks before removal
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+    module: compileall
+    entry_file: pyproject.toml
+    probe_argv: ["--help"]
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment: {}
+    evidence_file: .local/state/omni/stall-probe-6803/last-run.json
+    state_directory: .onex_state/stall-probe-6803
   floor-alarm:
     platform: launchd
     kind: copied_tree
