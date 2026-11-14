@@ -181,8 +181,12 @@ class SourceRuntimeFacts:
             tzinfo=UTC
         )
 
-    def manifest_nodes(self) -> tuple[str, ...]:
-        """The names of the contracts the runtime serves in its introspection manifest."""
+    def manifest_names(self) -> dict[str, str]:
+        """Every name the runtime lists a contract under, mapped to the entry point name that loads it.
+
+        Consumer groups and discovery lines carry the contract's own name; the node map carries the entry point name
+        (the node's directory), so a join is credited to both.
+        """
         labels = self._labels
         text = self._ssh(
             self._overlay.ssh_host_env,
@@ -190,19 +194,25 @@ class SourceRuntimeFacts:
             labels.docker_timeout_seconds,
         )
         document = json.loads(text)
-        names = tuple(
-            sorted(
-                {
-                    item[key]
-                    for item in document[labels.manifest_contracts_key]
-                    for key in labels.manifest_name_keys
-                    if isinstance(item.get(key), str)
-                }
-            )
-        )
+        names: dict[str, str] = {}
+        for item in document[labels.manifest_contracts_key]:
+            keys = [
+                item[k]
+                for k in labels.manifest_name_keys
+                if isinstance(item.get(k), str)
+            ]
+            if not keys:
+                continue
+            entry = keys[-1]
+            for key in keys:
+                names[key] = entry
         if not names:
             raise ValueError("the manifest lists no contracts")
         return names
+
+    def manifest_nodes(self) -> tuple[str, ...]:
+        """The names of the contracts the runtime serves in its introspection manifest."""
+        return tuple(sorted(self.manifest_names()))
 
     def checkout_ancestry(
         self, path: str, shas: Sequence[str]
@@ -250,14 +260,32 @@ class SourceRuntimeFacts:
             unread.extend(("loaded_nodes", "subscriptions", "published"))
         if self._manifest_url:
             try:
-                names = self.manifest_nodes()
+                aliases = self.manifest_names()
                 known = {item.node for item in facts.loaded_nodes}
+                joined = {(s.node, s.topic) for s in facts.subscriptions}
                 facts = ModelMcrRuntimeFacts(
                     loaded_nodes=(
                         *facts.loaded_nodes,
-                        *(ModelMcrLoadedNode(node=n) for n in names if n not in known),
+                        *(
+                            ModelMcrLoadedNode(node=n)
+                            for n in sorted(aliases)
+                            if n not in known
+                        ),
                     ),
-                    subscriptions=facts.subscriptions,
+                    subscriptions=(
+                        *facts.subscriptions,
+                        *(
+                            ModelMcrSubscription(
+                                node=aliases[s.node],
+                                topic=s.topic,
+                                joined_at=s.joined_at,
+                            )
+                            for s in facts.subscriptions
+                            if s.node in aliases
+                            and aliases[s.node] != s.node
+                            and (aliases[s.node], s.topic) not in joined
+                        ),
+                    ),
                     published=facts.published,
                 )
                 if "loaded_nodes" in unread:

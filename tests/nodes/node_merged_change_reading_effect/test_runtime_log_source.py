@@ -274,3 +274,31 @@ def test_a_refused_ssh_is_retried_by_the_contracts_attempt_count() -> None:
     assert started is not None
     assert len(facts.loaded_nodes) == 2
     assert ssh.calls > 2
+
+
+def test_a_join_under_the_contract_name_counts_for_the_entry_point_name() -> None:
+    """Consumer groups carry the contract name (projection_work_ledger); the node map carries node_projection_work_ledger."""
+    join = (
+        "2026-11-14 11:12:00 [INFO] aiokafka.consumer.group_coordinator: Setting newly assigned partitions "
+        "{TopicPartition(topic='onex.evt.omnimarket.work-ledger-claim.v1', partition=0)} for group "
+        "local.omnimarket.projection_work_ledger.consume.1.2.0.__i.runtime-main.__t.onex.evt.omnimarket.work-ledger-claim.v1"
+    )
+    manifest = b'{"contracts": [{"name": "projection_work_ledger", "entry_point_name": "node_projection_work_ledger"}]}'
+    ssh = _Ssh(
+        {
+            "docker logs": (LOG_TEXT + "\n" + join).encode(),
+            "docker inspect": b"2026-11-14T09:23:43.8Z\n",
+            "curl": manifest,
+        }
+    )
+    facts, _ = _manifest_source(ssh, "http://127.0.0.1:8085/m").read([])
+    joined = {(s.node, s.topic) for s in facts.subscriptions}
+    assert (
+        "projection_work_ledger",
+        "onex.evt.omnimarket.work-ledger-claim.v1",
+    ) in joined
+    assert (
+        "node_projection_work_ledger",
+        "onex.evt.omnimarket.work-ledger-claim.v1",
+    ) in joined
+    assert facts.unread == ()

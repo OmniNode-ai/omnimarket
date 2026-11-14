@@ -80,7 +80,7 @@ runtime:
     filter_regex: 'Discovered contract: |Setting newly assigned partitions|Published output event to |Runtime health check: '
     time_format: '%Y-%m-%d %H:%M:%S'
     loaded_pattern: '^(?P<ts>\d{4}-\d\d-\d\d \d\d:\d\d:\d\d) \[\w+\] omnibase_infra\.runtime\.auto_wiring\.discovery: Discovered contract: (?P<node>\S+) '
-    subscribed_pattern: '^(?P<ts>\d{4}-\d\d-\d\d \d\d:\d\d:\d\d) \[\w+\] aiokafka\.consumer\.group_coordinator: Setting newly assigned partitions \{TopicPartition\(topic=''(?P<topic>[^'']+)''.*for group local\.omnimarket\.(?P<node>node_[a-z0-9_]+)\.consume'
+    subscribed_pattern: '^(?P<ts>\d{4}-\d\d-\d\d \d\d:\d\d:\d\d) \[\w+\] aiokafka\.consumer\.group_coordinator: Setting newly assigned partitions \{TopicPartition\(topic=''(?P<topic>[^'']+)''.*for group local\.omnimarket\.(?P<node>[a-z0-9_]+)\.consume'
     published_pattern: '^(?P<ts>\d{4}-\d\d-\d\d \d\d:\d\d:\d\d) \[\w+\] \S+: Published output event to (?P<topic>\S+) '
     health_pattern: '^(?P<ts>\d{4}-\d\d-\d\d \d\d:\d\d:\d\d) \[\w+\] \S+: Runtime health check: status=(?P<status>\w+) '
     healthy_status: HEALTHY
