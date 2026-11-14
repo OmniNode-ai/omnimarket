@@ -33,6 +33,14 @@ source:
         identity_file: .omnibase/.env
         client_id_ref: EXAMPLE_CLIENT_ID
         client_secret_ref: EXAMPLE_CLIENT_SECRET
+  # Set group_read to null to read the group directly with this source's token. With a block, the
+  # group's settings and repositories are read through the GitHub write node over the bus instead.
+  group_read:
+    bus_lane: example-lane
+    workspace_env: EXAMPLE_WORKSPACE_ROOT
+    anchor_repository: example-org/example-repo
+    requested_by_lane: example-exposure-reader
+    timeout_seconds: 60
   # The NAME of the App permission the organization read of the group needs; a refusal names it.
   org_read_permission: example_org_permission_read
   max_calls: 40

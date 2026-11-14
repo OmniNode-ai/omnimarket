@@ -218,9 +218,10 @@ def test_golden_a_host_out_of_selection_carries_the_table_reason_and_reads_nothi
     assert "out of selection" in h.load_per_core.reason
     assert h.docker.state == "unread"
     assert "no capacity advertisement" in h.docker.reason
-    assert (
-        h.heartbeat_age_min.reason
-        == "the host-drift fleet projection holds no row for this host"
+    # OMN-19998: a parked host expects no heartbeat, so its cells carry the table's reason, not the projection's.
+    assert h.heartbeat_age_min.reason == (
+        "out of selection (out of lane placement: no lanes on the orchestrator Mac); "
+        "no heartbeat is expected from this host"
     )
 
 
@@ -236,10 +237,14 @@ def test_error_every_missing_source_is_unread_with_its_reason() -> None:
     for status in found.values():
         assert status.slots_used.reason == "the slot markers were not read"
         assert status.load_per_core.reason == "the pool read was not recorded"
-        assert (
-            status.heartbeat_age_min.reason
-            == "the host-drift fleet projection was not read"
-        )
+        if status.condition == "out":
+            # OMN-19998: a parked host expects no heartbeat, so its unread reason names the table, not the projection.
+            assert "no heartbeat is expected" in status.heartbeat_age_min.reason
+        else:
+            assert (
+                status.heartbeat_age_min.reason
+                == "the host-drift fleet projection was not read"
+            )
         assert status.docker.state == "unread"
         assert status.condition in {"out", "unread"}
         assert [

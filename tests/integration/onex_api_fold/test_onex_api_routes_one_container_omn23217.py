@@ -21,8 +21,8 @@ routes are T18d's and are not named here.
   its entry, so the record cannot go stale);
 * an injected break (a served node's contract left out of the runtime) turns that
   identity into a fall-through, so the reading can fail;
-* the strict control, every identity answering from the one container, is red today
-  and is expected to fail until T18c ports the rest.
+* every non-retired identity now answers from the one container: the record holds no
+  pending entry (T18c group 8 was the last).
 """
 
 from __future__ import annotations
@@ -171,11 +171,12 @@ async def test_the_recorded_served_identities_answer_from_the_one_container(
     assert missing == []
 
 
+# With every identity ported the record holds no pending entry and this reads an
+# empty set; a pending entry added later is read as before.
 async def test_the_recorded_pending_identities_fall_through_today(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     pending = [i for i in identities() if i["state"] == "pending"]
-    assert pending
     answers = await read_from_the_runtime(
         runtime_contract_paths(), pending, monkeypatch
     )

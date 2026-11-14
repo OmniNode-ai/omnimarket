@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_service_principal_mint_effect
+version: 1.0.0
+description: Mint one broker login for a named internal service, with its password generated into the secret store and its credential file delivered to the declared folders.
+pack: operator_tooling
+node_role: effect
+display_name: Service Principal Mint Effect
+omnibase_core_compat: '>=0.47.31,<0.48.0'
+entry_points:
+  onex.nodes:
+    node_service_principal_mint_effect: omnimarket.nodes.node_service_principal_mint_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+- pydantic>=2.0
+- pyyaml>=6.0
+license: MIT
+authors:
+- OmniNode Team
+tags:
+- effect
+- service-principal
+- OMN-24256

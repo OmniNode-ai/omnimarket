@@ -1245,6 +1245,7 @@ def load_host_table(path: Path) -> tuple[ModelFloorHostRow, ...] | None:
                 cap=row.get("cap"),
                 available=row.get("available") is not False,
                 unavailable_reason=str(row.get("unavailable_reason") or ""),
+                local=row.get("local") is True,
             )
             for row in data["hosts"]
         )
