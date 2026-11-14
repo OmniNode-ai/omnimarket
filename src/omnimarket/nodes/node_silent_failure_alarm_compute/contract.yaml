@@ -18,7 +18,9 @@ description: >
   reinstall did; and launchd jobs that exit nonzero on consecutive observed runs or miss their
   interval, with one episode per job and cause for remote-lane dispatch, a cooldown per job and
   cause, a cap on episodes opened in one tick, and a delayed push when no CLAIM cites the episode.
-  The ticket closer's last TERMINAL or run record older than twice its declared interval
+  The install-failure jsonl with at least the threshold failures inside the window, raised once
+  and then reraised only after the reraise bound (OMN-21663). The ticket closer's last TERMINAL or
+  run record older than twice its declared interval
   (OMN-20718), whether it ran and failed or its unit is gone. A host whose omni plugin, dispatch venv, installed controller or installed launchd lib has
   differed from merged main for over an hour is read from the host-drift fleet fold.
   A fold file that does not exist is a declaration question (OMN-23275): given the fold-absence fact the
@@ -64,6 +66,12 @@ handler_routing:
         module: omnimarket.nodes.node_silent_failure_alarm_compute.handlers.handler_quiet_host_alarm
       input_model: omnimarket.nodes.node_silent_failure_alarm_compute.models.model_quiet_host_alarm.ModelQuietHostRequest
       output_model: omnimarket.nodes.node_silent_failure_alarm_compute.models.model_quiet_host_alarm.ModelQuietHostResult
+    - operation: decide_install_failure
+      handler:
+        name: HandlerInstallFailureAlarm
+        module: omnimarket.nodes.node_silent_failure_alarm_compute.handlers.handler_install_failure_alarm
+      input_model: omnimarket.nodes.node_silent_failure_alarm_compute.models.model_install_failure_alarm.ModelInstallFailureAlarmRequest
+      output_model: omnimarket.nodes.node_silent_failure_alarm_compute.models.model_install_failure_alarm.ModelInstallFailureAlarmResult
     - operation: decide_job_exit
       handler:
         name: HandlerJobExitAlarm

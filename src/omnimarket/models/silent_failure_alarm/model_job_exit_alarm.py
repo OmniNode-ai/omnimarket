@@ -42,6 +42,8 @@ class ModelJobExitStreak(BaseModel):
     cause: JobExitCause | None = None
     last_run_at: AwareDatetime | None = None
     dispatched_at: dict[str, AwareDatetime] = Field(default_factory=dict)
+    raised_at: AwareDatetime | None = None
+    raise_count: int = Field(default=0, ge=0)
 
 
 class ModelJobExitEpisode(BaseModel):
@@ -55,6 +57,16 @@ class ModelJobExitEpisode(BaseModel):
     cause: JobExitCause = "failed-exit"
     stdout_path: str | None = None
     stderr_path: str | None = None
+
+
+class ModelJobExitReraise(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    episode: str
+    label: str
+    cause: JobExitCause
+    age_minutes: int
+    raise_count: int
 
 
 class ModelJobExitAlarmRequest(BaseModel):
@@ -78,6 +90,7 @@ class ModelJobExitAlarmRequest(BaseModel):
     # Whether the host can start a fix lane for an episode. A cell says a lane was dispatched only when it can;
     # otherwise it says none was sent, so no reader takes an unsent lane for an owner of the stoppage.
     dispatch_configured: bool = True
+    reraise_after_minutes: int = Field(default=0, ge=0)
 
 
 class ModelJobExitAlarmResult(BaseModel):
@@ -92,3 +105,4 @@ class ModelJobExitAlarmResult(BaseModel):
     suppressed: tuple[str, ...] = ()
     friction_cells: tuple[str, ...] = ()
     alert_text: tuple[str, ...] = ()
+    reraised: tuple[ModelJobExitReraise, ...] = ()

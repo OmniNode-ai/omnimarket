@@ -17,6 +17,7 @@ from .model_job_exit_alarm import ModelJobExitAlarmRequest as ModelJobExitAlarmR
 from .model_job_exit_alarm import ModelJobExitAlarmResult as ModelJobExitAlarmResult
 from .model_job_exit_alarm import ModelJobExitEpisode as ModelJobExitEpisode
 from .model_job_exit_alarm import ModelJobExitReading as ModelJobExitReading
+from .model_job_exit_alarm import ModelJobExitReraise as ModelJobExitReraise
 from .model_job_exit_alarm import ModelJobExitStreak as ModelJobExitStreak
 from .model_placement_share_alarm import ModelLaneRefusal as ModelLaneRefusal
 from .model_placement_share_alarm import ModelPlacementRun as ModelPlacementRun
