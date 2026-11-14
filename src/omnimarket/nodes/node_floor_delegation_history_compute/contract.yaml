@@ -24,8 +24,8 @@ description: >
 handler:
   module: omnimarket.nodes.node_floor_delegation_history_compute.handlers.handler_floor_delegation_history
   class: HandlerFloorDelegationHistory
-  input_model: omnimarket.nodes.node_floor_delegation_history_compute.models.model_history_request.ModelHistoryRequest
-  output_model: omnimarket.nodes.node_floor_delegation_history_compute.models.model_delegation_history.ModelDelegationHistory
+  input_model: omnimarket.events.floor_history_request.ModelHistoryRequest
+  output_model: omnimarket.events.floor_delegation_history.ModelDelegationHistory
 
 handler_routing:
   routing_strategy: operation_match
@@ -34,8 +34,8 @@ handler_routing:
       handler:
         name: HandlerFloorDelegationHistory
         module: omnimarket.nodes.node_floor_delegation_history_compute.handlers.handler_floor_delegation_history
-      input_model: omnimarket.nodes.node_floor_delegation_history_compute.models.model_history_request.ModelHistoryRequest
-      output_model: omnimarket.nodes.node_floor_delegation_history_compute.models.model_delegation_history.ModelDelegationHistory
+      input_model: omnimarket.events.floor_history_request.ModelHistoryRequest
+      output_model: omnimarket.events.floor_delegation_history.ModelDelegationHistory
 
 descriptor:
   node_archetype: compute
@@ -46,11 +46,11 @@ descriptor:
 
 input_model:
   name: ModelHistoryRequest
-  module: omnimarket.nodes.node_floor_delegation_history_compute.models.model_history_request
+  module: omnimarket.events.floor_history_request
   description: The readings and the overlay's policy.
 output_model:
   name: ModelDelegationHistory
-  module: omnimarket.nodes.node_floor_delegation_history_compute.models.model_delegation_history
+  module: omnimarket.events.floor_delegation_history
   description: The served document, schema id omnimarket.floor_delegation_history.v1.
 
 runtime_dispatch:

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_floor_delegation_history_compute.models.model_history_request import (
+from omnimarket.events.floor_history_request import (
     ModelHistoryPolicy,
 )
 

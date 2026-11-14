@@ -14,15 +14,15 @@ from pathlib import Path
 
 import pytest
 
-from omnimarket.nodes.node_floor_delegation_history_compute.handlers.handler_floor_delegation_history import (
-    HandlerFloorDelegationHistory,
-)
-from omnimarket.nodes.node_floor_delegation_history_compute.models.model_delegation_history import (
+from omnimarket.events.floor_delegation_history import (
     SCHEMA_ID,
     ModelDelegationHistory,
 )
-from omnimarket.nodes.node_floor_delegation_history_compute.models.model_history_request import (
+from omnimarket.events.floor_history_request import (
     ModelHistoryRequest,
+)
+from omnimarket.nodes.node_floor_delegation_history_compute.handlers.handler_floor_delegation_history import (
+    HandlerFloorDelegationHistory,
 )
 
 pytestmark = pytest.mark.unit
