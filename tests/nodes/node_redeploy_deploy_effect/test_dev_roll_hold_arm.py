@@ -33,12 +33,17 @@ GATE_OVERLAY: dict[str, Any] = {
     "min_start_interval_seconds": 900,
     "healthy_for_seconds": 600,
     "failed_roll_release_after_seconds": 3600,
+    "roll_completion_deadline_seconds": 1800,
     "known_repositories": ["omnimarket", "omnibase_infra"],
     "build_context_repository": "omnibase_infra",
     "fallback_git_ref": "origin/dev",
     "requested_by": "dev-roll-window-gate",
     "held_kept": 10,
-    "store": {"backend": "in_memory"},
+    "store": {
+        "backend": "file",
+        "home_env": "ONEX_STATE_DIR",
+        "relpath": "dev-roll-window-gate",
+    },
 }
 
 

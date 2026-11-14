@@ -65,7 +65,7 @@ def install_overlay(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     root = tmp_path / "overlays"
     (root / "node_dev_roll_window_gate_effect").mkdir(parents=True)
     (root / "node_dev_roll_window_gate_effect" / "overlay.yaml").write_text(
-        yaml.safe_dump({**OVERLAY_DOC, "store": {"backend": "in_memory"}})
+        yaml.safe_dump(OVERLAY_DOC)
     )
     monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(root))
 

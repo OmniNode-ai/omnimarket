@@ -18,6 +18,10 @@ from omnimarket.events.runtime_deployment import (
     EnumRuntimeLane,
     ModelDeployPublishCommand,
 )
+from omnimarket.nodes.node_dev_roll_window_gate_effect.handlers import (
+    HandlerDevRollWindowCompleted,
+    HandlerDevRollWindowTick,
+)
 from omnimarket.nodes.node_dev_roll_window_gate_effect.models import (
     EnumDevRollGateRefusal,
     ModelDevRollGateDecision,
@@ -26,9 +30,11 @@ from omnimarket.nodes.node_dev_roll_window_gate_effect.models import (
     ModelDevRollGateRollRecorded,
 )
 from tests.unit.nodes.node_dev_roll_window_gate_effect.conftest import (
+    DEADLINE,
     FAILED_RELEASE,
     HEALTHY_FOR,
     MIN_INTERVAL,
+    NOW,
     POLICY,
     WINDOW,
     Gate,
@@ -135,7 +141,7 @@ def test_no_second_release_while_the_previous_roll_has_no_completion(
     gate.clock.advance(WINDOW)
     gate.tick.handle(a_tick(gate))
     gate.hold.handle(command(number=9, age_seconds=WINDOW))
-    gate.clock.advance(WINDOW * 4)
+    gate.clock.advance(WINDOW)
     out = gate.tick.handle(a_tick(gate))
     assert released(out) == []
     (decision,) = decisions(out)
@@ -252,3 +258,126 @@ def test_a_command_the_gate_cannot_hold_is_refused_and_passed_straight_on(
     assert passed.roll_window_released is True
     assert passed.correlation_id == sent.correlation_id
     assert gate.store.load().held == ()
+
+
+def test_only_the_completion_of_the_newest_released_command_ends_the_roll(
+    gate: Gate,
+) -> None:
+    held = hold_three(gate)
+    gate.clock.advance(WINDOW)
+    gate.tick.handle(a_tick(gate))
+    gate.clock.advance(60)
+    # an older command of the batch completing (an unfolded batch runs in order) is not the end of the roll
+    assert (
+        gate.completed.handle(completed(held[0].correlation_id, at=gate.clock.now))
+        is None
+    )
+    assert gate.store.load().last_roll.finished_at is None
+    done = gate.completed.handle(completed(held[-1].correlation_id, at=gate.clock.now))
+    assert isinstance(done, ModelDevRollGateRollRecorded)
+    assert gate.store.load().last_roll.finished_at == gate.clock.now
+
+
+def test_a_roll_with_no_completion_by_the_deadline_is_ended_as_not_healthy_and_the_gate_recovers(
+    gate: Gate,
+) -> None:
+    hold_three(gate)
+    gate.clock.advance(WINDOW)
+    gate.tick.handle(a_tick(gate))
+    started = gate.clock.now
+    gate.hold.handle(command(number=9, age_seconds=WINDOW))
+    gate.clock.advance(DEADLINE - 1)
+    out = gate.tick.handle(a_tick(gate))
+    assert [d.hold_reason for d in decisions(out)] == ["roll_in_progress"]
+    gate.clock.advance(1)  # the deadline
+    out = gate.tick.handle(a_tick(gate))
+    recorded = [m for m in (out or []) if isinstance(m, ModelDevRollGateRollRecorded)]
+    assert [r.outcome for r in recorded] == ["completion_overdue"]
+    (decision,) = decisions(out)
+    assert decision.hold_reason == "previous_roll_not_healthy"
+    finished = started + timedelta(seconds=DEADLINE)
+    assert decision.hold_until == finished + timedelta(seconds=FAILED_RELEASE)
+    gate.clock.now = finished + timedelta(seconds=FAILED_RELEASE)
+    assert len(released(gate.tick.handle(a_tick(gate)))) == 1
+
+
+def test_failing_control_without_the_deadline_the_gate_would_hold_for_ever(
+    gate: Gate,
+) -> None:
+    """The recovery above is real: just before the deadline the same state is still roll_in_progress."""
+    hold_three(gate)
+    gate.clock.advance(WINDOW)
+    gate.tick.handle(a_tick(gate))
+    gate.hold.handle(command(number=9, age_seconds=WINDOW))
+    gate.clock.advance(DEADLINE - 1)
+    out = gate.tick.handle(a_tick(gate))
+    assert released(out) == []
+    with pytest.raises(AssertionError):
+        assert [d.hold_reason for d in decisions(out)] == ["previous_roll_not_healthy"]
+
+
+def test_an_overdue_roll_is_recorded_even_when_nothing_is_held(gate: Gate) -> None:
+    gate.hold.handle(command(number=1, age_seconds=WINDOW))
+    gate.tick.handle(a_tick(gate))
+    gate.clock.advance(DEADLINE)
+    out = gate.tick.handle(a_tick(gate))
+    assert [type(m).__name__ for m in out or []] == ["ModelDevRollGateRollRecorded"]
+    assert gate.tick.handle(a_tick(gate)) is None
+
+
+def test_a_naive_requested_at_is_replaced_by_the_time_the_gate_saw_the_command(
+    gate: Gate,
+) -> None:
+    item = command(number=1).model_copy(
+        update={"requested_at": NOW.replace(tzinfo=None)}
+    )
+    assert isinstance(gate.hold.handle(item), ModelDevRollGateHeld)
+    (held,) = gate.store.load().held
+    assert held.merged_at == gate.clock.now
+    gate.clock.advance(WINDOW)
+    assert (
+        len(released(gate.tick.handle(a_tick(gate)))) == 1
+    )  # the tick no longer raises
+
+
+def test_a_future_requested_at_is_clamped_to_the_time_the_gate_saw_the_command(
+    gate: Gate,
+) -> None:
+    item = command(number=1).model_copy(
+        update={"requested_at": NOW + timedelta(hours=1)}
+    )
+    gate.hold.handle(item)
+    (held,) = gate.store.load().held
+    assert held.merged_at == gate.clock.now
+    gate.clock.advance(WINDOW)
+    assert len(released(gate.tick.handle(a_tick(gate)))) == 1
+
+
+def test_switching_the_gate_off_releases_what_it_holds_oldest_first(gate: Gate) -> None:
+    held = hold_three(gate)
+    off = Gate(POLICY.model_copy(update={"mode": "off"}), gate.clock)
+    off.store.save(gate.store.load())
+    out = off.tick.handle(a_tick(off))
+    assert [c.correlation_id for c in released(out)] == [c.correlation_id for c in held]
+    assert all(c.roll_window_released for c in released(out))
+    assert off.store.load().held == ()
+    assert off.tick.handle(a_tick(off)) is None
+
+
+def test_failing_control_a_gate_still_live_releases_nothing_before_the_window(
+    gate: Gate,
+) -> None:
+    """The flush above is real: the same state under a live policy releases nothing inside the window."""
+    hold_three(gate)
+    assert released(gate.tick.handle(a_tick(gate))) == []
+
+
+def test_with_no_gate_overlay_installed_a_tick_and_a_completion_do_nothing(
+    tmp_path: Any,
+) -> None:
+    environ = {"ONEX_SKILL_OVERLAY_ROOTS": str(tmp_path)}
+    tick = HandlerDevRollWindowTick(environ=environ)
+    done = HandlerDevRollWindowCompleted(environ=environ)
+    clock_gate = Gate()
+    assert tick.handle(a_tick(clock_gate)) is None
+    assert done.handle(completed(uuid4(), at=NOW)) is None

@@ -21,12 +21,13 @@ class ModelHeldDevRoll(BaseModel):
     repository: str = Field(min_length=1)
     sha: str = Field(pattern=r"^[0-9a-f]{40}$")
     held_at: datetime
+    merged_at: datetime
 
-    @field_validator("held_at")
+    @field_validator("held_at", "merged_at")
     @classmethod
     def _aware(cls, value: datetime) -> datetime:
         if value.utcoffset() is None:
-            raise ValueError("held_at must carry a UTC offset")
+            raise ValueError("a held roll time must carry a UTC offset")
         return value
 
 

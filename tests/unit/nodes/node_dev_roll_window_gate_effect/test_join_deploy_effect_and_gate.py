@@ -65,7 +65,7 @@ class Pair:
         root = tmp_path / "overlays"
         (root / "node_dev_roll_window_gate_effect").mkdir(parents=True)
         (root / "node_dev_roll_window_gate_effect" / "overlay.yaml").write_text(
-            yaml.safe_dump({**OVERLAY_DOC, "store": {"backend": "in_memory"}})
+            yaml.safe_dump(OVERLAY_DOC)
         )
         monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(root))
         self.bus = TopicBus()
@@ -147,7 +147,7 @@ async def test_a_second_burst_while_the_first_roll_has_no_completion_publishes_n
     assert len(pair.rebuilds()) == 2
     for n in (3, 4):
         await pair.deploy(command(number=n, age_seconds=WINDOW))
-    pair.gate.clock.advance(WINDOW * 4)
+    pair.gate.clock.advance(WINDOW)
     out = await pair.tick()
     assert len(pair.rebuilds()) == 2
     assert [m.hold_reason for m in out if hasattr(m, "hold_reason")] == [

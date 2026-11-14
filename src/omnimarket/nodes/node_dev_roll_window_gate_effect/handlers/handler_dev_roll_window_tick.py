@@ -8,20 +8,22 @@ changes nothing. Roll now releases EVERY held command the decision covered, olde
 each marked released so the deploy effect publishes it without holding it again; the
 agent's own queue folding then makes one roll of the batch. The state (held commands,
 the roll started, the released ids) is saved before the commands are returned: the
-release is at most once. A crash between the save and the runtime's publish drops that
-batch's commands, and the next dev merge's command carries the lane forward to a newer
+release is at most once. A crash between the save and the runtime's publish, or a
+producer failure part-way through the batch (the redelivered tick finds nothing held),
+drops the commands not yet published, and the next dev merge's command carries the lane forward to a newer
 ref; a repeat of a released command is refused by the deploy effect's repeat record.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import uuid4
 
 from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 from pydantic import BaseModel
 
+from omnimarket.handlers.node_overlay_reader import NodeOverlayNotFoundError
 from omnimarket.models.dev_roll import (
     EnumDevRollAction,
     EnumDevRollHealth,
@@ -36,16 +38,13 @@ from omnimarket.nodes.node_dev_roll_window_gate_effect.handlers.gate_context imp
 )
 from omnimarket.nodes.node_dev_roll_window_gate_effect.models import (
     ModelDevRollGateDecision,
+    ModelDevRollGateRollRecorded,
+    ModelDevRollGateState,
     ModelDevRollWindowGatePolicy,
-    ModelHeldDevRoll,
 )
 from omnimarket.nodes.node_dev_roll_window_gate_effect.protocols import (
     ProtocolDevRollGateStore,
 )
-
-
-def _merged_at(held: ModelHeldDevRoll) -> datetime:
-    return held.command.requested_at or held.held_at
 
 
 class HandlerDevRollWindowTick:
@@ -63,15 +62,63 @@ class HandlerDevRollWindowTick:
             store, policy=policy, environ=environ, clock=clock
         )
 
-    def handle(self, request: ModelRuntimeTick) -> Sequence[BaseModel] | None:
-        policy = self._context.policy()
-        if policy.mode == "off":
-            return None
-        store = self._context.store()
-        state = store.load()
+    def _flush(
+        self, state: ModelDevRollGateState, store: ProtocolDevRollGateStore
+    ) -> Sequence[BaseModel] | None:
+        """The gate was switched off: release whatever it still holds, oldest first, so nothing is stranded."""
         if not state.held:
             return None
+        flushed = sorted(
+            state.held, key=lambda h: (h.merged_at, str(h.command.correlation_id))
+        )
+        store.save(state.model_copy(update={"held": ()}))
+        return [
+            h.command.model_copy(update={"roll_window_released": True}) for h in flushed
+        ]
+
+    def handle(self, request: ModelRuntimeTick) -> Sequence[BaseModel] | None:
+        try:
+            policy = self._context.policy()
+        except NodeOverlayNotFoundError:
+            return (
+                None  # no gate overlay installed: nothing to hold, nothing to release
+            )
+        store = self._context.store()
+        state = store.load()
         now = self._context.now()
+        if policy.mode == "off":
+            return self._flush(state, store)
+        overdue: ModelDevRollGateRollRecorded | None = None
+        last = state.last_roll
+        if (
+            last is not None
+            and last.finished_at is None
+            and last.runtime_started_at is not None
+            and now
+            >= last.runtime_started_at
+            + timedelta(seconds=policy.roll_completion_deadline_seconds)
+        ):
+            # No completion arrived in time (a lost event, an agent that never answered):
+            # end the roll as not healthy so the batching decision's failed-roll bound
+            # applies, instead of holding every later release forever.
+            ended = ModelDevRollRecord(
+                job_id=last.job_id,
+                git_ref=last.git_ref,
+                runtime_started_at=last.runtime_started_at,
+                finished_at=last.runtime_started_at
+                + timedelta(seconds=policy.roll_completion_deadline_seconds),
+                health=EnumDevRollHealth.UNKNOWN,
+                healthy_since=None,
+            )
+            state = state.model_copy(update={"last_roll": ended})
+            store.save(state)
+            overdue = ModelDevRollGateRollRecorded(
+                command_correlation_id=last.job_id,
+                outcome="completion_overdue",
+                observed_at=now,
+            )
+        if not state.held:
+            return None if overdue is None else [overdue]
         facts = ModelDevRollFacts(
             correlation_id=uuid4(),
             observed_at=now,
@@ -80,15 +127,17 @@ class HandlerDevRollWindowTick:
                     event_id=held.command.correlation_id,
                     repository=held.repository,
                     sha=held.sha,
-                    merged_at=_merged_at(held),
+                    merged_at=held.merged_at,
                 )
                 for held in state.held
             ),
             last_roll=state.last_roll,
         )
         decided = decide_dev_roll(facts, policy.to_roll_policy())
+        lead: list[BaseModel] = [] if overdue is None else [overdue]
         if isinstance(decided, ModelDevRollRefused):
             return [
+                *lead,
                 ModelDevRollGateDecision(
                     correlation_id=facts.correlation_id,
                     action="refused",
@@ -98,10 +147,11 @@ class HandlerDevRollWindowTick:
                     released_count=0,
                     longest_wait_seconds=0,
                     observed_at=now,
-                )
+                ),
             ]
         if decided.action is not EnumDevRollAction.ROLL_NOW:
             return [
+                *lead,
                 ModelDevRollGateDecision(
                     correlation_id=facts.correlation_id,
                     action="hold",
@@ -113,12 +163,12 @@ class HandlerDevRollWindowTick:
                     released_count=0,
                     longest_wait_seconds=decided.longest_wait_seconds,
                     observed_at=now,
-                )
+                ),
             ]
         covered = set(decided.rolled_event_ids)
         released = sorted(
             (h for h in state.held if h.command.correlation_id in covered),
-            key=lambda h: (_merged_at(h), str(h.command.correlation_id)),
+            key=lambda h: (h.merged_at, str(h.command.correlation_id)),
         )
         remaining = tuple(
             h for h in state.held if h.command.correlation_id not in covered
@@ -145,8 +195,11 @@ class HandlerDevRollWindowTick:
             )
         )
         commands: list[BaseModel] = [
-            h.command.model_copy(update={"roll_window_released": True})
-            for h in released
+            *lead,
+            *(
+                h.command.model_copy(update={"roll_window_released": True})
+                for h in released
+            ),
         ]
         commands.append(
             ModelDevRollGateDecision(

@@ -42,6 +42,18 @@ _SHA = re.compile(r"^[0-9a-f]{40}$")
 Result = ModelDevRollGateHeld | Sequence[BaseModel]
 
 
+def _merged_at(request: ModelDeployPublishCommand, now: datetime) -> datetime:
+    """The command's own request time when it is timezone-aware and not in the future, else now.
+
+    A naive or future time would make the batching decision raise or refuse the event on every
+    tick and freeze the gate, so it is replaced by the instant the gate saw the command.
+    """
+    requested = request.requested_at
+    if requested is None or requested.utcoffset() is None or requested > now:
+        return now
+    return requested
+
+
 class HandlerDevRollWindowHold:
     """``handle(ModelDeployPublishCommand) -> ModelDevRollGateHeld | [ModelDevRollGateRefused, the released command]``."""
 
@@ -151,7 +163,11 @@ class HandlerDevRollWindowHold:
         held = (
             *state.held,
             ModelHeldDevRoll(
-                command=request, repository=repository, sha=request.git_ref, held_at=now
+                command=request,
+                repository=repository,
+                sha=request.git_ref,
+                held_at=now,
+                merged_at=_merged_at(request, now),
             ),
         )
         store.save(state.model_copy(update={"held": held}))

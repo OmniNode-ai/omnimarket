@@ -6,6 +6,9 @@ Two stores behind one protocol: an in-memory state for tests and a file store
 that keeps the whole state as one JSON document, written atomically (temp file
 in the target directory, then os.replace). ``store_from_policy`` builds the
 right one from the overlay's policy.
+
+The file store reads, changes and writes the whole state with no lock: the node assumes one
+effects runtime consumes its three topics (one writer).
 """
 
 from __future__ import annotations

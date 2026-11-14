@@ -46,6 +46,7 @@ class ModelDevRollWindowGatePolicy(BaseModel):
     min_start_interval_seconds: int = Field(gt=0)
     healthy_for_seconds: int = Field(gt=0)
     failed_roll_release_after_seconds: int = Field(gt=0)
+    roll_completion_deadline_seconds: int = Field(gt=0)
     known_repositories: tuple[str, ...] = Field(min_length=1)
     build_context_repository: str = Field(min_length=1)
     fallback_git_ref: str = Field(min_length=1)
@@ -70,6 +71,13 @@ class ModelDevRollWindowGatePolicy(BaseModel):
             )
         if self.build_context_repository not in self.known_repositories:
             raise ValueError("build_context_repository must be a known repository")
+        if self.mode == "live" and not isinstance(
+            self.store, ModelDevRollGateFileStore
+        ):
+            raise ValueError(
+                "a live gate needs the file store: the three handlers each build their "
+                "own in-memory store, and the roll recreates the runtime that holds it"
+            )
         return self
 
     def to_roll_policy(self) -> ModelDevRollPolicy:

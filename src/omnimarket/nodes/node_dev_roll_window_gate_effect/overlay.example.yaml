@@ -7,6 +7,7 @@ batch_window_seconds: 900
 min_start_interval_seconds: 900
 healthy_for_seconds: 600
 failed_roll_release_after_seconds: 3600
+roll_completion_deadline_seconds: 3600
 known_repositories:
   - omnimarket
   - omnibase_infra
@@ -15,4 +16,6 @@ fallback_git_ref: origin/dev
 requested_by: dev-roll-window-gate
 held_kept: 200
 store:
-  backend: in_memory
+  backend: file
+  home_env: ONEX_STATE_DIR
+  relpath: dev_roll_window_gate

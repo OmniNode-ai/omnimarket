@@ -66,12 +66,12 @@ class ModelDevRollGateDecision(BaseModel):
 
 
 class ModelDevRollGateRollRecorded(BaseModel):
-    """The agent's completion for a released command was recorded as the last roll's end."""
+    """The last roll's end was recorded: the agent's completion of the newest released command, or the overlay's deadline passing with none."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     command_correlation_id: str
-    outcome: Literal["finished_healthy", "finished_unhealthy"]
+    outcome: Literal["finished_healthy", "finished_unhealthy", "completion_overdue"]
     observed_at: datetime
 
     _aware_observed = field_validator("observed_at")(_aware)

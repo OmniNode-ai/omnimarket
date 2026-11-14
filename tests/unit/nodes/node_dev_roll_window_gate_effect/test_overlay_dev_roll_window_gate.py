@@ -123,7 +123,7 @@ def test_the_shipped_example_overlay_loads_through_the_policy_model() -> None:
     policy = ModelDevRollWindowGatePolicy.model_validate(doc)
     assert policy.mode == "live"
     assert "repository" in re.compile(policy.issuer_repository_pattern).groupindex
-    assert isinstance(policy.store, ModelDevRollGateInMemoryStore)
+    assert isinstance(policy.store, ModelDevRollGateFileStore)
 
 
 _NUMBER_LITERAL = re.compile(r"(?<![\w\[.\-:])[1-9][0-9]+\b")
@@ -171,6 +171,7 @@ def test_the_file_store_keeps_state_across_instances(tmp_path: Path) -> None:
                     repository="omnimarket",
                     sha=sha(3),
                     held_at=NOW,
+                    merged_at=NOW,
                 ),
             )
         }
@@ -190,7 +191,22 @@ def test_a_corrupt_file_store_raises_and_never_reads_as_empty(tmp_path: Path) ->
 
 
 def test_the_in_memory_store_choice_builds_the_in_memory_store() -> None:
-    assert isinstance(store_from_policy(POLICY, {}), InMemoryDevRollGateStore)
+    off = POLICY.model_copy(
+        update={
+            "mode": "off",
+            "store": ModelDevRollGateInMemoryStore(backend="in_memory"),
+        }
+    )
+    assert isinstance(store_from_policy(off, {}), InMemoryDevRollGateStore)
+
+
+def test_a_live_gate_with_the_in_memory_store_is_refused(tmp_path: Path) -> None:
+    """Each handler builds its own in-memory store, so a live gate on it holds commands nobody releases."""
+    doc = {**OVERLAY_DOC, "store": {"backend": "in_memory"}}
+    with pytest.raises(NodeOverlayError):
+        load_gate_policy(write_overlay(tmp_path, doc))
+    off = {**doc, "mode": "off"}
+    assert load_gate_policy(write_overlay(tmp_path / "off", off)).mode == "off"
 
 
 def test_the_file_store_choice_without_its_home_variable_refuses(
