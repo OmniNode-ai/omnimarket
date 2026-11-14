@@ -6,10 +6,10 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field, PositiveInt
 
-from omnimarket.events.ticket_contract_render import (
+from omnimarket.models.bus_binding.model_node_event_bus import ModelNodeEventBus
+from omnimarket.models.model_ticket_contract_render import (
     ModelTicketContractRenderNormalization,
 )
-from omnimarket.models.bus_binding.model_node_event_bus import ModelNodeEventBus
 
 
 class ModelTicketHandEditSettings(BaseModel):

@@ -7,7 +7,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from omnimarket.events.ticket_contract_render import (
+from omnimarket.models.model_ticket_contract_render import (
     EnumTicketContractRenderFinding,
     EnumTicketContractRenderOperation,
     EnumTicketContractRenderOutcome,

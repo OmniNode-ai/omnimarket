@@ -13,7 +13,7 @@ from typing import Any
 import pytest
 from pydantic import SecretStr
 
-from omnimarket.events.ticket_contract_render import (
+from omnimarket.models.model_ticket_contract_render import (
     EnumTicketContractRenderOperation,
     ModelTicketContractRenderRequest,
 )
