@@ -22,7 +22,7 @@ import omnimarket.nodes.node_throughput_goal_check_compute as node_package
 from omnimarket.nodes.node_throughput_goal_check_compute.models.model_throughput_goal_check import (
     ModelThroughputGoalCheckResult,
 )
-from omnimarket.nodes.node_throughput_goal_check_compute.tests.test_goal_check_parity import (  # noqa: F401
+from omnimarket.nodes.node_throughput_goal_check_compute.tests.test_goal_check_parity import (
     _TICKS,
     test_a_changed_scope_list_turns_the_parity_red,
     test_a_planted_change_to_one_input_turns_the_parity_red,
@@ -34,6 +34,18 @@ from omnimarket.nodes.node_throughput_goal_check_compute.tests.test_goal_check_p
     test_the_same_tick_again_reads_nothing_changed,
 )
 from tests.runtime_local_compat import RuntimeLocal
+
+__all__ = [
+    "_TICKS",
+    "test_a_changed_scope_list_turns_the_parity_red",
+    "test_a_planted_change_to_one_input_turns_the_parity_red",
+    "test_an_unread_admission_record_is_named_and_the_lists_alone_decide",
+    "test_an_unread_scope_is_one_unknown_finding_and_no_record",
+    "test_goal_line_findings_and_record_match_the_script_parity",
+    "test_the_recording_covers_each_branch_of_the_check",
+    "test_the_recording_holds_twenty_ticks",
+    "test_the_same_tick_again_reads_nothing_changed",
+]
 
 pytestmark = pytest.mark.unit
 

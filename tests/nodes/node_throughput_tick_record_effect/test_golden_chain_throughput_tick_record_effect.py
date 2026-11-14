@@ -22,7 +22,7 @@ import omnimarket.nodes.node_throughput_tick_record_effect as node_package
 from omnimarket.nodes.node_throughput_tick_record_effect.models.model_throughput_tick_record import (
     ModelThroughputTickRecordResult,
 )
-from omnimarket.nodes.node_throughput_tick_record_effect.tests.test_tick_record_parity import (  # noqa: F401
+from omnimarket.nodes.node_throughput_tick_record_effect.tests.test_tick_record_parity import (
     _ALL,
     _TICKS,
     test_a_planted_change_to_one_input_turns_the_parity_red,
@@ -36,6 +36,20 @@ from omnimarket.nodes.node_throughput_tick_record_effect.tests.test_tick_record_
     test_the_recording_holds_twenty_ticks,
 )
 from tests.runtime_local_compat import RuntimeLocal
+
+__all__ = [
+    "_ALL",
+    "_TICKS",
+    "test_a_planted_change_to_one_input_turns_the_parity_red",
+    "test_a_verdict_that_names_no_repo_is_refused_at_the_model",
+    "test_error_chain_an_unmakeable_state_directory_is_the_finding_not_a_raise",
+    "test_error_chain_each_unwritable_row_is_a_finding_and_the_others_still_land",
+    "test_golden_one_tick_writes_the_five_rows",
+    "test_heartbeat_open_count_and_repo_status_rows_match_the_script_on_twenty_ticks_parity",
+    "test_the_history_keeps_twelve_points",
+    "test_the_in_memory_store_keeps_the_same_rows_as_the_file_store_parity",
+    "test_the_recording_holds_twenty_ticks",
+]
 
 pytestmark = pytest.mark.unit
 
