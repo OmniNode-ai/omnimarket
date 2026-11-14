@@ -19,12 +19,19 @@ from omnimarket.handlers.relay_admission import (
 )
 from omnimarket.models.model_relay_admission import ModelRelayRequiresRule
 from omnimarket.models.work_ledger_append import (
+    EnumLedgerAppendMode,
     EnumWorkLedgerAppendStatus,
     ModelAppendIfAbsentPolicy,
+    ModelBusAppend,
+    ModelFlipResult,
+    ModelRollbackResult,
     ModelWorkLedgerAppendReceipt,
     ModelWorkLedgerAppendRequest,
     ModelWorkLedgerJudgeAcceptance,
     ModelWorkLedgerTerminalRefused,
+)
+from omnimarket.nodes.node_work_ledger_append_effect.handlers.ledger_flip_fence import (
+    LedgerFlipFence,
 )
 from omnimarket.nodes.node_work_ledger_append_effect.protocols import (
     InMemoryLedgerAppendLock,
@@ -32,6 +39,9 @@ from omnimarket.nodes.node_work_ledger_append_effect.protocols import (
     ProtocolLedgerAppendLock,
     ProtocolLedgerAppendRunner,
     ProtocolLedgerReader,
+)
+from omnimarket.nodes.node_work_ledger_append_effect.protocols.bus_ledger_store import (
+    ProtocolBusLedgerStore,
 )
 from omnimarket.nodes.node_work_ledger_append_effect.writer_principals import (
     WriterPrincipals,
@@ -65,6 +75,10 @@ _AUTHORITY_TYPES = frozenset({"RULING", "OPERATOR-CONSENT"})
 
 
 _SUBJECT_KEYS = ("lane=", "from=")
+RETRY_MESSAGE = (
+    "handover in progress: the serve is changing where it appends and took nothing; "
+    "send the same command again"
+)
 
 
 def _principal_stamped(line: str, principal: str, *, after_type: bool = False) -> str:
@@ -125,7 +139,13 @@ class HandlerWorkLedgerAppendEffect:
         relay_rule: ModelRelayRequiresRule | None = None,
         acceptance_recorder: ProtocolJudgeAcceptanceRecorder | None = None,
         sequence_source: ProtocolJudgeSequenceSource | None = None,
+        fence: LedgerFlipFence | None = None,
+        bus_store: ProtocolBusLedgerStore | None = None,
     ) -> None:
+        # OMN-23154: the fence says where an accepted row lands. A handler given none stays on the file.
+        self._fence = fence if fence is not None else LedgerFlipFence()
+        self._bus_store = bus_store
+        self._flip_file_sha256: str | None = None
         # OMN-23152: the judge records each row it accepts, with the sequence it gave, so the emit
         # gate can refuse a row the judge never saw. A bare construction records nothing.
         self._acceptance_recorder = acceptance_recorder
@@ -185,6 +205,10 @@ class HandlerWorkLedgerAppendEffect:
             raise RuntimeError("work-ledger append handler has no ledger reader")
         return self._reader
 
+    @property
+    def mode(self) -> EnumLedgerAppendMode:
+        return self._fence.mode
+
     def handle(
         self,
         request: ModelWorkLedgerAppendRequest,
@@ -192,6 +216,30 @@ class HandlerWorkLedgerAppendEffect:
         writer_principal: str | None = None,
     ) -> ModelWorkLedgerAppendReceipt:
         started = time.monotonic()
+        with self._fence.admit() as mode:
+            if mode is EnumLedgerAppendMode.FENCED:
+                # OMN-23154: the handover answers a new command with a retry receipt and takes nothing.
+                return ModelWorkLedgerAppendReceipt(
+                    request_id=request.request_id,
+                    status=EnumWorkLedgerAppendStatus.RETRY,
+                    exit_code=75,
+                    message=RETRY_MESSAGE,
+                    ledger_lines=[],
+                    ledger_host=self.host_name,
+                    duration_ms=int((time.monotonic() - started) * 1000),
+                )
+            return self._handle_admitted(
+                request, writer_principal=writer_principal, mode=mode, started=started
+            )
+
+    def _handle_admitted(
+        self,
+        request: ModelWorkLedgerAppendRequest,
+        *,
+        writer_principal: str | None,
+        mode: EnumLedgerAppendMode,
+        started: float,
+    ) -> ModelWorkLedgerAppendReceipt:
         authenticated_principal: str | None = None
 
         def receipt(
@@ -199,6 +247,7 @@ class HandlerWorkLedgerAppendEffect:
             code: int,
             message: str,
             lines: list[int] | None = None,
+            seq: int | None = None,
         ) -> ModelWorkLedgerAppendReceipt:
             return ModelWorkLedgerAppendReceipt(
                 request_id=request.request_id,
@@ -209,6 +258,7 @@ class HandlerWorkLedgerAppendEffect:
                 ledger_host=self.host_name,
                 duration_ms=int((time.monotonic() - started) * 1000),
                 principal=authenticated_principal,
+                ledger_seq=seq,
             )
 
         if writer_principal is None:
@@ -333,9 +383,14 @@ class HandlerWorkLedgerAppendEffect:
         unstamped_legacy = "".join(legacy_lines)
         stamped_rows = _via_stamped(unstamped_rows, cell, via_cell)
         legacy_with_via = _via_stamped(unstamped_legacy, cell, via_cell)
+        locked = (
+            self._append_bus_locked
+            if mode is EnumLedgerAppendMode.BUS
+            else self._append_locked
+        )
         try:
             with self._append_lock.hold():
-                return self._append_locked(
+                return locked(
                     request,
                     receipt,
                     rows,
@@ -358,41 +413,19 @@ class HandlerWorkLedgerAppendEffect:
         earlier_renderings: tuple[str, ...],
     ) -> ModelWorkLedgerAppendReceipt:
         """The check-then-append step; the caller holds the append lock."""
-        # Every row of one request carries the same req= cell, so the request is
-        # complete only when all of them are on the ledger. A partial count is an
-        # error a person must reconcile, never a silent duplicate (model review,
-        # omnibase_internal tla/ledger_bus_append/REVIEW.md).
-        landed = _request_lines(self._require_reader().read_text(), cell)
-        if len(landed) == len(rows):
-            existing_rows = _request_blocks(self._require_reader().read_text(), cell)
-            requested_rows = _request_blocks(stamped_rows, cell)
-            # A request that landed before OMN-19513 carries principal= right
-            # after the type; its replay is the same request, not a conflict.
-            # A request that landed before OMN-24205 has no via=bus: cell; its
-            # replay is the same request, not a conflict.
-            if existing_rows not in (
-                requested_rows,
-                *(_request_blocks(text, cell) for text in earlier_renderings),
-            ):
-                return receipt(
-                    EnumWorkLedgerAppendStatus.REFUSED,
-                    65,
-                    f"request id {request.request_id} already belongs to different rows or principal: "
-                    f"ledger digest {blocks_digest(existing_rows)}, request digest {blocks_digest(requested_rows)}",
+        if self._bus_store is not None:
+            # After a rollback the bus still holds rows the file never got: a request it landed is
+            # answered, never appended to the file a second time (OMN-23154).
+            held = self._bus_store.lookup(request.request_id)
+            if held is not None:
+                return self._bus_duplicate(
+                    request, receipt, cell, stamped_rows, earlier_renderings, held
                 )
-            # A redelivered request is answered, and its rows stay accepted after a restart.
-            self._record_acceptance(request, stamped_rows, cell)
-            return receipt(
-                EnumWorkLedgerAppendStatus.DUPLICATE, 0, "already appended", landed
-            )
-        if landed:
-            return receipt(
-                EnumWorkLedgerAppendStatus.ERROR,
-                70,
-                f"partial append: {len(landed)} of {len(rows)} rows carrying {cell} are "
-                "on the ledger; reconcile by hand before the request is retried",
-                landed,
-            )
+        landed_receipt = self._landed_in_file(
+            request, receipt, rows, cell, stamped_rows, earlier_renderings
+        )
+        if landed_receipt is not None:
+            return landed_receipt
         if id_cell is not None:
             present = _request_lines(self._require_reader().read_text(), id_cell)
             if present:
@@ -421,6 +454,254 @@ class HandlerWorkLedgerAppendEffect:
         )
         return receipt(status, result.exit_code, tail)
 
+    def _landed_in_file(
+        self,
+        request: ModelWorkLedgerAppendRequest,
+        receipt: Callable[..., ModelWorkLedgerAppendReceipt],
+        rows: list[str],
+        cell: str,
+        stamped_rows: str,
+        earlier_renderings: tuple[str, ...],
+    ) -> ModelWorkLedgerAppendReceipt | None:
+        """The receipt for a request whose rows are already in the file, or None when none are."""
+        # Every row of one request carries the same req= cell, so the request is
+        # complete only when all of them are on the ledger. A partial count is an
+        # error a person must reconcile, never a silent duplicate (model review,
+        # omnibase_internal tla/ledger_bus_append/REVIEW.md).
+        text = self._file_text()
+        landed = _request_lines(text, cell)
+        if len(landed) == len(rows):
+            existing_rows = _request_blocks(text, cell)
+            requested_rows = _request_blocks(stamped_rows, cell)
+            # A request that landed before OMN-19513 carries principal= right
+            # after the type; its replay is the same request, not a conflict.
+            # A request that landed before OMN-24205 has no via=bus: cell; its
+            # replay is the same request, not a conflict.
+            if existing_rows not in (
+                requested_rows,
+                *(_request_blocks(rendering, cell) for rendering in earlier_renderings),
+            ):
+                return receipt(
+                    EnumWorkLedgerAppendStatus.REFUSED,
+                    65,
+                    f"request id {request.request_id} already belongs to different rows or principal: "
+                    f"ledger digest {blocks_digest(existing_rows)}, request digest {blocks_digest(requested_rows)}",
+                )
+            # A redelivered request is answered, and its rows stay accepted after a restart.
+            self._record_acceptance(request, stamped_rows, cell)
+            return receipt(
+                EnumWorkLedgerAppendStatus.DUPLICATE, 0, "already appended", landed
+            )
+        if landed:
+            return receipt(
+                EnumWorkLedgerAppendStatus.ERROR,
+                70,
+                f"partial append: {len(landed)} of {len(rows)} rows carrying {cell} are "
+                "on the ledger; reconcile by hand before the request is retried",
+                landed,
+            )
+        return None
+
+    def _file_text(self) -> str:
+        """The file's text; after the flip a file that is gone reads as empty and is never created."""
+        try:
+            return self._require_reader().read_text()
+        except FileNotFoundError:
+            if self._fence.mode is EnumLedgerAppendMode.FILE:
+                raise
+            return ""
+
+    def _require_bus_store(self) -> ProtocolBusLedgerStore:
+        if self._bus_store is None:
+            raise RuntimeError("work-ledger append handler has no bus ledger store")
+        return self._bus_store
+
+    def _bus_duplicate(
+        self,
+        request: ModelWorkLedgerAppendRequest,
+        receipt: Callable[..., ModelWorkLedgerAppendReceipt],
+        cell: str,
+        stamped_rows: str,
+        earlier_renderings: tuple[str, ...],
+        held: ModelBusAppend,
+    ) -> ModelWorkLedgerAppendReceipt:
+        held_blocks = _request_blocks(held.rows, cell)
+        if held_blocks not in (
+            _request_blocks(stamped_rows, cell),
+            *(_request_blocks(rendering, cell) for rendering in earlier_renderings),
+        ):
+            return receipt(
+                EnumWorkLedgerAppendStatus.REFUSED,
+                65,
+                f"request id {request.request_id} already belongs to different rows or principal: "
+                f"ledger digest {blocks_digest(held_blocks)}, "
+                f"request digest {blocks_digest(_request_blocks(stamped_rows, cell))}",
+            )
+        return receipt(
+            EnumWorkLedgerAppendStatus.DUPLICATE,
+            0,
+            "already appended",
+            seq=held.ledger_seqs[0],
+        )
+
+    def _append_bus_locked(
+        self,
+        request: ModelWorkLedgerAppendRequest,
+        receipt: Callable[..., ModelWorkLedgerAppendReceipt],
+        rows: list[str],
+        cell: str,
+        id_cell: str | None,
+        stamped_rows: str,
+        earlier_renderings: tuple[str, ...],
+    ) -> ModelWorkLedgerAppendReceipt:
+        """After the flip: the rows land on the bus store with a ledger_seq and the file is only read."""
+        store = self._require_bus_store()
+        held = store.lookup(request.request_id)
+        if held is not None:
+            return self._bus_duplicate(
+                request, receipt, cell, stamped_rows, earlier_renderings, held
+            )
+        # A request the file took before the flip is answered from the file, never landed twice.
+        landed_receipt = self._landed_in_file(
+            request, receipt, rows, cell, stamped_rows, earlier_renderings
+        )
+        if landed_receipt is not None:
+            return landed_receipt
+        if id_cell is not None:
+            present = _request_lines(self._file_text(), id_cell)
+            if present or _request_lines(store.text(), id_cell):
+                return receipt(
+                    EnumWorkLedgerAppendStatus.ALREADY_PRESENT,
+                    0,
+                    f"already present: a row carries {id_cell}",
+                    present,
+                )
+        landed = store.append(request.request_id, len(rows), stamped_rows)
+        self._record_bus_acceptance(request, stamped_rows, cell, landed)
+        return receipt(
+            EnumWorkLedgerAppendStatus.ACCEPTED,
+            0,
+            "",
+            seq=landed.ledger_seqs[0],
+        )
+
+    def _record_bus_acceptance(
+        self,
+        request: ModelWorkLedgerAppendRequest,
+        stamped_rows: str,
+        cell: str,
+        landed: ModelBusAppend,
+    ) -> None:
+        """One acceptance per row, with the sequence the bus store gave it."""
+        if self._acceptance_recorder is None:
+            return
+        for block, seq in zip(
+            _request_blocks(stamped_rows, cell), landed.ledger_seqs, strict=True
+        ):
+            self._acceptance_recorder.record(
+                ModelWorkLedgerJudgeAcceptance(
+                    row_id=work_ledger_row_id("\n".join(block).strip()),
+                    ledger_seq=seq,
+                    request_id=request.request_id,
+                )
+            )
+
+    def flip_to_bus(self, drain_timeout_s: float) -> ModelFlipResult:
+        """Fence new commands, wait for every in-flight append, then take the bus.
+
+        A command that arrives meanwhile gets a retry receipt. When the in-flight appends do not drain
+        within ``drain_timeout_s`` the handler goes back to where it began and nothing has changed."""
+        if self._bus_store is None:
+            return ModelFlipResult(
+                flipped=False,
+                mode=self._fence.mode,
+                reason="no bus ledger store is bound, so the serve keeps appending to the file",
+                in_flight_at_start=self._fence.in_flight,
+            )
+        prior, in_flight = self._fence.begin_handover()
+        if prior is EnumLedgerAppendMode.BUS:
+            self._fence.settle(EnumLedgerAppendMode.BUS)
+            return ModelFlipResult(
+                flipped=True,
+                mode=EnumLedgerAppendMode.BUS,
+                reason="already on the bus",
+                in_flight_at_start=in_flight,
+                file_sha256=self._flip_file_sha256,
+            )
+        if not self._fence.wait_drained(drain_timeout_s):
+            self._fence.settle(prior)
+            return ModelFlipResult(
+                flipped=False,
+                mode=prior,
+                reason=f"in-flight appends did not drain within {drain_timeout_s}s; the serve stays on the file",
+                in_flight_at_start=in_flight,
+            )
+        text = self._file_text_or_none()
+        self._flip_file_sha256 = (
+            None if text is None else hashlib.sha256(text.encode("utf-8")).hexdigest()
+        )
+        self._fence.settle(EnumLedgerAppendMode.BUS)
+        return ModelFlipResult(
+            flipped=True,
+            mode=EnumLedgerAppendMode.BUS,
+            reason="drained; new appends land on the bus",
+            in_flight_at_start=in_flight,
+            file_sha256=self._flip_file_sha256,
+        )
+
+    def rollback_to_file(self, drain_timeout_s: float) -> ModelRollbackResult:
+        """Restart the file judge on the file as it stands. The file is never written here.
+
+        The rows the bus took after the flip stay on the bus: a rollback is not an export, and a file
+        that is gone stays gone (the rollback is refused) rather than be recreated."""
+        store = self._require_bus_store()
+        prior, _ = self._fence.begin_handover()
+        if prior is EnumLedgerAppendMode.FILE:
+            self._fence.settle(EnumLedgerAppendMode.FILE)
+            return ModelRollbackResult(
+                restored=True,
+                mode=EnumLedgerAppendMode.FILE,
+                reason="already on the file judge",
+                bus_rows_not_in_file=_row_count(store.text()),
+            )
+        if not self._fence.wait_drained(drain_timeout_s):
+            self._fence.settle(prior)
+            return ModelRollbackResult(
+                restored=False,
+                mode=prior,
+                reason=f"in-flight appends did not drain within {drain_timeout_s}s; the serve stays on the bus",
+                bus_rows_not_in_file=_row_count(store.text()),
+            )
+        text = self._file_text_or_none()
+        if text is None:
+            self._fence.settle(prior)
+            return ModelRollbackResult(
+                restored=False,
+                mode=prior,
+                reason="the ledger file is absent: a rollback restarts the file judge on the file as it stands and never recreates it as an export",
+                bus_rows_not_in_file=_row_count(store.text()),
+            )
+        unchanged = (
+            None
+            if self._flip_file_sha256 is None
+            else hashlib.sha256(text.encode("utf-8")).hexdigest()
+            == self._flip_file_sha256
+        )
+        self._fence.settle(EnumLedgerAppendMode.FILE)
+        return ModelRollbackResult(
+            restored=True,
+            mode=EnumLedgerAppendMode.FILE,
+            reason="the file judge is back on the file as it stands; the bus rows were not exported",
+            bus_rows_not_in_file=_row_count(store.text()),
+            file_unchanged_since_flip=unchanged,
+        )
+
+    def _file_text_or_none(self) -> str | None:
+        try:
+            return self._require_reader().read_text()
+        except FileNotFoundError:
+            return None
+
     def _record_acceptance(
         self, request: ModelWorkLedgerAppendRequest, stamped_rows: str, cell: str
     ) -> None:
@@ -436,6 +717,10 @@ class HandlerWorkLedgerAppendEffect:
                         row_id=row_id, ledger_seq=seq, request_id=request.request_id
                     )
                 )
+
+
+def _row_count(text: str) -> int:
+    return sum(1 for line in text.splitlines() if _ROW_START.match(line))
 
 
 def terminal_refused(
