@@ -2549,7 +2549,6 @@
   "tests/nodes/node_ticket_closer_scheduled_effect/test_contract_topics.py": 1.51,
   "tests/nodes/node_ticket_closer_scheduled_effect/test_dod_verify_reading.py": 1.43,
   "tests/nodes/node_ticket_closer_scheduled_effect/test_golden_chain_ticket_closer.py": 1.83,
-  "tests/nodes/node_ticket_closer_scheduled_effect/test_import_cycle.py": 40.14,
   "tests/nodes/node_ticket_closer_scheduled_effect/test_overlay_reading_source.py": 19.46,
   "tests/nodes/node_ticket_closer_scheduled_effect/test_seam_ticket_write.py": 1.54,
   "tests/nodes/node_ticket_closer_scheduled_effect/test_ticket_bus_call.py": 1.72,
