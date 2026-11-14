@@ -620,20 +620,11 @@ _CANARY_EXIT = {
 }
 
 
-def build_delegation_chain_canary_handler(
+def _inmemory_canary_handler(
     overlay: ModelLabAlarmOverlay,
     settings: ModelDelegationChainCanarySettings,
     clock: Callable[[], datetime],
 ) -> HandlerDelegationChainCanary:
-    """The canary handler wired to the overlay's backend: the gateway's runs on the runtime backend, no fixture runs in memory."""
-    if overlay.bus.backend == "runtime":
-        return HandlerDelegationChainCanary(
-            settings=settings,
-            source=GatewayCanaryRunSource(settings),
-            streaks=FileGrowthStreaks(Path(settings.persistence.streak_path)),
-            delivery=_delivery_for(overlay),
-            clock=clock,
-        )
     return HandlerDelegationChainCanary(
         settings=settings,
         source=InMemoryCanaryRunSource(error="no fixture runs"),
@@ -641,6 +632,45 @@ def build_delegation_chain_canary_handler(
         delivery=_delivery_for(overlay),
         clock=clock,
     )
+
+
+def _runtime_canary_handler(
+    overlay: ModelLabAlarmOverlay,
+    settings: ModelDelegationChainCanarySettings,
+    clock: Callable[[], datetime],
+) -> HandlerDelegationChainCanary:
+    return HandlerDelegationChainCanary(
+        settings=settings,
+        source=GatewayCanaryRunSource(settings),
+        streaks=FileGrowthStreaks(Path(settings.persistence.streak_path)),
+        delivery=_delivery_for(overlay),
+        clock=clock,
+    )
+
+
+_CANARY_BACKEND_BUILDERS: dict[
+    str,
+    Callable[
+        [
+            ModelLabAlarmOverlay,
+            ModelDelegationChainCanarySettings,
+            Callable[[], datetime],
+        ],
+        HandlerDelegationChainCanary,
+    ],
+] = {
+    "inmemory": _inmemory_canary_handler,
+    "runtime": _runtime_canary_handler,
+}
+
+
+def build_delegation_chain_canary_handler(
+    overlay: ModelLabAlarmOverlay,
+    settings: ModelDelegationChainCanarySettings,
+    clock: Callable[[], datetime],
+) -> HandlerDelegationChainCanary:
+    """The canary handler wired to the overlay's backend: the gateway's runs on the runtime backend, no fixture runs in memory."""
+    return _CANARY_BACKEND_BUILDERS[overlay.bus.backend](overlay, settings, clock)
 
 
 def run_delegation_chain_canary(
@@ -695,23 +725,11 @@ _PROJECTION_EXIT = {
 }
 
 
-def build_work_ledger_projection_stale_handler(
+def _inmemory_projection_handler(
     overlay: ModelLabAlarmOverlay,
     settings: ModelWorkLedgerProjectionStaleSettings,
     clock: Callable[[], datetime],
 ) -> HandlerWorkLedgerProjectionStale:
-    """The projection handler wired to the overlay's backend: the ledger file and the query node on the runtime backend, unread fixtures in memory."""
-    if overlay.bus.backend == "runtime":
-        return HandlerWorkLedgerProjectionStale(
-            settings=settings,
-            ledger=FileLedgerNewest(
-                Path(settings.ledger_path), settings.tail_bytes, settings.row_types
-            ),
-            projection=BusProjectionNewest(overlay.bus.lane, settings.timeout_seconds),
-            streaks=FileGrowthStreaks(Path(settings.persistence.streak_path)),
-            delivery=_delivery_for(overlay),
-            clock=clock,
-        )
     return HandlerWorkLedgerProjectionStale(
         settings=settings,
         ledger=InMemoryLedgerNewest(error="no fixture ledger"),
@@ -720,6 +738,48 @@ def build_work_ledger_projection_stale_handler(
         delivery=_delivery_for(overlay),
         clock=clock,
     )
+
+
+def _runtime_projection_handler(
+    overlay: ModelLabAlarmOverlay,
+    settings: ModelWorkLedgerProjectionStaleSettings,
+    clock: Callable[[], datetime],
+) -> HandlerWorkLedgerProjectionStale:
+    return HandlerWorkLedgerProjectionStale(
+        settings=settings,
+        ledger=FileLedgerNewest(
+            Path(settings.ledger_path), settings.tail_bytes, settings.row_types
+        ),
+        projection=BusProjectionNewest(overlay.bus.lane, settings.timeout_seconds),
+        streaks=FileGrowthStreaks(Path(settings.persistence.streak_path)),
+        delivery=_delivery_for(overlay),
+        clock=clock,
+    )
+
+
+_PROJECTION_BACKEND_BUILDERS: dict[
+    str,
+    Callable[
+        [
+            ModelLabAlarmOverlay,
+            ModelWorkLedgerProjectionStaleSettings,
+            Callable[[], datetime],
+        ],
+        HandlerWorkLedgerProjectionStale,
+    ],
+] = {
+    "inmemory": _inmemory_projection_handler,
+    "runtime": _runtime_projection_handler,
+}
+
+
+def build_work_ledger_projection_stale_handler(
+    overlay: ModelLabAlarmOverlay,
+    settings: ModelWorkLedgerProjectionStaleSettings,
+    clock: Callable[[], datetime],
+) -> HandlerWorkLedgerProjectionStale:
+    """The projection handler wired to the overlay's backend: the ledger file and the query node on the runtime backend, unread fixtures in memory."""
+    return _PROJECTION_BACKEND_BUILDERS[overlay.bus.backend](overlay, settings, clock)
 
 
 def run_work_ledger_projection_stale(

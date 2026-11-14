@@ -19,7 +19,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from importlib import resources
 from pathlib import Path
-from typing import cast
+from typing import Protocol, cast
 
 import yaml
 from pydantic import BaseModel, JsonValue, ValidationError
@@ -55,13 +55,19 @@ from omnimarket.nodes.node_lab_alarm.protocols import (
 _WORK_LEDGER_QUERY_NODE = "omnimarket.nodes.node_work_ledger_query_effect"
 
 
+class ProtocolGatewayReader(Protocol):
+    """One typed gateway read; HandlerGatewayReadClient is the production one."""
+
+    def read(self, request: ModelGithubGatewayRequest) -> GithubGatewayResult: ...
+
+
 class GatewayCanaryRunSource:
     """The canary workflow's completed runs, one gateway read per admitted event, newest first."""
 
     def __init__(
         self,
         settings: ModelDelegationChainCanarySettings,
-        client: HandlerGatewayReadClient | None = None,
+        client: ProtocolGatewayReader | None = None,
     ) -> None:
         self._settings = settings
         self._client = client or HandlerGatewayReadClient(route=self._route)
@@ -229,5 +235,6 @@ class BusProjectionNewest:
 __all__ = [
     "BusProjectionNewest",
     "GatewayCanaryRunSource",
+    "ProtocolGatewayReader",
     "work_ledger_query_topics",
 ]

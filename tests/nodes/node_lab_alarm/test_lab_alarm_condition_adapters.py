@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from pydantic import BaseModel
@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from omnimarket.handlers.scm.handler_gateway_read_client import GatewayReadError
 from omnimarket.models.model_github_gateway_io import (
     EnumGithubGatewayOperation,
+    GithubGatewayResult,
     ModelGithubGatewayRequest,
     ModelWorkflowRunsResult,
     ModelWorkflowRunSummary,
@@ -68,12 +69,12 @@ class _Client:
         self.answers = answers
         self.requests: list[ModelGithubGatewayRequest] = []
 
-    def read(self, request: ModelGithubGatewayRequest) -> Any:
+    def read(self, request: ModelGithubGatewayRequest) -> GithubGatewayResult:
         self.requests.append(request)
         answer = self.answers[request.event or ""]
         if isinstance(answer, Exception):
             raise answer
-        return answer
+        return cast(GithubGatewayResult, answer)
 
 
 def _runs_result(*runs: ModelWorkflowRunSummary) -> ModelWorkflowRunsResult:
@@ -92,7 +93,7 @@ def test_gateway_canary_source_asks_for_completed_runs_of_each_admitted_event() 
             "workflow_dispatch": _runs_result(_run(2, "workflow_dispatch", "failure")),
         }
     )
-    runs = GatewayCanaryRunSource(_SETTINGS, client=client).read()  # type: ignore[arg-type]
+    runs = GatewayCanaryRunSource(_SETTINGS, client=client).read()
     assert [r.id for r in runs] == [1, 2]
     assert [r.conclusion for r in runs] == ["success", "failure"]
     assert runs[0].created_at == datetime(2026, 11, 12, 4, 0, tzinfo=UTC)
@@ -110,13 +111,13 @@ def test_gateway_canary_source_a_gateway_that_does_not_answer_is_unreadable() ->
         {"schedule": GatewayReadError("no answer on lane 'dev' within 45s")}
     )
     with pytest.raises(CanaryRunsUnreadableError, match="no answer"):
-        GatewayCanaryRunSource(_SETTINGS, client=client).read()  # type: ignore[arg-type]
+        GatewayCanaryRunSource(_SETTINGS, client=client).read()
 
 
 def test_gateway_canary_source_an_untyped_answer_is_unreadable() -> None:
     client = _Client({"schedule": object(), "workflow_dispatch": object()})
     with pytest.raises(CanaryRunsUnreadableError, match="not workflow runs"):
-        GatewayCanaryRunSource(_SETTINGS, client=client).read()  # type: ignore[arg-type]
+        GatewayCanaryRunSource(_SETTINGS, client=client).read()
 
 
 def _terminal(payload: dict[str, Any], *, failed: bool = False) -> ModelScmTerminal:
