@@ -2632,6 +2632,7 @@
   "tests/nodes/node_topic_never_produced_compute/test_seam_topic_activity_row.py": 1.42,
   "tests/nodes/node_topic_never_produced_compute/test_topic_never_produced.py": 1.43,
   "tests/nodes/node_topic_provision_plan_compute/test_topic_provision_plan.py": 1.76,
+  "tests/nodes/node_topic_required_absent_compute/test_topic_required_absent.py": 2.33,
   "tests/nodes/node_transcript_chunk_compute/test_chunk.py": 1.04,
   "tests/nodes/node_transcript_chunk_compute/test_contracts.py": 0.11,
   "tests/nodes/node_transcript_parse_compute/test_contracts.py": 0.07,
