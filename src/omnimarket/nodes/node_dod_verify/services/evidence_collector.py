@@ -72,6 +72,7 @@ from omnimarket.enums.enum_dod_verify_execution_audience import (
 from omnimarket.enums.enum_dod_verify_unresolved_cause import (
     EnumDodVerifyUnresolvedCause,
 )
+from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.models.model_criteria_drift import (
     ModelCriteriaCheck,
 )
@@ -166,6 +167,15 @@ from omnimarket.nodes.node_dod_verify.services.local_gh_reads import (
 from omnimarket.nodes.node_dod_verify.services.released_evidence import (
     evaluate_released,
     parse_released_check_value,
+)
+from omnimarket.nodes.node_dod_verify.services.standard_ticket_contract import (
+    cutover_unreadable_refusal,
+    grandfathered_record,
+    is_grandfathered,
+    load_cutover,
+    schema_refusal,
+    standard_ticket_refusals,
+    verified_repository,
 )
 from omnimarket.occ_evidence_probative_class import (
     EnumEvidenceProbativeClass,
@@ -2416,6 +2426,7 @@ class EvidenceCollector:
         execution_audience: EnumDodVerifyExecutionAudience = (
             EnumDodVerifyExecutionAudience.HOSTED
         ),
+        full_contract_path: str | None = None,
     ) -> list[ModelEvidenceCheckResult]:
         """Load an explicit contract or the ticket's product-repository contracts.
 
@@ -2426,7 +2437,12 @@ class EvidenceCollector:
         """
         self._durable_gate_inputs = None
         if contract_path is not None:
-            return self._collect_impl(ticket_id, contract_path, execution_audience)
+            return self._collect_impl(
+                ticket_id,
+                contract_path,
+                execution_audience,
+                full_contract_path=full_contract_path,
+            )
 
         repo_results = self._collect_repo_governed(ticket_id, execution_audience)
         if repo_results is not None:
@@ -2660,12 +2676,15 @@ class EvidenceCollector:
         goal_id: UUID | None = None,
         contract_schema_version: str | None = None,
         loaded_contract: tuple[dict[str, Any], ModelDodContractSubject] | None = None,
+        full_contract_path: str | None = None,
     ) -> list[ModelEvidenceCheckResult]:
         """Load contract and run all dod_evidence checks (worktree-agnostic core).
 
         Args:
             ticket_id: Linear ticket ID (e.g. OMN-1234).
             contract_path: Explicit path to contract YAML. If None, auto-detect.
+            full_contract_path: The complete head contract, which the standard-ticket
+                rules read when ``contract_path`` is a scoped copy (OMN-23771).
 
         Returns:
             One ModelEvidenceCheckResult per dod_evidence item.
@@ -2741,6 +2760,15 @@ class EvidenceCollector:
         failure = contract_structure_failure(ticket_id, raw, path)
         if failure is not None:
             return [failure]
+        standard_refusals, standard_record = self._standard_ticket_verdict(
+            ticket_id,
+            raw,
+            path,
+            full_contract_path,
+            judged=inline_items is None,
+        )
+        if standard_refusals:
+            return standard_refusals
         dod_items = raw["dod_evidence"]
 
         # OMN-20153: the author's own accepted falsifiers become evidence items
@@ -3072,7 +3100,74 @@ class EvidenceCollector:
                 )
             results = stamped
 
+        if standard_record is not None:
+            results.append(standard_record)
         return results
+
+    def _standard_ticket_verdict(
+        self,
+        ticket_id: str,
+        raw: dict[str, Any],
+        path: Path | None,
+        full_contract_path: str | None,
+        *,
+        judged: bool,
+    ) -> tuple[list[ModelEvidenceCheckResult], ModelEvidenceCheckResult | None]:
+        """The standard-ticket rules for the loaded contract (OMN-23771), no network read.
+
+        Returns ``(refusals, grandfathered record)``. Off until the node's overlay
+        names a cutover, and never applied to a goal-scoped inline run. The complete
+        head contract is ``full_contract_path`` when given, else the loaded contract;
+        the loaded contract, a scoped copy or not, is what the checks run from.
+        """
+        if not judged:
+            return [], None
+        try:
+            cutover = load_cutover()
+        except NodeOverlayError as exc:
+            return [cutover_unreadable_refusal(ticket_id, exc)], None
+        if cutover is None:
+            return [], None
+        full: dict[str, Any] = raw
+        full_path = path
+        subject = self.contract_subject
+        if full_contract_path is not None:
+            full_path = Path(full_contract_path)
+            if not full_path.exists():
+                return [
+                    schema_refusal(
+                        ticket_id,
+                        f"the full contract file {full_contract_path} was not found",
+                    )
+                ], None
+            loaded_full = self._load_yaml(full_path)
+            if loaded_full is None:
+                return [
+                    schema_refusal(
+                        ticket_id,
+                        self.contract_load_error
+                        or f"YAML parse error in {full_contract_path}",
+                    )
+                ], None
+            if loaded_full.get("ticket_id") != ticket_id:
+                return [
+                    schema_refusal(
+                        ticket_id,
+                        "the full contract names ticket "
+                        f"{loaded_full.get('ticket_id')!r}, not {ticket_id!r}",
+                    )
+                ], None
+            full = loaded_full
+            subject = resolve_contract_subject(full_path)
+        repository = verified_repository(
+            full_path, subject.repository if subject is not None else None
+        )
+        refusals = standard_ticket_refusals(ticket_id, full, cutover, repository)
+        if refusals:
+            return refusals, None
+        if is_grandfathered(ticket_id, cutover):
+            return [], grandfathered_record(ticket_id, cutover)
+        return [], None
 
     def collect_inline(
         self,

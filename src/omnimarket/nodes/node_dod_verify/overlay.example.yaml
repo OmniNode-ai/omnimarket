@@ -1,0 +1,7 @@
+# The shipped placeholder. The real overlay (deployment data, kept outside this repository and found
+# under ONEX_SKILL_OVERLAY_ROOTS at <root>/node_dod_verify/overlay.yaml) names the standard-ticket
+# cutover: its date and the first ticket number Linear assigned on or after it (OMN-23771). With no
+# overlay, dod-verify applies none of the standard-ticket rules. This placeholder sits far in the
+# future, so no ticket is at or above it.
+standard_ticket_cutover_date: "2099-01-01"
+standard_ticket_first_ticket_number: "99999999"
