@@ -12,7 +12,10 @@ overlay never stops a step.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import json
+import sys
+from collections.abc import Callable, Sequence
+from typing import TextIO
 
 from omnimarket.handlers.delegation_routing_order_reader import (
     DelegationRoutingOrderError,
@@ -77,3 +80,40 @@ def step_order(
     return ModelDelegationStepOrder(
         choice=OLD_DEFAULTS[kind], order_source="default", order_fallback=why
     )
+
+
+def main(
+    argv: Sequence[str] | None = None,
+    *,
+    read: Callable[[str], tuple[str, ...] | None] | None = None,
+    out: TextIO | None = None,
+    err: TextIO | None = None,
+) -> int:
+    """Print the step order as one JSON line: ``{"choice": ..., "fields": {...}}``.
+
+    This is how ``delegation_step.py`` asks (``python -m omnimarket.handlers.delegation_step_order <kind> <class>``)
+    and what it parses from the last line of stdout: ``choice`` and the receipt ``fields``. Without this entry the
+    module printed nothing and exited 0, the step read that as no answer and kept its old default, so a text step went
+    to GLM first whatever the overlay's order said. A refused kind exits 1 with the reason on stderr and no JSON line.
+    """
+    stdout = out if out is not None else sys.stdout
+    stderr = err if err is not None else sys.stderr
+    args = list(sys.argv[1:] if argv is None else argv)
+    if len(args) != 2:
+        print("usage: delegation_step_order <text|code> <task class>", file=stderr)
+        return 2
+    kind, task_class = args
+    try:
+        answer = step_order(kind, task_class, read=read)
+    except ValueError as exc:
+        print(str(exc), file=stderr)
+        return 1
+    print(
+        json.dumps({"choice": answer.choice, "fields": answer.receipt_fields()}),
+        file=stdout,
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
