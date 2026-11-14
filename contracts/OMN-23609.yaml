@@ -49,7 +49,7 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: |-
-      curl --fail --silent --show-error --location --max-time 15 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_factory_floor_compute/handlers/floor_limits.py" | grep -q accounts_usable && curl --fail --silent --show-error --location --max-time 15 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_factory_floor_publish_effect/page/floor/index.html" | grep -q accounts_unknown && echo "published source holds the per-host account counts"
+      curl --fail --silent --show-error --location --max-time 15 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_factory_floor_compute/handlers/floor_limits.py" | grep accounts_usable >/dev/null && curl --fail --silent --show-error --location --max-time 15 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_factory_floor_publish_effect/page/floor/index.html" | grep accounts_unknown >/dev/null && echo "published source holds the per-host account counts"
     cwd: .
 - id: dod-omn23609-integration-proof
   description: 'AC3 on the running board: the focused panel tests run on a lab host at the pushed head; the published floor record read from the runtime after the merge deploys must list every host of the live pool with the four account counts. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.'
