@@ -1,0 +1,143 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Host Disk Orchestrator (OMN-23866)
+#
+# On its schedule (runtime tick) and on a low-disk event: reads the newest host disk readings, asks
+# node_host_disk_decision_compute (in process) what each host evicts and whether it alarms, sends one typed command per
+# decision (idempotency key per host, class and reading), collects each typed result or typed failure by key, alarms
+# through the bus alert channel (the slack-publish command), and records each run as an event the projection keeps.
+# Commands go out in practice mode until the host disk effect is installed.
+name: node_host_disk_orchestrator
+lifecycle: experimental
+node_type: orchestrator
+runtime_profiles:
+- effects
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: Decides what each lab host evicts and raises the low-disk alarm, on a schedule and on a low-disk event;
+  one typed command per decision, each result or failure collected, each run recorded.
+contract_name: node_host_disk_orchestrator
+node_name: node_host_disk_orchestrator
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+  - operation: record_host_disk_read
+    topic: onex.evt.omnimarket.host-disk-read.v1
+    message_category: event
+    handler:
+      name: HandlerHostDiskRecordRead
+      module: omnimarket.nodes.node_host_disk_orchestrator.handlers.handler_host_disk_record_read
+    event_model:
+      name: ModelHostDiskRead
+      module: omnimarket.models.model_host_disk_reading
+  - operation: host_disk.scheduled_run
+    topic: onex.intent.platform.runtime-tick.v1
+    handler:
+      name: HandlerHostDiskScheduled
+      module: omnimarket.nodes.node_host_disk_orchestrator.handlers.handler_host_disk_scheduled
+    event_model:
+      name: ModelRuntimeTick
+      module: omnibase_infra.runtime.models.model_runtime_tick
+    event_type: platform.runtime-tick
+  - operation: host_disk.low_reported
+    topic: onex.evt.omnimarket.host-disk-low-reported.v1
+    message_category: event
+    handler:
+      name: HandlerHostDiskLowReported
+      module: omnimarket.nodes.node_host_disk_orchestrator.handlers.handler_host_disk_low_reported
+    event_model:
+      name: ModelHostDiskLowReported
+      module: omnimarket.models.model_host_disk_orchestrator
+  - operation: host_disk.evict_completed
+    topic: onex.evt.omnimarket.host-disk-evict-completed.v1
+    message_category: event
+    handler:
+      name: HandlerHostDiskEvictCompleted
+      module: omnimarket.nodes.node_host_disk_orchestrator.handlers.handler_host_disk_results
+    event_model:
+      name: ModelHostDiskEvictCompleted
+      module: omnimarket.models.model_host_disk_orchestrator
+  - operation: host_disk.evict_failed
+    topic: onex.evt.omnimarket.host-disk-evict-failed.v1
+    message_category: event
+    handler:
+      name: HandlerHostDiskEvictFailed
+      module: omnimarket.nodes.node_host_disk_orchestrator.handlers.handler_host_disk_results
+    event_model:
+      name: ModelHostDiskEvictFailed
+      module: omnimarket.models.model_host_disk_orchestrator
+input_subscriptions:
+- topic: onex.intent.platform.runtime-tick.v1
+  operation: host_disk.scheduled_run
+event_bus:
+  subscribe_topics:
+  - onex.evt.omnimarket.host-disk-read.v1
+  - onex.intent.platform.runtime-tick.v1
+  - onex.evt.omnimarket.host-disk-low-reported.v1
+  - onex.evt.omnimarket.host-disk-evict-completed.v1
+  - onex.evt.omnimarket.host-disk-evict-failed.v1
+  publish_topics:
+  - onex.cmd.omnimarket.host-disk-evict-requested.v1
+  - onex.cmd.omnimarket.slack-publish.v1
+  - onex.evt.omnimarket.host-disk-run-completed.v1
+  - onex.evt.omnimarket.schedule-run.v1
+terminal_event: onex.evt.omnimarket.host-disk-run-completed.v1
+published_events:
+- topic: onex.evt.omnimarket.host-disk-run-completed.v1
+  event_type: ModelHostDiskRunCompleted
+- topic: onex.evt.omnimarket.schedule-run.v1
+  event_type: ModelScheduleRunEvent
+externally_consumed_topics:
+- onex.evt.omnimarket.host-disk-run-completed.v1
+- onex.evt.omnimarket.schedule-run.v1
+- onex.cmd.omnimarket.host-disk-evict-requested.v1
+config:
+  host_disk_orchestrator:
+    decision_overlay_id: node_host_disk_decision_compute
+runtime:
+  schedule_overlay:
+    overlay_id: node_host_disk_orchestrator
+    model: omnimarket.models.model_host_disk_orchestrator.ModelHostDiskOrchestratorOverlay
+overlay_profiles:
+  in_memory: overlays/in_memory.yaml
+descriptor:
+  node_archetype: orchestrator
+  purity: effectful
+  idempotent: false
+  timeout_ms: 3600000
+  side_effects:
+  - publishes one typed eviction command per decision, in practice mode, and one slack-publish command per alarm
+metadata:
+  transport_type: kafka
+  ticket: OMN-23866
+  description: Decides what each lab host evicts and raises the low-disk alarm, on a schedule and on a low-disk event.
+  created: '2026-11-14'
+  tags:
+  - host-disk
+  - orchestrator
+broker_acl_grants:
+- principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+  grants:
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.intent.platform.runtime-tick.v1, operation: READ}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.intent.platform.runtime-tick.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-disk-read.v1, operation: READ}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-disk-read.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-disk-low-reported.v1, operation: READ}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-disk-low-reported.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-disk-evict-completed.v1, operation: READ}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-disk-evict-completed.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-disk-evict-failed.v1, operation: READ}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-disk-evict-failed.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.host-disk-evict-requested.v1, operation: WRITE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.host-disk-evict-requested.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.slack-publish.v1, operation: WRITE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.slack-publish.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-disk-run-completed.v1, operation: WRITE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-disk-run-completed.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.schedule-run.v1, operation: WRITE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.schedule-run.v1, operation: DESCRIBE}
+  - {resource_type: GROUP, pattern: PREFIXED, name: local.omnimarket.node_host_disk_orchestrator.consume.v1., operation: READ}
+  - {resource_type: GROUP, pattern: PREFIXED, name: local.omnimarket.node_host_disk_orchestrator.consume.v1., operation: DESCRIBE}

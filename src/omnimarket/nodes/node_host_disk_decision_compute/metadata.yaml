@@ -1,0 +1,22 @@
+name: node_host_disk_decision_compute
+version: "0.1.0"
+description: "Host disk decision: what each lab host evicts and when it alarms, from the projection rows and a policy"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_host_disk_decision_compute: "omnimarket.nodes.node_host_disk_decision_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "host-disk", "pure"]
+pack: "host_hygiene"
+display_name: "Host Disk Decision"
+node_role: "compute"
