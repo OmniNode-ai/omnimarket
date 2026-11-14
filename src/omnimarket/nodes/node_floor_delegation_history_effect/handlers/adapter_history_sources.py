@@ -235,11 +235,7 @@ def routing_settings(
             found[eval_backend.backend_id] = ModelBackendSettings(
                 backend_id=eval_backend.backend_id,
                 model_name=eval_backend.model_name,
-                host=(
-                    host_of(eval_backend.endpoint_url)
-                    if eval_backend.provider == "local"
-                    else None
-                )
+                host=host_of(eval_backend.endpoint_url)
                 or (earlier.host if earlier else None),
                 context_tokens=(arm.context_length if arm else None)
                 or (earlier.context_tokens if earlier else None),

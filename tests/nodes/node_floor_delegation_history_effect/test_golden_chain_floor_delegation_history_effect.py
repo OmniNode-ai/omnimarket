@@ -15,6 +15,9 @@ from pathlib import Path
 
 import pytest
 
+from omnimarket.models.delegation.model_delegation_routing_overlay import (
+    ModelDelegationRoutingOverlay,
+)
 from omnimarket.nodes.node_floor_delegation_history_compute.models.model_delegation_history import (
     ModelDelegationHistory,
 )
@@ -234,7 +237,7 @@ def test_error_a_projection_row_with_no_model_is_skipped_and_counted_never_liste
 def test_error_a_broken_routing_overlay_is_named_and_the_settings_stay_unrecorded(
     tmp_path: Path,
 ) -> None:
-    def broken() -> object:
+    def broken() -> ModelDelegationRoutingOverlay:
         raise RuntimeError("no overlay")
 
     handler = HandlerFloorDelegationHistory(
@@ -242,7 +245,7 @@ def test_error_a_broken_routing_overlay_is_named_and_the_settings_stay_unrecorde
         FakeRunner(reports=_hosts()),
         clock=lambda: NOW,
         environ=ENVIRON,
-        routing_overlay_loader=broken,  # type: ignore[arg-type]
+        routing_overlay_loader=broken,
     )
     _run(handler, tmp_path)
     doc = _written(tmp_path)
