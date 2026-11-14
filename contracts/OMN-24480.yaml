@@ -1,0 +1,53 @@
+schema_version: 1.0.0
+ticket_id: OMN-24480
+title: The ledger file census takes its own count file and repository name
+summary: The ledger file census node takes its own ratchet file (--ratchet-file) and its own repository name (--register) from the command line, so each repository's CI can run the census against its own checkout and hold its own shrink-only count (cutover plan wave 0). Never reads the ledger file.
+is_seam_ticket: true
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24480-census-per-repository
+  statement: A change that adds a reader or a writer of the ledger file can be refused in a repository other than omnimarket.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the counting step takes its own ratchet file and its own repository name from the command line -- falsifier: uv run pytest tests/unit/validators/test_ledger_file_census.py -k "ratchet_file_option or register_option" -q'
+  - id: AC2
+    statement: 'AC2: a seeded reader file turns the counting step red when the command line names the repository and its own count file, and the same run without the option reads the overlay''s count file -- falsifier: uv run pytest tests/unit/validators/test_ledger_file_census.py -k ratchet_file_option -q'
+  - id: AC3
+    statement: 'AC3: integrated: the public repositories'' running checks print their counts (62, 25 and 14 files) -- falsifier: the CI log of each repository''s latest merged head shows a CENSUS line with those counts or lower'
+evidence_requirements:
+- kind: tests
+  description: The census tests pass at the pushed head.
+  command: uv run --frozen pytest tests/unit/validators/test_ledger_file_census.py tests/unit/nodes/node_work_ledger_file_census_effect -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24480-ac1
+  description: 'Both options on the command line: the ratchet option replaces the overlay file, the register option names the repository for one run; a missing ratchet file answers unreadable (error chain).'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/validators/test_ledger_file_census.py -k "ratchet_file_option or register_option" -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24480-ac2
+  description: 'Failing control: without the ratchet option the overlay count file is read and the seeded reader is red; without the register option an unregistered name answers unreadable.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/validators/test_ledger_file_census.py -k ratchet_file_option -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24480-ac3
+  description: The tests behind the integrated reading pass; the counts read in each public repository's CI are recorded in the Lab line and a comment once the three steps run.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/validators/test_ledger_file_census.py tests/unit/nodes/node_work_ledger_file_census_effect -q --no-cov -n 0 -p no:randomly
+    cwd: .

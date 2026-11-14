@@ -146,6 +146,93 @@ def test_seeded_reader_in_a_git_fixture_fails_the_cli(tmp_path: Path) -> None:
     assert main(["--repos", "alpha"], environ=environ) == 1
 
 
+def test_ratchet_file_option_replaces_the_overlay_ratchet_file(
+    tmp_path: Path,
+) -> None:
+    registry = tmp_path / "registry"
+    repo = registry / "alpha"
+    repo.mkdir(parents=True)
+    env = scrub_git_location_env(os.environ)
+    git = ["git", "-C", str(repo)]
+    subprocess.run([*git, "init", "-q"], check=True, env=env)
+    (repo / "reader.sh").write_text('cat "$ONEX_LEDGER_PATH"\n')
+    subprocess.run([*git, "add", "--", "reader.sh"], check=True, env=env)
+    overlay_ratchet = tmp_path / "overlay-ratchet.yaml"
+    overlay_ratchet.write_text("ratchet:\n  alpha: 0\n")
+    option_ratchet = tmp_path / "option-ratchet.yaml"
+    option_ratchet.write_text("ratchet:\n  alpha: 5\n")
+    document = yaml.safe_load((PACKAGE / "overlay.example.yaml").read_text())
+    document["repositories"] = [{"name": "alpha", "own_line": False}]
+    document["ratchet_file"] = str(overlay_ratchet)
+    overlay_file = tmp_path / "overlay.yaml"
+    overlay_file.write_text(yaml.safe_dump(document))
+    environ = {
+        "ONEX_LEDGER_CENSUS_OVERLAY": str(overlay_file),
+        "ONEX_LEDGER_CENSUS_ROOT": str(registry),
+    }
+    with_option = ["--repos", "alpha", "--ratchet-file", str(option_ratchet)]
+    assert main(with_option, environ=environ) == 0
+    assert main(["--repos", "alpha"], environ=environ) == 1
+
+
+def test_ratchet_file_option_with_a_missing_file_is_unreadable(
+    tmp_path: Path,
+) -> None:
+    registry = tmp_path / "registry"
+    repo = registry / "alpha"
+    repo.mkdir(parents=True)
+    env = scrub_git_location_env(os.environ)
+    git = ["git", "-C", str(repo)]
+    subprocess.run([*git, "init", "-q"], check=True, env=env)
+    (repo / "ok.py").write_text(CLEAN["src/a.py"])
+    subprocess.run([*git, "add", "--", "ok.py"], check=True, env=env)
+    document = yaml.safe_load((PACKAGE / "overlay.example.yaml").read_text())
+    document["repositories"] = [{"name": "alpha", "own_line": False}]
+    overlay_file = tmp_path / "overlay.yaml"
+    overlay_file.write_text(yaml.safe_dump(document))
+    environ = {
+        "ONEX_LEDGER_CENSUS_OVERLAY": str(overlay_file),
+        "ONEX_LEDGER_CENSUS_ROOT": str(registry),
+    }
+    missing = tmp_path / "absent-ratchet.yaml"
+    assert (
+        main(["--repos", "alpha", "--ratchet-file", str(missing)], environ=environ)
+        == 69
+    )
+
+
+def test_register_option_names_the_repository_for_one_run(tmp_path: Path) -> None:
+    registry = tmp_path / "registry"
+    repo = registry / "alpha"
+    repo.mkdir(parents=True)
+    env = scrub_git_location_env(os.environ)
+    git = ["git", "-C", str(repo)]
+    subprocess.run([*git, "init", "-q"], check=True, env=env)
+    (repo / "reader.sh").write_text('cat "$ONEX_LEDGER_PATH"\n')
+    subprocess.run([*git, "add", "--", "reader.sh"], check=True, env=env)
+    ratchet = tmp_path / "ratchet.yaml"
+    ratchet.write_text("ratchet:\n  alpha: 0\n")
+    overlay_file = tmp_path / "overlay.yaml"
+    overlay_file.write_text((PACKAGE / "overlay.example.yaml").read_text())
+    environ = {
+        "ONEX_LEDGER_CENSUS_OVERLAY": str(overlay_file),
+        "ONEX_LEDGER_CENSUS_ROOT": str(registry),
+    }
+    assert (
+        main(["--repos", "alpha", "--ratchet-file", str(ratchet)], environ=environ)
+        == 69
+    )
+    assert (
+        main(["--register", "alpha", "--ratchet-file", str(ratchet)], environ=environ)
+        == 1
+    )
+    subprocess.run([*git, "rm", "--cached", "--", "reader.sh"], check=True, env=env)
+    assert (
+        main(["--register", "alpha", "--ratchet-file", str(ratchet)], environ=environ)
+        == 0
+    )
+
+
 def test_a_count_below_the_ratchet_passes_and_lowers_never_raises(
     tmp_path: Path,
 ) -> None:
