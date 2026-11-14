@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_workflow_contract_catalog_effect
+version: 1.0.0
+description: Serves the workflow contract catalog read (GET /v1/workflows/contracts) from the runtime to an authenticated tenant.
+pack: gateway
+node_role: effect
+display_name: Workflow Contract Catalog Effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_workflow_contract_catalog_effect: omnimarket.nodes.node_workflow_contract_catalog_effect
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read
+dependencies:
+- omnibase-infra>=0.38.3,<0.39.0
+- fastapi>=0.115.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- http
+- workflow-contracts

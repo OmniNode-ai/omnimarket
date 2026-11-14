@@ -243,6 +243,33 @@ def test_absent_row_vs_unreadable_store_table(schema_dsn: tuple[str, str]) -> No
     assert refused.value.cause.startswith("store-unreachable:")
 
 
+def test_tick_row_lands_in_floor_fill_state_and_guard_accepts_store(
+    schema_dsn: tuple[str, str],
+) -> None:
+    """A fill tick leaves a row in floor_fill_state, and the guard accepts the store that wrote it (OMN-24266)."""
+    import inspect
+
+    from omnimarket.handlers import floor_fill_state_store_postgres
+    from omnimarket.nodes.node_floor_fill_orchestrator.tests.test_floor_fill_store_guard_boundary import (
+        scan_has_no_active_finding,
+    )
+
+    dsn, schema_name = schema_dsn
+    store = PostgresFloorStateStore(_settings(dsn, schema_name))
+    harness(lines=ONE_TASK, store=store).orchestrator().run(TICK, None)
+    with psycopg2.connect(dsn) as connection, connection.cursor() as cursor:
+        cursor.execute(
+            sql.SQL("SELECT count(*) FROM {relation}").format(
+                relation=sql.Identifier(schema_name, "floor_fill_state")
+            )
+        )
+        assert cursor.fetchone()[0] >= 1
+    source_file = inspect.getsourcefile(floor_fill_state_store_postgres)
+    assert source_file is not None
+    with open(source_file, encoding="utf-8") as handle:
+        assert scan_has_no_active_finding(handle.read())
+
+
 def test_absent_row_vs_unreadable_store_unreachable() -> None:
     store = PostgresFloorStateStore(_settings(NOTHING_LISTENS_DSN))
     with pytest.raises(FloorFillUnreadableError) as read_refused:

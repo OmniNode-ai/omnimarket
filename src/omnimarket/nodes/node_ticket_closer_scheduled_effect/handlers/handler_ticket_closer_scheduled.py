@@ -15,7 +15,6 @@ from __future__ import annotations
 import os
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
-from typing import Protocol, runtime_checkable
 
 from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 
@@ -36,6 +35,7 @@ from omnimarket.models.runtime_proof.model_runtime_proof_close import (
 )
 from omnimarket.models.ticket_closer import (
     EnumCloserAction,
+    EnumCloserReadingSource,
     ModelCloserCandidate,
     ModelCloserTicketOutcome,
     ModelCloserVerifyReading,
@@ -46,39 +46,19 @@ from omnimarket.models.ticket_closer import (
 from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.handler_dod_closeout_sweep import (
     flip_decision,
 )
+from omnimarket.nodes.node_ticket_closer_scheduled_effect.handlers.bound_profile import (
+    BoundProfileRefusedError,
+    CloserParts,
+    bound_closer_parts,
+)
+from omnimarket.nodes.node_ticket_closer_scheduled_effect.handlers.closer_protocols import (
+    ProtocolCloserCandidateSource,
+    ProtocolCloserVerifier,
+    ProtocolTicketDoneWriter,
+)
 
 SCHEDULE_OVERLAY_ID = "node_ticket_closer_scheduled_effect"
 SCHEDULE_OVERLAY_FILE_ENV = "ONEX_TICKET_CLOSER_SCHEDULE_OVERLAY"
-
-
-@runtime_checkable
-class ProtocolCloserCandidateSource(Protocol):
-    """One read of the closer's candidate tickets for one run.
-
-    ``None`` is the source that could not read: the reading is unread, never an empty success.
-    """
-
-    def candidates(
-        self, now: datetime, limit: int
-    ) -> list[ModelCloserCandidate] | None: ...
-
-
-@runtime_checkable
-class ProtocolCloserVerifier(Protocol):
-    """One run of the DoD verifier for one ticket against one execution audience."""
-
-    def verify(
-        self, ticket_id: str, execution_audience: str
-    ) -> ModelCloserVerifyReading: ...
-
-
-@runtime_checkable
-class ProtocolTicketDoneWriter(Protocol):
-    """One move of a ticket to the done state through the ticket write node."""
-
-    def mark_done(
-        self, ticket_id: str, *, state: str, lane: str, evidence: str
-    ) -> ModelCloserWriteReceipt: ...
 
 
 class UnreadCloserCandidates:
@@ -128,6 +108,10 @@ class HandlerTicketCloserScheduled:
         self._source: ProtocolCloserCandidateSource = source or UnreadCloserCandidates()
         self._verifier: ProtocolCloserVerifier = verifier or UnboundCloserVerifier()
         self._writer: ProtocolTicketDoneWriter = writer or RefusingDoneWriter()
+        self._injected = (
+            source is not None or verifier is not None or writer is not None
+        )
+        self._bound: CloserParts | None = None
         self._environ = environ
         self._last_run: datetime | None = None
         self._refusals = ScheduledOverlayRefusalLatch(SCHEDULE_OVERLAY_ID)
@@ -179,7 +163,33 @@ class HandlerTicketCloserScheduled:
             seconds=schedule.run_interval_seconds
         ):
             return None
-        candidates = self._source.candidates(now, schedule.max_candidates_per_run)
+        source, verifier, writer = self._source, self._verifier, self._writer
+        if (
+            not self._injected
+            and schedule.reading_source is EnumCloserReadingSource.CONTRACT_CLONES
+        ):
+            try:
+                if self._bound is None:
+                    self._bound = bound_closer_parts(
+                        schedule, self._env(), lambda: datetime.now(UTC)
+                    )
+            except BoundProfileRefusedError as exc:
+                self._last_run = now
+                return ModelTicketCloserResult(
+                    tick_id=str(request.tick_id),
+                    computed_at=now,
+                    candidates_read=False,
+                    examined=0,
+                    flipped=0,
+                    outcomes=(),
+                    unread_reason=f"bound profile refused: {exc}",
+                )
+            source, verifier, writer = (
+                self._bound.source,
+                self._bound.verifier,
+                self._bound.writer,
+            )
+        candidates = source.candidates(now, schedule.max_candidates_per_run)
         self._last_run = now
         self._refusals.recovered()
         if candidates is None:
@@ -190,11 +200,16 @@ class HandlerTicketCloserScheduled:
                 examined=0,
                 flipped=0,
                 outcomes=(),
+                unread_reason=(
+                    "reading_source is unread: no candidate source is bound"
+                    if schedule.reading_source is EnumCloserReadingSource.UNREAD
+                    else "the candidate source could not read its contracts, merges or pull requests"
+                ),
             )
         outcomes: list[ModelCloserTicketOutcome] = []
         for candidate in candidates[: schedule.max_candidates_per_run]:
             try:
-                reading = self._verifier.verify(
+                reading = verifier.verify(
                     candidate.ticket_id, schedule.execution_audience
                 )
             except Exception as exc:
@@ -236,7 +251,7 @@ class HandlerTicketCloserScheduled:
             )
             if decision.action is EnumCloseoutAction.FLIPPED_DONE:
                 try:
-                    receipt = self._writer.mark_done(
+                    receipt = writer.mark_done(
                         candidate.ticket_id,
                         state=schedule.done_state,
                         lane=schedule.lane,

@@ -1,0 +1,24 @@
+name: node_release_sibling_premise_effect
+version: "0.1.0"
+description: "Release sibling premise read: reads dev-merge redeploy receipts from the bus and branch history from a git clone, calls the pure compute node, publishes one verdict"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_release_sibling_premise_effect: "omnimarket.nodes.node_release_sibling_premise_effect"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: true
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "click>=8.1.0"
+  - "omnibase-infra>=0.38.75,<0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "release", "bus-publish", "git-read"]
+pack: "release_train"
+display_name: "Release Sibling Premise Read"
+node_role: "effect"
