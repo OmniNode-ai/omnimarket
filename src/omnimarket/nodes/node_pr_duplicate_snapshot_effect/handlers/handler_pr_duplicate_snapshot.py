@@ -344,11 +344,14 @@ def _replaced_facts(
     replaces: tuple[str, ...],
     repo: str,
     clone: Path | None,
+    source: ProtocolOpenPrFactsSource | None = None,
 ) -> tuple[ModelReplacedPrFacts, ...]:
-    """What the node reads of each ``replaces`` entry: its state from the watcher state, its commits from git.
+    """What the node reads of each ``replaces`` entry: its state from the watcher state or the gateway, its commits from git.
 
     The caller's word is never the source: the entry is looked up in the same state the open pull requests come
-    from, and a pull request that state does not hold is ``state=None`` (the guard refuses it as unreadable).
+    from. A pull request that state does not hold (the watcher keeps only open and recently merged ones, so a
+    change closed long ago has aged out) is read from the gateway; one neither source holds is ``state=None``
+    (the guard refuses it as unreadable).
     """
     prs = state["prs"]
     assert isinstance(prs, dict)
@@ -361,6 +364,8 @@ def _replaced_facts(
             continue
         record = prs.get(f"{name.split('/')[-1]}#{number}")
         facts = record.get("facts") if isinstance(record, dict) else None
+        if not isinstance(facts, dict):
+            facts = _gateway_pr_facts(source, name, number)
         state_name = facts.get("state") if isinstance(facts, dict) else None
         if not isinstance(facts, dict) or state_name not in (
             "OPEN",
@@ -388,6 +393,27 @@ def _replaced_facts(
             )
         )
     return tuple(out)
+
+
+def _gateway_pr_facts(
+    source: ProtocolOpenPrFactsSource | None, repo: str, number: int
+) -> dict[str, object] | None:
+    """One pull request read live from the gateway, in the watcher record's own field names, or None when unread (OMN-23634)."""
+    if source is None:
+        return None
+    try:
+        read = source.read_pr(repo, number)
+    except OpenPrFactsUnreadableError as exc:
+        logger.warning("replaces %s#%d: the gateway read failed: %s", repo, number, exc)
+        return None
+    if read.repo.casefold() != repo.casefold() or read.pr_number != number:
+        return None
+    return {
+        "state": read.state,
+        "merged_at": read.merged_at,
+        "head_sha": read.head_sha,
+        "base": read.base_ref,
+    }
 
 
 def _own_commits(clone: Path, sha: str, number: int, base: str) -> tuple[str, ...]:
@@ -843,7 +869,9 @@ def read_request(
         open_prs=open_prs,
         ledger_text=ledger_text,
         generated_paths=load_generated_paths(),
-        replaced=_replaced_facts(state, replaces, repo, where) if replaces else (),
+        replaced=_replaced_facts(state, replaces, repo, where, open_prs_source)
+        if replaces
+        else (),
     )
 
 

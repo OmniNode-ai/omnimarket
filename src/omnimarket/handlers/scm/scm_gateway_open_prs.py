@@ -22,7 +22,7 @@ from collections.abc import Callable
 from typing import Final
 
 from omnibase_infra.errors import InfraConnectionError
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from omnimarket.delegated_test_loop.lab_run_bus import ProtocolLabRunBus
 from omnimarket.delegated_test_loop.lane_bus import LabRunBusError
@@ -31,6 +31,7 @@ from omnimarket.models.model_github_gateway_io import (
     MAX_LIST_LIMIT,
     EnumGithubGatewayOperation,
     ModelGithubGatewayRequest,
+    ModelMergedPrResult,
     ModelOpenPrFactsResult,
 )
 from omnimarket.models.scm import EnumScmNode, ModelScmTerminal
@@ -67,25 +68,59 @@ class GatewayOpenPrFactsSource:
         self._pause_s = pause_s
 
     def read(self, repo: str) -> ModelOpenPrFactsResult:
+        return self._read(
+            repo,
+            lambda correlation_id: ModelGithubGatewayRequest(
+                operation=EnumGithubGatewayOperation.OPEN_PR_FACTS,
+                repo=repo,
+                limit=MAX_LIST_LIMIT,
+                correlation_id=correlation_id,
+            ),
+            ModelOpenPrFactsResult,
+            "open_pr_facts",
+        )
+
+    def read_pr(self, repo: str, number: int) -> ModelMergedPrResult:
+        """One pull request in any state: the read behind a ``replaces`` entry the watcher state no longer holds (OMN-23634)."""
+        return self._read(
+            repo,
+            lambda correlation_id: ModelGithubGatewayRequest(
+                operation=EnumGithubGatewayOperation.MERGED_PR,
+                repo=repo,
+                pr_number=number,
+                correlation_id=correlation_id,
+            ),
+            ModelMergedPrResult,
+            "merged_pr",
+        )
+
+    def _read[Result: BaseModel](
+        self,
+        repo: str,
+        build: Callable[[uuid.UUID], ModelGithubGatewayRequest],
+        result_type: type[Result],
+        operation: str,
+    ) -> Result:
         last = "no attempt was made"
         for attempt in range(1, self._attempts + 1):
             try:
-                return self._read_once(repo)
+                return self._read_once(repo, build, result_type, operation)
             except _RetryableOpenPrFactsError as exc:
                 last = str(exc)
                 if attempt < self._attempts:
                     time.sleep(self._pause_s)
         raise OpenPrFactsUnreadableError(last)
 
-    def _read_once(self, repo: str) -> ModelOpenPrFactsResult:
+    def _read_once[Result: BaseModel](
+        self,
+        repo: str,
+        build: Callable[[uuid.UUID], ModelGithubGatewayRequest],
+        result_type: type[Result],
+        operation: str,
+    ) -> Result:
         correlation_id = uuid.uuid4()
         try:
-            request = ModelGithubGatewayRequest(
-                operation=EnumGithubGatewayOperation.OPEN_PR_FACTS,
-                repo=repo,
-                limit=MAX_LIST_LIMIT,
-                correlation_id=correlation_id,
-            )
+            request = build(correlation_id)
         except ValidationError as exc:
             raise OpenPrFactsUnreadableError(
                 f"{repo!r} is not an OWNER/REPO the gateway can read: {exc.error_count()} validation error(s)"
@@ -102,7 +137,7 @@ class GatewayOpenPrFactsSource:
             raise OpenPrFactsUnreadableError(
                 f"the bus could not be used: {exc}"
             ) from None
-        return _typed_result(terminal)
+        return _typed_result(terminal, result_type, operation)
 
     async def _call(
         self, request: ModelGithubGatewayRequest, correlation_id: uuid.UUID
@@ -122,7 +157,9 @@ class _RetryableOpenPrFactsError(OpenPrFactsUnreadableError):
     """A failure a second attempt may not repeat: the gateway gave no answer in time."""
 
 
-def _typed_result(terminal: ModelScmTerminal) -> ModelOpenPrFactsResult:
+def _typed_result[Result: BaseModel](
+    terminal: ModelScmTerminal, result_type: type[Result], operation: str
+) -> Result:
     payload = terminal.payload
     if (
         terminal.failed
@@ -138,10 +175,10 @@ def _typed_result(terminal: ModelScmTerminal) -> ModelOpenPrFactsResult:
         raise OpenPrFactsUnreadableError(f"the gateway refused it: {reason}")
     result = payload.get("result", payload)
     try:
-        return ModelOpenPrFactsResult.model_validate(result)
+        return result_type.model_validate(result)
     except ValidationError as exc:
         raise OpenPrFactsUnreadableError(
-            "the gateway's answer is not an open_pr_facts result "
+            f"the gateway's answer is not the {operation} result "
             f"({exc.error_count()} validation error(s); a gateway older than this client does not serve the operation)"
         ) from None
 
