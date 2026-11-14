@@ -52,13 +52,15 @@ class HandlerClaudeTokenPoolStatusView:
     def __init__(
         self,
         *,
-        pool: HandlerClaudeTokenPool,
-        overlay: ModelRotationOverlay | None,
-        marks_source: ProtocolMarksSource,
-        local_copy_written_at: Callable[[], datetime | None],
+        pool: HandlerClaudeTokenPool | None = None,
+        overlay: ModelRotationOverlay | None = None,
+        marks_source: ProtocolMarksSource | None = None,
+        local_copy_written_at: Callable[[], datetime | None] = lambda: None,
         now: Callable[[], datetime] = _utc_now,
     ) -> None:
-        self._pool = pool
+        # The runtime boot builds this handler with no arguments (the contract binds it to the node): an
+        # instance with no overlay answers unsynced, never a guess at a marks source.
+        self._pool = pool if pool is not None else HandlerClaudeTokenPool()
         #: ``None`` means the overlay could not be read on this host: no host is the overlay's and
         #: the marks source has no age bound to be judged against, so every answer is unsynced.
         self._overlay = overlay
@@ -72,6 +74,8 @@ class HandlerClaudeTokenPoolStatusView:
             return self._from_local_pool(request)
         if overlay is None:
             return self._unsynced(request, "overlay unreadable on this host")
+        if self._source is None:
+            return self._unsynced(request, "no marks source configured")
         read = self._source.read()
         age = self._age_seconds(read)
         bound = overlay.marks_source.max_age_seconds
