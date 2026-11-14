@@ -53,7 +53,7 @@ dod_evidence:
   - AC3
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/projection/test_code_edit_synthetic_exclusion.py tests/projection/test_synthetic_exclusion.py -k "not postgres" -q -n 0 --no-cov -p no:cacheprovider
+    check_value: uv run pytest tests/nodes/node_delegated_code_edit_orchestrator tests/projection/test_code_edit_synthetic_exclusion.py tests/projection/test_synthetic_exclusion.py -q -n 0 --no-cov -p no:cacheprovider -k "turn_provenance or synthetic"
     cwd: .
 - id: dod-omn23870-ac4
   description: 'hosted proxy for AC4: the turn provenance and synthetic exclusion tests pass; the event row and the real-traffic reading on the development lane are read after the install and recorded on the ticket.'
@@ -65,13 +65,13 @@ dod_evidence:
     check_value: uv run pytest tests/nodes/node_delegated_code_edit_orchestrator tests/projection/test_code_edit_synthetic_exclusion.py -q -n 0 --no-cov -p no:cacheprovider -k "turn_provenance or synthetic"
     cwd: .
 - id: dod-omn23870-ac5
-  description: 'AC5: this contract file exists and parses.'
+  description: 'AC5: this contract file exists and the request model it names carries the traffic class.'
   source: manual
   binds_ac:
   - AC5
   checks:
   - check_type: command
-    check_value: test -s contracts/OMN-23870.yaml
+    check_value: grep -q traffic_class src/omnimarket/models/model_delegated_code_edit.py && test -s contracts/OMN-23870.yaml
     cwd: .
 - id: dod-omn23870-integration-proof
   description: the traffic class, turn provenance and synthetic exclusion tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
