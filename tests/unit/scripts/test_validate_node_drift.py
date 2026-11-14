@@ -66,6 +66,11 @@ def test_stale_known_violation_gate(
     monkeypatch.setattr(drift_module, "NODES_DIR", nodes)
     monkeypatch.setattr(drift_module, "PYPROJECT", pyproject)
     monkeypatch.setattr(drift_module, "KNOWN_MAIN_VIOLATIONS", {"node_example"})
+    # The reviewed exemption list names real nodes, none of which is in this
+    # temporary tree, so this test reads an empty one.
+    no_exemptions = tmp_path / "exemptions.yaml"
+    no_exemptions.write_text("exemptions: []\n")
+    monkeypatch.setattr(drift_module, "ENTRY_POINT_EXEMPTIONS_FILE", no_exemptions)
     if changed_ref:
         monkeypatch.setattr(
             drift_module, "collect_nodes", lambda **_kwargs: ([], set())
@@ -283,33 +288,154 @@ def test_orphan_node_check_allows_experimental_contract(
     assert not any(finding.check == "node_liveness" for finding in result.findings)
 
 
+def _write_node(tmp_path: Path, name: str, lifecycle: str) -> Path:
+    node_dir = tmp_path / name
+    node_dir.mkdir()
+    lifecycle_line = f"lifecycle: {lifecycle}\n" if lifecycle else ""
+    (node_dir / "contract.yaml").write_text(
+        f"name: {name}\n"
+        "node_type: effect\n"
+        f"{lifecycle_line}"
+        "handler:\n"
+        f"  module: omnimarket.nodes.{name}.handlers.handler_{name}\n"
+        "  class: HandlerNode\n"
+    )
+    return node_dir
+
+
 @pytest.mark.unit
-def test_pyproject_entry_check_allows_deprecated_lifecycle(
+def test_pyproject_entry_check_allows_listed_exemption(
     drift_module: object,
     tmp_path: Path,
 ) -> None:
-    """A node explicitly marked lifecycle: deprecated (OMN-14151) is exempt from
-    the pyproject_entry FAIL even in --strict mode — this is how a hard-gated
-    legacy node's entry_points can be removed without tripping the gate."""
-    node_dir = tmp_path / "node_legacy_arm"
-    node_dir.mkdir()
-    (node_dir / "contract.yaml").write_text(
-        "name: node_legacy_arm\n"
-        "node_type: effect\n"
-        "lifecycle: deprecated\n"
-        "handler:\n"
-        "  module: omnimarket.nodes.node_legacy_arm.handlers.handler_legacy_arm\n"
-        "  class: HandlerLegacyArm\n"
-    )
+    """A node on the reviewed exemption list passes the pyproject_entry check
+    even in --strict mode (OMN-14151 retired legacy nodes are listed, not
+    excused by their lifecycle)."""
+    node_dir = _write_node(tmp_path, "node_legacy_arm", "deprecated")
 
     result = drift_module.validate_node(  # type: ignore[attr-defined]
         node_dir,
         entry_points=set(),  # no pyproject entry — this node was deregistered
         strict=True,
+        exemptions={"node_legacy_arm"},
     )
 
     assert result.passed is True
     assert not any(finding.check == "pyproject_entry" for finding in result.findings)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("lifecycle", ["experimental", "deprecated"])
+def test_pyproject_entry_check_fails_unlisted_exemption_by_lifecycle(
+    drift_module: object,
+    tmp_path: Path,
+    lifecycle: str,
+) -> None:
+    """experimental or deprecated no longer excuses a missing entry point: the
+    reviewed list is the only exemption, so the node inventory test and this
+    gate judge the node alike."""
+    node_dir = _write_node(tmp_path, "node_unlisted", lifecycle)
+
+    result = drift_module.validate_node(  # type: ignore[attr-defined]
+        node_dir,
+        entry_points=set(),
+        strict=True,
+        exemptions=set(),
+    )
+
+    assert result.passed is False
+    assert any(finding.check == "pyproject_entry" for finding in result.findings)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("content", "message"),
+    [
+        (None, "is missing"),
+        ("exemptions: not-a-list\n", "must be a list"),
+        ("exemptions:\n  - node: node_a\n", "needs a non-empty 'reason'"),
+        ("exemptions:\n  - node: node_a\n    reason: ''\n", "non-empty 'reason'"),
+        (
+            "exemptions:\n  - node: node_a\n    reason: r\n"
+            "  - node: node_a\n    reason: r\n",
+            "node_a is listed twice",
+        ),
+        ("exemptions:\n  - reason: r\n", "non-empty 'node'"),
+    ],
+    ids=[
+        "missing-file",
+        "not-a-list",
+        "no-reason",
+        "empty-reason",
+        "duplicate-node",
+        "no-node",
+    ],
+)
+def test_load_entry_point_exemptions_refuses_bad_files(
+    drift_module: object,
+    tmp_path: Path,
+    content: str | None,
+    message: str,
+) -> None:
+    path = tmp_path / "exemptions.yaml"
+    if content is not None:
+        path.write_text(content)
+
+    with pytest.raises(ValueError, match=message):
+        drift_module.load_entry_point_exemptions(path)  # type: ignore[attr-defined]
+
+
+@pytest.mark.unit
+def test_load_entry_point_exemptions_reads_node_and_reason(
+    drift_module: object,
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "exemptions.yaml"
+    path.write_text("exemptions:\n  - node: node_a\n    reason: runs in process\n")
+
+    loaded = drift_module.load_entry_point_exemptions(path)  # type: ignore[attr-defined]
+
+    assert loaded == {"node_a": "runs in process"}
+
+
+@pytest.mark.unit
+def test_real_exemption_list_has_no_stale_entries(
+    drift_module: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(REPO_ROOT)
+    entries = drift_module._load_entry_points(REPO_ROOT / "pyproject.toml")  # type: ignore[attr-defined]
+
+    assert drift_module._stale_entry_point_exemptions(entries) == []  # type: ignore[attr-defined]
+
+
+@pytest.mark.unit
+def test_stale_entry_point_exemption_is_reported(
+    drift_module: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Control: a listed node that has gained an entry point is stale."""
+    monkeypatch.chdir(REPO_ROOT)
+    listed = sorted(drift_module.load_entry_point_exemptions())[0]  # type: ignore[attr-defined]
+
+    stale = drift_module._stale_entry_point_exemptions({listed})  # type: ignore[attr-defined]
+
+    assert stale == [listed]
+
+
+@pytest.mark.unit
+def test_every_real_exemption_passes_the_gate_entry_check(
+    drift_module: object,
+) -> None:
+    exemptions = drift_module.load_entry_point_exemptions()  # type: ignore[attr-defined]
+    assert exemptions
+    for name in exemptions:
+        result = drift_module.validate_node(  # type: ignore[attr-defined]
+            REPO_ROOT / "src" / "omnimarket" / "nodes" / name,
+            entry_points=set(),
+            strict=True,
+        )
+        assert not any(f.check == "pyproject_entry" for f in result.findings), name
 
 
 @pytest.mark.unit
@@ -318,7 +444,7 @@ def test_pyproject_entry_check_fails_missing_entry_without_lifecycle_marker(
     tmp_path: Path,
 ) -> None:
     """A node missing its pyproject entry with NO lifecycle marker still FAILs —
-    the OMN-14151 exemption is opt-in, not a blanket loosening of check 3."""
+    the reviewed exemption list is opt-in, not a blanket loosening of check 3."""
     node_dir = tmp_path / "node_unregistered"
     node_dir.mkdir()
     (node_dir / "contract.yaml").write_text(

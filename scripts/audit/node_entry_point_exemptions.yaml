@@ -1,0 +1,64 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# Reviewed list of node directories that may have no onex.nodes entry point in
+# pyproject.toml. scripts/validate_node_drift.py (the node-drift-gate check) and
+# tests/test_market_node_runtime_dogfood.py (the node inventory test) both read this
+# file, so the two cannot disagree about which directories are exempt. Every entry
+# carries the reason it has no entry point. A lifecycle of experimental or
+# deprecated in a contract does not exempt a node on its own: add it here.
+exemptions:
+  - node: node_auto_merge_effect
+    reason: "no onex.nodes entry point; listed in the inventory test before this file existed"
+  - node: node_captured_secret_resolve_effect
+    reason: "OMN-20926: the captured secret resolver is called in-process by a consumer that holds a captured record, with a store built from the consumer's own identity; it returns the value as a SecretStr, publishes nothing and subscribes to no topic, so it has no onex.nodes entry point."
+  - node: node_dev_seed_effect
+    reason: "OMN-19970: the dev seed runs from `onex seed` against the store or broker it names; it publishes fixture terminals but subscribes to no topic and has no onex.nodes entry point."
+  - node: node_factory_floor_unresolved_effect
+    reason: "OMN-23606: the factory floor unresolved rows effect runs as a step of the floor publisher through its own `python -m` module, about every six hours; it publishes nothing and subscribes to no topic, so it has no onex.nodes entry point."
+  - node: node_lab_daemon_sync_effect
+    reason: "OMN-19998: the lab daemon sync effect installs on the host's own filesystem, so a host timer runs it with python -m; it publishes events but subscribes to no topic and has no onex.nodes entry point."
+  - node: node_lab_disk_hygiene_effect
+    reason: "OMN-20712: hosted from the operator tooling repository, whose copy is still registered; called in process by its host scheduler, so it subscribes to no topic and has no onex.nodes entry point until the registration hand-over (nodes-to-market plan step B)."
+  - node: node_lab_fill_fire_outcome_compute
+    reason: "OMN-24109: the lab-fill fire judge is called in process by the lab-fill launcher effect and declares no topic; the launcher effect is run by the Mac lab-fill tick with python -m, which is its external trigger, and registers no runtime profile or broker route here. Neither has an onex.nodes entry point."
+  - node: node_lab_fill_launcher_effect
+    reason: "OMN-24109: the lab-fill fire judge is called in process by the lab-fill launcher effect and declares no topic; the launcher effect is run by the Mac lab-fill tick with python -m, which is its external trigger, and registers no runtime profile or broker route here. Neither has an onex.nodes entry point."
+  - node: node_lab_secret_store_override_effect
+    reason: "OMN-17427: the lab secret-store override edits an ephemeral render copy on the caller's own filesystem, so the lab apply script runs it in process from its console script; it subscribes to no topic and has no onex.nodes entry point."
+  - node: node_lane_ctx_ledger_dedupe_effect
+    reason: "OMN-23297: the lane context ledger dedupe links files on the host's own filesystem, so the lab daemon sync's host tick runs it with python -m; it publishes events but subscribes to no topic and has no onex.nodes entry point."
+  - node: node_legacy_worktree_audit_effect
+    reason: "OMN-17427: the legacy worktree audit reads the host's own worktrees, so its console script runs it from the command line; it subscribes to no topic and has no onex.nodes entry point."
+  - node: node_local_alert_compute
+    reason: "OMN-19988: the local alert compute is called in process by the local environment projection on every report it stores; it subscribes to no topic and publishes none, so it has no onex.nodes entry point."
+  - node: node_local_alert_transition_compute
+    reason: "OMN-19991: the local alert transition compute is called in process by the local environment writer around each write it makes; it subscribes to no topic, so it has no onex.nodes entry point."
+  - node: node_local_secret_store_effect
+    reason: "OMN-19985: the local secret store runs from `onex secret set` / `onex secret delete`; it returns credential events for the CLI shim to fold and subscribes to no topic, so it has no onex.nodes entry point."
+  - node: node_merge_sweep_auto_merge_arm_effect
+    reason: "no onex.nodes entry point; listed in the inventory test before this file existed"
+  - node: node_merge_sweep_triage_orchestrator
+    reason: "no onex.nodes entry point; listed in the inventory test before this file existed"
+  - node: node_model_setup_effect
+    reason: "OMN-20817: the model setup effect runs from `onex models`; it returns its status and test results to the CLI shim and subscribes to no topic, so it has no onex.nodes entry point."
+  - node: node_pr_lifecycle_triage_compute
+    reason: "OMN-24121: the PR lifecycle triage compute is called in process by the PR lifecycle orchestrator since its inventory subscription was removed, and the seam field diff compute and its check effect run from the merge check's own command line; none subscribes to a command topic with a terminal event, so none has an onex.nodes entry point."
+  - node: node_rsd_b1_projection_binding_validate_compute
+    reason: "B1 keeps its historical-map comparison private to offline evidence verification; the inventory surface has no live route or entry point."
+  - node: node_rsd_target_delivery_artifact_manifest_v2_validate_compute
+    reason: "B2 only revalidates supplied signed evidence; it has no live route."
+  - node: node_rsd_v4_artifact_evidence_validate_compute
+    reason: "The V4 artifact-evidence verifier is likewise an offline inventory surface only: supplied signed claims are validated without collection, build, delivery, replay, runtime, or live-effect authority."
+  - node: node_rsd_v4_static_profile_validate_compute
+    reason: "OMN-17982 validates a supplied historical V4 profile offline.  It is discoverable inventory metadata, but deliberately has no addressable runtime entry point, bus route, or live side-effect capability."
+  - node: node_rsd_v5_artifact_evidence_validate_compute
+    reason: "The V5 worker-evidence closure validator is likewise inventory-only."
+  - node: node_rsd_v5_oci_safe_config_validate_compute
+    reason: "OMN-17982 V5 is deliberately offline-only: its pure validator has no command/terminal route, event bus, runtime, or effect capability."
+  - node: node_seam_field_diff_check_effect
+    reason: "OMN-24121: the PR lifecycle triage compute is called in process by the PR lifecycle orchestrator since its inventory subscription was removed, and the seam field diff compute and its check effect run from the merge check's own command line; none subscribes to a command topic with a terminal event, so none has an onex.nodes entry point."
+  - node: node_seam_field_diff_compute
+    reason: "OMN-24121: the PR lifecycle triage compute is called in process by the PR lifecycle orchestrator since its inventory subscription was removed, and the seam field diff compute and its check effect run from the merge check's own command line; none subscribes to a command topic with a terminal event, so none has an onex.nodes entry point."
+  - node: node_worktree_reconcile_effect
+    reason: "OMN-19399: the worktree-reconcile effect reads the host's own filesystem, so a host timer runs it from the command line; it publishes events but subscribes to no topic and has no onex.nodes entry point."

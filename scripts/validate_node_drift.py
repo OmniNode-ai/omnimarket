@@ -29,6 +29,7 @@ import json
 import re
 import subprocess
 import sys
+from collections.abc import Collection
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -37,6 +38,13 @@ import yaml
 
 NODES_DIR = Path("src/omnimarket/nodes")
 PYPROJECT = Path("pyproject.toml")
+
+# The reviewed list of node directories that may have no onex.nodes entry point.
+# The node inventory test (tests/test_market_node_runtime_dogfood.py) reads the
+# same file, so the gate and the test cannot disagree about which are exempt.
+ENTRY_POINT_EXEMPTIONS_FILE = (
+    Path(__file__).resolve().parent / "audit" / "node_entry_point_exemptions.yaml"
+)
 
 # All contracts must have at least these fields.
 REQUIRED_CONTRACT_FIELDS_ALWAYS = {"name", "node_type"}
@@ -74,6 +82,29 @@ class NodeResult:
     @property
     def has_warn(self) -> bool:
         return any(f.level == "WARN" for f in self.findings)
+
+
+def load_entry_point_exemptions(path: Path | None = None) -> dict[str, str]:
+    """Return node -> reason from the reviewed entry-point exemption list."""
+    path = path if path is not None else ENTRY_POINT_EXEMPTIONS_FILE
+    if not path.is_file():
+        raise ValueError(f"entry-point exemption list {path} is missing")
+    raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    entries = raw.get("exemptions") if isinstance(raw, dict) else None
+    if not isinstance(entries, list):
+        raise ValueError(f"{path}: 'exemptions' must be a list")
+    exemptions: dict[str, str] = {}
+    for entry in entries:
+        node = entry.get("node") if isinstance(entry, dict) else None
+        reason = entry.get("reason") if isinstance(entry, dict) else None
+        if not (isinstance(node, str) and node.strip()):
+            raise ValueError(f"{path}: every entry needs a non-empty 'node'")
+        if not (isinstance(reason, str) and reason.strip()):
+            raise ValueError(f"{path}: {node} needs a non-empty 'reason'")
+        if node in exemptions:
+            raise ValueError(f"{path}: {node} is listed twice")
+        exemptions[node] = reason
+    return exemptions
 
 
 def _load_entry_points(pyproject: Path) -> set[str]:
@@ -281,8 +312,11 @@ def validate_node(
     *,
     strict: bool = False,
     check_orphan_nodes: bool = False,
+    exemptions: Collection[str] | None = None,
 ) -> NodeResult:
     node_name = node_dir.name
+    if exemptions is None:
+        exemptions = load_entry_point_exemptions().keys()
     result = NodeResult(node=node_name)
 
     # Determine if this node is a known pre-existing violation (WARN vs FAIL)
@@ -330,14 +364,11 @@ def validate_node(
             f"contract.yaml missing 'handler' block (required for node_type={node_type!r})",
         )
 
-    # Check 3: pyproject.toml entry point. A node explicitly marked
-    # lifecycle/status: deprecated or experimental (OMN-14151) is intentionally
-    # unregistered — e.g. a hard-gated legacy surface retired in favor of a
-    # replacement node — and is exempt, mirroring the orphan-node lifecycle
-    # exemption below.
-    if node_name not in entry_points and _contract_lifecycle(contract) not in (
-        LIFECYCLE_EXEMPTIONS
-    ):
+    # Check 3: pyproject.toml entry point. The reviewed exemption list
+    # (scripts/audit/node_entry_point_exemptions.yaml) is the only exemption: a
+    # lifecycle of experimental or deprecated no longer excuses a node, so the
+    # gate and the node inventory test judge every directory the same way.
+    if node_name not in entry_points and node_name not in exemptions:
         add(
             "pyproject_entry",
             f'no entry in pyproject.toml [project.entry-points."onex.nodes"] for {node_name}',
@@ -402,6 +433,15 @@ def _has_handler_routing(contract: dict[str, Any]) -> bool:
     return False
 
 
+def _stale_entry_point_exemptions(entry_points: set[str]) -> list[str]:
+    """Exemption-list entries whose node is gone or now has an entry point."""
+    return sorted(
+        name
+        for name in load_entry_point_exemptions()
+        if not (NODES_DIR / name).is_dir() or name in entry_points
+    )
+
+
 def collect_nodes(*, changed_ref: str | None) -> tuple[list[Path], set[str] | None]:
     """Return (nodes to validate, set of strict-eligible node names | None).
 
@@ -443,9 +483,11 @@ def run(
 ) -> int:
     entry_points = _load_entry_points(PYPROJECT)
     nodes, strict_eligible = collect_nodes(changed_ref=changed_ref)
+    exemptions = load_entry_point_exemptions()
     stale = _stale_known_main_violations(entry_points)
+    stale_exemptions = _stale_entry_point_exemptions(entry_points)
 
-    if not nodes and not stale:
+    if not nodes and not stale and not stale_exemptions:
         msg = {
             "status": "ok",
             "message": "no node directories to validate",
@@ -472,22 +514,25 @@ def run(
                 entry_points,
                 strict=node_strict,
                 check_orphan_nodes=check_orphan_nodes,
+                exemptions=exemptions.keys(),
             )
         )
 
     by_name = {r.node: r for r in results}
-    for name in stale:
+    stale_findings = [
+        (name, "stale_baseline_entry", "stale KNOWN_MAIN_VIOLATIONS entry, remove it")
+        for name in stale
+    ] + [
+        (name, "stale_exemption_entry", "stale entry-point exemption, remove it")
+        for name in stale_exemptions
+    ]
+    for name, check, message in stale_findings:
         if name not in by_name:
             result = NodeResult(node=name)
             results.append(result)
             by_name[name] = result
         by_name[name].findings.append(
-            NodeFinding(
-                node=name,
-                check="stale_baseline_entry",
-                level="FAIL",
-                message="stale KNOWN_MAIN_VIOLATIONS entry, remove it",
-            )
+            NodeFinding(node=name, check=check, level="FAIL", message=message)
         )
 
     fail_results = [r for r in results if not r.passed]
