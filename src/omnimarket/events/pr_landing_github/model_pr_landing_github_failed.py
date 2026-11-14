@@ -24,14 +24,14 @@ from omnimarket.events.pr_landing_github.enum_pr_landing_github_mode import (
 from omnimarket.events.pr_landing_github.enum_pr_landing_github_operation import (
     EnumPrLandingGithubOperation,
 )
-from omnimarket.events.pr_landing_github.failure_reason_rules import (
-    check_failure_reason_rules,
-)
 from omnimarket.events.pr_landing_github.model_github_pr_state_fact import (
     ModelGithubPrStateFact,
 )
 from omnimarket.events.pr_landing_github.model_github_quota_reading import (
     ModelGithubQuotaReading,
+)
+from omnimarket.models.pr_landing_github_failure_reason_rules import (
+    check_failure_reason_rules,
 )
 
 
