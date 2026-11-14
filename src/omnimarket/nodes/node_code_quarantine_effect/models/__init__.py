@@ -4,6 +4,7 @@
 
 from omnimarket.nodes.node_code_quarantine_effect.models.model_code_quarantine import (
     OK_OUTCOMES,
+    EnumEntityKind,
     EnumEntityState,
     EnumFailedGate,
     EnumQuarantineBackend,
@@ -20,6 +21,7 @@ from omnimarket.nodes.node_code_quarantine_effect.models.model_code_quarantine i
     ModelQuarantineReport,
     ModelQuarantineRequest,
     ModelQuarantineResult,
+    ModelRarePathCheck,
     ModelRemovalBatch,
     ModelRemovalEvidence,
     one_line,
@@ -27,6 +29,7 @@ from omnimarket.nodes.node_code_quarantine_effect.models.model_code_quarantine i
 
 __all__ = [
     "OK_OUTCOMES",
+    "EnumEntityKind",
     "EnumEntityState",
     "EnumFailedGate",
     "EnumQuarantineBackend",
@@ -43,6 +46,7 @@ __all__ = [
     "ModelQuarantineReport",
     "ModelQuarantineRequest",
     "ModelQuarantineResult",
+    "ModelRarePathCheck",
     "ModelRemovalBatch",
     "ModelRemovalEvidence",
     "one_line",

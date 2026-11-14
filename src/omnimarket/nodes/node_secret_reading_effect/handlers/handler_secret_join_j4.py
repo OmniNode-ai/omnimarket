@@ -24,7 +24,7 @@ import hashlib
 import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Protocol
+from typing import Literal, Protocol
 
 from omnimarket.handlers.emission_sink import ChainEmitter, ProtocolEmissionSink
 from omnimarket.models.floor_17a import ModelNodeEmission
@@ -66,6 +66,8 @@ FAILURE_EXPOSED = "secret_value_exposed"
 FAILURE_SCAN_BLIND = "scan_blind"
 FAILURE_SCAN_UNREADABLE = "surface_unreadable"
 FAILURE_KEY_PREFIX = "consumer_key_"
+FAILURE_ROW_UNSAFE = "row_carries_value"
+FAILURE_LEDGER_UNCONFIRMED = "ledger_append_unconfirmed"
 
 
 class ProtocolJ4Consumer(Protocol):
@@ -157,7 +159,6 @@ class HandlerSecretJoinJ4:
         value = resolved.value.get_secret_value()
         consumer_cells = self._consumer.run(handle=handle, value=value, log=log)
         scan = self._scan(value, log_lines, consumer_cells)
-        del value
         now = self._clock().astimezone(UTC)
         if scan.exposed:
             return self._refused(
@@ -168,39 +169,17 @@ class HandlerSecretJoinJ4:
                 backend,
                 scan=scan,
                 now=now,
+                value=value,
             )
-        consumer_chain.success()
-        scan_chain = ChainEmitter(
-            self._sink,
-            node=self._join.scan_node,
-            piece=self._join.scan_piece,
-            origin="drill" if self._join.drill else "probe",
-            clock=self._clock,
-            correlation_id=command.correlation_id,
-            backend=backend,
-            drill=self._join.drill,
-        )
-        scan_chain.start()
         reasons: list[str] = []
         if not scan.dummy_found:
             reasons.append("planted-dummy-missed")
         if scan.unreadable:
             reasons.append(f"surface-unreadable-{len(scan.unreadable)}")
         if reasons:
-            scan_chain.failure(
-                FAILURE_SCAN_BLIND if not scan.dummy_found else FAILURE_SCAN_UNREADABLE,
-                ",".join(reasons),
-            )
             verdict = EnumReadingVerdict.NOT_WORKING
-            scan_state = "failure"
+            scan_state: Literal["success", "failure"] = "failure"
         else:
-            scan_chain.success(
-                {
-                    "code_files": scan.code_files,
-                    "log_lines": scan.log_lines,
-                    "ledger_rows": scan.ledger_rows,
-                }
-            )
             verdict = EnumReadingVerdict.WORKING
             scan_state = "success"
         unread = bool(scan.unreadable)
@@ -218,7 +197,47 @@ class HandlerSecretJoinJ4:
             consumer_chain="success",
             scan_chain=scan_state,
         )
-        return self._write(command, result, consumer_cells, now, backend)
+        written = self._write(command, result, consumer_cells, now, backend, value)
+        del value
+        if written.status == "failed":
+            # The row is not safely on the ledger: no success chain may stand for this run.
+            code = (
+                FAILURE_ROW_UNSAFE
+                if written.failure == FAILURE_ROW_UNSAFE
+                else FAILURE_LEDGER_UNCONFIRMED
+            )
+            self._refuse_chains(
+                command, consumer_chain, code, written.failure or code, backend
+            )
+            return written.model_copy(
+                update={"consumer_chain": "failure", "scan_chain": "upstream-refusal"}
+            )
+        consumer_chain.success()
+        scan_chain = ChainEmitter(
+            self._sink,
+            node=self._join.scan_node,
+            piece=self._join.scan_piece,
+            origin="drill" if self._join.drill else "probe",
+            clock=self._clock,
+            correlation_id=command.correlation_id,
+            backend=backend,
+            drill=self._join.drill,
+        )
+        scan_chain.start()
+        if reasons:
+            scan_chain.failure(
+                FAILURE_SCAN_BLIND if not scan.dummy_found else FAILURE_SCAN_UNREADABLE,
+                ",".join(reasons),
+            )
+        else:
+            scan_chain.success(
+                {
+                    "code_files": scan.code_files,
+                    "log_lines": scan.log_lines,
+                    "ledger_rows": scan.ledger_rows,
+                }
+            )
+        return written
 
     # --- the scan -------------------------------------------------------------------------------------------------
 
@@ -242,7 +261,7 @@ class HandlerSecretJoinJ4:
                 seen.add(path)
                 code_files += 1
                 try:
-                    text = self._surfaces.read_text(path, limit)
+                    text = self._read_whole(path, limit)
                 except OSError:
                     unreadable.append(path)
                     continue
@@ -252,9 +271,12 @@ class HandlerSecretJoinJ4:
         if any(value in line for line in log_lines):
             exposed.add(EnumJ4Surface.LOG)
         for pattern in self._join.log_surfaces:
-            for path in self._surfaces.paths(pattern):
+            log_paths = self._surfaces.paths(pattern)
+            if not log_paths:
+                unreadable.append(pattern)
+            for path in log_paths:
                 try:
-                    if value in self._surfaces.read_text(path, limit):
+                    if value in self._read_whole(path, limit):
                         exposed.add(EnumJ4Surface.LOG)
                 except OSError:
                     unreadable.append(path)
@@ -282,6 +304,14 @@ class HandlerSecretJoinJ4:
             dummy_found=dummy_found,
         )
 
+    def _read_whole(self, path: str, limit: int) -> str:
+        """A surface read that must cover the whole surface: the surface adapter returns only the
+        last ``limit`` bytes of a longer one, and a clean tail is not a clean surface."""
+        text = self._surfaces.read_text(path, limit)
+        if len(text.encode("utf-8")) >= limit:
+            raise OSError(f"surface may exceed the {limit}-byte scan limit: {path}")
+        return text
+
     # --- the two ways a run ends without the golden shape ---------------------------------------------------------
 
     def _refused(
@@ -294,23 +324,16 @@ class HandlerSecretJoinJ4:
         *,
         scan: ModelJ4Scan | None = None,
         now: datetime | None = None,
+        value: str | None = None,
     ) -> ModelJoinJ4Result:
         """The consumer failed: it ends in a typed failure and the scan answers with an upstream
         refusal that never started, so the floor's fold reads the join's error shape."""
-        consumer_chain.failure(code, f"{self._join.consumer} {outcome.value}")
-        self._sink.emit(
-            ModelNodeEmission(
-                node=self._join.scan_node,
-                piece=self._join.scan_piece,
-                origin="drill" if self._join.drill else "probe",
-                correlation_id=command.correlation_id,
-                phase="failure",
-                emitted_at=self._clock(),
-                backend=backend,
-                drill=self._join.drill,
-                failure_code=UPSTREAM_PREFIX + code,
-                failure_detail=f"scan not run: {code}",
-            )
+        self._refuse_chains(
+            command,
+            consumer_chain,
+            code,
+            f"{self._join.consumer} {outcome.value}",
+            backend,
         )
         when = now or self._clock().astimezone(UTC)
         reasons = (code,)
@@ -328,7 +351,31 @@ class HandlerSecretJoinJ4:
             consumer_chain="failure",
             scan_chain="upstream-refusal",
         )
-        return self._write(command, result, None, when, backend)
+        return self._write(command, result, None, when, backend, value)
+
+    def _refuse_chains(
+        self,
+        command: ModelJoinJ4Command,
+        consumer_chain: ChainEmitter,
+        code: str,
+        detail: str,
+        backend: str,
+    ) -> None:
+        consumer_chain.failure(code, detail)
+        self._sink.emit(
+            ModelNodeEmission(
+                node=self._join.scan_node,
+                piece=self._join.scan_piece,
+                origin="drill" if self._join.drill else "probe",
+                correlation_id=command.correlation_id,
+                phase="failure",
+                emitted_at=self._clock(),
+                backend=backend,
+                drill=self._join.drill,
+                failure_code=UPSTREAM_PREFIX + code,
+                failure_detail=f"scan not run: {code}",
+            )
+        )
 
     def _failed(self, command: ModelJoinJ4Command, why: str) -> ModelJoinJ4Result:
         return ModelJoinJ4Result(
@@ -344,6 +391,7 @@ class HandlerSecretJoinJ4:
         consumer_cells: str | None,
         now: datetime,
         backend: str,
+        value: str | None = None,
     ) -> ModelJoinJ4Result:
         """Compose the join's row from its own cells, and append it on a writing run.
 
@@ -388,6 +436,18 @@ class HandlerSecretJoinJ4:
             cells.append(consumer_cells)
         cells.append(_clean(f"injected fault: {self._join.injected_fault}"))
         row = f"{stamp_text(now)} | {_ROW_TYPE} | " + " | ".join(cells)
+        if value and value in row:
+            # The fully composed row carries the value (a host or overlay cell can equal it):
+            # it is neither appended nor returned.
+            return result.model_copy(
+                update={
+                    "status": "failed",
+                    "verdict": EnumReadingVerdict.NOT_WORKING,
+                    "ledger": "not-written",
+                    "row": None,
+                    "failure": FAILURE_ROW_UNSAFE,
+                }
+            )
         if not command.write:
             return result.model_copy(update={"row": row})
         assert self._appender is not None

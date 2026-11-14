@@ -1,0 +1,22 @@
+name: node_floor_delegation_history_compute
+version: "0.1.0"
+description: "Fold the delegation projection, the routing overlay and the lab experiment reports into the delegation history document"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_floor_delegation_history_compute: "omnimarket.nodes.node_floor_delegation_history_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "observability", "floor", "delegation", "pure"]
+pack: "pipeline"
+display_name: "Floor Delegation History"
+node_role: "compute"

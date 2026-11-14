@@ -52,7 +52,23 @@ inputs:
   operation:
     type: str
     required: false
-    description: check (default) or record.
+    description: check (default), record, or freshness.
+  sidecar:
+    type: bool
+    required: false
+    description: Record operation - write one entry file per test file under the record directory instead of editing the shared list.
+  commits:
+    type: list
+    required: false
+    description: Freshness operation - the commits of the push, oldest first.
+  before_sha:
+    type: str
+    required: false
+    description: Freshness operation - the branch tip before the push.
+  limit:
+    type: int
+    required: false
+    description: Freshness operation - overrides the policy unrecorded-file limit.
 outputs:
   admitted:
     type: bool
@@ -64,6 +80,9 @@ outputs:
     type: list
   recorded:
     type: list
+  crossing_commit:
+    type: str
+    description: Freshness operation - the commit that took the unrecorded count to the limit.
   output_lines:
     type: list
 metadata:

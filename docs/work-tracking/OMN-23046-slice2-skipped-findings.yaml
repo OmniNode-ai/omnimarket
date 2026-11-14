@@ -1,0 +1,211 @@
+ticket: OMN-23046
+purpose: Every Tessl Reviewer finding read in slice 2 (pull requests numbered 2 mod 6) and not fixed in this change, one row each, with verdict and reason (acceptance criterion AC2). Every pull request below was already merged when read, so the fixes land on the landing branch. The two false Criticals named in the ticket (omnimarket#5334:1 and omnimarket#5251:1) are on pull requests that are not 2 mod 6 (5334 is 0 mod 6, 5251 is 1 mod 6) and are untouched.
+verdicts:
+- ALREADY-FIXED
+- SKIPPED
+findings:
+- thread: PRRT_kwDOR6jjtc6032Z0
+  pull_request: omnimarket#5240
+  severity: Major
+  verdict: ALREADY-FIXED
+  reason: "runtime_house_model_key_cli.py tests presence with `name in os.environ`, so an empty override is kept."
+- thread: PRRT_kwDOR6jjtc604ikf
+  pull_request: omnimarket#5252
+  severity: Major
+  verdict: ALREADY-FIXED
+  reason: "The expiry check compares nanoseconds against the bound; tests/unit/delegation/test_omn22822_expiry_review_findings.py covers a response a fraction of a second late."
+- thread: PRRT_kwDOR6jjtc604ikg
+  pull_request: omnimarket#5252
+  severity: Minor
+  verdict: ALREADY-FIXED
+  reason: "_expire_late_response records the expired attempt before building the terminal history; the same test file covers it."
+- thread: PRRT_kwDOR6jjtc604ikh
+  pull_request: omnimarket#5252
+  severity: Minor
+  verdict: ALREADY-FIXED
+  reason: "The expiry terminal takes the credential source from the arriving response; the same test file covers it."
+- thread: PRRT_kwDOR6jjtc604hqk
+  pull_request: omnimarket#5258
+  severity: Major
+  verdict: ALREADY-FIXED
+  reason: "The remote lane start handler is built through the local serve handler with a cross-process file lock on the ledger append."
+- thread: PRRT_kwDOR6jjtc604hqn
+  pull_request: omnimarket#5258
+  severity: Major
+  verdict: ALREADY-FIXED
+  reason: "start_engine_detached returns unresolved for every nonzero exit except a refused or unavailable host command, and for a missing PID."
+- thread: PRRT_kwDOR6jjtc604hqr
+  pull_request: omnimarket#5258
+  severity: Major
+  verdict: ALREADY-FIXED
+  reason: "The liveness check covers the wrapper PID or any process in its group; stop_engine and read_engine_exit both use it."
+- thread: PRRT_kwDOR6jjtc604hqs
+  pull_request: omnimarket#5258
+  severity: Major
+  verdict: ALREADY-FIXED
+  reason: "_close_lane marks the receipt final only when the close append was accepted or a duplicate, and records the failure otherwise."
+- thread: PRRT_kwDOR6jjtc604hqu
+  pull_request: omnimarket#5258
+  severity: Major
+  verdict: ALREADY-FIXED
+  reason: "read_log_tail advances only past newline-terminated lines, so a partial line is read again."
+- thread: PRRT_kwDOR6jjtc604hqx
+  pull_request: omnimarket#5258
+  severity: Major
+  verdict: ALREADY-FIXED
+  reason: "A repository request without a SHA is refused as an unsupported shape before placement and before the CLAIM."
+- thread: PRRT_kwDOR6jjtc604hq0
+  pull_request: omnimarket#5258
+  severity: Major
+  verdict: ALREADY-FIXED
+  reason: "The supervision loop stops the engine at the timeout_min deadline and closes only after the stop is confirmed."
+- thread: PRRT_kwDOR6jjtc6033ci
+  pull_request: omnimarket#5270
+  severity: Minor
+  verdict: SKIPPED
+  reason: "Edits only a bound acceptance-criterion probe line in contracts/OMN-22928.yaml; a bound criterion line is never edited."
+- thread: PRRT_kwDOR6jjtc6033ck
+  pull_request: omnimarket#5270
+  severity: Minor
+  verdict: SKIPPED
+  reason: "Edits only a bound acceptance-criterion evidence line in contracts/OMN-22928.yaml; a bound criterion line is never edited."
+- thread: PRRT_kwDOR6jjtc6031tv
+  pull_request: omnimarket#5294
+  severity: Major
+  verdict: ALREADY-FIXED
+  reason: "Trust of a self-signed certificate is established before any credential is sent; test_setup_review_findings.py covers it."
+- thread: PRRT_kwDOR6jjtc6031ty
+  pull_request: omnimarket#5294
+  severity: Major
+  verdict: ALREADY-FIXED
+  reason: "A refused rerun keeps the working row and certificate; the candidate is verified from its own temp directory first."
+- thread: PRRT_kwDOR6jjtc6031tz
+  pull_request: omnimarket#5294
+  severity: Major
+  verdict: ALREADY-FIXED
+  reason: "SHA-256 fingerprint evidence is read from every fingerprint field and a malformed explicit value is refused."
+- thread: PRRT_kwDOR6jjtc6031t2
+  pull_request: omnimarket#5294
+  severity: Major
+  verdict: ALREADY-FIXED
+  reason: "Provisioning uses the credential-key mapping retained in the overlay row."
+- thread: PRRT_kwDOR6jjtc6031t5
+  pull_request: omnimarket#5294
+  severity: Major
+  verdict: ALREADY-FIXED
+  reason: "The recorded port is used throughout setup."
+- thread: PRRT_kwDOR6jjtc6031t7
+  pull_request: omnimarket#5294
+  severity: Minor
+  verdict: ALREADY-FIXED
+  reason: "A username stored before a failure is resumed on rerun."
+- thread: PRRT_kwDOR6jjtc6031t9
+  pull_request: omnimarket#5294
+  severity: Major
+  verdict: ALREADY-FIXED
+  reason: "The overlay write holds an flock across read, merge and publish."
+- thread: PRRT_kwDOR6jjtc6031uC
+  pull_request: omnimarket#5294
+  severity: Major
+  verdict: ALREADY-FIXED
+  reason: "Writers stage through tempfile.mkstemp and publish with os.replace."
+- thread: PRRT_kwDOR6jjtc6031uD
+  pull_request: omnimarket#5294
+  severity: Minor
+  verdict: ALREADY-FIXED
+  reason: "A journal-directory OSError becomes a per-host refusal and the batch continues."
+- thread: PRRT_kwDOR6jjtc6031uE
+  pull_request: omnimarket#5294
+  severity: Critical
+  verdict: SKIPPED
+  reason: "Critical, judged pre-existing: the plaintext HTTP transport sits in the Infisical adapter, which that pull request did not change; left untouched."
+- thread: PRRT_kwDOR6jjtc604GG9
+  pull_request: omnimarket#5312
+  severity: Minor
+  verdict: ALREADY-FIXED
+  reason: "_matches_ordered implements ordered branch exclusions; test_branch_filter_keeps_ordered_exclusions exists."
+- thread: PRRT_kwDOR6jjtc604GHB
+  pull_request: omnimarket#5312
+  severity: Minor
+  verdict: ALREADY-FIXED
+  reason: "_runs_on_hosted handles the labels mapping form; a parametrized test exists."
+- thread: PRRT_kwDOR6jjtc604GHC
+  pull_request: omnimarket#5312
+  severity: Minor
+  verdict: ALREADY-FIXED
+  reason: "_reviewer_source falls back to a stand-in workflow and the plant forces a lab runner."
+- thread: PRRT_kwDOR6jjtc603zaF
+  pull_request: omnimarket#5318
+  severity: Minor
+  verdict: ALREADY-FIXED
+  reason: "parse_ledger_text catches the strptime ValueError and counts the line skipped."
+- thread: PRRT_kwDOR6jjtc603zaH
+  pull_request: omnimarket#5318
+  severity: Major
+  verdict: ALREADY-FIXED
+  reason: "A row with no lane is counted skipped, so an unusable record no longer reads as a clean zero."
+- thread: PRRT_kwDOR6jjtc603zaJ
+  pull_request: omnimarket#5318
+  severity: Minor
+  verdict: ALREADY-FIXED
+  reason: "The request model refuses an as_of without a timezone."
+- thread: PRRT_kwDOR6jjtc603zaL
+  pull_request: omnimarket#5318
+  severity: Major
+  verdict: ALREADY-FIXED
+  reason: "The liveness kinds validator refuses a kind that differs from its stripped form."
+- thread: PRRT_kwDOR6jjtc604Ckk
+  pull_request: omnimarket#5324
+  severity: Minor
+  verdict: ALREADY-FIXED
+  reason: "RedpandaSnapshotSource.snapshots() parses per record and skips an unparseable one with a typed skipped-record."
+- thread: PRRT_kwDOR6jjtc604Ckn
+  pull_request: omnimarket#5324
+  severity: Minor
+  verdict: SKIPPED
+  reason: "The replay oracle needs a live comparison against the script's decisions, a redesign beyond this change."
+- thread: PRRT_kwDOR6jjtc604Ckq
+  pull_request: omnimarket#5324
+  severity: Minor
+  verdict: SKIPPED
+  reason: "Scenario s07 needs a new multi-tick scenario authored, a fixture redesign beyond this change."
+- thread: PRRT_kwDOR6jjtc604M4q
+  pull_request: omnimarket#5330
+  severity: Major
+  verdict: SKIPPED
+  reason: "Still present: customer-health dispatch routes on the contract-wide command topic and terminal event; the fix is per-operation topic routing in the shared adapter, too large for this change."
+- thread: PRRT_kwDOR6jjtc604M4t
+  pull_request: omnimarket#5330
+  severity: Minor
+  verdict: SKIPPED
+  reason: "Still present: handler_floor_simple_tick imports the verdict node's private handlers; the fix promotes them to a shared package, too large for this change."
+- thread: PRRT_kwDOR6jjtc604wUV
+  pull_request: omnimarket#5336
+  severity: Minor
+  verdict: SKIPPED
+  reason: "Needs batching or an aggregate time budget across the append port and the contract, too large for this change."
+- thread: PRRT_kwDOR6jjtc605WzR
+  pull_request: omnimarket#5342
+  severity: Minor
+  verdict: SKIPPED
+  reason: "The defect is in the test's own readline handshake; no test can fail on current code without a stalled child, so red-first is not possible."
+- thread: PRRT_kwDOR6jjtc606Nb1
+  pull_request: omnimarket#5348
+  severity: Minor
+  verdict: SKIPPED
+  reason: "Pre-existing and advisory: the ledger subprocess watchdog needs process-group containment across the module boundary, too large for this change."
+- thread: PRRT_kwDOR6jjtc606Nb3
+  pull_request: omnimarket#5348
+  severity: Minor
+  verdict: ALREADY-FIXED
+  reason: "PhaseBudget.timeout() floors the remaining budget and refuses below one second; test_phase_budget_review_findings.py covers it."
+- thread: PRRT_kwDOR6jjtc606Nb4
+  pull_request: omnimarket#5348
+  severity: Minor
+  verdict: ALREADY-FIXED
+  reason: "The refusal says files already replaced earlier in the phase stay replaced; a test covers it."
+- thread: PRRT_kwDOR6jjtc606yG7
+  pull_request: omnimarket#5354
+  severity: Minor
+  verdict: SKIPPED
+  reason: "Edits only a bound acceptance-criterion evidence line in contracts/OMN-23023.yaml; a bound criterion line is never edited."

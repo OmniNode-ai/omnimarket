@@ -7,6 +7,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime, timedelta
+from functools import partial
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -408,3 +409,92 @@ def test_real_chain_open_carries_the_repo_it_used(tmp_path: Path) -> None:
         clock=lambda: T0,
     )
     assert bare.repo is not None
+
+
+# OMN-24353: the settle goes through the repository object that opened the run.
+SETTLE_T0 = datetime(2026, 11, 14, 1, 40, tzinfo=UTC)
+
+
+def settle_overlays(tmp_path: Path) -> dict[str, str]:
+    """The schedule overlay and the canary's own example overlay (backend inmemory), as a runtime holds them."""
+    (tmp_path / NODE).mkdir()
+    (tmp_path / NODE / "overlay.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "job_id": "landing_canary",
+                "run_interval_seconds": 300,
+                "grace_seconds": 60,
+                "canary_overlay_id": CANARY_NODE,
+            }
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / CANARY_NODE).mkdir()
+    (tmp_path / CANARY_NODE / "overlay.yaml").write_text(
+        CANARY_EXAMPLE.read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    return {
+        "ONEX_SKILL_OVERLAY_ROOTS": str(tmp_path),
+        "EXAMPLE_HOST_NAME": "fixture-host",
+    }
+
+
+def test_a_tick_that_settles_a_pending_run_returns_the_run_event(
+    tmp_path: Path,
+) -> None:
+    """AC1: the due tick opens the run and settles it on the in-memory backend without an assertion."""
+    handler = HandlerLandingCanaryScheduled(
+        environ=settle_overlays(tmp_path),
+        settle_run=partial(settle_canary, appender=InMemoryLedger()),
+    )
+    event = handler.handle(tick(SETTLE_T0))
+    assert event is not None
+    assert (event.job_id, event.node_name) == ("landing_canary", NODE)
+    assert event.outcome == "failed"
+    assert event.detail.startswith("the landing canary could not read the landing: ")
+    assert "fixture" in event.detail
+
+
+def test_the_settle_goes_through_the_repository_that_opened_the_run(
+    tmp_path: Path,
+) -> None:
+    """AC2: open and settle share one repository object; a settle with no repo passed uses the run's."""
+    env = settle_overlays(tmp_path)
+    repo = InMemoryCanaryRepo(clock=lambda: SETTLE_T0)
+    run = open_canary(
+        canary_overlay_id=CANARY_NODE, environ=env, clock=lambda: SETTLE_T0, repo=repo
+    )
+    assert run.repo is repo
+    assert len(repo.opened_requests) == 1
+    outcome = settle_canary(
+        canary_overlay_id=CANARY_NODE,
+        environ=env,
+        clock=lambda: SETTLE_T0 + timedelta(seconds=10),
+        run=run,
+        appender=InMemoryLedger(),
+    )
+    assert outcome is not None
+    assert "fixture" in outcome.detail
+
+
+def test_control_a_settle_with_a_different_repository_is_refused(
+    tmp_path: Path,
+) -> None:
+    """AC2 control: a repository object that did not open the run holds no pull request, so its state read asserts."""
+    env = settle_overlays(tmp_path)
+    run = open_canary(
+        canary_overlay_id=CANARY_NODE,
+        environ=env,
+        clock=lambda: SETTLE_T0,
+        repo=InMemoryCanaryRepo(clock=lambda: SETTLE_T0),
+    )
+    assert run.opened is not None
+    with pytest.raises(AssertionError):
+        settle_canary(
+            canary_overlay_id=CANARY_NODE,
+            environ=env,
+            clock=lambda: SETTLE_T0 + timedelta(seconds=10),
+            run=run,
+            repo=InMemoryCanaryRepo(clock=lambda: SETTLE_T0),
+            appender=InMemoryLedger(),
+        )
