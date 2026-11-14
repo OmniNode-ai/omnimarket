@@ -4965,6 +4965,7 @@
   "tests/unit/nodes/node_gpu_power_caps_effect/test_gpu_power_caps_lab_work.py": 3.0,
   "tests/unit/nodes/node_gpu_power_caps_effect/test_gpu_power_caps_lab_work_chain.py": 8.7,
   "tests/unit/nodes/node_gpu_power_caps_effect/test_gpu_power_caps_seam.py": 1.7,
+  "tests/unit/nodes/node_hook_lane_trace_compute/test_hook_events_lane_trace.py": 4.8,
   "tests/unit/nodes/node_hook_spool_reconcile_effect/test_hook_spool_reconcile.py": 2.82,
   "tests/unit/nodes/node_hook_tool_outcome_compute/test_tool_outcome_capture_errors.py": 2.5,
   "tests/unit/nodes/node_hook_tool_outcome_compute/test_tool_outcome_capture_golden.py": 2.5,
