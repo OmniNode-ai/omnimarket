@@ -20,7 +20,7 @@ import hashlib
 import re
 from datetime import UTC, datetime
 from typing import Any, Literal
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 from pydantic import BaseModel
 
@@ -28,7 +28,6 @@ from omnimarket.github_landing.github_landing_requests import (
     LIST_PAGE_SIZE,
     artifact_archive_request,
     artifact_request,
-    code_scanning_alerts_request,
     commit_check_runs_request,
     issue_comments_request,
     job_log_request,
@@ -946,8 +945,15 @@ def read_code_scanning_alerts(
     ``GitHubTransportError`` like the other list reads.
     """
     ref = _alert_ref(request)
-    first = code_scanning_alerts_request(
-        request.repo, ref, per_page=min(request.limit, LIST_PAGE_SIZE)
+    query = urlencode(
+        {
+            "state": "open",
+            "ref": ref,
+            "per_page": min(request.limit, LIST_PAGE_SIZE),
+        }
+    )
+    first = ModelGithubHttpRequest(
+        method="GET", path=f"/repos/{request.repo}/code-scanning/alerts?{query}"
     )
     items: list[dict[str, object]] = []
     truncated = False

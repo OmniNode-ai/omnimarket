@@ -40,6 +40,9 @@ from omnimarket.models.scm import (
     ModelScmTopics,
     ModelScmVerb,
 )
+from omnimarket.models.scm.model_scm_gateway_verbs import (
+    SCM_GATEWAY_VERBS as SCM_GATEWAY_VERBS,
+)
 from omnimarket.models.scm.model_scm_local_verbs import (
     SCM_LOCAL_VERBS as SCM_LOCAL_VERBS,
 )
@@ -166,39 +169,7 @@ SCM_VERBS: Final[tuple[ModelScmVerb, ...]] = (
         operation="runner_remove",
         replaces="gh api --method DELETE /orgs/{o}/actions/runners/{id}",
     ),
-    *(
-        ModelScmVerb(verb=v, node=_G, operation=op, replaces=gh)
-        for v, op, gh in (
-            ("pr-review", "review_gate", "gh pr view --json reviewDecision"),
-            ("pr-ticket", "ticket_ref", "gh pr view --json headRefName"),
-            (
-                "branch-protection",
-                "branch_protection",
-                "gh api repos/<o>/<r>/branches/<b>/protection",
-            ),
-            ("job-log", "job_log_tail", "gh api repos/<o>/<r>/actions/jobs/<id>/logs"),
-            (
-                "commit-check-runs",
-                "commit_check_runs",
-                "gh api repos/<o>/<r>/commits/<sha>/check-runs",
-            ),
-            (
-                "pr-merged",
-                "merged_pr",
-                "gh pr view --json state,mergedAt,mergeCommit,headRefOid",
-            ),
-            (
-                "pr-threads",
-                "pr_review_threads",
-                "gh api graphql (pullRequest reviewThreads)",
-            ),
-            (
-                "code-scanning-alerts",
-                "code_scanning_alerts",
-                "gh api repos/<o>/<r>/code-scanning/alerts",
-            ),
-        )
-    ),
+    *SCM_GATEWAY_VERBS,
 )
 
 
