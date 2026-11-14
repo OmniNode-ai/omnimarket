@@ -99,7 +99,8 @@ class ModelDeliveryOverlay(BaseModel):
     channel: ModelChannelSettings
     ledger: ModelLedgerSettings
     #: Per-condition routes to an owner: one push notice and one MSG row addressed to the owner lane.
-    owner_routes: dict[str, ModelOwnerRoute]
+    #: Absent means no condition is routed, so an overlay written before the key existed still loads.
+    owner_routes: dict[str, ModelOwnerRoute] = Field(default_factory=dict)
     #: Where the episodes (active subjects, last ledger row, rows still to write) are kept between ticks.
     state_path: str = Field(min_length=1)
 
