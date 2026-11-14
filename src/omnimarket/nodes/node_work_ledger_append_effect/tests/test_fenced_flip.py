@@ -20,6 +20,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from omnimarket.models.model_work_ledger_reader import EnumReaderStatus
 from omnimarket.models.work_ledger_append import EnumLedgerAppendMode
 from omnimarket.nodes.node_work_ledger_append_effect import (
     EnumWorkLedgerAppendStatus,
@@ -41,7 +42,6 @@ from omnimarket.nodes.node_work_ledger_query_effect.handlers.handler_work_ledger
 from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_query_inmemory import (
     InMemoryWorkLedgerQueryReader,
 )
-from omnimarket.nodes.node_work_ledger_reader_effect.models import EnumReaderStatus
 from tests.unit.nodes.node_work_ledger_reader_effect.test_reader_rows_window import (
     SEAM_NOW,
     QueryNodePointRead,
