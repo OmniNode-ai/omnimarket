@@ -2,16 +2,18 @@
 # SPDX-License-Identifier: MIT
 """The drain verb (rebuild plan 7.4, OMN-22905): a host leaves placement by a command, not by a data pull request.
 
-``drain`` sets the host draining in the drain store and reads it back; ``check_start`` refuses a new lane for a draining
-host; running lanes are counted and left to finish; the host is drained when the count reads 0; ``undrain`` returns it.
-Every command is one chain under one correlation id: a start, then a success or a typed failure.
+``drain`` sets the host draining in the drain store and reads it back; the mark is time-bounded, so the host reads
+not draining again once its ttl is past (OMN-24489); ``check_start`` refuses a new lane for a draining host; running
+lanes are counted and left to finish; the host is drained when the count reads 0; ``undrain`` returns it. Every
+result carries a status line that says whether the host is safe to power down: an unreadable lane count is never
+safe. Every command is one chain under one correlation id: a start, then a success or a typed failure.
 """
 
 from __future__ import annotations
 
 import subprocess
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Literal
 from uuid import uuid4
 
@@ -27,6 +29,16 @@ from omnimarket.nodes.node_host_drain_effect.protocols import (
     ProtocolDrainStore,
     ProtocolLaneSource,
 )
+
+
+def _format_until(until: datetime) -> str:
+    """The mark's expiry as YYYY-MM-DDTHH:MM:SSZ; a naive stamp reads as UTC."""
+    stamp = until if until.tzinfo is not None else until.replace(tzinfo=UTC)
+    return stamp.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _lanes_text(running: int | None) -> str:
+    return "lane count unreadable" if running is None else f"{running} lane(s) running"
 
 
 class HandlerHostDrain:
@@ -69,9 +81,24 @@ class HandlerHostDrain:
             return self._check_start(chain, host, cid)
         if request.op in (EnumDrainOp.DRAIN, EnumDrainOp.UNDRAIN):
             want = request.op is EnumDrainOp.DRAIN
+            # A drain mark is time-bounded: the ttl the command names or the overlay default, never above the max.
+            # The ttl is checked before any write, so a refused drain leaves no mark.
+            until: datetime | None = None
+            if want:
+                ttl = request.ttl_seconds or self._settings.default_ttl_seconds
+                if ttl > self._settings.max_ttl_seconds:
+                    return self._failed(
+                        chain,
+                        host,
+                        cid,
+                        codes.ttl_invalid,
+                        f"a drain of {host} for {ttl}s is above the longest ttl the overlay "
+                        f"allows ({self._settings.max_ttl_seconds}s): no mark is written",
+                    )
+                until = self._clock() + timedelta(seconds=ttl)
             try:
                 self._store.set_draining(
-                    host, want, reason=request.reason, at=self._clock()
+                    host, want, reason=request.reason, at=self._clock(), until=until
                 )
             except (
                 Exception
@@ -112,6 +139,7 @@ class HandlerHostDrain:
                 f"the drain store could not be read for {host}",
             )
         running, detail = self._count(host)
+        until = self._read_until(host) if draining else None
         outcome = {
             EnumDrainOp.DRAIN: EnumDrainOutcome.DRAINING,
             EnumDrainOp.UNDRAIN: EnumDrainOutcome.CLEARED,
@@ -131,6 +159,8 @@ class HandlerHostDrain:
             draining=draining,
             lanes_running=running,
             drained=draining and running == 0,
+            until=until,
+            status_line=self._status_line(host, draining, until, running),
             detail=detail,
         )
 
@@ -140,6 +170,37 @@ class HandlerHostDrain:
             return self._store.is_draining(host)
         except Exception:  # a backend failure is an unreadable state, not an escape
             return None
+
+    def _read_until(self, host: str) -> datetime | None:
+        """When the host's drain mark expires; None when the store gives none or cannot be read."""
+        try:
+            return self._store.until_of(host)
+        except (
+            Exception
+        ):  # the mark's expiry is read with the mark; an unreadable one reads as none
+            return None
+
+    def _status_line(
+        self,
+        host: str,
+        draining: bool,
+        until: datetime | None,
+        running: int | None,
+    ) -> str:
+        """Whether the host is safe to power down, in one line. An unreadable count is never safe."""
+        if not draining:
+            return f"{host} not draining: {_lanes_text(running)}"
+        when = "unknown" if until is None else _format_until(until)
+        if running is None:
+            return (
+                f"{host} draining until {when}: lane count unreadable: "
+                "NOT SAFE to power down"
+            )
+        safety = "SAFE" if running == 0 else "NOT SAFE"
+        return (
+            f"{host} draining until {when}: {running} lane(s) running: "
+            f"{safety} to power down"
+        )
 
     def _check_start(
         self, chain: ChainEmitter, host: str, cid: str

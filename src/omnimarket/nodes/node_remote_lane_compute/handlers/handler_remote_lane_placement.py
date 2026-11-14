@@ -55,6 +55,11 @@ input (``route:h201``, ``route:broker-admin:dev``). A host whose reading lacks t
 checked for it, takes no lane, and its verdict reads ``no-route: <target>`` instead of ``input-absent``.
 On 2026-11-07 lanes placed on h106 could not work: it had no ssh key to h201 and no route to the broker
 admin port, and placement ranked it by free capacity alone.
+
+Draining hosts (OMN-24489): a host the drain verb stopped placement on (the caller reads the drain
+state and names it in ``draining_hosts``) takes no lane for either engine until it is undrained, on
+every rung of the ladder; its verdict reads ``draining``. A request that names none is an old
+producer's and places as before.
 """
 
 from __future__ import annotations
@@ -287,6 +292,7 @@ def _select(
     codex = request.engine == CODEX_ENGINE
     limited = set(request.codex_limited_hosts if codex else request.limited_hosts)
     expired = set() if codex else set(request.auth_expired_hosts)
+    draining = set(request.draining_hosts)
     reasons: dict[str, str] = {}
     admitted: list[ModelRemoteLaneHostReading] = []
     target = request.repair_target
@@ -294,6 +300,10 @@ def _select(
         if target is not None and reading.name == target:
             reasons[reading.name] = (
                 "repair-target: a repair lane runs on another host and reaches this one over ssh"
+            )
+        elif reading.name in draining:
+            reasons[reading.name] = (
+                "draining: the drain verb stopped placement on this host"
             )
         elif reading.name in limited:
             reasons[reading.name] = "usage-limited"

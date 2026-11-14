@@ -35,6 +35,8 @@ class ModelDrainCodes(_Frozen):
     readback_failed: str = Field(min_length=1)
     #: The drain store raised while writing the state: the write is not known to have happened.
     write_failed: str = Field(min_length=1)
+    #: The ttl the command asked for is above the longest the overlay allows: no mark is written.
+    ttl_invalid: str = Field(min_length=1)
 
 
 class ModelRunnerStopCodes(_Frozen):
@@ -55,9 +57,19 @@ class ModelDrainSettings(_Frozen):
     chain_node: str = Field(min_length=1)
     #: The hosts a drain command may name; any other host is refused with a typed failure.
     hosts: tuple[str, ...] = Field(min_length=1)
+    #: How long a drain mark lasts when the command names no ttl, in seconds: a mark is time-bounded.
+    default_ttl_seconds: int = Field(ge=1)
+    #: The longest ttl a drain command may ask for, in seconds; above it the drain is refused.
+    max_ttl_seconds: int = Field(ge=1)
     codes: ModelDrainCodes
     #: The named break that makes this reading go red, used by the failing control.
     injected_fault: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _default_ttl_is_not_above_the_max(self) -> ModelDrainSettings:
+        if self.default_ttl_seconds > self.max_ttl_seconds:
+            raise ValueError("default_ttl_seconds must not be above max_ttl_seconds")
+        return self
 
 
 class ModelRunnerRow(_Frozen):
@@ -130,12 +142,15 @@ class ModelHostDrainOverlay(_Frozen):
     #: The jsonl profile's state file, relative to the emission home.
     jsonl_state_relpath: str = Field(min_length=1)
     drain: ModelDrainSettings
-    runner_stop: ModelRunnerStopSettings
+    #: Absent: this deployment declares no runner stop; the drain verb alone is deployed and ``runner-stop`` is refused.
+    runner_stop: ModelRunnerStopSettings | None = None
     lanes: ModelLaneCountSettings
     emission: ModelEmissionSettings
 
     @model_validator(mode="after")
     def _runner_hosts_are_drainable(self) -> ModelHostDrainOverlay:
+        if self.runner_stop is None:
+            return self
         unknown = sorted(
             {r.host for r in self.runner_stop.runners} - set(self.drain.hosts)
         )
@@ -144,6 +159,8 @@ class ModelHostDrainOverlay(_Frozen):
         return self
 
     def runner(self, name: str) -> ModelRunnerRow | None:
+        if self.runner_stop is None:
+            return None
         return next((r for r in self.runner_stop.runners if r.name == name), None)
 
 

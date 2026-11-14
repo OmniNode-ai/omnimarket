@@ -35,7 +35,8 @@ def sink() -> InMemoryEmissionSink:
 
 @pytest.fixture
 def store() -> InMemoryDrainStore:
-    return InMemoryDrainStore()
+    # The store reads expiry by the same fixed clock the handlers run on.
+    return InMemoryDrainStore(clock=clock)
 
 
 @pytest.fixture

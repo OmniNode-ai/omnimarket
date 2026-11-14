@@ -8,11 +8,14 @@ drain:
   piece: 2
   chain_node: "node_host_drain_effect:drain"
   hosts: [example-host-a, example-host-b]
+  default_ttl_seconds: 14400
+  max_ttl_seconds: 172800
   codes:
     unknown_host: unknown_host
     host_draining: host_draining
     readback_failed: drain_readback_failed
     write_failed: drain_write_failed
+    ttl_invalid: ttl_invalid
   injected_fault: Use a drain store that accepts the write and keeps nothing, so the readback finds the host not draining
 runner_stop:
   piece: 2

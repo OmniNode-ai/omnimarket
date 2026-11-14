@@ -208,9 +208,11 @@ class RemoteLaneStartOrchestrator:
         stop_requested: Callable[[], bool] = lambda: False,
         requesting_host: str = "leader",
         host_availability: HostAvailability | None = None,
+        draining_hosts: Callable[[], tuple[str, ...]] | None = None,
     ) -> None:
         self._s = settings
         self._availability = host_availability
+        self._draining_hosts = draining_hosts
         self._pool = host_pool
         self._ledger = ledger
         self._reader = ledger_reader
@@ -610,6 +612,16 @@ class RemoteLaneStartOrchestrator:
             )
             receipt.state = EnumRemoteLaneStartOutcome.NO_HOST.value
             return self._result(EnumRemoteLaneStartOutcome.NO_HOST, receipt)
+        try:
+            draining = tuple(self._draining_hosts()) if self._draining_hosts else ()
+        except (OSError, ValueError) as exc:
+            # A drain state that cannot be read is not an empty one: the start is refused,
+            # never placed as if no host were draining (OMN-24489).
+            self._say(
+                f"REMOTE-LANE-NO-HOST lane={request.lane} engine={host_engine} outcome=drain-state-unreadable: {exc}"
+            )
+            receipt.state = EnumRemoteLaneStartOutcome.NO_HOST.value
+            return self._result(EnumRemoteLaneStartOutcome.NO_HOST, receipt)
         decision = self._placement.handle(
             ModelRemoteLanePlacementRequest(
                 engine=host_engine,
@@ -618,6 +630,7 @@ class RemoteLaneStartOrchestrator:
                 limited_hosts=snapshot.limited_hosts,
                 codex_limited_hosts=snapshot.codex_limited_hosts,
                 auth_expired_hosts=snapshot.auth_expired_hosts,
+                draining_hosts=draining,
                 readings=tuple(
                     ModelRemoteLaneHostReading.model_validate(
                         {

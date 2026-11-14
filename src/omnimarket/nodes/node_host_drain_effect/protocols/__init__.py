@@ -13,15 +13,29 @@ from omnimarket.nodes.node_host_drain_effect.models.model_host_drain import (
 
 
 class ProtocolDrainStore(Protocol):
-    """Which hosts are draining. The in-memory store is the default; the real stores are durable."""
+    """Which hosts are draining, and until when.
+
+    A drain mark is time-bounded: a draining record whose ``until`` is at or behind the store's clock reads as not
+    draining. The in-memory store is the default; the real stores are durable.
+    """
 
     def set_draining(
-        self, host_name: str, draining: bool, *, reason: str, at: datetime
+        self,
+        host_name: str,
+        draining: bool,
+        *,
+        reason: str,
+        at: datetime,
+        until: datetime | None = None,
     ) -> None: ...
 
     def is_draining(self, host_name: str) -> bool: ...
 
     def draining_hosts(self) -> tuple[str, ...]: ...
+
+    def until_of(self, host_name: str) -> datetime | None:
+        """The mark's until while the host reads draining, else None."""
+        ...
 
 
 class ProtocolLaneSource(Protocol):

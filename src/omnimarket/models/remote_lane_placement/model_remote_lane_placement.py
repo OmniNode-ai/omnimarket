@@ -159,6 +159,10 @@ class ModelRemoteLanePlacementRequest(BaseModel):
     limited_hosts: tuple[str, ...] = ()
     codex_limited_hosts: tuple[str, ...] = ()
     auth_expired_hosts: tuple[str, ...] = ()
+    # The hosts the drain verb stopped placement on (the caller reads the drain state). A host
+    # here takes no lane for either engine until it is undrained. Empty: an old producer's
+    # request, placed as before.
+    draining_hosts: tuple[str, ...] = ()
     readings: tuple[ModelRemoteLaneHostReading, ...] = ()
     # The launching host's dispatch-venv lock hash: the hash every host must hold. Drift is
     # judged when it, any reading's hash, or ``dispatch_venv_required`` is present; a request

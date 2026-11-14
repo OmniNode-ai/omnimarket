@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -187,6 +188,7 @@ class Rig:
         login_labels: tuple[str | None, ...] | None = None,
         placement: HandlerRemoteLanePlacement | None = None,
         host_availability: HostAvailability | None = None,
+        draining_hosts: Callable[[], tuple[str, ...]] | None = None,
     ) -> None:
         self.calls: list[str] = calls if calls is not None else []
         self.ledger_path = tmp / "ledger.md"
@@ -220,6 +222,7 @@ class Rig:
             else ScriptedLoginDraw(login_labels, self.calls),
             placement=placement,
             host_availability=host_availability,
+            draining_hosts=draining_hosts,
             receipts=self.receipts,
             echo=self.printed.append,
             clock=lambda: now,

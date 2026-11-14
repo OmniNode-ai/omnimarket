@@ -16,7 +16,7 @@ description: >
   unreadable runner is refused and nothing is stopped, and the host returns to the state it had unless the runner
   stopped. Each command is one chain on the
   emission contract under one correlation id: a start, then a success or a typed failure (host_draining,
-  drain_readback_failed, drain_write_failed, unknown_host, runner_busy, runner_unreadable, unknown_runner, runner_still_running,
+  ttl_invalid, drain_readback_failed, drain_write_failed, unknown_host, runner_busy, runner_unreadable, unknown_runner, runner_still_running,
   runner_stop_failed, admission_not_closed). The profile in the overlay picks the backend: in_memory (default), jsonl (a durable
   file on one host). Every setting is in the overlay.
 

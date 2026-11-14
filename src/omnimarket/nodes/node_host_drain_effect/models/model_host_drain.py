@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -52,6 +53,8 @@ class ModelHostDrainRequest(_Frozen):
     #: Chain id of this command. Empty: the handler mints one and returns it.
     correlation_id: str = ""
     reason: str = ""
+    #: How long the drain mark lasts, in seconds. None: the overlay's default ttl is used.
+    ttl_seconds: int | None = Field(default=None, ge=1)
 
 
 class ModelHostDrainResult(_Frozen):
@@ -63,6 +66,10 @@ class ModelHostDrainResult(_Frozen):
     #: None when the count could not be read: an unknown count is never a measured zero.
     lanes_running: int | None = Field(default=0, ge=0)
     drained: bool = False
+    #: When the drain mark expires: the host reads not draining from here on. None when it is not draining.
+    until: datetime | None = None
+    #: One line saying whether the host is safe to power down; an unreadable lane count is never safe.
+    status_line: str = ""
     #: Only a start check sets this: True when a new lane may be placed on the host.
     admitted: bool | None = None
     failure_code: str = ""

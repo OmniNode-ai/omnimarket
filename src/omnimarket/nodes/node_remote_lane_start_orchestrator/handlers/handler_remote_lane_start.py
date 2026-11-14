@@ -22,6 +22,9 @@ from omnimarket.models.engine_login import (
 from omnimarket.nodes.node_claude_token_pool_effect.handlers.handler_pool_steering import (
     lane_start_steer,
 )
+from omnimarket.nodes.node_host_drain_effect.runtime_host_drain import (
+    read_draining_hosts,
+)
 from omnimarket.nodes.node_lane_guard_unit_effect.lane_guard_host_source import (
     lane_guard_host_source,
 )
@@ -90,13 +93,15 @@ def build_real(
     sleep: Callable[[float], None],
     echo: Callable[[str], None] = print,
     host_availability: HostAvailability = lab_host_table_unavailable,
+    draining_hosts: Callable[[], tuple[str, ...]] | None = read_draining_hosts,
     host_runner: ProtocolHostCommandRunner | None = None,
 ) -> HandlerRemoteLaneStart:
     """The real-backend wiring; every value comes from the overlay or the request.
 
     ``host_availability`` reads which hosts the lab host table keeps out of placement (the real table by default; a
-    test names its own). ``host_runner`` is the command runner under the ssh transport (the real subprocess runner by
-    default; a test injects a spy to read that ``start_mode: observe`` never reaches it).
+    test names its own). ``draining_hosts`` reads which hosts the drain verb stopped placement on (the real drain
+    state by default; a test names its own). ``host_runner`` is the command runner under the ssh transport (the real
+    subprocess runner by default; a test injects a spy to read that ``start_mode: observe`` never reaches it).
     """
 
     def build(request: ModelRemoteLaneStartRequest) -> RemoteLaneStartOrchestrator:
@@ -152,6 +157,7 @@ def build_real(
             stop_requested=stop_requested,
             requesting_host=socket.gethostname().split(".", 1)[0],
             host_availability=host_availability,
+            draining_hosts=draining_hosts,
         )
 
     return HandlerRemoteLaneStart(build)

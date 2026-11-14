@@ -61,7 +61,13 @@ class DroppingDrainStore:
     """The injected break of the drain: accepts the write and keeps nothing."""
 
     def set_draining(
-        self, host_name: str, draining: bool, *, reason: str, at: datetime
+        self,
+        host_name: str,
+        draining: bool,
+        *,
+        reason: str,
+        at: datetime,
+        until: datetime | None = None,
     ) -> None:
         return None
 
@@ -70,3 +76,6 @@ class DroppingDrainStore:
 
     def draining_hosts(self) -> tuple[str, ...]:
         return ()
+
+    def until_of(self, host_name: str) -> datetime | None:
+        return None

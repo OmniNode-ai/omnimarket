@@ -2,12 +2,15 @@
 # SPDX-License-Identifier: MIT
 """``python -m omnimarket.nodes.node_host_drain_effect <verb>`` (OMN-22905).
 
-``drain --host H``       set H draining: no new lane is placed on it; running lanes finish.
+``drain --host H``       set H draining until its ttl (``--ttl-seconds``, else the overlay default): no new lane
+                         is placed on it; running lanes finish.
 ``undrain --host H``     return H to placement.
-``status --host H``      read whether H is draining, its running lanes, and whether it is drained.
+``status --host H``      read whether H is draining, its running lanes, and whether it is safe to power down.
 ``check-start --host H`` ask whether a new lane may start on H (refused while draining).
 ``draining``             list the hosts now draining, one per line (for placement callers).
 ``runner-stop --runner R`` stop runner R only when it holds no job.
+
+``drain``, ``undrain`` and ``status`` take ``--line`` to print the result's status line instead of the JSON.
 
 Exit codes: 0 done; 1 refused or failed (a typed failure code is in the JSON); 3 a deployment fact is missing.
 """
@@ -17,7 +20,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
@@ -80,14 +83,25 @@ def _require_env(environ: Mapping[str, str], name: str) -> str:
 
 
 def build_store_and_sink(
-    overlay: ModelHostDrainOverlay, environ: Mapping[str, str]
+    overlay: ModelHostDrainOverlay,
+    environ: Mapping[str, str],
+    *,
+    clock: Callable[[], datetime] | None = None,
 ) -> tuple[ProtocolDrainStore, ProtocolEmissionSink, Literal["in_memory", "real"]]:
-    """The store and the chain-event sink of the overlay's profile, and the backend label the chains carry."""
+    """The store and the chain-event sink of the overlay's profile, and the backend label the chains carry.
+
+    The store reads the clock the caller gives (the same one the handler is built with), else the wall clock.
+    """
+    now = clock or (lambda: datetime.now(UTC))
     if overlay.profile == "in_memory":
-        return InMemoryDrainStore(), InMemoryEmissionSink(), "in_memory"
+        return InMemoryDrainStore(clock=now), InMemoryEmissionSink(), "in_memory"
     home = Path(_require_env(environ, overlay.emission.home_env))
     sink = JsonlEmissionSink(home / overlay.emission.journal_relpath)
-    return JsonlDrainStore(home / overlay.jsonl_state_relpath), sink, "real"
+    return (
+        JsonlDrainStore(home / overlay.jsonl_state_relpath, clock=now),
+        sink,
+        "real",
+    )
 
 
 def draining_hosts_of(
@@ -130,13 +144,22 @@ def run(
         p.add_argument("--host", required=True)
         p.add_argument("--reason", default="")
         p.add_argument("--correlation-id", default="")
+        if verb == "drain":
+            p.add_argument("--ttl-seconds", type=int, default=None)
+        if verb in ("drain", "undrain", "status"):
+            p.add_argument("--line", action="store_true")
     sub.add_parser("draining")
     stop = sub.add_parser("runner-stop")
     stop.add_argument("--runner", required=True)
     stop.add_argument("--correlation-id", default="")
     args = parser.parse_args(list(argv))
+    # One clock for the store and both handlers: the stores read a mark's expiry by it.
+
+    def clock() -> datetime:
+        return datetime.now(UTC)
+
     try:
-        store, sink, backend = build_store_and_sink(overlay, environ)
+        store, sink, backend = build_store_and_sink(overlay, environ, clock=clock)
     except _MissingFactError as exc:
         print(f"INDETERMINATE: {exc}", file=sys.stderr)
         return 3
@@ -145,6 +168,9 @@ def run(
             print(host)
         return 0
     if args.verb == "runner-stop":
+        if overlay.runner_stop is None:
+            print("INDETERMINATE: the overlay declares no runner_stop", file=sys.stderr)
+            return 3
         stopper = HandlerIdleRunnerStop(
             overlay.runner_stop,
             probe=(
@@ -155,7 +181,7 @@ def run(
             stopper=CommandWorkerStopper(overlay.runner_stop),
             store=store,
             sink=sink,
-            clock=lambda: datetime.now(UTC),
+            clock=clock,
             backend=backend,
         )
         stopped = stopper.handle(
@@ -170,7 +196,7 @@ def run(
         store=store,
         lanes=CommandLaneSource(overlay.lanes),
         sink=sink,
-        clock=lambda: datetime.now(UTC),
+        clock=clock,
         backend=backend,
     )
     result = drain.handle(
@@ -179,9 +205,13 @@ def run(
             host_name=args.host,
             correlation_id=args.correlation_id,
             reason=args.reason,
+            ttl_seconds=getattr(args, "ttl_seconds", None),
         )
     )
-    _print(result)
+    if getattr(args, "line", False):
+        print(result.status_line)
+    else:
+        _print(result)
     return 1 if result.outcome in _REFUSED else 0
 
 

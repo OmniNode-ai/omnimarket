@@ -3,22 +3,39 @@
 """Fallback host: the first ranked host whose engine login is not limited right now (OMN-20668).
 
 Read live from the runner's own limited markers, not from the probe's reading of
-minutes ago: a login can be marked limited between the probe and the fallback.
+minutes ago: a login can be marked limited between the probe and the fallback. A host the drain
+verb is draining (OMN-24489) is skipped the same way, read live from the drain node at every
+fallback, so a drained host never receives a pinned lane.
 """
 
 from __future__ import annotations
+
+from collections.abc import Callable
 
 from ..models import ModelLabFillFallbackHostRequest, ModelLabFillFallbackHostResult
 from ..protocols import LabFillPortError, ProtocolLabFillPlacementReader
 
 
 class HandlerLabFillFallbackHost:
-    """Pick the first ranked host whose engine login is not limited right now."""
+    """Pick the first ranked host that is neither limited nor draining right now."""
 
-    def __init__(self, placement: ProtocolLabFillPlacementReader | None = None) -> None:
+    def __init__(
+        self,
+        placement: ProtocolLabFillPlacementReader | None = None,
+        *,
+        draining_hosts: Callable[[], tuple[str, ...]] | None = None,
+    ) -> None:
         from ..protocols.local_lab_fill_adapters import LocalPlacementReader
 
         self._placement = placement if placement is not None else LocalPlacementReader()
+        self._draining_hosts = draining_hosts or self._drain_node_hosts
+
+    def _drain_node_hosts(self) -> tuple[str, ...]:
+        from omnimarket.nodes.node_host_drain_effect.runtime_host_drain import (
+            read_draining_hosts,
+        )
+
+        return read_draining_hosts()
 
     def handle(
         self, request: ModelLabFillFallbackHostRequest
@@ -28,6 +45,12 @@ class HandlerLabFillFallbackHost:
         except LabFillPortError:
             # A marker read that fails offers no host: a fallback never lands on a limited one by guess.
             return ModelLabFillFallbackHostResult(host="")
+        try:
+            draining = self._draining_hosts()
+        except Exception:
+            # A drain read that fails offers no host: a fallback never lands on a draining one by guess.
+            return ModelLabFillFallbackHostResult(host="")
+        skip = limited | frozenset(draining)
         return ModelLabFillFallbackHostResult(
-            host=next((h for h in request.ranked_hosts if h not in limited), "")
+            host=next((h for h in request.ranked_hosts if h not in skip), "")
         )
