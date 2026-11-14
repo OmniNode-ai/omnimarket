@@ -60,7 +60,7 @@ metadata:
   author: OmniNode Team
   created: '2026-11-14'
 # The real-backend profile. Overlay ids resolve through ONEX_SKILL_OVERLAY_ROOTS or the named file variable: the
-# change to node map (merged_change_runners), the lab hosts units run on (merged_change_unit_hosts), and the runtime
+# change to node map with the lab hosts units run on, the overlay store checkouts and the manifest address (merged_change_runners), and the runtime
 # host's container identities (runtime_host_reads, shared with the merged-and-running count). The in-memory profile
 # (sources/source_in_memory.py) is the default of every test.
 runtime:
@@ -68,9 +68,6 @@ runtime:
   runners_overlay:
     overlay_id: merged_change_runners
     overlay_file_env: MERGED_CHANGE_RUNNERS_OVERLAY_PATH
-  unit_hosts_overlay:
-    overlay_id: merged_change_unit_hosts
-    overlay_file_env: MERGED_CHANGE_UNIT_HOSTS_OVERLAY_PATH
   deployed_provenance:
     overlay_id: runtime_host_reads
     overlay_file_env: RUNTIME_HOST_READS_OVERLAY_PATH

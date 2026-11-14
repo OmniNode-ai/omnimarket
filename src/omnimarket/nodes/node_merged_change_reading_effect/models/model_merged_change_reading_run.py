@@ -56,6 +56,15 @@ class ModelMcrStoreCheckout(BaseModel):
     path: str = Field(pattern=r"^/[A-Za-z0-9_./-]+$")
 
 
+class ModelMcrUnitHost(BaseModel):
+    """A lab host that runs units, and the environment variable that holds its ssh target."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    host: str = Field(min_length=1)
+    ssh_host_env: str = Field(pattern=r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
 class ModelMcrRunnerOverlay(BaseModel):
     """The overlay document that declares how each merged change runs."""
 
@@ -67,23 +76,8 @@ class ModelMcrRunnerOverlay(BaseModel):
     # only the log's discovery lines are read.
     manifest_url: str = Field(default="", pattern=r"^(https?://[^\s]+)?$")
     store_checkouts: tuple[ModelMcrStoreCheckout, ...] = ()
-
-
-class ModelMcrUnitHost(BaseModel):
-    """A lab host that runs units, and the environment variable that holds its ssh target."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    host: str = Field(min_length=1)
-    ssh_host_env: str = Field(pattern=r"^[A-Za-z_][A-Za-z0-9_]*$")
-
-
-class ModelMcrUnitHostsOverlay(BaseModel):
-    """The overlay document that names the lab hosts units run on."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    hosts: tuple[ModelMcrUnitHost, ...]
+    # The lab hosts whose units the reading reads, each with the variable that holds its ssh target.
+    unit_hosts: tuple[ModelMcrUnitHost, ...] = ()
 
 
 class ModelMcrLogLabels(BaseModel):

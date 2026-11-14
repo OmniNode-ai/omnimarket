@@ -31,7 +31,6 @@ from omnimarket.nodes.node_merged_change_reading_effect.models.model_merged_chan
     ModelMcrLogLabels,
     ModelMcrRunnerOverlay,
     ModelMcrRunRequest,
-    ModelMcrUnitHostsOverlay,
 )
 from omnimarket.nodes.node_merged_change_reading_effect.sources.source_merged_change_reading import (
     SourceMergedChangeReading,
@@ -96,15 +95,6 @@ def build_sources(
         )
     except NodeOverlayError:
         host_reads = None
-    try:
-        unit_hosts = load_structured_overlay(
-            rt["unit_hosts_overlay"]["overlay_id"],
-            ModelMcrUnitHostsOverlay,
-            environ,
-            file_env=rt["unit_hosts_overlay"]["overlay_file_env"],
-        ).hosts
-    except NodeOverlayError:
-        unit_hosts = ()
     provenance = None
     runtime = None
     recorded: tuple[str, ...] = ()
@@ -125,7 +115,7 @@ def build_sources(
         runtime = SourceRuntimeFacts(
             overlay=host_reads,
             labels=labels,
-            unit_hosts=unit_hosts,
+            unit_hosts=runners.unit_hosts,
             environ=environ,
             manifest_url=runners.manifest_url,
         )
