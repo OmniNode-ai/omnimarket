@@ -8,7 +8,6 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from omnimarket.models.ticket_closer import ModelTicketCloserScheduleOverlay
 from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_contract_index import (
@@ -19,6 +18,11 @@ from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_pr_sources
 )
 from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_scope_overlay import (
     load_scope_overlay,
+)
+from omnimarket.nodes.node_ticket_closer_scheduled_effect.handlers.closer_protocols import (
+    ProtocolCloserCandidateSource,
+    ProtocolCloserVerifier,
+    ProtocolTicketDoneWriter,
 )
 from omnimarket.nodes.node_ticket_closer_scheduled_effect.handlers.contract_candidate_source import (
     ContractCandidateSource,
@@ -39,13 +43,6 @@ from omnimarket.nodes.node_ticket_closer_scheduled_effect.handlers.ticket_reader
 from omnimarket.nodes.node_ticket_closer_scheduled_effect.handlers.watcher_open_prs import (
     WatcherOpenPullRequests,
 )
-
-if TYPE_CHECKING:
-    from omnimarket.nodes.node_ticket_closer_scheduled_effect.handlers.handler_ticket_closer_scheduled import (
-        ProtocolCloserCandidateSource,
-        ProtocolCloserVerifier,
-        ProtocolTicketDoneWriter,
-    )
 
 
 class BoundProfileRefusedError(Exception):
