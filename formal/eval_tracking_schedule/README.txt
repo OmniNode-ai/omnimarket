@@ -9,7 +9,6 @@ M1 .. M6                   one mutant per design knob; each must violate the one
 wit_*.cfg                  witnesses: each checks a "not reached" invariant TLC must report violated
 results/                   one TLC output per config (the last line is exit=<code>) and SUMMARY.txt with the
                            sha256 of the model, each config and each output
-run_tlc.sh                 runs one config
 VERDICT.txt                the design verdict and the requirements the build answers to
 
 Followed: formal/throughput_tick (README, base config, one config per mutant, witnesses, results/SUMMARY.txt,
@@ -18,7 +17,7 @@ VERDICT.txt, tests/formal/test_*_model.py).
 Run
 ---
 TLC 2.19 (tla2tools.jar v1.7.4, sha256 936a2620...50e88) with a JRE, or docker with eclipse-temurin:17-jre-alpine:
-  ./run_tlc.sh <cfg-basename>
+  java -XX:+UseParallelGC -Xmx2g -cp tla2tools.jar tlc2.TLC -config <cfg-basename>.cfg -workers 2 -metadir states/<cfg-basename> -cleanup EvalTrackingSchedule.tla > results/<cfg-basename>.out
 TLC exits 0 when it finds no error and 12 on an invariant violation. Run from this directory.
 
 Mutants and results (also in VERDICT.txt, the summary path is formal/eval_tracking_schedule/results/SUMMARY.txt)

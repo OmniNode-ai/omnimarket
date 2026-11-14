@@ -10,7 +10,10 @@ still starts one. Positive control: the next window's request does start a secon
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
+import yaml
 
 from omnimarket.models.code_eval_trial.model_code_eval_run_request import (
     ModelCodeEvalRunRequest,
@@ -35,6 +38,11 @@ from tests.nodes.node_eval_tracking_schedule_compute.support import (
 )
 
 pytestmark = pytest.mark.unit
+
+CONTRACT = (
+    Path(__file__).resolve().parents[3]
+    / "src/omnimarket/nodes/node_eval_tracking_schedule_compute/contract.yaml"
+)
 
 
 def request_at(
@@ -121,3 +129,10 @@ def test_the_next_window_starts_a_second_run() -> None:
         str(window_1.correlation_id),
     }
     assert len(bus.closes) == 2
+
+
+def test_the_run_request_is_published_on_the_contract_topic() -> None:
+    contract = yaml.safe_load(CONTRACT.read_text())
+    topic = "onex.cmd.omnimarket.code-eval-run-requested.v1"
+    assert contract["event_bus"]["publish_topics"] == [topic]
+    assert contract["terminal_event"] == topic
