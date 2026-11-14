@@ -13,6 +13,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.models.bus_binding.model_node_event_bus import ModelNodeEventBus
 from omnimarket.models.model_host_profile import ModelHostProfile, ModelProfileClone
 from omnimarket.models.model_host_role import EnumHostRole
 
@@ -44,6 +45,8 @@ class ModelHostRoleBaselines(_Frozen):
     defaults: ModelProfileDefaults
     base: ModelRoleBaseline
     roles: dict[EnumHostRole, ModelRoleBaseline]
+    # The bus `onex run-node` reads to reach this node (OMN-24410)
+    event_bus: ModelNodeEventBus | None = None
 
 
 class EnumBaselineRefusal(StrEnum):
