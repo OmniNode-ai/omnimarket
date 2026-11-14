@@ -27,9 +27,13 @@ from pydantic import BaseModel, JsonValue, ValidationError
 from omnimarket.handlers.scm.handler_gateway_read_client import (
     GatewayReadError,
     HandlerGatewayReadClient,
+    _token_resolves,
+    read_in_process,
+    read_over_bus,
 )
 from omnimarket.models.model_github_gateway_io import (
     EnumGithubGatewayOperation,
+    GithubGatewayResult,
     ModelGithubGatewayRequest,
     ModelWorkflowRunsResult,
 )
@@ -60,7 +64,13 @@ class GatewayCanaryRunSource:
         client: HandlerGatewayReadClient | None = None,
     ) -> None:
         self._settings = settings
-        self._client = client or HandlerGatewayReadClient()
+        self._client = client or HandlerGatewayReadClient(route=self._route)
+
+    def _route(self, request: ModelGithubGatewayRequest) -> GithubGatewayResult:
+        """In process where the gateway's own token resolves, else the deployed gateway over the bus within the overlay's timeout."""
+        if _token_resolves():
+            return read_in_process(request)
+        return read_over_bus(request, timeout_s=self._settings.timeout_seconds)
 
     def read(self) -> tuple[ModelCanaryRun, ...]:
         settings = self._settings
