@@ -11,11 +11,11 @@ requirements:
     statement: A plugin install that leaves the installed revision and version unchanged is judged alert only, spends no fix attempt and is not retried identically; an install that moved either is applied and a failed install may retry.
     acceptance:
       - id: AC1
-        statement: 'AC1: a plugin-tree install that leaves the installed commit and version unchanged does not count as a fix attempt and is not retried identically -- falsifier: pytest src/omnimarket/nodes/node_host_drift_plugin_install_judge_compute/tests/test_golden_chain.py -q -k no_op fails when the judgement reads an exit code of 0 as applied'
+        statement: 'AC1: a plugin-tree install that leaves the installed commit and version unchanged does not count as a fix attempt and is not retried identically -- falsifier: pytest tests/nodes/node_host_drift_plugin_install_judge_compute/test_golden_chain.py -q -k no_op fails when the judgement reads an exit code of 0 as applied'
 evidence_requirements:
   - kind: tests
     description: The install judge node tests pass at the pushed head; the failing control shows the exit-code-only judgement reads the h101 no-op install as applied.
-    command: uv run pytest -q src/omnimarket/nodes/node_host_drift_plugin_install_judge_compute/tests
+    command: uv run pytest -q tests/nodes/node_host_drift_plugin_install_judge_compute
 emergency_bypass:
   enabled: false
   justification: ''
@@ -27,7 +27,7 @@ dod_evidence:
     binds_ac: [AC1]
     checks:
       - check_type: test_passes
-        check_value: uv run pytest -q src/omnimarket/nodes/node_host_drift_plugin_install_judge_compute/tests/test_golden_chain.py -k no_op
+        check_value: uv run pytest -q tests/nodes/node_host_drift_plugin_install_judge_compute/test_golden_chain.py -k no_op
         cwd: .
   - id: dod-omn24194-deploy
     description: 'Deploy probe the hosted runner can run: the install judge handler exists at the checked-out commit on GitHub; it does not exist at the merge base, so the probe fails there.'
@@ -44,5 +44,5 @@ dod_evidence:
     checks:
       - check_type: command
         check_value: >-
-          uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane fill-ticket-OMN-24194-20261114T1708Z -- uv run --frozen pytest src/omnimarket/nodes/node_host_drift_plugin_install_judge_compute/tests -q
+          uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane fill-ticket-OMN-24194-20261114T1708Z -- uv run --frozen pytest tests/nodes/node_host_drift_plugin_install_judge_compute -q
         cwd: .

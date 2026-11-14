@@ -26,7 +26,13 @@ from omnimarket.nodes.node_host_drift_plugin_install_judge_compute.handlers.hand
 
 OMNI = "omni@omninode-internal"
 COMMIT, NEXT = "5b16f7640b2e" + "0" * 28, "c" * 40
-PACKAGE = Path(__file__).resolve().parents[1]
+PACKAGE = (
+    Path(__file__).resolve().parents[3]
+    / "src"
+    / "omnimarket"
+    / "nodes"
+    / "node_host_drift_plugin_install_judge_compute"
+)
 
 
 def observation(**over: object) -> ModelPluginInstallObservation:
