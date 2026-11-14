@@ -63,7 +63,8 @@ class _Container:
 
 
 def _run(sources: SourceInMemoryChangeReading, numbers: list[int]) -> Any:
-    handler = HandlerMergedChangeReadingEffect(_Container(sources), config())  # type: ignore[arg-type]
+    container: Any = _Container(sources)
+    handler = HandlerMergedChangeReadingEffect(container, config())
     return handler.handle(
         ModelMcrRunRequest(
             changes=tuple(ModelMcrChange(repo="omnimarket", number=n) for n in numbers),
@@ -146,9 +147,8 @@ def test_unread_build_and_unresolved_sha_read_unread() -> None:
 
 
 def test_refuses_without_any_config() -> None:
-    handler = HandlerMergedChangeReadingEffect(
-        _Container(SourceInMemoryChangeReading())  # type: ignore[arg-type]
-    )
+    container: Any = _Container(SourceInMemoryChangeReading())
+    handler = HandlerMergedChangeReadingEffect(container)
     with pytest.raises(ValueError, match="no config"):
         handler.handle(
             ModelMcrRunRequest(changes=(ModelMcrChange(repo="r", number=1),))
