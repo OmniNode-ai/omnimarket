@@ -6,8 +6,10 @@ from __future__ import annotations
 
 import os
 import subprocess
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import pytest
 from omnibase_core.validators.no_unguarded_git_subprocess import (
@@ -44,15 +46,15 @@ class _Provenance:
         self._read = read
         self.asked: list[tuple[str, int, str]] = []
 
-    def read(self, merges: object) -> ModelMrcEvidenceRead:
-        self.asked = list(merges)  # type: ignore[call-overload]
+    def read(self, merges: Iterable[tuple[str, int, str]]) -> ModelMrcEvidenceRead:
+        self.asked = list(merges)
         return self._read
 
 
-def _source(provenance: object, home: Path) -> SourceMergedChangeReading:
+def _source(provenance: Any, home: Path) -> SourceMergedChangeReading:
     return SourceMergedChangeReading(
         runners=ModelMcrRunnerOverlay(runners=()),
-        provenance=provenance,  # type: ignore[arg-type]
+        provenance=provenance,
         provenance_repos=("omnimarket", "omnibase_infra"),
         runtime=None,
         labels=labels(),

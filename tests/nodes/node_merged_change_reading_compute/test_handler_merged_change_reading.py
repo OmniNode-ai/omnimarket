@@ -7,6 +7,7 @@ from __future__ import annotations
 import random
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -42,8 +43,8 @@ def _config() -> ModelMcrConfig:
     return ModelMcrConfig.model_validate(document["merged_change_reading"])
 
 
-def _runner(number: int, kind: str, **fields: object) -> ModelMcrRunner:
-    return ModelMcrRunner(repo="omnimarket", number=number, kind=kind, **fields)  # type: ignore[arg-type]
+def _runner(number: int, kind: str, **fields: Any) -> ModelMcrRunner:
+    return ModelMcrRunner(repo="omnimarket", number=number, kind=kind, **fields)
 
 
 def _request(
