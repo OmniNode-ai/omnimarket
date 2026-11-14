@@ -3,18 +3,8 @@
 # SPDX-License-Identifier: MIT
 """Balance the full-suite test shards by recorded duration (OMN-19684).
 
-History. The first fix merged every shard's pytest-split ``--store-durations``
-output into one ``actions/cache`` entry that the next run's ``--splits``/
-``--group`` balancer read. Live PR runs after it still spread 1.75-2.10x
-(runs 37932017787, 37933529792, 37934956505, 37940218989; job time, slowest
-over fastest of 20). Two defects were left in that design:
-
-* the balancer input was a mutable cache. A PR run only sees caches written on
-  its own ref or the base branch, so shards could split by test count, and two
-  shards could even read different maps;
-* every shard collected the whole 40k-test tree (about 61 s on a lab host)
-  before running its slice, so more than half of each shard's wall time was
-  session overhead, not tests.
+History: the first design read a mutable ``actions/cache`` map and every shard
+collected the whole tree (OMN-19684), so shards spread 1.75-2.10x.
 
 The balancer input is now a committed record, ``config/test_file_durations.json``
 (test file -> seconds), identical on every runner. ``plan`` deals the test
@@ -68,20 +58,9 @@ def _read_duration_map(path: Path) -> dict[str, float]:
 
 
 def read_record(path: Path) -> dict[str, float]:
-    """The shared list merged with the per-file entries beside it (OMN-23537).
-
-    A change that adds a test file records it as one small file under
-    ``<record stem>.d/`` (``config/test_file_durations.d/``), so two changes never edit
-    the same path. The shared list wins when both hold a file, because a refresh of the
-    list is the newer measurement.
-    """
-    merged: dict[str, float] = {}
-    entries = path.parent / f"{path.stem}.d"
-    if entries.is_dir():
-        for entry in sorted(entries.glob("*.json")):
-            merged.update(_read_duration_map(entry))
-    merged.update(_read_duration_map(path))
-    return merged
+    """The shared list over the per-file entries in ``<stem>.d/`` (OMN-23537)."""
+    entries = sorted(path.parent.glob(f"{path.stem}.d/*.json"))
+    return {k: v for p in [*entries, path] for k, v in _read_duration_map(p).items()}
 
 
 def merge_durations(artifacts_dir: Path) -> dict[str, float]:
