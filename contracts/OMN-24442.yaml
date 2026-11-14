@@ -1,0 +1,89 @@
+schema_version: 1.0.0
+ticket_id: OMN-24442
+title: Dev runtime rolls once per window and joins its command nodes in time
+summary: node_dev_roll_window_gate_effect holds each dev deploy command the deploy effect forwards (envelope on onex.cmd.omnimarket.dev-roll-hold.v1) in a durable store and releases every held command together,
+  oldest first, once node_dev_roll_request_compute's batching decision (live mode) says roll now, at most once per overlay interval and never while the previous roll has no completion. Every value is an
+  overlay value. The integrated reading is the dev roll count over two hours and the six command node groups' join time after one roll, read from the running dev runtime.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- topics
+- public_api
+requirements:
+- id: req-omn24442-gate
+  statement: Dev deploy commands wait for one roll window and are released together.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a new node holds each dev deploy command in a durable store and releases every held command together, oldest first, when the batching decision says roll now, with the window, minimum start interval and every other value read from an overlay -- falsifier: a held command released before the window ends, a command lost across a restart of the node, or a window value written in the node''s code'
+  - id: AC2
+    statement: 'AC2: never more than one release per minimum start interval and never a release while the previous roll has not finished -- falsifier: a two-hour simulation with a merge every four minutes that shows more releases than the interval allows, or a release while the previous roll has no completion'
+  - id: AC3
+    statement: 'AC3: the deploy effect forwards a dev command to the gate only when the gate overlay says live, publishes exactly as before when the overlay is off or absent, and the gate''s release is published without being held again -- falsifier: a live-mode dev command published straight to the deploy agent, or a released command held a second time'
+  - id: AC4
+    statement: 'AC4: golden chain, error chain, join and seam tests run on the in-memory bus and on the real broker and each fails against a named injected break -- falsifier: renaming a field the gate reads from the deploy command, the facts or the completion event leaves a seam test green'
+- id: req-omn24442-integrated
+  statement: The roll count and the join times are read from the running dev runtime.
+  acceptance:
+  - id: AC5
+    statement: 'AC5: integrated: after merge and one roll of the running dev runtime, the six command node groups each have a member within 150 seconds, a fresh run-node send to each node is answered, and the number of dev rolls over the next two hours read from the deploy agent''s job records is at most the window allows -- falsifier: a roll count above the window''s bound, a group with no member 150 seconds after the container start, or a send with no answer'
+evidence_requirements:
+- kind: tests
+  description: The node and seam tests at the pushed head.
+  command: uv run --frozen pytest tests/unit/nodes/node_dev_roll_window_gate_effect tests/nodes/node_redeploy_deploy_effect/test_dev_roll_hold_arm.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24442-ac1
+  description: "Handler table, overlay and store tests: holds, releases oldest first, overlay-only values (source scan), a corrupt store raises."
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_dev_roll_window_gate_effect/test_handler_dev_roll_window_gate.py tests/unit/nodes/node_dev_roll_window_gate_effect/test_overlay_dev_roll_window_gate.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24442-ac2
+  description: The two-hour simulation and its failing control.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_dev_roll_window_gate_effect/test_window_bound_dev_roll_gate.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24442-ac3
+  description: The deploy effect hold arm and the joins (in process and over the wire).
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_redeploy_deploy_effect/test_dev_roll_hold_arm.py tests/unit/nodes/node_dev_roll_window_gate_effect/test_join_deploy_effect_and_gate.py tests/unit/nodes/node_dev_roll_window_gate_effect/test_join_over_the_wire_deploy_effect_and_gate.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24442-ac4
+  description: Golden chain, error chain and seam tests, each with a failing control.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_dev_roll_window_gate_effect/test_golden_chain_dev_roll_window_gate.py tests/unit/nodes/node_dev_roll_window_gate_effect/test_error_chain_dev_roll_window_gate.py tests/unit/nodes/node_dev_roll_window_gate_effect/test_seam_dev_roll_window_gate.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24442-ac5
+  description: The tests behind the integrated reading pass at the head; the reading itself (roll count, join times) is the pull request's Lab line, since hosted CI cannot reach the runtime.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_dev_roll_window_gate_effect -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24442-integration-proof
+  description: 'AC5 hosted proxy: the gate node and deploy effect tests run on a lab host at the pushed head; the reading of the running dev runtime (a hold, a release and a roll, then the roll count over two hours and the join time of the six command node groups) waits for the merge and the overlay, so only the local Done gate runs this unbound check'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24442 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_dev_roll_window_gate_effect tests/nodes/node_redeploy_deploy_effect -q --no-cov -p no:randomly

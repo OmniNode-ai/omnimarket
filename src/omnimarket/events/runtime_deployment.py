@@ -1133,17 +1133,10 @@ class ModelProdPromotionGateDecision(BaseModel):
             "Typed code for the branch that produced this decision (OMN-18999). "
             "Every branch of the gate sets it, and "
             "``test_the_gate_never_returns_a_decision_without_a_typed_outcome`` "
-            "is what enforces that -- NOT a required field.\n\n"
-            "It is optional here because this model is also the consumer's wire "
-            "model: the redeploy orchestrator validates a delivered payload with "
-            "it, and this topic has carried decisions since OMN-13211, none of "
-            "which have this field. Required, every retained message would fail "
-            "validation the moment this version deployed, and a correctly-gated "
-            "promotion would die on a field added to describe it. That is the "
-            "whole of 'new wire fields land consumer-first'.\n\n"
-            "``ModelProdGateDecision``'s own outcome IS required, because that "
-            "model never crosses the wire -- so the strict constraint lives "
-            "where it costs nothing."
+            "enforces that -- it is NOT a required field, because this model is "
+            "also the consumer's wire model and retained decisions since OMN-13211 "
+            "carry none; a required field would fail their validation. "
+            "``ModelProdGateDecision``'s own outcome IS required: it never crosses the wire."
         ),
     )
     grant_id: str | None = Field(
@@ -1949,6 +1942,13 @@ class ModelDeployPublishCommand(BaseModel):
     dev_deploy_protocol: Literal["health-v1"] | None = Field(
         default=None,
         description="Explicit capability negotiation with health-route-aware agents and CI.",
+    )
+    roll_window_released: bool = Field(
+        default=False,
+        description=(
+            "True once the dev roll window gate released this command; the deploy "
+            "effect publishes it without holding it again."
+        ),
     )
 
     correlation_id: UUID = Field(..., description="Redeploy run correlation ID.")
