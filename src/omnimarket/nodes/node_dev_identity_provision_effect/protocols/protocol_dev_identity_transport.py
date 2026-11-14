@@ -10,12 +10,12 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
-from omnimarket.models.secret_store.model_generate_key_result import (
-    ModelGenerateKeyResult,
-)
-from omnimarket.nodes.node_dev_identity_provision_effect.models.model_identity_http import (
+from omnimarket.models.model_dev_identity_http import (
     ModelIdentityHttpRequest,
     ModelIdentityHttpResponse,
+)
+from omnimarket.models.secret_store.model_generate_key_result import (
+    ModelGenerateKeyResult,
 )
 
 

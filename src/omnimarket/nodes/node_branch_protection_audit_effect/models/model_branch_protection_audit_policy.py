@@ -13,6 +13,10 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
+from omnimarket.nodes.node_branch_protection_audit_effect.models.model_branch_protection_landing_branch import (
+    ModelBranchProtectionLandingBranch,
+)
+
 OVERLAY_SCHEMA_VERSION = "branch_protection_audit_overlay.v1"
 
 
@@ -38,6 +42,10 @@ class ModelBranchProtectionAuditPolicy(BaseModel):
     receipt_gate_required_repos: tuple[str, ...] = ()
     # Repositories whose dev must directly require the "Lane Identity Gate".
     lane_identity_gate_required_repos: tuple[str, ...] = ()
+    # Landing branches that must carry an active ruleset with the update rule and
+    # exactly the declared bypass actors. A repository not listed here is not
+    # judged by this check.
+    landing_branches: tuple[ModelBranchProtectionLandingBranch, ...] = ()
 
     @model_validator(mode="after")
     def _release_synced_and_main_exempt_are_disjoint(
@@ -50,6 +58,16 @@ class ModelBranchProtectionAuditPolicy(BaseModel):
             raise ValueError(
                 "a repository cannot be both release-synced on main and exempt "
                 f"from the main audit: {', '.join(both)}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _one_landing_branch_per_repo(self) -> ModelBranchProtectionAuditPolicy:
+        repos = [entry.repo for entry in self.landing_branches]
+        repeated = sorted({repo for repo in repos if repos.count(repo) > 1})
+        if repeated:
+            raise ValueError(
+                f"a repository declares one landing branch only: {', '.join(repeated)}"
             )
         return self
 

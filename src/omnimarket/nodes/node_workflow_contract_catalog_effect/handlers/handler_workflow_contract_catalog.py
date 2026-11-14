@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from omnimarket.nodes.node_workflow_contract_catalog_effect.models.model_workflow_contract_catalog import (
     ModelCatalogHttpRoute,
     ModelCatalogRefusal,
@@ -17,6 +19,8 @@ from omnimarket.nodes.node_workflow_contract_catalog_effect.protocols.protocol_w
 from omnimarket.protocols.protocol_http_tenant_identity import (
     ProtocolHttpTenantIdentity,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class HandlerWorkflowContractCatalog:
@@ -38,7 +42,13 @@ class HandlerWorkflowContractCatalog:
         # is refused never touches the catalog.
         if self._identity is None:
             return self._refuse(self._config.refusals["resolver_unbound"])
-        tenant = await self._identity.resolve(request.headers)
+        try:
+            tenant = await self._identity.resolve(request.headers)
+        except Exception:
+            logger.warning(
+                "workflow contract catalog resolver failed; refusing the request"
+            )
+            return self._refuse(self._config.refusals["resolver_unbound"])
         if tenant is None:
             presented = any(
                 request.headers.get(name, "") != ""

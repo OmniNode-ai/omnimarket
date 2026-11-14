@@ -780,7 +780,7 @@ repos:
         name: Added test files are in the durations record (OMN-23560)
         language: system
         entry: env -u PYTHONPATH uv run --frozen python -m omnimarket.nodes.node_test_duration_record_check_effect.runtime_test_duration_record_check --staged
-        files: ^(tests/.*\.py|config/test_file_durations\.json|src/omnimarket/nodes/node_test_duration_record_check_effect/.*)$
+        files: ^(tests/.*\.py|config/test_file_durations\.(json|d/.*)|src/omnimarket/nodes/node_test_duration_record_check_effect/.*)$
         pass_filenames: false
         stages: [pre-commit]
 

@@ -104,7 +104,6 @@ def main(argv: list[str] | None = None) -> int:
     unreachable: set[str] = set()
     run_start = time.monotonic()
     access_start = run_start
-    access_seconds = 0.0
     try:
         access = HandlerOperatorAccess(unreachable=unreachable).handle(
             ModelOperatorAccessRequest(
@@ -118,15 +117,16 @@ def main(argv: list[str] | None = None) -> int:
         sys.stderr.write(f"REFUSED operator-access: {exc}\n")
         gate_refused = True
     else:
-        access_seconds = time.monotonic() - access_start
         sys.stdout.write(
             f"operator-access: admitted_devices={access.admitted_devices} "
             f"include={access.include_sha256[:12]} changed={access.include_changed} "
             f"published={len(access.published)} files unread={','.join(access.unread) or 'none'} "
-            f"seconds={access_seconds:.0f}\n"
+            f"seconds={time.monotonic() - access_start:.0f}\n"
         )
         for host, reason in access.failed_targets.items():
             sys.stderr.write(f"operator-access: host {host} not served: {reason}\n")
+    # A refused gate took its seconds too: the served status counts the failure paths it is meant to diagnose.
+    access_seconds = time.monotonic() - access_start
     request = ModelFactoryFloorPublishRequest(
         home=a.registry_home,
         state_dir=a.state_dir,
@@ -135,7 +135,6 @@ def main(argv: list[str] | None = None) -> int:
     )
     floor_refused = False
     publisher = HandlerFactoryFloorPublish(unreachable=unreachable)
-    publish_seconds = 0.0
     publish_start = time.monotonic()
     try:
         result = publisher.handle(request)
@@ -143,7 +142,6 @@ def main(argv: list[str] | None = None) -> int:
         sys.stderr.write(f"REFUSED factory-floor-publish: {exc}\n")
         floor_refused = True
     else:
-        publish_seconds = time.monotonic() - publish_start
         for step in result.steps:
             if step.status == "failed":
                 sys.stderr.write(
@@ -161,6 +159,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         for cache_line in result.source_cache_lines:
             sys.stdout.write(f"{cache_line}\n")
+    publish_seconds = time.monotonic() - publish_start
 
     def record_tick(reports_seconds: float) -> None:
         """The served status names the seconds of the whole tick, so a slow gate or reports site is seen too (OMN-22699)."""
