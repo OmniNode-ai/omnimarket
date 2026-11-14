@@ -61,6 +61,9 @@ dod_evidence:
   binds_ac:
   - AC4
   checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_landing_decision_venv_effect/test_handler_landing_decision_venv.py -k the_timeouts_come_from_the_overlay -q --no-cov
+    cwd: .
   - check_type: command
     check_value: "test -d src/omnimarket/nodes/node_landing_decision_venv_effect/handlers && ! grep -rnE 'pyyaml|600|120' src/omnimarket/nodes/node_landing_decision_venv_effect/handlers"
     cwd: .
