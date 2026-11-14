@@ -31,13 +31,13 @@ HOST_MISMATCH = "measurement host does not match the declaration host"
 
 
 class HandlerHostLocalConfigDrift:
-    """``handle(command) -> result``: WORKING, NOT_WORKING with a finding per difference, or a refusal."""
+    """``handle(request) -> result``: WORKING, NOT_WORKING with a finding per difference, or a refusal."""
 
     def handle(
-        self, command: ModelLocalConfigDriftCommand
+        self, request: ModelLocalConfigDriftCommand
     ) -> ModelLocalConfigDriftResult:
-        declaration = command.declaration
-        measured = command.measured
+        declaration = request.declaration
+        measured = request.measured
         if declaration.host != measured.host:
             raise ValueError(HOST_MISMATCH)
         findings: list[ModelLocalConfigFinding] = []
@@ -123,7 +123,7 @@ class HandlerHostLocalConfigDrift:
                 )
         ordered = tuple(sorted(findings, key=lambda item: (item.kind, item.subject)))
         return ModelLocalConfigDriftResult(
-            correlation_id=command.correlation_id,
+            correlation_id=request.correlation_id,
             host=declaration.host,
             verdict=EnumLocalConfigVerdict.NOT_WORKING
             if ordered

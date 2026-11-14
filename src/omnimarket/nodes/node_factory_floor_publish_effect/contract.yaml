@@ -353,6 +353,27 @@ runtime:
     required: false
     module: omnimarket.nodes.node_floor_simple_effect
     args: ["--home", "{home}", "--mvp-reads"]
+  # OMN-24281: the owner_map projection's publisher. With no step here nothing published the projection the
+  # floor_projections step reads, so the board's work list aged to unknown every cycle. It joins the concurrent
+  # group, so it adds nothing past the slowest member. Not required: when it fails the previous snapshot stays
+  # and ages to unknown by its own bound. Its time limit is the overlay's (limits.step_timeout_seconds).
+  - name: floor_owner_map
+    concurrent: true
+    kind: module
+    required: false
+    module: omnimarket.nodes.node_floor_owner_map_publish_effect
+    args: ["--home", "{home}"]
+  # OMN-24281: the work_state projection's publisher. The node takes no arguments and reads the registry home
+  # from its environment; with no step here nothing published the projection the floor_projections step reads.
+  # It joins the concurrent group, so it adds nothing past the slowest member. Not required: when it fails the
+  # previous projection stays and ages to unknown by its own bound. Its time limit is the overlay's
+  # (limits.step_timeout_seconds).
+  - name: floor_work_state
+    concurrent: true
+    kind: module
+    required: false
+    module: omnimarket.nodes.node_work_state_projection_effect
+    args: []
   # OMN-23391: the bus projections the floor takes its inputs from (the overlay store's fleet first). The step reads each snapshot topic
   # for one window (the overlay's, 4 s) and writes the bundle with every projection's own time; a projection older than its own bound
   # reads unknown on the simple floor and one that cannot be read is written unread with its reason. It runs with the other input steps,

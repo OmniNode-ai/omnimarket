@@ -17,7 +17,7 @@ user:
   email: dev-probe@example.invalid
   first_name: Dev
   last_name: Probe
-  client_id: public-client
+  client_id: omnidash-spa
   password_key_id: dev_probe_user_password
   password_folder: /shared/env
   password_key: DEV_PROBE_USER_PASSWORD

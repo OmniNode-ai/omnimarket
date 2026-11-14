@@ -348,6 +348,8 @@ BETA_BOARD = "omnimarket.nodes.node_beta_board_effect"
 JOIN_REFUSAL = "omnimarket.nodes.node_join_refusal_effect"
 FLOOR_PROJECTIONS = "omnimarket.nodes.node_floor_projection_read_effect"
 FLOOR_EMISSIONS = "omnimarket.nodes.node_floor_emissions_publish_effect"
+FLOOR_OWNER_MAP = "omnimarket.nodes.node_floor_owner_map_publish_effect"
+FLOOR_WORK_STATE = "omnimarket.nodes.node_work_state_projection_effect"
 JOIN_J16 = "omnimarket.nodes.node_join_j16_effect"
 JOIN_J0 = "omnimarket.nodes.node_join_j0_effect"
 UNRESOLVED = "omnimarket.nodes.node_factory_floor_unresolved_effect"
@@ -416,6 +418,8 @@ def test_refresh_steps_run_the_independent_inputs_together_with_the_factory_floo
             FLOOR_DELEGATION,
             FLOOR_PROJECTIONS,
             FLOOR_EMISSIONS,
+            FLOOR_OWNER_MAP,
+            FLOOR_WORK_STATE,
             BETA_BOARD,
             FLOOR_SIMPLE,
             JOIN_J16,
@@ -463,6 +467,8 @@ def test_refresh_the_input_steps_are_declared_concurrent_and_the_record_step_is_
         "delegation_tracker",
         "beta_board",
         "mvp_launch_reads",
+        "floor_owner_map",
+        "floor_work_state",
         "floor_projections",
         "floor_emissions",
         "join_j16",
@@ -497,6 +503,8 @@ def test_refresh_concurrent_steps_overlap_and_report_in_contract_order(
                 and JOIN_J5 not in argv
                 and FLOOR_PROJECTIONS not in argv
                 and FLOOR_EMISSIONS not in argv
+                and FLOOR_OWNER_MAP not in argv
+                and FLOOR_WORK_STATE not in argv
                 and JOIN_J6 not in argv
                 and JOIN_J7 not in argv
                 and UNRESOLVED not in argv

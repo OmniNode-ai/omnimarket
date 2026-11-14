@@ -13,6 +13,7 @@ from __future__ import annotations
 import threading
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -81,7 +82,7 @@ def _handler(
     scenario: Scenario | None = None,
     *,
     permission: str = PERMISSION,
-    mint: dict[str, str] | None = MINT,
+    mint: dict[str, Any] | None = MINT,
 ) -> HandlerExposureProbe:
     monkeypatch.setenv("no_proxy", "127.0.0.1")
     # the stored token, as the unit has it: present, so only a refusal can stop the read
