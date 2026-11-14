@@ -95,6 +95,8 @@ def test_golden_the_cycle_with_every_key_has_no_unread_step(tmp_path: Path) -> N
 
 
 def test_error_a_required_step_without_its_key_still_refuses_by_name() -> None:
+    # Control: a step that is not required and has no key does not refuse (at the merge base this raised).
+    load_runtime().with_limits(_without("delegation_history"))
     with pytest.raises(PublishLimitMissingError) as caught:
         load_runtime().with_limits(_without("factory_floor"))
     assert str(caught.value) == MISSING_KEY.format("factory_floor")
