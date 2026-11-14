@@ -1,0 +1,48 @@
+schema_version: 1.0.0
+ticket_id: OMN-24194
+title: Judge a plugin repair attempt by what it changed, so a no-op tree install is alert only
+summary: Adds the pure compute node node_host_drift_plugin_install_judge_compute to omnimarket's host-drift plugin nodes. It reads the installer's exit code and the installed record before and after one repair attempt; an install that exits 0 and leaves the installed revision and version unchanged is alert only with its reason, spends no fix attempt and is not retried identically. The version-bump half of the ticket (the plugin's own update ahead of the plugin-behind tree install) landed in omnimarket as OMN-24404; the frozen host-drift code that runs the installer and counts attempts is not edited here.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+  - public_api
+requirements:
+  - id: req-omn24194-noop-install
+    statement: A plugin install that leaves the installed revision and version unchanged is judged alert only, spends no fix attempt and is not retried identically; an install that moved either is applied and a failed install may retry.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: a plugin-tree install that leaves the installed commit and version unchanged does not count as a fix attempt and is not retried identically -- falsifier: pytest src/omnimarket/nodes/node_host_drift_plugin_install_judge_compute/tests/test_golden_chain.py -q -k no_op fails when the judgement reads an exit code of 0 as applied'
+evidence_requirements:
+  - kind: tests
+    description: The install judge node tests pass at the pushed head; the failing control shows the exit-code-only judgement reads the h101 no-op install as applied.
+    command: uv run pytest -q src/omnimarket/nodes/node_host_drift_plugin_install_judge_compute/tests
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn24194-ac1
+    description: A no-op install is alert only with counts_as_attempt false and retry_allowed false, a moved revision or version is applied, and the exit-code-only judgement (the failing control) reads the no-op as applied.
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest -q src/omnimarket/nodes/node_host_drift_plugin_install_judge_compute/tests/test_golden_chain.py -k no_op
+        cwd: .
+  - id: dod-omn24194-deploy
+    description: 'Deploy probe the hosted runner can run: the install judge handler exists at the checked-out commit on GitHub; it does not exist at the merge base, so the probe fails there.'
+    source: manual
+    checks:
+      - check_type: command
+        check_value: >-
+          bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_host_drift_plugin_install_judge_compute/handlers/handler_plugin_install_judge.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "HandlerHostDriftPluginInstallJudge" > /dev/null'
+        cwd: .
+  - id: dod-omn24194-integration-proof
+    description: The pushed head ran the install judge node tests on a lab host through the bus and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: >-
+          uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane fill-ticket-OMN-24194-20261114T1708Z -- uv run --frozen pytest src/omnimarket/nodes/node_host_drift_plugin_install_judge_compute/tests -q
+        cwd: .
