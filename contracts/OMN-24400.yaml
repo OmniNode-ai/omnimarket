@@ -1,0 +1,55 @@
+schema_version: 1.0.0
+ticket_id: OMN-24400
+title: Lab alarm node gains the heartbeat, canary and ledger-projection conditions, each on its own runtime schedule
+summary: The retired alarm script's dev_tag_heartbeat, delegation_chain_canary and work_ledger_projection_stale conditions become verbs of node_lab_alarm, with every bound and name in the overlay, a persistence rule of three consecutive breaching runs (no single-run alarm), alarm delivery through the node's declared publisher, and one declared schedule per condition. The remaining five conditions of the old script (lab_pass_receipt, container_restarts, container_unhealthy, lane_drift, stale_indeterminate) are named for later pieces.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- topics
+- public_api
+requirements:
+- id: req-omn24400-lab-alarm-conditions
+  statement: node_lab_alarm reads the deploy agent's heartbeat, the delegation chain canary's newest completed run and the work-ledger projection's freshness on declared schedules, and alarms through the declared delivery only after three consecutive breaching runs.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the dev_tag_heartbeat, delegation_chain_canary and work_ledger_projection_stale verbs of node_lab_alarm each read OK, ALARM or INDETERMINATE from their injected source and write the same chain events as the broker-lag verb -- falsifier: uv run pytest tests/nodes/node_lab_alarm -q --no-cov -k golden_chain'
+  - id: AC2
+    statement: 'AC2: an unreadable source, a malformed reply and a delivery that fails each end INDETERMINATE or ALARM with a typed reason and never an exception -- falsifier: uv run pytest tests/nodes/node_lab_alarm -q --no-cov -k error_chain'
+  - id: AC3
+    statement: 'AC3: the failing control: a heartbeat older than the overlay bound, a red or stale canary and a projection behind the ledger each alarm only because of the overlay bound, so removing the verb or the bound turns the test red -- falsifier: uv run pytest tests/nodes/node_lab_alarm -q --no-cov -k failing_control'
+  - id: AC4
+    statement: 'AC4: every bound and name sits in the overlay and none in the handlers -- falsifier: grep -rnE "dev-tag-heartbeat|chain-canary|work_ledger_rows|[0-9]+ *\* *60" src/omnimarket/nodes/node_lab_alarm/handlers returns nothing for the new handlers'
+  - id: AC5
+    statement: 'AC5: one scheduled node per condition declares its own schedule overlay and a seam test fails when either side of condition, alarm row, alert publisher changes shape -- falsifier: uv run pytest tests/nodes/node_lab_alarm tests/nodes/node_lab_alarm_scheduled_effect -q --no-cov -k seam'
+  - id: AC6
+    statement: 'AC6: integrated: on the dev runtime one alarm row for a condition triggered harmlessly is read on the bus and one delivery reaches the alerts channel through the declared publisher -- falsifier: the lab receipt names the host, the revision running, the topic offset of the row and the delivery key'
+evidence_requirements:
+- kind: tests
+  description: Golden chain, error chain, failing control and seam tests of the three condition verbs and of the per-condition schedules
+  command: uv run --frozen pytest tests/nodes/node_lab_alarm -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24400-tests
+  description: AC1 to AC5 proven by the named tests; AC6 is read on the dev runtime and named in the pull request.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  - AC3
+  - AC4
+  - AC5
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_lab_alarm -q --no-cov
+    cwd: .
+- id: dod-omn24400-deploy-conditions
+  description: 'Deploy probe the hosted runner can run: the node contract at the checked-out commit declares the dev-tag heartbeat verb topic; the line does not exist at the merge base, so the probe fails there.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_lab_alarm/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "dev_tag_heartbeat_requested" > /dev/null'
+    cwd: .

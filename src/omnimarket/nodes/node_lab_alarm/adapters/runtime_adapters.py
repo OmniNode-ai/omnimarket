@@ -20,7 +20,7 @@ import subprocess
 import time
 import urllib.error
 import urllib.request
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -34,13 +34,96 @@ from omnimarket.nodes.node_lab_alarm.protocols import (
     EffectsGroupReadError,
     GroupNeverCommittedError,
     GroupUnreadableError,
+    HeartbeatUnreadableError,
     LaneDispatchError,
+    LedgerUnreadableError,
     ListenerRefusedError,
     ListenerUnresolvableError,
     ManifestUnreachableError,
     ManifestUnreadableError,
     RunRecordUnwritableError,
 )
+
+
+class FileLedgerNewest:
+    """The newest canonical row in the tail of the ledger file: ``<UTC stamp> | <TYPE> |`` with TYPE in ``row_types``.
+
+    Only the last ``tail_bytes`` are read, so a row earlier than that is never seen. A file that cannot be read, or
+    whose tail holds no such row, is unread, never current.
+    """
+
+    def __init__(self, path: Path, tail_bytes: int, row_types: Sequence[str]) -> None:
+        self._path = path
+        self._tail_bytes = tail_bytes
+        self._pattern = re.compile(
+            r"^(?P<ts>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z) \| "
+            rf"(?P<type>{'|'.join(re.escape(row_type) for row_type in row_types)}) \|",
+            re.MULTILINE,
+        )
+
+    def newest(self) -> tuple[datetime, str]:
+        try:
+            with self._path.open("rb") as handle:
+                size = handle.seek(0, os.SEEK_END)
+                start = max(0, size - self._tail_bytes)
+                handle.seek(start)
+                raw = handle.read()
+        except OSError as exc:
+            raise LedgerUnreadableError(
+                f"ledger could not be read ({type(exc).__name__})"
+            ) from exc
+        text = raw.decode("utf-8", errors="replace")
+        if start > 0:
+            # The first line of a mid-file read is a fragment, not a row.
+            text = text.partition("\n")[2]
+        newest: tuple[datetime, str] | None = None
+        for match in self._pattern.finditer(text):
+            stamp = datetime.strptime(match.group("ts"), "%Y-%m-%dT%H:%M:%SZ").replace(
+                tzinfo=UTC
+            )
+            if newest is None or stamp > newest[0]:
+                newest = (stamp, match.group("type"))
+        if newest is None:
+            raise LedgerUnreadableError(
+                f"ledger holds no canonical row in its last {self._tail_bytes} bytes"
+            )
+        return newest
+
+
+class HttpHeartbeatSource:
+    """The deploy agent's heartbeat document: one GET of the full URL, read as a JSON object.
+
+    Anything but an HTTP 200 carrying a JSON object is unread, never an empty document.
+    """
+
+    def __init__(self, url: str, timeout_seconds: float) -> None:
+        self._url = url
+        self._timeout = timeout_seconds
+
+    def read(self) -> Mapping[str, Any]:
+        if not self._url.startswith("http://"):
+            raise HeartbeatUnreadableError(f"{self._url!r} is not an http URL")
+        try:
+            with urllib.request.urlopen(self._url, timeout=self._timeout) as response:
+                if response.status != 200:
+                    raise HeartbeatUnreadableError(
+                        f"the agent answered HTTP {response.status}"
+                    )
+                payload = json.loads(response.read())
+        except (
+            urllib.error.URLError,
+            TimeoutError,
+            OSError,
+            http.client.HTTPException,
+        ) as exc:
+            raise HeartbeatUnreadableError(
+                f"no answer from the agent ({type(exc).__name__})"
+            ) from exc
+        except ValueError as exc:
+            raise HeartbeatUnreadableError("the agent's answer is not JSON") from exc
+        if not isinstance(payload, dict):
+            raise HeartbeatUnreadableError("the agent's answer is not a JSON object")
+        return payload
 
 
 class HttpManifest:
@@ -474,9 +557,11 @@ __all__ = [
     "CommandLaneDispatcher",
     "FileGrowthStreaks",
     "FileHeldState",
+    "FileLedgerNewest",
     "FileManifestCache",
     "FileRunRecords",
     "FileSamples",
+    "HttpHeartbeatSource",
     "HttpManifest",
     "KafkaEffectsGroups",
     "KafkaLag",
