@@ -77,7 +77,9 @@ def projection_script(rt: ModelHistoryRuntime) -> str:
     hours = rt.policy.window_days * 24
     stamp = f"to_char(date_trunc('hour', \"timestamp\" AT TIME ZONE 'UTC'), '{_STAMP_FORMAT}')"
     runs = (
-        f"SELECT * FROM {rt.projection_table} "
+        'SELECT "timestamp", task_type, model_name, backend_id, host, latency_ms, quality_gate_passed, '
+        "terminal_ok, terminal_failure_cause, attempt_history "
+        f"FROM {rt.projection_table} "
         f"WHERE data_source = '{rt.projection_data_source}' "
         f"AND \"timestamp\" >= date_trunc('hour', now()) - interval '{hours} hours' "
         'AND "timestamp" <= now()'

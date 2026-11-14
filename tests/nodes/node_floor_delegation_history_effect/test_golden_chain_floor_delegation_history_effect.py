@@ -124,6 +124,9 @@ def test_golden_the_projection_read_is_one_read_only_transaction_with_no_prompt_
     assert "COMMIT" in script
     assert "prompt_text" not in script
     assert "response_text" not in script
+    assert (
+        "SELECT *" not in script
+    )  # a star would materialise the text columns in the grouped read
     assert "lab-db" in script.split("--")[1] or "lab-db" in " ".join(runner.calls[0])
 
 
