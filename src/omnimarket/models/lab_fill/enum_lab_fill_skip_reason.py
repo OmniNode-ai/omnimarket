@@ -27,3 +27,9 @@ class EnumLabFillSkipReason(StrEnum):
     SKIP_BLOCKED_UNFIXABLE = "blocked-unfixable"
     # OMN-23312: a delegation ticket whose assignee is not one of the deployment's delegation owners.
     OTHER_OWNER = "other-owner"
+    # OMN-19998: a lane ended in a terminal outcome the deployment holds, inside the window, and the
+    # ticket and its start criterion have not changed since; the fill waits instead of resending.
+    TERMINAL_HELD = "terminal-held"
+    # OMN-19998: the lane ended skipped-already-built with falsifiers not pass; the ticket is listed
+    # for the readback path instead of a fill lane.
+    READBACK = "readback"

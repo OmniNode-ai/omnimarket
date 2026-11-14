@@ -13,7 +13,9 @@ description: >-
   (`units.yaml` beside the payload files), never in this node: each declares the hosts it may install on, its
   destinations, modes and the sha256 its rendered bytes must have, and this node installs the bytes unchanged, writes
   nothing when the installed bytes and mode already match, validates sshd with `sshd -t` after placing a drop-in and
-  restores the previous file when the check fails, and reloads sshd (never restarts it). A payload that is rendered
+  restores the previous file when the check fails, and reloads sshd (never restarts it). A systemd unit may also
+  declare drop-in files beside its unit file: the kind's `dropin_roots`, `dropin_dir_suffix` and `dropin_suffix`
+  allow exactly the files inside that unit's own `<service>.d` directory. A payload that is rendered
   from the host takes the interface that carries the lowest-metric IPv4 default route. Any host that is not Linux is
   refused with a typed reason.
 input_model:
@@ -41,6 +43,9 @@ overlay:
 # installer write anywhere else.
 unit_kinds:
   systemd-system-service:
+    dropin_roots: [/etc/systemd/system/]
+    dropin_dir_suffix: .d
+    dropin_suffix: .conf
     destination_roots: [/usr/local/sbin/, /etc/systemd/system/]
     needs_service: true
   sshd-dropin:
