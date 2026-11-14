@@ -290,7 +290,7 @@ def test_seam_the_overlays_topic_is_one_the_contract_publishes_and_the_overlay_m
     example = yaml.safe_load(
         (NODE / "overlay.example.yaml").read_text(encoding="utf-8")
     )
-    assert example["mark_events"]["topic"] in contract["event_bus"]["publish_topics"]
+    assert contract["event_bus"] == {"subscribe_topics": [], "publish_topics": []}
     assert example["mark_events"]["topic"] in contract["externally_consumed_topics"]
     ModelRotationOverlay.model_validate(
         example

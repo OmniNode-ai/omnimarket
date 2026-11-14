@@ -124,11 +124,11 @@ descriptor:
 # apply_revoke_rechecks) also leaves one ModelPoolMarkEvent (who, at, verb, host, label, change, cause) on the topic the host's
 # overlay names in mark_events.topic, on the bus its event_bus block names (OMN-19998). The topic below is the one the overlay
 # in the overlays repository declares; an overlay without a mark_events block publishes nothing and the result says
-# mark_events_state=not_configured.
+# mark_events_state=not_configured. The node is a local invocation, so event_bus stays empty (the runtime-dogfood check
+# requires it); the topic is declared by externally_consumed_topics and the broker_acl_grants below, and the overlay names the bus.
 event_bus:
   subscribe_topics: []
-  publish_topics:
-    - onex.evt.omnimarket.claude-pool-mark-changed.v1
+  publish_topics: []
 
 externally_consumed_topics:
   - onex.evt.omnimarket.claude-pool-mark-changed.v1
