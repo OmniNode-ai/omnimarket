@@ -16,7 +16,7 @@ from __future__ import annotations
 import contextlib
 import uuid
 from collections.abc import Mapping, Sequence
-from typing import Any
+from typing import Any, cast
 
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_core.models.runtime.model_transport_message import ModelTransportMessage
@@ -101,11 +101,11 @@ class KafkaTransport:
         ]
 
     async def commit(self, message: object) -> None:
-        partition, offset = message.ack_token  # type: ignore[attr-defined]
+        partition, offset = cast(ModelTransportMessage, message).ack_token
         await self._consumer.commit({partition: offset + 1})
 
     async def nack(self, message: object) -> None:
-        partition, offset = message.ack_token  # type: ignore[attr-defined]
+        partition, offset = cast(ModelTransportMessage, message).ack_token
         self._consumer.seek(partition, offset)
 
     async def send(

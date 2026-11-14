@@ -23,13 +23,13 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn24431-ac4
-  description: "Parity module on the in-memory bus: golden chain, error chain, join over the wire and the seam controls (renamed deploy command field, renamed completion fields, bare payload). The Redpanda leg of the same module passed 28 of 28 on a lab broker (see the pull request's Lab line)."
+  description: "Parity module on the in-memory bus, with --strict-markers so the check needs the dev_roll_gate_parity marker this change registers in pyproject.toml: golden chain, error chain, join over the wire and the seam controls (renamed deploy command field, renamed completion fields, bare payload). The Redpanda leg of the same module passed 28 of 28 on a lab broker (see the pull request's Lab line)."
   source: manual
   binds_ac:
   - AC4
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/unit/nodes/node_dev_roll_window_gate_effect/test_parity_dev_roll_window_gate.py -q --no-cov -n 0 -p no:randomly -m "not kafka"
+    check_value: uv run --frozen pytest tests/unit/nodes/node_dev_roll_window_gate_effect/test_parity_dev_roll_window_gate.py -q --no-cov -n 0 -p no:randomly --strict-markers -m "not kafka"
     cwd: .
 - id: dod-omn24431-integration-proof
   description: 'The gate and deploy effect tests, parity module included, run on a lab host at the pushed head; the Redpanda leg is the same module with DEV_ROLL_GATE_PARITY_BOOTSTRAP set. AC5 (roll count and join time on the running dev runtime) is not claimed by this change.'
