@@ -1,0 +1,60 @@
+schema_version: 1.0.0
+ticket_id: OMN-24404
+title: Route a plugin version bump to the plugin's own update in the live drift policy
+summary: Moves the version-differs rule of the frozen host-drift sync policy into omnimarket's plugin sync policy overlay. A merged version that differs from the installed one routes the omni plugin to update-plugin ahead of the plugin-behind tree install; the rule is a typed field of the policy rule model, matched by the plugin revision compute node from the version facts it already holds.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+  - public_api
+requirements:
+  - id: req-omn24404-version-bump-update
+    statement: A plugin whose merged version differs from its installed version is repaired by the plugin's own update, and a same-version plugin that is only behind keeps the tree install.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: a plugin whose merged version differs from its installed version routes to the plugin''s own update, ahead of the tree-install rule, and a same-version plugin that is only behind still routes to the tree install -- falsifier: pytest src/omnimarket/nodes/node_host_drift_plugin_revision_compute/tests/test_golden_chain.py -q -k version_bump fails with the rule removed from the policy'
+      - id: AC2
+        statement: 'AC2: the policy overlay loads with the new rule in first-match order and a malformed value for it is refused with a short detail -- falsifier: pytest src/omnimarket/nodes/node_host_drift_plugin_rules_effect/tests/test_golden_chain.py -q fails with the rule removed or the field mistyped'
+      - id: AC3
+        statement: 'AC3: integrated: the plugin drift decision node running on a lab host from the branch answers the version-bump text with the plugin update action -- falsifier: the node''s receipt on the lab host shows sync_action update-plugin for an omni plugin fact with differing versions, and tree install for the same-version fact'
+evidence_requirements:
+  - kind: tests
+    description: The rules effect, revision compute and revision orchestrator tests pass at the pushed head; with the policy overlay restored from the base branch the version bump tests fail.
+    command: uv run pytest -q src/omnimarket/nodes/node_host_drift_plugin_rules_effect/tests src/omnimarket/nodes/node_host_drift_plugin_revision_compute/tests src/omnimarket/nodes/node_host_drift_plugin_revision_orchestrator/tests
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn24404-ac1
+    description: A version bump on the omni plugin selects update-plugin, the same-version behind fact selects install-plugin-tree, tree modified still wins, and with the rule removed the bump selects the tree install (the failing control).
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest -q src/omnimarket/nodes/node_host_drift_plugin_revision_compute/tests/test_golden_chain.py -k version_bump
+        cwd: .
+  - id: dod-omn24404-ac2
+    description: The packaged overlay loads with the rule second in order and a non-bool value for it is refused.
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest -q src/omnimarket/nodes/node_host_drift_plugin_rules_effect/tests/test_golden_chain.py -k version_differs
+        cwd: .
+  - id: dod-omn24404-seams
+    description: The rules effect to compute seam and the orchestrator seam each have a test that fails when either side changes shape; this is the part of AC3 hosted CI can run, the lab reading is in the pull request.
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest -q src/omnimarket/nodes/node_host_drift_plugin_revision_orchestrator/tests/test_golden_chain.py -k omni
+        cwd: .
+  - id: dod-omn24404-integration-proof
+    description: The pushed head ran the three node test directories on a lab host through the bus and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: >-
+          uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane port-internal-6803 -- uv run --frozen pytest src/omnimarket/nodes/node_host_drift_plugin_rules_effect/tests src/omnimarket/nodes/node_host_drift_plugin_revision_compute/tests src/omnimarket/nodes/node_host_drift_plugin_revision_orchestrator/tests -q
+        cwd: .
