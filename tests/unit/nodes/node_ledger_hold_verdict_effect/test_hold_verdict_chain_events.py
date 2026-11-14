@@ -16,7 +16,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from omnimarket.events.hold_verdict import (
+from omnimarket.models.hold_verdict import (
     EnumHoldSource,
     EnumHoldVerdict,
     ModelHoldVerdictEvent,

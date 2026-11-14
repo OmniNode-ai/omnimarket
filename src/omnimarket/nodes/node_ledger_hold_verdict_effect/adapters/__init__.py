@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from omnimarket.events.hold_verdict import (
+from omnimarket.models.hold_verdict import (
     ModelHoldVerdictEvent,
 )
 

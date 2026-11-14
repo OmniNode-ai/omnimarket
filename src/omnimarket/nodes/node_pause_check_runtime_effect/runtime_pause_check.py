@@ -37,12 +37,17 @@ from typing import cast
 
 import yaml
 
-from omnimarket.events.hold_verdict import (
+from omnimarket.models.hold_verdict import (
     EnumHoldVerdict,
     ModelHoldVerdictOverlay,
     ModelHoldVerdictRequest,
 )
-from omnimarket.events.pause_check import (
+from omnimarket.models.model_work_ledger_reader import (
+    EnumReaderQuery,
+    ModelReaderRequest,
+    ModelReaderResult,
+)
+from omnimarket.models.pause_check import (
     EnumFindingKind,
     EnumPauseHoldSource,
     EnumPauseVerdict,
@@ -53,11 +58,6 @@ from omnimarket.events.pause_check import (
     ModelPauseCheckRequest,
     ModelPauseCheckRules,
     ModelPauseDecision,
-)
-from omnimarket.models.model_work_ledger_reader import (
-    EnumReaderQuery,
-    ModelReaderRequest,
-    ModelReaderResult,
 )
 from omnimarket.nodes.node_ledger_hold_verdict_effect.adapters import (
     InMemoryHoldVerdictSink,

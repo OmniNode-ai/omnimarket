@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from omnimarket.events.pause_check import (
+from omnimarket.models.pause_check import (
     ModelPauseCheckEvent,
 )
 

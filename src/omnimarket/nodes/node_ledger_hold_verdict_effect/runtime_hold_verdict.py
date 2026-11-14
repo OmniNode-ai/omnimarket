@@ -24,7 +24,7 @@ import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
-from omnimarket.events.hold_verdict import (
+from omnimarket.models.hold_verdict import (
     EnumHoldVerdict,
     ModelHoldVerdictRequest,
 )

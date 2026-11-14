@@ -23,7 +23,7 @@ from pathlib import Path
 
 import yaml
 
-from omnimarket.events.hold_verdict import (
+from omnimarket.models.hold_verdict import (
     EnumHoldSource,
     EnumHoldVerdict,
     ModelHoldVerdict,

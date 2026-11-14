@@ -28,7 +28,7 @@ description: >
 handler:
   module: omnimarket.nodes.node_ledger_hold_verdict_effect.handlers.handler_hold_verdict
   class: HandlerHoldVerdict
-  input_model: omnimarket.events.hold_verdict.ModelHoldVerdictRequest
+  input_model: omnimarket.models.hold_verdict.ModelHoldVerdictRequest
 
 # HandlerHoldVerdict takes the overlay, the event sink and the clock as constructor parameters, so a
 # reader runs it through its own CLI, not handler_routing.
@@ -43,11 +43,11 @@ descriptor:
 
 input_model:
   name: ModelHoldVerdictRequest
-  module: omnimarket.events.hold_verdict
+  module: omnimarket.models.hold_verdict
   description: The pull request, the lane, the reader's holds answer and the file's holds lines when carried.
 output_model:
   name: ModelHoldVerdict
-  module: omnimarket.events.hold_verdict
+  module: omnimarket.models.hold_verdict
   description: HELD, CLEAR or UNDECIDED, the source of the answer, the applying hold ids and the event.
 
 runtime_dispatch:

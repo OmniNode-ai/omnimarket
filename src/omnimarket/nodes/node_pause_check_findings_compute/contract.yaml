@@ -25,8 +25,8 @@ description: >
 handler:
   module: omnimarket.nodes.node_pause_check_findings_compute.handlers.handler_pause_check_findings
   class: HandlerPauseCheckFindings
-  input_model: omnimarket.events.pause_check.ModelPauseCheckRequest
-  output_model: omnimarket.events.pause_check.ModelPauseCheckResult
+  input_model: omnimarket.models.pause_check.ModelPauseCheckRequest
+  output_model: omnimarket.models.pause_check.ModelPauseCheckResult
 
 # HandlerPauseCheckFindings takes its overlay as a constructor parameter (read by
 # node_pause_check_runtime_effect), so it runs through that command, not handler_routing.
@@ -40,11 +40,11 @@ descriptor:
 
 input_model:
   name: ModelPauseCheckRequest
-  module: omnimarket.events.pause_check
+  module: omnimarket.models.pause_check
   description: The pull requests with their labels, the pause rules, the ledger text and the time.
 output_model:
   name: ModelPauseCheckResult
-  module: omnimarket.events.pause_check
+  module: omnimarket.models.pause_check
   description: Per pull request the findings, the context rows, the order tokens and the verdict.
 
 runtime_dispatch:

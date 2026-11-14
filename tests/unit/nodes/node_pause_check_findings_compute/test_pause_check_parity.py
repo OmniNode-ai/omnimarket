@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import pytest
 
-from omnimarket.events.pause_check import (
+from omnimarket.models.pause_check import (
     EnumPauseVerdict,
     ModelPauseCheckOverlay,
     ModelPauseCheckPr,
