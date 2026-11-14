@@ -1,0 +1,73 @@
+schema_version: 1.0.0
+ticket_id: OMN-24419
+title: Lab fill job on the Mac runs the new pick and hand-out steps from its own settings
+summary: 'node_lab_fill_effect gains the unit entry runtime_lab_fill_tick: one pass reads its overlay, the lane host pool snapshot (free slots per host, refused when stale or missing), runs the select step on the bus ledger reader''s rows and, only when that read was ok, the whole tick with the selection''s holds. The host installer''s registry units declare lab-fill-tick (launchd, label ai.omninode.lab-fill, every 1200 s) running it. The overlay is in the overlays repository. The Mac install and the read of the unit''s first tick (AC4) are not part of this pull request.'
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn24419-lab-fill-unit-runs-the-tick-entry
+  statement: The Mac lab-fill job runs the tick entry from its overlay, the pool snapshot and the bus ledger reader.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the lab-fill unit entry builds a valid tick request from its overlay and the lane host pool snapshot (free slots of a ready host = lane_cap - lane_slots - placed), runs the select step and then the tick, and prints step=run_lab_fill_tick -- falsifier: uv run pytest tests/nodes/node_lab_fill_effect/test_runtime_lab_fill_tick.py -q --no-cov fails when the entry ignores the snapshot''s free slots'
+  - id: AC2
+    statement: 'AC2: a missing or stale pool snapshot, an unreadable overlay or a not-ok ledger read ends the entry with a typed non-zero exit and no lane launched, and never reads the old file -- falsifier: uv run pytest tests/nodes/node_lab_fill_effect/test_runtime_lab_fill_tick_refusals.py -q --no-cov fails when a stale snapshot still launches'
+  - id: AC3
+    statement: 'AC3: the host installer''s registry units declare lab-fill-tick (label ai.omninode.lab-fill, launchd, every 1200 s) running the entry module, and a dry run renders a plist that names it -- falsifier: uv run pytest tests/nodes/node_host_installer_registry_units/test_lab_fill_tick_unit.py -q --no-cov fails when the unit names another module or label'
+  - id: AC4
+    statement: 'AC4: integrated: after the Mac install the unit''s first tick log names step=run_lab_fill_tick, exits 0, holds no json.loads error, and lanes are sent for in-scope tickets when hosts have free slots -- falsifier: read the unit''s tick log on the Mac after install; a log with no step=run_lab_fill_tick line or with a json.loads error means not met'
+evidence_requirements:
+- kind: tests
+  description: The unit entry golden and refusal chains, the two seams and the installer unit tests run at the pushed head.
+  command: uv run pytest tests/nodes/node_lab_fill_effect/test_runtime_lab_fill_tick.py tests/nodes/node_lab_fill_effect/test_runtime_lab_fill_tick_refusals.py tests/nodes/node_lab_fill_effect/test_seam_lab_fill_pool_snapshot_to_tick.py tests/nodes/node_host_installer_registry_units/test_lab_fill_tick_unit.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24419-ac1
+  description: 'AC1: the unit entry over a real pool snapshot file, the overlay on disk, a faked bus ledger read and faked tick ports; the snapshot seam fails when the entry ignores the snapshot.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lab_fill_effect/test_runtime_lab_fill_tick.py tests/nodes/node_lab_fill_effect/test_seam_lab_fill_pool_snapshot_to_tick.py -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn24419-ac2
+  description: 'AC2: a stale or missing snapshot, a not-ok ledger read, an unreadable approved-work list and an overlay that does not load each end the pass with a typed refusal and no lane launched.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lab_fill_effect/test_runtime_lab_fill_tick_refusals.py -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn24419-ac3
+  description: 'AC3: the registry units declare lab-fill-tick and a dry install renders a plist naming the module and the label; a checkout without the entry file is refused.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_lab_fill_tick_unit.py -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn24419-integration-proof
+  description: The pushed head ran the unit entry, seam and installer tests on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24419 -- uv run --frozen pytest tests/nodes/node_lab_fill_effect/test_runtime_lab_fill_tick.py tests/nodes/node_lab_fill_effect/test_runtime_lab_fill_tick_refusals.py tests/nodes/node_lab_fill_effect/test_seam_lab_fill_pool_snapshot_to_tick.py tests/nodes/node_host_installer_registry_units/test_lab_fill_tick_unit.py -q --no-cov
+    cwd: .
+- id: dod-omn24419-ac4
+  description: AC4 node half only; the unit entry prints the tick step line step=run_lab_fill_tick over the tick fakes. The Mac install and the read of the unit tick log are not met by this pull request.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lab_fill_effect/test_runtime_lab_fill_tick.py -q --no-cov --tb=line -k snapshots_free_slots
+    cwd: .

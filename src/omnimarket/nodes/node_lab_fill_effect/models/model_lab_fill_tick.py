@@ -92,6 +92,9 @@ class ModelLabFillTickRequest(BaseModel):
     # A host absent from host_reach reaches no other host, so an h200-bound brief is sent only where it is declared.
     host_reach: Mapping[str, tuple[str, ...]] = Field(default_factory=dict)
     fact_hosts: tuple[str, ...] = DEFAULT_FACT_HOSTS
+    # OMN-19998, the select step's held tickets (ticket -> skip reason, ModelLabFillSelectResult.holds()): a row whose ticket
+    # is held there is skipped with reason "selection:<reason>" and never launched.
+    selection_holds: Mapping[str, str] = Field(default_factory=dict)
 
     @field_validator("ledger_path", "approved_work_path", "brief_dir")
     @classmethod
