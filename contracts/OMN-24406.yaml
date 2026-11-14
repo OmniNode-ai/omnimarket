@@ -46,7 +46,7 @@ dod_evidence:
     binds_ac: [AC3]
     checks:
       - check_type: test_passes
-        check_value: uv run pytest -q tests/nodes/node_host_installer_registry_units/test_host_drift_owner_dispatch_unit.py tests/nodes/node_host_installer_registry_units/test_overlay_root_declared_by_host_table.py
+        check_value: uv run pytest -q tests/nodes/node_host_installer_registry_units/test_ledger_path_from_host_table.py tests/nodes/node_host_installer_registry_units/test_host_drift_owner_dispatch_unit.py tests/nodes/node_host_installer_registry_units/test_overlay_root_declared_by_host_table.py
         cwd: .
   - id: dod-omn24406-deploy
     description: 'Deploy probe the hosted runner can run: the installer handler at the checked-out commit on GitHub carries the host table ledger fallback; the method does not exist at the merge base, so the probe fails there.'
