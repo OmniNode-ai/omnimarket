@@ -1050,7 +1050,7 @@ function renderSources(s, status){
   if (status && Array.isArray(status.steps)){
     rows.push(["Published", ageSpan(status.published_at)]);
     if (!status.steps.length) rows.push(["Input steps", `<span class="unread">skipped in this publish</span>`]);
-    status.steps.forEach(st => rows.push([`Input step: ${st.name}`, st.status === "ok" ? "ok" : `<span class="age-stale">failed (${esc(st.detail)})</span>`]));
+    status.steps.forEach(st => rows.push([`Input step: ${st.name}`, st.status === "ok" ? "ok" : st.status === "unread" ? `<span class="unread">unread (${esc(st.detail)})</span>` : `<span class="age-stale">failed (${esc(st.detail)})</span>`]));
     const d = status.lines_declared;
     rows.push(["Lines planned", d && d.state === "read" ? esc(d.plan_path_contains.length) : `<span class="unread">unread</span>`]);
   } else {

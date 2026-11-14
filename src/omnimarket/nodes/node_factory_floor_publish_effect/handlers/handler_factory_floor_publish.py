@@ -847,6 +847,13 @@ class HandlerFactoryFloorPublish:
         env: Mapping[str, str],
     ) -> ModelPublishStepResult:
         """One step, with the seconds it took."""
+        if not step.limit_resolved:
+            return ModelPublishStepResult(
+                name=step.name,
+                status="unread",
+                detail=step.limit_missing_message(),
+                seconds=0.0,
+            )
         started = self._clock()
         result = self._run_step(step, home, overlay, plugin_root_env, env)
         return result.model_copy(update={"seconds": round(self._clock() - started, 3)})

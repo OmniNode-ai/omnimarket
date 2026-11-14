@@ -147,6 +147,11 @@ def main(argv: list[str] | None = None) -> int:
                 sys.stderr.write(
                     f"factory-floor-publish: step {step.name} failed ({step.detail}): {step.diagnostic}\n"
                 )
+        for step in (*result.steps, *result.after_publish):
+            if step.status == "unread":
+                sys.stderr.write(
+                    f"factory-floor-publish: step {step.name} unread ({step.detail})\n"
+                )
         sys.stdout.write(
             f"factory-floor-publish: published={','.join(result.published)} "
             f"record={result.generated_at} sha256={result.data_sha256[:12]} "
