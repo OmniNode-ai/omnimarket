@@ -489,6 +489,7 @@ node_compaction_probe_run_effect = "omnimarket.nodes.node_compaction_probe_run_e
 node_compaction_score_compute = "omnimarket.nodes.node_compaction_score_compute"
 node_compaction_verdict_compute = "omnimarket.nodes.node_compaction_verdict_compute"
 node_compliance_sweep = "omnimarket.nodes.node_compliance_sweep"
+node_compose_project_census_compute = "omnimarket.nodes.node_compose_project_census_compute"
 node_conflict_hunk_effect = "omnimarket.nodes.node_conflict_hunk_effect"
 node_consumer_flow_prune_effect = "omnimarket.nodes.node_consumer_flow_prune_effect"
 node_consumer_flow_stall_alert_effect = "omnimarket.nodes.node_consumer_flow_stall_alert_effect"

@@ -17,14 +17,14 @@ from collections.abc import Callable, Sequence
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_compose_project_census_compute.handlers.handler_compose_project_census import (
-    HandlerComposeProjectCensus,
-)
-from omnimarket.nodes.node_compose_project_census_compute.models.model_compose_project_census import (
+from omnimarket.models.model_compose_project_census import (
     ModelComposeCensusContainer,
     ModelComposeCensusPolicy,
     ModelComposeCensusRequest,
     ModelComposeProjectCheckResult,
+)
+from omnimarket.nodes.node_compose_project_census_compute.handlers.handler_compose_project_census import (
+    HandlerComposeProjectCensus,
 )
 
 ComposeRunner = Callable[[Sequence[str], int], "subprocess.CompletedProcess[str]"]
