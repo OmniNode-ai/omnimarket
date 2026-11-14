@@ -89,7 +89,7 @@ def done(exit_code: int, text: str) -> tuple[EnumLabWorkUnitStatus, int, str]:
     return EnumLabWorkUnitStatus.COMPLETED, exit_code, text
 
 
-def test_a_due_tick_sends_one_command_per_host_and_ends_with_one_result_per_host() -> (
+async def test_a_due_tick_sends_one_command_per_host_and_ends_with_one_result_per_host() -> (
     None
 ):
     sender = InMemoryConvergenceSender(
@@ -99,7 +99,7 @@ def test_a_due_tick_sends_one_command_per_host_and_ends_with_one_result_per_host
         }
     )
 
-    run, schedule = payloads(handler(sender).handle(tick(T0)))
+    run, schedule = payloads(await handler(sender).handle(tick(T0)))
 
     assert sorted(r.target_host for r in sender.sent) == sorted(HOSTS)
     assert len(sender.sent) == len(HOSTS) == len(run.hosts)
@@ -110,7 +110,7 @@ def test_a_due_tick_sends_one_command_per_host_and_ends_with_one_result_per_host
     assert schedule.job_id == overlay().job_id
 
 
-def test_a_clean_and_a_dirty_clone_each_return_their_own_typed_result() -> None:
+async def test_a_clean_and_a_dirty_clone_each_return_their_own_typed_result() -> None:
     sender = InMemoryConvergenceSender(
         {
             "example-host-a": done(
@@ -126,7 +126,7 @@ def test_a_clean_and_a_dirty_clone_each_return_their_own_typed_result() -> None:
         }
     )
 
-    run, _ = payloads(handler(sender).handle(tick(T0)))
+    run, _ = payloads(await handler(sender).handle(tick(T0)))
 
     by_host = {h.host: h for h in run.hosts}
     assert by_host["example-host-a"].outcome is EnumConvergenceHostOutcome.CLEAN
@@ -143,7 +143,7 @@ def test_a_clean_and_a_dirty_clone_each_return_their_own_typed_result() -> None:
     )
 
 
-def test_a_clone_the_host_cannot_converge_is_a_typed_refusal_and_the_run_ends_failed() -> (
+async def test_a_clone_the_host_cannot_converge_is_a_typed_refusal_and_the_run_ends_failed() -> (
     None
 ):
     sender = InMemoryConvergenceSender(
@@ -155,7 +155,7 @@ def test_a_clone_the_host_cannot_converge_is_a_typed_refusal_and_the_run_ends_fa
         }
     )
 
-    run, schedule = payloads(handler(sender, "act").handle(tick(T0)))
+    run, schedule = payloads(await handler(sender, "act").handle(tick(T0)))
 
     refused = next(h for h in run.hosts if h.host == "example-host-b")
     assert refused.outcome is EnumConvergenceHostOutcome.REFUSED
@@ -166,10 +166,10 @@ def test_a_clone_the_host_cannot_converge_is_a_typed_refusal_and_the_run_ends_fa
     assert schedule.outcome == "failed"
 
 
-def test_a_nonzero_exit_with_no_clone_named_fails_the_host_and_the_run() -> None:
+async def test_a_nonzero_exit_with_no_clone_named_fails_the_host_and_the_run() -> None:
     sender = InMemoryConvergenceSender({"example-host-a": done(3, "Traceback: boom")})
 
-    run, schedule = payloads(handler(sender, "act").handle(tick(T0)))
+    run, schedule = payloads(await handler(sender, "act").handle(tick(T0)))
 
     failed = next(h for h in run.hosts if h.host == "example-host-a")
     assert failed.outcome is EnumConvergenceHostOutcome.FAILED
@@ -189,23 +189,25 @@ def test_a_nonzero_exit_with_no_clone_named_fails_the_host_and_the_run() -> None
         (EnumLabWorkUnitStatus.REFUSED, EnumConvergenceHostOutcome.FAILED),
     ],
 )
-def test_a_unit_that_did_not_run_to_an_exit_is_never_a_completed_host(
+async def test_a_unit_that_did_not_run_to_an_exit_is_never_a_completed_host(
     status: EnumLabWorkUnitStatus, expected: EnumConvergenceHostOutcome
 ) -> None:
     sender = InMemoryConvergenceSender({"example-host-c": (status, None, "")})
 
-    run, _ = payloads(handler(sender).handle(tick(T0)))
+    run, _ = payloads(await handler(sender).handle(tick(T0)))
 
     assert next(h for h in run.hosts if h.host == "example-host-c").outcome is expected
     assert run.outcome is EnumConvergenceRunOutcome.FAILED
 
 
-def test_observe_sends_the_observe_command_and_act_sends_the_act_command() -> None:
+async def test_observe_sends_the_observe_command_and_act_sends_the_act_command() -> (
+    None
+):
     observe_sender = InMemoryConvergenceSender()
     act_sender = InMemoryConvergenceSender()
 
-    handler(observe_sender, "observe").handle(tick(T0))
-    handler(act_sender, "act").handle(tick(T0))
+    await handler(observe_sender, "observe").handle(tick(T0))
+    await handler(act_sender, "act").handle(tick(T0))
 
     assert all("--observe" in r.argv for r in observe_sender.sent)
     assert all("--observe" not in r.argv for r in act_sender.sent)
@@ -215,13 +217,15 @@ def test_observe_sends_the_observe_command_and_act_sends_the_act_command() -> No
     assert overlay("observe").mode is EnumConvergenceMode.OBSERVE
 
 
-def test_a_tick_inside_the_interval_sends_nothing() -> None:
+async def test_a_tick_inside_the_interval_sends_nothing() -> None:
     sender = InMemoryConvergenceSender()
     h = handler(sender)
 
-    first = h.handle(tick(T0))
-    second = h.handle(tick(T0 + dt.timedelta(seconds=10)))
-    third = h.handle(tick(T0 + dt.timedelta(seconds=overlay().run_interval_seconds)))
+    first = await h.handle(tick(T0))
+    second = await h.handle(tick(T0 + dt.timedelta(seconds=10)))
+    third = await h.handle(
+        tick(T0 + dt.timedelta(seconds=overlay().run_interval_seconds))
+    )
 
     assert len(first.events) == 2
     assert second.events == ()
@@ -229,13 +233,13 @@ def test_a_tick_inside_the_interval_sends_nothing() -> None:
     assert len(sender.sent) == 2 * len(HOSTS)
 
 
-def test_a_missing_overlay_is_refused_and_sends_nothing(
+async def test_a_missing_overlay_is_refused_and_sends_nothing(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path))
     sender = InMemoryConvergenceSender()
 
-    output = HandlerConvergenceScheduled(sender=sender).handle(tick(T0))
+    output = await HandlerConvergenceScheduled(sender=sender).handle(tick(T0))
 
     assert output.events == ()
     assert sender.sent == []

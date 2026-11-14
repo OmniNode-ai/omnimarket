@@ -129,6 +129,7 @@ class HandlerHostDriftOwnerDispatch:
         briefs: ProtocolBriefPreparer,
         runner: ProtocolLaneRunner,
         runner_path: str,
+        claude_dir: str,
         clock: Callable[[], datetime],
     ) -> None:
         self._overlay = overlay
@@ -138,6 +139,7 @@ class HandlerHostDriftOwnerDispatch:
         self._briefs = briefs
         self._runner = runner
         self._runner_path = runner_path
+        self._claude_dir = claude_dir
         self._clock = clock
 
     def handle(self, request: ModelDriftOwnerRequest) -> ModelDriftOwnerResult:
@@ -249,6 +251,8 @@ class HandlerHostDriftOwnerDispatch:
             dispatch.ticket,
             "--cause",
             cause_key,
+            *(("--claude-dir", self._claude_dir) if self._claude_dir else ()),
+            *(arg for plugin in dispatch.plugins for arg in ("--plugin", plugin)),
             *dispatch.extra_args,
         )
 

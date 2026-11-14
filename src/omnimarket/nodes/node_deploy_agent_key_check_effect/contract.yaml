@@ -1,0 +1,90 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Deploy agent key check EFFECT
+#
+# Answers the one-way check value of the signing key the deploy agent expects. The deploy agent drops a command signed
+# with any other key without a job and without a word to the sender (2026-11-14). The agent's own files are baselined
+# by the canonical file shape ratchet and may only shrink, so the check value is served by this node, not by the agent:
+# the key comes from the secret store by reference (an environment variable the runtime fills, named by the overlay),
+# and only its check value leaves the node, never the key. The signer (node_branch_deploy_command_effect) compares this
+# value with the check value of its own key before it publishes.
+---
+name: node_deploy_agent_key_check_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Deploy agent key check effect. Reads the deploy agent's expected signing key from the environment variable the
+  overlay names (the runtime fills it from the secret store) and answers its one-way check value: status served with
+  the check value, or status refused when the variable is not set. The key is never in the result or the detail. The
+  detail is cut to the overlay bound.
+
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - event_model:
+        name: ModelDeployAgentKeyCheckRequest
+        module: omnimarket.nodes.node_deploy_agent_key_check_effect.models.model_deploy_agent_key_check
+      handler:
+        name: HandlerDeployAgentKeyCheck
+        module: omnimarket.nodes.node_deploy_agent_key_check_effect.handlers.handler_deploy_agent_key_check
+
+handler:
+  module: omnimarket.nodes.node_deploy_agent_key_check_effect.handlers.handler_deploy_agent_key_check
+  class: HandlerDeployAgentKeyCheck
+  input_model: omnimarket.nodes.node_deploy_agent_key_check_effect.models.model_deploy_agent_key_check.ModelDeployAgentKeyCheckRequest
+
+input_model:
+  name: ModelDeployAgentKeyCheckRequest
+  module: omnimarket.nodes.node_deploy_agent_key_check_effect.models.model_deploy_agent_key_check
+  description: "The correlation id and who asked."
+output_model:
+  name: ModelDeployAgentKeyCheckResult
+  module: omnimarket.nodes.node_deploy_agent_key_check_effect.models.model_deploy_agent_key_check
+  description: "The result: correlation id, status (served or refused), the key check value, and detail."
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 30000
+  runtime_profiles: [effects]
+  side_effects: [secret-read]
+
+terminal_event: onex.evt.omnimarket.deploy-agent-key-check-completed.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.deploy-agent-key-check-requested.v1
+
+broker_acl_grants:
+  - principal: "${ONEX_ACL_DEPLOY_AGENT_KEY_CHECK_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.deploy-agent-key-check-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.deploy-agent-key-check-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.deploy-agent-key-check-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.deploy-agent-key-check-completed.v1, operation: DESCRIBE}
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.deploy-agent-key-check-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.deploy-agent-key-check-completed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.deploy-agent-key-check-completed.v1
+
+secret_dependencies:
+  DEPLOY_AGENT_EXPECTED_HMAC_SECRET:
+    required: true
+    description: "The signing key the deploy agent expects; the overlay's agent_key_secret_env names the variable the runtime fills from the secret store entry the deploy agent's own key comes from. Only its one-way check value leaves the node."
+
+dependencies:
+  packages:
+    - "omnibase_core>=0.39.0"
+
+metadata:
+  transport_type: kafka
+  description: "Deploy agent key check effect"
+  author: "OmniNode Platform Team"
+  related_tickets:
+    - "OMN-24413"

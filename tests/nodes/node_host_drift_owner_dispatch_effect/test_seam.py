@@ -94,7 +94,8 @@ def test_the_flags_the_command_carries_are_the_runner_run_verbs_flags() -> None:
     """The runner script lives in the plugin checkout, so its flags are pinned here.
 
     Read on the lab 2026-11-13 from `onex_remote_lane.py run --help`: --brief, --lane, --model, --ticket, --cause,
-    --parent and --priority-class are all flags of the `run` verb. A rename on either side shows in this set.
+    --parent and --priority-class are all flags of the `run` verb, and so are --claude-dir and --plugin (OMN-24423; read
+    from the same `--help`). A rename on either side shows in this set.
     """
     result = rig((item(),)).handler.handle(ModelDriftOwnerRequest(dry_run=True))
     flags = {a for a in result.lanes[0].argv if a.startswith("--")}
@@ -104,6 +105,8 @@ def test_the_flags_the_command_carries_are_the_runner_run_verbs_flags() -> None:
         "--model",
         "--ticket",
         "--cause",
+        "--claude-dir",
+        "--plugin",
         "--parent",
         "--priority-class",
     }

@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_merged_change_reading_compute
+version: "1.0.0"
+description: For each merged change, whether it is in the running build, its node loaded, its last run and result, and the one missing step
+omnibase_core_compat: ">=0.47.28,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_merged_change_reading_compute: omnimarket.nodes.node_merged_change_reading_compute
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  side_effect_class: pure
+dependencies:
+  - pydantic>=2.11.0
+  - pyyaml
+authors: [OmniNode Team]
+license: MIT
+tags: [compute, merged-changes, runtime-reading]
+node_role: compute
+pack: "routing"
+display_name: "Merged Change Reading Compute"

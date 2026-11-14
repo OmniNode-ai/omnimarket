@@ -8,8 +8,8 @@ in-memory lab-work sender; only the sender's answers are scripted.
 
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
-import threading
 import uuid
 from pathlib import Path
 from typing import Any
@@ -91,13 +91,13 @@ def _payloads(
     return run.payload, schedule.payload
 
 
-def test_golden_a_tick_sends_one_unit_to_each_host_and_reports_one_verdict_per_host() -> (
+async def test_golden_a_tick_sends_one_unit_to_each_host_and_reports_one_verdict_per_host() -> (
     None
 ):
     overlay = _overlay()
     sender = InMemoryHostDriftSender()
 
-    run, schedule = _payloads(_handler(sender).handle(_tick(T0)))
+    run, schedule = _payloads(await _handler(sender).handle(_tick(T0)))
 
     names = [row.name for row in overlay.hosts]
     assert sorted(u.target_host for u in sender.sent) == sorted(names)
@@ -110,11 +110,11 @@ def test_golden_a_tick_sends_one_unit_to_each_host_and_reports_one_verdict_per_h
     assert schedule.tick_id == run.tick_id
 
 
-def test_each_unit_carries_its_hosts_name_and_paths_in_the_check_argv() -> None:
+async def test_each_unit_carries_its_hosts_name_and_paths_in_the_check_argv() -> None:
     overlay = _overlay()
     sender = InMemoryHostDriftSender()
 
-    _handler(sender).handle(_tick(T0))
+    await _handler(sender).handle(_tick(T0))
 
     for unit in sender.sent:
         row = next(r for r in overlay.hosts if r.name == unit.target_host)
@@ -125,7 +125,7 @@ def test_each_unit_carries_its_hosts_name_and_paths_in_the_check_argv() -> None:
         assert unit.commit_sha == overlay.lab_work.commit_sha
 
 
-def test_a_drifted_host_is_an_answer_and_the_run_still_completes() -> None:
+async def test_a_drifted_host_is_an_answer_and_the_run_still_completes() -> None:
     drifted = _overlay().hosts[1].name
     sender = InMemoryHostDriftSender(
         {
@@ -137,7 +137,7 @@ def test_a_drifted_host_is_an_answer_and_the_run_still_completes() -> None:
         }
     )
 
-    run, schedule = _payloads(_handler(sender).handle(_tick(T0)))
+    run, schedule = _payloads(await _handler(sender).handle(_tick(T0)))
 
     by_host = {v.host: v.verdict for v in run.verdicts}
     assert by_host[drifted] is EnumHostDriftHostVerdict.DRIFTED
@@ -146,7 +146,7 @@ def test_a_drifted_host_is_an_answer_and_the_run_still_completes() -> None:
 
 
 @pytest.mark.parametrize("silent", [False, True])
-def test_silent_host_fails_the_run_naming_it_and_all_four_answering_completes(
+async def test_silent_host_fails_the_run_naming_it_and_all_four_answering_completes(
     silent: bool,
 ) -> None:
     hosts = [row.name for row in _overlay().hosts]
@@ -155,7 +155,7 @@ def test_silent_host_fails_the_run_naming_it_and_all_four_answering_completes(
         silent=frozenset({quiet}) if silent else frozenset()
     )
 
-    run, schedule = _payloads(_handler(sender).handle(_tick(T0)))
+    run, schedule = _payloads(await _handler(sender).handle(_tick(T0)))
 
     if not silent:
         assert run.outcome is EnumHostDriftRunOutcome.COMPLETED
@@ -172,7 +172,9 @@ def test_silent_host_fails_the_run_naming_it_and_all_four_answering_completes(
     assert all(h not in schedule.detail for h in others)
 
 
-def test_a_check_that_exits_four_fails_the_run_and_carries_the_output_tail() -> None:
+async def test_a_check_that_exits_four_fails_the_run_and_carries_the_output_tail() -> (
+    None
+):
     host = _overlay().hosts[0].name
     sender = InMemoryHostDriftSender(
         {
@@ -184,7 +186,7 @@ def test_a_check_that_exits_four_fails_the_run_and_carries_the_output_tail() -> 
         }
     )
 
-    run, schedule = _payloads(_handler(sender).handle(_tick(T0)))
+    run, schedule = _payloads(await _handler(sender).handle(_tick(T0)))
 
     failed = next(v for v in run.verdicts if v.host == host)
     assert failed.verdict is EnumHostDriftHostVerdict.CHECK_FAILED
@@ -194,19 +196,19 @@ def test_a_check_that_exits_four_fails_the_run_and_carries_the_output_tail() -> 
     assert schedule.outcome == "failed"
 
 
-def test_exit_one_with_no_verdict_line_is_a_failed_check_not_drift() -> None:
+async def test_exit_one_with_no_verdict_line_is_a_failed_check_not_drift() -> None:
     host = _overlay().hosts[0].name
     sender = InMemoryHostDriftSender(
         {host: (EnumLabWorkUnitStatus.COMPLETED, 1, "Traceback: KeyError")}
     )
 
-    run, _ = _payloads(_handler(sender).handle(_tick(T0)))
+    run, _ = _payloads(await _handler(sender).handle(_tick(T0)))
 
     verdict = next(v for v in run.verdicts if v.host == host)
     assert verdict.verdict is EnumHostDriftHostVerdict.CHECK_FAILED
 
 
-def test_a_sender_that_raises_reads_as_no_result_for_that_host_only() -> None:
+async def test_a_sender_that_raises_reads_as_no_result_for_that_host_only() -> None:
     hosts = [row.name for row in _overlay().hosts]
 
     class _Raising(InMemoryHostDriftSender):
@@ -215,7 +217,7 @@ def test_a_sender_that_raises_reads_as_no_result_for_that_host_only() -> None:
                 raise ConnectionError("broker down")
             return super().send(request)
 
-    run, _ = _payloads(_handler(_Raising()).handle(_tick(T0)))
+    run, _ = _payloads(await _handler(_Raising()).handle(_tick(T0)))
 
     by_host = {v.host: v for v in run.verdicts}
     assert by_host[hosts[0]].verdict is EnumHostDriftHostVerdict.NO_RESULT
@@ -223,59 +225,51 @@ def test_a_sender_that_raises_reads_as_no_result_for_that_host_only() -> None:
     assert by_host[hosts[1]].verdict is EnumHostDriftHostVerdict.IN_SYNC
 
 
-def test_two_deliveries_of_one_tick_send_four_commands_not_eight() -> None:
+async def test_two_deliveries_of_one_tick_send_four_commands_not_eight() -> None:
     sender = InMemoryHostDriftSender()
     handler = _handler(sender)
     tick = _tick(T0)
 
-    first = handler.handle(tick)
-    second = handler.handle(tick)
+    first = await handler.handle(tick)
+    second = await handler.handle(tick)
 
     assert len(first.events) == 2
     assert second.events == ()
     assert len(sender.sent) == 4
 
 
-def test_two_concurrent_deliveries_of_one_tick_send_one_set_of_four() -> None:
+async def test_two_concurrent_deliveries_of_one_tick_send_one_set_of_four() -> None:
     sender = InMemoryHostDriftSender()
     handler = _handler(sender)
     tick = _tick(T0)
-    barrier = threading.Barrier(2)
-    results: list[Any] = []
 
-    def _deliver() -> None:
-        barrier.wait()
-        results.append(handler.handle(tick))
-
-    threads = [threading.Thread(target=_deliver) for _ in range(2)]
-    for thread in threads:
-        thread.start()
-    for thread in threads:
-        thread.join()
+    results = await asyncio.gather(handler.handle(tick), handler.handle(tick))
 
     assert sorted(len(r.events) for r in results) == [0, 2]
     assert len(sender.sent) == 4
 
 
-def test_a_tick_inside_the_interval_sends_nothing_and_the_next_due_tick_sends_again() -> (
+async def test_a_tick_inside_the_interval_sends_nothing_and_the_next_due_tick_sends_again() -> (
     None
 ):
     overlay = _overlay()
     sender = InMemoryHostDriftSender()
     handler = _handler(sender)
 
-    handler.handle(_tick(T0))
-    inside = handler.handle(
+    await handler.handle(_tick(T0))
+    inside = await handler.handle(
         _tick(T0 + dt.timedelta(seconds=overlay.run_interval_seconds - 1))
     )
-    due = handler.handle(_tick(T0 + dt.timedelta(seconds=overlay.run_interval_seconds)))
+    due = await handler.handle(
+        _tick(T0 + dt.timedelta(seconds=overlay.run_interval_seconds))
+    )
 
     assert inside.events == ()
     assert len(due.events) == 2
     assert len(sender.sent) == 8
 
 
-def test_a_run_stopped_between_its_claim_and_its_send_ends_failed_and_the_next_tick_retries(
+async def test_a_run_stopped_between_its_claim_and_its_send_ends_failed_and_the_next_tick_retries(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls = {"n": 0}
@@ -292,7 +286,7 @@ def test_a_run_stopped_between_its_claim_and_its_send_ends_failed_and_the_next_t
         clock=lambda: T0 + dt.timedelta(seconds=5),
     )
 
-    stopped_run, stopped_schedule = _payloads(handler.handle(_tick(T0)))
+    stopped_run, stopped_schedule = _payloads(await handler.handle(_tick(T0)))
     assert stopped_run.outcome is EnumHostDriftRunOutcome.FAILED
     assert stopped_schedule.outcome == "failed"
     assert "stopped after the claim" in stopped_schedule.detail
@@ -300,7 +294,7 @@ def test_a_run_stopped_between_its_claim_and_its_send_ends_failed_and_the_next_t
         EnumHostDriftHostVerdict.NO_RESULT
     }
 
-    retry = handler.handle(_tick(T0 + dt.timedelta(seconds=1)))
+    retry = await handler.handle(_tick(T0 + dt.timedelta(seconds=1)))
     retry_run, retry_schedule = _payloads(retry)
     assert retry_run.outcome is EnumHostDriftRunOutcome.COMPLETED
     assert retry_schedule.outcome == "completed"

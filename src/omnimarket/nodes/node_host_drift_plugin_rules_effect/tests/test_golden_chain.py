@@ -74,6 +74,46 @@ def test_error_a_missing_file_is_refused(tmp_path: Path) -> None:
     assert "read" in result.detail
 
 
+def test_golden_version_differs_rule_shape() -> None:
+    result = HandlerHostDriftPluginRules().handle(
+        ModelPluginRulesRequest(correlation_id="version-differs")
+    )
+    assert result.outcome == Outcome.LOADED, result.detail
+    rule = result.rules[1]
+    assert rule.match == "plugin:omni@omninode-internal"
+    assert rule.version_differs is True
+    assert rule.action == "update-plugin"
+    assert rule.sync_class == "SAFE"
+    behind = result.rules[2]
+    assert "plugin-behind:" in behind.observed_contains
+    assert behind.version_differs is False
+
+
+def test_error_version_differs_not_a_bool_is_refused(tmp_path: Path) -> None:
+    overlay = tmp_path / "policy.yaml"
+    overlay.write_text(
+        yaml.safe_dump(
+            {
+                "schema": "host-drift-plugin-sync-rules.v1",
+                "rules": [
+                    {
+                        "match": "plugin:omni@omninode-internal",
+                        "kinds": ["plugin"],
+                        "version_differs": [1],
+                        "sync_class": "SAFE",
+                        "action": "update-plugin",
+                    }
+                ],
+            }
+        )
+    )
+    result = HandlerHostDriftPluginRules(overlay_path=overlay).handle(
+        ModelPluginRulesRequest(correlation_id="bad-version-differs")
+    )
+    assert result.outcome == Outcome.REFUSED
+    assert "fails validation" in result.detail
+
+
 def test_failing_control_swapped_policy_changes_the_first_rule(tmp_path: Path) -> None:
     """The injected break `swapped_policy`: a handler pointed at a file whose first rule is swapped."""
     overlay = tmp_path / "swapped.yaml"

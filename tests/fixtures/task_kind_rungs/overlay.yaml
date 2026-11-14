@@ -1,0 +1,72 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+schema_version: delegation_routing_overlay.v1
+escalation_chains:
+  - task_class: reasoning
+    escalate_on: acceptance_check
+    rungs:
+      - local
+local_endpoints:
+  backends:
+    - backend_id: local-coder
+      provider: local
+      tier: local
+      endpoint_url: http://127.0.0.1:8000/v1/chat/completions
+      model_name: m
+task_kind_rungs:
+  routes:
+    - task_class: reasoning
+      task_kind: ci_red_triage
+      local_backend_id: local-coder
+      min_f1: 0.8
+      guard:
+        min_samples: 20
+        accuracy_lower_bound: 0.6739
+        measured_correct: 123
+        measured_n: 165
+      kinds:
+        base-red:
+          rung: local
+          input: facts
+          n: 20
+          f1: 0.919
+          precision: 1.0
+        cancelled:
+          rung: local
+          input: facts
+          n: 20
+          f1: 1.0
+          precision: 1.0
+        follower:
+          rung: local
+          input: facts
+          n: 20
+          f1: 0.818
+          precision: 0.75
+        review-gate-degraded:
+          rung: local
+          input: facts
+          n: 20
+          f1: 0.909
+          precision: 0.833
+        superseded:
+          rung: local
+          input: facts
+          n: 20
+          f1: 1.0
+          precision: 1.0
+        pr-process:
+          rung: current
+          input: facts
+          n: 20
+          f1: 0.4
+        product:
+          rung: current
+          input: facts
+          n: 20
+          f1: 0.583
+        runner-infra:
+          rung: current
+          input: facts
+          n: 20
+          f1: 0.553

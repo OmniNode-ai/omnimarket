@@ -23,6 +23,8 @@ class ModelPluginSyncRule(BaseModel):
     sync_class: str
     action: str | None = None
     alert_only_observed: tuple[str, ...] = ()
+    # when true the rule matches only when an installed version differs from the merged version (OMN-24404)
+    version_differs: bool = False
     between_lanes: bool = False
 
 

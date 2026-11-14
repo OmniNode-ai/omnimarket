@@ -23,7 +23,10 @@ KIND_PLUGIN = "plugin"
 
 
 def rule_for(
-    rules: tuple[ModelPluginSyncRule, ...], key: str, observed: str
+    rules: tuple[ModelPluginSyncRule, ...],
+    key: str,
+    observed: str,
+    version_differs: bool = False,
 ) -> ModelPluginSyncRule | None:
     """The first plugin rule matching the key and observed text; None means ALERT_ONLY."""
     return next(
@@ -36,6 +39,7 @@ def rule_for(
                 not r.observed_contains
                 or any(m in observed for m in r.observed_contains)
             )
+            and (not r.version_differs or version_differs)
         ),
         None,
     )
@@ -96,7 +100,7 @@ class HandlerHostDriftPluginRevision:
         action = None
         between = False
         if verdict == EnumPluginDriftVerdict.DRIFT:
-            rule = rule_for(facts.rules, f"plugin:{facts.name}", text)
+            rule = rule_for(facts.rules, f"plugin:{facts.name}", text, version_differs)
             if rule is not None and rule.sync_class == "SAFE":
                 action, between = rule.action, rule.between_lanes
         return ModelPluginRevisionVerdict(

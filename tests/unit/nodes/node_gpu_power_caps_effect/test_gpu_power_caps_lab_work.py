@@ -7,6 +7,7 @@ Shape followed: test_gpu_power_caps.py in this directory (a fake injected at the
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 import pytest
@@ -113,8 +114,8 @@ def ask(
     sender: FakeSender, host: str = SIM_A, requested_by: str = "lane-a"
 ) -> ModelGpuPowerCapsResult:
     handler = HandlerGpuPowerCaps(overlay=lab_work_overlay(), sender=sender)
-    return handler.handle(
-        ModelGpuPowerCapsRequest(host=host, requested_by=requested_by)
+    return asyncio.run(
+        handler.handle(ModelGpuPowerCapsRequest(host=host, requested_by=requested_by))
     )
 
 

@@ -18,6 +18,15 @@ handler:
   module: omnimarket.nodes.node_code_quarantine_effect.handlers.handler_code_quarantine
   class: HandlerCodeQuarantine
   input_model: omnimarket.nodes.node_code_quarantine_effect.models.model_code_quarantine.ModelQuarantineRequest
+# The second handler is bound by its own handler block, not by a routing entry: its constructor takes the quarantine
+# handler and the repository, reader and reporter ports, so a runtime that builds routed handlers from injectable
+# parameters cannot boot it (the lane that runs stage 2 builds it).
+stage2_duplicates_handler:
+  handler:
+    name: HandlerStage2Duplicates
+    module: omnimarket.nodes.node_code_quarantine_effect.handlers.handler_stage2_duplicates
+    input_model: omnimarket.nodes.node_code_quarantine_effect.models.model_stage2_duplicates.ModelStage2Request
+    output_model: omnimarket.nodes.node_code_quarantine_effect.models.model_stage2_duplicates.ModelStage2Result
 descriptor:
   node_archetype: effect
   purity: impure
