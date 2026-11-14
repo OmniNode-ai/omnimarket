@@ -197,12 +197,20 @@ def _replies(node: object, depth: int = 0) -> list[str]:
 
 
 def _model_of(doc: dict[str, Any]) -> str:
-    for node in (doc, doc.get("receipt"), (doc.get("receipt") or {}).get("result")):
+    """The answering model, wherever this receipt shape keeps it: a run the
+    gates accepted carries result.model_name with no receipt wrapper, as
+    read_answer reads it; a vetoed one only its attempts' model_id."""
+    raw = doc.get("receipt")
+    receipt: dict[str, Any] = raw if isinstance(raw, dict) else {}
+    results = [doc.get("result"), receipt.get("result")]
+    for node in (doc, *results, receipt):
         if isinstance(node, dict) and isinstance(node.get("model_name"), str):
             return str(node["model_name"])
-    for attempt in doc.get("attempts") or []:
-        if isinstance(attempt, dict) and isinstance(attempt.get("model_id"), str):
-            return str(attempt["model_id"])
+    for node in (doc, *results):
+        attempts = node.get("attempts") if isinstance(node, dict) else None
+        for attempt in attempts if isinstance(attempts, list) else []:
+            if isinstance(attempt, dict) and isinstance(attempt.get("model_id"), str):
+                return str(attempt["model_id"])
     return ""
 
 

@@ -141,10 +141,15 @@ def test_any_prompt_is_delegated_and_its_answer_blocks_claude() -> None:
     ],
 )
 def test_a_declined_prompt_passes_to_claude(reply: str) -> None:
-    """P2: a bare token, the token with a reason, or the token inline at the end."""
+    """P2: a bare token, the token with a reason, or the token inline at the end.
+    The decline names its model and run: a decline the gates accepted comes back
+    as {"result": {"model_name": ...}} with no receipt wrapper (run 843f23f7
+    logged model=- on 2026-11-14)."""
     result = _ask(_Cli(_doc(reply, "r-no")), "what does notes.txt say?")
     assert result.outcome is EnumPromptDelegateOutcome.DECLINED
     assert result.hook_output == ""
+    assert result.model == "Qwen3.8-27B"
+    assert result.run_id == "r-no"
 
 
 def test_a_decline_the_quality_gate_vetoed_passes_to_claude() -> None:
