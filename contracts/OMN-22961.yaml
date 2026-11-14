@@ -58,3 +58,10 @@ dod_evidence:
   - check_type: command
     check_value: |-
       env UV_PROJECT_ENVIRONMENT=/tmp/omn22961-venv uv run --frozen --no-dev python -c 'import yaml; from omnimarket.nodes.node_lane_dispatch_effect.handlers.handler_dispatch_join_j11 import HandlerDispatchJoinJ11; from omnimarket.nodes.node_lane_dispatch_effect.models.model_join_j11 import ModelJoinJ11Request, ModelJoinJ11Result; assert callable(HandlerDispatchJoinJ11.handle); c = yaml.safe_load(open("src/omnimarket/nodes/node_lane_dispatch_effect/contract.yaml")); assert c["join_j11"]["join_id"] == "J11", c["join_j11"]; print("J11 join handler and policy resolved")'
+- id: dod-omn22961-deploy-source-read
+  description: Deploy probe. Reads the J11 join handler from the GitHub contents API at the pull request branch, or at dev once the branch is merged and deleted. It fails while neither ref carries the handler, and runs on the hosted runner with the job token alone; no container pull and no lab route is required. The running wiring on the dev bus is not part of this change.
+  source: manual
+  checks:
+  - check_type: command
+    check_value: 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_lane_dispatch_effect/handlers/handler_dispatch_join_j11.py?ref=omn-22961-join-j11-dispatch" --jq .path || gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_lane_dispatch_effect/handlers/handler_dispatch_join_j11.py?ref=dev" --jq .path'
+    cwd: .
