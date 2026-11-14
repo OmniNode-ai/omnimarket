@@ -109,6 +109,27 @@ def test_rendered_units_run_the_node_read_with_the_overlays_route_facts(
     assert "Unit=onex-secret-reading-hourly.service" in timer
 
 
+def test_the_start_timeout_gives_a_full_pass_room_and_ends_before_the_writer_tick(
+    tmp_path: Path,
+) -> None:
+    """A pass ran 257 s when it finished and five of six were killed at 300 s with no row (OMN-22722)."""
+    schedule = load_schedule()
+    assert schedule.timeout_seconds > 300
+    jitter = int(schedule.cadence.randomized_delay.removesuffix("s"))
+    # The cadence fires at :05 and the reading writer's tick reads the row at :15.
+    assert 5 * 60 + jitter + schedule.timeout_seconds <= 15 * 60
+    root, home, overlays = _layout(tmp_path)
+    service, _timer = render_units(
+        schedule,
+        _overlay(),
+        omni_root=root,
+        venv=root / "venv",
+        home=home,
+        overlay_root=overlays,
+    )
+    assert f"TimeoutStartSec={schedule.timeout_seconds}\n" in service
+
+
 def test_install_for_a_host_the_overlay_does_not_declare_is_refused(
     tmp_path: Path,
 ) -> None:

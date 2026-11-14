@@ -1440,6 +1440,51 @@ units:
     required_environment_inputs: [ONEX_HOST_NAME]
     evidence_file: .local/state/omni/landing-tick-orchestrator/last-run.json
     state_directory: .onex_state/landing-tick-orchestrator
+  # The stability lane refresh serve tick (OMN-24220, epic OMN-21611): every 60 s one pass reads the refresh requests on the
+  # bus (onex.cmd.omnimarket.stability-refresh-requested.v1), runs each through node_stability_lane_refresh_effect as this
+  # unit's account, and publishes the typed answer (pin-accepted, refused, completed or failed) on its own topics. A
+  # collaborator's login only sends the request; the clone, the secret store login and docker stay with this account.
+  # The run limit is longer than the overlay's refresh_timeout_seconds plus the serve block's join and read bounds (a
+  # request may run a whole refresh inside one pass); tests/nodes/node_stability_lane_refresh_effect/test_stability_refresh_unit_seam.py
+  # holds that.
+  stability-refresh-serve-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-stability-refresh-serve
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 60
+      run_timeout_s: 3700
+      run_at_load: true
+      description: every 60 s and at load
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_stability_lane_refresh_effect.runtime_stability_refresh_serve
+    entry_file: src/omnimarket/nodes/node_stability_lane_refresh_effect/runtime_stability_refresh_serve.py
+    probe_argv: ["--probe"]
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}"
+      OMNIBASE_PATH: "{registry_root}"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    # The tick's stability-lane login: the credential env file the service principal mint node delivers (KAFKA_SASL_USERNAME and
+    # KAFKA_SASL_PASSWORD, mode 0400, owned by the unit's account). The lane declares SASL and the account's lane login store holds no
+    # identity for the stability lane, so the runtime's resolver steps aside for these two variables; the dev identity in the store
+    # is never read for this lane. A missing file is not an error (the tick then ends source_unread naming the lane).
+    environment_file: .config/onex/stability-refresh-serve.env
+    evidence_file: .local/state/omni/stability-refresh-serve/last-run.json
+    state_directory: .onex_state/stability-refresh-serve
   # The Claude token pool rotation tick (OMN-23887), installed the declared way on every host the pool overlay lists: a
   # unit here, with its own project path and expected revision (the request's project_path and expected_revision), and
   # its own environment, in place of the pool's own `schedule install` (which ran a hand-built venv). One unit per
