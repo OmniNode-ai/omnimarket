@@ -126,7 +126,7 @@ def _build_row(measured_at: datetime) -> object:
         correct=48,
         wilson_low=wilson_low,
         wilson_high=wilson_high,
-        baseline_accuracy=0.7,
+        baseline_accuracy=0.6,
         latency_p50_ms=12.5,
         latency_p90_ms=34.0,
         gpu_seconds=90.0,
@@ -282,10 +282,18 @@ async def test_row_level_security_hides_another_tenants_rows() -> None:
             == 1
         )
 
-        # The exemplar binds the tenant in the same transaction as both the write and the
-        # read; FORCE RLS covers a non-superuser table owner. We mirror that: the owner
-        # here is the connecting role, so we assert the tenant-filtered count rather than
-        # inventing a stronger claim about a bypassing owner.
+        # A superuser bypasses even FORCE ROW LEVEL SECURITY, so read as a plain
+        # role created inside this rolled-back transaction.
+        probe = f"omn24286_rls_probe_{uuid4().hex[:12]}"
+        try:
+            await conn.execute(f"CREATE ROLE {probe} NOLOGIN")
+        except asyncpg.InsufficientPrivilegeError:
+            pytest.skip("cannot create a probe role to exercise row level security")
+        await conn.execute(f"GRANT USAGE ON SCHEMA {schema} TO {probe}")
+        await conn.execute(
+            f"GRANT SELECT ON {schema}.experiment_arm_results TO {probe}"
+        )
+        await conn.execute(f"SET LOCAL ROLE {probe}")
         await conn.execute(
             "SELECT set_config('app.tenant_id', $1, true)", str(_TENANT_B)
         )
