@@ -1232,6 +1232,8 @@
   "tests/nodes/node_effect_backends_load_effect/test_effect_backends_unavailable_root.py": 2.22,
   "tests/nodes/node_effect_backends_load_effect/test_golden_chain.py": 2.59,
   "tests/nodes/node_entropy_experiment_orchestrator/test_golden_chain_entropy_experiment_orchestrator.py": 0.16,
+  "tests/nodes/node_entry_point_registration_compute/test_error_chain_entry_point_registration_compute.py": 2.87,
+  "tests/nodes/node_entry_point_registration_compute/test_golden_chain_entry_point_registration_compute.py": 2.18,
   "tests/nodes/node_entrypoint_lib_compute/test_golden_chain_entrypoint_lib_compute.py": 0.17,
   "tests/nodes/node_envelope_example_get_effect/test_golden_chain_envelope_example_get.py": 0.02,
   "tests/nodes/node_envelope_example_get_effect/test_http_ingress.py": 0.08,

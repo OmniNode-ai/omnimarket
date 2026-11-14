@@ -682,6 +682,7 @@ node_effect_backends_check_compute = "omnimarket.nodes.node_effect_backends_chec
 node_effect_backends_load_effect = "omnimarket.nodes.node_effect_backends_load_effect"
 node_emit_daemon = "omnimarket.nodes.node_emit_daemon"
 node_entropy_experiment_orchestrator = "omnimarket.nodes.node_entropy_experiment_orchestrator"
+node_entry_point_registration_compute = "omnimarket.nodes.node_entry_point_registration_compute"
 node_entrypoint_lib_compute = "omnimarket.nodes.node_entrypoint_lib_compute"
 node_env_parity_collect_effect = "omnimarket.nodes.node_env_parity_collect_effect"
 node_env_parity_compute = "omnimarket.nodes.node_env_parity_compute"
