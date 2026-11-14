@@ -4,14 +4,19 @@
 
 Golden: the in-memory port's fixtures read OK and every row emits one answered event; a
 row with no fixture reads UNREAD with detail ``no reading fixture``. Error: a read that
-raises OSError, times out, exits with a code the row does not accept or lands on a host
-with no target reads UNREAD with one refused event and never raises, and the judge reads
-every refused row UNREAD, never TRUE. Route: a local host's argv runs directly and a
-remote host's argv runs through the prefix with the target substituted and the argv
-shlex-joined as ONE final argument. CLI: exit 0 when every row is TRUE, 1 with a MISSING
-line when a row is FALSE, 1 when a read is UNREAD, 3 with no overlay. Failing control: a
-command that exits outside the row's accepted codes is UNREAD and the CLI exits 1 even
-when its stdout is the exact answer the row expects.
+raises OSError, times out, raises ValueError (output that is not UTF-8, an argv with a
+NUL), exits with a code the row does not accept or lands on a host with no target reads
+UNREAD with one refused event and never raises, and the judge reads every refused row
+UNREAD, never TRUE. A journal write that raises OSError costs its row's event only: the
+remaining rows still read and the failure comes back in ``sink_errors``. Route: a local
+host's argv runs directly and a remote host's argv runs through the prefix with the
+target substituted and the argv shlex-joined as ONE final argument. Policy: an
+``allowed_commands`` register refuses a row whose command is outside it and accepts one
+inside. CLI: exit 0 when every row is TRUE, 1 with a MISSING line when a row is FALSE,
+1 when a read is UNREAD, 3 with no overlay. Failing control: a command that exits
+outside the row's accepted codes is UNREAD and the CLI exits 1 even when its stdout is
+the exact answer the row expects; a nonzero code the row does accept is an answer and
+judges FALSE, never UNREAD.
 """
 
 from __future__ import annotations
@@ -48,7 +53,10 @@ from omnimarket.nodes.node_ruling_register_effect.handlers.handler_ruling_regist
     HandlerRulingRegisterRead,
     load_topics,
 )
-from omnimarket.nodes.node_ruling_register_effect.models import EnumRouteKind
+from omnimarket.nodes.node_ruling_register_effect.models import (
+    EnumRouteKind,
+    ModelRulingReadEvent,
+)
 from omnimarket.nodes.node_ruling_register_effect.models.model_ruling_register_effect import (
     ModelRulingRoute,
 )
@@ -93,7 +101,8 @@ def row(
         read=ModelRulingRead(
             host=host,
             argv=argv,
-            ok_exit_codes=(0,),
+            # 1 is the code that reads FALSE; exit_zero must name one.
+            ok_exit_codes=(0, 1),
             expect=expect
             if expect is not None
             else ModelRulingExpect(kind="exit_zero"),
@@ -152,6 +161,7 @@ def test_golden_chain_fixture_reads_answer_ok_with_one_answered_event_per_row() 
     )
     result = h.handle(request)
     assert result.correlation_id == "read-1"
+    assert result.sink_errors == ()
     assert [reading.row_id for reading in result.readings] == ["row-a", "row-b"]
     assert [reading.status for reading in result.readings] == [EnumReadStatus.OK] * 2
     assert [event.kind for event in sink.events] == ["answered", "answered"]
@@ -198,6 +208,12 @@ def error_runner(argv: list[str], timeout_seconds: int) -> tuple[int, str]:
         raise OSError("no route to host")
     if head == "raise-timeout":
         raise subprocess.TimeoutExpired(cmd=argv, timeout=timeout_seconds)
+    if head == "raise-unicodedecode":
+        raise UnicodeDecodeError("utf-8", b"\xff\xfe", 0, 1, "invalid start byte")
+    if head == "raise-valueerror":
+        raise ValueError("embedded null byte")
+    if head == "answer":
+        return 0, "ready"
     assert head == "exit-refused"
     return 7, "the answer that must not be an answer"
 
@@ -251,6 +267,105 @@ def test_a_refused_exit_keeps_the_stdout_truncated_to_2000_characters() -> None:
     assert reading.status is EnumReadStatus.UNREAD
     assert reading.detail == "exit 3"
     assert reading.stdout == "x" * 2000
+
+
+def test_a_unicode_or_null_argv_read_is_unread_and_the_next_row_still_reads() -> None:
+    """Output that is not UTF-8 and an argv with an embedded NUL both raise
+    ValueError (UnicodeDecodeError is one) out of ``run_argv``; each row reads
+    UNREAD with the exception's name and the next row still reads."""
+    rows = (
+        row("row-unicode", argv=("raise-unicodedecode",)),
+        row("row-null", argv=("raise-valueerror",)),
+        row("row-answer", argv=("answer",)),
+    )
+    h, sink = handler(
+        CommandRulingReadPort(route(), runner=error_runner, clock=lambda: NOW)
+    )
+    result = h.handle(
+        ModelRulingReadRequest(correlation_id="read-1", policy=policy(*rows))
+    )
+    assert [reading.row_id for reading in result.readings] == [
+        "row-unicode",
+        "row-null",
+        "row-answer",
+    ]
+    assert [reading.status for reading in result.readings] == [
+        EnumReadStatus.UNREAD,
+        EnumReadStatus.UNREAD,
+        EnumReadStatus.OK,
+    ]
+    assert [reading.detail for reading in result.readings] == [
+        "UnicodeDecodeError",
+        "ValueError",
+        "",
+    ]
+    assert [event.kind for event in sink.events] == ["refused", "refused", "answered"]
+
+
+def test_real_output_that_is_not_utf8_and_a_null_argv_read_unread() -> None:
+    """The real runner through the port: a child writing ``b"\\xff\\xfe"`` cannot be
+    decoded by ``text=True`` and an argv holding a NUL is refused by ``Popen``;
+    both read UNREAD, never raise."""
+    port = CommandRulingReadPort(route(), clock=lambda: NOW)
+    write_bytes = r"import sys; sys.stdout.buffer.write(b'\xff\xfe')"
+    not_utf8 = port.read(row("row-bytes", argv=(sys.executable, "-c", write_bytes)))
+    assert not_utf8.status is EnumReadStatus.UNREAD
+    assert not_utf8.detail == "UnicodeDecodeError"
+    nul = port.read(row("row-nul", argv=("example-command", "a\x00b")))
+    assert nul.status is EnumReadStatus.UNREAD
+    assert nul.detail == "ValueError"
+
+
+# ---- the journal write ---------------------------------------------------------------------------
+
+
+class FailFirstSink:
+    """A sink whose first emit raises OSError, like a journal that cannot be written."""
+
+    def __init__(self) -> None:
+        self.rows: list[str] = []
+        self.calls = 0
+
+    def emit(self, event: ModelRulingReadEvent) -> None:
+        self.calls += 1
+        if self.calls == 1:
+            raise OSError("the journal is not writable")
+        self.rows.append(event.row_id)
+
+
+def test_a_failed_journal_write_costs_its_event_not_the_remaining_reads() -> None:
+    """An OSError out of ``sink.emit`` on the first row must not abort the reads
+    after it: every row still reads, in order, and ``sink_errors`` names the row
+    whose event did not land."""
+    sink = FailFirstSink()
+    h = HandlerRulingRegisterRead(
+        InMemoryRulingReadPort(
+            {"row-a": fixture("row-a"), "row-b": fixture("row-b")},
+            clock=lambda: NOW,
+        ),
+        sink,
+        TOPICS,
+        clock=lambda: NOW,
+    )
+    result = h.handle(
+        ModelRulingReadRequest(
+            correlation_id="read-1", policy=policy(row("row-a"), row("row-b"))
+        )
+    )
+    assert [reading.row_id for reading in result.readings] == ["row-a", "row-b"]
+    assert [reading.status for reading in result.readings] == [EnumReadStatus.OK] * 2
+    assert result.sink_errors == ("row-a: OSError",)
+    assert sink.rows == ["row-b"]
+
+
+def test_a_sink_that_lands_every_event_names_no_sink_errors() -> None:
+    h, _sink = handler(
+        InMemoryRulingReadPort({"row-a": fixture("row-a")}, clock=lambda: NOW)
+    )
+    result = h.handle(
+        ModelRulingReadRequest(correlation_id="read-1", policy=policy(row("row-a")))
+    )
+    assert result.sink_errors == ()
 
 
 # ---- the command route ---------------------------------------------------------------------------
@@ -310,6 +425,35 @@ def test_an_inmemory_route_needs_no_target_slot() -> None:
     assert route(kind="inmemory", remote_argv_prefix=()).kind is EnumRouteKind.INMEMORY
 
 
+# ---- the policy's command allowlist --------------------------------------------------------------
+
+
+def test_an_allowed_commands_register_refuses_a_row_outside_it_and_accepts_one_inside() -> (
+    None
+):
+    """The overlay is the deployment owner's trust boundary, so the restriction is
+    the policy's own field: a row whose argv head is not listed is refused naming
+    the row and the command, a listed row is accepted, and ``None`` restricts
+    nothing."""
+    the_row = row("row-shell", argv=("sh", "-c", "uptime"))
+    with pytest.raises(ValueError, match="row row-shell runs sh"):
+        ModelRulingRegisterPolicy(
+            max_reading_age_seconds=600,
+            rows=(the_row,),
+            allowed_commands=("example-census-command",),
+        )
+    inside = ModelRulingRegisterPolicy(
+        max_reading_age_seconds=600,
+        rows=(row("row-census", argv=("example-census-command",)),),
+        allowed_commands=("example-census-command",),
+    )
+    assert inside.allowed_commands == ("example-census-command",)
+    unrestricted = ModelRulingRegisterPolicy(
+        max_reading_age_seconds=600, rows=(the_row,)
+    )
+    assert unrestricted.allowed_commands is None
+
+
 # ---- the CLI -------------------------------------------------------------------------------------
 
 
@@ -321,7 +465,8 @@ def cli_row(row_id: str, code: str, expect: dict[str, object]) -> dict[str, obje
         "read": {
             "host": "local",
             "argv": [sys.executable, "-c", code],
-            "ok_exit_codes": [0],
+            # exit_zero must name the nonzero code that reads FALSE.
+            "ok_exit_codes": [0, 1] if expect["kind"] == "exit_zero" else [0],
             "expect": expect,
         },
         "owner": "example-lane",
@@ -497,3 +642,28 @@ def test_failing_control_a_refused_read_is_never_true(
     assert main([], environ=env, clock=lambda: NOW) == 1
     (line,) = capsys.readouterr().out.splitlines()
     assert line.startswith("MISSING ruling-not-running:row-equals | ")
+
+
+def test_failing_control_an_accepted_nonzero_exit_judges_false_not_unread() -> None:
+    """This fails if the row names no nonzero ok code: an exit-1 read was UNREAD
+    then and the row could never print its fix. With (0, 1) the same read is an
+    answer, status OK, and the judge reads FALSE, not UNREAD."""
+    port = CommandRulingReadPort(
+        route(), runner=lambda _argv, _timeout_seconds: (1, ""), clock=lambda: NOW
+    )
+    the_row = row("row-one", argv=("failing-command",))
+    assert the_row.read.ok_exit_codes == (0, 1)
+    one = port.read(the_row)
+    assert one.status is EnumReadStatus.OK
+    assert one.exit_code == 1
+    judged_result = HandlerRulingRegister().handle(
+        ModelRulingRegisterRequest(
+            correlation_id="read-1",
+            now=NOW,
+            policy=policy(the_row),
+            readings=(one,),
+        )
+    )
+    assert judged_result.verdicts[0].verdict is EnumRulingVerdict.FALSE
+    assert judged_result.verdicts[0].detail == "exit 1"
+    assert judged_result.false_count == 1
