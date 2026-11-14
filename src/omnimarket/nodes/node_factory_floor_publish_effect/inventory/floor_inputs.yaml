@@ -279,6 +279,34 @@ inputs:
     producer: node_floor_delegation_effect itself (the routes stage writes the delegations per hour by route between cycles)
     replacement: {node: node_floor_delegation_effect, topic: onex.snapshot.projection.delegation-route-reads.v1, status: new}
     ticket: OMN-23381
+  - id: delegation_history_projection_read
+    order: 20
+    class: ssh
+    where: the lab projection's delegation_events (attempts, accepted, timeouts, cost and run latency per hour, grouped server side) by psql over ssh and docker exec in one read only transaction
+    read_by: [node_floor_delegation_history_effect]
+    steps: [delegation_history]
+    producer: node_projection_delegation (the table), read by the delegation_history step
+    replacement: {node: node_projection_delegation, topic: onex.snapshot.projection.delegation-history-counts.v1, status: new}
+    ticket: NEED-CHILD-TICKET:floor-delegation-history-projection
+  - id: delegation_history_experiment_reports
+    order: 20
+    class: ssh
+    where: the experiment reports of each lab host the overlay lists (stamped exp-*.md files and exp-*/result.md under the host's reports directory), listed over ssh
+    read_by: [node_floor_delegation_history_effect]
+    steps: [delegation_history]
+    producer: the lab experiment lanes, which write one report per experiment
+    replacement: {node: node_floor_delegation_history_effect, topic: onex.snapshot.projection.delegation-experiments.v1, status: new}
+    ticket: NEED-CHILD-TICKET:floor-delegation-history-projection
+    notes: Each report's result table is imported as the report wrote it; a report only as prose has no table and is named in the document's sources.
+  - id: delegation_history_output
+    order: 20
+    class: own_state
+    where: .claude_scratch/factory-floor/delegation-history.json
+    read_by: [node_factory_floor_publish_effect]
+    steps: [delegation_history, publish]
+    producer: node_floor_delegation_history_effect itself (kept between cycles; the previous file stays when the projection cannot be read)
+    replacement: {node: node_floor_delegation_history_effect, topic: onex.snapshot.projection.delegation-history.v1, status: new}
+    ticket: NEED-CHILD-TICKET:floor-delegation-history-projection
   - id: beta_board_reads
     order: 21
     class: file

@@ -25,6 +25,10 @@ import uuid
 from pathlib import Path
 from typing import Protocol
 
+from omnibase_core.enums.enum_delegation_traffic_class import (
+    EnumDelegationTrafficClass,
+)
+
 from omnimarket.config.service_endpoints import service_endpoint_url
 from omnimarket.models.model_delegated_code_edit import (
     ModelCodeEditResult,
@@ -157,7 +161,11 @@ class LocalShellLabWorkExecutor:
             max_turns=draft.max_turns,
             caller_lane=draft.caller_lane,
             ticket=draft.ticket,
-            traffic_class=draft.traffic_class,
+            traffic_class=(
+                draft.traffic_class
+                if draft.traffic_class is not None
+                else EnumDelegationTrafficClass.UNCLASSIFIED
+            ),
             source_surface=draft.source_surface,
         )
         request_file = self._root / "requests" / f"{request.work_unit_id}.json"

@@ -4093,6 +4093,7 @@
         "node_beacon_trace_capture_effect",
         "node_capture_silence_watch_effect",
         "node_context_compaction_orchestrator",
+        "node_hook_lane_trace_compute",
         "node_projection_claude_hook_events",
         "node_projection_freshness_alert_effect",
         "service:omnimarket_projection_migration_runner"
@@ -10277,6 +10278,7 @@
       "producer": "node_projection_session_content",
       "readers": [
         "node_context_compaction_orchestrator",
+        "node_hook_lane_trace_compute",
         "node_session_context_sources_effect",
         "node_transcript_read_effect"
       ],

@@ -22,8 +22,16 @@
 # no arm in place sends mergePullRequest at the expected head instead of
 # enablePullRequestAutoMerge, which GitHub refuses on such a PR ("Pull request
 # is in clean status"). A green, mergeable PR is merged, not left unarmed.
+#
+# 1.4.0 (OMN-23777): an arm, enqueue, update-branch or disarm is sent with the
+# writer App's repository-scoped installation token (pull request write and
+# contents write), minted through node_github_git_credential_effect's minter,
+# and is refused before any request with landing_identity_not_app when no App
+# token can be had (a personal token is never a fallback) or with
+# minted_permissions_insufficient when the minted grant lacks either write or is
+# not narrowed to the one repository. Reads and re-runs keep GITHUB_TOKEN.
 name: node_pr_landing_github_effect
-contract_version: {major: 1, minor: 3, patch: 0}
+contract_version: {major: 1, minor: 4, patch: 0}
 node_type: EFFECT_GENERIC
 node_version: {major: 1, minor: 0, patch: 0}
 
@@ -41,7 +49,10 @@ description: >
   and a call is refused with the typed reason quota_floor when the last
   reading for its resource is under the declared floor. The one merge it
   makes is an arm's, of a PR GitHub reports mergeable now (it refuses to arm
-  one), at the expected head.
+  one), at the expected head. Arm, enqueue, update-branch and disarm are sent
+  as the writer App (a repository-scoped installation token with pull request
+  and contents write) and are refused before any request when that identity
+  cannot be had.
 
 input_model:
   name: ModelPrLandingGithubRequest
@@ -104,8 +115,19 @@ secrets:
   # The same contract-declared ref node_ci_rerun_effect and
   # node_merge_sweep_auto_merge_arm_effect use. No other credential.
   GITHUB_TOKEN:
-    description: "GitHub PAT or Actions token for API calls (REST + GraphQL)."
+    description: "GitHub token for the effect's reads and re-runs (REST + GraphQL). Never used for an arm, enqueue, update-branch or disarm (OMN-23777)."
     required: true
+  # The writer App, the same refs node_github_git_credential_effect declares
+  # (OMN-22613): the landing mutations are sent with its installation token.
+  ONEXBOT_OCC_APP_ID:
+    description: "Writer GitHub App id."
+    required: true
+  ONEXBOT_OCC_PRIVATE_KEY:
+    description: "Writer App signing key; never logged."
+    required: true
+  ONEXBOT_OCC_INSTALLATION_ID:
+    description: "Optional writer installation id; absent means discover the installation on the repository's owner."
+    required: false
 
 event_bus:
   version:
