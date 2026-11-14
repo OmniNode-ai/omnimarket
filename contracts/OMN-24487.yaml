@@ -17,7 +17,7 @@ requirements:
     statement: "AC3: integrated: on a lab host the code edit route runs one small task from its branch with no overlay refusal -- falsifier: delegation_step.py code --glm last on h051 shows engine code_edit with status ok, not status failed with \"is invalid for node_delegated_code_edit_orchestrator\""
 evidence_requirements:
 - kind: tests
-  description: The loop overlay reader tests at the pushed head; three of the seven fail against the model before this change.
+  description: The loop overlay reader tests at the pushed head; three of the eight fail against the model before this change.
   command: uv run pytest tests/handlers/test_code_edit_loop_overlay.py -q -n 0 --no-cov -p no:cacheprovider
 emergency_bypass:
   enabled: false
@@ -25,13 +25,22 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn24487-ac1
-  description: 'AC1: the shared-file tests pass with the change; against the model before it three of the seven fail (the shared file is refused on event_bus).'
+  description: 'AC1: the shared-file tests pass with the change; against the model before it three of the eight fail (the shared file is refused on event_bus).'
   source: manual
   binds_ac:
   - AC1
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/handlers/test_code_edit_loop_overlay.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24487-ac2
+  description: 'AC2 seam: the three limits the overlays file carries equal the request model defaults the loop used with no file; the overlays repository holds the file and its own test (tests/test_code_edit_loop_overlay.py there).'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/handlers/test_code_edit_loop_overlay.py -q -n 0 --no-cov -p no:cacheprovider -k deployed_limits
     cwd: .
 - id: dod-omn24487-integration-proof
   description: 'AC3 lab proxy: the loop overlay tests run on a lab host at the pushed head; the delegation step code route on h051 and h053 from the branch is read in the pull request comment and is not claimed by this local check'

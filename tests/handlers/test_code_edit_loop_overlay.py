@@ -122,3 +122,21 @@ def test_invalid_event_bus_refuses(
     with pytest.raises(NodeOverlayError) as caught:
         load_code_edit_loop_overlay()
     assert "event_bus" in str(caught.value)
+
+
+def test_deployed_limits_equal_the_request_defaults() -> None:
+    """Seam with the overlays repository: its file carries the loop's own defaults, so behaviour is unchanged.
+
+    overlays/node_delegated_code_edit_orchestrator/overlay.yaml (overlays repository, OMN-24487) names max_turns 20,
+    check_timeout_seconds 300 and max_no_change_finishes 2. They are the defaults the loop used with no overlay file:
+    when a default moves, this fails and names the overlay value to move with it.
+    """
+    from omnimarket.models.model_delegated_code_edit import (
+        ModelDeclaredCheck,
+        ModelDelegatedCodeEditRequest,
+    )
+
+    request_fields = ModelDelegatedCodeEditRequest.model_fields
+    assert request_fields["max_turns"].default == 20
+    assert request_fields["max_no_change_finishes"].default == 2
+    assert ModelDeclaredCheck.model_fields["timeout_seconds"].default == 300
