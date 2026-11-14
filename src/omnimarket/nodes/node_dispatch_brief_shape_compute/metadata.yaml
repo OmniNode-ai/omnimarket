@@ -3,10 +3,11 @@
 name: node_dispatch_brief_shape_compute
 version: 1.0.0
 description: Refuse a remote lane before placement when its brief asks a lab lane
-  to mint a ticket, pastes the standing rules block with no task of its own, or names
-  a pf-drive driver lane with no PR target. Also refuses code destinations in frozen
-  repositories using the brief_destinations overlay and exposes check_destinations
-  through the declared bus route for brief-check callers.
+  to mint a ticket, pastes the standing rules block with no task of its own, names a
+  pf-drive driver lane with no PR target, or waits for a gate that does not read
+  pass. Also refuses code destinations in frozen repositories using the
+  brief_destinations overlay and exposes check_destinations through the declared bus
+  route for brief-check callers.
 pack: distributed_validation
 node_role: compute
 display_name: Dispatch Brief Shape Compute
