@@ -223,10 +223,18 @@ class HandlerDodVerify:
                         execution_audience=execution_audience,
                     )
                 else:
+                    # OMN-23771: only passed when set, so a stub collector that
+                    # predates the argument is called as it always was.
+                    full_contract = (
+                        {"full_contract_path": command.full_contract_path}
+                        if command.full_contract_path is not None
+                        else {}
+                    )
                     evidence_results = collector.collect(
                         ticket_id=command.ticket_id,
                         contract_path=command.contract_path,
                         execution_audience=execution_audience,
+                        **full_contract,
                     )
                 # ``getattr`` because ``_make_collector`` is the documented seam a
                 # dozen suites replace with a stub; a stub that never derived

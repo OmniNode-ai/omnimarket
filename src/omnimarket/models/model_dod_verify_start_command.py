@@ -40,6 +40,14 @@ class ModelDodVerifyStartCommand(BaseModel):
     contract_path: str | None = Field(
         default=None, description="Override path to contract YAML."
     )
+    # OMN-23771: the complete head contract. The hosted workflow passes dod-verify a
+    # scoped copy as ``contract_path``; the standard-ticket rules read the whole
+    # contract from here, and the scoped copy is still what the checks run from.
+    full_contract_path: str | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description="Path to the complete head contract YAML; needs contract_path.",
+    )
     dry_run: bool = Field(default=False)
     execution_audience: EnumDodVerifyExecutionAudience | None = Field(
         default=None,
@@ -113,6 +121,10 @@ class ModelDodVerifyStartCommand(BaseModel):
         if has_goal:
             if self.contract_path is not None:
                 raise ValueError("goal-scoped verification cannot set contract_path")
+            if self.full_contract_path is not None:
+                raise ValueError(
+                    "goal-scoped verification cannot set full_contract_path"
+                )
             if not self.dod_evidence:
                 raise ValueError("goal-scoped verification requires dod_evidence")
             if self.contract_revision is None:
@@ -133,6 +145,8 @@ class ModelDodVerifyStartCommand(BaseModel):
                     )
             return self
 
+        if self.full_contract_path is not None and self.contract_path is None:
+            raise ValueError("full_contract_path requires contract_path")
         if (
             self.dod_evidence
             or self.parent_goal_id

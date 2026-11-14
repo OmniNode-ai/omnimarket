@@ -70,6 +70,13 @@ inputs:
     type: str
     description: "Override path to contract YAML"
     required: false
+  full_contract_path:
+    type: str
+    description: >-
+      Path to the complete head contract YAML (OMN-23771). The standard-ticket
+      rules read it when contract_path is a scoped copy; the checks still run
+      from contract_path. Requires contract_path.
+    required: false
   dry_run:
     type: bool
     description: >-
