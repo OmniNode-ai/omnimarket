@@ -37,8 +37,11 @@ def _format_until(until: datetime) -> str:
     return stamp.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _lanes_text(running: int | None) -> str:
-    return "lane count unreadable" if running is None else f"{running} lane(s) running"
+def _lanes_text(running: int | None, scope: str) -> str:
+    """The lane count and where it was read: a count read on one machine is never the whole lab's."""
+    if running is None:
+        return "lane count unreadable"
+    return f"{running} lane(s) running ({scope})"
 
 
 class HandlerHostDrain:
@@ -189,7 +192,7 @@ class HandlerHostDrain:
     ) -> str:
         """Whether the host is safe to power down, in one line. An unreadable count is never safe."""
         if not draining:
-            return f"{host} not draining: {_lanes_text(running)}"
+            return f"{host} not draining: {_lanes_text(running, self._settings.lane_count_scope)}"
         when = "unknown" if until is None else _format_until(until)
         if running is None:
             return (
@@ -198,7 +201,7 @@ class HandlerHostDrain:
             )
         safety = "SAFE" if running == 0 else "NOT SAFE"
         return (
-            f"{host} draining until {when}: {running} lane(s) running: "
+            f"{host} draining until {when}: {_lanes_text(running, self._settings.lane_count_scope)}: "
             f"{safety} to power down"
         )
 

@@ -66,7 +66,7 @@ def test_draining_with_lanes_running_is_not_safe(
     assert result.drained is False
     assert result.status_line == (
         "example-host-a draining until "
-        f"{_expected_until(overlay)}: 2 lane(s) running: NOT SAFE to power down"
+        f"{_expected_until(overlay)}: 2 lane(s) running ({overlay.drain.lane_count_scope}): NOT SAFE to power down"
     )
 
 
@@ -84,7 +84,7 @@ def test_draining_with_no_lane_running_is_safe(
     assert result.drained is True
     assert result.status_line == (
         "example-host-b draining until "
-        f"{_expected_until(overlay)}: 0 lane(s) running: SAFE to power down"
+        f"{_expected_until(overlay)}: 0 lane(s) running ({overlay.drain.lane_count_scope}): SAFE to power down"
     )
 
 
@@ -117,11 +117,17 @@ def test_a_not_draining_host_says_so_with_its_lane_count(
     )
     assert status.draining is False
     assert status.until is None
-    assert status.status_line == "example-host-a not draining: 2 lane(s) running"
+    assert (
+        status.status_line
+        == f"example-host-a not draining: 2 lane(s) running ({overlay.drain.lane_count_scope})"
+    )
     cleared = handler.handle(
         ModelHostDrainRequest(op=EnumDrainOp.UNDRAIN, host_name="example-host-a")
     )
-    assert cleared.status_line == "example-host-a not draining: 2 lane(s) running"
+    assert (
+        cleared.status_line
+        == f"example-host-a not draining: 2 lane(s) running ({overlay.drain.lane_count_scope})"
+    )
 
 
 def test_a_not_draining_host_with_an_unreadable_count_says_so(

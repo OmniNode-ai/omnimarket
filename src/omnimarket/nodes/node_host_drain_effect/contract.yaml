@@ -11,7 +11,9 @@ description: >
   A host leaves placement by a command, not by a data pull request (rebuild plan 7.4, piece 2, OMN-22905).
   The drain verb sets one host draining in the drain store and reads it back: the lab placement judge refuses
   every new unit for a draining host, running lanes are counted and left to finish, and the host reads drained
-  when the count is 0. The idle-only runner stop first sets the runner's host draining and reads it back, so no start is admitted
+  when the count is 0. The lane count is read either from the remote-lane runner's own receipts or from an argv
+  that prints it, whichever the overlay's lanes block names, and an unreadable count is never a measured zero.
+  The idle-only runner stop first sets the runner's host draining and reads it back, so no start is admitted
   while it reads and acts, then stops a runner only when its process table shows no worker process; a busy or
   unreadable runner is refused and nothing is stopped, and the host returns to the state it had unless the runner
   stopped. Each command is one chain on the

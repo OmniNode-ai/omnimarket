@@ -4,8 +4,10 @@
 
 The drain verb's ``draining`` list rides the placement request as ``draining_hosts``, next to the
 usage marks: a host named there is refused for either engine, on every rung of the ladder, until it
-is undrained, and a pin to it names a draining host and not a place to run. A request that names
-none is an old producer's and places as before.
+is undrained, and a pin to it names a draining host and not a place to run. The handler also reads
+the drain state itself at every placement and adds a request's own ``draining_hosts`` to it; a
+drain state that cannot be read refuses the placement, never reads as no host draining. A request
+that names none is an old producer's and places as before.
 """
 
 from __future__ import annotations
@@ -102,3 +104,70 @@ def test_a_pin_to_a_draining_host_is_refused(engine: str) -> None:
     reasons = {v.host: v.reason for v in result.verdicts}
     assert reasons["A"].startswith("draining")
     assert reasons["B"] == "not-pinned"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("engine", ["claude_sonnet", "codex"])
+def test_the_handler_reads_the_drain_state_itself(engine: str) -> None:
+    """A request naming no draining host is kept off one the handler's own read names."""
+    result = HandlerRemoteLanePlacement(draining_hosts=lambda: ("A",)).handle(
+        ModelRemoteLanePlacementRequest(engine=engine, readings=_two_readings())
+    )
+    assert result.outcome == EnumRemoteLaneOutcome.ADMITTED
+    assert result.host == "B"
+    reasons = {v.host: v.reason for v in result.verdicts}
+    assert reasons["A"].startswith("draining")
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("engine", ["claude_sonnet", "codex"])
+def test_an_unreadable_drain_state_refuses_the_placement(engine: str) -> None:
+    """A drain state that cannot be read is not an empty one: the placement is refused."""
+
+    def broken() -> tuple[str, ...]:
+        raise OSError("the drain journal cannot be read")
+
+    result = HandlerRemoteLanePlacement(draining_hosts=broken).handle(
+        ModelRemoteLanePlacementRequest(engine=engine, readings=_two_readings())
+    )
+    assert result.host is None
+    assert result.outcome == EnumRemoteLaneOutcome.NO_HOST
+    assert result.refusal is not None
+    assert result.refusal.startswith("drain-state-unreadable")
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("engine", ["claude_sonnet", "codex"])
+def test_the_request_and_the_read_state_are_unioned(engine: str) -> None:
+    """Both the request's own ``draining_hosts`` and the handler's read keep their hosts off."""
+    result = HandlerRemoteLanePlacement(draining_hosts=lambda: ("A",)).handle(
+        ModelRemoteLanePlacementRequest(
+            engine=engine,
+            draining_hosts=("B",),
+            readings=_two_readings(),
+        )
+    )
+    assert result.host is None
+    assert result.outcome == EnumRemoteLaneOutcome.NO_HOST
+    reasons = {v.host: v.reason for v in result.verdicts}
+    assert reasons["A"].startswith("draining")
+    assert reasons["B"].startswith("draining")
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("engine", ["claude_sonnet", "codex"])
+def test_with_a_read_naming_nothing_only_the_request_refuses(engine: str) -> None:
+    """Failing control: the same request with a handler reading no drain keeps A eligible.
+
+    On the code before the change the handler read no drain state at all, so the union was the
+    request's alone and this is exactly what it did.
+    """
+    result = HandlerRemoteLanePlacement(draining_hosts=lambda: ()).handle(
+        ModelRemoteLanePlacementRequest(
+            engine=engine,
+            draining_hosts=("B",),
+            readings=_two_readings(),
+        )
+    )
+    assert result.outcome == EnumRemoteLaneOutcome.ADMITTED
+    assert result.host == "A"

@@ -41,6 +41,7 @@ from omnimarket.nodes.node_host_drain_effect.adapters.runner_ports import (
     CommandWorkerProbe,
     CommandWorkerStopper,
     ProcWorkerProbe,
+    ReceiptLaneSource,
 )
 from omnimarket.nodes.node_host_drain_effect.adapters.stores import (
     InMemoryDrainStore,
@@ -191,10 +192,16 @@ def run(
         )
         _print(stopped)
         return 0 if stopped.outcome is EnumRunnerStopOutcome.STOPPED else 1
+    # The lane count is read from the runner's receipts or one argv, whichever the lanes block names.
+    lanes = (
+        ReceiptLaneSource(Path(overlay.lanes.receipts_dir).expanduser())
+        if overlay.lanes.receipts_dir is not None
+        else CommandLaneSource(overlay.lanes)
+    )
     drain = HandlerHostDrain(
         overlay.drain,
         store=store,
-        lanes=CommandLaneSource(overlay.lanes),
+        lanes=lanes,
         sink=sink,
         clock=clock,
         backend=backend,

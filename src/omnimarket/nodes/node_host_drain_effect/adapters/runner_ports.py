@@ -1,9 +1,11 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Real ports of the runner stop and the lane count: a process-table probe, an argv stop and an argv lane count."""
+"""Real ports of the runner stop and the lane count: a process-table probe, an argv stop, an argv lane count and a receipts lane count."""
 
 from __future__ import annotations
 
+import json
+import os
 import subprocess
 from collections.abc import Callable, Mapping
 from pathlib import Path
@@ -169,6 +171,8 @@ class CommandLaneSource:
         self._run = run
 
     def running(self, host_name: str) -> int:
+        if self._settings.count_command is None:
+            raise ValueError("the lanes block declares no count_command")
         argv = [
             part.replace("{host}", host_name) for part in self._settings.count_command
         ]
@@ -180,3 +184,47 @@ class CommandLaneSource:
             check=True,
         )
         return int(done.stdout.strip())
+
+
+class ReceiptLaneSource:
+    """Counts a host's running lanes from the remote-lane runner's own receipts.
+
+    Reads ``<directory>/<lane>/<receipt>.json``. A receipt counts when it names the host, is not final, is preparing
+    or running, and its ``pid``, when it has one, is alive. A receipt that does not parse is skipped; a directory
+    that cannot be listed raises OSError: an unreadable count is never a measured zero.
+    """
+
+    def __init__(self, directory: Path) -> None:
+        self._directory = directory
+
+    @staticmethod
+    def _pid_alive(pid: int) -> bool:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        return True
+
+    def running(self, host_name: str) -> int:
+        # The listing itself is the read: a missing or unreadable directory raises, it never reads as zero.
+        lane_dirs = [entry for entry in self._directory.iterdir() if entry.is_dir()]
+        count = 0
+        for lane_dir in lane_dirs:
+            for receipt in lane_dir.glob("*.json"):
+                try:
+                    data = json.loads(receipt.read_text(encoding="utf-8"))
+                    if not isinstance(data, dict):
+                        continue
+                    if (
+                        data.get("host") == host_name
+                        and not data.get("final")
+                        and data.get("status") in ("preparing", "running")
+                        and (not data.get("pid") or self._pid_alive(int(data["pid"])))
+                    ):
+                        count += 1
+                except (OSError, ValueError, TypeError):
+                    # A receipt that cannot be read or parsed holds no evidence of a lane.
+                    continue
+        return count

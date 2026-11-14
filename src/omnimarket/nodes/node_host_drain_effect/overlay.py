@@ -57,6 +57,9 @@ class ModelDrainSettings(_Frozen):
     chain_node: str = Field(min_length=1)
     #: The hosts a drain command may name; any other host is refused with a typed failure.
     hosts: tuple[str, ...] = Field(min_length=1)
+    #: Said in every status line beside the lane count: where the count is read from, so a count read on one machine is
+    #: never taken for the whole lab.
+    lane_count_scope: str = Field(min_length=1)
     #: How long a drain mark lasts when the command names no ttl, in seconds: a mark is time-bounded.
     default_ttl_seconds: int = Field(ge=1)
     #: The longest ttl a drain command may ask for, in seconds; above it the drain is refused.
@@ -125,9 +128,27 @@ class ModelRunnerStopSettings(_Frozen):
 
 
 class ModelLaneCountSettings(_Frozen):
+    """How the drain counts a host's running lanes: the runner's receipts or one argv.
+
+    ``receipts_dir`` names the remote-lane runner's receipt directory (``<dir>/<lane>/<receipt>.json``);
+    ``count_command`` is an argv that prints the count for ``{host}`` as one integer. Exactly one of the two is
+    declared.
+    """
+
     #: argv that prints the count of lanes running on {host} as one integer. No shell.
-    count_command: tuple[str, ...] = Field(min_length=1)
+    count_command: tuple[str, ...] | None = None
+    #: The remote-lane runner's receipt directory; the runtime expands "~". Set this or count_command.
+    receipts_dir: str | None = None
+    #: How long the count command may run; the receipts read needs no timeout.
     timeout_seconds: int = Field(ge=1)
+
+    @model_validator(mode="after")
+    def _exactly_one_lane_source(self) -> ModelLaneCountSettings:
+        if (self.count_command is None) == (self.receipts_dir is None):
+            raise ValueError(
+                "exactly one of count_command and receipts_dir is required"
+            )
+        return self
 
 
 class ModelEmissionSettings(_Frozen):

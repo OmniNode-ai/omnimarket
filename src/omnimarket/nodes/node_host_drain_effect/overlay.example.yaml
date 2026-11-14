@@ -8,6 +8,7 @@ drain:
   piece: 2
   chain_node: "node_host_drain_effect:drain"
   hosts: [example-host-a, example-host-b]
+  lane_count_scope: counted from this machine's lane receipts
   default_ttl_seconds: 14400
   max_ttl_seconds: 172800
   codes:
