@@ -1,0 +1,480 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Proof record of the agent review fallback. Read by tests/unit/test_agent_review_proof_record.py.
+record: 'Agent review fallback: end-to-end proof record'
+summary: 'Status phase-1-lab-integration. The fallback is built in four parts and this record is the first time the parts
+  ran together. Every observation was made on the lab, in lab-integration mode, against the exact heads of the two open omnimarket
+  pull requests (gate-accept, dispatch) merged locally onto the default branch. None of the six is live yet, because the base
+  branch lacks both nodes, the dispatch node ships no production port binding, and the review-post verb is not deployed; each
+  case carries live_rerun_pending: true and the live_rerun section lists the exact steps that flip them. The record-shape
+  test accepts that state only while status is the phase-1 status. A final record has no pending case, every observation live
+  with a check-run id, and a tag the lab runs for every unit. The record is evidence and carries no behaviour; where a case
+  could not be observed it says so and does not claim it.'
+status: phase-1-lab-integration
+units:
+- name: gate-accept node and workflow step (omnimarket pull request 4913)
+  sha: 94f2e69c8124466663df0bc04a795346b3fe602f
+  state: open, red
+  tag: null
+- name: agent review dispatch node (omnimarket pull request 4946)
+  sha: 6e20234d70096da95ee170c01ddeb519d291036f
+  state: open, red
+  tag: null
+- name: agent receipt verifier (omniintelligence pull request 1203, merged)
+  sha: 6223ff64e763ddd8366bc6dfde2549c27187e252
+  tag: dev-20261102223451-6223ff64e763
+- name: roster overlay with the review identity (internal configuration repository pull request 1371, merged)
+  sha: acf3ce5d1d03f7275319de1da8d18053413585d6
+integration:
+  base_dev_sha: 7b42a4c63edce1211577a366672c1b73050328a5
+  merge_head_sha: 4ef88943151ec1a0001667d440706af9ddd60d0e
+  pushed: false
+  conflicts: none; both heads merged onto dev cleanly
+scratch_pull_request:
+  repository: OmniNode-ai/omnimarket
+  number: 4954
+  first_head: 7ec3fca81f771df8ecfd50dee5391471493d2552
+  second_head: ec09032e9ba15974f259d061e1fd8f0d19f6ddbe
+  state: draft; closed unmerged at 2026-11-03T06:51:59Z by the source-control node (PATCH answered 200); never marked ready,
+    armed or merged; the head branch remains on the remote
+simulated_outage:
+  kind: stub of the review gateway answering 503 with the typed credit reason, built with the gateway handler's own error
+    constructor
+  calls:
+  - at: '2026-11-03T06:48:24Z'
+    status: 503
+  - at: '2026-11-03T06:48:24Z'
+    status: 503
+  real_gateway_touched: false
+  keys_touched: false
+baseline_no_receipt:
+  observed_at: '2026-11-03T06:48:32Z'
+  head_sha: 7ec3fca81f771df8ecfd50dee5391471493d2552
+  summary_line: 'Hostile review gate accept: decision=unchanged reason=no_receipt_review; unsuccessful voters: review-voter-sonnet=credit_exhausted,
+    review-voter-opus=credit_exhausted'
+  required_names:
+    Hostile Reviewer (adversarial gate): red
+    Hostile Review Gate: red
+positive_control:
+  observed_at: '2026-11-03T06:49:26Z'
+  head_sha: 7ec3fca81f771df8ecfd50dee5391471493d2552
+  summary_line: 'Hostile review gate accept: decision=pass_agent reason=receipt_accepted source=agent receipt=fd1b3fa6-c72a-4f37-8017-6a15fcd7f334;
+    unsuccessful voters: review-voter-sonnet=credit_exhausted, review-voter-opus=credit_exhausted'
+  required_names:
+    Hostile Reviewer (adversarial gate): green
+    Hostile Review Gate: green
+live_baseline:
+  note: 'the one live observation: today''s default-branch workflow, which has no accept step, on the scratch draft under
+    the real gateway outage'
+  head_sha: ec09032e9ba15974f259d061e1fd8f0d19f6ddbe
+  hostile_reviewer_check_run_id: 125771479726
+  hostile_reviewer_conclusion: failure
+  completed_at: '2026-11-03T06:50:36Z'
+  hostile_review_gate_check_run_id: 125772006331
+  hostile_review_gate_conclusion: failure
+  gate_completed_at: '2026-11-03T06:51:50Z'
+  job_log_cause: both voters answered Server error (503) and the job ended with a required review voter that did not vote;
+    the deployed gateway reply carries no typed credit reason yet
+  read_via: onex scm commit-check-runs and onex scm job-log
+observations:
+- case: 1
+  title: the dispatch node posts one fallback review and a second dispatch of the same head posts no second receipt id
+  mode: lab-integration
+  observed_at: '2026-11-03T06:48:32Z'
+  head_sha: 7ec3fca81f771df8ecfd50dee5391471493d2552
+  units:
+  - name: agent review dispatch node (omnimarket pull request 4946)
+    sha: 6e20234d70096da95ee170c01ddeb519d291036f
+  - name: agent receipt verifier (omniintelligence pull request 1203, merged)
+    sha: 6223ff64e763ddd8366bc6dfde2549c27187e252
+    tag: dev-20261102223451-6223ff64e763
+  - name: roster overlay with the review identity (internal configuration repository pull request 1371, merged)
+    sha: acf3ce5d1d03f7275319de1da8d18053413585d6
+  - name: local integration merge of both heads onto dev (never pushed)
+    sha: 4ef88943151ec1a0001667d440706af9ddd60d0e
+  command: PROOF_PR=4954 PROOF_H1=7ec3fca81f771df8ecfd50dee5391471493d2552 PROOF_H2=ec09032e9ba15974f259d061e1fd8f0d19f6ddbe
+    <integration worktree>/.venv/bin/python lab_proof.py <observations>.json (started 2026-11-03T06:48:24Z, finished 2026-11-03T06:49:26Z)
+  live_rerun_pending: true
+  pending_reason: the dispatch node ships no production port binding, the base lacks both nodes, and the review-post verb
+    and the writer-app permission are not deployed; the live form runs after both pull requests merge and are tagged
+  result: dispatch command 1 completed with receipt id fd1b3fa6-c72a-4f37-8017-6a15fcd7f334; dispatch command 2 for the same
+    head completed with the same id; 1 review and 1 post call on the stand-in reviews list
+  receipt_ids_after_second_dispatch:
+  - fd1b3fa6-c72a-4f37-8017-6a15fcd7f334
+  receipt_reviews_on_pull_request: 1
+  ports: head, lab voters, signer, store, poster and terminal log are fixtures; the roster is the merged overlay; the voters'
+    replies are fixture reviews, not model calls
+- case: 2
+  title: after a rerun of the head's Hostile Reviewer steps the required names turn green with source=agent
+  mode: lab-integration
+  observed_at: '2026-11-03T06:48:40Z'
+  head_sha: 7ec3fca81f771df8ecfd50dee5391471493d2552
+  units:
+  - name: gate-accept node and workflow step (omnimarket pull request 4913)
+    sha: 94f2e69c8124466663df0bc04a795346b3fe602f
+  - name: agent receipt verifier (omniintelligence pull request 1203, merged)
+    sha: 6223ff64e763ddd8366bc6dfde2549c27187e252
+    tag: dev-20261102223451-6223ff64e763
+  - name: roster overlay with the review identity (internal configuration repository pull request 1371, merged)
+    sha: acf3ce5d1d03f7275319de1da8d18053413585d6
+  - name: local integration merge of both heads onto dev (never pushed)
+    sha: 4ef88943151ec1a0001667d440706af9ddd60d0e
+  command: PROOF_PR=4954 PROOF_H1=7ec3fca81f771df8ecfd50dee5391471493d2552 PROOF_H2=ec09032e9ba15974f259d061e1fd8f0d19f6ddbe
+    <integration worktree>/.venv/bin/python lab_proof.py <observations>.json (started 2026-11-03T06:48:24Z, finished 2026-11-03T06:49:26Z)
+  live_rerun_pending: true
+  pending_reason: the dispatch node ships no production port binding, the base lacks both nodes, and the review-post verb
+    and the writer-app permission are not deployed; the live form runs after both pull requests merge and are tagged
+  reran_by: the proof lane, re-running the workflow's review, accept and enforcement steps and its gate job in the harness;
+    the live path is the source-control node's run-rerun verb
+  decision: pass_agent
+  reason: receipt_accepted
+  source: agent
+  receipt_id: fd1b3fa6-c72a-4f37-8017-6a15fcd7f334
+  summary_line: 'Hostile review gate accept: decision=pass_agent reason=receipt_accepted source=agent receipt=fd1b3fa6-c72a-4f37-8017-6a15fcd7f334;
+    unsuccessful voters: review-voter-sonnet=credit_exhausted, review-voter-opus=credit_exhausted'
+  enforcement_step: skipped
+  required_names_after:
+    Hostile Reviewer (adversarial gate): green
+    Hostile Review Gate: green
+- case: 3
+  title: a push to the head voids the receipt; the new head is red until a new review
+  mode: lab-integration
+  observed_at: '2026-11-03T06:48:48Z'
+  head_sha: 7ec3fca81f771df8ecfd50dee5391471493d2552
+  units:
+  - name: gate-accept node and workflow step (omnimarket pull request 4913)
+    sha: 94f2e69c8124466663df0bc04a795346b3fe602f
+  - name: agent review dispatch node (omnimarket pull request 4946)
+    sha: 6e20234d70096da95ee170c01ddeb519d291036f
+  - name: agent receipt verifier (omniintelligence pull request 1203, merged)
+    sha: 6223ff64e763ddd8366bc6dfde2549c27187e252
+    tag: dev-20261102223451-6223ff64e763
+  - name: roster overlay with the review identity (internal configuration repository pull request 1371, merged)
+    sha: acf3ce5d1d03f7275319de1da8d18053413585d6
+  - name: local integration merge of both heads onto dev (never pushed)
+    sha: 4ef88943151ec1a0001667d440706af9ddd60d0e
+  command: PROOF_PR=4954 PROOF_H1=7ec3fca81f771df8ecfd50dee5391471493d2552 PROOF_H2=ec09032e9ba15974f259d061e1fd8f0d19f6ddbe
+    <integration worktree>/.venv/bin/python lab_proof.py <observations>.json (started 2026-11-03T06:48:24Z, finished 2026-11-03T06:49:26Z)
+  live_rerun_pending: true
+  pending_reason: the dispatch node ships no production port binding, the base lacks both nodes, and the review-post verb
+    and the writer-app permission are not deployed; the live form runs after both pull requests merge and are tagged
+  new_head_sha: ec09032e9ba15974f259d061e1fd8f0d19f6ddbe
+  push_at: '2026-11-03T06:47:19Z'
+  push_note: a real push to the scratch draft pull request; the harness ran afterwards and replays the head change in its
+    own state
+  old_receipt_void_on_new_head: true
+  old_receipt_id: fd1b3fa6-c72a-4f37-8017-6a15fcd7f334
+  new_head_decision_before_new_review: refuse head_differs
+  new_head_gate_before_new_review: red
+  new_head_required_names_before:
+    Hostile Reviewer (adversarial gate): red
+    Hostile Review Gate: red
+  new_review_dispatched_at: '2026-11-03T06:48:48Z'
+  new_receipt_id: c55639fb-97b2-41b7-aad1-c80eb1a109ac
+  new_head_observed_at_after_new_review: '2026-11-03T06:48:56Z'
+  new_head_gate_after_new_review: green
+  new_head_required_names_after:
+    Hostile Reviewer (adversarial gate): green
+    Hostile Review Gate: green
+- case: 4
+  title: an altered receipt is refused
+  mode: lab-integration
+  observed_at: '2026-11-03T06:49:04Z'
+  head_sha: 7ec3fca81f771df8ecfd50dee5391471493d2552
+  units:
+  - name: gate-accept node and workflow step (omnimarket pull request 4913)
+    sha: 94f2e69c8124466663df0bc04a795346b3fe602f
+  - name: agent receipt verifier (omniintelligence pull request 1203, merged)
+    sha: 6223ff64e763ddd8366bc6dfde2549c27187e252
+    tag: dev-20261102223451-6223ff64e763
+  - name: roster overlay with the review identity (internal configuration repository pull request 1371, merged)
+    sha: acf3ce5d1d03f7275319de1da8d18053413585d6
+  - name: local integration merge of both heads onto dev (never pushed)
+    sha: 4ef88943151ec1a0001667d440706af9ddd60d0e
+  command: PROOF_PR=4954 PROOF_H1=7ec3fca81f771df8ecfd50dee5391471493d2552 PROOF_H2=ec09032e9ba15974f259d061e1fd8f0d19f6ddbe
+    <integration worktree>/.venv/bin/python lab_proof.py <observations>.json (started 2026-11-03T06:48:24Z, finished 2026-11-03T06:49:26Z)
+  live_rerun_pending: true
+  pending_reason: the dispatch node ships no production port binding, the base lacks both nodes, and the review-post verb
+    and the writer-app permission are not deployed; the live form runs after both pull requests merge and are tagged
+  fixture: the signed receipt of the first observation with exactly one defect
+  defects:
+  - findings_count changed from 0 to 1 after signing, signature untouched
+  expected_reason: forged_signature
+  observed_reason: forged_signature
+  decision: refuse
+  summary_line: 'Hostile review gate accept: decision=refuse reason=receipt_refused refused: fd1b3fa6-c72a-4f37-8017-6a15fcd7f334=forged_signature;
+    unsuccessful voters: review-voter-sonnet=credit_exhausted, review-voter-opus=credit_exhausted'
+  gate_after: red
+  required_names_after:
+    Hostile Reviewer (adversarial gate): red
+    Hostile Review Gate: red
+- case: 5
+  title: a blocked receipt leaves the gate red
+  mode: lab-integration
+  observed_at: '2026-11-03T06:49:11Z'
+  head_sha: 7ec3fca81f771df8ecfd50dee5391471493d2552
+  units:
+  - name: gate-accept node and workflow step (omnimarket pull request 4913)
+    sha: 94f2e69c8124466663df0bc04a795346b3fe602f
+  - name: agent receipt verifier (omniintelligence pull request 1203, merged)
+    sha: 6223ff64e763ddd8366bc6dfde2549c27187e252
+    tag: dev-20261102223451-6223ff64e763
+  - name: roster overlay with the review identity (internal configuration repository pull request 1371, merged)
+    sha: acf3ce5d1d03f7275319de1da8d18053413585d6
+  - name: local integration merge of both heads onto dev (never pushed)
+    sha: 4ef88943151ec1a0001667d440706af9ddd60d0e
+  command: PROOF_PR=4954 PROOF_H1=7ec3fca81f771df8ecfd50dee5391471493d2552 PROOF_H2=ec09032e9ba15974f259d061e1fd8f0d19f6ddbe
+    <integration worktree>/.venv/bin/python lab_proof.py <observations>.json (started 2026-11-03T06:48:24Z, finished 2026-11-03T06:49:26Z)
+  live_rerun_pending: true
+  pending_reason: the dispatch node ships no production port binding, the base lacks both nodes, and the review-post verb
+    and the writer-app permission are not deployed; the live form runs after both pull requests merge and are tagged
+  fixture: the signed receipt of the first observation with exactly one defect
+  defects:
+  - quorum_verdict is blocked (validly re-signed); no other field differs
+  expected_reason: blocked_verdict
+  observed_reason: blocked_verdict
+  decision: refuse
+  summary_line: 'Hostile review gate accept: decision=refuse reason=receipt_refused refused: fd1b3fa6-c72a-4f37-8017-6a15fcd7f334=blocked_verdict;
+    unsuccessful voters: review-voter-sonnet=credit_exhausted, review-voter-opus=credit_exhausted'
+  gate_after: red
+  required_names_after:
+    Hostile Reviewer (adversarial gate): red
+    Hostile Review Gate: red
+- case: 6
+  title: a receipt for another head is refused
+  mode: lab-integration
+  observed_at: '2026-11-03T06:49:18Z'
+  head_sha: 7ec3fca81f771df8ecfd50dee5391471493d2552
+  units:
+  - name: gate-accept node and workflow step (omnimarket pull request 4913)
+    sha: 94f2e69c8124466663df0bc04a795346b3fe602f
+  - name: agent receipt verifier (omniintelligence pull request 1203, merged)
+    sha: 6223ff64e763ddd8366bc6dfde2549c27187e252
+    tag: dev-20261102223451-6223ff64e763
+  - name: roster overlay with the review identity (internal configuration repository pull request 1371, merged)
+    sha: acf3ce5d1d03f7275319de1da8d18053413585d6
+  - name: local integration merge of both heads onto dev (never pushed)
+    sha: 4ef88943151ec1a0001667d440706af9ddd60d0e
+  command: PROOF_PR=4954 PROOF_H1=7ec3fca81f771df8ecfd50dee5391471493d2552 PROOF_H2=ec09032e9ba15974f259d061e1fd8f0d19f6ddbe
+    <integration worktree>/.venv/bin/python lab_proof.py <observations>.json (started 2026-11-03T06:48:24Z, finished 2026-11-03T06:49:26Z)
+  live_rerun_pending: true
+  pending_reason: the dispatch node ships no production port binding, the base lacks both nodes, and the review-post verb
+    and the writer-app permission are not deployed; the live form runs after both pull requests merge and are tagged
+  fixture: the signed receipt of the first observation with exactly one defect
+  defects:
+  - head_sha names the other head (validly re-signed); no other field differs
+  expected_reason: head_differs
+  observed_reason: head_differs
+  decision: refuse
+  summary_line: 'Hostile review gate accept: decision=refuse reason=receipt_refused refused: fd1b3fa6-c72a-4f37-8017-6a15fcd7f334=head_differs;
+    unsuccessful voters: review-voter-sonnet=credit_exhausted, review-voter-opus=credit_exhausted'
+  gate_after: red
+  required_names_after:
+    Hostile Reviewer (adversarial gate): red
+    Hostile Review Gate: red
+required_rules:
+  omnimarket:
+    read_at: '2026-11-03T06:33:40Z'
+    read_via: the source-control node read (`onex scm branch-protection OmniNode-ai/omnimarket`, outcome completed at 2026-11-03T06:39:31Z,
+      required_approving_review_count null) and the repository settings read of the pull request watcher (`pr_state_local.py
+      --settings OmniNode-ai/omnimarket`), which supplies the contexts
+    required_reviews: 0
+    enforce_admins: true
+    rule_contexts_from_rulesets:
+    - repo-evidence / dod-verify
+    contexts:
+    - Architectural Compliance Lint
+    - CI Naming Convention
+    - CI Summary
+    - Canonical Inference Gate
+    - Customer Path Boundary
+    - Dep Provenance Gate
+    - Ecosystem Integration Validation
+    - Enforce validator-requirements.yaml
+    - Hostile Review Gate
+    - Hostile Reviewer (adversarial gate)
+    - JS Toolchain Hermetic
+    - Leaked Literals Gate
+    - Legacy Compatibility Check
+    - No Faked Boundary Gate
+    - Omni Standards Gate
+    - PR Arch Review Gate
+    - Precommit Fail-Loud Gate
+    - Projection Exposure Drift Gate
+    - Repository Structure Validation
+    - Resolve Bot Token
+    - Stale TODO Gate
+    - URL Authority Gate
+    - Wire Compatibility Gate
+    - call / validate-docs
+    - dispatcher-route-coverage
+    - imperative-contract-guard / Imperative Contract Guard
+    - main-target-guard
+    - non-dev-base-guard
+    - pr-title / check-title
+    - required-check-skip-guard / check-skip-vectors
+    - state-coverage-gate
+    hostile_review_contexts:
+    - Hostile Review Gate
+    - Hostile Reviewer (adversarial gate)
+  omniclaude:
+    read_at: '2026-11-03T06:10:00Z'
+    read_via: the source-control node read (`onex scm branch-protection OmniNode-ai/omniclaude`, outcome completed at 2026-11-03T06:39:35Z,
+      required_approving_review_count null) and the repository settings read of the pull request watcher (`pr_state_local.py
+      --settings OmniNode-ai/omniclaude`), which supplies the contexts
+    required_reviews: 0
+    enforce_admins: true
+    rule_contexts_from_rulesets: []
+    contexts:
+    - AI-Slop Pattern Check (strict
+    - PR diff)
+    - Agent Contract Validation
+    - Aislop Sweep
+    - 'Arch: ModelCostLedger confined to effects (check 5)'
+    - 'Arch: ModelCostLedger run_id field + index (check 9)'
+    - 'Arch: No DB access in orchestrator/compute (checks 1 & 8)'
+    - 'Arch: No LinearClient outside effects (check 3)'
+    - 'Arch: No datetime.utcnow() (check 11)'
+    - 'Arch: No direct EventBus instantiation'
+    - 'Arch: No direct Kafka producer outside publisher (check 10)'
+    - 'Arch: No direct adapter imports in business logic (check 13)'
+    - 'Arch: No git/gh calls outside effects (check 2)'
+    - 'Arch: No hardcoded internal IPs (check 12)'
+    - 'Arch: No localhost/default env fallbacks'
+    - 'Arch: No polymorphic-agent in enforcement paths'
+    - 'Arch: No raw sqlite3.connect in handler/skill code'
+    - 'Arch: No repository adapter imports in orchestrator/compute (check 4)'
+    - 'Arch: omnidash_readonly role provisioning + CI (check 7)'
+    - 'Arch: onex.* topic naming convention (check 6)'
+    - Architecture Handshake
+    - Architecture Invariants
+    - CI Summary
+    - Canonical Inference Gate
+    - Code Quality
+    - Cross-Repo Boundary Parity
+    - Database Schema Validation
+    - Enum Governance
+    - Env Var Registry
+    - Exports Validation
+    - F5.1 No compact cmd topic
+    - Hook Edge Lane Gate
+    - Hook Inventory Gate
+    - Hostile Review Gate
+    - Kafka Import Guard
+    - Lane Identity Gate
+    - Markdown Link Check
+    - Merge-Sweep Contract
+    - Migration Freeze
+    - Mode Metadata Integrity
+    - No Faked Boundary Gate
+    - ONEX Compliance
+    - Omni Standards Gate
+    - Quality Gate
+    - Secret Detection
+    - Skill Contract Validation
+    - Skill Hygiene
+    - Skill Monorepo-Ref Gate
+    - Skip Count Ratchet
+    - Tests Gate
+    - URL Authority Gate
+    - advisory-job-gate / advisory-job-gate
+    - call-reject-skip-token / scan / reject-skip-gate-token
+    - contract-validation
+    - deploy-gate
+    - kb-doc-gate / kb-doc-gate
+    - main-target-guard
+    - no-noncanonical-lifecycle-classes
+    - non-dev-base-guard
+    - pr-title / check-title
+    - pypi-pin-resolvability
+    - reason-graph
+    - receipt-honesty
+    - required-check-skip-guard / check-skip-vectors
+    hostile_review_contexts:
+    - Hostile Review Gate
+    note: requires Hostile Review Gate only; the workflow defines the Hostile Reviewer (adversarial gate) job and the gate
+      job and carries no accept step at its default branch
+how_observed:
+- The credit outage is the setup, not an observation. A local stand-in for the review gateway answers 503 with the typed credit
+  reason; its body is built with the gateway handler's own error constructor, and the two voter results of the simulated attempt
+  carry that reply in the error text the live client produces. The real gateway, its keys and its state were not touched.
+- The accept side is the workflow's own text. The harness executes the Hostile Reviewer workflow's review, accept and enforcement
+  steps and its gate job as written, with the expressions substituted and each step's condition evaluated over the earlier
+  steps' outputs. The accept step makes a real git worktree of the integration commit and runs the real runtime_gate_accept
+  module from it, with the overlay root, token and API address the step names. Only the review step's reviewer output and
+  the network are stood in for.
+- The verifier is the merged one. The module is the verifier handler of the merged commit, served behind a local HTTP endpoint
+  that the gate-accept overlay names. The receipt key is a lab-local value that signs nothing outside this proof. The approved
+  voter identities and the forbidden provenance are the merged roster overlay's policy block, read from its default branch.
+- 'The dispatch side is the real handler on fixture ports. The handler runs with the merged roster as its configuration. Its
+  head, lab, signer, store, poster and terminal-log ports are fixtures: voter replies are fixture reviews, not model calls,
+  and the poster writes to a local stand-in for the pull request''s reviews list, which the accept side reads.'
+- Heads. The pull request under review is the scratch draft in omnimarket. Its first head is the receipt's head and its second
+  head, pushed at 2026-11-03T06:47:19Z, is the new head of observation 3. The reviews list is a stand-in; no review was posted
+  on the scratch pull request.
+- Focused tests. The 219 focused tests of the two units (gate-accept unit and golden-chain suites, dispatch unit and golden-chain
+  suites, and the two workflow tests of the accept step) passed on the integration commit at 2026-11-03T06:46:23Z.
+- Command. PROOF_PR=4954 PROOF_H1=<first head> PROOF_H2=<second head> <integration worktree>/.venv/bin/python lab_proof.py
+  <out>.json, run from the integration worktree. The harness is a scratch script that composes the units above; it is not
+  shipped.
+what_stopped_the_live_form:
+- The dispatch node as shipped has no production binding for any of its six ports, so it cannot be run through the node runner
+  against a real pull request; only its handler can, with fixtures.
+- The base branch carries neither new node. The workflow's accept step runs the node from the pull request's base commit and,
+  on a base that lacks it, skips with decision=unchanged, so cases 2 and 3 cannot be seen live before the accept pull request
+  merges.
+- 'The gate-accept overlay (agent_review_gate_accept/overlay.yaml: the publisher login and the verifier endpoint) is not in
+  the CI overlay repository''s default branch at the time of reading; the node fails closed with policy_unavailable without
+  it. The workflow''s sparse checkout already names that path.'
+- The gate-accept node asks the verifier over HTTP at the overlay's endpoint; the verifier merged as a compute node, and no
+  HTTP surface for it was found while reading.
+- The review-post verb of the source-control node is in the dispatch pull request and is not in the deployed verb list; the
+  writer-app permission to post a review as onexbot-occ-writer[bot] is untested.
+- The omniclaude workflow defines the same two job names and requires only Hostile Review Gate; it carries no accept step
+  at its default branch, so the omniclaude half of the proof has nothing to observe yet.
+- The deployed gateway's 503 carries no typed credit reason today. The accept node still treats those voters as eligible,
+  since its unavailable cause matches the 503; the live baseline shows that reply.
+required_rules_note: Both reads are under required_rules with their read times. The settings read lists the contexts; the
+  source-control node's branch-protection read confirmed both repositories answer (it reports the required approving review
+  count only, null for each). Context names are recorded without their ticket suffixes.
+live_rerun:
+  preconditions:
+  - Both omnimarket pull requests merged; git -C <omnimarket clone> tag --contains <merge commit> names a dev-<stamp>-<sha>
+    tag, and the lab's dev runtime reports that tag as running. Write each tag into the unit's tag field.
+  - 'The gate-accept overlay exists on the CI overlay repository''s default branch with the publisher login onexbot-occ-writer[bot]
+    and a verifier endpoint that answers POST (check: git -C <overlay clone> ls-tree -r --name-only origin/main | grep agent_review_gate_accept).'
+  - The dispatch node has production ports bound, and the source-control node's verb list (onex scm verbs) includes the review-post
+    verb.
+  - 'The voters fail with a credit reason on the scratch pull request: either the keys are still out of credit, or a ruling
+    allows the scratch pull request''s voters overlay to point at a stub that answers the typed 503.'
+  steps:
+  - 'Open a scratch draft in omnimarket and one in omniclaude, each from a branch off the landing branch carrying one empty
+    commit and its ticket contract file: onex scm pr-create OmniNode-ai/<repo> --lane <lane> --head <scratch branch> --base
+    <landing branch> --bus-lane dev --draft --title <scratch title> --body-file <body>. Claim each with python3 <omniclaude
+    clone>/scripts/pr_claim_registry_cli.py claim OmniNode-ai/<repo>#<n> --action pr-close.'
+  - 'Case 1: publish one dispatch command per scratch pull request (onex run-node node_agent_review_dispatch_orchestrator
+    with command_id, repo, pr, head_sha); read the terminal on the agent-review-completed event; read the reviews with onex
+    scm pr-review OmniNode-ai/<repo>#<n> and require one review by onexbot-occ-writer[bot] holding one onex-review-receipt
+    block. Publish a second command with a new command_id for the same head and require the same receipt id and still one
+    review.'
+  - 'Case 2: rerun the head''s Hostile Reviewer run by the existing path, onex scm run-rerun OmniNode-ai/<repo> --run-id <run
+    id> --lane <lane>, with the lane that holds the pull request claim; write that lane''s name into reran_by. Read onex scm
+    pr-checks OmniNode-ai/<repo>#<n> and require the repository''s required names green; read the accept step''s summary with
+    onex scm job-log and require source=agent. Write the Hostile Reviewer check-run id into check_run_id.'
+  - 'Case 3: push one more empty commit to the scratch branch; require the new head''s required names red after the run settles,
+    then dispatch for the new head, rerun, and require green.'
+  - 'Cases 4 to 6: ask the issuer node for a receipt for the scratch head and post it as a review with the review-post verb
+    in three variants, one defect each: change one field of the signed receipt (altered); request a blocked receipt from the
+    issuer (blocked); request a receipt for the other scratch head (another head). After each, rerun and require the gate
+    red and the job log to carry the verifier''s typed reason named in the observation. The issuer node signs under its own
+    key, so no key is read.'
+  - 'Close both scratch pull requests unmerged: onex scm pr-close OmniNode-ai/<repo>#<n> --lane <lane> --run <claim run> --head-sha
+    <head>; never mark ready, arm or merge.'
+  - 'Flip each case to mode: live, remove live_rerun_pending, add its check-run id, set status: final, and run uv run pytest
+    tests/unit/test_agent_review_proof_record.py -v -rs.'
+  needs_key_topup_or_ruling:
+  - 'Key top-up (the operator): the review gateway''s keys are out of credit. A top-up ends the outage that the fallback exists
+    for, and the voters then pass, so live cases 2 to 6 need the outage to still hold or the ruling below.'
+  - 'A ruling: whether a scratch pull request may run its Hostile Reviewer with a voters overlay pointing at a stub 503 once
+    the keys are topped up; and whether the writer-app permission to post a review as the review identity may be granted (an
+    infra change outside this proof).'
