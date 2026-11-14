@@ -254,6 +254,7 @@
   "tests/ci/test_staging_delivery_announcement_omn17057.py": 0.07,
   "tests/ci/test_subscriber_dispatcher_resolution_omni_home_preflight.py": 0.04,
   "tests/ci/test_tessl_slice0_skipped_findings_omn23044.py": 0.17,
+  "tests/ci/test_tessl_slice2_skipped_findings_omn23046.py": 1.29,
   "tests/ci/test_ticket_contract_prerequisite_omn20864.py": 1.46,
   "tests/ci/test_ticket_contract_release_cut_exempt_omn17427.py": 0.23,
   "tests/ci/test_ticket_contracts_schema_omn17427.py": 6.87,
