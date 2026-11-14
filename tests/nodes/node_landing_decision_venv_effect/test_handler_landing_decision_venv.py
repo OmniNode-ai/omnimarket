@@ -17,8 +17,6 @@ from pydantic import ValidationError
 
 from omnimarket.nodes.node_landing_decision_venv_effect.handlers.handler_landing_decision_venv import (
     HandlerLandingDecisionVenv,
-)
-from omnimarket.nodes.node_landing_decision_venv_effect.handlers.handler_subprocess_runner import (
     HandlerSubprocessRunner,
 )
 from omnimarket.nodes.node_landing_decision_venv_effect.models.model_landing_decision_venv import (

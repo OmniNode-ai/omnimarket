@@ -13,7 +13,9 @@ refusal; the handler raises nothing.
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+import os
+import subprocess
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from pydantic import ValidationError
@@ -22,9 +24,6 @@ from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
     NodeOverlayNotFoundError,
     load_structured_overlay,
-)
-from omnimarket.nodes.node_landing_decision_venv_effect.handlers.handler_subprocess_runner import (
-    HandlerSubprocessRunner,
 )
 from omnimarket.nodes.node_landing_decision_venv_effect.models.model_landing_decision_venv import (
     ModelCommandOutcome,
@@ -35,6 +34,29 @@ from omnimarket.nodes.node_landing_decision_venv_effect.models.model_landing_dec
 from omnimarket.nodes.node_landing_decision_venv_effect.protocols import (
     ProtocolCommandRunner,
 )
+
+# Interpreter-location variables of the caller; a venv's interpreter must resolve its own packages.
+INTERPRETER_ENV = ("PYTHONPATH", "PYTHONHOME")
+
+
+class HandlerSubprocessRunner:
+    def run(self, argv: Sequence[str], timeout_seconds: float) -> ModelCommandOutcome:
+        env = {k: v for k, v in os.environ.items() if k not in INTERPRETER_ENV}
+        try:
+            done = subprocess.run(
+                list(argv),
+                capture_output=True,
+                text=True,
+                timeout=timeout_seconds,
+                check=False,
+                env=env,
+            )
+        except subprocess.TimeoutExpired:
+            return ModelCommandOutcome(returncode=-1, timed_out=True)
+        except OSError as exc:
+            return ModelCommandOutcome(returncode=-1, os_error=type(exc).__name__)
+        return ModelCommandOutcome(returncode=done.returncode, stdout=done.stdout)
+
 
 OVERLAY_ID = "node_landing_decision_venv_effect"
 VENV_PYTHON = Path("bin") / "python"
