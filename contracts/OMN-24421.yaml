@@ -1,0 +1,60 @@
+schema_version: 1.0.0
+ticket_id: OMN-24421
+title: The drift and convergence orchestrators wait on lab hosts without blocking the shared runtime
+summary: The host drift orchestrator's and the convergence orchestrator's runtime-tick handlers were synchronous, so the runtime ran each tick's whole dispatch on its event loop while it waited on every lab host's receipt, the same fault the host hygiene tick had (omnimarket 6141) and the GPU power caps handler had (omnimarket 6156). Each handler is now a coroutine that runs its dispatch on a worker thread; the overlay read, the interval gate and the one-run claim stay in handle. The runtime loop guard of omnimarket 6156 reads these two nodes as lab-receipt waiters and requires a coroutine handle of each. Not in this change - the reading on the rolled dev runtime (AC3), where neither node is switched on without an overlay.
+is_seam_ticket: false
+interface_change: false
+requirements:
+- id: req-omn24421-siblings-off-loop
+  statement: The host drift orchestrator's and the convergence orchestrator's handlers are coroutines and run their lab dispatch on a worker thread, so the runtime's event loop keeps serving while a lab host's receipt is awaited; no overlay value, event shape or verdict rule changes.
+  acceptance:
+  - id: AC1
+    statement: "AC1: the drift orchestrator's and the convergence orchestrator's entry points are coroutines that run their lab waits off the runtime's event loop -- falsifier: pytest tests/unit/nodes/node_host_drift_orchestrator/test_loop_free.py tests/unit/nodes/node_convergence_orchestrator/test_loop_free.py -q"
+  - id: AC2
+    statement: "AC2: the existing scheduled-run, lab-work join and mode tests of both nodes pass with their assertions unchanged -- falsifier: pytest tests/unit/nodes/node_host_drift_orchestrator tests/unit/nodes/node_convergence_orchestrator -q"
+  - id: AC3
+    statement: "AC3: integrated: on the rolled dev runtime a runtime tick routed to each of the two nodes completes while the runtime's log shows no silence longer than the guard's bound -- falsifier: runtime log of the dev container shows a silence longer than the bound during a tick of either node"
+evidence_requirements:
+- kind: tests
+  description: The focused drift and convergence orchestrator tests at the pushed head; the loop-freedom tests and their controls read the loop starved when the send runs on the loop thread.
+  command: env -u PYTHONPATH uv run --frozen pytest tests/unit/nodes/node_host_drift_orchestrator tests/unit/nodes/node_convergence_orchestrator -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24421-ac1-loop-free
+  description: Each tick runs its send off the event loop (new tests) and a send run directly on the loop thread starves the loop (controls).
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_host_drift_orchestrator/test_loop_free.py tests/unit/nodes/node_convergence_orchestrator/test_loop_free.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24421-ac2-node-tests
+  description: The drift and convergence golden, error, join and mode tests, with the call sites made async and no assertion changed.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_host_drift_orchestrator tests/unit/nodes/node_convergence_orchestrator -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24421-ac3-hosted-readback
+  description: The scheduled-run tests of both nodes over the in-memory sender run on a hosted runner; the running-runtime reading (a dev runtime booted from the change, no log silence during a tick of either node) is read from the lab receipt comment on the ticket.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_host_drift_orchestrator/test_scheduled_run.py tests/unit/nodes/node_convergence_orchestrator/test_scheduled_run.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24421-integration-proof
+  description: The pushed head ran the focused drift and convergence orchestrator tests on a lab host through the lab work runner and exited 0. The running-runtime reading is read from the lab receipt comment on the ticket.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24421 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_host_drift_orchestrator tests/unit/nodes/node_convergence_orchestrator -q --no-cov -n 0 -p no:randomly
+    cwd: .
