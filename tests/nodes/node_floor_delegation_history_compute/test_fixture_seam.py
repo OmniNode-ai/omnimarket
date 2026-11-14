@@ -14,11 +14,11 @@ from pathlib import Path
 
 import pytest
 
-from omnimarket.events.floor_delegation_history import (
+from omnimarket.models.floor_delegation_history import (
     SCHEMA_ID,
     ModelDelegationHistory,
 )
-from omnimarket.events.floor_history_request import (
+from omnimarket.models.floor_history_request import (
     ModelHistoryRequest,
 )
 from omnimarket.nodes.node_floor_delegation_history_compute.handlers.handler_floor_delegation_history import (

@@ -15,11 +15,11 @@ from pathlib import Path
 
 import pytest
 
-from omnimarket.events.floor_delegation_history import (
-    ModelDelegationHistory,
-)
 from omnimarket.models.delegation.model_delegation_routing_overlay import (
     ModelDelegationRoutingOverlay,
+)
+from omnimarket.models.floor_delegation_history import (
+    ModelDelegationHistory,
 )
 from omnimarket.nodes.node_floor_delegation_history_effect.handlers.handler_floor_delegation_history import (
     HandlerFloorDelegationHistory,

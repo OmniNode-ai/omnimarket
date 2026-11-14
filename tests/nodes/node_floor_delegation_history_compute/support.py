@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from omnimarket.events.floor_history_request import (
+from omnimarket.models.floor_history_request import (
     ModelArmRule,
     ModelAttemptCounts,
     ModelBackendSettings,

@@ -13,7 +13,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from omnimarket.events.floor_delegation_history import (
+from omnimarket.models.floor_delegation_history import (
     SCHEMA_ID,
     ModelDelegationHistory,
     ModelSeriesPoint,

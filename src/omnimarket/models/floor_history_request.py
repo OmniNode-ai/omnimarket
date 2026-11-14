@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from omnimarket.events.floor_delegation_history import (
+from omnimarket.models.floor_delegation_history import (
     DateSource,
     EngineKind,
     ModelHistorySource,

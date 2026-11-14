@@ -15,10 +15,10 @@ from collections.abc import Sequence
 
 from pydantic import BaseModel, ConfigDict
 
-from omnimarket.events.floor_delegation_history import (
+from omnimarket.models.floor_delegation_history import (
     DateSource,
 )
-from omnimarket.events.floor_history_request import (
+from omnimarket.models.floor_history_request import (
     ModelImportedArm,
     ModelImportedBaseline,
     ModelImportedExperiment,
