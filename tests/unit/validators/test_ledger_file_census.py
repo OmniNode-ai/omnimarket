@@ -22,6 +22,7 @@ from omnibase_core.validators.no_unguarded_git_subprocess import (
 )
 
 from omnimarket.handlers.emission_sink import InMemoryEmissionSink
+from omnimarket.handlers.node_overlay_reader import NodeOverlayNotFoundError
 from omnimarket.nodes.node_work_ledger_file_census_effect.adapters import (
     GitRepositorySource,
     YamlRatchetStore,
@@ -230,6 +231,35 @@ def test_register_option_names_the_repository_for_one_run(tmp_path: Path) -> Non
     assert (
         main(["--register", "alpha", "--ratchet-file", str(ratchet)], environ=environ)
         == 0
+    )
+
+
+def test_packaged_overlay_option_needs_no_overlay_environment(tmp_path: Path) -> None:
+    registry = tmp_path / "registry"
+    repo = registry / "alpha"
+    repo.mkdir(parents=True)
+    env = scrub_git_location_env(os.environ)
+    git = ["git", "-C", str(repo)]
+    subprocess.run([*git, "init", "-q"], check=True, env=env)
+    (repo / "reader.sh").write_text('cat "$ONEX_LEDGER_PATH"\n')
+    subprocess.run([*git, "add", "--", "reader.sh"], check=True, env=env)
+    ratchet = tmp_path / "ratchet.yaml"
+    ratchet.write_text("ratchet:\n  alpha: 0\n")
+    environ = {"ONEX_LEDGER_CENSUS_ROOT": str(registry)}
+    with pytest.raises(NodeOverlayNotFoundError):
+        main(["--register", "alpha", "--ratchet-file", str(ratchet)], environ=environ)
+    assert (
+        main(
+            [
+                "--register",
+                "alpha",
+                "--ratchet-file",
+                str(ratchet),
+                "--packaged-overlay",
+            ],
+            environ=environ,
+        )
+        == 1
     )
 
 

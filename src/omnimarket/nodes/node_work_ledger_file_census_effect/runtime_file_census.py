@@ -34,7 +34,10 @@ from omnimarket.nodes.node_work_ledger_file_census_effect.models import (
     ModelCensusRepository,
     ModelCensusRequest,
 )
-from omnimarket.nodes.node_work_ledger_file_census_effect.overlay import load_overlay
+from omnimarket.nodes.node_work_ledger_file_census_effect.overlay import (
+    OVERLAY_FILE_ENV,
+    load_overlay,
+)
 
 _HEADER = (
     "# Shrink-only ratchet: executable readers and writers of the ledger file's name or path variable,\n"
@@ -70,6 +73,12 @@ def main(
         help="the repository this run counts, registered for this run in place of the overlay's "
         "repositories list; its checkout is named with --directory",
     )
+    parser.add_argument(
+        "--packaged-overlay",
+        action="store_true",
+        help="use the overlay shipped with this node in place of one found "
+        "under the overlay roots",
+    )
     parser.add_argument("--verbose", action="store_true", help="print every hit")
     parser.add_argument(
         "--json-facts",
@@ -78,7 +87,10 @@ def main(
     )
     args = parser.parse_args(argv)
     env = os.environ if environ is None else environ
-    overlay = load_overlay(env)
+    packaged = Path(__file__).resolve().parent / "overlay.example.yaml"
+    overlay = load_overlay(
+        {**env, OVERLAY_FILE_ENV: str(packaged)} if args.packaged_overlay else env
+    )
     if args.register:
         overlay = overlay.model_copy(
             update={
