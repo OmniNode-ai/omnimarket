@@ -5779,6 +5779,7 @@
   "tests/unit/work_ledger_bus/test_missing_writer_topic.py": 0.16,
   "tests/unit/work_ledger_bus/test_pr_handoff_cli.py": 5.24,
   "tests/unit/work_ledger_bus/test_request_additive_wire.py": 0.17,
+  "tests/unit/work_ledger_bus/test_service_writers.py": 2.01,
   "tests/unit/work_ledger_bus/test_work_ledger_append_bus.py": 1.17,
   "tests/unit/work_ledger_bus/test_work_ledger_append_cli.py": 0.61,
   "tests/unit/work_ledger_bus/test_writer_overlay_watch.py": 0.28,
