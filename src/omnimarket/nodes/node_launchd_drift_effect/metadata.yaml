@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_launchd_drift_effect
+version: "1.0.0"
+description: "Typed events and the fold of the host drift check, shared with the host drift reducer; the check effect itself moves in a later slice."
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "pydantic>=2.0.0"
+  - "pyyaml>=6.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["host-drift"]
+pack: "distributed_validation"
+display_name: "Launchd Drift Effect"
+node_role: "effect"
