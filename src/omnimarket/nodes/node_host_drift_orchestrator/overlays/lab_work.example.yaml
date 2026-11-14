@@ -1,0 +1,32 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Lab work profile (OMN-24197): each host gets the check as one lab work unit over the broker address stated here; synthetic values
+# only. A deployment's overlay lives at <root>/node_host_drift_orchestrator/overlay.yaml under a root named in ONEX_SKILL_OVERLAY_ROOTS.
+job_id: host_drift
+run_interval_seconds: 900
+grace_seconds: 300
+backend: lab_work
+result_timeout_seconds: 300
+max_parallel_units: 4
+lab_work:
+  repo: example-owner/example-repo
+  commit_sha: "0000000000000000000000000000000000000000"
+  lane: example-lane
+  unit_id_prefix: hd
+  kafka_bootstrap: example-broker:9092
+check:
+  kind: other
+  argv: [uv, run, --frozen, python, -m, omnimarket.nodes.node_host_drift_check_effect.runtime_host_drift_check, --host, "{host}", --profiles, "{profiles_path}", --local]
+hosts:
+  - name: example-host-a
+    registry_root: /example/registry
+    profiles_path: /example/registry/profiles.yaml
+  - name: example-host-b
+    registry_root: /example/registry
+    profiles_path: /example/registry/profiles.yaml
+  - name: example-host-c
+    registry_root: /example/registry
+    profiles_path: /example/registry/profiles.yaml
+  - name: example-host-d
+    registry_root: /example/registry
+    profiles_path: /example/registry/profiles.yaml

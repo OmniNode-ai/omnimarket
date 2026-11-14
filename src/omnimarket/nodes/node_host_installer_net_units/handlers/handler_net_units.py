@@ -12,6 +12,12 @@ restart. ``sshd-dropin``: the file is placed, ``sshd -t`` validates the whole co
 previous bytes (or absence) back before anything is reloaded; the reload is ``systemctl reload``, never a restart, so
 the sessions already open stay. A request whose installed files already match writes and reloads nothing.
 
+``systemd-system-slice``: the slice's unit file is written, ``daemon-reload`` runs when it changed, the slice is started
+and its limits are read back with ``systemctl show`` through the injected runner; a limit the contract requires bounded
+that reads the contract's unbounded value, or one it requires zero that is not 0, fails the install with
+``slice-limit-unapplied``. Uninstall stops the slice, removes the file and reloads, so the pool returns to the host
+default.
+
 ``render: values`` fills every ``__NAME__`` placeholder in a payload from the entry's ``values`` map; a placeholder with
 no value, or a value with no placeholder, is refused. The ``__GPU_MEMORY_UTILIZATION__`` placeholder is computed from the
 unit's ``gpu_budget`` measurements. A unit that declares ``serving: true`` must have a ``Restart=`` line in its systemd
@@ -111,6 +117,7 @@ class UnitPlan:
     name: str
     kind: str
     service: str
+    slice: str = ""
     files: list[FilePlan] = field(default_factory=list)
     interface: str = ""
     rendered: str = ""
@@ -224,14 +231,35 @@ class HandlerNetUnits:
             raise RefusalError(
                 "service-not-declared", f"{request.unit} declares no service"
             )
-        plan = UnitPlan(name=request.unit, kind=kind, service=service)
+        slice_name = str(unit.get("slice") or "")
+        if spec.get("needs_slice") and not slice_name:
+            raise RefusalError(
+                "slice-not-declared", f"{request.unit} declares no slice"
+            )
+        plan = UnitPlan(name=request.unit, kind=kind, service=service, slice=slice_name)
         plan.serving = bool(unit.get("serving"))
         plan.gpu_budget = unit.get("gpu_budget")
         for entry in unit.get("files") or []:
             plan.files.append(self.file_plan(request, entry, spec, plan))
         if not plan.files:
             raise RefusalError("no-files", f"{request.unit} declares no files")
+        if spec.get("needs_slice"):
+            self.check_slice(request, plan, spec)
         return plan
+
+    def check_slice(
+        self, request: ModelNetUnitsRequest, plan: UnitPlan, spec: dict[str, Any]
+    ) -> None:
+        """A slice unit installs the slice it names: the declared slice is the basename of exactly one destination."""
+        suffix = str(spec.get("destination_suffix") or "")
+        basenames = [item.destination.rsplit("/", 1)[-1] for item in plan.files]
+        named = basenames.count(plan.slice)
+        if (suffix and not plan.slice.endswith(suffix)) or named != 1:
+            raise RefusalError(
+                "slice-file-mismatch",
+                f"{request.unit} declares slice {plan.slice!r}, which is not the basename"
+                f" of exactly one of {basenames}",
+            )
 
     def file_plan(
         self,
@@ -543,7 +571,16 @@ class HandlerNetUnits:
             }[item.state]
             out += f"{label} {item.destination}\n"
             failed |= item.state != "identical"
-        if plan.service:
+        if plan.slice:
+            readings = self.slice_properties(
+                plan.slice, [str(p) for p in self.contract["slice"]["read_properties"]]
+            )
+            out += "".join(f"{name}={value}\n" for name, value in readings.items())
+            defect = self.slice_defect(readings)
+            if defect:
+                out += f"{plan.slice} {defect[0]} is not limited as declared\n"
+                failed = True
+        elif plan.service:
             active = self.is_active(plan.service)
             out += f"{plan.service} {'active' if active else 'NOT RUNNING: inactive'}\n"
             failed |= not active
@@ -561,6 +598,8 @@ class HandlerNetUnits:
         self, request: ModelNetUnitsRequest, plan: UnitPlan
     ) -> ModelNetUnitsResult:
         todo = [item for item in plan.files if item.state != "identical"]
+        if plan.slice:
+            return self.install_slice(request, plan, todo)
         if plan.service:
             return self.install_service(request, plan, todo)
         return self.install_dropins(request, plan, todo)
@@ -616,12 +655,57 @@ class HandlerNetUnits:
             return self.result(request, 1, out=out, error=failure, plan=plan)
         return self.reload_sshd(request, plan, out)
 
+    def install_slice(
+        self, request: ModelNetUnitsRequest, plan: UnitPlan, todo: list[FilePlan]
+    ) -> ModelNetUnitsResult:
+        spec = self.contract["slice"]
+        properties = [str(p) for p in spec["read_properties"]]
+        if not todo and not self.slice_defect(
+            self.slice_properties(plan.slice, properties)
+        ):
+            return self.result(
+                request,
+                0,
+                out=f"no change: {plan.name} already matches its declaration\n",
+                plan=plan,
+            )
+        out = ""
+        for item in todo:
+            self.write(item.path, item.data, item.mode)
+            out += f"wrote {item.destination} (sha256 {item.digest})\n"
+        if any(item.is_unit_file for item in todo):
+            self.systemctl("daemon-reload")
+        self.systemctl("start", plan.slice)
+        out += f"started {plan.slice}\n"
+        readings = self.slice_properties(plan.slice, properties)
+        out += "".join(f"{name}={value}\n" for name, value in readings.items())
+        defect = self.slice_defect(readings)
+        if defect:
+            return self.result(
+                request,
+                1,
+                reason="slice-limit-unapplied",
+                out=out,
+                error=f"{plan.slice} reads {defect[1]}; the slice is not limited as declared\n",
+                plan=plan,
+                changed=True,
+            )
+        return self.result(request, 0, out=out, plan=plan, changed=True)
+
     def uninstall(
         self, request: ModelNetUnitsRequest, plan: UnitPlan
     ) -> ModelNetUnitsResult:
         present = [item for item in plan.files if item.installed is not None]
         out = ""
-        if plan.service:
+        if plan.slice:
+            # The rollback: stopping the slice and removing its file returns the pool to the host default.
+            if present:
+                self.systemctl("stop", plan.slice)
+                for item in present:
+                    self.remove(item.path)
+                    out += f"removed {item.destination}\n"
+                self.systemctl("daemon-reload")
+        elif plan.service:
             if present:
                 self.systemctl("disable", "--now", plan.service)
             for item in present:
@@ -721,6 +805,35 @@ class HandlerNetUnits:
     def is_active(self, service: str) -> bool:
         done = self.run(["systemctl", "is-active", service])
         return done.returncode == 0 and done.stdout.strip() == "active"
+
+    def slice_properties(self, unit: str, properties: list[str]) -> dict[str, str]:
+        """``systemctl show <unit> -p <P> ...`` through the injected runner; every ``Name=value`` line it printed."""
+        argv = ["systemctl", "show", unit]
+        for name in properties:
+            argv += ["-p", name]
+        done = self.run(argv)
+        if done.returncode:
+            raise OSError(
+                f"systemctl show {unit} failed ({done.returncode}): {done.stderr.strip()}"
+            )
+        readings: dict[str, str] = {}
+        for line in done.stdout.splitlines():
+            name, _, value = line.partition("=")
+            if name:
+                readings[name] = value.strip()
+        return readings
+
+    def slice_defect(self, readings: dict[str, str]) -> tuple[str, str] | None:
+        """The first declared limit the running slice does not hold, as ``(name, Name=value)``; None when all hold."""
+        spec = self.contract["slice"]
+        unbounded = str(spec["unbounded_value"])
+        for name in [str(p) for p in spec["bounded_required"]]:
+            if readings.get(name, unbounded) == unbounded:
+                return name, f"{name}={readings.get(name, unbounded)}"
+        for name in [str(p) for p in spec["zero_required"]]:
+            if readings.get(name, "") != "0":
+                return name, f"{name}={readings.get(name, '')}"
+        return None
 
     def needs_start(self, plan: UnitPlan) -> bool:
         return (

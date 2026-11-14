@@ -17,6 +17,7 @@ description: >-
   is connected before every start (a connect that is already made is harmless), and an install is refused, with nothing
   written, when the container is on another network, does not publish a declared port, or is running with no attachment to
   its network (OMN-19998).
+  A unit may also declare a recreate block (compose file, env file, project, service); when the container's network or published port is wrong at install, the installer recreates that one service through its compose declaration and reads the container again before it writes the unit.
   A host or unit the overlay does not declare, a container that does not exist on the host and has no create settings, a
   container whose network or published port differs from the declaration, and a port that does not answer after the install
   are refused with a typed reason.

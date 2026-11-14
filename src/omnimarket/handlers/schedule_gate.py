@@ -50,6 +50,10 @@ class ScheduleGate:
     def mark(self, now: datetime) -> None:
         self._last_run = now
 
+    def rearm(self) -> None:
+        """Forget the last run, so the next tick is due: a run that never sent must not hold off the retry."""
+        self._last_run = None
+
     def run_event(
         self,
         *,

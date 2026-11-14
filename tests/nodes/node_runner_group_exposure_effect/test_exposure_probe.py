@@ -226,8 +226,10 @@ def _probe(
             "org": "example-org",
             "group_id": 7,
             "group_labels": ["example-private-group"],
+            "group_read": None,
             "token_env": TOKEN_ENV,
             "token_mint": None,
+            "org_read_permission": "example_org_permission_read",
             "max_calls": max_calls,
             "timeout_seconds": 5,
         }
@@ -426,7 +428,9 @@ def test_an_incomplete_in_memory_overlay_refuses(
         load_overlay()
 
 
-@pytest.mark.parametrize("key", ["token_env", "token_mint", "max_calls", "api_base"])
+@pytest.mark.parametrize(
+    "key", ["token_env", "token_mint", "org_read_permission", "max_calls", "api_base"]
+)
 def test_a_github_overlay_without_a_key_refuses_and_names_it(
     key: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

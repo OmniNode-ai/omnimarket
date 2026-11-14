@@ -8,7 +8,8 @@ contract_version: {major: 1, minor: 0, patch: 0}
 node_version: "1.0.0"
 description: >-
   Install, inspect and remove the root-owned files of a Linux pool host that a lane would otherwise install by hand:
-  a systemd system service with its script, and sshd drop-in files. The units are declared as data in an overlay
+  a systemd system service with its script, sshd drop-in files, and a resource-limited systemd system slice. The units
+  are declared as data in an overlay
   (`units.yaml` beside the payload files), never in this node: each declares the hosts it may install on, its
   destinations, modes and the sha256 its rendered bytes must have, and this node installs the bytes unchanged, writes
   nothing when the installed bytes and mode already match, validates sshd with `sshd -t` after placing a drop-in and
@@ -51,6 +52,11 @@ unit_kinds:
     destination_roots: [/etc/ssh/sshd_config.d/]
     destination_suffix: .conf
     needs_service: false
+  systemd-system-slice:
+    destination_roots: [/etc/systemd/system/]
+    destination_suffix: .slice
+    needs_service: false
+    needs_slice: true
 # `render: interface` fills this placeholder with the interface that carries the lowest-metric IPv4 default route
 # (`ip -4 route show default`), which must also carry an IPv4 address (`ip -4 -o addr show dev <it>`).
 render:
@@ -70,6 +76,14 @@ render:
 serving_unit:
   restart_policies: [always]
   gpu_fraction_decimals: 2
+# A `systemd-system-slice` unit limits a pool of units: after its file is written and the slice started, the limits are
+# read back from systemd (`read_properties`, through `systemctl show`); a property in `bounded_required` that still
+# reads `unbounded_value`, or one in `zero_required` that is not 0, fails the install: the limits must actually hold.
+slice:
+  read_properties: [MemoryMax, MemorySwapMax, CPUQuotaPerSecUSec, TasksMax]
+  unbounded_value: infinity
+  bounded_required: [MemoryMax, CPUQuotaPerSecUSec]
+  zero_required: [MemorySwapMax]
 sshd:
   binary: /usr/sbin/sshd
   services: [ssh.service, sshd.service]

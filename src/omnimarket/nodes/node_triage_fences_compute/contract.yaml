@@ -1,0 +1,66 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Triage Fences Compute (OMN-24248)
+#
+# The fence list derived from ledger text and the open pull requests it is given, moved from the
+# frozen internal repository (OMN-20682). The handlers hold the
+# ledger grammar, the CLAIM / TERMINAL pairing, the lane liveness rule and the pull-request
+# matching. 0.2.0 changes the liveness rule: a CLAIM fences its tickets only while its lane is live,
+# that is, its runner receipt reads running or it wrote a ledger row inside the window the caller
+# passes. The window has no default here: the effect node reads it from its overlay.
+name: "node_triage_fences_compute"
+contract_name: "node_triage_fences_compute"
+node_name: "node_triage_fences_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+contract_version: {major: 0, minor: 2, patch: 0}
+node_version: {major: 0, minor: 2, patch: 0}
+description: >
+  Derive the triage fence list from ledger text without I/O: a CLAIM with no matching TERMINAL
+  fences its tickets while its lane is live (its runner receipt reads running, or it wrote any
+  ledger row inside the window), an older one is reported as stale and fences nothing, and an open
+  pull request fences the tickets its title or branch names whether or not it was touched
+  recently. A claim-shaped row outside the grammar is reported, never dropped. The same ledger text,
+  the same clock, the same window and the same running lanes give a byte-identical list.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: derive_triage_fences
+      handler:
+        name: HandlerTriageFencesDerive
+        module: omnimarket.nodes.node_triage_fences_compute.handlers.handler_triage_fences_derive
+      input_model: omnimarket.nodes.node_triage_fences_compute.models.model_triage_fences_derive.ModelTriageFencesDeriveRequest
+      output_model: omnimarket.nodes.node_triage_fences_compute.models.model_triage_fences_derive.ModelTriageFencesVerdict
+
+input_model:
+  name: ModelTriageFencesDeriveRequest
+  module: omnimarket.nodes.node_triage_fences_compute.models.model_triage_fences_derive
+  description: Ledger text, the clock, the live window, the PR window, the open pull requests and the running lanes.
+output_model:
+  name: ModelTriageFencesVerdict
+  module: omnimarket.nodes.node_triage_fences_compute.models.model_triage_fences_derive
+  description: The fenced tickets, the live and stale claims, the pull-request fences and the counts.
+
+handler:
+  module: omnimarket.nodes.node_triage_fences_compute.handlers.handler_triage_fences_derive
+  class: HandlerTriageFencesDerive
+  input_model: omnimarket.nodes.node_triage_fences_compute.models.model_triage_fences_derive.ModelTriageFencesDeriveRequest
+  output_model: omnimarket.nodes.node_triage_fences_compute.models.model_triage_fences_derive.ModelTriageFencesVerdict
+
+runtime_dispatch:
+  external_trigger: called in process by node_triage_fences_effect, which supplies the ledger text, the clock, the window and the running lanes.
+
+metadata:
+  transport_type: local
+
+descriptor:
+  node_archetype: compute
+  runtime_profiles: []
+  purity: pure
+  idempotent: true
+  side_effects: []
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []

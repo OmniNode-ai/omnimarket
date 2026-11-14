@@ -1,0 +1,665 @@
+{
+  "recorded_at": "1bca5256e1bd76c3bb72f0f124686e37816ced8a",
+  "now": "2026-09-03T12:00:00Z",
+  "reports": {
+    "claim-update-chain": {
+      "now": "2026-09-03T12:00:00Z",
+      "ledger": "<ledger>",
+      "fenced_tickets": [
+        "OMN-1001"
+      ],
+      "open_claims": [
+        {
+          "last_activity_ts": "2026-09-02T11:00:00Z",
+          "lane": "alpha",
+          "tickets": [
+            "OMN-1001"
+          ],
+          "related": [],
+          "claim_ts": "2026-09-02T08:00:00Z",
+          "last_update_ts": "2026-09-02T11:00:00Z",
+          "update_count": 2,
+          "age_hours": 28.0,
+          "actor": "claude",
+          "source": "LEDGER.md:1",
+          "form": "dash"
+        }
+      ],
+      "stale_claims": [],
+      "stale_after_hours": 48.0,
+      "open_pr_fences": [],
+      "unparsed_rows": [],
+      "errors": [],
+      "counts": {
+        "rows_parsed": 3,
+        "open_claims": 1,
+        "stale_claims": 0,
+        "open_pr_fences": 0,
+        "fenced_tickets": 1,
+        "unparsed_rows": 0
+      }
+    },
+    "dangling-claim": {
+      "now": "2026-09-03T12:00:00Z",
+      "ledger": "<ledger>",
+      "fenced_tickets": [
+        "OMN-15954",
+        "OMN-17349"
+      ],
+      "open_claims": [
+        {
+          "last_activity_ts": "2026-09-01T18:42:53Z",
+          "lane": "omn17349-staging-delivery",
+          "tickets": [
+            "OMN-15954",
+            "OMN-17349"
+          ],
+          "related": [],
+          "claim_ts": "2026-09-01T18:42:53Z",
+          "last_update_ts": "2026-09-01T18:42:53Z",
+          "update_count": 0,
+          "age_hours": 41.285,
+          "actor": "claude",
+          "source": "LEDGER.md:1",
+          "form": "dash"
+        }
+      ],
+      "stale_claims": [],
+      "stale_after_hours": 48.0,
+      "open_pr_fences": [],
+      "unparsed_rows": [],
+      "errors": [],
+      "counts": {
+        "rows_parsed": 1,
+        "open_claims": 1,
+        "stale_claims": 0,
+        "open_pr_fences": 0,
+        "fenced_tickets": 2,
+        "unparsed_rows": 0
+      }
+    },
+    "empty-ledger": {
+      "now": "2026-09-03T12:00:00Z",
+      "ledger": "<ledger>",
+      "fenced_tickets": [],
+      "open_claims": [],
+      "stale_claims": [],
+      "stale_after_hours": 48.0,
+      "open_pr_fences": [],
+      "unparsed_rows": [],
+      "errors": [],
+      "counts": {
+        "rows_parsed": 0,
+        "open_claims": 0,
+        "stale_claims": 0,
+        "open_pr_fences": 0,
+        "fenced_tickets": 0,
+        "unparsed_rows": 0
+      }
+    },
+    "every-row-form": {
+      "now": "2026-09-03T12:00:00Z",
+      "ledger": "<ledger>",
+      "fenced_tickets": [
+        "OMN-16999",
+        "OMN-17013",
+        "OMN-17060",
+        "OMN-17483",
+        "OMN-17519"
+      ],
+      "open_claims": [
+        {
+          "last_activity_ts": "2026-09-01T12:13:30Z",
+          "lane": "occ-seam",
+          "tickets": [
+            "OMN-17483"
+          ],
+          "related": [
+            "OMN-16360"
+          ],
+          "claim_ts": "2026-09-01T12:13:30Z",
+          "last_update_ts": "2026-09-01T12:13:30Z",
+          "update_count": 0,
+          "age_hours": 47.775,
+          "actor": "codex",
+          "source": "LEDGER.md:5",
+          "form": "bare"
+        },
+        {
+          "last_activity_ts": "2026-09-01T18:32:39Z",
+          "lane": null,
+          "tickets": [
+            "OMN-16999"
+          ],
+          "related": [],
+          "claim_ts": "2026-09-01T18:32:39Z",
+          "last_update_ts": "2026-09-01T18:32:39Z",
+          "update_count": 0,
+          "age_hours": 41.456,
+          "actor": "codex:/root/beta_plan_audit",
+          "source": "LEDGER.md:6",
+          "form": "bare"
+        },
+        {
+          "last_activity_ts": "2026-09-01T18:47:31Z",
+          "lane": "omn17060-sibling-provenance-gate",
+          "tickets": [
+            "OMN-17060"
+          ],
+          "related": [],
+          "claim_ts": "2026-09-01T18:47:31Z",
+          "last_update_ts": "2026-09-01T18:47:31Z",
+          "update_count": 0,
+          "age_hours": 41.208,
+          "actor": "claude",
+          "source": "LEDGER.md:1",
+          "form": "dash"
+        },
+        {
+          "last_activity_ts": "2026-09-01T22:49:00Z",
+          "lane": "codex-root-x",
+          "tickets": [
+            "OMN-17013"
+          ],
+          "related": [],
+          "claim_ts": "2026-09-01T22:49:00Z",
+          "last_update_ts": "2026-09-01T22:49:00Z",
+          "update_count": 0,
+          "age_hours": 37.183,
+          "actor": "codex",
+          "source": "LEDGER.md:7",
+          "form": "bare"
+        },
+        {
+          "last_activity_ts": "2026-09-02T00:06:40Z",
+          "lane": null,
+          "tickets": [
+            "OMN-17013"
+          ],
+          "related": [],
+          "claim_ts": "2026-09-02T00:06:40Z",
+          "last_update_ts": "2026-09-02T00:06:40Z",
+          "update_count": 0,
+          "age_hours": 35.889,
+          "actor": "codex:/root/forwarder_v2_resume",
+          "source": "LEDGER.md:4",
+          "form": "pipe"
+        },
+        {
+          "last_activity_ts": "2026-09-02T17:44:26Z",
+          "lane": "codex-root-omn17519-pr1146-close",
+          "tickets": [
+            "OMN-17519"
+          ],
+          "related": [],
+          "claim_ts": "2026-09-02T17:44:26Z",
+          "last_update_ts": "2026-09-02T17:44:26Z",
+          "update_count": 0,
+          "age_hours": 18.259,
+          "actor": null,
+          "source": "LEDGER.md:3",
+          "form": "pipe"
+        }
+      ],
+      "stale_claims": [
+        {
+          "last_activity_ts": "2026-08-31T00:39:00Z",
+          "lane": "OMN-16804-chain-leg1",
+          "tickets": [
+            "OMN-16930"
+          ],
+          "related": [],
+          "claim_ts": "2026-08-31T00:39:00Z",
+          "last_update_ts": "2026-08-31T00:39:00Z",
+          "update_count": 0,
+          "age_hours": 83.35,
+          "actor": null,
+          "source": "LEDGER.md:2",
+          "form": "pipe"
+        }
+      ],
+      "stale_after_hours": 48.0,
+      "open_pr_fences": [],
+      "unparsed_rows": [],
+      "errors": [],
+      "counts": {
+        "rows_parsed": 7,
+        "open_claims": 6,
+        "stale_claims": 1,
+        "open_pr_fences": 0,
+        "fenced_tickets": 5,
+        "unparsed_rows": 0
+      }
+    },
+    "narrow-staleness": {
+      "now": "2026-09-03T12:00:00Z",
+      "ledger": "<ledger>",
+      "fenced_tickets": [],
+      "open_claims": [],
+      "stale_claims": [
+        {
+          "last_activity_ts": "2026-09-01T18:42:53Z",
+          "lane": "omn17349-staging-delivery",
+          "tickets": [
+            "OMN-15954",
+            "OMN-17349"
+          ],
+          "related": [],
+          "claim_ts": "2026-09-01T18:42:53Z",
+          "last_update_ts": "2026-09-01T18:42:53Z",
+          "update_count": 0,
+          "age_hours": 41.285,
+          "actor": "claude",
+          "source": "LEDGER.md:1",
+          "form": "dash"
+        }
+      ],
+      "stale_after_hours": 24.0,
+      "open_pr_fences": [],
+      "unparsed_rows": [],
+      "errors": [],
+      "counts": {
+        "rows_parsed": 1,
+        "open_claims": 0,
+        "stale_claims": 1,
+        "open_pr_fences": 0,
+        "fenced_tickets": 0,
+        "unparsed_rows": 0
+      }
+    },
+    "open-prs": {
+      "now": "2026-09-03T12:00:00Z",
+      "ledger": "<ledger>",
+      "fenced_tickets": [
+        "OMN-1001",
+        "OMN-1002",
+        "OMN-10000",
+        "OMN-15954",
+        "OMN-17292",
+        "OMN-17349",
+        "OMN-17562"
+      ],
+      "open_claims": [
+        {
+          "last_activity_ts": "2026-09-01T18:42:53Z",
+          "lane": "omn17349-staging-delivery",
+          "tickets": [
+            "OMN-15954",
+            "OMN-17349"
+          ],
+          "related": [],
+          "claim_ts": "2026-09-01T18:42:53Z",
+          "last_update_ts": "2026-09-01T18:42:53Z",
+          "update_count": 0,
+          "age_hours": 41.285,
+          "actor": "claude",
+          "source": "LEDGER.md:1",
+          "form": "dash"
+        }
+      ],
+      "stale_claims": [],
+      "stale_after_hours": 48.0,
+      "open_pr_fences": [
+        {
+          "ticket": "OMN-1001",
+          "repo": "omnibase_infra",
+          "number": 12,
+          "title": "two tickets OMN-1001 and OMN-1002 in one title",
+          "branch": "x/no-ticket-here",
+          "url": null,
+          "updated_at": null,
+          "age_hours": null,
+          "within_window": false,
+          "matched_on": "title"
+        },
+        {
+          "ticket": "OMN-1002",
+          "repo": "omnibase_infra",
+          "number": 12,
+          "title": "two tickets OMN-1001 and OMN-1002 in one title",
+          "branch": "x/no-ticket-here",
+          "url": null,
+          "updated_at": null,
+          "age_hours": null,
+          "within_window": false,
+          "matched_on": "title"
+        },
+        {
+          "ticket": "OMN-10000",
+          "repo": "omnibase_infra",
+          "number": 9,
+          "title": "chore(OMN-10000): far too old to fence",
+          "branch": "jonah/omn-10000-old",
+          "url": "https://github.com/OmniNode-ai/omnibase_infra/pull/9",
+          "updated_at": "2026-08-01T00:00:00Z",
+          "age_hours": 804.0,
+          "within_window": false,
+          "matched_on": "title"
+        },
+        {
+          "ticket": "OMN-17292",
+          "repo": "omnibase_infra",
+          "number": 3153,
+          "title": "chore: advance contract pin",
+          "branch": "jonah/omn-17292-pin-bump",
+          "url": "https://github.com/OmniNode-ai/omnibase_infra/pull/3153",
+          "updated_at": "2026-09-03T06:46:15Z",
+          "age_hours": 5.23,
+          "within_window": true,
+          "matched_on": "branch"
+        },
+        {
+          "ticket": "OMN-17562",
+          "repo": "omnibase_infra",
+          "number": 3156,
+          "title": "fix(OMN-17562): kernel stops subscribing",
+          "branch": "jonah/omn-17562-kernel-stops",
+          "url": "https://github.com/OmniNode-ai/omnibase_infra/pull/3156",
+          "updated_at": "2026-09-03T10:20:51Z",
+          "age_hours": 1.65,
+          "within_window": true,
+          "matched_on": "title"
+        }
+      ],
+      "unparsed_rows": [],
+      "errors": [
+        "open-pr lookup failed for omnimarket: gh exploded for omnimarket"
+      ],
+      "counts": {
+        "rows_parsed": 1,
+        "open_claims": 1,
+        "stale_claims": 0,
+        "open_pr_fences": 5,
+        "fenced_tickets": 7,
+        "unparsed_rows": 0
+      }
+    },
+    "open-prs-narrow-window": {
+      "now": "2026-09-03T12:00:00Z",
+      "ledger": "<ledger>",
+      "fenced_tickets": [
+        "OMN-1001",
+        "OMN-1002",
+        "OMN-10000",
+        "OMN-17292",
+        "OMN-17562"
+      ],
+      "open_claims": [
+        {
+          "last_activity_ts": "2026-09-02T09:00:00Z",
+          "lane": "gamma",
+          "tickets": [
+            "OMN-1002"
+          ],
+          "related": [],
+          "claim_ts": "2026-09-02T09:00:00Z",
+          "last_update_ts": "2026-09-02T09:00:00Z",
+          "update_count": 0,
+          "age_hours": 27.0,
+          "actor": "codex",
+          "source": "LEDGER.md:1",
+          "form": "bare"
+        }
+      ],
+      "stale_claims": [],
+      "stale_after_hours": 48.0,
+      "open_pr_fences": [
+        {
+          "ticket": "OMN-1001",
+          "repo": "omnibase_infra",
+          "number": 12,
+          "title": "two tickets OMN-1001 and OMN-1002 in one title",
+          "branch": "x/no-ticket-here",
+          "url": null,
+          "updated_at": null,
+          "age_hours": null,
+          "within_window": false,
+          "matched_on": "title"
+        },
+        {
+          "ticket": "OMN-1002",
+          "repo": "omnibase_infra",
+          "number": 12,
+          "title": "two tickets OMN-1001 and OMN-1002 in one title",
+          "branch": "x/no-ticket-here",
+          "url": null,
+          "updated_at": null,
+          "age_hours": null,
+          "within_window": false,
+          "matched_on": "title"
+        },
+        {
+          "ticket": "OMN-10000",
+          "repo": "omnibase_infra",
+          "number": 9,
+          "title": "chore(OMN-10000): far too old to fence",
+          "branch": "jonah/omn-10000-old",
+          "url": "https://github.com/OmniNode-ai/omnibase_infra/pull/9",
+          "updated_at": "2026-08-01T00:00:00Z",
+          "age_hours": 804.0,
+          "within_window": false,
+          "matched_on": "title"
+        },
+        {
+          "ticket": "OMN-17292",
+          "repo": "omnibase_infra",
+          "number": 3153,
+          "title": "chore: advance contract pin",
+          "branch": "jonah/omn-17292-pin-bump",
+          "url": "https://github.com/OmniNode-ai/omnibase_infra/pull/3153",
+          "updated_at": "2026-09-03T06:46:15Z",
+          "age_hours": 5.23,
+          "within_window": false,
+          "matched_on": "branch"
+        },
+        {
+          "ticket": "OMN-17562",
+          "repo": "omnibase_infra",
+          "number": 3156,
+          "title": "fix(OMN-17562): kernel stops subscribing",
+          "branch": "jonah/omn-17562-kernel-stops",
+          "url": "https://github.com/OmniNode-ai/omnibase_infra/pull/3156",
+          "updated_at": "2026-09-03T10:20:51Z",
+          "age_hours": 1.65,
+          "within_window": false,
+          "matched_on": "title"
+        }
+      ],
+      "unparsed_rows": [],
+      "errors": [],
+      "counts": {
+        "rows_parsed": 1,
+        "open_claims": 1,
+        "stale_claims": 0,
+        "open_pr_fences": 5,
+        "fenced_tickets": 5,
+        "unparsed_rows": 0
+      }
+    },
+    "stale-and-live": {
+      "now": "2026-09-03T12:00:00Z",
+      "ledger": "<ledger>",
+      "fenced_tickets": [
+        "OMN-1001",
+        "OMN-1002"
+      ],
+      "open_claims": [
+        {
+          "last_activity_ts": "2026-09-03T09:00:00Z",
+          "lane": "orchestrator-a",
+          "tickets": [
+            "OMN-1002"
+          ],
+          "related": [],
+          "claim_ts": "2026-08-24T05:00:00Z",
+          "last_update_ts": "2026-08-24T05:00:00Z",
+          "update_count": 0,
+          "age_hours": 247.0,
+          "actor": "x",
+          "source": "LEDGER.md:3",
+          "form": "pipe"
+        },
+        {
+          "last_activity_ts": "2026-09-03T11:00:00Z",
+          "lane": "alive",
+          "tickets": [
+            "OMN-1001"
+          ],
+          "related": [],
+          "claim_ts": "2026-09-03T11:00:00Z",
+          "last_update_ts": "2026-09-03T11:00:00Z",
+          "update_count": 0,
+          "age_hours": 1.0,
+          "actor": "x",
+          "source": "LEDGER.md:2",
+          "form": "pipe"
+        }
+      ],
+      "stale_claims": [
+        {
+          "last_activity_ts": "2026-08-24T05:00:00Z",
+          "lane": "dod-closeout-chunk0",
+          "tickets": [
+            "OMN-19401"
+          ],
+          "related": [],
+          "claim_ts": "2026-08-24T05:00:00Z",
+          "last_update_ts": "2026-08-24T05:00:00Z",
+          "update_count": 0,
+          "age_hours": 247.0,
+          "actor": "x",
+          "source": "LEDGER.md:1",
+          "form": "pipe"
+        },
+        {
+          "last_activity_ts": "2026-08-24T05:00:00Z",
+          "lane": "old",
+          "tickets": [
+            "OMN-1003"
+          ],
+          "related": [],
+          "claim_ts": "2026-08-24T05:00:00Z",
+          "last_update_ts": "2026-08-24T05:00:00Z",
+          "update_count": 0,
+          "age_hours": 247.0,
+          "actor": "x",
+          "source": "LEDGER.md:5",
+          "form": "pipe"
+        }
+      ],
+      "stale_after_hours": 48.0,
+      "open_pr_fences": [],
+      "unparsed_rows": [],
+      "errors": [],
+      "counts": {
+        "rows_parsed": 4,
+        "open_claims": 2,
+        "stale_claims": 2,
+        "open_pr_fences": 0,
+        "fenced_tickets": 2,
+        "unparsed_rows": 0
+      }
+    },
+    "terminal-closes-its-claim": {
+      "now": "2026-09-03T12:00:00Z",
+      "ledger": "<ledger>",
+      "fenced_tickets": [
+        "OMN-1002"
+      ],
+      "open_claims": [
+        {
+          "last_activity_ts": "2026-09-02T10:00:00Z",
+          "lane": "beta",
+          "tickets": [
+            "OMN-1002"
+          ],
+          "related": [],
+          "claim_ts": "2026-09-02T10:00:00Z",
+          "last_update_ts": "2026-09-02T10:00:00Z",
+          "update_count": 0,
+          "age_hours": 26.0,
+          "actor": "claude",
+          "source": "LEDGER.md:3",
+          "form": "dash"
+        }
+      ],
+      "stale_claims": [],
+      "stale_after_hours": 48.0,
+      "open_pr_fences": [],
+      "unparsed_rows": [],
+      "errors": [],
+      "counts": {
+        "rows_parsed": 3,
+        "open_claims": 1,
+        "stale_claims": 0,
+        "open_pr_fences": 0,
+        "fenced_tickets": 1,
+        "unparsed_rows": 0
+      }
+    },
+    "unparsed-row": {
+      "now": "2026-09-03T12:00:00Z",
+      "ledger": "<ledger>",
+      "fenced_tickets": [
+        "OMN-1002"
+      ],
+      "open_claims": [
+        {
+          "last_activity_ts": "2026-09-02T09:00:00Z",
+          "lane": "beta",
+          "tickets": [
+            "OMN-1002"
+          ],
+          "related": [],
+          "claim_ts": "2026-09-02T09:00:00Z",
+          "last_update_ts": "2026-09-02T09:00:00Z",
+          "update_count": 0,
+          "age_hours": 27.0,
+          "actor": "x",
+          "source": "LEDGER.md:2",
+          "form": "dash"
+        }
+      ],
+      "stale_claims": [],
+      "stale_after_hours": 48.0,
+      "open_pr_fences": [],
+      "unparsed_rows": [
+        "LEDGER.md:1: timestamped row mentions a lifecycle kind but its type token is outside the grammar: - 2026-09-02T08:00:00Z CLAIM~~ lane=alpha ticket=OMN-1001 malformed kind"
+      ],
+      "errors": [],
+      "counts": {
+        "rows_parsed": 1,
+        "open_claims": 1,
+        "stale_claims": 0,
+        "open_pr_fences": 0,
+        "fenced_tickets": 1,
+        "unparsed_rows": 1
+      }
+    }
+  },
+  "cli": {
+    "row-forms": "{\n  \"now\": \"2026-09-03T12:00:00Z\",\n  \"ledger\": \"<ledger>\",\n  \"fenced_tickets\": [\n    \"OMN-15954\",\n    \"OMN-16999\",\n    \"OMN-17013\",\n    \"OMN-17060\",\n    \"OMN-17349\",\n    \"OMN-17483\",\n    \"OMN-17519\"\n  ],\n  \"open_claims\": [\n    {\n      \"last_activity_ts\": \"2026-09-01T12:13:30Z\",\n      \"lane\": \"occ-seam\",\n      \"tickets\": [\n        \"OMN-17483\"\n      ],\n      \"related\": [\n        \"OMN-16360\"\n      ],\n      \"claim_ts\": \"2026-09-01T12:13:30Z\",\n      \"last_update_ts\": \"2026-09-01T12:13:30Z\",\n      \"update_count\": 0,\n      \"age_hours\": 47.775,\n      \"actor\": \"codex\",\n      \"source\": \"LEDGER.md:6\",\n      \"form\": \"bare\"\n    },\n    {\n      \"last_activity_ts\": \"2026-09-01T18:32:39Z\",\n      \"lane\": null,\n      \"tickets\": [\n        \"OMN-16999\"\n      ],\n      \"related\": [],\n      \"claim_ts\": \"2026-09-01T18:32:39Z\",\n      \"last_update_ts\": \"2026-09-01T18:32:39Z\",\n      \"update_count\": 0,\n      \"age_hours\": 41.456,\n      \"actor\": \"codex:/root/beta_plan_audit\",\n      \"source\": \"LEDGER.md:7\",\n      \"form\": \"bare\"\n    },\n    {\n      \"last_activity_ts\": \"2026-09-01T18:42:53Z\",\n      \"lane\": \"omn17349-staging-delivery\",\n      \"tickets\": [\n        \"OMN-15954\",\n        \"OMN-17349\"\n      ],\n      \"related\": [],\n      \"claim_ts\": \"2026-09-01T18:42:53Z\",\n      \"last_update_ts\": \"2026-09-01T18:42:53Z\",\n      \"update_count\": 0,\n      \"age_hours\": 41.285,\n      \"actor\": \"claude\",\n      \"source\": \"LEDGER.md:1\",\n      \"form\": \"dash\"\n    },\n    {\n      \"last_activity_ts\": \"2026-09-01T18:47:31Z\",\n      \"lane\": \"omn17060-sibling-provenance-gate\",\n      \"tickets\": [\n        \"OMN-17060\"\n      ],\n      \"related\": [],\n      \"claim_ts\": \"2026-09-01T18:47:31Z\",\n      \"last_update_ts\": \"2026-09-01T18:47:31Z\",\n      \"update_count\": 0,\n      \"age_hours\": 41.208,\n      \"actor\": \"claude\",\n      \"source\": \"LEDGER.md:2\",\n      \"form\": \"dash\"\n    },\n    {\n      \"last_activity_ts\": \"2026-09-01T22:49:00Z\",\n      \"lane\": \"codex-root-x\",\n      \"tickets\": [\n        \"OMN-17013\"\n      ],\n      \"related\": [],\n      \"claim_ts\": \"2026-09-01T22:49:00Z\",\n      \"last_update_ts\": \"2026-09-01T22:49:00Z\",\n      \"update_count\": 0,\n      \"age_hours\": 37.183,\n      \"actor\": \"codex\",\n      \"source\": \"LEDGER.md:8\",\n      \"form\": \"bare\"\n    },\n    {\n      \"last_activity_ts\": \"2026-09-02T00:06:40Z\",\n      \"lane\": null,\n      \"tickets\": [\n        \"OMN-17013\"\n      ],\n      \"related\": [],\n      \"claim_ts\": \"2026-09-02T00:06:40Z\",\n      \"last_update_ts\": \"2026-09-02T00:06:40Z\",\n      \"update_count\": 0,\n      \"age_hours\": 35.889,\n      \"actor\": \"codex:/root/forwarder_v2_resume\",\n      \"source\": \"LEDGER.md:5\",\n      \"form\": \"pipe\"\n    },\n    {\n      \"last_activity_ts\": \"2026-09-02T17:44:26Z\",\n      \"lane\": \"codex-root-omn17519-pr1146-close\",\n      \"tickets\": [\n        \"OMN-17519\"\n      ],\n      \"related\": [],\n      \"claim_ts\": \"2026-09-02T17:44:26Z\",\n      \"last_update_ts\": \"2026-09-02T17:44:26Z\",\n      \"update_count\": 0,\n      \"age_hours\": 18.259,\n      \"actor\": null,\n      \"source\": \"LEDGER.md:4\",\n      \"form\": \"pipe\"\n    }\n  ],\n  \"stale_claims\": [\n    {\n      \"last_activity_ts\": \"2026-08-31T00:39:00Z\",\n      \"lane\": \"OMN-16804-chain-leg1\",\n      \"tickets\": [\n        \"OMN-16930\"\n      ],\n      \"related\": [],\n      \"claim_ts\": \"2026-08-31T00:39:00Z\",\n      \"last_update_ts\": \"2026-08-31T00:39:00Z\",\n      \"update_count\": 0,\n      \"age_hours\": 83.35,\n      \"actor\": null,\n      \"source\": \"LEDGER.md:3\",\n      \"form\": \"pipe\"\n    }\n  ],\n  \"stale_after_hours\": 48.0,\n  \"open_pr_fences\": [],\n  \"unparsed_rows\": [],\n  \"errors\": [],\n  \"counts\": {\n    \"rows_parsed\": 8,\n    \"open_claims\": 7,\n    \"stale_claims\": 1,\n    \"open_pr_fences\": 0,\n    \"fenced_tickets\": 7,\n    \"unparsed_rows\": 0\n  }\n}\n"
+  },
+  "refusals": {
+    "no-ledger": {
+      "returncode": 2,
+      "stdout": "",
+      "message": "the following arguments are required: ledger"
+    },
+    "missing-ledger": {
+      "returncode": 2,
+      "stdout": "",
+      "message": "ledger path is not a readable file: <tmp>/nope.md"
+    },
+    "zero-window": {
+      "returncode": 2,
+      "stdout": "",
+      "message": "--stale-after-hours must be positive, got 0.0"
+    },
+    "bad-now": {
+      "returncode": 2,
+      "stdout": "",
+      "message": "--now is not an ISO 8601 UTC instant: yesterday"
+    }
+  }
+}
