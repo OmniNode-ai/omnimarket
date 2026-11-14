@@ -13,16 +13,16 @@ from typing import Any
 import pytest
 from pydantic import SecretStr
 
+from omnimarket.events.ticket_contract_render import (
+    EnumTicketContractRenderOperation,
+    ModelTicketContractRenderRequest,
+)
 from omnimarket.models.model_ticket_contract_written import (
     ModelTicketContractWritten,
     ticket_content_sha256,
 )
 from omnimarket.nodes.node_ticket_contract_render_compute import (
     NodeTicketContractRenderCompute,
-)
-from omnimarket.nodes.node_ticket_contract_render_compute.models import (
-    EnumTicketContractRenderOperation,
-    ModelTicketContractRenderRequest,
 )
 from omnimarket.nodes.node_ticket_hand_edit_alarm_effect.handlers import (
     handler_ticket_hand_edit_alarm,

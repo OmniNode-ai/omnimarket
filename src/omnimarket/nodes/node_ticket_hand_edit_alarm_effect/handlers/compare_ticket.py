@@ -7,17 +7,17 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from omnimarket.models.model_ticket_contract_written import (
-    ModelTicketContractWritten,
-    ticket_content_sha256,
-)
-from omnimarket.nodes.node_ticket_contract_render_compute.models import (
+from omnimarket.events.ticket_contract_render import (
     EnumTicketContractRenderFinding,
     EnumTicketContractRenderOperation,
     EnumTicketContractRenderOutcome,
     ModelTicketContractRenderNormalization,
     ModelTicketContractRenderRequest,
     ModelTicketContractRenderResult,
+)
+from omnimarket.models.model_ticket_contract_written import (
+    ModelTicketContractWritten,
+    ticket_content_sha256,
 )
 from omnimarket.nodes.node_ticket_contract_render_compute.node import (
     NodeTicketContractRenderCompute,
