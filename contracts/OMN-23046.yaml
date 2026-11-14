@@ -43,8 +43,6 @@ dod_evidence:
 - id: dod-omn23046-deploy-readback
   description: "The pushed branch carries the landing tick's typed tick_stage_raised failure in the orchestrator model; this reads the model file at the checked-out commit through the GitHub contents API and fails where the fix is absent, as at the merge base."
   source: manual
-  binds_ac:
-  - AC1
   checks:
   - check_type: command
     check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_pr_landing_tick_orchestrator/models/model_tick_orchestrator.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep tick_stage_raised > /dev/null"
