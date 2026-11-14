@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import sys
 from pathlib import Path
 from typing import Any
@@ -62,7 +63,9 @@ UNIT_A = "gpu-power-caps-sim-a"
 
 
 def ask(handler: HandlerGpuPowerCaps, host: str = SIM_A) -> ModelGpuPowerCapsResult:
-    return handler.handle(ModelGpuPowerCapsRequest(host=host, requested_by="lane-a"))
+    return asyncio.run(
+        handler.handle(ModelGpuPowerCapsRequest(host=host, requested_by="lane-a"))
+    )
 
 
 def actions(result: ModelGpuPowerCapsResult) -> list[Action | None]:

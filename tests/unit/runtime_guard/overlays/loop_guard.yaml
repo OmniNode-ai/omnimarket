@@ -1,0 +1,8 @@
+# The runtime loop guard's settings (OMN-24359 child): how long a handler may hold the runtime's event loop, and how the guard samples it.
+# max_loop_block_seconds: the longest gap the guard's heartbeat may see while a handler runs; the runtime calls a typed handler's handle on its
+#   event loop, so a handler that waits on a lab host's receipt on the loop shows a gap as long as the wait.
+# heartbeat_interval_seconds: how often the heartbeat wakes; a gap is the time between two wake-ups beyond this interval.
+# block_factor: how many times the bound the injected blocking sender holds the thread it runs on, so a loop-held send reads far past the bound.
+max_loop_block_seconds: 0.25
+heartbeat_interval_seconds: 0.01
+block_factor: 3

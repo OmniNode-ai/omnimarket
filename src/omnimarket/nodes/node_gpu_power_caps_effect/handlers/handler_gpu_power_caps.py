@@ -10,6 +10,7 @@ a write starts; every applied limit is read back from the card.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable
 
 from omnimarket.handlers.node_overlay_reader import (
@@ -161,7 +162,16 @@ class HandlerGpuPowerCaps:
             )
         return self._sender_value
 
-    def handle(self, request: ModelGpuPowerCapsRequest) -> ModelGpuPowerCapsResult:
+    async def handle(
+        self, request: ModelGpuPowerCapsRequest
+    ) -> ModelGpuPowerCapsResult:
+        # The send blocks until the host's receipt (and the subprocess backend until nvidia-smi answers); the runtime calls
+        # handle on its event loop, so the blocking part runs off it.
+        return await asyncio.to_thread(self._handle_blocking, request)
+
+    def _handle_blocking(
+        self, request: ModelGpuPowerCapsRequest
+    ) -> ModelGpuPowerCapsResult:
         overlay = self._overlay
         if overlay.backend is EnumGpuPowerCapsBackend.LAB_WORK:
             return DispatchGpuPowerCapsLabWork(overlay, self._sender).dispatch(request)
