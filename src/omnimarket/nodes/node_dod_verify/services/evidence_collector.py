@@ -2427,6 +2427,7 @@ class EvidenceCollector:
             EnumDodVerifyExecutionAudience.HOSTED
         ),
         full_contract_path: str | None = None,
+        changed_paths: list[str] | None = None,
     ) -> list[ModelEvidenceCheckResult]:
         """Load an explicit contract or the ticket's product-repository contracts.
 
@@ -2442,6 +2443,7 @@ class EvidenceCollector:
                 contract_path,
                 execution_audience,
                 full_contract_path=full_contract_path,
+                changed_paths=changed_paths,
             )
 
         repo_results = self._collect_repo_governed(ticket_id, execution_audience)
@@ -2677,6 +2679,7 @@ class EvidenceCollector:
         contract_schema_version: str | None = None,
         loaded_contract: tuple[dict[str, Any], ModelDodContractSubject] | None = None,
         full_contract_path: str | None = None,
+        changed_paths: list[str] | None = None,
     ) -> list[ModelEvidenceCheckResult]:
         """Load contract and run all dod_evidence checks (worktree-agnostic core).
 
@@ -2685,6 +2688,9 @@ class EvidenceCollector:
             contract_path: Explicit path to contract YAML. If None, auto-detect.
             full_contract_path: The complete head contract, which the standard-ticket
                 rules read when ``contract_path`` is a scoped copy (OMN-23771).
+            changed_paths: The paths the pull request changes; the standard-ticket
+                rules refuse a runtime-affecting change with no integrated criterion
+                (OMN-23774). Absent, that rule does not run.
 
         Returns:
             One ModelEvidenceCheckResult per dod_evidence item.
@@ -2765,6 +2771,7 @@ class EvidenceCollector:
             raw,
             path,
             full_contract_path,
+            changed_paths,
             judged=inline_items is None,
         )
         if standard_refusals:
@@ -3110,6 +3117,7 @@ class EvidenceCollector:
         raw: dict[str, Any],
         path: Path | None,
         full_contract_path: str | None,
+        changed_paths: list[str] | None = None,
         *,
         judged: bool,
     ) -> tuple[list[ModelEvidenceCheckResult], ModelEvidenceCheckResult | None]:
@@ -3162,7 +3170,9 @@ class EvidenceCollector:
         repository = verified_repository(
             full_path, subject.repository if subject is not None else None
         )
-        refusals = standard_ticket_refusals(ticket_id, full, cutover, repository)
+        refusals = standard_ticket_refusals(
+            ticket_id, full, cutover, repository, changed_paths
+        )
         if refusals:
             return refusals, None
         if is_grandfathered(ticket_id, cutover):

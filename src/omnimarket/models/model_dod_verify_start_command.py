@@ -48,6 +48,14 @@ class ModelDodVerifyStartCommand(BaseModel):
         exclude_if=lambda value: value is None,
         description="Path to the complete head contract YAML; needs contract_path.",
     )
+    # OMN-23774: the paths the pull request changes. The standard-ticket rules classify
+    # them with the core ticket contract's runtime-change classifier; absent, the
+    # runtime-change rule does not run.
+    changed_paths: list[str] | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description="Repo-relative paths the pull request changes; needs contract_path.",
+    )
     dry_run: bool = Field(default=False)
     execution_audience: EnumDodVerifyExecutionAudience | None = Field(
         default=None,
@@ -125,6 +133,8 @@ class ModelDodVerifyStartCommand(BaseModel):
                 raise ValueError(
                     "goal-scoped verification cannot set full_contract_path"
                 )
+            if self.changed_paths is not None:
+                raise ValueError("goal-scoped verification cannot set changed_paths")
             if not self.dod_evidence:
                 raise ValueError("goal-scoped verification requires dod_evidence")
             if self.contract_revision is None:
@@ -147,6 +157,8 @@ class ModelDodVerifyStartCommand(BaseModel):
 
         if self.full_contract_path is not None and self.contract_path is None:
             raise ValueError("full_contract_path requires contract_path")
+        if self.changed_paths is not None and self.contract_path is None:
+            raise ValueError("changed_paths requires contract_path")
         if (
             self.dod_evidence
             or self.parent_goal_id
