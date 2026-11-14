@@ -71,9 +71,8 @@ def test_golden_deployed() -> None:
         S.VERIFIED,
         S.RUN_OK,
     ]
-    assert len(plant.argvs) == 1
-    assert "--open-pr" in plant.argvs[0]
-    assert f"omnibase_infra#5917@{HEAD}" in plant.argvs[0]
+    assert len(plant.commands) == 1
+    assert plant.commands[0]["open_pr"] == f"omnibase_infra#5917@{HEAD}"
     record = plant.records[-1]
     assert record.requested_by == "lane-test"
     assert record.host == "host-a"
@@ -85,11 +84,11 @@ def test_golden_rollback_after_wrong_build() -> None:
     assert plant.completed is not None
     assert plant.completed.outcome == "rolled_back"
     assert plant.completed.final_state is S.ROLLED_BACK
-    assert len(plant.argvs) == 2
-    second = plant.argvs[1]
-    assert "--open-pr" not in second
-    assert second[second.index("--git-ref") + 1] == ROLLBACK_HEAD
-    assert second[second.index("--image-ref") + 1] == IMAGE
+    assert len(plant.commands) == 2
+    second = plant.commands[1]
+    assert "open_pr" not in second
+    assert second["git_ref"] == ROLLBACK_HEAD
+    assert second["image_ref"] == IMAGE
     failed = [r for r in plant.records if r.state is S.FAILED]
     assert failed
     assert failed[0].failure_detail == "digest_mismatch"
@@ -99,7 +98,7 @@ def test_error_chain_unhealthy_runtime_rolls_back() -> None:
     plant = run_flow("unhealthy")
     assert plant.completed is not None
     assert plant.completed.outcome == "rolled_back"
-    assert len(plant.argvs) == 2
+    assert len(plant.commands) == 2
     assert plant.reducer_errors == []
 
 
@@ -107,7 +106,7 @@ def test_error_chain_probe_unreadable_rolls_back() -> None:
     plant = run_flow("unreadable")
     assert plant.completed is not None
     assert plant.completed.outcome == "rolled_back"
-    assert len(plant.argvs) == 2
+    assert len(plant.commands) == 2
 
 
 def test_error_chain_deploy_command_refused() -> None:
@@ -115,7 +114,8 @@ def test_error_chain_deploy_command_refused() -> None:
     assert plant.completed is not None
     assert plant.completed.outcome == "failed"
     assert plant.completed.final_state is S.FAILED
-    assert len(plant.argvs) == 1
+    assert len(plant.requests) == 1
+    assert plant.commands == []
     assert plant.probe.calls == []
     assert "refused" in plant.completed.detail.lower()
 
@@ -126,7 +126,7 @@ def test_error_chain_job_failed_sends_no_rollback() -> None:
     assert plant.completed is not None
     assert plant.completed.outcome == "failed"
     assert "runtime=failed" in plant.completed.detail
-    assert len(plant.argvs) == 1
+    assert len(plant.commands) == 1
     assert plant.probe.calls == []
 
 
@@ -136,7 +136,7 @@ def test_error_chain_job_rejected() -> None:
     assert plant.completed is not None
     assert plant.completed.outcome == "failed"
     assert "rejected" in plant.completed.detail.lower()
-    assert len(plant.argvs) == 1
+    assert len(plant.commands) == 1
 
 
 def test_error_chain_rollback_command_refused() -> None:
@@ -149,7 +149,8 @@ def test_error_chain_rollback_command_refused() -> None:
     assert plant.completed is not None
     assert plant.completed.outcome == "failed"
     assert plant.completed.rollback_failures == 1
-    assert len(plant.argvs) == 2
+    assert len(plant.requests) == 2
+    assert len(plant.commands) == 1
 
 
 def test_error_chain_rollback_job_failed() -> None:
@@ -219,7 +220,7 @@ def test_result_in_wrong_phase_ignored() -> None:
 
 
 def test_control_rollback_is_not_sent_on_a_good_build() -> None:
-    """The failing control of the rollback tests: the same flow with a wrong build sends a second trigger call."""
+    """The failing control of the rollback tests: the same flow with a wrong build sends a second command."""
     good, bad = run_flow("golden"), run_flow("wrong_build")
-    assert len(good.argvs) == 1
-    assert len(bad.argvs) == 2
+    assert len(good.commands) == 1
+    assert len(bad.commands) == 2

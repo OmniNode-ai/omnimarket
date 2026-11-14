@@ -86,6 +86,9 @@ class ModelGithubSource(BaseModel):
     #: When set, the source MINTS a fresh installation token once per read instead of reading
     #: ``token_env``; the fields name secret-store references, never values.
     token_mint: ModelTokenMint | None
+    #: The NAME of the App permission the organization read of the group needs, named in a
+    #: refusal; never a value.
+    org_read_permission: str = Field(min_length=1)
     #: Calls one read may make; the call past it is not made.
     max_calls: int = Field(ge=1)
     timeout_seconds: float = Field(gt=0)

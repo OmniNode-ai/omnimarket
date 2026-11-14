@@ -2,172 +2,142 @@
 # SPDX-License-Identifier: MIT
 """Golden, error and failing-control chains of the branch deploy command effect (OMN-24027).
 
-* golden: deploy exit 0 -> published with the exact argv incl. --open-pr; rollback exit 0 -> published with no --open-pr and --image-ref when given;
-* error: refused marker -> refused; other non-zero -> failed; timeout -> failed;
-* control: a wrong flag name is detected as not equal to the produced argv; env values never leak into the result detail.
+* golden: deploy -> one signed message on the contract topic; rollback -> no open_pr, image_ref present;
+* error: signing key not set -> refused; publish error -> failed;
+* control: a tampered git_ref changes the recomputed signature; the signing key never leaks into detail.
 """
 
 from __future__ import annotations
 
-from pathlib import Path
+import hashlib
+import hmac
+import json
 
 import pytest
 
-from omnimarket.nodes.node_branch_deploy_command_effect.adapters.adapter_deploy_agent_trigger import (
-    SubprocessDeployAgentTrigger,
-)
-from omnimarket.nodes.node_branch_deploy_command_effect.adapters.adapter_in_memory_trigger import (
-    InMemoryDeployAgentTrigger,
-)
 from omnimarket.nodes.node_branch_deploy_command_effect.handlers.handler_branch_deploy_command import (
     HandlerBranchDeployCommand,
-)
-from omnimarket.nodes.node_branch_deploy_command_effect.models.model_branch_deploy_command import (
-    ModelBranchDeployCommandRequest,
-)
-from omnimarket.nodes.node_branch_deploy_command_effect.protocols.protocol_deploy_agent_trigger import (
-    ModelTriggerOutcome,
 )
 from tests.nodes.node_branch_deploy_command_effect.support import (
     HEAD,
     RUN_ID,
+    SIGNING_ENV,
+    SIGNING_KEY,
+    FailingBus,
+    FakeBus,
     overlay,
     request,
 )
 
 pytestmark = pytest.mark.unit
 
-
-def _handler(trigger: InMemoryDeployAgentTrigger) -> HandlerBranchDeployCommand:
-    return HandlerBranchDeployCommand(overlay=overlay(), trigger=trigger)
+TOPIC = "onex.cmd.deploy.rebuild-requested.v1"
 
 
-def test_golden_deploy_published() -> None:
-    """Deploy exit 0 -> published; the exact argv list in order incl. --open-pr."""
-    trigger = InMemoryDeployAgentTrigger(
-        outcomes=[ModelTriggerOutcome(exit_code=0, stdout="Published.", stderr="")]
-    )
-    handler = _handler(trigger)
-    req = request(mode="deploy")
-    result = handler.handle(req)
+def _expected_signature(body: dict) -> str:
+    raw = json.dumps(body, sort_keys=True, separators=(",", ":")).encode()
+    return hmac.new(SIGNING_KEY.encode(), raw, hashlib.sha256).hexdigest()
+
+
+@pytest.mark.unit
+async def test_golden_deploy_published(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(SIGNING_ENV, SIGNING_KEY)
+    bus = FakeBus()
+    handler = HandlerBranchDeployCommand(event_bus=bus, overlay=overlay())
+    result = await handler.handle(request(mode="deploy"))
+
     assert result.status == "published"
-    assert result.exit_code == 0
-    assert result.correlation_id == RUN_ID
     assert result.mode == "deploy"
-    argv = list(trigger.calls[0][0])
-    expected = [
-        "bash",
-        "/srv/example/deploy-agent-trigger.sh",
-        "--runtime-lane",
-        "lane-a",
-        "--git-ref",
-        HEAD,
-        "--scope",
-        "runtime",
-        "--build-source",
-        "workspace",
-        "--rollback-actor",
-        "actor-a",
-        "--rollback-reason",
-        "reason-a",
-        "--requested-by",
-        "user-a",
-        "--correlation-id",
-        str(RUN_ID),
-        "--open-pr",
-        f"omnibase_infra#5917@{HEAD}",
-    ]
-    assert argv == expected
+    assert result.correlation_id == RUN_ID
+    assert len(bus.published) == 1
+    topic, key, value = bus.published[0]
+    assert topic == TOPIC
+    assert key == str(RUN_ID).encode()
+    payload = json.loads(value)
+    body = {k: v for k, v in payload.items() if k != "_signature"}
+    expected = {
+        "correlation_id": str(RUN_ID),
+        "requested_by": "user-a",
+        "scope": "runtime",
+        "runtime_lane": "lane-a",
+        "build_source": "workspace",
+        "git_ref": HEAD,
+        "rollback": {"actor": "actor-a", "reason": "reason-a"},
+        "open_pr": f"omnibase_infra#5917@{HEAD}",
+    }
+    assert body == expected
+    assert payload["_signature"] == _expected_signature(body)
 
 
-def test_golden_rollback_published() -> None:
-    """Rollback exit 0 -> published; no --open-pr; --image-ref when given."""
-    trigger = InMemoryDeployAgentTrigger(
-        outcomes=[ModelTriggerOutcome(exit_code=0, stdout="Published.", stderr="")]
+@pytest.mark.unit
+async def test_golden_rollback_published(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(SIGNING_ENV, SIGNING_KEY)
+    bus = FakeBus()
+    handler = HandlerBranchDeployCommand(event_bus=bus, overlay=overlay())
+    result = await handler.handle(
+        request(mode="rollback", image_ref="registry.example/omni:rollback")
     )
-    handler = _handler(trigger)
-    req = request(mode="rollback", image_ref="registry.example/omni:rollback")
-    result = handler.handle(req)
+
     assert result.status == "published"
     assert result.mode == "rollback"
-    argv = list(trigger.calls[0][0])
-    assert "--open-pr" not in argv
-    assert f"--git-ref {HEAD}" in " ".join(argv)
-    assert "--image-ref" in argv
-    assert "registry.example/omni:rollback" in argv
+    topic, _key, value = bus.published[0]
+    assert topic == TOPIC
+    payload = json.loads(value)
+    body = {k: v for k, v in payload.items() if k != "_signature"}
+    assert "open_pr" not in body
+    assert body["image_ref"] == "registry.example/omni:rollback"
+    assert payload["_signature"] == _expected_signature(body)
 
 
-def test_error_chain_refused() -> None:
-    """Non-zero exit with the refused marker in stderr -> refused, detail kept."""
-    trigger = InMemoryDeployAgentTrigger(
-        outcomes=[
-            ModelTriggerOutcome(
-                exit_code=1, stdout="", stderr="REFUSED: --runtime-lane is required"
-            )
-        ]
-    )
-    handler = _handler(trigger)
-    result = handler.handle(request(mode="deploy"))
+@pytest.mark.unit
+async def test_error_chain_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(SIGNING_ENV, raising=False)
+    bus = FakeBus()
+    handler = HandlerBranchDeployCommand(event_bus=bus, overlay=overlay())
+    result = await handler.handle(request(mode="deploy"))
+
     assert result.status == "refused"
-    assert result.exit_code == 1
-    assert "--runtime-lane is required" in result.detail
+    assert bus.published == []
+    assert SIGNING_KEY not in result.detail
 
 
-def test_error_chain_failed() -> None:
-    """Non-zero exit without the refused marker -> failed."""
-    trigger = InMemoryDeployAgentTrigger(
-        outcomes=[ModelTriggerOutcome(exit_code=2, stdout="", stderr="boom")]
-    )
-    handler = _handler(trigger)
-    result = handler.handle(request(mode="deploy"))
+@pytest.mark.unit
+async def test_error_chain_failed(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(SIGNING_ENV, SIGNING_KEY)
+    handler = HandlerBranchDeployCommand(event_bus=FailingBus(), overlay=overlay())
+    result = await handler.handle(request(mode="deploy"))
+
     assert result.status == "failed"
-    assert result.exit_code == 2
-    assert result.detail == "boom"
+    assert result.detail == "ConnectionError"
 
 
-def test_error_chain_timeout() -> None:
-    """Timeout outcome exit -1 -> failed."""
-    trigger = InMemoryDeployAgentTrigger(
-        outcomes=[ModelTriggerOutcome(exit_code=-1, stdout="", stderr="TimeoutExpired")]
+@pytest.mark.unit
+async def test_failing_control_tampered_git_ref_changes_signature(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(SIGNING_ENV, SIGNING_KEY)
+    bus = FakeBus()
+    handler = HandlerBranchDeployCommand(event_bus=bus, overlay=overlay())
+    await handler.handle(request(mode="deploy"))
+
+    _topic, _key, value = bus.published[0]
+    payload = json.loads(value)
+    published_sig = payload["_signature"]
+    tampered = dict(payload)
+    tampered["git_ref"] = tampered["git_ref"][:-1] + (
+        "b" if tampered["git_ref"][-1] != "b" else "c"
     )
-    handler = _handler(trigger)
-    result = handler.handle(request(mode="deploy"))
-    assert result.status == "failed"
-    assert result.exit_code == -1
+    body = {k: v for k, v in tampered.items() if k != "_signature"}
+    recomputed = _expected_signature(body)
+    assert recomputed != published_sig
 
 
-def test_control_wrong_flag_fails() -> None:
-    """A deliberately wrong flag name is not equal to the produced argv."""
-    trigger = InMemoryDeployAgentTrigger(
-        outcomes=[ModelTriggerOutcome(exit_code=0, stdout="Published.", stderr="")]
-    )
-    handler = _handler(trigger)
-    req = request(mode="deploy")
-    handler.handle(req)
-    produced = list(trigger.calls[0][0])
-    wrong = list(produced)
-    wrong[2] = "--wrong-flag"
-    assert produced != wrong
+@pytest.mark.unit
+async def test_signing_key_never_in_detail(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(SIGNING_ENV, SIGNING_KEY)
+    bus = FakeBus()
+    handler = HandlerBranchDeployCommand(event_bus=bus, overlay=overlay())
+    result = await handler.handle(request(mode="deploy"))
 
-
-def test_env_values_never_in_result(tmp_path: Path) -> None:
-    """The child sees the env value, but the handler's result detail never contains it."""
-    env_file = tmp_path / "deploy-agent.env"
-    env_file.write_text("SECRET=hunter2\n")
-    trigger = SubprocessDeployAgentTrigger()
-    ov = overlay().model_copy(update={"env_file": str(env_file)})
-    handler = HandlerBranchDeployCommand(overlay=ov, trigger=trigger)
-    req = ModelBranchDeployCommandRequest(
-        correlation_id=RUN_ID,
-        mode="deploy",
-        runtime_lane="lane-a",
-        repo="omnibase_infra",
-        pr_number=5917,
-        git_ref=HEAD,
-        image_ref="",
-        rollback_actor="actor-a",
-        rollback_reason="reason-a",
-        requested_by="user-a",
-    )
-    result = handler.handle(req)
-    assert "hunter2" not in result.detail
+    assert result.status == "published"
+    assert SIGNING_KEY not in result.detail

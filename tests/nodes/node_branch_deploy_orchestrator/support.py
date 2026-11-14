@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """The other side of every topic the branch deploy orchestrator speaks to, for its tests (OMN-24027).
 
-``Plant`` answers each command the orchestrator publishes: the real command effect over an in-memory trigger,
+``Plant`` answers each command the orchestrator publishes: the real command effect over an in-memory bus,
 the real probe effect over an in-memory probe, and the real reducer fold. Nothing here decides for the
 orchestrator: it only routes what was published to the node that owns the topic and hands back what that
 node answered.
@@ -10,6 +10,8 @@ node answered.
 
 from __future__ import annotations
 
+import asyncio
+import json
 from collections import deque
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -19,9 +21,6 @@ from uuid import UUID, uuid4
 import yaml
 
 from omnimarket.models.model_dev_deploy_reading import ModelRuntimeProbeFact
-from omnimarket.nodes.node_branch_deploy_command_effect.adapters.adapter_in_memory_trigger import (
-    InMemoryDeployAgentTrigger,
-)
 from omnimarket.nodes.node_branch_deploy_command_effect.handlers.handler_branch_deploy_command import (
     HandlerBranchDeployCommand,
 )
@@ -30,9 +29,6 @@ from omnimarket.nodes.node_branch_deploy_command_effect.models.model_branch_depl
 )
 from omnimarket.nodes.node_branch_deploy_command_effect.overlay import (
     ModelBranchDeployCommandOverlay,
-)
-from omnimarket.nodes.node_branch_deploy_command_effect.protocols.protocol_deploy_agent_trigger import (
-    ModelTriggerOutcome,
 )
 from omnimarket.nodes.node_branch_deploy_orchestrator.handlers.handler_branch_deploy_orchestrator import (
     HandlerBranchDeployOrchestrator,
@@ -69,6 +65,12 @@ from omnimarket.nodes.node_host_install_state_reducer.models import (
 from omnimarket.nodes.node_host_install_state_reducer.overlay import (
     ModelHostInstallStateOverlay,
 )
+from tests.nodes.node_branch_deploy_command_effect.support import (
+    SIGNING_ENV,
+    SIGNING_KEY,
+    FailingBus,
+    FakeBus,
+)
 
 NODES = Path(__file__).resolve().parents[3] / "src/omnimarket/nodes"
 NODE_DIR = NODES / "node_branch_deploy_orchestrator"
@@ -93,9 +95,11 @@ def orchestrator_overlay() -> ModelBranchDeployOrchestratorOverlay:
 
 
 def command_overlay() -> ModelBranchDeployCommandOverlay:
-    return ModelBranchDeployCommandOverlay.model_validate(
+    overlay = ModelBranchDeployCommandOverlay.model_validate(
         _document("node_branch_deploy_command_effect")
     )
+    assert overlay.hmac_secret_env == SIGNING_ENV
+    return overlay
 
 
 def probe_overlay() -> ModelBranchDeployProbeOverlay:
@@ -162,12 +166,16 @@ class StepClock:
         return START + timedelta(seconds=self.ticks)
 
 
-def published() -> ModelTriggerOutcome:
-    return ModelTriggerOutcome(exit_code=0, stdout="Published.", stderr="")
+def published() -> str:
+    return "published"
 
 
-def refused(message: str = "bad") -> ModelTriggerOutcome:
-    return ModelTriggerOutcome(exit_code=1, stdout="", stderr=f"REFUSED: {message}")
+def refused(message: str = "bad") -> str:
+    return "refused"
+
+
+def failed() -> str:
+    return "failed"
 
 
 def read(observed: str, ok: bool, expected: str = HEAD):
@@ -181,26 +189,25 @@ UNREADABLE = ((), "runtime probe unreadable: ValueError")
 class Plant:
     """Routes every published payload to the node that owns its topic and queues the answer.
 
-    The deploy agent is the one stand-in: ``job_events`` are the terminal events it publishes after the trigger
-    published its command, in order (``completed_success``, ``completed_failed`` or ``rejected``).
+    The deploy agent is the one stand-in: ``job_events`` are the terminal events it publishes after the command
+    effect published its rebuild command, in order (``completed_success``, ``completed_failed`` or ``rejected``).
     """
 
     def __init__(
         self,
         *,
-        outcomes: list[ModelTriggerOutcome] | None = None,
+        outcomes: list[str] | None = None,
         probes: list[Any] | None = None,
         job_events: list[str] | None = None,
     ) -> None:
         self.orchestrator = HandlerBranchDeployOrchestrator(
             orchestrator_overlay(), StepClock()
         )
-        self.trigger = InMemoryDeployAgentTrigger(outcomes=list(outcomes or []))
+        self.outcomes = list(outcomes or [])
         self.probe = InMemoryBranchDeployProbe(facts=list(probes or []))
         self.job_events: list[str] = list(job_events or [])
-        self.command_handler = HandlerBranchDeployCommand(
-            overlay=command_overlay(), trigger=self.trigger
-        )
+        self.requests: list[ModelBranchDeployCommandRequest] = []
+        self.envelopes: list[dict[str, Any]] = []
         self.probe_handler = HandlerBranchDeployProbe(
             overlay=probe_overlay(), probe=self.probe, clock=lambda: START
         )
@@ -211,8 +218,9 @@ class Plant:
         self.completed: ModelBranchDeployCompleted | None = None
 
     @property
-    def argvs(self) -> list[list[str]]:
-        return [list(call[0]) for call in self.trigger.calls]
+    def commands(self) -> list[dict[str, Any]]:
+        """The envelopes the command effect published, in order; a refused or failed command publishes none."""
+        return self.envelopes
 
     def run(self, start: ModelBranchDeployRequest) -> None:
         queue: deque[tuple[object, UUID]] = deque([(start, start.correlation_id)])
@@ -227,7 +235,20 @@ class Plant:
     def _serve(self, topic: str, payload: Any, key: UUID) -> list[Any]:
         if topic.endswith("branch-deploy-command-requested.v1"):
             assert isinstance(payload, ModelBranchDeployCommandRequest)
-            result = self.command_handler.handle(payload)
+            self.requests.append(payload)
+            outcome = self.outcomes.pop(0)
+            bus: FakeBus | FailingBus = (
+                FailingBus() if outcome == "failed" else FakeBus()
+            )
+            environ = {} if outcome == "refused" else {SIGNING_ENV: SIGNING_KEY}
+            handler = HandlerBranchDeployCommand(
+                bus, overlay=command_overlay(), environ=environ
+            )
+            result = asyncio.run(handler.handle(payload))
+            if isinstance(bus, FakeBus):
+                self.envelopes.extend(
+                    json.loads(value) for _, _, value in bus.published
+                )
             if result.status == "published":
                 return [result, job_event(self.job_events.pop(0), key)]
             return [result]
@@ -250,7 +271,7 @@ class Plant:
         raise AssertionError(f"the orchestrator published on an unknown topic {topic}")
 
 
-#: The five flows of the orchestrator, by name: what the deploy agent publishes, what the runtime reports, what the trigger answers.
+#: The five flows of the orchestrator, by name: what the deploy agent publishes, what the runtime reports, what the command effect answers.
 FLOWS: dict[str, dict[str, Any]] = {
     "golden": {
         "outcomes": [published()],

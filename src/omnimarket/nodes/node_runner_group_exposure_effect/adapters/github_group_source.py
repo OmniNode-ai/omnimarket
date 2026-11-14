@@ -69,6 +69,7 @@ class GithubGroupSource:
         self._mint = token_mint
         self._minted: str | None = None
         self._calls = 0
+        self._missing_permission: str | None = None
 
     def _token(self) -> str:
         """The read's bearer token: minted once per instance, or read from the environment."""
@@ -105,6 +106,7 @@ class GithubGroupSource:
             self._s.timeout_seconds,
         )
         if status in _DENIED and denied_is_org:
+            self._missing_permission = self._s.org_read_permission
             raise _StopError(EnumExposureReadFailure.ORG_READ_DENIED)
         if status != 200:
             raise _StopError(EnumExposureReadFailure.UNREADABLE)
@@ -222,7 +224,10 @@ class GithubGroupSource:
             jobs = self._jobs(repositories, files)
         except _StopError as stop:
             return ModelGroupRead(
-                read_at=now, calls=self._calls, read_failure=stop.failure
+                read_at=now,
+                calls=self._calls,
+                read_failure=stop.failure,
+                missing_permission=self._missing_permission,
             )
         return ModelGroupRead(
             group=group, files=files, jobs=jobs, read_at=now, calls=self._calls

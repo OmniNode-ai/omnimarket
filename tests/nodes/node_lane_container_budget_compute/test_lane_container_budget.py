@@ -238,3 +238,35 @@ def test_the_declared_target_rides_with_the_lane_reading_and_the_budget_still_ju
         judge(over_budget_fixture(), declaration("alpha", "alpha", 3)).lanes[0].target
         is None
     )
+
+
+def test_slack_is_the_budget_above_the_live_count() -> None:
+    for budget, expected in ((7, 4), (3, 0), (2, 0)):
+        verdict = judge(
+            over_budget_fixture(), declaration("alpha", "proj-alpha", budget)
+        )
+        assert verdict.lanes[0].slack == expected, budget
+
+
+def test_closing_check_names_a_lane_whose_budget_sits_above_its_live_count() -> None:
+    handler = HandlerLaneContainerBudget()
+    wide = judge(over_budget_fixture(), declaration("alpha", "proj-alpha", 19))
+    assert handler.closing_check(wide) == (wide.lanes[0],)
+    assert wide.lanes[0].slack == 16
+    tight = judge(over_budget_fixture(), declaration("alpha", "proj-alpha", 3))
+    assert handler.closing_check(tight) == ()
+
+
+def test_closing_check_names_a_lane_that_was_not_read() -> None:
+    handler = HandlerLaneContainerBudget()
+    verdict = judge("", declaration("alpha", "proj-alpha", 3))
+    assert handler.closing_check(verdict) == (verdict.lanes[0],)
+    assert verdict.lanes[0].slack is None
+
+
+def test_slack_changes_no_status_and_adds_no_alarm() -> None:
+    verdict = judge(over_budget_fixture(), declaration("alpha", "proj-alpha", 19))
+
+    assert verdict.status == "PASS"
+    assert verdict.failed is False
+    assert verdict.alarms == ()

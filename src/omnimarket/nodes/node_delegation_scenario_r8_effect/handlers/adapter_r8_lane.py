@@ -66,6 +66,7 @@ class ModelSendRequest(_Frozen):
     prompt: str = Field(min_length=1)
     traffic_class: str | None = None
     source_surface: str | None = None
+    backend_id: str | None = None
 
 
 class LaneReadError(RuntimeError):
@@ -99,6 +100,9 @@ class ModelBusSettings(_Frozen):
     savings_node: str = Field(min_length=1)
     delegations_node: str = Field(min_length=1)
     workspace_env: str = Field(min_length=1)
+    tenant_env: str = Field(min_length=1)
+    #: The command the delegate command is started through so the tenant variable is set for it alone.
+    env_command: str = Field(min_length=1)
 
 
 class ModelLaneSettings(_Frozen):
@@ -211,6 +215,25 @@ def _subprocess_run(argv: Sequence[str], timeout: float) -> tuple[int, str]:
     return done.returncode, done.stdout
 
 
+def _subprocess_run_as(
+    env_command: str, extra_environment: Mapping[str, str]
+) -> CommandRunner:
+    """A runner that starts the delegate command through ``env_command`` with ``extra_environment`` set.
+
+    The command is prefixed with the contract's environment command and one ``NAME=value`` per setting, so the host
+    environment is inherited by the child as it is and this module reads no process environment.
+    """
+    prefix = [
+        env_command,
+        *(f"{name}={value}" for name, value in extra_environment.items()),
+    ]
+
+    def run(argv: Sequence[str], timeout: float) -> tuple[int, str]:
+        return _subprocess_run([*prefix, *argv], timeout)
+
+    return run
+
+
 def _decimal(value: object, name: str) -> Decimal:
     try:
         return Decimal(str(value))
@@ -275,10 +298,31 @@ def parse_runs(
     return tuple(rows)
 
 
+def delegate_transport_args(
+    overlay: ModelScenarioTenantReadOverlay, workspace: str | None
+) -> tuple[str, ...]:
+    """The delegate command's transport flags: the bus and lane the overlay names, and the workspace root on a kafka bus."""
+    if overlay.bus == "kafka":
+        if workspace is None or not workspace.strip():
+            raise LaneReadError(
+                "the workspace root is not set (the delegate command needs --omnibase-path on a kafka bus)"
+            )
+        return (
+            "--bus",
+            overlay.bus,
+            "--lane",
+            overlay.bus_lane,
+            "--omnibase-path",
+            workspace,
+        )
+    return ("--bus", overlay.bus)
+
+
 def send_delegate(
     settings: ModelLaneSettings,
     request: ModelSendRequest,
     run_command: CommandRunner,
+    transport_args: Sequence[str] = (),
 ) -> str:
     """Send one run with the ``onex delegate`` command and return its correlation id."""
     argv = [
@@ -292,6 +336,9 @@ def send_delegate(
         argv += ["--traffic-class", request.traffic_class]
     if request.source_surface is not None:
         argv += ["--source-surface", request.source_surface]
+    if request.backend_id is not None:
+        argv += ["--backend-id", request.backend_id]
+    argv += list(transport_args)
     code, out = run_command(argv, settings.delegate_timeout_seconds)
     try:
         parsed = json.loads(out)
@@ -363,14 +410,23 @@ class BusLane:
         overlay: ModelScenarioTenantReadOverlay,
         request: BusRequest,
         *,
-        run_command: CommandRunner = _subprocess_run,
+        workspace: str | None = None,
+        run_command: CommandRunner | None = None,
     ) -> None:
         if settings.bus is None:
             raise LaneReadError("the R8 overlay document has no bus block")
         self._settings = settings
         self._overlay = overlay
+        self._workspace = workspace
         self._request = request
-        self._run = run_command
+        self._run = (
+            run_command
+            if run_command is not None
+            else _subprocess_run_as(
+                settings.bus.env_command,
+                {settings.bus.tenant_env: str(overlay.probe_tenant_id)},
+            )
+        )
 
     def _answer(self, kind: EnumTenantReadKind, limit: int) -> Mapping[str, object]:
         command = ModelTenantReadCommand(
@@ -395,4 +451,17 @@ class BusLane:
         return parse_runs(self._settings, body)
 
     def send(self, request: ModelSendRequest) -> str:
-        return send_delegate(self._settings, request, self._run)
+        # The organic control (no traffic class) is pinned to the overlay's control backend so it carries spend; every other request is sent unchanged.
+        if (
+            request.traffic_class is None
+            and self._overlay.control_backend_id is not None
+        ):
+            request = request.model_copy(
+                update={"backend_id": self._overlay.control_backend_id}
+            )
+        return send_delegate(
+            self._settings,
+            request,
+            self._run,
+            delegate_transport_args(self._overlay, self._workspace),
+        )

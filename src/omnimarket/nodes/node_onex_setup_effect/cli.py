@@ -41,6 +41,14 @@ from omnimarket.nodes.node_onex_setup_effect.models import (
     ModelOnexSetupResult,
 )
 
+# Printed before the first model question (and before any step when unattended):
+# an exhausted model ladder ends returned_to_caller, so Claude Code does the task.
+LADDER_NOTICE = (
+    "If none of the models you choose can finish a task, free or paid, the task "
+    "goes back to Claude Code and Claude does it as usual. That task shows no "
+    "savings, and any attempts your models made are still billed by their provider."
+)
+
 
 def _report(result: ModelOnexSetupResult) -> None:
     for outcome in result.steps:
@@ -179,6 +187,7 @@ def setup_command(
             workspace = Path(click.prompt("Workspace root (OMNIBASE_PATH)", type=str))
     if provider is not None and provider.lower() in REFUSED_PROVIDERS:
         interactive = False  # refused by name below; never prompt for it
+    click.echo(LADDER_NOTICE)
     if interactive:
         provider, model, url = _ask_choices(provider, model, url)
     request = ModelOnexSetupRequest(

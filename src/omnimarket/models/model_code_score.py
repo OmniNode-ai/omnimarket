@@ -14,6 +14,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from omnimarket.models.bus_binding.model_node_event_bus import ModelNodeEventBus
 from omnimarket.models.enum_code_score import (
     EnumCodeScoreCheckOutcome,
     EnumCodeScoreFailureCode,
@@ -39,6 +40,8 @@ class ModelCodeScoreOverlay(BaseModel):
     repo_roots: dict[str, str] = Field(min_length=1)
     protected_paths: dict[str, tuple[str, ...]]
     output_tail_chars: int = Field(ge=0)
+    # The bus `onex run-node` reads to reach this node (OMN-24265)
+    event_bus: ModelNodeEventBus | None = None
 
 
 class ModelCodeScoreContractRef(BaseModel):

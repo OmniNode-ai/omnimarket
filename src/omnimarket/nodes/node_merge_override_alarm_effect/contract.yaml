@@ -157,11 +157,16 @@ event_bus:
     - onex.evt.omnimarket.pr-landing-github-completed.v1
     - onex.evt.omnimarket.pr-landing-github-failed.v1
     - onex.evt.platform.node-heartbeat.v1
+  # The runtime kernel sends a returned model that published_events does not map to the
+  # FIRST topic below. That was the landing request topic, so a returned alarm result landed
+  # on a command topic another node consumes (OMN-24069). The first topic is this node's own
+  # verdict topic, and the typed entries return nothing: the node publishes everything below
+  # itself (the runtime's None-result opt-out).
   publish_topics:
+    - onex.evt.omnimarket.merge-override-verdict.v1
+    - onex.evt.omnimarket.merge-override-finding.v1
     - onex.cmd.omnimarket.pr-landing-github-requested.v1
     - onex.cmd.omnimarket.slack-publish.v1
-    - onex.evt.omnimarket.merge-override-finding.v1
-    - onex.evt.omnimarket.merge-override-verdict.v1
   dlq_topics:
     - onex.dlq.omnimarket.merge-override-alarm-malformed.v1
 
@@ -206,6 +211,8 @@ dod_evidence:
     description: "Receipt, merge, read and verdict hops meet the shipped contracts and models"
   - test: tests/unit/nodes/node_merge_override_alarm_effect/test_typed_entries.py::test_every_routed_handler_resolves_its_event_model
     description: "Each routing entry's handler resolves the runtime's typed arm with that entry's event model"
+  - test: tests/unit/nodes/node_merge_override_alarm_effect/test_entries_return_no_result.py
+    description: "No routed entry returns a model the contract does not map to a topic, and the runtime's fallback topic (the first publish topic) is not a topic another node consumes"
 
 dependencies:
   packages:

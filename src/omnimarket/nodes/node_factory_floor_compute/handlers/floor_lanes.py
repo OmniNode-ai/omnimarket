@@ -131,6 +131,21 @@ def names_task(task_id: str, lane_tokens: tuple[str, ...]) -> bool:
     )
 
 
+def lanes_naming_task(
+    task_id: str,
+    lanes_by_token: Mapping[str, tuple[str, ...]],
+    lane_words: Mapping[str, tuple[str, ...]],
+) -> tuple[str, ...]:
+    """The lanes whose name tokens can carry the task id's words, so a task row scan tests only those lanes."""
+    wanted = name_tokens(task_id)
+    if not wanted:
+        return ()
+    candidates = set(lanes_by_token.get(wanted[0], ()))
+    if DOTTED_TASK_RE.fullmatch(task_id):
+        candidates |= set(lanes_by_token.get("".join(wanted), ()))
+    return tuple(lane for lane in candidates if names_task(task_id, lane_words[lane]))
+
+
 def _station(
     lane: str,
     lane_tickets: tuple[str, ...],

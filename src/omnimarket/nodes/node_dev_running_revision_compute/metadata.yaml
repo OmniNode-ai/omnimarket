@@ -1,0 +1,22 @@
+name: node_dev_running_revision_compute
+version: "0.1.0"
+description: "Compares each repository's running revision with its merged head on dev: the behind threshold and the median merge-to-running bound are overlay values"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_dev_running_revision_compute: "omnimarket.nodes.node_dev_running_revision_compute"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "dev-runtime", "running-revision", "pure"]
+pack: "pr_lifecycle"
+display_name: "Dev Running Revision"
+node_role: "compute"

@@ -79,6 +79,9 @@ from omnimarket.nodes.node_factory_floor_publish_effect.models.model_fleet_obser
 from omnimarket.nodes.node_factory_floor_publish_effect.models.model_process_health_payload import (
     ModelProcessHealthPayloadRequest,
 )
+from omnimarket.nodes.node_source_read_cache_effect.handlers.tally_receipt_lines import (
+    read_tally_lines,
+)
 
 NODE_NAME = "node_factory_floor_publish_effect"
 NODE_DIR = Path(__file__).resolve().parents[1]
@@ -635,6 +638,7 @@ class HandlerFactoryFloorPublish:
             steps=tuple(results),
             cycle_seconds=timing["cycle_seconds"],
             phase_seconds={k: round(v, 3) for k, v in phases.items()},
+            source_cache_lines=tuple(read_tally_lines(home, now)),
             after_publish=tuple(after),
             process_health_published=health is not None,
             delegation_published=delegation is not None,

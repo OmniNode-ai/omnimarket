@@ -9,6 +9,7 @@ publishes on the contract's declared failure terminal.
 from omnimarket.models.model_repo_write_io import (
     MAX_BODY_CHARS,
     MAX_DISPATCH_INPUTS,
+    MAX_VARIABLE_CHARS,
     EnumRepoWriteMode,
     EnumRepoWriteOperation,
     EnumRepoWriteRefusal,
@@ -23,6 +24,7 @@ from omnimarket.models.model_repo_write_io import (
 __all__ = [
     "MAX_BODY_CHARS",
     "MAX_DISPATCH_INPUTS",
+    "MAX_VARIABLE_CHARS",
     "EnumRepoWriteMode",
     "EnumRepoWriteOperation",
     "EnumRepoWriteRefusal",

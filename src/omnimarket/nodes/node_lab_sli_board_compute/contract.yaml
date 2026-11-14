@@ -39,6 +39,7 @@ handler_routing:
         module: omnimarket.nodes.node_lab_sli_board_compute.handlers.handler_lab_sli_board
       input_model: omnimarket.models.lab_sli.model_lab_sli.ModelLabSliBoardRequest
       output_model: omnimarket.models.lab_sli.model_lab_sli.ModelLabSliBoard
+      event_model: omnimarket.models.lab_sli.model_lab_sli.ModelLabSliEvaluationBatch
 
 descriptor:
   node_archetype: compute

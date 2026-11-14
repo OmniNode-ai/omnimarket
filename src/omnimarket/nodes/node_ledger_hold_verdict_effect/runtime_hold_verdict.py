@@ -2,11 +2,18 @@
 # SPDX-License-Identifier: MIT
 """``python -m omnimarket.nodes.node_ledger_hold_verdict_effect``: is this pull request held?
 
-Reads the ``holds`` answer through ``node_work_ledger_reader_effect`` (the bus-fed projection),
-decides with ``HandlerHoldVerdict`` and prints ``HELD``, ``CLEAR`` or ``UNDECIDED`` on stdout and
-one ``HOLD-VERDICT`` line on stderr (``source=file-fallback`` when the file's lines answered).
-The caller carries the file's ``holds`` lines with ``--file-holds`` only as the fallback the
-overlay allows. Exit 0: CLEAR. Exit 3: HELD. Exit 2: UNDECIDED, which is a stop, never CLEAR.
+Reads the ``holds`` answer through ``node_work_ledger_reader_effect`` (the bus-fed projection)
+ONCE, decides each ``--pr`` with ``HandlerHoldVerdict`` and prints the verdicts on stdout and one
+``HOLD-VERDICT`` line per pull request on stderr (``source=file-fallback`` when the file's lines
+answered). The caller carries the file's ``holds`` lines with ``--file-holds`` only as the
+fallback the overlay allows.
+
+With a single ``--pr`` the output is the bare verdict word (``HELD``, ``CLEAR`` or
+``UNDECIDED``) and the exit code is 0 for CLEAR, 3 for HELD and 2 for UNDECIDED, which is a
+stop, never CLEAR. With two or more ``--pr`` values the output is one line per pull request in
+the order given, ``<pr> <VERDICT> <hold ids joined by comma, or - when none>``, and the exit
+code is 2 if any pull request is UNDECIDED, else 0: a HELD pull request does not change the
+exit code in the batch form, the caller reads the lines.
 """
 
 from __future__ import annotations
@@ -63,7 +70,7 @@ def main(
     point_read: ProtocolLedgerPointRead | None = None,
 ) -> int:
     parser = argparse.ArgumentParser(prog="node_ledger_hold_verdict_effect")
-    parser.add_argument("--pr", required=True, help="repo#number")
+    parser.add_argument("--pr", action="append", required=True, help="repo#number")
     parser.add_argument("--lane")
     parser.add_argument(
         "--file-holds",
@@ -92,14 +99,25 @@ def main(
     sink: ProtocolHoldVerdictEventSink = (
         JournalHoldVerdictSink(Path(journal)) if journal else InMemoryHoldVerdictSink()
     )
-    verdict = HandlerHoldVerdict(overlay, sink).handle(
-        ModelHoldVerdictRequest(
-            pr=args.pr,
-            lane=args.lane,
-            node_answer=answer,
-            file_fallback_lines=file_lines,
+    handler = HandlerHoldVerdict(overlay, sink)
+    batch = len(args.pr) > 1
+    exit_code = 0
+    for pr in args.pr:
+        verdict = handler.handle(
+            ModelHoldVerdictRequest(
+                pr=pr,
+                lane=args.lane,
+                node_answer=answer,
+                file_fallback_lines=file_lines,
+            )
         )
-    )
-    sys.stdout.write(verdict.verdict.value + "\n")
-    sys.stderr.write(verdict.log_line() + "\n")
-    return EXIT[verdict.verdict]
+        sys.stderr.write(verdict.log_line() + "\n")
+        if batch:
+            hold_ids = ",".join(verdict.hold_ids) if verdict.hold_ids else "-"
+            sys.stdout.write(f"{pr} {verdict.verdict.value} {hold_ids}\n")
+            if verdict.verdict is EnumHoldVerdict.UNDECIDED:
+                exit_code = EXIT[EnumHoldVerdict.UNDECIDED]
+        else:
+            sys.stdout.write(verdict.verdict.value + "\n")
+            exit_code = EXIT[verdict.verdict]
+    return exit_code

@@ -16,7 +16,11 @@ Usage, on the lab host whose pool it is:
         exists and the start is refused all the same (the cap, a cap with no counts passed, or
         counts passed where the overlay holding the cap cannot be read).
     python -m omnimarket.nodes.node_claude_token_pool_effect mark-limited --label <account> --seconds <n>
-    python -m omnimarket.nodes.node_claude_token_pool_effect mark-revoked --label <account>
+    python -m omnimarket.nodes.node_claude_token_pool_effect mark-revoked --label <account> [--evidence-stdin]
+        with --evidence-stdin the failing engine's closing output is read on stdin and judged against
+        the overlay's challenge markers: a mark whose evidence carries one is recorded `challenged`
+        (a 403 challenge page, out of rotation like a revoke until the pool tick's revoke recheck
+        clears it) instead of `revoked`; the text itself is never printed or stored
     python -m omnimarket.nodes.node_claude_token_pool_effect export --label <account>
         writes the stored token of --label to stdout for a pipe into the secret store (OMN-23895: a
         host-held label is adopted without any lane reading the value) and refuses a terminal; the
@@ -50,7 +54,8 @@ Exit 0 on success, 2 on a refusal, 3 when ``resolve`` finds an empty pool and 4
 when every token is limited or revoked (``resolve`` chose nothing;
 ``mark-limited``, ``mark-revoked`` and ``status`` print the ALARM line).
 ``mark-revoked`` writes one ALERT line naming the label to stderr when it newly
-revokes it. No output names a token's value.
+revokes it (or records it challenged, when --evidence-stdin shows the mark is a
+403 challenge page). No output names a token's value.
 """
 
 from __future__ import annotations
@@ -70,8 +75,12 @@ from omnimarket.handlers.node_overlay_reader import (
     load_structured_overlay,
 )
 from omnimarket.models.engine_login import ModelEngineLoginSteer
+from omnimarket.models.model_claude_pool_revoke_cause import ModelRevokeCauseRequest
 from omnimarket.nodes.node_claude_pool_refill_effect.handlers.handler_claude_pool_refill import (
     _lane_overlay_yaml as lane_overlay_yaml,
+)
+from omnimarket.nodes.node_claude_pool_revoke_cause_compute.handlers.handler_revoke_cause import (
+    HandlerRevokeCause,
 )
 from omnimarket.nodes.node_claude_token_pool_effect.handlers.adapter_limit_probe import (
     HeadlessLimitProbe,
@@ -163,6 +172,14 @@ def _parser() -> argparse.ArgumentParser:
         help="the OAuth token behind --label was revoked; skip it until re-added",
     )
     revoke.add_argument("--label", required=True)
+    revoke.add_argument(
+        "--evidence-stdin",
+        action="store_true",
+        help=(
+            "the failing engine's closing output is read on stdin; the pool decides "
+            "whether the mark is a real revoke or a 403 challenge page"
+        ),
+    )
     order = verbs.add_parser(
         "reorder", help="draw --labels first, in order, then every other token"
     )
@@ -247,6 +264,23 @@ def read_lane_cap() -> tuple[int | None, bool]:
     return (steering.max_lanes_per_label if steering is not None else None), True
 
 
+def read_challenge_markers() -> tuple[str, ...]:
+    """The overlay's revoke-recheck challenge markers, or ``()`` when they cannot be read.
+
+    Exactly like ``read_lane_cap``: a host with no readable pool overlay (none under its roots,
+    one that does not validate) or one without a revoke_recheck block answers ``()`` — a mark
+    whose evidence cannot be judged is recorded as a revoke, the behaviour before the cause
+    existed. A cause is never guessed from an overlay nobody could read.
+    """
+    try:
+        if find_node_overlay(NODE_NAME) is None:
+            return ()
+        recheck = load_overlay().revoke_recheck
+    except (NodeOverlayError, ValidationError, OSError):
+        return ()
+    return recheck.challenge_markers if recheck is not None else ()
+
+
 def run_tick(
     host: str,
     *,
@@ -281,6 +315,13 @@ def run_tick(
                 secret=claude_pool.secret,
                 settings=recheck.probe,
                 lane_overlay_yaml=lane_overlay_yaml,
+                # The revoke recheck re-tests with this same probe: an answer whose
+                # text carries a declared challenge marker proves nothing.
+                challenge_markers=(
+                    declared.revoke_recheck.challenge_markers
+                    if declared.revoke_recheck is not None
+                    else ()
+                ),
             )
             if recheck is not None and source.host == host
             else None
@@ -353,6 +394,22 @@ def _tick(args: argparse.Namespace) -> int:
             else ""
         )
         + (f" limits_kept={','.join(result.limits_kept)}" if result.limits_kept else "")
+        + f" revoke_recheck={result.revoke_recheck}"
+        + (
+            f" revokes_rechecked_cleared={','.join(result.revokes_rechecked_cleared)}"
+            if result.revokes_rechecked_cleared
+            else ""
+        )
+        + (
+            f" revokes_confirmed={','.join(result.revokes_confirmed)}"
+            if result.revokes_confirmed
+            else ""
+        )
+        + (
+            f" revokes_rechecked_kept={','.join(result.revokes_rechecked_kept)}"
+            if result.revokes_rechecked_kept
+            else ""
+        )
         + (
             f" revokes_cleared={','.join(result.revokes_cleared)}"
             if result.revokes_cleared
@@ -492,9 +549,25 @@ def main(
         return EXIT_REFUSED
     operation = args.verb.replace("-", "_")
     try:
+        cause = "revoked"
+        if args.verb == "mark-revoked" and args.evidence_stdin:
+            # The failing engine's closing output decides the mark's cause and is
+            # then dropped: the pool stores the verdict, never the text.
+            cause = (
+                HandlerRevokeCause()
+                .handle(
+                    ModelRevokeCauseRequest(
+                        label=args.label,
+                        evidence=sys.stdin.read(),
+                        challenge_markers=read_challenge_markers(),
+                    )
+                )
+                .cause
+            )
         request = ModelClaudeTokenPoolRequest(
             operation=operation,
             label=getattr(args, "label", None),
+            cause=cause,
             setup_token_output=SecretStr(_pasted()) if args.verb == "add" else None,
             labels=tuple(filter(None, getattr(args, "labels", "").split(","))),
             seconds=getattr(args, "seconds", None),

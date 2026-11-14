@@ -1,0 +1,53 @@
+schema_version: 1.0.0
+ticket_id: OMN-24056
+title: The release installer test passes with every recent pipx version
+summary: The test of the release candidate installed-content check installs the stub wheels through pipx with offline pip arguments. pipx 1.6.0 through 1.11.1 hand those arguments to the pip that upgrades pipx's own shared libraries on a fresh pipx home, and the wheel directory held no pip wheel, so the install failed with no matching pip distribution and Tests (Split 16/20) read red on every pull request that ran it. The test support now copies the pip wheel the interpreter bundles into a directory named in the offline arguments. No product code and no check changes.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24056-pipx-offline
+  statement: The pipx install in the release candidate installed-content test resolves offline with every pipx version the runners carry.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the pipx install test passes with pipx 1.6.0, 1.8.0, 1.10.0, 1.11.1 and 1.12.0 on PATH -- falsifier: with the pip wheel directory removed from the pipx offline arguments the test fails under pipx 1.10.0 with no matching distribution for pip>=23.1'
+  - id: AC2
+    statement: 'AC2: the offline pipx arguments carry a pip wheel at least version 23.1 -- falsifier: uv run pytest tests/nodes/node_release_candidate_verify_effect/test_installed_content.py -k carry_the_pip -n 0 --no-cov -p no:cacheprovider'
+  - id: AC3
+    statement: 'AC3: integrated: Tests (Split 16/20) is green on the omnimarket dev tip after the merge -- falsifier: the dev-tip check row for Tests (Split 16/20) reads failure in the PR watcher state of the merged revision'
+evidence_requirements:
+- kind: tests
+  description: The installed-content tests pass at the pushed head.
+  command: uv run pytest tests/nodes/node_release_candidate_verify_effect/test_installed_content.py -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24056-ac1
+  description: 'AC1: the pipx install test passed at the head under pipx 1.6.0, 1.8.0, 1.10.0, 1.11.1, 1.12.0, 1.14.0 and 1.18.16 and failed before the change under 1.6.0, 1.7.1, 1.8.0, 1.9.0, 1.10.0 and 1.11.1.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_release_candidate_verify_effect/test_installed_content.py -k untouched_pipx -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24056-ac2
+  description: 'AC2: the pip wheel directory test passes at the head.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_release_candidate_verify_effect/test_installed_content.py -k carry_the_pip -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24056-ac3
+  description: 'hosted proxy for AC3: the installed-content tests pass; the Tests (Split 16/20) reading on the dev tip is taken after the merge from the PR watcher state.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_release_candidate_verify_effect/test_installed_content.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .

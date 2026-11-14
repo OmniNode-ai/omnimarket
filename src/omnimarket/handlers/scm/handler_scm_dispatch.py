@@ -52,66 +52,38 @@ _W = EnumScmNode.WRITE
 #: The verbs ``onex scm`` serves: every operation slice 1 put on the two
 #: source-control node contracts, named for the gh verb it replaces.
 SCM_VERBS: Final[tuple[ModelScmVerb, ...]] = (
-    ModelScmVerb(
-        verb="pr-view",
-        node=_G,
-        operation="pr_text",
-        replaces="gh pr view",
-        local_read=EnumScmLocalRead.PR_VIEW,
-    ),
-    ModelScmVerb(
-        verb="pr-status",
-        node=_G,
-        operation="pr_status",
-        replaces="gh pr view --json mergeStateStatus",
-        local_read=EnumScmLocalRead.PR_STATUS,
-    ),
-    ModelScmVerb(
-        verb="pr-checks",
-        node=_G,
-        operation="ci_checks",
-        replaces="gh pr checks",
-        local_read=EnumScmLocalRead.PR_CHECKS,
-    ),
-    ModelScmVerb(
-        verb="pr-list",
-        node=_G,
-        operation="open_prs_list",
-        replaces="gh pr list",
-        local_read=EnumScmLocalRead.PR_LIST,
-    ),
-    ModelScmVerb(
-        verb="pr-merge-commit",
-        node=_G,
-        operation="merge_commit_sha",
-        replaces="gh pr view --json mergeCommit",
-        local_read=EnumScmLocalRead.PR_MERGE_COMMIT,
-    ),
-    ModelScmVerb(
-        verb="run-list", node=_G, operation="workflow_runs", replaces="gh run list"
-    ),
-    ModelScmVerb(
-        verb="run-view", node=_G, operation="run_jobs", replaces="gh run view"
-    ),
-    ModelScmVerb(
-        verb="job-log-fill", node=_G, operation="job_log_fill", replaces="gh job log"
-    ),
-    ModelScmVerb(
-        verb="run-download", node=_G, operation="artifacts", replaces="gh run download"
-    ),
-    ModelScmVerb(
-        verb="release-list", node=_G, operation="releases", replaces="gh release list"
-    ),
-    ModelScmVerb(
-        verb="pr-heads",
-        node=_G,
-        operation="pr_heads",
-        replaces="gh pr list --state merged --json headRefName,headRefOid",
-        local_read=EnumScmLocalRead.PR_HEADS,
-    ),
-    # OMN-21146: the reads node_dod_verify sends the gateway.
-    ModelScmVerb(
-        verb="open-pr-facts", node=_G, operation="open_pr_facts", replaces="gh pr list"
+    *(
+        ModelScmVerb(verb=v, node=_G, operation=op, replaces=gh, local_read=read)
+        for v, op, gh, read in (
+            ("pr-view", "pr_text", "gh pr view", EnumScmLocalRead.PR_VIEW),
+            (
+                "pr-status",
+                "pr_status",
+                "gh pr view --json mergeStateStatus",
+                EnumScmLocalRead.PR_STATUS,
+            ),
+            ("pr-checks", "ci_checks", "gh pr checks", EnumScmLocalRead.PR_CHECKS),
+            ("pr-list", "open_prs_list", "gh pr list", EnumScmLocalRead.PR_LIST),
+            (
+                "pr-merge-commit",
+                "merge_commit_sha",
+                "gh pr view --json mergeCommit",
+                EnumScmLocalRead.PR_MERGE_COMMIT,
+            ),
+            ("run-list", "workflow_runs", "gh run list", None),
+            ("run-view", "run_jobs", "gh run view", None),
+            ("job-log-fill", "job_log_fill", "gh job log", None),
+            ("run-download", "artifacts", "gh run download", None),
+            ("release-list", "releases", "gh release list", None),
+            (
+                "pr-heads",
+                "pr_heads",
+                "gh pr list --state merged --json headRefName,headRefOid",
+                EnumScmLocalRead.PR_HEADS,
+            ),
+            # OMN-21146: the reads node_dod_verify sends the gateway.
+            ("open-pr-facts", "open_pr_facts", "gh pr list", None),
+        )
     ),
     ModelScmVerb(
         verb="pr-create", node=_W, operation="pr_create", replaces="gh pr create"
@@ -161,6 +133,18 @@ SCM_VERBS: Final[tuple[ModelScmVerb, ...]] = (
         node=_W,
         operation="pr_label",
         replaces="gh api --method POST /repos/{o}/{r}/issues/{n}/labels",
+    ),
+    ModelScmVerb(
+        verb="variable-set",
+        node=_W,
+        operation="repo_variable_set",
+        replaces="gh variable set",
+    ),
+    ModelScmVerb(
+        verb="variable-get",
+        node=_W,
+        operation="repo_variable_get",
+        replaces="gh variable get",
     ),
     *(
         ModelScmVerb(verb=v, node=_G, operation=op, replaces=gh)

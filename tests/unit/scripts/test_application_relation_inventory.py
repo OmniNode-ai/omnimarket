@@ -834,7 +834,9 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # +1 for OMN-23694's work_ledger_latest (same PR as its CREATE) (total below includes it).
     # +1 for OMN-23888's code_eval_trial_state: ownership is declared before the
     # driver node lands; the CREATE is in omnibase_infra migration 114.
-    assert census["source_declared_tables"] == 146
+    # +1 for OMN-24118's branch_deploy_state: ownership is declared before the
+    # omnibase_infra migration 116 that creates it.
+    assert census["source_declared_tables"] == 147
     # 27 as of OMN-15631. This figure is arithmetic, not an observation:
     # the generator computes max(0, 86 - source_created_tables), so each
     # newly source-created table (tenant_inference_credentials, then

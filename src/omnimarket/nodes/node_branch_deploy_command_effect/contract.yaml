@@ -2,9 +2,11 @@
 # SPDX-License-Identifier: MIT
 # ONEX Node Contract - Branch deploy command EFFECT
 #
-# Publishes the deploy agent's signed rebuild command by running the deploy agent's own trigger. The node builds the
-# trigger argv from a typed request and the overlay, runs the trigger through an injected port, and maps the outcome
-# to a typed result. It is not a second signing or publishing path.
+# Publishes the deploy agent's HMAC-signed rebuild command on the bus, through an injected event bus. The node builds
+# the command's wire envelope from a typed request and the overlay, signs it with the key the runtime fills from the
+# secret store under the name the overlay gives, and publishes it to the deploy agent's command topic. The deploy
+# agent's network API (port 8098) has read routes only, so the command reaches it over the bus, as the standalone
+# service redeploy node and the redeploy publish monitor already do. No trigger script, env file or ssh key is used.
 ---
 name: node_branch_deploy_command_effect
 contract_version: {major: 1, minor: 0, patch: 0}
@@ -12,10 +14,10 @@ node_type: effect
 node_version: {major: 1, minor: 0, patch: 0}
 
 description: >
-  Branch deploy command effect. Builds the deploy agent trigger argv from a typed request and the overlay, runs the
-  trigger through an injected port, and maps the outcome to a typed result. Exit 0 is published; a non-zero exit whose
-  stderr starts with the overlay refused marker is refused; any other non-zero exit is failed. The detail is the stderr
-  (or stdout when stderr is empty), cut to the overlay bound.
+  Branch deploy command effect. Builds the deploy agent's rebuild command envelope from a typed request and the overlay,
+  signs it with the signing key named by the overlay, and publishes it to the deploy agent's command topic. A published
+  command is status published; a missing signing key is refused before anything is published; a publish error is failed
+  with the error class as detail. The detail is cut to the overlay bound.
 
 handler_routing:
   routing_strategy: payload_type_match
@@ -39,7 +41,7 @@ input_model:
 output_model:
   name: ModelBranchDeployCommandResult
   module: omnimarket.nodes.node_branch_deploy_command_effect.models.model_branch_deploy_command
-  description: "The result: correlation id, mode, status, exit code, and detail."
+  description: "The result: correlation id, mode, status, and detail."
 
 descriptor:
   node_archetype: effect
@@ -47,7 +49,7 @@ descriptor:
   idempotent: false
   timeout_ms: 300000
   runtime_profiles: [effects]
-  side_effects: [subprocess, bus-publish]
+  side_effects: [bus-publish]
 
 terminal_event: onex.evt.omnimarket.branch-deploy-command-completed.v1
 
@@ -61,14 +63,23 @@ broker_acl_grants:
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.branch-deploy-command-requested.v1, operation: DESCRIBE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.branch-deploy-command-completed.v1, operation: WRITE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.branch-deploy-command-completed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.deploy.rebuild-requested.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.deploy.rebuild-requested.v1, operation: DESCRIBE}
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.branch-deploy-command-requested.v1
   publish_topics:
     - onex.evt.omnimarket.branch-deploy-command-completed.v1
+    - onex.cmd.deploy.rebuild-requested.v1
 
 externally_consumed_topics:
   - onex.evt.omnimarket.branch-deploy-command-completed.v1
+  - onex.cmd.deploy.rebuild-requested.v1
+
+secret_dependencies:
+  DEPLOY_AGENT_HMAC_SECRET:
+    required: true
+    description: "Shared HMAC secret the deploy agent verifies on every command; the overlay's hmac_secret_env names the variable the runtime fills from the secret store."
 
 dependencies:
   packages:

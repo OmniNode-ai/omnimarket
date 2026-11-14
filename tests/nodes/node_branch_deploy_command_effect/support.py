@@ -23,6 +23,8 @@ NODE_DIR = (
 )
 RUN_ID = uuid4()
 HEAD = "a" * 40
+SIGNING_ENV = "EXAMPLE_DEPLOY_AGENT_SIGNING_KEY"
+SIGNING_KEY = "fixture-key"  # fixture value, not a credential
 
 
 def overlay() -> ModelBranchDeployCommandOverlay:
@@ -47,3 +49,16 @@ def request(
         requested_by=cells.pop("requested_by", "user-a"),
         **cells,
     )
+
+
+class FakeBus:
+    def __init__(self) -> None:
+        self.published: list[tuple[str, bytes, bytes]] = []
+
+    async def publish(self, topic: str, *, key: bytes, value: bytes) -> None:
+        self.published.append((topic, key, value))
+
+
+class FailingBus:
+    async def publish(self, topic: str, *, key: bytes, value: bytes) -> None:
+        raise ConnectionError("bus down")

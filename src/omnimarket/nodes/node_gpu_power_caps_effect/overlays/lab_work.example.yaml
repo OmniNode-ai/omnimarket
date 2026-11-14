@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Lab work profile: the node sends one lab work unit to the named host over the bus; the host's lab-work serve runs the
+# node's own command line there (--local: the real nvidia-smi backend on that machine) and answers with its result line.
+# Synthetic values; the deployment's overlay lives at <root>/node_gpu_power_caps_effect/overlay.yaml under a root named in
+# ONEX_SKILL_OVERLAY_ROOTS, and the host reads the same file through its own roots. A host name is its pool name.
+backend: lab_work
+caps_overlay_id: gpu_power_caps
+name_value_prefix: GPU_NAME_
+watts_value_prefix: WATTS_
+read_argv: [/usr/bin/nvidia-smi, "--query-gpu=index,name,power.limit,power.min_limit,power.max_limit", "--format=csv,noheader,nounits"]
+set_argv: [sudo, -n, /usr/bin/nvidia-smi, -i, "{index}", -pl, "{watts}"]
+read_timeout_seconds: 30
+set_timeout_seconds: 60
+lab_work:
+  bus_lane: dev
+  workspace_root: null
+  repo: example-owner/example-repo
+  commit_sha: "0000000000000000000000000000000000000000"
+  lane: example-lane
+  unit_timeout_seconds: 900
+  host_argv: [uv, run, --frozen, python, -m, omnimarket.nodes.node_gpu_power_caps_effect.runtime_gpu_power_caps, --local, --host, "{host}", --requested-by, "{requested_by}"]
+hosts:
+  - name: example-remote-host
+    transport_prefix: []
+    caps_unit: gpu-power-caps-example-remote-host
+event_bus:
+  type: kafka
+  lane: example-lane

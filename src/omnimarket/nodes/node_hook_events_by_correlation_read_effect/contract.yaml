@@ -68,6 +68,7 @@ http_route:
   # with OIDC uninitialised; a resolver that returns no tenant answers as it
   # does with no tenant (the code separates "sent nothing" from "did not resolve").
   unbound_identity_detail: "OIDC authentication is not configured"
+  identity_unavailable_detail: "Identity provider is unavailable"
   unauthorized_detail: "Unauthorized"
   absent_credential_code: "auth.credential.absent"
   invalid_credential_code: "auth.credential.invalid"
@@ -82,7 +83,7 @@ dependencies:
     type: "protocol"
     class_name: "ProtocolHttpTenantIdentity"
     module: "omnimarket.protocols.protocol_http_tenant_identity"
-    description: "Resolves the authenticated caller tenant from request headers. The hosted edge binds the implementation; nothing binds a default, so an unbound mount refuses every request."
+    description: "Resolves the authenticated caller tenant from request headers. When no resolver is bound by the host, the mount builds a bearer-token resolver from this node's overlay document (node_hook_events_by_correlation_read_effect/overlay.yaml under the overlay roots); without that document it refuses every request."
     required: false
   - name: "hook_events_reader"
     type: "protocol"

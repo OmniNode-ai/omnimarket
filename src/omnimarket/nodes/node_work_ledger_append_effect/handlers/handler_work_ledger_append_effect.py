@@ -43,6 +43,9 @@ from omnimarket.protocols.protocol_work_ledger_judge_acceptance import (
 )
 
 _ROW_START = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z \| ([^|\r\n]+) \| ")
+VIA_BUS_PREFIX = "via=bus:"
+_VIA_BUS_CELL = re.compile(r"(?:^| \| )via=bus:")
+_REQUESTING_HOST = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 _BUS_ROW_TYPES = frozenset(
     {
         "CLAIM",
@@ -84,6 +87,24 @@ def _principal_stamped(line: str, principal: str, *, after_type: bool = False) -
         )
     timestamp, row_type, rest = line.split(" | ", 2)
     return f"{timestamp} | {row_type} | principal={principal} | {rest}"
+
+
+def _via_stamped(text: str, cell: str, via_cell: str) -> str:
+    """``text`` with ``via=bus:<host>`` stamped after the ``req=`` cell (OMN-24205).
+
+    For each line matching ``_ROW_START`` that has no whole pipe cell starting
+    with ``via=bus:``, insert `` | <via_cell>`` immediately after the pipe cell
+    ``cell`` (that is ``req=<id>``). A line that already has a ``via=bus:`` cell
+    is returned unchanged. Continuation lines are unchanged.
+    """
+    request_cell = re.compile(r" \| " + re.escape(cell) + r"(?= \||[\r\n]|$)")
+    out: list[str] = []
+    for line in text.splitlines(keepends=True):
+        if not _ROW_START.match(line) or _VIA_BUS_CELL.search(line):
+            out.append(line)
+            continue
+        out.append(request_cell.sub(lambda m: f"{m.group(0)} | {via_cell}", line, 1))
+    return "".join(out)
 
 
 class HandlerWorkLedgerAppendEffect:
@@ -261,7 +282,14 @@ class HandlerWorkLedgerAppendEffect:
                     65,
                     f"append_if_absent takes exactly one row carrying the whole pipe cell {id_cell}",
                 )
+        if not _REQUESTING_HOST.match(request.requesting_host):
+            return receipt(
+                EnumWorkLedgerAppendStatus.REFUSED,
+                65,
+                "requesting_host cannot be stamped as a via cell",
+            )
         cell = f"req={request.request_id}"
+        via_cell = VIA_BUS_PREFIX + request.requesting_host
         stamped_lines = request.rows.splitlines(keepends=True)
         legacy_lines = list(stamped_lines)
         row_index = 0
@@ -301,7 +329,10 @@ class HandlerWorkLedgerAppendEffect:
                 legacy_lines[line_index] = _principal_stamped(
                     line, authenticated_principal, after_type=True
                 )
-        stamped_rows = "".join(stamped_lines)
+        unstamped_rows = "".join(stamped_lines)
+        unstamped_legacy = "".join(legacy_lines)
+        stamped_rows = _via_stamped(unstamped_rows, cell, via_cell)
+        legacy_with_via = _via_stamped(unstamped_legacy, cell, via_cell)
         try:
             with self._append_lock.hold():
                 return self._append_locked(
@@ -311,7 +342,7 @@ class HandlerWorkLedgerAppendEffect:
                     cell,
                     id_cell,
                     stamped_rows,
-                    "".join(legacy_lines),
+                    (legacy_with_via, unstamped_rows, unstamped_legacy),
                 )
         except LedgerLockTimeoutError as exc:
             return receipt(EnumWorkLedgerAppendStatus.ERROR, 75, str(exc))
@@ -324,7 +355,7 @@ class HandlerWorkLedgerAppendEffect:
         cell: str,
         id_cell: str | None,
         stamped_rows: str,
-        legacy_rows: str,
+        earlier_renderings: tuple[str, ...],
     ) -> ModelWorkLedgerAppendReceipt:
         """The check-then-append step; the caller holds the append lock."""
         # Every row of one request carries the same req= cell, so the request is
@@ -337,9 +368,11 @@ class HandlerWorkLedgerAppendEffect:
             requested_rows = _request_blocks(stamped_rows, cell)
             # A request that landed before OMN-19513 carries principal= right
             # after the type; its replay is the same request, not a conflict.
+            # A request that landed before OMN-24205 has no via=bus: cell; its
+            # replay is the same request, not a conflict.
             if existing_rows not in (
                 requested_rows,
-                _request_blocks(legacy_rows, cell),
+                *(_request_blocks(text, cell) for text in earlier_renderings),
             ):
                 return receipt(
                     EnumWorkLedgerAppendStatus.REFUSED,

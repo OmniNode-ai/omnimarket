@@ -79,6 +79,8 @@ class ModelLaneContainerBudgetLane(BaseModel):
     containers: tuple[str, ...]
     detail: str
     target: int | None = None
+    # budget minus observed, never below zero; None when the lane was not read
+    slack: int | None = None
 
 
 class ModelLaneContainerBudgetVerdict(BaseModel):

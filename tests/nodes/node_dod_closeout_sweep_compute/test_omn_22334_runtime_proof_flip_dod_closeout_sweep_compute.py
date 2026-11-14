@@ -17,13 +17,13 @@ from typing import Any
 import pytest
 from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
 
+from omnimarket.models.dod_closeout_sweep import (
+    EnumCloseoutAction,
+    ModelDodCloseoutDecisionRequest,
+)
 from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.handler_dod_closeout_sweep import (
     BLOCK_MERGED_NOT_PROVEN_RUNNING,
     HandlerDodCloseoutSweep,
-)
-from omnimarket.nodes.node_dod_closeout_sweep_compute.models.model_dod_closeout_sweep import (
-    EnumCloseoutAction,
-    ModelDodCloseoutDecisionRequest,
 )
 
 DATE = "2026-11-03"

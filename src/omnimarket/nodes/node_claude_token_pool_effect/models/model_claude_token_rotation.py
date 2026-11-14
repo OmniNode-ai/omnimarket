@@ -17,6 +17,9 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from omnimarket.models.model_claude_pool_limit_recheck import (
     ModelLimitRecheckPolicy,
 )
+from omnimarket.models.model_claude_pool_revoke_recheck import (
+    ModelRevokeRecheckPolicy,
+)
 from omnimarket.models.model_claude_pool_revoke_staleness import (
     ModelRevokeStalenessPolicy,
 )
@@ -38,8 +41,14 @@ class ModelRotationMark(BaseModel):
     fingerprint: str | None = None
     revoked_at: str | None = None
     limited_at: str | None = None
+    #: Why the login is out when ``revoked`` is set: ``revoked``, a real revoke, or ``challenged``, a
+    #: 403 challenge page the pool tick re-tests. An older mirror without the key, or a mark that is
+    #: not a revoke, reads ``None`` — the stale-revoke rule then has nothing to go on, as before.
+    revoke_cause: Literal["revoked", "challenged"] | None = None
+    #: When the pool last got an answer from a probe of this label; an instant like ``revoked_at``.
+    probed_at: str | None = None
 
-    @field_validator("until", "revoked_at", "limited_at")
+    @field_validator("until", "revoked_at", "limited_at", "probed_at")
     @classmethod
     def _until_is_a_utc_instant(cls, value: str | None) -> str | None:
         if value is None:
@@ -159,7 +168,7 @@ class ModelLimitProbeSettings(BaseModel):
     ``limited_patterns`` mark a usage-limit answer, ``reset_pattern`` reads the reset the answer names (named
     groups ``month``, ``day``, ``hour``, optional ``minute`` and ``ampm``, in UTC), and ``reset_margin_seconds`` is
     added to it the way a limit stamp always carries a margin. An answer that is neither a limit nor a clean
-    reply is an ``error`` and proves nothing.
+    reply is ``refused``, the token was tried and failed — or an ``error``, which proves nothing.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -199,6 +208,31 @@ class ModelLimitRecheckSettings(BaseModel):
     probe: ModelLimitProbeSettings
 
 
+class ModelRevokeRecheckSettings(BaseModel):
+    """The revoke-recheck rule: how often a revoked label is re-tested and what a challenge page carries.
+
+    The probe that re-tests a revoked label is the limit recheck's (``limit_recheck.probe``), so this
+    holds only the spacing and the substrings a 403 challenge page's output carries: an answer whose
+    text contains one proves nothing about the token, where any other tried-and-failed answer shows
+    the token really keeps failing.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    policy: ModelRevokeRecheckPolicy
+    #: Case-insensitive substrings a 403 challenge page's output carries. A probe answer whose text
+    #: contains one is an ``error`` that proves nothing; an empty tuple means every tried-and-failed
+    #: answer is taken at face value.
+    challenge_markers: tuple[str, ...] = ()
+
+    @field_validator("challenge_markers")
+    @classmethod
+    def _markers_are_not_blank(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        if any(not marker.strip() for marker in value):
+            raise ValueError("every challenge_marker must be a non-blank substring")
+        return value
+
+
 class ModelRotationOverlay(BaseModel):
     """``<root>/node_claude_token_pool_effect/overlay.yaml``: the hosts, the source, the events file and the interval."""
 
@@ -222,6 +256,10 @@ class ModelRotationOverlay(BaseModel):
     #: The limit-recheck rule (OMN-23895). Absent => a limited mark is never re-tested (not configured);
     #: present => on the marks-source host the tick probes a limited label every ``policy.interval_seconds``.
     limit_recheck: ModelLimitRecheckSettings | None = None
+    #: The revoke-recheck rule (OMN-19998). Absent => a revoked mark is never re-tested (not configured);
+    #: present => on the marks-source host the tick probes a revoked label every ``policy.interval_seconds``
+    #: with the probe the limit recheck declares, so ``limit_recheck`` must be set when this is.
+    revoke_recheck: ModelRevokeRecheckSettings | None = None
 
     @model_validator(mode="after")
     def _shape(self) -> ModelRotationOverlay:
@@ -230,6 +268,11 @@ class ModelRotationOverlay(BaseModel):
             raise ValueError("overlay hosts name a host twice")
         if self.marks_source.host not in names:
             raise ValueError("marks_source.host is not one of the overlay hosts")
+        if self.revoke_recheck is not None and self.limit_recheck is None:
+            raise ValueError(
+                "revoke_recheck is declared but limit_recheck is not: "
+                "the revoke recheck uses limit_recheck.probe"
+            )
         return self
 
     def rank(self, name: str) -> int | None:
@@ -282,6 +325,17 @@ class ModelLimitRecheckOutcome(BaseModel):
     probed_at: datetime | None = None
 
 
+class ModelRevokeRecheckOutcome(BaseModel):
+    """What the tick's revoke recheck decided for one revoked label."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    label: str
+    outcome: Literal["not_due", "due", "kept", "cleared", "confirmed"]
+    #: Time of the probe the tick ran this pass, or the last recorded probe for a label not probed this pass; labels only, never a token.
+    probed_at: datetime | None = None
+
+
 class ModelClaudeTokenRotationResult(BaseModel):
     """The tick's decision. Labels and states only."""
 
@@ -315,6 +369,20 @@ class ModelClaudeTokenRotationResult(BaseModel):
     limits_kept: tuple[str, ...] = ()
     #: One typed outcome per limited, non-revoked label with an ``until`` the tick rechecked this pass.
     limit_rechecks: tuple[ModelLimitRecheckOutcome, ...] = ()
+    #: ``not_configured`` when the overlay has no revoke-recheck block, or this host does not hold the
+    #: marks; ``evaluated`` when the rule ran.
+    revoke_recheck: Literal["not_configured", "evaluated"] = "not_configured"
+    #: One typed outcome per revoked label the tick rechecked this pass.
+    revoke_rechecks: tuple[ModelRevokeRecheckOutcome, ...] = ()
+    #: Labels whose revoked mark the tick cleared on an ok or limited probe (the token answers, so the
+    #: revocation is not real). Labels only.
+    revokes_rechecked_cleared: tuple[str, ...] = ()
+    #: Labels whose refused probe answer confirmed a real revocation (a challenged mark upgraded to one).
+    revokes_confirmed: tuple[str, ...] = ()
+    #: Labels whose revoked mark the tick kept with the probe time recorded: a refused answer on a plain
+    #: revoke. An error answer proves nothing, issues no command and is only an outcome ``kept`` in
+    #: ``revoke_rechecks``. Labels only.
+    revokes_rechecked_kept: tuple[str, ...] = ()
 
 
 class ModelClaudeTokenAssignRequest(BaseModel):
@@ -350,6 +418,8 @@ __all__ = [
     "ModelLimitProbeSettings",
     "ModelLimitRecheckOutcome",
     "ModelLimitRecheckSettings",
+    "ModelRevokeRecheckOutcome",
+    "ModelRevokeRecheckSettings",
     "ModelRotationEvent",
     "ModelRotationHost",
     "ModelRotationMark",

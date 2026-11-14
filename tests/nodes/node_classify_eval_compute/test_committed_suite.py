@@ -10,6 +10,7 @@ fixture in the same shape, so the build step's guarantees are held in CI.
 from __future__ import annotations
 
 from collections import Counter
+from importlib.resources import files
 from pathlib import Path
 
 import pytest
@@ -28,12 +29,7 @@ from tests.nodes.node_classify_eval_compute.support import overlay
 pytestmark = pytest.mark.unit
 
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "ledger_sample.md"
-CODE_SUITE = (
-    Path(__file__).resolve().parents[3]
-    / "benchmarks"
-    / "code_eval_suite"
-    / "suite.v1.json"
-)
+CODE_SUITE = files("omnimarket").joinpath("configs", "code_eval_suite.v1.json")
 C = EnumIntegrationClass
 
 
@@ -69,6 +65,6 @@ def test_no_task_text_carries_an_answer_cell() -> None:
 
 
 def test_the_code_suite_document_is_not_a_classify_set() -> None:
-    # the code eval census reads suite.v1.json by name; a classify set must never be put there
+    # the code eval census reads code_eval_suite.v1.json by name; a classify set must never be put there
     text = CODE_SUITE.read_text(encoding="utf-8")
     assert "classify_integration_line" not in text

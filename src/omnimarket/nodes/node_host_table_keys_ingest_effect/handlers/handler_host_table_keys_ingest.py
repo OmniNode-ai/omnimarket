@@ -9,11 +9,13 @@ writes nothing, so the key already stored stays.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
-from datetime import datetime
+from datetime import UTC, datetime
 
 from pydantic import ValidationError
 
+from omnimarket.handlers.node_overlay_reader import load_structured_overlay
 from omnimarket.models.overlay_keys import ModelLabHostsTable
 from omnimarket.models.overlay_store.model_overlay_store import ModelOverlayStoreRecord
 from omnimarket.nodes.node_host_table_compute.handlers.handler_host_table import (
@@ -29,7 +31,9 @@ from ..models.model_host_table_keys import (
     ModelHostTableKeysIngestResult,
     ModelHostTableKeysOverlay,
 )
-from .store_host_keys import ProtocolHostKeyStore
+from .store_host_keys import ProtocolHostKeyStore, StoreHostKeysValkey
+
+OVERLAY_ID = "node_host_table_keys_ingest_effect"
 
 
 class HostTableKeysRefusedError(ValueError):
@@ -42,19 +46,33 @@ class HandlerHostTableKeysIngest:
     def __init__(
         self,
         *,
-        store: ProtocolHostKeyStore,
-        overlay: ModelHostTableKeysOverlay,
-        clock: Callable[[], datetime],
+        store: ProtocolHostKeyStore | None = None,
+        overlay: ModelHostTableKeysOverlay | None = None,
+        clock: Callable[[], datetime] | None = None,
     ) -> None:
+        # Given nothing (the runtime's auto-wiring builds the handler bare), the overlay and the store are
+        # read from the environment on the first record, so a node with no overlay wires and refuses then.
         self._store = store
         self._overlay = overlay
-        self._clock = clock
+        self._clock = clock or (lambda: datetime.now(UTC))
+
+    def _resolve(self) -> tuple[ProtocolHostKeyStore, ModelHostTableKeysOverlay]:
+        if self._overlay is None:
+            self._overlay = load_structured_overlay(
+                OVERLAY_ID, ModelHostTableKeysOverlay, os.environ
+            )
+        if self._store is None:
+            self._store = StoreHostKeysValkey.from_environment(
+                self._overlay, os.environ
+            )
+        return self._store, self._overlay
 
     def handle(
         self, request: ModelOverlayStoreRecord
     ) -> ModelHostTableKeysIngestResult:
-        key = f"{self._overlay.key_prefix}:table"
-        if request.overlay_id != self._overlay.overlay_id:
+        store, overlay = self._resolve()
+        key = f"{overlay.key_prefix}:table"
+        if request.overlay_id != overlay.overlay_id:
             return ModelHostTableKeysIngestResult(
                 outcome="ignored", key=key, digest="", hosts=0, admitted=0
             )
@@ -72,7 +90,7 @@ class HandlerHostTableKeysIngest:
             ingested_at=self._clock(),
             table=result,
         )
-        self._store.set(key, document.model_dump_json())
+        store.set(key, document.model_dump_json())
         return ModelHostTableKeysIngestResult(
             outcome="written",
             key=key,

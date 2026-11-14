@@ -30,14 +30,14 @@ from omnimarket.models.model_lane_intake_create import (
 from omnimarket.models.model_ticket_io import ModelCreateTicketResult
 from omnimarket.models.scm import ModelScmTerminal, ModelScmTopics
 from omnimarket.models.scm.model_scm_command import ModelScmBusReceipt
+from omnimarket.models.ticket_write_io import (
+    ModelTicketWriteRequest,
+)
 from omnimarket.nodes.node_create_ticket.handlers.handler_create_ticket import (
     TicketGuardRefusedError,
 )
 from omnimarket.nodes.node_linear_ticket_write_effect.handlers.handler_linear_ticket_write import (
     HandlerLinearTicketWriteEffect,
-)
-from omnimarket.nodes.node_linear_ticket_write_effect.models.model_ticket_write_io import (
-    ModelTicketWriteRequest,
 )
 
 TICKET_ID = "OMN-9001"

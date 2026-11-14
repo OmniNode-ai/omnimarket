@@ -8,6 +8,7 @@ declares (event_bus.subscribe_topics and publish_topics). Every key is required;
 
 from __future__ import annotations
 
+import re
 from enum import StrEnum
 from typing import Literal
 
@@ -17,6 +18,8 @@ from omnimarket.models.broker_acl.model_broker_acl_overlay import (
     ModelBrokerAclFinding,
     ModelBrokerAclRow,
 )
+
+_PLACEHOLDER_NAME = re.compile(r"[A-Z][A-Z0-9_]*")
 
 
 class EnumTopicDirection(StrEnum):
@@ -48,6 +51,25 @@ class ModelNodeRole(BaseModel):
     role: str = Field(min_length=1)
     nodes: tuple[str, ...] = Field(min_length=1)
     principals: tuple[str, ...] = Field(min_length=1)
+    placeholders: tuple[str, ...] = ()
+
+    @model_validator(mode="after")
+    def _placeholder_shape(self) -> ModelNodeRole:
+        for placeholder in self.placeholders:
+            if not _PLACEHOLDER_NAME.fullmatch(placeholder):
+                raise ValueError(
+                    f"placeholder {placeholder!r} does not match ^[A-Z][A-Z0-9_]*$"
+                )
+        if len(set(self.placeholders)) != len(self.placeholders):
+            repeated = next(
+                p for p in self.placeholders if self.placeholders.count(p) > 1
+            )
+            raise ValueError(f"role {self.name!r} names placeholder {repeated!r} twice")
+        if self.placeholders and len(self.principals) > 1:
+            raise ValueError(
+                f"role {self.name!r} names placeholders but holds {len(self.principals)} principals"
+            )
+        return self
 
 
 class ModelBrokerAclPrincipalsOverlay(BaseModel):
@@ -64,7 +86,23 @@ class ModelBrokerAclPrincipalsOverlay(BaseModel):
     def _names_something(self) -> ModelBrokerAclPrincipalsOverlay:
         if not self.principals and not self.roles:
             raise ValueError("an overlay declares at least one principal or role")
+        seen: dict[str, str] = {}
+        for role in self.roles:
+            for placeholder in role.placeholders:
+                if placeholder in seen:
+                    raise ValueError(
+                        f"placeholder {placeholder!r} is named by both {seen[placeholder]!r} and {role.name!r}"
+                    )
+                seen[placeholder] = role.name
         return self
+
+    def placeholder_logins(self) -> dict[str, str]:
+        """placeholder -> the role's single principal (empty when no role names one)."""
+        return {
+            placeholder: role.principals[0]
+            for role in self.roles
+            for placeholder in role.placeholders
+        }
 
 
 class ModelBrokerAclDeriveRequest(BaseModel):

@@ -20,7 +20,7 @@ A lane does GitHub work through this command and no ``gh`` verb:
   run-view, job-log, run-download, release-list) publish the gateway's typed request.
 - **PR authoring writes** (pr-create, pr-edit, pr-ready, pr-close, pr-comment,
   pr-thread-reply, pr-thread-resolve, pr-review-post, pr-label, workflow-run,
-  check-run-create) publish node_github_repo_write_effect's typed
+  check-run-create, variable-set, variable-get) publish node_github_repo_write_effect's typed
   request. Its guards apply: quota floor, expected head, idempotency, and the claim pr-close
   needs. pr-edit, pr-ready, pr-close, pr-review-post and pr-label take the expected head from the
   watcher state when ``--head-sha`` is not given. pr-close reads the claim the
@@ -771,6 +771,8 @@ _WRITE_OPTIONS: Final[dict[str, tuple[str, ...]]] = {
     "pr_thread_reply": ("thread", "body", "body_file"),
     "pr_thread_resolve": ("review_thread",),
     "pr_label": ("add_label", "remove_label"),
+    "repo_variable_set": ("variable",),
+    "repo_variable_get": ("variable",),
     "pr_review_post": ("body", "body_file"),
     "workflow_dispatch": ("workflow", "ref", "input"),
     "check_run_create": (
@@ -782,7 +784,13 @@ _WRITE_OPTIONS: Final[dict[str, tuple[str, ...]]] = {
     ),
 }
 _REPO_SCOPED_WRITES: Final[frozenset[str]] = frozenset(
-    {"pr_create", "workflow_dispatch", "check_run_create"}
+    {
+        "pr_create",
+        "workflow_dispatch",
+        "check_run_create",
+        "repo_variable_set",
+        "repo_variable_get",
+    }
 )
 _HEAD_FROM_WATCHER: Final[frozenset[str]] = frozenset(
     {"pr_edit", "pr_ready", "pr_close", "pr_review_post", "pr_label"}
@@ -864,6 +872,14 @@ _OPTION_DECORATORS: Final[
     "ref": click.option("--ref", required=True),
     "input": click.option(
         "--input", "inputs", multiple=True, help="KEY=VALUE, repeatable."
+    ),
+    "variable": click.option(
+        "--variable",
+        "variable_name",
+        required=True,
+        help="The repository variable's name. It must be in the write node's "
+        "overlay allowlist; its value comes from the overlay's declared source, "
+        "never from this command line.",
     ),
     "add_label": click.option(
         "--add", "add_labels", multiple=True, help="A label to add (repeatable)."

@@ -159,6 +159,8 @@ def main(argv: list[str] | None = None) -> int:
             f"cycle_seconds={result.cycle_seconds:.0f} "
             f"phases={','.join(f'{k}:{v:.0f}s' for k, v in result.phase_seconds.items())}\n"
         )
+        for cache_line in result.source_cache_lines:
+            sys.stdout.write(f"{cache_line}\n")
 
     def record_tick(reports_seconds: float) -> None:
         """The served status names the seconds of the whole tick, so a slow gate or reports site is seen too (OMN-22699)."""

@@ -14,7 +14,10 @@ This effect keeps several tokens per host instead:
 * ``resolve`` hands the runner the first unrevoked token whose limit has passed,
   so the host stays placeable while any token has room, and ``mark_limited``
   marks the token a lane used, not the host; ``mark_revoked`` skips a token
-  whose OAuth login was revoked until it is re-added;
+  whose OAuth login was revoked until it is re-added, with the mark naming
+  whether the login was revoked or only answered a 403 challenge page
+  (``challenged``: out of rotation like a revoke, and the pool tick re-tests
+  it and clears the mark when it answers);
 * every operation rewrites a one-line status mirror (labels and limit times,
   never a value) that the placement probe reads, so the pool status line shows
   the tokens per host, how many are limited and the next reset, with an alarm
@@ -153,6 +156,11 @@ class HandlerClaudeTokenPool:
                 (),
                 (),
             )
+            revoke_effect: tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]] = (
+                (),
+                (),
+                (),
+            )
             if request.operation == "add":
                 self._add(pool, request)
             elif request.operation == "mark_limited":
@@ -172,6 +180,8 @@ class HandlerClaudeTokenPool:
                 cleared = self._clear_revokes(pool, request)
             elif request.operation == "apply_limit_rechecks":
                 limit_effect = self._apply_limit_rechecks(pool, request)
+            elif request.operation == "apply_revoke_rechecks":
+                revoke_effect = self._apply_revoke_rechecks(pool, request)
             synced: tuple[str, ...] = ()
             if request.operation == "sync_marks":
                 synced = self._sync_marks(pool, request)
@@ -193,6 +203,9 @@ class HandlerClaudeTokenPool:
                     "limits_cleared": limit_effect[0],
                     "limits_replaced": limit_effect[1],
                     "limits_kept": limit_effect[2],
+                    "revoke_rechecks_cleared": revoke_effect[0],
+                    "revoke_rechecks_confirmed": revoke_effect[1],
+                    "revoke_rechecks_kept": revoke_effect[2],
                 }
             )
             if not request.dry_run:
@@ -209,6 +222,8 @@ class HandlerClaudeTokenPool:
                                 "fingerprint": e.fingerprint,
                                 "revoked_at": e.revoked_at,
                                 "limited_at": e.limited_at,
+                                "probed_at": e.probed_at,
+                                "revoke_cause": e.revoke_cause,
                             }
                             for e in result.tokens
                         ],
@@ -277,6 +292,7 @@ class HandlerClaudeTokenPool:
             "until": None,
             "revoked_at": None,
             "limited_at": None,
+            "revoke_cause": None,
         }
         if known is not None:
             known.update(entry)
@@ -408,6 +424,15 @@ class HandlerClaudeTokenPool:
                 if revoked
                 else None
             )
+            # The mark's cause travels with it. A local revoke newer than the snapshot keeps the
+            # cause it was marked with (an entry without one, from before the field, stays without:
+            # it reads as revoked); when revoked ends, so does the cause.
+            mark_cause = getattr(mark, "revoke_cause", None)
+            if revoked:
+                if not local_revoke_newer:
+                    entry["revoke_cause"] = mark_cause or "revoked"
+            else:
+                entry["revoke_cause"] = None
         return tuple(changed)
 
     def _clear_revokes(
@@ -430,6 +455,7 @@ class HandlerClaudeTokenPool:
             ):
                 continue
             entry["revoked_at"] = None
+            entry["revoke_cause"] = None
             cleared.append(command.label)
         return tuple(cleared)
 
@@ -467,6 +493,43 @@ class HandlerClaudeTokenPool:
                 kept.append(command.label)
         return tuple(cleared), tuple(replaced), tuple(kept)
 
+    def _apply_revoke_rechecks(
+        self, pool: dict[str, Any], request: ModelClaudeTokenPoolRequest
+    ) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]]:
+        """Execute the revoke recheck compute's typed commands; return the labels cleared, confirmed and kept.
+
+        A command is executed only when the pool still holds the command's fingerprint under the label and the
+        revoked stamp it holds is exactly the one the decision was made on, so a newer revoke, a re-added token
+        or an already cleared mark is left alone (and is in none of the three results).
+        """
+        by_label = {t["label"]: t for t in pool["tokens"]}
+        cleared: list[str] = []
+        confirmed: list[str] = []
+        kept: list[str] = []
+        for command in request.revoke_commands:
+            entry = by_label.get(command.label)
+            if (
+                entry is None
+                or entry.get("fingerprint") != command.fingerprint
+                or entry.get("revoked_at") != _stamp(command.expected_revoked_at)
+            ):
+                continue
+            entry["probed_at"] = _stamp(command.probed_at)
+            if command.action == "clear":
+                entry["revoked_at"] = None
+                entry["revoke_cause"] = None
+                if command.new_until is not None:
+                    # the probe answered ok but found the account limited: out until that reset
+                    entry["until"] = _stamp(command.new_until)
+                    entry["limited_at"] = _stamp(command.probed_at)
+                cleared.append(command.label)
+            elif command.action == "confirm":
+                entry["revoke_cause"] = "revoked"
+                confirmed.append(command.label)
+            else:
+                kept.append(command.label)
+        return tuple(cleared), tuple(confirmed), tuple(kept)
+
     def _export(
         self, pool: dict[str, Any], request: ModelClaudeTokenPoolRequest
     ) -> SecretStr:
@@ -494,8 +557,23 @@ class HandlerClaudeTokenPool:
         if entry is None:
             raise ClaudeTokenPoolRefusedError(f"{label} is not in this host's pool")
         if entry.get("revoked_at"):
+            # A mark whose cause reads challenged (absent reads revoked) is a 403 challenge page,
+            # not a real revoke: a later real revoke upgrades the cause and keeps the mark's time.
+            if entry.get("revoke_cause") == "challenged" and request.cause == "revoked":
+                entry["revoke_cause"] = "revoked"
+                return self._revoked_alert(label)
             return None
         entry["revoked_at"] = _stamp(self._now())
+        entry["revoke_cause"] = request.cause
+        if request.cause == "challenged":
+            return (
+                f"ALERT claude-pool host={self._host} challenged={label}: a 403 challenge "
+                "ended a lane on it; the pool tick re-tests it and clears the mark "
+                "when it answers"
+            )
+        return self._revoked_alert(label)
+
+    def _revoked_alert(self, label: str) -> str:
         return (
             f"ALERT claude-pool host={self._host} revoked={label}: its OAuth token "
             "was revoked; re-add it with `python -m "
@@ -607,10 +685,17 @@ class HandlerClaudeTokenPool:
                 revoked_at=t.get("revoked_at"),
                 limited_at=t.get("limited_at"),
                 probed_at=t.get("probed_at"),
+                # an entry without a cause, from before the field, reads as revoked
+                revoke_cause=(t.get("revoke_cause") or "revoked")
+                if t.get("revoked_at")
+                else None,
             )
             for t in pool["tokens"]
         )
         revoked = tuple(e.label for e in entries if e.revoked)
+        challenged = tuple(
+            e.label for e in entries if e.revoked and e.revoke_cause == "challenged"
+        )
         return ModelClaudeTokenPoolResult(
             operation=operation,
             host=self._host,
@@ -620,11 +705,21 @@ class HandlerClaudeTokenPool:
             pinned_by=pool.get("pinned_by"),
             token=token,
             revoked=revoked,
+            challenged=challenged,
             synced=synced,
             cleared=cleared,
             alert=alert,
             **pool_summary(
-                self._host, [(e.label, e.until) for e in entries], now, revoked=revoked
+                self._host,
+                [(e.label, e.until) for e in entries],
+                now,
+                # the line names only the real revokes; the challenged labels follow separately
+                revoked=tuple(
+                    e.label
+                    for e in entries
+                    if e.revoked and e.revoke_cause == "revoked"
+                ),
+                challenged=challenged,
             ),
         )
 
@@ -635,13 +730,16 @@ def pool_summary(
     now: str,
     *,
     revoked: Sequence[str] = (),
+    challenged: Sequence[str] = (),
 ) -> dict[str, Any]:
-    """Tokens, limits at ``now``, the next reset and the status line, including revoked labels.
+    """Tokens, limits at ``now``, the next reset and the status line, including out-of-rotation labels.
 
     A revoked token is out of rotation for good, not until a reset, so it is named in ``revoked`` and is
     neither counted in ``limited`` nor offered as the ``next_reset``, even when it still carries a limit time.
+    A challenged one (a 403 challenge page) is out the same way until the recheck clears it: it is named in
+    ``challenged``, after ``revoked``, and is excluded from the limited counts and the ``next_reset`` alike.
     """
-    gone = frozenset(revoked)
+    gone = frozenset(revoked) | frozenset(challenged)
     untils = sorted(u for label, u in tokens if u and u > now and label not in gone)
     total, limited = len(tokens), len(untils)
     every = total > 0 and all((u or "") > now or label in gone for label, u in tokens)
@@ -651,8 +749,12 @@ def pool_summary(
     )
     if revoked:
         line += f" revoked={','.join(revoked)}"
+    if challenged:
+        line += f" challenged={','.join(challenged)}"
     if every:
-        line = f"ALARM {line} every token limited{' or revoked' if revoked else ''}"
+        # a challenged label is out of rotation exactly like a revoked one
+        tail = " or revoked" if revoked or challenged else ""
+        line = f"ALARM {line} every token limited{tail}"
     return {
         "limited": limited,
         "all_limited": every,

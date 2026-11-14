@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class ModelBranchDeployCommandRequest(BaseModel):
-    """The typed request to build and run the deploy agent trigger."""
+    """The typed request to sign and publish the deploy agent's rebuild command over the bus."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -22,18 +22,18 @@ class ModelBranchDeployCommandRequest(BaseModel):
     pr_number: int = Field(ge=1)
     git_ref: str = Field(pattern=r"^[0-9a-f]{40}$")
     image_ref: str = ""
+    overlay_ref: str = Field(default="", pattern=r"^([0-9a-f]{40})?$")
     rollback_actor: str = Field(min_length=1)
     rollback_reason: str = Field(min_length=1)
     requested_by: str = Field(min_length=1)
 
 
 class ModelBranchDeployCommandResult(BaseModel):
-    """The typed result of running the deploy agent trigger."""
+    """The typed result of publishing the deploy agent's rebuild command over the bus (no trigger)."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     correlation_id: UUID
     mode: Literal["deploy", "rollback"]
     status: Literal["published", "refused", "failed"]
-    exit_code: int
     detail: str = ""

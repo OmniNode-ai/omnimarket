@@ -1,0 +1,62 @@
+schema_version: 1.0.0
+ticket_id: OMN-24226
+title: Revoked pool accounts are re-tested on a schedule and put back when they answer
+summary: The Claude token pool never re-tested a label once it was marked revoked, so a runner-written revoke from a Cloudflare 403 challenge page kept a working account (h201-own) out of use on h051 and h053 until someone cleared it by hand. The pool tick on the marks-source host now re-tests each revoked or challenged label on a declared interval with the one minimal headless probe the limit recheck already uses, clears the mark when the account answers, and keeps it (probe time recorded) when it keeps failing. mark-revoked --evidence-stdin records a revoke whose evidence carries a declared challenge marker as challenged, not revoked. Two new compute nodes decide the recheck and the cause; the overlay values (interval, challenge markers) live in the overlays repository.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24226-revoke-recheck
+  statement: A revoked label is re-tested on a declared interval with one minimal call and cleared when it answers; a runner revoke from a 403 challenge is recorded as challenged.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a revoked pool label is re-tested on a declared interval with one minimal call and its revoked mark is cleared when it answers, while a label that keeps failing keeps its mark and is not probed again inside the interval -- falsifier: pytest tests/nodes/node_claude_token_pool_effect/test_revoke_recheck.py -q fails at the merge base'
+  - id: AC2
+    statement: 'AC2: a runner-written revoke whose evidence carries a declared challenge marker is recorded as challenged, not revoked, and a plain authentication failure still records revoked -- falsifier: pytest tests/nodes/node_claude_token_pool_effect/test_revoke_recheck_runtime.py tests/nodes/node_claude_pool_revoke_cause_compute -q fails at the merge base'
+  - id: AC3
+    statement: 'AC3: integrated: after the branch is installed on h053 and h051 and the overlay block is published, the next pool tick on each host reads h201-own active (no revoked= cell for it in the pool status line) -- falsifier: the pool status line on h051 or h053 still names revoked=h201-own after the tick'
+evidence_requirements:
+- kind: tests
+  description: The revoke recheck, cause and pool tests pass at the pushed head and the control tests fail against a handler that clears on a refused answer or calls every failure a challenge.
+  command: uv run pytest tests/nodes/node_claude_pool_revoke_recheck_compute tests/nodes/node_claude_pool_revoke_cause_compute tests/nodes/node_claude_token_pool_effect/test_revoke_recheck.py tests/nodes/node_claude_token_pool_effect/test_revoke_recheck_pool.py tests/nodes/node_claude_token_pool_effect/test_revoke_recheck_runtime.py tests/nodes/node_claude_token_pool_effect/test_revoke_recheck_models.py -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24226-ac1
+  description: 'AC1: the tick re-tests a due revoked label on the source host only, clears it on an ok or limited answer, keeps it on a refused answer with the probe time recorded, and probes nothing inside the interval, off the source host, without the overlay block, or on a dry run.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_claude_pool_revoke_recheck_compute tests/nodes/node_claude_token_pool_effect/test_revoke_recheck.py tests/nodes/node_claude_token_pool_effect/test_revoke_recheck_pool.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24226-ac2
+  description: 'AC2: mark-revoked --evidence-stdin decides the cause with the cause compute from the overlay markers; no overlay or no markers records revoked; the evidence is never printed.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_claude_pool_revoke_cause_compute tests/nodes/node_claude_token_pool_effect/test_revoke_recheck_runtime.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24226-ac3
+  description: 'hosted proxy for AC3: the mirror seam tests pass (the pool writes revoke_cause and probed_at, the marks source reads them); the h053 and h051 pool status line reads after install are named in the pull request Lab line.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_claude_token_pool_effect/test_stale_revoke.py tests/nodes/node_claude_token_pool_effect/test_revoke_recheck_models.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24226-integration-proof
+  description: the revoke recheck, cause, pool and seam tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24226 --kind test -- env PYTHONDONTWRITEBYTECODE=1
+      uv run --frozen pytest tests/nodes/node_claude_pool_revoke_recheck_compute tests/nodes/node_claude_pool_revoke_cause_compute tests/nodes/node_claude_token_pool_effect/test_revoke_recheck.py tests/nodes/node_claude_token_pool_effect/test_revoke_recheck_pool.py tests/nodes/node_claude_token_pool_effect/test_revoke_recheck_runtime.py tests/nodes/node_claude_token_pool_effect/test_stale_revoke.py
+      -q --no-cov

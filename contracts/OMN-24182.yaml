@@ -1,0 +1,106 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-24182"
+title: "The lane container budget shows how far each budget sits above its live count"
+summary: >
+  node_lane_container_budget_compute gives each lane reading a slack field, the declared budget minus the live
+  application container count, and its handler gains closing_check, which names every lane whose budget is not
+  equal to its live count. Statuses and alarms are unchanged. The shared verdict model is read by
+  node_factory_floor_compute, so the seam with the floor's one-runtime line is tested on the in-memory bus.
+is_seam_ticket: true
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn24182-slack-reading"
+    statement: "Each lane reading carries the budget's distance above the live count."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: each lane reading carries slack, the declared budget minus the live application container count, never below zero, and none when the lane was not read -- falsifier: uv run pytest tests/nodes/node_lane_container_budget_compute -q -k slack fails on the merge base and passes on the branch"
+  - id: "req-omn24182-closing-check"
+    statement: "A closing check names every lane whose budget is not equal to its live count."
+    acceptance:
+      - id: "AC2"
+        statement: "AC2: a closing check names every lane whose budget is not equal to its live count and returns nothing when every budget equals its live count -- falsifier: uv run pytest tests/nodes/node_lane_container_budget_compute -q -k closing_check, budget 19 against 3 running names the lane, budget 3 against 3 names none"
+  - id: "req-omn24182-chains"
+    statement: "Golden and error chains and the floor seam pass."
+    acceptance:
+      - id: "AC3"
+        statement: "AC3: a golden chain, two error chains and two seam tests with the floor's one-runtime line pass on the in-memory bus -- falsifier: uv run pytest tests/chains/lane_container_budget -q, with the base-branch handler restored five of the new tests fail"
+  - id: "req-omn24182-integrated"
+    statement: "The packaged node run through the ONEX runtime returns the slack reading."
+    acceptance:
+      - id: "AC4"
+        statement: "AC4: integrated: in the running runtime the node, given the live h201 container listing, returns slack 16 for the dev lane while its declared budget is 19 -- falsifier: onex node node_lane_container_budget_compute run against the deployed runtime with the h201 listing returns a dev lane reading with no slack field before the change is deployed and slack 16 after"
+evidence_requirements:
+  - kind: "tests"
+    description: "The budget node tests, the chain tests and the floor's one-runtime seam test pass."
+    command: "uv run pytest tests/nodes/node_lane_container_budget_compute tests/chains/lane_container_budget tests/nodes/node_factory_floor_compute/test_one_runtime_containers.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn24182-ac1-slack"
+    description: "AC1 judges the recorded listing against budgets 7, 3 and 2 and requires slack 4, 0 and 0, and none for an unread lane. It fails at the merge base, where the lane reading has no slack field."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lane_container_budget_compute/test_lane_container_budget.py -q --no-cov --tb=line -k slack"
+        cwd: "."
+  - id: "dod-omn24182-ac2-closing-check"
+    description: "AC2 runs the closing check over a budget of 19 against 3 running, which names the lane with slack 16, over a budget of 3 against 3 running, which names none, and over an unread host, which names the lane."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lane_container_budget_compute/test_lane_container_budget.py -q --no-cov --tb=line -k closing_check"
+        cwd: "."
+  - id: "dod-omn24182-ac3-chains"
+    description: "AC3 runs the golden chain, the over-budget and unreadable-host error chains and the two seam tests with the floor on the in-memory bus."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/chains/lane_container_budget tests/nodes/node_factory_floor_compute/test_one_runtime_containers.py -q --no-cov --tb=line"
+        cwd: "."
+  - id: "dod-omn24182-ac4-slack-reading"
+    description: "AC4 runs the h201 dev-lane listing recorded on 2026-11-13 through the golden chain on the in-memory bus and requires slack 16 for the dev lane against its declared budget of 19. The runtime run itself is the deploy probe and the integration proof below."
+    source: "manual"
+    binds_ac: ["AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/chains/lane_container_budget/test_chain_lane_container_budget.py -q --no-cov --tb=line"
+        cwd: "."
+  - id: "dod-omn24182-ac4-deploy-probe"
+    description: "Hosted deploy smoke, runnable on the hosted runner with no lab route, broker or database: dispatch the packaged node_lane_container_budget_compute through the in-process ONEX runtime with a one-container listing against a budget of 19, and require a successful typed receipt whose lane reading carries slack 18. It fails at the merge base, where the reading has no slack field."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: |
+          set -eu;
+          export PYTHONDONTWRITEBYTECODE=1;
+          probe_dir="$(mktemp -d)";
+          trap 'rm -rf "$probe_dir"' EXIT;
+          runtime_bin="$(uv run --locked python -c 'import sys; from pathlib import Path; print(Path(sys.executable).parent)')";
+          printf '%s' '{"host": "probe-host", "docker_ps": "{\"Names\": \"probe-a-1\", \"State\": \"running\", \"Labels\": \"com.docker.compose.project=probe\"}", "declarations": [{"host": "probe-host", "lane": "probe-lane", "compose_project": "probe", "application_container_budget": 19}]}' > "$probe_dir/input.json";
+          env ONEX_LANE=omn24182-deploy-probe "$runtime_bin/onex" node node_lane_container_budget_compute --input "$probe_dir/input.json" --state-root "$probe_dir/state" --backend event_bus=inmemory --timeout 30 --output receipt --omnibase-path "$PWD" > "$probe_dir/receipt.json";
+          uv run --locked python -c '
+          import json
+          import sys
+          from pathlib import Path
+          receipt = json.loads(Path(sys.argv[1]).read_text())
+          assert receipt["status"] == "success" and receipt["exit_code"] == 0, receipt
+          lane = receipt["result"]["lanes"][0]
+          assert lane["status"] == "PASS" and lane["slack"] == 18, lane
+          print(json.dumps({"run_id": receipt["run_id"], "slack": lane["slack"]}))
+          ' "$probe_dir/receipt.json";
+        cwd: "."
+  - id: "dod-omn24182-integration-proof"
+    description: "Run the packaged node through the ONEX runtime on the local Done gate with the dev lane of h201 as recorded on 2026-11-13 (budget 19, three application containers and the database running): the verdict must carry slack 16 for the dev lane. Hosted CI runs the one-container probe above; this unbound check is the live-surface run."
+    source: "manual"
+    execution_scope: local_done_gate
+    checks:
+      - check_type: "command"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 ONEX_LANE=omn24182-integration-proof onex node node_lane_container_budget_compute --input tests/chains/lane_container_budget/fixtures/h201_dev_listing_request.json --state-root .onex_state/omn24182 --backend event_bus=inmemory --timeout 60 --output receipt --omnibase-path . | grep -q '\"slack\":16'"
+        cwd: "."

@@ -141,3 +141,38 @@ def test_error_the_import_of_the_effect_does_not_pull_in_the_infrastructure_pack
         [sys.executable, "-c", code], capture_output=True, text=True, timeout=120
     )
     assert done.returncode == 0, done.stderr[-500:]
+
+
+def test_an_absent_stamp_and_absent_id_cells_cost_no_parse(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # OMN-24116: 178,461 rows of a 14-day window each carried no ``until=``, and each absent cell took one strptime raise
+    # (2.4 s of the 9.8 s parse on a lab host). An absent cell is no stamp, and a row with no ticket cells has no tickets.
+    from omnimarket.nodes.node_factory_floor_effect import source_loader
+
+    strptime_calls: list[str] = []
+
+    class CountingDatetime:
+        @staticmethod
+        def strptime(value: str, fmt: str) -> datetime:
+            strptime_calls.append(value)
+            return datetime.strptime(value, fmt)
+
+        @staticmethod
+        def fromisoformat(value: str) -> datetime:
+            return datetime.fromisoformat(value)
+
+    monkeypatch.setattr(source_loader, "datetime", CountingDatetime)
+    text = "\n".join(
+        f"L{number} 2026-11-13T06:0{number}:00Z | STATUS | lane=lane-{number} | outcome=completed | text"
+        for number in range(1, 6)
+    )
+
+    rows = source_loader.parse_ledger_rows(text)
+
+    assert len(rows) == 5
+    assert all(r.until is None and r.tickets == () and r.prs == () for r in rows)
+    assert strptime_calls == []
+    assert source_loader._ledger_ts("") is None
+    assert source_loader._csv("", "") == ()
+    assert source_loader._csv("OMN-1,OMN-2", "OMN-2") == ("OMN-1", "OMN-2")

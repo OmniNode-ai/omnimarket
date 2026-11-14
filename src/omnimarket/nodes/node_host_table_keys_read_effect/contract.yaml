@@ -45,8 +45,7 @@ runtime_dispatch:
 descriptor:
   node_archetype: effect
   purity: impure
-  runtime_profiles:
-  - effects
+  runtime_profiles: []
   idempotent: true
   timeout_ms: 30000
 metadata:

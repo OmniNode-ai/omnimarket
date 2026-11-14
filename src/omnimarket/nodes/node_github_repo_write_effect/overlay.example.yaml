@@ -4,3 +4,26 @@
 pr_label:
   allowed_labels:
     - example:label
+repo_variables:
+  entries:
+    - repository: example/owner-repo
+      name: EXAMPLE_VAR
+      source: example/vars/EXAMPLE_VAR.txt
+    - repository: example/owner-repo
+      name: EXAMPLE_ITEMS_VAR
+      format: json_compact
+      select: items
+      source: example/docs/example.yaml
+  refuse_name_markers:
+    - SECRET
+    - TOKEN
+    - PASSWORD
+  refuse_value_markers:
+    - SECRET
+    - TOKEN
+    - PASSWORD
+event_bus:
+  type: kafka
+  lane: example-lane
+comment_author_logins:
+  - example-login
