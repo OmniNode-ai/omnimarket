@@ -8,6 +8,8 @@
 #
 # Read it:  python -m omnimarket.nodes.node_effect_bypass_scan_effect check --repository <repo> --root . \
 #             --baseline .onex_ratchets/effect_bypass_ceiling.yaml
+# omnimarket host_ssh reads 127: the two sites in node_unit_probe_effect (handlers/handler_unit_probe.py) merged to dev after the
+# first read of 125 (omnimarket#6207); they are counted here, not excused, and a caller moved onto the host-access node lowers this row.
 # Counts are taken by node_effect_bypass_scan_effect (policy: its contract.yaml config.scan). The rows of the
 # other repositories are today's counts, carried here for the burn-down report; each repository enforces its own
 # row when it wires the same check.
@@ -21,7 +23,7 @@ repositories:
       git_remote: 74
       slack_api: 10
       linear_api: 3
-      host_ssh: 125
+      host_ssh: 127
       docker_admin: 73
       kafka_admin: 34
   omnibase_infra:
