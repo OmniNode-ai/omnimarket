@@ -48,6 +48,9 @@ class ModelPlanOwnerOverlay(BaseModel):
 
     # The reader name this node reads the open-claims answer under.
     reader: str = Field(pattern=_FINDING)
+    # The reader asks only for claims opened within this many hours; the query node refuses
+    # an unwindowed open-claims answer over its byte bound.
+    claims_window_hours: int = Field(ge=1, le=24 * 30)
     rules: tuple[ModelPlanOwnerRule, ...] = Field(min_length=1)
     # The environment variable naming the file the node's events are journalled to.
     journal_env: str = Field(min_length=1)
@@ -58,6 +61,19 @@ class ModelPlanOwnerOverlay(BaseModel):
         findings = [rule.finding for rule in self.rules]
         if len(set(findings)) != len(findings):
             raise ValueError("rule findings must be unique")
+        return self
+
+    @model_validator(mode="after")
+    def _window_covers_rules(self) -> ModelPlanOwnerOverlay:
+        """The read sends only the claims opened inside the claims window, so a rule whose
+        live window outlasts it could never see its owner; refuse."""
+        if any(
+            rule.live_window_minutes > self.claims_window_hours * 60
+            for rule in self.rules
+        ):
+            raise ValueError(
+                "claims_window_hours must cover every rule's live_window_minutes"
+            )
         return self
 
 
