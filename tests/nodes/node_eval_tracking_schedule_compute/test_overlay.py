@@ -5,11 +5,11 @@
 from __future__ import annotations
 
 import datetime as dt
+import logging
 from pathlib import Path
 
 import pytest
 
-from omnimarket.handlers.node_overlay_reader import NodeOverlayNotFoundError
 from omnimarket.models.eval_tracking.model_eval_tracking_overlay import (
     ModelEvalTrackingOverlay,
 )
@@ -66,10 +66,29 @@ def test_the_overlay_is_read_from_the_overlay_root_on_the_first_tick(
     ], "the overlay's resend interval hands the turn to each arm in order"
 
 
-def test_no_overlay_boots_the_handler_and_refuses_on_the_tick(
+def test_no_overlay_returns_nothing_on_every_tick(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path / "no-overlays"))
     handler = HandlerEvalTrackingSchedule()
-    with pytest.raises(NodeOverlayNotFoundError):
-        handler.handle(tick_at(EPOCH))
+    for i in range(50):
+        assert handler.handle(tick_at(EPOCH + dt.timedelta(seconds=i))) is None
+
+
+def test_no_overlay_logs_one_error_not_one_per_tick(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path / "no-overlays"))
+    handler = HandlerEvalTrackingSchedule()
+    with caplog.at_level(
+        logging.ERROR, logger="omnimarket.handlers.scheduled_overlay_refusal"
+    ):
+        for i in range(50):
+            assert handler.handle(tick_at(EPOCH + dt.timedelta(seconds=i))) is None
+    errors = [
+        record
+        for record in caplog.records
+        if record.levelno == logging.ERROR
+        and "node=node_eval_tracking_schedule_compute" in record.getMessage()
+    ]
+    assert len(errors) == 1

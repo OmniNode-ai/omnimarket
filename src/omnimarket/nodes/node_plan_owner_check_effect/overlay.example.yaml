@@ -1,0 +1,13 @@
+# The in-memory default. The real overlay (deployment data, kept outside this repository and
+# found under ONEX_SKILL_OVERLAY_ROOTS) carries the cutover plan's rules with the plan's real
+# lane prefixes; this repository ships only the example rule.
+reader: cutover-owner
+journal_env: ONEX_PLAN_OWNER_CHECK_JOURNAL
+rules:
+  - finding: example-plan-owner
+    lane_prefixes: [example-lane]
+    tickets: []
+    live_window_minutes: 180
+    why: "no live lane CLAIM names the example plan"
+    fix: "start a lane whose name begins with example-lane"
+    unknown_fix: "read the open-claims answer of the ledger reader named above and fix the read it names"

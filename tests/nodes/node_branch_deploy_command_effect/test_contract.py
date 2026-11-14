@@ -74,6 +74,7 @@ def test_every_setting_is_in_the_overlay_with_no_default() -> None:
     assert required == {"scope", "build_source", "detail_max_chars"}
     assert set(ModelBranchDeployCommandOverlay.model_fields) - required == {
         "hmac_secret_env",
+        "check_agent_key",
         "trigger_argv_prefix",
         "env_file",
         "timeout_seconds",
