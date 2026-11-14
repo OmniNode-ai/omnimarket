@@ -796,6 +796,7 @@ node_host_installer_container_units = "omnimarket.nodes.node_host_installer_cont
 node_host_installer_net_units = "omnimarket.nodes.node_host_installer_net_units"
 node_host_installer_registry_units = "omnimarket.nodes.node_host_installer_registry_units"
 node_host_installer_serve_units = "omnimarket.nodes.node_host_installer_serve_units"
+node_host_local_config_drift_compute = "omnimarket.nodes.node_host_local_config_drift_compute"
 node_host_memory_admission_compute = "omnimarket.nodes.node_host_memory_admission_compute"
 node_host_pool_alarm_effect = "omnimarket.nodes.node_host_pool_alarm_effect"
 node_host_power_effect = "omnimarket.nodes.node_host_power_effect"
