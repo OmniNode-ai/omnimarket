@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_host_disk_orchestrator
+version: 0.1.0
+description: Orchestrator - on its schedule and on a low-disk event, decides what each lab host evicts, sends one typed
+  command per decision, collects each typed result or failure, raises the low-disk alarm and records the run.
+omnibase_core_compat: '>=0.47.31,<0.48.0'
+entry_points:
+  onex.nodes:
+    node_host_disk_orchestrator: omnimarket.nodes.node_host_disk_orchestrator
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: effectful
+dependencies:
+- pydantic>=2.0
+- omnibase-infra>=0.38.3
+license: MIT
+authors:
+- OmniNode Team
+tags:
+- orchestrator
+- host-disk
+pack: operator_tooling
+display_name: Host Disk Orchestrator
+node_role: orchestrator

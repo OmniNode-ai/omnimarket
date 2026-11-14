@@ -1,0 +1,73 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodeHostDiskDecisionCompute (OMN-23866)
+#
+# Pure definition-B compute: typed eviction commands per host and class, plus alarms, from the projection rows and a
+# policy. No clock (now is an input), no I/O. Every keep-days value, cap, floor and per-host exception is in the
+# policy overlay (overlays/node_host_disk_decision_compute/overlay.yaml in the overlays repository).
+#
+name: "node_host_disk_decision_compute"
+contract_name: "node_host_disk_decision_compute"
+node_name: "node_host_disk_decision_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+description: >
+  Pure decision of host disk hygiene: for each host's newest reading and the policy, one typed eviction command per
+  host and class (naming its reason: age past keep days, class over its cap, host under its floor, each target
+  carrying its own) and one alarm per host under its floor, with a stale reading, or with none. Never evicts the
+  newest revision of a package or a revision a live lane holds. Deterministic in any input order.
+input_model:
+  name: "ModelHostDiskDecisionRequest"
+  module: "omnimarket.models.model_host_disk_decision"
+  description: "The decision inputs: now, the policy, and each host's newest reading."
+output_model:
+  name: "ModelHostDiskDecision"
+  module: "omnimarket.models.model_host_disk_decision"
+  description: "Typed eviction commands and alarms."
+handler:
+  module: "omnimarket.nodes.node_host_disk_decision_compute.handlers.handler_host_disk_decision"
+  class: "HandlerHostDiskDecision"
+  input_model: "omnimarket.models.model_host_disk_decision.ModelHostDiskDecisionRequest"
+  output_model: "omnimarket.models.model_host_disk_decision.ModelHostDiskDecision"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_host_disk_decision_compute.handlers.handler_host_disk_decision:HandlerHostDiskDecision"
+  handlers:
+    - operation: "decide_host_disk"
+      handler:
+        name: "HandlerHostDiskDecision"
+        module: "omnimarket.nodes.node_host_disk_decision_compute.handlers.handler_host_disk_decision"
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: "Direct Python invocation of the handler by node_host_disk_orchestrator with the decision request."
+descriptor:
+  runtime_profiles: []
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 2000
+replay:
+  deterministic: true
+metadata:
+  transport_type: local
+  description: "Pure decision core of host disk hygiene."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-11-14"
+  ticket: "OMN-23866"
+  tags:
+    - compute
+    - host-disk
+    - pure
