@@ -1,0 +1,179 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_ticket_hand_edit_alarm_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_ticket_hand_edit_alarm_effect.models.model_ticket_hand_edit_trigger.ModelTicketHandEditSweepTrigger
+description: >
+  A hand edit of a standard ticket in Linear raises a typed error and an alarm
+  (OMN-23776; operator ruling 2026-11-11: hand editing tickets in Linear is not
+  allowed and must raise an error). The ticket node's written event (one per
+  create, sync or pull) is kept as the ticket's newest write in
+  ticket_hand_edit_written, the newer Linear updatedAt winning, and closes the
+  ticket's open findings whose found content it matches. On the runtime heartbeat,
+  at most once per the overlay's check_interval_seconds, one Linear read lists the
+  issues whose updatedAt is after the node's cursor. Each issue holding the
+  contract block, or named by the write record, is compared with its newest write:
+  the sha256 of the title and description, the block parsed by
+  node_ticket_contract_render_compute (a fingerprint that does not recompute, text
+  that differs from a fresh render), a block removed, and, when the overlay names
+  the ticket node's Linear identity, any description revision by another actor
+  after the last write. Any difference is ticket_hand_edit naming the ticket, the
+  fingerprint written, the fingerprint found, what differs and the editors read
+  from documentContentHistory. Each finding emits one typed error event, one
+  slack-publish command under one key (ticket id plus found content hash) and one
+  ticket_hand_edit_open_findings row; a key already open is not raised again. An
+  unreadable list, history or write record is detector_unreadable with the same
+  alarm, and the cursor does not move past what was not read.
+
+handler:
+  module: omnimarket.nodes.node_ticket_hand_edit_alarm_effect.handlers.handler_ticket_hand_edit_alarm
+  class: HandlerTicketHandEditAlarm
+
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - operation: ticket_hand_edit.written
+      message_category: event
+      handler:
+        name: HandlerTicketHandEditWritten
+        module: omnimarket.nodes.node_ticket_hand_edit_alarm_effect.handlers.handler_ticket_hand_edit_entries
+      event_model:
+        name: ModelTicketContractWritten
+        module: omnimarket.models.model_ticket_contract_written
+      topic: onex.evt.omnimarket.ticket-contract-written.v1
+      description: "The ticket node's write record: kept per ticket; a matching write closes open findings."
+    - operation: ticket_hand_edit.sweep
+      message_category: event
+      handler:
+        name: HandlerTicketHandEditSweep
+        module: omnimarket.nodes.node_ticket_hand_edit_alarm_effect.handlers.handler_ticket_hand_edit_entries
+      event_model:
+        name: ModelTicketHandEditSweepTrigger
+        module: omnimarket.nodes.node_ticket_hand_edit_alarm_effect.models.model_ticket_hand_edit_trigger
+      topic: onex.evt.platform.node-heartbeat.v1
+      description: "The runtime heartbeat: a throttled read of the issues Linear changed after the cursor."
+
+terminal_event: onex.evt.omnimarket.ticket-hand-edit-finding.v1
+
+golden_path:
+  - "A written event on onex.evt.omnimarket.ticket-contract-written.v1 is kept as the ticket's newest write"
+  - "The heartbeat, throttled by the overlay, lists the issues Linear changed after the cursor"
+  - "Each standard ticket is compared with its newest write and parsed by the render compute"
+  - "A difference publishes onex.evt.omnimarket.ticket-hand-edit-finding.v1 and onex.cmd.omnimarket.slack-publish.v1 under one key and opens one finding row"
+  - "A later written event matching the found content closes the finding"
+
+writes_source:
+  binding_ref: omninode_runtime_service
+  dsn_env: OMNINODE_INTERNAL_DB_URL
+  schema: omninode_internal
+
+# Settings (check_interval_seconds, initial_lookback_seconds, max_pages,
+# node_actor_id, normalizations) live in the overlay
+# <root>/node_ticket_hand_edit_alarm_effect/overlay.yaml; none is packaged.
+
+db_io:
+  db_tables:
+    - name: ticket_hand_edit_written
+      database_ref: application
+      schema: omninode_internal
+      migration: "0001_create_ticket_hand_edit_tables.sql"
+      access: read_write
+      role: ticket_hand_edit_written
+    - name: ticket_hand_edit_cursor
+      database_ref: application
+      schema: omninode_internal
+      migration: "0001_create_ticket_hand_edit_tables.sql"
+      access: read_write
+      role: ticket_hand_edit_cursor
+    - name: ticket_hand_edit_open_findings
+      database_ref: application
+      schema: omninode_internal
+      migration: "0001_create_ticket_hand_edit_tables.sql"
+      access: read_write
+      role: ticket_hand_edit_open_findings
+
+secrets:
+  SLACK_CHANNEL_ID:
+    description: >
+      Slack destination resolved at the effect boundary through the canonical
+      secret store using this contract's ref; no channel literal or direct env read.
+    required: true
+  LINEAR_API_KEY:
+    description: "Linear API key for the read-only issue list and description history reads."
+    required: true
+
+integrations:
+  linear:
+    graphql_url_ref: linear.graphql_url
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.ticket-contract-written.v1
+    - onex.evt.platform.node-heartbeat.v1
+  # The first topic is this node's own finding topic, and the typed entries return
+  # nothing: the node publishes everything below itself.
+  publish_topics:
+    - onex.evt.omnimarket.ticket-hand-edit-finding.v1
+    - onex.cmd.omnimarket.slack-publish.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.ticket-hand-edit-alarm-malformed.v1
+
+externally_produced_topics:
+  - topic: onex.evt.omnimarket.ticket-contract-written.v1
+    producer: "node_create_ticket's create, sync and pull operations (the standard tickets plan, tasks S3 and S4), not yet published"
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.ticket-hand-edit-finding.v1
+
+published_events:
+  - event_type: TicketHandEditFinding
+    topic: onex.evt.omnimarket.ticket-hand-edit-finding.v1
+    description: One ticket_hand_edit or detector_unreadable finding, under the finding's idempotency key.
+
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.ticket-contract-written.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.ticket-contract-written.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.platform.node-heartbeat.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.platform.node-heartbeat.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.ticket-hand-edit-finding.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.ticket-hand-edit-finding.v1, operation: DESCRIBE}
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 30000
+  runtime_profiles:
+    - effects
+
+dod_evidence:
+  - test: tests/unit/nodes/node_ticket_hand_edit_alarm_effect/test_ticket_hand_edit_alarm.py::test_hand_edit_raised
+    description: "A description that differs from the newest write yields one ticket_hand_edit event naming both fingerprints and one slack-publish command under the same key"
+  - test: tests/unit/nodes/node_ticket_hand_edit_alarm_effect/test_ticket_hand_edit_alarm.py::test_no_finding_when_matches
+    description: "Content equal to the newest write yields nothing; a second run over the same edit publishes no second alarm"
+  - test: tests/unit/nodes/node_ticket_hand_edit_alarm_effect/test_ticket_hand_edit_alarm.py::test_editor_not_node
+    description: "A revision by an actor other than the overlay's node identity yields ticket_hand_edit naming that actor"
+  - test: tests/unit/nodes/node_ticket_hand_edit_alarm_effect/test_ticket_hand_edit_alarm.py::test_unreadable_fails_closed
+    description: "A failing Linear read yields detector_unreadable and leaves the cursor unchanged"
+  - test: tests/unit/nodes/node_ticket_hand_edit_alarm_effect/test_ticket_hand_edit_alarm.py::test_finding_closed_by_node_write
+    description: "A later written event matching the current content closes the open finding"
+  - test: tests/unit/nodes/node_ticket_hand_edit_alarm_effect/test_golden_chain_ticket_hand_edit_alarm.py
+    description: "Each routing entry resolves its event model and returns nothing; the Slack command validates against the Slack node's input model"
+
+dependencies:
+  packages:
+    - "omnibase_core>=0.39.0"
+    - "pyyaml>=6.0"
+    - "pydantic>=2.0"
+    - "psycopg2-binary>=2.9"
+
+metadata:
+  transport_type: kafka
+  description: "Ticket hand-edit alarm effect over Linear and the ticket node's write record"
+  author: "OmniNode Platform Team"
+  tags: [effect, observability, alerting, ticket, linear]
