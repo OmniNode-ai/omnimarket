@@ -141,14 +141,14 @@ def test_error_a_missing_fill_overlay_is_a_failed_run_naming_it(
     assert "node_floor_fill_orchestrator" in event.detail
 
 
-def test_error_the_live_profile_is_refused_by_name_until_it_is_bound(
+def test_error_the_live_profile_without_its_dsn_variable_is_refused_by_name(
     tmp_path: Path,
 ) -> None:
     h = HandlerFloorFillScheduled(environ=environ(tmp_path, profile="live"))
     event = h.handle(tick(T0))
     assert event is not None
     assert event.outcome == "failed"
-    assert "live profile is not bound" in event.detail
+    assert event.detail == "UNKNOWN fill-state:store-dsn-unset:EXAMPLE_FLOOR_FILL_DSN"
 
 
 def test_seam_the_run_event_folds_into_the_reducer_and_the_topics_match(
