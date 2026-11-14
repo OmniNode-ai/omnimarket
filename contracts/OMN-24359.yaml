@@ -1,0 +1,53 @@
+schema_version: 1.0.0
+ticket_id: OMN-24359
+title: Stop the host hygiene job from freezing the development system on restart
+summary: The host hygiene orchestrator's runtime-tick handler was synchronous and sent each cleanup to a lab host from the runtime's event loop thread, waiting for the host's receipt (up to the cleanup timeout plus slack); with its overlay present the first tick after a dev runtime boot froze the whole runtime, so the write node and the ticket node answered no_terminal
+is_seam_ticket: false
+interface_change: false
+requirements:
+- id: req-omn24359-hygiene-tick-off-loop
+  statement: The host hygiene orchestrator's tick handler is a coroutine and runs its blocking lab-work dispatch on a worker thread, so the runtime's event loop keeps serving while a lab host's receipt is awaited.
+  acceptance:
+  - id: AC1
+    statement: "AC1: the host hygiene orchestrator's tick handler runs its lab-work dispatch off the runtime's event loop -- falsifier: the new test that blocks the sender on a release event and runs the tick passes with the change and the control that sends on the loop thread reads the loop starved"
+  - id: AC2
+    statement: "AC2: the existing tick golden and error-chain tests still pass as async tests with no assertion changed -- falsifier: the focused hygiene test directory run on the pushed head, red when any assertion is edited or the handler is made synchronous again"
+  - id: AC3
+    statement: "AC3: integrated: a dev runtime booted from the change finishes startup with the hygiene node attached and a GitHub write through the write node answers with a terminal event -- falsifier: the dev runtime log after the roll shows no multi-minute silence after the first runtime tick and one onex scm pr-comment answers instead of no_terminal"
+evidence_requirements:
+- kind: tests
+  description: The focused hygiene tests at the pushed head; the new loop-freedom test fails when the dispatch runs on the loop thread (the control in the same file reads the loop starved) and the tick tests are async.
+  command: env -u PYTHONPATH uv run --frozen pytest tests/unit/nodes/node_host_hygiene_orchestrator tests/chains/host_hygiene -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24359-ac1-loop-free
+  description: The tick runs its dispatch off the event loop (new test) and a send run directly on the loop thread starves the loop (control).
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_host_hygiene_orchestrator/test_tick_leaves_loop_free.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24359-ac2-tick-tests
+  description: The tick golden, gate, error and failing-control tests and the golden chain over the in-memory bus, now async, with no assertion changed.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_host_hygiene_orchestrator tests/chains/host_hygiene -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24359-ac3-integration-proof
+  description: The pushed head ran the focused hygiene tests on a lab host through the lab work runner and exited 0. The running-runtime reading (a dev runtime booted from the change attaches the hygiene node with no silence after the first runtime tick, and onex scm pr-comment answers with a terminal) is read from the lab receipt comment on the ticket.
+  source: manual
+  binds_ac:
+  - AC3
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24359 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_host_hygiene_orchestrator tests/chains/host_hygiene -q --no-cov -n 0 -p no:randomly
+    cwd: .

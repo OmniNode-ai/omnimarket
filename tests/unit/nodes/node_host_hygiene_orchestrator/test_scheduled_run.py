@@ -126,12 +126,14 @@ def _payloads(
     return run.payload, schedule.payload
 
 
-def test_golden_pressure_dispatches_every_due_cleanup_and_reports_one_run() -> None:
+async def test_golden_pressure_dispatches_every_due_cleanup_and_reports_one_run() -> (
+    None
+):
     overlay = _overlay()
     sender = InMemoryHostHygieneSender()
     handler = _handler(_store_with_reading(90, T0 - dt.timedelta(seconds=30)), sender)
 
-    run, schedule = _payloads(handler.handle(_tick(T0)))
+    run, schedule = _payloads(await handler.handle(_tick(T0)))
 
     assert [u.target_host for u in sender.sent] == [overlay.hosts[0].name] * 2
     assert {tuple(u.argv)[-2:] for u in sender.sent} == {
@@ -148,11 +150,11 @@ def test_golden_pressure_dispatches_every_due_cleanup_and_reports_one_run() -> N
     assert schedule.tick_id == run.tick_id
 
 
-def test_below_every_threshold_is_a_typed_run_with_nothing_sent() -> None:
+async def test_below_every_threshold_is_a_typed_run_with_nothing_sent() -> None:
     sender = InMemoryHostHygieneSender()
     handler = _handler(_store_with_reading(40, T0 - dt.timedelta(seconds=30)), sender)
 
-    run, schedule = _payloads(handler.handle(_tick(T0)))
+    run, schedule = _payloads(await handler.handle(_tick(T0)))
 
     assert sender.sent == []
     assert run.outcome is EnumHostHygieneRunOutcome.NOTHING_DUE
@@ -162,13 +164,13 @@ def test_below_every_threshold_is_a_typed_run_with_nothing_sent() -> None:
     assert schedule.outcome == "completed"
 
 
-def test_a_host_with_no_reading_runs_the_unread_dispatch_cleanup_and_skips_the_other() -> (
+async def test_a_host_with_no_reading_runs_the_unread_dispatch_cleanup_and_skips_the_other() -> (
     None
 ):
     sender = InMemoryHostHygieneSender()
     handler = _handler(HostDiskReadingStore(max_hosts=8), sender)
 
-    run, _ = _payloads(handler.handle(_tick(T0)))
+    run, _ = _payloads(await handler.handle(_tick(T0)))
 
     reasons = {item.cleanup_id: item.reason for item in run.decided}
     assert reasons == {
@@ -178,37 +180,39 @@ def test_a_host_with_no_reading_runs_the_unread_dispatch_cleanup_and_skips_the_o
     assert len(sender.sent) == 1
 
 
-def test_a_stale_reading_reads_as_unread_not_as_pressure() -> None:
+async def test_a_stale_reading_reads_as_unread_not_as_pressure() -> None:
     overlay = _overlay()
     sender = InMemoryHostHygieneSender()
     stale = T0 - dt.timedelta(seconds=overlay.max_reading_age_seconds + 1)
     handler = _handler(_store_with_reading(99, stale), sender)
 
-    run, _ = _payloads(handler.handle(_tick(T0)))
+    run, _ = _payloads(await handler.handle(_tick(T0)))
 
     assert EnumHostHygieneReason.DISK_PRESSURE not in {i.reason for i in run.decided}
 
 
-def test_a_tick_inside_the_interval_emits_and_sends_nothing() -> None:
+async def test_a_tick_inside_the_interval_emits_and_sends_nothing() -> None:
     sender = InMemoryHostHygieneSender()
     handler = _handler(_store_with_reading(90, T0 - dt.timedelta(seconds=30)), sender)
-    handler.handle(_tick(T0))
+    await handler.handle(_tick(T0))
     sent_after_first = len(sender.sent)
 
-    output = handler.handle(_tick(T0 + dt.timedelta(seconds=60)))
+    output = await handler.handle(_tick(T0 + dt.timedelta(seconds=60)))
 
     assert output.events == ()
     assert len(sender.sent) == sent_after_first
 
 
-def test_a_command_that_exits_nonzero_fails_the_run_and_the_schedule_event() -> None:
+async def test_a_command_that_exits_nonzero_fails_the_run_and_the_schedule_event() -> (
+    None
+):
     host = _overlay().hosts[0].name
     sender = InMemoryHostHygieneSender(
         {host: (EnumLabWorkUnitStatus.COMPLETED, 3, "boom")}
     )
     handler = _handler(_store_with_reading(90, T0 - dt.timedelta(seconds=30)), sender)
 
-    run, schedule = _payloads(handler.handle(_tick(T0)))
+    run, schedule = _payloads(await handler.handle(_tick(T0)))
 
     assert {u.outcome for u in run.units} == {EnumHostHygieneUnitOutcome.FAILED}
     assert {u.exit_code for u in run.units} == {3}
@@ -217,36 +221,36 @@ def test_a_command_that_exits_nonzero_fails_the_run_and_the_schedule_event() -> 
     assert schedule.outcome == "failed"
 
 
-def test_a_unit_that_exits_nonzero_never_reads_as_completed() -> None:
+async def test_a_unit_that_exits_nonzero_never_reads_as_completed() -> None:
     # The failing control of test_golden: break the exit-code mapping and this and the test above go red.
     host = _overlay().hosts[0].name
     sender = InMemoryHostHygieneSender({host: (EnumLabWorkUnitStatus.COMPLETED, 1, "")})
     handler = _handler(_store_with_reading(90, T0 - dt.timedelta(seconds=30)), sender)
 
-    run, _ = _payloads(handler.handle(_tick(T0)))
+    run, _ = _payloads(await handler.handle(_tick(T0)))
 
     assert EnumHostHygieneUnitOutcome.COMPLETED not in {u.outcome for u in run.units}
 
 
-def test_a_cleanup_that_ran_waits_its_interval_even_when_it_failed() -> None:
+async def test_a_cleanup_that_ran_waits_its_interval_even_when_it_failed() -> None:
     overlay = _overlay()
     host = overlay.hosts[0].name
     sender = InMemoryHostHygieneSender({host: (EnumLabWorkUnitStatus.COMPLETED, 1, "")})
     handler = _handler(_store_with_reading(90, T0 - dt.timedelta(seconds=30)), sender)
-    handler.handle(_tick(T0))
+    await handler.handle(_tick(T0))
 
     # The tick is due again after run_interval_seconds, but docker_hygiene's own interval is longer.
     later = T0 + dt.timedelta(seconds=overlay.run_interval_seconds + 1)
     store = _store_with_reading(90, later - dt.timedelta(seconds=30))
     handler._store = store  # a fresh reading for the later tick
-    run, _ = _payloads(handler.handle(_tick(later)))
+    run, _ = _payloads(await handler.handle(_tick(later)))
 
     reasons = {item.cleanup_id: item.reason for item in run.decided}
     assert reasons["docker_hygiene"] is EnumHostHygieneReason.INTERVAL_NOT_ELAPSED
     assert len(sender.sent) == 2
 
 
-def test_a_unit_that_never_reached_its_host_is_sent_again_on_the_next_due_tick() -> (
+async def test_a_unit_that_never_reached_its_host_is_sent_again_on_the_next_due_tick() -> (
     None
 ):
     overlay = _overlay()
@@ -256,7 +260,7 @@ def test_a_unit_that_never_reached_its_host_is_sent_again_on_the_next_due_tick()
     )
     handler = _handler(_store_with_reading(90, T0 - dt.timedelta(seconds=30)), sender)
 
-    run, schedule = _payloads(handler.handle(_tick(T0)))
+    run, schedule = _payloads(await handler.handle(_tick(T0)))
     assert {u.outcome for u in run.units} == {
         EnumHostHygieneUnitOutcome.TRANSPORT_UNAVAILABLE
     }
@@ -264,12 +268,14 @@ def test_a_unit_that_never_reached_its_host_is_sent_again_on_the_next_due_tick()
 
     later = T0 + dt.timedelta(seconds=overlay.run_interval_seconds + 1)
     handler._store = _store_with_reading(90, later - dt.timedelta(seconds=30))
-    handler.handle(_tick(later))
+    await handler.handle(_tick(later))
 
     assert len(sender.sent) == 4
 
 
-def test_an_undeclared_overlay_sends_nothing_and_emits_nothing(tmp_path: Path) -> None:
+async def test_an_undeclared_overlay_sends_nothing_and_emits_nothing(
+    tmp_path: Path,
+) -> None:
     sender = InMemoryHostHygieneSender()
     handler = HandlerHostHygieneScheduled(
         gate=ScheduleGate(
@@ -281,7 +287,7 @@ def test_an_undeclared_overlay_sends_nothing_and_emits_nothing(tmp_path: Path) -
         sender=sender,
     )
 
-    output = handler.handle(_tick(T0))
+    output = await handler.handle(_tick(T0))
 
     assert output.events == ()
     assert sender.sent == []
