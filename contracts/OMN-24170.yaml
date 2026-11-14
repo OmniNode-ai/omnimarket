@@ -1,0 +1,71 @@
+schema_version: 1.0.0
+ticket_id: OMN-24170
+title: 'Evals: define the record kept for every scored try and its full trace'
+summary: Adds the typed row of one scored try (ModelEvalItemScored), its full trace and the split of a trace into numbered parts that reassemble byte for byte to the trace's sha256, and six stamps on the code trial row (experiment_id, replicate, model_revision, scorer_version, generation_settings_hash, prompt_template_version) with empty defaults so older rows still validate. Pure models and enums; no running behaviour changes and no topic is created.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24170-scored-item-and-trace
+  statement: Every scored try has a typed record and a full trace that is never cut, so a result can be inspected and re-scored and a model version, a prompt or a scorer change can be told apart.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the scored-item model refuses an event missing its reason while the result is unscorable, a context label outside the vocabulary, a try number below 1, a repeat number outside 0 and 1, and the unknown label with any scorer but the reviewer model, and accepts the baseline label -- falsifier: `uv run pytest tests/unit/test_eval_item_scored.py -q` turns red when any one of the five validation rules is deleted from the model (one mutation run per rule) or when the model is changed to refuse the baseline'
+  - id: AC2
+    statement: 'AC2: the event id is a uuid5 of the eight identity fields and an existing code row without the new fields still validates -- falsifier: the same test asserts equal ids across two constructions and unequal ids when any one field changes, including replicate and try ordinal; a fixture row without the new fields fails validation when a new field loses its empty default'
+  - id: AC3
+    statement: 'AC3: a trace is never cut: a larger-than-bound trace splits into parts that reassemble byte for byte to its sha256, and a mismatching one is refused -- falsifier: a 3 MB fixture output round-trips through its parts unchanged, and a part with one byte altered is refused'
+  - id: AC4
+    statement: 'AC4: integrated: the dev runtime loads the models from the installed tag -- falsifier: the import and validation of one fixture row, read on the dev lane after the projection is installed, fails when the installed version lacks the models'
+evidence_requirements:
+- kind: tests
+  description: The scored-item and trace tests pass at the pushed head.
+  command: uv run --frozen pytest tests/unit/test_eval_item_scored.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24170-ac1
+  description: 'AC1: the scored-item model refuses the five malformed shapes and accepts the baseline label'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/test_eval_item_scored.py -q --no-cov -n 0 -p no:randomly -k 'refuses or accepts'
+    cwd: .
+- id: dod-omn24170-ac2
+  description: 'AC2: the event id is a uuid5 of the eight identity fields and a code row without the new fields still validates'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/test_eval_item_scored.py -q --no-cov -n 0 -p no:randomly -k 'event_id or code_row or scoring_id'
+    cwd: .
+- id: dod-omn24170-ac3
+  description: 'AC3: a trace is never cut and an altered part is refused'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/test_eval_item_scored.py -q --no-cov -n 0 -p no:randomly -k 'trace or part or bound'
+    cwd: .
+- id: dod-omn24170-ac4
+  description: 'hosted proxy for AC4: the whole test file passes here; the dev-lane reading (import and validation of one fixture row from the installed tag) is posted after the dev-merge tag is installed and cannot be read from a hosted runner.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/test_eval_item_scored.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24170-integration-proof
+  description: the scored-item and trace tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24170 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/test_eval_item_scored.py -q --no-cov -n 0 -p no:randomly
