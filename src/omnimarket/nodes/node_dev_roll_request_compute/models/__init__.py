@@ -1,14 +1,10 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Models of node_dev_roll_request_compute."""
+"""Models of node_dev_roll_request_compute (shared types live in omnimarket.models.dev_roll)."""
 
-from omnimarket.nodes.node_dev_roll_request_compute.models.enum_dev_roll_refusal_reason import (
+from omnimarket.models.dev_roll import (
     EnumDevRollRefusalReason,
-)
-from omnimarket.nodes.node_dev_roll_request_compute.models.model_dev_roll_policy import (
     ModelDevRollPolicy,
-)
-from omnimarket.nodes.node_dev_roll_request_compute.models.model_dev_roll_refused import (
     ModelDevRollRefused,
 )
 
