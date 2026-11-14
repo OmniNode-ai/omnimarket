@@ -1,0 +1,33 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. A deployment's real overlay lives in the overlays repository.
+scope_hosts: [example-host]
+scope_states: [active]
+entries:
+  - one_off_id: example-one-off-census
+    what: The start-path census that reads the paths once a day
+    where: example-host
+    category: C2
+    owner: example-owner
+    owner_repo: example-repo
+    state: replacement_live
+    replacement_kind: node
+    replacement_ref: node_start_path_census_compute
+    bypass: "no"
+    liveness_process_id: example-process-census
+    basis: the register of one-offs
+  - one_off_id: example-one-off-plan
+    what: The hand config the floor reads at the start of the day
+    where: example-host
+    category: C4
+    owner: example-owner
+    owner_repo: example-repo
+    state: replacement_planned
+    replacement_kind: plan
+    replacement_ref: example-plan
+    bypass: unread
+    liveness_process_id: example-process-plan
+    basis: the register of one-offs
+exclusions:
+  - process_id: example-process-excluded
+    reason: A throwaway probe the deployment owner keeps out of the register
