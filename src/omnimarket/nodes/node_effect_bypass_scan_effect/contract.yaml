@@ -1,0 +1,138 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodeEffectBypassScanEffect
+#
+# The effect-node bypass scan (OMN-24432, RULING 2026-11-14T11:59:02Z). Reads one repository checkout
+# (the files git tracks) and counts the lines that reach the outside world (GitHub, git remotes, Slack,
+# Linear, lab hosts over ssh, docker and kafka administration) outside an effect node's own package. The
+# scan policy (suffixes, excluded paths, comment prefixes, one pattern list per category) is the config
+# block below; an overlay at <root>/node_effect_bypass_scan_effect/overlay.yaml replaces a whole key.
+# The `check` verb hands the inventory and the baseline to node_effect_bypass_ratchet_compute and
+# exits 1 when a category rose.
+name: node_effect_bypass_scan_effect
+contract_name: node_effect_bypass_scan_effect
+node_name: node_effect_bypass_scan_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Scans one repository checkout for bypasses of the effect nodes and returns the inventory: the files
+  scanned, the count per category and each site's path, line and category. Reads files only; writes nothing.
+
+handler:
+  module: omnimarket.nodes.node_effect_bypass_scan_effect.handlers.handler_bypass_scan
+  class: HandlerBypassScan
+  input_model: omnimarket.nodes.node_effect_bypass_scan_effect.models.model_bypass_scan.ModelBypassScanCommand
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: []
+  timeout_ms: 120000
+
+input_model:
+  name: ModelBypassScanCommand
+  module: omnimarket.nodes.node_effect_bypass_scan_effect.models.model_bypass_scan
+  description: Which repository checkout to scan and under what name.
+output_model:
+  name: ModelBypassInventory
+  module: omnimarket.nodes.node_effect_bypass_ratchet_compute.models.model_bypass_inventory
+  description: Files scanned, count per category and every site.
+
+terminal_event: onex.evt.omnimarket.effect-bypass-scan-completed.v1
+
+runtime_dispatch:
+  external_trigger: true
+
+topics:
+  effect_bypass_scan_requested: onex.cmd.omnimarket.effect-bypass-scan-requested.v1
+  effect_bypass_scan_completed: onex.evt.omnimarket.effect-bypass-scan-completed.v1
+  effect_bypass_scan_failed: onex.evt.omnimarket.effect-bypass-scan-failed.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.effect-bypass-scan-completed.v1
+  - onex.evt.omnimarket.effect-bypass-scan-failed.v1
+
+overlay:
+  node: node_effect_bypass_scan_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+config:
+  scan:
+    suffixes: [.py, .sh, .bash, .zsh, .yml, .yaml, .j2, .tmpl, .plist, .service, .md, .json]
+    # A path that matches is not scanned: tests, docs and fixtures only talk about a call (a SKILL.md or a brief rule file is scanned: it tells a lane what to run); the effect nodes are the
+    # place a call belongs, and only for its own outside world (see `sanctioned`); GitHub's own CI runs under its job token; a contract, a ticket contract or an overlay example declares, never calls.
+    exclude_globs:
+      - "tests/**"
+      - "**/tests/**"
+      - "**/test_*.py"
+      - "**/conftest.py"
+      - "docs/**"
+      - "**/docs/**"
+      - "**/README.md"
+      - "**/CHANGELOG.md"
+      - "**/CLAUDE.md"
+      - "**/AGENTS.md"
+      - "**/GEMINI.md"
+      - "**/references/**"
+      - "**/*.lock"
+      - "**/package-lock.json"
+      - "**/fixtures/**"
+      - "**/benchmarks/**"
+      - ".github/**"
+      - "**/__pycache__/**"
+      - ".onex_ratchets/**"
+      - "**/contract.yaml"
+      - "**/metadata.yaml"
+      - "**/*.example.yaml"
+      - "contracts/**"
+    comment_prefixes: ["#", "//"]
+    # The node that IS the effect node of an outside world may call it: a line under these globs is not a bypass of that
+    # category (it still counts for every other category). An effect node that calls GitHub, Slack, a lab host or a broker
+    # itself, when it is not the node named here, is a bypass of that node.
+    sanctioned:
+      gh_cli: ["**/handlers/scm/**", "**/node_github_repo_write_effect/**", "**/node_github_repo_gateway_effect/**"]
+      github_api: ["**/handlers/scm/**", "**/node_github_repo_write_effect/**", "**/node_github_repo_gateway_effect/**"]
+      git_remote: ["**/handlers/scm/**", "**/node_github_repo_write_effect/**", "**/node_github_repo_gateway_effect/**"]
+      slack_api: ["**/node_slack_alerter_effect/**", "**/node_slack_publish_effect/**", "**/node_channel_slack_adapter/**", "**/node_view_render_slack_effect/**"]
+      linear_api: ["**/node_linear_effect/**", "**/node_linear_ticket_write_effect/**", "**/node_linear_updater_effect/**", "**/node_linear_snapshot_effect/**", "**/node_db_error_linear_effect/**"]
+      host_ssh: ["**/node_host_installer_*/**", "**/node_host_install_*/**", "**/node_lab_work_unit_effect/**", "**/node_lab_run_spill_effect/**"]
+      docker_admin: ["**/node_host_installer_*/**", "**/node_host_install_*/**", "**/node_lab_work_unit_effect/**", "**/node_lab_run_spill_effect/**"]
+      kafka_admin: ["**/node_broker_topic_delete_effect/**", "**/node_broker_topic_removal_effect/**", "**/node_broker_acl_reconcile_effect/**"]
+    categories:
+      gh_cli:
+        - '(?:^|[\s"''`(=;&|])gh\s+(?:pr|api|run|issue|repo|workflow|search|variable|secret|release|label|auth|ruleset)\b'
+        - '["'']gh["'']\s*,'
+      github_api:
+        - 'api\.github\.com|uploads\.github\.com|raw\.githubusercontent\.com'
+      git_remote:
+        - '\bgit\s+(?:-C\s+\S+\s+)?(?:push|ls-remote|fetch|pull|clone)\b'
+        - '["'']git["'']\s*,.*["''](?:push|ls-remote|fetch|pull|clone)["'']'
+      slack_api:
+        - 'hooks\.slack\.com|slack\.com/api|chat\.postMessage|\bslack_sdk\b'
+      linear_api:
+        - 'api\.linear\.app|linear\.app/graphql|\blinear_sdk\b'
+      host_ssh:
+        - '(?:^|[\s"''`(=;&|])(?:ssh|scp)\s+-?\S'
+        - '["''](?:ssh|scp)["'']\s*,'
+      docker_admin:
+        - '(?:^|[\s"''`(=;&|])docker(?:-compose)?\s+(?:compose|run|exec|restart|stop|start|rm|kill|build|pull|push|up)\b'
+        - '["'']docker["'']\s*,'
+      kafka_admin:
+        - '(?:^|[\s"''`(=;&|])(?:rpk|kafka-topics|kafka-configs|kafka-consumer-groups)(?:\.sh)?\s'
+        - '\bAIOKafkaAdminClient\b|\bKafkaAdminClient\b'
+
+metadata:
+  ticket: OMN-24432
+  transport_type: inmemory
