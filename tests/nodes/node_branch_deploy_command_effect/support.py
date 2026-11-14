@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from uuid import uuid4
 
 import yaml
@@ -73,9 +73,11 @@ class FailingBus:
 class FakeKeyCheckReader:
     """The key check port with a fixed reading; counts its reads."""
 
-    def __init__(self, status: str, key_check: str = "", detail: str = "") -> None:
+    def __init__(
+        self, status: Literal["read", "refused"], key_check: str = "", detail: str = ""
+    ) -> None:
         self.reading = ModelAgentKeyCheckReading(
-            status=status,  # type: ignore[arg-type]
+            status=status,
             key_check=key_check,
             detail=detail,
         )
