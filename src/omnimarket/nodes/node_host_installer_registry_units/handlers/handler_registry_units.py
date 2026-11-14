@@ -53,6 +53,32 @@ MANIFEST = "manifest.json"
 KEPT_SUFFIX = ".previous"
 
 
+def fill_placeholders(node: Any, values: dict[str, str], unit: str) -> Any:
+    """``node`` with every ``{name}`` of ``values`` filled, in strings, lists and mappings; a placeholder left over is refused.
+
+    The one filler of a unit's declared configuration (``config_file``) and declared files (``declared_files``): a
+    document is never written with a hole in it.
+    """
+    if isinstance(node, str):
+        for key, value in values.items():
+            node = node.replace("{" + key + "}", value)
+        left = PLACEHOLDER.search(node)
+        if left is not None:
+            raise ValueError(
+                f"the {unit} configuration names {left.group(0)}, which this request does not set "
+                "(name it as a request input, export its environment variable, or reinstall once with it)"
+            )
+        return node
+    if isinstance(node, list):
+        return [fill_placeholders(item, values, unit) for item in node]
+    if isinstance(node, dict):
+        return {
+            str(key): fill_placeholders(item, values, unit)
+            for key, item in node.items()
+        }
+    return node
+
+
 class NoPreviousInstallError(ValueError):
     """A rollback was asked for a unit that has no kept previous install."""
 
@@ -617,21 +643,7 @@ class HandlerRegistryUnits:
         values.update(self.config_inputs(request, unit))
 
         def fill(node: Any) -> Any:
-            if isinstance(node, str):
-                for key, value in values.items():
-                    node = node.replace("{" + key + "}", value)
-                left = PLACEHOLDER.search(node)
-                if left is not None:
-                    raise ValueError(
-                        f"the {request.unit} configuration names {left.group(0)}, which this request does not set "
-                        "(name it as a request input, export its environment variable, or reinstall once with it)"
-                    )
-                return node
-            if isinstance(node, list):
-                return [fill(item) for item in node]
-            if isinstance(node, dict):
-                return {str(key): fill(item) for key, item in node.items()}
-            return node
+            return fill_placeholders(node, values, request.unit)
 
         document = dict(declared["document"])
         for key in declared.get("optional_keys") or []:
@@ -668,6 +680,46 @@ class HandlerRegistryUnits:
             if value:
                 found[str(name)] = value
         return found
+
+    def declared_file_writes(
+        self, request: ModelRegistryUnitsRequest, unit: dict[str, Any]
+    ) -> list[tuple[Path, str, int]]:
+        """The files a systemd unit declares under ``declared_files``: (path, text, mode) each, every placeholder filled.
+
+        ``path`` and every string of ``document`` may use {home}, {registry_root} and {marketplace_root} (the request's; the
+        last only when the request names one). A path that is not
+        absolute after filling, or that is not under the request's home, is refused, and a placeholder nothing fills is
+        refused naming it, so a declared file is never written with a hole in it or outside the home.
+        """
+        declared = unit.get("declared_files") or []
+        if declared and unit.get("platform") != "systemd":
+            raise ValueError(
+                f"{unit['label']} declares declared_files; only systemd units may declare them"
+            )
+        values = {"home": request.home, "registry_root": request.registry_root}
+        if request.marketplace_root:
+            values["marketplace_root"] = request.marketplace_root
+        home = Path(os.path.normpath(request.home))
+        writes: list[tuple[Path, str, int]] = []
+        for entry in declared:
+            path = Path(
+                os.path.normpath(
+                    fill_placeholders(str(entry["path"]), values, request.unit)
+                )
+            )
+            if not path.is_absolute() or home not in path.parents:
+                raise ValueError(
+                    f"{request.unit} declares the file {entry['path']!r}, which is not a path under the home {home}"
+                )
+            text = (
+                json.dumps(
+                    fill_placeholders(dict(entry["document"]), values, request.unit),
+                    indent=1,
+                )
+                + "\n"
+            )
+            writes.append((path, text, int(str(entry.get("mode", "0600")), 8)))
+        return writes
 
     @staticmethod
     def write_config(target: Path, text: str, mode: int) -> str:
@@ -725,6 +777,10 @@ class HandlerRegistryUnits:
             raise ValueError(
                 f"{unit['label']} declares environment_file {unit['environment_file']!r}; "
                 "launchd units do not support an environment file, declare the variables instead"
+            )
+        if unit.get("declared_files"):
+            raise ValueError(
+                f"{unit['label']} declares declared_files; only systemd units may declare them"
             )
         text = (NODE_DIR / str(unit["template"])).read_text(encoding="utf-8")
         process_type = str(unit.get("process_type") or DEFAULT_PROCESS_TYPE)
@@ -1114,11 +1170,16 @@ class HandlerRegistryUnits:
         python = self.interpreter_for(unit)
         service, timer = self.render_systemd(request, unit, project, uv, python)
         text = service + "\n" + timer
+        declared_files = self.declared_file_writes(request, unit)
         if request.mode == "dry-run":
             return self.result(
                 request,
                 0,
-                out=text,
+                out=text
+                + "".join(
+                    f"\ndeclared file {path}:\n{body}"
+                    for path, body, _mode in declared_files
+                ),
                 rendered=text,
                 project=project,
                 revision=revision,
@@ -1131,6 +1192,8 @@ class HandlerRegistryUnits:
             )
         state.mkdir(parents=True, exist_ok=True)
         unit_dir.mkdir(parents=True, exist_ok=True)
+        for path, body, mode in declared_files:
+            self.write_config(path, body, mode)
         previous = {
             path: (path.read_bytes() if path.exists() else None)
             for path in (service_path, timer_path)

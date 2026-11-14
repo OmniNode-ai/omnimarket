@@ -28,6 +28,8 @@ live_lanes:
 dispatch:
   interpreter: python3
   runner_env: EXAMPLE_REMOTE_LANE_RUNNER
+  claude_dir_env: EXAMPLE_LANE_CLAUDE_DIR
+  plugins: [example-plugin@example-marketplace]
   subcommand: run
   model: sonnet
   ticket: OMN-1

@@ -10,10 +10,16 @@ from omnimarket.nodes.node_work_ledger_append_effect.handlers.handler_work_ledge
     HandlerWorkLedgerJoinJ5,
     load_join_j5_policy,
 )
+from omnimarket.nodes.node_work_ledger_append_effect.handlers.ledger_flip_fence import (
+    HandoverInProgressError,
+    LedgerFlipFence,
+)
 
 __all__ = [
     "HandlerWorkLedgerAppendEffect",
     "HandlerWorkLedgerJoinJ5",
+    "HandoverInProgressError",
+    "LedgerFlipFence",
     "load_join_j5_policy",
     "terminal_refused",
 ]

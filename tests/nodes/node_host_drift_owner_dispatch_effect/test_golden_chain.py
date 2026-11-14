@@ -14,7 +14,7 @@ from omnimarket.nodes.node_host_drift_owner_dispatch_effect.models import (
     ModelDriftOwnerRequest,
 )
 
-from .support import RUNNER_PATH, item, rig
+from .support import CLAUDE_DIR, RUNNER_PATH, item, overlay, rig
 
 pytestmark = pytest.mark.unit
 
@@ -66,6 +66,18 @@ def test_the_runner_command_is_the_overlays_and_carries_the_cause() -> None:
     assert argv[-4:] == ("--parent", "example-drift", "--priority-class", "process-fix")
 
 
+def test_the_runner_is_given_the_claude_directory_and_each_plugin_before_the_extra_args() -> (
+    None
+):
+    r = rig((item(OLD_ITEM),))
+    argv = r.handler.handle(ModelDriftOwnerRequest(dry_run=False)).lanes[0].argv
+    assert argv[argv.index("--claude-dir") + 1] == CLAUDE_DIR
+    plugins = [argv[i + 1] for i, arg in enumerate(argv) if arg == "--plugin"]
+    assert plugins == ["example-plugin@example-marketplace"]
+    assert argv.index("--claude-dir") < argv.index("--parent")
+    assert argv.index("--plugin") < argv.index("--parent")
+
+
 def test_an_item_below_the_bound_starts_nothing() -> None:
     r = rig((item(OLD_ITEM, first_seen_at="2026-11-13T15:00:00Z"),))
     result = r.handler.handle(ModelDriftOwnerRequest(dry_run=False))
@@ -97,3 +109,17 @@ def test_a_lane_that_names_the_cause_covers_it() -> None:
     assert result.lanes == ()
     assert [s.reason for s in result.skipped] == ["covered-by-cause"]
     assert r.live.asked == [(OLD_CAUSE,)]
+
+
+def test_an_overlay_naming_no_claude_directory_passes_neither_flag() -> None:
+    changed = overlay().model_copy(
+        update={
+            "dispatch": overlay().dispatch.model_copy(
+                update={"claude_dir_env": "", "plugins": ()}
+            )
+        }
+    )
+    r = rig((item(OLD_ITEM),), changed=changed)
+    argv = r.handler.handle(ModelDriftOwnerRequest(dry_run=False)).lanes[0].argv
+    assert "--claude-dir" not in argv
+    assert "--plugin" not in argv
