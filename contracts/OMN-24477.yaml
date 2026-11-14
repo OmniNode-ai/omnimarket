@@ -15,9 +15,9 @@ requirements:
   acceptance:
   - id: AC1
     statement: 'AC1: the pure landing decision holds a green, clean pull request marked new work unless a CLEAN review verdict is recorded for its exact head, naming review_missing, review_changes_needed
-      or review_superseded -- falsifier: pytest tests/test_landing_review_gate.py -q'
+      or review_superseded -- falsifier: pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_review_gate.py -q'
   - id: AC2
-    statement: 'AC2: the ledger facts derive the review verdicts from STATUS rows naming the pull request and head, ignoring rows from a lane that is not an accepted reviewer -- falsifier: pytest tests/test_landing_review_gate_seam.py
+    statement: 'AC2: the ledger facts derive the review verdicts from STATUS rows naming the pull request and head, ignoring rows from a lane that is not an accepted reviewer -- falsifier: pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_review_gate_seam.py
       -q'
   - id: AC3
     statement: 'AC3: integrated: the landing controller running on the Mac, given a new-work pull request with no verdict, writes a held decision naming review_missing, and lands it after a CLEAN verdict
