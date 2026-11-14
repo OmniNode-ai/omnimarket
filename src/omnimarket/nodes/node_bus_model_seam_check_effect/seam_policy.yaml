@@ -1,0 +1,310 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# Policy of node_bus_model_seam_check_effect (OMN-23995): every value the check reads that is not
+# a contract. Edited by hand only to SHRINK `pins`; the check refuses a pin that no longer matches
+# its pair exactly, so a fixed seam forces its pin out, and refuses any new refusing pair.
+#
+# strict_models: a model on either side of a pair that must have zero refused and zero missing
+#   fields with no pin, and must appear in at least one pair. These are the seams of the two
+#   incidents the check starts from: the host capacity advertisement the factory board reads
+#   (a bus model gained a field and the board refused every publish for 68 minutes on 2026-11-10)
+#   and the silent-failure alarm's request.
+strict_models:
+- omnimarket.models.model_host_capacity_advertisement.ModelHostCapacityAdvertisement
+- omnimarket.nodes.node_silent_failure_alarm_effect.models.ModelSilentFailureAlarmRequest
+
+# external_producers: a topic whose producer is not a node contract (the contract names it only in
+#   free text under externally_produced_topics). The model is the one the producer builds.
+#   The alarm's three command topics are published by its own command-line runtime
+#   (runtime_silent_failure_alarm builds the request with ModelSilentFailureAlarmRequest).
+external_producers:
+- topic: onex.cmd.omnimarket.silent-failure-alarm-requested.v1
+  model: omnimarket.nodes.node_silent_failure_alarm_effect.models.ModelSilentFailureAlarmRequest
+- topic: onex.cmd.omnimarket.silent-failure-drainer-observe-requested.v1
+  model: omnimarket.nodes.node_silent_failure_alarm_effect.models.ModelSilentFailureAlarmRequest
+- topic: onex.cmd.omnimarket.silent-failure-drainer-repair-requested.v1
+  model: omnimarket.nodes.node_silent_failure_alarm_effect.models.ModelSilentFailureAlarmRequest
+
+# pins: pairs that refuse today, read from the contracts on 2026-11-12 by
+#   `python -m omnimarket.nodes.node_bus_model_seam_check_effect --list-findings`.
+#   A pair here is measured debt, never an exemption: only an inferred pair (a side the contract
+#   does not state outright) can be pinned, and the pin must equal the pair's refused and
+#   missing names exactly, so it can only shrink as a seam is fixed.
+pins:
+- topic: onex.evt.omnimarket.evidence-collected.v1
+  producer_model: omnimarket.models.evidence_pipeline.wire.model_raw_evidence_payload.ModelRawEvidencePayload
+  consumer_model: omnimarket.models.evidence_pipeline.wire.model_dashboard_event.ModelDashboardEvent
+  refused:
+  - changed_files
+  - ci_artifact_refs
+  - collected_at
+  - collector_identity
+  - diff_refs
+  - provenance
+  - raw_payload_refs
+  - repository
+  - source_ci_run
+  - source_commit_sha
+  - source_pr
+  - source_surfaces
+  - test_output_refs
+  - validation_run_id
+  missing:
+  - event_id
+  - evidence_lifecycle_state
+  - ingest_sequence
+  - projection_cursor
+  - source_event_hash
+  - stage
+  - timestamp
+  - topic
+- topic: onex.evt.omnimarket.evidence-extracted.v1
+  producer_model: omnimarket.models.evidence_pipeline.wire.model_evidence_bundle.ModelEvidenceBundle
+  consumer_model: omnimarket.models.evidence_pipeline.wire.model_dashboard_event.ModelDashboardEvent
+  refused:
+  - changed_files
+  - evidence_bundle_hash
+  - extracted_at
+  - provenance
+  - repository
+  - scope
+  - source_ci_run
+  - source_commit_sha
+  - source_pr
+  - source_projection_refs
+  - source_surfaces
+  - test_results
+  - validation_run_id
+  - validator_version
+  missing:
+  - event_id
+  - evidence_lifecycle_state
+  - ingest_sequence
+  - projection_cursor
+  - source_event_hash
+  - stage
+  - timestamp
+  - topic
+- topic: onex.evt.omnimarket.evidence-pipeline-completed.v1
+  producer_model: omnimarket.models.evidence_pipeline.wire.model_evidence_validation_result.ModelEvidenceValidationResult
+  consumer_model: omnimarket.models.evidence_pipeline.wire.model_dashboard_event.ModelDashboardEvent
+  refused:
+  - blocking_reason_codes
+  - contract_hash
+  - evidence_bundle_hash
+  - evidence_refs
+  - missing_dod_items
+  - repository
+  - requirement_results
+  - scope_drift_detected
+  - topology_affecting
+  - validated_at
+  - validation_run_id
+  - validation_state
+  - validator_version
+  - verifier_identity
+  missing:
+  - event_id
+  - ingest_sequence
+  - projection_cursor
+  - source_event_hash
+  - stage
+  - timestamp
+  - topic
+- topic: onex.evt.omnimarket.evidence-validated.v1
+  producer_model: omnimarket.models.evidence_pipeline.wire.model_evidence_validation_result.ModelEvidenceValidationResult
+  consumer_model: omnimarket.models.evidence_pipeline.wire.model_dashboard_event.ModelDashboardEvent
+  refused:
+  - blocking_reason_codes
+  - contract_hash
+  - evidence_bundle_hash
+  - evidence_refs
+  - missing_dod_items
+  - repository
+  - requirement_results
+  - scope_drift_detected
+  - topology_affecting
+  - validated_at
+  - validation_run_id
+  - validation_state
+  - validator_version
+  - verifier_identity
+  missing:
+  - event_id
+  - ingest_sequence
+  - projection_cursor
+  - source_event_hash
+  - stage
+  - timestamp
+  - topic
+- topic: onex.evt.omnimarket.lab-sli-evaluated.v1
+  producer_model: omnimarket.models.lab_sli.model_lab_sli.ModelLabSliEvaluationBatch
+  consumer_model: omnimarket.models.lab_sli.model_lab_sli.ModelLabSliAlertRequest
+  refused:
+  - collector_host
+  - evaluations
+  - interval_start
+  - rejected
+  - source_errors
+  missing:
+  - evaluation
+- topic: onex.evt.omnimarket.lab-sli-evaluated.v1
+  producer_model: omnimarket.models.lab_sli.model_lab_sli.ModelLabSliEvaluationBatch
+  consumer_model: omnimarket.models.lab_sli.model_lab_sli.ModelLabSliBoardRequest
+  refused:
+  - collector_host
+  - evaluations
+  - interval_start
+  - rejected
+  - source_errors
+  missing:
+  - evaluation
+- topic: onex.evt.omnimarket.prod-promotion-gate-evaluated.v1
+  producer_model: omnimarket.events.runtime_deployment.ModelProdPromotionGateDecision
+  consumer_model: omnimarket.nodes.node_redeploy_orchestrator.models.model_redeploy_start_command.ModelRedeployStartCommand
+  refused:
+  - allowed
+  - deploy_context
+  - evaluated_at
+  - grant_id
+  - outcome
+  - reason
+  - requested_image_digest
+- topic: onex.evt.omnimarket.prod-promotion-grant-resolved.v1
+  producer_model: omnimarket.events.runtime_deployment.ModelProdPromotionGrantResolvedEvent
+  consumer_model: omnimarket.nodes.node_redeploy_orchestrator.models.model_redeploy_start_command.ModelRedeployStartCommand
+  refused:
+  - evaluated_at
+  - grant
+  - provenance
+  - resolution
+- topic: onex.evt.omnimarket.readiness-gate-completed.v1
+  producer_model: omnimarket.models.evidence_pipeline.wire.model_deployment_readiness_result.ModelDeploymentReadinessResult
+  consumer_model: omnimarket.models.evidence_pipeline.wire.model_dashboard_event.ModelDashboardEvent
+  refused:
+  - blocking_reason_codes
+  - deployment_artifact_hashes
+  - deployment_id
+  - gap_report_hash
+  - missing_contracts
+  - readiness_state
+  - receipt_refs
+  - required_evidence_refs
+  - scored_at
+  - stale_validation_windows
+  - superseded_artifacts
+  - topology_affecting
+  - topology_metadata
+  - unresolved_runtime_gaps
+  - validation_run_id
+  - validator_version
+  missing:
+  - event_id
+  - evidence_lifecycle_state
+  - ingest_sequence
+  - projection_cursor
+  - source_event_hash
+  - stage
+  - timestamp
+  - topic
+- topic: onex.evt.omnimarket.readiness-scored.v1
+  producer_model: omnimarket.models.evidence_pipeline.wire.model_deployment_readiness_result.ModelDeploymentReadinessResult
+  consumer_model: omnimarket.models.evidence_pipeline.wire.model_gap_report.ModelGapReport
+  refused:
+  - blocking_reason_codes
+  - deployment_artifact_hashes
+  - gap_report_hash
+  - missing_contracts
+  - readiness_state
+  - receipt_refs
+  - required_evidence_refs
+  - scored_at
+  - stale_validation_windows
+  - topology_affecting
+  - topology_metadata
+  - unresolved_runtime_gaps
+  missing:
+  - generated_at
+- topic: onex.evt.omnimarket.redeploy-completed.v1
+  producer_model: omnimarket.events.runtime_deployment.ModelRedeployCompletedEvent
+  consumer_model: omnimarket.nodes.node_runtime_closeout_orchestrator.models.model_closeout_start_command.ModelCloseoutStartCommand
+  refused:
+  - error_message
+  - final_phase
+  - phases_completed
+- topic: onex.evt.omnimarket.redeploy-rolled-back.v1
+  producer_model: omnimarket.events.runtime_deployment.ModelRedeployResult
+  consumer_model: omnimarket.nodes.node_redeploy_orchestrator.models.model_redeploy_start_command.ModelRedeployStartCommand
+  refused:
+  - duration_seconds
+  - errors
+  - git_sha
+  - health_checks
+  - phase_results
+  - rejection_reason
+  - services_restarted
+  - status
+  - success
+  - timed_out
+- topic: onex.evt.omnimarket.view-seam-counted.v1
+  producer_model: omnimarket.models.seam_reading.model_seam_count.ModelSeamCount
+  consumer_model: omnimarket.nodes.node_view_seam_reading_reducer.models.model_view_seam_state.ModelViewSeamFoldRequest
+  refused:
+  - artifacts
+  - crossing_id
+  - measures
+  - origin_tick_id
+  - seam_id
+  - side
+  missing:
+  - event
+- topic: onex.evt.omnimarket.view-seam-reading-recorded.v1
+  producer_model: omnimarket.nodes.node_seam_conservation_compute.models.model_seam_conservation_result.ModelSeamConservationResult
+  consumer_model: omnimarket.nodes.node_view_seam_reading_reducer.models.model_view_seam_state.ModelViewSeamFoldRequest
+  refused:
+  - counts
+  - max_latency_seconds
+  - reading
+  - reason
+  - residuals
+  missing:
+  - event
+- topic: onex.evt.omnimarket.view-seam-window-closed.v1
+  producer_model: omnimarket.models.seam_reading.model_seam_window_close.ModelSeamWindowClose
+  consumer_model: omnimarket.nodes.node_view_seam_reading_reducer.models.model_view_seam_state.ModelViewSeamFoldRequest
+  refused:
+  - crossing_ids
+  - reported_through
+  - seam_id
+  - side
+  - window
+  missing:
+  - event
+- topic: onex.evt.omnimarket.host-disk-read.v1
+  producer_model: omnimarket.nodes.node_lab_disk_watermark_effect.models.model_lab_disk_watermark.ModelLabDiskWatermarkReading
+  consumer_model: omnimarket.models.model_host_disk_reading.ModelHostDiskRead
+  refused:
+  - host_disk
+  - level
+  - paged
+  - reading_file
+  - written
+  missing:
+  - classes
+  - correlation_id
+- topic: onex.evt.omnimarket.code-contract-scored.v1
+  producer_model: omnimarket.nodes.node_code_contract_score_effect.models.model_code_score.ModelCodeScoreResult
+  consumer_model: omnimarket.models.model_code_score.ModelCodeScored
+  refused:
+  - failed
+  - scored
+  missing:
+  - base_commit
+  - correlation_id
+  - draft_diff_sha256
+  - gate_accepted
+  - repo
+  - timings
+  - try_identity
+  - verdict

@@ -32,7 +32,14 @@ from omnimarket.models.floor_17a import (
     ModelRowMatch,
     ModelShadowReading,
 )
+from omnimarket.models.floor_17a.model_floor_handoff_refusals import (
+    ModelHandoffLedgerFacts,
+)
 from omnimarket.models.model_reading import ModelLedgerEvidenceRow
+from omnimarket.nodes.node_floor_simple_effect.handlers.handoff_refusals import (
+    MSG_ROW_TYPE,
+    handoff_ledger_facts,
+)
 from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
     read_queries,
 )
@@ -64,6 +71,10 @@ class ModelLedgerFacts(BaseModel):
     # A shadow rule whose query failed, with its reason. The shadow rows are advisory: the go, the events and the readings
     # stay readable without them, and the failure stays visible here.
     shadows_unread: tuple[str, ...] = ()
+    # The hand-off and parent MSG rows (OMN-23242), and the reason they could not be read. Advisory like the shadows: a failed
+    # MSG query costs the handed-off refusals section alone, and the section draws unread with this reason.
+    handoff: ModelHandoffLedgerFacts | None = None
+    handoff_unread: str = ""
 
 
 class ModelLedgerFloorRead(BaseModel):
@@ -368,6 +379,14 @@ def read_ledger_facts(
                 lane=reading_rule.lane,
             )
         )
+    handoff_rule = overlay.handoff_refusals
+    queries.append(
+        ModelLedgerQuery(
+            since=now - timedelta(days=handoff_rule.ledger_lookback_days),
+            until=until,
+            row_type=MSG_ROW_TYPE,
+        )
+    )
     queries.extend(
         ModelLedgerQuery(
             since=now - timedelta(days=shadow_rule.lookback_days),
@@ -399,6 +418,15 @@ def read_ledger_facts(
                 error=f"{reading_rule.row_type} rows of {reading_rule.lane} unread: {read.error}"
             )
         readings, rejected = reading_rows(list(read.rows), reading_rule)
+    handoff_read = next(answers)
+    handoff_facts: ModelHandoffLedgerFacts | None = None
+    handoff_unread = ""
+    if handoff_read.error is not None:
+        handoff_unread = f"{MSG_ROW_TYPE} rows unread: {handoff_read.error}"
+    else:
+        handoff_facts = handoff_ledger_facts(
+            handoff_read.rows, handoff_rule.controller_lane
+        )
     shadows: list[ModelShadowReading] = []
     shadows_rejected = 0
     shadows_unread: list[str] = []
@@ -439,5 +467,7 @@ def read_ledger_facts(
             shadows=tuple(shadows),
             shadows_rejected=shadows_rejected,
             shadows_unread=tuple(shadows_unread),
+            handoff=handoff_facts,
+            handoff_unread=handoff_unread,
         )
     )

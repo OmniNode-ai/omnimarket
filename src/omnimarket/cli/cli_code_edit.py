@@ -42,6 +42,7 @@ import sys
 import uuid
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import click
 
@@ -260,9 +261,6 @@ def run_command(
     file_list_path: Path | None,
     check_specs: tuple[str, ...],
     formatter: tuple[str, ...],
-    max_turns: int | None,
-    check_timeout_s: int | None,
-    wall_budget_s: int | None,
     ticket_contract: Path | None,
     caller_lane: str | None,
     ticket: str | None,
@@ -274,6 +272,7 @@ def run_command(
     delegate_in_process: bool,
     backend_id: str | None,
     max_tokens: int | None,
+    **options: Any,
 ) -> None:
     """Run one delegated code edit loop and print its compact result."""
     if resume_id is not None:
@@ -305,12 +304,10 @@ def run_command(
                 file_list=read_file_list(file_list_path),
                 cli_checks=tuple(parse_check(spec) for spec in check_specs),
                 formatter=formatter,
-                max_turns=max_turns,
-                check_timeout_s=check_timeout_s,
-                wall_budget_s=wall_budget_s,
                 ticket_contract=ticket_contract,
                 caller_lane=caller_lane,
                 ticket=ticket,
+                **options,
             )
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
