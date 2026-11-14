@@ -379,6 +379,14 @@ def read_ledger_facts(
                 lane=reading_rule.lane,
             )
         )
+    handoff_rule = overlay.handoff_refusals
+    queries.append(
+        ModelLedgerQuery(
+            since=now - timedelta(days=handoff_rule.ledger_lookback_days),
+            until=until,
+            row_type=MSG_ROW_TYPE,
+        )
+    )
     queries.extend(
         ModelLedgerQuery(
             since=now - timedelta(days=shadow_rule.lookback_days),
@@ -387,14 +395,6 @@ def read_ledger_facts(
             lane=shadow_rule.lane,
         )
         for shadow_rule in overlay.ledger_shadows
-    )
-    handoff_rule = overlay.handoff_refusals
-    queries.append(
-        ModelLedgerQuery(
-            since=now - timedelta(days=handoff_rule.ledger_lookback_days),
-            until=until,
-            row_type=MSG_ROW_TYPE,
-        )
     )
     answers = iter(read_queries(source, queries))
     rulings = next(answers)
@@ -418,6 +418,15 @@ def read_ledger_facts(
                 error=f"{reading_rule.row_type} rows of {reading_rule.lane} unread: {read.error}"
             )
         readings, rejected = reading_rows(list(read.rows), reading_rule)
+    handoff_read = next(answers)
+    handoff_facts: ModelHandoffLedgerFacts | None = None
+    handoff_unread = ""
+    if handoff_read.error is not None:
+        handoff_unread = f"{MSG_ROW_TYPE} rows unread: {handoff_read.error}"
+    else:
+        handoff_facts = handoff_ledger_facts(
+            handoff_read.rows, handoff_rule.controller_lane
+        )
     shadows: list[ModelShadowReading] = []
     shadows_rejected = 0
     shadows_unread: list[str] = []
@@ -432,15 +441,6 @@ def read_ledger_facts(
         shadows_rejected += shadow_rejects
         if reading is not None:
             shadows.append(reading)
-    handoff_read = next(answers)
-    handoff_facts: ModelHandoffLedgerFacts | None = None
-    handoff_unread = ""
-    if handoff_read.error is not None:
-        handoff_unread = f"{MSG_ROW_TYPE} rows unread: {handoff_read.error}"
-    else:
-        handoff_facts = handoff_ledger_facts(
-            handoff_read.rows, handoff_rule.controller_lane
-        )
     rows = list(rulings.rows)
     go = go_given_through(rows, go_rule)
     return ModelLedgerFloorRead(
