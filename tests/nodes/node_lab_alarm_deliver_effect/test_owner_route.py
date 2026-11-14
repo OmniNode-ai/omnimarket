@@ -328,3 +328,10 @@ def test_the_overlay_refuses_a_route_whose_template_lacks_a_placeholder() -> Non
         body["owner_routes"][_OWNER][field] = template
         with pytest.raises(ValidationError):
             ModelDeliveryOverlay.model_validate(body)
+
+
+def test_an_overlay_written_before_owner_routes_existed_still_loads() -> None:
+    raw = yaml.safe_load((_NODE / "overlay.example.yaml").read_text(encoding="utf-8"))
+    del raw["owner_routes"]
+    overlay = ModelDeliveryOverlay.model_validate(raw)
+    assert overlay.owner_routes == {}
