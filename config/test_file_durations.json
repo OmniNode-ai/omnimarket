@@ -4419,6 +4419,7 @@
   "tests/unit/experiments/adk_eval/test_omn12743_literal_classification.py": 0.93,
   "tests/unit/experiments/adk_eval/tools/test_mypy_parser.py": 0.07,
   "tests/unit/experiments/adk_eval/type_debt_scout_poc/test_handler_type_debt_scout.py": 0.07,
+  "tests/unit/experiments/code_graph_vs_gortex/test_fixture_pack.py": 2.2,
   "tests/unit/experiments/test_qwen_tool_call_report.py": 0.06,
   "tests/unit/github_landing/test_github_landing_transport.py": 0.06,
   "tests/unit/github_landing/test_legacy_landing_nodes_share_the_transport.py": 0.08,
