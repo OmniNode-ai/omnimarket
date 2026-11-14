@@ -539,6 +539,45 @@ def test_node_change_still_selects_the_contract_binding_test() -> None:
     ).is_file()
 
 
+@pytest.mark.parametrize(
+    "changed",
+    [
+        "src/omnimarket/nodes/node_remote_lane_compute/handlers/handler_remote_lane_placement.py",
+        "src/omnimarket/nodes/node_remote_lane_compute/contract.yaml",
+    ],
+)
+def test_always_selected_paths_keep_binding_and_dogfood_tests_on_narrowed_selection(
+    changed: str,
+) -> None:
+    """OMN-23649: a one-node change still selects the repo-wide contract binding
+    test and the market node runtime dogfood test.
+
+    The first fix left the dogfood test out because the narrowed selection then
+    exceeded the shard weight bound and ran the full suite. OMN-23719 narrowed a
+    node change to its own tests, so the pair fits: this asserts the selection
+    stays narrowed (not the full suite) and carries both tests.
+    """
+    sel = compute_selection(
+        changed_files=[changed],
+        adjacency_path=ADJACENCY_PATH,
+        ref_name="jonah/feature",
+        event_name="pull_request",
+        feature_flag_enabled=True,
+    )
+    assert sel.is_full_suite is False, (
+        "fixture drifted -- this test must exercise the NARROWED path, "
+        "otherwise it passes vacuously via full-suite escalation"
+    )
+    for always in (
+        "tests/ci/test_repo_evidence_caller_workflow.py",
+        "tests/test_market_node_runtime_dogfood.py",
+    ):
+        assert always in sel.selected_paths, (
+            f"{always} was narrowed away. selected={sel.selected_paths}"
+        )
+        assert (ADJACENCY_PATH.parents[2] / always).is_file()
+
+
 def test_always_selected_paths_reject_a_non_test_entry() -> None:
     from scripts.ci.test_selection_loader import ModelAdjacencyMap, load_adjacency_map
 
@@ -646,6 +685,7 @@ def test_non_delegation_node_still_narrows(tracked_paths: list[str]) -> None:
         "tests/ci/test_repo_evidence_caller_workflow.py",
         "tests/gates/",
         "tests/test_no_cross_node_reach_in.py",
+        "tests/test_market_node_runtime_dogfood.py",
     ):
         assert always in sel.selected_paths
 

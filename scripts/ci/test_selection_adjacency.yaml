@@ -40,10 +40,14 @@ thresholds:
 # contracts/OMN-*.yaml, so a change that adds one contract narrowed to its own
 # node's tests and merged a contract the repo-wide binding check refuses; the
 # dev suite then failed on every open change that took dev in.
+# OMN-23649: tests/test_market_node_runtime_dogfood.py joins it now that a node
+# change narrows to its own tests (OMN-23719), so the pair no longer exceeds the
+# shard weight bound.
 always_selected_paths:
   - tests/gates/
   - tests/test_no_cross_node_reach_in.py
   - tests/ci/test_repo_evidence_caller_workflow.py
+  - tests/test_market_node_runtime_dogfood.py
 
 # OMN-23719: modules made of node packages. A change reaching one of these
 # (directly, or through reverse_deps) selects the tests of the nodes it can
