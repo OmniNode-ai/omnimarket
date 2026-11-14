@@ -2619,6 +2619,7 @@
   "tests/nodes/node_ticket_compiler/test_ticket_compilation.py": 0.31,
   "tests/nodes/node_ticket_contract_merge_compute/test_golden_chain_ticket_contract_merge.py": 2.75,
   "tests/nodes/node_ticket_contract_prerequisite_effect/test_golden_chain_ticket_contract_prerequisite.py": 0.02,
+  "tests/nodes/node_ticket_contract_render_compute/test_golden_chain_ticket_contract_render.py": 6.4,
   "tests/nodes/node_ticket_contract_prerequisite_effect/test_integration_proof_omn21887.py": 0.96,
   "tests/nodes/node_ticket_contract_prerequisite_effect/test_missing_base.py": 0.37,
   "tests/nodes/node_ticket_contract_prerequisite_effect/test_staged_merge_omn23283.py": 1.0,
