@@ -24,10 +24,16 @@ from omnimarket.nodes.node_dev_deploy_reading_compute.handlers import (
 )
 from tests.nodes.node_dev_deploy_reading_compute.dev_deploy_support import (
     SHA_A,
+    SHA_B,
+    SHA_C,
     contract,
+    lineage_fact,
     merge,
+    probe,
+    receipt,
     request,
     resolve_handler,
+    rule,
 )
 
 #: mutation name -> (the chain it turns red, the test that shows it).
@@ -43,6 +49,14 @@ NAMED_MUTATIONS: dict[str, tuple[str, str]] = {
     "receipts-ignored": (
         "golden",
         "test_mutation_receipts_ignored_turns_the_golden_chain_red",
+    ),
+    "covering-receipt-never": (
+        "golden",
+        "test_mutation_covering_receipt_never_turns_the_golden_chain_red",
+    ),
+    "probe-sha-always-mismatch": (
+        "golden",
+        "test_mutation_probe_sha_always_mismatch_turns_the_golden_chain_red",
     ),
 }
 
@@ -122,9 +136,58 @@ def test_mutation_receipts_ignored_turns_the_golden_chain_red(
         run_golden_chain()
 
 
+def run_lineage_golden_chain() -> None:
+    """The lineage rule (OMN-23603): a later PASS receipt covers the merge, a descendant running sha passes."""
+    handler = resolve_handler()()
+    covered = handler.handle(
+        request(
+            merges=[merge(SHA_A, "2026-11-08T08:00:00Z")],
+            receipts=[receipt(SHA_B, "2026-11-08T08:20:00Z")],
+            lineage_rule=rule(receipt_covers_descendant=True),
+            lineage=[lineage_fact(SHA_A, SHA_B)],
+        )
+    )
+    assert covered.verdict is V.WORKING
+    accepted = handler.handle(
+        request(
+            probes=[probe(expected=SHA_B, observed=SHA_C)],
+            lineage_rule=rule(probe_accepts_descendant=True),
+            lineage=[lineage_fact(SHA_B, SHA_C)],
+        )
+    )
+    assert accepted.verdict is V.WORKING
+
+
+def test_lineage_golden_chain_reads_working() -> None:
+    run_lineage_golden_chain()
+
+
+def test_mutation_covering_receipt_never_turns_the_golden_chain_red(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(module, "_covering_receipt", lambda *_a, **_k: (False, None))
+    with pytest.raises(AssertionError):
+        run_lineage_golden_chain()
+
+
+def test_mutation_probe_sha_always_mismatch_turns_the_golden_chain_red(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        module,
+        "_probe_sha_failures",
+        lambda _req, probe, _observed: [
+            f"probe-sha-mismatch:{probe.probe_id}:{probe.expected_sha[:12]}"
+        ],
+    )
+    with pytest.raises(AssertionError):
+        run_lineage_golden_chain()
+
+
 def test_the_golden_chain_is_green_again_after_each_mutation_is_undone() -> None:
     """Positive control: the chain the mutations break is the one that passes unmutated."""
     run_golden_chain()
+    run_lineage_golden_chain()
 
 
 def test_every_named_golden_mutation_has_its_test() -> None:
