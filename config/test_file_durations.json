@@ -3260,6 +3260,8 @@
   "tests/test_host_reconcile_effect.py": 10.71,
   "tests/test_host_reconcile_schedule.py": 0.17,
   "tests/test_host_reconcile_topics.py": 6.43,
+  "tests/test_host_reconcile_venv_build_lock.py": 3.72,
+  "tests/test_host_reconcile_venv_build_lock_effect.py": 8.03,
   "tests/test_hostile_reviewer_codex_fallback.py": 1.79,
   "tests/test_hostile_reviewer_contract_routing.py": 0.36,
   "tests/test_hostile_reviewer_inline_diff.py": 0.35,
