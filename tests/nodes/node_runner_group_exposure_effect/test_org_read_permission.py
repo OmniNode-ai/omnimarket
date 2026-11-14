@@ -13,6 +13,7 @@ from __future__ import annotations
 import threading
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -81,7 +82,7 @@ def _handler(
     scenario: Scenario | None = None,
     *,
     permission: str = PERMISSION,
-    mint: dict[str, str] | None = MINT,
+    mint: dict[str, Any] | None = MINT,
 ) -> HandlerExposureProbe:
     monkeypatch.setenv("no_proxy", "127.0.0.1")
     # the stored token, as the unit has it: present, so only a refusal can stop the read
@@ -93,6 +94,7 @@ def _handler(
         "org": "example-org",
         "group_id": 7,
         "group_labels": ["example-private-group"],
+        "group_read": None,
         "token_env": TOKEN_ENV,
         "token_mint": mint,
         "org_read_permission": permission,
@@ -191,6 +193,7 @@ def _reading_overlay(
         "org": "example-org",
         "group_id": 7,
         "group_labels": ["example-private-group"],
+        "group_read": None,
         "token_env": TOKEN_ENV,
         "token_mint": None,
         "org_read_permission": permission,

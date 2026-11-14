@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. A deployment's real overlay lives in the overlays repository.
+mode: shadow
+issuer_repository_pattern: '^gha/(?P<repository>[a-z0-9_]+)/pr-[0-9]+$'
+shadow_roll_duration_seconds: 300
+seen_job_ids_kept: 200
+store:
+  backend: in_memory

@@ -192,7 +192,8 @@ def test_the_payload_event_type_stands_when_the_runtime_names_no_topic() -> None
         (_COMPLETED_TOPIC, _completed() | {"status": None}, "missing required fields"),
         (_COMPLETED_TOPIC, _completed(status="done"), "completed status"),
         (_STARTED_TOPIC, _started(emitted_at="yesterday"), "declared type"),
-        (_STARTED_TOPIC, _started(run_id="not-a-uuid"), "declared type"),
+        (_STARTED_TOPIC, _started(run_id=12345), "declared type"),
+        (_STARTED_TOPIC, _started(correlation_id=["x"]), "declared type"),
         ("onex.evt.omniclaude.skill-paused.v1", _started(), "unexpected topic"),
     ],
 )
@@ -217,6 +218,22 @@ def test_the_writer_inserts_one_row_per_event_under_the_house_tenant() -> None:
     assert table.loop is not None
     writer.close_dispatch()
     assert table.loop is None
+
+
+def test_hook_keyed_events_write_rows_that_share_a_run_and_replay_to_the_same_rows() -> (
+    None
+):
+    """The hook keys a run by Claude's tool_use_id, not a UUID (OMN-19998)."""
+    writer, table = _writer()
+    stream = [
+        (_STARTED_TOPIC, _without_id(_started(run_id="toolu_01hook"))),
+        (_COMPLETED_TOPIC, _without_id(_completed(run_id="toolu_01hook"))),
+    ]
+    assert sum(_deliver(writer, topic, event) for topic, event in stream) == 2
+    rows = list(table.rows.values())
+    assert rows[0][1] == rows[1][1]
+    assert sum(_deliver(writer, topic, event) for topic, event in stream) == 0
+    assert len(table.rows) == 2
 
 
 def test_two_replays_leave_the_row_count_unchanged() -> None:
