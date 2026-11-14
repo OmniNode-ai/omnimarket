@@ -128,7 +128,7 @@ class_rules:
     pattern: 'Launching \d+ successor lanes by hand'
   - name: hook-preflight-minutes-per-commit
     owner: "the owner of the repository's pre-commit hook set that hook-preflight runs (the type check and the direct-model-call check take most of the minutes of each commit)"
-    pattern: 'hook-preflight runs \d+ to \d+ minutes per commit'
+    pattern: '(?:hook-preflight runs \d+ to \d+ minutes per commit|full pre-commit and pre-push suite on the Mac|runs \d+ pre-commit hooks that take about \d+ minutes)'
   - name: clone-sync-dirty-converge-resets-deploy-build-clone
     owner: "the owner of node_canonical_clone_dirty_converge_effect (it resets the deploy agent's build clone while the agent holds its reconcile lock)"
     pattern: 'node_canonical_clone_dirty_converge_effect'
@@ -141,6 +141,9 @@ class_rules:
   - name: lab-host-not-installed-no-ssh-key-outside-lab-run-pool
     owner: "the host installer for the lab hosts (a host with no ssh key from the host a lane runs on and no place in the lab-run pool cannot be reached from that host: the lane's child lane is refused and the host's work stays undone)"
     pattern: 'no ssh key'
+  - name: order-dependent-test-shard-base-red
+    owner: "the owner of the omnimarket test shard whose delegation and projection tests pass alone and under xdist but fail in a serial run (an order-dependent base red that no pull request of its own causes)"
+    pattern: 'order-dependent base red'
   - name: ci-job-log-unreadable-from-the-mirror
     owner: "the owner of the read-only mirror's job-log reads (a failing job's log is not in the mirror cache or its run view answers 404, so the cause of a red cannot be read and a lane may not rerun to find it)"
     pattern: '(?:JOB-LOG-CACHE-MISS|run-view 404|log (?:is|was) not in the (?:read )?(?:mirror|cache))'
@@ -170,7 +173,11 @@ class_rules:
     pattern: '(?:requires verified signatures|lab-host lane has no signing identity)'
   - name: prrp-snapshot-stale-on-lab-host
     owner: "the host installer for the private-repo-runner-placement snapshot (onex-prrp-snapshot-publish must refresh it on every lab host inside the hook's 24 hour limit)"
-    pattern: '(?:PRRP (?:variables )?snapshot .{0,120}hours old|private-repo-runner-placement hook could not run)'
+    pattern: '(?:PRRP (?:variables )?snapshot .{0,120}hours old|private-repo-runner-placement hook could not run|no PRRP snapshot|cannot read repository visibility)'
+# The 1 row of 2026-11-08T18:51Z that the 48 rules above did not name (OMN-23234), named from its own text.
+  - name: bulk-copy-on-host-array-starves-host-install
+    owner: "the owner of the host bring-up graph and the host-ram-filesystem installer (OMN-22993): a copy of a spill directory (millions of small files) must be bandwidth-limited from the start, and the installer must not run while a bulk copy reads the same array"
+    pattern: 'unthrottled rsync of the .{0,40}ram-spill'
   - name: ilo-redfish-logs-verb-reads-links-as-fields
     owner: "the owner of node_ilo_redfish_effect read_logs (an iLO 4 IML Entries collection holds links in Members, the handler reads inline fields); the overlay journal_dir home-path rejection and the pr-create duplicate-guard match named in the same row need their own owners"
     pattern: 'node_ilo_redfish_effect logs verb returns'
@@ -194,6 +201,35 @@ class_rules:
   - name: pre-commit-stash-in-registry-clone-opens-ledger-path-window
     owner: "the owner of the registry clone commit guard: a commit attempted in the clone makes pre-commit stash and restore its unstaged files, so the live ledger path is a regular file for seconds"
     pattern: 'pre-commit stashed'
+# The 9 rows written after 2026-11-08T19:46Z that the 49 rules above did not name, grouped by real cause (OMN-22879). Three rows
+# name the prrp-snapshot-stale-on-lab-host class above (its pattern now also reads "no PRRP snapshot" and "cannot read repository
+# visibility"); each other cause below has its own rule, named from the row's own text.
+  - name: prrp-hook-cannot-fetch-called-workflow-pinned-by-ref
+    owner: "the owner of the private-repo-runner-placement hook's read of a called reusable workflow (a workflow pinned by a ref and not a full sha cannot be read from a registry clone, and a lane with a spent raw GitHub read budget ends THE GATE DID NOT RUN)"
+    pattern: 'cannot fetch the called workflow'
+  - name: lane-env-pytest-debug-temproot-outside-system-temp
+    owner: "the owner of the remote-lane launcher environment (it sets PYTEST_DEBUG_TEMPROOT under the lane's context directory, so the ledger write guard reads tmp_path ledgers as canonical and ledger hook tests fail on every commit)"
+    pattern: 'PYTEST_DEBUG_TEMPROOT'
+  - name: delegation-event-spooled-relay-no-runtime-effects-container
+    owner: "the owner of the dev-lane delegation event relay (the relay answers rc=70 with no runtime-effects container in omnibase-infra, so a harness-delegate event is spooled and missing from delegation_events until a container binds)"
+    pattern: 'no runtime-effects container in omnibase-infra'
+  - name: commit-hooks-hang-on-merge-commit-of-python-branch
+    owner: "the owner of the install-record merge commits of the installed Mac plugin (a merge commit of a branch with Python changes runs the repository's whole commit hook set and hung for minutes, where a contract-only merge passed in seconds)"
+    pattern: 'hung in the repository.s commit hooks'
+  - name: ticket-create-without-team-fails
+    owner: "the owner of the create-ticket skill (its section 9 command passes no --team, and onex ticket create without --team ends operation_failed after the guard passed)"
+    pattern: 'onex ticket create without --team failed'
+# The 5 rows of 2026-11-07 to 2026-11-08 that the split of the broad local-hooks rule (OMN-23220) left unclassified, by real cause (OMN-22879).
+# Two rows name the hook-preflight-minutes-per-commit class above (its pattern now also reads the two ways they say it).
+  - name: ticket-contract-prerequisite-push-refused-lane-cannot-mint-child
+    owner: "the owner of the pre-push ticket-contract-prerequisite hook and of child-ticket minting for lab lanes: the hook refuses a push whose pull request cites a ticket with no contracts/<ticket>.yaml, the brief forbids the shared contract, and a lane with Linear unauthorised cannot mint the child"
+    pattern: 'ticket-contract-prerequisite refused the push'
+  - name: lab-run-bus-placement-refused-by-host-table-limits
+    owner: "the owner of the lab host list that lab-run places from (the lab_hosts overlay job_kinds and max_weight cells): onex_lab_run --via bus placed only on a host whose row refused the job while other admitted hosts took it only when named"
+    pattern: 'refused \(host table job_kinds/max_weight\)'
+  - name: mac-broker-login-no-write-grant-on-lab-work-unit-topic
+    owner: "the owner of the broker access rows for the Mac login (the overlays repository): the login has no WRITE grant on the lab-work-unit-requested command topic, so onex lab-work run and the join-j2 host chains from the Mac end ONEX_CORE_025_PERMISSION_DENIED"
+    pattern: 'no WRITE grant on onex\.cmd\.omnimarket\.lab-work-unit-requested'
 # The 19 rows of 2026-11-09T11:06Z to 12:31Z that carry a bare class=other (OMN-23319), named from their own text. Four more causes
 # are named by widening the pattern of a class that owned them (above): a criterion the lane cannot reach, a ticket merged elsewhere,
 # a lab host with no node or browser library, a placement with no proof host.
