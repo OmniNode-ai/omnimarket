@@ -134,6 +134,8 @@ not_routing_resolution_sites:
     reason: finds the row of this host in the projection read node overlay to read the projection read binding (the address of the projection store a read node queries); it is an address and chooses no backend, model, tier or provider
   - site: "src/omnimarket/nodes/node_overlay_main_load_check_effect/handlers/handler_overlay_main_load_check.py:find_node_overlay(node)"
     reason: finds each pinned node's overlay document in the overlays main checkout to prove the document loads through the node's own model; it only reads and validates and chooses no backend, model, tier or provider
+  - site: "src/omnimarket/handlers/work_ledger_consume/service_writers.py:find_node_overlay(policy.overlay_id)"
+    reason: finds the work ledger append node overlay to read the service logins it declares as writers; it admits ledger writers and chooses no backend, model, tier or provider
   - site: "src/omnimarket/handlers/goal_scope_overlay.py:find_node_overlay(overlay_id)"
     reason: finds the goal scope ticket rule and ticket scope overlay documents, store first and then the plugin path, to read the goal's root tickets, depth and listed projects for the goal-scope admission; it chooses no backend, model, tier or provider
   - site: "src/omnimarket/nodes/node_host_tree_install_effect/handlers/handler_tree_install.py:resolve_overlay_file(NODE_DIR.name)"
