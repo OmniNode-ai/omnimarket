@@ -31,6 +31,9 @@ class EnumWorkLedgerAppendStatus(StrEnum):
     ERROR = "error"
     # append_if_absent found a row carrying the requested row id and appended nothing.
     ALREADY_PRESENT = "already-present"
+    # The handover to or from the reducer is fenced (OMN-23154): the command was not admitted, nothing
+    # was appended, and the writer retries the same request id.
+    RETRY = "retry"
 
 
 class ModelWorkLedgerAppendRequest(BaseModel):
@@ -96,6 +99,23 @@ class ModelWorkLedgerAppendReceipt(BaseModel):
     ledger_host: str
     duration_ms: int = Field(ge=0)
     principal: PrincipalName | None = None
+    # OMN-23154: the reducer's sequence of each row of the request, in row order. Empty on the file
+    # judge's path, where ``ledger_lines`` names the file line instead; after the flip it is the
+    # only address of a row and ``ledger_lines`` stays empty.
+    ledger_seqs: list[Annotated[int, Field(ge=1)]] = Field(default_factory=list)
+
+    @model_serializer(mode="wrap")
+    def _omit_empty_seqs(
+        self, handler: SerializerFunctionWrapHandler
+    ) -> dict[str, Any]:
+        """Put ``ledger_seqs`` on the wire only when the reducer gave sequences.
+
+        A writer older than this field validates the receipt with ``extra="forbid"``; a receipt from
+        the file judge's path is therefore byte-for-byte the receipt it read before the flip."""
+        data: dict[str, Any] = handler(self)
+        if not data.get("ledger_seqs"):
+            data.pop("ledger_seqs", None)
+        return data
 
 
 class ModelWorkLedgerTerminalRefused(BaseModel):

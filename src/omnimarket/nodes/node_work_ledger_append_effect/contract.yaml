@@ -29,8 +29,8 @@ name: "node_work_ledger_append_effect"
 lifecycle: experimental
 node_type: "EFFECT_GENERIC"
 runtime_profiles: [effects]
-contract_version: {major: 0, minor: 5, patch: 0}
-node_version: "0.6.0"
+contract_version: {major: 0, minor: 6, patch: 0}
+node_version: "0.7.0"
 description: >
   Attributes rows to the broker principal of the producing connection, attested
   by per-principal topic WRITE ACLs declared in omnibase_infra
@@ -121,6 +121,17 @@ append_if_absent:
   row_id_cell: "id"
   lock_suffix: ".work-ledger-append.lock"
   lock_wait_seconds: 60
+# OMN-23154, rebuild plan 4.3 step 8 (L13): the fenced flip. When the serve binds a reducer and this section, the
+# handler can hand authority from the file judge to the reducer and back. A handover closes admission (a new
+# command is answered `retry` and appends nothing), waits up to `drain_wait_seconds` for every append already in
+# flight, switches, and lifts the fence; a drain that does not finish leaves authority where it was. After the
+# flip the reducer gives each row its ledger_seq, the receipt carries `ledger_seqs` and no file line, and the
+# handler never writes the file. The rollback restarts the file judge from the reducer's request records and does
+# not recreate the file as an export (the ruling of 2026-11-05 retired the generated export). Unbound, the
+# handler behaves as it did before this section.
+fenced_flip:
+  drain_wait_seconds: 120
+  retry_message: "ledger authority handover in progress: nothing was appended; retry the same request id"
 # OMN-22914, rebuild plan 4.1 join J5 (piece 5 to piece 6): an append under an identity the secret store resolves lands
 # as a durable row and a projected row. The handler answers piece 5's chain on the floor's emission contract under the
 # same correlation id: a typed failure with no start when the store gives no identity (the code keeps the floor's

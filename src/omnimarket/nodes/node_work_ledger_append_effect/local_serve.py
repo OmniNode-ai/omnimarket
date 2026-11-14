@@ -15,7 +15,10 @@ from typing import Any
 
 import yaml
 
-from omnimarket.models.work_ledger_append import ModelAppendIfAbsentPolicy
+from omnimarket.models.work_ledger_append import (
+    ModelAppendIfAbsentPolicy,
+    ModelFencedFlipPolicy,
+)
 from omnimarket.nodes.node_work_ledger_append_effect.handlers.handler_work_ledger_append_effect import (
     HandlerWorkLedgerAppendEffect,
 )
@@ -27,6 +30,7 @@ from omnimarket.nodes.node_work_ledger_append_effect.protocols import (
 
 _NODE = "node_work_ledger_append_effect"
 _SECTION = "append_if_absent"
+_FLIP_SECTION = "fenced_flip"
 
 
 def load_append_if_absent_policy(
@@ -46,6 +50,25 @@ def load_append_if_absent_policy(
         if key not in section:
             raise ValueError(f"{_NODE} contract {_SECTION}.{key} is absent")
     return ModelAppendIfAbsentPolicy(**section)
+
+
+def load_fenced_flip_policy(
+    contract: Mapping[str, Any] | None = None,
+) -> ModelFencedFlipPolicy:
+    """The contract's ``fenced_flip`` section; an absent section or key refuses naming it (OMN-23154)."""
+    if contract is None:
+        contract = yaml.safe_load(
+            resources.files(f"omnimarket.nodes.{_NODE}")
+            .joinpath("contract.yaml")
+            .read_text()
+        )
+    section = contract.get(_FLIP_SECTION) if contract else None
+    if not isinstance(section, dict):
+        raise ValueError(f"{_NODE} contract declares no {_FLIP_SECTION} section")
+    for key in ModelFencedFlipPolicy.model_fields:
+        if key not in section:
+            raise ValueError(f"{_NODE} contract {_FLIP_SECTION}.{key} is absent")
+    return ModelFencedFlipPolicy(**section)
 
 
 def local_serve_handler(

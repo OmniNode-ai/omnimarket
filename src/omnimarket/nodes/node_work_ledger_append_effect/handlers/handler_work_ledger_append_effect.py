@@ -6,7 +6,7 @@ import hashlib
 import re
 import socket
 import time
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from datetime import datetime
 from typing import Literal
 
@@ -19,12 +19,21 @@ from omnimarket.handlers.relay_admission import (
 )
 from omnimarket.models.model_relay_admission import ModelRelayRequiresRule
 from omnimarket.models.work_ledger_append import (
+    EnumLedgerAuthority,
     EnumWorkLedgerAppendStatus,
     ModelAppendIfAbsentPolicy,
+    ModelFencedFlipPolicy,
+    ModelFileJudgeRestartState,
+    ModelLedgerFlipResult,
     ModelWorkLedgerAppendReceipt,
     ModelWorkLedgerAppendRequest,
     ModelWorkLedgerJudgeAcceptance,
     ModelWorkLedgerTerminalRefused,
+)
+from omnimarket.nodes.node_work_ledger_append_effect.handlers.work_ledger_flip_fence import (
+    FenceClosedError,
+    FlipRefusedError,
+    LedgerFlipFence,
 )
 from omnimarket.nodes.node_work_ledger_append_effect.protocols import (
     InMemoryLedgerAppendLock,
@@ -32,6 +41,10 @@ from omnimarket.nodes.node_work_ledger_append_effect.protocols import (
     ProtocolLedgerAppendLock,
     ProtocolLedgerAppendRunner,
     ProtocolLedgerReader,
+)
+from omnimarket.nodes.node_work_ledger_append_effect.protocols.ledger_authority import (
+    ProtocolFileJudgeRestart,
+    ProtocolLedgerAuthority,
 )
 from omnimarket.nodes.node_work_ledger_append_effect.writer_principals import (
     WriterPrincipals,
@@ -125,7 +138,20 @@ class HandlerWorkLedgerAppendEffect:
         relay_rule: ModelRelayRequiresRule | None = None,
         acceptance_recorder: ProtocolJudgeAcceptanceRecorder | None = None,
         sequence_source: ProtocolJudgeSequenceSource | None = None,
+        fenced_flip: ModelFencedFlipPolicy | None = None,
+        authority: ProtocolLedgerAuthority | None = None,
+        file_judge_restart: ProtocolFileJudgeRestart | None = None,
     ) -> None:
+        # OMN-23154: the fenced flip is off unless the contract's policy is given. Without it the file
+        # judge answers every append as it did before, and nothing below changes a receipt.
+        self._flip_policy = fenced_flip
+        self._flip_fence = (
+            LedgerFlipFence(fenced_flip.drain_wait_seconds)
+            if fenced_flip is not None
+            else None
+        )
+        self._authority = authority
+        self._file_judge_restart = file_judge_restart
         # OMN-23152: the judge records each row it accepts, with the sequence it gave, so the emit
         # gate can refuse a row the judge never saw. A bare construction records nothing.
         self._acceptance_recorder = acceptance_recorder
@@ -164,6 +190,18 @@ class HandlerWorkLedgerAppendEffect:
         return self._writers
 
     @property
+    def flip_fence(self) -> LedgerFlipFence | None:
+        """The fence of the authority handover; None when the fenced flip is not configured."""
+        return self._flip_fence
+
+    @property
+    def authority(self) -> EnumLedgerAuthority:
+        """Which judge answers an append now: the file judge until the flip."""
+        if self._flip_fence is None:
+            return EnumLedgerAuthority.FILE
+        return self._flip_fence.authority
+
+    @property
     def handler_type(self) -> Literal["NODE_HANDLER"]:
         return "NODE_HANDLER"
 
@@ -199,6 +237,7 @@ class HandlerWorkLedgerAppendEffect:
             code: int,
             message: str,
             lines: list[int] | None = None,
+            seqs: Sequence[int] | None = None,
         ) -> ModelWorkLedgerAppendReceipt:
             return ModelWorkLedgerAppendReceipt(
                 request_id=request.request_id,
@@ -206,6 +245,7 @@ class HandlerWorkLedgerAppendEffect:
                 exit_code=code,
                 message=message[-2000:],
                 ledger_lines=lines or [],
+                ledger_seqs=list(seqs or []),
                 ledger_host=self.host_name,
                 duration_ms=int((time.monotonic() - started) * 1000),
                 principal=authenticated_principal,
@@ -333,6 +373,42 @@ class HandlerWorkLedgerAppendEffect:
         unstamped_legacy = "".join(legacy_lines)
         stamped_rows = _via_stamped(unstamped_rows, cell, via_cell)
         legacy_with_via = _via_stamped(unstamped_legacy, cell, via_cell)
+        earlier = (legacy_with_via, unstamped_rows, unstamped_legacy)
+        if self._flip_fence is None:
+            return self._file_append(
+                request, receipt, rows, cell, id_cell, stamped_rows, earlier
+            )
+        try:
+            with self._flip_fence.admit() as authority:
+                duplicate = self._authority_duplicate(
+                    request, receipt, stamped_rows, cell
+                )
+                if duplicate is not None:
+                    return duplicate
+                if authority is EnumLedgerAuthority.REDUCER:
+                    return self._reducer_append(
+                        request, receipt, id_cell, stamped_rows, cell
+                    )
+                return self._file_append(
+                    request, receipt, rows, cell, id_cell, stamped_rows, earlier
+                )
+        except FenceClosedError:
+            assert self._flip_policy is not None
+            return receipt(
+                EnumWorkLedgerAppendStatus.RETRY, 75, self._flip_policy.retry_message
+            )
+
+    def _file_append(
+        self,
+        request: ModelWorkLedgerAppendRequest,
+        receipt: Callable[..., ModelWorkLedgerAppendReceipt],
+        rows: list[str],
+        cell: str,
+        id_cell: str | None,
+        stamped_rows: str,
+        earlier_renderings: tuple[str, ...],
+    ) -> ModelWorkLedgerAppendReceipt:
+        """The file judge's path: the check-then-append step under the append lock."""
         try:
             with self._append_lock.hold():
                 return self._append_locked(
@@ -342,10 +418,139 @@ class HandlerWorkLedgerAppendEffect:
                     cell,
                     id_cell,
                     stamped_rows,
-                    (legacy_with_via, unstamped_rows, unstamped_legacy),
+                    earlier_renderings,
                 )
         except LedgerLockTimeoutError as exc:
             return receipt(EnumWorkLedgerAppendStatus.ERROR, 75, str(exc))
+
+    def _authority_duplicate(
+        self,
+        request: ModelWorkLedgerAppendRequest,
+        receipt: Callable[..., ModelWorkLedgerAppendReceipt],
+        stamped_rows: str,
+        cell: str,
+    ) -> ModelWorkLedgerAppendReceipt | None:
+        """The answer to a request id the reducer already decided, from its records and never the file."""
+        if self._authority is None:
+            return None
+        decided = self._authority.decision_for(str(request.request_id))
+        if decided is None:
+            return None
+        requested = [
+            work_ledger_row_id("\n".join(block).strip())
+            for block in _request_blocks(stamped_rows, cell)
+        ]
+        held = [self._authority.row_id_at(seq) for seq in decided.ledger_seqs]
+        if requested != held:
+            return receipt(
+                EnumWorkLedgerAppendStatus.REFUSED,
+                65,
+                f"request id {request.request_id} already belongs to different rows or principal",
+            )
+        return receipt(
+            EnumWorkLedgerAppendStatus.DUPLICATE,
+            0,
+            "already appended",
+            seqs=decided.ledger_seqs,
+        )
+
+    def _reducer_append(
+        self,
+        request: ModelWorkLedgerAppendRequest,
+        receipt: Callable[..., ModelWorkLedgerAppendReceipt],
+        id_cell: str | None,
+        stamped_rows: str,
+        cell: str,
+    ) -> ModelWorkLedgerAppendReceipt:
+        """After the flip: the reducer judges and sequences the rows; no file line is written."""
+        authority = self._authority
+        if authority is None:
+            return receipt(
+                EnumWorkLedgerAppendStatus.ERROR,
+                70,
+                "the reducer holds authority but no reducer is bound to this handler",
+            )
+        decision = authority.submit(
+            str(request.request_id), stamped_rows, if_absent_cell=id_cell
+        )
+        if decision.verdict == "accepted":
+            self._record_acceptance(request, stamped_rows, cell, decision.ledger_seqs)
+            return receipt(
+                EnumWorkLedgerAppendStatus.ACCEPTED,
+                0,
+                "",
+                seqs=decision.ledger_seqs,
+            )
+        if decision.verdict == "duplicate":
+            return receipt(
+                EnumWorkLedgerAppendStatus.DUPLICATE,
+                0,
+                "already appended",
+                seqs=decision.ledger_seqs,
+            )
+        if decision.verdict == "already-present":
+            return receipt(
+                EnumWorkLedgerAppendStatus.ALREADY_PRESENT,
+                0,
+                f"already present: a row carries {id_cell}",
+                seqs=decision.ledger_seqs,
+            )
+        return receipt(EnumWorkLedgerAppendStatus.REFUSED, 65, decision.reason)
+
+    def flip_to_reducer(self) -> ModelLedgerFlipResult:
+        """Fence, drain every in-flight append, check the file's last row names the reducer's, switch."""
+        fence, authority = self._require_flip()
+        if fence.authority is EnumLedgerAuthority.REDUCER:
+            return ModelLedgerFlipResult(
+                authority=EnumLedgerAuthority.REDUCER, fence_seq=authority.highest_seq()
+            )
+
+        def switch() -> int:
+            fence_seq = authority.highest_seq()
+            file_last = _last_row_id(self._require_reader().read_text())
+            held_last = authority.row_id_at(fence_seq)
+            if file_last != held_last:
+                raise FlipRefusedError(
+                    f"the file's last row ({file_last}) and the reducer's row at ledger_seq "
+                    f"{fence_seq} ({held_last}) are not the same row; nothing was switched"
+                )
+            return fence_seq
+
+        fence_seq = fence.handover(EnumLedgerAuthority.REDUCER, switch)
+        return ModelLedgerFlipResult(
+            authority=EnumLedgerAuthority.REDUCER, fence_seq=fence_seq
+        )
+
+    def rollback_to_file(self) -> ModelLedgerFlipResult:
+        """Fence, drain, restart the file judge from the reducer's records, switch; the file is not written."""
+        fence, authority = self._require_flip()
+        restart = self._file_judge_restart
+        if restart is None:
+            raise RuntimeError("no file judge restart is bound to this handler")
+        if fence.authority is EnumLedgerAuthority.FILE:
+            return ModelLedgerFlipResult(
+                authority=EnumLedgerAuthority.FILE, fence_seq=authority.highest_seq()
+            )
+
+        def switch() -> int:
+            state = ModelFileJudgeRestartState(
+                fence_seq=authority.highest_seq(),
+                decided_request_ids=authority.decided_request_ids(),
+            )
+            restart.restart(state)
+            return state.fence_seq
+
+        fence_seq = fence.handover(EnumLedgerAuthority.FILE, switch)
+        return ModelLedgerFlipResult(
+            authority=EnumLedgerAuthority.FILE, fence_seq=fence_seq
+        )
+
+    def _require_flip(self) -> tuple[LedgerFlipFence, ProtocolLedgerAuthority]:
+        if self._flip_fence is None or self._authority is None:
+            raise RuntimeError(
+                "the fenced flip is not configured: bind the contract's fenced_flip policy and a reducer"
+            )
+        return self._flip_fence, self._authority
 
     def _append_locked(
         self,
@@ -422,20 +627,38 @@ class HandlerWorkLedgerAppendEffect:
         return receipt(status, result.exit_code, tail)
 
     def _record_acceptance(
-        self, request: ModelWorkLedgerAppendRequest, stamped_rows: str, cell: str
+        self,
+        request: ModelWorkLedgerAppendRequest,
+        stamped_rows: str,
+        cell: str,
+        seqs: Sequence[int] | None = None,
     ) -> None:
-        """Write one acceptance per accepted row the judge gave a sequence (OMN-23152)."""
-        if self._acceptance_recorder is None or self._sequence_source is None:
+        """Write one acceptance per accepted row the judge gave a sequence (OMN-23152).
+
+        ``seqs`` are the reducer's, in row order, after the flip; before it the file judge's sequence
+        source names each row's. A file-judge acceptance is also handed to the reducer (OMN-23154), so
+        it knows every request the file judge answered when authority moves."""
+        if self._acceptance_recorder is None:
             return
-        for block in _request_blocks(stamped_rows, cell):
+        blocks = _request_blocks(stamped_rows, cell)
+        if seqs is None and self._sequence_source is None:
+            return
+        accepted: list[ModelWorkLedgerJudgeAcceptance] = []
+        for index, block in enumerate(blocks):
             row_id = work_ledger_row_id("\n".join(block).strip())
-            seq = self._sequence_source.sequence_of(row_id)
+            if seqs is not None:
+                seq: int | None = seqs[index] if index < len(seqs) else None
+            else:
+                assert self._sequence_source is not None
+                seq = self._sequence_source.sequence_of(row_id)
             if seq is not None:
-                self._acceptance_recorder.record(
-                    ModelWorkLedgerJudgeAcceptance(
-                        row_id=row_id, ledger_seq=seq, request_id=request.request_id
-                    )
+                acceptance = ModelWorkLedgerJudgeAcceptance(
+                    row_id=row_id, ledger_seq=seq, request_id=request.request_id
                 )
+                self._acceptance_recorder.record(acceptance)
+                accepted.append(acceptance)
+        if seqs is None and self._authority is not None and accepted:
+            self._authority.adopt(accepted)
 
 
 def terminal_refused(
@@ -484,6 +707,17 @@ def terminal_refused(
         prs=tuple(dict.fromkeys(prs)),
         refused_at=refused_at,
     )
+
+
+def _last_row_id(text: str) -> str | None:
+    """The content hash of the file's last row with its continuations, or None for a file with no row."""
+    block: list[str] = []
+    for line in text.splitlines():
+        if _ROW_START.match(line):
+            block = [line]
+        elif block and line.strip():
+            block.append(line)
+    return work_ledger_row_id("\n".join(block).strip()) if block else None
 
 
 def _request_lines(text: str, cell: str) -> list[int]:
