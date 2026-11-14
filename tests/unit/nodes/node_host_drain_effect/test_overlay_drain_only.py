@@ -18,9 +18,9 @@ from omnimarket.nodes.node_host_drain_effect.runtime_host_drain import run
 
 
 def _drain_only() -> Mapping[str, Any]:
-    raw = yaml.safe_load(EXAMPLE_OVERLAY.read_text(encoding="utf-8"))
+    raw: dict[str, Any] = yaml.safe_load(EXAMPLE_OVERLAY.read_text(encoding="utf-8"))
     del raw["runner_stop"]
-    return raw  # type: ignore[no-any-return]
+    return raw
 
 
 def test_overlay_without_runner_stop_loads_and_names_no_runner() -> None:
