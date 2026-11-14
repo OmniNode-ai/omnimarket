@@ -131,6 +131,20 @@ class ModelPieceChains(_Frozen):
     nodes: tuple[str, ...] = Field(min_length=1)
 
 
+class ModelJoinChains(_Frozen):
+    """The nodes whose chains one join reads on each of its two sides (OMN-23083).
+
+    A piece can host several pipelines, and a join reads only its own. The host pool snapshot (piece 2) fails on its own
+    schedule and nothing in piece 3 answers it, so J2, reading every piece 2 chain, named each such failure
+    ``downstream_missing_typed_failure``. A join listed here reads only the chains of ``from_nodes`` on its from piece and
+    ``to_nodes`` on its to piece; the piece's own receipt, and every join not listed, keep every chain.
+    """
+
+    join: str = Field(pattern=r"^J(\d{1,2}|-cycle)$")
+    from_nodes: tuple[str, ...] = Field(min_length=1)
+    to_nodes: tuple[str, ...] = Field(min_length=1)
+
+
 class ModelJoinEnd(_Frozen):
     """The node at which a join ends, when no node downstream of its piece can emit a typed outcome for it.
 
@@ -158,6 +172,8 @@ class ModelFloorReceiptInput(_Frozen):
     judged_to_pieces: tuple[int, ...] | None = None
     # For each piece listed, the nodes whose chains a join judges. A piece not listed is judged on every chain it emitted.
     declared_chains: tuple[ModelPieceChains, ...] = ()
+    # For each join listed, the nodes whose chains it reads on its two pieces (OMN-23083). A join not listed reads the piece-level view.
+    join_chains: tuple[ModelJoinChains, ...] = ()
     # For each join listed, the node of its from piece at which it ends. A join not listed ends at its to piece.
     join_ends: tuple[ModelJoinEnd, ...] = ()
     # The chain origins that are real work (OMN-23862), the readiness overlay's ``real_origins``. A join's ``real_golden_at``
