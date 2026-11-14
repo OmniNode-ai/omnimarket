@@ -17,10 +17,10 @@ from typing import Any
 import yaml
 from pydantic import SecretStr
 
-from omnimarket.events.dev_identity_http import (
+from omnimarket.handlers.delegation_scenario_settings import ProtocolSettingStore
+from omnimarket.models.model_dev_identity_http import (
     ModelIdentityHttpRequest,
 )
-from omnimarket.handlers.delegation_scenario_settings import ProtocolSettingStore
 from omnimarket.nodes.node_dev_identity_provision_effect.protocols.protocol_dev_identity_transport import (
     ProtocolDevIdentityTransport,
 )

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
-from omnimarket.events.dev_identity_http import (
+from omnimarket.models.model_dev_identity_http import (
     ModelIdentityHttpRequest,
     ModelIdentityHttpResponse,
 )

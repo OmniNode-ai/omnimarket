@@ -10,7 +10,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from omnimarket.events.dev_identity_http import (
+from omnimarket.models.model_dev_identity_http import (
     ModelIdentityHttpRequest,
     ModelIdentityHttpResponse,
 )

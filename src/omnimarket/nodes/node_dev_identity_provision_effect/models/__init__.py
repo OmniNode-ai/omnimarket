@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """The dev identity provision node's models."""
 
-from omnimarket.events.dev_identity_http import (
+from omnimarket.models.model_dev_identity_http import (
     ModelIdentityHttpRequest,
     ModelIdentityHttpResponse,
 )
