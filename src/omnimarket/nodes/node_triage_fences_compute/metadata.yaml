@@ -1,0 +1,22 @@
+name: node_triage_fences_compute
+version: "0.2.0"
+description: "Triage fences: the tickets a live ledger CLAIM or an open pull request fences, derived without I/O"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_triage_fences_compute: "omnimarket.nodes.node_triage_fences_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "triage-fences", "lab-fill", "pure"]
+pack: "operator_tooling"
+display_name: "Triage Fences"
+node_role: "compute"
