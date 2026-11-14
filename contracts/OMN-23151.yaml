@@ -61,3 +61,11 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/unit/test_ci_shard_plan_omn19684.py -q -n 0 --no-cov
+- id: dod-omn23151-committed-list-refresh
+  description: The committed no-producer topic list, refreshed to 17 topics on this branch, names a consumer and graph evidence for each topic and its in-repo consumers still subscribe.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_seam_reading_compute -q --no-cov -k no_producer_topic_list_committed
