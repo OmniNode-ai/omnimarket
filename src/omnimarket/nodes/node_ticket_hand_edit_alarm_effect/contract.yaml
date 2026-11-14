@@ -74,27 +74,6 @@ writes_source:
 # node_actor_id, normalizations) live in the overlay
 # <root>/node_ticket_hand_edit_alarm_effect/overlay.yaml; none is packaged.
 
-db_io:
-  db_tables:
-    - name: ticket_hand_edit_written
-      database_ref: application
-      schema: omninode_internal
-      migration: "0001_create_ticket_hand_edit_tables.sql"
-      access: read_write
-      role: ticket_hand_edit_written
-    - name: ticket_hand_edit_cursor
-      database_ref: application
-      schema: omninode_internal
-      migration: "0001_create_ticket_hand_edit_tables.sql"
-      access: read_write
-      role: ticket_hand_edit_cursor
-    - name: ticket_hand_edit_open_findings
-      database_ref: application
-      schema: omninode_internal
-      migration: "0001_create_ticket_hand_edit_tables.sql"
-      access: read_write
-      role: ticket_hand_edit_open_findings
-
 secrets:
   SLACK_CHANNEL_ID:
     description: >
