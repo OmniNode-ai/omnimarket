@@ -3844,6 +3844,7 @@
   "tests/test_slice1_document_delegation_omn16868.py": 0.1,
   "tests/test_sqlite_metering_reader_omn18697.py": 0.11,
   "tests/test_stall_detector.py": 0.08,
+  "tests/test_start_path_census_terminal_event_omn22940.py": 2.61,
   "tests/test_state_coverage_gate_migration_scoping.py": 0.04,
   "tests/test_stranded_workflow_sweep.py": 0.07,
   "tests/test_structured_event_logger_schema.py": 0.05,
