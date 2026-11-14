@@ -25,12 +25,15 @@ from omnimarket.nodes.node_dev_deploy_reading_compute.handlers import (
 from tests.nodes.node_dev_deploy_reading_compute.dev_deploy_support import (
     SHA_A,
     SHA_B,
+    SHA_C,
     good,
+    lineage_fact,
     merge,
     probe,
     receipt,
     request,
     resolve_handler,
+    rule,
 )
 
 NAMED_MUTATIONS: dict[str, tuple[str, str]] = {
@@ -57,6 +60,14 @@ NAMED_MUTATIONS: dict[str, tuple[str, str]] = {
     "probe-missing-ignored": (
         "error",
         "test_mutation_probe_missing_ignored_turns_the_error_chain_red",
+    ),
+    "covering-receipt-always": (
+        "error",
+        "test_mutation_covering_receipt_always_turns_the_error_chain_red",
+    ),
+    "probe-sha-never-fails": (
+        "error",
+        "test_mutation_probe_sha_never_fails_turns_the_error_chain_red",
     ),
 }
 
@@ -202,9 +213,65 @@ def test_mutation_probe_missing_ignored_turns_the_error_chain_red(
         run_error_chain()
 
 
+def run_lineage_error_chain() -> None:
+    """The lineage rule (OMN-23603): a non-descendant is NOT WORKING, an unread pair UNKNOWN, a runtime commit between NOT WORKING."""
+    handler = resolve_handler()()
+    not_ancestor = handler.handle(
+        request(
+            merges=[merge(SHA_A, "2026-11-08T08:00:00Z")],
+            receipts=[receipt(SHA_B, "2026-11-08T08:20:00Z")],
+            lineage_rule=rule(receipt_covers_descendant=True),
+            lineage=[lineage_fact(SHA_A, SHA_B, relation="not-ancestor")],
+        )
+    )
+    assert not_ancestor.verdict is V.NOT_WORKING
+    unread = handler.handle(
+        request(
+            merges=[merge(SHA_A, "2026-11-08T08:00:00Z")],
+            receipts=[receipt(SHA_B, "2026-11-08T08:20:00Z")],
+            lineage_rule=rule(receipt_covers_descendant=True),
+            lineage=[
+                lineage_fact(
+                    SHA_A, SHA_B, relation="unread", unread_reason="clone-api-503"
+                )
+            ],
+        )
+    )
+    assert unread.verdict is V.UNKNOWN
+    runtime = handler.handle(
+        request(
+            probes=[probe(expected=SHA_B, observed=SHA_C)],
+            lineage_rule=rule(probe_accepts_descendant=True),
+            lineage=[lineage_fact(SHA_B, SHA_C, runtime_affecting_between=(SHA_A,))],
+        )
+    )
+    assert runtime.verdict is V.NOT_WORKING
+
+
+def test_lineage_error_chain_broken_requests_end_not_working_or_unknown() -> None:
+    run_lineage_error_chain()
+
+
+def test_mutation_covering_receipt_always_turns_the_error_chain_red(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(module, "_covering_receipt", lambda *_a, **_k: (True, None))
+    with pytest.raises(AssertionError):
+        run_lineage_error_chain()
+
+
+def test_mutation_probe_sha_never_fails_turns_the_error_chain_red(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(module, "_probe_sha_failures", lambda *_a, **_k: [])
+    with pytest.raises(AssertionError):
+        run_lineage_error_chain()
+
+
 def test_the_error_chain_is_green_again_after_each_mutation_is_undone() -> None:
     """Positive control: the chain the mutations break is the one that passes unmutated."""
     run_error_chain()
+    run_lineage_error_chain()
 
 
 def test_every_named_error_mutation_has_its_test() -> None:

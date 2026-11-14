@@ -1,0 +1,56 @@
+schema_version: 1.0.0
+ticket_id: OMN-24288
+title: Run the lab alarm broker lag check on the runtime with a real lag reader
+summary: The scheduled lab alarm job of OMN-24111 passes no lag source to the shared tick, so every runtime run reads 'not bound'. The job now hands the tick the lab alarm's own builder, and a new runtime_admin backend reads committed and end offsets with the broker admin client only, from a bootstrap address the overlay declares.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- topics
+requirements:
+- id: req-omn24288-lab-alarm-bound-lag-source
+  statement: The lab alarm's runtime job reads the broker's consumer group lag through a read-only reader built from overlay values, and a group it cannot read is a failed run event that names it.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the lab alarm scheduled job binds a read-only consumer group lag reader built from the alarm overlay, so a due tick reads the lag and returns a completed run event instead of failing with "lag source is not bound" -- falsifier: pytest tests/nodes/node_lab_alarm_scheduled_effect/test_lab_alarm_scheduled_bound_source.py -q fails on origin/dev and passes on the branch'
+  - id: AC2
+    statement: 'AC2: the lag reader''s broker address comes from the alarm overlay and the reader uses only admin reads (no consumer is built, no group joined) -- falsifier: pytest tests/nodes/node_lab_alarm_scheduled_effect/test_lab_alarm_admin_lag_reader.py -q'
+  - id: AC3
+    statement: 'AC3: a broker read that fails yields a failed run event naming the group, and a golden chain and an error chain event test cover the job end to end -- falsifier: pytest tests/nodes/node_lab_alarm_scheduled_effect -q'
+  - id: AC4
+    statement: 'AC4: integrated: after the change is deployed to the dev runtime on h201, the lab alarm job''s schedule-run event reads outcome=completed with a detail that names declared groups, in the runtime''s own schedule-run record -- falsifier: the newest lab_alarm schedule-run event on the dev runtime reads failed or names "not bound"'
+evidence_requirements:
+- kind: tests
+  description: Golden and error chain tests of the scheduled job with a bound lag source, the admin lag reader tests and the overlay validator tests
+  command: uv run --frozen pytest tests/nodes/node_lab_alarm_scheduled_effect tests/nodes/node_lab_alarm_scheduled_effect/test_lab_alarm_admin_lag_reader.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24288-ac1
+  description: AC1 to AC3 proven by the named tests; AC4's runtime reading is taken on the dev runtime after the deploy and named in the pull request.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  - AC3
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_lab_alarm_scheduled_effect tests/nodes/node_lab_alarm_scheduled_effect/test_lab_alarm_admin_lag_reader.py -q --no-cov
+    cwd: .
+- id: dod-omn24288-deploy-bound-source
+  description: 'Deploy probe the hosted runner can run: the scheduled lab alarm handler at the checked-out commit hands the tick its builder; the line does not exist at the merge base, so the probe fails there.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_lab_alarm_scheduled_effect/handlers/handler_lab_alarm_scheduled.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "build_handler=self._build_handler" > /dev/null'
+    cwd: .
+- id: dod-omn24288-integration-proof
+  description: AC4 is read on the dev runtime after the dev deploy through the deploy agent; the pushed head is run on a lab host first and the deployed reading is named in the pull request.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane alarm-runtime-6799 -- uv run --frozen pytest tests/nodes/node_lab_alarm_scheduled_effect tests/nodes/node_lab_alarm_scheduled_effect/test_lab_alarm_admin_lag_reader.py -q --no-cov
+    cwd: .

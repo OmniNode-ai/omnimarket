@@ -15,6 +15,8 @@ requirements:
     statement: 'AC2: an invalid overlay and a chain that does not open on the lab tier raise the reader''s typed error and never return a default -- falsifier: uv run pytest tests/unit/handlers/test_delegation_routing_order_reader.py -q -n 0 --no-cov -k "overlay_invalid or not_lab_first"'
   - id: AC3
     statement: 'AC3: integrated: the reader called in the lab dispatch venv with the real overlay roots answers the order of the document class, lab first -- falsifier: the printed order on that host does not open with ladder or the call raises'
+  - id: AC4
+    statement: 'AC4: step_order maps the routing order to a step choice (text lab or glm, code before-lab or last), a flag wins without asking the reader, and a refused or unusable order keeps the old default with order_fallback naming why -- falsifier: uv run pytest tests/unit/handlers/test_delegation_step_order.py -q -n 0 --no-cov fails without the handler'
 evidence_requirements:
 - kind: tests
   description: The reader tests pass at the pushed head.
@@ -58,3 +60,15 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24044 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/handlers/test_delegation_routing_order_reader.py -q --no-cov
+- id: dod-omn24044-step-order-ac4
+  description: 'AC4: the step order tests pass: flag wins, overlay order decides, a missing or refused order keeps the old default with its reason, an unknown kind is refused, and the CLI prints one JSON answer.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/handlers/test_delegation_step_order.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+  - check_type: command
+    check_value: grep -q "def step_order" src/omnimarket/handlers/delegation_step_order.py
+    cwd: .
