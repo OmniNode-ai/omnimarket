@@ -1,0 +1,73 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_host_drift_plugin_revision_orchestrator
+lifecycle: experimental
+node_type: ORCHESTRATOR_GENERIC
+runtime_profiles:
+- effects
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: Compose the plugin rules effect and the revision compute into one host-drift plugin
+  revision check (OMN-20689).
+input_model:
+  name: ModelPluginProbeFacts
+  module: omnimarket.models.model_plugin_revision
+output_model:
+  name: ModelPluginRevisionChecked
+  module: omnimarket.nodes.node_host_drift_plugin_revision_orchestrator.models.model_plugin_revision_check
+handler:
+  module: omnimarket.nodes.node_host_drift_plugin_revision_orchestrator.handlers.handler_plugin_revision_check
+  class: HandlerHostDriftPluginRevisionCheck
+  input_model: omnimarket.models.model_plugin_revision.ModelPluginProbeFacts
+  output_model: omnimarket.nodes.node_host_drift_plugin_revision_orchestrator.models.model_plugin_revision_check.ModelPluginRevisionChecked
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+  - handler:
+      name: HandlerHostDriftPluginRevisionCheck
+      module: omnimarket.nodes.node_host_drift_plugin_revision_orchestrator.handlers.handler_plugin_revision_check
+    event_model:
+      name: ModelPluginProbeFacts
+      module: omnimarket.models.model_plugin_revision
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.host-drift-plugin-revision-check-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.host-drift-plugin-revision-checked.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.host-drift-plugin-revision-check-requested.v1
+descriptor:
+  node_archetype: orchestrator
+  runtime_profiles:
+  - effects
+  purity: effectful
+  idempotent: true
+  timeout_ms: 10000
+metadata:
+  transport_type: kafka
+  ticket: OMN-20689
+  description: Host-drift plugin revision check; composes node_host_drift_plugin_rules_effect and
+    node_host_drift_plugin_revision_compute.
+  tags:
+  - host-drift
+terminal_event: onex.evt.omnimarket.host-drift-plugin-revision-checked.v1
+published_events:
+- topic: onex.evt.omnimarket.host-drift-plugin-revision-checked.v1
+  event_type: ModelPluginRevisionChecked
+externally_consumed_topics:
+- onex.evt.omnimarket.host-drift-plugin-revision-checked.v1
+
+# The broker grants the node's two topics need (coverage gate): the runtime login reads the request and writes the answer.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.host-drift-plugin-revision-check-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.host-drift-plugin-revision-check-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-drift-plugin-revision-checked.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-drift-plugin-revision-checked.v1, operation: DESCRIBE}
