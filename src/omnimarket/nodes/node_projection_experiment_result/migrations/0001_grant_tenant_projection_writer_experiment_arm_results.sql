@@ -2,7 +2,8 @@
 -- SPDX-License-Identifier: MIT
 --
 -- OMN-24286: the consolidated tenant projection writer reads and writes the experiment arm
--- results table and advances its projection cursor sequence.
+-- results table. projection_cursor is an IDENTITY column, so its sequence rides the table
+-- INSERT privilege and needs no separate sequence grant or ownership declaration.
 
 DO $require_tenant_projection_writer$
 BEGIN
@@ -20,13 +21,10 @@ GRANT USAGE ON SCHEMA public TO tenant_projection_writer;
 GRANT SELECT, INSERT, UPDATE
     ON public.experiment_arm_results
     TO tenant_projection_writer;
-GRANT USAGE
-    ON SEQUENCE public.experiment_arm_results_projection_cursor_seq
-    TO tenant_projection_writer;
 
-SELECT 1 / count(*) AS experiment_arm_results_projection_cursor_sequence_usage_assertion
-WHERE has_sequence_privilege(
-    'tenant_projection_writer',
-    'public.experiment_arm_results_projection_cursor_seq',
-    'USAGE'
-);
+SELECT 1 / count(*) AS experiment_arm_results_insert_grant_assertion
+FROM information_schema.role_table_grants
+WHERE table_schema = 'public'
+  AND table_name = 'experiment_arm_results'
+  AND grantee = 'tenant_projection_writer'
+  AND privilege_type = 'INSERT';

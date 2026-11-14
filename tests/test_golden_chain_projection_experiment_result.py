@@ -325,7 +325,7 @@ def test_sql_seam_matches_the_writer_insert_columns() -> None:
     table_columns = set()
     for line in create.splitlines():
         line = line.strip()
-        if not line or line.startswith("PRIMARY KEY"):
+        if not line or line.startswith(("PRIMARY KEY", "CONSTRAINT")):
             continue
         table_columns.add(line.split()[0].rstrip(","))
     writer_src = (_NODE / "handlers/handler_experiment_result_writer.py").read_text()
@@ -358,9 +358,10 @@ def test_migrations_enforce_tenant_isolation_and_writer_grants() -> None:
         / "migrations/0001_grant_tenant_projection_writer_experiment_arm_results.sql"
     ).read_text()
     assert "GRANT SELECT, INSERT, UPDATE" in grants
-    assert "ON SEQUENCE public.experiment_arm_results_projection_cursor_seq" in grants
     assert "TO tenant_projection_writer" in grants
-    assert "has_sequence_privilege(" in grants
+    # projection_cursor is an IDENTITY column: its sequence rides the table INSERT grant.
+    assert "ON SEQUENCE" not in grants
+    assert "privilege_type = 'INSERT'" in grants
 
 
 def test_control_the_fold_never_reads_a_clock() -> None:
