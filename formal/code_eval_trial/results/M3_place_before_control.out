@@ -1,18 +1,18 @@
 TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
-Running breadth-first search Model-Checking with fp 5 and seed 128063716604566398 with 4 workers on 4 cores with 1820MB heap and 64MB offheap memory [pid: 3465944] (Linux 6.8.0-147-generic amd64, Eclipse Adoptium 17.0.21 x86_64, MSBDiskFPSet, DiskStateQueue).
+Running breadth-first search Model-Checking with fp 107 and seed 4539188249658145204 with 2 workers on 4 cores with 1820MB heap and 64MB offheap memory [pid: 365218] (Linux 7.0.0-31-generic amd64, Ubuntu 21.0.13.0.3 x86_64, MSBDiskFPSet, DiskStateQueue).
 Parsing file CodeEvalTrial.tla
-Parsing file Naturals.tla
-Parsing file FiniteSets.tla
-Parsing file TLC.tla
-Parsing file Sequences.tla
+Parsing file /tmp/Naturals.tla
+Parsing file /tmp/FiniteSets.tla
+Parsing file /tmp/TLC.tla
+Parsing file /tmp/Sequences.tla
 Semantic processing of module Naturals
 Semantic processing of module Sequences
 Semantic processing of module FiniteSets
 Semantic processing of module TLC
 Semantic processing of module CodeEvalTrial
-Starting... (2026-11-11 12:59:31)
+Starting... (2026-11-14 02:27:53)
 Computing initial states...
-Finished computing initial states: 1 distinct state generated at 2026-11-11 12:59:32.
+Finished computing initial states: 1 distinct state generated at 2026-11-14 02:27:53.
 Error: Invariant NoTryBeforeControl is violated.
 Error: The behavior up to this point is:
 State 1: <Initial predicate>
@@ -25,6 +25,7 @@ State 1: <Initial predicate>
   <<t2, m1>> :> "pending" @@
   <<t2, m2>> :> "pending" )
 /\ lastLate = FALSE
+/\ void = FALSE
 /\ tryAge = (<<t1, m1>> :> 0 @@ <<t1, m2>> :> 0 @@ <<t2, m1>> :> 0 @@ <<t2, m2>> :> 0)
 /\ hostsUp = TRUE
 /\ closeCount = 0
@@ -38,7 +39,7 @@ State 1: <Initial predicate>
 /\ since = 0
 /\ scoreAge = 0
 
-State 2: <SendControl line 146, col 3 to line 151, col 93 of module CodeEvalTrial>
+State 2: <SendControl line 153, col 3 to line 158, col 99 of module CodeEvalTrial>
 /\ ord = (<<t1, m1>> :> 1 @@ <<t1, m2>> :> 1 @@ <<t2, m1>> :> 1 @@ <<t2, m2>> :> 1)
 /\ ctrl = (t1 :> "inflight" @@ t2 :> "queued")
 /\ np = (<<t1, m1>> :> 0 @@ <<t1, m2>> :> 0 @@ <<t2, m1>> :> 0 @@ <<t2, m2>> :> 0)
@@ -48,6 +49,7 @@ State 2: <SendControl line 146, col 3 to line 151, col 93 of module CodeEvalTria
   <<t2, m1>> :> "pending" @@
   <<t2, m2>> :> "pending" )
 /\ lastLate = FALSE
+/\ void = FALSE
 /\ tryAge = (<<t1, m1>> :> 0 @@ <<t1, m2>> :> 0 @@ <<t2, m1>> :> 0 @@ <<t2, m2>> :> 0)
 /\ hostsUp = TRUE
 /\ closeCount = 0
@@ -61,7 +63,7 @@ State 2: <SendControl line 146, col 3 to line 151, col 93 of module CodeEvalTria
 /\ since = 0
 /\ scoreAge = 0
 
-State 3: <Place line 162, col 3 to line 168, col 104 of module CodeEvalTrial>
+State 3: <Place line 169, col 3 to line 175, col 110 of module CodeEvalTrial>
 /\ ord = (<<t1, m1>> :> 1 @@ <<t1, m2>> :> 1 @@ <<t2, m1>> :> 1 @@ <<t2, m2>> :> 1)
 /\ ctrl = (t1 :> "inflight" @@ t2 :> "queued")
 /\ np = (<<t1, m1>> :> 1 @@ <<t1, m2>> :> 0 @@ <<t2, m1>> :> 0 @@ <<t2, m2>> :> 0)
@@ -71,6 +73,7 @@ State 3: <Place line 162, col 3 to line 168, col 104 of module CodeEvalTrial>
   <<t2, m1>> :> "pending" @@
   <<t2, m2>> :> "pending" )
 /\ lastLate = FALSE
+/\ void = FALSE
 /\ tryAge = (<<t1, m1>> :> 0 @@ <<t1, m2>> :> 0 @@ <<t2, m1>> :> 0 @@ <<t2, m2>> :> 0)
 /\ hostsUp = TRUE
 /\ closeCount = 0
@@ -86,4 +89,4 @@ State 3: <Place line 162, col 3 to line 168, col 104 of module CodeEvalTrial>
 
 5 states generated, 4 distinct states found, 0 states left on queue.
 The depth of the complete state graph search is 3.
-Finished in 00s at (2026-11-11 12:59:32)
+Finished in 00s at (2026-11-14 02:27:53)
