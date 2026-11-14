@@ -130,6 +130,13 @@ work_ledger:
 unjudged_reading:
   window_seconds: 86400
 
+# OMN-23153, rebuild plan 4.3 step 6: the exact daily receipt compares the table with the accepted-row topic
+# only. A UTC day's window is cut off at this time on the next day and closes close_minutes later.
+daily_receipt:
+  cutoff_utc: "00:00"
+  close_minutes: 10
+  lane: work-ledger-daily-receipt
+
 db_io:
   db_tables:
     - name: work_ledger_rows
