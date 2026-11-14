@@ -1,0 +1,101 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Lab SLI Schedule Compute (OMN-19998)
+#
+# The schedule half of the lab SLI pack: on the platform runtime tick it decides
+# whether an interval is due and, when one is, returns the collect request that
+# node_lab_sli_collect_effect consumes. It is a tick-driven compute: ModelRuntimeTick
+# in, one ModelLabSliCollectRequest or None out, with the fire decision from
+# scheduled_fire in omnimarket.models.model_runtime_tick_schedule.
+#
+# The interval, offset, host name, state path and disk paths are overlay values, read
+# from the overlays repository at overlays/node_lab_sli_schedule_compute/overlay.yaml
+# under a root named in ONEX_SKILL_OVERLAY_ROOTS. This contract carries no value for
+# any of them: a deployment supplies them, and there is no packaged default. The node
+# belongs to the lab SLI pack and does nothing until the pack overlay is enabled with
+# `status: enabled` in <root>/lab_sli_pack/overlay.yaml.
+name: node_lab_sli_schedule_compute
+contract_name: node_lab_sli_schedule_compute
+node_name: node_lab_sli_schedule_compute
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: compute
+lifecycle: experimental
+runtime_profiles: [main]
+
+description: >
+  Turns the platform runtime tick into the lab SLI collect request, once per interval.
+  It gates on the lab SLI pack, reads its overlay (the interval, offset, host name,
+  state path and disk paths), decides whether the tick opens a due window and returns
+  the collect request for that window, or None when the pack is off, the overlay is
+  missing or the tick opens no window. No clock read, no state besides the cached
+  overlay and the refusal latch, no hard-coded value.
+
+handler:
+  module: omnimarket.nodes.node_lab_sli_schedule_compute.handlers.handler_lab_sli_schedule
+  class: HandlerLabSliSchedule
+  input_model: omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick
+
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: HandlerLabSliSchedule
+        module: omnimarket.nodes.node_lab_sli_schedule_compute.handlers.handler_lab_sli_schedule
+      handler_module: omnimarket.nodes.node_lab_sli_schedule_compute.handlers.handler_lab_sli_schedule
+      event_model: omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick
+      event_type: platform.runtime-tick
+      description: >
+        Gate on the lab SLI pack, read the overlay, decide the fire from the tick and
+        return the collect request for the due window, or None.
+
+input_model:
+  name: ModelRuntimeTick
+  module: omnibase_infra.runtime.models.model_runtime_tick
+  description: The runtime scheduler's tick.
+output_model:
+  name: ModelLabSliCollectRequest
+  module: omnimarket.models.lab_sli.model_lab_sli_collect
+  description: The interval, the host name and the source paths to read.
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+
+input_subscriptions:
+  - topic: "onex.intent.platform.runtime-tick.v1"
+    operation: "lab_sli.schedule_run"
+
+terminal_event: onex.cmd.omnimarket.lab-sli-collect-requested.v1
+
+event_bus:
+  subscribe_topics:
+    - "onex.intent.platform.runtime-tick.v1"
+  publish_topics:
+    - "onex.cmd.omnimarket.lab-sli-collect-requested.v1"
+
+published_events:
+  - event_type: ModelLabSliCollectRequest
+    topic: onex.cmd.omnimarket.lab-sli-collect-requested.v1
+    description: "One interval's collect request, published when a window is due."
+
+externally_consumed_topics:
+  - onex.cmd.omnimarket.lab-sli-collect-requested.v1
+
+# Where the schedule reads its settings. The overlays are found under ONEX_SKILL_OVERLAY_ROOTS or the file the env var names.
+runtime:
+  schedule_overlay: {overlay_id: node_lab_sli_schedule_compute, model: omnimarket.nodes.node_lab_sli_schedule_compute.models.model_lab_sli_schedule_overlay.ModelLabSliScheduleOverlay}
+
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.intent.platform.runtime-tick.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.intent.platform.runtime-tick.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.lab-sli-collect-requested.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.lab-sli-collect-requested.v1, operation: DESCRIBE}
+
+metadata:
+  ticket: OMN-19998
+  transport_type: kafka

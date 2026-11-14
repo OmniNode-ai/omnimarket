@@ -9,19 +9,21 @@
 # DIFF -> SCORE -> RECEIPT. Writes are confined to the worktree and the declared
 # writable globs, checks run only by declared name, and there is no shell tool.
 #
-# FIRST SLICE: the children are reached through injected ports, bound by
-# `onex code-edit run` (omnimarket.delegated_code_edit.loop_ports) on the host
-# that holds the worktree. The node declares no event_bus block, so no shared
-# runtime attaches it; the delegate turns themselves go over the bus.
+# The children are reached through injected ports. `onex code-edit run`
+# (omnimarket.delegated_code_edit.loop_ports) binds them on the host that holds
+# the worktree; a runtime that delivers the command topic below builds them from
+# the node's overlay (onex_path, state_root, delegate_lane), and refuses the run
+# with a typed failure when that overlay is absent. The delegate turns
+# themselves go over the bus.
 name: "node_delegated_code_edit_orchestrator"
 lifecycle: experimental
 node_type: "ORCHESTRATOR_GENERIC"
-runtime_profiles: [main]
+runtime_profiles: [effects]
 contract_version:
   major: 0
-  minor: 1
+  minor: 2
   patch: 0
-node_version: "0.1.0"
+node_version: "0.2.0"
 description: >
   Sequences one delegated code edit loop over one git worktree: at most
   max_turns onex delegate turns, each returning typed actions (view, ls, grep,
@@ -69,6 +71,8 @@ descriptor:
   purity: effectful
   idempotent: false
   timeout_ms: 7200000
+  runtime_profiles:
+    - effects
 outputs:
   status:
     type: str
@@ -83,6 +87,31 @@ outputs:
     type: array
   rubric_outcome:
     type: str
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.delegated-code-edit-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.delegated-code-edit-completed.v1
+    - onex.evt.omnimarket.delegated-code-edit-failed.v1
+input_subscriptions:
+  - topic: "onex.cmd.omnimarket.delegated-code-edit-requested.v1"
+    operation: "run_delegated_code_edit"
+externally_produced_topics:
+  - topic: onex.cmd.omnimarket.delegated-code-edit-requested.v1
+    producer: "the onex node dispatcher (`onex run-node`), which publishes this operation's command directly -- not a node contract"
+externally_consumed_topics:
+  - onex.evt.omnimarket.delegated-code-edit-completed.v1
+  - onex.evt.omnimarket.delegated-code-edit-failed.v1
+broker_acl_grants:
+  - principal: "${ONEX_ACL_CODE_EDIT_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.delegated-code-edit-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.delegated-code-edit-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.delegated-code-edit-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.delegated-code-edit-completed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.delegated-code-edit-failed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.delegated-code-edit-failed.v1, operation: DESCRIBE}
+terminal_event: "onex.evt.omnimarket.delegated-code-edit-completed.v1"
 runtime_dispatch:
   command_topic: "onex.cmd.omnimarket.delegated-code-edit-requested.v1"
   terminal_events:

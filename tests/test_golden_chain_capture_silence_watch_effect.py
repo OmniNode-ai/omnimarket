@@ -63,5 +63,6 @@ def test_capture_sources_have_governed_read_declarations() -> None:
     assert watch["reads_source"] == {
         "binding_ref": "omninode_runtime_service",
         "dsn_env": "OMNINODE_INTERNAL_DB_URL",
+        "password_ref_env": "ONEX_CAPTURE_WATCH_DB_PASSWORD_REF",
     }
     assert watch["descriptor"]["runtime_profiles"] == ["effects"]

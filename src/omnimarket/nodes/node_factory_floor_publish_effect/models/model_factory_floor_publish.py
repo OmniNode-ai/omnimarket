@@ -656,6 +656,8 @@ class ModelFactoryFloorPublishResult(BaseModel):
     # The seconds one run took in all and in each phase (input steps, delegation, copy, history prune, after-publish), OMN-22699.
     cycle_seconds: float = Field(default=0.0, ge=0)
     phase_seconds: dict[str, float] = Field(default_factory=dict)
+    # The ``source-cache:`` lines of the receipts the input steps wrote in this run (hits, misses, source reads, why the cache was off).
+    source_cache_lines: tuple[str, ...] = ()
 
 
 class ModelReportsPublishRequest(BaseModel):
