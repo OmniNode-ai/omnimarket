@@ -8,6 +8,14 @@
 # refused with a typed result, and a command never runs when the free bytes before it cannot be read.
 # The backend is chosen by the overlay: in_memory (simulated hosts) or subprocess (an argv list run
 # behind the host's transport prefix, no shell).
+#
+# Entry commands (OMN-23867, kind remove_entries or remove_worktrees): the request names the entries to
+# remove. Each entry is judged alone and gets one typed row: refused outside the roots the host declares
+# for the command (resolved through symlinks and ``..``; a relative path or a symlink entry is refused),
+# refused in use (a live process holds it, or a worktree carries a lease marker the command declares),
+# refused not found, failed, or removed with the bytes it gave back. The result is ok when every entry was
+# removed, partial when some were, refused when none was and all were refused, failed otherwise. The
+# effect runs only the command it is sent and decides nothing: what to remove is the sender's call.
 name: node_host_storage_effect
 lifecycle: experimental
 node_type: EFFECT_GENERIC
@@ -55,9 +63,9 @@ descriptor:
   idempotent: false
   timeout_ms: 600000
 # OVERLAY KEYS (overlay.yaml under node_host_storage_effect): backend (in_memory | subprocess),
-# free_bytes_argv with a {path} placeholder, free_bytes_timeout_seconds, commands (name, argv,
-# measured_path, timeout_seconds, simulated_effect_bytes) and hosts (name, transport_prefix, commands,
-# simulated_free_bytes). Profiles ship in overlays/: in_memory.yaml and subprocess.example.yaml.
+# free_bytes_argv with a {path} placeholder, free_bytes_timeout_seconds, commands (name, kind, argv,
+# measured_path, timeout_seconds, simulated_effect_bytes, lease_marker_names) and hosts (name,
+# transport_prefix, commands, entry_roots, simulated_free_bytes, simulated_entries). Profiles ship in overlays/: in_memory.yaml and subprocess.example.yaml.
 overlay_profiles:
   in_memory: overlays/in_memory.yaml
   real: overlays/subprocess.example.yaml

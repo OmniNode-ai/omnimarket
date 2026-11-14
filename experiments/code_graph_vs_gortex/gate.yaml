@@ -1,0 +1,37 @@
+# Predeclared adoption gate (OMN-23328 AC3). Written before any arm runs; changing a number
+# after the first arm run voids the experiment.
+schema_version: 1
+ticket: OMN-23328
+arms:
+  baseline: piece 1 code graph plus source search
+  candidate: baseline plus Gortex as a read-only tool, no network, fixed tool list
+design:
+  questions: 8
+  repetitions_per_arm_per_question: 2
+  expected_result_rows: 32      # 8 questions x 2 arms x 2 repetitions
+  clean_session_per_run: true
+  same_for_both_arms: [model, instructions, tool_call_budget, token_budget, wall_clock_budget]
+  model: claude-sonnet-5-5
+  tool_call_budget: 40
+  token_budget: 200000
+  wall_clock_budget_minutes: 20
+metrics:
+  pass: a run passes when the rubric in questions.yaml scores it pass
+  pass_count: number of passing runs of the arm over all 16 of its runs
+  critical_miss: a run misses a must_find fact marked critical, or cites a path that does not exist at the pinned commit
+  tokens_per_passing_investigation: total tokens of the arm's passing runs divided by its passing run count
+  wall_seconds: mean wall-clock seconds over the arm's 16 runs
+gate:
+  - id: G1
+    rule: candidate pass_count >= baseline pass_count
+  - id: G2
+    rule: candidate introduces no critical miss on a question where the baseline has none in either repetition
+  - id: G3
+    rule: candidate tokens_per_passing_investigation <= 0.80 * baseline tokens_per_passing_investigation
+  - id: G4
+    rule: candidate wall_seconds <= 1.10 * baseline wall_seconds
+verdict:
+  adopt: G1, G2, G3 and G4 all hold over all eight questions
+  narrow: G1 and G2 hold over all eight questions, and G3 and G4 both hold when only the questions of at least one kind are counted; the integration is built for those kinds only
+  stop: anything else, including a candidate arm with zero passing runs
+verdict_line_must_cite: [baseline pass_count, candidate pass_count, new critical misses, token ratio, wall ratio]

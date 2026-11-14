@@ -1,0 +1,38 @@
+# Results table (OMN-23328 AC2): 32 rows, one per question x arm x repetition.
+# Every row stays not_run until the arm runs; a row is filled from the run's own record, never
+# edited afterwards. An unfilled table is not a result.
+schema_version: 1
+ticket: OMN-23328
+rows:
+  - {row: Q1-baseline-r1, question: Q1, arm: baseline, repetition: 1, status: not_run, passed: null, critical_misses: null, tokens: null, wall_seconds: null, session_id: null}
+  - {row: Q1-baseline-r2, question: Q1, arm: baseline, repetition: 2, status: not_run, passed: null, critical_misses: null, tokens: null, wall_seconds: null, session_id: null}
+  - {row: Q1-candidate-r1, question: Q1, arm: candidate, repetition: 1, status: not_run, passed: null, critical_misses: null, tokens: null, wall_seconds: null, session_id: null}
+  - {row: Q1-candidate-r2, question: Q1, arm: candidate, repetition: 2, status: not_run, passed: null, critical_misses: null, tokens: null, wall_seconds: null, session_id: null}
+  - {row: Q2-baseline-r1, question: Q2, arm: baseline, repetition: 1, status: not_run, passed: null, critical_misses: null, tokens: null, wall_seconds: null, session_id: null}
+  - {row: Q2-baseline-r2, question: Q2, arm: baseline, repetition: 2, status: not_run, passed: null, critical_misses: null, tokens: null, wall_seconds: null, session_id: null}
+  - {row: Q2-candidate-r1, question: Q2, arm: candidate, repetition: 1, status: not_run, passed: null, critical_misses: null, tokens: null, wall_seconds: null, session_id: null}
+  - {row: Q2-candidate-r2, question: Q2, arm: candidate, repetition: 2, status: not_run, passed: null, critical_misses: null, tokens: null, wall_seconds: null, session_id: null}
+  - {row: Q3-baseline-r1, question: Q3, arm: baseline, repetition: 1, status: not_run, passed: null, critical_misses: null, tokens: null, wall_seconds: null, session_id: null}
+  - {row: Q3-baseline-r2, question: Q3, arm: baseline, repetition: 2, status: not_run, passed: null, critical_misses: null, tokens: null, wall_seconds: null, session_id: null}
+  - {row: Q3-candidate-r1, question: Q3, arm: candidate, repetition: 1, status: not_run, passed: null, critical_misses: null, tokens: null, wall_seconds: null, session_id: null}
+  - {row: Q3-candidate-r2, question: Q3, arm: candidate, repetition: 2, status: not_run, passed: null, critical_misses: null, tokens: null, wall_seconds: null, session_id: null}
+  - {row: Q4-baseline-r1, question: Q4, arm: baseline, repetition: 1, status: not_run, passed: null, critical_misses: null, tokens: null, wall_seconds: null, session_id: null}
+  - {row: Q4-baseline-r2, question: Q4, arm: baseline, repetition: 2, status: not_run, passed: null, critical_misses: null, tokens: null, wall_seconds: null, session_id: null}
+  - {row: Q4-candidate-r1, question: Q4, arm: candidate, repetition: 1, status: not_run, passed: null, critical_misses: null, tokens: null, wall_seconds: null, session_id: null}
+  - {row: Q4-candidate-r2, question: Q4, arm: candidate, repetition: 2, status: not_run, passed: null, critical_misses: null, tokens: null, wall_seconds: null, session_id: null}
+  - {row: Q5-baseline-r1, question: Q5, arm: baseline, repetition: 1, status: not_run, passed: null, critical_misses: null, tokens: null, wall_seconds: null, session_id: null}
+  - {row: Q5-baseline-r2, question: Q5, arm: baseline, repetition: 2, status: not_run, passed: null, critical_misses: null, tokens: null, wall_seconds: null, session_id: null}
+  - {row: Q5-candidate-r1, question: Q5, arm: candidate, repetition: 1, status: not_run, passed: null, critical_misses: null, tokens: null, wall_seconds: null, session_id: null}
+  - {row: Q5-candidate-r2, question: Q5, arm: candidate, repetition: 2, status: not_run, passed: null, critical_misses: null, tokens: null, wall_seconds: null, session_id: null}
+  - {row: Q6-baseline-r1, question: Q6, arm: baseline, repetition: 1, status: not_run, passed: null, critical_misses: null, tokens: null, wall_seconds: null, session_id: null}
+  - {row: Q6-baseline-r2, question: Q6, arm: baseline, repetition: 2, status: not_run, passed: null, critical_misses: null, tokens: null, wall_seconds: null, session_id: null}
+  - {row: Q6-candidate-r1, question: Q6, arm: candidate, repetition: 1, status: not_run, passed: null, critical_misses: null, tokens: null, wall_seconds: null, session_id: null}
+  - {row: Q6-candidate-r2, question: Q6, arm: candidate, repetition: 2, status: not_run, passed: null, critical_misses: null, tokens: null, wall_seconds: null, session_id: null}
+  - {row: Q7-baseline-r1, question: Q7, arm: baseline, repetition: 1, status: not_run, passed: null, critical_misses: null, tokens: null, wall_seconds: null, session_id: null}
+  - {row: Q7-baseline-r2, question: Q7, arm: baseline, repetition: 2, status: not_run, passed: null, critical_misses: null, tokens: null, wall_seconds: null, session_id: null}
+  - {row: Q7-candidate-r1, question: Q7, arm: candidate, repetition: 1, status: not_run, passed: null, critical_misses: null, tokens: null, wall_seconds: null, session_id: null}
+  - {row: Q7-candidate-r2, question: Q7, arm: candidate, repetition: 2, status: not_run, passed: null, critical_misses: null, tokens: null, wall_seconds: null, session_id: null}
+  - {row: Q8-baseline-r1, question: Q8, arm: baseline, repetition: 1, status: not_run, passed: null, critical_misses: null, tokens: null, wall_seconds: null, session_id: null}
+  - {row: Q8-baseline-r2, question: Q8, arm: baseline, repetition: 2, status: not_run, passed: null, critical_misses: null, tokens: null, wall_seconds: null, session_id: null}
+  - {row: Q8-candidate-r1, question: Q8, arm: candidate, repetition: 1, status: not_run, passed: null, critical_misses: null, tokens: null, wall_seconds: null, session_id: null}
+  - {row: Q8-candidate-r2, question: Q8, arm: candidate, repetition: 2, status: not_run, passed: null, critical_misses: null, tokens: null, wall_seconds: null, session_id: null}
