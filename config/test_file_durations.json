@@ -5190,6 +5190,7 @@
   "tests/unit/nodes/node_pr_landing_github_effect/test_contract.py": 8.04,
   "tests/unit/nodes/node_pr_landing_github_effect/test_fake_transport_replay.py": 2.58,
   "tests/unit/nodes/node_pr_landing_github_effect/test_handler_pr_landing_github.py": 1.69,
+  "tests/unit/nodes/node_pr_landing_github_effect/test_landing_app_identity_omn_23777.py": 2.63,
   "tests/unit/nodes/node_pr_landing_github_effect/test_pr_state_fact_merger.py": 2.3,
   "tests/unit/nodes/node_pr_landing_github_effect/test_quota_reading.py": 0.18,
   "tests/unit/nodes/node_pr_landing_github_effect/test_request_models.py": 0.12,

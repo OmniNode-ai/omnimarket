@@ -78,6 +78,9 @@ from omnimarket.models.model_github_pr_merge_state_fact import (
     ModelGithubPrMergeStateFact,
 )
 from omnimarket.nodes.contract_topics import contract_secret_ref
+from omnimarket.nodes.node_pr_landing_github_effect.handlers.landing_app_transport_source import (
+    LandingAppTransportSource,
+)
 from omnimarket.nodes.node_pr_landing_github_effect.models import (
     EnumPrLandingGithubFailureReason,
     EnumPrLandingGithubMode,
@@ -98,6 +101,8 @@ from omnimarket.nodes.node_pr_landing_github_effect.models.model_github_check_ru
     job_attempts_from_jobs_body,
 )
 from omnimarket.nodes.node_pr_landing_github_effect.protocols import (
+    LandingIdentityRefusedError,
+    ProtocolLandingMutationTransportSource,
     ProtocolPrLandingGithubTransport,
 )
 
@@ -109,6 +114,17 @@ _MAX_PAGES = 10
 # GitHub merge states in which the PR merges at once, so GitHub refuses to arm
 # auto-merge on it (the immediately mergeable states, OMN-20866).
 _MERGEABLE_NOW = frozenset({"clean", "has_hooks", "unstable"})
+
+# The operations that change a PR on GitHub: sent only as the writer App
+# (OMN-23777). Reads and re-runs keep the contract's GITHUB_TOKEN.
+_APP_IDENTITY_OPERATIONS = frozenset(
+    {
+        EnumPrLandingGithubOperation.ARM_AUTO_MERGE,
+        EnumPrLandingGithubOperation.ENQUEUE,
+        EnumPrLandingGithubOperation.UPDATE_BRANCH,
+        EnumPrLandingGithubOperation.DISARM,
+    }
+)
 
 Result = ModelPrLandingGithubCompleted | ModelPrLandingGithubFailed
 
@@ -133,10 +149,13 @@ class _Exchange:
         handler: HandlerPrLandingGithubEffect,
         command: ModelPrLandingGithubRequest,
         transport: ProtocolPrLandingGithubTransport,
+        *,
+        identity: str | None = None,
     ) -> None:
         self._handler = handler
         self.command = command
         self._transport = transport
+        self._identity = handler.identity if identity is None else identity
         self.sent: list[ModelGithubHttpRequest] = []
         self.statuses: list[int] = []
         self.quota: ModelGithubQuotaReading | None = None
@@ -192,7 +211,7 @@ class _Exchange:
         self.statuses.append(response.status)
         try:
             reading = ModelGithubQuotaReading.from_response_headers(
-                response.headers, identity=self._handler.identity
+                response.headers, identity=self._identity
             )
         except ModelGithubQuotaHeadersMissingError as exc:
             if self.quota is None:
@@ -259,8 +278,18 @@ class HandlerPrLandingGithubEffect:
         quota_floor: ModelGithubQuotaFloor | None = None,
         clock: Callable[[], float] = time.time,
         quota_readings: GithubQuotaReadings | None = None,
+        mutation_transport_source: ProtocolLandingMutationTransportSource | None = None,
     ) -> None:
         self._transport = transport
+        # Mutations go out as the writer App (OMN-23777). With no source given
+        # and no transport injected (the production wiring) the App source is
+        # the default; an injected transport with no source serves every
+        # operation, which is the recorded-fake seam of the unit tests.
+        self._mutation_source: ProtocolLandingMutationTransportSource | None = (
+            mutation_transport_source
+            if mutation_transport_source is not None
+            else (LandingAppTransportSource() if transport is None else None)
+        )
         self._floor = quota_floor or ModelGithubQuotaFloor.from_contract(_CONTRACT_PATH)
         self._clock = clock
         self.identity = contract_secret_ref(_CONTRACT_PATH, _SECRET_NAME)
@@ -295,8 +324,23 @@ class HandlerPrLandingGithubEffect:
                 http_statuses=(),
                 quota=None,
             )
-        transport = self._transport or await self._live_transport()
-        exchange = _Exchange(self, request, transport)
+        identity: str | None = None
+        transport: ProtocolPrLandingGithubTransport | None = None
+        if (
+            request.operation in _APP_IDENTITY_OPERATIONS
+            and self._mutation_source is not None
+        ):
+            # Before any request, the policy read included.
+            try:
+                transport = await self._mutation_source.transport_for(
+                    request.repository
+                )
+            except LandingIdentityRefusedError as refused:
+                return self._identity_refusal(request, refused)
+            identity = self._mutation_source.identity
+        if transport is None:
+            transport = self._transport or await self._live_transport()
+        exchange = _Exchange(self, request, transport, identity=identity)
         try:
             result: Result = await self._run(exchange)
         except _RefusedError as refused:
@@ -310,6 +354,31 @@ class HandlerPrLandingGithubEffect:
             getattr(result, "reason", "completed"),
         )
         return result
+
+    def _identity_refusal(
+        self, request: ModelPrLandingGithubRequest, refused: LandingIdentityRefusedError
+    ) -> ModelPrLandingGithubFailed:
+        _log.info(
+            "pr-landing github %s %s#%s refused before any request: %s",
+            request.operation.value,
+            request.repository,
+            request.pr_number,
+            refused.reason.value,
+        )
+        return ModelPrLandingGithubFailed(
+            correlation_id=request.correlation_id,
+            operation=request.operation,
+            mode=request.mode,
+            repository=request.repository,
+            pr_number=request.pr_number,
+            head_sha=request.head_sha,
+            reason=refused.reason,
+            detail=refused.detail,
+            http_status=None,
+            retry_after_seconds=None,
+            pr_state=None,
+            quota=None,
+        )
 
     async def _live_transport(self) -> UrllibGithubLandingTransport:
         ref = contract_secret_ref(_CONTRACT_PATH, _SECRET_NAME)
