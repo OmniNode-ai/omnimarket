@@ -49,6 +49,7 @@ terminal_event: onex.evt.omnimarket.package-bind-run-completed.v1
 
 runtime_dispatch:
   external_trigger: true
+  command_topic: onex.cmd.omnimarket.package-bind-requested.v1
 
 topics:
   package_bind_requested: onex.cmd.omnimarket.package-bind-requested.v1
