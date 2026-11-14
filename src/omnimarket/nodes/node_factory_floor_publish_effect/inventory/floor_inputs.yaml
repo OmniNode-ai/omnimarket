@@ -39,7 +39,7 @@ inputs:
     class: file
     where: $LANDING_STATE_DIR/state.json (fallback ~/.local/state/omni/landing/state.json), keys leases and causes
     read_by: [node_floor_simple_effect]
-    steps: [floor_simple, floor_projections]
+    steps: [floor_simple, floor_projections, floor_owner_map]
     producer: the landing controller's state file on its host
     replacement: {node: node_floor_owner_map_publish_effect, topic: onex.snapshot.projection.floor-owner-map.v1, status: new}
     ticket: OMN-23391
@@ -50,8 +50,8 @@ inputs:
     class: file
     where: .onex_state/work-state/work-state.json; .onex_state/work-state/snapshots (the projection's last good read of each of its sources)
     read_by: [node_floor_simple_effect]
-    steps: [floor_simple, floor_projections]
-    producer: node_work_state_projection_effect, run by the publish tick and the fill orchestrator on the Mac
+    steps: [floor_simple, floor_projections, floor_work_state]
+    producer: node_work_state_projection_effect, run by the publish tick's floor_work_state step and the fill orchestrator on the Mac
     replacement: {node: node_work_state_projection_effect, topic: onex.snapshot.projection.floor-work-state.v1, status: new}
     ticket: OMN-23391
     pr: omnimarket branch omn-23391-floor-lane-list-projection

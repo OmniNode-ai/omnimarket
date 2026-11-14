@@ -31,6 +31,13 @@ repos:
         files: ^(src/omnimarket/nodes/node_github_webhook_ingress_effect/.*|tests/nodes/node_github_webhook_ingress_effect/test_http_.*\.py)$
         pass_filenames: false
         stages: [pre-commit]
+      - id: workflow-contract-catalog-http
+        name: Workflow contract catalog runtime HTTP route
+        entry: uv run --frozen pytest tests/nodes/node_workflow_contract_catalog_effect -q --no-cov
+        language: system
+        files: ^(src/omnimarket/nodes/node_workflow_contract_catalog_effect/.*|tests/nodes/node_workflow_contract_catalog_effect/.*\.py)$
+        pass_filenames: false
+        stages: [pre-commit]
       - id: catalog-http-mounts
         name: Catalog runtime HTTP mounts (plans, usage privileges)
         entry: uv run --frozen pytest tests/nodes/node_plan_list tests/nodes/node_usage_privileges -q --no-cov
@@ -49,6 +56,14 @@ repos:
       - id: morning-phase-tools-guard
         name: Morning phase tools guard and wiring
         entry: env -u PYTHONPATH uv run --frozen pytest tests/test_morning_phase_tools_wiring.py tests/nodes/node_morning_ground_state_orchestrator/test_morning_phase_tools_guard.py -q
+        language: system
+        always_run: true
+        pass_filenames: false
+        stages: [manual]
+      # The same guard runs in the required CI lint job, on every PR.
+      - id: node-entry-point-registration
+        name: Node directory has its onex.nodes entry point
+        entry: env -u PYTHONPATH uv run --frozen pytest tests/test_market_node_runtime_dogfood.py -k "inventory_fails_on_a_missing_or_extra_node and _without_entry_point" -q -n 0 --no-cov -p no:randomly
         language: system
         always_run: true
         pass_filenames: false

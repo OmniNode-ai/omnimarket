@@ -1,0 +1,73 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_host_drift_plugin_sync_effect
+lifecycle: experimental
+node_type: EFFECT_GENERIC
+runtime_profiles:
+- effects
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: Install a data-only plugin at the merged tip of its repository by revision, not version string.
+  Build the tree whole from one commit, swap it in keeping the previous tree, set the installed revision,
+  and roll back on a failed check (OMN-20689).
+input_model:
+  name: ModelPluginSyncRequest
+  module: omnimarket.nodes.node_host_drift_plugin_sync_effect.models.model_plugin_sync
+output_model:
+  name: ModelPluginSyncResult
+  module: omnimarket.nodes.node_host_drift_plugin_sync_effect.models.model_plugin_sync
+handler:
+  module: omnimarket.nodes.node_host_drift_plugin_sync_effect.handlers.handler_plugin_sync
+  class: HandlerHostDriftPluginSync
+  input_model: omnimarket.nodes.node_host_drift_plugin_sync_effect.models.model_plugin_sync.ModelPluginSyncRequest
+  output_model: omnimarket.nodes.node_host_drift_plugin_sync_effect.models.model_plugin_sync.ModelPluginSyncResult
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+  - handler:
+      name: HandlerHostDriftPluginSync
+      module: omnimarket.nodes.node_host_drift_plugin_sync_effect.handlers.handler_plugin_sync
+    event_model:
+      name: ModelPluginSyncRequest
+      module: omnimarket.nodes.node_host_drift_plugin_sync_effect.models.model_plugin_sync
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.host-drift-plugin-sync-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.host-drift-plugin-sync-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.host-drift-plugin-sync-requested.v1
+descriptor:
+  node_archetype: effect
+  runtime_profiles:
+  - effects
+  purity: effectful
+  idempotent: true
+  timeout_ms: 900000
+metadata:
+  transport_type: kafka
+  ticket: OMN-20689
+  description: Data-plugin revision sync; its settings are the overlay sync_overlay.yaml.
+  tags:
+  - host-drift
+terminal_event: onex.evt.omnimarket.host-drift-plugin-sync-completed.v1
+published_events:
+- topic: onex.evt.omnimarket.host-drift-plugin-sync-completed.v1
+  event_type: ModelPluginSyncResult
+externally_consumed_topics:
+- onex.evt.omnimarket.host-drift-plugin-sync-completed.v1
+
+# The broker grants the node's two topics need (coverage gate): the runtime login reads the request and writes the answer.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.host-drift-plugin-sync-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.host-drift-plugin-sync-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-drift-plugin-sync-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-drift-plugin-sync-completed.v1, operation: DESCRIBE}

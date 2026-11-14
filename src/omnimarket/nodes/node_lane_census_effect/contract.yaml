@@ -57,6 +57,8 @@ schedule:
   state_directory: .onex_state/lane-census
   snapshot_name: census-snapshot.json
   timeout_seconds: 1200
+  docker_binary: docker
+  project_check_timeout_seconds: 120
   cadence:
     on_calendar: hourly
     randomized_delay: 120s

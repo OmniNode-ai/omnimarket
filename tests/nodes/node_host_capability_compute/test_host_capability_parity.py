@@ -259,6 +259,20 @@ def test_probe_reads_an_ssh_route_to_each_peer(box: Host) -> None:
     )
 
 
+def test_probe_reaches_a_peer_by_the_first_destination_that_answers(box: Host) -> None:
+    box.stub(
+        "ssh", 'case "$*" in *" user@second-route true") exit 0;; *) exit 255;; esac\n'
+    )
+    assert box.run(["first-route+user@second-route"])["lab-ssh"] == (
+        "ok",
+        "reached:first-route+user@second-route",
+    )
+    assert box.run(["first-route+third-route"])["lab-ssh"] == (
+        "missing",
+        "no-ssh-route-to:first-route+third-route",
+    )
+
+
 def test_probe_prints_unread_before_the_first_refresh_and_never_waits_on_it(
     box: Host,
 ) -> None:

@@ -1,0 +1,51 @@
+schema_version: 1.0.0
+ticket_id: OMN-23287
+title: Narrowed test selection sizes its shard count from estimated test time, not from the number of selected paths
+summary: The shard count of a narrowed test selection is sized by the selector node (node_test_selection_selector_compute, landed under the selector ticket) from the committed config/test_file_durations.json and the policy's target_shard_seconds, not from the number of selected paths. This change names the tests that bind the shard-count claims so the ticket's own falsifier selectors (-k split_count_by_duration and -k shards_fit_target) select them; the tests themselves are unchanged.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23287-shards-follow-duration
+  statement: The shard count of a narrowed test selection follows the selection's estimated test time, so no shard of it is estimated past the target shard bound.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the shard count of a narrowed selection follows the selection''s estimated test time, so no shard of a narrowed selection is estimated past the shard bound -- falsifier: uv run pytest tests -q -k split_count_by_duration in omnimarket, failing on the old path-count script'
+  - id: AC2
+    statement: 'AC2: Tests (Split 2/2) no longer times out on omnimarket#5508 at its newest head after the change merges -- falsifier: pr_state_local.py --pr omnimarket#5508 shows no Split shard in red for a timeout'
+evidence_requirements:
+- kind: tests
+  description: No narrowed selection over every single-module change is estimated past the target shard seconds, a mid-weight selection gets more shards than its path count, and the heavy selection that timed out takes the planned 20-shard matrix.
+  command: uv run --frozen pytest tests/unit/scripts/test_detect_test_paths.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23287-ac1-split-count-by-duration
+  description: Runs the real compute_selection over every single-module change and a durations record written by the test, and requires no narrowed shard estimated past target_shard_seconds and a mid-weight selection to get more shards than its path count. The named break is the path-count rule, which gave a four-path selection 2 shards of about 2000 s each.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/scripts/test_detect_test_paths.py -k split_count_by_duration -q --no-cov
+    cwd: .
+- id: dod-omn23287-ac2-shards-fit-target
+  description: Runs the real compute_selection on the node change plus test change that timed out Tests (Split 2/2) on omnimarket#5508 and requires the planned 20-shard matrix in place of two shards. The named break is the path-count rule, whose two shards carried about 2000 s each.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/scripts/test_detect_test_paths.py -k shards_fit_target -q --no-cov
+    cwd: .
+- id: dod-omn23287-existing-selection-tests
+  description: The existing test selection tests (adjacency map, full-suite escalation, workflow-only diff, node-scoped narrowing) still pass.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/scripts/test_detect_test_paths.py -q --no-cov
+    cwd: .

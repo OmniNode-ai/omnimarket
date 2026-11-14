@@ -94,12 +94,14 @@ def _derive(
 
 
 def test_the_job_nodes_include_the_ones_this_seam_names() -> None:
-    """Positive control: the tree walk finds the lab alarm's broker lag job, the lab state alarm, the floor fill and the commitment check jobs, so an empty walk cannot pass."""
+    """Positive control: the tree walk finds the lab alarm's broker lag job, the lab state alarm, the floor fill, the commitment check and the lane result sweep jobs, so an empty walk cannot pass."""
     assert {
         "node_lab_alarm_scheduled_effect",
         "node_lab_state_alarm_scheduled_effect",
         "node_floor_fill_scheduled_effect",
         "node_commitment_check_scheduled_effect",
+        "node_lane_result_sweep_scheduled_effect",
+        "node_work_ledger_reducer_scheduled_effect",
     } <= set(_scheduled_job_nodes())
 
 
