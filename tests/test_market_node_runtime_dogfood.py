@@ -89,6 +89,12 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # filesystem, so a host timer runs it with python -m; it publishes events
     # but subscribes to no topic and has no onex.nodes entry point.
     "node_lab_daemon_sync_effect",
+    # OMN-24109: the lab-fill fire judge is called in process by the lab-fill launcher
+    # effect and declares no topic; the launcher effect is run by the Mac lab-fill tick
+    # with python -m, which is its external trigger, and registers no runtime profile or
+    # broker route here. Neither has an onex.nodes entry point.
+    "node_lab_fill_fire_outcome_compute",
+    "node_lab_fill_launcher_effect",
     # OMN-20712: hosted from the operator tooling repository, whose copy is
     # still registered; called in process by its host scheduler, so it subscribes
     # to no topic and has no onex.nodes entry point until the registration
