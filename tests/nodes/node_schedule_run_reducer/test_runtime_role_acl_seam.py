@@ -101,6 +101,7 @@ def test_the_job_nodes_include_the_ones_this_seam_names() -> None:
         "node_floor_fill_scheduled_effect",
         "node_commitment_check_scheduled_effect",
         "node_lane_result_sweep_scheduled_effect",
+        "node_work_ledger_reducer_scheduled_effect",
     } <= set(_scheduled_job_nodes())
 
 
