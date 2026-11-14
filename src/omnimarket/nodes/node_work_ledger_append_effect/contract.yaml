@@ -30,7 +30,7 @@ lifecycle: experimental
 node_type: "EFFECT_GENERIC"
 runtime_profiles: [effects]
 contract_version: {major: 0, minor: 5, patch: 0}
-node_version: "0.5.0"
+node_version: "0.6.0"
 description: >
   Attributes rows to the broker principal of the producing connection, attested
   by per-principal topic WRITE ACLs declared in omnibase_infra
@@ -89,6 +89,13 @@ writer_overlay:
   default_role: "developer"
   roles: ["machine"]
   refresh_seconds: 60
+# OMN-24330: a service login such as the dev runtime's own has no person login or device, so it
+# cannot be a row of the developer principal overlay; its writers are declared in the node's own
+# deployment overlay instead.
+service_writers:
+  overlay_id: "node_work_ledger_append_effect"
+  roots_env: "ONEX_SKILL_OVERLAY_ROOTS"
+  schema_version: "service_writers.v1"
 # OMN-20275: the serve host watches that its consumers hold partition assignments. When they do not for
 # `unhealthy_probes_before_degraded` probes in a row the host reports degraded, raises one alarm for the
 # episode and drops and retakes every subscription, waiting `backoff_initial_seconds` growing by
