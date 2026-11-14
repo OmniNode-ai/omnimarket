@@ -9,7 +9,7 @@
 # OMN-23631 -- the measured correct ceiling is no longer a packaged value: it is the overlay value
 # delegation.code_budget.input_ceilings.<backend>.<task_class> of node_delegation_code_budget_compute,
 # read through that node's input_ceiling operation (see handlers/routing/measured_correct_ceiling.py).
-backends:
-  local-heavy-reasoning:
-    # OMN-20486 measured readback: tokens 20079 run_id c5508479-74f7-4812-9417-862489e42f2c, tokens 31705 run_id a7ff4981-58f8-4973-a4a3-f4fa9c50b987, both grounded; tokens 32080 refused by this value.
-    code_generation: 32000
+#
+# OMN-23631 -- the one packaged value, local-heavy-reasoning code_generation 32000 (readback of 2026-10-15), is gone: it capped the
+# class below the overlay's served-window ceiling. No packaged budget remains; a class with no value here keeps no packaged limit.
+backends: {}

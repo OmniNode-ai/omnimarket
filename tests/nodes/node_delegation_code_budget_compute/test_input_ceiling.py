@@ -110,7 +110,7 @@ def test_input_ceiling_named_pair(
 
 @pytest.mark.parametrize(
     ("backend", "task_class"),
-    [("local-coder", "test"), ("unknown-backend", "code_generation")],
+    [("local-coder", "unlisted_class"), ("unknown-backend", "code_generation")],
 )
 def test_input_ceiling_refuses_unnamed_pair(backend: str, task_class: str) -> None:
     """A pair the overlay does not name is refused, naming the overlay key."""

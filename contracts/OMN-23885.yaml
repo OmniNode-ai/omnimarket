@@ -1,0 +1,76 @@
+schema_version: 1.0.0
+ticket_id: OMN-23885
+title: Local model input limits are settings read by the routing code, with no number packed into the software
+summary: The local rungs of routing_tiers.yaml no longer carry max_context_tokens or fast_path_threshold_tokens, the local backends of bifrost_delegation.yaml no longer carry max_grounded_input_tokens, and grounding_budget_by_task_class.yaml names no value. A local rung's window is the largest ceiling the code budget overlay names for its backend (delegation.code_budget.input_ceilings.<backend>), read when the tiers file is parsed, and a local backend's dispatch budget is the overlay ceiling for the class. An overlay that names neither is a typed refusal that names the key. The values themselves are in the overlays repository (pull request 298), which must merge and deploy first.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn23885-overlay-window
+  statement: The local rungs' input window and the local backends' dispatch budget are read from the code budget overlay, with no packaged value.
+  acceptance:
+  - id: AC1
+    statement: "AC1: the local routes' input windows and the local backends' input budgets are read from the settings and no packaged number remains -- falsifier: uv run pytest tests/unit/routing/test_local_input_limits_overlay.py -q -k \"overlay_window or no_packaged\""
+- id: req-omn23885-failing-control
+  statement: The old packaged window put back makes a 20,000-token reasoning task not offered to the local route.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: failing control: putting the old packaged 8192 window back makes a 20,000-token reasoning task not offered to the local route, and the test turns red -- falsifier: uv run pytest tests/unit/routing/test_local_input_limits_overlay.py -q -k old_packaged_window'
+- id: req-omn23885-error-chain
+  statement: Settings that do not name a local backend or class are a typed refusal naming the key, never a default.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: error chain: settings that do not name a local backend or class are a typed refusal naming the key, never a default -- falsifier: uv run pytest tests/unit/routing/test_local_input_limits_overlay.py -q -k "refusal or not_a_default or unnamed or required_ceiling"'
+- id: req-omn23885-integrated
+  statement: On a lab host a request above the old 8192 reasoning window and one above the 8169 code reading are attempted on the local routes.
+  acceptance:
+  - id: AC4
+    statement: 'AC4: integrated: on a lab host one reasoning or prose request above 8,192 input tokens is attempted on the local reasoning route and one code request above 8,169 tokens on the first local machine -- falsifier: the two delegation receipts read on the lab host name the local backend and no context-too-large skip'
+evidence_requirements:
+- kind: tests
+  description: The local input limit tests build the routing ladder from the packaged contract and an in-memory overlay root; no endpoint is called.
+  command: uv run pytest tests/unit/routing/test_local_input_limits_overlay.py tests/unit/routing/test_measured_correct_ceiling_overlay.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23885-ac1
+  description: AC1 the reasoning rung takes the overlay's window and a 20000-token research task is offered to it; no local limit remains in the packaged configs.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/routing/test_local_input_limits_overlay.py -q --no-cov --tb=line -k "overlay_window or no_packaged"
+    cwd: .
+- id: dod-omn23885-ac2
+  description: AC2 with the old packaged 8192 window put back on the reasoning rung the 20000-token research task is not offered to it, and the golden assertion fails.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/routing/test_local_input_limits_overlay.py -q --no-cov --tb=line -k old_packaged_window
+    cwd: .
+- id: dod-omn23885-ac3
+  description: AC3 no overlay root, a backend the overlay does not name, a class it does not name and an unreadable overlay each raise, and the typed refusals name the overlay key.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/routing/test_local_input_limits_overlay.py -q --no-cov --tb=line -k "refusal or not_a_default or unnamed or required_ceiling or does_not_name"
+    cwd: .
+- id: dod-omn23885-integration-proof
+  description: The pushed head ran the local input limit tests on a lab host through the bus and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  binds_ac:
+  - AC4
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: |-
+      uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane local-limits2-4910 -- uv run --frozen pytest tests/unit/routing/test_local_input_limits_overlay.py tests/unit/routing/test_measured_correct_ceiling_overlay.py -q --no-cov
+    cwd: .

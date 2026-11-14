@@ -62,7 +62,9 @@ tiers:
       # header comment) — a mismatch here would strand routing.
       - id: Qwen3.8-27B
         backend_id: local-coder
-        max_context_tokens: 65536
+        # OMN-23631: no packaged window. The rung's input window is the largest ceiling the code budget overlay names for
+        # this backend (delegation.code_budget.input_ceilings.local-coder.*), read when this file is parsed; an overlay that
+        # names none is a typed refusal naming that key.
         # OMN-13599 (SUPERSEDED by OMN-16442 for `test`): local-coder was the
         # CODE backend only; `test` and `research` were removed here so the
         # code-only fast_path_threshold did not bleed local-coder into task
@@ -95,10 +97,8 @@ tiers:
           # OMN-16442: restored — see the block comment above.
           - test
         # OMN-13599: AI-PC local-coder is the preferred local code backend when
-        # its Tailscale hostname overlay is present. Without a threshold, the
-        # fast-path selector can prefer later local models that also declare
-        # code_generation.
-        fast_path_threshold_tokens: 65536
+        # its Tailscale hostname overlay is present. OMN-23631: the packaged
+        # fast-path threshold is gone; the overlay's per-class ceiling is the one input limit.
       # OMN-16442: the `local-reasoner` rung (id Qwen3.6-27B-MTP-IQ4_XS.gguf,
       # .201:8001) was DELETED here. That endpoint is the RTX 4090 slot
       # physically removed from .201 for RMA (OMN-16407); re-probed 2026-08-28
@@ -127,7 +127,7 @@ tiers:
       # across both rungs.
       - id: Qwen3.8-27B
         backend_id: local-heavy-reasoning
-        max_context_tokens: 8192
+        # OMN-23631: no packaged window; see the local-coder rung above (key ...input_ceilings.local-heavy-reasoning.*).
         use_for:
           - research
           - reasoning
@@ -145,7 +145,7 @@ tiers:
           # taxonomy, so serving escalation's declared ``reasoning`` capability
           # is not a new claim. escalation's other declared capability,
           # ``context_window_large``, stays mechanically honoured rather than
-          # asserted: ``max_context_tokens`` (8192 here) excludes this model
+          # asserted: the overlay's input ceiling excludes this model
           # from selection for any prompt that does not fit, which escalates to
           # the large-window rungs below / the ceiling instead.
           - escalation
@@ -187,7 +187,6 @@ tiers:
           - tail_summary
           - context_selection
           - context_compaction
-        fast_path_threshold_tokens: 8192
     eval_before_accept: true
     eval_model: null
     max_retries: 2

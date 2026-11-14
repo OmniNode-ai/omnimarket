@@ -5510,6 +5510,7 @@
   "tests/unit/routing/test_handler_routing_intent_dod_overlay.py": 0.35,
   "tests/unit/routing/test_inprocess_spread_omn19432.py": 0.99,
   "tests/unit/routing/test_local_coder_code_generation_ceiling.py": 0.53,
+  "tests/unit/routing/test_local_input_limits_overlay.py": 1.36,
   "tests/unit/routing/test_local_rung_route_omn23329.py": 13.27,
   "tests/unit/routing/test_measured_correct_ceiling_overlay.py": 1.26,
   "tests/unit/routing/test_nemotron_ultra_withdrawn_omn20376.py": 0.17,
