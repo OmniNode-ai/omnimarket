@@ -10,16 +10,29 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from omnimarket.nodes.node_host_installer_registry_units.handlers.handler_registry_units import (
     HandlerRegistryUnits,
 )
-from tests.nodes.node_host_installer_registry_units.test_registry_units_systemd import (  # noqa: F401  (linux_host is the shared fixture that makes the host a Linux pool host)
-    LABEL,
-    Recorder,
-    linux_host,
-    request,
-    unit_paths,
+from tests.nodes.node_host_installer_registry_units import (
+    test_registry_units_systemd as base,
 )
+
+LABEL = base.LABEL
+Recorder = base.Recorder
+request = base.request
+unit_paths = base.unit_paths
+
+
+@pytest.fixture(autouse=True)
+def linux_host(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        f"{base.HANDLER}.interpreter_present", lambda path: path == base.LINUX_PYTHON
+    )
+    monkeypatch.setattr(
+        "shutil.which", lambda name: "/usr/bin/uv" if name == "uv" else None
+    )
 
 
 def installed_pair(tmp_path: Path) -> tuple[Path, Path]:
