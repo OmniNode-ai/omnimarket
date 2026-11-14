@@ -539,6 +539,94 @@ def test_node_change_still_selects_the_contract_binding_test() -> None:
     ).is_file()
 
 
+DOGFOOD_TEST = "tests/test_market_node_runtime_dogfood.py"
+
+
+def test_node_contract_change_selects_the_node_inventory_test() -> None:
+    """A node contract change narrowed to the node's tests and skipped the
+    inventory test: the selector chose 52 paths for omnimarket#6071 and
+    omnimarket#6054 and none was this test. This is the RED the path trigger closes.
+    """
+    sel = compute_selection(
+        changed_files=[
+            "src/omnimarket/nodes/node_remote_lane_compute/contract.yaml",
+        ],
+        adjacency_path=ADJACENCY_PATH,
+        ref_name="jonah/feature",
+        event_name="pull_request",
+        feature_flag_enabled=True,
+    )
+    assert sel.is_full_suite is False, (
+        "fixture drifted -- this test must exercise the NARROWED path, "
+        "otherwise it passes vacuously via full-suite escalation"
+    )
+    assert DOGFOOD_TEST in sel.selected_paths, (
+        f"the node inventory test was narrowed away. selected={sel.selected_paths}"
+    )
+    assert (ADJACENCY_PATH.parents[2] / DOGFOOD_TEST).is_file()
+
+
+def test_node_handler_change_does_not_select_the_node_inventory_test() -> None:
+    """Control: the trigger is the contract glob, not every node change, so the
+    inventory test's recorded time is not added to every narrowed selection."""
+    sel = compute_selection(
+        changed_files=[
+            "src/omnimarket/nodes/node_remote_lane_compute/handlers/handler_remote_lane_placement.py",
+        ],
+        adjacency_path=ADJACENCY_PATH,
+        ref_name="jonah/feature",
+        event_name="pull_request",
+        feature_flag_enabled=True,
+    )
+    assert sel.is_full_suite is False
+    assert DOGFOOD_TEST not in sel.selected_paths
+
+
+def test_entry_point_change_takes_the_full_suite_that_holds_the_inventory_test() -> (
+    None
+):
+    """An onex.nodes entry point lives in pyproject.toml, which is test
+    infrastructure: the whole tests/ tree runs, the inventory test included."""
+    sel = compute_selection(
+        changed_files=["pyproject.toml"],
+        adjacency_path=ADJACENCY_PATH,
+        ref_name="jonah/feature",
+        event_name="pull_request",
+        feature_flag_enabled=True,
+    )
+    assert sel.is_full_suite is True
+    assert sel.selected_paths == ["tests/"]
+    assert (ADJACENCY_PATH.parents[2] / DOGFOOD_TEST).is_file()
+
+
+def test_exemption_list_change_takes_the_full_suite() -> None:
+    """The reviewed entry-point exemption list sits under scripts/, which is test
+    infrastructure, so a change to it runs the inventory test too."""
+    sel = compute_selection(
+        changed_files=["scripts/audit/node_entry_point_exemptions.yaml"],
+        adjacency_path=ADJACENCY_PATH,
+        ref_name="jonah/feature",
+        event_name="pull_request",
+        feature_flag_enabled=True,
+    )
+    assert sel.is_full_suite is True
+    assert sel.full_suite_reason == EnumFullSuiteReason.TEST_INFRASTRUCTURE
+
+
+@pytest.mark.parametrize(
+    "bad", ["tests/gates", "src/omnimarket/models/", "scripts/ci/helper.py"]
+)
+def test_path_triggered_selected_paths_reject_a_non_test_entry(bad: str) -> None:
+    from scripts.ci.test_selection_loader import ModelAdjacencyMap, load_adjacency_map
+
+    base = load_adjacency_map(ADJACENCY_PATH).model_dump()
+    trigger = {"changed_globs": ["src/*/contract.yaml"], "selected_paths": [bad]}
+    with pytest.raises(ValueError, match="path_triggered_selected_paths"):
+        ModelAdjacencyMap.model_validate(
+            {**base, "path_triggered_selected_paths": [trigger]}
+        )
+
+
 def test_always_selected_paths_reject_a_non_test_entry() -> None:
     from scripts.ci.test_selection_loader import ModelAdjacencyMap, load_adjacency_map
 
@@ -908,7 +996,7 @@ def _every_single_module_change() -> list[list[str]]:
     ]
 
 
-def test_shard_bound_no_narrowed_selection_is_estimated_past_the_target() -> None:
+def test_split_count_by_duration_no_narrowed_shard_past_target() -> None:
     target = load_policy().target_shard_seconds
     narrowed = 0
     for changed in [_HEAVY_CHANGE, _LIGHT_CHANGE, *_every_single_module_change()]:
@@ -923,7 +1011,7 @@ def test_shard_bound_no_narrowed_selection_is_estimated_past_the_target() -> Non
     assert narrowed > 0
 
 
-def test_shard_bound_the_heavy_selection_is_the_planned_matrix_not_two_shards() -> None:
+def test_shards_fit_target_heavy_selection_is_the_planned_matrix() -> None:
     selection = compute_selection(
         _HEAVY_CHANGE, ADJACENCY_PATH, ref_name="omn-23296-x", event_name="pull_request"
     )
@@ -932,9 +1020,7 @@ def test_shard_bound_the_heavy_selection_is_the_planned_matrix_not_two_shards() 
     assert selection.matrix == list(range(1, 21))
 
 
-def test_shard_bound_a_mid_weight_selection_gets_more_shards_than_its_path_count() -> (
-    None
-):
+def test_split_count_by_duration_mid_weight_gets_more_shards_than_paths() -> None:
     # One mid-weight path, at least three shards. The test is given its own
     # durations record so its claim does not move with the real one.
     from omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_test_selection_selector import (

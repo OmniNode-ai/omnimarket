@@ -86,6 +86,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_TITLE: ${{ github.event.pull_request.title }}
+          # The PR body comes from the event payload through env, never interpolated
+          # into the script, so no `gh pr view` call is made and the step works on a
+          # runner that cannot reach the GitHub API.
+          PR_BODY: ${{ github.event.pull_request.body }}
           CONTRACTS_DIR: .pr-head/contracts
           VALIDATOR: .deploy-gate-validator/.github/actions/deploy-gate/validate_pr_deploy_required.py
         run: |
@@ -99,7 +103,7 @@ jobs:
             git fetch origin "$base_ref" --no-tags
             changed_files="$(git diff --name-only "origin/${base_ref}" HEAD | tr '\n' ' ')"
           fi
-          pr_body="$(gh pr view "$PR_NUMBER" --json body -q '.body')"
+          pr_body="${PR_BODY}"
 
           python "$VALIDATOR" \
             --changed-files "$changed_files" \

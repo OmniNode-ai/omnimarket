@@ -93,3 +93,20 @@ dispatch_policy:
   context_done_kinds: [check_passing]
   launching_actors: []
   runner_effort_models: [sonnet, opus, codex]
+# J11 (rebuild plan 4.1, piece 11 to piece 12): dispatch consumes a runtime-affecting merge's PASS lab receipt and the
+# lane starts from the dispatch record; with no PASS receipt nothing starts.
+join_j11:
+  join_id: "J11"
+  from_piece: 11
+  to_piece: 12
+  receipt_missing_code: "dispatch_receipt_missing"
+  receipt_failed_code: "dispatch_receipt_failed"
+  receipts_unreadable_code: "dispatch_receipts_unreadable"
+  dispatch_not_placed_code: "dispatch_not_placed"
+# The in-process join handler, bound here and not in handler_routing: it takes a receipt source, the dispatch effect and a
+# policy through its constructor, which the auto-wiring cannot supply.
+in_process_handlers:
+  join_j11:
+    handler:
+      module: "omnimarket.nodes.node_lane_dispatch_effect.handlers.handler_dispatch_join_j11"
+      class: "HandlerDispatchJoinJ11"
