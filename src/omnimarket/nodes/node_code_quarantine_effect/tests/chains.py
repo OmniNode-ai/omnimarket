@@ -14,12 +14,15 @@ from omnimarket.nodes.node_code_quarantine_effect.models import (
     EnumFailedGate,
     EnumQuarantineOutcome,
     ModelQuarantineEvent,
+    ModelRarePathCheck,
 )
 from omnimarket.nodes.node_code_quarantine_effect.tests.support import (
     ENTITY,
     ENTITY_PATHS,
     KEPT,
     REPO,
+    SKILL,
+    SKILL_PATHS,
     START,
     TAG,
     TEST_PATHS,
@@ -27,6 +30,8 @@ from omnimarket.nodes.node_code_quarantine_effect.tests.support import (
     check_request,
     quarantine_request,
     remove_request,
+    stage_four_module_request,
+    stage_four_skill_request,
 )
 
 RUN = "chain1"
@@ -152,3 +157,67 @@ def error_chain(rig: Rig) -> None:
     assert len(restored_events) == 3
     assert {e.reading for e in restored_events} == {"NOT WORKING"}
     assert timedelta(days=7) == rig.clock.now() - restarted_at
+
+
+def stage_four_chain(rig: Rig) -> None:
+    """Stage 4 (OMN-23149): each refusal ends in a typed event that reads NOT WORKING, and a clean one goes through."""
+    everything = (*ENTITY_PATHS, *TEST_PATHS)
+    refusals = [
+        (
+            stage_four_module_request(RUN, entity_paths=TEST_PATHS),
+            EnumQuarantineOutcome.REFUSED_TESTS_NOT_WITH_MODULE,
+        ),
+        (
+            stage_four_module_request(RUN, test_paths=()),
+            EnumQuarantineOutcome.REFUSED_TESTS_NOT_WITH_MODULE,
+        ),
+        (
+            stage_four_skill_request(RUN).model_copy(update={"rare_path": None}),
+            EnumQuarantineOutcome.REFUSED_RARE_PATH,
+        ),
+        (
+            stage_four_skill_request(
+                RUN,
+                rare_path=ModelRarePathCheck(
+                    evidence_ref="reports/rare-path/skills.md", drills_checked=()
+                ),
+            ),
+            EnumQuarantineOutcome.REFUSED_RARE_PATH,
+        ),
+        (
+            stage_four_skill_request(
+                RUN,
+                rare_path=ModelRarePathCheck(
+                    evidence_ref="reports/rare-path/skills.md",
+                    drills_checked=("drill-restore",),
+                    drills_using=("drill-restore",),
+                ),
+            ),
+            EnumQuarantineOutcome.REFUSED_RARE_PATH,
+        ),
+    ]
+    for request, outcome in refusals:
+        refused = rig.handler.handle(request)
+        assert refused.outcome is outcome
+        assert refused.excluded_paths == ()
+    assert all(rig.exists(path) for path in (*everything, *SKILL_PATHS))
+    assert rig.catalog() == []
+
+    module = rig.handler.handle(stage_four_module_request(RUN))
+    skill = rig.handler.handle(stage_four_skill_request(RUN))
+    assert module.outcome is EnumQuarantineOutcome.QUARANTINED
+    assert skill.outcome is EnumQuarantineOutcome.QUARANTINED
+    assert set(skill.excluded_paths) == {*everything, *SKILL_PATHS}
+    rig.clock.advance(days=7)
+    done = rig.handler.handle(remove_request(rig, RUN))
+    assert done.outcome is EnumQuarantineOutcome.REMOVED
+    assert not any(rig.exists(path) for path in everything)
+    assert all(rig.exists(path) for path in SKILL_PATHS)
+    gone = rig.handler.handle(remove_request(rig, RUN, entity=SKILL))
+    assert gone.outcome is EnumQuarantineOutcome.REMOVED
+    assert not any(rig.exists(path) for path in SKILL_PATHS)
+
+    events = [e for e in rig.events() if isinstance(e, ModelQuarantineEvent)]
+    assert {e.correlation_id for e in events} == {RUN}
+    refused_events = [e for e in events if e.reading == "NOT WORKING"]
+    assert [e.outcome for e in refused_events] == [o for _, o in refusals]

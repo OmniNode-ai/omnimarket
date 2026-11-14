@@ -8,7 +8,7 @@ a default: an absent key refuses the load and names it, with one exception: ``ef
 block of the effects-held verbs only, so an overlay that lacks it still loads and the broker lag read
 (the verb the schedule runs) keeps reporting; the effects-held verbs refuse it themselves (OMN-23340).
 ``broker_listener`` is the same: the block of the broker-listener verbs only, and those verbs refuse
-it themselves.
+it themselves, and so is ``dev_tag_heartbeat``.
 """
 
 from __future__ import annotations
@@ -157,6 +157,14 @@ class ModelLabAlarmSchedule(BaseModel):
         return next((host for host in self.hosts if host.name == name), None)
 
 
+#: The conditions that run on a schedule of their own, by the verb the unit runs.
+SCHEDULABLE_VERBS = (
+    "dev-tag-heartbeat",
+    "delegation-chain-canary",
+    "work-ledger-projection-stale",
+)
+
+
 class ModelEscalationSettings(BaseModel):
     """The lane an alarm that names no owner starts: the dispatch command and what it is told."""
 
@@ -199,6 +207,75 @@ class ModelBrokerListenerSettings(BaseModel):
     timeout_seconds: float = Field(gt=0)
 
 
+class ModelConditionPersistence(BaseModel):
+    """How many consecutive breaching runs a subject needs before it alarms: no single-run alarms."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    persist_runs: int = Field(ge=1)
+    #: Where each subject's count of consecutive breaching runs is kept between runs.
+    streak_path: str = Field(min_length=1)
+
+
+class ModelDevTagHeartbeatSettings(BaseModel):
+    """The dev-tag heartbeat condition (OMN-24400): the agent to read, the repositories it must beat for, how old a beat may be."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: The deploy agent's base URL, the old config key ``agent_url``.
+    agent_url: str = Field(min_length=1)
+    #: The path under the base URL that serves the heartbeat document.
+    endpoint_path: str = Field(min_length=1)
+    #: The tag-followed repositories the agent must carry a beat for, the old ``dev_tag_heartbeat_repositories``.
+    repositories: tuple[str, ...] = Field(min_length=1)
+    #: How old a beat's observed_at may be; the old script's 30 minute bound (two publish periods).
+    max_age_seconds: float = Field(gt=0)
+    timeout_seconds: float = Field(gt=0)
+    persistence: ModelConditionPersistence
+
+
+class ModelDelegationChainCanarySettings(BaseModel):
+    """The delegation chain canary condition (OMN-24400): which workflow's newest completed run decides, and how old it may be."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: ``owner/name`` of the repository whose scheduled workflow is the canary, the old config key ``repo``.
+    repository: str = Field(min_length=1)
+    #: The workflow file, the old ``chain_canary_workflow``.
+    workflow: str = Field(min_length=1)
+    #: The branch it runs on, the old ``chain_canary_branch``.
+    branch: str = Field(min_length=1)
+    #: The triggering events that count as a measurement; the old script admitted scheduled runs only.
+    events: tuple[str, ...] = Field(min_length=1)
+    #: How old the newest completed run may be: the old ``chain_canary_max_age_minutes`` (180) in seconds.
+    max_age_seconds: float = Field(gt=0)
+    #: Runs read per event, newest first.
+    per_page: int = Field(ge=1)
+    timeout_seconds: float = Field(gt=0)
+    persistence: ModelConditionPersistence
+
+
+class ModelWorkLedgerProjectionStaleSettings(BaseModel):
+    """The work-ledger projection condition (OMN-24400): the ledger file against the projection's newest row."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: The rolling ledger file, relative to the registry root the run works from.
+    ledger_path: str = Field(min_length=1)
+    #: How much of the end of the file is read: the old script's 256 KiB.
+    tail_bytes: int = Field(ge=1)
+    #: The row types that count; a stamped row of any other type cannot make the projection look behind.
+    row_types: tuple[str, ...] = Field(min_length=1)
+    #: What the alarm names as its subject, the projection's table.
+    projection_name: str = Field(min_length=1)
+    #: How far the projection may trail the file: the old ``work_ledger_max_lag_minutes`` (30) in seconds.
+    max_lag_seconds: float = Field(gt=0)
+    #: How far back from the file's newest row the projection is asked for its newest row.
+    projection_window_seconds: float = Field(gt=0)
+    timeout_seconds: float = Field(gt=0)
+    persistence: ModelConditionPersistence
+
+
 class ModelAlarmDeliveryWiring(BaseModel):
     """Names that this node's alarms are delivered through node_lab_alarm_deliver_effect (OMN-23906).
 
@@ -225,6 +302,15 @@ class ModelLabAlarmOverlay(BaseModel):
     #: Read by the broker-listener verbs alone; absent, the overlay still loads and the other verbs
     #: run, and the broker-listener verbs refuse it themselves, as the effects-held ones do theirs.
     broker_listener: ModelBrokerListenerSettings | None = None
+    #: Read by the dev-tag heartbeat verbs alone; absent, the overlay still loads and the other verbs run.
+    dev_tag_heartbeat: ModelDevTagHeartbeatSettings | None = None
+    #: Read by the delegation-chain-canary verbs alone; absent, the overlay still loads and the other verbs run.
+    delegation_chain_canary: ModelDelegationChainCanarySettings | None = None
+    #: Read by the work-ledger-projection-stale verbs alone; absent, the overlay still loads and the other verbs run.
+    work_ledger_projection_stale: ModelWorkLedgerProjectionStaleSettings | None = None
+    #: One schedule per condition, keyed by the verb its unit runs (OMN-24400); the ``schedule`` block stays the broker lag's.
+    #: Absent, only the broker lag has a schedule.
+    condition_schedules: dict[str, ModelLabAlarmSchedule] | None = None
     #: Absent, nothing is delivered: an overlay written before the delivery existed loads and runs unchanged.
     alarm_delivery: ModelAlarmDeliveryWiring | None = None
 
@@ -233,6 +319,19 @@ class ModelLabAlarmOverlay(BaseModel):
         keys = [(n.package, n.node) for n in self.groups.nodes]
         if len(keys) != len(set(keys)):
             raise ValueError("a declared node is listed twice")
+        schedules = self.condition_schedules or {}
+        unknown = sorted(set(schedules) - set(SCHEDULABLE_VERBS))
+        if unknown:
+            raise ValueError(
+                f"condition_schedules names {unknown}, which is not a schedulable verb"
+            )
+        units = [self.schedule.unit_name, *(s.unit_name for s in schedules.values())]
+        labels = [
+            self.schedule.launchd_label,
+            *(s.launchd_label for s in schedules.values()),
+        ]
+        if len(units) != len(set(units)) or len(labels) != len(set(labels)):
+            raise ValueError("two schedules share a unit name or a launchd label")
         return self
 
 
@@ -242,10 +341,14 @@ def load_overlay(environ: Mapping[str, str] | None = None) -> ModelLabAlarmOverl
 
 __all__ = [
     "NODE_NAME",
+    "SCHEDULABLE_VERBS",
     "ModelAlarmBackend",
     "ModelAlarmDeliveryWiring",
     "ModelBrokerListenerSettings",
+    "ModelConditionPersistence",
     "ModelDeclaredNode",
+    "ModelDelegationChainCanarySettings",
+    "ModelDevTagHeartbeatSettings",
     "ModelEffectsHeldSettings",
     "ModelEscalationSettings",
     "ModelGroupDerivation",
@@ -256,5 +359,6 @@ __all__ = [
     "ModelLagSettings",
     "ModelManifestResilience",
     "ModelManifestSettings",
+    "ModelWorkLedgerProjectionStaleSettings",
     "load_overlay",
 ]

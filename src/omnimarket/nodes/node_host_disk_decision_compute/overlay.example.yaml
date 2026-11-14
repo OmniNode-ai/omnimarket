@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Shape of the policy (OMN-23866). Synthetic values only. A deployment's policy lives at
+# <root>/node_host_disk_decision_compute/overlay.yaml under a root named in ONEX_SKILL_OVERLAY_ROOTS
+# (overlays/node_host_disk_decision_compute/overlay.yaml in the overlays repository).
+max_reading_age_seconds: 5400
+defaults:
+  floor_free_bytes: 107374182400
+  volume_path: /
+  classes:
+    uv_cache:
+      keep_days: 7
+      pressure_keep_days: 1
+      cap_bytes: 53687091200
+    worktrees:
+      keep_days: 14
+      pressure_keep_days: 3
+    docker_build_cache:
+      cap_bytes: 21474836480
+hosts:
+  example-host-a: {}
+  example-host-b:
+    floor_free_bytes: 214748364800
+    classes:
+      uv_cache:
+        keep_days: 3
+        pressure_keep_days: 1

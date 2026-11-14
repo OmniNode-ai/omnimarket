@@ -94,6 +94,38 @@ def test_error_a_refused_rules_load_yields_rules_refused_with_no_verdict() -> No
     assert "stub refused" in result.detail
 
 
+def test_golden_omni_version_bump_routes_to_update_plugin() -> None:
+    facts = ModelPluginProbeFacts(
+        name="omni@omninode-internal",
+        ref="main",
+        installed_versions=("0.4.475",),
+        merged_version="0.4.476",
+        installed_revision="a" * 40,
+        merged_tip="b" * 40,
+        tip_in_installed=False,
+    )
+    result = HandlerHostDriftPluginRevisionCheck().handle(facts)
+    assert result.outcome == EnumPluginRevisionCheckOutcome.CHECKED
+    assert result.verdict is not None
+    assert result.verdict.sync_action == "update-plugin"
+
+
+def test_failing_control_omni_same_version_routes_to_install_plugin_tree() -> None:
+    facts = ModelPluginProbeFacts(
+        name="omni@omninode-internal",
+        ref="main",
+        installed_versions=("0.4.475",),
+        merged_version="0.4.475",
+        installed_revision="a" * 40,
+        merged_tip="b" * 40,
+        tip_in_installed=False,
+    )
+    result = HandlerHostDriftPluginRevisionCheck().handle(facts)
+    assert result.outcome == EnumPluginRevisionCheckOutcome.CHECKED
+    assert result.verdict is not None
+    assert result.verdict.sync_action == "install-plugin-tree"
+
+
 def test_failing_control_rules_not_handed_over_yields_no_sync_action() -> None:
     result = HandlerHostDriftPluginRevisionCheck(rules_effect=StubRulesEmpty()).handle(
         overlays_fixture()

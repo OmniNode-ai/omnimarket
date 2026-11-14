@@ -313,7 +313,11 @@ def test_the_example_overlay_loads_and_a_missing_or_extra_key_is_refused() -> No
         if key in (
             "effects_held",
             "broker_listener",
-        ):  # one condition's verbs' block each; OMN-23340, OMN-23933
+            "dev_tag_heartbeat",
+            "delegation_chain_canary",
+            "work_ledger_projection_stale",
+            "condition_schedules",
+        ):  # one condition's verbs' block each; OMN-23340, OMN-23933, OMN-24400
             assert (
                 getattr(
                     ModelLabAlarmOverlay.model_validate(

@@ -150,6 +150,8 @@ runtime:
   # tracker's data is delegation-tracker.json.
   delegation_tracker_page_relpath: page/delegation.html
   delegation_tracker_data_relpath: .claude_scratch/factory-floor/delegation-tracker.json
+  # The delegation history (models, success series, experiments) the Delegation tab draws, written by node_floor_delegation_history_effect.
+  delegation_history_data_relpath: .claude_scratch/factory-floor/delegation-history.json
   floor_page_relpath: page/floor/index.html
   # The vendored OmniUI compiled theme CSS the page links (pinned by sha256 in page/vendor/omniui/PIN.sha256); each
   # file is published under its own name beside the page, ahead of it, so a reader that gets the page finds its theme.
@@ -333,6 +335,16 @@ runtime:
     required: false
     module: omnimarket.nodes.node_floor_delegation_effect
     args: ["run", "--home", "{home}"]
+  # The delegation history: the lab projection's attempts and latencies per hour by model and task kind (read only, grouped server side),
+  # the routing overlay's backend settings and the lab experiment reports' result tables, folded by node_floor_delegation_history_compute
+  # into delegation-history.json (schema omnimarket.floor_delegation_history.v1). It runs with the other input steps, so it adds nothing
+  # past the group's 90 s. Not required: when it fails the previous file stays and is served again.
+  - name: delegation_history
+    concurrent: true
+    kind: module
+    required: false
+    module: omnimarket.nodes.node_floor_delegation_history_effect
+    args: ["run", "--home", "{home}"]
   # OMN-23315: the beta board. It reads the probes' finished runs one at a time inside its own 50 s deadline and the ledger's newest
   # rows, writes beta-board.json and copies beta.html and beta-board.json to every host its overlay lists (the same web servers that
   # serve the floor). Not required: when it fails the previous page stays on each host and its Computed line shows its age.
@@ -488,6 +500,7 @@ runtime:
     compare_data: floor-compare.json
     delegation_tracker_page: delegation.html
     delegation_tracker_data: delegation-tracker.json
+    delegation_history_data: delegation-history.json
     floor_page: floor/index.html
     data: factory-floor.json
     process_health: process-health.json

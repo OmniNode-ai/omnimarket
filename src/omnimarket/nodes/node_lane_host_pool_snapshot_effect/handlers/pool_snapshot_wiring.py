@@ -29,6 +29,7 @@ from omnimarket.nodes.node_lane_host_pool_snapshot_effect.handlers.pool_snapshot
     AdvertisementCommandSource,
     AdvertisementFileSource,
     LabHostTableSource,
+    LedgerOpenClaimsLanesSource,
     LedgerRunningLanesSource,
     TokenPoolCommandAccountsSource,
     resolve_path,
@@ -60,6 +61,10 @@ from omnimarket.nodes.node_reading_writer_effect.overlay import (
 from omnimarket.nodes.node_reading_writer_effect.protocols import (
     ProtocolLedgerRowSource,
 )
+from omnimarket.nodes.node_work_ledger_reader_effect.adapters.point_read_adapters import (
+    ReaderRouteError,
+    build_point_read,
+)
 
 
 def _row_source(
@@ -71,6 +76,23 @@ def _row_source(
         return build_row_source(route, environ)
     except LedgerRouteError as exc:
         raise ValueError(f"ledger_read route refused: {exc}") from None
+
+
+def _lanes_source(
+    overlay: ModelPoolSnapshotOverlay, environ: Mapping[str, str]
+) -> ProtocolRunningLanesSource:
+    """The ledger's open claims when the overlay names that read, else the lane rows of its ledger_read route."""
+    if overlay.open_claims_read is not None:
+        try:
+            point = build_point_read(overlay.open_claims_read, environ)
+        except ReaderRouteError as exc:
+            raise ValueError(f"open_claims_read route refused: {exc}") from None
+        return LedgerOpenClaimsLanesSource(point, overlay.ledger_lookback_hours)
+    if overlay.ledger_read is None:
+        raise ValueError("the redpanda backend needs its overlay fields")
+    return LedgerRunningLanesSource(
+        _row_source(overlay.ledger_read, environ), overlay.ledger_lookback_hours
+    )
 
 
 @dataclass(frozen=True)
@@ -103,12 +125,7 @@ def build_pool_snapshot_ports(
             publisher=publisher or InMemoryPoolSnapshotPublisher(),
         )
     route = overlay.advertisements
-    if (
-        route is None
-        or overlay.accounts is None
-        or not overlay.snapshot_path
-        or overlay.ledger_read is None
-    ):
+    if route is None or overlay.accounts is None or not overlay.snapshot_path:
         raise ValueError("the redpanda backend needs its overlay fields")
     advertisements: ProtocolHostAdvertisementSource
     if route.path:
@@ -139,10 +156,7 @@ def build_pool_snapshot_ports(
     return PoolSnapshotPorts(
         advertisements=advertisements,
         host_table=LabHostTableSource(environ),
-        lanes=LedgerRunningLanesSource(
-            _row_source(overlay.ledger_read, environ),
-            overlay.ledger_lookback_hours,
-        ),
+        lanes=_lanes_source(overlay, environ),
         accounts=TokenPoolCommandAccountsSource(
             overlay.accounts, runner, registry_roots=registry_roots
         ),
