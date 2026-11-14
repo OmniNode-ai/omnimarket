@@ -1802,6 +1802,7 @@
   "tests/nodes/node_lab_fill_effect/test_golden_chain_lab_fill_tick.py": 0.13,
   "tests/nodes/node_lab_fill_effect/test_golden_chain_lab_fill_zero_placement.py": 0.09,
   "tests/nodes/node_lab_fill_effect/test_lab_fill_send.py": 11.14,
+  "tests/nodes/node_lab_fill_effect/test_lab_fill_send_cli.py": 2.0,
   "tests/nodes/node_lab_fill_effect/test_local_adapters_lab_fill_effect.py": 1.17,
   "tests/nodes/node_lab_fill_effect/test_merged_history_lab_fill.py": 0.17,
   "tests/nodes/node_lab_fill_effect/test_work_state_owners_lab_fill.py": 0.02,
