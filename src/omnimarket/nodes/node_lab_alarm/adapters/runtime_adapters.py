@@ -70,9 +70,11 @@ class HttpManifest:
         failure = "OSError"
         for attempt in range(1, self._attempts + 1):
             try:
-                with urllib.request.urlopen(
-                    self._url, timeout=self._timeout
-                ) as response:
+                with (
+                    urllib.request.urlopen(  # no-contract-check: the lane's served-manifest read; port boundary, url injected by the overlay-built reader
+                        self._url, timeout=self._timeout
+                    ) as response
+                ):
                     payload = json.loads(response.read())
             except (
                 urllib.error.URLError,
@@ -188,7 +190,7 @@ class KafkaLag:
             raise GroupNeverCommittedError(
                 f"group {group} holds no committed offset on any partition"
             )
-        consumer = AIOKafkaConsumer(
+        consumer = AIOKafkaConsumer(  # no-contract-check: end-offsets read for the lane's own broker; port boundary behind ProtocolGroupLagReader
             client_id="broker-lag-alarm-consumer",
             security_protocol=security_protocol,
             **kwargs,
