@@ -23,10 +23,10 @@ from uuid import UUID
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict
 
+from omnimarket.events.dod_verdict_wire import ModelDodVerdictWire
 from omnimarket.nodes.node_projection_dod_verdict.handlers.handler_projection_dod_verdict import (
     resolve_dod_eval_outcome,
 )
-from omnimarket.nodes.node_projection_dod_verdict.models import ModelDodVerdictWire
 from omnimarket.nodes.node_projection_goal_trace.models import (
     EnumGoalTraceEventKind,
     ModelGoalTraceEvent,
