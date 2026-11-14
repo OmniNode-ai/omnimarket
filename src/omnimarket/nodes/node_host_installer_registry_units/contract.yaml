@@ -514,6 +514,9 @@ units:
       # The node's overlay (overlays repository, node_capture_silence_watch_effect) holds the secret_store block the password
       # reference is resolved through: the overlays clone the host's lab_hosts row declares, and nothing else.
       ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}"
+      # OMN-24342: the node publishes its alarms through the broker its overlay's event_bus declares (a lane id); the lane declaration
+      # table (config/lab/ci_bus_lanes.yaml) that names the lane's broker is found under this root. No KAFKA_* variable names a broker.
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
       # The Slack channel the watch's alarms are delivered to: the alert channel the other lab alarms post to
       # (#omninode-notifications, the id node_consumer_flow_stall_alert_effect's contract declares for its SLACK_CHANNEL_ID).
       # A channel id is configuration, not a secret. The node resolves its contract's secrets.SLACK_CHANNEL_ID through the
