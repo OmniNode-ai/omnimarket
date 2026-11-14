@@ -128,6 +128,9 @@ def build_dlq_envelope(
     handler: str,
     correlation_id: str,
     retry_count: int = 0,
+    source_topic: str | None = None,
+    source_partition: int | None = None,
+    source_offset: int | None = None,
 ) -> dict[str, Any]:
     """Build the canonical DLQ envelope for a dropped projection event.
 
@@ -135,6 +138,11 @@ def build_dlq_envelope(
     consumer drains every producer. ``correlation_id`` is hoisted to the top
     level (in addition to riding inside ``original_message``) so the failure is
     recoverable by correlation even when the offending payload is unparseable.
+
+    ``source_topic``/``source_partition``/``source_offset`` name the record the
+    refusal came from (OMN-22811), so a redrive reads that record again from the
+    source topic instead of relying on the bounded ``original_message``. They
+    ride in the envelope only when the consumer knows all three.
     """
     bounded, truncated = bound_dlq_original_message(
         original_message, max_bytes=DLQ_MAX_ENVELOPE_BYTES - _ENVELOPE_RESERVE_BYTES
@@ -147,6 +155,10 @@ def build_dlq_envelope(
         "failed_at": datetime.now(UTC).isoformat(),
         "handler": handler,
     }
+    if source_topic and source_partition is not None and source_offset is not None:
+        envelope["source_topic"] = source_topic
+        envelope["source_partition"] = source_partition
+        envelope["source_offset"] = source_offset
     if truncated:
         envelope["original_message_truncated"] = True
         envelope["original_message_bytes"] = len(
@@ -164,6 +176,9 @@ async def route_to_dlq(
     handler: str,
     correlation_id: str,
     retry_count: int = 0,
+    source_topic: str | None = None,
+    source_partition: int | None = None,
+    source_offset: int | None = None,
 ) -> bool:
     """Publish a malformed projection event to the contract-declared DLQ topic.
 
@@ -201,6 +216,9 @@ async def route_to_dlq(
         handler=handler,
         correlation_id=correlation_id,
         retry_count=retry_count,
+        source_topic=source_topic,
+        source_partition=source_partition,
+        source_offset=source_offset,
     )
     value = json.dumps(envelope, default=str).encode("utf-8")
     try:

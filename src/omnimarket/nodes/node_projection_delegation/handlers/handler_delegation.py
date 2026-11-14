@@ -857,6 +857,9 @@ class DelegationProjectionRunner(CoalescingProjectionBase):
         """
         fallback = meta.fallback_id if meta is not None else ""
         correlation_id = correlation_id_from_payload(data, fallback=fallback)
+        # OMN-22811: the envelope names the record it came from, so the redrive
+        # node can read it again from its source topic.
+        has_source = meta is not None and bool(meta.topic)
         await route_to_dlq(
             publish=await self.get_publish_fn(),
             dlq_topics=self._dlq_topics,
@@ -864,6 +867,11 @@ class DelegationProjectionRunner(CoalescingProjectionBase):
             failure_reason=reason,
             handler=HANDLER_ID_PROJECTION_DELEGATION,
             correlation_id=correlation_id,
+            source_topic=meta.topic if meta is not None and has_source else None,
+            source_partition=meta.partition
+            if meta is not None and has_source
+            else None,
+            source_offset=meta.offset if meta is not None and has_source else None,
         )
         return True
 
@@ -880,7 +888,7 @@ class DelegationProjectionRunner(CoalescingProjectionBase):
             # handler — same payload shape, same generation_events table write.
             ok = await self._project_generation_completed(data, meta)
         elif topic == self._topic_judge_verdict:
-            ok = await self._project_judge_verdict(data)
+            ok = await self._project_judge_verdict(data, meta)
         elif topic in {
             self._topic_delegate_skill_completed,
             self._topic_delegate_skill_failed,
@@ -936,7 +944,9 @@ class DelegationProjectionRunner(CoalescingProjectionBase):
 
         return ok
 
-    async def _project_judge_verdict(self, data: dict[str, Any]) -> bool:
+    async def _project_judge_verdict(
+        self, data: dict[str, Any], meta: MessageMeta | None = None
+    ) -> bool:
         try:
             # OMN-16831: ``ModelDelegationJudgeVerdictEvent`` is extra="forbid",
             # and ``unwrap_envelope`` injects ``_envelope`` into every payload
@@ -950,7 +960,7 @@ class DelegationProjectionRunner(CoalescingProjectionBase):
             )
         except ValidationError as exc:
             return await self._route_malformed_to_dlq(
-                data, f"judge verdict event failed model validation: {exc}"
+                data, f"judge verdict event failed model validation: {exc}", meta
             )
 
         row = _judge_verdict_projection_row(event)
@@ -1014,6 +1024,7 @@ class DelegationProjectionRunner(CoalescingProjectionBase):
                 f"{len(attribution_rows or [])} delegation row(s) yielding "
                 f"{len(attributions)} usable attribution(s) -- refusing rather "
                 "than letting the tenant column default absorb the write",
+                meta,
             )
         tenant_id = attributions.pop()
 

@@ -640,6 +640,15 @@ class BaseProjectionRunner(ABC):
         )
         return self._db_by_binding[binding_ref]
 
+    async def open_databases(self) -> None:
+        """Open the writer's database pools, for a caller that projects records
+        without running the consume loop (the dead-letter redrive, OMN-22811)."""
+        await self._connect_standalone_databases()
+
+    async def close_databases(self) -> None:
+        """Close what :meth:`open_databases` opened."""
+        await self._close_standalone_databases()
+
     async def _connect_standalone_databases(self) -> None:
         """Open and verify one pool per topology binding before consuming."""
         if not self._standalone_db_tables:
@@ -1273,6 +1282,9 @@ class BaseProjectionRunner(ABC):
             failure_reason=f"poison projection error: {err}",
             handler=type(self).__name__,
             correlation_id=correlation_id,
+            source_topic=meta.topic or topic,
+            source_partition=meta.partition,
+            source_offset=meta.offset,
         )
         value = json.dumps(envelope, default=str).encode("utf-8")
         try:
