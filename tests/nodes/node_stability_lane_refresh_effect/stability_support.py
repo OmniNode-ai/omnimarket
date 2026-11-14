@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from omnimarket.nodes.node_stability_lane_refresh_effect.adapters import (
     InMemoryAppliedPinStore,
+    InMemoryDiskFree,
     InMemoryHealth,
     InMemoryPinSource,
     InMemoryTags,
@@ -20,6 +21,9 @@ from omnimarket.nodes.node_stability_lane_refresh_effect.models import (
 )
 from omnimarket.nodes.node_stability_lane_refresh_effect.overlay import (
     ModelStabilityHostOverlay,
+)
+from omnimarket.nodes.node_stability_lane_refresh_effect.protocols import (
+    ProtocolDiskFree,
 )
 
 PIN = ModelReleasePinSet(
@@ -56,6 +60,7 @@ def overlay(**changes: object) -> ModelStabilityHostOverlay:
         "consumer_groups": {"EXAMPLE_GROUP": "example-box"},
         "workspace_config_root": "/example/config",
         "registry_root": "/example/home",
+        "disk_floor": {"path": "/example/home", "min_free_gib": 100},
         "pin_file": "/example/config/pin.yaml",
         "refresh_script": "/example/home/refresh.sh",
         "state_dir": "/example/state",
@@ -78,14 +83,19 @@ class Rig:
         tags: set[tuple[str, str]] | None = None,
         health: ModelLaneHealthReading | None = None,
         runner: RecordingExecutor | None = None,
+        free_gib: float = 500,
+        disk: ProtocolDiskFree | None = None,
+        host_overlay: ModelStabilityHostOverlay | None = None,
     ) -> None:
         self.runner = runner or RecordingExecutor()
         self.store = InMemoryAppliedPinStore(applied)
+        self.disk = disk or InMemoryDiskFree(int(free_gib * 1024**3))
         self.handler = HandlerStabilityLaneRefresh(
-            overlay=overlay(),
+            overlay=host_overlay or overlay(),
             pin_source=InMemoryPinSource(pin_text),
             applied=self.store,
             runner=self.runner,
             tags=InMemoryTags(ALL_TAGS if tags is None else tags),
+            disk=self.disk,
             health=InMemoryHealth(health),
         )

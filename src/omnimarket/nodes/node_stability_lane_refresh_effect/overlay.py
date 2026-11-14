@@ -4,8 +4,8 @@
 
 Found at ``<root>/node_stability_lane_refresh_effect/overlay.yaml`` under a root named in
 ``ONEX_SKILL_OVERLAY_ROOTS``. The package ships ``overlay.example.yaml`` with synthetic values. Nothing here
-has a default: an absent key refuses the load and names it. Container names are not an overlay value: the
-lane's compose project keeps them.
+has a default: an absent key refuses the load and names it, except ``disk_floor``, whose absence refuses
+the refresh. Container names are not an overlay value: the lane's compose project keeps them.
 """
 
 from __future__ import annotations
@@ -35,6 +35,17 @@ class ModelStabilityServeOverlay(BaseModel):
     join_timeout_s: float = Field(gt=0)
 
 
+class ModelStabilityDiskFloor(BaseModel):
+    """The volume whose free space a refresh reads, and the floor below which it refuses to run."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: The volume whose free space is read, on this host.
+    path: str = Field(min_length=1)
+    #: The free-space floor in GiB: a refresh refuses to start below it.
+    min_free_gib: float = Field(gt=0)
+
+
 class ModelStabilityHostOverlay(BaseModel):
     """One host's addresses, box id, consumer groups, ports and caps, and where its pin and tools live."""
 
@@ -57,6 +68,9 @@ class ModelStabilityHostOverlay(BaseModel):
     workspace_config_root: str = Field(min_length=1)
     #: The registry root holding the host's clones the refresh tags and stages from.
     registry_root: str = Field(min_length=1)
+    #: The lane volume's free-space floor: a refresh refuses to start below it. Absent means the refresh
+    #: refuses until the host overlay declares a floor.
+    disk_floor: ModelStabilityDiskFloor | None = None
     #: The committed dated pin file.
     pin_file: str = Field(min_length=1)
     #: The refresh script of the omnibase_infra clone, run on this host.
@@ -109,6 +123,7 @@ def load_overlay(environ: Mapping[str, str] | None = None) -> ModelStabilityHost
 
 __all__ = [
     "NODE_NAME",
+    "ModelStabilityDiskFloor",
     "ModelStabilityHostOverlay",
     "ModelStabilityServeOverlay",
     "load_overlay",

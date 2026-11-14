@@ -33,6 +33,10 @@ make the chain ``unknown``. A join keeps two readings: ``golden_at`` is the heal
 A join may also be declared to end at a node of its own from piece (``join_ends``), where no node of its to piece can emit a
 typed refusal: it is judged on that node's chain ending in a success or a typed failure within the deadline, and asks the to
 piece for nothing. Every other join still ends at its to piece.
+
+A join may also be declared to read only some nodes on each side (``join_chains``, OMN-23083): the piece-level view above is
+replaced, for that join alone, by the chains of its ``from_nodes`` on the from piece and its ``to_nodes`` on the to piece. A
+node of the piece outside both lists is read by no finding of the join, and its chains still count toward the piece's receipt.
 """
 
 from __future__ import annotations
@@ -45,6 +49,7 @@ from omnimarket.models.floor_17a import (
     ModelChainFinding,
     ModelFloorReceiptInput,
     ModelFloorReceipts,
+    ModelJoinChains,
     ModelJoinDef,
     ModelJoinEnd,
     ModelJoinReceipt,
@@ -228,6 +233,7 @@ class HandlerFloorReceipt:
             key: _PieceView(chains, real_origins)
             for key, chains in grouped_views.items()
         }
+        scoped = {c.join: c for c in request.join_chains}
 
         pieces: list[ModelPieceReceipt] = []
         for definition in sorted(request.pieces, key=lambda p: p.piece):
@@ -283,7 +289,17 @@ class HandlerFloorReceipt:
                     jdef, end, by_chain, request
                 )
             else:
-                receipt, join_findings = self._join(jdef, by_cid, now, request)
+                join_scope = scoped.get(jdef.id)
+                receipt, join_findings = self._join(
+                    jdef,
+                    by_cid
+                    if join_scope is None
+                    else self._scoped_views(
+                        jdef, join_scope, grouped_views, real_origins
+                    ),
+                    now,
+                    request,
+                )
             joins.append(receipt)
             findings.extend(join_findings)
         return ModelFloorReceipts.model_validate(
@@ -295,6 +311,23 @@ class HandlerFloorReceipt:
                 "findings": tuple(findings),
             }
         )
+
+    @staticmethod
+    def _scoped_views(
+        jdef: ModelJoinDef,
+        chains: ModelJoinChains,
+        grouped_views: dict[tuple[str, int], list[_ChainReading]],
+        real_origins: frozenset[ChainOrigin],
+    ) -> dict[tuple[str, int], _PieceView]:
+        """The join's own view: its from piece's chains of ``from_nodes`` and its to piece's chains of ``to_nodes`` (OMN-23083)."""
+        allowed = {jdef.from_piece: chains.from_nodes, jdef.to_piece: chains.to_nodes}
+        views: dict[tuple[str, int], _PieceView] = {}
+        for (cid, piece), readings in grouped_views.items():
+            nodes = allowed.get(piece)
+            kept = [r for r in readings if nodes is None or r.node in nodes]
+            if kept:
+                views[(cid, piece)] = _PieceView(kept, real_origins)
+        return views
 
     @staticmethod
     def _join_ending_at_node(

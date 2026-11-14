@@ -54,6 +54,7 @@ from omnimarket.models.floor_17a import (
     ModelFloorSimpleTickRequest,
     ModelFloorSimpleTickResult,
     ModelGoalScope,
+    ModelJoinChains,
     ModelJoinEnd,
     ModelLabSourceRead,
     ModelLabStateAlarmRequest,
@@ -315,6 +316,9 @@ class ModelFloorSimpleRuntime(BaseModel):
     # The joins that end at a node of this node's own piece, because no node downstream can emit a typed refusal for them
     # (OMN-22864). Each names a node among ``pipeline_chains``.
     join_ends: tuple[ModelJoinEnd, ...] = ()
+    # The joins that read only some nodes of their two pieces (OMN-23083): the node of a piece that runs its own pipeline, with
+    # nothing downstream to answer it, is left out of the join that would demand an answer.
+    join_chains: tuple[ModelJoinChains, ...] = ()
     # Where the ledger's rows are read from: the go for rebuild pieces and the events of pieces that write rows.
     ledger: ModelFileLedgerReadRoute | ModelCommandLedgerReadRoute = Field(
         discriminator="route"
@@ -1337,6 +1341,7 @@ class HandlerFloorSimpleTick:
                     ),
                 ),
                 join_ends=rt.join_ends,
+                join_chains=rt.join_chains,
                 real_origins=ov.readiness.real_origins,
             )
         )

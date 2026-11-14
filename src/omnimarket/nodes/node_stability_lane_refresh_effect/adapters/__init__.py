@@ -9,6 +9,7 @@ from omnimarket.nodes.node_stability_lane_refresh_effect.adapters.adapter_bus im
 )
 from omnimarket.nodes.node_stability_lane_refresh_effect.adapters.adapter_in_memory import (
     InMemoryAppliedPinStore,
+    InMemoryDiskFree,
     InMemoryHealth,
     InMemoryPinSource,
     InMemoryTags,
@@ -20,6 +21,7 @@ from omnimarket.nodes.node_stability_lane_refresh_effect.adapters.adapter_lab_ho
     FilePinSource,
     GitTagCheck,
     HttpLaneHealth,
+    StatvfsDiskFree,
     SubprocessRefreshExecutor,
 )
 
@@ -31,11 +33,13 @@ __all__ = [
     "GitTagCheck",
     "HttpLaneHealth",
     "InMemoryAppliedPinStore",
+    "InMemoryDiskFree",
     "InMemoryHealth",
     "InMemoryPinSource",
     "InMemoryTags",
     "RecordingExecutor",
     "StabilityServeJoinTimeoutError",
+    "StatvfsDiskFree",
     "SubprocessRefreshExecutor",
     "UnreadablePinSource",
 ]
