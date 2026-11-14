@@ -13,8 +13,11 @@ absent section changes nothing.
 
 Properties enforced here:
 
-* every backend's kind is ``endpoint`` and none names a credential (``secret_ref``,
-  ``api_key_ref`` or ``api_key_env``): a local GPU endpoint has no provider key;
+* every backend's kind is ``endpoint`` and none names ``api_key_ref`` or
+  ``api_key_env``: a local GPU endpoint has no provider key. A server that sits
+  behind a key of its own (OMN-23329) names it through ``secret_ref``, the one
+  credential surface a backend has; the value resolves from the secret store at
+  the call, never from this file;
 * every backend states a complete ``endpoint_url`` and a ``model_name``;
 * no backend is ``explicit_pin_only``: a local rung must be selectable by the
   ladder, not reachable only by a pin;
@@ -62,12 +65,11 @@ class ModelLocalEndpointsOverlay(BaseModel):
                 problems.append(f"duplicate local endpoint backend_id {name!r}")
         for backend in self.backends:
             bid = backend.backend_id
-            if (
-                backend.secret_ref or backend.api_key_ref or backend.api_key_env or ""
-            ).strip():
+            if (backend.api_key_ref or backend.api_key_env or "").strip():
                 problems.append(
-                    f"local endpoint {bid!r} must not name a credential; "
-                    "a local GPU endpoint has no provider key"
+                    f"local endpoint {bid!r} must not name api_key_ref or "
+                    "api_key_env; a local endpoint behind a key names it "
+                    "through secret_ref"
                 )
             if backend.kind is not EnumDelegationBackendKind.ENDPOINT:
                 problems.append(f"local endpoint {bid!r} kind must be endpoint")
