@@ -3,7 +3,7 @@
 """Consumer group state REDUCER handler (OMN-23992).
 
 Pure fold: ``(prior record, census event) -> new record``. The reducer keeps the first census time of the
-current unbroken run of EMPTY readings per group, so no file is needed. No I/O, no bus, no clock: times come
+current unbroken run of EMPTY readings per group, so no file is needed. It also carries each group's lag from the census and names the groups past the overlay's lag bar. No I/O, no bus, no clock: times come
 from the event. Every bound (empty-since bound, reap cap, patterns) comes from the node overlay.
 """
 
@@ -79,6 +79,7 @@ def fold(
                 state=state,
                 empty_since=empty_since,
                 last_seen=event.observed_at,
+                lag=event.lag.get(name),
             )
         )
     groups.sort(key=lambda g: g.name)
@@ -105,6 +106,10 @@ def fold(
     due.sort()
     due = due[: overlay.max_reap_per_decision]
 
+    lagging = sorted(
+        g.name for g in groups if g.lag is not None and g.lag > overlay.lag_bar_messages
+    )
+
     digest = decision_digest(
         event.bus_lane,
         event.correlation_id,
@@ -119,6 +124,7 @@ def fold(
         census_correlation_id=event.correlation_id,
         groups=tuple(groups),
         reap_due=tuple(due),
+        lagging=tuple(lagging),
         decided_by="reducer",
         decision_digest=digest,
     )

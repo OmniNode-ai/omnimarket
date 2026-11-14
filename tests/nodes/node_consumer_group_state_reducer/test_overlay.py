@@ -70,3 +70,28 @@ def test_overlay_with_no_root_refuses(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("ONEX_SKILL_OVERLAY_ROOTS", raising=False)
     with pytest.raises(ValueError, match="node_consumer_group_state_reducer"):
         load_overlay()
+
+
+def test_overlay_without_the_lag_bar_refuses_the_load(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "node_consumer_group_state_reducer"
+    target.mkdir()
+    document = yaml.safe_load((NODE_DIR / "overlay.example.yaml").read_text())
+    del document["lag_bar_messages"]
+    (target / "overlay.yaml").write_text(yaml.safe_dump(document))
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path))
+    with pytest.raises(NodeOverlayError, match="lag_bar_messages"):
+        load_overlay()
+
+
+def test_the_lag_bar_comes_from_the_overlay_value(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "node_consumer_group_state_reducer"
+    target.mkdir()
+    document = yaml.safe_load((NODE_DIR / "overlay.example.yaml").read_text())
+    document["lag_bar_messages"] = 7
+    (target / "overlay.yaml").write_text(yaml.safe_dump(document))
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path))
+    assert load_overlay().lag_bar_messages == 7

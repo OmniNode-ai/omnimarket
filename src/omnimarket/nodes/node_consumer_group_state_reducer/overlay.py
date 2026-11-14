@@ -22,6 +22,7 @@ class ModelGroupStateOverlay(BaseModel):
     """Overlay configuration for the consumer group state reducer.
 
     ``empty_since_bound_seconds``: a group must be EMPTY for at least this many seconds before it can be reaped.
+    ``lag_bar_messages``: a group whose lag at a census is above this many messages is named as lagging.
     ``max_reap_per_decision``: at most this many groups are reaped in one decision (first by name order).
     ``reapable_patterns``: regex patterns a group name must match to be reaped (at least one).
     ``protected_patterns``: regex patterns a group name must NOT match to be reaped (protected wins).
@@ -30,6 +31,7 @@ class ModelGroupStateOverlay(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     empty_since_bound_seconds: int = Field(ge=0)
+    lag_bar_messages: int = Field(ge=1)
     max_reap_per_decision: int = Field(ge=1)
     reapable_patterns: tuple[str, ...] = Field(min_length=1)
     protected_patterns: tuple[str, ...]

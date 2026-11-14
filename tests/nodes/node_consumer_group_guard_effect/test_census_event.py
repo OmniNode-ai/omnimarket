@@ -148,3 +148,78 @@ def test_contract_routes_census_operation_and_declares_no_unpublished_topic() ->
 
     module = importlib.import_module(census["handler"]["module"])
     assert hasattr(module, census["handler"]["name"])
+
+
+def _census(
+    states: dict[str, str], reader: Any, patterns: tuple[str, ...] = ("projection",)
+) -> Any:
+    handler = HandlerConsumerGroupCensusEvent(
+        group_lister=lambda _config: states,
+        broker_resolver=lambda _lane: ("broker", "env", {}),
+        lag_reader=reader,
+        lag_patterns=patterns,
+    )
+    return asyncio.run(
+        handler.handle(ModelConsumerGroupGuardRequest(bus_lane="lane-a"))
+    )
+
+
+def test_census_carries_the_lag_of_watched_groups_that_are_not_empty() -> None:
+    asked: list[list[str]] = []
+
+    def reader(_config: Any, names: list[str]) -> dict[str, int]:
+        asked.append(names)
+        return dict.fromkeys(names, 42)
+
+    event = _census(
+        {
+            "p.projection.a": "STABLE",
+            "p.projection.empty": "EMPTY",
+            "other": "STABLE",
+        },
+        reader,
+    )
+    assert asked == [["p.projection.a"]]
+    assert event.lag == {"p.projection.a": 42}
+
+
+def test_a_failed_lag_read_still_publishes_the_census_with_no_lag() -> None:
+    def reader(_config: Any, _names: list[str]) -> dict[str, int]:
+        raise RuntimeError("secret-token")
+
+    event = _census({"p.projection.a": "STABLE"}, reader)
+    assert event.lag == {}
+    assert event.groups == {"p.projection.a": "STABLE"}
+
+
+def test_no_watched_group_means_the_lag_reader_is_not_called() -> None:
+    def reader(_config: Any, _names: list[str]) -> dict[str, int]:
+        raise AssertionError("must not be called")
+
+    assert _census({"other": "STABLE"}, reader).lag == {}
+
+
+def test_lag_flows_from_the_census_through_the_reducer(
+    overlay: ModelGroupStateOverlay,
+) -> None:
+    bar = overlay.lag_bar_messages
+    event = _census(
+        {"p.projection.a": "STABLE", "p.projection.b": "STABLE"},
+        lambda _c, _names: {"p.projection.a": bar + 1, "p.projection.b": 0},
+    )
+    record = fold(
+        None, ModelGroupCensusEvent.model_validate(event.model_dump()), overlay
+    )
+    assert record.lagging == ("p.projection.a",)
+
+
+def test_the_contract_declares_the_lag_group_patterns() -> None:
+    from omnimarket.nodes.node_consumer_group_guard_effect.handlers.handler_consumer_group_guard import (
+        lag_group_patterns,
+    )
+
+    patterns = lag_group_patterns()
+    assert patterns
+    assert any(
+        __import__("re").search(p, "node_projection_delegation") for p in patterns
+    )

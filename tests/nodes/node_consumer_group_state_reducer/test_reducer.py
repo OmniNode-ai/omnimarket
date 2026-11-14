@@ -15,6 +15,7 @@ from omnimarket.nodes.node_consumer_group_state_reducer.handlers.handler_group_s
 )
 from omnimarket.nodes.node_consumer_group_state_reducer.models import (
     ModelGroupCensusEvent,
+    ModelGroupState,
     ModelGroupStateRecord,
     ModelGroupStateReduceCommand,
     decision_digest,
@@ -36,7 +37,7 @@ pytestmark = pytest.mark.unit
 BOUND = overlay().empty_since_bound_seconds
 
 
-def by_name(record: ModelGroupStateRecord) -> dict[str, object]:
+def by_name(record: ModelGroupStateRecord) -> dict[str, ModelGroupState]:
     return {g.name: g for g in record.groups}
 
 
@@ -160,3 +161,46 @@ def test_control_naive_fold_names_a_group_the_real_fold_holds_back() -> None:
     assert naive == (DUE_A,)
     assert real == ()
     assert real != naive
+
+
+LAG_BAR = overlay().lag_bar_messages
+PROJECTION = "example.projection.delegation"
+PROJECTION_B = "example.projection.savings"
+
+
+def test_a_group_past_the_lag_bar_is_named_lagging_and_its_lag_is_held() -> None:
+    event = census({PROJECTION: "STABLE", PROJECTION_B: "STABLE"}, seconds=0)
+    event = event.model_copy(
+        update={"lag": {PROJECTION: LAG_BAR + 1, PROJECTION_B: LAG_BAR}}
+    )
+    record = fold_all([event])
+    assert record.lagging == (PROJECTION,)
+    assert by_name(record)[PROJECTION].lag == LAG_BAR + 1
+    assert by_name(record)[PROJECTION_B].lag == LAG_BAR
+
+
+def test_a_group_whose_lag_was_not_read_is_never_named_lagging() -> None:
+    record = fold_all([census({PROJECTION: "STABLE"}, seconds=0)])
+    assert record.lagging == ()
+    assert by_name(record)[PROJECTION].lag is None
+
+
+def test_lag_is_read_fresh_at_each_census_not_carried_over() -> None:
+    first = census({PROJECTION: "STABLE"}, seconds=0).model_copy(
+        update={"lag": {PROJECTION: LAG_BAR * 10}}
+    )
+    second = census({PROJECTION: "STABLE"}, seconds=60).model_copy(
+        update={"lag": {PROJECTION: 3}}
+    )
+    record = fold_all([first, second])
+    assert record.lagging == ()
+    assert by_name(record)[PROJECTION].lag == 3
+
+
+def test_lag_does_not_change_the_reap_decision() -> None:
+    plain = census({DUE_A: "EMPTY"}, seconds=BOUND + 1)
+    lagged = plain.model_copy(update={"lag": {DUE_A: 1}})
+    start = census({DUE_A: "EMPTY"}, seconds=0)
+    a = fold_all([plain], fold_all([start]))
+    b = fold_all([lagged], fold_all([start]))
+    assert a.reap_due == b.reap_due == (DUE_A,)

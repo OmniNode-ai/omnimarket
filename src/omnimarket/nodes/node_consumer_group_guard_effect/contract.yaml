@@ -15,6 +15,12 @@ description: Counts a bus's consumer groups by state, fails when the Empty group
 # broker keeps an Empty group for 24 hours.
 consumer_group_guard:
   empty_group_max: 2000
+  # Lag reading (OMN-23992). A census reads the lag (messages behind, summed over the partitions a
+  # group has committed on) of every group that is not Empty and matches a pattern here: the groups
+  # of the projections the dashboards read (a projection's group name carries its node name; the pattern is read back on the development runtime, OMN-23992 AC5). The reducer holds the lag bar in its overlay.
+  lag:
+    group_patterns:
+      - 'node_projection_[a-z_]+'
   # Reaping (OMN-21818). A group is deleted only when it has been Empty in every run for
   # min_empty_age_seconds (two listings at least that far apart agree), its name matches a
   # reapable pattern (a per-call hex suffix) and matches no protected pattern. Protected

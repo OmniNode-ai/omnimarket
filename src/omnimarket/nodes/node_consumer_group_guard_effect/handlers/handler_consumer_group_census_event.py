@@ -12,6 +12,7 @@ exception class, never the client's error text.
 from __future__ import annotations
 
 import asyncio
+import re
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from uuid import uuid4
@@ -21,7 +22,9 @@ from omnimarket.models.consumer_group_state import (
     ModelGroupCensusEvent,
 )
 from omnimarket.nodes.node_consumer_group_guard_effect.handlers.handler_consumer_group_guard import (
+    lag_group_patterns,
     list_group_states,
+    read_group_lag,
 )
 from omnimarket.nodes.node_runtime_coverage_effect.handlers.handler_runtime_coverage import (
     resolve_broker,
@@ -40,10 +43,15 @@ class HandlerConsumerGroupCensusEvent:
         group_lister: Callable[[Mapping[str, str]], dict[str, str]] | None = None,
         broker_resolver: Callable[[str], tuple[str, str, dict[str, str]]] | None = None,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        lag_reader: Callable[[Mapping[str, str], list[str]], dict[str, int]]
+        | None = None,
+        lag_patterns: tuple[str, ...] | None = None,
     ) -> None:
         self._list = group_lister or list_group_states
         self._resolve = broker_resolver or resolve_broker
         self._clock = clock
+        self._read_lag = lag_reader or read_group_lag
+        self._lag_patterns = lag_patterns
 
     async def handle(
         self, request: ModelConsumerGroupGuardRequest
@@ -56,11 +64,32 @@ class HandlerConsumerGroupCensusEvent:
             raise ConsumerGroupCensusUnreadableError(type(exc).__name__) from None
         if not groups:
             raise ConsumerGroupCensusUnreadableError("an empty listing is not a census")
+        patterns = [
+            re.compile(p)
+            for p in (
+                self._lag_patterns
+                if self._lag_patterns is not None
+                else lag_group_patterns()
+            )
+        ]
+        watched = sorted(
+            name
+            for name, state in groups.items()
+            if state != "EMPTY" and any(p.search(name) for p in patterns)
+        )
+        lag: dict[str, int] = {}
+        if watched:
+            try:
+                lag = await asyncio.to_thread(self._read_lag, config, watched)
+            except Exception:
+                # The lag reading is secondary to the census: a failed read leaves every watched group's lag unread.
+                lag = {}
         return ModelGroupCensusEvent(
             correlation_id=uuid4(),
             bus_lane=request.bus_lane,
             observed_at=self._clock(),
             groups=groups,
+            lag={name: value for name, value in lag.items() if name in groups},
         )
 
 

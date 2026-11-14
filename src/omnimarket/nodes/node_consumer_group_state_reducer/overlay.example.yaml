@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 # Synthetic values. A deployment's real overlay lives in the overlays repository.
 empty_since_bound_seconds: 600
+lag_bar_messages: 5000
 max_reap_per_decision: 1000
 reapable_patterns:
   - '^example\.client\.[0-9a-f]{12}$'

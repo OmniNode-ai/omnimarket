@@ -31,6 +31,10 @@ class ModelGroupCensusEvent(BaseModel):
         min_length=1,
         description="group name -> UPPER-CASE state such as EMPTY, STABLE",
     )
+    lag: dict[str, int] = Field(
+        default_factory=dict,
+        description="group name -> messages behind, summed over its partitions; a group the census could not read has no entry",
+    )
 
 
 class ModelGroupState(BaseModel):
@@ -42,6 +46,11 @@ class ModelGroupState(BaseModel):
     state: str = Field(min_length=1)
     empty_since: AwareDatetime | None = None
     last_seen: AwareDatetime
+    lag: int | None = Field(
+        default=None,
+        ge=0,
+        description="messages behind at the last census; None when that census did not read this group's lag",
+    )
 
 
 class ModelGroupStateRecord(BaseModel):
@@ -54,6 +63,10 @@ class ModelGroupStateRecord(BaseModel):
     census_correlation_id: UUID
     groups: tuple[ModelGroupState, ...] = ()
     reap_due: tuple[str, ...] = ()
+    lagging: tuple[str, ...] = Field(
+        default=(),
+        description="groups whose lag at this census is past the overlay's lag bar, in name order",
+    )
     decided_by: Literal["reducer"] = "reducer"
     decision_digest: str = Field(min_length=64, max_length=64)
 

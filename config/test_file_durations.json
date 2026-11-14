@@ -876,6 +876,7 @@
   "tests/nodes/node_conflict_hunk_effect/test_golden_chain_conflict_hunk_effect.py": 0.02,
   "tests/nodes/node_conflict_hunk_effect/test_handler_conflict_hunk.py": 0.17,
   "tests/nodes/node_consumer_group_guard_effect/test_census_event.py": 2.84,
+  "tests/nodes/node_consumer_group_guard_effect/test_lag_reading.py": 1.5,
   "tests/nodes/node_consumer_group_guard_effect/test_reap_chain_events.py": 2.07,
   "tests/nodes/node_consumer_group_guard_effect/test_reap_command.py": 2.26,
   "tests/nodes/node_consumer_group_reap_effect/test_adapter_broker.py": 2.19,
