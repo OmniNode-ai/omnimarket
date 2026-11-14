@@ -10,6 +10,11 @@ duplicate removes the file; a refusal is final and moves it to ``refused/``, whe
 reports it to the writer's lane (recovery.report_refused_to_writers); any other answer stops the drain and
 leaves the file for the next one. One drain at a time (an fcntl lock).
 
+A request id the ledger host refused as a clash (the id already belongs to other rows) is refused again on every
+replay with the same words, so a replay of the same rows under that id is answered from the stored refusal and
+never sent: it adds no second file to ``refused/`` and no second report for the writer (OMN-24250). A refusal
+for any other cause, and corrected rows under the same id, are still sent, because their cause can have gone.
+
 A retry of a row whose first attempt got no answer (queued, or timed out) reuses that attempt's request id
 and rows, so the serve answers ``duplicate`` instead of appending or acknowledging the row a second time.
 """
@@ -39,6 +44,9 @@ OUTBOX_DIRNAME = "work-ledger-outbox"
 REFUSED_DIRNAME = "refused"
 DRAIN_LOCK_NAME = ".drain.lock"
 ATTEMPTS_DIRNAME = "attempts"
+# What the ledger host's append handler writes when a request id already belongs to other rows or another
+# principal (node_work_ledger_append_effect); a seam test builds the real refusal and fails if this drifts.
+CLASH_MARK = "already belongs to different rows or principal"
 # A retry follows its first attempt within minutes; past this the same words are a new row.
 RETRY_WINDOW = timedelta(minutes=30)
 _REQ_CELL = re.compile(r" \| req=[0-9a-fA-F-]{36}(?= \||$)")
@@ -104,6 +112,32 @@ def pending_count(state_dir: Path) -> int:
     return len(pending(state_dir))
 
 
+def stored_refusal(
+    state_dir: Path, request: ModelWorkLedgerAppendRequest
+) -> ModelWorkLedgerAppendReceipt | None:
+    """The clash refusal already kept for this request id and these rows, else None.
+
+    Only a request-id clash is final while the ledger holds the other rows; any other refusal (a guard whose
+    cause may be gone) is not reused. A file that cannot be read is left out.
+    """
+    directory = outbox_dir(state_dir) / REFUSED_DIRNAME
+    if not directory.is_dir():
+        return None
+    for path in sorted(directory.glob(f"*_{request.request_id}.json")):
+        try:
+            body = json.loads(path.read_text(encoding="utf-8"))
+            if body.get("rows") != request.rows:
+                continue
+            stored = ModelWorkLedgerAppendReceipt.model_validate(body["refusal"])
+        except (OSError, ValueError, KeyError, TypeError):
+            continue
+        if stored.status is EnumWorkLedgerAppendStatus.REFUSED and (
+            CLASH_MARK in stored.message
+        ):
+            return stored
+    return None
+
+
 async def drain(state_dir: Path, send: Sender, *, limit: int = 50) -> DrainResult:
     """Replay queued requests oldest first, each under its own request id."""
     directory = outbox_dir(state_dir)
@@ -119,6 +153,11 @@ async def drain(state_dir: Path, send: Sender, *, limit: int = 50) -> DrainResul
         replayed = duplicates = refused = 0
         stopped: str | None = None
         for path, request in pending(state_dir)[:limit]:
+            if stored_refusal(state_dir, request) is not None:
+                refused += 1
+                settle(state_dir, request.request_id)
+                path.unlink(missing_ok=True)
+                continue
             try:
                 receipt = await send(request)
             except (TimeoutError, OSError) as exc:
