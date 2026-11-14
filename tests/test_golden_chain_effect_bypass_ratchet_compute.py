@@ -17,7 +17,7 @@ import pytest
 import yaml
 from omnibase_core.enums.enum_workflow_result import EnumWorkflowResult
 
-from omnimarket.events.effect_bypass import (
+from omnimarket.models.effect_bypass import (
     EnumBypassFinding,
     ModelBypassRatchetVerdict,
 )

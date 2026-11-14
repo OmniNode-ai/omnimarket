@@ -9,7 +9,7 @@ A count that fell is noted as lowerable and passes: a change that removes a bypa
 
 from __future__ import annotations
 
-from omnimarket.events.effect_bypass import (
+from omnimarket.models.effect_bypass import (
     EnumBypassCategory,
     EnumBypassFinding,
     ModelBypassCategoryReading,

@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from omnimarket.events.effect_bypass import (
+from omnimarket.models.effect_bypass import (
     EnumBypassCategory,
     EnumBypassFinding,
     ModelBypassBaseline,

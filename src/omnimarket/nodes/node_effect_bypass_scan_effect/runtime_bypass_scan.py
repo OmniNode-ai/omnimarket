@@ -20,12 +20,12 @@ from pathlib import Path
 import yaml
 from pydantic import ValidationError
 
-from omnimarket.events.effect_bypass import (
+from omnimarket.handlers.node_overlay_reader import NodeOverlayError
+from omnimarket.models.effect_bypass import (
     EnumBypassCategory,
     ModelBypassBaseline,
     ModelBypassRatchetRequest,
 )
-from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.nodes.node_effect_bypass_ratchet_compute.handlers.handler_bypass_ratchet import (
     HandlerBypassRatchet,
 )

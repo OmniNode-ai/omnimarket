@@ -6,10 +6,10 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.events.effect_bypass.enum_bypass import (
+from omnimarket.models.effect_bypass.enum_bypass import (
     EnumBypassCategory,
 )
-from omnimarket.events.effect_bypass.model_bypass_baseline import (
+from omnimarket.models.effect_bypass.model_bypass_baseline import (
     ModelBypassCounts,
 )
 

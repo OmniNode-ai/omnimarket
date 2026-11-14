@@ -31,16 +31,16 @@ description: >
   and not ok (a baseline only shrinks). A category that fell is noted as lowerable and stays ok.
 input_model:
   name: "ModelBypassRatchetRequest"
-  module: "omnimarket.events.effect_bypass.model_bypass_ratchet"
+  module: "omnimarket.models.effect_bypass.model_bypass_ratchet"
   description: "One repository's scan, the baseline, and optionally the merge base's baseline."
 output_model:
   name: "ModelBypassRatchetVerdict"
-  module: "omnimarket.events.effect_bypass.model_bypass_ratchet"
+  module: "omnimarket.models.effect_bypass.model_bypass_ratchet"
   description: "Per-category reading, the totals and the findings."
 handler:
   module: "omnimarket.nodes.node_effect_bypass_ratchet_compute.handlers.handler_bypass_ratchet"
   class: "HandlerBypassRatchet"
-  input_model: "omnimarket.events.effect_bypass.model_bypass_ratchet.ModelBypassRatchetRequest"
+  input_model: "omnimarket.models.effect_bypass.model_bypass_ratchet.ModelBypassRatchetRequest"
 handler_routing:
   routing_strategy: "operation_match"
   default_handler: "omnimarket.nodes.node_effect_bypass_ratchet_compute.handlers.handler_bypass_ratchet:HandlerBypassRatchet"

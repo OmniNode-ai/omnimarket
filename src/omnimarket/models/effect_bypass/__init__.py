@@ -2,19 +2,19 @@
 # SPDX-License-Identifier: MIT
 """Typed models of the effect-node bypass ratchet (OMN-24432)."""
 
-from omnimarket.events.effect_bypass.enum_bypass import (
+from omnimarket.models.effect_bypass.enum_bypass import (
     EnumBypassCategory,
     EnumBypassFinding,
 )
-from omnimarket.events.effect_bypass.model_bypass_baseline import (
+from omnimarket.models.effect_bypass.model_bypass_baseline import (
     ModelBypassBaseline,
     ModelBypassCounts,
 )
-from omnimarket.events.effect_bypass.model_bypass_inventory import (
+from omnimarket.models.effect_bypass.model_bypass_inventory import (
     ModelBypassInventory,
     ModelBypassSite,
 )
-from omnimarket.events.effect_bypass.model_bypass_ratchet import (
+from omnimarket.models.effect_bypass.model_bypass_ratchet import (
     ModelBypassCategoryReading,
     ModelBypassRatchetRequest,
     ModelBypassRatchetVerdict,
