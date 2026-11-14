@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 import sys
 from contextlib import AbstractContextManager, nullcontext
 
@@ -24,9 +23,6 @@ from omnimarket.nodes.node_topic_provision_dry_run_effect.handlers.handler_topic
 )
 from omnimarket.nodes.node_topic_provision_dry_run_effect.models.model_topic_provision_dry_run_request import (
     ModelTopicProvisionDryRunRequest,
-)
-from omnimarket.nodes.node_topic_provision_plan_compute.handlers.handler_topic_provision_plan import (
-    TopicProvisionRuleError,
 )
 from omnimarket.nodes.node_topic_provision_plan_compute.overlay import (
     load_provision_overlay,
@@ -47,15 +43,6 @@ def main() -> int:
         if transport is not None:
             binding = bind_lane_client_transport(transport)
         lister = AiokafkaBrokerTopicLister(selection.bootstrap_servers)
-    elif overlay.bootstrap_env:
-        addr = os.environ.get(
-            overlay.bootstrap_env, ""
-        )  # node-purity-ok: boundary entry reads the broker address variable the overlay names
-        if not addr:
-            raise TopicProvisionRuleError(
-                f"environment variable {overlay.bootstrap_env!r} is empty or unset"
-            )
-        lister = AiokafkaBrokerTopicLister(addr)
     handler = HandlerTopicProvisionDryRun(lister)
     with binding:
         plan = asyncio.run(

@@ -18,7 +18,6 @@ class ModelTopicProvisionOverlay(BaseModel):
     profile: str | None = None
     lane_manifest: tuple[str, ...] = ()
     contract_roots: tuple[str, ...] = ()
-    bootstrap_env: str | None = None
     lane: str | None = (
         None  # a declared lane whose broker and identity the dry run reads
     )

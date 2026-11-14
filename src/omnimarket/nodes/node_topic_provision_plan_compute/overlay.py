@@ -42,7 +42,7 @@ def load_provision_rule(
 def load_provision_overlay(
     environ: Mapping[str, str] | None = None,
 ) -> ModelTopicProvisionOverlay:
-    """Read the full overlay (mode, profile, lane_manifest, contract_roots, bootstrap_env)."""
+    """Read the full overlay (mode, profile, lane_manifest, contract_roots, lane)."""
     if find_node_overlay(NODE_NAME, environ) is not None:
         return load_structured_overlay(NODE_NAME, ModelTopicProvisionOverlay, environ)
     return ModelTopicProvisionOverlay()

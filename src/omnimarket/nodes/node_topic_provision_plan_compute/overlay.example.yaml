@@ -11,9 +11,8 @@
 # lane_manifest: the list of contract names this lane provisions.
 #   Required for profile_and_manifest mode; must be non-empty.
 # contract_roots: directories to scan for contract.yaml files.
-# bootstrap_env: the environment variable name holding the broker address,
-#   used by the read-only dry run to count live topics.# lane: a declared lane (e.g. dev) whose broker and identity the dry run reads; when set it
-#   is used instead of bootstrap_env.
+# lane: a declared lane (e.g. dev) whose broker and identity the read-only dry run reads to
+#   count live topics; without it the dry run lists no topics.
 mode: profile_and_manifest
 profile: main
 lane_manifest:
@@ -21,5 +20,4 @@ lane_manifest:
   - example-contract-b
 contract_roots:
   - /path/to/contracts
-bootstrap_env: BROKER_ADDRESS
-# lane: dev
+lane: dev
