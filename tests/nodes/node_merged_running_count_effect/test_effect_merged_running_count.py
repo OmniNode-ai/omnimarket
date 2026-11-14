@@ -16,12 +16,12 @@ from typing import Any
 
 import pytest
 
-from omnimarket.models.model_merged_running_count import (
-    ModelMrcConfig,
-)
-from omnimarket.nodes.node_host_table_compute.models.model_host_table import (
+from omnimarket.events.host_table import (
     ModelHostTableResult,
     ModelHostTableRow,
+)
+from omnimarket.models.model_merged_running_count import (
+    ModelMrcConfig,
 )
 from omnimarket.nodes.node_merged_running_count_effect.handlers.handler_merged_running_count_effect import (
     HandlerMergedRunningCountEffect,

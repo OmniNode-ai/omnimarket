@@ -14,13 +14,13 @@ from datetime import datetime
 
 from pydantic import ValidationError
 
-from omnimarket.nodes.node_host_table_keys_ingest_effect.handlers.store_host_keys import (
-    ProtocolHostKeyStore,
-)
-from omnimarket.nodes.node_host_table_keys_ingest_effect.models.model_host_table_keys import (
+from omnimarket.events.host_table_keys import (
     ModelHostTableKeysDocument,
     ModelHostTableKeysOverlay,
     ModelHostTableKeysReading,
+)
+from omnimarket.nodes.node_host_table_keys_ingest_effect.handlers.store_host_keys import (
+    ProtocolHostKeyStore,
 )
 from omnimarket.nodes.node_host_table_keys_read_effect.models.model_host_table_keys_read import (
     ModelHostTableKeysReadRequest,

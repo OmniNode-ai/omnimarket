@@ -16,7 +16,7 @@ input_model:
   module: omnimarket.models.overlay_store.model_overlay_store
 output_model:
   name: ModelHostTableKeysIngestResult
-  module: omnimarket.nodes.node_host_table_keys_ingest_effect.models.model_host_table_keys
+  module: omnimarket.events.host_table_keys
 overlay:
   node: node_host_table_keys_ingest_effect
   roots_env: ONEX_SKILL_OVERLAY_ROOTS
@@ -24,7 +24,7 @@ handler:
   module: omnimarket.nodes.node_host_table_keys_ingest_effect.handlers.handler_host_table_keys_ingest
   class: HandlerHostTableKeysIngest
   input_model: omnimarket.models.overlay_store.model_overlay_store.ModelOverlayStoreRecord
-  output_model: omnimarket.nodes.node_host_table_keys_ingest_effect.models.model_host_table_keys.ModelHostTableKeysIngestResult
+  output_model: omnimarket.events.host_table_keys.ModelHostTableKeysIngestResult
 handler_routing:
   routing_strategy: payload_type_match
   handlers:

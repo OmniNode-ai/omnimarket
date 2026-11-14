@@ -14,12 +14,12 @@ from pathlib import Path
 import pytest
 import yaml
 
+from omnimarket.events.host_table import ModelHostTableRequest
 from omnimarket.handlers.overlay_keys import resolve_lab_hosts_table
 from omnimarket.nodes.node_factory_floor_effect.source_loader import load_host_table
 from omnimarket.nodes.node_host_table_compute.handlers.handler_host_table import (
     HandlerHostTable,
 )
-from omnimarket.nodes.node_host_table_compute.models import ModelHostTableRequest
 from omnimarket.nodes.node_lab_placement_compute.handlers.handler_lab_placement import (
     HandlerLabPlacement,
 )

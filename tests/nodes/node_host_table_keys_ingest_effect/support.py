@@ -7,12 +7,12 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
+from omnimarket.events.host_table_keys import (
+    ModelHostTableKeysOverlay,
+)
 from omnimarket.models.overlay_store.model_overlay_store import (
     ModelOverlayStoreRecord,
     document_digest,
-)
-from omnimarket.nodes.node_host_table_keys_ingest_effect.models.model_host_table_keys import (
-    ModelHostTableKeysOverlay,
 )
 
 NOW = datetime(2026, 11, 12, 12, 0, tzinfo=UTC)

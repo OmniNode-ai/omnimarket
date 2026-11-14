@@ -18,13 +18,13 @@ from pathlib import Path
 import pytest
 import yaml
 
+from omnimarket.events.host_table import (
+    ModelHostTableRequest,
+    ModelHostTableResult,
+)
 from omnimarket.handlers.overlay_keys import resolve_lab_hosts_table
 from omnimarket.nodes.node_host_table_compute.handlers.handler_host_table import (
     HandlerHostTable,
-)
-from omnimarket.nodes.node_host_table_compute.models import (
-    ModelHostTableRequest,
-    ModelHostTableResult,
 )
 from omnimarket.nodes.node_merged_running_count_effect.sources import (
     source_local_files,

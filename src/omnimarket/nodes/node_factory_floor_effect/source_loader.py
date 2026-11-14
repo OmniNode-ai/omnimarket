@@ -22,6 +22,9 @@ from typing import Any, Literal
 import yaml
 from pydantic import ValidationError
 
+from omnimarket.events.host_table import (
+    ModelHostTableRequest,
+)
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.handlers.overlay_keys import resolve_lab_hosts_table
 from omnimarket.models.model_factory_floor_input import (
@@ -86,9 +89,6 @@ from omnimarket.nodes.node_factory_floor_effect.models.model_factory_floor_runti
 from omnimarket.nodes.node_host_table_compute.handlers.handler_host_table import (
     HandlerHostTable,
     HostTableRefusedError,
-)
-from omnimarket.nodes.node_host_table_compute.models.model_host_table import (
-    ModelHostTableRequest,
 )
 from omnimarket.nodes.node_lane_container_budget_compute.handlers.handler_lane_container_budget import (
     HandlerLaneContainerBudget,

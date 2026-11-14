@@ -17,6 +17,10 @@ from typing import Any
 
 import yaml
 
+from omnimarket.events.host_table import (
+    ModelHostTableRequest,
+    ModelHostTableResult,
+)
 from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
     load_structured_overlay,
@@ -30,10 +34,6 @@ from omnimarket.models.model_merged_running_count import (
 from omnimarket.models.model_runtime_host_reads import ModelRuntimeHostReadOverlay
 from omnimarket.nodes.node_host_table_compute.handlers.handler_host_table import (
     HandlerHostTable,
-)
-from omnimarket.nodes.node_host_table_compute.models.model_host_table import (
-    ModelHostTableRequest,
-    ModelHostTableResult,
 )
 from omnimarket.nodes.node_merged_running_count_effect.handlers.handler_merged_running_count_effect import (
     HandlerMergedRunningCountEffect,

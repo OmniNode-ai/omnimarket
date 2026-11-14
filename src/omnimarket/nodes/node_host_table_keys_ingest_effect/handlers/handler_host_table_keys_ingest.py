@@ -15,6 +15,14 @@ from datetime import UTC, datetime
 
 from pydantic import ValidationError
 
+from omnimarket.events.host_table import (
+    ModelHostTableRequest,
+)
+from omnimarket.events.host_table_keys import (
+    ModelHostTableKeysDocument,
+    ModelHostTableKeysIngestResult,
+    ModelHostTableKeysOverlay,
+)
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
 from omnimarket.models.overlay_keys import ModelLabHostsTable
 from omnimarket.models.overlay_store.model_overlay_store import ModelOverlayStoreRecord
@@ -22,15 +30,7 @@ from omnimarket.nodes.node_host_table_compute.handlers.handler_host_table import
     HandlerHostTable,
     HostTableRefusedError,
 )
-from omnimarket.nodes.node_host_table_compute.models.model_host_table import (
-    ModelHostTableRequest,
-)
 
-from ..models.model_host_table_keys import (
-    ModelHostTableKeysDocument,
-    ModelHostTableKeysIngestResult,
-    ModelHostTableKeysOverlay,
-)
 from .store_host_keys import ProtocolHostKeyStore, StoreHostKeysValkey
 
 OVERLAY_ID = "node_host_table_keys_ingest_effect"

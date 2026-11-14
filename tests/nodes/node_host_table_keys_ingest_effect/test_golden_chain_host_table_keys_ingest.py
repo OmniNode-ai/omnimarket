@@ -12,14 +12,14 @@ import pytest
 import yaml
 from pydantic import BaseModel
 
+from omnimarket.events.host_table_keys import (
+    ModelHostTableKeysDocument,
+)
 from omnimarket.nodes.node_host_table_keys_ingest_effect.handlers.handler_host_table_keys_ingest import (
     HandlerHostTableKeysIngest,
 )
 from omnimarket.nodes.node_host_table_keys_ingest_effect.handlers.store_host_keys import (
     StoreHostKeysInMemory,
-)
-from omnimarket.nodes.node_host_table_keys_ingest_effect.models.model_host_table_keys import (
-    ModelHostTableKeysDocument,
 )
 from tests.nodes.node_host_table_compute.table_support import (
     EXCLUDED,
