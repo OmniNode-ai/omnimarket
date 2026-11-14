@@ -1,0 +1,64 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Floor Delegation History Compute
+#
+# One pure fold: handle(ModelHistoryRequest) -> ModelDelegationHistory. It turns the readings of the delegation projection (attempts
+# and latencies per hour, first and last seen per model), the routing overlay's backend settings, the experiment reports' tables and
+# the overlay's policy (engine rules, serving settings, arm rules) into delegation-history.json: the models, the success series with
+# Wilson intervals, and the experiments with their arms and paired tests. No clock, no I/O, no model call; the same request in any
+# row order gives byte-identical output. The effect node node_floor_delegation_history_effect makes the readings and writes the file.
+name: node_floor_delegation_history_compute
+contract_name: node_floor_delegation_history_compute
+node_name: node_floor_delegation_history_compute
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: compute
+lifecycle: experimental
+runtime_profiles: []
+
+description: >
+  Folds the delegation projection's per-hour attempts and latencies, the routing overlay's backend settings and the lab experiment
+  reports' result tables into the delegation history document (models, series, experiments), with Wilson 95 percent intervals
+  computed from correct over n.
+
+handler:
+  module: omnimarket.nodes.node_floor_delegation_history_compute.handlers.handler_floor_delegation_history
+  class: HandlerFloorDelegationHistory
+  input_model: omnimarket.nodes.node_floor_delegation_history_compute.models.model_history_request.ModelHistoryRequest
+  output_model: omnimarket.nodes.node_floor_delegation_history_compute.models.model_delegation_history.ModelDelegationHistory
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: build_delegation_history
+      handler:
+        name: HandlerFloorDelegationHistory
+        module: omnimarket.nodes.node_floor_delegation_history_compute.handlers.handler_floor_delegation_history
+      input_model: omnimarket.nodes.node_floor_delegation_history_compute.models.model_history_request.ModelHistoryRequest
+      output_model: omnimarket.nodes.node_floor_delegation_history_compute.models.model_delegation_history.ModelDelegationHistory
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 10000
+  runtime_profiles: []
+
+input_model:
+  name: ModelHistoryRequest
+  module: omnimarket.nodes.node_floor_delegation_history_compute.models.model_history_request
+  description: The readings and the overlay's policy.
+output_model:
+  name: ModelDelegationHistory
+  module: omnimarket.nodes.node_floor_delegation_history_compute.models.model_delegation_history
+  description: The served document, schema id omnimarket.floor_delegation_history.v1.
+
+runtime_dispatch:
+  external_trigger: called in process by node_floor_delegation_history_effect, a step of the factory floor publish; it has no bus surface of its own.
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+metadata:
+  transport_type: local
