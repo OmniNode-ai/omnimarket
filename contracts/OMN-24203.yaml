@@ -29,3 +29,6 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/chains/lane_container_budget/test_chain_dev_lane_four_applications.py -q --no-cov --tb=line
     cwd: .
+  - check_type: command
+    check_value: python3 -c "import json; p='tests/chains/lane_container_budget/test_chain_dev_lane_four_applications.py'; d=json.load(open('config/test_file_durations.d/tests__chains__lane_container_budget__test_chain_dev_lane_four_applications.json')); assert d[p] > 0, d"
+    cwd: .
