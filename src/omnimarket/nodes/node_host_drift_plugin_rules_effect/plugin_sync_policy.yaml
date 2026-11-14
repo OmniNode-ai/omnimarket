@@ -8,7 +8,13 @@ rules:
   # The omni plugin: a same-version tree that differs from its shipped revision is reinstalled at that
   # revision, only between lanes (OMN-20846).
   - {match: "plugin:omni@omninode-internal", kinds: [plugin], observed_contains: ["tree modified"], sync_class: SAFE, action: repair-plugin, between_lanes: true}
-  # Behind the merged tip: the tree install from that tip, with the installed revision merged in so
+  # A merged version that differs from the installed one is repaired by the plugin's own update, whether
+  # or not the installed revision also lacks the merged tip (OMN-24404, moved from the frozen repository's
+  # OMN-24194, RULING 2026-11-03T18:40:27Z). On h101 on 2026-11-13 the tree install put the 0.4.476 tree
+  # into the 0.4.475 cache path three times and left the installed record at 0.4.475 until a person ran
+  # the plugin update. It precedes the plugin-behind rule.
+  - {match: "plugin:omni@omninode-internal", kinds: [plugin], version_differs: true, sync_class: SAFE, action: update-plugin}
+  # Behind the merged tip at the merged version: the tree install from that tip, with the installed revision merged in so
   # branch-installed fixes stay until they merge (OMN-20497). It does not wait for lanes.
   - {match: "plugin:omni@omninode-internal", kinds: [plugin], observed_contains: ["plugin-behind:"], sync_class: SAFE, action: install-plugin-tree}
   # Behind main past placement's bound with nothing newer for a marketplace update to fetch: the tree

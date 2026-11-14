@@ -1,0 +1,32 @@
+---
+schema_version: 1.0.0
+ticket_id: OMN-23328
+title: Frozen fixture pack for measuring the code graph against Gortex on eight two-repository questions
+summary: 'This change freezes the experiment''s inputs: the corpus commits, eight questions with source-derived gold facts, the predeclared gate and an empty 32-row results table. The arms have not run, so the results table and the adoption verdict (the ticket''s second and third criteria) are not part of this change.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23328-frozen-fixture-pack
+  statement: The fixture pack is written and frozen before either arm runs.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: eight investigation questions over a frozen two-repository corpus (for example omnibase_spi and omnibase_infra), each with source-derived must-find facts, relevant tests, expected ambiguities and a rubric, are written and frozen before either arm runs, and the gold answers come from neither arm -- falsifier: the fixture pack''s commit predates the first arm run in the experiment log'
+evidence_requirements:
+- kind: tests
+  description: The fixture pack structure tests pass at the pushed head.
+  command: uv run --frozen pytest tests/unit/experiments/code_graph_vs_gortex/test_fixture_pack.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23328-ac1
+  description: 'AC1: eight questions with must-find facts, tests, ambiguities and a rubric over two pinned repositories, frozen with the gate and an empty 32-row table'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/experiments/code_graph_vs_gortex/test_fixture_pack.py -q --no-cov -n 0 -p no:randomly
+    cwd: .

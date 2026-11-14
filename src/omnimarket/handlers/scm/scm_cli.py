@@ -158,6 +158,17 @@ def _target(text: str, *, pr: bool) -> tuple[str, int | None]:
     return match["repo"], int(number) if number is not None else None
 
 
+def _target_optional_pr(text: str) -> tuple[str, int | None]:
+    """A repo target with or without a PR number (``OWNER/REPO`` or ``OWNER/REPO#N``)."""
+    match = _TARGET.match(text)
+    if match is None:
+        raise click.UsageError(
+            f"target {text!r} is not {_REPO_TARGET_HELP} or {_PR_TARGET_HELP}"
+        )
+    number = match["number"]
+    return match["repo"], int(number) if number is not None else None
+
+
 def _emit(answer: ModelScmAnswer, *, attempts: int | None = None) -> int:
     payload = answer.model_dump(mode="json")
     if attempts is not None:
@@ -496,6 +507,9 @@ def verbs_command() -> None:
 
 # ------------------------------------------------------------------- reads
 
+# Reads that take a pull request or a branch: the target may or may not name a PR.
+_PR_OR_REPO_READS: Final[frozenset[str]] = frozenset({"code_scanning_alerts"})
+
 _PR_SCOPED_READS: Final[frozenset[str]] = frozenset(
     {
         "pr_text",
@@ -528,7 +542,9 @@ def _read_command(spec: ModelScmVerb) -> click.Command:
     @click.option("--job-id", type=int, default=None, help="job-log.")
     @click.option("--artifact-id", type=int, default=None, help="run-download.")
     @click.option(
-        "--branch", default=None, help="run-list, branch-protection, pr-heads."
+        "--branch",
+        default=None,
+        help="run-list, branch-protection, pr-heads, code-scanning-alerts.",
     )
     @click.option(
         "--head-sha",
@@ -581,7 +597,11 @@ def _read_command(spec: ModelScmVerb) -> click.Command:
         dispatch_receipt: Path | None,
         **fields: object,
     ) -> None:
-        repo, number = _target(target, pr=pr_scoped)
+        repo, number = (
+            _target_optional_pr(target)
+            if spec.operation in _PR_OR_REPO_READS
+            else _target(target, pr=pr_scoped)
+        )
         bus_opts = {
             name: fields.pop(name)
             for name in ("omnibase_path", "bus", "bus_lane", "kafka_bootstrap")

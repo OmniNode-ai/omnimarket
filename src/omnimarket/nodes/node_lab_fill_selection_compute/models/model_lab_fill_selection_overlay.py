@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
 
@@ -30,6 +30,10 @@ class ModelLabFillSelectionOverlay(BaseModel):
     document_repositories: list[str]
     delegation_epics: list[str] = []
     delegation_owners: list[str] = []
+    # OMN-19998: the terminal outcomes that hold a ticket out of the fill, and the window in hours
+    # the hold lasts; both optional, left out they hold nothing off.
+    terminal_hold_outcomes: list[str] = []
+    terminal_hold_window_hours: int = Field(default=0, ge=0)
 
     @classmethod
     def load_deployment(

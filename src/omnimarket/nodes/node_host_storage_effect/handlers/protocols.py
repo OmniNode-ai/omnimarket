@@ -7,6 +7,7 @@ from __future__ import annotations
 from typing import Protocol
 
 from omnimarket.nodes.node_host_storage_effect.models.model_host_storage import (
+    ModelHostStorageEntryRun,
     ModelHostStorageRun,
 )
 from omnimarket.nodes.node_host_storage_effect.models.model_host_storage_overlay import (
@@ -25,3 +26,12 @@ class ProtocolHostStorageBackend(Protocol):
     def run(
         self, host: ModelStorageHost, command: ModelStorageCommand
     ) -> ModelHostStorageRun: ...
+
+    def remove_entries(
+        self,
+        host: ModelStorageHost,
+        command: ModelStorageCommand,
+        entries: tuple[str, ...],
+    ) -> ModelHostStorageEntryRun:
+        """Judge and remove each named entry of an entry command; one typed row per entry."""
+        ...

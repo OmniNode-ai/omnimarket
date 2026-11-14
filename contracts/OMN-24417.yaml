@@ -1,0 +1,61 @@
+schema_version: 1.0.0
+ticket_id: OMN-24417
+title: Count running lanes from the open-claims answer, not two thousand log rows
+summary: The lane host pool snapshot reads the running lanes per host from the ledger node's open-claims point query (claims since the lookback, each with its host) when its overlay names open_claims_read, instead of the TERMINAL, RELEASE and CLAIM rows of the whole lookback, which the node refuses over its answer bound or which run past the read limit. The overlays side (the overlay names the open-claims read) is a separate pull request of the same ticket.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24417-open-claims
+  statement: The pool snapshot counts the lanes running on each host from one open-claims read, so a pass no longer ends lanes_unread on a busy ledger.
+  acceptance:
+  - id: AC1
+    statement: "AC1: when the overlay names an open-claims read, the pool snapshot counts running lanes per host from the log service's open-claims answer (claims since the lookback, one lane counted once, a claim with no host skipped), follows its next cursor, and ends the pass in the typed lanes_unread failure when the answer is an error or a cursor repeats -- falsifier: pytest tests/nodes/node_lane_host_pool_snapshot_effect/test_open_claims_lanes_source.py -q"
+  - id: AC2
+    statement: "AC2: an overlay naming both the rows read and the open-claims read, or neither, is refused, and a route naming only the rows read still builds the rows source as before -- falsifier: pytest tests/nodes/node_lane_host_pool_snapshot_effect/test_open_claims_lanes_source.py tests/nodes/node_lane_host_pool_snapshot_effect/test_pool_snapshot_wiring_roots.py -q"
+  - id: AC3
+    statement: "AC3: integrated: on lab host h053 the snapshot node run in observe mode against the branch, with the overlay naming the open-claims read, prints status ok with hosts above zero, where the rows read on the same host ends lanes_unread -- falsifier: run python -m omnimarket.nodes.node_lane_host_pool_snapshot_effect --observe with the rows overlay and read lanes_unread, then with the open-claims overlay and read the host rows"
+evidence_requirements:
+- kind: tests
+  description: The open-claims lanes source, the overlay refusals and the existing pool snapshot tests pass at the pushed head.
+  command: uv run pytest tests/nodes/node_lane_host_pool_snapshot_effect -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24417-ac1
+  description: 'AC1: the open-claims source tests pass with the change; against the previous source files the test module fails to import (LedgerOpenClaimsLanesSource is absent).'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lane_host_pool_snapshot_effect/test_open_claims_lanes_source.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24417-ac2
+  description: 'AC2: the overlay refusal controls and the wiring tests pass with the change.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lane_host_pool_snapshot_effect/test_open_claims_lanes_source.py tests/nodes/node_lane_host_pool_snapshot_effect/test_pool_snapshot_wiring_roots.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24417-integration-proof-ac3
+  description: 'AC3: the read-at record the unit on h053 wrote counts running lanes above zero for h053; run on h053 through the lab work bus after the overlay names the open-claims read and the unit is installed from the branch.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --host h053 --lane dod-ac3-24417 --kind test -- python3 -c 'import json,os,sys; d=json.load(open(os.path.join(os.environ["OMNI_HOME"], ".onex_state/lane-host-pool-snapshot/pool.json.read-at.json"))); r={h["host"]:h for h in d["hosts"]}; sys.exit(0 if r["h053"]["running_lanes"] > 0 else 1)'
+    cwd: .
+- id: dod-omn24417-ac3-hosted-proxy
+  description: 'hosted proxy for AC3: the real handler, fed by the real wiring over a stub bus read command, records the open lanes as used slots on the recorded event; the h053 tick itself is read by the unbound integration proof item above.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lane_host_pool_snapshot_effect/test_open_claims_lanes_source.py -q -n 0 --no-cov -p no:cacheprovider -k chain
+    cwd: .
