@@ -9,16 +9,16 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from omnimarket.nodes.node_dev_roll_request_compute.models.enum_dev_roll_action import (
+from omnimarket.models.dev_roll.enum_dev_roll_action import (
     EnumDevRollAction,
 )
-from omnimarket.nodes.node_dev_roll_request_compute.models.enum_dev_roll_hold_reason import (
+from omnimarket.models.dev_roll.enum_dev_roll_hold_reason import (
     EnumDevRollHoldReason,
 )
-from omnimarket.nodes.node_dev_roll_request_compute.models.model_dev_roll_event_refused import (
+from omnimarket.models.dev_roll.model_dev_roll_event_refused import (
     ModelDevRollEventRefused,
 )
-from omnimarket.nodes.node_dev_roll_request_compute.models.model_dev_roll_request import (
+from omnimarket.models.dev_roll.model_dev_roll_request import (
     ModelDevRollRequest,
 )
 
