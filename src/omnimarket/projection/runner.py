@@ -31,14 +31,12 @@ from pydantic import (
 )
 
 from omnimarket.config.settings import Settings
+from omnimarket.handlers.projection_dlq_source import build_envelope_with_source
 from omnimarket.handlers.runtime_delivery_host import KeptPools
 from omnimarket.models.model_message_meta import MessageMeta as MessageMeta
 from omnimarket.models.model_projection_request import ModelProjectionRequest
 from omnimarket.models.model_projection_stats import ProjectionStats
-from omnimarket.projection.dlq import (
-    build_dlq_envelope,
-    correlation_id_from_payload,
-)
+from omnimarket.projection.dlq import correlation_id_from_payload
 from omnimarket.projection.envelope import unwrap_envelope
 from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.snapshot_publisher import (
@@ -639,15 +637,6 @@ class BaseProjectionRunner(ABC):
             else self._standalone_bindings.write_binding_for(table)
         )
         return self._db_by_binding[binding_ref]
-
-    async def open_databases(self) -> None:
-        """Open the writer's database pools, for a caller that projects records
-        without running the consume loop (the dead-letter redrive, OMN-22811)."""
-        await self._connect_standalone_databases()
-
-    async def close_databases(self) -> None:
-        """Close what :meth:`open_databases` opened."""
-        await self._close_standalone_databases()
 
     async def _connect_standalone_databases(self) -> None:
         """Open and verify one pool per topology binding before consuming."""
@@ -1277,14 +1266,12 @@ class BaseProjectionRunner(ABC):
             )
             return False
         correlation_id = correlation_id_from_payload(data, fallback=meta.fallback_id)
-        envelope = build_dlq_envelope(
+        envelope = build_envelope_with_source(
+            meta,
             original_message=data,
             failure_reason=f"poison projection error: {err}",
             handler=type(self).__name__,
             correlation_id=correlation_id,
-            source_topic=meta.topic or topic,
-            source_partition=meta.partition,
-            source_offset=meta.offset,
         )
         value = json.dumps(envelope, default=str).encode("utf-8")
         try:

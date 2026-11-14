@@ -288,3 +288,22 @@ async def test_live_source_reader_joins_no_group_and_commits_nothing(
 
     assert seen["group_id"] is None
     assert seen["enable_auto_commit"] is False
+
+
+def test_golden_contract_declares_the_completed_answer_as_its_terminal_event() -> None:
+    import yaml
+
+    from omnimarket.nodes.node_projection_dlq_redrive_effect.handlers import (
+        handler_projection_dlq_redrive,
+    )
+
+    contract = yaml.safe_load(
+        (handler_projection_dlq_redrive._CONTRACT).read_text(encoding="utf-8")
+    )
+
+    assert contract["runtime_dispatch"]["terminal_events"]["success"] == (
+        "onex.evt.omnimarket.projection-dlq-redrive-completed.v1"
+    )
+    assert contract["event_bus"]["publish_topics"] == [
+        "onex.evt.omnimarket.projection-dlq-redrive-completed.v1"
+    ]

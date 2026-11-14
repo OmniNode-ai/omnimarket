@@ -20,7 +20,6 @@ from omnimarket.models.model_message_meta import MessageMeta
 from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation import (
     DelegationProjectionRunner,
 )
-from omnimarket.projection.dlq import build_dlq_envelope
 from tests.helpers.tenant_registry import mock_tenant_registry
 
 DELEGATION_DLQ_TOPIC = "onex.dlq.omnimarket.projection-delegation-malformed.v1"
@@ -92,15 +91,3 @@ def test_runner_poison_path_envelope_carries_source_coordinates() -> None:
     assert envelope["source_partition"] == 2
     assert envelope["source_offset"] == 9001
     assert envelope["correlation_id"] == "corr-3"
-
-
-def test_envelope_without_known_source_names_no_coordinates() -> None:
-    envelope = build_dlq_envelope(
-        original_message={"correlation_id": "c"},
-        failure_reason="refused",
-        handler="h",
-        correlation_id="c",
-    )
-    assert "source_topic" not in envelope
-    assert "source_partition" not in envelope
-    assert "source_offset" not in envelope

@@ -75,3 +75,8 @@ async def test_redrive_writes_the_refused_delegation_row_to_real_postgres() -> N
             correlation_id,
         )
         assert row is not None
+        count = await admin_conn.fetchval(
+            "SELECT count(*) FROM delegation_events WHERE correlation_id = $1",
+            correlation_id,
+        )
+        assert count == 1

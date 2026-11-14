@@ -22,6 +22,17 @@ from omnimarket.projection.tenant_registry_resolution import (
 )
 
 
+class _RedriveWriter(DelegationProjectionRunner):
+    """The delegation writer, with its database opened and closed by the caller
+    instead of by a consume loop."""
+
+    async def open_databases(self) -> None:
+        await self._connect_standalone_databases()
+
+    async def close_databases(self) -> None:
+        await self._close_standalone_databases()
+
+
 class DelegationRedriveBoundary:
     def __init__(self, runner: DelegationProjectionRunner | None = None) -> None:
         """``runner`` is a writer whose database the caller already opened; the
@@ -31,7 +42,7 @@ class DelegationRedriveBoundary:
 
     async def _connected(self) -> DelegationProjectionRunner:
         if self._runner is None:
-            runner = DelegationProjectionRunner()
+            runner = _RedriveWriter()
             await runner.open_databases()
             self._runner = runner
         return self._runner
@@ -51,6 +62,6 @@ class DelegationRedriveBoundary:
         return await runner.project_event(topic, data, meta)
 
     async def close(self) -> None:
-        if self._runner is not None and self._owns_runner:
+        if isinstance(self._runner, _RedriveWriter) and self._owns_runner:
             await self._runner.close_databases()
             self._runner = None

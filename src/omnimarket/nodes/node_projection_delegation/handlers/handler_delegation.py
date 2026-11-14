@@ -31,6 +31,7 @@ from omnimarket.handlers.handler_modelled_terminal_savings import (
 from omnimarket.handlers.handler_projection_derived_write import (
     HandlerProjectionDerivedWrite,
 )
+from omnimarket.handlers.projection_dlq_source import route_malformed_with_source
 from omnimarket.models.delegation.quality_bar_evidence import (
     extract_quality_bar_evidence,
 )
@@ -117,11 +118,7 @@ from omnimarket.nodes.node_projection_delegation.models.model_terminal_precedenc
 )
 from omnimarket.pricing import build_premium_counterfactual, resolve_tier_cost
 from omnimarket.projection.discovery import load_projection_exposures_from_contract
-from omnimarket.projection.dlq import (
-    correlation_id_from_payload,
-    dlq_topics_from_contract,
-    route_to_dlq,
-)
+from omnimarket.projection.dlq import dlq_topics_from_contract
 from omnimarket.projection.envelope import (
     DATA_SOURCE_REAL,
     envelope_data_source,
@@ -855,23 +852,13 @@ class DelegationProjectionRunner(CoalescingProjectionBase):
         True so the consumer still commits the offset (the message is durably
         captured on the DLQ, not reprocessed in a hot loop).
         """
-        fallback = meta.fallback_id if meta is not None else ""
-        correlation_id = correlation_id_from_payload(data, fallback=fallback)
-        # OMN-22811: the envelope names the record it came from, so the redrive
-        # node can read it again from its source topic.
-        has_source = meta is not None and bool(meta.topic)
-        await route_to_dlq(
+        await route_malformed_with_source(
             publish=await self.get_publish_fn(),
             dlq_topics=self._dlq_topics,
-            original_message=data,
+            data=data,
             failure_reason=reason,
             handler=HANDLER_ID_PROJECTION_DELEGATION,
-            correlation_id=correlation_id,
-            source_topic=meta.topic if meta is not None and has_source else None,
-            source_partition=meta.partition
-            if meta is not None and has_source
-            else None,
-            source_offset=meta.offset if meta is not None and has_source else None,
+            meta=meta,
         )
         return True
 
