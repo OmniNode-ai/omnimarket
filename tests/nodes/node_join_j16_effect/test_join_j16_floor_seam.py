@@ -19,7 +19,10 @@ the contract lists. The consumer side is the floor's own receipt fold, given the
 * control: the contract entry dropped, the piece 17 node renamed and a journal that drops piece 17 each leave J16
   broken (the golden assertions fail without the change).
 * parity: the same request crosses a bus (in-memory always, a Redpanda broker when ``JOIN_J16_PARITY_BOOTSTRAP`` names
-  one) and the consumer answers what an in-process run answers.
+  one, or ``JOIN_J16_PARITY_LANE`` names a lane whose declaration supplies the broker) and the consumer answers what an
+  in-process run answers. A lane's broker is dialled with the lane's own security protocol, mechanism and credential, the
+  way every other lane client resolves them (the dev lane is SASL_PLAINTEXT with SCRAM-SHA-256: a plaintext client is
+  closed at the metadata fetch); with only the bootstrap the client is plaintext, as before.
 """
 
 from __future__ import annotations
@@ -76,6 +79,7 @@ from tests.unit.nodes.node_join_j16_effect.test_join_j16 import (
 pytestmark = [pytest.mark.unit]
 
 BOOTSTRAP_ENV = "JOIN_J16_PARITY_BOOTSTRAP"
+LANE_ENV = "JOIN_J16_PARITY_LANE"
 TIMEOUT_S = 30.0
 DEADLINE_S = 900
 PIPELINE = load_runtime().pipeline_chains
@@ -357,9 +361,48 @@ class InmemoryBus(Bus):
         await self.bus.close()
 
 
+def broker_client(
+    bootstrap: str | None, lane: str | None
+) -> tuple[str, dict[str, Any]]:
+    """The broker address and the aiokafka security arguments the parity leg dials with.
+
+    A lane is resolved with the reader ``onex delegate`` uses; its credential is read from the host's own store or
+    environment and never printed. With no lane the client is plaintext against the given bootstrap.
+    """
+    if not lane:
+        assert bootstrap, "no broker: name a bootstrap or a lane"
+        return bootstrap, {"security_protocol": "PLAINTEXT"}
+    from omnibase_infra.cli.delegate_lane_credentials import resolve_lane_binding
+
+    selection, transport = resolve_lane_binding(
+        lane, environ={"OMNIBASE_PATH": os.environ.get("OMNI_HOME", "")}
+    )
+    if transport is None:
+        username = os.environ.get("KAFKA_SASL_USERNAME", "").strip()
+        password = os.environ.get("KAFKA_SASL_PASSWORD", "").strip()
+        protocol, mechanism = selection.security_protocol, selection.sasl_mechanism
+        address = selection.bootstrap_servers
+    else:
+        username = transport.sasl_username or ""
+        password = (
+            transport.sasl_password.get_secret_value()
+            if transport.sasl_password is not None
+            else ""
+        )
+        protocol, mechanism = transport.security_protocol, transport.sasl_mechanism
+        address = transport.bootstrap_servers
+    client: dict[str, Any] = {"security_protocol": protocol or "PLAINTEXT"}
+    if mechanism:
+        client["sasl_mechanism"] = mechanism
+        client["sasl_plain_username"] = username
+        client["sasl_plain_password"] = password
+    return bootstrap or address, client
+
+
 class RedpandaBus(Bus):
-    def __init__(self, bootstrap: str) -> None:
+    def __init__(self, bootstrap: str, client: dict[str, Any]) -> None:
         self.bootstrap = bootstrap
+        self.client = client
         self.prefix = f"join-j16-parity-{uuid.uuid4().hex}"
         self.tasks: list[asyncio.Task[None]] = []
         self.consumers: list[Any] = []
@@ -369,7 +412,7 @@ class RedpandaBus(Bus):
         from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
 
         self.producer = AIOKafkaProducer(
-            bootstrap_servers=self.bootstrap, security_protocol="PLAINTEXT"
+            bootstrap_servers=self.bootstrap, **self.client
         )
         await self.producer.start()
 
@@ -379,7 +422,7 @@ class RedpandaBus(Bus):
             consumer = AIOKafkaConsumer(
                 topic,
                 bootstrap_servers=self.bootstrap,
-                security_protocol="PLAINTEXT",
+                **self.client,
                 group_id=f"{self.prefix}-{topic}",
                 auto_offset_reset="earliest",
             )
@@ -447,6 +490,20 @@ EXPECTED = {
 }
 
 
+def test_parity_broker_client_without_a_lane_is_plaintext_against_the_bootstrap() -> (
+    None
+):
+    assert broker_client("broker.invalid:1", None) == (
+        "broker.invalid:1",
+        {"security_protocol": "PLAINTEXT"},
+    )
+
+
+def test_parity_broker_client_names_no_broker_without_bootstrap_or_lane() -> None:
+    with pytest.raises(AssertionError, match="no broker"):
+        broker_client(None, None)
+
+
 def test_parity_in_process_answer_is_the_expected_refusal() -> None:
     assert settled(consume(request())) == EXPECTED
 
@@ -455,11 +512,14 @@ def test_parity_in_memory_bus_answers_what_the_in_process_read_answers() -> None
     assert settled(asyncio.run(over(InmemoryBus()))) == EXPECTED
 
 
-if os.environ.get(BOOTSTRAP_ENV):
+if os.environ.get(BOOTSTRAP_ENV) or os.environ.get(LANE_ENV):
 
     @pytest.mark.kafka
     @pytest.mark.integration
     def test_parity_redpanda_bus_answers_what_the_in_memory_bus_answers() -> None:
-        broker = asyncio.run(over(RedpandaBus(os.environ[BOOTSTRAP_ENV])))
+        address, client = broker_client(
+            os.environ.get(BOOTSTRAP_ENV), os.environ.get(LANE_ENV)
+        )
+        broker = asyncio.run(over(RedpandaBus(address, client)))
         memory = asyncio.run(over(InmemoryBus()))
         assert settled(broker) == settled(memory) == EXPECTED

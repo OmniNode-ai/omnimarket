@@ -13,8 +13,8 @@ from __future__ import annotations
 
 import json
 import stat
-import subprocess
 import sys
+from collections.abc import Sequence
 from importlib.metadata import version
 from pathlib import Path
 
@@ -28,9 +28,12 @@ from omnimarket.nodes.node_landing_decision_venv_effect.handlers import (
     HandlerLandingDecisionVenv,
 )
 from omnimarket.nodes.node_landing_decision_venv_effect.models import (
+    ModelCommandOutcome,
     ModelLandingDecisionVenvRequest,
     ModelLandingDecisionVenvResult,
 )
+
+from .conftest import make_overlay, write_overlay_root
 
 pytestmark = pytest.mark.unit
 
@@ -69,7 +72,7 @@ def _verify(
     request = ModelLandingDecisionVenvRequest(
         operation="verify", pin_file=pin, venv_dir=env, **extra
     )
-    return request, HandlerLandingDecisionVenv().handle(request)
+    return request, HandlerLandingDecisionVenv(overlay=make_overlay()).handle(request)
 
 
 def test_verify_accepts_an_environment_that_matches_the_pin(tmp_path: Path) -> None:
@@ -94,8 +97,9 @@ def test_verify_refuses_a_missing_environment(tmp_path: Path) -> None:
         pin_file=_pin(tmp_path / "pin.json"),
         venv_dir=tmp_path / "absent",
     )
-    result = HandlerLandingDecisionVenv().handle(request)
+    result = HandlerLandingDecisionVenv(overlay=make_overlay()).handle(request)
     assert result.status == "refused"
+    assert result.reason == "no-environment"
     assert "no environment at" in result.reasons[0]
 
 
@@ -163,17 +167,19 @@ class _Recorder:
         self._held = held
         self._fail = fail
 
-    def __call__(self, argv: list[str]) -> subprocess.CompletedProcess[str]:
-        self.calls.append(argv)
+    def __call__(
+        self, argv: Sequence[str], timeout_seconds: float
+    ) -> ModelCommandOutcome:
+        self.calls.append(list(argv))
         if self._fail and self._fail in argv:
-            return subprocess.CompletedProcess(argv, 1, "", "boom: the step failed")
+            return ModelCommandOutcome(returncode=1, stderr="boom: the step failed")
         if argv[1:3] == ["-m", "venv"]:
             if not Path(argv[-1]).exists():
                 _real_env(Path(argv[-1]))
-            return subprocess.CompletedProcess(argv, 0, "", "")
+            return ModelCommandOutcome(returncode=0)
         if "-c" in argv:
-            return subprocess.CompletedProcess(argv, 0, json.dumps(self._held), "")
-        return subprocess.CompletedProcess(argv, 0, "", "")
+            return ModelCommandOutcome(returncode=0, stdout=json.dumps(self._held))
+        return ModelCommandOutcome(returncode=0)
 
 
 def _held(pin_path: Path) -> dict[str, str | None]:
@@ -190,7 +196,7 @@ def test_build_installs_exactly_the_pinned_versions_then_checks(tmp_path: Path) 
         tmp_path / "pin.json", pydantic="2.13.5", pydantic_core="2.46.5", pyyaml="6.0.3"
     )
     recorder = _Recorder(_held(pin))
-    result = HandlerLandingDecisionVenv(recorder).handle(
+    result = HandlerLandingDecisionVenv(recorder, overlay=make_overlay()).handle(
         ModelLandingDecisionVenvRequest(
             operation="build",
             pin_file=pin,
@@ -220,7 +226,7 @@ def test_build_refuses_when_the_installed_versions_drift_from_the_pin(
     held = _held(pin)
     held["pyyaml"] = None
     held["pydantic"] = "0.0.1"
-    result = HandlerLandingDecisionVenv(_Recorder(held)).handle(
+    result = HandlerLandingDecisionVenv(_Recorder(held), overlay=make_overlay()).handle(
         ModelLandingDecisionVenvRequest(
             operation="build",
             pin_file=pin,
@@ -238,7 +244,9 @@ def test_build_failure_is_a_refusal_with_the_reason(
     tmp_path: Path, failing: str
 ) -> None:
     pin = _pin(tmp_path / "pin.json")
-    result = HandlerLandingDecisionVenv(_Recorder(_held(pin), fail=failing)).handle(
+    result = HandlerLandingDecisionVenv(
+        _Recorder(_held(pin), fail=failing), overlay=make_overlay()
+    ).handle(
         ModelLandingDecisionVenvRequest(
             operation="build",
             pin_file=pin,
@@ -251,7 +259,7 @@ def test_build_failure_is_a_refusal_with_the_reason(
 
 
 def test_build_without_base_python_is_refused(tmp_path: Path) -> None:
-    result = HandlerLandingDecisionVenv(_Recorder({})).handle(
+    result = HandlerLandingDecisionVenv(_Recorder({}), overlay=make_overlay()).handle(
         ModelLandingDecisionVenvRequest(
             operation="build",
             pin_file=_pin(tmp_path / "pin.json"),
@@ -262,8 +270,13 @@ def test_build_without_base_python_is_refused(tmp_path: Path) -> None:
 
 
 def test_cli_exit_code_follows_the_result(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setenv(
+        "ONEX_SKILL_OVERLAY_ROOTS", str(write_overlay_root(tmp_path / "overlays"))
+    )
     env = _real_env(tmp_path / "venv")
     good = _pin(tmp_path / "good.json")
     assert cli.main(["verify", "--pin-file", str(good), "--venv-dir", str(env)]) == 0
