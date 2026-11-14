@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-23302
 title: The lab-fill launchd driver runs node_lab_fill_effect's send step, and laneTask is deleted from lab-fill.js in a delete-only change
-summary: node_lab_fill_effect gains a shell entry (python -m omnimarket.nodes.node_lab_fill_effect) that runs send_lab_fill_lane for one planned lane from a JSON request on stdin, so the launchd-run lab-fill driver can call the node's send step. The entry is the omnimarket half of AC1; the driver switch and the Mac install read-back are internal-repository work. AC2 holds on the internal repository main already and is not changed by this pull request.
+summary: node_lab_fill_effect gains a shell entry (python -m omnimarket.nodes.node_lab_fill_effect) that runs send_lab_fill_lane for one planned lane from a JSON request on stdin, so the launchd-run lab-fill driver can call the node's send step. The entry is the omnimarket half of AC1; the driver switch and the Mac install read-back are internal-repository work. AC2 (lab-fill.js holds no laneTask) holds on the internal repository main already, is not changed by this pull request, and is verified there, not here.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -11,11 +11,6 @@ requirements:
     acceptance:
       - id: AC1
         statement: 'AC1: the Mac''s lab-fill launchd unit sends lanes through node_lab_fill_effect''s send_lab_fill_lane, and a fill tick after install sends no lane for a ticket whose implementation merged -- falsifier: the lab-fill tick log after install names the node''s send step, and its sent list holds no ticket with a merged implementation'
-  - id: req-omn23302-no-lanetask
-    statement: lab-fill.js holds no laneTask.
-    acceptance:
-      - id: AC2
-        statement: 'AC2: lab-fill.js at the internal repository main holds no laneTask -- falsifier: grep -c laneTask on lab-fill.js at the internal repository main reads 0'
 evidence_requirements:
   - kind: tests
     description: The send entry tests and the send tests run at the pushed head.
@@ -37,22 +32,6 @@ dod_evidence:
       - check_type: command
         check_value: |
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_lab_fill_effect/__main__.py?ref=8d92f5b791180052ed2d315372eb052daffd826a" --jq .content | base64 -d | grep -q 'lab-fill send: step={_STEP}'
-        cwd: .
-  - id: dod-omn23302-ac2
-    description: AC2 reads the internal repository's main in its local clone, with a positive control that lab-fill.js is on that ref and that grep finds a word the file does hold, then reads that no line of lab-fill.js holds laneTask. The clone is on the lab and launching hosts only, so only the local Done gate runs this check. This pull request does not change lab-fill.js.
-    source: manual
-    execution_scope: local_done_gate
-    binds_ac:
-      - AC2
-    checks:
-      - check_type: command
-        check_value: |
-          set -eu
-          ref=origin/main
-          js="$(git -C "$OMNIBASE_INTERNAL_HOME" ls-tree -r --name-only "$ref" | grep 'lab_fill/lab-fill.js$')"
-          test "$(printf '%s\n' "$js" | wc -l)" = 1
-          test "$(git -C "$OMNIBASE_INTERNAL_HOME" show "$ref:$js" | grep -c 'SEND_SCRIPT')" -ge 1
-          test "$(git -C "$OMNIBASE_INTERNAL_HOME" show "$ref:$js" | grep -c 'laneTask' || true)" = 0
         cwd: .
   - id: dod-omn23302-send-entry-integration-proof
     description: The pushed head ran the lab-fill send entry tests and the send tests on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this check.
