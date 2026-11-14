@@ -313,3 +313,18 @@ def test_chain_test_goes_red_under_its_named_mutation(name: str) -> None:
 def test_chain_tests_are_green_without_a_mutation() -> None:
     _golden_chain(InMemoryTickPublisher())
     _error_chain(InMemoryTickPublisher())
+
+
+class _RaisingPublisher:
+    def publish(self, topic: str, event: BaseModel) -> None:
+        raise RuntimeError("bus down")
+
+
+def test_a_publisher_that_raises_still_closes_the_floor_chain_with_a_failure() -> None:
+    sink = InMemoryEmissionSink()
+    result = HandlerPrLandingTickOrchestrator(
+        publisher=_RaisingPublisher(), emission_sink=sink, floor_piece=FLOOR_PIECE
+    ).handle(_request())
+    assert [e.phase for e in sink.events] == ["start", "failure"]
+    assert sink.events[1].failure_code == EnumTickFailureReason.TICK_STAGE_RAISED.value
+    assert result.status is EnumTickStatus.FAILED
