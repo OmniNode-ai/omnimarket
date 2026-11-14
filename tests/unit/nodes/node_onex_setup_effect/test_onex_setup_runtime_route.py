@@ -14,10 +14,12 @@ payload. The fixtures are the ones the OMN-23207 model-step tests use.
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import pytest
+from omnibase_core.cli.cli_run_node import run_node_in_process
 from pydantic import SecretStr
 
 from omnimarket.nodes.node_onex_setup_effect import cli as onex_setup_cli
@@ -42,7 +44,7 @@ NODE_NAME = "node_onex_setup_effect"
 class _RuntimeSpy:
     """Records what the CLI hands the local runtime, and runs the real runtime."""
 
-    def __init__(self, real: Any) -> None:
+    def __init__(self, real: Callable[..., dict[str, Any]]) -> None:
         self._real = real
         self.calls: list[tuple[str, dict[str, Any]]] = []
 
@@ -50,12 +52,12 @@ class _RuntimeSpy:
         self, node_id: str, contract_path: Path, payload: dict[str, Any], timeout: int
     ) -> dict[str, Any]:
         self.calls.append((node_id, dict(payload)))
-        return self._real(node_id, contract_path, payload, timeout)  # type: ignore[no-any-return]
+        return self._real(node_id, contract_path, payload, timeout)
 
 
 @pytest.fixture
 def spy(monkeypatch: pytest.MonkeyPatch) -> _RuntimeSpy:
-    recorded = _RuntimeSpy(onex_setup_cli.run_node_in_process)
+    recorded = _RuntimeSpy(run_node_in_process)
     monkeypatch.setattr(onex_setup_cli, "run_node_in_process", recorded)
     return recorded
 
@@ -143,7 +145,7 @@ def test_a_runtime_failure_ends_the_command_and_leaves_no_parked_key(
     from omnibase_core.errors.model_onex_error import ModelOnexError
 
     parked: list[str] = []
-    real_park = onex_setup_cli.park_key
+    real_park = park_key
 
     def park_and_note(key: SecretStr) -> str:
         token = real_park(key)
