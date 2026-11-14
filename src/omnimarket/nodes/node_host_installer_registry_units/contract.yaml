@@ -414,6 +414,9 @@ units:
       description: every 900 s
     registry_project: omnimarket
     tick_no_sync: true
+    # The pass starts lane runners (start_new_session) that must outlive the oneshot service: with the default
+    # KillMode=control-group systemd SIGTERMs every process left in the unit's cgroup once the main process exits (OMN-24448).
+    kill_mode: process
     interpreter_candidates:
       - /usr/bin/python3.12
       - /usr/bin/python3.13
