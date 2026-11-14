@@ -5,6 +5,14 @@ summary: The evidence pipeline orchestrator contract declares a terminal_events 
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
+context:
+  ac_binding_provenance:
+    dod-omn20635-ac1-accepted-20261114t0545z:
+    - label: AC1
+      criterion_hash: 5973831f1d64d88516b43080c6d96f3805360e4c39370534b8986919b734bf80
+      proposed_by: lane=dod-closeout-bind-2026-11-14T0545Z-c1
+      accepted_by: lane=dod-closeout-accept-2026-11-14T0545Z-c1
+      accepted_at: '2026-11-14T06:19:36Z'
 requirements:
 - id: req-omn20635
   statement: The evidence pipeline orchestrator's declared state machine must walk clean and its terminal event must be declared in the terminal_events map.
@@ -35,4 +43,16 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_evidence_pipeline_orchestrator/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -c '^terminal_events:'
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn20635-ac1-accepted-20261114t0545z
+  description: 'AC1 binding (accepted 2026-11-14T0545Z, proposed by lane=dod-closeout-bind-2026-11-14T0545Z-c1,
+    accepted by lane=dod-closeout-accept-2026-11-14T0545Z-c1). The contract declares terminal_events with the
+    success event onex.evt.omnimarket.evidence-pipeline-completed.v1, keeps the singular terminal_event, and
+    publishes the topic. Re-run at omnimarket origin/dev bd023b8666 passed on lab h051 (lw-e7021184f2fe4a65);
+    at the parent of 6bbdfc2320 with the test file overlaid it fails with KeyError terminal_events (lw-6c679b3a7bd04c86).'
+  source: manual
+  binds_ac: [AC1]
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest "tests/unit/contracts/test_evidence_pipeline_orchestrator_walk.py::test_contract_declares_terminal_events" -q -n 0 -p no:randomly --no-cov
     cwd: ${OMNI_HOME}/omnimarket

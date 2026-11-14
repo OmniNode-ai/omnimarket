@@ -22,6 +22,7 @@ from pydantic import (
 )
 
 from omnimarket.models.lab_host_key import public_key_parts
+from omnimarket.models.model_host_role import EnumHostRole
 
 # A registry root as a probe script quotes it: no quote, backtick, space or ``$(``.
 RegistryRoot = Annotated[
@@ -161,6 +162,10 @@ class ModelLabHostRow(_ModelOverlayBase):
     roles: (
         tuple[Literal["lab-proof", "lab", "launcher", "desired-publisher"], ...] | None
     ) = None
+    # What the host is for (OMN-24263): the role whose baseline the host drift check holds the host to, so every host of
+    # a role carries the same processes and clones and a difference is a declared role difference. Not ``roles`` above, which
+    # names the overlay store's publishers. Omitted: the host declares no role and the baseline step refuses it.
+    host_role: EnumHostRole | None = None
     unavailable_reason: str | None = None
     # Model serving is independent of lane/unit placement. Omitted: inherit the validated
     # ``available`` value, preserving the existing policy for every row without this column.
@@ -179,6 +184,9 @@ class ModelLabHostRow(_ModelOverlayBase):
     lane_ready: bool = False
     lane_not_ready_reason: str | None = None
     push: bool = True
+    # Whether the other lab hosts must hold an ssh route to this host (the ``lab-ssh`` capability of node_host_capability_compute).
+    # ``false`` marks a machine the lab does not own: its login and keys are its owner's, so no lab host is refused for lacking a route to it.
+    lab_ssh_peer: bool = True
     # 0 places no lane or landing worker on the host (OMN-22015); a lab-run unit is judged by slots, not this cap.
     cap: int | None = Field(default=None, ge=0)
     # The units the host's lab-work serve process runs at once (``serve --max-units``); omitted: the serve default.

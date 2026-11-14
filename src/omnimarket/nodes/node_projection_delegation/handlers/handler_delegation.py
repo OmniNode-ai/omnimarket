@@ -31,6 +31,7 @@ from omnimarket.handlers.handler_modelled_terminal_savings import (
 from omnimarket.handlers.handler_projection_derived_write import (
     HandlerProjectionDerivedWrite,
 )
+from omnimarket.handlers.projection_dlq_source import route_malformed_with_source
 from omnimarket.models.delegation.quality_bar_evidence import (
     extract_quality_bar_evidence,
 )
@@ -117,11 +118,7 @@ from omnimarket.nodes.node_projection_delegation.models.model_terminal_precedenc
 )
 from omnimarket.pricing import build_premium_counterfactual, resolve_tier_cost
 from omnimarket.projection.discovery import load_projection_exposures_from_contract
-from omnimarket.projection.dlq import (
-    correlation_id_from_payload,
-    dlq_topics_from_contract,
-    route_to_dlq,
-)
+from omnimarket.projection.dlq import dlq_topics_from_contract
 from omnimarket.projection.envelope import (
     DATA_SOURCE_REAL,
     envelope_data_source,
@@ -855,15 +852,13 @@ class DelegationProjectionRunner(CoalescingProjectionBase):
         True so the consumer still commits the offset (the message is durably
         captured on the DLQ, not reprocessed in a hot loop).
         """
-        fallback = meta.fallback_id if meta is not None else ""
-        correlation_id = correlation_id_from_payload(data, fallback=fallback)
-        await route_to_dlq(
+        await route_malformed_with_source(
             publish=await self.get_publish_fn(),
             dlq_topics=self._dlq_topics,
-            original_message=data,
+            data=data,
             failure_reason=reason,
             handler=HANDLER_ID_PROJECTION_DELEGATION,
-            correlation_id=correlation_id,
+            meta=meta,
         )
         return True
 
@@ -880,7 +875,7 @@ class DelegationProjectionRunner(CoalescingProjectionBase):
             # handler — same payload shape, same generation_events table write.
             ok = await self._project_generation_completed(data, meta)
         elif topic == self._topic_judge_verdict:
-            ok = await self._project_judge_verdict(data)
+            ok = await self._project_judge_verdict(data, meta)
         elif topic in {
             self._topic_delegate_skill_completed,
             self._topic_delegate_skill_failed,
@@ -936,7 +931,9 @@ class DelegationProjectionRunner(CoalescingProjectionBase):
 
         return ok
 
-    async def _project_judge_verdict(self, data: dict[str, Any]) -> bool:
+    async def _project_judge_verdict(
+        self, data: dict[str, Any], meta: MessageMeta | None = None
+    ) -> bool:
         try:
             # OMN-16831: ``ModelDelegationJudgeVerdictEvent`` is extra="forbid",
             # and ``unwrap_envelope`` injects ``_envelope`` into every payload
@@ -950,7 +947,7 @@ class DelegationProjectionRunner(CoalescingProjectionBase):
             )
         except ValidationError as exc:
             return await self._route_malformed_to_dlq(
-                data, f"judge verdict event failed model validation: {exc}"
+                data, f"judge verdict event failed model validation: {exc}", meta
             )
 
         row = _judge_verdict_projection_row(event)
@@ -1014,6 +1011,7 @@ class DelegationProjectionRunner(CoalescingProjectionBase):
                 f"{len(attribution_rows or [])} delegation row(s) yielding "
                 f"{len(attributions)} usable attribution(s) -- refusing rather "
                 "than letting the tenant column default absorb the write",
+                meta,
             )
         tenant_id = attributions.pop()
 

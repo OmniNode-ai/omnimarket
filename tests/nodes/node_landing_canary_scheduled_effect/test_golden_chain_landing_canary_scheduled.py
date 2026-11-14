@@ -342,3 +342,69 @@ def test_real_chain_a_pull_request_not_merged_before_the_bound_settles_to_none(
         appender=InMemoryLedger(),
     )
     assert outcome is None
+
+
+def test_real_chain_settle_resumes_the_opening_repo(tmp_path: Path) -> None:
+    """A settle with no repo reuses the repository the open built."""
+    env = canary_environ(tmp_path)
+    env["EXAMPLE_HOST_NAME"] = "fixture-host"
+    run = open_canary(
+        canary_overlay_id=CANARY_NODE,
+        environ=env,
+        clock=lambda: datetime.now(UTC),
+    )
+    assert run.opened is not None
+    outcome = settle_canary(
+        canary_overlay_id=CANARY_NODE,
+        environ=env,
+        clock=lambda: datetime.now(UTC),
+        run=run,
+        appender=InMemoryLedger(),
+    )
+    assert outcome is not None
+    assert outcome.failed is True
+    assert "fixture" in outcome.detail
+
+
+def test_real_chain_settle_state_error_does_not_raise(tmp_path: Path) -> None:
+    """A state error on the opening repo is swallowed, not raised."""
+    env = canary_environ(tmp_path)
+    env["EXAMPLE_HOST_NAME"] = "fixture-host"
+    repo = InMemoryCanaryRepo(clock=lambda: T0)
+    run = open_canary(
+        canary_overlay_id=CANARY_NODE,
+        environ=env,
+        clock=lambda: T0,
+        repo=repo,
+    )
+    assert run.repo is repo
+    repo.state_error = "state-unreadable"
+    outcome = settle_canary(
+        canary_overlay_id=CANARY_NODE,
+        environ=env,
+        clock=lambda: T0 + timedelta(seconds=7200),
+        run=run,
+        appender=InMemoryLedger(),
+    )
+    assert outcome is not None
+    assert isinstance(outcome, ModelLandingCanaryTickOutcome)
+
+
+def test_real_chain_open_carries_the_repo_it_used(tmp_path: Path) -> None:
+    """The pending run carries the repository it used to open."""
+    env = canary_environ(tmp_path)
+    env["EXAMPLE_HOST_NAME"] = "fixture-host"
+    repo = InMemoryCanaryRepo(clock=lambda: T0)
+    run = open_canary(
+        canary_overlay_id=CANARY_NODE,
+        environ=env,
+        clock=lambda: T0,
+        repo=repo,
+    )
+    assert run.repo is repo
+    bare = open_canary(
+        canary_overlay_id=CANARY_NODE,
+        environ=env,
+        clock=lambda: T0,
+    )
+    assert bare.repo is not None

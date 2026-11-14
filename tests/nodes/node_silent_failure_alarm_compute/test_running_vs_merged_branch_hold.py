@@ -102,7 +102,10 @@ def test_the_fold_text_naming_a_live_hold_is_read_when_no_record_rides_with_the_
     )
     result = _decide(_fleet(None, observed), "2026-10-25T05:20:00Z")
     assert result.state == "OK"
-    assert HOLD_UNTIL in result.acknowledged[0].why
+    # A hold the host-drift fold itself declares (the "by <declaration>" clause) is HELD, as the
+    # frozen decision reports it; a hold with no clause rides in as a recorded note (above).
+    assert result.held[0].until == HOLD_UNTIL
+    assert not result.findings
 
 
 def test_a_hold_on_the_controller_never_excuses_another_surface(tmp_path: Path) -> None:
