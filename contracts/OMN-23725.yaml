@@ -34,13 +34,13 @@ dod_evidence:
     check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_lane_host_pool_snapshot_launchd_unit.py tests/nodes/node_host_installer_registry_units/test_lane_host_pool_snapshot_unit.py -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
 - id: dod-omn23725-ac2
-  description: 'AC2: an unreachable host (no advertisement, or its token pool read failed) reads zero free slots and names its reason; the failing control reads free slots for the reachable host.'
+  description: 'AC2: an unreachable host (no advertisement, or its token pool read failed) reads zero free slots and names its reason; the failing control reads free slots for the reachable host. The same run also covers the launchd unit this PR adds, so a macOS pool host takes the writer that reads this zero; the unreachable-host handler behavior predates this PR, so that part alone cannot fail at the merge base.'
   source: manual
   binds_ac:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_lane_host_pool_snapshot_effect -q -n 0 --no-cov -p no:cacheprovider -k unreachable
+    check_value: uv run pytest tests/nodes/node_lane_host_pool_snapshot_effect/test_pool_snapshot_unreachable.py tests/nodes/node_host_installer_registry_units/test_lane_host_pool_snapshot_launchd_unit.py -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
 - id: dod-omn23725-ac3-hosted-proxy
   description: 'hosted proxy for AC3: the launchd twin renders a plist that runs the snapshot module from the branch checkout; the 24-hour compare and gap listings are read by the unbound live item below.'
