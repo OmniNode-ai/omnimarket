@@ -24,10 +24,9 @@ from omnimarket.nodes.node_hook_lane_trace_compute.models import (
 )
 from omnimarket.nodes.node_hook_tool_outcome_compute.handlers.handler_hook_tool_outcome import (
     HandlerHookToolOutcome,
-)
-from omnimarket.nodes.node_hook_tool_outcome_compute.models.model_hook_tool_outcome import (
     ModelHookToolOutcomeRequest,
 )
+from omnimarket.nodes.node_hook_tool_outcome_compute.overlay import load_outcome_rules
 
 SCHEMA = "omninode_internal"
 EVENTS_TABLE = "claude_hook_events"
@@ -79,8 +78,16 @@ def display_output(output: str) -> list[str]:
 
 
 class HandlerHookLaneTrace:
-    def __init__(self, outcome: HandlerHookToolOutcome) -> None:
-        self._outcome = outcome
+    def __init__(self, outcome: HandlerHookToolOutcome | None = None) -> None:
+        # Without an injected outcome handler (the runtime builds the handler with no arguments), the rules are read
+        # from the outcome node's overlay on first use; an absent overlay refuses by name.
+        self._outcome_handler = outcome
+
+    @property
+    def _outcome(self) -> HandlerHookToolOutcome:
+        if self._outcome_handler is None:
+            self._outcome_handler = HandlerHookToolOutcome(load_outcome_rules())
+        return self._outcome_handler
 
     def handle(self, request: ModelLaneTraceRequest) -> ModelLaneTraceResult:
         sql = build_sql(request)
