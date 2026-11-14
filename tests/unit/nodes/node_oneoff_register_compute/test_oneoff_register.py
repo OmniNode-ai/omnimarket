@@ -377,5 +377,5 @@ def test_a_bare_yes_or_no_in_an_overlay_is_the_reading_not_a_refusal(
     written: object, reading: str
 ) -> None:
     """YAML reads an unquoted ``no`` as false; the overlay author meant the word."""
-    made = entry(bypass=written)  # type: ignore[arg-type]
+    made = ModelOneOffEntry.model_validate({**entry().model_dump(), "bypass": written})
     assert made.bypass.value == reading
