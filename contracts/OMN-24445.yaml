@@ -73,6 +73,15 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/unit/nodes/node_plan_owner_check_effect -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn24445-reader-window
+  description: 'Seam: the reader sends claims_since for an open-claims read that names a window, the owner check passes its overlay window, and the same read without a window sends none (failing control).'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_work_ledger_reader_effect/test_reader_open_claims_window.py tests/unit/nodes/node_plan_owner_check_effect/test_runtime_plan_owner_check.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
 - id: dod-omn24445-integration-proof
   description: Run the node tests on a lab host at the pushed head. Hosted CI cannot reach the lab hosts, so only the local Done gate runs this unbound check.
   source: manual
