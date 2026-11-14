@@ -101,6 +101,21 @@ def test_an_unbound_overlay_is_refused(
         pytest.param(
             "schema_version: ci_red_kind_rules.v1\n"
             "rules:\n"
+            "  - kind: k\n"
+            "    ignore_case: true\n",
+            id="rule-with-no-pattern",
+        ),
+        pytest.param(
+            "schema_version: ci_red_kind_rules.v1\n"
+            "rules:\n"
+            "  - kind: k\n"
+            "    log_pattern: '('\n"
+            "    ignore_case: true\n",
+            id="log-pattern-that-does-not-compile",
+        ),
+        pytest.param(
+            "schema_version: ci_red_kind_rules.v1\n"
+            "rules:\n"
             "  - kind: ''\n"
             "    check_name_pattern: p\n"
             "    ignore_case: true\n",
@@ -206,4 +221,51 @@ def test_the_main_entrypoint_returns_zero_on_a_match(
     assert answer["ok"] is True
     assert answer["matched"] is True
     assert answer["kind"] == "delegation-health-gate"
+    assert answer["model_call_required"] is False
+
+
+def test_a_request_may_carry_a_log_excerpt_and_refuses_an_unknown_field() -> None:
+    request = ModelCiRedKindRuleRequest(check_name="x", log_excerpt="y")
+    assert request.log_excerpt == "y"
+    assert ModelCiRedKindRuleRequest(check_name="x").log_excerpt == ""
+    with pytest.raises(ValidationError):
+        ModelCiRedKindRuleRequest.model_validate(
+            {"check_name": "x", "log_excerpt": "y", "unknown": 1}
+        )
+
+
+def test_the_main_entrypoint_returns_zero_on_a_log_rule_match(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    overlay_dir = tmp_path / "node_ci_red_kind_rule_compute"
+    overlay_dir.mkdir()
+    (overlay_dir / "overlay.yaml").write_text(
+        "schema_version: ci_red_kind_rules.v1\n"
+        "rules:\n"
+        "  - kind: runner-infra\n"
+        "    log_pattern: '##\\[error\\]Unexpected HTTP response: 5\\d\\d'\n"
+        "    ignore_case: false\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path))
+    monkeypatch.delenv("CI_RED_KIND_RULES_OVERLAY", raising=False)
+    monkeypatch.setattr(
+        sys,
+        "stdin",
+        io.StringIO(
+            json.dumps(
+                {
+                    "check_name": "Tests",
+                    "log_excerpt": "##[error]Unexpected HTTP response: 504",
+                }
+            )
+        ),
+    )
+    code = rule_main.main()
+    assert code == 0
+    answer = json.loads(capsys.readouterr().out)
+    assert answer["matched"] is True
+    assert answer["kind"] == "runner-infra"
     assert answer["model_call_required"] is False
