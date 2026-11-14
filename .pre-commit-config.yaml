@@ -31,6 +31,13 @@ repos:
         files: ^(src/omnimarket/nodes/node_github_webhook_ingress_effect/.*|tests/nodes/node_github_webhook_ingress_effect/test_http_.*\.py)$
         pass_filenames: false
         stages: [pre-commit]
+      - id: workflow-contract-catalog-http
+        name: Workflow contract catalog runtime HTTP route
+        entry: uv run --frozen pytest tests/nodes/node_workflow_contract_catalog_effect -q --no-cov
+        language: system
+        files: ^(src/omnimarket/nodes/node_workflow_contract_catalog_effect/.*|tests/nodes/node_workflow_contract_catalog_effect/.*\.py)$
+        pass_filenames: false
+        stages: [pre-commit]
       - id: catalog-http-mounts
         name: Catalog runtime HTTP mounts (plans, usage privileges)
         entry: uv run --frozen pytest tests/nodes/node_plan_list tests/nodes/node_usage_privileges -q --no-cov
@@ -1078,6 +1085,16 @@ repos:
         entry: uv run python -m omnimarket.nodes.node_broker_acl_reconcile_effect.runtime_broker_acl_coverage_gate --base-ref origin/dev
         pass_filenames: false
         files: ^(src/omnimarket/nodes/[^/]+/contract\.yaml|src/omnimarket/nodes/node_broker_acl_(overlay_render_compute|reconcile_effect)/.*)$
+        stages: [pre-commit]
+
+      # OMN-24121: a producer-consumer pair a change adds or reshapes must match in declared message shape; differences the base
+      # branch already has are not judged and no exception list exists. SYNC with ci.yml step "Seam field diff gate (OMN-24121)".
+      - id: seam-field-diff-gate
+        name: A producer-consumer pair a change adds matches in message shape (OMN-24121)
+        language: system
+        entry: env -u PYTHONPATH uv run python -m omnimarket.nodes.node_seam_field_diff_check_effect.runtime_seam_field_diff_check --base-ref origin/dev
+        pass_filenames: false
+        files: ^(src/omnimarket/nodes/[^/]+/contract\.yaml|src/omnimarket/nodes/node_seam_field_diff_(compute|check_effect)/.*|src/omnimarket/models/.*\.py)$
         stages: [pre-commit]
 
       # OMN-18311 (release criterion C12, third clause). A customer catalogue

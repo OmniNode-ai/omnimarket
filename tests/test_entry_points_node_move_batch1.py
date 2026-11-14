@@ -21,12 +21,14 @@ BATCH1_NODES = (
     "node_claude_token_pool_effect",
     "node_host_table_copies_drift_compute",
     "node_overlay_drift_compute",
+    "node_lab_fill_selection_compute",
 )
 LOCAL_INVOCATION_NODES = (
     "node_captured_secret_store_effect",
     "node_claude_token_pool_effect",
     "node_host_table_copies_drift_compute",
     "node_overlay_drift_compute",
+    "node_lab_fill_selection_compute",
 )
 
 
