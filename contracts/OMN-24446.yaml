@@ -1,0 +1,52 @@
+schema_version: 1.0.0
+ticket_id: OMN-24446
+title: A scheduled job without its settings no longer floods the failure queue on every tick
+summary: The two scheduled nodes that raised on every runtime tick when their overlay was absent (the weekly coding test trigger and the lab test harness schedule) now return nothing and log one error per distinct cause, through the latch the other scheduled nodes already use. A seam test reads every node bound to the runtime tick and fails when one raises for a missing overlay. The failure queue half is the omnibase_infra pull request of the same ticket.
+is_seam_ticket: true
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24446-no-per-tick-raise
+  statement: A scheduled node whose overlay is absent returns nothing on each tick instead of raising into the shared tick topic.
+  acceptance:
+  - id: AC1
+    statement: "AC1: a scheduled job without its settings returns nothing on every tick and logs one error, never raising -- falsifier: pytest tests/nodes/node_eval_tracking_schedule_compute/test_overlay.py -k no_overlay fails on the code before the change, which raised on every tick"
+  - id: AC2
+    statement: "AC2: no node bound to the runtime tick raises when its settings are absent -- falsifier: pytest tests/test_seam_runtime_tick_overlay_refusal.py finds the failing control handler and fails on the lab test harness schedule before the change"
+  - id: AC5
+    statement: "AC5: integrated: on the development system running both changes, the runtime log over five minutes holds no Skipping replayed record lines on the runtime tick topic -- falsifier: the same count over five minutes before the change read 12,540 lines in the first 3.5 minutes after the rebuild"
+evidence_requirements:
+- kind: tests
+  description: The eval tracking, lab test harness and seam tests pass at the pushed head.
+  command: uv run pytest tests/test_seam_runtime_tick_overlay_refusal.py tests/test_golden_chain_lab_test_harness.py tests/nodes/node_eval_tracking_schedule_compute -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24446-ac1
+  description: 'AC1: the eval tracking overlay tests pass with the change; before the change the no-overlay test raised NodeOverlayNotFoundError on the first tick.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_eval_tracking_schedule_compute/test_overlay.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24446-ac2
+  description: 'AC2: the seam test over every runtime-tick-bound handler passes with the change and its failing control finds a handler that raises per tick.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_seam_runtime_tick_overlay_refusal.py tests/test_golden_chain_lab_test_harness.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24446-integration-proof-ac5
+  description: 'AC5: the dev runtime on h201 holds no Skipping replayed record line on the runtime tick topic over five minutes; run on h201 after the dev rebuild from the branch.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --host h201 --lane dod-ac5-24446 --kind test -- bash -c 'test "$(docker logs --since 5m omninode-runtime 2>&1 | grep -c "Skipping replayed record on onex.intent.platform.runtime-tick.v1")" = 0'
+    cwd: .
