@@ -21,6 +21,7 @@ from omnimarket.nodes.node_projection_usage_by_model_day.handlers.handler_projec
     HandlerProjectionUsageByModelDay,
 )
 from omnimarket.nodes.node_projection_usage_by_model_day.handlers.handler_usage_by_model_day_writer import (
+    usage_call_from_delegation_completed,
     write_usage_call,
 )
 from omnimarket.nodes.node_projection_usage_by_model_day.models import (
@@ -172,6 +173,51 @@ async def test_real_postgres_measured_cost_excludes_unmeasured_calls() -> None:
         assert rows["2026-09-28"]["cost_usd"] == Decimal("9.25")
         assert rows["2026-09-29"]["measured_cost_usd"] is None
         assert rows["2026-09-29"]["unmeasured_call_count"] == 1
+    finally:
+        await conn.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
+        await conn.close()
+
+
+@pytest.mark.integration
+async def test_real_postgres_stores_delegation_terminals_once_and_recounts_the_day() -> (
+    None
+):
+    """OMN-22478: delegation terminals (the dev bus's only source of calls) land in the
+    aggregate; a replay of the same terminals changes nothing."""
+    conn = await _connect_or_skip()
+    schema = f"{_SCHEMA}_delegation"
+    try:
+        await conn.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
+        await conn.execute(f"CREATE SCHEMA {schema}")
+        for migration in _MIGRATIONS:
+            await conn.execute(
+                migration.read_text(encoding="utf-8").replace("public.", f"{schema}.")
+            )
+        terminals = [
+            {
+                "correlation_id": f"run-{n}",
+                "model_used": "Qwen3.8-27B",
+                "prompt_tokens": 100 * n,
+                "completion_tokens": 10 * n,
+                "cumulative_attempt_cost": 0.0,
+                "cost_tier_name": "local",
+                "tenant_id": "t",
+                "_envelope_timestamp": f"2026-11-08T0{n}:00:00Z",
+            }
+            for n in (1, 2, 3)
+        ]
+        fold = HandlerProjectionUsageByModelDay()
+        for _ in range(2):  # the second pass is the replay
+            for terminal in terminals:
+                delta = fold.handle(usage_call_from_delegation_completed(terminal))
+                async with conn.transaction():
+                    await write_usage_call(conn, delta, schema=schema)
+        rows = await conn.fetch(f"SELECT * FROM {schema}.usage_by_model_day")
+        assert len(rows) == 1
+        assert rows[0]["model_id"] == "Qwen3.8-27B"
+        assert rows[0]["cost_tier_name"] == "not_tier_routed"
+        assert (rows[0]["input_tokens"], rows[0]["output_tokens"]) == (600, 60)
+        assert rows[0]["call_count"] == 3
     finally:
         await conn.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
         await conn.close()

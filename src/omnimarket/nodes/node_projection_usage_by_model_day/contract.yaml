@@ -76,6 +76,9 @@ db_io:
 event_bus:
   subscribe_topics:
     - onex.evt.omniintelligence.llm-call-completed.v1
+    # OMN-22478: delegation calls its models itself and reports the run here; the llm-call topic holds no
+    # records on the dev bus, so without this the table stayed empty while delegation_events held the runs.
+    - onex.evt.omnibase-infra.delegation-completed.v1
   publish_topics:
     - onex.evt.omnimarket.projection-usage-by-model-day-applied.v1
   dlq_topics:
