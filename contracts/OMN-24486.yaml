@@ -53,12 +53,19 @@ dod_evidence:
     check_value: uv run pytest tests/nodes/node_lab_alarm_scheduled_effect/test_event_loop_stays_responsive.py tests/nodes/node_work_state_projection_scheduled_effect/test_event_loop_stays_responsive.py -k wiring -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn24486-ac4-integration-proof
-  description: Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. The pushed head ran the event loop tests on a lab host through the lab work runner and exited 0. The running reading (the rolled dev runtime on h201 and a 20 minute readiness sampler file) is read from the lab receipt comment on the ticket.
+  description: Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. The pushed head ran the event loop tests on a lab host through the lab work runner and exited 0. The running reading (the rolled dev runtime on h201 and a 20 minute readiness sampler file) is not claimed by this local check and is read from the lab receipt comment on the pull request.
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC4
   checks:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-omn24486 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_lab_alarm_scheduled_effect/test_event_loop_stays_responsive.py tests/nodes/node_work_state_projection_scheduled_effect/test_event_loop_stays_responsive.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24486-ac4-hosted-proxy
+  description: Hosted proxy for AC4, the heartbeat tests of both handlers keep the event loop gap under the bound while a blocking run is in flight; the 20 minute readiness reading on the rolled dev runtime is read by the unbound integration proof item above.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lab_alarm_scheduled_effect/test_event_loop_stays_responsive.py tests/nodes/node_work_state_projection_scheduled_effect/test_event_loop_stays_responsive.py -k golden -q --no-cov -n 0 -p no:randomly
     cwd: .
