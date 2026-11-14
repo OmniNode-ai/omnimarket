@@ -17,22 +17,27 @@ LAB_FIRST = ("ladder", "claude-glm", "claude")
 GLM_FIRST = ("claude-glm", "ladder")
 
 
-def reader(order: tuple[str, ...] | None):
-    asked: list[str] = []
+class Reader:
+    """A routing-order reader that records the task classes it was asked."""
 
-    def read(task_class: str) -> tuple[str, ...] | None:
-        asked.append(task_class)
-        return order
+    def __init__(self, order: tuple[str, ...] | None) -> None:
+        self.order = order
+        self.asked: list[str] = []
 
-    read.asked = asked  # type: ignore[attr-defined]
-    return read
+    def __call__(self, task_class: str) -> tuple[str, ...] | None:
+        self.asked.append(task_class)
+        return self.order
+
+
+def reader(order: tuple[str, ...] | None) -> Reader:
+    return Reader(order)
 
 
 def test_flag_wins_and_the_reader_is_not_asked() -> None:
     read = reader(LAB_FIRST)
     answer = mod.step_order("text", "document", "glm", read=read)
     assert (answer.choice, answer.receipt_fields()) == ("glm", {"order_source": "flag"})
-    assert read.asked == []  # type: ignore[attr-defined]
+    assert read.asked == []
 
 
 @pytest.mark.parametrize(
@@ -56,7 +61,7 @@ def test_overlay_order_decides_when_no_flag(
         "order_source": "routing_order_node",
         "routing_order": list(order),
     }
-    assert read.asked == ["document"]  # type: ignore[attr-defined]
+    assert read.asked == ["document"]
 
 
 @pytest.mark.parametrize(
@@ -84,7 +89,9 @@ def test_a_refused_reader_keeps_the_old_default_with_its_reason() -> None:
 
     answer = mod.step_order("text", "document", read=read)
     assert answer.choice == "glm"
-    assert "overlay_invalid: bad chain" in answer.receipt_fields()["order_fallback"]  # type: ignore[operator]
+    assert "overlay_invalid: bad chain" in str(
+        answer.receipt_fields()["order_fallback"]
+    )
 
 
 def test_an_unknown_kind_is_refused() -> None:
