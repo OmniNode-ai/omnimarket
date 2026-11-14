@@ -36,6 +36,13 @@ emergency_bypass:
   enabled: false
   justification: ""
   follow_up_ticket_id: ""
+context:
+  ac_binding_provenance:
+    "dod-omn20601-ac2-accepted-20261114t0345z":
+      - label: "AC2"
+        criterion_hash: "74c21078cc5a30a6def6a2858be53702406a49bed3faa91b887b4c791063dd81"
+        proposed_by: "lane=dod-closeout-bind-2026-11-14T0345Z-c2"
+        accepted_by: "lane=dod-closeout-accept-2026-11-14T0345Z-c2"
 dod_evidence:
   - id: "dod-omn20601-ac1-ac2-house-overlay-publisher"
     description: "AC1 and AC2 hosted probe. The publisher tests pass at the head and fail at the merge base."
@@ -84,3 +91,11 @@ dod_evidence:
       - check_type: "command"
         check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_deployment_fact_gate_effect/handlers/handler_deployment_fact_gate.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -cF 'new_branches, branch_inventory = judge_tree(repo_root, request.base_ref)' | grep -qx 1"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20601-ac2-accepted-20261114t0345z"
+    description: "AC2: the node contract of node_house_routing_overlay_effect declares a top-level runtime_profiles of effects. Fails with the product change of omnimarket #3428 (294a1d0bc) reverted, where the key exists only under descriptor."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest \"tests/nodes/node_house_routing_overlay_effect/test_publish_house_overlay_command.py::test_contract_declares_a_runtime_profile_the_runtime_reads\" -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
