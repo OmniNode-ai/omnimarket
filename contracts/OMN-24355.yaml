@@ -62,7 +62,7 @@ dod_evidence:
   - AC4
   checks:
   - check_type: command
-    check_value: "! grep -rnE 'pyyaml|600|120' src/omnimarket/nodes/node_landing_decision_venv_effect/handlers"
+    check_value: "test -d src/omnimarket/nodes/node_landing_decision_venv_effect/handlers && ! grep -rnE 'pyyaml|600|120' src/omnimarket/nodes/node_landing_decision_venv_effect/handlers"
     cwd: .
 - id: dod-omn24355-ac5
   description: "AC5: integrated: not read in this repository. It needs the overlay merged, the pin change merged (the pin that names pyyaml) and the operator's Mac install run; the reading belongs to that install."
