@@ -1,0 +1,83 @@
+schema_version: 1.0.0
+ticket_id: OMN-23870
+title: Code-edit requests carry a traffic class, so trial runs are kept out of the readings of real delegation traffic
+summary: The delegated code edit request carries the core delegation traffic class (default unclassified) and a source surface; a synthetic class without a surface is refused before the loop starts; every model turn is sent with both; the real-traffic readings leave synthetic code edit runs out.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched: []
+requirements:
+- id: req-omn23870-traffic-class
+  statement: A trial code edit run is marked synthetic on its request, every model turn carries that mark, and real-traffic readings exclude it.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: ModelDelegatedCodeEditRequest carries a traffic class (the core enum) and a source surface, defaulting to unclassified, and a synthetic class without a source surface is refused before the loop starts -- falsifier: uv run pytest tests/nodes/node_delegated_code_edit_orchestrator -q -k traffic_class, red on the base commit'
+  - id: AC2
+    statement: 'AC2: every model turn the loop sends as a delegate run carries the request''s traffic class and source surface in its provenance -- falsifier: uv run pytest tests/nodes/node_delegated_code_edit_orchestrator -q -k turn_provenance, red on the base commit'
+  - id: AC3
+    statement: 'AC3: the delegation events projection keeps the class of a code-edit run, and the real-traffic readings (local share, pass rate, cost) exclude synthetic runs -- falsifier: uv run pytest over the delegation events projection and the readings with a planted synthetic run asserting it is counted nowhere in the real-traffic numbers, red on the base commit'
+  - id: AC4
+    statement: 'AC4: integrated: one synthetic code-edit run on a lab host appears in the development delegation_events with the synthetic class and is absent from the real-traffic reading of the same hour -- falsifier: the event row and the reading, read on the development lane and recorded on this ticket'
+  - id: AC5
+    statement: 'AC5: a definition-of-done contract file for this ticket exists in omnimarket at contracts/<this ticket id>.yaml in the standard form, naming the runnable checks of AC1 to AC4 -- falsifier: the dod-verify check of the contract against the PR in CI'
+evidence_requirements:
+- kind: tests
+  description: The traffic class, turn provenance and synthetic exclusion tests pass at the pushed head.
+  command: uv run pytest tests/nodes/node_delegated_code_edit_orchestrator tests/projection/test_code_edit_synthetic_exclusion.py -q -n 0 --no-cov -p no:cacheprovider -k "traffic_class or turn_provenance or synthetic"
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23870-ac1
+  description: 'AC1: the traffic_class tests pass at the head (default unclassified, synthetic without a source surface refused in the model, the builder and the CLI).'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegated_code_edit_orchestrator -q -n 0 --no-cov -p no:cacheprovider -k traffic_class
+    cwd: .
+- id: dod-omn23870-ac2
+  description: 'AC2: the turn_provenance tests pass at the head (every turn of a full loop, and the in-process retry, carry the class and surface).'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegated_code_edit_orchestrator -q -n 0 --no-cov -p no:cacheprovider -k turn_provenance
+    cwd: .
+- id: dod-omn23870-ac3
+  description: 'AC3: a planted synthetic code edit turn is stored typed experiment and the real-traffic readings are unchanged by it.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/projection/test_code_edit_synthetic_exclusion.py tests/projection/test_synthetic_exclusion.py -k "not postgres" -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn23870-ac4
+  description: 'hosted proxy for AC4: the turn provenance and synthetic exclusion tests pass; the event row and the real-traffic reading on the development lane are read after the install and recorded on the ticket.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegated_code_edit_orchestrator tests/projection/test_code_edit_synthetic_exclusion.py -q -n 0 --no-cov -p no:cacheprovider -k "turn_provenance or synthetic"
+    cwd: .
+- id: dod-omn23870-ac5
+  description: 'AC5: this contract file exists and parses.'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: command
+    check_value: test -s contracts/OMN-23870.yaml
+    cwd: .
+- id: dod-omn23870-integration-proof
+  description: the traffic class, turn provenance and synthetic exclusion tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23870 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_delegated_code_edit_orchestrator tests/projection/test_code_edit_synthetic_exclusion.py -q --no-cov -k "traffic_class or turn_provenance or synthetic"
+    cwd: .

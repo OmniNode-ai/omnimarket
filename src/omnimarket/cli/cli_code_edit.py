@@ -44,6 +44,9 @@ from collections.abc import Callable
 from pathlib import Path
 
 import click
+from omnibase_core.enums.enum_delegation_traffic_class import (
+    EnumDelegationTrafficClass,
+)
 
 from omnimarket.delegated_code_edit.loop_ports import (
     IN_PROCESS_DELEGATE_FLAGS,
@@ -199,6 +202,20 @@ def code_edit_group() -> None:  # stub-ok: a click group, subcommands added belo
 )
 @click.option("--ticket", default=None, help="OMN-<n> stamped on each turn.")
 @click.option(
+    "--traffic-class",
+    type=click.Choice([member.value for member in EnumDelegationTrafficClass]),
+    default=EnumDelegationTrafficClass.UNCLASSIFIED.value,
+    show_default=True,
+    help="Declared origin of the run, stamped on each delegate turn. Synthetic "
+    "marks a trial or probe run as not real work and needs --source-surface.",
+)
+@click.option(
+    "--source-surface",
+    default=None,
+    help="Named producer surface stamped on each turn; required with "
+    "--traffic-class synthetic.",
+)
+@click.option(
     "--new-correlation",
     is_flag=True,
     help="Mint a fresh correlation id instead of the request's own (a rerun).",
@@ -266,6 +283,8 @@ def run_command(
     ticket_contract: Path | None,
     caller_lane: str | None,
     ticket: str | None,
+    traffic_class: str,
+    source_surface: str | None,
     new_correlation: bool,
     state_root: Path,
     omnibase_path: Path | None,
@@ -311,6 +330,8 @@ def run_command(
                 ticket_contract=ticket_contract,
                 caller_lane=caller_lane,
                 ticket=ticket,
+                traffic_class=EnumDelegationTrafficClass(traffic_class),
+                source_surface=source_surface,
             )
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
