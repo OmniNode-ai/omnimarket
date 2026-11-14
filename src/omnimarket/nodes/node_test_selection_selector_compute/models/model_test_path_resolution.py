@@ -8,6 +8,7 @@ YAML and re-exports them.
 
 from __future__ import annotations
 
+from fnmatch import fnmatchcase
 from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -132,6 +133,20 @@ class ModelAdjacencyMap(BaseModel):
                         f"adjacency['{module}'].reverse_deps references unknown module '{dep}'"
                     )
         return self
+
+    def narrowed_extra_paths(self, changed_files: list[str]) -> set[str]:
+        """Always-selected tests plus those a matching changed file triggers."""
+        triggered = {
+            path
+            for trigger in self.path_triggered_selected_paths
+            if any(
+                fnmatchcase(changed, pattern)
+                for changed in changed_files
+                for pattern in trigger.changed_globs
+            )
+            for path in trigger.selected_paths
+        }
+        return set(self.always_selected_paths) | triggered
 
 
 class ModelPathResolutionRequest(BaseModel):

@@ -11,14 +11,12 @@ import yaml
 from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_path_resolution import (
     ModelAdjacencyEntry,
     ModelAdjacencyMap,
-    ModelPathTriggeredTests,
     ModelThresholds,
 )
 
 __all__ = [
     "ModelAdjacencyEntry",
     "ModelAdjacencyMap",
-    "ModelPathTriggeredTests",
     "ModelThresholds",
     "load_adjacency_map",
 ]

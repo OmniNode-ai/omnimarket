@@ -100,22 +100,6 @@ def _resolve(
     return list(result.selected_paths)
 
 
-def _path_triggered_paths(
-    changed_files: list[str], config: ModelAdjacencyMap
-) -> set[str]:
-    """Tests that a matching changed file adds to a narrowed selection."""
-    return {
-        path
-        for trigger in config.path_triggered_selected_paths
-        if any(
-            fnmatchcase(changed, pattern)
-            for changed in changed_files
-            for pattern in trigger.changed_globs
-        )
-        for path in trigger.selected_paths
-    }
-
-
 def compute_selection(
     changed_files: list[str],
     adjacency_path: Path,
@@ -192,11 +176,7 @@ def compute_selection(
     # dev path. Not filtered against the on-disk tree -- see the field
     # docstring on ModelAdjacencyMap.always_selected_paths.
     if not any(path == TEST_PREFIX for path in selected):
-        selected = sorted(
-            set(selected)
-            | set(config.always_selected_paths)
-            | _path_triggered_paths(changed_files, config)
-        )
+        selected = sorted(set(selected) | config.narrowed_extra_paths(changed_files))
     # OMN-23296: shard count and weight bound come from estimated test time.
     decision = HandlerTestSelectionSelector(None, load_policy()).handle(
         ModelSelectorRequest(selected_paths=tuple(selected), repo_root=str(root))
