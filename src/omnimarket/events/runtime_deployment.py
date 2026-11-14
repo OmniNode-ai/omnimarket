@@ -1950,6 +1950,13 @@ class ModelDeployPublishCommand(BaseModel):
         default=None,
         description="Explicit capability negotiation with health-route-aware agents and CI.",
     )
+    roll_window_released: bool = Field(
+        default=False,
+        description=(
+            "True once the dev roll window gate released this command; the deploy "
+            "effect publishes it without holding it again."
+        ),
+    )
 
     correlation_id: UUID = Field(..., description="Redeploy run correlation ID.")
     scope: EnumRedeployScope = Field(

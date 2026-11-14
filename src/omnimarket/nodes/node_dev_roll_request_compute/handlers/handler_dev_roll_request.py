@@ -89,7 +89,7 @@ def decide_dev_roll(facts: ModelDevRollFacts, policy: ModelDevRollPolicy) -> Res
             action=EnumDevRollAction.HOLD,
             hold_reason=reason,
             hold_until=until,
-            shadow=True,
+            shadow=policy.mode == "shadow",
             would_request=None,
             rolled_event_ids=(),
             newest_sha_by_repository=newest,
@@ -140,7 +140,7 @@ def decide_dev_roll(facts: ModelDevRollFacts, policy: ModelDevRollPolicy) -> Res
         action=EnumDevRollAction.ROLL_NOW,
         hold_reason=None,
         hold_until=None,
-        shadow=True,
+        shadow=policy.mode == "shadow",
         would_request=ModelDevRollRequest(
             correlation_id=facts.correlation_id,
             requested_by=policy.requested_by,
