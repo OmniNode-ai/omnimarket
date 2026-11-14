@@ -1,0 +1,65 @@
+schema_version: 1.0.0
+ticket_id: OMN-22811
+title: The projection dead-letter envelope carries its source topic, partition and offset, and a redrive node re-projects refused delegation records once their tenant is registered
+summary: 'The delegation writer''s dead-letter topic holds records whose envelopes carry no source topic, partition or offset, so nothing can read a refused record again. The projection dead-letter envelope
+  now carries the topic, partition and offset the record was read from, and node_projection_dlq_redrive_effect re-reads each refused record by those coordinates (an assigned seek, no consumer group, no commit)
+  and projects it through the delegation writer, skipping a record whose tenant the registry still cannot resolve.'
+is_seam_ticket: true
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22811-dlq-redrive
+  statement: A refused projection record's dead-letter envelope names its source, and a redrive node re-projects it once its tenant is registered.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a refused projection record''s dead-letter envelope carries the source topic, partition and offset, shown by a test built from a recorded refusal that fails on today''s envelope -- falsifier:
+      uv run pytest on the projection consumer dead-letter test'
+  - id: AC2
+    statement: 'AC2: the redrive node re-projects a refused record by correlation id with no offset reset and skips a record whose tenant is still unknown, in golden and error chain tests -- falsifier: uv
+      run pytest on the redrive node golden and error chain tests'
+  - id: AC3
+    statement: 'AC3: after one redrive run on dev, the dead-letter count for the three install identities reads zero -- falsifier: onex dead-letter count query on the dev broker for onex.dlq.omnimarket.projection-delegation-malformed.v1
+      filtered by the three tenants'
+evidence_requirements:
+- kind: tests
+  description: The envelope and redrive tests pass at the pushed head.
+  command: uv run pytest tests/test_omn22811_dlq_envelope_source_coordinates.py tests/test_golden_chain_projection_dlq_redrive_effect.py -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22811-ac1
+  description: 'AC1: the malformed-event, missing-field and runner poison refusal paths each publish an envelope carrying source_topic, source_partition and source_offset; the three fail on the merge base dlq module.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_omn22811_dlq_envelope_source_coordinates.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn22811-ac2
+  description: 'AC2: the golden chain re-projects a refused record from its source coordinates by correlation id through a source reader that has no commit or group; the error chain skips an unknown tenant, a dead letter with no coordinates, a record gone from the broker, and reports a projection failure without stopping the run; the live reader joins no group and commits nothing.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_golden_chain_projection_dlq_redrive_effect.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn22811-ac3
+  description: 'hosted proxy for AC3: the redrive tests pass; the dead-letter count on the dev broker after one redrive run is read on a lab host and named in the pull request. Envelopes written before this change carry no source coordinates and are skipped by the redrive with their own reason.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_golden_chain_projection_dlq_redrive_effect.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn22811-integration-proof
+  description: the redrive and envelope tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22811 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/test_omn22811_dlq_envelope_source_coordinates.py tests/test_golden_chain_projection_dlq_redrive_effect.py -q --no-cov

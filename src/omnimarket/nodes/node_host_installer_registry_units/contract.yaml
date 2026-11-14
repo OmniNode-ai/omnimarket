@@ -517,6 +517,12 @@ units:
       # OMN-24342: the node publishes its alarms through the broker its overlay's event_bus declares (a lane id); the lane declaration
       # table (config/lab/ci_bus_lanes.yaml) that names the lane's broker is found under this root. No KAFKA_* variable names a broker.
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+      # The Slack channel the watch's alarms are delivered to: the alert channel the other lab alarms post to
+      # (#omninode-notifications, the id node_consumer_flow_stall_alert_effect's contract declares for its SLACK_CHANNEL_ID).
+      # A channel id is configuration, not a secret. The node resolves its contract's secrets.SLACK_CHANNEL_ID through the
+      # environment store; unbound, every tick exited 3 with its alarm deliveries unpublished. The seam test pins this
+      # value to the stall alert's declaration, so the two cannot drift apart.
+      SLACK_CHANNEL_ID: "C08PRL6BRQE"
     # OMN-24325: the database address (no password) and the reference of the login's password are request inputs persisted in the unit, so no
     # environment file has to hold them; the node reads the reference through its overlay's secret store block (reads_source.password_ref_env).
     # A unit installed without either ends INDETERMINATE (exit 3) every tick, so both are required.
@@ -961,6 +967,7 @@ units:
       requires: clean git checkout that carries entry_file
     environment_path_overrides:
       - ONEX_SKILL_OVERLAY_ROOTS
+      - ONEX_LEDGER_HOST_NAME
     # OMN-23323: an overlay root is never a worktree; the installer refuses one, in a default or an override.
     environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
     environment:
@@ -968,6 +975,11 @@ units:
       ONEX_STATE_DIR: "{registry_root}/.onex_state"
       OMNIBASE_PATH: "{registry_root}"
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+      # The two names the harness overlay's emission.ledger block carries (OMN-23007): the bus append command and the host
+      # the ledger rows name. Without them every Mac tick built no appender and exited 1 (OMN-22881). This is the launching
+      # Mac (h200); an install on another host overrides the host name.
+      ONEX_LEDGER_HOST_NAME: "h200"
+      ONEX_LEDGER_BUS_APPEND_COMMAND: "{registry_root}/omnimarket/.venv/bin/python -m omnimarket.work_ledger_bus.cli append --bus-lane dev --omnibase-path {registry_root}"
     evidence_file: .local/state/omni/lab-test-harness/last-run.json
     state_directory: .onex_state/lab-test-harness
   # The job-log filler (node_job_log_filler_effect, OMN-23032): every two minutes it reads the PR watcher's state (which lives
@@ -1431,6 +1443,51 @@ units:
     required_environment_inputs: [ONEX_HOST_NAME]
     evidence_file: .local/state/omni/landing-tick-orchestrator/last-run.json
     state_directory: .onex_state/landing-tick-orchestrator
+  # The stability lane refresh serve tick (OMN-24220, epic OMN-21611): every 60 s one pass reads the refresh requests on the
+  # bus (onex.cmd.omnimarket.stability-refresh-requested.v1), runs each through node_stability_lane_refresh_effect as this
+  # unit's account, and publishes the typed answer (pin-accepted, refused, completed or failed) on its own topics. A
+  # collaborator's login only sends the request; the clone, the secret store login and docker stay with this account.
+  # The run limit is longer than the overlay's refresh_timeout_seconds plus the serve block's join and read bounds (a
+  # request may run a whole refresh inside one pass); tests/nodes/node_stability_lane_refresh_effect/test_stability_refresh_unit_seam.py
+  # holds that.
+  stability-refresh-serve-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-stability-refresh-serve
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 60
+      run_timeout_s: 3700
+      run_at_load: true
+      description: every 60 s and at load
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_stability_lane_refresh_effect.runtime_stability_refresh_serve
+    entry_file: src/omnimarket/nodes/node_stability_lane_refresh_effect/runtime_stability_refresh_serve.py
+    probe_argv: ["--probe"]
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}"
+      OMNIBASE_PATH: "{registry_root}"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    # The tick's stability-lane login: the credential env file the service principal mint node delivers (KAFKA_SASL_USERNAME and
+    # KAFKA_SASL_PASSWORD, mode 0400, owned by the unit's account). The lane declares SASL and the account's lane login store holds no
+    # identity for the stability lane, so the runtime's resolver steps aside for these two variables; the dev identity in the store
+    # is never read for this lane. A missing file is not an error (the tick then ends source_unread naming the lane).
+    environment_file: .config/onex/stability-refresh-serve.env
+    evidence_file: .local/state/omni/stability-refresh-serve/last-run.json
+    state_directory: .onex_state/stability-refresh-serve
   # The Claude token pool rotation tick (OMN-23887), installed the declared way on every host the pool overlay lists: a
   # unit here, with its own project path and expected revision (the request's project_path and expected_revision), and
   # its own environment, in place of the pool's own `schedule install` (which ran a hand-built venv). One unit per
