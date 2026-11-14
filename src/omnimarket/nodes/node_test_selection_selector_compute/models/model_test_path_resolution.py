@@ -23,6 +23,28 @@ class ModelThresholds(BaseModel):
     modules_changed_for_full_suite: int = Field(..., ge=1)
 
 
+class ModelPathTriggeredTests(BaseModel):
+    """Tests a narrowed selection must also run when a changed file matches a glob."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    changed_globs: list[str] = Field(..., min_length=1)
+    """Repo-relative fnmatch patterns; one changed file matching any of them triggers."""
+    selected_paths: list[str] = Field(..., min_length=1)
+    """Test directories (trailing slash) or test files under tests/ to add."""
+
+    @model_validator(mode="after")
+    def validate_selected_paths(self) -> ModelPathTriggeredTests:
+        for path in self.selected_paths:
+            if not path.startswith("tests/") or not path.endswith(("/", ".py")):
+                raise ValueError(
+                    f"path_triggered_selected_paths entry '{path}' must be a "
+                    "directory under tests/ with a trailing slash, or a test "
+                    "file ending in .py"
+                )
+        return self
+
+
 class ModelAdjacencyMap(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -48,6 +70,20 @@ class ModelAdjacencyMap(BaseModel):
     deliberately NOT filtered against the on-disk tree: a missing directory
     must surface as a loud pytest collection error, never as a silent drop
     that turns the gate vacuous.
+    """
+
+    path_triggered_selected_paths: list[ModelPathTriggeredTests] = Field(
+        default_factory=list
+    )
+    """Tests appended to a narrowed selection when a changed file matches a glob.
+
+    A repo-wide check that only a kind of change can break belongs here, not in
+    ``always_selected_paths``: the node inventory test walks every node
+    directory, contract and ``onex.nodes`` entry point, so a node contract
+    change that narrowed to the node's own tests skipped it, and the guard that
+    reads the same list as the drift gate went red only after the push. Like
+    ``always_selected_paths`` the entries are NOT filtered against the on-disk
+    tree: a missing test must surface as a loud pytest collection error.
     """
 
     node_scoped_modules: list[str] = Field(default_factory=list)
