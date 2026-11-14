@@ -144,7 +144,9 @@ class LocalExposureSurfaces:
 
     def paths(self, pattern: str) -> tuple[str, ...]:
         expanded = os.path.expandvars(os.path.expanduser(pattern))
-        return tuple(sorted(p for p in glob.glob(expanded) if os.path.isfile(p)))
+        return tuple(
+            sorted(p for p in glob.glob(expanded, recursive=True) if os.path.isfile(p))
+        )
 
     def read_text(self, path: str, max_bytes: int) -> str:
         size = os.path.getsize(path)

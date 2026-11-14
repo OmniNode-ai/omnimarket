@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_throughput_goal_check_compute
+version: "1.0.0"
+description: The hourly check's goal check (in-scope merges, open, green waiting, flipped-back drafts, unowned reds, holders) over the facts the tick read
+omnibase_core_compat: ">=0.47.28,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_throughput_goal_check_compute: omnimarket.nodes.node_throughput_goal_check_compute
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  side_effect_class: pure
+dependencies:
+  - pydantic>=2.11.0
+authors: [OmniNode Team]
+license: MIT
+tags: [compute, throughput, tick, goal, landing]
+node_role: compute
+pack: "routing"
+display_name: "Throughput Goal Check Compute"

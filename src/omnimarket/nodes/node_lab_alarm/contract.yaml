@@ -40,6 +40,25 @@ description: >
   name cannot be resolved or the bootstrap string is malformed. The verdict is handed to the alarm delivery
   when the overlay's alarm_delivery block turns it on.
 
+  The dev-tag-heartbeat condition (HandlerDevTagHeartbeat, verb dev-tag-heartbeat) reads the deploy agent's
+  heartbeat document at the overlay's agent_url and endpoint_path. For every repository in the overlay's
+  repositories, a beat that is missing, stale or alarmed is a breach; a repository alarms only after its
+  streak of consecutive breaching runs reaches the overlay's persistence bound, before that the run is OK
+  with a waiting reason. An unreadable source, a document with no heartbeat object, or a malformed beat is
+  INDETERMINATE, never ALARM and never OK. The verdict is handed to the alarm delivery when the overlay's
+  alarm_delivery block turns it on.
+
+  The delegation-chain-canary condition (HandlerDelegationChainCanary, verb delegation-chain-canary, OMN-24400) reads the
+  runs of the overlay's canary workflow through the GitHub gateway node. The newest completed run of an admitted event
+  decides, in both directions: red, or older than the overlay's bound, or no completed run, is a breach; an unreadable
+  surface is INDETERMINATE. A breach alarms after the overlay's persist_runs consecutive runs.
+
+  The work-ledger-projection-stale condition (HandlerWorkLedgerProjectionStale, verb work-ledger-projection-stale,
+  OMN-24400) compares the newest canonical row of the rolling ledger file with the newest row of the work-ledger
+  projection, asked of the work-ledger query node. A projection behind the file by more than the overlay's bound is a
+  breach, alarming after persist_runs consecutive runs; an unreadable file or projection is INDETERMINATE. It measures
+  file-versus-projection freshness only, never the liveness of the emit path.
+
 handler:
   module: omnimarket.nodes.node_lab_alarm.handlers.handler_broker_lag
   class: HandlerBrokerLag
@@ -58,6 +77,18 @@ cli_handlers:
     handler:
       name: HandlerBrokerListener
       module: omnimarket.nodes.node_lab_alarm.handlers.handler_broker_listener
+  - operation: dev_tag_heartbeat
+    handler:
+      name: HandlerDevTagHeartbeat
+      module: omnimarket.nodes.node_lab_alarm.handlers.handler_dev_tag_heartbeat
+  - operation: delegation_chain_canary
+    handler:
+      name: HandlerDelegationChainCanary
+      module: omnimarket.nodes.node_lab_alarm.handlers.handler_delegation_chain_canary
+  - operation: work_ledger_projection_stale
+    handler:
+      name: HandlerWorkLedgerProjectionStale
+      module: omnimarket.nodes.node_lab_alarm.handlers.handler_work_ledger_projection_stale
 
 # HandlerEffectsHeld (omnimarket.nodes.node_lab_alarm.handlers.handler_effects_held, input
 # ModelEffectsHeldCommand) takes its overlay settings, group reader, state store, lane dispatcher and clock
@@ -104,6 +135,18 @@ topics:
   broker_listener_run_started: onex.evt.omnimarket.lab-alarm-broker-listener-started.v1
   broker_listener_run_completed: onex.evt.omnimarket.lab-alarm-broker-listener-completed.v1
   broker_listener_run_failed: onex.evt.omnimarket.lab-alarm-broker-listener-failed.v1
+  dev_tag_heartbeat_requested: onex.cmd.omnimarket.lab-alarm-dev-tag-heartbeat-requested.v1
+  dev_tag_heartbeat_run_started: onex.evt.omnimarket.lab-alarm-dev-tag-heartbeat-started.v1
+  dev_tag_heartbeat_run_completed: onex.evt.omnimarket.lab-alarm-dev-tag-heartbeat-completed.v1
+  dev_tag_heartbeat_run_failed: onex.evt.omnimarket.lab-alarm-dev-tag-heartbeat-failed.v1
+  delegation_chain_canary_requested: onex.cmd.omnimarket.lab-alarm-delegation-chain-canary-requested.v1
+  delegation_chain_canary_run_started: onex.evt.omnimarket.lab-alarm-delegation-chain-canary-started.v1
+  delegation_chain_canary_run_completed: onex.evt.omnimarket.lab-alarm-delegation-chain-canary-completed.v1
+  delegation_chain_canary_run_failed: onex.evt.omnimarket.lab-alarm-delegation-chain-canary-failed.v1
+  work_ledger_projection_stale_requested: onex.cmd.omnimarket.lab-alarm-work-ledger-projection-stale-requested.v1
+  work_ledger_projection_stale_run_started: onex.evt.omnimarket.lab-alarm-work-ledger-projection-stale-started.v1
+  work_ledger_projection_stale_run_completed: onex.evt.omnimarket.lab-alarm-work-ledger-projection-stale-completed.v1
+  work_ledger_projection_stale_run_failed: onex.evt.omnimarket.lab-alarm-work-ledger-projection-stale-failed.v1
 
 event_bus:
   subscribe_topics: []
@@ -122,6 +165,15 @@ externally_consumed_topics:
   - onex.evt.omnimarket.lab-alarm-broker-listener-started.v1
   - onex.evt.omnimarket.lab-alarm-broker-listener-completed.v1
   - onex.evt.omnimarket.lab-alarm-broker-listener-failed.v1
+  - onex.evt.omnimarket.lab-alarm-dev-tag-heartbeat-started.v1
+  - onex.evt.omnimarket.lab-alarm-dev-tag-heartbeat-completed.v1
+  - onex.evt.omnimarket.lab-alarm-dev-tag-heartbeat-failed.v1
+  - onex.evt.omnimarket.lab-alarm-delegation-chain-canary-started.v1
+  - onex.evt.omnimarket.lab-alarm-delegation-chain-canary-completed.v1
+  - onex.evt.omnimarket.lab-alarm-delegation-chain-canary-failed.v1
+  - onex.evt.omnimarket.lab-alarm-work-ledger-projection-stale-started.v1
+  - onex.evt.omnimarket.lab-alarm-work-ledger-projection-stale-completed.v1
+  - onex.evt.omnimarket.lab-alarm-work-ledger-projection-stale-failed.v1
 
 overlay:
   node: node_lab_alarm

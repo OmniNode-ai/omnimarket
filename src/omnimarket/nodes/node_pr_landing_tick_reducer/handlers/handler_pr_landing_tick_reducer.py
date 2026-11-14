@@ -24,9 +24,7 @@ from omnimarket.models.landing_tick import (
     ModelTickReduceOutput,
     ModelTickSubjectRow,
 )
-from omnimarket.nodes.node_pr_landing_tick_observe_compute.handlers.handler_pr_landing_tick_observe import (
-    diff_paths,
-)
+from omnimarket.nodes.node_pr_landing_tick_observe_compute import diff_paths
 
 # Section name -> the field that names the subject of each of its rows.
 SUBJECT_FIELDS: Final[dict[str, str]] = {
@@ -40,16 +38,26 @@ SUBJECT_FIELDS: Final[dict[str, str]] = {
     "companion_verdicts": "companion",
 }
 
+# Parts of the next state that one pull request or cause owns, and the field that names the owner.
+NEXT_STATE_SUBJECT_FIELDS: Final[dict[str, str]] = {"leases": "pr", "records": "pr"}
+
 
 def fold_decision(decision: ModelLandingDecision) -> dict[str, dict[str, Any]]:
     """Group a decision's rows by subject; the rest of the decision is the tick-level subject."""
     doc: dict[str, Any] = decision.model_dump(mode="json")
     grouped: dict[str, dict[str, Any]] = defaultdict(dict)
+    for section, field in NEXT_STATE_SUBJECT_FIELDS.items():
+        for row in doc["next_state"].pop(section):
+            grouped[row[field]].setdefault(f"next_state_{section}", []).append(row)
     for section, field in SUBJECT_FIELDS.items():
         for row in doc.pop(section):
             grouped[row[field]].setdefault(section, []).append(row)
     grouped[TICK_LEVEL_SUBJECT] = doc
     return dict(grouped)
+
+
+def _action_order(decision: ModelLandingDecision) -> list[tuple[str, str]]:
+    return [(a.subject, str(a.kind)) for a in decision.actions]
 
 
 def _kinds(section_rows: dict[str, Any]) -> tuple[str, ...]:
@@ -84,6 +92,30 @@ class HandlerPrLandingTickReducer:
                 divergences.append(
                     ModelTickDivergence(subject=subject, differences=differences)
                 )
+        # Actions run in order across subjects: the same actions in another global order is a
+        # tick-level difference (a different set of actions is already named per subject).
+        node_order = _action_order(request.decision)
+        recorded_order = _action_order(request.recorded)
+        if node_order != recorded_order and sorted(node_order) == sorted(
+            recorded_order
+        ):
+            order = ModelTickDifference(
+                path="action_order",
+                recorded=json.dumps(recorded_order),
+                node=json.dumps(node_order),
+            )
+            tick_rows = [d for d in divergences if d.subject == TICK_LEVEL_SUBJECT]
+            divergences = [d for d in divergences if d.subject != TICK_LEVEL_SUBJECT]
+            divergences.append(
+                ModelTickDivergence(
+                    subject=TICK_LEVEL_SUBJECT,
+                    differences=(
+                        *(tick_rows[0].differences if tick_rows else ()),
+                        order,
+                    ),
+                )
+            )
+            divergences.sort(key=lambda d: d.subject)
         return ModelTickReduceOutput(
             tick=request.decision.tick,
             rows=rows,
@@ -92,4 +124,9 @@ class HandlerPrLandingTickReducer:
         )
 
 
-__all__: list[str] = ["SUBJECT_FIELDS", "HandlerPrLandingTickReducer", "fold_decision"]
+__all__: list[str] = [
+    "NEXT_STATE_SUBJECT_FIELDS",
+    "SUBJECT_FIELDS",
+    "HandlerPrLandingTickReducer",
+    "fold_decision",
+]
