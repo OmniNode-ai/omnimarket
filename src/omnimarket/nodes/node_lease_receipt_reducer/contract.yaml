@@ -74,6 +74,7 @@ handler_routing:
       handler:
         name: "HandlerLeaseReceiptReducer"
         module: "omnimarket.nodes.node_lease_receipt_reducer.handlers.handler_lease_receipt_reducer"
+terminal_event: "onex.evt.omnimarket.lease-receipt-recorded.v1"
 runtime_dispatch:
   command_topic: "onex.cmd.omnimarket.lease-receipt-requested.v1"
   terminal_events:

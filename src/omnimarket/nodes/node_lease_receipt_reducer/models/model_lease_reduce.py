@@ -86,6 +86,13 @@ class ModelLeaseReduceOutput(BaseModel):
     )
     table: ModelLeaseTable
 
+    @property
+    def terminal_failure_cause(self) -> str | None:
+        """The refusal reason on a refused reply, so the runtime publishes the failure terminal."""
+        if self.status is EnumLeaseStatus.REFUSED:
+            return self.reason.value
+        return None
+
 
 __all__: list[str] = [
     "ModelLeaseCaller",
