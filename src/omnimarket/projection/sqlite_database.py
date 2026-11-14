@@ -42,6 +42,10 @@ from omnibase_core.models.projection.model_upsert_plan import (
 from omnimarket.handlers.handler_projection_derived_write import (
     HandlerProjectionDerivedWrite,
 )
+from omnimarket.models.model_local_install_delegation_savings import (
+    DELEGATION_SAVINGS_VIEW_STEPS,
+    create_delegation_savings_view,
+)
 from omnimarket.models.model_local_install_delegation_summary import (
     DELEGATION_SUMMARY_VIEW_STEPS,
     create_delegation_summary_view,
@@ -624,34 +628,6 @@ _DELEGATION_MODEL_ROUTING_TIER_MODELS_SQL = (
 # a tenant's days in one row (migration 0066's cursor is a cursor-table step).
 _DAILY_VIEW_STEP = "omn21970_delegation_daily_view"
 _DAILY_VIEW_SQL = ("projection_delegation_daily", "sqlite/delegation_daily_view.sql")
-# OMN-20008: the counterpart of node_projection_savings migration 090's savings
-# view, serving the local exposure with each run's stored call provenance.
-_DELEGATION_SAVINGS_VIEW_STEP = "omn20008_delegation_savings_view"
-_DELEGATION_SAVINGS_VIEW_SQL = (
-    "omnimarket.nodes.node_projection_savings",
-    "sqlite/delegation_savings_view.sql",
-)
-# OMN-20717: the counterpart of migration 096, which appends unpriced_call_count
-# to the savings view. Its own step after the OMN-20008 one: a store that has
-# recorded that step would never run it again.
-_DELEGATION_SAVINGS_UNPRICED_VIEW_STEP = "omn20717_delegation_savings_unpriced_view"
-_DELEGATION_SAVINGS_UNPRICED_VIEW_SQL = (
-    "omnimarket.nodes.node_projection_savings",
-    "sqlite/delegation_savings_view_unpriced.sql",
-)
-_DELEGATION_SAVINGS_MEASURED_VIEW_STEP = "omn21206_delegation_savings_measured_view"
-_DELEGATION_SAVINGS_MEASURED_VIEW_SQL = (
-    "omnimarket.nodes.node_projection_savings",
-    "sqlite/delegation_savings_view_measured.sql",
-)
-# OMN-24224: a session whose run stored no cost serves local_cost_usd as null,
-# not 0. Its own step after the OMN-21206 one: a store that has recorded that
-# step would never run it again.
-_DELEGATION_SAVINGS_NULL_COST_VIEW_STEP = "omn24224_delegation_savings_null_cost_view"
-_DELEGATION_SAVINGS_NULL_COST_VIEW_SQL = (
-    "omnimarket.nodes.node_projection_savings",
-    "sqlite/delegation_savings_view_null_cost.sql",
-)
 # OMN-21349: correlation-keyed claims have no delivery_id mapping. Preserve
 # them in a legacy table and create the current shape before its indexes.
 _CLAIMS_DELIVERY_ID_SHAPE_STEP = "omn21349_claims_delivery_id_shape"
@@ -916,38 +892,15 @@ class SqliteDatabaseAdapter(CredentialSqliteStore):
                         lacking,
                     )
                 )
-        if not cls._store_step_recorded(conn, _DELEGATION_SAVINGS_VIEW_STEP):
-            pending.append(
-                (
-                    _DELEGATION_SAVINGS_VIEW_STEP,
-                    cls._create_delegation_savings_view,
-                    "created the delegation savings view",
+        for step, resource, done in DELEGATION_SAVINGS_VIEW_STEPS:
+            if not cls._store_step_recorded(conn, step):
+                pending.append(
+                    (
+                        step,
+                        partial(create_delegation_savings_view, resource=resource),
+                        done,
+                    )
                 )
-            )
-        if not cls._store_step_recorded(conn, _DELEGATION_SAVINGS_UNPRICED_VIEW_STEP):
-            pending.append(
-                (
-                    _DELEGATION_SAVINGS_UNPRICED_VIEW_STEP,
-                    cls._create_delegation_savings_unpriced_view,
-                    "re-created the delegation savings view with its unpriced-call count",
-                )
-            )
-        if not cls._store_step_recorded(conn, _DELEGATION_SAVINGS_MEASURED_VIEW_STEP):
-            pending.append(
-                (
-                    _DELEGATION_SAVINGS_MEASURED_VIEW_STEP,
-                    cls._create_delegation_savings_measured_view,
-                    "restricted savings money to measured runs and counted each basis",
-                )
-            )
-        if not cls._store_step_recorded(conn, _DELEGATION_SAVINGS_NULL_COST_VIEW_STEP):
-            pending.append(
-                (
-                    _DELEGATION_SAVINGS_NULL_COST_VIEW_STEP,
-                    cls._create_delegation_savings_null_cost_view,
-                    "served a run with no stored cost as a null session cost",
-                )
-            )
         if not cls._store_step_recorded(
             conn, _DELEGATION_MODEL_ROUTING_TIER_MODELS_STEP
         ):
@@ -1195,50 +1148,6 @@ class SqliteDatabaseAdapter(CredentialSqliteStore):
         view, resource = relation
         ddl = files(package).joinpath(resource).read_text(encoding="utf-8")
         conn.execute(f"DROP VIEW IF EXISTS {view}")
-        conn.execute(ddl)
-
-    @staticmethod
-    def _create_delegation_savings_view(conn: sqlite3.Connection) -> None:
-        """OMN-20008: give the store the savings relation the exposure reads.
-
-        Dropped first so a store that somehow holds an older definition takes
-        this one; a later revision is a new step, never an edit to this one.
-        """
-        package, resource = _DELEGATION_SAVINGS_VIEW_SQL
-        ddl = files(package).joinpath(resource).read_text(encoding="utf-8")
-        conn.execute("DROP VIEW IF EXISTS projection_delegation_savings")
-        conn.execute(ddl)
-
-    @staticmethod
-    def _create_delegation_savings_unpriced_view(conn: sqlite3.Connection) -> None:
-        """OMN-20717: re-create the savings view with unpriced_call_count appended.
-
-        Same shape as the OMN-20008 step it follows: dropped first, and a later
-        revision is a new step, never an edit to this one.
-        """
-        package, resource = _DELEGATION_SAVINGS_UNPRICED_VIEW_SQL
-        ddl = files(package).joinpath(resource).read_text(encoding="utf-8")
-        conn.execute("DROP VIEW IF EXISTS projection_delegation_savings")
-        conn.execute(ddl)
-
-    @staticmethod
-    def _create_delegation_savings_measured_view(conn: sqlite3.Connection) -> None:
-        """Replace the view once on both new and previously upgraded stores."""
-        package, resource = _DELEGATION_SAVINGS_MEASURED_VIEW_SQL
-        ddl = files(package).joinpath(resource).read_text(encoding="utf-8")
-        conn.execute("DROP VIEW IF EXISTS projection_delegation_savings")
-        conn.execute(ddl)
-
-    @staticmethod
-    def _create_delegation_savings_null_cost_view(conn: sqlite3.Connection) -> None:
-        """OMN-24224: re-create the savings view with a null cost for unmeasured runs.
-
-        Same shape as the steps before it: dropped first, and a later revision
-        is a new step, never an edit to this one.
-        """
-        package, resource = _DELEGATION_SAVINGS_NULL_COST_VIEW_SQL
-        ddl = files(package).joinpath(resource).read_text(encoding="utf-8")
-        conn.execute("DROP VIEW IF EXISTS projection_delegation_savings")
         conn.execute(ddl)
 
     @staticmethod
