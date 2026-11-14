@@ -12,6 +12,6 @@ from omnimarket.nodes.node_branch_deploy_command_effect.models.model_agent_key_c
 
 
 class ProtocolAgentKeyCheck(Protocol):
-    """The agent key check port the handler takes as a constructor argument."""
+    """The agent key check port the handler takes as a constructor argument; the default is the key check node."""
 
-    def read(self) -> ModelAgentKeyCheckReading: ...
+    async def read(self) -> ModelAgentKeyCheckReading: ...

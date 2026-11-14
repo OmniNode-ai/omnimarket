@@ -614,7 +614,6 @@
   "tests/nodes/node_binding_parity_orchestrator/test_parity.py": 0.17,
   "tests/nodes/node_branch_claim_check_effect/test_seam_pr_status_producers.py": 3.11,
   "tests/nodes/node_branch_claim_check_effect/test_seam_pr_status_route_coverage.py": 2.46,
-  "tests/nodes/node_branch_deploy_command_effect/test_agent_key_check_adapter.py": 6.09,
   "tests/nodes/node_branch_deploy_command_effect/test_command_effect.py": 3.34,
   "tests/nodes/node_branch_deploy_command_effect/test_contract.py": 2.66,
   "tests/nodes/node_branch_deploy_command_effect/test_key_check_chain.py": 2.56,

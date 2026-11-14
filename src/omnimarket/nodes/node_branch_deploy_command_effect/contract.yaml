@@ -16,10 +16,11 @@ node_version: {major: 1, minor: 0, patch: 0}
 description: >
   Branch deploy command effect. Builds the deploy agent's rebuild command envelope from a typed request and the overlay,
   signs it with the signing key named by the overlay, and publishes it to the deploy agent's command topic. When the
-  overlay configures the key check, it reads the deploy agent's health page before it publishes and compares the agent's
-  key check value with the check value of its own signing key (OMN-24396). A published command is status published; a
-  missing signing key, a signing key that differs from the agent's, an unreadable health page, a page with no key check
-  value and an overlay that configures only part of the check are each refused before anything is published; a publish error is failed with the error class as detail. The
+  overlay sets check_agent_key, it asks node_deploy_agent_key_check_effect for the deploy agent's key check value before it
+  publishes and compares it with the check value of its own signing key (OMN-24396, OMN-24413). A published command is
+  status published; a missing signing key, a signing key that differs from the agent's (typed refusal naming both check
+  values) and a key check value the node did not serve are each refused before anything is published; a publish error is
+  failed with the error class as detail. The
   detail is cut to the overlay bound.
 
 handler_routing:
@@ -82,7 +83,7 @@ externally_consumed_topics:
 secret_dependencies:
   DEPLOY_AGENT_HMAC_SECRET:
     required: true
-    description: "Shared HMAC secret the deploy agent verifies on every command; the overlay's hmac_secret_env names the variable the runtime fills from the secret store. Its one-way check value is compared with the deploy agent's health page before every publish."
+    description: "Shared HMAC secret the deploy agent verifies on every command; the overlay's hmac_secret_env names the variable the runtime fills from the secret store. Its one-way check value is compared with the deploy agent's expected key check value, served by node_deploy_agent_key_check_effect, before every publish."
 
 dependencies:
   packages:

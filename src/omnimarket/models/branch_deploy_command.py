@@ -37,3 +37,6 @@ class ModelBranchDeployCommandResult(BaseModel):
     mode: Literal["deploy", "rollback"]
     status: Literal["published", "refused", "failed"]
     detail: str = ""
+    # Set only on a key mismatch refusal (OMN-24396): the one-way check values of both keys, never a key.
+    signer_key_check: str = ""
+    agent_key_check: str = ""

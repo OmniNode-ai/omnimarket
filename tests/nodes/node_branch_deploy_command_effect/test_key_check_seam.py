@@ -2,10 +2,10 @@
 # SPDX-License-Identifier: MIT
 """The signing key and the deploy agent's key meet at one check value, and a command is not published when they differ (OMN-24396).
 
-* seam: the node's check value for the vector's key equals the value the deploy agent computes (``key_check_vector`` of
-  agent_wire.json, the same vector omnibase_infra's deploy-agent tests pin), so a change on either side fails a test;
-* refusals: a differing key, an unreadable page, a page with no value and an overlay that configures only part of the check each
-  refuse and publish nothing; an overlay that configures none of it publishes and says it did not check; the signing key is in
+* seam: the signer's check value for the vector's key equals the value node_deploy_agent_key_check_effect serves for it
+  (``key_check_vector.json`` of that node's tests, which this test reads too), so a change on either side fails a test;
+* refusals: a differing key (typed, naming both check values) and a check value the node did not serve each refuse and
+  publish nothing; an overlay that does not ask for the check publishes and says it did not check; the signing key is in
   no detail;
 * controls: the same request publishes when the agent holds the node's key, so the red is the check's.
 """
@@ -18,8 +18,10 @@ from pathlib import Path
 import pytest
 
 from omnimarket.nodes.node_branch_deploy_command_effect.handlers.handler_branch_deploy_command import (
-    KEY_CHECK_LABEL,
     HandlerBranchDeployCommand,
+)
+from omnimarket.nodes.node_deploy_agent_key_check_effect.models.model_deploy_agent_key_check import (
+    KEY_CHECK_LABEL,
     key_check_value,
 )
 from tests.nodes.node_branch_deploy_command_effect.support import (
@@ -36,7 +38,10 @@ pytestmark = pytest.mark.unit
 
 TOPIC = "onex.cmd.deploy.rebuild-requested.v1"
 OTHER_CHECK = "0123456789abcdef"
-WIRE_FILE = Path(__file__).resolve().parent / "agent_wire.json"
+WIRE_FILE = (
+    Path(__file__).resolve().parents[1]
+    / "node_deploy_agent_key_check_effect/key_check_vector.json"
+)
 
 
 @pytest.fixture(autouse=True)
@@ -45,7 +50,7 @@ def _signing_key(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _vector() -> dict[str, str]:
-    vector: dict[str, str] = json.loads(WIRE_FILE.read_text())["key_check_vector"]
+    vector: dict[str, str] = json.loads(WIRE_FILE.read_text())
     return vector
 
 
@@ -74,6 +79,8 @@ async def test_mismatch_refuses_and_publishes_nothing() -> None:
     assert key_check_value(SIGNING_KEY) in result.detail
     assert OTHER_CHECK in result.detail
     assert "does not match the deploy agent's key" in result.detail
+    assert result.signer_key_check == key_check_value(SIGNING_KEY)
+    assert result.agent_key_check == OTHER_CHECK
     assert SIGNING_KEY not in result.detail
 
 
@@ -88,9 +95,11 @@ async def test_match_publishes_the_signed_command() -> None:
     assert [topic for topic, _, _ in bus.published] == [TOPIC]
 
 
-async def test_unreachable_page_refuses_and_publishes_nothing() -> None:
+async def test_unserved_check_value_refuses_and_publishes_nothing() -> None:
     bus = FakeBus()
-    reader = FakeKeyCheckReader("unreachable", detail="TimeoutError")
+    reader = FakeKeyCheckReader(
+        "refused", detail="the secret named by the overlay is not set"
+    )
     handler = HandlerBranchDeployCommand(
         event_bus=bus, overlay=overlay(), key_check_reader=reader
     )
@@ -98,55 +107,23 @@ async def test_unreachable_page_refuses_and_publishes_nothing() -> None:
 
     assert result.status == "refused"
     assert bus.published == []
-    assert "could not be read (TimeoutError)" in result.detail
-
-
-async def test_page_without_a_value_refuses_and_publishes_nothing() -> None:
-    bus = FakeBus()
-    handler = HandlerBranchDeployCommand(
-        event_bus=bus,
-        overlay=overlay(),
-        key_check_reader=FakeKeyCheckReader("absent"),
+    assert (
+        "was not served (the secret named by the overlay is not set)" in result.detail
     )
-    result = await handler.handle(request())
-
-    assert result.status == "refused"
-    assert bus.published == []
-    assert "carries no key check value" in result.detail
+    assert result.signer_key_check == result.agent_key_check == ""
 
 
-async def test_overlay_with_no_key_check_publishes_and_says_it_did_not_check() -> None:
+async def test_overlay_that_does_not_ask_for_the_check_publishes_and_says_it_did_not_check() -> (
+    None
+):
     bus = FakeBus()
-    unconfigured = overlay().model_copy(
-        update={
-            "agent_health_url": None,
-            "agent_health_timeout_seconds": None,
-            "agent_key_check_field": None,
-        }
-    )
-    handler = HandlerBranchDeployCommand(event_bus=bus, overlay=unconfigured)
-    result = await handler.handle(request())
-
-    assert result.status == "published"
-    assert [topic for topic, _, _ in bus.published] == [TOPIC]
-    assert "was not checked against the deploy agent's key" in result.detail
-
-
-@pytest.mark.parametrize(
-    "missing",
-    ["agent_health_url", "agent_health_timeout_seconds", "agent_key_check_field"],
-)
-async def test_overlay_with_part_of_the_key_check_refuses_and_publishes_nothing(
-    missing: str,
-) -> None:
-    bus = FakeBus()
-    partial = overlay().model_copy(update={missing: None})
-    handler = HandlerBranchDeployCommand(event_bus=bus, overlay=partial)
-    result = await handler.handle(request())
-
-    assert result.status == "refused"
-    assert bus.published == []
-    assert "names only part of the deploy agent key check" in result.detail
+    for asked in (None, False):
+        unasked = overlay().model_copy(update={"check_agent_key": asked})
+        handler = HandlerBranchDeployCommand(event_bus=bus, overlay=unasked)
+        result = await handler.handle(request())
+        assert result.status == "published"
+        assert "was not checked against the deploy agent's key" in result.detail
+    assert [topic for topic, _, _ in bus.published] == [TOPIC, TOPIC]
 
 
 async def test_refusal_detail_is_cut_to_the_overlay_bound() -> None:

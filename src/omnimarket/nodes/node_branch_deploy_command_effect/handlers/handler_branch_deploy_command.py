@@ -7,17 +7,16 @@ secret the overlay names from the environment, and publishes it to the topic the
 agent's rebuild command. It never runs a trigger script, env file or ssh key: the runtime image holds none of
 those. A missing signing key is a typed refusal; a publish error is a typed failure.
 
-When the overlay configures the key check, the handler reads the deploy agent's health page before it publishes and
-compares the agent's key check value with the check value of its own signing key (OMN-24396). The deploy agent throws a
-command signed with another key away without a job and without a word to the sender (2026-11-14: the dev recovery's first
-command was lost that way), so a key that differs, a page that cannot be read, a page with no check value and an overlay
-that configures only part of the check are each a typed refusal and nothing is published. An overlay that configures none
-of it publishes as before and says so in the result detail: the deploy agent does not serve a check value yet.
+When the overlay sets ``check_agent_key``, the handler asks node_deploy_agent_key_check_effect for the deploy agent's key
+check value before it publishes and compares it with the check value of its own signing key (OMN-24396, OMN-24413). The
+deploy agent throws a command signed with another key away without a job and without a word to the sender (2026-11-14:
+the dev recovery's first command was lost that way), so a key that differs, or a check value the node did not serve, is a
+typed refusal and nothing is published; a mismatch names both check values in typed result fields (never a key). An
+overlay that does not set it publishes as before and says so in the result detail.
 """
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import hmac
 import json
@@ -28,8 +27,8 @@ from typing import Any
 
 import yaml
 
-from omnimarket.nodes.node_branch_deploy_command_effect.adapters.adapter_agent_key_check_http import (
-    AgentKeyCheckHttpReader,
+from omnimarket.nodes.node_branch_deploy_command_effect.adapters.adapter_agent_key_check_node import (
+    AgentKeyCheckNodeReader,
 )
 from omnimarket.nodes.node_branch_deploy_command_effect.models.model_branch_deploy_command import (
     ModelBranchDeployCommandRequest,
@@ -42,11 +41,12 @@ from omnimarket.nodes.node_branch_deploy_command_effect.overlay import (
 from omnimarket.nodes.node_branch_deploy_command_effect.protocols.protocol_agent_key_check import (
     ProtocolAgentKeyCheck,
 )
-
-#: The label of the key check value. The deploy agent computes the same value in omnibase_infra's deploy_agent.auth
-#: (key_check_value); tests/nodes/node_branch_deploy_command_effect/agent_wire.json holds the golden vector both sides
-#: are tested against, so a change on either side fails a test.
-KEY_CHECK_LABEL: bytes = b"deploy-agent-key-check-v1"
+from omnimarket.nodes.node_deploy_agent_key_check_effect.handlers.handler_deploy_agent_key_check import (
+    HandlerDeployAgentKeyCheck,
+)
+from omnimarket.nodes.node_deploy_agent_key_check_effect.models.model_deploy_agent_key_check import (
+    key_check_value,
+)
 
 _CONTRACT = Path(__file__).resolve().parent.parent / "contract.yaml"
 
@@ -76,11 +76,6 @@ def _sign_envelope(envelope: dict[str, Any], secret: str) -> dict[str, Any]:
     }
 
 
-def key_check_value(secret: str) -> str:
-    """The one-way check value of a signing key: 16 lowercase hex characters, safe to name in a refusal."""
-    return hmac.new(secret.encode(), KEY_CHECK_LABEL, hashlib.sha256).hexdigest()[:16]
-
-
 class HandlerBranchDeployCommand:
     """Signs the rebuild command and publishes it to the deploy agent over the bus."""
 
@@ -105,69 +100,50 @@ class HandlerBranchDeployCommand:
             self._configured_overlay = load_overlay()
         return self._configured_overlay
 
-    def _key_check_configured(self) -> bool | None:
-        """True when the overlay configures the whole key check, False when it configures none of it, None when half."""
-        overlay = self._overlay
-        keys = (
-            overlay.agent_health_url,
-            overlay.agent_health_timeout_seconds,
-            overlay.agent_key_check_field,
+    def _key_check_enabled(self) -> bool:
+        """True when the overlay asks for the key check or a reader was injected."""
+        return (
+            self._overlay.check_agent_key is True
+            or self._configured_key_check_reader is not None
         )
-        if all(key is None for key in keys):
-            return False
-        if any(key is None for key in keys):
-            return None
-        return True
 
     def _key_check_reader(self) -> ProtocolAgentKeyCheck:
-        """The injected reader, else the http reader the overlay configures (the overlay is fully configured here)."""
+        """The injected reader, else the key check node's handler reading the same environment as this handler."""
         if self._configured_key_check_reader is None:
-            overlay = self._overlay
-            assert overlay.agent_health_url is not None
-            assert overlay.agent_health_timeout_seconds is not None
-            assert overlay.agent_key_check_field is not None
-            self._configured_key_check_reader = AgentKeyCheckHttpReader(
-                overlay.agent_health_url,
-                overlay.agent_health_timeout_seconds,
-                overlay.agent_key_check_field,
+            self._configured_key_check_reader = AgentKeyCheckNodeReader(
+                HandlerDeployAgentKeyCheck(environ=self._environ),
+                "branch-deploy-command",
             )
         return self._configured_key_check_reader
 
     def _refuse(
-        self, request: ModelBranchDeployCommandRequest, detail: str
+        self,
+        request: ModelBranchDeployCommandRequest,
+        detail: str,
+        signer_key_check: str = "",
+        agent_key_check: str = "",
     ) -> ModelBranchDeployCommandResult:
         return ModelBranchDeployCommandResult(
             correlation_id=request.correlation_id,
             mode=request.mode,
             status="refused",
             detail=detail[: self._overlay.detail_max_chars],
+            signer_key_check=signer_key_check,
+            agent_key_check=agent_key_check,
         )
 
     async def _key_check_refusal(
         self, request: ModelBranchDeployCommandRequest, secret: str
     ) -> ModelBranchDeployCommandResult | None:
         """A refusal when the signing key is not shown to be the deploy agent's key, else None."""
-        configured = self._key_check_configured()
-        if configured is None:
-            return self._refuse(
-                request,
-                "the overlay names only part of the deploy agent key check (agent_health_url, "
-                "agent_health_timeout_seconds, agent_key_check_field); nothing was published",
-            )
-        if configured is False and self._configured_key_check_reader is None:
+        if not self._key_check_enabled():
             return None
-        reading = await asyncio.to_thread(self._key_check_reader().read)
-        if reading.status == "unreachable":
+        reading = await self._key_check_reader().read()
+        if reading.status == "refused":
             return self._refuse(
                 request,
-                f"the deploy agent health page could not be read ({reading.detail}), so the signing key was not "
+                f"the deploy agent's key check value was not served ({reading.detail}), so the signing key was not "
                 "checked; nothing was published",
-            )
-        if reading.status == "absent":
-            return self._refuse(
-                request,
-                "the deploy agent health page carries no key check value (older agent code, or the agent has no "
-                "signing key); nothing was published",
             )
         mine = key_check_value(secret)
         if reading.key_check != mine:
@@ -175,6 +151,8 @@ class HandlerBranchDeployCommand:
                 request,
                 f"the signing key does not match the deploy agent's key (signer check {mine}, agent check "
                 f"{reading.key_check}); nothing was published",
+                signer_key_check=mine,
+                agent_key_check=reading.key_check,
             )
         return None
 
@@ -242,13 +220,10 @@ class HandlerBranchDeployCommand:
                 detail=type(exc).__name__,
             )
         detail = f"published to {self._topic}"
-        if (
-            self._key_check_configured() is False
-            and self._configured_key_check_reader is None
-        ):
+        if not self._key_check_enabled():
             detail += (
                 " (the signing key was not checked against the deploy agent's key: "
-                "the overlay configures no key check)"
+                "the overlay does not ask for the key check)"
             )
         detail = detail[: overlay.detail_max_chars]
         return ModelBranchDeployCommandResult(

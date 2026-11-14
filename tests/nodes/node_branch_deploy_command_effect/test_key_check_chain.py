@@ -5,7 +5,7 @@
 * golden: the agent holds the node's key -> the command is signed with the agent's own rule and published once;
 * error: the agent holds another key -> refused with nothing on the bus; then a bus that is down after a matching key ->
   failed, so the refusal and the failure stay different outcomes;
-* http: with the overlay's own read (no injected reader), the replaced http boundary decides the outcome.
+* node: with no injected reader, the key check node's handler reads the agent's key from the environment and decides.
 """
 
 from __future__ import annotations
@@ -16,9 +16,6 @@ import json
 
 import pytest
 
-from omnimarket.nodes.node_branch_deploy_command_effect.adapters import (
-    adapter_agent_key_check_http,
-)
 from omnimarket.nodes.node_branch_deploy_command_effect.handlers.handler_branch_deploy_command import (
     HandlerBranchDeployCommand,
 )
@@ -80,25 +77,30 @@ async def test_error_chain_mismatching_key_refuses_then_down_bus_fails() -> None
     assert failed.detail == "ConnectionError"
 
 
-async def test_overlay_read_with_a_replaced_http_boundary(
+async def test_default_reader_is_the_key_check_node(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    seen: list[tuple[str, float]] = []
-
-    def agent_with_another_key(url: str, timeout: float) -> bytes:
-        seen.append((url, timeout))
-        return json.dumps({"hmac_key_check": "0123456789abcdef"}).encode()
-
-    monkeypatch.setattr(
-        adapter_agent_key_check_http, "fetch_health", agent_with_another_key
-    )
+    agent_env = "EXAMPLE_DEPLOY_AGENT_EXPECTED_KEY"
+    monkeypatch.setenv(agent_env, "another-fixture-key")
     bus = FakeBus()
     handler = HandlerBranchDeployCommand(event_bus=bus, overlay=overlay())
     result = await handler.handle(request())
 
     assert result.status == "refused"
     assert bus.published == []
-    configured = overlay()
-    assert seen == [
-        (configured.agent_health_url, configured.agent_health_timeout_seconds)
-    ]
+    assert result.signer_key_check != result.agent_key_check != ""
+
+    monkeypatch.setenv(agent_env, SIGNING_KEY)
+    published_bus = FakeBus()
+    ok = await HandlerBranchDeployCommand(
+        event_bus=published_bus, overlay=overlay()
+    ).handle(request())
+    assert ok.status == "published"
+    assert len(published_bus.published) == 1
+
+    monkeypatch.delenv(agent_env)
+    unset = await HandlerBranchDeployCommand(
+        event_bus=FakeBus(), overlay=overlay()
+    ).handle(request())
+    assert unset.status == "refused"
+    assert "was not served" in unset.detail

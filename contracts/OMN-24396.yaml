@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-24396
 title: The signed dev deploy refuses a signing key that differs from the deploy agent's key
-summary: 'On 2026-11-14 a deploy command signed with a key that differs from the deploy agent''s was dropped by the agent with no job and no word to the sender. When its overlay configures the check, the branch deploy command effect now reads the deploy agent''s health page before it publishes and compares the agent''s key check value (a one-way value, the first 16 hex characters of an HMAC of a fixed label under the key) with the check value of its own signing key; a differing key, an unreadable page, a page with no value and an overlay that configures only part of the check are each refused with nothing published; an overlay that configures none of it publishes as before and the result says it did not check, because the deploy agent does not serve a check value yet (its change is blocked by the canonical file shape ratchet, see the pull request). The page URL, its timeout and the field name are overlay values. The deploy agent side (OMN-24397) serves the field; the golden vector in agent_wire.json is the seam both repositories test against.'
+summary: 'On 2026-11-14 a deploy command signed with a key that differs from the deploy agent''s was dropped by the agent with no job and no word to the sender. When its overlay sets check_agent_key, the branch deploy command effect now asks node_deploy_agent_key_check_effect (OMN-24413) for the deploy agent''s key check value before it publishes and compares it with the check value of its own signing key (a one-way value, the first 16 hex characters of an HMAC of a fixed label under the key); a differing key refuses with a typed result naming both check values, a check value the node did not serve refuses, and nothing is published in either case; an overlay that does not set it publishes as before and the result says it did not check. The deploy agent files are not changed (they are baselined by the canonical file shape ratchet). The golden vector is key_check_vector.json in the key check node tests, read by both sides.'
 is_seam_ticket: true
 interface_change: true
 interfaces_touched:
@@ -28,7 +28,7 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn24396-ac1
-  description: 'AC1: a differing key, an unreadable page, a page with no value and an unconfigured overlay each refuse with nothing on the bus; the match publishes; the signing key is in no detail.'
+  description: 'AC1: a differing key (typed, naming both check values) and a check value the node did not serve each refuse with nothing on the bus; the match publishes; an overlay that does not ask for the check publishes and says so; the signing key is in no detail.'
   source: manual
   binds_ac:
   - AC1
@@ -37,7 +37,7 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/nodes/node_branch_deploy_command_effect/test_key_check_seam.py -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
 - id: dod-omn24396-ac2
-  description: 'AC2: the node''s check value for the vector key equals the vector in agent_wire.json, which omnibase_infra deploy-agent tests pin to the same value.'
+  description: 'AC2: the node''s check value for the vector key equals the vector in the key check node''s key_check_vector.json, which the node''s own tests pin to the same value.'
   source: manual
   binds_ac:
   - AC2

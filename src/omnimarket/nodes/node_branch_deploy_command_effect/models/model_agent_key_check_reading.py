@@ -10,10 +10,10 @@ from pydantic import BaseModel, ConfigDict
 
 
 class ModelAgentKeyCheckReading(BaseModel):
-    """The reading of one agent key check."""
+    """The reading of the deploy agent's key check value: ``read`` carries it, ``refused`` carries why it was not served."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    status: Literal["read", "unreachable", "absent"]
+    status: Literal["read", "refused"]
     key_check: str = ""
     detail: str = ""
