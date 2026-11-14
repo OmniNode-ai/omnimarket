@@ -1,0 +1,36 @@
+schema_version: 1.0.0
+ticket_id: OMN-23302
+title: The lab-fill launchd driver runs node_lab_fill_effect's send step, and laneTask is deleted from lab-fill.js in a delete-only change
+summary: node_lab_fill_effect gains a shell entry (python -m omnimarket.nodes.node_lab_fill_effect) that runs send_lab_fill_lane for one planned lane from a JSON request on stdin, so the launchd-run lab-fill driver can call the node's send step. The entry is the omnimarket half of AC1; the driver switch and the Mac install read-back are internal-repository work. AC2 holds on the internal repository main already and is not changed by this pull request.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn23302-driver-sends-through-node
+    statement: The lab-fill driver sends lanes through the node's send step.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: the Mac''s lab-fill launchd unit sends lanes through node_lab_fill_effect''s send_lab_fill_lane, and a fill tick after install sends no lane for a ticket whose implementation merged -- falsifier: the lab-fill tick log after install names the node''s send step, and its sent list holds no ticket with a merged implementation'
+  - id: req-omn23302-no-lanetask
+    statement: lab-fill.js holds no laneTask.
+    acceptance:
+      - id: AC2
+        statement: 'AC2: lab-fill.js at the internal repository main holds no laneTask -- falsifier: grep -c laneTask on lab-fill.js at the internal repository main reads 0'
+evidence_requirements:
+  - kind: tests
+    description: The send entry tests and the send tests run at the pushed head.
+    command: uv run pytest tests/nodes/node_lab_fill_effect/test_lab_fill_send_cli.py tests/nodes/node_lab_fill_effect/test_lab_fill_send.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn23302-ac1
+    description: AC1 node half only; drives the send entry with the request as JSON text over the send fakes and reads the launched lane, the stderr line that names the send step, and that a ticket with a merged implementation sends no lane. The Mac launchd switch and the tick-log read after install are not met by this pull request.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_lab_fill_effect/test_lab_fill_send_cli.py -q --no-cov --tb=line
+        cwd: .
