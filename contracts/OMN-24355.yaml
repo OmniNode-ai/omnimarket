@@ -1,0 +1,83 @@
+schema_version: 1.0.0
+ticket_id: OMN-24355
+title: Landing controller decision environment installs every dependency its pin names
+summary: node_landing_decision_venv_effect reads the landing decision pin, creates the controller's decision venv when it is absent and installs every dependency the overlay's rows map from a pin key to a distribution, pyyaml included, at the version the pin names; a second run reads ready. A pin missing a row's key, a failed venv create, a failed install, a timeout and a broken overlay are each refused with a typed reason. Every setting is in overlays/node_landing_decision_venv_effect/overlay.yaml of the overlays repository; the handler holds none.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24355-decision-venv
+  statement: The decision venv holds every dependency the landing decision pin names at its pinned version, and a request that cannot get it there is refused with a typed reason.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the venv node installs every dependency the landing decision pin names, pyyaml included, into the decision venv and reads ready on a second run -- falsifier: uv run pytest tests/nodes/node_landing_decision_venv_effect -q --no-cov -k golden_chain'
+  - id: AC2
+    statement: 'AC2: a pin missing a required dependency, a failed venv create, a failed pip install, a timeout and a broken overlay each end refused with a typed reason, never an exception -- falsifier: uv run pytest tests/nodes/node_landing_decision_venv_effect -q --no-cov -k error_chain'
+  - id: AC3
+    statement: 'AC3: the failing control: an overlay with no pyyaml row leaves the venv without pyyaml, so the overlay row is what installs it -- falsifier: uv run pytest tests/nodes/node_landing_decision_venv_effect -q --no-cov -k failing_control'
+  - id: AC4
+    statement: 'AC4: every setting (the pin key to distribution rows, pip arguments, timeouts) sits in the overlay at overlays/node_landing_decision_venv_effect/overlay.yaml of the overlays repository, and none in the handler -- falsifier: grep -rn "pyyaml|600|120" src/omnimarket/nodes/node_landing_decision_venv_effect/handlers returns nothing'
+  - id: AC5
+    statement: "AC5: integrated: on the Mac the controller's decision venv holds pyyaml at the version the live pin names and the next tick reports stale_fleet_support on with no decision error -- falsifier: ~/.omninode/landing-controller/decision-venv/bin/python -c 'import yaml; print(yaml.__version__)' prints the pin's version, and the tick report line reads stale_fleet_support on"
+evidence_requirements:
+- kind: tests
+  description: The landing decision venv node tests, handler, golden chain, error chains and the failing control.
+  command: uv run --frozen pytest tests/nodes/node_landing_decision_venv_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24355-ac1
+  description: The golden chain installs the three pinned dependencies into a fresh venv model and reads ready on the second run, on the in-memory bus, with a named break that turns it red.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_landing_decision_venv_effect -k golden_chain -q --no-cov
+    cwd: .
+- id: dod-omn24355-ac2
+  description: The error chains end in one run-failed event with the typed reason for a pin missing a dependency, an unreadable pin, a failed venv create, a base interpreter that cannot start, a failed install, a timeout of each step, an install that leaves a dependency out, and an absent or broken overlay; none raises.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_landing_decision_venv_effect -k error_chain -q --no-cov
+    cwd: .
+- id: dod-omn24355-ac3
+  description: The failing control runs the same pin through an overlay with no pyyaml row and through the full overlay; only the full one leaves pyyaml in the venv.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_landing_decision_venv_effect -k failing_control -q --no-cov
+    cwd: .
+- id: dod-omn24355-ac4
+  description: "The handler directory holds none of the setting values. The overlay file is added to the overlays repository in its own pull request, because that repository's check loads an overlay through the model at an omnimarket merge commit this change has not yet."
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: command
+    check_value: "! grep -rnE 'pyyaml|600|120' src/omnimarket/nodes/node_landing_decision_venv_effect/handlers"
+    cwd: .
+- id: dod-omn24355-ac5
+  description: "AC5: integrated: not read in this repository. It needs the overlay merged, the pin change merged (the pin that names pyyaml) and the operator's Mac install run; the reading belongs to that install."
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_landing_decision_venv_effect -q --no-cov
+    cwd: .
+- id: dod-omn24355-integration-proof
+  description: Run this pull request's own tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check; it binds no criterion for the hosted check. The live reading is recorded in the pull request's Lab line.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24355 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_landing_decision_venv_effect -q --no-cov
+    cwd: .

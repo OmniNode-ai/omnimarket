@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_landing_decision_venv_effect
+version: 1.0.0
+description: Installs every dependency the landing decision pin names into the controller's decision venv, refusing with a typed reason.
+pack: operator_tooling
+node_role: effect
+display_name: Landing Decision Venv Effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_landing_decision_venv_effect: omnimarket.nodes.node_landing_decision_venv_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+- pydantic>=2.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- landing
+- venv
