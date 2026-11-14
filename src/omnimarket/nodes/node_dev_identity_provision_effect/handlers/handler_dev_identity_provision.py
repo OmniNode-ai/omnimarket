@@ -16,6 +16,9 @@ from typing import Any
 import yaml
 from pydantic import SecretStr
 
+from omnimarket.events.dev_identity_http import (
+    ModelIdentityHttpRequest,
+)
 from omnimarket.handlers.delegation_scenario_settings import ProtocolSettingStore
 from omnimarket.models.secret_store.model_secret_store_result import (
     EnumSecretStoreOutcome,
@@ -24,9 +27,6 @@ from omnimarket.nodes.node_dev_identity_provision_effect.models.model_dev_identi
     EnumDevIdentityOutcome,
     ModelDevIdentityProvisionCommand,
     ModelDevIdentityProvisionResult,
-)
-from omnimarket.nodes.node_dev_identity_provision_effect.models.model_identity_http import (
-    ModelIdentityHttpRequest,
 )
 from omnimarket.nodes.node_dev_identity_provision_effect.overlay import (
     ModelDevIdentityProvisionOverlay,

@@ -16,15 +16,15 @@ from typing import Any
 
 from pydantic import SecretStr
 
+from omnimarket.events.dev_identity_http import (
+    ModelIdentityHttpRequest,
+    ModelIdentityHttpResponse,
+)
 from omnimarket.models.secret_store.model_generate_key_result import (
     ModelGenerateKeyResult,
 )
 from omnimarket.models.secret_store.model_secret_store_result import (
     EnumSecretStoreOutcome,
-)
-from omnimarket.nodes.node_dev_identity_provision_effect.models.model_identity_http import (
-    ModelIdentityHttpRequest,
-    ModelIdentityHttpResponse,
 )
 
 

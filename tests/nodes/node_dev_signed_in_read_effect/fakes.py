@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from omnimarket.nodes.node_dev_identity_provision_effect.models.model_identity_http import (
+from omnimarket.events.dev_identity_http import (
     ModelIdentityHttpRequest,
     ModelIdentityHttpResponse,
 )
