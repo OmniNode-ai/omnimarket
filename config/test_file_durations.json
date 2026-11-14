@@ -4552,6 +4552,7 @@
   "tests/unit/nodes/node_board_truth_compute/test_handler_board_truth.py": 0.14,
   "tests/unit/nodes/node_board_truth_reconcile_effect/test_handler_board_truth_reconcile.py": 0.11,
   "tests/unit/nodes/node_board_truth_reconcile_effect/test_reconcile_contract_is_runtime_wired.py": 0.04,
+  "tests/unit/nodes/node_branch_protection_audit_effect/test_landing_only_ruleset.py": 1.29,
   "tests/unit/nodes/node_build_loop/models/test_model_loop_state.py": 0.04,
   "tests/unit/nodes/node_build_loop_orchestrator/test_adapter_llm_classify_di.py": 0.03,
   "tests/unit/nodes/node_build_loop_orchestrator/test_assemble_live_event_bus.py": 0.56,

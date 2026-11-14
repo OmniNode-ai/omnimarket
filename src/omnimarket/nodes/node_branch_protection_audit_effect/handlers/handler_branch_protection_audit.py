@@ -5,7 +5,9 @@
 Checks review enforcement, role-dependent required contexts, release-sync push
 restrictions, administrator enforcement, reporting App bindings, Receipt Gate,
 Lane Identity Gate, branch deletion after merge, Merge Queue ruleset presence,
-and the absence of bypass actors on enforced merge-queue rulesets.
+the absence of bypass actors on enforced merge-queue rulesets, and the
+landing-only ruleset (an active update rule with exactly the declared bypass
+actors) on each declared landing branch.
 """
 
 from __future__ import annotations
@@ -19,6 +21,7 @@ from omnimarket.nodes.node_branch_protection_audit_effect.models import (
     ModelBranchProtectionAuditRequest,
     ModelBranchProtectionAuditResult,
     ModelBranchProtectionFinding,
+    ModelBranchProtectionLandingBranch,
     protection_key,
     repo_key,
     review_rules_key,
@@ -504,6 +507,87 @@ class _Audit:
                 counted=False,
             )
 
+    def _check_landing_only_ruleset(
+        self, repo: str, landing: ModelBranchProtectionLandingBranch
+    ) -> None:
+        documents = self.request.snapshot.documents
+        key = rulesets_key(self.request.org, repo)
+        branch = landing.branch
+        if key not in documents:
+            self._record(
+                repo,
+                branch,
+                "landing_only_ruleset",
+                Status.FAIL,
+                "rulesets not fetchable",
+                "could not fetch rulesets, so the landing-only ruleset cannot be judged",
+            )
+            self._api_response(key, branch=True)
+            return
+        ref = f"refs/heads/{branch}"
+        unreadable: list[str] = []
+        for candidate in _entries(documents[key]):
+            if (
+                not isinstance(candidate, dict)
+                or candidate.get("enforcement") != "active"
+                or candidate.get("target") != "branch"
+            ):
+                continue
+            rid = _tostring(candidate.get("id"))
+            detail_key = ruleset_key(self.request.org, repo, rid)
+            if detail_key not in documents:
+                unreadable.append(rid)
+                continue
+            detail = documents[detail_key]
+            try:
+                includes = _array(_field(detail, "conditions", "ref_name", "include"))
+                excludes = _array(_field(detail, "conditions", "ref_name", "exclude"))
+                rule_types = [
+                    _field(rule, "type") for rule in _entries(_field(detail, "rules"))
+                ]
+                if ref not in includes or ref in excludes or "update" not in rule_types:
+                    continue
+                actors = _field(detail, "bypass_actors")
+                found = sorted(_actors([actor]) for actor in _entries(actors))
+            except ValueError:
+                unreadable.append(rid)
+                continue
+            expected = sorted(actor.label() for actor in landing.bypass_actors)
+            if found == expected:
+                self._record(
+                    repo,
+                    branch,
+                    "landing_only_ruleset",
+                    Status.PASS,
+                    f"ruleset {rid}; bypass {','.join(found)}",
+                    f"active ruleset {rid} restricts updates to {ref} with exactly the declared bypass actors ({','.join(found)})",
+                )
+                return
+            extra = [label for label in found if label not in expected]
+            missing = [label for label in expected if label not in found]
+            self._record(
+                repo,
+                branch,
+                "landing_only_ruleset",
+                Status.FAIL,
+                f"ruleset {rid}; extra bypass {','.join(extra) or '-'}; missing bypass {','.join(missing) or '-'}",
+                f"landing-only ruleset {rid} on {ref} has bypass actors that differ from the declared set (extra: {','.join(extra) or 'none'}; missing: {','.join(missing) or 'none'})",
+            )
+            return
+        suffix = (
+            f" (ruleset(s) {', '.join(unreadable)} could not be read)"
+            if unreadable
+            else ""
+        )
+        self._record(
+            repo,
+            branch,
+            "landing_only_ruleset",
+            Status.FAIL,
+            "no active ruleset with the update rule" + suffix,
+            f"no active ruleset restricts updates to {ref}, so the landing branch is not landing-only{suffix}",
+        )
+
     def _check_repo_settings(self, repo: str) -> None:
         key = repo_key(self.request.org, repo)
         documents = self.request.snapshot.documents
@@ -596,6 +680,12 @@ class _Audit:
                 self._check_branch(repo, branch)
         self._check_repo_settings(repo)
         self._check_merge_queue(repo)
+        for landing in self.request.policy.landing_branches:
+            if landing.repo == repo:
+                self.lines.append(
+                    f"  ── landing branch: {landing.branch} ───────────────────"
+                )
+                self._check_landing_only_ruleset(repo, landing)
         if self.failures == initial_failures:
             self.lines.append("  >>> COMPLIANT")
         else:
