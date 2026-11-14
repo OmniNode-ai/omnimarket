@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+# unimported-handler-allow: HandlerSeamCrossingName is resolved at boot from handler_routing in contract.yaml, by module path, not by a Python import
 """Pure seam crossing name handler.
 
 Names the class of a bus crossing at a seam: rule R, then a deterministic
@@ -73,4 +74,5 @@ class HandlerSeamCrossingName:
             names=tuple(names),
             counts=counts,
             adapter_advisory=adapter_advisory,
+            terminal_failure_cause=None,
         )

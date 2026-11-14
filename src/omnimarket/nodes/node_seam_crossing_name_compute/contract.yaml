@@ -67,6 +67,7 @@ handler_routing:
       handler:
         name: "HandlerSeamCrossingName"
         module: "omnimarket.nodes.node_seam_crossing_name_compute.handlers.handler_seam_crossing_name"
+terminal_event: "onex.evt.omnimarket.seam-crossing-name-completed.v1"
 runtime_dispatch:
   command_topic: "onex.cmd.omnimarket.seam-crossing-name-requested.v1"
   terminal_events:

@@ -68,3 +68,7 @@ class ModelSeamCrossingNameVerdict(BaseModel):
     counts: dict[str, int]
     # Count of names whose consumer has an adapter.
     adapter_advisory: int
+    # Non-None routes the result to the contract's failure terminal (the runtime's
+    # failure-terminal guard reads this field). The naming handler never sets it:
+    # a malformed request fails at validation, before the handler runs.
+    terminal_failure_cause: str | None = None
