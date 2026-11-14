@@ -1,0 +1,66 @@
+schema_version: 1.0.0
+ticket_id: OMN-24484
+title: Shared lease and receipt reducer, first slice, landing controller as first user
+summary: 'node_lease_receipt_reducer is one pure reducer for leases and receipts (acquire, renew, release, revoke, take over on a beaten epoch, record a receipt). Its bus surface is internal only: a caller its overlay does not name is refused with a typed reason. The landing decision node now takes its lease allocation, release, revoke and worker-result discard from it through one adapter, and every one of the 4825 decisions the existing landing tests make is byte-equal to the capture taken before the lift.'
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- topics
+- public_api
+requirements:
+- id: req-omn24484-lease-reducer
+  statement: One shared reducer holds the lease and receipt rules; the landing controller is its first user and behaves as before.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the lease and receipt reducer node grants, renews, releases, revokes, takes over on a beaten epoch and records a receipt, refusing each bad case with a typed reason code, and refuses a caller outside the platform -- falsifier: pytest tests/unit/nodes/node_lease_receipt_reducer -q'
+  - id: AC2
+    statement: 'AC2: the landing decision output is byte-equal before and after the lift for every captured scenario, including the cause-worker path -- falsifier: pytest tests/unit/nodes/node_pr_landing_decision_compute -q with the lift reverted turns the parity test red'
+  - id: AC3
+    statement: 'AC3: a receipt survives a release and a take over compares against a retained epoch, shown over several ticks -- falsifier: pytest tests/unit/nodes/node_lease_receipt_reducer/test_retained_state.py -q'
+  - id: AC4
+    statement: 'AC4: integrated: the node is loaded in the dev runtime, an acquire command returns a recorded event and a stale-epoch receipt returns a refused event, both read at the node floor row -- falsifier: the dev runtime event read shows no recorded event for the acquire command'
+evidence_requirements:
+- kind: tests
+  description: The reducer, adapter, parity and chain tests pass at the pushed head.
+  command: uv run pytest tests/unit/nodes/node_lease_receipt_reducer tests/unit/nodes/node_pr_landing_decision_compute/test_lease_table_adapter.py tests/chain/test_lease_receipt_golden.py tests/chain/test_lease_receipt_error.py -q -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24484-ac1
+  description: 'AC1: every operation and every refusal reason of the reducer is tested, with a failing control for each rule and a refused outside caller.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_lease_receipt_reducer -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn24484-ac2
+  description: 'AC2: the landing decisions of every test in the decision directory are byte-equal to the pre-lift capture (LANDING_LEASE_PARITY=compare), and the adapter invocation test turns red when the lift is bypassed.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_lease_table_adapter.py tests/unit/nodes/node_pr_landing_decision_compute/test_landing_lease_lift.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn24484-ac3
+  description: 'AC3: receipts retained after a release and a retained epoch compared by take over, over several ticks, through the reducer only.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_lease_receipt_reducer/test_retained_state.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn24484-ac4
+  description: 'hosted proxy for AC4: the golden and error chain event tests pass on the in-memory bus here; the read on the dev runtime and the real-broker run are posted as a pull request comment naming the head.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/chain/test_lease_receipt_golden.py tests/chain/test_lease_receipt_error.py -q -p no:randomly --no-cov
+    cwd: .

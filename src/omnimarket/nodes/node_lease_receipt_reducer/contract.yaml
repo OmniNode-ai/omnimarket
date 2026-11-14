@@ -1,0 +1,165 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodeLeaseReceiptReducer
+#
+# One lease command as a pure reduce:
+#
+#   handle(ModelLeaseReduceInput) -> ModelLeaseReduceOutput
+#
+# The caller owns the lease table: the command carries one kind's table in,
+# and the reply carries it back — written on a recorded reply, unchanged on a
+# refusal with a typed reason. No clock (now is the command's time), no I/O,
+# no state file in the handler; every fact a rule needs (kinds, key patterns,
+# admitted callers, ttl bounds, receipt rules) lives in the overlay, never in
+# code.
+#
+# The checks run in one fixed order, first failure wins: unknown kind,
+# caller not admitted (internal-only: an outside caller is refused before
+# anything else of the command is read), operation not enabled for the kind,
+# subject off the kind's key pattern, and — on a record_receipt — an
+# outcome_ref off the kind's pattern. Then the operation applies: acquire
+# (ttl, then held; a grant at the table's next_epoch, one counter, never
+# reused), renew (not-held, epoch, holder, revoked, ttl), release (the
+# kind's release rule: evidence or expiry; the epoch is retained so
+# take_over has an epoch to compare), revoke (idempotent; the lease stays
+# until released), take_over (ttl first; the epoch the new holder read must
+# equal the subject's current epoch, beaten if lower, unknown if absent or
+# higher; a live lease is takeable only on an expired expiry kind, a
+# released one always), and record_receipt (revoked epoch, stale, released,
+# wrong subject, already recorded, holder-run mismatch — the holder binds
+# the receipt, so an equal epoch is accepted only from the holder run).
+#
+# Every written table is returned with its tuples in canonical order, so the
+# reply is deterministic whatever order the caller's tuples arrive in.
+name: "node_lease_receipt_reducer"
+contract_name: "node_lease_receipt_reducer"
+node_name: "node_lease_receipt_reducer"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+description: >
+  Pure reduce of one lease command over one kind's lease table. Reads the
+  command (caller, operation, subject, now, the operation's fields) and the
+  table the caller owns, and returns the recorded reply with the written
+  table, or the refused reply with a typed reason and the input table
+  unchanged. Deterministic in any input order; never raises on a bad
+  request. Fail-closed on admission: a caller whose principal the kind's
+  overlay does not name is refused before the command is read further.
+input_model:
+  name: "ModelLeaseReduceInput"
+  module: "omnimarket.nodes.node_lease_receipt_reducer.models.model_lease_reduce"
+  description: "One lease command: the caller, the operation, the subject, now, and the kind's table."
+output_model:
+  name: "ModelLeaseReduceOutput"
+  module: "omnimarket.nodes.node_lease_receipt_reducer.models.model_lease_reduce"
+  description: "The reply: recorded with the written table, or refused with the reason and the input table."
+handler:
+  module: "omnimarket.nodes.node_lease_receipt_reducer.handlers.handler_lease_receipt_reducer"
+  class: "HandlerLeaseReceiptReducer"
+  input_model: "omnimarket.nodes.node_lease_receipt_reducer.models.model_lease_reduce.ModelLeaseReduceInput"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_lease_receipt_reducer.handlers.handler_lease_receipt_reducer:HandlerLeaseReceiptReducer"
+  handlers:
+    - operation: "reduce_lease"
+      handler:
+        name: "HandlerLeaseReceiptReducer"
+        module: "omnimarket.nodes.node_lease_receipt_reducer.handlers.handler_lease_receipt_reducer"
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.lease-receipt-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.lease-receipt-recorded.v1"
+    failure: "onex.evt.omnimarket.lease-receipt-refused.v1"
+# The dev runtime's per-contract provisioning (ONEX_BOOT_UNIVERSE_PROVISION=0) reads only
+# this section: event_bus.subscribe_topics, publish_topics and dlq_topics. The command is
+# runtime_dispatch.command_topic; the two terminals are runtime_dispatch.terminal_events.
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  subscribe_topics:
+    - "onex.cmd.omnimarket.lease-receipt-requested.v1"
+  publish_topics:
+    - "onex.evt.omnimarket.lease-receipt-recorded.v1"
+    - "onex.evt.omnimarket.lease-receipt-refused.v1"
+# main: the runtime-profile validator requires a profile on a contract that
+# consumes a command.
+runtime_profiles:
+  - main
+# The admission rule, in plain words and as data. The reducer enforces it as
+# check 2, before anything else of the command is read; the topics are
+# platform internal and granted to platform principals only.
+# The runtime principal reads the command topic and writes the two terminals; nothing else. A caller outside the
+# platform has no grant on these topics (the admission rule above is the second check, not the first).
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.lease-receipt-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.lease-receipt-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.lease-receipt-recorded.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.lease-receipt-recorded.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.lease-receipt-refused.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.lease-receipt-refused.v1, operation: DESCRIBE}
+admission:
+  internal_only: true
+  admitted_channels:
+    - in_process
+    - bus
+  admission_rule: >
+    The command is accepted only from a caller whose principal the kind's
+    overlay names in admitted_callers. The topics are platform internal and
+    granted to platform principals only; an unlisted caller gets a refused
+    reply with reason caller-not-admitted and no table change.
+  reply_scope: >
+    The reply carries only the table of the kind the caller passed in.
+    outcome_ref is an opaque token limited by the kind's pattern; no customer
+    data is held in a lease table.
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+replay:
+  deterministic: true
+metadata:
+  description: "Pure lease receipt reducer over one caller-owned lease table."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-11-14"
+  tags:
+    - compute
+    - lease
+    - receipt
+    - reducer
+# The packaged default overlay: one kind, landing. Its subjects are landing
+# PR keys and cause keys (the landing controller's subject space), its
+# release rule is evidence (a lease is released only on confirmed
+# termination), its admitted caller is the landing controller, and it does
+# not retain receipts: a receipt exists only while its lease is live, one
+# per subject. Renew and take_over are not enabled for it.
+config:
+  lease_kinds:
+    landing:
+      key_pattern: "^(?:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#[1-9][0-9]*|cause:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+:[0-9a-f]{12})$"
+      release_rule: evidence
+      operations_enabled:
+        - acquire
+        - release
+        - revoke
+        - record_receipt
+      max_ttl_seconds: 604800
+      admitted_callers:
+        - landing-controller
+      retain_receipts: false
+      max_receipts_per_subject: 1
+      outcome_ref_pattern: "^[A-Za-z0-9_.:-]{0,64}$"
