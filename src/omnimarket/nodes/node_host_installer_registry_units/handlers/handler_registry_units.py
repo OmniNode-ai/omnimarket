@@ -227,6 +227,39 @@ class HandlerRegistryUnits:
         declared = declared_overlay_root(document, host, Path(request.registry_root))
         return os.path.normpath(str(declared))
 
+    def host_table_ledger_path(self, request: ModelRegistryUnitsRequest) -> str:
+        """The ledger the install reads when the request and the shell name no ledger path.
+
+        An install that names no ledger path, in the request or the shell, reads the ledger
+        the lab host table's row for the host declares (OMN-24406, ported from the frozen
+        internal installer change, OMN-23598). The host is the request's host_name, else
+        its ledger_host_name, else the shell's ONEX_LEDGER_HOST_NAME. A row that declares no
+        ledger path, or a host the table does not list, yields '' and the install refuses as
+        before; a declared path under $OMNI_HOME/ fills against the request's registry root,
+        and any other declared value is the path as declared.
+        """
+        host = (
+            request.host_name
+            or request.ledger_host_name
+            or os.environ.get("ONEX_LEDGER_HOST_NAME", "").strip()
+        )
+        if not host:
+            return ""
+        try:
+            table = self.hosts()
+        except NodeOverlayError as exc:
+            raise ValueError(f"the lab host table cannot be read: {exc}") from exc
+        declared = next(
+            (row.ledger_path for row in table.hosts if row.name == host), None
+        )
+        if not declared:
+            return ""
+        if declared.startswith("$OMNI_HOME/"):
+            return str(
+                Path(request.registry_root) / declared.removeprefix("$OMNI_HOME/")
+            )
+        return declared
+
     def handle(self, request: ModelRegistryUnitsRequest) -> ModelRegistryUnitsResult:
         unit = self.units.get(request.unit)
         if unit is None:
@@ -452,6 +485,8 @@ class HandlerRegistryUnits:
                 str(getattr(request, str(field))).strip()
                 or os.environ.get(str(name), "").strip()
             )
+            if not supplied and str(field) == "ledger_path":
+                supplied = self.host_table_ledger_path(request)
             if supplied:
                 filled[str(name)] = supplied
         for name in unit.get("environment_refuse_worktree_paths") or []:
