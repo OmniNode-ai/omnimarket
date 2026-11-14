@@ -17,12 +17,12 @@ from pathlib import Path
 
 import pytest
 
-from omnimarket.nodes.node_branch_deploy_command_effect.handlers.handler_branch_deploy_command import (
-    HandlerBranchDeployCommand,
-)
-from omnimarket.nodes.node_deploy_agent_key_check_effect.models.model_deploy_agent_key_check import (
+from omnimarket.events.deploy_agent_key_check import (
     KEY_CHECK_LABEL,
     key_check_value,
+)
+from omnimarket.nodes.node_branch_deploy_command_effect.handlers.handler_branch_deploy_command import (
+    HandlerBranchDeployCommand,
 )
 from tests.nodes.node_branch_deploy_command_effect.support import (
     SIGNING_ENV,

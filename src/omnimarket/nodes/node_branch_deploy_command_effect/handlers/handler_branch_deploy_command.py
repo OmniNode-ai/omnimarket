@@ -27,6 +27,9 @@ from typing import Any
 
 import yaml
 
+from omnimarket.events.deploy_agent_key_check import (
+    key_check_value,
+)
 from omnimarket.nodes.node_branch_deploy_command_effect.adapters.adapter_agent_key_check_node import (
     AgentKeyCheckNodeReader,
 )
@@ -43,9 +46,6 @@ from omnimarket.nodes.node_branch_deploy_command_effect.protocols.protocol_agent
 )
 from omnimarket.nodes.node_deploy_agent_key_check_effect.handlers.handler_deploy_agent_key_check import (
     HandlerDeployAgentKeyCheck,
-)
-from omnimarket.nodes.node_deploy_agent_key_check_effect.models.model_deploy_agent_key_check import (
-    key_check_value,
 )
 
 _CONTRACT = Path(__file__).resolve().parent.parent / "contract.yaml"

@@ -9,7 +9,7 @@ from uuid import uuid4
 
 import yaml
 
-from omnimarket.nodes.node_deploy_agent_key_check_effect.models.model_deploy_agent_key_check import (
+from omnimarket.events.deploy_agent_key_check import (
     ModelDeployAgentKeyCheckRequest,
 )
 from omnimarket.nodes.node_deploy_agent_key_check_effect.overlay import (

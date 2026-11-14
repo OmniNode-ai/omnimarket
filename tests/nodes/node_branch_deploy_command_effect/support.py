@@ -10,6 +10,9 @@ from uuid import uuid4
 
 import yaml
 
+from omnimarket.events.deploy_agent_key_check import (
+    key_check_value,
+)
 from omnimarket.nodes.node_branch_deploy_command_effect.models.model_agent_key_check_reading import (
     ModelAgentKeyCheckReading,
 )
@@ -18,9 +21,6 @@ from omnimarket.nodes.node_branch_deploy_command_effect.models.model_branch_depl
 )
 from omnimarket.nodes.node_branch_deploy_command_effect.overlay import (
     ModelBranchDeployCommandOverlay,
-)
-from omnimarket.nodes.node_deploy_agent_key_check_effect.models.model_deploy_agent_key_check import (
-    key_check_value,
 )
 
 NODE_DIR = (
