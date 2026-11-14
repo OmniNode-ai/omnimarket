@@ -5695,6 +5695,7 @@
   "tests/unit/test_ensure_sub_handlers_di.py": 0.1,
   "tests/unit/test_eval_item_scored.py": 3.49,
   "tests/unit/test_factory_floor_limits.py": 0.17,
+  "tests/unit/test_factory_floor_limits_host_accounts.py": 3.75,
   "tests/unit/test_factory_floor_limits_loaders.py": 0.17,
   "tests/unit/test_factory_floor_page_limits.py": 0.17,
   "tests/unit/test_generate_adapters.py": 0.19,

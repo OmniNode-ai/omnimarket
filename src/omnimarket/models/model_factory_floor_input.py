@@ -525,6 +525,15 @@ class ModelLimitTokenPool(BaseModel):
     tokens: tuple[ModelLimitToken, ...] = ()
 
 
+class ModelLimitAccountVerdict(BaseModel):
+    """One account's usage verdict (the pool usage verdict node's answer for its label): ok, drain, limited or unknown."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    label: str = Field(min_length=1)
+    verdict: Literal["ok", "drain", "limited", "unknown"]
+
+
 class ModelFloorLimitsFacts(BaseModel):
     """Every limit the caller read. A source that could not be read is None, never empty: the row then says UNKNOWN."""
 
@@ -535,6 +544,9 @@ class ModelFloorLimitsFacts(BaseModel):
     glm: ModelLimitEngine | None = None
     lab_rungs: tuple[ModelLimitLabRung, ...] | None = None
     token_pools: tuple[ModelLimitTokenPool, ...] | None = None
+    # Each account's usage verdict, judged by the caller; None when no verdict could be made (no thresholds, no accounts),
+    # so the per-host account counts say UNKNOWN rather than drawing every account usable (OMN-23609).
+    account_verdicts: tuple[ModelLimitAccountVerdict, ...] | None = None
     # The day's idle slot-hours, summed by whoever samples the slots; None when nothing sampled them.
     idle_slot_hours: float | None = None
     idle_slot_hours_read_at: str = ""
