@@ -75,7 +75,11 @@ HARNESS = textwrap.dedent(
       removeAttribute() {}, addEventListener() {}, querySelectorAll() { return []; }, showModal() {}, close() {}, focus() {}});
     const handlers = {};
     globalThis.document = {title: "", getElementById: id => els[id] || (els[id] = mk(id)), addEventListener: (t, fn) => { handlers[t] = fn; }};
-    globalThis.window = {location: {hash: process.env.PAGE_HASH || ""}, addEventListener: (t, fn) => { handlers["window:" + t] = fn; }};
+    // the address bar: every write of location.hash by the page is recorded (the page must write it only when the reader chose a view)
+    let hashValue = process.env.PAGE_HASH ? "#" + process.env.PAGE_HASH : "";
+    const hashWrites = [];
+    globalThis.window = {location: {get hash() { return hashValue; }, set hash(v) { hashValue = "#" + String(v).replace(/^#/, ""); hashWrites.push(hashValue); }},
+      addEventListener: (t, fn) => { handlers["window:" + t] = fn; }};
     const now = Date.parse(nowIso);
     Date.now = () => now;
     globalThis.setInterval = () => 0;
@@ -86,11 +90,12 @@ HARNESS = textwrap.dedent(
       new Function(script)();
       await new Promise(r => setTimeout(r, 50));
       for (const v of (process.env.PAGE_CLICKS || "").split(",").filter(Boolean)) handlers.click({target: {closest: () => ({dataset: {view: v}})}});
-      if (process.env.PAGE_HASHCHANGE) { window.location.hash = "#" + process.env.PAGE_HASHCHANGE; handlers["window:hashchange"](); }
+      // Back and Forward: the address changes without a write by the page, then hashchange fires
+      if (process.env.PAGE_HASHCHANGE !== undefined && process.env.PAGE_HASHCHANGE !== "-") { hashValue = process.env.PAGE_HASHCHANGE ? "#" + process.env.PAGE_HASHCHANGE : ""; handlers["window:hashchange"](); }
       const out = {};
       for (const id of ["halert", "models", "msum", "success", "ssumh", "experiments", "esum", "scn", "v-models", "v-success", "v-experiments", "v-scenarios"]) out[id] = els[id] ? (els[id].innerHTML || els[id].textContent) : "";
       out.hidden = Object.fromEntries(["models", "success", "experiments", "scenarios"].map(v => [v, !!(els["v-" + v] && els["v-" + v].hidden)]));
-      process.stdout.write(JSON.stringify({els: out, reads: Object.fromEntries(Object.entries(reads).map(([k, v]) => [k, [...v].sort()]))}));
+      process.stdout.write(JSON.stringify({els: out, hashWrites, reads: Object.fromEntries(Object.entries(reads).map(([k, v]) => [k, [...v].sort()]))}));
     })();
     """
 )
@@ -107,7 +112,9 @@ def _render(
     clicks: str = "",
     now: str | None = None,
     tracker_bytes: bytes | None = None,
-    hashchange: str = "",
+    hashchange: str = "-",
+    page_hash: str = "",
+    limit_s: int | None = None,
 ) -> dict:
     node = shutil.which("node")
     assert node, "the delegation history page render test requires Node.js"
@@ -123,7 +130,13 @@ def _render(
         files_path = Path(tmp) / "files.json"
         files_path.write_text(json.dumps(files), encoding="utf-8")
         served = Path(tmp) / "delegation.html"
-        served.write_bytes(published_page())
+        page = published_page()
+        if limit_s is not None:
+            # the same page with another age limit, as the node contract would publish it
+            page = re.sub(
+                rb"HIST_MAX_AGE_S = \d+", f"HIST_MAX_AGE_S = {limit_s}".encode(), page
+            )
+        served.write_bytes(page)
         out = subprocess.run(
             [node, "-e", HARNESS, str(served), str(files_path), now or HISTORY_NOW],
             capture_output=True,
@@ -133,6 +146,7 @@ def _render(
             env={
                 "PAGE_CLICKS": clicks,
                 "PAGE_HASHCHANGE": hashchange,
+                "PAGE_HASH": page_hash,
                 "PATH": "/usr/bin:/bin",
             },
         )
@@ -285,9 +299,10 @@ def test_failing_control_an_experiment_with_a_missing_field_is_never_drawn_as_a_
     None
 ):
     bad = copy.deepcopy(_history())
-    for arm in bad["experiments"][0]["arms"]:
-        arm["wilson_low"] = None
-        arm["wilson_high"] = None
+    for exp in bad["experiments"]:
+        for arm in exp["arms"]:
+            arm["wilson_low"] = None
+            arm["wilson_high"] = None
     for r in bad["series"]:
         for point in r["days"]:
             point["success"] = {"rate": None, "wilson_low": None, "wilson_high": None}
@@ -296,6 +311,14 @@ def test_failing_control_an_experiment_with_a_missing_field_is_never_drawn_as_a_
     for view in ("models", "success", "experiments"):
         assert "NaN" not in drawn[view]
         assert "undefined" not in drawn[view]
+    # ...nor draw the whisker of an interval or the band of one: a whisker is an ink line, a band is a polygon
+    assert 'stroke="var(--ink)"' not in drawn["experiments"]
+    assert "<polygon" not in drawn["success"]
+    assert "no interval recorded" in drawn["experiments"]
+    # the control of the control: the same document with its intervals draws both, so the two absences above can fail
+    whole = _render(_history())["els"]
+    assert 'stroke="var(--ink)"' in whole["experiments"]
+    assert "<polygon" in whole["success"]
 
 
 def test_the_view_switch_shows_one_view_and_hides_the_others() -> None:
@@ -356,24 +379,59 @@ def _unmatched(
     return {section: names for section, names in found.items() if names}
 
 
+def _union_of_reads() -> dict[str, list[str]]:
+    """The reads of every render that reaches a branch of the page: the golden one, a failed source (sources.id and detail are read
+    only there) and an experiment with a majority baseline (majority_baseline.accuracy is read only there)."""
+    failed = _history()
+    failed["sources"][1] = {
+        "id": "routing_overlay",
+        "ok": False,
+        "detail": "unreadable",
+    }
+    renders = (
+        _render(_history()),
+        _render(failed),
+        _render(_experiment_with_baseline(0.4)),
+    )
+    union: dict[str, set[str]] = {}
+    for rendered in renders:
+        for section, names in rendered["reads"].items():
+            union.setdefault(section, set()).update(names)
+    return {section: sorted(names) for section, names in union.items()}
+
+
 def test_every_field_the_page_reads_is_in_the_schema_model() -> None:
-    reads = _render(_history())["reads"]
+    reads = _union_of_reads()
     assert set(reads) <= set(SECTION_MODELS), "a recorded section has no schema model"
     assert _unmatched(reads, _schema_fields()) == {}
     # the recorder sees the fields the review found missing from the old hand-kept list
     assert "window_days" in reads["top"]
     assert "n" in reads["arms"]
+    # ...and the three fields only a failed source and a stated baseline make the page read
+    assert {"id", "detail"} <= set(reads["sources"])
+    assert "accuracy" in reads["baseline"]
+
+
+def test_failing_control_the_golden_render_alone_never_reads_the_source_or_baseline_fields() -> (
+    None
+):
+    """Why the reads are unioned: the golden render reads none of these, so a recorder over it alone could not hold them to the schema."""
+    golden = _render(_history())["reads"]
+    assert "detail" not in golden.get("sources", [])
+    assert "accuracy" not in golden.get("baseline", [])
 
 
 def test_failing_control_a_field_the_page_reads_but_the_schema_lacks_fails_the_check() -> (
     None
 ):
     """The check runs: with a field gone from the schema model's side, _unmatched names it (for a rename of window_days or arms.n too)."""
-    reads = _render(_history())["reads"]
+    reads = _union_of_reads()
     for section, name in (
         ("models", "quantization"),
         ("top", "window_days"),
         ("arms", "n"),
+        ("sources", "detail"),
+        ("baseline", "accuracy"),
     ):
         fields = _schema_fields()
         fields[section].discard(name)
@@ -507,6 +565,111 @@ def test_the_hash_names_the_view_when_it_changes_after_the_page_loaded() -> None
         "experiments": False,
         "scenarios": True,
     }
+
+
+def test_a_page_opened_with_no_hash_writes_none_so_back_leaves_the_page() -> None:
+    """Writing #models on load adds a history entry the reader's Back lands on, which is then rewritten: Back never leaves the page."""
+    out = _render(_history())
+    assert out["hashWrites"] == []
+    assert out["els"]["hidden"]["models"] is False
+
+
+def test_a_page_opened_on_a_named_view_shows_it_and_writes_no_hash() -> None:
+    out = _render(_history(), page_hash="success")
+    assert out["hashWrites"] == []
+    assert out["els"]["hidden"] == {
+        "models": True,
+        "success": False,
+        "experiments": True,
+        "scenarios": True,
+    }
+
+
+def test_back_to_an_address_with_no_hash_shows_the_first_view_and_writes_no_hash() -> (
+    None
+):
+    """Back from #experiments to the bare address fires hashchange with an empty hash; the page must draw, never re-write the address."""
+    out = _render(_history(), page_hash="experiments", hashchange="")
+    assert out["hashWrites"] == []
+    assert out["els"]["hidden"]["models"] is False
+
+
+def test_failing_control_a_click_on_a_view_button_writes_the_hash_once() -> None:
+    """The one write the page makes: a reader's choice. Without it the no-write tests above would pass on a page that never writes."""
+    out = _render(_history(), clicks="experiments")
+    assert out["hashWrites"] == ["#experiments"]
+    assert out["els"]["hidden"]["experiments"] is False
+
+
+def test_a_cost_per_accepted_no_price_stands_behind_is_not_drawn_as_zero_dollars() -> (
+    None
+):
+    doc = _history()
+    hosted = [m["id"] for m in doc["models"] if m["engine_kind"] != "local"]
+    assert hosted
+    for m in doc["models"]:
+        if m["id"] in hosted:
+            m["price_in_usd_per_mtok"] = None
+            m["price_out_usd_per_mtok"] = None
+    for r in doc["series"]:
+        if r["model"] in hosted:
+            for point in [*r["days"], *r["hours"], r["total"]]:
+                if point is not None:
+                    point["cost_usd"] = None
+    schema.ModelDelegationHistory.model_validate(doc)
+    cells = _model_rows(_render(doc)["els"]["models"])
+    for model_id, row in cells.items():
+        if model_id in hosted:
+            assert row[COST_COLUMN] == "price not recorded", (model_id, row)
+            assert "$0" not in row[COST_COLUMN]
+        else:
+            assert row[COST_COLUMN].startswith("$"), (
+                model_id,
+                row,
+            )  # a local model's recorded zero is a recorded zero
+
+
+def test_failing_control_a_hosted_model_with_a_recorded_cost_shows_it() -> None:
+    cells = _model_rows(_render(_history())["els"]["models"])
+    total = next(
+        r["total"]
+        for r in _history()["series"]
+        if r["model"] == "glm-flash" and r["task_kind"] == "*"
+    )
+    assert total["cost_usd"] > 0
+    assert (
+        cells["glm-flash"][COST_COLUMN]
+        == f"${total['cost_usd'] / total['accepted']:.3f}"
+    )
+
+
+def test_a_limit_under_an_hour_is_read_in_minutes_not_as_zero_hours() -> None:
+    doc = _history()
+    doc["generated_at"] = _generated(3000)
+    banner = _render(doc, limit_s=1800)["els"]["halert"]
+    assert "the limit is 30 min" in banner
+    assert "0 h" not in banner
+
+
+def test_failing_control_a_limit_of_whole_hours_is_still_read_in_hours() -> None:
+    doc = _history()
+    doc["generated_at"] = _generated(4 * 3600 + 60)
+    assert "the limit is 3 h" in _render(doc, limit_s=3 * 3600)["els"]["halert"]
+
+
+# the Models table: its cells by model id
+COST_COLUMN = 7
+
+
+def _model_rows(html: str) -> dict[str, list[str]]:
+    rows = {}
+    for tr in re.findall(r"<tr><td.*?</tr>", html, flags=re.S):
+        cells = [
+            re.sub(r"<[^>]+>", "", c)
+            for c in re.findall(r"<td[^>]*>(.*?)</td>", tr, flags=re.S)
+        ]
+        rows[cells[0]] = cells
+    return rows
 
 
 def test_a_scenario_pass_history_entry_is_escaped_in_the_strip_title() -> None:

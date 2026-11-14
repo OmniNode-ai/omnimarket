@@ -238,6 +238,12 @@ function priceText(m){
   if (m.price_in_usd_per_mtok == null && m.price_out_usd_per_mtok == null) return "price not recorded";
   return money(m.price_in_usd_per_mtok) + " in / " + money(m.price_out_usd_per_mtok) + " out per M tokens";
 }
+// cost per accepted answer: a cost no attempt recorded is never drawn as a dollar amount
+function costText(m, tot){
+  if (!tot || !tot.accepted) return "n/a";
+  if (tot.cost_usd == null) return m.price_in_usd_per_mtok == null && m.price_out_usd_per_mtok == null && m.engine_kind !== "local" ? "price not recorded" : "cost not recorded";
+  return money(tot.cost_usd / tot.accepted);
+}
 function settingsText(m){
   return [m.context_tokens != null ? m.context_tokens + " ctx" : "", m.quantization || "", m.thinking === "on" ? "thinking on" : m.thinking === "off" ? "thinking off" : ""].filter(Boolean).join(", ") || "not recorded";
 }
@@ -248,7 +254,7 @@ function drawModels(){
     const all = seriesOf(m.id, "*"), tot = all && all.total, rate = tot && tot.attempts && tot.success ? tot.success : null;
     return `<tr><td class="l"><b>${esc(m.id)}</b></td><td class="l">${esc(m.engine_kind)}</td><td class="l">${esc(m.host == null ? "hosted" : m.host)}</td><td class="l">${esc(settingsText(m))}</td><td class="l">${esc(priceText(m))}</td>`
       + `<td>${rate && rate.rate != null ? esc(pc(rate.rate)) + `<small>${esc(pc(rate.wilson_low))} to ${esc(pc(rate.wilson_high))}, n=${esc(tot.attempts)}</small>` : "no attempts"}</td>`
-      + `<td>${esc(secs(tot ? tot.p50_latency_ms : null))}</td><td>${tot && tot.accepted ? esc(money(tot.cost_usd / tot.accepted)) : "n/a"}</td><td>${esc(m.last_seen ? ago(since(m.last_seen)) : "never")}</td></tr>`;
+      + `<td>${esc(secs(tot ? tot.p50_latency_ms : null))}</td><td>${esc(costText(m, tot))}</td><td>${esc(m.last_seen ? ago(since(m.last_seen)) : "never")}</td></tr>`;
   }).join("");
   $("msum").textContent = hist.models.length + " models, last " + hist.window_days + " days";
   $("models").innerHTML = hist.models.length ? `<div class="tw"><table class="mt"><thead><tr><th class="l">Model</th><th class="l">Engine</th><th class="l">Host</th><th class="l">Settings</th><th class="l">Price</th><th>Success, window</th><th>p50 latency</th><th>Cost per accepted</th><th>Last seen</th></tr></thead><tbody>${rows}</tbody></table></div>` : `<p class="empty">No model has been seen.</p>`;
@@ -293,7 +299,7 @@ function drawHistory(){
     return;
   }
   const age = since(hist.generated_at), failed = (hist.sources || []).filter(s => !s.ok).map(s => esc(s.id) + ": " + esc(s.detail));
-  a.innerHTML = (hfailure ? `<div class="frozen">The last history refresh failed (${esc(hfailure)}); this is the history from ${ago(age)}.</div>` : age > HIST_MAX_AGE_S ? `<div class="frozen">The history is ${dur(age)} old, the limit is ${Math.floor(HIST_MAX_AGE_S / 3600)} h. Everything in these views is old.</div>` : "")
+  a.innerHTML = (hfailure ? `<div class="frozen">The last history refresh failed (${esc(hfailure)}); this is the history from ${ago(age)}.</div>` : age > HIST_MAX_AGE_S ? `<div class="frozen">The history is ${dur(age)} old, the limit is ${dur(HIST_MAX_AGE_S)}. Everything in these views is old.</div>` : "")
     + (failed.length ? `<div class="frozen">A source of the history could not be read, so a view above is short: ${failed.join("; ")}.</div>` : "");
   if (age == null || age > HIST_MAX_AGE_S) {
     for (const id of ["models", "success", "experiments"]) $(id).innerHTML = `<p class="empty">The history is too old to draw (${esc(dur(age == null ? 0 : age))} old); no number is shown.</p>`;
@@ -432,17 +438,22 @@ function draw(){
 }
 // ---- the four views: one is shown, the address hash names it ---------------------------------------------------------------
 const VIEWS = ["models", "success", "experiments", "scenarios"];
+// showView only draws: it never writes the address, so the hashchange it answers cannot be answered again and Back leaves the page
 function showView(name){
   const v = VIEWS.indexOf(name) >= 0 ? name : VIEWS[0];
   for (const id of VIEWS) { const sec = $("v-" + id); if (sec) sec.hidden = id !== v; }
   const bar = $("views"); if (bar && bar.querySelectorAll) for (const b of bar.querySelectorAll("button")) b.setAttribute("aria-pressed", String(b.dataset.view === v));
-  if (window.location && window.location.hash !== "#" + v) { try { window.location.hash = v; } catch (e) { /* a page with no address bar */ } }
+}
+// a click on a view button is the one thing that writes the address, and it adds one history entry for the view the reader chose
+function openView(name){
+  if (VIEWS.indexOf(name) >= 0 && window.location && window.location.hash !== "#" + name) { try { window.location.hash = name; } catch (e) { /* a page with no address bar */ } }
+  showView(name);
 }
 if (window.addEventListener) window.addEventListener("hashchange", () => showView(window.location.hash.slice(1)));
 document.addEventListener("click", e => {
   const t = e.target && e.target.closest ? e.target.closest("[data-open],[data-page],[data-view]") : null;
   if (!t) return;
-  if (t.dataset.view) { showView(t.dataset.view); return; }
+  if (t.dataset.view) { openView(t.dataset.view); return; }
   if (t.dataset.page) { st.page = Math.max(0, st.page + Number(t.dataset.page)); if (doc) drawTickets(); return; }
   openKey(t.dataset.open, t);
 });
