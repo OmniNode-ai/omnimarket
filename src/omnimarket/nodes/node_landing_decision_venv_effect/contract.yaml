@@ -1,0 +1,72 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Landing Decision Venv Effect (OMN-24355)
+#
+# Installs every dependency the landing decision pin names into the decision venv the landing controller runs its decision
+# node in, so a pin that names a new dependency needs no change to the installer script.
+name: node_landing_decision_venv_effect
+contract_name: node_landing_decision_venv_effect
+node_name: node_landing_decision_venv_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [main]
+
+description: >
+  Reads the landing decision pin, creates the decision venv when it is absent, installs each dependency the overlay's rows
+  map from a pin key to a distribution at the version the pin names, and answers ready when a second run finds every one in
+  place. A pin missing a row's key, a venv that cannot be created, an install that fails or times out, and an overlay that is
+  absent or broken are each refused with a typed reason and nothing is raised. Every setting (the rows, the interpreter
+  arguments, the timeouts) is in overlays/node_landing_decision_venv_effect/overlay.yaml of the overlays repository.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: install_decision_venv
+      handler:
+        name: HandlerLandingDecisionVenv
+        module: omnimarket.nodes.node_landing_decision_venv_effect.handlers.handler_landing_decision_venv
+      input_model: omnimarket.nodes.node_landing_decision_venv_effect.models.model_landing_decision_venv.ModelLandingDecisionVenvRequest
+      output_model: omnimarket.nodes.node_landing_decision_venv_effect.models.model_landing_decision_venv.ModelLandingDecisionVenvResult
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  side_effects: [venv-create, pip-install]
+  runtime_profiles: [main]
+
+input_model:
+  name: ModelLandingDecisionVenvRequest
+  module: omnimarket.nodes.node_landing_decision_venv_effect.models.model_landing_decision_venv
+  description: The pin file, the venv directory, the base interpreter and the correlation id.
+output_model:
+  name: ModelLandingDecisionVenvResult
+  module: omnimarket.nodes.node_landing_decision_venv_effect.models.model_landing_decision_venv
+  description: Installed or ready with the versions the venv holds, or refused with the reason.
+
+terminal_event: onex.evt.omnimarket.landing-decision-venv-run-completed.v1
+
+runtime_dispatch:
+  external_trigger: true
+  command_topic: onex.cmd.omnimarket.landing-decision-venv-requested.v1
+
+topics:
+  landing_decision_venv_requested: onex.cmd.omnimarket.landing-decision-venv-requested.v1
+  landing_decision_venv_run_completed: onex.evt.omnimarket.landing-decision-venv-run-completed.v1
+  landing_decision_venv_run_failed: onex.evt.omnimarket.landing-decision-venv-run-failed.v1
+
+# The node runs in process on the host that holds the decision venv, called by its caller; no broker consumer subscribes for
+# it, so it declares no subscribe or publish topic of its own. The chain tests drive it over the in-memory bus.
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.landing-decision-venv-run-completed.v1
+  - onex.evt.omnimarket.landing-decision-venv-run-failed.v1
+
+metadata:
+  ticket: OMN-24355
+  transport_type: inmemory
