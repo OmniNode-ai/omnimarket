@@ -45,7 +45,6 @@ pytestmark = pytest.mark.unit
 FIRE_ARGUMENTS = {
     "run_key",
     "fire_id",
-    "apply",
     "hosts",
     "selection_holds",
     "ledger_path",
