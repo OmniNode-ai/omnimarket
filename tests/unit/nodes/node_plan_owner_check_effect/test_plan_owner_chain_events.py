@@ -99,7 +99,7 @@ def rule() -> ModelPlanOwnerRule:
 
 def owner_overlay() -> ModelPlanOwnerOverlay:
     return ModelPlanOwnerOverlay(
-        reader="cutover-owner", rules=(rule(),), journal_env="J"
+        reader="cutover-owner", claims_window_hours=3, rules=(rule(),), journal_env="J"
     )
 
 
@@ -283,5 +283,8 @@ def test_break_live_window_always_true_reads_a_past_window_claim_as_owned(
 def test_the_overlay_refuses_two_rules_for_one_finding() -> None:
     with pytest.raises(ValueError, match="rule findings must be unique"):
         ModelPlanOwnerOverlay(
-            reader="cutover-owner", rules=(rule(), rule()), journal_env="J"
+            reader="cutover-owner",
+            claims_window_hours=3,
+            rules=(rule(), rule()),
+            journal_env="J",
         )

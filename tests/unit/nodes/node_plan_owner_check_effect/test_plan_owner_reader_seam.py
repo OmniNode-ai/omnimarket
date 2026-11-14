@@ -66,6 +66,7 @@ def owner_overlay(**changes: object) -> ModelPlanOwnerOverlay:
     )
     return ModelPlanOwnerOverlay(
         reader="cutover-owner",
+        claims_window_hours=1,
         rules=(rule.model_copy(update=changes),),
         journal_env="J",
     )
