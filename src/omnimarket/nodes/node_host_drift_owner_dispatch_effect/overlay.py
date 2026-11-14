@@ -12,7 +12,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
 from omnimarket.models.model_alarm_owner_responder import (
@@ -58,10 +58,13 @@ class ModelDispatchSettings(_Frozen):
     interpreter: str = Field(min_length=1)
     #: The environment variable that holds the path of the runner script, set by the unit's declaration.
     runner_env: str = Field(min_length=1)
-    #: The environment variable that holds the directory the runner reads its plugin config from (``--claude-dir``), set by the unit's declaration.
-    claude_dir_env: str = Field(min_length=1)
-    #: The plugins (``<plugin>@<marketplace>``) the runner ships to the lane (one ``--plugin`` each).
-    plugins: tuple[str, ...] = Field(min_length=1)
+    #: The environment variable that holds the directory the runner reads its plugin config from (``--claude-dir``), set by the
+    #: unit's declaration, and the plugins (``<plugin>@<marketplace>``) the runner ships to the lane (one ``--plugin`` each).
+    #: Both are named together or neither is. Transition (OMN-24423): they have no value in the overlays repository's main yet,
+    #: and the CI job that loads that main through this model needs them absent to pass; the follow-up that makes them
+    #: required lands once the overlay names them.
+    claude_dir_env: str = ""
+    plugins: tuple[str, ...] = ()
     subcommand: str = Field(min_length=1)
     model: str = Field(min_length=1)
     ticket: str = Field(pattern=r"^OMN-\d+$")
@@ -70,6 +73,14 @@ class ModelDispatchSettings(_Frozen):
     #: A runner still running after this many seconds is a lane that started.
     settle_seconds: float = Field(gt=0)
     extra_args: tuple[str, ...]
+
+    @model_validator(mode="after")
+    def _claude_dir_and_plugins_come_together(self) -> ModelDispatchSettings:
+        if bool(self.claude_dir_env) != bool(self.plugins):
+            raise ValueError(
+                "dispatch.claude_dir_env and dispatch.plugins are named together or neither is"
+            )
+        return self
 
 
 class ModelBriefSections(_Frozen):

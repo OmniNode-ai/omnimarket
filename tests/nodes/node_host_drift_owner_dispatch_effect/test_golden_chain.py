@@ -14,7 +14,7 @@ from omnimarket.nodes.node_host_drift_owner_dispatch_effect.models import (
     ModelDriftOwnerRequest,
 )
 
-from .support import CLAUDE_DIR, RUNNER_PATH, item, rig
+from .support import CLAUDE_DIR, RUNNER_PATH, item, overlay, rig
 
 pytestmark = pytest.mark.unit
 
@@ -109,3 +109,17 @@ def test_a_lane_that_names_the_cause_covers_it() -> None:
     assert result.lanes == ()
     assert [s.reason for s in result.skipped] == ["covered-by-cause"]
     assert r.live.asked == [(OLD_CAUSE,)]
+
+
+def test_an_overlay_naming_no_claude_directory_passes_neither_flag() -> None:
+    changed = overlay().model_copy(
+        update={
+            "dispatch": overlay().dispatch.model_copy(
+                update={"claude_dir_env": "", "plugins": ()}
+            )
+        }
+    )
+    r = rig((item(OLD_ITEM),), changed=changed)
+    argv = r.handler.handle(ModelDriftOwnerRequest(dry_run=False)).lanes[0].argv
+    assert "--claude-dir" not in argv
+    assert "--plugin" not in argv

@@ -251,8 +251,7 @@ class HandlerHostDriftOwnerDispatch:
             dispatch.ticket,
             "--cause",
             cause_key,
-            "--claude-dir",
-            self._claude_dir,
+            *(("--claude-dir", self._claude_dir) if self._claude_dir else ()),
             *(arg for plugin in dispatch.plugins for arg in ("--plugin", plugin)),
             *dispatch.extra_args,
         )

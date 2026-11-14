@@ -28,6 +28,7 @@ from omnimarket.nodes.node_host_drift_owner_dispatch_effect.overlay import (
 )
 from omnimarket.nodes.node_host_drift_owner_dispatch_effect.protocols import (
     BriefEnvironmentAbsentError,
+    DriftStateUnreadableError,
 )
 from omnimarket.nodes.node_host_drift_owner_dispatch_effect.runtime_host_drift_owner_dispatch import (
     build_handler,
@@ -247,3 +248,23 @@ def test_an_overlay_without_the_store_blocks_is_refused_and_names_the_key(
     with pytest.raises(ValidationError) as refused:
         ModelDriftOwnerOverlay.model_validate(data)
     assert missing in str(refused.value)
+
+
+def test_the_runtime_backend_of_an_overlay_naming_no_claude_dir_variable_builds_without_one(
+    tmp_path: Path,
+) -> None:
+    changed, environ = _runtime(tmp_path)
+    del environ["EXAMPLE_LANE_CLAUDE_DIR"]
+    named = changed.dispatch.model_copy(update={"claude_dir_env": "", "plugins": ()})
+    handler = build_handler(
+        changed.model_copy(update={"dispatch": named}),
+        root=tmp_path,
+        environ=environ,
+        store=FakeStore({ENV: PLANTED}),
+    )
+    assert handler._claude_dir == ""
+    # failing control: the overlay that names the variable, with it unset, is refused
+    with pytest.raises(DriftStateUnreadableError, match="EXAMPLE_LANE_CLAUDE_DIR"):
+        build_handler(
+            changed, root=tmp_path, environ=environ, store=FakeStore({ENV: PLANTED})
+        )

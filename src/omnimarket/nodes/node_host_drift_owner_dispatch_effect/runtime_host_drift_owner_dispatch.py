@@ -92,7 +92,7 @@ def _build_runtime(
             f"{dispatch.runner_env} is not set: the unit's declaration names the runner"
         )
     claude_dir = environ.get(dispatch.claude_dir_env, "")
-    if not claude_dir:
+    if dispatch.claude_dir_env and not claude_dir:
         raise DriftStateUnreadableError(
             f"{dispatch.claude_dir_env} is not set: the unit's declaration names the claude directory the runner reads its plugins from"
         )

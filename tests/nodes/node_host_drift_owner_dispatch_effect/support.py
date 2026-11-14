@@ -85,15 +85,16 @@ def rig(
     kept = InMemoryDispatchRecord(record)
     briefs = InMemoryBriefPreparer()
     runner = InMemoryLanePlacer(briefs)
+    used = changed or overlay()
     handler = HandlerHostDriftOwnerDispatch(
-        overlay=changed or overlay(),
+        overlay=used,
         items=source,
         live=live,
         record=kept,
         briefs=briefs,
         runner=runner,
         runner_path=RUNNER_PATH,
-        claude_dir=CLAUDE_DIR,
+        claude_dir=CLAUDE_DIR if used.dispatch.claude_dir_env else "",
         clock=lambda: NOW,
     )
     return Rig(handler, source, live, kept, briefs, runner)
