@@ -1,0 +1,139 @@
+---
+name: projection_goal_trace
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_projection_goal_trace.models.model_goal_trace_fold_request.ModelGoalTraceFoldRequest
+description: >
+  OMN-20034, GC.11 of the delegation judgeability plan. Folds one content-free
+  trace per goal, from its contract to its verdict, into
+  omninode_internal.goal_trace_events (one row per absorbed event) and
+  omninode_internal.goal_traces (one row per goal: the revision chain, the
+  closed revision, the verdict, a checksum over the ordered events).
+
+  THE CLAIM, from the GC.11 model-before-build (TLC passes the design and fails
+  nine broken variants; design review APPROVE-WITH-FINDINGS): the trace of a
+  goal is a pure function of the SET of events delivered. Arrival order and
+  redelivery change no row and no checksum. The fold orders by an explicit key
+  and checksums the canonically ordered, deduplicated set.
+
+  THE RULES. A revision names the revision it replaces; two revisions that
+  replace the same one are a fork and both are kept. The verdict is the latest
+  attempt, by the completion time it carries, of the revision the close named;
+  attempts are appended and never overwritten. A hook event joins a goal only
+  through a binding of its agent (the goal-stamped binding event, GC.8), in
+  either arrival order; an agent with no binding or bound ancestor is counted
+  unassigned and never attached, and an agent bound to two goals is attached to
+  neither. The same event id with another body digest is an id conflict and both
+  bodies are kept.
+
+  WHAT IS DELIBERATELY NOT HERE. Content. Every input is reduced to identifiers,
+  times and a digest before it is stored.
+
+handler:
+  module: omnimarket.nodes.node_projection_goal_trace.handlers.handler_projection_goal_trace
+  class: HandlerProjectionGoalTrace
+
+# ONE routing entry, the writer, and deliberately not the fold beside it (the
+# fold is called in process by the writer; a routed fold would be handed every
+# raw event and dead-letter it while the writer wrote the row).
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: goal_trace_projection_writer
+      handler:
+        name: GoalTraceProjectionWriter
+        module: omnimarket.nodes.node_projection_goal_trace.handlers.handler_goal_trace_writer
+      handler_module: omnimarket.nodes.node_projection_goal_trace.handlers.handler_goal_trace_writer
+
+terminal_event: onex.evt.omnimarket.projection-goal-trace-applied.v1
+
+golden_path:
+  - "A lane's opening claim and its revisions arrive as trace events keyed to the goal; a revision names the one it replaces"
+  - "The goal-stamped binding hook event binds an agent to the goal; the agent's other hook events join through that binding, whichever arrives first"
+  - "A goal-scoped verification result arrives as one append-only attempt of the revision it evaluated"
+  - "The close names the revision it closed against; the verdict is the latest attempt of that revision"
+  - "The fold orders the events by an explicit key, deduplicates by event id and body digest, and checksums the ordered set"
+  - "The writer stores each event once, re-attaches the rows a new binding moves, and upserts the goal row"
+  - "Emit projection-applied event to onex.evt.omnimarket.projection-goal-trace-applied.v1"
+
+dod_evidence:
+  - test: tests/test_golden_chain_projection_goal_trace.py::test_trace_is_order_and_duplicate_independent
+    description: "AC1 -- every ordering and any redelivery gives the same rows and checksum"
+  - test: tests/test_golden_chain_projection_goal_trace.py::test_lane_agents_are_assigned_to_their_own_goal_and_to_no_other
+    description: "AC2 -- at least 90 percent of a lane's agent events are assigned to its goal and none to another"
+  - test: tests/test_golden_chain_projection_goal_trace_writer.py::test_the_writer_writes_rows_for_a_replay_and_a_second_replay_changes_nothing
+    description: "AC3 -- a replay writes its own rows and a redelivery writes no new event row"
+  - test: tests/test_golden_chain_projection_goal_trace_writer.py::test_the_writer_declares_in_process_dispatch
+    description: "An undeclared writer is skipped by the shared runtime and writes zero rows silently"
+
+db_io:
+  db_tables:
+    - name: goal_trace_events
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_goal_trace_events.sql"
+      access: read_write
+      role: goal_trace_events
+    - name: goal_traces
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_goal_trace_events.sql"
+      access: read_write
+      role: goal_traces
+    # Read only: the writer asks which agent spawned an agent, to give an
+    # unbound child its bound ancestor.
+    - name: claude_agent_spans
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_claude_hook_events.sql"
+      access: read
+      role: goal_trace_events
+
+  dedupe_key:
+    - event_id
+    - body_digest
+  ordering_key: emitted_at
+
+event_bus:
+  subscribe_topics:
+    # The captured hook events: the stamped binding event and the events it
+    # claims for an agent.
+    - onex.evt.omniclaude.hook-event.v1
+    # A goal-scoped verification result: one append-only attempt.
+    - onex.evt.omnimarket.dod-verify-completed.v1
+    # The goal's own events (claim, revision, close, delegation, receipt),
+    # already reduced to the digest-only trace shape by their producers.
+    - onex.evt.omnimarket.goal-trace-event.v1
+  publish_topics:
+    - onex.evt.omnimarket.projection-goal-trace-applied.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.projection-goal-trace-malformed.v1
+
+# One message at a time. The scope read of a message depends on the rows the
+# previous message re-attached; the neighbouring hook-events writer takes four in
+# flight because its event insert is independent, and this one's is not.
+consume_concurrency:
+  max_in_flight_records: 1
+
+# The one pool this writer keeps. max_size is the in-flight bound above, because
+# a message holds one connection at a time.
+writer_pool:
+  min_size: 1
+  max_size: 1
+  acquire_timeout_seconds: 30
+  command_timeout_seconds: 30
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-goal-trace-applied.v1
+
+externally_produced_topics:
+  - topic: onex.evt.omniclaude.hook-event.v1
+    producer: "omniclaude plugins/onex/hooks, through the emit journal and the emit drainer"
+  - topic: onex.evt.omnimarket.dod-verify-completed.v1
+    producer: "node_dod_verify, on every terminal outcome"
+  - topic: onex.evt.omnimarket.goal-trace-event.v1
+    producer: "the goal-event publisher (GC.5 claim, revision and close; GC.3 delegation and receipt); none publishes yet, so the trace carries hook and attempt events until one does"
+
+metadata:
+  transport_type: kafka
