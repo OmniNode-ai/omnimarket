@@ -14,7 +14,7 @@ from omnimarket.nodes.node_host_drift_owner_dispatch_effect.models import (
     ModelDriftOwnerRequest,
 )
 
-from .support import RUNNER_PATH, item, rig
+from .support import CLAUDE_DIR, RUNNER_PATH, item, rig
 
 pytestmark = pytest.mark.unit
 
@@ -64,6 +64,18 @@ def test_the_runner_command_is_the_overlays_and_carries_the_cause() -> None:
     assert argv[argv.index("--model") + 1] == "sonnet"
     assert argv[argv.index("--ticket") + 1] == "OMN-1"
     assert argv[-4:] == ("--parent", "example-drift", "--priority-class", "process-fix")
+
+
+def test_the_runner_is_given_the_claude_directory_and_each_plugin_before_the_extra_args() -> (
+    None
+):
+    r = rig((item(OLD_ITEM),))
+    argv = r.handler.handle(ModelDriftOwnerRequest(dry_run=False)).lanes[0].argv
+    assert argv[argv.index("--claude-dir") + 1] == CLAUDE_DIR
+    plugins = [argv[i + 1] for i, arg in enumerate(argv) if arg == "--plugin"]
+    assert plugins == ["example-plugin@example-marketplace"]
+    assert argv.index("--claude-dir") < argv.index("--parent")
+    assert argv.index("--plugin") < argv.index("--parent")
 
 
 def test_an_item_below_the_bound_starts_nothing() -> None:

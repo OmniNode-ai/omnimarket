@@ -177,6 +177,7 @@ def _runtime(tmp_path: Path) -> tuple[ModelDriftOwnerOverlay, dict[str, str]]:
     runner.write_text("")
     environ = {
         "EXAMPLE_REMOTE_LANE_RUNNER": str(runner),
+        "EXAMPLE_LANE_CLAUDE_DIR": str(tmp_path / "lane-claude"),
         "EXAMPLE_LEDGER_PATH": str(tmp_path / "ledger.md"),
     }
     return overlay().model_copy(update={"backend": "runtime"}), environ

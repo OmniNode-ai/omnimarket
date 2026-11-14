@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -78,6 +79,7 @@ def request(
         "remote_lane_runner": "/example/plugin/remote-lane/onex_remote_lane.py",
         "ledger_host_name": "h-example",
         "ledger_path": "/example/ledger/rows.md",
+        "marketplace_root": "/example/marketplace",
         "project_path": str(path),
         "expected_revision": revision,
         "path_overrides": {
@@ -172,3 +174,135 @@ def test_the_unit_holds_no_linear_key_and_the_nodes_overlay_names_the_store_entr
     assert [(s.env, s.secret) for s in settings] == [
         ("EXAMPLE_LINEAR_KEY", "EXAMPLE_LINEAR_KEY")
     ]
+
+
+def _declared_paths(tmp_path: Path) -> tuple[Path, Path]:
+    claude = tmp_path / "home" / ".config/onex/lane-claude"
+    return claude / "settings.json", claude / "plugins/known_marketplaces.json"
+
+
+def test_the_unit_declares_the_claude_directory_the_runner_reads_and_the_files_in_it() -> (
+    None
+):
+    declared = load_units()[UNIT]
+    assert (
+        declared["environment"]["ONEX_HOST_DRIFT_OWNER_CLAUDE_DIR"]
+        == "{home}/.config/onex/lane-claude"
+    )
+    paths = [entry["path"] for entry in declared["declared_files"]]
+    assert paths == [
+        "{home}/.config/onex/lane-claude/settings.json",
+        "{home}/.config/onex/lane-claude/plugins/known_marketplaces.json",
+    ]
+
+
+def test_a_dry_run_lists_both_declared_files_with_the_registry_root_filled(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "branch"
+    revision = checkout(path)
+    result = HandlerRegistryUnits(Recorder()).handle(request(tmp_path, path, revision))
+    assert result.status == "success", result.stderr
+    settings, markets = _declared_paths(tmp_path)
+    assert f"declared file {settings}:" in result.stdout
+    assert f"declared file {markets}:" in result.stdout
+    assert '"installLocation": "/example/marketplace"' in result.stdout
+    assert f'"ONEX_HOST_DRIFT_OWNER_CLAUDE_DIR={settings.parent}"' in result.rendered
+    assert not settings.exists()  # a dry run writes nothing
+
+
+def test_an_install_writes_both_files_and_keeps_the_one_it_replaces(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "branch"
+    revision = checkout(path)
+    first = HandlerRegistryUnits(Recorder()).handle(
+        request(tmp_path, path, revision, mode="install")
+    )
+    assert first.status == "success", first.stderr
+    settings, markets = _declared_paths(tmp_path)
+    assert json.loads(settings.read_text(encoding="utf-8")) == {}
+    entry = json.loads(markets.read_text(encoding="utf-8"))["omninode-internal"]
+    assert entry["installLocation"] == "/example/marketplace"
+    assert oct(markets.stat().st_mode & 0o777) == "0o600"
+    # the same install again replaces nothing; a changed marketplace root keeps the replaced file
+    again = HandlerRegistryUnits(Recorder()).handle(
+        request(tmp_path, path, revision, mode="install")
+    )
+    assert again.status == "success", again.stderr
+    assert not markets.with_name(markets.name + ".previous").exists()
+    moved = HandlerRegistryUnits(Recorder()).handle(
+        request(
+            tmp_path,
+            path,
+            revision,
+            mode="install",
+            marketplace_root="/example/other-marketplace",
+        )
+    )
+    assert moved.status == "success", moved.stderr
+    kept = json.loads(
+        markets.with_name(markets.name + ".previous").read_text(encoding="utf-8")
+    )
+    assert kept["omninode-internal"]["installLocation"] == "/example/marketplace"
+    assert "/example/other-marketplace" in markets.read_text(encoding="utf-8")
+
+
+def test_an_install_that_names_no_marketplace_root_is_refused_and_writes_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("ONEX_MARKETPLACE_ROOT", raising=False)
+    path = tmp_path / "branch"
+    revision = checkout(path)
+    result = HandlerRegistryUnits(Recorder()).handle(
+        request(tmp_path, path, revision, mode="install", marketplace_root="")
+    )
+    assert result.status == "failure"
+    assert "{marketplace_root}" in result.stderr
+    assert not _declared_paths(tmp_path)[1].exists()
+
+
+def test_a_declared_path_outside_the_home_is_refused(tmp_path: Path) -> None:
+    unit = dict(load_units()[UNIT])
+    unit["declared_files"] = [{"path": "{home}/../outside/known.json", "document": {}}]
+    handler = HandlerRegistryUnits(Recorder())
+    with pytest.raises(ValueError, match="not a path under the home"):
+        handler.declared_file_writes(request(tmp_path, tmp_path, "x"), unit)
+    unit["declared_files"] = [{"path": "/etc/known.json", "document": {}}]
+    with pytest.raises(ValueError, match="not a path under the home"):
+        handler.declared_file_writes(request(tmp_path, tmp_path, "x"), unit)
+
+
+def test_a_declared_document_with_an_unfilled_placeholder_is_refused_and_writes_nothing(
+    tmp_path: Path,
+) -> None:
+    unit = dict(load_units()[UNIT])
+    unit["declared_files"] = [
+        {"path": "{home}/lane-claude/known.json", "document": {"where": "{missing}"}}
+    ]
+    handler = HandlerRegistryUnits(Recorder())
+    with pytest.raises(ValueError, match=r"\{missing\}"):
+        handler.declared_file_writes(request(tmp_path, tmp_path, "x"), unit)
+    # failing control: the same declaration with a placeholder the request fills is accepted
+    unit["declared_files"][0]["document"] = {"where": "{registry_root}"}
+    ((written, text, mode),) = handler.declared_file_writes(
+        request(tmp_path, tmp_path, "x"), unit
+    )
+    assert written == tmp_path / "home" / "lane-claude/known.json"
+    assert str(tmp_path / "omni") in text
+    assert mode == 0o600
+
+
+def test_a_launchd_unit_that_declares_files_is_refused() -> None:
+    unit = dict(load_units()["factory-floor-publish"])
+    unit["declared_files"] = [{"path": "{home}/x.json", "document": {}}]
+    handler = HandlerRegistryUnits(Recorder())
+    request_ = ModelRegistryUnitsRequest.model_validate(
+        {
+            "unit": "factory-floor-publish",
+            "home": "/example/home",
+            "registry_root": "/example/omni",
+        }
+    )
+    with pytest.raises(ValueError, match="only systemd units may declare them"):
+        handler.declared_file_writes(request_, unit)

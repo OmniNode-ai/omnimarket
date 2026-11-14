@@ -33,6 +33,7 @@ NODE = (
 )
 NOW = datetime(2026, 11, 13, 16, 0, 0, tzinfo=UTC)
 RUNNER_PATH = "/example/plugin/remote-lane/onex_remote_lane.py"
+CLAUDE_DIR = "/example/home/lane-claude"
 
 
 def overlay() -> ModelDriftOwnerOverlay:
@@ -92,6 +93,7 @@ def rig(
         briefs=briefs,
         runner=runner,
         runner_path=RUNNER_PATH,
+        claude_dir=CLAUDE_DIR,
         clock=lambda: NOW,
     )
     return Rig(handler, source, live, kept, briefs, runner)

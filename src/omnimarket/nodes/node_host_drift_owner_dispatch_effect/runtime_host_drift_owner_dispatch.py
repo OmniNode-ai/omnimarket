@@ -72,6 +72,7 @@ def _build_inmemory(
         briefs=briefs,
         runner=InMemoryLanePlacer(briefs),
         runner_path=environ.get(dispatch.runner_env, ""),
+        claude_dir=environ.get(dispatch.claude_dir_env, ""),
         clock=clock,
     )
 
@@ -89,6 +90,11 @@ def _build_runtime(
     if not runner_path:
         raise DriftStateUnreadableError(
             f"{dispatch.runner_env} is not set: the unit's declaration names the runner"
+        )
+    claude_dir = environ.get(dispatch.claude_dir_env, "")
+    if not claude_dir:
+        raise DriftStateUnreadableError(
+            f"{dispatch.claude_dir_env} is not set: the unit's declaration names the claude directory the runner reads its plugins from"
         )
     briefs = root / dispatch.briefs_dir
     plugin_root = (
@@ -121,6 +127,7 @@ def _build_runtime(
         ),
         runner=SubprocessLanePlacer(dispatch.settle_seconds, briefs),
         runner_path=runner_path,
+        claude_dir=claude_dir,
         clock=clock,
     )
 

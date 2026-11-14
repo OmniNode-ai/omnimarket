@@ -58,6 +58,10 @@ class ModelDispatchSettings(_Frozen):
     interpreter: str = Field(min_length=1)
     #: The environment variable that holds the path of the runner script, set by the unit's declaration.
     runner_env: str = Field(min_length=1)
+    #: The environment variable that holds the directory the runner reads its plugin config from (``--claude-dir``), set by the unit's declaration.
+    claude_dir_env: str = Field(min_length=1)
+    #: The plugins (``<plugin>@<marketplace>``) the runner ships to the lane (one ``--plugin`` each).
+    plugins: tuple[str, ...] = Field(min_length=1)
     subcommand: str = Field(min_length=1)
     model: str = Field(min_length=1)
     ticket: str = Field(pattern=r"^OMN-\d+$")
