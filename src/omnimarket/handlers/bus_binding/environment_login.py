@@ -18,10 +18,6 @@ import os
 from collections.abc import Iterator, Mapping
 from contextvars import ContextVar
 
-from omnibase_infra.event_bus.model_lane_client_transport import (
-    ModelLaneClientTransport,
-)
-
 _ENV_BROKER_LOGIN: ContextVar[str | None] = ContextVar(
     "onex_lane_bus_environment_broker_login", default=None
 )
@@ -53,8 +49,13 @@ def environment_login_scope(environment_answers: bool) -> Iterator[None]:
         _ENV_BROKER_LOGIN.reset(token)
 
 
-def named_login(transport: ModelLaneClientTransport | None) -> str | None:
+def named_login() -> str | None:
     """The login the open connection authenticated as, or None when it names none."""
+    from omnibase_infra.event_bus.lane_client_transport_binding import (
+        bound_lane_client_transport,
+    )
+
+    transport = bound_lane_client_transport()
     if transport is not None:
         return transport.sasl_username or None
     return _ENV_BROKER_LOGIN.get()

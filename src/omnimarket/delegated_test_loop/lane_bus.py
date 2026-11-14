@@ -33,10 +33,7 @@ from omnimarket.delegated_test_loop.lab_run_bus import (
     ProtocolFocusedRunHandler,
     ProtocolLabRunBus,
 )
-from omnimarket.handlers.bus_binding.environment_login import (
-    environment_login_scope,
-    named_login,
-)
+from omnimarket.handlers.bus_binding import environment_login
 from omnimarket.handlers.container.container_inmemory import bind_infra_event_bus
 from omnimarket.nodes.node_push_validation_effect import (
     ModelFocusedTestRunReceipt,
@@ -57,11 +54,7 @@ def bound_lane_principal() -> str:
     Valid only inside ``open_lab_run_bus(bus="kafka", ...)``, which binds the
     lane transport for the life of the connection.
     """
-    from omnibase_infra.event_bus.lane_client_transport_binding import (
-        bound_lane_client_transport,
-    )
-
-    login = named_login(bound_lane_client_transport())
+    login = environment_login.named_login()
     if not login:
         raise LabRunBusError(
             "this lane resolves no broker login: the writer identity is the broker principal"
@@ -122,7 +115,7 @@ async def open_lab_run_bus(
         if transport is not None
         else contextlib.nullcontext()
     )
-    with binding, environment_login_scope(transport is None):
+    with binding, environment_login.environment_login_scope(transport is None):
         kafka = EventBusKafka.from_bootstrap(bootstrap)
         try:
             await kafka.start()
