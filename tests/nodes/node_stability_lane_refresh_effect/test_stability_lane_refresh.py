@@ -195,15 +195,28 @@ def test_stability_disk_floor_unreadable_reading_refuses_and_runs_nothing() -> N
     assert rig.runner.calls == []
 
 
-def test_stability_host_overlay_refuses_to_load_without_the_disk_floor() -> None:
+def test_stability_host_overlay_loads_without_the_disk_floor_and_leaves_it_none() -> (
+    None
+):
     values = {
         key: value
         for key, value in overlay().model_dump().items()
         if key != "disk_floor"
     }
-    with pytest.raises(ValidationError) as error:
-        ModelStabilityHostOverlay.model_validate(values)
-    assert "disk_floor" in str(error.value)
+    loaded = ModelStabilityHostOverlay.model_validate(values)
+    assert loaded.disk_floor is None
+
+
+def test_stability_refresh_without_a_declared_disk_floor_refuses_and_reads_no_disk() -> (
+    None
+):
+    rig = Rig(host_overlay=overlay(disk_floor=None))
+    result = rig.handler.handle(command(execute=True))
+    assert result.outcome is Outcome.REFUSED_LOW_DISK
+    assert result.exit_code == 67
+    assert rig.runner.calls == []
+    assert rig.disk.asked == []
+    assert "no disk floor" in result.detail
 
 
 def test_stability_disk_floor_already_pinned_with_low_disk_answers_already_pinned() -> (

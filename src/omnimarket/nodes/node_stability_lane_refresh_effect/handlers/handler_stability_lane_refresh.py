@@ -213,6 +213,15 @@ class HandlerStabilityLaneRefresh:
                 detail="the lane already runs the pinned set; nothing was run",
             )
         disk_floor = self._overlay.disk_floor
+        if disk_floor is None:
+            return self._result(
+                command,
+                EnumStabilityRefreshOutcome.REFUSED_LOW_DISK,
+                EXIT_REFUSED_LOW_DISK,
+                pin_date=pin_date,
+                tags=target,
+                detail="no disk floor is declared in the host overlay; the refresh refuses until one is",
+            )
         try:
             free_bytes = self._disk.free_bytes(disk_floor.path)
         except OSError as error:

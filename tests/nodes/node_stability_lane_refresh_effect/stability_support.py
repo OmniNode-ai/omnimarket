@@ -85,12 +85,13 @@ class Rig:
         runner: RecordingExecutor | None = None,
         free_gib: float = 500,
         disk: ProtocolDiskFree | None = None,
+        host_overlay: ModelStabilityHostOverlay | None = None,
     ) -> None:
         self.runner = runner or RecordingExecutor()
         self.store = InMemoryAppliedPinStore(applied)
         self.disk = disk or InMemoryDiskFree(int(free_gib * 1024**3))
         self.handler = HandlerStabilityLaneRefresh(
-            overlay=overlay(),
+            overlay=host_overlay or overlay(),
             pin_source=InMemoryPinSource(pin_text),
             applied=self.store,
             runner=self.runner,

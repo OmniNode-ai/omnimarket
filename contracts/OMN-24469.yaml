@@ -9,12 +9,12 @@ interfaces_touched:
 - public_api
 requirements:
 - id: req-omn24469-refresh-disk-floor
-  statement: A stability lane refresh answers refused-low-disk, on the node's refused topic with exit 67 and without running the refresh script, when the free space of the overlay's disk_floor path is under its min_free_gib or unreadable.
+  statement: A stability lane refresh answers refused-low-disk, on the node's refused topic with exit 67 and without running the refresh script, when the free space of the overlay's disk_floor path is under its min_free_gib, unreadable, or when the overlay declares no floor.
   acceptance:
   - id: AC1
     statement: 'AC1: a stability lane refresh reads the free space of the volume its host overlay names and refuses, before running anything, when it is below the overlay''s floor, and refuses when the reading cannot be taken -- falsifier: uv run --frozen pytest tests/nodes/node_stability_lane_refresh_effect -q --no-cov -k disk_floor'
   - id: AC2
-    statement: 'AC2: the host overlay refuses to load without a disk floor, and the example overlay carries one -- falsifier: uv run --frozen pytest tests/nodes/node_stability_lane_refresh_effect -q --no-cov -k "without_the_disk_floor"'
+    statement: 'AC2: a host overlay without a disk floor still loads and a refresh with no declared floor refuses and reads no disk, and the example overlay carries a floor -- falsifier: uv run --frozen pytest tests/nodes/node_stability_lane_refresh_effect -q --no-cov -k "disk_floor"'
   - id: AC3
     statement: 'AC3: a low-disk request on the in-memory bus answers with one refusal event naming the low-disk outcome and no completed or failed event; the real host profile exits 67 on a floor its volume cannot meet -- falsifier: uv run --frozen pytest tests/nodes/node_stability_lane_refresh_effect -q --no-cov -k "low_disk or below_the_overlay_floor"'
   - id: AC4
