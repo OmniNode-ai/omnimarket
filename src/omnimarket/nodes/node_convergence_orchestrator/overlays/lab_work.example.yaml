@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Lab work profile (OMN-24198): this node runs in the runtime container, which holds its own broker login in its environment and reads no
+# lane declaration file, so each unit goes to the broker address stated here; the host lab-work serve runs the mode command at the pinned commit. Synthetic values; the deployment overlay is in the overlays repository.
+job_id: convergence
+run_interval_seconds: 180
+grace_seconds: 120
+mode: observe
+backend: lab_work
+max_parallel_units: 4
+lab_work:
+  repo: example-owner/example-repo
+  commit_sha: "0000000000000000000000000000000000000000"
+  lane: example-lane
+  unit_id_prefix: cv
+  kafka_bootstrap: example-broker:9092
+observe_command:
+  timeout_seconds: 600
+  kind: other
+  argv: [env, "OMNI_HOME={registry_root}", uv, run, --frozen, python, -m, omnimarket.nodes.node_canonical_clone_dirty_converge_effect.handlers.handler_canonical_clone_dirty_converge_effect, --observe]
+act_command:
+  timeout_seconds: 1500
+  kind: other
+  argv: [env, "OMNI_HOME={registry_root}", uv, run, --frozen, python, -m, omnimarket.nodes.node_canonical_clone_dirty_converge_effect.handlers.handler_canonical_clone_dirty_converge_effect]
+hosts:
+  - name: example-host-a
+    registry_root: /example/registry
+  - name: example-host-b
+    registry_root: /example/registry
+  - name: example-host-c
+    registry_root: /example/registry

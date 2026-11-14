@@ -1,0 +1,32 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Default profile (OMN-24197): the in-memory sender answers every unit itself and nothing reaches a host or a broker. Synthetic values
+# only. A deployment's overlay lives at <root>/node_host_drift_orchestrator/overlay.yaml under a root named in ONEX_SKILL_OVERLAY_ROOTS.
+job_id: host_drift
+run_interval_seconds: 900
+grace_seconds: 300
+backend: in_memory
+result_timeout_seconds: 300
+max_parallel_units: 4
+lab_work:
+  repo: example-owner/example-repo
+  commit_sha: "0000000000000000000000000000000000000000"
+  lane: example-lane
+  unit_id_prefix: hd
+  bus_lane: example-lane
+check:
+  kind: other
+  argv: [uv, run, --frozen, python, -m, omnimarket.nodes.node_host_drift_check_effect.runtime_host_drift_check, --host, "{host}", --profiles, "{profiles_path}", --local]
+hosts:
+  - name: example-host-a
+    registry_root: /example/registry
+    profiles_path: /example/registry/profiles.yaml
+  - name: example-host-b
+    registry_root: /example/registry
+    profiles_path: /example/registry/profiles.yaml
+  - name: example-host-c
+    registry_root: /example/registry
+    profiles_path: /example/registry/profiles.yaml
+  - name: example-host-d
+    registry_root: /example/registry
+    profiles_path: /example/registry/profiles.yaml

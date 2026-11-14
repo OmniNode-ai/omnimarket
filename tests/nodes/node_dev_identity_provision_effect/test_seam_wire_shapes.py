@@ -18,12 +18,12 @@ import pytest
 import yaml
 from pydantic import SecretStr
 
+from omnimarket.models.model_dev_identity_http import (
+    ModelIdentityHttpRequest,
+)
 from omnimarket.nodes.node_dev_identity_provision_effect.handlers import (
     HandlerDevIdentityProvision,
     ModelDevIdentityProvisionCommand,
-)
-from omnimarket.nodes.node_dev_identity_provision_effect.models.model_identity_http import (
-    ModelIdentityHttpRequest,
 )
 from omnimarket.nodes.node_dev_identity_provision_effect.overlay import (
     ModelDevIdentityProvisionOverlay,

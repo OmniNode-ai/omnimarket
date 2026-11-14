@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import subprocess
 from collections.abc import Callable, Mapping
+from datetime import datetime
 from pathlib import Path
 
 from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
@@ -69,6 +70,19 @@ class GitRepoSource:
                 f"git-{arguments[0]}-exit-{done.returncode}:{clone.name}:{''.join(first)[:160]}"
             )
         return done.stdout
+
+    def committed_at(self, repo: str, commit: str) -> datetime | None:
+        """The commit's time (the lookup's commit clock); none when the clone does not hold it."""
+        clone = self._root / repo
+        if not (clone / ".git").exists():
+            return None
+        try:
+            stamp = self._git(
+                clone, "show", "-s", "--format=%cI", f"{commit}^{{commit}}"
+            )
+            return datetime.fromisoformat(stamp.decode().strip())
+        except (RepoSourceError, ValueError):
+            return None
 
     def snapshot(
         self, repo: str, ref: str, wanted: Callable[[str], bool]

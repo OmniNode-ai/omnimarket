@@ -7,6 +7,7 @@ from __future__ import annotations
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from omnimarket.handlers.edge_overlay_identity import OverlayBoundTenantIdentity
 from omnimarket.nodes.node_workflow_contract_catalog_effect.handlers.handler_workflow_contract_catalog import (
     HandlerWorkflowContractCatalog,
 )
@@ -25,6 +26,8 @@ from omnimarket.protocols.protocol_http_tenant_identity import (
     ProtocolHttpTenantIdentity,
 )
 
+OVERLAY_ID = "node_workflow_contract_catalog_effect"
+
 
 def create_app(
     *,
@@ -33,8 +36,8 @@ def create_app(
 ) -> FastAPI:
     """Build the mount; the route, methods and refusals come from the contract.
 
-    With no ``identity`` argument the process-bound resolver is used at request
-    time; with none bound every request is refused.
+    With no ``identity`` argument and none bound, the node's own overlay
+    document supplies the resolver; with none, every request is refused 503.
     """
     config = load_http_route()
     if (config.handler.module, config.handler.name) != (
@@ -47,7 +50,9 @@ def create_app(
 
     async def answer(request: Request) -> JSONResponse:
         handler = HandlerWorkflowContractCatalog(
-            identity=identity or bound_tenant_identity(),
+            identity=identity
+            or bound_tenant_identity()
+            or OverlayBoundTenantIdentity(OVERLAY_ID),
             catalog=source,
             config=config,
         )
