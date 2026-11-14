@@ -257,7 +257,9 @@ def test_the_pinned_overlay_file_named_by_the_env_wins_over_the_roots(
     assert answer.kind == "pinned-kind"
 
 
-def test_the_contract_names_the_handler_and_declares_no_bus_or_dispatch() -> None:
+def test_the_contract_names_the_handler_and_declares_local_invocation_with_no_bus() -> (
+    None
+):
     contract_path = (
         Path(__file__).resolve().parents[3]
         / "src/omnimarket/nodes/node_ci_red_kind_rule_compute/contract.yaml"
@@ -269,5 +271,5 @@ def test_the_contract_names_the_handler_and_declares_no_bus_or_dispatch() -> Non
         for handler in contract["handler_routing"]["handlers"]
     }
     assert operations == {"classify_ci_red_kind_by_rule": "HandlerCiRedKindRule"}
-    assert "event_bus" not in contract
-    assert "runtime_dispatch" not in contract
+    assert contract["event_bus"] == {"subscribe_topics": [], "publish_topics": []}
+    assert contract["metadata"]["transport_type"] == "local"
