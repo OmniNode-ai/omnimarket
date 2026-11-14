@@ -6,6 +6,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from omnimarket.models.topic_provision.model_topic_provision_plan import (
+    ModelTopicProvisionPlan,
+)
+from omnimarket.models.topic_provision.model_topic_provision_request import (
+    ModelTopicProvisionRequest,
+)
 from omnimarket.nodes.node_topic_provision_dry_run_effect.adapters.broker_topics import (
     ProtocolBrokerTopicLister,
 )
@@ -18,12 +24,6 @@ from omnimarket.nodes.node_topic_provision_dry_run_effect.models.model_topic_pro
 from omnimarket.nodes.node_topic_provision_plan_compute.handlers.handler_topic_provision_plan import (
     TopicProvisionRuleError,
     plan_topic_provision,
-)
-from omnimarket.nodes.node_topic_provision_plan_compute.models.model_topic_provision_plan import (
-    ModelTopicProvisionPlan,
-)
-from omnimarket.nodes.node_topic_provision_plan_compute.models.model_topic_provision_request import (
-    ModelTopicProvisionRequest,
 )
 
 

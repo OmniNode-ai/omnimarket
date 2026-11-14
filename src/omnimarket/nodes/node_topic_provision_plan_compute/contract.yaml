@@ -44,16 +44,16 @@ description: >
   declared failure terminal event.
 input_model:
   name: "ModelTopicProvisionRequest"
-  module: "omnimarket.nodes.node_topic_provision_plan_compute.models.model_topic_provision_request"
+  module: "omnimarket.models.topic_provision.model_topic_provision_request"
   description: "Contracts, active profile, lane manifest, live topics, and the provision rule."
 output_model:
   name: "ModelTopicProvisionPlan"
-  module: "omnimarket.nodes.node_topic_provision_plan_compute.models.model_topic_provision_plan"
+  module: "omnimarket.models.topic_provision.model_topic_provision_plan"
   description: "Topics to provision, contracts loaded and skipped, live-topic counts."
 handler:
   module: "omnimarket.nodes.node_topic_provision_plan_compute.handlers.handler_topic_provision_plan"
   class: "HandlerTopicProvisionPlan"
-  input_model: "omnimarket.nodes.node_topic_provision_plan_compute.models.model_topic_provision_request.ModelTopicProvisionRequest"
+  input_model: "omnimarket.models.topic_provision.model_topic_provision_request.ModelTopicProvisionRequest"
 handler_routing:
   routing_strategy: "operation_match"
   default_handler: "omnimarket.nodes.node_topic_provision_plan_compute.handlers.handler_topic_provision_plan:HandlerTopicProvisionPlan"

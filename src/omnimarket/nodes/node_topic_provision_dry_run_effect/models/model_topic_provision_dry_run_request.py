@@ -4,10 +4,10 @@
 
 from pydantic import BaseModel, ConfigDict
 
-from omnimarket.nodes.node_topic_provision_plan_compute.models.model_topic_provision_overlay import (
+from omnimarket.models.topic_provision.model_topic_provision_overlay import (
     ModelTopicProvisionOverlay,
 )
-from omnimarket.nodes.node_topic_provision_plan_compute.models.model_topic_provision_rule import (
+from omnimarket.models.topic_provision.model_topic_provision_rule import (
     ModelTopicProvisionRule,
 )
 

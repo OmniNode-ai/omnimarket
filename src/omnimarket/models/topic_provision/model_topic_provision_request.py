@@ -4,10 +4,10 @@
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_topic_provision_plan_compute.models.model_topic_provision_contract import (
+from omnimarket.models.topic_provision.model_topic_provision_contract import (
     ModelTopicProvisionContract,
 )
-from omnimarket.nodes.node_topic_provision_plan_compute.models.model_topic_provision_rule import (
+from omnimarket.models.topic_provision.model_topic_provision_rule import (
     ModelTopicProvisionRule,
 )
 

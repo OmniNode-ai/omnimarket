@@ -9,6 +9,15 @@ from pathlib import Path
 import pytest
 import yaml
 
+from omnimarket.models.topic_provision.enum_topic_provision import (
+    EnumTopicProvisionMode,
+)
+from omnimarket.models.topic_provision.model_topic_provision_overlay import (
+    ModelTopicProvisionOverlay,
+)
+from omnimarket.models.topic_provision.model_topic_provision_rule import (
+    ModelTopicProvisionRule,
+)
 from omnimarket.nodes.node_topic_provision_dry_run_effect.handlers.handler_topic_provision_dry_run import (
     HandlerTopicProvisionDryRun,
 )
@@ -17,15 +26,6 @@ from omnimarket.nodes.node_topic_provision_dry_run_effect.models.model_topic_pro
 )
 from omnimarket.nodes.node_topic_provision_plan_compute.handlers.handler_topic_provision_plan import (
     TopicProvisionRuleError,
-)
-from omnimarket.nodes.node_topic_provision_plan_compute.models.enum_topic_provision import (
-    EnumTopicProvisionMode,
-)
-from omnimarket.nodes.node_topic_provision_plan_compute.models.model_topic_provision_overlay import (
-    ModelTopicProvisionOverlay,
-)
-from omnimarket.nodes.node_topic_provision_plan_compute.models.model_topic_provision_rule import (
-    ModelTopicProvisionRule,
 )
 
 pytestmark = pytest.mark.unit

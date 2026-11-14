@@ -11,10 +11,10 @@ import pytest
 import yaml
 
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
-from omnimarket.nodes.node_topic_provision_plan_compute.models.enum_topic_provision import (
+from omnimarket.models.topic_provision.enum_topic_provision import (
     EnumTopicProvisionMode,
 )
-from omnimarket.nodes.node_topic_provision_plan_compute.models.model_topic_provision_overlay import (
+from omnimarket.models.topic_provision.model_topic_provision_overlay import (
     ModelTopicProvisionOverlay,
 )
 from omnimarket.nodes.node_topic_provision_plan_compute.overlay import (

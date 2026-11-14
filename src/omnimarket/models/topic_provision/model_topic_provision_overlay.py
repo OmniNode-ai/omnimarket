@@ -4,7 +4,7 @@
 
 from pydantic import BaseModel, ConfigDict
 
-from omnimarket.nodes.node_topic_provision_plan_compute.models.enum_topic_provision import (
+from omnimarket.models.topic_provision.enum_topic_provision import (
     EnumTopicProvisionMode,
 )
 

@@ -23,15 +23,15 @@ Refusals (TopicProvisionRuleError):
 
 from __future__ import annotations
 
-from omnimarket.nodes.node_topic_provision_plan_compute.models.enum_topic_provision import (
+from omnimarket.models.topic_provision.enum_topic_provision import (
     EnumTopicProvisionMode,
     EnumTopicSkipReason,
 )
-from omnimarket.nodes.node_topic_provision_plan_compute.models.model_topic_provision_plan import (
+from omnimarket.models.topic_provision.model_topic_provision_plan import (
     ModelTopicProvisionPlan,
     ModelTopicProvisionSkip,
 )
-from omnimarket.nodes.node_topic_provision_plan_compute.models.model_topic_provision_request import (
+from omnimarket.models.topic_provision.model_topic_provision_request import (
     ModelTopicProvisionRequest,
 )
 

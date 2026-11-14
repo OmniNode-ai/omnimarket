@@ -10,7 +10,7 @@ from pathlib import Path
 import yaml
 from omnibase_infra.tools.contract_topic_extractor import read_projection_api_topics
 
-from omnimarket.nodes.node_topic_provision_plan_compute.models.model_topic_provision_contract import (
+from omnimarket.models.topic_provision.model_topic_provision_contract import (
     ModelTopicProvisionContract,
 )
 

@@ -13,10 +13,10 @@ from omnimarket.handlers.node_overlay_reader import (
     find_node_overlay,
     load_structured_overlay,
 )
-from omnimarket.nodes.node_topic_provision_plan_compute.models.model_topic_provision_overlay import (
+from omnimarket.models.topic_provision.model_topic_provision_overlay import (
     ModelTopicProvisionOverlay,
 )
-from omnimarket.nodes.node_topic_provision_plan_compute.models.model_topic_provision_rule import (
+from omnimarket.models.topic_provision.model_topic_provision_rule import (
     ModelTopicProvisionConfig,
     ModelTopicProvisionRule,
 )

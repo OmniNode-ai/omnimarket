@@ -14,14 +14,14 @@ import pytest
 import yaml
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
+from omnimarket.models.topic_provision.model_topic_provision_request import (
+    ModelTopicProvisionRequest,
+)
 from omnimarket.nodes.node_topic_provision_plan_compute.handlers import (
     handler_topic_provision_plan as handler_module,
 )
 from omnimarket.nodes.node_topic_provision_plan_compute.handlers.handler_topic_provision_plan import (
     plan_topic_provision,
-)
-from omnimarket.nodes.node_topic_provision_plan_compute.models.model_topic_provision_request import (
-    ModelTopicProvisionRequest,
 )
 
 pytestmark = pytest.mark.unit
@@ -121,13 +121,13 @@ class ProvisionBus:
 
 
 def _valid_request() -> ModelTopicProvisionRequest:
-    from omnimarket.nodes.node_topic_provision_plan_compute.models.enum_topic_provision import (
+    from omnimarket.models.topic_provision.enum_topic_provision import (
         EnumTopicProvisionMode,
     )
-    from omnimarket.nodes.node_topic_provision_plan_compute.models.model_topic_provision_contract import (
+    from omnimarket.models.topic_provision.model_topic_provision_contract import (
         ModelTopicProvisionContract,
     )
-    from omnimarket.nodes.node_topic_provision_plan_compute.models.model_topic_provision_rule import (
+    from omnimarket.models.topic_provision.model_topic_provision_rule import (
         ModelTopicProvisionRule,
     )
 
@@ -149,13 +149,13 @@ def _valid_request() -> ModelTopicProvisionRequest:
 
 
 def _error_request() -> ModelTopicProvisionRequest:
-    from omnimarket.nodes.node_topic_provision_plan_compute.models.enum_topic_provision import (
+    from omnimarket.models.topic_provision.enum_topic_provision import (
         EnumTopicProvisionMode,
     )
-    from omnimarket.nodes.node_topic_provision_plan_compute.models.model_topic_provision_contract import (
+    from omnimarket.models.topic_provision.model_topic_provision_contract import (
         ModelTopicProvisionContract,
     )
-    from omnimarket.nodes.node_topic_provision_plan_compute.models.model_topic_provision_rule import (
+    from omnimarket.models.topic_provision.model_topic_provision_rule import (
         ModelTopicProvisionRule,
     )
 

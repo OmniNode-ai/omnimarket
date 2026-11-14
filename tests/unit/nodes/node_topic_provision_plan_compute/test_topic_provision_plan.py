@@ -6,23 +6,23 @@ from __future__ import annotations
 
 import pytest
 
+from omnimarket.models.topic_provision.enum_topic_provision import (
+    EnumTopicProvisionMode,
+    EnumTopicSkipReason,
+)
+from omnimarket.models.topic_provision.model_topic_provision_contract import (
+    ModelTopicProvisionContract,
+)
+from omnimarket.models.topic_provision.model_topic_provision_request import (
+    ModelTopicProvisionRequest,
+)
+from omnimarket.models.topic_provision.model_topic_provision_rule import (
+    ModelTopicProvisionRule,
+)
 from omnimarket.nodes.node_topic_provision_plan_compute.handlers.handler_topic_provision_plan import (
     HandlerTopicProvisionPlan,
     TopicProvisionRuleError,
     plan_topic_provision,
-)
-from omnimarket.nodes.node_topic_provision_plan_compute.models.enum_topic_provision import (
-    EnumTopicProvisionMode,
-    EnumTopicSkipReason,
-)
-from omnimarket.nodes.node_topic_provision_plan_compute.models.model_topic_provision_contract import (
-    ModelTopicProvisionContract,
-)
-from omnimarket.nodes.node_topic_provision_plan_compute.models.model_topic_provision_request import (
-    ModelTopicProvisionRequest,
-)
-from omnimarket.nodes.node_topic_provision_plan_compute.models.model_topic_provision_rule import (
-    ModelTopicProvisionRule,
 )
 
 pytestmark = pytest.mark.unit

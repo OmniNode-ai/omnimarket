@@ -1,25 +1,25 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Typed models of the topic provision plan compute.""" ""
+"""Typed models shared by the topic provision plan and dry run nodes."""
 
-from omnimarket.nodes.node_topic_provision_plan_compute.models.enum_topic_provision import (
+from omnimarket.models.topic_provision.enum_topic_provision import (
     EnumTopicProvisionMode,
     EnumTopicSkipReason,
 )
-from omnimarket.nodes.node_topic_provision_plan_compute.models.model_topic_provision_contract import (
+from omnimarket.models.topic_provision.model_topic_provision_contract import (
     ModelTopicProvisionContract,
 )
-from omnimarket.nodes.node_topic_provision_plan_compute.models.model_topic_provision_overlay import (
+from omnimarket.models.topic_provision.model_topic_provision_overlay import (
     ModelTopicProvisionOverlay,
 )
-from omnimarket.nodes.node_topic_provision_plan_compute.models.model_topic_provision_plan import (
+from omnimarket.models.topic_provision.model_topic_provision_plan import (
     ModelTopicProvisionPlan,
     ModelTopicProvisionSkip,
 )
-from omnimarket.nodes.node_topic_provision_plan_compute.models.model_topic_provision_request import (
+from omnimarket.models.topic_provision.model_topic_provision_request import (
     ModelTopicProvisionRequest,
 )
-from omnimarket.nodes.node_topic_provision_plan_compute.models.model_topic_provision_rule import (
+from omnimarket.models.topic_provision.model_topic_provision_rule import (
     ModelTopicProvisionConfig,
     ModelTopicProvisionRule,
 )

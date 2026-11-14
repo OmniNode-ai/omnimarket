@@ -10,20 +10,20 @@ import pytest
 from omnibase_infra.runtime.runtime_profile import _PROFILES
 from omnibase_infra.tools.contract_topic_extractor import ContractTopicExtractor
 
+from omnimarket.models.topic_provision.enum_topic_provision import (
+    EnumTopicProvisionMode,
+)
+from omnimarket.models.topic_provision.model_topic_provision_request import (
+    ModelTopicProvisionRequest,
+)
+from omnimarket.models.topic_provision.model_topic_provision_rule import (
+    ModelTopicProvisionRule,
+)
 from omnimarket.nodes.node_topic_provision_dry_run_effect.adapters.contract_facts import (
     read_contract_facts,
 )
 from omnimarket.nodes.node_topic_provision_plan_compute.handlers.handler_topic_provision_plan import (
     plan_topic_provision,
-)
-from omnimarket.nodes.node_topic_provision_plan_compute.models.enum_topic_provision import (
-    EnumTopicProvisionMode,
-)
-from omnimarket.nodes.node_topic_provision_plan_compute.models.model_topic_provision_request import (
-    ModelTopicProvisionRequest,
-)
-from omnimarket.nodes.node_topic_provision_plan_compute.models.model_topic_provision_rule import (
-    ModelTopicProvisionRule,
 )
 
 pytestmark = pytest.mark.unit

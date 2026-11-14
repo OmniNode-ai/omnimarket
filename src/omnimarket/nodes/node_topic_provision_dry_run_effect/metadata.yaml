@@ -13,7 +13,9 @@ capabilities:
   requires_secrets: false
   requires_docker: false
   side_effect_class: read_only
-dependencies: []
+dependencies:
+  - "aiokafka>=0.10.0"
+  - "omnibase-infra>=0.38.68"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["effect", "topic-provision", "read-only"]

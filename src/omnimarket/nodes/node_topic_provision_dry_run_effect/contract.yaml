@@ -42,7 +42,7 @@ input_model:
   description: The overlay (profile, lane manifest, contract roots) and the rule to apply.
 output_model:
   name: ModelTopicProvisionPlan
-  module: omnimarket.nodes.node_topic_provision_plan_compute.models.model_topic_provision_plan
+  module: omnimarket.models.topic_provision.model_topic_provision_plan
   description: The plan with the live topic counts under the rule.
 
 runtime_dispatch:
