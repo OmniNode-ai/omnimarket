@@ -43,6 +43,10 @@ from omnimarket.nodes.node_factory_floor_effect.handlers.draft_plan_refs import 
 from omnimarket.nodes.node_factory_floor_effect.handlers.ledger_window_by_archive import (
     read_ledger_window,
 )
+from omnimarket.nodes.node_factory_floor_effect.handlers.ledger_window_from_projection import (
+    ProjectionReadFactory,
+    read_ledger_window_from_projection,
+)
 from omnimarket.nodes.node_factory_floor_effect.handlers.source_health import (
     source_health,
 )
@@ -53,6 +57,7 @@ from omnimarket.nodes.node_factory_floor_effect.models.model_factory_floor_run i
 from omnimarket.nodes.node_factory_floor_effect.models.model_factory_floor_runtime import (
     ModelFactoryFloorCloudSource,
     ModelFactoryFloorOverlay,
+    ModelLedgerProjectionRead,
 )
 from omnimarket.nodes.node_factory_floor_effect.phoenix_reader import (
     load_phoenix_traces,
@@ -203,9 +208,37 @@ class HandlerFactoryFloorEffect:
         self,
         merged_running: ProtocolMergedRunningCountReader | None = None,
         source_cache: CachedSourceReader | None = None,
+        ledger_projection_read: ProjectionReadFactory | None = None,
     ) -> None:
         self._merged_running = merged_running
         self._source_cache = source_cache
+        # Binds the work ledger reader when the overlay's ledger_projection block asks for the projection read; called only then.
+        self._ledger_projection_read = ledger_projection_read
+
+    def _read_projection_window(
+        self,
+        projection: ModelLedgerProjectionRead,
+        *,
+        window_days: int,
+        now: datetime,
+        kinds: frozenset[str],
+    ) -> tuple[ModelFloorLedgerRow, ...]:
+        """The window's rows from the work ledger projection, or a refusal: no reader bound is a refusal, never the file."""
+        if self._ledger_projection_read is None:
+            raise SourceRefusedError(
+                "the overlay names ledger_projection and no work ledger reader is bound: bind the reader or supply ledger_rows_file"
+            )
+        return read_ledger_window_from_projection(
+            reader=projection.reader,
+            read_factory=self._ledger_projection_read,
+            window_days=window_days,
+            now=now,
+            kinds=kinds,
+            cache=self._source_cache,
+            cache_ttl_seconds=projection.cache_ttl_seconds,
+            read_workers=projection.read_workers,
+            settle_seconds=projection.settle_seconds,
+        )
 
     def _read_merged_running(
         self, now: datetime
@@ -351,23 +384,34 @@ class HandlerFactoryFloorEffect:
             overlay.cloud_accounts_node_command if overlay is not None else (),
         )
         kinds = frozenset(rt.ledger_kinds)
-        ledger_read = cloud_pool.submit(
-            read_ledger_window,
-            archive_cache=self._source_cache,
-            archive=overlay.ledger_archives if overlay is not None else None,
-            environ=os.environ,
-            now=now,
-            window_days=rt.ledger_window_days,
-            source=overlay.ledger_source if overlay is not None else None,
-            cut_chars=rt.ledger_cut_chars,
-            timeout_seconds=rt.ledger_timeout_seconds,
-            plugin_root=Path(plugin_root) if plugin_root else None,
-            plugin_root_env=rt.plugin_root_env,
-            ledger_rows_file=Path(request.ledger_rows_file)
-            if request.ledger_rows_file
-            else None,
-            kinds=kinds,
-        )
+        projection = overlay.ledger_projection if overlay is not None else None
+        if projection is not None and not request.ledger_rows_file:
+            # The ledger record is the work ledger projection: no ledger file, no archive file and no reader subprocess is opened.
+            ledger_read = cloud_pool.submit(
+                self._read_projection_window,
+                projection,
+                window_days=rt.ledger_window_days,
+                now=now,
+                kinds=kinds,
+            )
+        else:
+            ledger_read = cloud_pool.submit(
+                read_ledger_window,
+                archive_cache=self._source_cache,
+                archive=overlay.ledger_archives if overlay is not None else None,
+                environ=os.environ,
+                now=now,
+                window_days=rt.ledger_window_days,
+                source=overlay.ledger_source if overlay is not None else None,
+                cut_chars=rt.ledger_cut_chars,
+                timeout_seconds=rt.ledger_timeout_seconds,
+                plugin_root=Path(plugin_root) if plugin_root else None,
+                plugin_root_env=rt.plugin_root_env,
+                ledger_rows_file=Path(request.ledger_rows_file)
+                if request.ledger_rows_file
+                else None,
+                kinds=kinds,
+            )
         try:
             # The four unresolved reads are the unresolved step's own (OMN-19998): this run reads the record it wrote.
             ledger_unresolved: tuple[ModelFloorLedgerRow, ...] | None = (
