@@ -12,7 +12,7 @@ request and a branch is refused by the request model.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from pydantic import BaseModel, ValidationError
@@ -255,7 +255,7 @@ def test_code_scanning_error_chain_a_transport_failure_propagates() -> None:
             raise GitHubTransportError("GitHub request failed: connection reset")
 
     with pytest.raises(GitHubTransportError, match="connection reset"):
-        dispatch(_req(pr_number=6096), Broken())  # type: ignore[arg-type]
+        dispatch(_req(pr_number=6096), cast(Any, Broken()))
 
 
 @pytest.mark.parametrize(
