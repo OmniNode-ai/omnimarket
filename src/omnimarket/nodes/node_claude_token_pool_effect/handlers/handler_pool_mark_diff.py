@@ -18,6 +18,8 @@ from datetime import datetime
 from typing import Any
 
 from omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_pool_mark_event import (
+    ModelPoolMarkDiffRequest,
+    ModelPoolMarkDiffResult,
     ModelPoolMarkEvent,
     PoolMarkChange,
 )
@@ -93,4 +95,21 @@ def mark_events(
     )
 
 
-__all__ = ["mark_events"]
+class HandlerPoolMarkDiff:
+    """The contract's ``mark_diff`` handler: one operation's marks before and after in, the events it left out."""
+
+    def handle(self, request: ModelPoolMarkDiffRequest) -> ModelPoolMarkDiffResult:
+        return ModelPoolMarkDiffResult(
+            events=mark_events(
+                request.before,
+                request.after,
+                who=request.who,
+                at=request.at,
+                verb=request.verb,
+                host=request.host,
+                cause_for=lambda _verb, _change: request.cause,
+            )
+        )
+
+
+__all__ = ["HandlerPoolMarkDiff", "mark_events"]

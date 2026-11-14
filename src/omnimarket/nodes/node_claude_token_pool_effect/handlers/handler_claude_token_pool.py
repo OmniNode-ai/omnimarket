@@ -47,7 +47,7 @@ from pydantic import SecretStr
 
 from omnimarket.inference.local_byok_credential_adapter import LocalByokCredentialStore
 from omnimarket.nodes.node_claude_token_pool_effect.handlers.handler_pool_mark_diff import (
-    mark_events,
+    HandlerPoolMarkDiff,
 )
 from omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_pool import (
     ModelClaudeTokenPoolEntry,
@@ -56,6 +56,7 @@ from omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_po
     ModelClaudeTokenPoolResult,
 )
 from omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_pool_mark_event import (
+    ModelPoolMarkDiffRequest,
     ModelPoolMarkEvent,
 )
 from omnimarket.nodes.node_claude_token_pool_effect.protocols.protocol_pool_mark_events import (
@@ -280,7 +281,7 @@ class HandlerClaudeTokenPool:
         except OSError:
             return None
 
-    def _live_marks(self, pool: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    def _live_marks(self, pool: dict[str, Any]) -> dict[str, dict[str, str | None]]:
         """Each label's marks that are in force now: a limit stamp still ahead, a revoke stamp and its cause."""
         now = _stamp(self._now())
         return {
@@ -297,8 +298,8 @@ class HandlerClaudeTokenPool:
     def _events_of(
         self,
         request: ModelClaudeTokenPoolRequest,
-        before: dict[str, dict[str, Any]],
-        after: dict[str, dict[str, Any]],
+        before: dict[str, dict[str, str | None]],
+        after: dict[str, dict[str, str | None]],
     ) -> tuple[ModelPoolMarkEvent, ...]:
         """One event per mark the operation changed: who asked, when, which verb, on which host, and why."""
         if request.operation == "mark_limited":
@@ -307,14 +308,20 @@ class HandlerClaudeTokenPool:
             cause = request.cause
         else:
             cause = _MARK_CAUSES[request.operation]
-        return mark_events(
-            before,
-            after,
-            who=request.actor or self._default_actor or UNATTRIBUTED,
-            at=self._now(),
-            verb=request.operation,
-            host=self._host,
-            cause_for=lambda _verb, _change: cause,
+        return (
+            HandlerPoolMarkDiff()
+            .handle(
+                ModelPoolMarkDiffRequest(
+                    before=before,
+                    after=after,
+                    who=request.actor or self._default_actor or UNATTRIBUTED,
+                    at=self._now(),
+                    verb=request.operation,
+                    host=self._host,
+                    cause=cause,
+                )
+            )
+            .events
         )
 
     def _publish_mark_events(

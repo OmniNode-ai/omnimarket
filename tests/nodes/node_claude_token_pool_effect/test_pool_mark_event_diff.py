@@ -492,3 +492,56 @@ def test_failing_control_a_diff_that_ignores_revoked_at_is_caught() -> None:
             )
             == expected
         )
+
+
+def test_the_contract_binds_the_diff_handler_and_it_answers_through_its_models() -> (
+    None
+):
+    """The ratchet refuses a handler no contract binds: the contract names this class and its two models."""
+    import importlib
+    from pathlib import Path
+
+    import yaml
+
+    from omnimarket.nodes.node_claude_token_pool_effect.handlers.handler_pool_mark_diff import (
+        HandlerPoolMarkDiff,
+    )
+    from omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_pool_mark_event import (
+        ModelPoolMarkDiffRequest,
+    )
+
+    node = (
+        Path(__file__).resolve().parents[3]
+        / "src/omnimarket/nodes/node_claude_token_pool_effect"
+    )
+    contract = yaml.safe_load((node / "contract.yaml").read_text(encoding="utf-8"))
+    entry = next(
+        e
+        for e in contract["handler_routing"]["handlers"]
+        if e["operation"] == "mark_diff"
+    )
+    assert entry["handler"]["name"] == HandlerPoolMarkDiff.__name__
+    assert entry["handler"]["module"] == HandlerPoolMarkDiff.__module__
+    model_module, _, model_name = entry["input_model"].rpartition(".")
+    assert (
+        getattr(importlib.import_module(model_module), model_name)
+        is ModelPoolMarkDiffRequest
+    )
+
+    request = ModelPoolMarkDiffRequest(
+        before={LABEL: {"until": None, "revoked_at": None, "revoke_cause": None}},
+        after={
+            LABEL: {"until": LIMITED_UNTIL, "revoked_at": None, "revoke_cause": None}
+        },
+        who=WHO,
+        at=NOW,
+        verb="mark_limited",
+        host=HOST,
+        cause="limit_estimate",
+    )
+    result = HandlerPoolMarkDiff().handle(request)
+    assert [(e.label, e.change, e.cause) for e in result.events] == [
+        (LABEL, "limited", "limit_estimate")
+    ]
+    with pytest.raises(ValidationError):
+        ModelPoolMarkDiffRequest.model_validate({**request.model_dump(), "who": ""})

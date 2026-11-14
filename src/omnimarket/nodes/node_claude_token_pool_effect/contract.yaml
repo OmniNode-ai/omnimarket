@@ -87,6 +87,13 @@ handler_routing:
         module: omnimarket.nodes.node_claude_token_pool_effect.handlers.handler_claude_token_rotation_tick
       input_model: omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_rotation.ModelClaudeTokenAssignRequest
       output_model: omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_rotation.ModelClaudeTokenAssignResult
+    # The diff behind every mark event (OMN-19998): one operation's live marks before and after in, one typed event per changed mark out.
+    - operation: mark_diff
+      handler:
+        name: HandlerPoolMarkDiff
+        module: omnimarket.nodes.node_claude_token_pool_effect.handlers.handler_pool_mark_diff
+      input_model: omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_pool_mark_event.ModelPoolMarkDiffRequest
+      output_model: omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_pool_mark_event.ModelPoolMarkDiffResult
     # The status the CLI prints (OMN-19998): on a host the overlay does not declare (the launching Mac) it reads the marks from the
     # overlay's marks source, and when the source cannot be read or is over its age bound it prints that it reads an unsynced local
     # copy, with the copy's age, and names no limited or revoked label.

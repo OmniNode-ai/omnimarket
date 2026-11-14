@@ -70,6 +70,29 @@ class ModelPoolMarkEvent(BaseModel):
         return value.astimezone(UTC)
 
 
+class ModelPoolMarkDiffRequest(BaseModel):
+    """One pool operation's marks before and after, as live marks per label: ``until``, ``revoked_at`` and ``revoke_cause``."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    before: dict[str, dict[str, str | None]]
+    after: dict[str, dict[str, str | None]]
+    who: str = Field(min_length=1)
+    at: datetime
+    verb: PoolMarkVerb
+    host: str
+    #: Why the marks changed, the same for every event this operation leaves.
+    cause: str = Field(min_length=1)
+
+
+class ModelPoolMarkDiffResult(BaseModel):
+    """The events one operation left: one per changed mark, none when nothing changed."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    events: tuple[ModelPoolMarkEvent, ...] = ()
+
+
 class ModelPoolMarkEventsSettings(BaseModel):
     """Where mark events go, as the overlay carries them: the topic and the ``who`` variable."""
 
@@ -83,6 +106,8 @@ class ModelPoolMarkEventsSettings(BaseModel):
 
 
 __all__ = [
+    "ModelPoolMarkDiffRequest",
+    "ModelPoolMarkDiffResult",
     "ModelPoolMarkEvent",
     "ModelPoolMarkEventsSettings",
     "PoolMarkChange",
