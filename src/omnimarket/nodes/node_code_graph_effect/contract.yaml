@@ -47,6 +47,12 @@ handler_routing:
         module: omnimarket.nodes.node_code_graph_effect.handlers.handler_code_graph_requested
       input_model: omnimarket.models.model_code_graph.ModelShadowCommand
       output_model: omnimarket.models.model_code_graph.ModelShadowResult
+    - operation: code_graph_lookup
+      handler:
+        name: HandlerCodeGraphLookupRequested
+        module: omnimarket.nodes.node_code_graph_effect.handlers.handler_code_graph_requested
+      input_model: omnimarket.models.model_code_graph_lookup.ModelCodeGraphLookupCommand
+      output_model: omnimarket.models.model_code_graph_lookup.ModelCodeGraphLookupResult
 
 descriptor:
   node_archetype: effect
@@ -82,6 +88,8 @@ topics:
   code_graph_shadow_pr_checked: onex.evt.omnimarket.code-graph-shadow-pr-checked.v1
   code_graph_shadow_completed: onex.evt.omnimarket.code-graph-shadow-completed.v1
   code_graph_shadow_failed: onex.evt.omnimarket.code-graph-shadow-failed.v1
+  code_graph_lookup_requested: onex.cmd.omnimarket.code-graph-lookup-requested.v1
+  code_graph_lookup_answered: onex.evt.omnimarket.code-graph-lookup-answered.v1
 
 event_bus:
   subscribe_topics: []
@@ -95,6 +103,7 @@ externally_consumed_topics:
   - onex.evt.omnimarket.code-graph-shadow-pr-checked.v1
   - onex.evt.omnimarket.code-graph-shadow-completed.v1
   - onex.evt.omnimarket.code-graph-shadow-failed.v1
+  - onex.evt.omnimarket.code-graph-lookup-answered.v1
 
 # The node's own nightly schedule, installed by `schedule install --host <name>` as a systemd user
 # timer on a host the overlay declares, removed by `schedule uninstall` (the rollback).

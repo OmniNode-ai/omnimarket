@@ -47,6 +47,9 @@ from omnimarket.nodes.node_runner_group_exposure_effect.protocols.protocol_group
 )
 
 _DENIED = (401, 403, 404)
+# A 401 says the token itself was refused (bad or expired); only a 403 or 404 on the org read says the
+# token is valid but lacks the permission the overlay declares.
+_PERMISSION_DENIED = (403, 404)
 _RUN_STATUSES = ("queued", "in_progress")
 
 
@@ -121,7 +124,8 @@ class GithubGroupSource:
             self._s.timeout_seconds,
         )
         if status in _DENIED and denied_is_org:
-            self._missing_permission = self._s.org_read_permission
+            if status in _PERMISSION_DENIED:
+                self._missing_permission = self._s.org_read_permission
             raise _StopError(EnumExposureReadFailure.ORG_READ_DENIED)
         if status != 200:
             raise _StopError(EnumExposureReadFailure.UNREADABLE)

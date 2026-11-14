@@ -67,7 +67,11 @@ def _no_command(argv: list[str]) -> subprocess.CompletedProcess[str]:
 
 def _request(tmp_path: Path, **fields: Any) -> ModelRegistryUnitsRequest:
     return ModelRegistryUnitsRequest(
-        unit=UNIT, home=str(tmp_path), registry_root=str(tmp_path), **fields
+        unit=UNIT,
+        home=str(tmp_path),
+        registry_root=str(tmp_path),
+        workspace_config_root=str(tmp_path),
+        **fields,
     )
 
 
