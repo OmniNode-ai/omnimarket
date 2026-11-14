@@ -131,6 +131,38 @@ class ModelTrialFields(BaseModel):
         description="Wall-clock seconds spent in the check phase (0.0 = not captured).",
     )
 
+    # Stamps that tell a model version, a prompt or a scorer change apart (OMN-24170).
+    # Empty defaults, so a row written before them still validates.
+    experiment_id: str = Field(
+        default="",
+        description="Experiment this try belongs to; empty string outside an experiment.",
+    )
+    replicate: int = Field(
+        default=0,
+        ge=0,
+        le=1,
+        description="Replicate of the try (0 or 1); 0 when not replicated.",
+    )
+    model_revision: str = Field(
+        default="",
+        description=(
+            "The served weights' content digest as the endpoint reported it for "
+            "this try; empty string when not captured."
+        ),
+    )
+    scorer_version: str = Field(
+        default="",
+        description="Version of the scorer that scored this try; empty string when not captured.",
+    )
+    generation_settings_hash: str = Field(
+        default="",
+        description="Digest of the generation settings of this try; empty string when not captured.",
+    )
+    prompt_template_version: str = Field(
+        default="",
+        description="Version of the prompt template of this try; empty string when not captured.",
+    )
+
     @model_validator(mode="after")
     def _unscorable_source_needs_unscorable_verdict(self) -> Self:
         if (

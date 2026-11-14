@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_host_drift_plugin_revision_compute
+version: 1.0.0
+description: Decide a plugin's host drift by installed revision, not version string, and route it through the plugin sync rules it is handed.
+pack: distributed_validation
+node_role: compute
+display_name: Host Drift Plugin Revision Compute
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_host_drift_plugin_revision_compute: omnimarket.nodes.node_host_drift_plugin_revision_compute
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: pure
+dependencies:
+- pydantic>=2.0.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- compute
+- host-drift

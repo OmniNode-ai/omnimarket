@@ -514,6 +514,9 @@ units:
       # The node's overlay (overlays repository, node_capture_silence_watch_effect) holds the secret_store block the password
       # reference is resolved through: the overlays clone the host's lab_hosts row declares, and nothing else.
       ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}"
+      # OMN-24342: the node publishes its alarms through the broker its overlay's event_bus declares (a lane id); the lane declaration
+      # table (config/lab/ci_bus_lanes.yaml) that names the lane's broker is found under this root. No KAFKA_* variable names a broker.
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
       # The Slack channel the watch's alarms are delivered to: the alert channel the other lab alarms post to
       # (#omninode-notifications, the id node_consumer_flow_stall_alert_effect's contract declares for its SLACK_CHANNEL_ID).
       # A channel id is configuration, not a secret. The node resolves its contract's secrets.SLACK_CHANNEL_ID through the
@@ -1176,6 +1179,48 @@ units:
       OMNIBASE_PATH: "{registry_root}"
       # The advertisement command runs the onex command line by name: the registry's own launcher directory leads the search path.
       PATH: "{registry_root}/omnibase_infra/scripts:{home}/.local/bin:/usr/local/bin:/usr/bin:/bin"
+      # The open lane claims are read over the bus, never from the ledger file: the overlay's ledger_read names this variable.
+      ONEX_LEDGER_BUS_READ_COMMAND: "{registry_root}/.onex-dispatch-venv/bin/onex ledger query --stdin"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    evidence_file: .local/state/omni/lane-host-pool-snapshot/last-run.json
+    state_directory: .onex_state/lane-host-pool-snapshot
+  # The lane host pool snapshot writer on a macOS pool host (OMN-23725): the launchd twin of lane-host-pool-snapshot-systemd, so every
+  # pool host carries the writer whatever its platform. One unit per platform: systemd hosts take lane-host-pool-snapshot-systemd, a
+  # launchd host takes lane-host-pool-snapshot. Every 60 s, so the largest gap between two published readings stays under the 300 s the
+  # lane start and the fill count on.
+  lane-host-pool-snapshot:
+    platform: launchd
+    kind: registry_module_tick
+    label: ai.omninode.lane-host-pool-snapshot
+    template: templates/ai.omninode.registry-module-tick.plist.tmpl
+    schedule:
+      start_interval: 60
+      run_at_load: true
+      description: every 60 s and at load
+    # A pass reads the advertisements, the lane claims and the far token pools at once and ends in under 50 s (the longest read is the bound).
+    run_timeout_s: 50
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /opt/homebrew/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_lane_host_pool_snapshot_effect
+    entry_file: src/omnimarket/nodes/node_lane_host_pool_snapshot_effect/__main__.py
+    # The start check runs the main with this probe, which the main honours with no pass, no bus read and no write (OMN-23604).
+    probe_argv: ["--probe"]
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}"
+      # The overlay's paths and its bus lane's workspace_root are under $OMNIBASE_PATH.
+      OMNIBASE_PATH: "{registry_root}"
+      # The advertisement command runs the onex command line by name: the registry's own launcher directory leads the search path.
+      PATH: "{registry_root}/omnibase_infra/scripts:{home}/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
       # The open lane claims are read over the bus, never from the ledger file: the overlay's ledger_read names this variable.
       ONEX_LEDGER_BUS_READ_COMMAND: "{registry_root}/.onex-dispatch-venv/bin/onex ledger query --stdin"
       ONEX_STATE_DIR: "{registry_root}/.onex_state"
