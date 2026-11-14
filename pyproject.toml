@@ -1371,6 +1371,7 @@ node_seam_conservation_compute = "omnimarket.nodes.node_seam_conservation_comput
 node_seam_crossing_name_compute = "omnimarket.nodes.node_seam_crossing_name_compute"
 node_seam_deadline_probe_effect = "omnimarket.nodes.node_seam_deadline_probe_effect"
 node_seam_graph_compute = "omnimarket.nodes.node_seam_graph_compute"
+node_seam_graph_defects_compute = "omnimarket.nodes.node_seam_graph_defects_compute"
 node_seam_match_compute = "omnimarket.nodes.node_seam_match_compute"
 node_seam_parallel_executor = "omnimarket.nodes.node_seam_parallel_executor"
 node_seam_read_orchestrator = "omnimarket.nodes.node_seam_read_orchestrator"
