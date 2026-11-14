@@ -75,7 +75,7 @@ def _consumer_summary() -> ModelSeamModelSummary:
             ),
         },
         nested={},
-        extra_forbidden=False,
+        extra_forbidden=True,
         has_adapter=False,
     )
 
@@ -123,6 +123,7 @@ class WiredBus:
     def __init__(self, bus: EventBusInmemory) -> None:
         self.bus = bus
         self.completed: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+        self.failed: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
 
     async def command(
         self, payload: dict[str, Any], *, topic: str = COMMAND_TOPIC
@@ -133,6 +134,14 @@ class WiredBus:
         )
         await self.bus.publish(topic, None, envelope.model_dump_json().encode(), None)
         return correlation_id
+
+    async def failed_for(self, correlation_id: UUID) -> dict[str, Any]:
+        """The failed event that carries this correlation id; others are not ours."""
+        async with asyncio.timeout(WAIT_SECONDS):
+            while True:
+                event = await self.failed.get()
+                if event["correlation_id"] == str(correlation_id):
+                    return event
 
     async def completed_for(self, correlation_id: UUID) -> dict[str, Any]:
         """The completed event that carries this correlation id; others are not ours."""
@@ -157,8 +166,14 @@ async def wired() -> AsyncIterator[WiredBus]:
     async def collect(message: ModelEventMessage) -> None:
         await harness.completed.put(json.loads(message.value))
 
+    async def collect_failed(message: ModelEventMessage) -> None:
+        await harness.failed.put(json.loads(message.value))
+
     await bus.subscribe(
         SUCCESS_TOPIC, group_id="completed-collector", on_message=collect
+    )
+    await bus.subscribe(
+        FAILURE_TOPIC, group_id="failed-collector", on_message=collect_failed
     )
     engine = MessageDispatchEngine()
     report = await wire_from_manifest(
@@ -221,11 +236,17 @@ async def test_an_undeclared_key_crossing_reaches_one_completed_event(
 
 
 @pytest.mark.asyncio
-async def test_a_malformed_payload_produces_no_completed_event(wired: WiredBus) -> None:
+async def test_a_malformed_payload_reaches_the_declared_failure_topic(
+    wired: WiredBus,
+) -> None:
+    """The failure topic is read from the contract: one failed event, no completed event."""
     correlation_id = await wired.command(_malformed_payload())
-    with pytest.raises(TimeoutError):
-        async with asyncio.timeout(0.5):
-            await wired.completed_for(correlation_id)
+    event = await wired.failed_for(correlation_id)
+    assert event["correlation_id"] == str(correlation_id)
+    await asyncio.sleep(0.2)
+    assert all(
+        e["correlation_id"] != str(correlation_id) for e in _drain(wired.completed)
+    )
 
 
 def _drain(queue: asyncio.Queue[dict[str, Any]]) -> list[dict[str, Any]]:

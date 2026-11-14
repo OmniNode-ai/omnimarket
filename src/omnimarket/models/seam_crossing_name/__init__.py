@@ -8,6 +8,8 @@ from omnimarket.models.seam_crossing_name.model_seam_crossing_name import (
     ModelSeamCrossingName,
     ModelSeamCrossingNameRequest,
     ModelSeamCrossingNameVerdict,
+)
+from omnimarket.nodes.node_seam_crossing_name_compute.models.model_seam_crossing_naming import (
     ModelSeamCrossingNaming,
     ModelSeamCrossingNamingConfig,
 )

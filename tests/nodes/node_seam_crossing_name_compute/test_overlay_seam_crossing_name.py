@@ -39,7 +39,7 @@ def _crossing(body_keys: tuple[str, ...]) -> ModelSeamCrossing:
             model_ref="mod.C",
             fields={"a": facts},
             nested={},
-            extra_forbidden=False,
+            extra_forbidden=True,
             has_adapter=False,
         ),
         body_keys=body_keys,
@@ -69,19 +69,25 @@ def test_an_overlay_replaces_the_labels_with_no_code_change(tmp_path: Path) -> N
         "missing_required: absent_required\nundeclared_key: extra_key\nclean: clean_body\n",
     )
     naming = load_seam_crossing_naming({ROOTS_ENV: str(tmp_path)})
-    handler = HandlerSeamCrossingName(naming)
-    verdict = handler.handle(ModelSeamCrossingNameRequest(crossings=(_crossing(()),)))
+    handler = HandlerSeamCrossingName()
+    verdict = handler.handle(
+        ModelSeamCrossingNameRequest(crossings=(_crossing(()),), naming=naming)
+    )
     assert verdict.names[0].name == "absent_required"
     assert (
         handler.handle(
-            ModelSeamCrossingNameRequest(crossings=(_crossing(("a", "zzz")),))
+            ModelSeamCrossingNameRequest(
+                crossings=(_crossing(("a", "zzz")),), naming=naming
+            )
         )
         .names[0]
         .name
         == "extra_key"
     )
     assert (
-        handler.handle(ModelSeamCrossingNameRequest(crossings=(_crossing(("a",)),)))
+        handler.handle(
+            ModelSeamCrossingNameRequest(crossings=(_crossing(("a",)),), naming=naming)
+        )
         .names[0]
         .name
         == "clean_body"
@@ -93,3 +99,34 @@ def test_an_invalid_overlay_refuses_and_never_falls_back(tmp_path: Path) -> None
     _write_overlay(tmp_path, "missing_required: only_one_label\n")
     with pytest.raises(NodeOverlayError):
         load_seam_crossing_naming({ROOTS_ENV: str(tmp_path)})
+
+
+def test_the_request_resolves_the_overlay_at_composition(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The overlay is read when the request is built, never while naming."""
+    _write_overlay(
+        tmp_path,
+        "missing_required: absent_required\nundeclared_key: extra_key\nclean: clean_body\n",
+    )
+    monkeypatch.setenv(ROOTS_ENV, str(tmp_path))
+    request = ModelSeamCrossingNameRequest(crossings=(_crossing(()),))
+    assert request.naming.missing_required == "absent_required"
+    verdict = HandlerSeamCrossingName().handle(request)
+    assert verdict.names[0].name == "absent_required"
+
+
+def test_an_invalid_overlay_refuses_the_request_not_the_handler(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_overlay(tmp_path, "missing_required: only_one_label\n")
+    monkeypatch.setenv(ROOTS_ENV, str(tmp_path))
+    # Purity: constructing the handler reads no environment and no overlay file.
+    handler = HandlerSeamCrossingName()
+    assert handler is not None
+    with pytest.raises(NodeOverlayError):
+        ModelSeamCrossingNameRequest(crossings=(_crossing(()),))
+
+
+def test_the_handler_holds_no_constructor_state() -> None:
+    assert HandlerSeamCrossingName.__init__ is object.__init__

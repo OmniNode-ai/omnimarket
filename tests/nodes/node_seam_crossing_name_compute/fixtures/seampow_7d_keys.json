@@ -8,6 +8,9 @@
     "tenant_id"
    ],
    "crossing_id": "seampow7d-000",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.cmd.omnimarket.tenant-delegations-read-requested.v1|node_tenant_delegations_read_effect",
    "truth_class": "unknown_field"
   },
@@ -52,6 +55,9 @@
     "total_tokens"
    ],
    "crossing_id": "seampow7d-001",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.cmd.omnimarket.tenant-delegations-read-requested.v1|node_tenant_delegations_read_effect",
    "truth_class": "unknown_field"
   },
@@ -92,6 +98,9 @@
     "total_tokens"
    ],
    "crossing_id": "seampow7d-002",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.cmd.omnimarket.tenant-delegations-read-requested.v1|node_tenant_delegations_read_effect",
    "truth_class": "unknown_field"
   },
@@ -143,6 +152,9 @@
     "truncated"
    ],
    "crossing_id": "seampow7d-003",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.cmd.omnimarket.tenant-delegations-read-requested.v1|node_tenant_delegations_read_effect",
    "truth_class": "unknown_field"
   },
@@ -183,6 +195,9 @@
     "truncated"
    ],
    "crossing_id": "seampow7d-004",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.cmd.omnimarket.tenant-delegations-read-requested.v1|node_tenant_delegations_read_effect",
    "truth_class": "unknown_field"
   },
@@ -212,6 +227,10 @@
     "truncated"
    ],
    "crossing_id": "seampow7d-005",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "uuid_parsing"
+   ],
    "seam_id": "onex.cmd.omnimarket.tenant-delegations-read-requested.v1|node_tenant_delegations_read_effect",
    "truth_class": "wrong_type"
   },
@@ -242,6 +261,9 @@
     "trace_id"
    ],
    "crossing_id": "seampow7d-006",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.cmd.omnimarket.tenant-delegations-read-requested.v1|node_tenant_delegations_read_effect",
    "truth_class": "unknown_field"
   },
@@ -278,6 +300,9 @@
     "ticket_id"
    ],
    "crossing_id": "seampow7d-007",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.cmd.omnimarket.tenant-delegations-read-requested.v1|node_tenant_delegations_read_effect",
    "truth_class": "unknown_field"
   },
@@ -327,6 +352,9 @@
     "truncated"
    ],
    "crossing_id": "seampow7d-008",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.cmd.omnimarket.tenant-delegations-read-requested.v1|node_tenant_delegations_read_effect",
    "truth_class": "unknown_field"
   },
@@ -361,6 +389,10 @@
     "verified_count"
    ],
    "crossing_id": "seampow7d-009",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.cmd.omnimarket.tenant-delegations-read-requested.v1|node_tenant_delegations_read_effect",
    "truth_class": "missing_field"
   },
@@ -384,6 +416,10 @@
     "terminal_failure_cause"
    ],
    "crossing_id": "seampow7d-010",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.cmd.omnimarket.tenant-delegations-read-requested.v1|node_tenant_delegations_read_effect",
    "truth_class": "missing_field"
   },
@@ -396,6 +432,10 @@
     "refusal"
    ],
    "crossing_id": "seampow7d-011",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.cmd.omnimarket.tenant-delegations-read-requested.v1|node_tenant_delegations_read_effect",
    "truth_class": "missing_field"
   },
@@ -409,6 +449,9 @@
     "terminal_failure_cause"
    ],
    "crossing_id": "seampow7d-012",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.cmd.omnimarket.tenant-delegations-read-requested.v1|node_tenant_delegations_read_effect",
    "truth_class": "unknown_field"
   },
@@ -424,6 +467,10 @@
     "terminalized_at"
    ],
    "crossing_id": "seampow7d-013",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.cmd.omnimarket.tenant-delegations-read-requested.v1|node_tenant_delegations_read_effect",
    "truth_class": "missing_field"
   },
@@ -435,6 +482,7 @@
     "tenant_id"
    ],
    "crossing_id": "seampow7d-014",
+   "pydantic_error_types": [],
    "seam_id": "onex.cmd.omnimarket.tenant-savings-read-requested.v1|node_tenant_savings_read_effect",
    "truth_class": "unknown_field"
   },
@@ -455,6 +503,10 @@
     "topic"
    ],
    "crossing_id": "seampow7d-015",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.cmd.omnimarket.tenant-savings-read-requested.v1|node_tenant_savings_read_effect",
    "truth_class": "missing_field"
   },
@@ -469,6 +521,10 @@
     "volume_rows"
    ],
    "crossing_id": "seampow7d-016",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.cmd.omnimarket.tenant-savings-read-requested.v1|node_tenant_savings_read_effect",
    "truth_class": "missing_field"
   },
@@ -480,6 +536,9 @@
     "tenant_id"
    ],
    "crossing_id": "seampow7d-017",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.cmd.omnimarket.tenant-savings-read-requested.v1|node_tenant_savings_read_effect",
    "truth_class": "unknown_field"
   },
@@ -491,6 +550,9 @@
     "tenant_id"
    ],
    "crossing_id": "seampow7d-018",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.cmd.omnimarket.tenant-savings-read-requested.v1|node_tenant_savings_read_effect",
    "truth_class": "unknown_field"
   },
@@ -502,6 +564,9 @@
     "tenant_id"
    ],
    "crossing_id": "seampow7d-019",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.cmd.omnimarket.tenant-savings-read-requested.v1|node_tenant_savings_read_effect",
    "truth_class": "unknown_field"
   },
@@ -513,6 +578,9 @@
     "tenant_id"
    ],
    "crossing_id": "seampow7d-020",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.cmd.omnimarket.tenant-savings-read-requested.v1|node_tenant_savings_read_effect",
    "truth_class": "unknown_field"
   },
@@ -526,6 +594,9 @@
     "terminal_failure_cause"
    ],
    "crossing_id": "seampow7d-021",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.cmd.omnimarket.tenant-savings-read-requested.v1|node_tenant_savings_read_effect",
    "truth_class": "unknown_field"
   },
@@ -570,6 +641,10 @@
     "total_tokens"
    ],
    "crossing_id": "seampow7d-022",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.cmd.omnimarket.work-ledger-query-requested.v1|node_work_ledger_query_effect",
    "truth_class": "missing_field"
   },
@@ -600,6 +675,9 @@
     "window_until"
    ],
    "crossing_id": "seampow7d-023",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.cmd.omnimarket.work-ledger-query-requested.v1|node_work_ledger_query_effect",
    "truth_class": "unknown_field"
   },
@@ -647,6 +725,10 @@
     "total_tokens"
    ],
    "crossing_id": "seampow7d-024",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.github.pr-merged.v1|node_dod_verify",
    "truth_class": "missing_field"
   },
@@ -698,6 +780,9 @@
     "truncated"
    ],
    "crossing_id": "seampow7d-025",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.evt.github.pr-merged.v1|node_dod_verify",
    "truth_class": "unknown_field"
   },
@@ -742,6 +827,9 @@
     "truncated"
    ],
    "crossing_id": "seampow7d-026",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.evt.github.pr-merged.v1|node_dod_verify",
    "truth_class": "unknown_field"
   },
@@ -792,6 +880,9 @@
     "truncated"
    ],
    "crossing_id": "seampow7d-027",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.evt.github.pr-merged.v1|node_dod_verify",
    "truth_class": "unknown_field"
   },
@@ -828,6 +919,9 @@
     "ticket_id"
    ],
    "crossing_id": "seampow7d-028",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.evt.github.pr-merged.v1|node_dod_verify",
    "truth_class": "unknown_field"
   },
@@ -862,6 +956,9 @@
     "verified_count"
    ],
    "crossing_id": "seampow7d-029",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.evt.github.pr-merged.v1|node_dod_verify",
    "truth_class": "unknown_field"
   },
@@ -876,6 +973,10 @@
     "volume_rows"
    ],
    "crossing_id": "seampow7d-030",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.github.pr-merged.v1|node_dod_verify",
    "truth_class": "missing_field"
   },
@@ -887,6 +988,10 @@
     "tenant_id"
    ],
    "crossing_id": "seampow7d-031",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.github.pr-merged.v1|node_merge_override_alarm_effect",
    "truth_class": "missing_field"
   },
@@ -899,6 +1004,10 @@
     "volumes"
    ],
    "crossing_id": "seampow7d-032",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.github.pr-merged.v1|node_merge_override_alarm_effect",
    "truth_class": "missing_field"
   },
@@ -913,6 +1022,10 @@
     "window_start"
    ],
    "crossing_id": "seampow7d-033",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.github.pr-merged.v1|node_merge_override_alarm_effect",
    "truth_class": "missing_field"
   },
@@ -927,6 +1040,10 @@
     "volume_rows"
    ],
    "crossing_id": "seampow7d-034",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.github.pr-merged.v1|node_merge_override_alarm_effect",
    "truth_class": "missing_field"
   },
@@ -941,6 +1058,10 @@
     "sha"
    ],
    "crossing_id": "seampow7d-035",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.github.pr-merged.v1|node_pr_landing_orchestrator",
    "truth_class": "missing_field"
   },
@@ -957,6 +1078,10 @@
     "work_unit_id"
    ],
    "crossing_id": "seampow7d-036",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.github.pr-merged.v1|node_pr_landing_orchestrator",
    "truth_class": "missing_field"
   },
@@ -969,6 +1094,10 @@
     "task_class"
    ],
    "crossing_id": "seampow7d-037",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.github.pr-merged.v1|node_pr_landing_orchestrator",
    "truth_class": "missing_field"
   },
@@ -1002,6 +1131,10 @@
     "verified_count"
    ],
    "crossing_id": "seampow7d-038",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.github.pr-merged.v1|node_pr_landing_orchestrator",
    "truth_class": "missing_field"
   },
@@ -1020,6 +1153,10 @@
     "piece"
    ],
    "crossing_id": "seampow7d-039",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.github.pr-merged.v1|node_pr_landing_orchestrator",
    "truth_class": "missing_field"
   },
@@ -1029,6 +1166,10 @@
     "result"
    ],
    "crossing_id": "seampow7d-040",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.github.pr-merged.v1|node_pr_landing_orchestrator",
    "truth_class": "missing_field"
   },
@@ -1043,6 +1184,10 @@
     "window_start"
    ],
    "crossing_id": "seampow7d-041",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.github.pr-merged.v1|node_pr_landing_orchestrator",
    "truth_class": "missing_field"
   },
@@ -1065,6 +1210,10 @@
     "tools"
    ],
    "crossing_id": "seampow7d-042",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.github.pr-merged.v1|node_pr_landing_orchestrator",
    "truth_class": "missing_field"
   },
@@ -1088,6 +1237,10 @@
     "work_unit_id"
    ],
    "crossing_id": "seampow7d-043",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.github.pr-merged.v1|node_pr_landing_orchestrator",
    "truth_class": "missing_field"
   },
@@ -1103,6 +1256,10 @@
     "result"
    ],
    "crossing_id": "seampow7d-044",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.github.pr-merged.v1|node_pr_landing_orchestrator",
    "truth_class": "missing_field"
   },
@@ -1118,6 +1275,10 @@
     "repo"
    ],
    "crossing_id": "seampow7d-045",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.github.pr-merged.v1|node_pr_landing_orchestrator",
    "truth_class": "missing_field"
   },
@@ -1128,6 +1289,10 @@
     "source_topic"
    ],
    "crossing_id": "seampow7d-046",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.github.pr-merged.v1|node_pr_landing_orchestrator",
    "truth_class": "missing_field"
   },
@@ -1142,6 +1307,10 @@
     "volume_rows"
    ],
    "crossing_id": "seampow7d-047",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.github.pr-merged.v1|node_pr_landing_orchestrator",
    "truth_class": "missing_field"
   },
@@ -1153,6 +1322,10 @@
     "tenant_id"
    ],
    "crossing_id": "seampow7d-048",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.github.pr-merged.v1|node_pr_landing_orchestrator",
    "truth_class": "missing_field"
   },
@@ -1166,6 +1339,10 @@
     "terminal_failure_cause"
    ],
    "crossing_id": "seampow7d-049",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.github.pr-merged.v1|node_pr_landing_orchestrator",
    "truth_class": "missing_field"
   },
@@ -1181,6 +1358,10 @@
     "terminalized_at"
    ],
    "crossing_id": "seampow7d-050",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.github.pr-merged.v1|node_pr_landing_orchestrator",
    "truth_class": "missing_field"
   },
@@ -1195,6 +1376,10 @@
     "subjects"
    ],
    "crossing_id": "seampow7d-051",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.github.pr-merged.v1|node_pr_landing_orchestrator",
    "truth_class": "missing_field"
   },
@@ -1205,6 +1390,10 @@
     "window_hours"
    ],
    "crossing_id": "seampow7d-052",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.github.pr-merged.v1|node_pr_landing_orchestrator",
    "truth_class": "missing_field"
   },
@@ -1218,6 +1407,10 @@
     "source_ref"
    ],
    "crossing_id": "seampow7d-053",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.github.pr-merged.v1|node_pr_landing_orchestrator",
    "truth_class": "missing_field"
   },
@@ -1236,6 +1429,10 @@
     "role"
    ],
    "crossing_id": "seampow7d-054",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.omnibase-infra.delegation-completed.v1|node_delegate_skill_orchestrator",
    "truth_class": "missing_field"
   },
@@ -1254,6 +1451,10 @@
     "terminal_state"
    ],
    "crossing_id": "seampow7d-055",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.omnibase-infra.delegation-completed.v1|node_delegate_skill_orchestrator",
    "truth_class": "missing_field"
   },
@@ -1268,6 +1469,10 @@
     "sha"
    ],
    "crossing_id": "seampow7d-056",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.omnibase-infra.delegation-failed.v1|node_delegate_skill_orchestrator",
    "truth_class": "missing_field"
   },
@@ -1313,6 +1518,7 @@
     "total_tokens"
    ],
    "crossing_id": "seampow7d-057",
+   "pydantic_error_types": [],
    "seam_id": "onex.evt.omnibase-infra.delegation-failed.v1|node_delegate_skill_orchestrator",
    "truth_class": "wrong_meaning"
   },
@@ -1331,6 +1537,10 @@
     "verdict"
    ],
    "crossing_id": "seampow7d-058",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.omnibase-infra.delegation-failed.v1|node_delegate_skill_orchestrator",
    "truth_class": "missing_field"
   },
@@ -1380,6 +1590,10 @@
     "truncated"
    ],
    "crossing_id": "seampow7d-059",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.omnibase-infra.delegation-failed.v1|node_delegate_skill_orchestrator",
    "truth_class": "missing_field"
   },
@@ -1398,6 +1612,10 @@
     "piece"
    ],
    "crossing_id": "seampow7d-060",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.omnibase-infra.delegation-failed.v1|node_delegate_skill_orchestrator",
    "truth_class": "missing_field"
   },
@@ -1420,6 +1638,10 @@
     "tools"
    ],
    "crossing_id": "seampow7d-061",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.omnibase-infra.delegation-failed.v1|node_delegate_skill_orchestrator",
    "truth_class": "missing_field"
   },
@@ -1428,6 +1650,10 @@
     "projected"
    ],
    "crossing_id": "seampow7d-062",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.omnibase-infra.delegation-failed.v1|node_delegate_skill_orchestrator",
    "truth_class": "missing_field"
   },
@@ -1442,6 +1668,10 @@
     "subjects"
    ],
    "crossing_id": "seampow7d-063",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.omnibase-infra.delegation-failed.v1|node_delegate_skill_orchestrator",
    "truth_class": "missing_field"
   },
@@ -1487,6 +1717,9 @@
     "total_tokens"
    ],
    "crossing_id": "seampow7d-064",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.evt.omnimarket.delegate-skill-completed.v1|node_log_persistence_effect",
    "truth_class": "unknown_field"
   },
@@ -1531,6 +1764,9 @@
     "total_tokens"
    ],
    "crossing_id": "seampow7d-065",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.evt.omnimarket.delegate-skill-completed.v1|node_log_persistence_effect",
    "truth_class": "unknown_field"
   },
@@ -1549,6 +1785,10 @@
     "verdict"
    ],
    "crossing_id": "seampow7d-066",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.omnimarket.delegate-skill-completed.v1|node_log_persistence_effect",
    "truth_class": "missing_field"
   },
@@ -1578,6 +1818,9 @@
     "truncated"
    ],
    "crossing_id": "seampow7d-067",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.evt.omnimarket.delegate-skill-completed.v1|node_log_persistence_effect",
    "truth_class": "unknown_field"
   },
@@ -1627,6 +1870,7 @@
     "truncated"
    ],
    "crossing_id": "seampow7d-068",
+   "pydantic_error_types": [],
    "seam_id": "onex.evt.omnimarket.delegate-skill-completed.v1|node_log_persistence_effect",
    "truth_class": "wrong_meaning"
   },
@@ -1657,6 +1901,9 @@
     "trace_id"
    ],
    "crossing_id": "seampow7d-069",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.evt.omnimarket.delegate-skill-completed.v1|node_log_persistence_effect",
    "truth_class": "unknown_field"
   },
@@ -1693,6 +1940,9 @@
     "ticket_id"
    ],
    "crossing_id": "seampow7d-070",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.evt.omnimarket.delegate-skill-completed.v1|node_log_persistence_effect",
    "truth_class": "unknown_field"
   },
@@ -1732,6 +1982,9 @@
     "ticket_id"
    ],
    "crossing_id": "seampow7d-071",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.evt.omnimarket.delegate-skill-completed.v1|node_log_persistence_effect",
    "truth_class": "unknown_field"
   },
@@ -1768,6 +2021,9 @@
     "ticket_id"
    ],
    "crossing_id": "seampow7d-072",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.evt.omnimarket.delegate-skill-completed.v1|node_log_persistence_effect",
    "truth_class": "unknown_field"
   },
@@ -1807,6 +2063,9 @@
     "ticket_id"
    ],
    "crossing_id": "seampow7d-073",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.evt.omnimarket.delegate-skill-completed.v1|node_log_persistence_effect",
    "truth_class": "unknown_field"
   },
@@ -1815,6 +2074,10 @@
     "projected"
    ],
    "crossing_id": "seampow7d-074",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.omnimarket.delegate-skill-completed.v1|node_log_persistence_effect",
    "truth_class": "missing_field"
   },
@@ -1826,6 +2089,10 @@
     "tenant_id"
    ],
    "crossing_id": "seampow7d-075",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.omnimarket.delegate-skill-completed.v1|node_log_persistence_effect",
    "truth_class": "missing_field"
   },
@@ -1836,6 +2103,10 @@
     "window_hours"
    ],
    "crossing_id": "seampow7d-076",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.omnimarket.delegate-skill-completed.v1|node_log_persistence_effect",
    "truth_class": "missing_field"
   },
@@ -1873,6 +2144,10 @@
     "total_tokens"
    ],
    "crossing_id": "seampow7d-077",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.omnimarket.delegate-skill-failed.v1|node_log_persistence_effect",
    "truth_class": "unknown_field"
   },
@@ -1910,6 +2185,10 @@
     "total_tokens"
    ],
    "crossing_id": "seampow7d-078",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.omnimarket.delegate-skill-failed.v1|node_log_persistence_effect",
    "truth_class": "unknown_field"
   },
@@ -1948,6 +2227,10 @@
     "total_tokens"
    ],
    "crossing_id": "seampow7d-079",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.omnimarket.delegate-skill-failed.v1|node_log_persistence_effect",
    "truth_class": "unknown_field"
   },
@@ -1986,6 +2269,10 @@
     "total_tokens"
    ],
    "crossing_id": "seampow7d-080",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.omnimarket.delegate-skill-failed.v1|node_log_persistence_effect",
    "truth_class": "unknown_field"
   },
@@ -2001,6 +2288,10 @@
     "terminalized_at"
    ],
    "crossing_id": "seampow7d-081",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.omnimarket.delegate-skill-failed.v1|node_log_persistence_effect",
    "truth_class": "missing_field"
   },
@@ -2041,6 +2332,11 @@
     "truncated"
    ],
    "crossing_id": "seampow7d-082",
+   "pydantic_error_types": [
+    "enum",
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.omnimarket.delegate-skill-failed.v1|node_log_persistence_effect",
    "truth_class": "unknown_field"
   },
@@ -2081,6 +2377,11 @@
     "truncated"
    ],
    "crossing_id": "seampow7d-083",
+   "pydantic_error_types": [
+    "enum",
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.omnimarket.delegate-skill-failed.v1|node_log_persistence_effect",
    "truth_class": "unknown_field"
   },
@@ -2125,6 +2426,11 @@
     "truncated"
    ],
    "crossing_id": "seampow7d-084",
+   "pydantic_error_types": [
+    "enum",
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.omnimarket.delegate-skill-failed.v1|node_log_persistence_effect",
    "truth_class": "unknown_field"
   },
@@ -2176,6 +2482,11 @@
     "truncated"
    ],
    "crossing_id": "seampow7d-085",
+   "pydantic_error_types": [
+    "enum",
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.omnimarket.delegate-skill-failed.v1|node_log_persistence_effect",
    "truth_class": "wrong_meaning"
   },
@@ -2210,6 +2521,10 @@
     "verified_count"
    ],
    "crossing_id": "seampow7d-086",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.omnimarket.delegate-skill-failed.v1|node_log_persistence_effect",
    "truth_class": "missing_field"
   },
@@ -2238,6 +2553,10 @@
     "variable_value"
    ],
    "crossing_id": "seampow7d-087",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.omnimarket.delegate-skill-failed.v1|node_log_persistence_effect",
    "truth_class": "missing_field"
   },
@@ -2252,6 +2571,10 @@
     "window_start"
    ],
    "crossing_id": "seampow7d-088",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.omnimarket.delegate-skill-failed.v1|node_log_persistence_effect",
    "truth_class": "missing_field"
   },
@@ -2267,6 +2590,10 @@
     "result"
    ],
    "crossing_id": "seampow7d-089",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.omnimarket.delegate-skill-failed.v1|node_log_persistence_effect",
    "truth_class": "missing_field"
   },
@@ -2283,6 +2610,10 @@
     "terminal_failure_cause"
    ],
    "crossing_id": "seampow7d-090",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.omnimarket.delegate-skill-failed.v1|node_log_persistence_effect",
    "truth_class": "missing_field"
   },
@@ -2299,6 +2630,10 @@
     "terminal_failure_cause"
    ],
    "crossing_id": "seampow7d-091",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.omnimarket.delegate-skill-failed.v1|node_log_persistence_effect",
    "truth_class": "missing_field"
   },
@@ -2314,6 +2649,10 @@
     "repo"
    ],
    "crossing_id": "seampow7d-092",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.omnimarket.delegate-skill-failed.v1|node_log_persistence_effect",
    "truth_class": "missing_field"
   },
@@ -2322,6 +2661,10 @@
     "projected"
    ],
    "crossing_id": "seampow7d-093",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.omnimarket.delegate-skill-failed.v1|node_log_persistence_effect",
    "truth_class": "missing_field"
   },
@@ -2336,6 +2679,10 @@
     "volume_rows"
    ],
    "crossing_id": "seampow7d-094",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.omnimarket.delegate-skill-failed.v1|node_log_persistence_effect",
    "truth_class": "missing_field"
   },
@@ -2355,6 +2702,10 @@
     "request_id"
    ],
    "crossing_id": "seampow7d-095",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.omnimarket.dod-verify-completed.v1|node_goal_verification_orchestrator",
    "truth_class": "missing_field"
   },
@@ -2375,6 +2726,10 @@
     "role"
    ],
    "crossing_id": "seampow7d-096",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.omnimarket.dod-verify-completed.v1|node_goal_verification_orchestrator",
    "truth_class": "missing_field"
   },
@@ -2390,6 +2745,10 @@
     "terminalized_at"
    ],
    "crossing_id": "seampow7d-097",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.omnimarket.dod-verify-completed.v1|node_goal_verification_orchestrator",
    "truth_class": "missing_field"
   },
@@ -2402,6 +2761,10 @@
     "task_class"
    ],
    "crossing_id": "seampow7d-098",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.omnimarket.dod-verify-completed.v1|node_goal_verification_orchestrator",
    "truth_class": "missing_field"
   },
@@ -2420,6 +2783,10 @@
     "piece"
    ],
    "crossing_id": "seampow7d-099",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.omnimarket.dod-verify-completed.v1|node_goal_verification_orchestrator",
    "truth_class": "missing_field"
   },
@@ -2435,6 +2802,10 @@
     "terminalized_at"
    ],
    "crossing_id": "seampow7d-100",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.omnimarket.dod-verify-completed.v1|node_goal_verification_orchestrator",
    "truth_class": "missing_field"
   },
@@ -2449,6 +2820,10 @@
     "window_start"
    ],
    "crossing_id": "seampow7d-101",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.omnimarket.dod-verify-completed.v1|node_goal_verification_orchestrator",
    "truth_class": "missing_field"
   },
@@ -2467,6 +2842,10 @@
     "terminal_state"
    ],
    "crossing_id": "seampow7d-102",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.omnimarket.dod-verify-completed.v1|node_goal_verification_orchestrator",
    "truth_class": "missing_field"
   },
@@ -2478,6 +2857,10 @@
     "status"
    ],
    "crossing_id": "seampow7d-103",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.omnimarket.dod-verify-completed.v1|node_goal_verification_orchestrator",
    "truth_class": "missing_field"
   },
@@ -2508,6 +2891,10 @@
     "window_until"
    ],
    "crossing_id": "seampow7d-104",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.omnimarket.dod-verify-completed.v1|node_goal_verification_orchestrator",
    "truth_class": "missing_field"
   },
@@ -2516,6 +2903,10 @@
     "findings"
    ],
    "crossing_id": "seampow7d-105",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.omnimarket.dod-verify-completed.v1|node_goal_verification_orchestrator",
    "truth_class": "missing_field"
   },
@@ -2530,6 +2921,10 @@
     "tick_interval_ms"
    ],
    "crossing_id": "seampow7d-106",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.omnimarket.dod-verify-completed.v1|node_goal_verification_orchestrator",
    "truth_class": "unknown_field"
   },
@@ -2548,6 +2943,10 @@
     "piece"
    ],
    "crossing_id": "seampow7d-107",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.omnimarket.host-disk-read.v1|node_host_hygiene_orchestrator",
    "truth_class": "missing_field"
   },
@@ -2566,6 +2965,10 @@
     "terminal_state"
    ],
    "crossing_id": "seampow7d-108",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.omnimarket.host-disk-read.v1|node_host_hygiene_orchestrator",
    "truth_class": "missing_field"
   },
@@ -2600,6 +3003,10 @@
     "verified_count"
    ],
    "crossing_id": "seampow7d-109",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.omnimarket.lab-host-capacity-advertised.v1|node_code_eval_trial_orchestrator",
    "truth_class": "missing_field"
   },
@@ -2612,6 +3019,10 @@
     "volumes"
    ],
    "crossing_id": "seampow7d-110",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.omnimarket.lab-host-capacity-advertised.v1|node_code_eval_trial_orchestrator",
    "truth_class": "missing_field"
   },
@@ -2627,6 +3038,10 @@
     "result"
    ],
    "crossing_id": "seampow7d-111",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.omnimarket.lab-host-capacity-advertised.v1|node_code_eval_trial_orchestrator",
    "truth_class": "missing_field"
   },
@@ -2639,6 +3054,10 @@
     "tick"
    ],
    "crossing_id": "seampow7d-112",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.omnimarket.lab-host-capacity-advertised.v1|node_code_eval_trial_orchestrator",
    "truth_class": "missing_field"
   },
@@ -2649,6 +3068,10 @@
     "source_topic"
    ],
    "crossing_id": "seampow7d-113",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.omnimarket.lab-host-capacity-advertised.v1|node_code_eval_trial_orchestrator",
    "truth_class": "missing_field"
   },
@@ -2664,6 +3087,10 @@
     "terminalized_at"
    ],
    "crossing_id": "seampow7d-114",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.omnimarket.lab-host-capacity-advertised.v1|node_code_eval_trial_orchestrator",
    "truth_class": "missing_field"
   },
@@ -2679,6 +3106,10 @@
     "terminalized_at"
    ],
    "crossing_id": "seampow7d-115",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.omnimarket.lab-host-capacity-advertised.v1|node_code_eval_trial_orchestrator",
    "truth_class": "missing_field"
   },
@@ -2693,6 +3124,10 @@
     "tick_interval_ms"
    ],
    "crossing_id": "seampow7d-116",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.omnimarket.lab-host-capacity-advertised.v1|node_code_eval_trial_orchestrator",
    "truth_class": "unknown_field"
   },
@@ -2708,6 +3143,10 @@
     "terminalized_at"
    ],
    "crossing_id": "seampow7d-117",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.omnimarket.lab-work-unit-completed.v1|node_code_eval_trial_orchestrator",
    "truth_class": "missing_field"
   },
@@ -2717,6 +3156,10 @@
     "result"
    ],
    "crossing_id": "seampow7d-118",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.omnimarket.lab-work-unit-completed.v1|node_code_eval_trial_orchestrator",
    "truth_class": "missing_field"
   },
@@ -2747,6 +3190,10 @@
     "window_until"
    ],
    "crossing_id": "seampow7d-119",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.evt.omnimarket.lab-work-unit-completed.v1|node_code_eval_trial_orchestrator",
    "truth_class": "missing_field"
   },
@@ -2758,6 +3205,9 @@
     "tenant_id"
    ],
    "crossing_id": "seampow7d-120",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_autopilot_orchestrator",
    "truth_class": "unknown_field"
   },
@@ -2769,6 +3219,9 @@
     "tenant_id"
    ],
    "crossing_id": "seampow7d-121",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_autopilot_orchestrator",
    "truth_class": "unknown_field"
   },
@@ -2782,6 +3235,9 @@
     "since"
    ],
    "crossing_id": "seampow7d-122",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_autopilot_orchestrator",
    "truth_class": "unknown_field"
   },
@@ -2794,6 +3250,9 @@
     "since"
    ],
    "crossing_id": "seampow7d-123",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_autopilot_orchestrator",
    "truth_class": "unknown_field"
   },
@@ -2807,6 +3266,9 @@
     "until"
    ],
    "crossing_id": "seampow7d-124",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_autopilot_orchestrator",
    "truth_class": "unknown_field"
   },
@@ -2852,6 +3314,9 @@
     "total_tokens"
    ],
    "crossing_id": "seampow7d-125",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_autopilot_orchestrator",
    "truth_class": "unknown_field"
   },
@@ -2899,6 +3364,9 @@
     "total_tokens"
    ],
    "crossing_id": "seampow7d-126",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_autopilot_orchestrator",
    "truth_class": "unknown_field"
   },
@@ -2936,6 +3404,9 @@
     "total_tokens"
    ],
    "crossing_id": "seampow7d-127",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_autopilot_orchestrator",
    "truth_class": "unknown_field"
   },
@@ -2950,6 +3421,10 @@
     "uncovered_topics"
    ],
    "crossing_id": "seampow7d-128",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_autopilot_orchestrator",
    "truth_class": "missing_field"
   },
@@ -2965,6 +3440,9 @@
     "terminalized_at"
    ],
    "crossing_id": "seampow7d-129",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_autopilot_orchestrator",
    "truth_class": "unknown_field"
   },
@@ -3016,6 +3494,9 @@
     "truncated"
    ],
    "crossing_id": "seampow7d-130",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_autopilot_orchestrator",
    "truth_class": "unknown_field"
   },
@@ -3056,6 +3537,9 @@
     "truncated"
    ],
    "crossing_id": "seampow7d-131",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_autopilot_orchestrator",
    "truth_class": "unknown_field"
   },
@@ -3085,6 +3569,9 @@
     "truncated"
    ],
    "crossing_id": "seampow7d-132",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_autopilot_orchestrator",
    "truth_class": "unknown_field"
   },
@@ -3115,6 +3602,9 @@
     "trace_id"
    ],
    "crossing_id": "seampow7d-133",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_autopilot_orchestrator",
    "truth_class": "unknown_field"
   },
@@ -3164,6 +3654,9 @@
     "truncated"
    ],
    "crossing_id": "seampow7d-134",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_autopilot_orchestrator",
    "truth_class": "unknown_field"
   },
@@ -3203,6 +3696,9 @@
     "ticket_id"
    ],
    "crossing_id": "seampow7d-135",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_autopilot_orchestrator",
    "truth_class": "unknown_field"
   },
@@ -3218,6 +3714,9 @@
     "terminalized_at"
    ],
    "crossing_id": "seampow7d-136",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_autopilot_orchestrator",
    "truth_class": "unknown_field"
   },
@@ -3252,6 +3751,9 @@
     "verified_count"
    ],
    "crossing_id": "seampow7d-137",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_autopilot_orchestrator",
    "truth_class": "unknown_field"
   },
@@ -3270,6 +3772,9 @@
     "piece"
    ],
    "crossing_id": "seampow7d-138",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_autopilot_orchestrator",
    "truth_class": "unknown_field"
   },
@@ -3288,6 +3793,10 @@
     "piece"
    ],
    "crossing_id": "seampow7d-139",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "uuid_parsing"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_autopilot_orchestrator",
    "truth_class": "wrong_type"
   },
@@ -3306,6 +3815,10 @@
     "piece"
    ],
    "crossing_id": "seampow7d-140",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "uuid_parsing"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_autopilot_orchestrator",
    "truth_class": "wrong_type"
   },
@@ -3324,6 +3837,9 @@
     "piece"
    ],
    "crossing_id": "seampow7d-141",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_autopilot_orchestrator",
    "truth_class": "unknown_field"
   },
@@ -3342,6 +3858,9 @@
     "piece"
    ],
    "crossing_id": "seampow7d-142",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_autopilot_orchestrator",
    "truth_class": "unknown_field"
   },
@@ -3357,6 +3876,9 @@
     "terminalized_at"
    ],
    "crossing_id": "seampow7d-143",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_autopilot_orchestrator",
    "truth_class": "unknown_field"
   },
@@ -3366,6 +3888,9 @@
     "result"
    ],
    "crossing_id": "seampow7d-144",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_autopilot_orchestrator",
    "truth_class": "unknown_field"
   },
@@ -3394,6 +3919,9 @@
     "variable_value"
    ],
    "crossing_id": "seampow7d-145",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_autopilot_orchestrator",
    "truth_class": "unknown_field"
   },
@@ -3417,6 +3945,9 @@
     "terminal_failure_cause"
    ],
    "crossing_id": "seampow7d-146",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_autopilot_orchestrator",
    "truth_class": "unknown_field"
   },
@@ -3432,6 +3963,9 @@
     "terminalized_at"
    ],
    "crossing_id": "seampow7d-147",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_autopilot_orchestrator",
    "truth_class": "unknown_field"
   },
@@ -3447,6 +3981,9 @@
     "terminalized_at"
    ],
    "crossing_id": "seampow7d-148",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_autopilot_orchestrator",
    "truth_class": "unknown_field"
   },
@@ -3459,6 +3996,10 @@
     "refusal"
    ],
    "crossing_id": "seampow7d-149",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_autopilot_orchestrator",
    "truth_class": "missing_field"
   },
@@ -3471,6 +4012,9 @@
     "volumes"
    ],
    "crossing_id": "seampow7d-150",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_autopilot_orchestrator",
    "truth_class": "unknown_field"
   },
@@ -3493,6 +4037,10 @@
     "tools"
    ],
    "crossing_id": "seampow7d-151",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_autopilot_orchestrator",
    "truth_class": "missing_field"
   },
@@ -3504,6 +4052,9 @@
     "reason"
    ],
    "crossing_id": "seampow7d-152",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_autopilot_orchestrator",
    "truth_class": "unknown_field"
   },
@@ -3518,6 +4069,9 @@
     "snapshot_path"
    ],
    "crossing_id": "seampow7d-153",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_autopilot_orchestrator",
    "truth_class": "unknown_field"
   },
@@ -3533,6 +4087,9 @@
     "result"
    ],
    "crossing_id": "seampow7d-154",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_autopilot_orchestrator",
    "truth_class": "unknown_field"
   },
@@ -3549,6 +4106,9 @@
     "terminal_failure_cause"
    ],
    "crossing_id": "seampow7d-155",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_autopilot_orchestrator",
    "truth_class": "unknown_field"
   },
@@ -3564,6 +4124,9 @@
     "repo"
    ],
    "crossing_id": "seampow7d-156",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_autopilot_orchestrator",
    "truth_class": "unknown_field"
   },
@@ -3582,6 +4145,9 @@
     "terminal_state"
    ],
    "crossing_id": "seampow7d-157",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_autopilot_orchestrator",
    "truth_class": "unknown_field"
   },
@@ -3594,6 +4160,9 @@
     "tick"
    ],
    "crossing_id": "seampow7d-158",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_autopilot_orchestrator",
    "truth_class": "unknown_field"
   },
@@ -3604,6 +4173,9 @@
     "source_topic"
    ],
    "crossing_id": "seampow7d-159",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_autopilot_orchestrator",
    "truth_class": "unknown_field"
   },
@@ -3618,6 +4190,9 @@
     "volume_rows"
    ],
    "crossing_id": "seampow7d-160",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_autopilot_orchestrator",
    "truth_class": "unknown_field"
   },
@@ -3629,6 +4204,9 @@
     "phases_completed"
    ],
    "crossing_id": "seampow7d-161",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_autopilot_orchestrator",
    "truth_class": "unknown_field"
   },
@@ -3640,6 +4218,9 @@
     "tenant_id"
    ],
    "crossing_id": "seampow7d-162",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_autopilot_orchestrator",
    "truth_class": "unknown_field"
   },
@@ -3655,6 +4236,9 @@
     "terminalized_at"
    ],
    "crossing_id": "seampow7d-163",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_autopilot_orchestrator",
    "truth_class": "unknown_field"
   },
@@ -3666,6 +4250,9 @@
     "tenant_id"
    ],
    "crossing_id": "seampow7d-164",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_autopilot_orchestrator",
    "truth_class": "unknown_field"
   },
@@ -3681,6 +4268,9 @@
     "terminalized_at"
    ],
    "crossing_id": "seampow7d-165",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_autopilot_orchestrator",
    "truth_class": "unknown_field"
   },
@@ -3694,6 +4284,9 @@
     "terminal_failure_cause"
    ],
    "crossing_id": "seampow7d-166",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_autopilot_orchestrator",
    "truth_class": "unknown_field"
   },
@@ -3724,6 +4317,9 @@
     "window_until"
    ],
    "crossing_id": "seampow7d-167",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_autopilot_orchestrator",
    "truth_class": "unknown_field"
   },
@@ -3739,6 +4335,9 @@
     "terminalized_at"
    ],
    "crossing_id": "seampow7d-168",
+   "pydantic_error_types": [
+    "extra_forbidden"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_autopilot_orchestrator",
    "truth_class": "unknown_field"
   },
@@ -3758,6 +4357,10 @@
     "request_id"
    ],
    "crossing_id": "seampow7d-169",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_code_eval_trial_orchestrator",
    "truth_class": "missing_field"
   },
@@ -3805,6 +4408,10 @@
     "total_tokens"
    ],
    "crossing_id": "seampow7d-170",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_code_eval_trial_orchestrator",
    "truth_class": "missing_field"
   },
@@ -3823,6 +4430,10 @@
     "verdict"
    ],
    "crossing_id": "seampow7d-171",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_code_eval_trial_orchestrator",
    "truth_class": "missing_field"
   },
@@ -3863,6 +4474,10 @@
     "truncated"
    ],
    "crossing_id": "seampow7d-172",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_code_eval_trial_orchestrator",
    "truth_class": "missing_field"
   },
@@ -3875,6 +4490,10 @@
     "task_class"
    ],
    "crossing_id": "seampow7d-173",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_code_eval_trial_orchestrator",
    "truth_class": "missing_field"
   },
@@ -3886,6 +4505,10 @@
     "reason"
    ],
    "crossing_id": "seampow7d-174",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_code_eval_trial_orchestrator",
    "truth_class": "missing_field"
   },
@@ -3900,6 +4523,10 @@
     "snapshot_path"
    ],
    "crossing_id": "seampow7d-175",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_code_eval_trial_orchestrator",
    "truth_class": "missing_field"
   },
@@ -3915,6 +4542,10 @@
     "status"
    ],
    "crossing_id": "seampow7d-176",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_code_eval_trial_orchestrator",
    "truth_class": "missing_field"
   },
@@ -3923,6 +4554,10 @@
     "findings"
    ],
    "crossing_id": "seampow7d-177",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_code_eval_trial_orchestrator",
    "truth_class": "missing_field"
   },
@@ -3938,6 +4573,10 @@
     "terminalized_at"
    ],
    "crossing_id": "seampow7d-178",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_code_eval_trial_orchestrator",
    "truth_class": "missing_field"
   },
@@ -3954,6 +4593,10 @@
     "unread"
    ],
    "crossing_id": "seampow7d-179",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_code_eval_trial_orchestrator",
    "truth_class": "missing_field"
   },
@@ -3970,6 +4613,10 @@
     "work_unit_id"
    ],
    "crossing_id": "seampow7d-180",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_delegate_skill_orchestrator",
    "truth_class": "missing_field"
   },
@@ -4017,6 +4664,7 @@
     "total_tokens"
    ],
    "crossing_id": "seampow7d-181",
+   "pydantic_error_types": [],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_delegate_skill_orchestrator",
    "truth_class": "wrong_meaning"
   },
@@ -4035,6 +4683,10 @@
     "verdict"
    ],
    "crossing_id": "seampow7d-182",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_delegate_skill_orchestrator",
    "truth_class": "missing_field"
   },
@@ -4050,6 +4702,10 @@
     "terminalized_at"
    ],
    "crossing_id": "seampow7d-183",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_delegate_skill_orchestrator",
    "truth_class": "missing_field"
   },
@@ -4068,6 +4724,10 @@
     "terminal_state"
    ],
    "crossing_id": "seampow7d-184",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_git_mirror_sync_schedule_compute",
    "truth_class": "missing_field"
   },
@@ -4085,6 +4745,10 @@
     "tasks"
    ],
    "crossing_id": "seampow7d-185",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_host_hygiene_orchestrator",
    "truth_class": "missing_field"
   },
@@ -4099,6 +4763,10 @@
     "snapshot_path"
    ],
    "crossing_id": "seampow7d-186",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_host_hygiene_orchestrator",
    "truth_class": "missing_field"
   },
@@ -4117,6 +4785,10 @@
     "verdict"
    ],
    "crossing_id": "seampow7d-187",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_lab_fill_plan_compute",
    "truth_class": "missing_field"
   },
@@ -4131,6 +4803,10 @@
     "snapshot_path"
    ],
    "crossing_id": "seampow7d-188",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_lab_fill_plan_compute",
    "truth_class": "missing_field"
   },
@@ -4139,6 +4815,10 @@
     "findings"
    ],
    "crossing_id": "seampow7d-189",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_lab_fill_plan_compute",
    "truth_class": "missing_field"
   },
@@ -4150,6 +4830,10 @@
     "tenant_id"
    ],
    "crossing_id": "seampow7d-190",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_local_environment_observe_effect",
    "truth_class": "missing_field"
   },
@@ -4161,6 +4845,10 @@
     "tenant_id"
    ],
    "crossing_id": "seampow7d-191",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_retention_cleanup",
    "truth_class": "missing_field"
   },
@@ -4181,6 +4869,10 @@
     "role"
    ],
    "crossing_id": "seampow7d-192",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_retention_cleanup",
    "truth_class": "missing_field"
   },
@@ -4215,6 +4907,10 @@
     "verified_count"
    ],
    "crossing_id": "seampow7d-193",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_retention_cleanup",
    "truth_class": "missing_field"
   },
@@ -4226,6 +4922,10 @@
     "tenant_id"
    ],
    "crossing_id": "seampow7d-194",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_retention_cleanup",
    "truth_class": "missing_field"
   },
@@ -4237,6 +4937,10 @@
     "tenant_id"
    ],
    "crossing_id": "seampow7d-195",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_retention_cleanup",
    "truth_class": "missing_field"
   },
@@ -4245,1537 +4949,2126 @@
     "projected"
    ],
    "crossing_id": "seampow7d-196",
+   "pydantic_error_types": [
+    "extra_forbidden",
+    "missing"
+   ],
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_retention_cleanup",
    "truth_class": "missing_field"
   }
  ],
- "schema": "seam-crossing-name-fixture/v1",
+ "healthy": [
+  {
+   "body_keys": [
+    "correlation_id",
+    "kind",
+    "limit",
+    "tenant_id"
+   ],
+   "count": 60,
+   "crossing_id": "healthy-000",
+   "seam_id": "onex.cmd.omnimarket.tenant-savings-read-requested.v1|node_tenant_savings_read_effect",
+   "source_ref": "onex.cmd.omnimarket.tenant-savings-read-requested.v1:0:22"
+  },
+  {
+   "body_keys": [
+    "correlation_id",
+    "lines_only",
+    "page_size",
+    "query",
+    "since"
+   ],
+   "count": 47,
+   "crossing_id": "healthy-001",
+   "seam_id": "onex.cmd.omnimarket.work-ledger-query-requested.v1|node_work_ledger_query_effect",
+   "source_ref": "onex.cmd.omnimarket.work-ledger-query-requested.v1:0:30230"
+  },
+  {
+   "body_keys": [
+    "correlation_id",
+    "kinds",
+    "limit",
+    "query",
+    "since",
+    "until"
+   ],
+   "count": 9,
+   "crossing_id": "healthy-002",
+   "seam_id": "onex.cmd.omnimarket.work-ledger-query-requested.v1|node_work_ledger_query_effect",
+   "source_ref": "onex.cmd.omnimarket.work-ledger-query-requested.v1:0:30231"
+  },
+  {
+   "body_keys": [
+    "correlation_id",
+    "kinds",
+    "limit",
+    "query",
+    "since",
+    "term",
+    "until"
+   ],
+   "count": 1,
+   "crossing_id": "healthy-003",
+   "seam_id": "onex.cmd.omnimarket.work-ledger-query-requested.v1|node_work_ledger_query_effect",
+   "source_ref": "onex.cmd.omnimarket.work-ledger-query-requested.v1:0:30232"
+  },
+  {
+   "body_keys": [
+    "correlation_id",
+    "query"
+   ],
+   "count": 1,
+   "crossing_id": "healthy-004",
+   "seam_id": "onex.cmd.omnimarket.work-ledger-query-requested.v1|node_work_ledger_query_effect",
+   "source_ref": "onex.cmd.omnimarket.work-ledger-query-requested.v1:0:30239"
+  },
+  {
+   "body_keys": [
+    "correlation_id",
+    "kinds",
+    "lane",
+    "limit",
+    "query",
+    "since",
+    "until"
+   ],
+   "count": 2,
+   "crossing_id": "healthy-005",
+   "seam_id": "onex.cmd.omnimarket.work-ledger-query-requested.v1|node_work_ledger_query_effect",
+   "source_ref": "onex.cmd.omnimarket.work-ledger-query-requested.v1:0:30267"
+  },
+  {
+   "body_keys": [
+    "attempts_count",
+    "completion_tokens",
+    "compliance_attempts",
+    "content",
+    "content_verdict",
+    "context_pack_hash",
+    "correlation_id",
+    "cost_tier_name",
+    "credential_source",
+    "cumulative_attempt_cost",
+    "cumulative_input_tokens",
+    "cumulative_output_tokens",
+    "endpoint_url",
+    "escalation_config_hash",
+    "escalation_count",
+    "escalation_history",
+    "failure_reason",
+    "fallback_to_claude",
+    "final_attempt_cost",
+    "latency_ms",
+    "model_used",
+    "operational_outcome",
+    "preamble_chars",
+    "prompt_tokens",
+    "provider",
+    "quality_passed",
+    "quality_score",
+    "required_quality_bar",
+    "response_contract_evidence",
+    "route",
+    "routing_tiers_hash",
+    "score_vs_required_bar",
+    "task_type",
+    "tenant_id",
+    "terminal_failure_reason",
+    "tokens_to_compliance",
+    "total_tokens"
+   ],
+   "count": 21,
+   "crossing_id": "healthy-006",
+   "seam_id": "onex.evt.omnibase-infra.delegation-completed.v1|node_delegate_skill_orchestrator",
+   "source_ref": "onex.evt.omnibase-infra.delegation-completed.v1:0:63482"
+  },
+  {
+   "body_keys": [
+    "attempts_count",
+    "completion_tokens",
+    "compliance_attempts",
+    "content",
+    "content_verdict",
+    "context_pack_hash",
+    "correlation_id",
+    "cost_tier_name",
+    "credential_source",
+    "cumulative_attempt_cost",
+    "cumulative_input_tokens",
+    "cumulative_output_tokens",
+    "endpoint_url",
+    "escalation_config_hash",
+    "escalation_count",
+    "escalation_history",
+    "failure_reason",
+    "fallback_to_claude",
+    "final_attempt_cost",
+    "latency_ms",
+    "model_used",
+    "operational_outcome",
+    "preamble_chars",
+    "prompt_tokens",
+    "provider",
+    "quality_passed",
+    "quality_score",
+    "required_quality_bar",
+    "response_contract_evidence",
+    "route",
+    "routing_tiers_hash",
+    "rule_evaluations",
+    "score_vs_required_bar",
+    "task_type",
+    "tenant_id",
+    "terminal_failure_reason",
+    "tokens_to_compliance",
+    "total_tokens"
+   ],
+   "count": 39,
+   "crossing_id": "healthy-007",
+   "seam_id": "onex.evt.omnibase-infra.delegation-completed.v1|node_delegate_skill_orchestrator",
+   "source_ref": "onex.evt.omnibase-infra.delegation-completed.v1:0:63484"
+  },
+  {
+   "body_keys": [
+    "correlation_id",
+    "now",
+    "scheduled_at",
+    "scheduler_id",
+    "sequence_number",
+    "tick_id",
+    "tick_interval_ms"
+   ],
+   "count": 60,
+   "crossing_id": "healthy-008",
+   "seam_id": "onex.intent.platform.runtime-tick.v1|node_git_mirror_sync_schedule_compute",
+   "source_ref": "onex.intent.platform.runtime-tick.v1:0:2912888"
+  },
+  {
+   "body_keys": [
+    "correlation_id",
+    "now",
+    "scheduled_at",
+    "scheduler_id",
+    "sequence_number",
+    "tick_id",
+    "tick_interval_ms"
+   ],
+   "count": 60,
+   "crossing_id": "healthy-009",
+   "seam_id": "onex.intent.platform.runtime-tick.v1|node_local_environment_observe_effect",
+   "source_ref": "onex.intent.platform.runtime-tick.v1:0:2912888"
+  }
+ ],
+ "healthy_source": "dev bus, newest records per topic read 2026-11-14 (payload keys only, envelope unwrapped); kept when the consumer model validated the real payload",
+ "schema": "seam-crossing-name-fixture/v2",
  "seams": [
   {
    "consumer": "node_tenant_delegations_read_effect",
    "consumer_model": "omnimarket.models.model_tenant_delegation_projection.ModelTenantReadRequest",
+   "extra_forbidden": true,
    "fields": [
     {
+     "has_default": false,
      "name": "tenant_id",
      "required": true
     },
     {
+     "has_default": true,
      "name": "limit",
      "required": false
     }
    ],
+   "has_adapter": false,
    "seam_id": "onex.cmd.omnimarket.tenant-delegations-read-requested.v1|node_tenant_delegations_read_effect",
    "topic": "onex.cmd.omnimarket.tenant-delegations-read-requested.v1"
   },
   {
    "consumer": "node_tenant_savings_read_effect",
    "consumer_model": "omnimarket.models.model_tenant_read_bus.ModelTenantReadCommand",
+   "extra_forbidden": true,
    "fields": [
     {
+     "has_default": false,
      "name": "correlation_id",
      "required": true
     },
     {
+     "has_default": false,
      "name": "tenant_id",
      "required": true
     },
     {
+     "has_default": false,
      "name": "kind",
      "required": true
     },
     {
+     "has_default": true,
      "name": "limit",
      "required": false
     }
    ],
+   "has_adapter": false,
    "seam_id": "onex.cmd.omnimarket.tenant-savings-read-requested.v1|node_tenant_savings_read_effect",
    "topic": "onex.cmd.omnimarket.tenant-savings-read-requested.v1"
   },
   {
    "consumer": "node_work_ledger_query_effect",
    "consumer_model": "omnimarket.models.work_ledger_query.model_work_ledger_query.ModelWorkLedgerQueryRequest",
+   "extra_forbidden": true,
    "fields": [
     {
+     "has_default": false,
      "name": "correlation_id",
      "required": true
     },
     {
+     "has_default": false,
      "name": "query",
      "required": true
     },
     {
+     "has_default": false,
      "name": "since",
      "required": false
     },
     {
+     "has_default": false,
      "name": "until",
      "required": false
     },
     {
+     "has_default": false,
      "name": "now",
      "required": false
     },
     {
+     "has_default": false,
      "name": "lane",
      "required": false
     },
     {
+     "has_default": true,
      "name": "lanes",
      "required": false
     },
     {
+     "has_default": false,
      "name": "ticket",
      "required": false
     },
     {
+     "has_default": false,
      "name": "pr",
      "required": false
     },
     {
+     "has_default": true,
      "name": "kinds",
      "required": false
     },
     {
+     "has_default": false,
      "name": "row_ref",
      "required": false
     },
     {
+     "has_default": false,
      "name": "term",
      "required": false
     },
     {
+     "has_default": false,
      "name": "repo",
      "required": false
     },
     {
+     "has_default": false,
      "name": "surface",
      "required": false
     },
     {
+     "has_default": false,
      "name": "to",
      "required": false
     },
     {
+     "has_default": false,
      "name": "claims_since",
      "required": false
     },
     {
+     "has_default": false,
      "name": "limit",
      "required": false
     },
     {
+     "has_default": false,
      "name": "principal",
      "required": false
     },
     {
+     "has_default": false,
      "name": "run",
      "required": false
     },
     {
+     "has_default": false,
      "name": "history",
      "required": false
     },
     {
+     "has_default": false,
      "name": "cursor",
      "required": false
     },
     {
+     "has_default": false,
      "name": "page_size",
      "required": false
     },
     {
+     "has_default": true,
      "name": "lines_only",
      "required": false
     },
     {
+     "has_default": false,
      "name": "subject_kind",
      "required": false
     },
     {
+     "has_default": true,
      "name": "tickets",
      "required": false
     }
    ],
+   "has_adapter": false,
    "seam_id": "onex.cmd.omnimarket.work-ledger-query-requested.v1|node_work_ledger_query_effect",
    "topic": "onex.cmd.omnimarket.work-ledger-query-requested.v1"
   },
   {
    "consumer": "node_dod_verify",
    "consumer_model": "omnimarket.nodes.node_dod_verify.models.model_dod_verify_start_command.ModelDodVerifyStartCommand",
+   "extra_forbidden": true,
    "fields": [
     {
+     "has_default": false,
      "name": "ticket_id",
      "required": true
     },
     {
+     "has_default": false,
      "name": "correlation_id",
      "required": false
     },
     {
+     "has_default": false,
      "name": "contract_path",
      "required": false
     },
     {
+     "has_default": true,
      "name": "dry_run",
      "required": false
     },
     {
+     "has_default": false,
      "name": "execution_audience",
      "required": false
     },
     {
+     "has_default": false,
      "name": "delegation_correlation_id",
      "required": false
     },
     {
+     "has_default": false,
      "name": "goal_id",
      "required": false
     },
     {
+     "has_default": false,
      "name": "parent_goal_id",
      "required": false
     },
     {
+     "has_default": false,
      "name": "level",
      "required": false
     },
     {
+     "has_default": false,
      "name": "contract_revision",
      "required": false
     },
     {
+     "has_default": false,
      "name": "contract_schema_version",
      "required": false
     },
     {
+     "has_default": true,
      "name": "dod_evidence",
      "required": false
     },
     {
+     "has_default": false,
      "name": "requested_at",
      "required": false
     }
    ],
+   "has_adapter": false,
    "seam_id": "onex.evt.github.pr-merged.v1|node_dod_verify",
    "topic": "onex.evt.github.pr-merged.v1"
   },
   {
    "consumer": "node_merge_override_alarm_effect",
    "consumer_model": "omnimarket.events.pr_landing_github.model_pr_landing_github_completed.ModelPrLandingGithubCompleted",
+   "extra_forbidden": true,
    "fields": [
     {
+     "has_default": false,
      "name": "correlation_id",
      "required": true
     },
     {
+     "has_default": false,
      "name": "operation",
      "required": true
     },
     {
+     "has_default": false,
      "name": "mode",
      "required": true
     },
     {
+     "has_default": false,
      "name": "repository",
      "required": true
     },
     {
+     "has_default": false,
      "name": "pr_number",
      "required": true
     },
     {
+     "has_default": false,
      "name": "head_sha",
      "required": false
     },
     {
+     "has_default": false,
      "name": "requests",
      "required": true
     },
     {
+     "has_default": false,
      "name": "http_statuses",
      "required": true
     },
     {
+     "has_default": true,
      "name": "not_modified",
      "required": false
     },
     {
+     "has_default": false,
      "name": "etag",
      "required": false
     },
     {
+     "has_default": true,
      "name": "check_runs",
      "required": false
     },
     {
+     "has_default": false,
      "name": "required_contexts",
      "required": false
     },
     {
+     "has_default": false,
      "name": "pr_state",
      "required": false
     },
     {
+     "has_default": true,
      "name": "started_attempts",
      "required": false
     },
     {
+     "has_default": false,
      "name": "quota",
      "required": true
     }
    ],
+   "has_adapter": false,
    "seam_id": "onex.evt.github.pr-merged.v1|node_merge_override_alarm_effect",
    "topic": "onex.evt.github.pr-merged.v1"
   },
   {
    "consumer": "node_pr_landing_orchestrator",
    "consumer_model": "omnimarket.nodes.node_pr_landing_orchestrator.models.model_pr_landing_ingress.ModelPrLandingAutobindPrompt",
+   "extra_forbidden": true,
    "fields": [
     {
+     "has_default": false,
      "name": "correlation_id",
      "required": true
     },
     {
+     "has_default": false,
      "name": "pr_number",
      "required": true
     },
     {
+     "has_default": false,
      "name": "repo",
      "required": true
     },
     {
+     "has_default": false,
      "name": "block_reason",
      "required": true
     },
     {
+     "has_default": false,
      "name": "ticket_id",
      "required": false
     },
     {
+     "has_default": true,
      "name": "occ_batch_mode",
      "required": false
     },
     {
+     "has_default": true,
      "name": "op",
      "required": false
     },
     {
+     "has_default": false,
      "name": "command_id",
      "required": false
     },
     {
+     "has_default": true,
      "name": "dry_run",
      "required": false
     },
     {
+     "has_default": false,
      "name": "requested_at",
      "required": true
     },
     {
+     "has_default": false,
      "name": "changed_files",
      "required": false
     },
     {
+     "has_default": true,
      "name": "diff_total_lines",
      "required": false
     },
     {
+     "has_default": true,
      "name": "review_context_text",
      "required": false
     }
    ],
+   "has_adapter": false,
    "seam_id": "onex.evt.github.pr-merged.v1|node_pr_landing_orchestrator",
    "topic": "onex.evt.github.pr-merged.v1"
   },
   {
    "consumer": "node_delegate_skill_orchestrator",
    "consumer_model": "omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_result.ModelDelegationCompleted",
+   "extra_forbidden": true,
    "fields": [
     {
+     "has_default": false,
      "name": "correlation_id",
      "required": true
     },
     {
+     "has_default": false,
      "name": "task_type",
      "required": true
     },
     {
+     "has_default": false,
      "name": "model_used",
      "required": true
     },
     {
+     "has_default": false,
      "name": "endpoint_url",
      "required": true
     },
     {
+     "has_default": false,
      "name": "route",
      "required": false
     },
     {
+     "has_default": false,
      "name": "provider",
      "required": false
     },
     {
+     "has_default": false,
      "name": "credential_source",
      "required": false
     },
     {
+     "has_default": false,
      "name": "provenance",
      "required": false
     },
     {
+     "has_default": false,
      "name": "trace_id",
      "required": false
     },
     {
+     "has_default": false,
      "name": "span_id",
      "required": false
     },
     {
+     "has_default": false,
      "name": "content",
      "required": true
     },
     {
+     "has_default": false,
      "name": "operational_outcome",
      "required": false
     },
     {
+     "has_default": false,
      "name": "content_verdict",
      "required": false
     },
     {
+     "has_default": false,
      "name": "response_contract_evidence",
      "required": false
     },
     {
+     "has_default": false,
      "name": "budget_evidence",
      "required": false
     },
     {
+     "has_default": false,
      "name": "budget_refusal",
      "required": false
     },
     {
+     "has_default": false,
      "name": "output_refusal",
      "required": false
     },
     {
+     "has_default": false,
      "name": "preamble_chars",
      "required": false
     },
     {
+     "has_default": false,
      "name": "quality_passed",
      "required": true
     },
     {
+     "has_default": false,
      "name": "quality_score",
      "required": false
     },
     {
+     "has_default": false,
      "name": "required_quality_bar",
      "required": false
     },
     {
+     "has_default": false,
      "name": "score_vs_required_bar",
      "required": false
     },
     {
+     "has_default": true,
      "name": "failed_acceptance_criteria",
      "required": false
     },
     {
+     "has_default": true,
      "name": "rule_evaluations",
      "required": false
     },
     {
+     "has_default": false,
      "name": "latency_ms",
      "required": true
     },
     {
+     "has_default": true,
      "name": "prompt_tokens",
      "required": false
     },
     {
+     "has_default": true,
      "name": "completion_tokens",
      "required": false
     },
     {
+     "has_default": true,
      "name": "total_tokens",
      "required": false
     },
     {
+     "has_default": false,
      "name": "fallback_to_claude",
      "required": true
     },
     {
+     "has_default": true,
      "name": "failure_reason",
      "required": false
     },
     {
+     "has_default": true,
      "name": "tokens_to_compliance",
      "required": false
     },
     {
+     "has_default": true,
      "name": "compliance_attempts",
      "required": false
     },
     {
+     "has_default": true,
      "name": "escalation_count",
      "required": false
     },
     {
+     "has_default": true,
      "name": "escalation_history",
      "required": false
     },
     {
+     "has_default": false,
      "name": "terminal_failure_reason",
      "required": false
     },
     {
+     "has_default": false,
      "name": "terminal_failure_cause",
      "required": false
     },
     {
+     "has_default": false,
      "name": "routing_tiers_hash",
      "required": false
     },
     {
+     "has_default": false,
      "name": "escalation_config_hash",
      "required": false
     },
     {
+     "has_default": true,
      "name": "attempts_count",
      "required": false
     },
     {
+     "has_default": true,
      "name": "cumulative_attempt_cost",
      "required": false
     },
     {
+     "has_default": true,
      "name": "cumulative_input_tokens",
      "required": false
     },
     {
+     "has_default": true,
      "name": "cumulative_output_tokens",
      "required": false
     },
     {
+     "has_default": true,
      "name": "final_attempt_cost",
      "required": false
     },
     {
+     "has_default": true,
      "name": "context_pack_hash",
      "required": false
     },
     {
+     "has_default": true,
      "name": "cost_tier_name",
      "required": false
     },
     {
+     "has_default": false,
      "name": "tenant_id",
      "required": false
     }
    ],
+   "has_adapter": false,
    "seam_id": "onex.evt.omnibase-infra.delegation-completed.v1|node_delegate_skill_orchestrator",
    "topic": "onex.evt.omnibase-infra.delegation-completed.v1"
   },
   {
    "consumer": "node_delegate_skill_orchestrator",
    "consumer_model": "omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_result.ModelDelegationCompleted",
+   "extra_forbidden": true,
    "fields": [
     {
+     "has_default": false,
      "name": "correlation_id",
      "required": true
     },
     {
+     "has_default": false,
      "name": "task_type",
      "required": true
     },
     {
+     "has_default": false,
      "name": "model_used",
      "required": true
     },
     {
+     "has_default": false,
      "name": "endpoint_url",
      "required": true
     },
     {
+     "has_default": false,
      "name": "route",
      "required": false
     },
     {
+     "has_default": false,
      "name": "provider",
      "required": false
     },
     {
+     "has_default": false,
      "name": "credential_source",
      "required": false
     },
     {
+     "has_default": false,
      "name": "provenance",
      "required": false
     },
     {
+     "has_default": false,
      "name": "trace_id",
      "required": false
     },
     {
+     "has_default": false,
      "name": "span_id",
      "required": false
     },
     {
+     "has_default": false,
      "name": "content",
      "required": true
     },
     {
+     "has_default": false,
      "name": "operational_outcome",
      "required": false
     },
     {
+     "has_default": false,
      "name": "content_verdict",
      "required": false
     },
     {
+     "has_default": false,
      "name": "response_contract_evidence",
      "required": false
     },
     {
+     "has_default": false,
      "name": "budget_evidence",
      "required": false
     },
     {
+     "has_default": false,
      "name": "budget_refusal",
      "required": false
     },
     {
+     "has_default": false,
      "name": "output_refusal",
      "required": false
     },
     {
+     "has_default": false,
      "name": "preamble_chars",
      "required": false
     },
     {
+     "has_default": false,
      "name": "quality_passed",
      "required": true
     },
     {
+     "has_default": false,
      "name": "quality_score",
      "required": false
     },
     {
+     "has_default": false,
      "name": "required_quality_bar",
      "required": false
     },
     {
+     "has_default": false,
      "name": "score_vs_required_bar",
      "required": false
     },
     {
+     "has_default": true,
      "name": "failed_acceptance_criteria",
      "required": false
     },
     {
+     "has_default": true,
      "name": "rule_evaluations",
      "required": false
     },
     {
+     "has_default": false,
      "name": "latency_ms",
      "required": true
     },
     {
+     "has_default": true,
      "name": "prompt_tokens",
      "required": false
     },
     {
+     "has_default": true,
      "name": "completion_tokens",
      "required": false
     },
     {
+     "has_default": true,
      "name": "total_tokens",
      "required": false
     },
     {
+     "has_default": false,
      "name": "fallback_to_claude",
      "required": true
     },
     {
+     "has_default": true,
      "name": "failure_reason",
      "required": false
     },
     {
+     "has_default": true,
      "name": "tokens_to_compliance",
      "required": false
     },
     {
+     "has_default": true,
      "name": "compliance_attempts",
      "required": false
     },
     {
+     "has_default": true,
      "name": "escalation_count",
      "required": false
     },
     {
+     "has_default": true,
      "name": "escalation_history",
      "required": false
     },
     {
+     "has_default": false,
      "name": "terminal_failure_reason",
      "required": false
     },
     {
+     "has_default": false,
      "name": "terminal_failure_cause",
      "required": false
     },
     {
+     "has_default": false,
      "name": "routing_tiers_hash",
      "required": false
     },
     {
+     "has_default": false,
      "name": "escalation_config_hash",
      "required": false
     },
     {
+     "has_default": true,
      "name": "attempts_count",
      "required": false
     },
     {
+     "has_default": true,
      "name": "cumulative_attempt_cost",
      "required": false
     },
     {
+     "has_default": true,
      "name": "cumulative_input_tokens",
      "required": false
     },
     {
+     "has_default": true,
      "name": "cumulative_output_tokens",
      "required": false
     },
     {
+     "has_default": true,
      "name": "final_attempt_cost",
      "required": false
     },
     {
+     "has_default": true,
      "name": "context_pack_hash",
      "required": false
     },
     {
+     "has_default": true,
      "name": "cost_tier_name",
      "required": false
     },
     {
+     "has_default": false,
      "name": "tenant_id",
      "required": false
     }
    ],
+   "has_adapter": false,
    "seam_id": "onex.evt.omnibase-infra.delegation-failed.v1|node_delegate_skill_orchestrator",
    "topic": "onex.evt.omnibase-infra.delegation-failed.v1"
   },
   {
    "consumer": "node_log_persistence_effect",
    "consumer_model": "omnimarket.models.delegation.wire.model_delegate_skill_response.ModelDelegateSkillFailed",
+   "extra_forbidden": true,
    "fields": [
     {
+     "has_default": true,
      "name": "status",
      "required": false
     },
     {
+     "has_default": false,
      "name": "operational_outcome",
      "required": false
     },
     {
+     "has_default": false,
      "name": "content_verdict",
      "required": false
     },
     {
+     "has_default": false,
      "name": "terminal_failure_reason",
      "required": false
     },
     {
+     "has_default": false,
      "name": "correlation_id",
      "required": true
     },
     {
+     "has_default": false,
      "name": "task_type",
      "required": true
     },
     {
+     "has_default": false,
      "name": "tenant_id",
      "required": false
     },
     {
+     "has_default": false,
      "name": "provenance",
      "required": false
     },
     {
+     "has_default": false,
      "name": "secret_source",
      "required": false
     },
     {
+     "has_default": false,
      "name": "secret_ref",
      "required": false
     },
     {
+     "has_default": true,
      "name": "provider",
      "required": false
     },
     {
+     "has_default": true,
      "name": "model_name",
      "required": false
     },
     {
+     "has_default": true,
      "name": "model_cloud_baseline",
      "required": false
     },
     {
+     "has_default": true,
      "name": "baseline_source",
      "required": false
     },
     {
+     "has_default": true,
      "name": "baseline_state",
      "required": false
     },
     {
+     "has_default": true,
      "name": "pricing_manifest_version",
      "required": false
     },
     {
+     "has_default": true,
      "name": "prompt_text",
      "required": false
     },
     {
+     "has_default": true,
      "name": "response",
      "required": false
     },
     {
+     "has_default": true,
      "name": "quality_gate_passed",
      "required": false
     },
     {
+     "has_default": false,
      "name": "quality_score",
      "required": false
     },
     {
+     "has_default": false,
      "name": "required_quality_bar",
      "required": false
     },
     {
+     "has_default": false,
      "name": "score_vs_required_bar",
      "required": false
     },
     {
+     "has_default": true,
      "name": "failed_acceptance_criteria",
      "required": false
     },
     {
+     "has_default": true,
      "name": "rule_evaluations",
      "required": false
     },
     {
+     "has_default": false,
      "name": "terminal_failure_cause",
      "required": false
     },
     {
+     "has_default": false,
      "name": "response_contract_evidence",
      "required": false
     },
     {
+     "has_default": false,
      "name": "budget_evidence",
      "required": false
     },
     {
+     "has_default": false,
      "name": "budget_refusal",
      "required": false
     },
     {
+     "has_default": false,
      "name": "output_refusal",
      "required": false
     },
     {
+     "has_default": false,
      "name": "output_manifest",
      "required": false
     },
     {
+     "has_default": false,
      "name": "output_files",
      "required": false
     },
     {
+     "has_default": false,
      "name": "preamble_chars",
      "required": false
     },
     {
+     "has_default": false,
      "name": "quality_gates_failed",
      "required": false
     },
     {
+     "has_default": false,
      "name": "metrics",
      "required": false
     },
     {
+     "has_default": false,
      "name": "credential_refusal",
      "required": false
     },
     {
+     "has_default": false,
      "name": "credential_withheld",
      "required": false
     },
     {
+     "has_default": true,
      "name": "error_message",
      "required": false
     },
     {
+     "has_default": true,
      "name": "escalation_count",
      "required": false
     },
     {
+     "has_default": true,
      "name": "attempts_count",
      "required": false
     },
     {
+     "has_default": false,
      "name": "attempts",
      "required": false
     },
     {
+     "has_default": false,
      "name": "response_source_attempt",
      "required": false
     },
     {
+     "has_default": false,
      "name": "finish_reason",
      "required": false
     },
     {
+     "has_default": true,
      "name": "truncated",
      "required": false
     },
     {
+     "has_default": false,
      "name": "reasoning_preamble_rule",
      "required": false
     },
     {
+     "has_default": false,
      "name": "queue_wait_ms",
      "required": false
     },
     {
+     "has_default": false,
      "name": "execution_duration_ms",
      "required": false
     },
     {
+     "has_default": false,
      "name": "ticket_id",
      "required": false
     },
     {
+     "has_default": false,
      "name": "caller_lane",
      "required": false
     },
     {
+     "has_default": false,
      "name": "session_id",
      "required": false
     },
     {
+     "has_default": false,
      "name": "command_id",
      "required": false
     },
     {
+     "has_default": false,
      "name": "trace_id",
      "required": false
     },
     {
+     "has_default": false,
      "name": "span_id",
      "required": false
     },
     {
+     "has_default": false,
      "name": "budget_source",
      "required": false
     }
    ],
+   "has_adapter": true,
    "seam_id": "onex.evt.omnimarket.delegate-skill-completed.v1|node_log_persistence_effect",
    "topic": "onex.evt.omnimarket.delegate-skill-completed.v1"
   },
   {
    "consumer": "node_log_persistence_effect",
    "consumer_model": "omnibase_core.models.logging.model_structured_log_entry.ModelStructuredLogEntry",
+   "extra_forbidden": true,
    "fields": [
     {
+     "has_default": false,
      "name": "entry_id",
      "required": false
     },
     {
+     "has_default": false,
      "name": "timestamp",
      "required": false
     },
     {
+     "has_default": false,
      "name": "source_system",
      "required": true
     },
     {
+     "has_default": false,
      "name": "operation",
      "required": true
     },
     {
+     "has_default": false,
      "name": "node_id",
      "required": false
     },
     {
+     "has_default": false,
      "name": "correlation_id",
      "required": false
     },
     {
+     "has_default": false,
      "name": "session_id",
      "required": false
     },
     {
+     "has_default": false,
      "name": "level",
      "required": true
     },
     {
+     "has_default": false,
      "name": "message",
      "required": true
     },
     {
+     "has_default": false,
      "name": "status",
      "required": true
     },
     {
+     "has_default": false,
      "name": "redaction_state",
      "required": true
     },
     {
+     "has_default": false,
      "name": "suppression_decision",
      "required": true
     },
     {
+     "has_default": false,
      "name": "artifact_refs",
      "required": false
     },
     {
+     "has_default": false,
      "name": "metadata",
      "required": false
     }
    ],
+   "has_adapter": false,
    "seam_id": "onex.evt.omnimarket.delegate-skill-failed.v1|node_log_persistence_effect",
    "topic": "onex.evt.omnimarket.delegate-skill-failed.v1"
   },
   {
    "consumer": "node_goal_verification_orchestrator",
    "consumer_model": "omnimarket.nodes.node_goal_verification_orchestrator.models.model_goal_verification.ModelGoalDispositionRecorded",
+   "extra_forbidden": true,
    "fields": [
     {
+     "has_default": false,
      "name": "event_id",
      "required": true
     },
     {
+     "has_default": false,
      "name": "goal_id",
      "required": true
     },
     {
+     "has_default": false,
      "name": "contract_revision",
      "required": true
     },
     {
+     "has_default": false,
      "name": "disposition",
      "required": true
     },
     {
+     "has_default": false,
      "name": "emitted_at",
      "required": true
     }
    ],
+   "has_adapter": false,
    "seam_id": "onex.evt.omnimarket.dod-verify-completed.v1|node_goal_verification_orchestrator",
    "topic": "onex.evt.omnimarket.dod-verify-completed.v1"
   },
   {
    "consumer": "node_host_hygiene_orchestrator",
    "consumer_model": "omnimarket.models.model_host_disk_reading.ModelHostDiskReadFailed",
+   "extra_forbidden": true,
    "fields": [
     {
+     "has_default": false,
      "name": "correlation_id",
      "required": true
     },
     {
+     "has_default": false,
      "name": "host_name",
      "required": true
     },
     {
+     "has_default": false,
      "name": "read_at",
      "required": true
     },
     {
+     "has_default": false,
      "name": "reason",
      "required": true
     },
     {
+     "has_default": false,
      "name": "detail",
      "required": true
     }
    ],
+   "has_adapter": false,
    "seam_id": "onex.evt.omnimarket.host-disk-read.v1|node_host_hygiene_orchestrator",
    "topic": "onex.evt.omnimarket.host-disk-read.v1"
   },
   {
    "consumer": "node_code_eval_trial_orchestrator",
    "consumer_model": "omnimarket.models.code_eval_trial.model_code_eval_run_request.ModelCodeEvalRunRequest",
+   "extra_forbidden": true,
    "fields": [
     {
+     "has_default": false,
      "name": "correlation_id",
      "required": true
     },
     {
+     "has_default": false,
      "name": "tenant_id",
      "required": true
     },
     {
+     "has_default": false,
      "name": "harness_revision",
      "required": true
     },
     {
+     "has_default": false,
      "name": "publish_cells",
      "required": true
     },
     {
+     "has_default": false,
      "name": "candidates",
      "required": true
     },
     {
+     "has_default": false,
      "name": "arms",
      "required": true
     }
    ],
+   "has_adapter": false,
    "seam_id": "onex.evt.omnimarket.lab-host-capacity-advertised.v1|node_code_eval_trial_orchestrator",
    "topic": "onex.evt.omnimarket.lab-host-capacity-advertised.v1"
   },
   {
    "consumer": "node_code_eval_trial_orchestrator",
    "consumer_model": "omnimarket.models.code_eval_trial.model_code_eval_run_nudge.ModelCodeEvalRunNudge",
+   "extra_forbidden": true,
    "fields": [
     {
+     "has_default": false,
      "name": "correlation_id",
      "required": true
     },
     {
+     "has_default": false,
      "name": "now",
      "required": true
     },
     {
+     "has_default": false,
      "name": "tick_id",
      "required": true
     }
    ],
+   "has_adapter": false,
    "seam_id": "onex.evt.omnimarket.lab-work-unit-completed.v1|node_code_eval_trial_orchestrator",
    "topic": "onex.evt.omnimarket.lab-work-unit-completed.v1"
   },
   {
    "consumer": "node_autopilot_orchestrator",
    "consumer_model": "omnimarket.nodes.node_autopilot_orchestrator.models.model_autopilot_start_command.ModelAutopilotStartCommand",
+   "extra_forbidden": true,
    "fields": [
     {
+     "has_default": false,
      "name": "correlation_id",
      "required": true
     },
     {
+     "has_default": true,
      "name": "mode",
      "required": false
     },
     {
+     "has_default": true,
      "name": "dry_run",
      "required": false
     },
     {
+     "has_default": true,
      "name": "autonomous",
      "required": false
     }
    ],
+   "has_adapter": false,
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_autopilot_orchestrator",
    "topic": "onex.intent.platform.runtime-tick.v1"
   },
   {
    "consumer": "node_code_eval_trial_orchestrator",
    "consumer_model": "omnimarket.models.code_eval_trial.model_code_eval_run_closed.ModelCodeEvalRunClosed",
+   "extra_forbidden": true,
    "fields": [
     {
+     "has_default": false,
      "name": "correlation_id",
      "required": true
     },
     {
+     "has_default": false,
      "name": "tenant_id",
      "required": true
     },
     {
+     "has_default": false,
      "name": "harness_revision",
      "required": true
     },
     {
+     "has_default": false,
      "name": "publish_cells",
      "required": true
     },
     {
+     "has_default": false,
      "name": "attempt_budgets",
      "required": true
     },
     {
+     "has_default": false,
      "name": "digest",
      "required": true
     },
     {
+     "has_default": false,
      "name": "closed_at",
      "required": true
     },
     {
+     "has_default": false,
      "name": "abandoned",
      "required": true
     },
     {
+     "has_default": false,
      "name": "excluded_counts",
      "required": false
     },
     {
+     "has_default": true,
      "name": "controls",
      "required": false
     },
     {
+     "has_default": true,
      "name": "sequences",
      "required": false
     }
    ],
+   "has_adapter": false,
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_code_eval_trial_orchestrator",
    "topic": "onex.intent.platform.runtime-tick.v1"
   },
   {
    "consumer": "node_delegate_skill_orchestrator",
    "consumer_model": "omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_result.ModelDelegationFailed",
+   "extra_forbidden": true,
    "fields": [
     {
+     "has_default": false,
      "name": "correlation_id",
      "required": true
     },
     {
+     "has_default": false,
      "name": "task_type",
      "required": true
     },
     {
+     "has_default": false,
      "name": "model_used",
      "required": true
     },
     {
+     "has_default": false,
      "name": "endpoint_url",
      "required": true
     },
     {
+     "has_default": false,
      "name": "route",
      "required": false
     },
     {
+     "has_default": false,
      "name": "provider",
      "required": false
     },
     {
+     "has_default": false,
      "name": "credential_source",
      "required": false
     },
     {
+     "has_default": false,
      "name": "provenance",
      "required": false
     },
     {
+     "has_default": false,
      "name": "trace_id",
      "required": false
     },
     {
+     "has_default": false,
      "name": "span_id",
      "required": false
     },
     {
+     "has_default": false,
      "name": "content",
      "required": true
     },
     {
+     "has_default": false,
      "name": "operational_outcome",
      "required": false
     },
     {
+     "has_default": false,
      "name": "content_verdict",
      "required": false
     },
     {
+     "has_default": false,
      "name": "response_contract_evidence",
      "required": false
     },
     {
+     "has_default": false,
      "name": "budget_evidence",
      "required": false
     },
     {
+     "has_default": false,
      "name": "budget_refusal",
      "required": false
     },
     {
+     "has_default": false,
      "name": "output_refusal",
      "required": false
     },
     {
+     "has_default": false,
      "name": "preamble_chars",
      "required": false
     },
     {
+     "has_default": false,
      "name": "quality_passed",
      "required": true
     },
     {
+     "has_default": false,
      "name": "quality_score",
      "required": false
     },
     {
+     "has_default": false,
      "name": "required_quality_bar",
      "required": false
     },
     {
+     "has_default": false,
      "name": "score_vs_required_bar",
      "required": false
     },
     {
+     "has_default": true,
      "name": "failed_acceptance_criteria",
      "required": false
     },
     {
+     "has_default": true,
      "name": "rule_evaluations",
      "required": false
     },
     {
+     "has_default": false,
      "name": "latency_ms",
      "required": true
     },
     {
+     "has_default": true,
      "name": "prompt_tokens",
      "required": false
     },
     {
+     "has_default": true,
      "name": "completion_tokens",
      "required": false
     },
     {
+     "has_default": true,
      "name": "total_tokens",
      "required": false
     },
     {
+     "has_default": false,
      "name": "fallback_to_claude",
      "required": true
     },
     {
+     "has_default": true,
      "name": "failure_reason",
      "required": false
     },
     {
+     "has_default": true,
      "name": "tokens_to_compliance",
      "required": false
     },
     {
+     "has_default": true,
      "name": "compliance_attempts",
      "required": false
     },
     {
+     "has_default": true,
      "name": "escalation_count",
      "required": false
     },
     {
+     "has_default": true,
      "name": "escalation_history",
      "required": false
     },
     {
+     "has_default": false,
      "name": "terminal_failure_reason",
      "required": false
     },
     {
+     "has_default": false,
      "name": "terminal_failure_cause",
      "required": false
     },
     {
+     "has_default": false,
      "name": "routing_tiers_hash",
      "required": false
     },
     {
+     "has_default": false,
      "name": "escalation_config_hash",
      "required": false
     },
     {
+     "has_default": true,
      "name": "attempts_count",
      "required": false
     },
     {
+     "has_default": true,
      "name": "cumulative_attempt_cost",
      "required": false
     },
     {
+     "has_default": true,
      "name": "cumulative_input_tokens",
      "required": false
     },
     {
+     "has_default": true,
      "name": "cumulative_output_tokens",
      "required": false
     },
     {
+     "has_default": true,
      "name": "final_attempt_cost",
      "required": false
     },
     {
+     "has_default": true,
      "name": "context_pack_hash",
      "required": false
     },
     {
+     "has_default": true,
      "name": "cost_tier_name",
      "required": false
     },
     {
+     "has_default": false,
      "name": "tenant_id",
      "required": false
     }
    ],
+   "has_adapter": false,
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_delegate_skill_orchestrator",
    "topic": "onex.intent.platform.runtime-tick.v1"
   },
   {
    "consumer": "node_git_mirror_sync_schedule_compute",
    "consumer_model": "omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick",
+   "extra_forbidden": true,
    "fields": [
     {
+     "has_default": false,
      "name": "now",
      "required": true
     },
     {
+     "has_default": false,
      "name": "tick_id",
      "required": true
     },
     {
+     "has_default": false,
      "name": "sequence_number",
      "required": true
     },
     {
+     "has_default": false,
      "name": "scheduled_at",
      "required": true
     },
     {
+     "has_default": false,
      "name": "correlation_id",
      "required": true
     },
     {
+     "has_default": false,
      "name": "scheduler_id",
      "required": true
     },
     {
+     "has_default": false,
      "name": "tick_interval_ms",
      "required": true
     }
    ],
+   "has_adapter": false,
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_git_mirror_sync_schedule_compute",
    "topic": "onex.intent.platform.runtime-tick.v1"
   },
   {
    "consumer": "node_host_hygiene_orchestrator",
    "consumer_model": "omnimarket.models.model_host_disk_reading.ModelHostDiskRead",
+   "extra_forbidden": true,
    "fields": [
     {
+     "has_default": false,
      "name": "correlation_id",
      "required": true
     },
     {
+     "has_default": false,
      "name": "host_name",
      "required": true
     },
     {
+     "has_default": false,
      "name": "read_at",
      "required": true
     },
     {
+     "has_default": false,
      "name": "volumes",
      "required": true
     },
     {
+     "has_default": false,
      "name": "classes",
      "required": true
     }
    ],
+   "has_adapter": false,
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_host_hygiene_orchestrator",
    "topic": "onex.intent.platform.runtime-tick.v1"
   },
   {
    "consumer": "node_lab_fill_plan_compute",
    "consumer_model": "omnimarket.models.model_lab_fill_fire_headroom.ModelLabFillFireHeadroomRequest",
+   "extra_forbidden": true,
    "fields": [
     {
+     "has_default": false,
      "name": "fire",
      "required": true
     },
     {
+     "has_default": false,
      "name": "observed_at",
      "required": true
     },
     {
+     "has_default": true,
      "name": "readings",
      "required": false
     },
     {
+     "has_default": true,
      "name": "max_lanes",
      "required": false
     }
    ],
+   "has_adapter": false,
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_lab_fill_plan_compute",
    "topic": "onex.intent.platform.runtime-tick.v1"
   },
   {
    "consumer": "node_local_environment_observe_effect",
    "consumer_model": "omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick",
+   "extra_forbidden": true,
    "fields": [
     {
+     "has_default": false,
      "name": "now",
      "required": true
     },
     {
+     "has_default": false,
      "name": "tick_id",
      "required": true
     },
     {
+     "has_default": false,
      "name": "sequence_number",
      "required": true
     },
     {
+     "has_default": false,
      "name": "scheduled_at",
      "required": true
     },
     {
+     "has_default": false,
      "name": "correlation_id",
      "required": true
     },
     {
+     "has_default": false,
      "name": "scheduler_id",
      "required": true
     },
     {
+     "has_default": false,
      "name": "tick_interval_ms",
      "required": true
     }
    ],
+   "has_adapter": false,
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_local_environment_observe_effect",
    "topic": "onex.intent.platform.runtime-tick.v1"
   },
   {
    "consumer": "node_retention_cleanup",
    "consumer_model": "omnimarket.nodes.node_retention_cleanup.models.model_cache_tree_retention.CacheTreeRequest",
+   "extra_forbidden": true,
    "fields": [
     {
+     "has_default": false,
      "name": "entries",
      "required": true
     },
     {
+     "has_default": false,
      "name": "now",
      "required": true
     },
     {
+     "has_default": true,
      "name": "dry_run",
      "required": false
     },
     {
+     "has_default": true,
      "name": "only",
      "required": false
     }
    ],
+   "has_adapter": false,
    "seam_id": "onex.intent.platform.runtime-tick.v1|node_retention_cleanup",
    "topic": "onex.intent.platform.runtime-tick.v1"
   }

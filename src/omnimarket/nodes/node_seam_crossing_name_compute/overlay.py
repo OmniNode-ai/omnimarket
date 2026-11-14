@@ -11,7 +11,7 @@ from omnimarket.handlers.node_overlay_reader import (
     find_node_overlay,
     load_structured_overlay,
 )
-from omnimarket.models.seam_crossing_name import (
+from omnimarket.nodes.node_seam_crossing_name_compute.models.model_seam_crossing_naming import (
     ModelSeamCrossingNaming,
     ModelSeamCrossingNamingConfig,
 )

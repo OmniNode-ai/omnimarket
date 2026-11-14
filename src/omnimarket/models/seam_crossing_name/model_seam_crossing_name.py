@@ -9,25 +9,17 @@ from enum import StrEnum
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from omnimarket.models.seam_field_diff import ModelSeamModelSummary
+from omnimarket.nodes.node_seam_crossing_name_compute.models.model_seam_crossing_naming import (
+    ModelSeamCrossingNaming,
+)
+from omnimarket.nodes.node_seam_crossing_name_compute.overlay import (
+    load_seam_crossing_naming,
+)
 
 
 class EnumSeamCrossingDecidedBy(StrEnum):
     RULE_R = "rule_r"
     KEY_CHECK = "key_check"
-
-
-class ModelSeamCrossingNaming(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
-    missing_required: str = Field(min_length=1)
-    undeclared_key: str = Field(min_length=1)
-    clean: str = Field(min_length=1)
-
-
-class ModelSeamCrossingNamingConfig(BaseModel):
-    """Contract configuration resolved at the composition boundary."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-    naming: ModelSeamCrossingNaming
 
 
 class ModelSeamCrossing(BaseModel):
@@ -42,7 +34,7 @@ class ModelSeamCrossing(BaseModel):
 class ModelSeamCrossingNameRequest(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
     crossings: tuple[ModelSeamCrossing, ...]
-    naming: ModelSeamCrossingNaming | None = None
+    naming: ModelSeamCrossingNaming = Field(default_factory=load_seam_crossing_naming)
 
     @field_validator("crossings")
     @classmethod
@@ -65,9 +57,14 @@ class ModelSeamCrossingName(BaseModel):
     name: str
     fields: tuple[str, ...]
     decided_by: EnumSeamCrossingDecidedBy
+    # The consumer has an adapter that may supply or reshape fields, so the name
+    # rests on declared fields and is advisory.
+    consumer_has_adapter: bool
 
 
 class ModelSeamCrossingNameVerdict(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
     names: tuple[ModelSeamCrossingName, ...]
     counts: dict[str, int]
+    # Count of names whose consumer has an adapter.
+    adapter_advisory: int

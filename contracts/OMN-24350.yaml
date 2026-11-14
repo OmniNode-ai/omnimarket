@@ -28,7 +28,7 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
   - id: dod-omn24350-ac1
-    description: 'AC1: the fixture score test names the hashed keys-only fixture at least 180 of 197 (exactly 180) and has failing controls: with the key-check step removed from the handler 10 of 26 tests in the node directory fail, among them the fixture score and the per-class reading; a rule-R-only control scores 108 of 197.'
+    description: 'AC1: the fixture score test names the hashed keys-only fixture (v2, real consumer flags per seam) at least 180 of 197 (exactly 180), with every name consistent with the error classes the real pydantic validator raised on the real bodies (197 of 197) and no name other than the clean label on 300 healthy dev-bus records. Failing controls: with the key-check step removed the score and per-class readings fail; with extra_forbidden neutralised the same scorer reads 108 of 197 correct and 122 of 197 consistent; a rule-R-only control scores 108 of 197; the healthy reading is shown able to fail by reading the healthy key sets against other consumers (10 of 10 not clean).'
     source: manual
     binds_ac:
       - AC1
@@ -46,13 +46,13 @@ dod_evidence:
         check_value: env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_seam_crossing_name_compute/test_overlay_seam_crossing_name.py tests/nodes/node_seam_crossing_name_compute/test_runtime_wiring_seam_crossing_name.py -q -p no:cacheprovider
         cwd: .
   - id: dod-omn24350-ac3
-    description: 'AC3: the join test builds one consumer summary for the field diff detector and for the naming node, shows both name the same field, and guards the shared declared-side shape (the consumer annotation and the field fact names).'
+    description: 'AC3: the join test builds one consumer summary for the field diff detector and for the naming node and shows both agree on a missing field, a rejected extra key, a consumer that ignores extra keys, a defaulted required field and an adapter consumer (the detector skips it and the node flags the name advisory); it guards the shared declared-side shape (the consumer annotation, the consumer summary fields and the field fact names). A second test checks the node against real pydantic models: extra forbid, extra ignore, a before validator and a default.'
     source: manual
     binds_ac:
       - AC3
     checks:
       - check_type: test_passes
-        check_value: env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_seam_crossing_name_compute/test_join_field_diff_to_naming.py -q -p no:cacheprovider
+        check_value: env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_seam_crossing_name_compute/test_join_field_diff_to_naming.py tests/nodes/node_seam_crossing_name_compute/test_pydantic_truth_seam_crossing_name.py -q -p no:cacheprovider
         cwd: .
   - id: dod-omn24350-ac4
     description: 'hosted proxy for AC4: the in-memory bus wiring test passes; the reading in the running dev runtime is named in the pull request and taken after the dev runtime runs this revision.'

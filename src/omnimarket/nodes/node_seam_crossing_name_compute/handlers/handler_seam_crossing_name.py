@@ -3,7 +3,8 @@
 """Pure seam crossing name handler.
 
 Names the class of a bus crossing at a seam: rule R, then a deterministic
-key check. No I/O, no clock.
+key check. No I/O, no clock. The consumer facts used are required,
+has_default, extra_forbidden and has_adapter.
 """
 
 from __future__ import annotations
@@ -13,37 +14,26 @@ from omnimarket.models.seam_crossing_name import (
     ModelSeamCrossingName,
     ModelSeamCrossingNameRequest,
     ModelSeamCrossingNameVerdict,
-    ModelSeamCrossingNaming,
-)
-from omnimarket.nodes.node_seam_crossing_name_compute.overlay import (
-    load_seam_crossing_naming,
 )
 
 
 class HandlerSeamCrossingName:
-    """Pure, deterministic seam crossing name handler.
-
-    The labels come from the request when it carries them, else from the labels
-    injected at construction, else from the overlay or the contract's packaged config
-    resolved once at construction (composition), never while naming.
-    """
-
-    def __init__(self, naming: ModelSeamCrossingNaming | None = None) -> None:
-        self._naming = naming if naming is not None else load_seam_crossing_naming()
+    """Pure, deterministic seam crossing name handler."""
 
     def handle(
         self, request: ModelSeamCrossingNameRequest
     ) -> ModelSeamCrossingNameVerdict:
-        naming = request.naming if request.naming is not None else self._naming
+        naming = request.naming
         names: list[ModelSeamCrossingName] = []
         counts: dict[str, int] = {}
+        adapter_advisory = 0
 
         for crossing in request.crossings:
             declared = set(crossing.consumer.fields.keys())
             required = {
                 name
                 for name, facts in crossing.consumer.fields.items()
-                if facts.required
+                if facts.required and not facts.has_default
             }
             body = set(crossing.body_keys)
 
@@ -54,7 +44,7 @@ class HandlerSeamCrossingName:
                 decided_by = EnumSeamCrossingDecidedBy.RULE_R
             else:
                 undeclared = sorted(body - declared)
-                if undeclared:
+                if undeclared and crossing.consumer.extra_forbidden:
                     name = naming.undeclared_key
                     fields = tuple(undeclared)
                     decided_by = EnumSeamCrossingDecidedBy.KEY_CHECK
@@ -63,6 +53,10 @@ class HandlerSeamCrossingName:
                     fields = ()
                     decided_by = EnumSeamCrossingDecidedBy.KEY_CHECK
 
+            has_adapter = crossing.consumer.has_adapter
+            if has_adapter:
+                adapter_advisory += 1
+
             n = ModelSeamCrossingName(
                 crossing_id=crossing.crossing_id,
                 seam_id=crossing.seam_id,
@@ -70,6 +64,7 @@ class HandlerSeamCrossingName:
                 name=name,
                 fields=fields,
                 decided_by=decided_by,
+                consumer_has_adapter=has_adapter,
             )
             names.append(n)
             counts[name] = counts.get(name, 0) + 1
@@ -77,4 +72,5 @@ class HandlerSeamCrossingName:
         return ModelSeamCrossingNameVerdict(
             names=tuple(names),
             counts=counts,
+            adapter_advisory=adapter_advisory,
         )

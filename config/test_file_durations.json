@@ -2425,6 +2425,7 @@
   "tests/nodes/node_seam_crossing_name_compute/test_golden_chain_seam_crossing_name.py": 0.3,
   "tests/nodes/node_seam_crossing_name_compute/test_join_field_diff_to_naming.py": 0.3,
   "tests/nodes/node_seam_crossing_name_compute/test_overlay_seam_crossing_name.py": 0.3,
+  "tests/nodes/node_seam_crossing_name_compute/test_pydantic_truth_seam_crossing_name.py": 0.3,
   "tests/nodes/node_seam_crossing_name_compute/test_runtime_wiring_seam_crossing_name.py": 0.5,
   "tests/nodes/node_seam_crossing_name_compute/test_seampow_fixture_score.py": 0.4,
   "tests/nodes/node_seam_deadline_probe_effect/test_no_seam_node_reach_in.py": 0.03,

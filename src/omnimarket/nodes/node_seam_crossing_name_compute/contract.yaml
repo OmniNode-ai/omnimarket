@@ -8,11 +8,15 @@
 #
 #   handle(ModelSeamCrossingNameRequest) -> ModelSeamCrossingNameVerdict
 #
-# Rule R first: a required declared field of the consumer's model absent from the
-# crossing's top-level keys names the crossing with the missing-required label. Then a
-# deterministic key check: a key the consumer's model does not declare names the
-# crossing with the undeclared-key label; otherwise the crossing is clean.
-#
+# Rule R first: a required declared field of the consumer's model (required and with no
+# default, the facts the field diff detector reads) absent from the crossing's top-level
+# keys names the crossing with the missing-required label. Then a deterministic key check:
+# a key the consumer's model does not declare names the crossing with the undeclared-key
+# label when the consumer's model forbids extra keys (a consumer that ignores them accepts
+# the key, so it is clean); otherwise the crossing is clean. A consumer with an adapter
+# (a before or wrap validator that may supply or reshape fields) is named all the same, and
+# each such name carries consumer_has_adapter true and is counted in adapter_advisory:
+# the detector skips those consumers, and a name resting on declared fields is advisory.
 # Measured by experiment exp-seampow-6803 (197 real cross-topic crossings from 7 days of
 # dev-bus traffic, hashed before any call): rule R plus this key check named 180 of 197
 # (0.914); rule R plus a local model scored 135 (examples) and 136 (zero-shot), a tie
@@ -38,9 +42,10 @@ node_version:
   minor: 0
   patch: 0
 description: >
-  Pure seam crossing naming: rule R (a required declared field is absent from the
-  crossing's keys) then a deterministic key check (a key the consumer model does not
-  declare), per crossing, in request order. No model, no I/O, no clock. Each name
+  Pure seam crossing naming: rule R (a required declared field with no default is
+  absent from the crossing's keys) then a deterministic key check (a key the consumer
+  model does not declare, when the consumer forbids extra keys), per crossing, in
+  request order. No model, no I/O, no clock. Each name
   carries the fields it rests on and which step decided it.
 input_model:
   name: "ModelSeamCrossingNameRequest"

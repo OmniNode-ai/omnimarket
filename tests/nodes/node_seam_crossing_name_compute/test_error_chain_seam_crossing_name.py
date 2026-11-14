@@ -44,7 +44,7 @@ def _consumer(fields: dict[str, ModelSeamFieldFacts]) -> ModelSeamModelSummary:
         model_ref="mod.C",
         fields=fields,
         nested={},
-        extra_forbidden=False,
+        extra_forbidden=True,
         has_adapter=False,
     )
 
