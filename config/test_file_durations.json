@@ -5714,6 +5714,7 @@
   "tests/unit/work_ledger_bus/test_writer_overlay_watch.py": 0.28,
   "tests/unit/workflows/test_auto_merge_bot_token_push_suppression.py": 0.05,
   "tests/unit/workflows/test_ci_off_change_control_omn20074.py": 0.96,
+  "tests/unit/workflows/test_deploy_gate_body_from_event.py": 3.41,
   "tests/unit/workflows/test_deploy_gate_reads_pr_title_omn20413.py": 0.1,
   "tests/unit/workflows/test_deploy_gate_reads_repo_contracts_omn20074.py": 0.1,
   "tests/unit/workflows/test_edited_trigger_scope_omn16171.py": 0.15,
