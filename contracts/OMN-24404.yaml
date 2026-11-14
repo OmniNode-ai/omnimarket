@@ -52,7 +52,6 @@ dod_evidence:
   - id: dod-omn24404-deploy
     description: 'Deploy probe the hosted runner can run: the packaged plugin sync policy at the checked-out commit on GitHub carries the version_differs rule; the rule does not exist at the merge base, so the probe fails there.'
     source: manual
-    binds_ac: [AC2]
     checks:
       - check_type: command
         check_value: >-
