@@ -72,3 +72,11 @@ def test_each_shipped_rule_example_names_a_kind_that_is_a_clean_nonempty_string(
         assert isinstance(kind, str)
         assert kind
         assert kind.strip() == kind
+
+
+def test_every_kind_a_shipped_log_rule_names_is_declared_by_routing() -> None:
+    log_rules = [rule for rule in _overlay().rules if rule.log_pattern is not None]
+    assert log_rules
+    assert {rule.kind for rule in log_rules} <= set(
+        _taxonomy()["routing_declared_kinds"]
+    )
