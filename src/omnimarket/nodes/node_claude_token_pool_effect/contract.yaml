@@ -94,15 +94,8 @@ handler_routing:
         module: omnimarket.nodes.node_claude_token_pool_effect.handlers.handler_pool_mark_diff
       input_model: omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_pool_mark_event.ModelPoolMarkDiffRequest
       output_model: omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_pool_mark_event.ModelPoolMarkDiffResult
-    # The status the CLI prints (OMN-19998): on a host the overlay does not declare (the launching Mac) it reads the marks from the
-    # overlay's marks source, and when the source cannot be read or is over its age bound it prints that it reads an unsynced local
-    # copy, with the copy's age, and names no limited or revoked label.
-    - operation: status_view
-      handler:
-        name: HandlerClaudeTokenPoolStatusView
-        module: omnimarket.nodes.node_claude_token_pool_effect.handlers.handler_claude_token_pool_status_view
-      input_model: omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_pool_status_view.ModelPoolStatusViewRequest
-      output_model: omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_pool_status_view.ModelPoolStatusViewResult
+    # The status the CLI prints (OMN-19998) is built in process by runtime_claude_token_pool (HandlerClaudeTokenPoolStatusView
+    # takes the pool, overlay, marks source and clock as required arguments), so it is not a routed handler and has no entry here.
     # Read by the lane start in process (lane_start_steer), not routed through the runtime:
     # the entry binds the handler to this node for the canonical-file-shape ratchet. The handler
     # builds from no arguments (steering off) so the boot resolver can instantiate it.
