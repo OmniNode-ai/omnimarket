@@ -10,19 +10,22 @@ from pydantic import BaseModel, ConfigDict
 
 
 class ModelLandingDecisionVenvResult(BaseModel):
-    """``built`` and ``verified`` carry the interpreter and the versions read back from it;
-    ``refused`` carries every library whose installed version differs from the pin."""
+    """``built``, ``ready`` and ``verified`` carry the interpreter and the versions read back from it;
+    ``ready`` is a build that found every pinned version already in place and installed nothing.
+    ``refused`` carries a typed ``reason`` and the prose ``reasons`` behind it."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    status: Literal["built", "verified", "refused"]
+    status: Literal["built", "ready", "verified", "refused"]
     pin_commit: str = ""
     python: str = ""
     installed: tuple[str, ...] = ()
+    reason: str = ""
     reasons: tuple[str, ...] = ()
 
     def line(self) -> str:
         return (
             f"landing_decision_venv={self.status} pin={self.pin_commit[:8]} "
             f"installed={len(self.installed)} reasons={len(self.reasons)}"
+            + (f" reason={self.reason}" if self.reason else "")
         )
