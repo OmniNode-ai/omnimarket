@@ -8,6 +8,7 @@ from .handler_lab_fill_launch import HandlerLabFillLaunch
 from .handler_lab_fill_owner_facts import HandlerLabFillOwnerFacts
 from .handler_lab_fill_probe import HandlerLabFillProbe
 from .handler_lab_fill_receipts import HandlerLabFillReceipts
+from .handler_lab_fill_select import HandlerLabFillSelect
 from .handler_lab_fill_send import HandlerLabFillSend
 from .handler_lab_fill_send_gate import HandlerLabFillSendGate
 from .handler_lab_fill_sources import HandlerLabFillSources
@@ -22,6 +23,7 @@ __all__ = [
     "HandlerLabFillOwnerFacts",
     "HandlerLabFillProbe",
     "HandlerLabFillReceipts",
+    "HandlerLabFillSelect",
     "HandlerLabFillSend",
     "HandlerLabFillSendGate",
     "HandlerLabFillSources",
