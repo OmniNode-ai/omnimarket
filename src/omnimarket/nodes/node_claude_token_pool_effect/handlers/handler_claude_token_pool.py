@@ -36,6 +36,7 @@ import json
 import os
 import re
 import socket
+import sys
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
@@ -45,11 +46,20 @@ from typing import Any
 from pydantic import SecretStr
 
 from omnimarket.inference.local_byok_credential_adapter import LocalByokCredentialStore
+from omnimarket.nodes.node_claude_token_pool_effect.handlers.handler_pool_mark_diff import (
+    mark_events,
+)
 from omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_pool import (
     ModelClaudeTokenPoolEntry,
     ModelClaudeTokenPoolRefusal,
     ModelClaudeTokenPoolRequest,
     ModelClaudeTokenPoolResult,
+)
+from omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_pool_mark_event import (
+    ModelPoolMarkEvent,
+)
+from omnimarket.nodes.node_claude_token_pool_effect.protocols.protocol_pool_mark_events import (
+    ProtocolPoolMarkEventSink,
 )
 
 SECRET_REF_PREFIX = "lab.claude-oauth."
@@ -62,6 +72,28 @@ _TOKEN_START = re.compile(r"sk-ant-oat\d{2}-[A-Za-z0-9_-]+")
 _TOKEN_CONT = re.compile(r"^[A-Za-z0-9_-]+$")
 _ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
 _MIN_TOKEN_LEN = 40
+#: ``who`` of a mark event whose caller named nobody (no ``actor`` on the request, no default actor on the handler).
+UNATTRIBUTED = "unattributed"
+#: The operations that can change a mark: the only ones whose before/after marks are compared for events.
+MARK_VERBS = frozenset(
+    {
+        "add",
+        "mark_limited",
+        "mark_revoked",
+        "sync_marks",
+        "clear_revokes",
+        "apply_limit_rechecks",
+        "apply_revoke_rechecks",
+    }
+)
+#: Why a mark changed, by the operation that changed it; ``mark_limited`` and ``mark_revoked`` name theirs from the request.
+_MARK_CAUSES = {
+    "add": "token_added",
+    "sync_marks": "marks_source_sync",
+    "clear_revokes": "stale_revoke_rule",
+    "apply_limit_rechecks": "limit_recheck_probe",
+    "apply_revoke_rechecks": "revoke_recheck_probe",
+}
 
 
 class ClaudeTokenPoolRefusedError(Exception):
@@ -134,7 +166,13 @@ class HandlerClaudeTokenPool:
         now: Callable[[], datetime] = _utc_now,
         lane_cap: int | None = None,
         lane_cap_read: bool = True,
+        mark_event_sink: ProtocolPoolMarkEventSink | None = None,
+        default_actor: str | None = None,
     ) -> None:
+        #: Where each mark change is published (``None``: not configured on this host, the result says so), and the
+        #: ``who`` an operation carries when its request names nobody.
+        self._mark_event_sink = mark_event_sink
+        self._default_actor = default_actor
         #: The overlay's lanes-per-label cap (``None``: no cap), and whether the overlay holding it was read
         #: on this host. The runtime reads both from the overlay; no cap is spelled here.
         self._lane_cap = lane_cap
@@ -148,7 +186,9 @@ class HandlerClaudeTokenPool:
     def handle(
         self, request: ModelClaudeTokenPoolRequest
     ) -> ModelClaudeTokenPoolResult:
+        events: tuple[ModelPoolMarkEvent, ...] = ()
         with self._locked() as pool:
+            before = self._live_marks(pool)
             alert = None
             cleared: tuple[str, ...] = ()
             limit_effect: tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]] = (
@@ -229,7 +269,91 @@ class HandlerClaudeTokenPool:
                         ],
                     },
                 )
-        return result
+                if request.operation in MARK_VERBS:
+                    events = self._events_of(request, before, self._live_marks(pool))
+        return self._publish_mark_events(result, events)
+
+    def written_at(self) -> datetime | None:
+        """When this host's pool file was last written by an operation, ``None`` when there is none."""
+        try:
+            return datetime.fromtimestamp(self._pool_path.stat().st_mtime, UTC)
+        except OSError:
+            return None
+
+    def _live_marks(self, pool: dict[str, Any]) -> dict[str, dict[str, Any]]:
+        """Each label's marks that are in force now: a limit stamp still ahead, a revoke stamp and its cause."""
+        now = _stamp(self._now())
+        return {
+            t["label"]: {
+                "until": t.get("until") if (t.get("until") or "") > now else None,
+                "revoked_at": t.get("revoked_at"),
+                "revoke_cause": (t.get("revoke_cause") or "revoked")
+                if t.get("revoked_at")
+                else None,
+            }
+            for t in pool["tokens"]
+        }
+
+    def _events_of(
+        self,
+        request: ModelClaudeTokenPoolRequest,
+        before: dict[str, dict[str, Any]],
+        after: dict[str, dict[str, Any]],
+    ) -> tuple[ModelPoolMarkEvent, ...]:
+        """One event per mark the operation changed: who asked, when, which verb, on which host, and why."""
+        if request.operation == "mark_limited":
+            cause = "limit_notice_exact" if request.exact else "limit_estimate"
+        elif request.operation == "mark_revoked":
+            cause = request.cause
+        else:
+            cause = _MARK_CAUSES[request.operation]
+        return mark_events(
+            before,
+            after,
+            who=request.actor or self._default_actor or UNATTRIBUTED,
+            at=self._now(),
+            verb=request.operation,
+            host=self._host,
+            cause_for=lambda _verb, _change: cause,
+        )
+
+    def _publish_mark_events(
+        self,
+        result: ModelClaudeTokenPoolResult,
+        events: tuple[ModelPoolMarkEvent, ...],
+    ) -> ModelClaudeTokenPoolResult:
+        """Publish the events outside the pool lock; a refused publication is named in the result, never raised.
+
+        The marks are already written when the bus refuses an event, so the change stands and the
+        result carries the refusal for the caller to print.
+        """
+        if not events:
+            return result
+        if self._mark_event_sink is None:
+            return result.model_copy(
+                update={"mark_events": events, "mark_events_state": "not_configured"}
+            )
+        published = 0
+        error: str | None = None
+        for event in events:
+            try:
+                self._mark_event_sink.publish(event)
+                published += 1
+            except Exception as exc:
+                error = f"{type(exc).__name__}: {str(exc)[:200]}"
+                sys.stderr.write(
+                    f"claude-pool mark event not published host={self._host} label={event.label} "
+                    f"verb={event.verb} change={event.change}: {error}\n"
+                )
+                break
+        return result.model_copy(
+            update={
+                "mark_events": events,
+                "mark_events_published": published,
+                "mark_events_state": "published" if error is None else "failed",
+                "mark_events_error": error,
+            }
+        )
 
     @contextmanager
     def _locked(self) -> Iterator[dict[str, Any]]:
