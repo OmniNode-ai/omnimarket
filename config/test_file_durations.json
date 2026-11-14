@@ -1637,6 +1637,7 @@
   "tests/nodes/node_host_installer_registry_units/test_start_check_environment.py": 0.1,
   "tests/nodes/node_host_installer_registry_units/test_start_probe.py": 2.42,
   "tests/nodes/node_host_installer_registry_units/test_stop_running_tick.py": 1.0,
+  "tests/nodes/node_host_installer_registry_units/test_systemd_uninstall_reset_failed.py": 5.72,
   "tests/nodes/node_host_installer_registry_units/test_unit_text_drift.py": 4.51,
   "tests/nodes/node_host_installer_serve_units/test_golden_chain_host_serve_units.py": 1.0,
   "tests/nodes/node_host_installer_serve_units/test_host_serve_units.py": 1.0,
