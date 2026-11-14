@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Repository fixer HOLD semantics shared by landing and lab fill."""
+"""Repository fixer and retired-unit HOLD semantics shared by landing, the throughput tick and lab fill."""
 
 from __future__ import annotations
 
@@ -18,25 +18,19 @@ def _cell(text: str, name: str) -> str:
     return ""
 
 
-def fixer_hold_reasons(
-    rows: Iterable[ModelLandingLedgerRow], now: datetime
-) -> dict[str, str]:
-    """Unreleased, unexpired scope=fixer HOLDs, retaining the declaring row.
-
-    RELEASE re= accepts the HOLD's id or timestamp, as in the landing controller.
-    A RELEASE that names a pr= is scoped: it lifts those PRs only (see
-    ``fixer_hold_released_prs``) and leaves the repository HOLD in force.
-    Owner-qualified repository names are normalized to their short name.
-    """
+def _live_holds(
+    rows: Iterable[ModelLandingLedgerRow], now: datetime, scope: str
+) -> list[ModelLandingLedgerRow]:
+    """HOLD rows of ``scope`` that no RELEASE names and whose ``until=`` has not passed."""
     rows = [row for row in rows if row.ts <= now.strftime("%Y-%m-%dT%H:%M:%SZ")]
     released = {
         _cell(row.text, "re")
         for row in rows
         if row.rtype == "RELEASE" and not _cell(row.text, "pr")
     } - {""}
-    out: dict[str, str] = {}
+    out: list[ModelLandingLedgerRow] = []
     for row in rows:
-        if row.rtype != "HOLD" or _cell(row.text, "scope") != "fixer":
+        if row.rtype != "HOLD" or _cell(row.text, "scope") != scope:
             continue
         if (_cell(row.text, "id") or row.ts) in released or row.ts in released:
             continue
@@ -49,11 +43,54 @@ def fixer_hold_reasons(
                 expires = None
             if expires is not None and expires <= now:
                 continue
+        out.append(row)
+    return out
+
+
+def fixer_hold_reasons(
+    rows: Iterable[ModelLandingLedgerRow], now: datetime
+) -> dict[str, str]:
+    """Unreleased, unexpired scope=fixer HOLDs, retaining the declaring row.
+
+    RELEASE re= accepts the HOLD's id or timestamp, as in the landing controller.
+    A RELEASE that names a pr= is scoped: it lifts those PRs only (see
+    ``fixer_hold_released_prs``) and leaves the repository HOLD in force.
+    Owner-qualified repository names are normalized to their short name.
+    """
+    out: dict[str, str] = {}
+    for row in _live_holds(rows, now, "fixer"):
         for repo in _cell(row.text, "repo").split(","):
             repo = repo.strip().split("/", 1)[-1]
             if repo:
                 out[repo] = row.text.split("\n", 1)[0]
     return out
+
+
+RETIRED_UNITS_SCOPE = "retired-units"
+
+
+def retired_unit_hold_reasons(
+    rows: Iterable[ModelLandingLedgerRow], now: datetime
+) -> dict[str, str]:
+    """Unreleased, unexpired scope=retired-units HOLDs, keyed by the unit each names.
+
+    The units are the ``unit=`` cell (or, failing that, ``surface=``), comma-separated, each
+    ``<daemon>@<host>`` or a bare ``<daemon>`` for every host. The value is the declaring row's
+    first line. Release and expiry read as for scope=fixer.
+    """
+    out: dict[str, str] = {}
+    for row in _live_holds(rows, now, RETIRED_UNITS_SCOPE):
+        cell = _cell(row.text, "unit") or _cell(row.text, "surface")
+        for unit in cell.split(","):
+            unit = unit.strip()
+            if unit:
+                out[unit] = row.text.split("\n", 1)[0]
+    return out
+
+
+def retired_unit_hold(holds: dict[str, str], daemon: str, host: str) -> str:
+    """The HOLD row that retires ``daemon`` on ``host``, or "" when none does."""
+    return holds.get(f"{daemon}@{host}") or holds.get(daemon) or ""
 
 
 def fixer_hold_released_prs(

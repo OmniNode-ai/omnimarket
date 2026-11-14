@@ -6,8 +6,10 @@ Three sources, in the policy's source order: a FRICTION class (grouped by class,
 that recurs at least the policy's floor within its window and is not fixed; a throughput-tick key
 printed MISSING or UNKNOWN on at least the policy's floor of distinct ticks; and an open ticket whose
 description carries the policy's ``Class:`` line. A class a live CLAIM names by its key, or a
-machinery ticket a live CLAIM holds, is skipped as ``owned:<lane>``. Every candidate carries the policy's
-priority class. The handler reads facts only: no file, network or clock.
+machinery ticket a live CLAIM holds, is skipped as ``owned:<lane>``. A ``deploy-drift:<daemon>@<host>``
+tick key whose daemon a live scope=retired-units HOLD names is skipped as ``held:retired-units``: the
+unit is retired, so its repair is held, not dispatched. Every candidate carries the policy's priority
+class. The handler reads facts only: no file, network or clock.
 """
 
 from __future__ import annotations
@@ -15,6 +17,12 @@ from __future__ import annotations
 import re
 from collections import Counter, defaultdict
 from datetime import UTC, datetime, timedelta
+
+from omnimarket.handlers.work_ledger_fixer_holds import (
+    RETIRED_UNITS_SCOPE,
+    retired_unit_hold,
+    retired_unit_hold_reasons,
+)
 
 from ..models.model_lab_fill_machinery import (
     ModelLabFillMachineryCandidate,
@@ -29,6 +37,7 @@ from ..models.model_lab_fill_machinery import (
 from .helpers_machinery_policy import machinery_policy
 
 _TICKET_RE = re.compile(r"OMN-[0-9]+")
+_DEPLOY_DRIFT_RE = re.compile(r"^deploy-drift:(?P<daemon>[^@\s]+)@(?P<host>\S+)$")
 _DONE_STATES = ("completed", "canceled")
 TITLE_LIMIT = 120
 
@@ -66,6 +75,10 @@ class _Build:
         self.drops: Counter[str] = Counter()
         self.seen = 0
         self.tickets = {t.identifier: t for t in request.tickets}
+        now = _when(request.observed_at)
+        self.retired = (
+            retired_unit_hold_reasons(request.hold_rows, now) if now is not None else {}
+        )
 
     def _offer(self, key: str, parts: list[str], ticket: str) -> bool:
         """Count the class as seen; False, with the skip recorded, when a live CLAIM owns it."""
@@ -156,6 +169,22 @@ class _Build:
         found.sort(key=lambda f: (-f[0], -f[1].timestamp(), f[2].machinery_key))
         return [c for _, _, c in found]
 
+    def _retired(self, key: str) -> bool:
+        """True, with the skip recorded, when a live scope=retired-units HOLD names the key's daemon."""
+        match = _DEPLOY_DRIFT_RE.match(key)
+        if match is None or not retired_unit_hold(
+            self.retired, match["daemon"], match["host"]
+        ):
+            return False
+        self.seen += 1
+        self.skipped.append(
+            ModelLabFillMachinerySkip(
+                id=f"tick:{key}", reason=f"held:{RETIRED_UNITS_SCOPE}"
+            )
+        )
+        self.drops["held"] += 1
+        return True
+
     def ticks(self) -> list[ModelLabFillMachineryCandidate]:
         policy = self.policy
         ticks: dict[str, set[str]] = defaultdict(set)
@@ -169,6 +198,8 @@ class _Build:
             if len(seen_on) < policy.tick_recurrence_floor:
                 self.seen += 1
                 self.drops["below-floor"] += 1
+            elif self._retired(key):
+                continue
             elif self._offer(f"tick:{key}", [key], ""):
                 found.append(
                     self._candidate(

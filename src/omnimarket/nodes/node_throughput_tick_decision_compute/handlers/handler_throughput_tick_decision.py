@@ -64,6 +64,10 @@ from omnibase_core.types import JsonType
 
 from omnimarket.handlers.handler_engine_ladder import load_engine_ladder
 from omnimarket.handlers.rules_lab_fill_pr_land import plan_pr_land_fallback
+from omnimarket.handlers.work_ledger_fixer_holds import (
+    retired_unit_hold,
+    retired_unit_hold_reasons,
+)
 from omnimarket.models.lab_fill import ModelLabFillPrLandFacts, ModelLabFillPrLandPlan
 from omnimarket.models.model_engine_experiment import (
     NO_ENGINE,
@@ -1411,9 +1415,11 @@ def check_deploy_drift(
     rep: Report, request: ModelThroughputTickRequest, now: datetime
 ) -> None:
     """A lab daemon lagging its source tip past the bound is MISSING `deploy-drift:<daemon>@<host>`;
-    a younger lag, or one an unexpired branch install holds, is a NOTE (OMN-19998)."""
+    a younger lag, or one an unexpired branch install holds, is a NOTE (OMN-19998). A daemon a live
+    scope=retired-units HOLD names is retired: its lag is a NOTE citing the HOLD, so no repair is sent."""
     rep.checked.append("deploy-drift")
     bound = request.deploy_drift_max_hours
+    retired = retired_unit_hold_reasons(request.hold_rows, now)
     for drift in sorted(
         request.deploy_drifts or [], key=lambda d: (d.lagging_since, d.daemon, d.host)
     ):
@@ -1429,7 +1435,10 @@ def check_deploy_drift(
             + (f"; blocker: {drift.blocker}" if drift.blocker else "")
         )
         held = drift.branch_until is not None and parse_stamp(drift.branch_until) > now
-        if held:
+        hold = retired_unit_hold(retired, drift.daemon, drift.host)
+        if hold:
+            rep.note(f"{loop} | {why}; retired unit held by {hold}")
+        elif held:
             rep.note(f"{loop} | {why}; branch install held until {drift.branch_until}")
         elif hours > bound:
             rep.miss(loop, why, DEPLOY_DRIFT_FIX)

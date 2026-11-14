@@ -10,6 +10,7 @@ from omnibase_core.types import JsonType
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.models.lab_fill import ModelLabFillPrLandFacts, ModelLabFillPrLandPlan
+from omnimarket.models.landing_ledger_row import ModelLandingLedgerRow
 from omnimarket.models.model_engine_experiment import ModelEngineExperimentRow
 from omnimarket.models.model_lab_daemon_drift import ModelLabDaemonDrift
 from omnimarket.models.seam_reading import (
@@ -502,6 +503,13 @@ class ModelThroughputTickRequest(BaseModel):
         default=2.0,
         gt=0,
         description="A daemon lagging its source tip for longer than this is MISSING; a younger lag is a NOTE.",
+    )
+    hold_rows: list[ModelLandingLedgerRow] = Field(
+        default_factory=list,
+        description=(
+            "HOLD and RELEASE rows the caller read from the ledger: a daemon a live scope=retired-units "
+            "HOLD names is retired, so its deploy-drift is a NOTE citing the HOLD, never a repair."
+        ),
     )
     repo_status: ModelRepoStatusFacts | None = Field(
         default=None,
