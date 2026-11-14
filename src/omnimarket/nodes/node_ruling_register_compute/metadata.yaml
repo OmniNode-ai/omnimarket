@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_ruling_register_compute
+version: 1.0.0
+description: Judge the ruling register's readings; a row that did not run, is older than the bound or answers in an unparseable shape reads UNREAD and never TRUE.
+pack: routing
+node_role: compute
+display_name: Ruling Register Compute
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_ruling_register_compute: omnimarket.nodes.node_ruling_register_compute
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+  - pydantic>=2.11.0
+license: MIT
+tags: [compute, ruling, register]

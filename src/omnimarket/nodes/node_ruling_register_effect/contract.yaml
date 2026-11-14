@@ -1,0 +1,74 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Ruling Register Effect (OMN-24478)
+#
+# Takes the readings of the standing-rulings register: each row's read runs on its host,
+# a local host's argv directly and a remote host's argv through the route's ssh prefix
+# with the host's target substituted. An answered read exits with one of the row's
+# accepted codes; a read that did not run, timed out or exited with another code is
+# UNREAD, never TRUE. Judgement of the readings belongs to node_ruling_register_compute.
+name: node_ruling_register_effect
+contract_name: node_ruling_register_effect
+node_name: node_ruling_register_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Takes the readings of the standing-rulings register. Each row's read runs on its
+  host: a local host's argv directly, a remote host's argv through the route's ssh
+  prefix with the host's target substituted. An answered read exits with one of the
+  row's accepted codes; a read that did not run, timed out or exited with another
+  code is UNREAD, never TRUE. Every reading emits an event: answered for OK (golden),
+  refused for UNREAD (error).
+
+handler:
+  module: omnimarket.nodes.node_ruling_register_effect.handlers.handler_ruling_register_read
+  class: HandlerRulingRegisterRead
+  input_model: omnimarket.models.model_ruling_register.ModelRulingReadRequest
+
+# HandlerRulingRegisterRead takes the port, the event sink, the topics and the clock
+# as constructor parameters, so a reader runs it through its own CLI, not handler_routing.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [event-journal]
+  timeout_ms: 30000
+
+input_model:
+  name: ModelRulingReadRequest
+  module: omnimarket.models.model_ruling_register
+  description: The policy whose reads to run.
+output_model:
+  name: ModelRulingReadResult
+  module: omnimarket.models.model_ruling_register
+  description: One reading per row, in row order.
+
+runtime_dispatch:
+  external_trigger: true
+
+# The topics by role; the handler reads these and holds no topic string.
+topics:
+  ruling_read_answered: onex.evt.omnimarket.ruling-register-read-answered.v1
+  ruling_read_refused: onex.evt.omnimarket.ruling-register-read-refused.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.ruling-register-read-answered.v1
+  - onex.evt.omnimarket.ruling-register-read-refused.v1
+
+overlay:
+  node: node_ruling_register_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+metadata:
+  ticket: OMN-24478
+  transport_type: inmemory
