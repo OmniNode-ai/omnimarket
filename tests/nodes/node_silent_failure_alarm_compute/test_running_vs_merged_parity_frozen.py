@@ -17,6 +17,7 @@ import json
 import re
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -53,17 +54,20 @@ def _expected_text(frozen: str) -> str:
     return text
 
 
-def _cases() -> list[dict[str, object]]:
-    return json.loads(FIXTURE.read_text(encoding="utf-8"))["cases"]
+def _cases() -> list[dict[str, Any]]:
+    cases: list[dict[str, Any]] = json.loads(FIXTURE.read_text(encoding="utf-8"))[
+        "cases"
+    ]
+    return cases
 
 
-def _decide(case: dict[str, object]) -> ModelRunningVsMergedResult:
+def _decide(case: dict[str, Any]) -> ModelRunningVsMergedResult:
     acknowledgements = read_acknowledgements(
         json.dumps({"acknowledgements": case.get("acknowledgements", [])})
     )
     now = datetime.fromisoformat(str(case["now"]).replace("Z", "+00:00"))
     request = request_from_fleet(
-        case["fleet"],  # type: ignore[arg-type]
+        case["fleet"],
         now,
         acknowledgements=acknowledgements,
     )
@@ -73,21 +77,21 @@ def _decide(case: dict[str, object]) -> ModelRunningVsMergedResult:
     return HandlerRunningVsMergedAlarm().handle(request)
 
 
-def _normalise(frozen: dict[str, object]) -> dict[str, object]:
-    out = json.loads(json.dumps(frozen))
+def _normalise(frozen: dict[str, Any]) -> dict[str, Any]:
+    out: dict[str, Any] = json.loads(json.dumps(frozen))
     for finding in out["findings"]:
         finding["fix"] = _expected_text(finding["fix"])
     return out
 
 
 @pytest.mark.parametrize("case", _cases(), ids=lambda c: str(c["name"]))
-def test_the_decision_equals_the_frozen_answer(case: dict[str, object]) -> None:
+def test_the_decision_equals_the_frozen_answer(case: dict[str, Any]) -> None:
     got = json.loads(_decide(case).model_dump_json())
-    assert got == _normalise(case["frozen"])  # type: ignore[arg-type]
+    assert got == _normalise(case["frozen"])
 
 
 def test_every_named_difference_is_used_by_a_recorded_case() -> None:
-    texts = [f["fix"] for c in _cases() for f in c["frozen"]["findings"]]  # type: ignore[index]
+    texts = [f["fix"] for c in _cases() for f in c["frozen"]["findings"]]
     for pattern, _replacement, why in NAMED_DIFFERENCES:
         assert any(re.search(pattern, text) for text in texts), (
             f"no recorded case exercises the named difference: {why}"
