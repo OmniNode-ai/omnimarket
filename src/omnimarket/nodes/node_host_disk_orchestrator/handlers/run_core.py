@@ -40,13 +40,13 @@ from omnimarket.nodes.node_host_disk_orchestrator.handlers.contract_config impor
     run_completed_topic,
     slack_publish_topic,
 )
+from omnimarket.nodes.node_host_disk_orchestrator.handlers.model_slack_command import (
+    ModelHostDiskSlackCommand,
+)
 from omnimarket.nodes.node_host_disk_orchestrator.handlers.run_state import (
     HostDiskOrchestratorState,
     OpenRun,
     summarise,
-)
-from omnimarket.nodes.node_slack_publish_effect.models.model_slack_publish import (
-    ModelSlackPublish,
 )
 
 Trigger = Literal["scheduled", "low_disk"]
@@ -109,7 +109,7 @@ def start_run(
     hour = now.strftime("%Y-%m-%dT%H")
     alarm_envelopes = tuple(
         _envelope(
-            ModelSlackPublish(
+            ModelHostDiskSlackCommand(
                 channel=overlay.alarm_channel,
                 text=_alarm_text(a),
                 idempotency_key=f"{a.idempotency_key}|{hour}",

@@ -22,6 +22,9 @@ from omnimarket.nodes.node_host_disk_orchestrator.handlers.contract_config impor
     run_completed_topic,
     slack_publish_topic,
 )
+from omnimarket.nodes.node_host_disk_orchestrator.handlers.model_slack_command import (
+    ModelHostDiskSlackCommand,
+)
 from omnimarket.nodes.node_slack_publish_effect.models.model_slack_publish import (
     ModelSlackPublish,
 )
@@ -179,12 +182,12 @@ def test_the_alarm_goes_out_as_a_slack_publish_command_on_the_overlay_channel() 
     o.read(read_event(HOSTS[0], free_bytes=1))
     # host b has no reading: it alarms too
     sent = payloads(o.scheduled.handle(tick(T0)))
-    alarms = [p for p in sent if isinstance(p, ModelSlackPublish)]
+    alarms = [p for p in sent if isinstance(p, ModelHostDiskSlackCommand)]
     assert len(alarms) == 2
+    for a in alarms:  # the mirror must stay wire-compatible with the real model
+        ModelSlackPublish.model_validate(a.model_dump(mode="json"))
     assert {a.channel for a in alarms} == {o.overlay.alarm_channel}
-    assert any(
-        EnumHostDiskAlarmKind.UNDER_FLOOR.value in (a.text or "") for a in alarms
-    )
+    assert any(EnumHostDiskAlarmKind.UNDER_FLOOR.value in a.text for a in alarms)
     assert any(
         EnumHostDiskAlarmKind.MISSING_READING.value in (a.text or "") for a in alarms
     )

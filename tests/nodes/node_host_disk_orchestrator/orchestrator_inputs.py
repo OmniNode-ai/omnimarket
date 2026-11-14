@@ -175,7 +175,10 @@ class Orchestrator:
         self.overlay = ovl or overlay()
         self.policy = pol or policy()
         self.state = HostDiskOrchestratorState(rows=InMemoryHostDiskRows())
-        load = lambda: self.policy  # noqa: E731
+
+        def load() -> ModelHostDiskPolicy:
+            return self.policy
+
         self.scheduled = HandlerHostDiskScheduled(
             gate=ScheduleGate(NODE_NAME, declaration=self.overlay),
             state=self.state,
