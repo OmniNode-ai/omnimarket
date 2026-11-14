@@ -113,6 +113,14 @@ MOVED: Mapping[str, Home] = {
             "pytest tests/test_morning_phase_tools_wiring.py tests/nodes/node_morning_ground_state_orchestrator/test_morning_phase_tools_guard.py",
         ),
     ),
+    "node-entry-point-registration": Home(
+        "ci.yml",
+        "lint",
+        (
+            "pytest tests/test_market_node_runtime_dogfood.py",
+            '-k "inventory_fails_on_a_missing_or_extra_node and _without_entry_point"',
+        ),
+    ),
     "no-coding-plan-endpoint": Home(
         "no-coding-plan-endpoint.yml",
         "no-coding-plan-endpoint",
