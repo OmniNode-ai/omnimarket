@@ -86,7 +86,7 @@ handler_routing:
       topic: onex.cmd.omnimarket.dev-roll-hold.v1
       description: "A dev deploy command forwarded by the deploy effect; answered by one held record, or a refusal and the command passed on."
     - operation: "dev_roll_window.tick"
-      message_category: "event"
+      message_category: "intent"
       handler:
         name: "HandlerDevRollWindowTick"
         module: "omnimarket.nodes.node_dev_roll_window_gate_effect.handlers.handler_dev_roll_window_tick"
