@@ -24,7 +24,7 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from omnimarket.events.pr_landing.model_landing_review import (
+from omnimarket.models.model_landing_review import (
     EnumReviewGateVerdict,
     EnumReviewVerdict,
     ModelReviewGateReading,

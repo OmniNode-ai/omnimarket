@@ -11,7 +11,7 @@ No clock and no I/O.
 
 from __future__ import annotations
 
-from omnimarket.events.pr_landing.model_landing_review import (
+from omnimarket.models.model_landing_review import (
     EnumReviewGateVerdict,
     EnumReviewVerdict,
     ModelReviewGateReading,

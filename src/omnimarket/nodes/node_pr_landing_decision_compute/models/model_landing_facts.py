@@ -26,7 +26,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from omnimarket.events.pr_landing.model_landing_review import (
+from omnimarket.models.model_landing_review import (
     ModelLandingReviewFacts,
 )
 from omnimarket.models.review_finding_disposition.model_review_finding_disposition_event import (

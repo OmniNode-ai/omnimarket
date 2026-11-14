@@ -76,14 +76,14 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from functools import cache
 
-from omnimarket.events.pr_landing.model_landing_review import (
-    EnumReviewGateVerdict,
-)
 from omnimarket.handlers.cause_signature import (
     CAUSE_PREFIX,
     UNREAD,
     cause_key,
     normalize_signature,
+)
+from omnimarket.models.model_landing_review import (
+    EnumReviewGateVerdict,
 )
 from omnimarket.models.model_priority_rules import ModelPriorityRules
 from omnimarket.nodes.node_lab_placement_compute.handlers.handler_lab_lane_priority import (
