@@ -1281,6 +1281,7 @@
   "tests/nodes/node_factory_floor_publish_effect/test_cycle_timing.py": 0.42,
   "tests/nodes/node_factory_floor_publish_effect/test_dashboard_plain_floor_dash_plain.py": 1.63,
   "tests/nodes/node_factory_floor_publish_effect/test_dead_worker_occupancy.py": 0.01,
+  "tests/nodes/node_factory_floor_publish_effect/test_delegation_history_page.py": 3.02,
   "tests/nodes/node_factory_floor_publish_effect/test_delegation_page.py": 0.17,
   "tests/nodes/node_factory_floor_publish_effect/test_delegation_report.py": 4.16,
   "tests/nodes/node_factory_floor_publish_effect/test_factory_floor_history.py": 0.31,
