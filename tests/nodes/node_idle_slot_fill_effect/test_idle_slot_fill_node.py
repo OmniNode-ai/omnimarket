@@ -22,6 +22,8 @@ from tests.nodes.node_idle_slot_fill_effect.overlay_fixture import (
     ENV,
     EXPERIMENT_DESIGNS,
 )
+from tests.nodes.node_lab_fill_effect.fakes import FakePremiseGate
+from tests.nodes.test_rule_premise import policy as premise_policy
 
 NOW = "2026-10-18T21:30:00Z"
 PF_LINE = (
@@ -718,7 +720,9 @@ def lab_fill(
         (tmp / "backlog.json").write_text(json.dumps({"standing_tickets": STANDING}))
     request = {**POOL3, **({"watcher_state": watcher} if watcher is not None else {})}
     found = (
-        handler.HandlerLabFill()
+        handler.HandlerLabFill(
+            premise_gate=FakePremiseGate(), batch_policy=premise_policy()
+        )
         .handle(
             models.ModelLabFillRequest(
                 FILL_NOW,
@@ -1619,7 +1623,9 @@ def test_dropped_items_are_not_sent_and_recording_is_read_only_safe_and_failure_
 
         monkeypatch.setattr(handler, "write_sent", refuse)
     found = (
-        handler.HandlerLabFill()
+        handler.HandlerLabFill(
+            premise_gate=FakePremiseGate(), batch_policy=premise_policy()
+        )
         .handle(
             models.ModelLabFillRequest(
                 FILL_NOW,

@@ -22,6 +22,8 @@ from omnimarket.nodes.node_lane_model_policy_compute.handlers import (
 from omnimarket.nodes.node_lane_model_policy_compute.models.model_lane_model_policy import (
     ModelLaneModelPolicy,
 )
+from tests.nodes.node_lab_fill_effect.fakes import FakePremiseGate
+from tests.nodes.test_rule_premise import policy as premise_policy
 
 
 @pytest.mark.unit
@@ -67,12 +69,14 @@ def test_fill_routes_experiment_to_declared_available_model(
     )
     calls: list[list[str]] = []
 
-    def send(argv: list[str]) -> tuple[bool, str]:
+    def send(argv: list[str], **_kwargs: object) -> tuple[bool, str]:
         calls.append(argv)
         return True, "DETACHED"
 
     monkeypatch.setattr(fill, "_send", send)
-    fill.HandlerLabFill().handle(
+    fill.HandlerLabFill(
+        premise_gate=FakePremiseGate(), batch_policy=premise_policy()
+    ).handle(
         ModelLabFillRequest(
             now="2026-10-27T03:27:00Z",
             request={

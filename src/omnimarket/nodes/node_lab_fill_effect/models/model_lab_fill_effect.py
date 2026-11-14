@@ -118,6 +118,7 @@ class ModelLabFillLaunchRequest(BaseModel):
     lanes_left: int = Field(default=1, ge=1)
     min_lane_s: int = Field(default=15, ge=1)
     default_slice_s: int = Field(default=420, ge=1)
+    batch: str = ""
     # OMN-23277, the send gate. The PR watcher's state the merged-ticket skip reads ("" reads the host's own copy).
     watcher_state_path: str = ""
     closer_exempt_kinds: tuple[str, ...] = CLOSER_EXEMPT_KINDS

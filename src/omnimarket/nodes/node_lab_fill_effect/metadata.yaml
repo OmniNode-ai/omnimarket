@@ -19,6 +19,7 @@ capabilities:
   requires_docker: false
   side_effect_class: write
 dependencies:
+- omnimarket.nodes.node_rule_premise_effect
 - pydantic>=2.0
 - omnimarket.nodes.node_cloud_session_placement_effect
 license: "MIT"

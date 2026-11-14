@@ -88,6 +88,7 @@ class ModelLabFillTickRequest(BaseModel):
     park_hours: int = Field(default=24, ge=1)
     # OMN-21881: the overlay's cloud placement switch; the default is off.
     cloud: ModelLabFillTickCloud = Field(default_factory=ModelLabFillTickCloud)
+    batch: str = ""
     # OMN-23277, the send gate: each host's reach (host -> hosts it reaches) and the hosts whose facts a brief may cite.
     # A host absent from host_reach reaches no other host, so an h200-bound brief is sent only where it is declared.
     host_reach: Mapping[str, tuple[str, ...]] = Field(default_factory=dict)
@@ -166,7 +167,7 @@ def render_refusals(refusals: tuple[ModelLabFillTickRefusal, ...]) -> str:
     """``lane@host:reason`` per refusal, comma-joined, ledger separators made harmless; ``none`` when empty."""
     return (
         ",".join(
-            re.sub(r"[|\n\r]", "/", f"{r.lane}@{r.host}:{r.reason}").strip()
+            re.sub(r"[|\n\r]", "/", f"{r.ticket}:{r.lane}@{r.host}:{r.reason}").strip()
             for r in refusals
         )
         or "none"
@@ -205,6 +206,7 @@ class ModelLabFillTickResult(BaseModel):
     # OMN-21881: one line - the cloud placement verdict and why, the age of the newest
     # host=cloud CLAIM in the ledger, and the cloud credit left (``unmeasured`` when unread).
     cloud_line: str = ""
+    status_line: str = ""
 
 
 __all__: list[str] = [

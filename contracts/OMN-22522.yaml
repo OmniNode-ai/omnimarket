@@ -1,0 +1,49 @@
+schema_version: 1.0.0
+ticket_id: OMN-22522
+title: Add R-B send gates and atomic batch probe admission
+summary: The criteria of omnimarket#5086, moved unchanged from the shared contract of OMN-19998.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- events
+- public_api
+requirements:
+- id: req-omn19998-rule-premise-check
+  statement: Both fill paths require a content-bound brief-check receipt and a reserved batch slot before a brief is sent.
+  acceptance:
+  - id: AC13
+    statement: 'AC13: the rule premise check refuses a fill without a content-bound receipt, reserved slot and attempt fence, reserves batch slots atomically, and the packaged node routes brief-check and batch requests -- falsifier: uv run --frozen pytest tests/nodes/test_rule_premise.py -q --no-cov'
+evidence_requirements:
+- kind: tests
+  description: Add R-B send gates and atomic batch probe admission
+  command: uv run --frozen pytest tests/nodes/test_rule_premise.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn19998-rule-premise-focused
+  description: Scoped R-B and BatchProbe revision-five fixtures exercise receipt refusal, target-host installation facts, threshold admission, stepped ramping, lease retries, durable two-process unique slot inserts and refusal parking. Core validation and Part A readers are injected ports. This does not assert the ticket's original controller criteria or the captured break corpus. The live Redpanda leg and the real Part A store proof remain unmeasured.
+  source: manual
+  binds_ac:
+  - AC13
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/test_rule_premise.py -q --no-cov
+    cwd: .
+- id: dod-omn19998-rule-premise-runtime-smoke
+  description: Hosted wiring smoke loads the packaged contract, subscribes to the expected rule-premise-completed topic and observes correlated brief-check and batch results through the real in-memory dispatch engine. It does not assert a live installation or a core validator implementation.
+  source: manual
+  binds_ac:
+  - AC13
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/test_rule_premise.py -q --no-cov -k packaged_node_wires
+- id: dod-omn22522-integration-proof
+  description: Run this pull request's own check on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22522 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/test_rule_premise.py -q --no-cov
+    cwd: .
