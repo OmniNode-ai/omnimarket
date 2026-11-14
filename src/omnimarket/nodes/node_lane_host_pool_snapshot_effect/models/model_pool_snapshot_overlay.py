@@ -9,6 +9,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from omnimarket.models.model_work_ledger_reader import ModelCommandReadRoute
 from omnimarket.nodes.node_reading_writer_effect.overlay import (
     ModelCommandLedgerReadRoute,
     ModelFileLedgerReadRoute,
@@ -21,7 +22,6 @@ OVERLAY_FILE_ENV = "ONEX_POOL_SNAPSHOT_OVERLAY_FILE"
 _REDPANDA_FIELDS = (
     "snapshot_path",
     "advertisements",
-    "ledger_read",
     "accounts",
     "emission_journal",
 )
@@ -167,6 +167,13 @@ class ModelPoolSnapshotOverlay(BaseModel):
         discriminator="route",
         description="Redpanda only: how the ledger's lane rows are read (the reading writer's route: a file or the bus read command).",
     )
+    open_claims_read: ModelCommandReadRoute | None = Field(
+        default=None,
+        description=(
+            "Redpanda only, in place of ledger_read: the running lanes are the ledger node's open claims since the lookback, one point "
+            "query through the bus read command named by command_env (the rows read of ledger_read is over the node's answer bound)."
+        ),
+    )
     accounts: ModelAccountsRoute | None = Field(
         default=None,
         description="Redpanda only: how a host's token pool accounts are read.",
@@ -182,6 +189,10 @@ class ModelPoolSnapshotOverlay(BaseModel):
             missing = [name for name in _REDPANDA_FIELDS if not getattr(self, name)]
             if missing:
                 raise ValueError(f"the redpanda backend needs {', '.join(missing)}")
+            if (self.ledger_read is None) == (self.open_claims_read is None):
+                raise ValueError(
+                    "the redpanda backend names one of ledger_read or open_claims_read"
+                )
             if bool(self.bus_lane) == bool(self.bootstrap_servers):
                 raise ValueError(
                     "the redpanda backend names one of bus_lane or bootstrap_servers"

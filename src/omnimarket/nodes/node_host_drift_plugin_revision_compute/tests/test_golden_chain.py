@@ -182,6 +182,102 @@ def test_error_malformed_facts_are_refused() -> None:
         facts(unknown_field=1)
 
 
+def test_golden_version_bump_routes_to_update_plugin() -> None:
+    verdict = HandlerHostDriftPluginRevision().handle(
+        facts(
+            name=OMNI,
+            installed_versions=("0.4.475",),
+            merged_version="0.4.476",
+            tip_in_installed=False,
+        )
+    )
+    assert verdict.sync_action == "update-plugin"
+    assert verdict.version_differs
+    assert verdict.behind
+    assert verdict.between_lanes is False
+
+
+def test_golden_version_bump_same_version_control_installs_tree() -> None:
+    verdict = HandlerHostDriftPluginRevision().handle(
+        facts(
+            name=OMNI,
+            installed_versions=("0.4.475",),
+            merged_version="0.4.475",
+            tip_in_installed=False,
+        )
+    )
+    assert verdict.sync_action == "install-plugin-tree"
+
+
+def test_golden_version_bump_tree_drift_wins() -> None:
+    verdict = HandlerHostDriftPluginRevision().handle(
+        facts(
+            name=OMNI,
+            installed_versions=("0.4.475",),
+            merged_version="0.4.476",
+            tree_drift="tree modified against x",
+            tip_in_installed=False,
+        )
+    )
+    assert verdict.sync_action == "repair-plugin"
+    assert verdict.between_lanes is True
+
+
+def test_golden_version_bump_not_behind_routes_to_update_plugin() -> None:
+    verdict = HandlerHostDriftPluginRevision().handle(
+        facts(
+            name=OMNI,
+            installed_versions=("0.4.475",),
+            merged_version="0.4.476",
+            merged_tip=None,
+            tip_in_installed=None,
+        )
+    )
+    assert verdict.sync_action == "update-plugin"
+
+
+def test_failing_control_version_bump_rule_removed_routes_to_the_tree_install() -> None:
+    stripped = tuple(r for r in overlay_rules() if not r.version_differs)
+    verdict = HandlerHostDriftPluginRevision().handle(
+        facts(
+            name=OMNI,
+            installed_versions=("0.4.475",),
+            merged_version="0.4.476",
+            tip_in_installed=False,
+            rules=stripped,
+        )
+    )
+    assert verdict.sync_action == "install-plugin-tree"
+    packaged = HandlerHostDriftPluginRevision().handle(
+        facts(
+            name=OMNI,
+            installed_versions=("0.4.475",),
+            merged_version="0.4.476",
+            tip_in_installed=False,
+        )
+    )
+    assert packaged.sync_action == "update-plugin"
+
+
+def test_golden_rule_for_version_differs_false_does_not_match() -> None:
+    rule = ModelPluginSyncRule(
+        match="plugin:omni@omninode-internal",
+        kinds=("plugin",),
+        version_differs=True,
+        sync_class="SAFE",
+        action="update-plugin",
+    )
+    assert (
+        rule_for(
+            (rule,),
+            "plugin:omni@omninode-internal",
+            "installed 0.4.475 merged 0.4.476",
+            False,
+        )
+        is None
+    )
+
+
 def test_error_rules_are_required_input_not_read_from_a_file() -> None:
     """The compute is handed its rules: facts without them are refused, and with none it only alerts."""
     payload = facts().model_dump()

@@ -190,11 +190,12 @@ class ModelDelegatedCodeEditRequest(BaseModel):
         description="The ledger lane each onex delegate run is attributed to.",
     )
     ticket: str | None = Field(default=None, pattern=r"^OMN-[0-9]+$")
-    traffic_class: EnumDelegationTrafficClass | None = Field(
-        default=None,
+    traffic_class: EnumDelegationTrafficClass = Field(
+        default=EnumDelegationTrafficClass.UNCLASSIFIED,
         description="Provenance of every delegate turn: put on each turn's argv "
         "as --traffic-class (core ModelDelegationProvenance). Synthetic marks an "
-        "eval or probe run as not a user's run and requires source_surface.",
+        "eval or probe run as not a user's run and requires source_surface. A "
+        "caller that names no class reads as unclassified, never as organic.",
     )
     source_surface: str | None = Field(
         default=None,

@@ -14,6 +14,8 @@ from omnimarket.nodes.node_hook_tool_outcome_compute.models.model_hook_tool_outc
     ModelToolOutcomeRules,
 )
 
+__all__ = ["HandlerHookToolOutcome", "ModelHookToolOutcomeRequest"]
+
 
 class HandlerHookToolOutcome:
     def __init__(self, rules: ModelToolOutcomeRules) -> None:
