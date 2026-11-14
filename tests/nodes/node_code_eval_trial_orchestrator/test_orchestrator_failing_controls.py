@@ -117,7 +117,9 @@ def test_break_reuse_an_earlier_trys_worktree(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr(
         reducer_module,
         "unit_id_for",
-        lambda _run_id, task_key, model, _ordinal: f"reused-{task_key}-{model}",
+        lambda _run_id, task_key, model, _ordinal, _retry=0: (
+            f"reused-{task_key}-{model}"
+        ),
     )
     red(assert_each_try_has_its_own_worktree, golden(redeliver=False))
 

@@ -88,9 +88,7 @@ class GitWorkspace:
 class BashCheckExecution:
     """ProtocolCodeScoreRunner over bash, one command under a wall-clock limit."""
 
-    def run(
-        self, command: str, cwd: Path, timeout_s: float, tail_chars: int
-    ) -> RunOutcome:
+    def run(self, command: str, cwd: Path, timeout_s: float) -> RunOutcome:
         started = time.monotonic()
         try:
             done = subprocess.run(
@@ -102,21 +100,16 @@ class BashCheckExecution:
                 check=False,
             )
         except subprocess.TimeoutExpired as expired:
-            tail = ((expired.stdout or b"") + (expired.stderr or b"")).decode(
+            partial = ((expired.stdout or b"") + (expired.stderr or b"")).decode(
                 errors="replace"
             )
-            return RunOutcome(
-                None,
-                True,
-                time.monotonic() - started,
-                tail[-tail_chars:] if tail_chars else "",
-            )
+            return RunOutcome(None, True, time.monotonic() - started, partial)
         text = (done.stdout + done.stderr).decode(errors="replace")
         return RunOutcome(
             done.returncode,
             False,
             time.monotonic() - started,
-            text[-tail_chars:] if tail_chars else "",
+            text,
         )
 
 

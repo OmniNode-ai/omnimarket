@@ -16,7 +16,14 @@ emissions). The guards are those of formal/code_eval_trial/CodeEvalTrial.tla:
 * the nudge expires a try or score in flight past its timeout plus the slack
   as ``unscorable(harness)`` (a control that expires could not be run);
 * the run closes once, on the leg where every admitted task has its control
-  verdict and every sequence has ended, and a closed row is frozen.
+  verdict and every sequence has ended, and a closed row is frozen;
+* (OMN-24173) a try is stamped with the model revision the endpoint reported for
+  it: none ends it ``unscorable(revision_unobserved)``, one other than the one its
+  arm registered ends it ``unscorable(registration_mismatch)`` and voids the run; an
+  infrastructure-unscorable attempt is scored again (a draft in hand) or generated
+  again, up to the settings' retries, keeping its ordinal; the close is void, with
+  its cause, when a try is still infrastructure-unscorable after its retries, when
+  more than the settings' percent of first tries were, or when a revision changed.
 
 The place step runs on every leg: each pending try takes one of the leg's free
 hosts, which then leave the snapshot.
@@ -27,6 +34,8 @@ from __future__ import annotations
 import hashlib
 from datetime import datetime
 
+from omnimarket.enums.enum_code_eval_void_reason import EnumCodeEvalVoidReason
+from omnimarket.enums.enum_eval_unscorable_reason import EnumEvalUnscorableReason
 from omnimarket.models.code_eval_trial import (
     EnumCodeEvalSlot,
     ModelCodeEvalControlReading,
@@ -52,12 +61,35 @@ from omnimarket.models.enum_code_score import (
     EnumCodeScoreSource,
     EnumCodeScoreVerdict,
 )
+from omnimarket.models.eval_item.model_eval_item_traced import ModelEvalCheckTrace
 
 _PASS = EnumCodeScoreVerdict.PASS
 _UNSCORABLE = EnumCodeScoreVerdict.UNSCORABLE
 _HARNESS = ModelCodeEvalVerdict(verdict=_UNSCORABLE, source=EnumCodeScoreSource.HARNESS)
 _TRUNCATED = ModelCodeEvalVerdict(
     verdict=_UNSCORABLE, source=EnumCodeScoreSource.DRAFT_NOT_RECOVERABLE
+)
+_UNOBSERVED = ModelCodeEvalVerdict(
+    verdict=_UNSCORABLE,
+    source=EnumCodeScoreSource.HARNESS,
+    reason=EnumEvalUnscorableReason.REVISION_UNOBSERVED,
+)
+_MISMATCH = ModelCodeEvalVerdict(
+    verdict=_UNSCORABLE,
+    source=EnumCodeScoreSource.HARNESS,
+    reason=EnumEvalUnscorableReason.REGISTRATION_MISMATCH,
+)
+#: Unscorable sources that are the platform's fault, never the draft's or the control's: retried, and a try
+#: still unscorable by one of them after its retries voids the run (plan 7.6.3 and 7.7).
+_INFRASTRUCTURE_SOURCES = frozenset(
+    {
+        EnumCodeScoreSource.CONTRACT,
+        EnumCodeScoreSource.CHECK_NOT_RUNNABLE,
+        EnumCodeScoreSource.ENV,
+        EnumCodeScoreSource.WORKTREE,
+        EnumCodeScoreSource.HARNESS,
+        EnumCodeScoreSource.CONTEXT,
+    }
 )
 #: Loop results that are a turn off the pin or two failed delegate runs (rule 2).
 _LOOP_NOT_RUN = frozenset({"infra_error", "delegate_failed"})
@@ -67,10 +99,16 @@ class CodeEvalConfigurationError(ValueError):
     """The run's timeouts plus slack do not fit under the completion bound (dead-lettered, no row)."""
 
 
-def unit_id_for(run_id: object, task_key: str, model: str, ordinal: int) -> str:
-    """A fixed-length hash of run, sequence and ordinal: a plain name the unit contract accepts."""
+def unit_id_for(
+    run_id: object, task_key: str, model: str, ordinal: int, retry: int = 0
+) -> str:
+    """A fixed-length hash of run, sequence, ordinal and retry: a plain name the unit contract accepts.
+
+    The first attempt of an ordinal hashes as it always did; a regenerated attempt adds its retry.
+    """
+    suffix = f"|{retry}" if retry else ""
     digest = hashlib.sha256(
-        f"{run_id}|{task_key}|{model}|{ordinal}".encode()
+        f"{run_id}|{task_key}|{model}|{ordinal}{suffix}".encode()
     ).hexdigest()
     return f"lw-{digest[:24]}"
 
@@ -173,21 +211,62 @@ class HandlerCodeEvalTrialReducer:
             return "dropped:unit_not_in_flight"
         seq.duration_s += msg.duration_s
         seq.loop_status = msg.loop_status or ""
+        seq.model_revision = msg.model_revision
         if msg.status in ("refused", "infra_error"):
-            self._record(leg, seq, _HARNESS)
+            self._record(leg, seq, _HARNESS, diff=msg.diff)
         elif msg.diff_truncated:
-            self._record(leg, seq, _TRUNCATED)
+            self._record(leg, seq, _TRUNCATED, diff=msg.diff)
         elif msg.status == "timed_out":
-            self._queue_score(leg, seq, msg.diff, timed_out_with_diff=bool(msg.diff))
+            # A try that ran past its wall clock returns no loop result, so no revision: it is the
+            # model's slowness (scored as before), not an infrastructure fault.
+            self._score_or_stamp(
+                leg, seq, msg, timed_out_with_diff=bool(msg.diff), answered=False
+            )
         elif (
             msg.exit_code == 1
             or msg.loop_status is None
             or msg.loop_status in _LOOP_NOT_RUN
         ):
-            self._record(leg, seq, _HARNESS)
+            self._record(leg, seq, _HARNESS, diff=msg.diff)
         else:
-            self._queue_score(leg, seq, msg.diff, timed_out_with_diff=False)
+            self._score_or_stamp(
+                leg, seq, msg, timed_out_with_diff=False, answered=True
+            )
         return "unit_answered"
+
+    def _score_or_stamp(
+        self,
+        leg: _Leg,
+        seq: ModelCodeEvalSequenceRow,
+        msg: ModelUnitAnsweredMessage,
+        *,
+        timed_out_with_diff: bool,
+        answered: bool,
+    ) -> None:
+        """Queue the try's score, unless the revision the endpoint reported ends it first.
+
+        A try that ran past its wall clock has no response to carry a revision, so it is scored as
+        before; any other try needs the revision of its own response.
+        """
+        if answered:
+            refused = self._revision_refusal(leg.row, seq, msg.model_revision)
+            if refused is not None:
+                self._record(leg, seq, refused, diff=msg.diff)
+                return
+        self._queue_score(leg, seq, msg.diff, timed_out_with_diff=timed_out_with_diff)
+
+    @staticmethod
+    def _revision_refusal(
+        row: ModelCodeEvalRunRow, seq: ModelCodeEvalSequenceRow, revision: str
+    ) -> ModelCodeEvalVerdict | None:
+        """None when ``revision`` is the one the arm registered (or registers it); else the typed verdict."""
+        if not revision:
+            return _UNOBSERVED
+        registered = row.registered_revisions.setdefault(seq.model, revision)
+        if registered != revision:
+            row.revision_changed = True
+            return _MISMATCH
+        return None
 
     def _unit_failed(self, leg: _Leg, unit_id: str) -> str:
         seq = self._try_in_flight(leg.row, unit_id)
@@ -220,7 +299,7 @@ class HandlerCodeEvalTrialReducer:
         )
         if seq is None:
             return "dropped:score_not_in_flight"
-        self._record(leg, seq, verdict)
+        self._record(leg, seq, verdict, checks=msg.checks)
         return "try_scored"
 
     def _nudge(self, leg: _Leg) -> str:
@@ -275,10 +354,20 @@ class HandlerCodeEvalTrialReducer:
                 )
 
     def _record(
-        self, leg: _Leg, seq: ModelCodeEvalSequenceRow, verdict: ModelCodeEvalVerdict
+        self,
+        leg: _Leg,
+        seq: ModelCodeEvalSequenceRow,
+        verdict: ModelCodeEvalVerdict,
+        *,
+        checks: tuple[ModelEvalCheckTrace, ...] = (),
+        diff: str | None = None,
     ) -> None:
-        seq.verdicts.append(verdict)
-        ordinal = len(seq.verdicts)
+        ordinal = len(seq.verdicts) + 1
+        draft = seq.draft_diff if diff is None else diff
+        infra = self._is_infrastructure(verdict)
+        if infra and ordinal == 1 and seq.retries_used == 0:
+            seq.first_try_infra = True
+        retry = infra and seq.retries_used < leg.row.settings.infra_retries
         leg.rows.append(
             ModelVerdictRow(
                 task_key=seq.task_key,
@@ -291,15 +380,46 @@ class HandlerCodeEvalTrialReducer:
                 loop_status=seq.loop_status,
                 duration_s=seq.duration_s,
                 timed_out_with_diff=seq.timed_out_with_diff,
+                model_revision=seq.model_revision,
+                reason=verdict.reason,
+                draft_diff=draft,
+                checks=checks,
+                attempt=seq.retries_used,
+                superseded=retry,
             )
         )
         seq.unit_id, seq.host, seq.sent_at = "", "", None
+        if retry:
+            self._retry(leg, seq, rescore=bool(draft) and verdict.reason is None)
+            return
+        seq.verdicts.append(verdict)
         seq.draft_diff, seq.timed_out_with_diff = "", False
+        seq.retries_used, seq.model_revision = 0, ""
         seq.slot = (
             EnumCodeEvalSlot.DONE
             if self._ended(leg.row, seq)
             else EnumCodeEvalSlot.PENDING
         )
+
+    @staticmethod
+    def _is_infrastructure(verdict: ModelCodeEvalVerdict) -> bool:
+        return (
+            verdict.verdict is _UNSCORABLE and verdict.source in _INFRASTRUCTURE_SOURCES
+        )
+
+    def _retry(
+        self, leg: _Leg, seq: ModelCodeEvalSequenceRow, *, rescore: bool
+    ) -> None:
+        """Keep the ordinal: score the same draft again, or generate it again when there is none."""
+        seq.retries_used += 1
+        seq.model_revision = ""
+        if rescore:
+            seq.slot = EnumCodeEvalSlot.SCORE_QUEUED
+            seq.queued_seq = leg.row.next_seq
+            leg.row.next_seq += 1
+            return
+        seq.draft_diff, seq.timed_out_with_diff = "", False
+        seq.slot = EnumCodeEvalSlot.PENDING
 
     def _queue_score(
         self,
@@ -396,7 +516,9 @@ class HandlerCodeEvalTrialReducer:
             ordinal = len(seq.verdicts) + 1
             host = leg.hosts.pop(0)
             seq.slot = EnumCodeEvalSlot.TRY_IN_FLIGHT
-            seq.unit_id = unit_id_for(leg.row.run_id, seq.task_key, seq.model, ordinal)
+            seq.unit_id = unit_id_for(
+                leg.row.run_id, seq.task_key, seq.model, ordinal, seq.retries_used
+            )
             seq.host = host
             seq.sent_at = leg.now
             leg.units.append(
@@ -421,6 +543,7 @@ class HandlerCodeEvalTrialReducer:
         row.closed = True
         row.in_flight = False
         row.state = "COMPLETED"
+        void_reason = self._void_reason(row)
         leg.closed = ModelCodeEvalRunClosed(
             correlation_id=row.run_id,
             tenant_id=row.request.tenant_id,
@@ -456,7 +579,24 @@ class HandlerCodeEvalTrialReducer:
                 )
                 for s in row.sequences
             ),
+            void_reason=void_reason,
+            model_revisions=dict(row.registered_revisions),
         )
+
+    def _void_reason(self, row: ModelCodeEvalRunRow) -> EnumCodeEvalVoidReason | None:
+        """Why the run draws no point (plan 7.7), or None. A function of the row, so a replay agrees."""
+        if row.revision_changed:
+            return EnumCodeEvalVoidReason.REGISTRATION_MISMATCH
+        if any(self._is_infrastructure(v) for s in row.sequences for v in s.verdicts):
+            return EnumCodeEvalVoidReason.INFRASTRUCTURE_UNSCORABLE_AFTER_RETRIES
+        first_tries = len(row.sequences)
+        unscorable_first = sum(1 for s in row.sequences if s.first_try_infra)
+        if first_tries and (
+            unscorable_first * 100
+            > row.settings.void_infra_first_try_percent * first_tries
+        ):
+            return EnumCodeEvalVoidReason.INFRASTRUCTURE_UNSCORABLE_FIRST_TRIES
+        return None
 
     # -- helpers --------------------------------------------------------
 

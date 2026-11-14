@@ -27,6 +27,7 @@ class EnumEvalUnscorableReason(StrEnum):
     MALFORMED_ANSWER = "malformed_answer"
     OVER_TOKEN_BUDGET = "over_token_budget"
     REVISION_UNOBSERVED = "revision_unobserved"
+    REGISTRATION_MISMATCH = "registration_mismatch"
     ENDPOINT_UNAVAILABLE = "endpoint_unavailable"
     GENERATION_TIMEOUT = "generation_timeout"
     CHECK_COULD_NOT_RUN = "check_could_not_run"

@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 # Synthetic values. A deployment's real overlay lives in the overlays repository
-# (overlays/node_code_eval_trial_orchestrator/overlay.yaml). The schema is ModelCodeEvalRunnerOverlay; no key has a default.
+# (overlays/node_code_eval_trial_orchestrator/overlay.yaml). The schema is ModelCodeEvalRunnerOverlay; no key has a default but infra_retries and void_infra_first_try_percent (OMN-24173).
 attempt_budgets: [1, 3, 5]                # code_eval.runner.attempt_budgets: the attempt ladder, strictly increasing; a sequence holds the largest
 try_timeout_seconds: 900                  # code_eval.runner.try_timeout_seconds: one try's unit timeout
 receipt_slack_seconds: 60                 # code_eval.runner.receipt_slack_seconds: added to the try and score deadlines before the nudge expires them
@@ -16,6 +16,8 @@ source_surface: node_code_eval_trial_orchestrator   # core ModelDelegationProven
 unit_lane_prefix: "code-eval-"            # prefix of a unit's lane; the run id follows it
 onex_executable: onex                     # the executable a unit runs: onex code-edit run
 caller_ticket: OMN-23627                  # the ticket every unit's loop request carries, or null
+infra_retries: 2                          # evals.tracking.infra_retries (default 0): times an infrastructure-unscorable try is scored or generated again, keeping its ordinal
+void_infra_first_try_percent: 10          # (default 10): the run closes void when more than this percent of its first tries were infrastructure-unscorable before retries
 event_bus:                     # read by onex run-node, not by the node
   type: kafka
   lane: dev

@@ -298,6 +298,8 @@ class ModelTurnReply(BaseModel):
     tokens_in: int = 0
     tokens_out: int = 0
     model: str = ""
+    #: The model revision the endpoint reported for this turn's response; empty when it reported none (OMN-24173).
+    model_revision: str = ""
 
 
 class ModelObservation(BaseModel):
@@ -344,6 +346,8 @@ class ModelCodeEditResult(BaseModel):
     local_tokens_in: int = 0
     local_tokens_out: int = 0
     wall_ms: int = 0
+    #: The one model revision every answering turn reported; empty when a turn reported none or two differed (OMN-24173).
+    model_revision: str = ""
     summary: str = Field(default="", max_length=1000)
     detail: str = Field(default="", max_length=300)
     terminal_failure_cause: str | None = None

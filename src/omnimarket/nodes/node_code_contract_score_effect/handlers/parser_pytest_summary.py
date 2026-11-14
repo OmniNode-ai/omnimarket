@@ -24,9 +24,9 @@ _SUMMARY_LINE = re.compile(
 _COUNT = re.compile(r"(?P<n>\d+) (?P<word>[a-z]+)")
 
 
-def parse_pytest_summary(output_tail: str) -> ModelPytestSummary | None:
-    """The counts on the last summary line of ``output_tail``, or None when it holds none."""
-    for line in reversed(output_tail.splitlines()):
+def parse_pytest_summary(output: str) -> ModelPytestSummary | None:
+    """The counts on the last summary line of ``output``, or None when it holds none."""
+    for line in reversed(output.splitlines()):
         matched = _SUMMARY_LINE.match(line.strip())
         if matched is None:
             continue
@@ -39,11 +39,11 @@ def parse_pytest_summary(output_tail: str) -> ModelPytestSummary | None:
     return None
 
 
-def is_setup_error_run(exit_code: int | None, output_tail: str) -> bool:
+def is_setup_error_run(exit_code: int | None, output: str) -> bool:
     """True when the run ended on pytest exit 1 reporting an error and no failed test (a setup fault, not a failure)."""
     if exit_code != PYTEST_EXIT_TESTS_FAILED:
         return False
-    summary = parse_pytest_summary(output_tail)
+    summary = parse_pytest_summary(output)
     return summary is not None and summary.ended_in_error_with_no_failed_test
 
 

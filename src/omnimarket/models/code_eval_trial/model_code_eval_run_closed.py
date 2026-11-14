@@ -13,6 +13,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.enums.enum_code_eval_void_reason import EnumCodeEvalVoidReason
+
 
 class ModelCodeEvalSequenceReading(BaseModel):
     """One task's try sequence for one model: its verdicts in order."""
@@ -54,6 +56,10 @@ class ModelCodeEvalRunClosed(BaseModel):
     excluded_counts: dict[str, int] = Field(default_factory=dict)
     controls: tuple[ModelCodeEvalControlReading, ...] = ()
     sequences: tuple[ModelCodeEvalSequenceReading, ...] = ()
+    #: The cause of a void close (OMN-24173); None when the run closed with every try scored on one revision.
+    void_reason: EnumCodeEvalVoidReason | None = None
+    #: The model revision each arm's first observed try registered for the run (model -> revision).
+    model_revisions: dict[str, str] = Field(default_factory=dict)
 
 
 __all__ = [

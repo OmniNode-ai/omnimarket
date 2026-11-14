@@ -42,11 +42,16 @@ from omnimarket.models.code_eval_trial.model_code_eval_task_material import (
     task_key_for,
 )
 from omnimarket.models.enum_code_score import (
+    EnumCodeScoreCheckOutcome,
     EnumCodeScoreSource,
     EnumCodeScoreVerdict,
 )
+from omnimarket.models.eval_item.model_eval_item_traced import (
+    ModelEvalItemTracePart,
+)
 from omnimarket.models.model_code_score import (
     ModelCodeScoreCheckFile,
+    ModelCodeScoreCheckResult,
     ModelCodeScoreContractRef,
     ModelCodeScored,
     ModelCodeScoreOverlay,
@@ -79,6 +84,7 @@ RUN_ID = UUID("11111111-1111-4111-8111-111111111111")
 HOSTS = ("h1", "h2", "h3", "h4")
 SHA = "a" * 40
 SHA256 = "b" * 64
+REVISION = "sha256:rev-a"
 
 Scorer = Callable[
     [ModelCodeScoreRequest], tuple[EnumCodeScoreVerdict, EnumCodeScoreSource | None]
@@ -114,7 +120,6 @@ def score_overlay() -> ModelCodeScoreOverlay:
         scratch_root="/scratch/example",
         repo_roots={"example/repo": "/srv/example/repo"},
         protected_paths={"example/repo": ("contracts/",)},
-        output_tail_chars=200,
     )
 
 
@@ -225,7 +230,10 @@ def completed_host(
         "duration_seconds": 10.0,
         "diff": f"diff of {unit.work_unit_id}",
         "code_edit_result": ModelCodeEditResult(
-            loop_run_id="loop-1", status=EnumCodeEditStatus.ACCEPTED, turns=1
+            loop_run_id="loop-1",
+            status=EnumCodeEditStatus.ACCEPTED,
+            turns=1,
+            model_revision=REVISION,
         ),
     }
     fields.update(overrides)
@@ -236,6 +244,7 @@ def scored_event(
     request: ModelCodeScoreRequest,
     verdict: EnumCodeScoreVerdict,
     source: EnumCodeScoreSource | None,
+    check_results: tuple[ModelCodeScoreCheckResult, ...] = (),
 ) -> ModelCodeScored:
     return ModelCodeScored(
         correlation_id=request.correlation_id,
@@ -244,7 +253,9 @@ def scored_event(
         draft_diff_sha256=hashlib.sha256(request.draft_diff.encode()).hexdigest(),
         try_identity=request.try_identity,
         gate_accepted=None,
-        verdict=ModelCodeScoreVerdict(checks=verdict, source=source),
+        verdict=ModelCodeScoreVerdict(
+            checks=verdict, source=source, check_results=check_results
+        ),
         timings=ModelCodeScoreTimings(),
     )
 
@@ -267,6 +278,9 @@ class Bus:
     held_back: list[BaseModel] = field(default_factory=list)
     #: A message kind whose answers are lost (never delivered).
     lose: tuple[type, ...] = ()
+    #: The whole output of the one check a try's score reports (empty: no check result on the event).
+    check_output: str = ""
+    parts: list[ModelEvalItemTracePart] = field(default_factory=list)
     reader_candidates: tuple = ()
 
     def send(self, message: BaseModel) -> list[BaseModel]:
@@ -288,7 +302,23 @@ class Bus:
             if ModelCodeScoreRequest in self.lose:
                 return
             verdict, source = self.scorer(event)
-            self.queue.append(scored_event(event, verdict, source))
+            results = (
+                (
+                    ModelCodeScoreCheckResult(
+                        item_id="dod-1",
+                        check_type="test_passes",
+                        command="uv run pytest tests/test_x.py",
+                        outcome=EnumCodeScoreCheckOutcome.FAILED,
+                        exit_code=1,
+                        output=self.check_output,
+                    ),
+                )
+                if self.check_output and event.try_identity.model_arm
+                else ()
+            )
+            self.queue.append(scored_event(event, verdict, source, results))
+        elif isinstance(event, ModelEvalItemTracePart):
+            self.parts.append(event)
         elif isinstance(event, ModelContextRoiRunResult):
             self.projection.append(event)
         elif isinstance(event, ModelCodeEvalRunClosed):

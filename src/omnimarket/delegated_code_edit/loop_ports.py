@@ -166,6 +166,7 @@ def check_fingerprint(exit_code: int | None, output: str) -> str:
 @dataclass(frozen=True)
 class _DelegateReceipt:
     model: str = ""
+    model_revision: str = ""
     tokens_in: int = 0
     tokens_out: int = 0
     failure: str = ""
@@ -207,8 +208,22 @@ def _read_delegate_receipt(path: Path) -> _DelegateReceipt:
     if null_terminal:
         failures.append("terminal_payload is null")
     retry_cause = retry_causes.delegate_retry_cause(receipt, null_terminal)
+    revision = next(
+        (
+            str(found)
+            for found in (
+                receipt.get("model_revision"),
+                result.get("model_revision"),
+                terminal.get("model_revision"),
+                metrics.get("model_revision"),
+            )
+            if isinstance(found, str) and found.strip()
+        ),
+        "",
+    )
     return _DelegateReceipt(
         model=str(receipt.get("model") or ""),
+        model_revision=revision,
         tokens_in=tokens(metrics.get("input_tokens")),
         tokens_out=tokens(metrics.get("output_tokens")),
         failure="; ".join(
@@ -740,6 +755,7 @@ class DelegatedCodeEditPorts:
                 tokens_in=receipt.tokens_in,
                 tokens_out=receipt.tokens_out,
                 model=receipt.model,
+                model_revision=receipt.model_revision,
                 invalid_reason=bound_error(reason),
             ), receipt.retry_cause
         actions, reason = parse_turn_reply(text)
@@ -752,6 +768,7 @@ class DelegatedCodeEditPorts:
             tokens_in=receipt.tokens_in,
             tokens_out=receipt.tokens_out,
             model=receipt.model,
+            model_revision=receipt.model_revision,
         ), ""
 
     # -- score ----------------------------------------------------------------
