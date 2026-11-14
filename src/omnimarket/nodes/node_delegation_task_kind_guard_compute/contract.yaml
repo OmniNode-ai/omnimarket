@@ -50,6 +50,7 @@ handler:
   module: "omnimarket.nodes.node_delegation_task_kind_guard_compute.handlers.handler_task_kind_guard"
   class: "HandlerDelegationTaskKindGuard"
   input_model: "omnimarket.nodes.node_delegation_task_kind_guard_compute.models.model_task_kind_guard_request.ModelTaskKindGuardRequest"
+  output_model: "omnimarket.nodes.node_delegation_task_kind_guard_compute.models.model_task_kind_guard_answer.ModelTaskKindGuardAnswer"
 handler_routing:
   routing_strategy: "operation_match"
   default_handler: "omnimarket.nodes.node_delegation_task_kind_guard_compute.handlers.handler_task_kind_guard:HandlerDelegationTaskKindGuard"
@@ -61,14 +62,19 @@ handler_routing:
 # No event_bus and no runtime_dispatch: the caller that scores a local answer invokes the handler in process, like the
 # landing controller does the decision node. A topic would need broker permission rows in the overlays repository
 # (broker-acl-coverage-gate); add the topics and the rows together when a bus caller exists.
-runtime_profiles:
-  - main
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct Python invocation by the caller that scores a local classification answer, with the request and the running tally supplied.
 descriptor:
   node_archetype: compute
   purity: impure  # reads the bound routing overlay file; writes nothing
   idempotent: true
+  runtime_profiles: []
   timeout_ms: 5000
 metadata:
+  transport_type: local
   description: "Guard that scores a local classification answer against the deterministic class and falls back on a live accuracy drop."
   author: "OmniNode Team"
   license: "MIT"
