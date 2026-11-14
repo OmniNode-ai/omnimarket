@@ -303,6 +303,14 @@ _GATEWAY_RESULTS: dict[str, Callable[[ModelGithubGatewayRequest], dict[str, Any]
             }
         ],
     },
+    "code_scanning_alerts": lambda r: {
+        "operation": "code_scanning_alerts",
+        "repo": r.repo,
+        "ref": f"refs/pull/{r.pr_number}/merge",
+        "available": True,
+        "truncated": False,
+        "alerts": [{"number": 3, "rule_id": "py/example", "severity": "error"}],
+    },
     "pr_review_threads": lambda r: {
         "operation": "pr_review_threads",
         **_pr(r),
@@ -484,6 +492,7 @@ _READ_ARGS: dict[str, list[str]] = {
     ],
     "pr-merged": [f"{REPO}#77"],
     "pr-threads": [f"{REPO}#77"],
+    "code-scanning-alerts": [f"{REPO}#77"],
 }
 _WRITE_ARGS: dict[str, list[str]] = {
     "pr-create": [
@@ -666,7 +675,7 @@ def test_run_view_returns_step_timestamps_without_an_additional_read(
     transport.assert_drained()
     assert transport.sent == [get(path)]
     declared = sorted(contract_operations(EnumScmNode.GATEWAY))
-    assert len(declared) == 19
+    assert len(declared) == 20
     assert declared == sorted(
         spec.operation for spec in SCM_VERBS if spec.node is EnumScmNode.GATEWAY
     )

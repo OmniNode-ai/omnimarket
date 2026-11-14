@@ -1,0 +1,60 @@
+schema_version: 1.0.0
+ticket_id: OMN-23609
+title: The board shows usable and limited accounts per host
+summary: 'The factory floor Limits panel already drew one row per lab host (host_account_pool) that counted tokens by limit mark. It now also counts each host''s accounts by the per-account usage verdict of node_pool_usage_verdict_compute (ok, drain, limited, unknown): accounts_usable (draining ones included), accounts_draining, accounts_limited, accounts_unknown. An account with no recent reading, or none judged, is unknown and never usable; with no thresholds installed the four counts read UNKNOWN and are never drawn as zero. The effect node judges the accounts through a seam in the verdict node (floor_account_verdicts) and passes the verdicts to the pure floor compute as typed facts; the existing row keys (total, revoked, limited, usable, limited_until) keep their shape and meaning. The floor page draws the new counts on the host row. Not in this change: the deployed verdict thresholds overlay, and any change to the other limit rows.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23609-ac1
+  statement: 'the limits panel lists each lab host with its usable and limited accounts from the per-account usage verdict'
+  acceptance:
+  - id: AC1
+    statement: 'AC1: requirement only, not built in the account-limit watching change: the board''s limits panel lists each lab host with its usable and limited accounts from the per-account usage verdict -- falsifier: a panel test with two hosts, one limited account on one of them, asserts the per-host counts and fails at the base where no such rollup exists'
+- id: req-omn23609-ac2
+  statement: 'an account with no recent reading is shown as unknown and never counted usable'
+  acceptance:
+  - id: AC2
+    statement: 'AC2: an account with no recent reading is shown as unknown and never counted usable -- falsifier: a panel test with a stale reading asserts unknown and a usable count that excludes it'
+- id: req-omn23609-ac3
+  statement: 'the running board shows each lab host with its usable and limited accounts for the live pool'
+  acceptance:
+  - id: AC3
+    statement: 'AC3: integrated: the running board shows each lab host with its usable and limited accounts for the live pool -- falsifier: the board''s published output read from the runtime lists every host of the live pool with both counts'
+evidence_requirements:
+- kind: tests
+  description: The panel tests pass at the pushed head; at the base the new test file cannot import the verdict seam and fails.
+  command: uv run --frozen pytest tests/unit/test_factory_floor_limits_host_accounts.py tests/unit/test_factory_floor_limits.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23609-ac1-ac2
+  description: 'AC1 and AC2: two hosts with one limited account give per-host usable and limited counts; a stale reading is unknown and excluded from usable; a never-read or absent account is unknown; a draining account is usable and counted draining; a host limit mark and a revoked token are never usable; no thresholds leaves the counts UNKNOWN. At the base the test file fails on import because no verdict seam exists.'
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/test_factory_floor_limits_host_accounts.py tests/unit/test_factory_floor_limits.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23609-ac3-published-source
+  description: 'hosted proxy for AC3: the Limits panel tests at the evaluated commit assert the per-host account counts the page draws. It checks the source behaviour and does not assert a live runtime rollout; the live published record read is the local Done check below.'
+  source: manual
+  binds_ac:
+  - AC3
+  execution_scope: hosted_and_local
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/test_factory_floor_limits_host_accounts.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23609-integration-proof
+  description: 'AC3 on the running board: the focused panel tests run on a lab host at the pushed head; the published floor record read from the runtime after the merge deploys must list every host of the live pool with the four account counts. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23609 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/test_factory_floor_limits_host_accounts.py -q --no-cov
+    cwd: .

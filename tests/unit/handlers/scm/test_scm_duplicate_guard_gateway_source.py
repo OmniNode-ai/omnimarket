@@ -389,8 +389,12 @@ def test_an_answer_that_is_not_the_typed_result_is_unreadable() -> None:
         failed=False,
         payload={"result": {"operation": "pr_heads", "repo": TARGET}},
     )
-    with pytest.raises(OpenPrFactsUnreadableError, match="not an open_pr_facts result"):
-        scm_gateway_open_prs._typed_result(terminal)
+    with pytest.raises(
+        OpenPrFactsUnreadableError, match="not the open_pr_facts result"
+    ):
+        scm_gateway_open_prs._typed_result(
+            terminal, ModelOpenPrFactsResult, "open_pr_facts"
+        )
 
 
 # ---- pr-create

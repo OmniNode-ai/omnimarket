@@ -1,0 +1,77 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Eval Tracking Schedule Compute
+#
+# The window trigger of the weekly coding test (OMN-24177, plan task T13). Pure definition-B
+# compute: handle(ModelRuntimeTick) -> ModelCodeEvalRunRequest | None. A tick that is an arm's
+# turn returns that arm's current-window run request, whose correlation id is the window's run
+# id; the runtime publishes it to the trial driver's command topic. The cadence values, the
+# resend interval and the frozen tracking record come from the node's overlay, never from this
+# contract.
+name: node_eval_tracking_schedule_compute
+contract_name: node_eval_tracking_schedule_compute
+node_name: node_eval_tracking_schedule_compute
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: compute
+lifecycle: experimental
+runtime_profiles: [main]
+
+description: >
+  Window trigger of the fixed coding test. Subscribes to the platform runtime tick; the tick
+  that is an arm's turn returns that arm's current-window run request (window counted from the
+  record's epoch, run id a uuid5 of record, model, cadence and window). No clock read, no
+  state, no I/O. Refuses to load when the overlay is absent.
+
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: HandlerEvalTrackingSchedule
+        module: omnimarket.nodes.node_eval_tracking_schedule_compute.handlers.handler_eval_tracking_schedule
+      event_model: omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick
+      event_type: platform.runtime-tick
+
+handler:
+  module: omnimarket.nodes.node_eval_tracking_schedule_compute.handlers.handler_eval_tracking_schedule
+  class: HandlerEvalTrackingSchedule
+  input_model: omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+
+input_subscriptions:
+  - topic: "onex.intent.platform.runtime-tick.v1"
+    operation: "eval_tracking_schedule"
+
+output_model:
+  name: ModelCodeEvalRunRequest
+  module: omnimarket.models.code_eval_trial.model_code_eval_run_request
+  description: The current-window run request of the arm whose turn this tick is, or no output on any other tick.
+
+terminal_event: onex.cmd.omnimarket.code-eval-run-requested.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.intent.platform.runtime-tick.v1
+  publish_topics:
+    - onex.cmd.omnimarket.code-eval-run-requested.v1
+
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.intent.platform.runtime-tick.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.intent.platform.runtime-tick.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.code-eval-run-requested.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.code-eval-run-requested.v1, operation: DESCRIBE}
+
+metadata:
+  description: "Runtime-tick schedule of the weekly fixed coding test"
+  author: "OmniNode Team"
+  license: MIT
+  created: "2026-11-14"
+  tags: [compute, eval-tracking, schedule, pure]
+  related_tickets: ["OMN-24177"]
