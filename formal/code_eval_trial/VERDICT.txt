@@ -15,3 +15,18 @@ Notes carried to the build (non-blocking):
   - The completion bound must exceed each deadline by at least one nudge interval (M6b; README item 7).
   - The liveness configs check one task; the 2 task, 2 model, bound 3 config is untimed.
 Results: formal/code_eval_trial/results/*.out; the README lists each config's states and verdict.
+
+Addendum (OMN-24173, AC4): the void close. Written before the code change, by lane
+fill-ticket-OMN-24173-20261114T0708Z.
+  Read: this model and the verdict above. The model had ExactlyOneClose (closeCount at most one) but
+  no label for a close that ends void and no mutant that closes twice; its note says ExactlyOneClose
+  "holds by construction", so nothing showed that the property could fail.
+  Change: a void label (variable void) set by the one close step, any value, frozen with the closed
+  row; invariant VoidOnlyOnClose; action property VoidFrozen; two mutants. M11 lets a closed run
+  close again and must violate ExactlyOneClose; M12 rewrites a closed row's void label and must
+  violate VoidFrozen. Every config was re-run (TLC 2.19, pinned jar): the four design and liveness
+  configs end clean, M1 to M12 each end in the violation tests/formal/test_code_eval_trial_model.py
+  names.
+  Not modelled: the infrastructure retry (same ordinal, the try or its score sent again). It is not
+  a transition here; the reducer tests carry it.
+  Review: no design review of this extension has run; the verdict above covers the unchanged model.

@@ -1,0 +1,189 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 54 and seed -2202771584967036846 with 2 workers on 4 cores with 1820MB heap and 64MB offheap memory [pid: 362719] (Linux 7.0.0-31-generic amd64, Ubuntu 21.0.13.0.3 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file CodeEvalTrial.tla
+Parsing file /tmp/Naturals.tla
+Parsing file /tmp/FiniteSets.tla
+Parsing file /tmp/TLC.tla
+Parsing file /tmp/Sequences.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module TLC
+Semantic processing of module CodeEvalTrial
+Starting... (2026-11-14 02:27:48)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-11-14 02:27:49.
+Error: Invariant ExactlyOneClose is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ ord = (<<t1, m1>> :> 1 @@ <<t1, m2>> :> 1 @@ <<t2, m1>> :> 1 @@ <<t2, m2>> :> 1)
+/\ ctrl = (t1 :> "queued" @@ t2 :> "queued")
+/\ np = (<<t1, m1>> :> 0 @@ <<t1, m2>> :> 0 @@ <<t2, m1>> :> 0 @@ <<t2, m2>> :> 0)
+/\ abandoned = FALSE
+/\ slot = ( <<t1, m1>> :> "none" @@
+  <<t1, m2>> :> "none" @@
+  <<t2, m1>> :> "none" @@
+  <<t2, m2>> :> "none" )
+/\ lastLate = FALSE
+/\ void = FALSE
+/\ tryAge = (<<t1, m1>> :> 0 @@ <<t1, m2>> :> 0 @@ <<t2, m1>> :> 0 @@ <<t2, m2>> :> 0)
+/\ hostsUp = TRUE
+/\ closeCount = 0
+/\ vd = ( <<t1, m1>> :> <<"none", "none", "none">> @@
+  <<t1, m2>> :> <<"none", "none", "none">> @@
+  <<t2, m1>> :> <<"none", "none", "none">> @@
+  <<t2, m2>> :> <<"none", "none", "none">> )
+/\ nudging = TRUE
+/\ closed = FALSE
+/\ scoreFlight = Nil
+/\ since = 0
+/\ scoreAge = 0
+
+State 2: <SendControl line 153, col 3 to line 158, col 99 of module CodeEvalTrial>
+/\ ord = (<<t1, m1>> :> 1 @@ <<t1, m2>> :> 1 @@ <<t2, m1>> :> 1 @@ <<t2, m2>> :> 1)
+/\ ctrl = (t1 :> "inflight" @@ t2 :> "queued")
+/\ np = (<<t1, m1>> :> 0 @@ <<t1, m2>> :> 0 @@ <<t2, m1>> :> 0 @@ <<t2, m2>> :> 0)
+/\ abandoned = FALSE
+/\ slot = ( <<t1, m1>> :> "none" @@
+  <<t1, m2>> :> "none" @@
+  <<t2, m1>> :> "none" @@
+  <<t2, m2>> :> "none" )
+/\ lastLate = FALSE
+/\ void = FALSE
+/\ tryAge = (<<t1, m1>> :> 0 @@ <<t1, m2>> :> 0 @@ <<t2, m1>> :> 0 @@ <<t2, m2>> :> 0)
+/\ hostsUp = TRUE
+/\ closeCount = 0
+/\ vd = ( <<t1, m1>> :> <<"none", "none", "none">> @@
+  <<t1, m2>> :> <<"none", "none", "none">> @@
+  <<t2, m1>> :> <<"none", "none", "none">> @@
+  <<t2, m2>> :> <<"none", "none", "none">> )
+/\ nudging = TRUE
+/\ closed = FALSE
+/\ scoreFlight = <<t1, "ctl", 0>>
+/\ since = 0
+/\ scoreAge = 0
+
+State 3: <DeliverScore line 195, col 3 to line 210, col 120 of module CodeEvalTrial>
+/\ ord = (<<t1, m1>> :> 1 @@ <<t1, m2>> :> 1 @@ <<t2, m1>> :> 1 @@ <<t2, m2>> :> 1)
+/\ ctrl = (t1 :> "notheld" @@ t2 :> "queued")
+/\ np = (<<t1, m1>> :> 0 @@ <<t1, m2>> :> 0 @@ <<t2, m1>> :> 0 @@ <<t2, m2>> :> 0)
+/\ abandoned = FALSE
+/\ slot = ( <<t1, m1>> :> "excluded" @@
+  <<t1, m2>> :> "excluded" @@
+  <<t2, m1>> :> "none" @@
+  <<t2, m2>> :> "none" )
+/\ lastLate = FALSE
+/\ void = FALSE
+/\ tryAge = (<<t1, m1>> :> 0 @@ <<t1, m2>> :> 0 @@ <<t2, m1>> :> 0 @@ <<t2, m2>> :> 0)
+/\ hostsUp = TRUE
+/\ closeCount = 0
+/\ vd = ( <<t1, m1>> :> <<"none", "none", "none">> @@
+  <<t1, m2>> :> <<"none", "none", "none">> @@
+  <<t2, m1>> :> <<"none", "none", "none">> @@
+  <<t2, m2>> :> <<"none", "none", "none">> )
+/\ nudging = TRUE
+/\ closed = FALSE
+/\ scoreFlight = Nil
+/\ since = 0
+/\ scoreAge = 0
+
+State 4: <SendControl line 153, col 3 to line 158, col 99 of module CodeEvalTrial>
+/\ ord = (<<t1, m1>> :> 1 @@ <<t1, m2>> :> 1 @@ <<t2, m1>> :> 1 @@ <<t2, m2>> :> 1)
+/\ ctrl = (t1 :> "notheld" @@ t2 :> "inflight")
+/\ np = (<<t1, m1>> :> 0 @@ <<t1, m2>> :> 0 @@ <<t2, m1>> :> 0 @@ <<t2, m2>> :> 0)
+/\ abandoned = FALSE
+/\ slot = ( <<t1, m1>> :> "excluded" @@
+  <<t1, m2>> :> "excluded" @@
+  <<t2, m1>> :> "none" @@
+  <<t2, m2>> :> "none" )
+/\ lastLate = FALSE
+/\ void = FALSE
+/\ tryAge = (<<t1, m1>> :> 0 @@ <<t1, m2>> :> 0 @@ <<t2, m1>> :> 0 @@ <<t2, m2>> :> 0)
+/\ hostsUp = TRUE
+/\ closeCount = 0
+/\ vd = ( <<t1, m1>> :> <<"none", "none", "none">> @@
+  <<t1, m2>> :> <<"none", "none", "none">> @@
+  <<t2, m1>> :> <<"none", "none", "none">> @@
+  <<t2, m2>> :> <<"none", "none", "none">> )
+/\ nudging = TRUE
+/\ closed = FALSE
+/\ scoreFlight = <<t2, "ctl", 0>>
+/\ since = 0
+/\ scoreAge = 0
+
+State 5: <DeliverScore line 195, col 3 to line 210, col 120 of module CodeEvalTrial>
+/\ ord = (<<t1, m1>> :> 1 @@ <<t1, m2>> :> 1 @@ <<t2, m1>> :> 1 @@ <<t2, m2>> :> 1)
+/\ ctrl = (t1 :> "notheld" @@ t2 :> "notheld")
+/\ np = (<<t1, m1>> :> 0 @@ <<t1, m2>> :> 0 @@ <<t2, m1>> :> 0 @@ <<t2, m2>> :> 0)
+/\ abandoned = FALSE
+/\ slot = ( <<t1, m1>> :> "excluded" @@
+  <<t1, m2>> :> "excluded" @@
+  <<t2, m1>> :> "excluded" @@
+  <<t2, m2>> :> "excluded" )
+/\ lastLate = FALSE
+/\ void = FALSE
+/\ tryAge = (<<t1, m1>> :> 0 @@ <<t1, m2>> :> 0 @@ <<t2, m1>> :> 0 @@ <<t2, m2>> :> 0)
+/\ hostsUp = TRUE
+/\ closeCount = 0
+/\ vd = ( <<t1, m1>> :> <<"none", "none", "none">> @@
+  <<t1, m2>> :> <<"none", "none", "none">> @@
+  <<t2, m1>> :> <<"none", "none", "none">> @@
+  <<t2, m2>> :> <<"none", "none", "none">> )
+/\ nudging = TRUE
+/\ closed = FALSE
+/\ scoreFlight = Nil
+/\ since = 0
+/\ scoreAge = 0
+
+State 6: <Close line 233, col 3 to line 236, col 102 of module CodeEvalTrial>
+/\ ord = (<<t1, m1>> :> 1 @@ <<t1, m2>> :> 1 @@ <<t2, m1>> :> 1 @@ <<t2, m2>> :> 1)
+/\ ctrl = (t1 :> "notheld" @@ t2 :> "notheld")
+/\ np = (<<t1, m1>> :> 0 @@ <<t1, m2>> :> 0 @@ <<t2, m1>> :> 0 @@ <<t2, m2>> :> 0)
+/\ abandoned = FALSE
+/\ slot = ( <<t1, m1>> :> "excluded" @@
+  <<t1, m2>> :> "excluded" @@
+  <<t2, m1>> :> "excluded" @@
+  <<t2, m2>> :> "excluded" )
+/\ lastLate = FALSE
+/\ void = FALSE
+/\ tryAge = (<<t1, m1>> :> 0 @@ <<t1, m2>> :> 0 @@ <<t2, m1>> :> 0 @@ <<t2, m2>> :> 0)
+/\ hostsUp = TRUE
+/\ closeCount = 1
+/\ vd = ( <<t1, m1>> :> <<"none", "none", "none">> @@
+  <<t1, m2>> :> <<"none", "none", "none">> @@
+  <<t2, m1>> :> <<"none", "none", "none">> @@
+  <<t2, m2>> :> <<"none", "none", "none">> )
+/\ nudging = TRUE
+/\ closed = TRUE
+/\ scoreFlight = Nil
+/\ since = 0
+/\ scoreAge = 0
+
+State 7: <Close line 233, col 3 to line 236, col 102 of module CodeEvalTrial>
+/\ ord = (<<t1, m1>> :> 1 @@ <<t1, m2>> :> 1 @@ <<t2, m1>> :> 1 @@ <<t2, m2>> :> 1)
+/\ ctrl = (t1 :> "notheld" @@ t2 :> "notheld")
+/\ np = (<<t1, m1>> :> 0 @@ <<t1, m2>> :> 0 @@ <<t2, m1>> :> 0 @@ <<t2, m2>> :> 0)
+/\ abandoned = FALSE
+/\ slot = ( <<t1, m1>> :> "excluded" @@
+  <<t1, m2>> :> "excluded" @@
+  <<t2, m1>> :> "excluded" @@
+  <<t2, m2>> :> "excluded" )
+/\ lastLate = FALSE
+/\ void = FALSE
+/\ tryAge = (<<t1, m1>> :> 0 @@ <<t1, m2>> :> 0 @@ <<t2, m1>> :> 0 @@ <<t2, m2>> :> 0)
+/\ hostsUp = TRUE
+/\ closeCount = 2
+/\ vd = ( <<t1, m1>> :> <<"none", "none", "none">> @@
+  <<t1, m2>> :> <<"none", "none", "none">> @@
+  <<t2, m1>> :> <<"none", "none", "none">> @@
+  <<t2, m2>> :> <<"none", "none", "none">> )
+/\ nudging = TRUE
+/\ closed = TRUE
+/\ scoreFlight = Nil
+/\ since = 0
+/\ scoreAge = 0
+
+4873 states generated, 134 distinct states found, 62 states left on queue.
+The depth of the complete state graph search is 7.
+The average outdegree of the complete state graph is 2 (minimum is 0, the maximum 8 and the 95th percentile is 6).
+Finished in 01s at (2026-11-14 02:27:49)
