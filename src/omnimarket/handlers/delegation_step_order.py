@@ -8,17 +8,11 @@ A step asks for its first engine: ``text`` drafts on ``lab`` or ``glm`` first, a
 GLM rung for text, and GLM ahead of the lab tier or not for code. A class the overlay names no chain for, an overlay no root
 binds, a reader that raises, or a chain that does not place the engines keeps the step's old default and says why, so a bad
 overlay never stops a step.
-
-Run as ``python -m omnimarket.handlers.delegation_step_order <text|code> <task_class> [--flag <value>]``: it prints one JSON
-object, ``{"choice": ..., "fields": {...}}``, and exits 0 whenever it answered.
 """
 
 from __future__ import annotations
 
-import argparse
-import json
-import sys
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 
 from omnimarket.handlers.delegation_routing_order_reader import (
     DelegationRoutingOrderError,
@@ -83,20 +77,3 @@ def step_order(
     return ModelDelegationStepOrder(
         choice=OLD_DEFAULTS[kind], order_source="default", order_fallback=why
     )
-
-
-def main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("kind", choices=STEP_KINDS)
-    parser.add_argument("task_class")
-    parser.add_argument("--flag", default=None)
-    args = parser.parse_args(argv)
-    answer = step_order(args.kind, args.task_class, args.flag)
-    sys.stdout.write(
-        json.dumps({"choice": answer.choice, "fields": answer.receipt_fields()}) + "\n"
-    )
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

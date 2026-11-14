@@ -4,8 +4,6 @@
 
 from __future__ import annotations
 
-import json
-
 import pytest
 
 from omnimarket.handlers import delegation_step_order as mod
@@ -92,22 +90,3 @@ def test_a_refused_reader_keeps_the_old_default_with_its_reason() -> None:
 def test_an_unknown_kind_is_refused() -> None:
     with pytest.raises(ValueError, match="kind must be one of"):
         mod.step_order("review", "document", read=reader(None))
-
-
-def test_cli_prints_one_json_answer_and_exits_zero(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    monkeypatch.setattr(mod, "read_engine_order", reader(LAB_FIRST))
-    assert mod.main(["text", "document"]) == 0
-    assert json.loads(capsys.readouterr().out) == {
-        "choice": "lab",
-        "fields": {
-            "order_source": "routing_order_node",
-            "routing_order": list(LAB_FIRST),
-        },
-    }
-    assert mod.main(["code", "document", "--flag", "before-lab"]) == 0
-    assert json.loads(capsys.readouterr().out) == {
-        "choice": "before-lab",
-        "fields": {"order_source": "flag"},
-    }
