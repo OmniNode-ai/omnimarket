@@ -8,6 +8,8 @@ import sys
 import textwrap
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import ModuleType
+from typing import cast
 
 import pytest
 
@@ -508,7 +510,7 @@ def test_topic_names_from_contract_alone_with_a_plugin_topic_module_present(
             raise AssertionError(f"the plugin topic module was read: {name}")
 
     for name in ("omniclaude", "omniclaude.hooks", "omniclaude.hooks.topics"):
-        monkeypatch.setitem(sys.modules, name, _Refuses())  # type: ignore[arg-type]
+        monkeypatch.setitem(sys.modules, name, cast(ModuleType, _Refuses()))
 
     _write_contract(
         tmp_path / "node_a" / "contract.yaml",
