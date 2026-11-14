@@ -294,6 +294,7 @@ class ModelPublishNames(BaseModel):
     compare_data: str = Field(min_length=1)
     delegation_tracker_page: str = Field(min_length=1)
     delegation_tracker_data: str = Field(min_length=1)
+    delegation_history_data: str = Field(min_length=1)
     floor_page: str = Field(min_length=1)
     data: str = Field(min_length=1)
     process_health: str = Field(min_length=1)
@@ -520,6 +521,7 @@ class ModelFactoryFloorPublishRuntime(BaseModel):
     # OMN-23081: the delegation tracker page and what node_floor_delegation_effect writes (relative to the registry home).
     delegation_tracker_page_relpath: str = Field(min_length=1)
     delegation_tracker_data_relpath: str = Field(min_length=1)
+    delegation_history_data_relpath: str = Field(min_length=1)
     floor_page_relpath: str = Field(min_length=1)
     # The directory, relative to the node, holding the vendored theme files named by ``names.theme_css``.
     theme_css_relpath: str = Field(min_length=1)

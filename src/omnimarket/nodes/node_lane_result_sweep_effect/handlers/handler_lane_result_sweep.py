@@ -151,10 +151,18 @@ def _parse_time(text: str) -> datetime | None:
         return None
 
 
-def fold_existing(rows: tuple[ModelLedgerEvidenceRow, ...]) -> dict[str, _Existing]:
-    """Fold the sweep rows by receipt. A park counts only with a citation and a review time."""
+def fold_existing(
+    rows: tuple[ModelLedgerEvidenceRow, ...], writer_lane: str
+) -> dict[str, _Existing]:
+    """Fold the sweep's own rows by receipt. A park counts only with a citation and a review time.
+
+    Only a row written under the sweep's own lane is evidence: another writer's row naming the
+    same receipt and action is not.
+    """
     folded: dict[str, _Existing] = {}
     for row in rows:
+        if row.lane != writer_lane:
+            continue
         key = _cell(row, "receipt")
         action = _cell(row, "action")
         if not key or not action.startswith("lane-result-"):
@@ -214,7 +222,7 @@ class HandlerLaneResultSweep:
         if errors:
             return self._unreadable(command, now, errors)
 
-        existing = fold_existing(sweep_rows.rows)
+        existing = fold_existing(sweep_rows.rows, self._overlay.publish.lane)
         receipts = [
             receipt
             for row in terminals.rows
@@ -229,7 +237,7 @@ class HandlerLaneResultSweep:
             )
             if command.write:
                 try:
-                    verdict, rows = self._write_rows(receipt, verdict, existing, now)
+                    verdict = self._write_rows(receipt, verdict, existing, now, written)
                 except RuntimeError as exc:
                     # An append that did not land stops the run; the rows already
                     # appended stay named, and the reading is not written over a gap.
@@ -239,7 +247,6 @@ class HandlerLaneResultSweep:
                         rows_written=tuple(written),
                         failure=str(exc),
                     )
-                written.extend(rows)
             verdicts.append(verdict)
 
         reasons = tuple(f"{v.state.value}:{v.lane}" for v in verdicts if v.state.fails)
@@ -280,7 +287,11 @@ class HandlerLaneResultSweep:
         for rule in self._overlay.error_rule_document.get("error_rules", []):
             if key in rule.get("class_keys", []):
                 action = rule.get("action") or {}
-                return key, str(rule.get("id", "")), str(action.get("kind", ""))
+                kind = str(action.get("kind", "")).strip()
+                if not kind:
+                    # A rule that names no action is no action: it must not satisfy the policy.
+                    continue
+                return key, str(rule.get("id", "")), kind
         return key, "", ""
 
     def _judge(
@@ -368,17 +379,26 @@ class HandlerLaneResultSweep:
         verdict: ModelReceiptVerdict,
         existing: dict[str, _Existing],
         now: datetime,
-    ) -> tuple[ModelReceiptVerdict, list[str]]:
-        """Write the class row, and the action row a matching rule gives; return the new state."""
-        rows: list[str] = []
+        rows: list[str],
+    ) -> ModelReceiptVerdict:
+        """Write the class row, and the action row a matching rule gives; return the new state.
+
+        Each row is added to ``rows`` the moment its append lands, so a later append that fails
+        leaves the earlier row named. A class row that already stands does not stop a missing
+        action row from being written.
+        """
         state = existing.get(receipt.receipt_key)
-        if state is not None and state.class_at is not None:
-            return verdict, rows
         _, rule_id, action_kind = (
             self._classify_text(receipt)
             if verdict.effective_class.needs_action
             else ("", "", "")
         )
+        if state is not None and state.class_at is not None:
+            if state.acted or state.parks or not rule_id:
+                return verdict
+            self._append_action(receipt, rule_id, action_kind, now, rows)
+            state.acted = True
+            return verdict.model_copy(update={"state": EnumSweepState.ACTED})
         rows.append(
             self._append(
                 ACTION_CLASS,
@@ -397,35 +417,45 @@ class HandlerLaneResultSweep:
         )
         acted = bool(rule_id) and verdict.effective_class.needs_action
         if acted:
-            mode = next(
-                (
-                    str(r.get("mode", ""))
-                    for r in self._overlay.error_rule_document.get("error_rules", [])
-                    if r.get("id") == rule_id
-                ),
-                "",
-            )
-            rows.append(
-                self._append(
-                    ACTION_ACTION,
-                    receipt.receipt_key,
-                    now,
-                    self._cells(
-                        ACTION_ACTION,
-                        receipt,
-                        f"rule={rule_id}",
-                        f"act={action_kind or 'none'}",
-                        f"mode={mode or 'none'}",
-                    ),
-                )
-            )
+            self._append_action(receipt, rule_id, action_kind, now, rows)
         new_state = verdict.state
         if verdict.state is EnumSweepState.PENDING and acted:
             new_state = EnumSweepState.ACTED
         elif verdict.state is EnumSweepState.UNCLASSIFIED_LATE:
             new_state = EnumSweepState.UNCLASSIFIED_LATE
         existing[receipt.receipt_key] = _Existing(class_at=now, acted=acted)
-        return verdict.model_copy(update={"state": new_state}), rows
+        return verdict.model_copy(update={"state": new_state})
+
+    def _append_action(
+        self,
+        receipt: ModelLaneReceipt,
+        rule_id: str,
+        action_kind: str,
+        now: datetime,
+        rows: list[str],
+    ) -> None:
+        mode = next(
+            (
+                str(r.get("mode", ""))
+                for r in self._overlay.error_rule_document.get("error_rules", [])
+                if r.get("id") == rule_id
+            ),
+            "",
+        )
+        rows.append(
+            self._append(
+                ACTION_ACTION,
+                receipt.receipt_key,
+                now,
+                self._cells(
+                    ACTION_ACTION,
+                    receipt,
+                    f"rule={rule_id}",
+                    f"act={action_kind}",
+                    f"mode={mode or 'none'}",
+                ),
+            )
+        )
 
     def _write_reading(
         self,
