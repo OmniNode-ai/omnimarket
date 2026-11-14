@@ -60,11 +60,15 @@ def _required(name: str, environ: Mapping[str, str]) -> str:
 
 
 class ModelCanaryPendingRun(NamedTuple):
-    """The pull request one tick opened, so a later tick can settle it."""
+    """The pull request one tick opened, so a later tick can settle it.
+
+    ``repo`` is the repository the run was opened through, kept so a later settle reads the same one.
+    """
 
     opened: ModelCanaryOpened | None
     open_error: str
     started: datetime
+    repo: ProtocolCanaryRepo | None = None
 
 
 class ModelLandingCanaryTickOutcome(NamedTuple):
@@ -119,8 +123,8 @@ def open_canary(
     try:
         opened = repo.open(request)
     except CanaryRepoError as exc:
-        return ModelCanaryPendingRun(None, str(exc), started)
-    return ModelCanaryPendingRun(opened, "", started)
+        return ModelCanaryPendingRun(None, str(exc), started, repo)
+    return ModelCanaryPendingRun(opened, "", started, repo)
 
 
 def settle_canary(
@@ -136,6 +140,8 @@ def settle_canary(
     overlay = load_structured_overlay(
         canary_overlay_id, ModelLandingCanaryOverlay, environ
     )
+    if repo is None:
+        repo = run.repo
     if repo is None:
         repo = REPO_BACKENDS[overlay.target.backend](overlay.target, environ or {})
     if run.opened is not None:

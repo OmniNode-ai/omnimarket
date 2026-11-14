@@ -1856,6 +1856,7 @@
   "tests/nodes/node_lab_work_unit_effect/test_disk_watermark_placement_omn23390.py": 1.96,
   "tests/nodes/node_landing_canary_scheduled_effect/test_contract_topics.py": 2.01,
   "tests/nodes/node_landing_canary_scheduled_effect/test_golden_chain_landing_canary_scheduled.py": 1.72,
+  "tests/nodes/node_landing_canary_scheduled_effect/test_settle_keeps_repo.py": 1.5,
   "tests/nodes/node_landing_not_started_effect/test_golden_chain_landing_not_started.py": 0.02,
   "tests/nodes/node_landing_placement_wait_effect/test_golden_chain_landing_placement_wait.py": 0.04,
   "tests/nodes/node_landing_policy_compute/test_landing_policy.py": 0.17,
