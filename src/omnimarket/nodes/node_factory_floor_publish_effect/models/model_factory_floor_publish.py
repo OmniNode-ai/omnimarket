@@ -211,12 +211,17 @@ class ModelPublishStep(BaseModel):
     required: bool
     timeout_seconds: int | None = Field(default=None, gt=0)
 
+    def limit_missing_message(self) -> str:
+        return f"overlay node_factory_floor_publish_effect: key limits.step_timeout_seconds.{self.name} is missing"
+
+    @property
+    def limit_resolved(self) -> bool:
+        return self.timeout_seconds is not None
+
     @property
     def seconds(self) -> int:
         if self.timeout_seconds is None:
-            raise PublishLimitMissingError(
-                f"overlay node_factory_floor_publish_effect: key limits.step_timeout_seconds.{self.name} is missing"
-            )
+            raise PublishLimitMissingError(self.limit_missing_message())
         return self.timeout_seconds
 
     module: str | None = None
@@ -272,7 +277,7 @@ class ModelPublishStepResult(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     name: str
-    status: Literal["ok", "failed"]
+    status: Literal["ok", "failed", "unread"]
     detail: str = ""
     diagnostic: str = ""
     # The wall-clock seconds the step took, measured by the handler (OMN-22699).
@@ -561,17 +566,18 @@ class ModelFactoryFloorPublishRuntime(BaseModel):
     ) -> ModelFactoryFloorPublishRuntime:
         """A copy of this runtime with every step's timeout and the cycle bound taken from ``limits``.
 
-        A declared step with no overlay value raises ``PublishLimitMissingError`` naming the key; an overlay value for a
-        step the contract no longer declares is ignored, so removing a step never stops the cycle. When the resolved longest path exceeds the bound, raises
-        ``PublishLimitBoundError`` naming ``limits.cycle_bound_seconds`` and both numbers.
+        A required step with no overlay value raises ``PublishLimitMissingError`` naming the key; a step that is not
+        required and has no overlay value keeps its missing timeout (``timeout_seconds`` stays ``None``) and is drawn
+        unread at publish, so one missing optional key no longer stops the cycle. An overlay value for a step the contract
+        no longer declares is ignored, so removing a step never stops the cycle. When the resolved longest path exceeds the
+        bound, raises ``PublishLimitBoundError`` naming ``limits.cycle_bound_seconds`` and both numbers.
         """
 
         def resolve(step: ModelPublishStep) -> ModelPublishStep:
             if step.name not in limits.step_timeout_seconds:
-                raise PublishLimitMissingError(
-                    f"overlay node_factory_floor_publish_effect: key "
-                    f"limits.step_timeout_seconds.{step.name} is missing"
-                )
+                if step.required:
+                    raise PublishLimitMissingError(step.limit_missing_message())
+                return step
             seconds = limits.step_timeout_seconds[step.name]
             return step.model_copy(update={"timeout_seconds": seconds})
 
@@ -595,19 +601,24 @@ class ModelFactoryFloorPublishRuntime(BaseModel):
     def declared_longest_path(self) -> dict[str, int]:
         """The seconds each phase may take at most, from the timeouts this contract declares.
 
-        The input steps run in groups: a group of concurrent steps takes its slowest member's timeout, and the groups
-        add up. The after-publish steps add up. The other phases are the cycle block's own numbers, which the handler
-        enforces. Their sum is the longest path a run may take; ``cycle.bound_seconds`` must hold it. A step whose limit
-        is not yet resolved (``timeout_seconds`` is ``None``) raises ``PublishLimitMissingError`` naming its key.
+        The input steps run in groups: a group of concurrent steps takes its slowest resolved member's timeout, and the
+        groups add up; a group whose members have no resolved timeout contributes 0. The after-publish steps add up over
+        their resolved members. The other phases are the cycle block's own numbers, which the handler enforces. Their sum is
+        the longest path a run may take; ``cycle.bound_seconds`` must hold it.
         """
+        input_steps = 0
+        for group in group_steps(self.steps):
+            resolved = [step.seconds for step in group if step.limit_resolved]
+            if resolved:
+                input_steps += max(resolved)
         return {
-            "input_steps": sum(
-                max(step.seconds for step in group) for group in group_steps(self.steps)
-            ),
+            "input_steps": input_steps,
             "delegation": self.cycle.delegation_timeout_seconds,
             "copy": self.cycle.copy_budget_seconds,
             "history_prune": self.cycle.history_prune_budget_seconds,
-            "after_publish": sum(s.seconds for s in self.after_publish_steps),
+            "after_publish": sum(
+                s.seconds for s in self.after_publish_steps if s.limit_resolved
+            ),
             "final_status": self.cycle.final_status_seconds,
         }
 

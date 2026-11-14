@@ -1,0 +1,49 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Topic Provision Dry Run Effect (OMN-23614)
+#
+# Reads the contract tree named by the overlay and lists the broker's topics (list only: it never
+# creates, alters or deletes a topic), then asks node_topic_provision_plan_compute how many of the
+# live topics would exist under the provision rule. The profile, lane manifest, contract roots and
+# the name of the environment variable that holds the broker address are overlay values.
+name: node_topic_provision_dry_run_effect
+contract_name: node_topic_provision_dry_run_effect
+node_name: node_topic_provision_dry_run_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  The read-only dry run of provision on demand. Returns the plan of the compute node with the live
+  topic counts filled in: how many live topics are under the rule, how many are outside it, and how
+  many are declared by no contract. The broker is read with list calls only.
+
+handler:
+  module: omnimarket.nodes.node_topic_provision_dry_run_effect.handlers.handler_topic_provision_dry_run
+  class: HandlerTopicProvisionDryRun
+  input_model: omnimarket.nodes.node_topic_provision_dry_run_effect.models.model_topic_provision_dry_run_request.ModelTopicProvisionDryRunRequest
+
+# HandlerTopicProvisionDryRun takes the broker topic lister as a constructor parameter, so the node
+# runs through its own entry point (python -m), not handler_routing.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [broker-topic-list]
+  timeout_ms: 120000
+
+input_model:
+  name: ModelTopicProvisionDryRunRequest
+  module: omnimarket.nodes.node_topic_provision_dry_run_effect.models.model_topic_provision_dry_run_request
+  description: The overlay (profile, lane manifest, contract roots) and the rule to apply.
+output_model:
+  name: ModelTopicProvisionPlan
+  module: omnimarket.models.topic_provision.model_topic_provision_plan
+  description: The plan with the live topic counts under the rule.
+
+runtime_dispatch:
+  external_trigger: true

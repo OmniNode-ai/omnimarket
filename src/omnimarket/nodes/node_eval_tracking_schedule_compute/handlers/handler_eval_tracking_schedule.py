@@ -7,15 +7,20 @@ the tick is (``arm_for_slot``), as a ``ModelCodeEvalRunRequest`` whose correlati
 run id. The decision reads only the tick and the overlay, keeps no state and reads no clock,
 so a restart cannot repeat a window or skip one: the next turn of the arm names the same run,
 and the trial driver drops a request for a run id it already holds. A tick before the record's
-epoch returns nothing. The overlay is read on the first tick, so a runtime that loads this
-package without it still boots.
+epoch returns nothing. The overlay is read on the first tick, so a runtime that
+loads this package without the overlay boots, returns nothing on each tick and
+logs one ERROR per distinct cause.
 """
 
 from __future__ import annotations
 
 from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 
-from omnimarket.handlers.node_overlay_reader import load_structured_overlay
+from omnimarket.handlers.node_overlay_reader import (
+    NodeOverlayNotFoundError,
+    load_structured_overlay,
+)
+from omnimarket.handlers.scheduled_overlay_refusal import ScheduledOverlayRefusalLatch
 from omnimarket.models.code_eval_trial.model_code_eval_run_request import (
     ModelCodeEvalArm,
     ModelCodeEvalRunRequest,
@@ -44,10 +49,16 @@ class HandlerEvalTrackingSchedule:
     def __init__(self, overlay: ModelEvalTrackingOverlay | None = None) -> None:
         self._overlay = overlay
         self._record_sha: str | None = None
+        self._refusals = ScheduledOverlayRefusalLatch(OVERLAY_ID)
 
     def handle(self, request: ModelRuntimeTick) -> ModelCodeEvalRunRequest | None:
         if self._overlay is None:
-            self._overlay = tracking_overlay()
+            try:
+                self._overlay = tracking_overlay()
+            except NodeOverlayNotFoundError as exc:
+                self._refusals.refuse(exc)
+                return None
+            self._refusals.recovered()
         overlay = self._overlay
         record = overlay.record
         if self._record_sha is None:
