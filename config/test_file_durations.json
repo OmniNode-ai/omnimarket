@@ -1417,6 +1417,7 @@
   "tests/nodes/node_floor_simple_compute/test_owner_unknown_omn23388.py": 0.17,
   "tests/nodes/node_floor_simple_compute/test_panel_counts_availability_floor_simple_compute.py": 0.33,
   "tests/nodes/node_floor_simple_compute/test_piece_panel_cells_floor_simple_compute.py": 0.17,
+  "tests/nodes/node_floor_simple_compute/test_read_only_claim_omn23225.py": 1.37,
   "tests/nodes/node_floor_simple_compute/test_readiness_omn23081.py": 0.91,
   "tests/nodes/node_floor_simple_compute/test_real_work_omn23862.py": 1.76,
   "tests/nodes/node_floor_simple_compute/test_red_rule_carrier_omn23243.py": 0.17,

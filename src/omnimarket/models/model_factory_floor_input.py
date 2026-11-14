@@ -173,6 +173,8 @@ class ModelFloorLedgerRow(BaseModel):
     tickets: tuple[str, ...] = ()
     # The parent_ticket= cell a child CLAIM carries: the ticket of the work this row's ticket was minted under.
     parent_tickets: tuple[str, ...] = ()
+    # True when the row declares ``worktree=none`` or ``mode=read-only``: a CLAIM that can change nothing (OMN-23225).
+    read_only: bool = False
     prs: tuple[str, ...] = ()
     row_id: str = ""
     re: str = ""
