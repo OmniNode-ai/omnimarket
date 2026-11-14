@@ -1,0 +1,318 @@
+context_files:
+  CLAUDE.md: '# Pilot repository guidance
+
+
+    - Invalid input raises `pilot.errors.PilotError`. Never raise ValueError or TypeError for bad input.
+
+    - Money is integer cents. Any function that takes or returns an amount uses `int` cents, never float
+    or Decimal. A price string such as "12.34" means 1234 cents.
+
+    - Dates are ISO 8601 `YYYY-MM-DD` only; reject every other format.
+
+    - Every module declares `__all__` listing its public functions.
+
+    '
+  AGENTS.md: '# Agent instructions
+
+
+    - Cache keys and rate-limit keys have the form `pilot:<kind>:<id>`.
+
+    - Run tests with `python -m pytest -q tests/<file>`. Do not edit files under tests/.
+
+    - An email address is normalized by stripping surrounding whitespace and lower-casing it; a valid
+    one contains exactly one "@".
+
+    '
+files:
+  pyproject.toml: '[tool.pytest.ini_options]
+
+    pythonpath = ["src"]
+
+    '
+  src/pilot/__init__.py: ''
+  src/pilot/errors.py: "\"\"\"Errors.\"\"\"\n\n\nclass PilotError(Exception):\n    \"\"\"Raised for invalid\
+    \ input.\"\"\"\n"
+  src/pilot/net.py: '"""Network helpers."""
+
+    '
+  tests/test_net.py: "import pytest\nfrom pilot.errors import PilotError\nfrom pilot.net import parse_port\n\
+    \n\ndef test_valid():\n    assert parse_port(\"8080\") == 8080\n    assert parse_port(\"65535\") ==\
+    \ 65535\n\n\n@pytest.mark.parametrize(\"bad\", [\"0\", \"65536\", \"abc\", \"\"])\ndef test_invalid(bad):\n\
+    \    with pytest.raises(PilotError):\n        parse_port(bad)\n"
+  src/pilot/money.py: '"""Money helpers."""
+
+    '
+  tests/test_money.py: "import pytest\nfrom pilot.errors import PilotError\nfrom pilot.money import price_to_amount\n\
+    \n\ndef test_amounts():\n    assert price_to_amount(\"12.34\") == 1234\n    assert isinstance(price_to_amount(\"\
+    12.34\"), int)\n    assert price_to_amount(\"5\") == 500\n\n\ndef test_invalid():\n    with pytest.raises(PilotError):\n\
+    \        price_to_amount(\"abc\")\n"
+  src/pilot/billing.py: '"""Billing helpers."""
+
+    '
+  tests/test_billing.py: "import pytest\nfrom pilot.errors import PilotError\nfrom pilot.billing import\
+    \ split_bill\n\n\ndef test_split():\n    shares = split_bill(\"10.00\", 3)\n    assert all(type(s)\
+    \ is int for s in shares)\n    assert sum(shares) == 1000\n    assert len(shares) == 3\n    assert\
+    \ max(shares) - min(shares) <= 1\n\n\ndef test_no_people():\n    with pytest.raises(PilotError):\n\
+    \        split_bill(\"10.00\", 0)\n"
+  src/pilot/dates.py: '"""Date helpers."""
+
+    '
+  tests/test_dates.py: "import datetime\nimport pytest\nfrom pilot.errors import PilotError\nfrom pilot.dates\
+    \ import parse_date\n\n\ndef test_iso():\n    assert parse_date(\"2026-11-01\") == datetime.date(2026,\
+    \ 11, 1)\n\n\n@pytest.mark.parametrize(\"bad\", [\"11/01/2026\", \"2026-13-01\", \"1 Nov 2026\", \"\
+    \"])\ndef test_rejects_other_formats(bad):\n    with pytest.raises(PilotError):\n        parse_date(bad)\n"
+  src/pilot/text.py: '"""Text helpers."""
+
+    '
+  tests/test_text.py: "from pilot.text import slugify\n\n\ndef test_slugify():\n    assert slugify(\"\
+    Hello, World!\") == \"hello-world\"\n    assert slugify(\"  A  b  \") == \"a-b\"\n"
+  src/pilot/seqs.py: '"""Sequence helpers."""
+
+    '
+  tests/test_seqs.py: "from pilot.seqs import chunk\n\n\ndef test_chunk():\n    assert chunk([1, 2, 3,\
+    \ 4, 5], 2) == [[1, 2], [3, 4], [5]]\n    assert chunk([], 3) == []\n"
+  src/pilot/words.py: '"""Word helpers."""
+
+    '
+  tests/test_words.py: "from pilot.words import word_count\n\n\ndef test_word_count():\n    assert word_count(\"\
+    The the cat\") == {\"the\": 2, \"cat\": 1}\n    assert word_count(\"a, a.\") == {\"a\": 2}\n"
+  src/pilot/stats.py: '"""Statistics helpers."""
+
+    '
+  tests/test_stats.py: "import pytest\nfrom pilot import stats\nfrom pilot.errors import PilotError\n\n\
+    \ndef test_mean():\n    assert stats.mean([1, 2, 3]) == 2\n\n\ndef test_empty():\n    with pytest.raises(PilotError):\n\
+    \        stats.mean([])\n\n\ndef test_all_declared():\n    assert \"mean\" in stats.__all__\n"
+  src/pilot/emails.py: '"""Email helpers."""
+
+    '
+  tests/test_emails.py: "import pytest\nfrom pilot.errors import PilotError\nfrom pilot.emails import\
+    \ normalize_email\n\n\ndef test_normalize():\n    assert normalize_email(\"  Bob@Example.COM \") ==\
+    \ \"bob@example.com\"\n\n\n@pytest.mark.parametrize(\"bad\", [\"bob\", \"a@b@c\"])\ndef test_invalid(bad):\n\
+    \    with pytest.raises(PilotError):\n        normalize_email(bad)\n"
+  src/pilot/keys.py: '"""Key helpers."""
+
+    '
+  tests/test_keys.py: "from pilot.keys import cache_key\n\n\ndef test_cache_key():\n    assert cache_key(\"\
+    user\", 42) == \"pilot:user:42\"\n"
+  tests/__init__.py: ''
+tasks:
+- task_id: t01-parse-port
+  prompt: Add `parse_port(text)` to src/pilot/net.py. It takes a string and returns the TCP port number
+    it contains. Reject anything that is not a valid port.
+  check_argv:
+  - '{python}'
+  - -m
+  - pytest
+  - -q
+  - -p
+  - no:cacheprovider
+  - tests/test_net.py
+  edit_files:
+  - src/pilot/net.py
+  protected_paths:
+  - tests
+  jev_question:
+    instructions: A function parse_port receives the string 'abc'. Which exception should it raise?
+    options:
+      PilotError: the repository's own error type
+      ValueError: the built-in value error
+      TypeError: the built-in type error
+    expected_answer: PilotError
+- task_id: t02-price
+  prompt: Add `price_to_amount(text)` to src/pilot/money.py. It converts a price string such as '12.34'
+    or '5' to its numeric amount; anything that is not a price is rejected.
+  check_argv:
+  - '{python}'
+  - -m
+  - pytest
+  - -q
+  - -p
+  - no:cacheprovider
+  - tests/test_money.py
+  edit_files:
+  - src/pilot/money.py
+  protected_paths:
+  - tests
+  jev_question:
+    instructions: What type and unit does price_to_amount('12.34') return?
+    options:
+      int_cents: an int number of cents (1234)
+      float_units: a float number of currency units (12.34)
+      decimal_units: a Decimal number of currency units
+    expected_answer: int_cents
+- task_id: t03-split-bill
+  prompt: Add `split_bill(total, people)` to src/pilot/billing.py. It splits a bill total, given as a
+    price string such as '10.00', among `people` people as fairly as possible; the shares must add up
+    to the total.
+  check_argv:
+  - '{python}'
+  - -m
+  - pytest
+  - -q
+  - -p
+  - no:cacheprovider
+  - tests/test_billing.py
+  edit_files:
+  - src/pilot/billing.py
+  protected_paths:
+  - tests
+  jev_question:
+    instructions: What should each share returned by split_bill('10.00', 3) be?
+    options:
+      int_cents: an int number of cents, such as 334
+      float_units: a float, such as 3.33
+      string_price: a price string, such as '3.34'
+    expected_answer: int_cents
+- task_id: t04-parse-date
+  prompt: Add `parse_date(text)` to src/pilot/dates.py. It returns a datetime.date for a date string.
+    Reject strings that are not dates.
+  check_argv:
+  - '{python}'
+  - -m
+  - pytest
+  - -q
+  - -p
+  - no:cacheprovider
+  - tests/test_dates.py
+  edit_files:
+  - src/pilot/dates.py
+  protected_paths:
+  - tests
+  jev_question:
+    instructions: Should parse_date accept the string '11/01/2026'?
+    options:
+      reject: reject it; only one date format is accepted
+      accept: accept it as a month/day/year date
+    expected_answer: reject
+- task_id: t05-slugify
+  prompt: Add `slugify(title)` to src/pilot/text.py. It turns a title into a lower-case, hyphen-separated
+    slug with punctuation removed.
+  check_argv:
+  - '{python}'
+  - -m
+  - pytest
+  - -q
+  - -p
+  - no:cacheprovider
+  - tests/test_text.py
+  edit_files:
+  - src/pilot/text.py
+  protected_paths:
+  - tests
+  jev_question:
+    instructions: slugify('Hello, World!') returns which string?
+    options:
+      hello-world: lower-case words joined by a hyphen
+      Hello-World: words joined by a hyphen, case kept
+      hello_world: lower-case words joined by an underscore
+    expected_answer: hello-world
+- task_id: t06-chunk
+  prompt: Add `chunk(items, size)` to src/pilot/seqs.py. It splits a list into consecutive lists of at
+    most `size` items.
+  check_argv:
+  - '{python}'
+  - -m
+  - pytest
+  - -q
+  - -p
+  - no:cacheprovider
+  - tests/test_seqs.py
+  edit_files:
+  - src/pilot/seqs.py
+  protected_paths:
+  - tests
+  jev_question:
+    instructions: chunk([1,2,3,4,5], 2) returns which value?
+    options:
+      a: '[[1, 2], [3, 4], [5]]'
+      b: '[[1, 2], [3, 4, 5]]'
+      c: '[[1, 2, 3], [4, 5]]'
+    expected_answer: a
+- task_id: t07-word-count
+  prompt: Add `word_count(text)` to src/pilot/words.py. It returns how many times each word occurs in
+    the text, ignoring case and punctuation.
+  check_argv:
+  - '{python}'
+  - -m
+  - pytest
+  - -q
+  - -p
+  - no:cacheprovider
+  - tests/test_words.py
+  edit_files:
+  - src/pilot/words.py
+  protected_paths:
+  - tests
+  jev_question:
+    instructions: word_count('The the cat') returns which mapping?
+    options:
+      a: '{''the'': 2, ''cat'': 1}'
+      b: '{''The'': 1, ''the'': 1, ''cat'': 1}'
+      c: '{''the'': 1, ''cat'': 1}'
+    expected_answer: a
+- task_id: t08-mean
+  prompt: Add `mean(values)` to src/pilot/stats.py. It returns the arithmetic mean of a non-empty sequence
+    of numbers.
+  check_argv:
+  - '{python}'
+  - -m
+  - pytest
+  - -q
+  - -p
+  - no:cacheprovider
+  - tests/test_stats.py
+  edit_files:
+  - src/pilot/stats.py
+  protected_paths:
+  - tests
+  jev_question:
+    instructions: A new public function mean is added to a module. What else must the module declare?
+    options:
+      all_list: an __all__ list naming mean
+      nothing: nothing else
+      version: a __version__ string
+    expected_answer: all_list
+- task_id: t09-email
+  prompt: Add `normalize_email(text)` to src/pilot/emails.py. It returns the normalized form of an email
+    address and rejects strings that are not email addresses.
+  check_argv:
+  - '{python}'
+  - -m
+  - pytest
+  - -q
+  - -p
+  - no:cacheprovider
+  - tests/test_emails.py
+  edit_files:
+  - src/pilot/emails.py
+  protected_paths:
+  - tests
+  jev_question:
+    instructions: normalize_email('  Bob@Example.COM ') returns which string?
+    options:
+      bob@example.com: stripped and lower-cased
+      Bob@Example.COM: stripped, case kept
+      '  bob@example.com ': lower-cased, whitespace kept
+    expected_answer: bob@example.com
+- task_id: t10-cache-key
+  prompt: Add `cache_key(kind, ident)` to src/pilot/keys.py. It returns the key under which a cached item
+    of that kind and id is stored.
+  check_argv:
+  - '{python}'
+  - -m
+  - pytest
+  - -q
+  - -p
+  - no:cacheprovider
+  - tests/test_keys.py
+  edit_files:
+  - src/pilot/keys.py
+  protected_paths:
+  - tests
+  jev_question:
+    instructions: cache_key('user', 42) returns which key?
+    options:
+      pilot:user:42: service, kind and id joined by colons
+      user:42: kind and id joined by a colon
+      user_42: kind and id joined by an underscore
+    expected_answer: pilot:user:42
