@@ -18,7 +18,7 @@ class ModelDevRollPolicy(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    mode: Literal["shadow"]
+    mode: Literal["shadow", "live"]
     batch_window_seconds: int = Field(gt=0)
     min_start_interval_seconds: int = Field(gt=0)
     healthy_for_seconds: int = Field(gt=0)

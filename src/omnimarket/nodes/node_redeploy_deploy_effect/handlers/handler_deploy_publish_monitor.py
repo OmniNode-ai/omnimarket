@@ -59,12 +59,16 @@ from omnimarket.events.runtime_deployment import (
     ModelRedeployRolledBackEvent,
     verify_prod_deploy_grant_binding,
 )
+from omnimarket.handlers.node_overlay_reader import NodeOverlayNotFoundError
 from omnimarket.models.model_dev_deploy_route import (
     ModelDevDeployHealth,
 )
 from omnimarket.nodes.contract_topics import (
     contract_publish_topics,
     contract_subscribe_topics,
+)
+from omnimarket.nodes.node_dev_roll_window_gate_effect.overlay import (
+    load_gate_policy,
 )
 from omnimarket.nodes.node_redeploy_deploy_effect.handlers.deploy_publish_record import (
     DeployPublishRecord,
@@ -119,6 +123,7 @@ TOPIC_ROLLED_BACK = _topic_with_suffix(
 TOPIC_DEPLOY_REFUSED = _topic_with_suffix(
     _PUBLISH, "redeploy-deploy-refused.v1", "publish_topics"
 )
+TOPIC_DEV_ROLL_HOLD = _topic_with_suffix(_PUBLISH, "dev-roll-hold.v1", "publish_topics")
 
 # OMN-17888. ``envelope.event_type`` reaches a handler in whichever of the two live wire
 # forms the producer used: the consume boundary prefers the event body's own
@@ -128,6 +133,19 @@ TOPIC_DEPLOY_REFUSED = _topic_with_suffix(
 # THIS topic arrives in the full form today; reducing both forms to the bare event name
 # means a future enveloped publisher does not silently fall through to the command arm.
 _EVENT_VERSION_SUFFIX = re.compile(r"\.v\d+$")
+
+
+def _dev_roll_gate_live() -> bool:
+    """True when the dev roll window gate overlay is installed and live (OMN-19998).
+
+    No gate overlay installed means no gate: the effect publishes exactly as before. A
+    gate overlay that is installed and invalid raises, so a broken overlay never turns
+    the gate off unseen.
+    """
+    try:
+        return load_gate_policy().mode == "live"
+    except NodeOverlayNotFoundError:
+        return False
 
 
 def _event_name(event_type: str) -> str:
@@ -354,6 +372,37 @@ class HandlerDeployPublishMonitor:
         )
         if refusal is not None:
             return await self._refuse(envelope, command, refusal)
+
+        # OMN-19998. While the dev roll window gate is live a dev command is handed to
+        # node_dev_roll_window_gate_effect, which releases every held command together
+        # once per window; a released command comes back here marked and is published.
+        if (
+            command.runtime_lane is EnumRuntimeLane.DEV
+            and not command.roll_window_released
+            and _dev_roll_gate_live()
+        ):
+            await self._bus.publish(
+                TOPIC_DEV_ROLL_HOLD,
+                key=str(command.correlation_id).encode(),
+                value=command.model_dump_json().encode(),
+                headers=_headers_for(TOPIC_DEV_ROLL_HOLD, command.correlation_id),
+            )
+            logger.info(
+                "Dev redeploy command handed to the roll window gate",
+                extra={
+                    "correlation_id": str(command.correlation_id),
+                    "topic": TOPIC_DEV_ROLL_HOLD,
+                },
+            )
+            return ModelHandlerOutput.for_effect(
+                input_envelope_id=envelope.envelope_id,
+                correlation_id=envelope.correlation_id
+                or command.correlation_id
+                or uuid4(),
+                handler_id=HANDLER_ID,
+                events=(),
+                metrics={"dev_roll_held": 1.0},
+            )
 
         # OMN-19377. A correlation whose rebuild command already reached the broker is
         # not published again: the agent keeps a job for every command it accepts and

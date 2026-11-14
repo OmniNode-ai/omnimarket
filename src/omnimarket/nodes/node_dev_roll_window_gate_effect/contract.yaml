@@ -1,0 +1,151 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Dev Roll Window Gate Effect (OMN-19998, parent OMN-23532)
+#
+# Root R4 of the dev runtime dropouts: every merge to dev rolled the dev runtime about 3.5 minutes later, so it
+# was recreated at 09:49, 10:11, 10:42, 11:00 and 11:24Z on 2026-11-10 and each roll left the lab command
+# consumers joining late. node_redeploy_deploy_effect forwards each dev deploy command to this node while this
+# node's overlay is live. This node holds the commands in a durable store; on each runtime tick it asks the
+# batching decision of node_dev_roll_request_compute (pure decide_dev_roll) whether to roll now, and on roll now
+# releases every covered command together, oldest first, marked released, back to the deploy effect. The deploy
+# agent folds a queued prefix of same-lane full-scope commands into one roll. A command this node cannot hold
+# (not a CI branch-tip request, a pinned image, a gate that is off, a full store) is passed straight on, never
+# dropped. Every value (window, minimum start interval, health bounds, repositories, requester pattern, held
+# bound, store) is an overlay value: nothing is packaged as a fallback.
+name: node_dev_roll_window_gate_effect
+contract_name: node_dev_roll_window_gate_effect
+node_name: node_dev_roll_window_gate_effect
+node_type: EFFECT_GENERIC
+lifecycle: experimental
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+runtime_profiles:
+  - effects
+description: >
+  Holds each dev deploy command the deploy effect forwards and releases every held command together,
+  at most once per window, when the batching decision says roll now: never while the previous roll has
+  not finished, not before the minimum start interval, and not before the previous roll has been healthy
+  for the bound. Records each roll's finish and health from the deploy agent's completion event.
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 10000
+input_model:
+  name: ModelDeployPublishCommand
+  module: omnimarket.events.runtime_deployment
+output_model:
+  name: ModelDevRollGateDecision
+  module: omnimarket.nodes.node_dev_roll_window_gate_effect.models.model_dev_roll_gate_events
+handler:
+  module: omnimarket.nodes.node_dev_roll_window_gate_effect.handlers.handler_dev_roll_window_hold
+  class: HandlerDevRollWindowHold
+  input_model: omnimarket.events.runtime_deployment.ModelDeployPublishCommand
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  subscribe_topics:
+    - onex.cmd.omnimarket.dev-roll-hold.v1
+    - onex.intent.platform.runtime-tick.v1
+    - onex.evt.deploy.rebuild-completed.v1
+  publish_topics:
+    - onex.cmd.omnimarket.redeploy-deploy-publish.v1
+    - onex.evt.omnimarket.dev-roll-window-held.v1
+    - onex.evt.omnimarket.dev-roll-window-refused.v1
+    - onex.evt.omnimarket.dev-roll-window-decision.v1
+    - onex.evt.omnimarket.dev-roll-window-recorded.v1
+published_events:
+  - event_type: "ModelDeployPublishCommand"
+    topic: onex.cmd.omnimarket.redeploy-deploy-publish.v1
+    description: "A held dev command released to the deploy effect, marked roll_window_released, oldest first; also a command the gate could not hold, passed straight on."
+  - event_type: "ModelDevRollGateHeld"
+    topic: onex.evt.omnimarket.dev-roll-window-held.v1
+    description: "One dev deploy command was held for its window."
+  - event_type: "ModelDevRollGateRefused"
+    topic: onex.evt.omnimarket.dev-roll-window-refused.v1
+    description: "One deploy command was not held, with the typed reason."
+  - event_type: "ModelDevRollGateDecision"
+    topic: onex.evt.omnimarket.dev-roll-window-decision.v1
+    description: "One tick's decision: hold with the batching node's reason, roll now with the released count, or refused."
+  - event_type: "ModelDevRollGateRollRecorded"
+    topic: onex.evt.omnimarket.dev-roll-window-recorded.v1
+    description: "The agent's completion of a released command ended the gate's last roll."
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - operation: "dev_roll_window.hold"
+      message_category: "command"
+      handler:
+        name: "HandlerDevRollWindowHold"
+        module: "omnimarket.nodes.node_dev_roll_window_gate_effect.handlers.handler_dev_roll_window_hold"
+      event_model:
+        name: "ModelDeployPublishCommand"
+        module: "omnimarket.events.runtime_deployment"
+      topic: onex.cmd.omnimarket.dev-roll-hold.v1
+      description: "A dev deploy command forwarded by the deploy effect; answered by one held record, or a refusal and the command passed on."
+    - operation: "dev_roll_window.tick"
+      message_category: "event"
+      handler:
+        name: "HandlerDevRollWindowTick"
+        module: "omnimarket.nodes.node_dev_roll_window_gate_effect.handlers.handler_dev_roll_window_tick"
+      event_model:
+        name: "ModelRuntimeTick"
+        module: "omnibase_infra.runtime.models.model_runtime_tick"
+      topic: onex.intent.platform.runtime-tick.v1
+      description: "The runtime scheduler's tick; asks the batching decision and releases the held commands on roll now."
+    - operation: "dev_roll_window.completed"
+      message_category: "event"
+      handler:
+        name: "HandlerDevRollWindowCompleted"
+        module: "omnimarket.nodes.node_dev_roll_window_gate_effect.handlers.handler_dev_roll_window_completed"
+      event_model:
+        name: "ModelDeployRebuildCompleted"
+        module: "omnimarket.events.runtime_deployment"
+      topic: onex.evt.deploy.rebuild-completed.v1
+      description: "The deploy agent's completion of a rebuild; ends the gate's last roll when it is one the gate released."
+externally_produced_topics:
+  - topic: onex.cmd.omnimarket.dev-roll-hold.v1
+    producer: "node_redeploy_deploy_effect (omnimarket), which forwards each dev deploy command here while this node's overlay is live"
+  - topic: onex.intent.platform.runtime-tick.v1
+    producer: "the runtime scheduler, not a node contract"
+  - topic: onex.evt.deploy.rebuild-completed.v1
+    producer: "the dev deploy agent, not an omnimarket node contract"
+externally_consumed_topics:
+  - onex.evt.omnimarket.dev-roll-window-held.v1
+  - onex.evt.omnimarket.dev-roll-window-refused.v1
+  - onex.evt.omnimarket.dev-roll-window-decision.v1
+  - onex.evt.omnimarket.dev-roll-window-recorded.v1
+# The broker rows the principal that runs this node needs. The principal is named by an environment variable
+# so this public file names no identity; the overlays repository holds the concrete login.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.dev-roll-hold.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.dev-roll-hold.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.intent.platform.runtime-tick.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.intent.platform.runtime-tick.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.deploy.rebuild-completed.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.deploy.rebuild-completed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.redeploy-deploy-publish.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.redeploy-deploy-publish.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.dev-roll-window-held.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.dev-roll-window-held.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.dev-roll-window-refused.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.dev-roll-window-refused.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.dev-roll-window-decision.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.dev-roll-window-decision.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.dev-roll-window-recorded.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.dev-roll-window-recorded.v1, operation: DESCRIBE}
+overlay:
+  node: node_dev_roll_window_gate_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+metadata:
+  ticket: OMN-19998
+  transport_type: kafka
+  description: "Holds dev deploy commands and releases them once per window."
+  author: "OmniNode Team"
+  created: "2026-11-14"
+  tags: ["effect", "dev-runtime", "roll-batching", "OMN-19998"]
+  related_tickets: ["OMN-23532", "OMN-24251", "OMN-19998"]

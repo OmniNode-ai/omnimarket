@@ -163,6 +163,16 @@ event_bus:
     # OMN-13440 defense-in-depth: prod deploy refused at the EFFECT boundary when
     # the command is not target-bound to a verified prod-promotion grant.
     - onex.evt.omnimarket.redeploy-deploy-refused.v1
+    # OMN-19998: a dev command is forwarded to node_dev_roll_window_gate_effect while the gate overlay is live;
+    # the gate releases it back on the deploy-publish command topic with roll_window_released set.
+    - onex.cmd.omnimarket.dev-roll-hold.v1
+
+# OMN-19998 broker grants for the hold topic this effect now publishes (OMN-24005 coverage gate): the runtime login writes it.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.dev-roll-hold.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.dev-roll-hold.v1, operation: DESCRIBE}
 
 # OMN-18816. Top-level, not under event_bus: the graph validator reads this key off the
 # contract ROOT (contract_topic_graph._load_contract, data.get("externally_produced_topics")).

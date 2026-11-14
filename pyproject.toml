@@ -656,6 +656,7 @@ node_dev_roll_decision_request_effect = "omnimarket.nodes.node_dev_roll_decision
 node_dev_roll_failure_capture_effect = "omnimarket.nodes.node_dev_roll_failure_capture_effect"
 node_dev_roll_request_compute = "omnimarket.nodes.node_dev_roll_request_compute"
 node_dev_roll_verify_compute = "omnimarket.nodes.node_dev_roll_verify_compute"
+node_dev_roll_window_gate_effect = "omnimarket.nodes.node_dev_roll_window_gate_effect"
 node_dev_running_revision_compute = "omnimarket.nodes.node_dev_running_revision_compute"
 node_dev_running_revision_effect = "omnimarket.nodes.node_dev_running_revision_effect"
 node_dev_runtime_mutation_guard_effect = "omnimarket.nodes.node_dev_runtime_mutation_guard_effect"
