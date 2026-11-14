@@ -139,17 +139,19 @@ class ModelLedgerArchiveWindow(BaseModel):
 
 
 class ModelLedgerProjectionWindow(BaseModel):
-    """The declared shape of a work ledger projection window: one UTC day at a time through a named reader (accepted, not read yet).
+    """Read the ledger window one UTC day at a time through a named reader.
 
-    ``reader`` is the name the work ledger reader overlay lists in its moved_readers. A closed day's rows are kept for
-    ``cache_ttl_seconds``; ``read_workers`` days are read at once; yesterday is read live until ``settle_seconds`` after midnight UTC.
+    The reader must be in the work ledger reader overlay's ``moved_readers``.
+    Closed days are cached for ``cache_ttl_seconds`` and read at most
+    ``read_workers`` at a time. If no worker count is set, reads are serial.
+    Yesterday is read live until ``settle_seconds`` after midnight UTC.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     reader: str = Field(min_length=1)
     cache_ttl_seconds: int = Field(ge=1)
-    read_workers: int = Field(ge=1)
+    read_workers: int | None = Field(default=None, ge=1)
     settle_seconds: int = Field(ge=0)
 
 
@@ -255,8 +257,8 @@ class ModelFactoryFloorOverlay(BaseModel):
     # Where the file ledger's split archives are, so the window read keeps each archive's rows in the source read cache and reads only
     # the live ledger each cycle (OMN-19998). Absent: the window is read as before.
     ledger_archives: ModelLedgerArchiveWindow | None = None
-    # Accepted so an overlay that declares it is not refused (OMN-23963, OMN-24490). No reader in this tree reads it yet: the
-    # window is still read from ledger_source and ledger_archives whether or not it is present.
+    # With this block present, read projection rows through the named reader.
+    # Without it, the file and archive source settings above are used.
     ledger_projection: ModelLedgerProjectionWindow | None = None
     # The line board's declarations (OMN-22368). No default: an overlay without them is refused by name.
     processes: tuple[ModelFloorProcessDecl, ...]

@@ -82,17 +82,11 @@ def test_factory_floor_runtime_overlay_still_refuses_an_unknown_top_level_key() 
 
 
 @pytest.mark.unit
-def test_factory_floor_runtime_ledger_projection_comment_matches_its_readers() -> None:
-    # Review finding 7 (OMN-25411): the comment said the block replaces ledger_source and
-    # ledger_archives, while no module reads the field. Nothing in src reads it, and the
-    # comment says it is accepted, not read.
+def test_factory_floor_runtime_ledger_projection_is_consumed_by_the_handler() -> None:
     import ast
     from pathlib import Path
 
     import omnimarket
-    from omnimarket.nodes.node_factory_floor_effect.models import (
-        model_factory_floor_runtime,
-    )
 
     root = Path(omnimarket.__file__).resolve().parent
     readers = sorted(
@@ -103,12 +97,6 @@ def test_factory_floor_runtime_ledger_projection_comment_matches_its_readers() -
             for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
         )
     )
-    assert readers == []
-    source = Path(model_factory_floor_runtime.__file__).read_text(encoding="utf-8")
-    comment = next(
-        line
-        for line in source.splitlines()
-        if line.strip().startswith("#") and "OMN-24490" in line
-    )
-    assert "replaces" not in comment
-    assert "No reader in this tree reads it yet" in source
+    assert readers == [
+        "nodes/node_factory_floor_effect/handlers/handler_factory_floor_effect.py"
+    ]

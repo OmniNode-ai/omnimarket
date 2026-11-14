@@ -1,0 +1,83 @@
+schema_version: 1.0.0
+ticket_id: OMN-25738
+title: Rebase the factory floor ledger projection pull request
+summary: Reconcile the factory floor ledger projection branch with dev while preserving the row filters and overlay schema already on dev.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn25738-pr-readback
+    statement: The new pull request head merges cleanly with dev and has every required check green.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: omnimarket#6241 reads a merge state other than DIRTY and every required context success at its new head, read through the scm path after the push -- falsifier: `onex scm pr-view OmniNode-ai/omnimarket#6241` shows merge state DIRTY or a required context that is not success at the new head'
+  - id: req-omn25738-gate-integrity
+    statement: The rebase preserves the required gates and their thresholds.
+    acceptance:
+      - id: AC2
+        statement: 'AC2: no check is widened, skipped or bypassed, so the diff from 3a2937073faf to the new head touches no workflow file, no required-contexts list and no baseline file to loosen a gate -- falsifier: `git diff 3a2937073faf <new head> -- .github` or a checker config shows a removed assertion, a new skip or a loosened threshold'
+  - id: req-omn25738-lab-proof
+    statement: The rebased head has red and green lab evidence on the pull request or the shared cause is recorded in the ledger.
+    acceptance:
+      - id: AC3
+        statement: 'AC3: the new head is on the PR as a comment starting `Lab: head=<full sha>` with a red-then-green lab run behind it, or a STATUS row names cause=<one line> shared=yes with its evidence when the cause is outside the PR -- falsifier: `onex scm pr-view OmniNode-ai/omnimarket#6241` shows no comment with `Lab: head=` for the new head and the ledger holds no STATUS row with shared=yes for this ticket'
+evidence_requirements:
+  - kind: tests
+    description: The overlay, projection, and absolute-window tests exercise the combined implementation on the branch.
+    command: >-
+      uv run --frozen pytest -q --no-cov -n 0 -p no:randomly
+      tests/nodes/node_factory_floor_effect/test_model_factory_floor_runtime_ledger_projection.py
+      tests/nodes/node_factory_floor_effect/test_ledger_window_from_projection.py
+      tests/nodes/node_factory_floor_effect/test_ledger_window_projection_parity.py
+      tests/unit/nodes/node_work_ledger_reader_effect/test_reader_rows_since_until.py
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn25738-ac1-watcher
+    description: The local PR watcher sees this checkout as the current head, with successful required checks and a clean merge state.
+    source: manual
+    binds_ac: [AC1]
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: >-
+          head=$(git rev-parse HEAD) &&
+          python3 "${OMNI_PLUGIN_ROOT:?}/skills/merge-drain/scripts/pr_state_local.py" --pr OmniNode-ai/omnimarket#6241 |
+          python3 -c 'import sys; lines = sys.stdin.read().splitlines(); rows = [line for line in lines if line.startswith("omnimarket#6241 ")]; assert len(rows) == 1; row = rows[0]; assert f"head={sys.argv[1]} " in row and " merge_state=CLEAN " in row and " ci=GREEN " in row and "missing-required-context" not in row and "green-unarmed" not in row' "$head"
+        cwd: .
+  - id: dod-omn25738-ac2-gates
+    description: The PR adds no workflow, required-context, or baseline changes relative to the pinned dev parent.
+    source: manual
+    binds_ac: [AC2]
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: >-
+          git merge-base --is-ancestor 8bb5b8be7316cb272b91883f82ad892a0fff22ab HEAD &&
+          git diff --exit-code 8bb5b8be7316cb272b91883f82ad892a0fff22ab HEAD --
+          .github .pre-commit-config.yaml ':(glob)**/*baseline*' ':(glob)**/*required*context*'
+        cwd: .
+  - id: dod-omn25738-ac3-lab-comment
+    description: The SCM gateway returns a Lab comment that starts with the published head and names the red and green observations.
+    source: manual
+    binds_ac: [AC3]
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: >-
+          head=$(git rev-parse HEAD) &&
+          onex scm pr-view --source bus --bus-lane dev OmniNode-ai/omnimarket#6241 |
+          python3 -c 'import json, sys; pr = json.load(sys.stdin)["result"]; head = sys.argv[1]; assert pr["head_sha"] == head; assert any((comment.get("body") or "").startswith(f"Lab: head={head} ") for comment in pr.get("comments", []))' "$head"
+        cwd: .
+  - id: dod-omn25738-deploy-check
+    description: Execute the factory floor handler with its projection overlay and check ledger parity and the no-file-read behavior in the test runtime.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run --frozen pytest -q --no-cov -n 0 -p no:randomly
+          tests/nodes/node_factory_floor_effect/test_ledger_window_from_projection.py
+          tests/nodes/node_factory_floor_effect/test_ledger_window_projection_parity.py
+        cwd: .

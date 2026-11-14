@@ -212,73 +212,85 @@ def parse_ledger_rows(text: str) -> tuple[ModelFloorLedgerRow, ...]:
         match = ROW_RE.match(line)
         if line.startswith("ROWS ") or match is None:
             continue
-        cells = [cell.strip() for cell in match.group(3).split(" | ")]
-        ts = _ledger_ts(cells[0])
-        if ts is None or len(cells) < 2 or not cells[1]:
-            continue
-        fields: dict[str, str] = {}
-        remainders: list[str] = []
-        for cell in cells[2:]:
-            key, sep, value = cell.partition("=")
-            if sep and key == "parent":
-                # A row written as `parent=lane-x Do the thing` carries its sentence after the first token.
-                remainders.append(" ".join(value.split()[1:]))
-            elif sep and ID_KEY_RE.fullmatch(key):
-                tokens = value.split()
-                fields.setdefault(key, tokens[0] if tokens else "")
-                if len(tokens) > 1:
-                    remainders.append(" ".join(tokens[1:]))
-            elif sep and key == "owns":
-                # An explicit owns= cell, the ledger MSG's routing rule: a comma list with no spaces in it.
-                fields.setdefault("owns", value.split()[0] if value.split() else "")
-            elif sep and key == "needs":
-                # The closing row's typed ask (OMN-23417): `<action>:<target>`, or `unparsed`; one token, no spaces.
-                fields.setdefault("needs", value.split()[0] if value.split() else "")
-            elif sep and key == "report":
-                # The lane's report text, one cell value written by the close node (OMN-23417).
-                fields.setdefault("report", value.strip())
-            elif sep and key in {"reason", "blocker"}:
-                # A lane that ends blocked says why in blocker=; the sentence after its cells is the launcher's receipt note.
-                fields.setdefault("reason", value.strip()[:300])
-        free_text = (
-            cells[-1]
-            if not re.match(r"^[A-Za-z_-]+=", cells[-1])
-            else max(remainders, key=len, default="")
-        )
-        row = ModelFloorLedgerRow(
-            ts=ts,
-            kind=cells[1],
-            lane=fields.get("lane") or fields.get("from", ""),
-            tickets=_csv(fields.get("ticket", ""), fields.get("tickets", "")),
-            parent_tickets=_csv(fields.get("parent_ticket", "")),
-            read_only=fields.get("worktree") == "none"
-            or fields.get("mode") == "read-only",
-            prs=_csv(fields.get("pr", ""), fields.get("prs", "")),
-            row_id=fields.get("id", ""),
-            re=fields.get("re", ""),
-            until=_ledger_ts(fields.get("until", "")),
-            reason=fields.get("reason") or free_text[:300],
-            task=fields.get("task", ""),
-            state=fields.get("state", ""),
-            subject=fields.get("subject", ""),
-            verdict=fields.get("verdict", ""),
-            outcome=fields.get("outcome", ""),
-            closes_claim=fields.get("closes-claim") or fields.get("closes-CLAIM", ""),
-            text=free_text[:400],
-            host=fields.get("host", ""),
-            model=fields.get("model", ""),
-            actor=fields.get("actor", ""),
-            to=fields.get("to", ""),
-            run_id=fields.get("run", ""),
-            owns=_csv(fields.get("owns", "")),
-            head=fields.get("head", ""),
-            ruling=fields.get("ruling") or fields.get("cited-rulings", ""),
-            mechanism=fields.get("mechanism-ticket", ""),
-            needs=fields.get("needs", ""),
-            report=fields.get("report", ""),
-        )
-        rows.append(row)
+        row = parse_ledger_row_body(match.group(3))
+        if row is not None:
+            rows.append(row)
     return tuple(rows)
+
+
+def parse_projection_lines(lines: Sequence[str]) -> tuple[ModelFloorLedgerRow, ...]:
+    """Every row of a work-ledger projection answer: each line is the row's own first line (``<ts> | <KIND> | <cells>``), with no ``L<n>`` prefix."""
+    parsed = (parse_ledger_row_body(line) for line in lines)
+    return tuple(row for row in parsed if row is not None)
+
+
+def parse_ledger_row_body(body: str) -> ModelFloorLedgerRow | None:
+    """The row one ledger line holds (the text after any ``L<n> `` prefix), or None when it holds none."""
+    cells = [cell.strip() for cell in body.split(" | ")]
+    ts = _ledger_ts(cells[0])
+    if ts is None or len(cells) < 2 or not cells[1]:
+        return None
+    fields: dict[str, str] = {}
+    remainders: list[str] = []
+    for cell in cells[2:]:
+        key, sep, value = cell.partition("=")
+        if sep and key == "parent":
+            # A row written as `parent=lane-x Do the thing` carries its sentence after the first token.
+            remainders.append(" ".join(value.split()[1:]))
+        elif sep and ID_KEY_RE.fullmatch(key):
+            tokens = value.split()
+            fields.setdefault(key, tokens[0] if tokens else "")
+            if len(tokens) > 1:
+                remainders.append(" ".join(tokens[1:]))
+        elif sep and key == "owns":
+            # An explicit owns= cell, the ledger MSG's routing rule: a comma list with no spaces in it.
+            fields.setdefault("owns", value.split()[0] if value.split() else "")
+        elif sep and key == "needs":
+            # The closing row's typed ask (OMN-23417): `<action>:<target>`, or `unparsed`; one token, no spaces.
+            fields.setdefault("needs", value.split()[0] if value.split() else "")
+        elif sep and key == "report":
+            # The lane's report text, one cell value written by the close node (OMN-23417).
+            fields.setdefault("report", value.strip())
+        elif sep and key in {"reason", "blocker"}:
+            # A lane that ends blocked says why in blocker=; the sentence after its cells is the launcher's receipt note.
+            fields.setdefault("reason", value.strip()[:300])
+    free_text = (
+        cells[-1]
+        if not re.match(r"^[A-Za-z_-]+=", cells[-1])
+        else max(remainders, key=len, default="")
+    )
+    row = ModelFloorLedgerRow(
+        ts=ts,
+        kind=cells[1],
+        lane=fields.get("lane") or fields.get("from", ""),
+        tickets=_csv(fields.get("ticket", ""), fields.get("tickets", "")),
+        parent_tickets=_csv(fields.get("parent_ticket", "")),
+        read_only=fields.get("worktree") == "none" or fields.get("mode") == "read-only",
+        prs=_csv(fields.get("pr", ""), fields.get("prs", "")),
+        row_id=fields.get("id", ""),
+        re=fields.get("re", ""),
+        until=_ledger_ts(fields.get("until", "")),
+        reason=fields.get("reason") or free_text[:300],
+        task=fields.get("task", ""),
+        state=fields.get("state", ""),
+        subject=fields.get("subject", ""),
+        verdict=fields.get("verdict", ""),
+        outcome=fields.get("outcome", ""),
+        closes_claim=fields.get("closes-claim") or fields.get("closes-CLAIM", ""),
+        text=free_text[:400],
+        host=fields.get("host", ""),
+        model=fields.get("model", ""),
+        actor=fields.get("actor", ""),
+        to=fields.get("to", ""),
+        run_id=fields.get("run", ""),
+        owns=_csv(fields.get("owns", "")),
+        head=fields.get("head", ""),
+        ruling=fields.get("ruling") or fields.get("cited-rulings", ""),
+        mechanism=fields.get("mechanism-ticket", ""),
+        needs=fields.get("needs", ""),
+        report=fields.get("report", ""),
+    )
+    return row
 
 
 def reduce_ledger_rows(
