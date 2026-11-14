@@ -30,6 +30,9 @@ from omnimarket.events.pr_landing_github.model_github_pr_state_fact import (
 from omnimarket.events.pr_landing_github.model_github_quota_reading import (
     ModelGithubQuotaReading,
 )
+from omnimarket.models.pr_landing_github_failure_reason_rules import (
+    check_failure_reason_rules,
+)
 
 
 class ModelPrLandingGithubFailed(BaseModel):
@@ -58,31 +61,5 @@ class ModelPrLandingGithubFailed(BaseModel):
 
     @model_validator(mode="after")
     def _reason_rules(self) -> Self:
-        if self.mode is EnumPrLandingGithubMode.DRY_RUN:
-            raise ValueError(
-                "dry_run records requests and calls nothing; it cannot fail"
-            )
-        no_response = self.reason is EnumPrLandingGithubFailureReason.TRANSPORT_ERROR
-        if self.quota is None and not no_response:
-            raise ValueError(
-                f"a {self.reason.value} failure must carry the header quota reading"
-            )
-        if self.reason is EnumPrLandingGithubFailureReason.QUOTA_FLOOR and (
-            self.http_status is not None
-        ):
-            raise ValueError(
-                "a quota_floor refusal made no call and has no http_status"
-            )
-        if no_response and self.http_status is not None:
-            raise ValueError("a transport_error has no http_status")
-        if self.pr_state is not None and self.operation not in (
-            EnumPrLandingGithubOperation.ARM_AUTO_MERGE,
-            EnumPrLandingGithubOperation.ENQUEUE,
-        ):
-            raise ValueError("pr_state is only carried by a refused arm or enqueue")
-        if (
-            self.head_sha is None
-            and self.operation is not EnumPrLandingGithubOperation.READ_PR_STATE
-        ):
-            raise ValueError(f"a {self.operation.value} failure must name its head_sha")
+        check_failure_reason_rules(self)
         return self

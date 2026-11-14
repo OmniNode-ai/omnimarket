@@ -9,6 +9,9 @@ consumer keeps the entity. Rare paths (recovery, rollback, on-call) stay by decl
 An entity is kept when a public consumer has no recorded resolution, when a scope could not be read
 (absence proves nothing), or when it declares a rare path that names a drill. A rare-path declaration
 that names no drill exempts nothing. A batch that names any kept entity is refused as a whole.
+
+A batch from an archived repository (OMN-23146) also names the repository's archived names. A public mention of one
+of them with no recorded resolution keeps every entity of the batch, and the result records each mention and why.
 """
 
 from __future__ import annotations
@@ -17,6 +20,7 @@ from omnimarket.nodes.node_public_consumer_check_compute.models.model_public_con
     EnumBatchDecision,
     EnumEntityDisposition,
     EnumScopeKind,
+    ModelArchivedMention,
     ModelConsumerHit,
     ModelEntity,
     ModelEntityEvidence,
@@ -50,8 +54,15 @@ class HandlerPublicConsumerCheck:
             (r.scope.kind, r.scope.name, r.locator): r.resolution_ref
             for r in request.resolutions
         }
+        mentions, unread = self._archived_mentions(request, resolutions)
+        reasons = self._mention_reasons(request, mentions, unread)
         verdicts = tuple(
-            self._verdict(request.repository, entity, resolutions)
+            self._with_mentions(
+                self._verdict(request.repository, entity, resolutions),
+                mentions,
+                reasons,
+                bool(unread),
+            )
             for entity in request.entities
         )
         kept = tuple(v.entity_id for v in verdicts if v.kept)
@@ -61,6 +72,84 @@ class HandlerPublicConsumerCheck:
             decision=EnumBatchDecision.REFUSED if kept else EnumBatchDecision.ACCEPTED,
             kept_entity_ids=kept,
             verdicts=verdicts,
+            archived_mentions=mentions,
+            reasons=reasons,
+        )
+
+    def _archived_mentions(
+        self,
+        request: ModelPublicConsumerCheckRequest,
+        resolutions: dict[tuple[EnumScopeKind, str, str], str],
+    ) -> tuple[tuple[ModelArchivedMention, ...], tuple[str, ...]]:
+        """The public mentions of the archived repository's names, and the scopes that could not be read for them."""
+        mentions: list[ModelArchivedMention] = []
+        unread: list[str] = []
+        if not request.archived_repository_names:
+            return (), ()
+        for scope in self._scopes:
+            if scope.name == request.repository:
+                continue
+            try:
+                if self._source is None:
+                    raise PublicConsumerSourceError("no search source is configured")
+                for name in request.archived_repository_names:
+                    for hit in self._source.search(scope, name):
+                        ref = resolutions.get((scope.kind, scope.name, hit.locator), "")
+                        mentions.append(
+                            ModelArchivedMention(
+                                scope=scope,
+                                locator=hit.locator,
+                                line=hit.line,
+                                matched_name=hit.matched_reference,
+                                resolved=bool(ref),
+                                resolution_ref=ref,
+                            )
+                        )
+            except PublicConsumerSourceError as exc:
+                unread.append(f"{scope.kind.value}:{scope.name} unread: {exc}")
+        return tuple(mentions), tuple(unread)
+
+    @staticmethod
+    def _mention_reasons(
+        request: ModelPublicConsumerCheckRequest,
+        mentions: tuple[ModelArchivedMention, ...],
+        unread: tuple[str, ...],
+    ) -> tuple[str, ...]:
+        reasons = [
+            f"archived repository {request.repository} is mentioned in "
+            f"{m.scope.kind.value}:{m.scope.name}:{m.locator}:{m.line} as {m.matched_name}: "
+            "its entities stay until the mention is resolved"
+            for m in mentions
+            if not m.resolved
+        ]
+        reasons.extend(
+            f"search for the archived repository's names: scope {item}"
+            for item in unread
+        )
+        return tuple(reasons)
+
+    @staticmethod
+    def _with_mentions(
+        verdict: ModelEntityVerdict,
+        mentions: tuple[ModelArchivedMention, ...],
+        reasons: tuple[str, ...],
+        mention_scope_unread: bool,
+    ) -> ModelEntityVerdict:
+        """Keep the entity for an unresolved mention of its archived repository, or for an unread mention search."""
+        if not reasons:
+            return verdict
+        if any(not m.resolved for m in mentions):
+            disposition = EnumEntityDisposition.KEPT_ARCHIVED_REPOSITORY_MENTION
+        elif mention_scope_unread and not verdict.kept:
+            disposition = EnumEntityDisposition.KEPT_SEARCH_UNREAD
+        else:
+            disposition = verdict.disposition
+        return verdict.model_copy(
+            update={
+                "disposition": disposition,
+                "kept": True,
+                "reasons": (*reasons, *verdict.reasons),
+            }
         )
 
     def _evidence(

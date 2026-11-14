@@ -12,6 +12,9 @@ from omnimarket.models.lab_alarm_delivery import (
     ModelLabAlarmDeliveryRequest,
     ModelLabAlarmDeliveryResult,
 )
+from omnimarket.nodes.node_lab_alarm.models.model_lab_alarm_delegation_chain_canary import (
+    ModelCanaryRun,
+)
 from omnimarket.nodes.node_lab_alarm.models.model_lab_alarm_effects_held import (
     ModelEffectsGroupReading,
     ModelEscalationBrief,
@@ -125,6 +128,46 @@ class ProtocolListenerProbe(Protocol):
         ...
 
 
+class HeartbeatUnreadableError(Exception):
+    """The deploy agent's heartbeat document could not be read: no answer, not HTTP 200, or not a JSON object."""
+
+
+class ProtocolHeartbeatSource(Protocol):
+    def read(self) -> Mapping[str, Any]:
+        """The agent's heartbeat document; raises HeartbeatUnreadableError when it cannot be read."""
+        ...
+
+
+class CanaryRunsUnreadableError(Exception):
+    """The canary workflow's runs could not be read: the gateway did not answer or answered something untyped."""
+
+
+class ProtocolCanaryRunSource(Protocol):
+    def read(self) -> tuple[ModelCanaryRun, ...]:
+        """The newest runs of the canary workflow; raises CanaryRunsUnreadableError when they cannot be read."""
+        ...
+
+
+class LedgerUnreadableError(Exception):
+    """The ledger file could not be read, or its tail holds no canonical row."""
+
+
+class ProjectionUnreadableError(Exception):
+    """The projection's newest row could not be read."""
+
+
+class ProtocolLedgerNewestReader(Protocol):
+    def newest(self) -> tuple[datetime, str]:
+        """The timestamp and row type of the ledger's newest canonical row; raises LedgerUnreadableError."""
+        ...
+
+
+class ProtocolProjectionNewestReader(Protocol):
+    def newest(self, since: datetime) -> datetime | None:
+        """The newest row_ts at or after ``since``, None when there is none; raises ProjectionUnreadableError."""
+        ...
+
+
 class ProtocolAlarmDelivery(Protocol):
     def handle(
         self, request: ModelLabAlarmDeliveryRequest
@@ -134,23 +177,31 @@ class ProtocolAlarmDelivery(Protocol):
 
 
 __all__ = [
+    "CanaryRunsUnreadableError",
     "EffectsGroupReadError",
     "GroupNeverCommittedError",
     "GroupUnreadableError",
+    "HeartbeatUnreadableError",
     "LaneDispatchError",
+    "LedgerUnreadableError",
     "ListenerRefusedError",
     "ListenerUnresolvableError",
     "ManifestUnreachableError",
     "ManifestUnreadableError",
+    "ProjectionUnreadableError",
     "ProtocolAlarmDelivery",
+    "ProtocolCanaryRunSource",
     "ProtocolEffectsGroupReader",
     "ProtocolGroupLagReader",
     "ProtocolGrowthStreakStore",
+    "ProtocolHeartbeatSource",
     "ProtocolHeldStateStore",
     "ProtocolLaneDispatcher",
+    "ProtocolLedgerNewestReader",
     "ProtocolListenerProbe",
     "ProtocolManifestCache",
     "ProtocolManifestSource",
+    "ProtocolProjectionNewestReader",
     "ProtocolRunRecordStore",
     "ProtocolSampleStore",
     "RunRecordUnwritableError",

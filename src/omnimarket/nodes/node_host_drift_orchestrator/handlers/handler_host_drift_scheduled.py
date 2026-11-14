@@ -15,6 +15,7 @@ next due tick to send again. A missing overlay is refused once and returns nothi
 
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
 import threading
 import uuid
@@ -101,7 +102,7 @@ class HandlerHostDriftScheduled:
         with self._claim:
             self._gate.rearm()
 
-    def handle(self, request: ModelRuntimeTick) -> ModelHandlerOutput[None]:
+    async def handle(self, request: ModelRuntimeTick) -> ModelHandlerOutput[None]:
         correlation_id = uuid.uuid5(
             uuid.NAMESPACE_URL, f"omnimarket:host-drift-tick:{request.tick_id}"
         )
@@ -122,7 +123,10 @@ class HandlerHostDriftScheduled:
         stopped = ""
         try:
             sender = self._sender if self._sender is not None else build_sender(overlay)
-            verdicts = DispatchHostDriftUnits(overlay, sender).dispatch(overlay.hosts)
+            # sender.send blocks until the host's receipt; the runtime calls handle on its loop, so run the dispatch off it.
+            verdicts = await asyncio.to_thread(
+                DispatchHostDriftUnits(overlay, sender).dispatch, overlay.hosts
+            )
         except Exception as exc:
             self._release_claim()
             stopped = f"{type(exc).__name__}: {exc}"[:1000]

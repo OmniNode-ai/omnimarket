@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 import importlib.util
-import json
 import sys
 from pathlib import Path
 
@@ -29,10 +28,19 @@ def test_committed_record_leaves_fewer_than_fifty_test_files_unrecorded() -> Non
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
-    record = json.loads(RECORD.read_text(encoding="utf-8"))
+    record = module.read_record(RECORD)
     files = module.discover_test_files(REPO_ROOT)
     _, unrecorded = module.file_weights(files, record)
     assert len(unrecorded) < MAX_UNRECORDED_FILES, (
         f"{len(unrecorded)} of {len(files)} test files are not in {RECORD.name}; "
         "regenerate it with merge_test_durations.py record"
     )
+
+
+def test_the_post_merge_limit_is_the_limit_of_this_test() -> None:
+    """OMN-23537: the freshness run after a merge and this test stop at the same count."""
+    from omnimarket.nodes.node_test_duration_record_check_effect.adapters.policy_file import (
+        load_policy,
+    )
+
+    assert load_policy().max_unrecorded_files == MAX_UNRECORDED_FILES

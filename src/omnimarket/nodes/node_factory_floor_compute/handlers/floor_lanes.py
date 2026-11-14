@@ -353,6 +353,7 @@ def build_lanes(
                 liveness_detail=detail,
                 owns=owned,
                 parent_ticket=claim.parent_tickets[0] if claim.parent_tickets else "",
+                read_only=claim.read_only,
             )
         )
     ordered = sorted(
