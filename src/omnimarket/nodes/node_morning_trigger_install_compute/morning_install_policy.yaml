@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# The morning installer's mode rules (OMN-24424), moved from the frozen shell installer
+# launchd/morning-workflows/morning_trigger_install.sh: lib-only refreshes only the package
+# lib and leaves the bin files (driver, deferral runner, deferral template, watchdog driver)
+# untouched and reloads no launchd label; install copies the bin and lib files and reloads
+# the labels.
+modes:
+  install:
+    artifact_kinds: [bin, lib]
+    reload_labels: true
+  lib-only:
+    artifact_kinds: [lib]
+    reload_labels: false
