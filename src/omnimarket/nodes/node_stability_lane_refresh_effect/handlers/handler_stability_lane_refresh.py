@@ -268,6 +268,21 @@ def _pin_text(overlay: ModelStabilityHostOverlay, target: ModelReleasePinSet) ->
     return "\n".join(lines) + "\n"
 
 
+def _unwrap_envelope(raw: bytes | str) -> bytes | str:
+    """The command a bus message carries: the body of an event envelope (``payload``), else the message itself."""
+    try:
+        document = json.loads(raw)
+    except ValueError:
+        return raw
+    if (
+        isinstance(document, dict)
+        and isinstance(document.get("payload"), dict)
+        and "correlation_id" not in document
+    ):
+        return json.dumps(document["payload"])
+    return raw
+
+
 def answer_command(
     raw: bytes | str,
     handler: HandlerStabilityLaneRefresh,
@@ -275,7 +290,9 @@ def answer_command(
 ) -> list[tuple[str, bytes]]:
     """Answer one refresh command from the bus as events: (topic, body) in order, all under its correlation id."""
     try:
-        command = ModelStabilityRefreshCommand.model_validate_json(raw)
+        command = ModelStabilityRefreshCommand.model_validate_json(
+            _unwrap_envelope(raw)
+        )
     except ValidationError as error:
         body = {"failure": f"bad-payload: {error.error_count()} errors"}
         return [(topics["stability_refresh_failed"], json.dumps(body).encode())]

@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Models of node_stability_lane_refresh_effect."""
+"""Typed models of node_stability_lane_refresh_effect."""
 
 from omnimarket.nodes.node_stability_lane_refresh_effect.models.model_stability_lane_refresh import (
     RELEASE_TAG_PATTERN,
@@ -12,6 +12,9 @@ from omnimarket.nodes.node_stability_lane_refresh_effect.models.model_stability_
     ModelStabilityRefreshCommand,
     ModelStabilityRefreshResult,
 )
+from omnimarket.nodes.node_stability_lane_refresh_effect.models.model_stability_serve import (
+    ModelStabilityServeEvidence,
+)
 
 __all__ = [
     "RELEASE_TAG_PATTERN",
@@ -22,4 +25,5 @@ __all__ = [
     "ModelStabilityPinRecord",
     "ModelStabilityRefreshCommand",
     "ModelStabilityRefreshResult",
+    "ModelStabilityServeEvidence",
 ]

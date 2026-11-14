@@ -8562,7 +8562,8 @@
         "node_overlay_store_read_effect",
         "node_pr_landing_snapshot_effect",
         "node_pr_landing_tick_orchestrator",
-        "node_remote_lane_start_orchestrator"
+        "node_remote_lane_start_orchestrator",
+        "node_stability_lane_refresh_effect"
       ],
       "target_schema": "omninode_internal",
       "writers": [
