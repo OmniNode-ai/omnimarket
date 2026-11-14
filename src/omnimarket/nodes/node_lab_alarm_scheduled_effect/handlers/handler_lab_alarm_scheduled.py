@@ -10,6 +10,7 @@ run event. A refused overlay or an unreadable alarm overlay is a failed run even
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from typing import Literal
@@ -65,6 +66,7 @@ class HandlerLabAlarmScheduled:
         self._clock = clock
         self._build_handler = build_handler
         self._refusals = ScheduledOverlayRefusalLatch(NODE_NAME)
+        self._running = False
 
     def _event(
         self,
@@ -110,6 +112,22 @@ class HandlerLabAlarmScheduled:
         if outcome.failed:
             return self._event(request, "failed", outcome.detail)
         return self._event(request, "completed", outcome.detail)
+
+    async def handle_async(
+        self, request: ModelRuntimeTick
+    ) -> ModelScheduleRunEvent | None:
+        """The runtime calls this on its event loop, and handle blocks on the alarm run's network I/O.
+
+        So the run executes on a worker thread; a tick that arrives while one run is in flight starts no
+        second run and returns None.
+        """
+        if self._running:
+            return None
+        self._running = True
+        try:
+            return await asyncio.to_thread(self.handle, request)
+        finally:
+            self._running = False
 
 
 __all__: list[str] = ["HandlerLabAlarmScheduled"]
