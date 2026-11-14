@@ -39,6 +39,10 @@ from omnimarket.nodes.node_branch_deploy_orchestrator.models import (
     ModelDeployJobCompleted,
     ModelDeployJobRejected,
 )
+from omnimarket.nodes.node_branch_deploy_orchestrator.orchestration.row_store import (
+    InMemoryBranchDeployRowStore,
+    ProtocolBranchDeployRowStore,
+)
 from omnimarket.nodes.node_branch_deploy_orchestrator.overlay import (
     ModelBranchDeployOrchestratorOverlay,
 )
@@ -199,9 +203,21 @@ class Plant:
         outcomes: list[str] | None = None,
         probes: list[Any] | None = None,
         job_events: list[str] | None = None,
+        store: ProtocolBranchDeployRowStore | None = None,
+        restart_before: type | None = None,
+        restart_nth: int = 1,
+        lose_store_on_restart: bool = False,
     ) -> None:
+        self._store = store
+        self._restart_before = restart_before
+        self._restart_nth = restart_nth
+        self._lose_store_on_restart = lose_store_on_restart
+        self._matches = 0
+        self._restarted = False
+        #: How much the flow had published when the runtime was recreated (None: it never was).
+        self.restart_log_index: int | None = None
         self.orchestrator = HandlerBranchDeployOrchestrator(
-            orchestrator_overlay(), StepClock()
+            orchestrator_overlay(), StepClock(), store=store
         )
         self.outcomes = list(outcomes or [])
         self.probe = InMemoryBranchDeployProbe(facts=list(probes or []))
@@ -227,10 +243,36 @@ class Plant:
         while queue:
             assert len(queue) <= 200, "the FIFO cap of 200 items was hit"
             payload, key = queue.popleft()
+            self._rebuild_runtime(payload)
             for out in self.orchestrator.decide(payload, key):
                 self.log.append((out.topic, out.payload))
                 for answer in self._serve(out.topic, out.payload, key):
                     queue.append((answer, key))
+
+    def _rebuild_runtime(self, payload: object) -> None:
+        """Recreate the orchestrator before the ``restart_nth`` matching payload is routed, once only.
+
+        The rebuild is a runtime the rebuild tooling recreated: a new handler over the same row store and a fresh
+        clock — no other memory survives it. With ``lose_store_on_restart`` the new handler gets an empty store:
+        the red state the stored row fixes.
+        """
+        if self._restart_before is None or self._restarted:
+            return
+        if not isinstance(payload, self._restart_before):
+            return
+        self._matches += 1
+        if self._matches != self._restart_nth:
+            return
+        self._restarted = True
+        self.restart_log_index = len(self.log)
+        store = (
+            InMemoryBranchDeployRowStore(orchestrator_overlay().context_limit)
+            if self._lose_store_on_restart
+            else self._store
+        )
+        self.orchestrator = HandlerBranchDeployOrchestrator(
+            orchestrator_overlay(), StepClock(), store=store
+        )
 
     def _serve(self, topic: str, payload: Any, key: UUID) -> list[Any]:
         if topic.endswith("branch-deploy-command-requested.v1"):

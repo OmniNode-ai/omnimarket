@@ -1,0 +1,12 @@
+# The probe document as overlays main still holds it: the retired ssh read's keys and no
+# ready_url or provenance_url (OMN-24058 tolerates it until the overlays change lands).
+probe:
+  health_url: http://runtime.example.invalid/health
+  health_ok_path: [details, healthy]
+  ssh_host_env: EXAMPLE_RUNTIME_SSH_HOST
+  compose_project: example-project
+  provenance_service: example-runtime
+  provenance_path: /app/build-provenance.json
+  sha_path: [infra_vcs_ref]
+  timeout_seconds: 30
+detail_max_chars: 4096

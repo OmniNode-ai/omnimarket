@@ -13,8 +13,8 @@ from omnimarket.models.model_dev_deploy_reading import ModelRuntimeProbeFact
 class ProtocolBranchDeployProbe(Protocol):
     """The runtime probe port the handler takes as a constructor argument.
 
-    The signature is the exact signature of ``RuntimeProbeSource.read`` of
-    node_dev_deploy_reading_effect, whose probe source this node reuses.
+    Satisfied by ``HttpRuntimeProbe`` of this node's HTTP adapter and by
+    ``InMemoryBranchDeployProbe`` of its in-memory adapter.
     """
 
     def read(

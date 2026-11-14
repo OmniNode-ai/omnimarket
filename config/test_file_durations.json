@@ -621,6 +621,7 @@
   "tests/nodes/node_branch_deploy_command_effect/test_wire_seam.py": 3.37,
   "tests/nodes/node_branch_deploy_orchestrator/test_contract.py": 2.43,
   "tests/nodes/node_branch_deploy_orchestrator/test_orchestrator.py": 2.24,
+  "tests/nodes/node_branch_deploy_orchestrator/test_resume.py": 4.59,
   "tests/nodes/node_branch_deploy_orchestrator/test_seam.py": 2.55,
   "tests/nodes/node_branch_deploy_probe_effect/test_contract.py": 2.04,
   "tests/nodes/node_branch_deploy_probe_effect/test_probe_effect.py": 2.23,
