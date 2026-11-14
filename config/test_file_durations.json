@@ -510,6 +510,7 @@
   "tests/integration/test_cost_event_publisher_kafka.py": 0.17,
   "tests/integration/test_j_recover.py": 1.39,
   "tests/integration/test_join_j10.py": 11.37,
+  "tests/integration/test_join_j11.py": 3.65,
   "tests/integration/test_join_j12.py": 0.027,
   "tests/integration/test_join_j14.py": 0.151,
   "tests/integration/test_join_j16.py": 1.29,
