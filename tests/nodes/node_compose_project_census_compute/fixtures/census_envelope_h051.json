@@ -1,0 +1,148 @@
+[
+ {
+  "Names": "buildx_buildkit_onex-lane-buildkit0",
+  "State": "running",
+  "Status": "running",
+  "Image": "moby/buildkit:v0.34.1",
+  "Labels": {}
+ },
+ {
+  "Names": "buildx_buildkit_onex-shared-buildkit0",
+  "State": "running",
+  "Status": "running",
+  "Image": "moby/buildkit:v0.34.1",
+  "Labels": {}
+ },
+ {
+  "Names": "pool-a-ci-mq-runner-1",
+  "State": "running",
+  "Status": "running",
+  "Image": "lab-runner:latest",
+  "Labels": {
+   "com.docker.compose.project": "pool-a-ci-mq-runner",
+   "com.docker.compose.project.config_files": "/srv/user/.state/runners/docker/docker-compose.runners-pool-a-ci-mq-runner.yml",
+   "com.docker.compose.project.working_dir": "/srv/user/.state/runners/docker",
+   "com.docker.compose.service": "pool-a-ci-mq-runner-1"
+  }
+ },
+ {
+  "Names": "pool-a-ci-mq-runner-2",
+  "State": "running",
+  "Status": "running",
+  "Image": "lab-runner:latest",
+  "Labels": {
+   "com.docker.compose.project": "pool-a-ci-mq-runner",
+   "com.docker.compose.project.config_files": "/srv/user/.state/runners/docker/docker-compose.runners-pool-a-ci-mq-runner.yml",
+   "com.docker.compose.project.working_dir": "/srv/user/.state/runners/docker",
+   "com.docker.compose.service": "pool-a-ci-mq-runner-2"
+  }
+ },
+ {
+  "Names": "pool-a-ci-mq-runner-3",
+  "State": "running",
+  "Status": "running",
+  "Image": "lab-runner:latest",
+  "Labels": {
+   "com.docker.compose.project": "pool-a-ci-mq-runner",
+   "com.docker.compose.project.config_files": "/srv/user/.state/runners/docker/docker-compose.runners-pool-a-ci-mq-runner.yml",
+   "com.docker.compose.project.working_dir": "/srv/user/.state/runners/docker",
+   "com.docker.compose.service": "pool-a-ci-mq-runner-3"
+  }
+ },
+ {
+  "Names": "pool-a-ci-mq-runner-4",
+  "State": "running",
+  "Status": "running",
+  "Image": "lab-runner:latest",
+  "Labels": {
+   "com.docker.compose.project": "pool-a-ci-mq-runner",
+   "com.docker.compose.project.config_files": "/srv/user/.state/runners/docker/docker-compose.runners-pool-a-ci-mq-runner.yml",
+   "com.docker.compose.project.working_dir": "/srv/user/.state/runners/docker",
+   "com.docker.compose.service": "pool-a-ci-mq-runner-4"
+  }
+ },
+ {
+  "Names": "pool-a-ci-runner-1",
+  "State": "running",
+  "Status": "running",
+  "Image": "lab-runner:latest",
+  "Labels": {
+   "com.docker.compose.project": "pool-a-ci-runner",
+   "com.docker.compose.project.config_files": "/srv/user/.state/runners/docker/docker-compose.runners-pool-a-ci-runner.yml",
+   "com.docker.compose.project.working_dir": "/srv/user/.state/runners/docker",
+   "com.docker.compose.service": "pool-a-ci-runner-1"
+  }
+ },
+ {
+  "Names": "pool-a-ci-runner-2",
+  "State": "running",
+  "Status": "running",
+  "Image": "lab-runner:latest",
+  "Labels": {
+   "com.docker.compose.project": "pool-a-ci-runner",
+   "com.docker.compose.project.config_files": "/srv/user/.state/runners/docker/docker-compose.runners-pool-a-ci-runner.yml",
+   "com.docker.compose.project.working_dir": "/srv/user/.state/runners/docker",
+   "com.docker.compose.service": "pool-a-ci-runner-2"
+  }
+ },
+ {
+  "Names": "pool-a-ci-runner-3",
+  "State": "running",
+  "Status": "running",
+  "Image": "lab-runner:latest",
+  "Labels": {
+   "com.docker.compose.project": "pool-a-ci-runner",
+   "com.docker.compose.project.config_files": "/srv/user/.state/runners/docker/docker-compose.runners-pool-a-ci-runner.yml",
+   "com.docker.compose.project.working_dir": "/srv/user/.state/runners/docker",
+   "com.docker.compose.service": "pool-a-ci-runner-3"
+  }
+ },
+ {
+  "Names": "pool-a-ci-runner-4",
+  "State": "running",
+  "Status": "running",
+  "Image": "lab-runner:latest",
+  "Labels": {
+   "com.docker.compose.project": "pool-a-ci-runner",
+   "com.docker.compose.project.config_files": "/srv/user/.state/runners/docker/docker-compose.runners-pool-a-ci-runner.yml",
+   "com.docker.compose.project.working_dir": "/srv/user/.state/runners/docker",
+   "com.docker.compose.service": "pool-a-ci-runner-4"
+  }
+ },
+ {
+  "Names": "stack-infra-phoenix",
+  "State": "running",
+  "Status": "running",
+  "Image": "arizephoenix/phoenix:13.11.0",
+  "Labels": {
+   "com.docker.compose.project": "stack-infra",
+   "com.docker.compose.project.config_files": "/srv/workspace/worktrees/OMN-21685-move-to-51-1240/infra_repo/docker/docker-compose.generated.yml",
+   "com.docker.compose.project.working_dir": "/srv/workspace/worktrees/OMN-21685-move-to-51-1240/infra_repo/docker",
+   "com.docker.compose.service": "phoenix"
+  }
+ },
+ {
+  "Names": "lab-factory-floor-web",
+  "State": "running",
+  "Status": "running",
+  "Image": "nginx:1.29-alpine@sha256:5616878291a2eed594aee8db4dade5878cf7edcb475e59193904b198d9b830de",
+  "Labels": {
+   "com.docker.compose.project": "factory-floor-web",
+   "com.docker.compose.project.config_files": "/srv/user/factory-floor-web/docker/docker-compose.factory-floor-web.yml",
+   "com.docker.compose.project.working_dir": "/srv/user/factory-floor-web/docker",
+   "com.docker.compose.service": "factory-floor-web"
+  }
+ },
+ {
+  "Names": "lab-pypi-cache",
+  "State": "running",
+  "Status": "running",
+  "Image": "lab-pypi-cache:latest",
+  "Labels": {
+   "com.docker.compose.project": "pypi-cache-deploy",
+   "com.docker.compose.project.config_files": "/srv/user/.state/pypi-cache-deploy/docker-compose.pypi-cache.yml,/srv/user/.state/pypi-cache-deploy/docker-compose.pypi-cache-h051.yml",
+   "com.docker.compose.project.working_dir": "/srv/user/.state/pypi-cache-deploy",
+   "com.docker.compose.service": "lab-pypi-cache"
+  }
+ }
+]

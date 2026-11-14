@@ -22,7 +22,9 @@ from omnibase_infra.runtime.core_runtime.routing_map_builder import build_routin
 from omnimarket.nodes.node_dev_roll_request_compute.handlers import (
     HandlerDevRollRequest,
 )
-from omnimarket.nodes.node_dev_roll_request_compute.models import ModelDevRollPolicy
+from omnimarket.nodes.node_dev_roll_request_compute.models import (
+    ModelDevRollPolicy,
+)
 
 ROOT = Path(__file__).resolve().parents[4]
 CONTRACT = ROOT / "src/omnimarket/nodes/node_dev_roll_request_compute/contract.yaml"

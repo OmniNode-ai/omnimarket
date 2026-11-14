@@ -1,15 +1,29 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The topics node_floor_emission_compute declares are the topics the 17a floor documents (OMN-19998)."""
+"""The topics node_floor_emission_compute declares: it subscribes to nothing and runs in process (OMN-24298)."""
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
+from pydantic import ValidationError
+
+from omnimarket.models.floor_17a.model_floor_17a import (
+    ModelFloorReceiptInput,
+    ModelNodeEmission,
+)
 
 pytestmark = pytest.mark.unit
+
+EMISSION_TOPICS = (
+    "onex.evt.omnimarket.floor-node-started.v1",
+    "onex.evt.omnimarket.floor-node-succeeded.v1",
+    "onex.evt.omnimarket.floor-node-failed.v1",
+)
 
 CONTRACT = (
     Path(__file__).resolve().parents[3]
@@ -23,19 +37,53 @@ def _bus() -> dict[str, list[str]]:
     return bus
 
 
-def test_emission_subscribes_to_the_emission_topics_and_publishes_its_result() -> None:
+def _node_contract(node: str) -> dict[str, Any]:
+    loaded = yaml.safe_load(
+        (CONTRACT.parents[1] / node / "contract.yaml").read_text(encoding="utf-8")
+    )
+    contract: dict[str, Any] = loaded
+    return contract
+
+
+def test_emission_subscribes_to_nothing_and_publishes_nothing() -> None:
     bus = _bus()
-    for topic in (
-        "onex.evt.omnimarket.floor-node-started.v1",
-        "onex.evt.omnimarket.floor-node-succeeded.v1",
-        "onex.evt.omnimarket.floor-node-failed.v1",
-    ):
-        assert topic in bus["subscribe_topics"]
-        assert topic not in bus["publish_topics"]
-    assert "onex.evt.omnimarket.floor-receipts-computed.v1" in bus["publish_topics"]
+    assert bus["subscribe_topics"] == []
+    assert bus["publish_topics"] == []
 
 
-def test_emission_terminal_event_is_published() -> None:
+def test_emission_runs_in_process_for_its_caller() -> None:
     loaded = yaml.safe_load(CONTRACT.read_text(encoding="utf-8"))
-    assert loaded["terminal_event"] == "onex.evt.omnimarket.floor-receipts-computed.v1"
-    assert loaded["terminal_event"] in _bus()["publish_topics"]
+    assert loaded["metadata"]["transport_type"] == "local"
+    assert loaded["descriptor"]["runtime_profiles"] == []
+    assert "runtime_profiles" not in loaded
+    assert "terminal_event" not in loaded
+    assert "node_floor_simple_effect" in loaded["runtime_dispatch"]["external_trigger"]
+
+
+def test_single_event_is_refused_by_the_input_model() -> None:
+    emission = ModelNodeEmission(
+        node="node_lab_state_x",
+        piece=1,
+        correlation_id="c1",
+        phase="start",
+        emitted_at=datetime(2026, 11, 13, tzinfo=UTC),
+    )
+    with pytest.raises(ValidationError) as exc_info:
+        ModelFloorReceiptInput.model_validate(emission.model_dump(mode="json"))
+    locations = {
+        ".".join(str(part) for part in error["loc"])
+        for error in exc_info.value.errors()
+    }
+    assert {"now", "emissions", "pieces"} <= locations
+
+
+def test_seam_emission_topics_stay_published_and_read_by_the_publisher() -> None:
+    simple = _node_contract("node_floor_simple_effect")
+    publisher = _node_contract("node_floor_emissions_publish_effect")
+    compute = _node_contract("node_floor_emission_compute")
+    for topic in EMISSION_TOPICS:
+        assert topic in simple["event_bus"]["publish_topics"]
+        assert topic in simple["externally_consumed_topics"]
+        assert topic in publisher["snapshot_reads"]
+    assert compute["event_bus"]["subscribe_topics"] == []
+    assert not set(EMISSION_TOPICS) & set(compute["event_bus"]["publish_topics"])

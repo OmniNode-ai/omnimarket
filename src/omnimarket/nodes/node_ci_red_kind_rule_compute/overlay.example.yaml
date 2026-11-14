@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# The deployment's overlay lives at <root>/node_ci_red_kind_rule_compute/overlay.yaml under a root named in
+# ONEX_SKILL_OVERLAY_ROOTS, or the file CI_RED_KIND_RULES_OVERLAY names. No pattern has a default: an unbound,
+# unreadable or invalid overlay is a typed refusal. Rules are tried in order; the first whose pattern is found in
+# the failed check's name decides the kind. A name no rule finds is answered as needing the model.
+# A rule may carry check_name_pattern, log_pattern or both: log_pattern is searched in the request's log_excerpt, and a
+# rule with both needs both found. A rule with log_pattern never matches a request whose log_excerpt is empty.
+schema_version: ci_red_kind_rules.v1
+rules:
+  - kind: delegation-health-gate
+    check_name_pattern: 'delegation[- ]health'
+    ignore_case: true
+  - kind: pin-unresolvable
+    check_name_pattern: 'pypi-pin-resolvability'
+    ignore_case: true
+  - kind: runner-infra
+    log_pattern: '##\[error\]Unexpected HTTP response: 5\d\d'
+    ignore_case: false

@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_host_drift_plugin_revision_orchestrator
+version: 1.0.0
+description: Compose the plugin rules effect and the revision compute into one host-drift plugin
+  revision check (OMN-20689).
+pack: distributed_validation
+node_role: orchestrator
+display_name: Host Drift Plugin Revision Orchestrator
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_host_drift_plugin_revision_orchestrator: omnimarket.nodes.node_host_drift_plugin_revision_orchestrator
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+- pydantic>=2.0.0
+- pyyaml>=6.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- orchestrator
+- host-drift

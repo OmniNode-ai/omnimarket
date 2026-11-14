@@ -40,9 +40,12 @@ ENV = {
     "ONEX_ACL_DEV_ROLL_CAPTURE_PRINCIPAL": "User:dev-roll-capture",
     "ONEX_ACL_BRANCH_DEPLOY_PRINCIPAL": "User:branch-deploy",
     "ONEX_ACL_BUS_MODEL_SEAM_PRINCIPAL": "User:bus-model-seam",
+    "ONEX_ACL_CODE_EDIT_PRINCIPAL": "User:code-edit",
     "ONEX_ACL_GPU_POWER_CAPS_PRINCIPAL": "User:gpu-power-caps",
     "ONEX_ACL_LANE_READ_GUARD_PRINCIPAL": "User:lane-read-guard",
     "ONEX_ACL_RUNTIME_PRINCIPAL": "User:runtime",
+    "ONEX_ACL_RELEASE_SIBLING_PREMISE_PRINCIPAL": "User:release-sibling-premise",
+    "ONEX_ACL_STABILITY_REFRESH_SERVE_PRINCIPAL": "User:stability-refresh-serve",
 }
 HEADER = (
     "PRINCIPAL HOST RESOURCE-TYPE RESOURCE-NAME RESOURCE-PATTERN-TYPE "

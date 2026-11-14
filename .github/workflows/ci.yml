@@ -398,6 +398,11 @@ jobs:
       # OMN-22156: strict lint gates CI Summary even for docs-only changes.
       - name: Morning phase tools guard and wiring
         run: uv run pytest tests/test_morning_phase_tools_wiring.py tests/nodes/node_morning_ground_state_orchestrator/test_morning_phase_tools_guard.py -q
+      # OMN-24335: a node directory with no onex.nodes entry point reached dev twice on 2026-11-13
+      # because smart test selection skipped this inventory test and the drift gate excuses
+      # experimental contracts. This step runs on every PR, for any contract lifecycle.
+      - name: Node directory has its onex.nodes entry point
+        run: uv run pytest tests/test_market_node_runtime_dogfood.py -k "inventory_fails_on_a_missing_or_extra_node and _without_entry_point" -q -n 0 --no-cov -p no:randomly
       - name: Ruff check
         run: uv run ruff check src/ tests/ benchmarks/
       # OMN-22020: keep both falsifiers aligned with their pre-commit hooks.
@@ -3866,6 +3871,15 @@ jobs:
           OMNIMARKET_ALLOW_PYTHONPATH_OVERRIDE: "1"
           ONEX_CATALOG_HTTP_TEST_PROFILE: redpanda
         run: uv run --no-sync pytest tests/nodes/node_plan_list/test_http_runtime_profiles.py tests/nodes/node_usage_privileges/test_http_runtime_profiles.py -q --no-cov --refuse-skips
+      - name: Verify workflow contract catalog route and in-memory runtime profile
+        env:
+          OMNIMARKET_ALLOW_PYTHONPATH_OVERRIDE: "1"
+        run: uv run --no-sync pytest tests/nodes/node_workflow_contract_catalog_effect -q --no-cov
+      - name: Verify workflow contract catalog Redpanda runtime profile
+        env:
+          OMNIMARKET_ALLOW_PYTHONPATH_OVERRIDE: "1"
+          ONEX_WORKFLOW_CONTRACTS_HTTP_TEST_PROFILE: redpanda
+        run: uv run --no-sync pytest tests/nodes/node_workflow_contract_catalog_effect/test_http_runtime_profiles.py -q --no-cov --refuse-skips
       - name: Run customer-path boundary tests
         env:
           # A missing docker daemon must be RED here, never a green skip.

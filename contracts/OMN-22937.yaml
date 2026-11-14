@@ -1,0 +1,65 @@
+schema_version: 1.0.0
+ticket_id: OMN-22937
+title: The gate store protocol and its serializable store pass one contract suite on the in-memory twin and on timer_store
+summary: 'The gate store (ProtocolGateStore, its in-memory twin and the Postgres store the plan calls timer_store) and the contract suite frozen with a hash already exist under node_gate_store_effect and tests/nodes/node_gate_store_effect. This change adds
+  the test entry points the ticket''s falsifiers name under tests/contract: the suite run on the twin and on the Postgres store, the safety-write-first checks with a store that counts first as a failing control, and the frozen-hash check with a changed
+  suite as a failing control.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn22937-one-suite-two-stores
+  statement: One frozen contract suite passes on the in-memory twin and on the serializable store, and a store that counts before the safety write commits fails it.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the contract suite (nine racing reservations in one transaction, a handover, a kill at each step, a duplicate delivery, keys repeated by a replay) passes on the in-memory twin and on timer_store -- falsifier: uv run pytest
+      tests/contract/test_gate_store_contract.py -q'
+  - id: AC2
+    statement: 'AC2: a safety write commits before it counts, and a store that counts first fails the suite -- falsifier: uv run pytest tests/contract/test_gate_store_contract.py -q -k safety_write_first'
+  - id: AC3
+    statement: 'AC3: the suite file''s hash is frozen in the overlay before the first implementation commit and a changed suite fails the check -- falsifier: uv run pytest tests/contract/test_gate_store_suite_hash.py -q'
+evidence_requirements:
+- kind: tests
+  description: The gate store contract tests pass at the pushed head.
+  command: uv run pytest tests/contract/test_gate_store_contract.py tests/contract/test_gate_store_suite_hash.py -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22937-ac1
+  description: 'AC1: the eight suite checks pass on the in-memory twin; the same checks on the Postgres store run where the integration database is present.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/contract/test_gate_store_contract.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+  - check_type: command
+    check_value: grep -q 'tests/contract/test_gate_store_contract.py' config/test_file_durations.json
+    cwd: .
+- id: dod-omn22937-ac2
+  description: 'AC2: the safety-write-first check passes on the twin and a store that ignores the recorded stop fails it with "a start passed a stop".'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/contract/test_gate_store_contract.py -q -n 0 --no-cov -p no:cacheprovider -k safety_write_first
+    cwd: .
+  - check_type: command
+    check_value: grep -q 'tests/contract/test_gate_store_contract.py' config/test_file_durations.json
+    cwd: .
+- id: dod-omn22937-ac3
+  description: 'AC3: the suite file matches the hash frozen beside it, and an appended byte or a weakened assertion fails the check.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/contract/test_gate_store_suite_hash.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+  - check_type: command
+    check_value: grep -q 'tests/contract/test_gate_store_suite_hash.py' config/test_file_durations.json
+    cwd: .

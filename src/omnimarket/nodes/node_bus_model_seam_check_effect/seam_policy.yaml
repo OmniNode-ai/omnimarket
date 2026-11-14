@@ -293,3 +293,18 @@ pins:
   missing:
   - classes
   - correlation_id
+- topic: onex.evt.omnimarket.code-contract-scored.v1
+  producer_model: omnimarket.nodes.node_code_contract_score_effect.models.model_code_score.ModelCodeScoreResult
+  consumer_model: omnimarket.models.model_code_score.ModelCodeScored
+  refused:
+  - failed
+  - scored
+  missing:
+  - base_commit
+  - correlation_id
+  - draft_diff_sha256
+  - gate_accepted
+  - repo
+  - timings
+  - try_identity
+  - verdict
