@@ -42,6 +42,7 @@ from omnimarket.nodes.node_lab_alarm.adapters.inmemory_adapters import (
     InMemorySamples,
 )
 from omnimarket.nodes.node_lab_alarm.adapters.runtime_adapters import (
+    AdminLag,
     CommandLaneDispatcher,
     FileGrowthStreaks,
     FileHeldState,
@@ -101,7 +102,10 @@ from omnimarket.nodes.node_lab_alarm.overlay import (
     ModelLabAlarmOverlay,
     load_overlay,
 )
-from omnimarket.nodes.node_lab_alarm.protocols import ProtocolListenerProbe
+from omnimarket.nodes.node_lab_alarm.protocols import (
+    ProtocolGroupLagReader,
+    ProtocolListenerProbe,
+)
 from omnimarket.nodes.node_lab_alarm_deliver_effect.handlers.handler_lab_alarm_deliver import (
     HandlerLabAlarmDeliver,
 )
@@ -156,7 +160,10 @@ def _inmemory_handler(overlay: ModelLabAlarmOverlay) -> HandlerBrokerLag:
     )
 
 
-def _runtime_handler(overlay: ModelLabAlarmOverlay) -> HandlerBrokerLag:
+def _runtime_handler_over(
+    overlay: ModelLabAlarmOverlay, lag: ProtocolGroupLagReader
+) -> HandlerBrokerLag:
+    """The runtime backends differ only in how they read a group's lag."""
     resilience = overlay.manifest.resilience
     return HandlerBrokerLag(
         overlay=overlay,
@@ -169,7 +176,7 @@ def _runtime_handler(overlay: ModelLabAlarmOverlay) -> HandlerBrokerLag:
         manifest_cache=(
             FileManifestCache(Path(resilience.cache_path)) if resilience else None
         ),
-        lag=KafkaLag(overlay.bus.lane, overlay.lag.timeout_seconds),
+        lag=lag,
         samples=FileSamples(Path(overlay.lag.state_path)),
         streaks=(
             FileGrowthStreaks(Path(overlay.lag.growth.streak_path))
@@ -182,9 +189,24 @@ def _runtime_handler(overlay: ModelLabAlarmOverlay) -> HandlerBrokerLag:
     )
 
 
+def _runtime_handler(overlay: ModelLabAlarmOverlay) -> HandlerBrokerLag:
+    return _runtime_handler_over(
+        overlay, KafkaLag(overlay.bus.lane, overlay.lag.timeout_seconds)
+    )
+
+
+def _runtime_admin_handler(overlay: ModelLabAlarmOverlay) -> HandlerBrokerLag:
+    if overlay.bus.bootstrap_servers is None:
+        raise ValueError("backend runtime_admin needs bootstrap_servers")
+    return _runtime_handler_over(
+        overlay, AdminLag(overlay.bus.bootstrap_servers, overlay.lag.timeout_seconds)
+    )
+
+
 _BACKEND_BUILDERS: dict[str, Callable[[ModelLabAlarmOverlay], HandlerBrokerLag]] = {
     "inmemory": _inmemory_handler,
     "runtime": _runtime_handler,
+    "runtime_admin": _runtime_admin_handler,
 }
 
 
