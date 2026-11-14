@@ -628,7 +628,14 @@ def test_only_an_exact_pnpm_pin_declares_a_runner(
 def test_audience_refusal_keeps_the_named_runnerless_failure(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """An early audience refusal must not drop the runnerless falsifier's name."""
+    """A misspelled execution scope is refused, by name, before any check runs.
+
+    OMN-23771: omnibase_core's ModelTicketContract owns the item field set and the
+    scope enum, so the model refuses a typo'd ``execution_scope`` as
+    ``contract_schema_invalid`` before the collector's own audience validation can
+    see it. The refusal still names the item field and still runs nothing: the
+    runnerless falsifier is never executed.
+    """
     typo = {
         "id": "dod-typo",
         "execution_scope": "typo",
@@ -644,10 +651,12 @@ def test_audience_refusal_keeps_the_named_runnerless_failure(
         ),
         setup=_omnidash(declared=False),
     )
-    named = {c.evidence_id: c for c in state.checks}
-    assert named["dod-typo"].status is EnumEvidenceCheckStatus.FAILED
-    assert named["ac-falsifier-ac1"].status is EnumEvidenceCheckStatus.FAILED
-    assert "NO_DECLARED_TEST_RUNNER" in (named["ac-falsifier-ac1"].message or "")
+    assert state.status is EnumDodVerifyStatus.FAILED
+    assert [c.evidence_id for c in state.checks] == ["contract"]
+    refusal = state.checks[0]
+    assert refusal.status is EnumEvidenceCheckStatus.FAILED
+    assert (refusal.message or "").startswith("contract_schema_invalid")
+    assert "execution_scope" in (refusal.message or "")
 
 
 # OMN-20332: omnidash declares neither a uv project nor a pnpm pin. It is an

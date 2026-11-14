@@ -693,6 +693,12 @@ class ModelDodVerifyState(BaseModel):
     # (node_dod_criteria_check_effect) and the local Done gate. A delegated verdict
     # says nothing about drift, so the Done gate refuses to rest on one alone.
     criteria_delegated: bool = Field(default=False, exclude_if=lambda value: not value)
+    # OMN-23771: ``grandfathered`` when the contract is a 1.0.0 contract of a
+    # ticket below the standard-form cutover: recorded, never a pass with no
+    # record. Absent for a standard contract and for a run that judged none.
+    contract_standing: str | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     error_message: str | None = Field(default=None)
     # OMN-17022: set exactly on an UNRESOLVED status. An unresolved run that
     # cannot say WHY is the untyped ``RUN_ERROR_OR_TIMEOUT`` label all over

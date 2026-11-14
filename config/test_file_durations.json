@@ -4787,6 +4787,7 @@
   "tests/unit/nodes/node_dod_verify/test_omn_22315_relative_cwd_containment.py": 0.42,
   "tests/unit/nodes/node_dod_verify/test_omn_22993_hermetic_venv_retention.py": 10.89,
   "tests/unit/nodes/node_dod_verify/test_omn_23198_venv_cleanup.py": 2.27,
+  "tests/unit/nodes/node_dod_verify/test_omn_23771_standard_contract.py": 13.44,
   "tests/unit/nodes/node_dod_verify/test_receipt_bound_evidence_gate.py": 0.14,
   "tests/unit/nodes/node_dod_verify/test_release_index_transport.py": 0.03,
   "tests/unit/nodes/node_dod_verify/test_runtime_ops_readback_gate.py": 0.21,

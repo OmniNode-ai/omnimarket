@@ -167,6 +167,11 @@ from omnimarket.nodes.node_dod_verify.services.released_evidence import (
     evaluate_released,
     parse_released_check_value,
 )
+from omnimarket.nodes.node_dod_verify.services.standard_ticket_contract import (
+    StandardContractJudgement,
+    judge_standard_contract,
+    refuse_schema_invalid,
+)
 from omnimarket.occ_evidence_probative_class import (
     EnumEvidenceProbativeClass,
     classify_check_value,
@@ -2388,6 +2393,10 @@ class EvidenceCollector:
         # for a duplicate mapping key); read when reporting a contract that
         # failed to parse.
         self.contract_load_error: str | None = None
+        # OMN-23771: the standing the standard-form read recorded for the contract
+        # (``grandfathered`` for a 1.0.0 contract below the cutover), None when
+        # the contract is standard or none was judged.
+        self.contract_standing: str | None = None
         # OMN-20886: the last ticket contract _collect_impl loaded, the merged
         # PRs of the repositories that carry the ticket's contract, and the
         # DurableEvidenceGate inputs of an auto-resolved collect(). The gate
@@ -2416,8 +2425,15 @@ class EvidenceCollector:
         execution_audience: EnumDodVerifyExecutionAudience = (
             EnumDodVerifyExecutionAudience.HOSTED
         ),
+        full_contract_path: str | None = None,
     ) -> list[ModelEvidenceCheckResult]:
         """Load an explicit contract or the ticket's product-repository contracts.
+
+        ``full_contract_path`` (OMN-23771) is the complete head contract. The
+        hosted workflow hands ``contract_path`` a scoped copy to run checks from,
+        which can fail the standard form on its own and whose fingerprint does
+        not recompute, so the standard-form rules read this file when it is
+        given; the checks still run from ``contract_path``.
 
         Without ``contract_path``, only contracts carried by merged pull
         requests in product repositories govern the ticket. If none governs
@@ -2426,7 +2442,12 @@ class EvidenceCollector:
         """
         self._durable_gate_inputs = None
         if contract_path is not None:
-            return self._collect_impl(ticket_id, contract_path, execution_audience)
+            return self._collect_impl(
+                ticket_id,
+                contract_path,
+                execution_audience,
+                full_contract_path=full_contract_path,
+            )
 
         repo_results = self._collect_repo_governed(ticket_id, execution_audience)
         if repo_results is not None:
@@ -2660,6 +2681,7 @@ class EvidenceCollector:
         goal_id: UUID | None = None,
         contract_schema_version: str | None = None,
         loaded_contract: tuple[dict[str, Any], ModelDodContractSubject] | None = None,
+        full_contract_path: str | None = None,
     ) -> list[ModelEvidenceCheckResult]:
         """Load contract and run all dod_evidence checks (worktree-agnostic core).
 
@@ -2678,6 +2700,7 @@ class EvidenceCollector:
         self._criteria_read_before = None
         self._criteria_delegated = False
         self._last_contract = None
+        self.contract_standing = None
         raw: dict[str, Any] | None
         if loaded_contract is not None:
             # OMN-20886: a product-repository contract read at a merge commit.
@@ -2741,6 +2764,13 @@ class EvidenceCollector:
         failure = contract_structure_failure(ticket_id, raw, path)
         if failure is not None:
             return [failure]
+        if inline_items is None:
+            judgement = self._judge_standard_form(
+                ticket_id, raw, full_contract_path, path
+            )
+            if judgement.refusal is not None:
+                return [judgement.refusal]
+            self.contract_standing = judgement.standing
         dod_items = raw["dod_evidence"]
 
         # OMN-20153: the author's own accepted falsifiers become evidence items
@@ -4043,6 +4073,47 @@ class EvidenceCollector:
                 return candidate
 
         return None
+
+    def _judge_standard_form(
+        self,
+        ticket_id: str,
+        raw: dict[str, Any],
+        full_contract_path: str | None,
+        path: Path | None,
+    ) -> StandardContractJudgement:
+        """OMN-23771: judge the complete head contract as the standard ticket form.
+
+        The contract the checks run from is ``raw``. The standard-form rules read
+        the complete contract: ``full_contract_path`` when the hosted workflow
+        gives one (its ``--contract-path`` is a scoped copy), else ``raw`` itself.
+        No network read.
+        """
+        full = raw
+        subject = self.contract_subject
+        if full_contract_path is not None:
+            full_path = Path(full_contract_path)
+            description = f"Full ticket contract not readable: {full_contract_path}"
+            if not full_path.is_file():
+                return refuse_schema_invalid(
+                    description, f"the full contract {full_contract_path} is not a file"
+                )
+            loaded = self._load_yaml(full_path)
+            if loaded is None:
+                return refuse_schema_invalid(
+                    description,
+                    self.contract_load_error
+                    or f"YAML parse error in {full_contract_path}",
+                )
+            full = loaded
+            subject = resolve_contract_subject(full_path)
+        checkout_repository = (
+            subject.repository
+            if subject is not None and subject.repository
+            else os.environ.get("GITHUB_REPOSITORY", "").strip() or None
+        )
+        return judge_standard_contract(
+            ticket_id, full, checkout_repository=checkout_repository
+        )
 
     def _load_yaml(self, path: Path) -> dict[str, Any] | None:
         """Load and return YAML content, or None on error.

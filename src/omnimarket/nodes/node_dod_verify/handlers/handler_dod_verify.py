@@ -191,6 +191,8 @@ class HandlerDodVerify:
         # measured it, and a contract recording no criteria, so "not measured"
         # is never "no drift".
         criteria_check: ModelCriteriaCheck | None = None
+        # OMN-23771: the standing the standard-form read recorded for the contract.
+        contract_standing: str | None = None
         execution_audience = command.execution_audience
         if execution_audience is None and evidence_results is None:
             evidence_results = [
@@ -227,11 +229,15 @@ class HandlerDodVerify:
                         ticket_id=command.ticket_id,
                         contract_path=command.contract_path,
                         execution_audience=execution_audience,
+                        full_contract_path=command.full_contract_path,
                     )
                 # ``getattr`` because ``_make_collector`` is the documented seam a
                 # dozen suites replace with a stub; a stub that never derived
                 # anything reads as "not measured", never as "no checks".
                 acceptance_summary = getattr(collector, "acceptance_summary", None)
+                # OMN-23771: ``getattr`` for the same stub seam; None is "no
+                # standing recorded", never "grandfathered".
+                contract_standing = getattr(collector, "contract_standing", None)
                 contract_subject = getattr(collector, "contract_subject", None)
                 # OMN-17022: read the same way — typed provenance the collector
                 # already holds, never a message string parsed back out.
@@ -830,6 +836,7 @@ class HandlerDodVerify:
             criteria_amendment=(criteria_check.amendment if criteria_check else None),
             criteria_delegated=bool(criteria_check and criteria_check.delegated),
             unresolved_cause=unresolved_cause,
+            contract_standing=contract_standing,
         )
 
         return state

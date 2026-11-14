@@ -40,6 +40,16 @@ class ModelDodVerifyStartCommand(BaseModel):
     contract_path: str | None = Field(
         default=None, description="Override path to contract YAML."
     )
+    # OMN-23771: the complete head contract. ``contract_path`` may be the hosted
+    # workflow's scoped copy; the standard-form rules read this file instead.
+    full_contract_path: str | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description=(
+            "Complete head contract the standard-form rules read; checks still "
+            "run from contract_path."
+        ),
+    )
     dry_run: bool = Field(default=False)
     execution_audience: EnumDodVerifyExecutionAudience | None = Field(
         default=None,

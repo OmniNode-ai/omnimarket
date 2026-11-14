@@ -137,16 +137,30 @@ def test_self_accepted_is_proposal_and_the_verdict_does_not_verify(
     assert _falsifier_status(state) is None
 
 
-def test_self_accepted_is_proposal_when_the_binding_carries_no_acceptance(
+def test_self_accepted_is_proposal_when_the_binding_carries_no_acceptance() -> None:
+    """The reader still names a binding with no acceptance as ``<none>``.
+
+    OMN-23771: a binding holding ``accepted_at`` without ``accepted_by`` is not a
+    shape omnibase_core's ModelTicketContract admits, so ``collect()`` now refuses
+    it as ``contract_schema_invalid`` (asserted in the next test); the
+    self-accepted reader is exercised on the contract text directly.
+    """
+    contract = _contract(falsifiers={"AC1": _FALSIFIER}, proposed_by=_AUTHOR)
+    del contract["dod_evidence"][0]["ac_bindings"][0]["accepted_by"]
+    assert self_accepted_bindings(contract["dod_evidence"]) == (
+        f"{_PR_ITEM}:AC1 accepted_by=<none>",
+    )
+
+
+def test_binding_with_acceptance_time_but_no_acceptor_is_refused_by_the_model(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     contract = _contract(falsifiers={"AC1": _FALSIFIER}, proposed_by=_AUTHOR)
     del contract["dod_evidence"][0]["ac_bindings"][0]["accepted_by"]
     state = _run(tmp_path, monkeypatch, contract)
-    assert state.status is EnumDodVerifyStatus.SKIPPED
-    assert state.acceptance_self_accepted_bindings == (
-        f"{_PR_ITEM}:AC1 accepted_by=<none>",
-    )
+    assert state.status is EnumDodVerifyStatus.FAILED
+    assert state.error_message is not None
+    assert "contract_schema_invalid" in state.error_message
     assert _falsifier_status(state) is None
 
 

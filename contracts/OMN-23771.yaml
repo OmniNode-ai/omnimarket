@@ -1,0 +1,104 @@
+schema_version: 1.0.0
+ticket_id: OMN-23771
+title: dod-verify reads the standard ticket contract from the pull request and refuses a contract changed without the ticket node
+summary: dod-verify loads the complete head contract through omnibase_core's ModelTicketContract and, before any check runs, refuses an invalid contract, a 1.1.0 contract whose fingerprint no longer recomputes, a 1.0.0 contract of a ticket at or above the cutover, and a contract naming another repository; a 1.0.0 contract below the cutover is recorded as grandfathered on the verdict and its checks still run
+is_seam_ticket: false
+interface_change: false
+requirements:
+- id: req-omn23771-standard-contract-read
+  statement: dod-verify reads the standard ticket contract from the pull request (the scoped --contract-path copy is still what the checks run from; the complete head contract comes from --full-contract-path) and refuses a contract changed without the ticket node.
+  acceptance:
+  - id: AC1
+    statement: "AC1: a contract with an unknown key is refused contract_schema_invalid -- falsifier: uv run pytest tests/unit/nodes/node_dod_verify/test_evidence_collector.py -q -k contract_schema_invalid"
+  - id: AC2
+    statement: "AC2: with a scoped --contract-path copy that alone would fail S1's integration rule and a valid --full-contract-path, dod-verify does not refuse contract_schema_invalid -- falsifier: uv run pytest tests/unit/nodes/node_dod_verify/test_evidence_collector.py -q -k full_contract_path_validated"
+  - id: AC3
+    statement: "AC3: a 1.1.0 contract edited after its last sync is refused contract_not_synced naming both fingerprints -- falsifier: uv run pytest tests/unit/nodes/node_dod_verify -q -k contract_not_synced"
+  - id: AC4
+    statement: "AC4: a ticket at or above the cutover with a 1.0.0 contract is refused ticket_not_standard -- falsifier: uv run pytest tests/unit/nodes/node_dod_verify -q -k ticket_not_standard"
+  - id: AC5
+    statement: "AC5: a ticket below the cutover with a 1.0.0 contract yields grandfathered in the verdict, not a pass with no record, and its runnable checks still run -- falsifier: uv run pytest tests/unit/nodes/node_dod_verify -q -k grandfathered_recorded"
+  - id: AC6
+    statement: "AC6: a ticket at or above the cutover whose contract's repository names another repository is refused contract_in_second_repository -- falsifier: uv run pytest tests/unit/nodes/node_dod_verify -q -k second_repository_refused"
+  - id: AC7
+    statement: "AC7: integrated: done only when running and observed where it runs: the node from the merged revision run on a lab host (python -m omnimarket.nodes.node_dod_verify --execution-audience hosted) on a planted head refuses contract_not_synced -- falsifier: the node's verdict on the planted head on the lab host, the output pasted in the pull request"
+evidence_requirements:
+- kind: tests
+  description: The focused dod-verify standard-form tests at the pushed head.
+  command: env -u PYTHONPATH uv run --frozen pytest tests/unit/nodes/node_dod_verify/test_omn_23771_standard_contract.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23771-ac1-schema-invalid
+  description: A contract with an unknown key is refused contract_schema_invalid, and the same contract without the key is not.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_dod_verify/test_evidence_collector.py -q --no-cov -n 0 -p no:randomly -k contract_schema_invalid
+    cwd: .
+- id: dod-omn23771-ac2-full-contract-path
+  description: A scoped copy that alone fails the integration rule passes the standard-form read when a valid full contract is given, and an invalid or missing full contract is refused.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_dod_verify/test_evidence_collector.py -q --no-cov -n 0 -p no:randomly -k full_contract_path_validated
+    cwd: .
+- id: dod-omn23771-ac3-not-synced
+  description: A 1.1.0 contract edited after its last sync, or carrying no fingerprint, is refused contract_not_synced naming the stored and the recomputed fingerprint.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_dod_verify -q --no-cov -n 0 -p no:randomly -k contract_not_synced
+    cwd: .
+- id: dod-omn23771-ac4-not-standard
+  description: A 1.0.0 contract of a ticket at or above the cutover is refused ticket_not_standard, and a malformed cutover value is refused rather than ignored.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_dod_verify -q --no-cov -n 0 -p no:randomly -k ticket_not_standard
+    cwd: .
+- id: dod-omn23771-ac5-grandfathered
+  description: A 1.0.0 contract of a ticket below the cutover is recorded as grandfathered on the verdict and its checks still run.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_dod_verify -q --no-cov -n 0 -p no:randomly -k grandfathered_recorded
+    cwd: .
+- id: dod-omn23771-ac6-second-repository
+  description: A contract of a ticket at or above the cutover naming another repository is refused contract_in_second_repository, with the own-repository and below-cutover controls not refused.
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_dod_verify -q --no-cov -n 0 -p no:randomly -k second_repository_refused
+    cwd: .
+- id: dod-omn23771-ac7-planted-head-cli
+  description: The node's own command line (python -m omnimarket.nodes.node_dod_verify --execution-audience hosted) refuses a planted head with contract_not_synced and exits 1, and passes the synced control. The lab-host reading of the merged revision is pasted in the pull request and read from the ticket comment.
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_dod_verify/test_omn_23771_standard_contract.py -q --no-cov -n 0 -p no:randomly -k Cli
+    cwd: .
+- id: dod-omn23771-ac7-integration-proof
+  description: The pushed head ran the node's own command line tests (a planted head refused contract_not_synced, the synced control passes) on a lab host through the lab work runner and exited 0. The reading of the merged revision on a lab host is pasted in the pull request and read from the lab receipt comment on the ticket.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23771 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_dod_verify/test_omn_23771_standard_contract.py -q --no-cov -n 0 -p no:randomly -k Cli
+    cwd: .

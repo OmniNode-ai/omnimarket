@@ -1884,3 +1884,164 @@ class TestHandlerWithCollector:
         )
         assert isinstance(result, dict)
         assert result["status"] == "failed"
+
+
+@pytest.mark.unit
+class TestStandardContractSchema:
+    """OMN-23771 AC1 and AC2: the contract is loaded through the core model."""
+
+    def test_contract_schema_invalid_unknown_key(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from tests.unit.nodes.node_dod_verify.omn_23771_standard_contract_world import (
+            legacy_contract,
+            write_contract,
+        )
+
+        monkeypatch.delenv("DOD_VERIFY_STANDARD_TICKET_CUTOVER", raising=False)
+        data = legacy_contract("OMN-80001", surprise_key="not in the model")
+        path = write_contract(tmp_path / "OMN-80001.yaml", data)
+
+        results = EvidenceCollector().collect("OMN-80001", contract_path=str(path))
+
+        assert len(results) == 1
+        assert results[0].status == EnumEvidenceCheckStatus.FAILED
+        assert results[0].message.startswith("contract_schema_invalid")
+        assert "surprise_key" in results[0].message
+
+    def test_contract_schema_invalid_known_good_control(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Positive control: the same contract without the key is not refused."""
+        from tests.unit.nodes.node_dod_verify.omn_23771_standard_contract_world import (
+            legacy_contract,
+            write_contract,
+        )
+
+        monkeypatch.delenv("DOD_VERIFY_STANDARD_TICKET_CUTOVER", raising=False)
+        path = write_contract(tmp_path / "OMN-80001.yaml", legacy_contract("OMN-80001"))
+
+        results = EvidenceCollector().collect("OMN-80001", contract_path=str(path))
+
+        assert results[0].evidence_id == "dod-001"
+        assert results[0].status == EnumEvidenceCheckStatus.VERIFIED
+
+    def test_full_contract_path_validated_not_the_scoped_copy(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from tests.unit.nodes.node_dod_verify.omn_23771_standard_contract_world import (
+            standard_contract,
+            write_contract,
+        )
+
+        monkeypatch.delenv("DOD_VERIFY_STANDARD_TICKET_CUTOVER", raising=False)
+        # A deployed contract: S1's rule wants an integrated criterion bound to
+        # an integration check, which the full contract carries.
+        full = standard_contract(
+            "OMN-90001",
+            proof_class="deployed",
+            requirements=[
+                {
+                    "id": "REQ-1",
+                    "statement": "r",
+                    "acceptance": [
+                        {
+                            "id": "AC1",
+                            "statement": "unit",
+                            "falsifier": "true",
+                            "integrated": False,
+                        },
+                        {
+                            "id": "AC2",
+                            "statement": "running",
+                            "falsifier": "onex validate on the lab",
+                            "integrated": True,
+                        },
+                    ],
+                }
+            ],
+            dod_evidence=[
+                {
+                    "id": "dod-001",
+                    "description": "unit",
+                    "binds_ac": ["AC1"],
+                    "checks": [{"check_type": "command", "check_value": "true"}],
+                },
+                {
+                    "id": "dod-002",
+                    "description": "running",
+                    "binds_ac": ["AC2"],
+                    "checks": [
+                        {"check_type": "endpoint", "check_value": "http://host/health"}
+                    ],
+                },
+            ],
+        )
+        # The hosted workflow's scoped copy keeps only the item it runs, so on
+        # its own it fails the integration rule (and its fingerprint is stale).
+        scoped = {**full, "dod_evidence": [full["dod_evidence"][0]]}
+        scoped_path = write_contract(tmp_path / "scoped" / "OMN-90001.yaml", scoped)
+        full_path = write_contract(tmp_path / "full" / "OMN-90001.yaml", full)
+
+        # control: the scoped copy alone is refused
+        alone = EvidenceCollector().collect("OMN-90001", contract_path=str(scoped_path))
+        assert alone[0].message.startswith("contract_schema_invalid")
+
+        results = EvidenceCollector().collect(
+            "OMN-90001",
+            contract_path=str(scoped_path),
+            full_contract_path=str(full_path),
+        )
+
+        assert [r.evidence_id for r in results][:1] == ["dod-001"]
+        assert results[0].status == EnumEvidenceCheckStatus.VERIFIED
+        assert not any(r.message.startswith("contract_schema_invalid") for r in results)
+
+    def test_full_contract_path_validated_refuses_an_invalid_full_contract(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from tests.unit.nodes.node_dod_verify.omn_23771_standard_contract_world import (
+            legacy_contract,
+            standard_contract,
+            write_contract,
+        )
+
+        monkeypatch.delenv("DOD_VERIFY_STANDARD_TICKET_CUTOVER", raising=False)
+        scoped_path = write_contract(
+            tmp_path / "scoped" / "OMN-90001.yaml", standard_contract()
+        )
+        full_path = write_contract(
+            tmp_path / "full" / "OMN-90001.yaml",
+            legacy_contract("OMN-90001", surprise_key="x"),
+        )
+
+        results = EvidenceCollector().collect(
+            "OMN-90001",
+            contract_path=str(scoped_path),
+            full_contract_path=str(full_path),
+        )
+
+        assert len(results) == 1
+        assert results[0].message.startswith("contract_schema_invalid")
+
+    def test_full_contract_path_validated_missing_file_is_refused(
+        self, tmp_path: Path
+    ) -> None:
+        from tests.unit.nodes.node_dod_verify.omn_23771_standard_contract_world import (
+            legacy_contract,
+            write_contract,
+        )
+
+        scoped_path = write_contract(
+            tmp_path / "OMN-80001.yaml", legacy_contract("OMN-80001")
+        )
+
+        results = EvidenceCollector().collect(
+            "OMN-80001",
+            contract_path=str(scoped_path),
+            full_contract_path=str(tmp_path / "absent.yaml"),
+        )
+
+        assert len(results) == 1
+        assert results[0].status == EnumEvidenceCheckStatus.FAILED
+        assert results[0].message.startswith("contract_schema_invalid")
