@@ -19,6 +19,14 @@ class EnumPrLandingGithubFailureReason(StrEnum):
     before any mutation: the PR is draft, carries a hold marker, is closed or
     merged, or its base branch has a merge queue so the policy is enqueue, not
     arm. A head that moved past the expected head is ``HEAD_MOVED``.
+
+    ``LANDING_IDENTITY_NOT_APP`` and ``MINTED_PERMISSIONS_INSUFFICIENT``
+    (contract 1.4.0, OMN-23777) are refusals made before any request: an arm,
+    enqueue, update-branch or disarm is sent only with the writer App's
+    repository-scoped installation token. No such token (the App refs do not
+    resolve, the mint is refused, or what came back is not an installation
+    token) is the first; a minted token that lacks pull request or contents
+    write, or is not narrowed to the one repository, is the second.
     """
 
     QUOTA_FLOOR = "quota_floor"
@@ -38,3 +46,5 @@ class EnumPrLandingGithubFailureReason(StrEnum):
     HELD = "held"
     PR_NOT_OPEN = "pr_not_open"
     MERGE_QUEUE_REQUIRED = "merge_queue_required"
+    LANDING_IDENTITY_NOT_APP = "landing_identity_not_app"
+    MINTED_PERMISSIONS_INSUFFICIENT = "minted_permissions_insufficient"

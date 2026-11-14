@@ -31,6 +31,13 @@ from omnimarket.events.pr_landing_github.model_github_quota_reading import (
     ModelGithubQuotaReading,
 )
 
+_NO_REQUEST_REASONS = frozenset(
+    {
+        EnumPrLandingGithubFailureReason.LANDING_IDENTITY_NOT_APP,
+        EnumPrLandingGithubFailureReason.MINTED_PERMISSIONS_INSUFFICIENT,
+    }
+)
+
 
 class ModelPrLandingGithubFailed(BaseModel):
     """An operation did not complete, with a typed reason.
@@ -63,7 +70,10 @@ class ModelPrLandingGithubFailed(BaseModel):
                 "dry_run records requests and calls nothing; it cannot fail"
             )
         no_response = self.reason is EnumPrLandingGithubFailureReason.TRANSPORT_ERROR
-        if self.quota is None and not no_response:
+        # OMN-23777: an identity refusal is made before any request, so it has
+        # no response, no status and no quota reading behind it either.
+        no_request = self.reason in _NO_REQUEST_REASONS
+        if self.quota is None and not no_response and not no_request:
             raise ValueError(
                 f"a {self.reason.value} failure must carry the header quota reading"
             )
@@ -75,6 +85,11 @@ class ModelPrLandingGithubFailed(BaseModel):
             )
         if no_response and self.http_status is not None:
             raise ValueError("a transport_error has no http_status")
+        if no_request and (self.http_status is not None or self.quota is not None):
+            raise ValueError(
+                f"a {self.reason.value} refusal made no request and carries neither "
+                "an http_status nor a quota reading"
+            )
         if self.pr_state is not None and self.operation not in (
             EnumPrLandingGithubOperation.ARM_AUTO_MERGE,
             EnumPrLandingGithubOperation.ENQUEUE,
