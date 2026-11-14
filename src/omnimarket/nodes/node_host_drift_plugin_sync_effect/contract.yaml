@@ -62,3 +62,12 @@ published_events:
   event_type: ModelPluginSyncResult
 externally_consumed_topics:
 - onex.evt.omnimarket.host-drift-plugin-sync-completed.v1
+
+# The broker grants the node's two topics need (coverage gate): the runtime login reads the request and writes the answer.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.host-drift-plugin-sync-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.host-drift-plugin-sync-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-drift-plugin-sync-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-drift-plugin-sync-completed.v1, operation: DESCRIBE}
