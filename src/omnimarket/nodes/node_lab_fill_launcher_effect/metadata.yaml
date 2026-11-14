@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lab_fill_launcher_effect
+version: "0.1.0"
+description: "Lab-fill launcher effect: the judge the morning-workflows tick calls after a lab-fill fire ended"
+omnibase_core_compat: ">=0.47.31,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_lab_fill_launcher_effect: "omnimarket.nodes.node_lab_fill_launcher_effect"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+- pydantic>=2.0
+- pyyaml>=6.0
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "lab-fill", "morning-workflows"]
+pack: "operator_tooling"
+display_name: "Lab Fill Launcher Effect"
+node_role: "effect"
