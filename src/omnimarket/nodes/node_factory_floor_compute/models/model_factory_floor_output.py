@@ -364,6 +364,8 @@ class ModelFloorLane(BaseModel):
     owns: tuple[str, ...] = ()
     # The ticket the lane's own ticket was minted under (the CLAIM's parent_ticket= cell), "" when the CLAIM names none.
     parent_ticket: str = ""
+    # True when the CLAIM declares ``worktree=none`` or ``mode=read-only``: the lane can change nothing, so it is on no row (OMN-23225).
+    read_only: bool = False
 
 
 class ModelFloorLamp(BaseModel):
