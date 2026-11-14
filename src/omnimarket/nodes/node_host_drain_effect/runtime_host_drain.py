@@ -209,7 +209,11 @@ def run(
         )
     )
     if getattr(args, "line", False):
-        print(result.status_line)
+        # A refused or failed command has no status line: its typed code and detail are the line.
+        print(
+            result.status_line
+            or f"{result.host_name}: {result.failure_code}: {result.detail}"
+        )
     else:
         _print(result)
     return 1 if result.outcome in _REFUSED else 0

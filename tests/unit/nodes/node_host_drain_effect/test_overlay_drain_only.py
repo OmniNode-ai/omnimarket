@@ -53,3 +53,18 @@ def test_drain_status_line_verb_prints_the_line_not_json(
     # The example overlay's lane count command does not exist on this host: the count is unreadable, never zero.
     assert code == 0
     assert out == "example-host-a not draining: lane count unreadable"
+
+
+def test_a_refused_drain_prints_its_code_and_detail_as_the_line(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    overlay = ModelHostDrainOverlay.model_validate(_drain_only())
+    code = run(
+        ["drain", "--host", "no-such-host", "--line"], overlay=overlay, environ={}
+    )
+    out = capsys.readouterr().out.strip()
+    assert code == 1
+    assert (
+        out
+        == f"no-such-host: {overlay.drain.codes.unknown_host}: no-such-host is not a declared host"
+    )
