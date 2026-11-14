@@ -69,4 +69,6 @@ def test_each_shipped_rule_example_names_a_kind_that_is_a_clean_nonempty_string(
         answer = handler.handle(ModelCiRedKindRuleRequest(check_name=name))
         assert answer.matched is True
         kind = answer.kind
-        assert isinstance(kind, str) and kind.strip() == kind and kind  # noqa: PT018
+        assert isinstance(kind, str)
+        assert kind
+        assert kind.strip() == kind
