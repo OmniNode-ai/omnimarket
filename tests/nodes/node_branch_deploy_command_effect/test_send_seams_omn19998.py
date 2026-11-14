@@ -105,7 +105,7 @@ def test_seam_entry_publishes_on_the_declared_topic_through_the_overlay_broker(
 ) -> None:
     _RecordingProducer.instances = []
     aiokafka = ModuleType("aiokafka")
-    monkeypatch.setattr(aiokafka, "AIOKafkaProducer", _RecordingProducer, raising=False)
+    vars(aiokafka)["AIOKafkaProducer"] = _RecordingProducer
     monkeypatch.setitem(sys.modules, "aiokafka", aiokafka)
     resolved: list[str] = []
 
