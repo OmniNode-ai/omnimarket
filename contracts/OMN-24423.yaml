@@ -1,0 +1,61 @@
+schema_version: 1.0.0
+ticket_id: OMN-24423
+title: Lab hosts get a declared plugin settings folder so the drift owner step can start repair jobs
+summary: The host installer's systemd units may declare files it writes under the home, and the drift owner unit declares the dedicated claude directory the remote-lane runner reads its plugin config from. The owner node passes that directory and the plugin names to the runner when it places a fix lane. The overlays side (the overlay names the directory variable and the plugins) is a separate pull request of the same ticket.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24423-lane-claude-dir
+  statement: A lab host that has no plugin config of its own gets one from the declared installer, so the owner step's placement is no longer refused with plugins-unresolved.
+  acceptance:
+  - id: AC1
+    statement: "AC1: the host installer writes a dedicated plugin settings folder for the owner step, from declared values, and keeps the file it replaces -- falsifier: pytest tests/nodes/node_host_installer_registry_units/test_host_drift_owner_dispatch_unit.py -q"
+  - id: AC2
+    statement: "AC2: the owner step passes that folder to the job starter when it places a repair job, and a missing folder value is a named refusal, not a silent run without plugins -- falsifier: pytest tests/nodes/node_host_drift_owner_dispatch_effect -q"
+  - id: AC3
+    statement: "AC3: integrated: on the first lab machine, installed from the branch through the host installer, one pass of the owner step places a repair job for an overdue drift item and the placement receipt is read in the running unit's journal -- falsifier: journalctl --user -u onex-host-drift-owner-dispatch shows the placement refused with plugins-unresolved"
+evidence_requirements:
+- kind: tests
+  description: The installer's declared files, the owner node's claude directory arguments and the existing installer and owner tests pass at the pushed head.
+  command: uv run pytest tests/nodes/node_host_installer_registry_units/test_host_drift_owner_dispatch_unit.py tests/nodes/node_host_drift_owner_dispatch_effect -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24423-ac1
+  description: 'AC1: the declared-files tests pass with the change; against the previous handler and contract six of the twelve tests in the module fail (declared_file_writes and the declared files are absent).'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_host_drift_owner_dispatch_unit.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24423-ac2
+  description: 'AC2: the runner argument, overlay refusal and unset-variable tests pass with the change; the runner flag set is pinned in the seam test.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_drift_owner_dispatch_effect -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24423-integration-proof-ac3
+  description: 'AC3: the owner unit installed on h053 from the branch has written the dedicated claude directory with both files; run on h053 after the install.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --host h053 --lane dod-ac3-24423 --kind test -- python3 -c 'import json,os,sys; d=os.path.expanduser("~/.config/onex/lane-claude"); json.load(open(d+"/settings.json")); m=json.load(open(d+"/plugins/known_marketplaces.json")); sys.exit(0 if "omninode-internal" in m else 1)'
+    cwd: .
+- id: dod-omn24423-ac3-hosted-proxy
+  description: 'hosted proxy for AC3: the real installer handler renders and installs the owner unit into a temporary home and writes both declared files, one naming the request marketplace root; the h053 install itself is read by the unbound integration proof item above.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_host_drift_owner_dispatch_unit.py -q -n 0 --no-cov -p no:cacheprovider -k install
+    cwd: .

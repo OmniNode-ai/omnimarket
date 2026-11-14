@@ -38,7 +38,7 @@ from omnimarket.nodes.node_host_drift_owner_dispatch_effect.models import (
     ModelDriftOwnerRequest,
 )
 
-from .support import NOW, RUNNER_PATH, item, overlay, rig
+from .support import CLAUDE_DIR, NOW, RUNNER_PATH, item, overlay, rig
 
 pytestmark = pytest.mark.unit
 
@@ -192,6 +192,7 @@ def test_the_runner_refuses_a_brief_the_check_never_stamped() -> None:
         briefs=_Liar(r.briefs),
         runner=r.runner,
         runner_path=RUNNER_PATH,
+        claude_dir=CLAUDE_DIR,
         clock=lambda: NOW,
     )
     (lane,) = handler.handle(ModelDriftOwnerRequest(dry_run=False)).lanes
