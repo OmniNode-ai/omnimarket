@@ -4,6 +4,8 @@
 
 from omnimarket.nodes.node_stability_lane_refresh_effect.protocols.protocol_stability_lane import (
     ProtocolAppliedPinStore,
+    ProtocolBusEventPublisher,
+    ProtocolBusRequestReader,
     ProtocolLaneHealth,
     ProtocolPinSource,
     ProtocolRefreshRunner,
@@ -12,6 +14,8 @@ from omnimarket.nodes.node_stability_lane_refresh_effect.protocols.protocol_stab
 
 __all__ = [
     "ProtocolAppliedPinStore",
+    "ProtocolBusEventPublisher",
+    "ProtocolBusRequestReader",
     "ProtocolLaneHealth",
     "ProtocolPinSource",
     "ProtocolRefreshRunner",

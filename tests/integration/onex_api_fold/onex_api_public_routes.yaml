@@ -21,7 +21,7 @@ identities:
   - {method: GET, path: /v1/plans, state: served, named_in: src/omnimarket/nodes/node_plan_list/contract.yaml}
   - {method: GET, path: /v1/usage/privileges, state: served, named_in: src/omnimarket/nodes/node_usage_privileges/contract.yaml}
   - {method: POST, path: /envelopes/example, state: served, named_in: src/omnimarket/nodes/node_envelope_example_post_effect/contract.yaml}
-  - {method: GET, path: /v1/workflows/contracts, state: pending, named_in: src/omnimarket/cloud/transport_cloud_delegation.py}
+  - {method: GET, path: /v1/workflows/contracts, state: served, named_in: src/omnimarket/nodes/node_workflow_contract_catalog_effect/contract.yaml}
   - {method: GET, path: /v1/tenants/me/savings, state: served, named_in: src/omnimarket/nodes/node_tenant_savings_read_effect/contract.yaml}
   - {method: GET, path: /v1/tenants/me/delegations, state: served, named_in: src/omnimarket/nodes/node_tenant_delegations_read_effect/contract.yaml}
   - {method: POST, path: /v1/tenants/me/inference-credentials, state: served, named_in: src/omnimarket/nodes/node_inference_credentials/contract.yaml}

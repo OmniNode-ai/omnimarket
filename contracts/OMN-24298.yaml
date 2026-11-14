@@ -1,0 +1,60 @@
+schema_version: 1.0.0
+ticket_id: OMN-24298
+title: Stop the floor's receipt calculator reading single events it cannot use
+summary: 'node_floor_emission_compute is a pure compute node whose input, ModelFloorReceiptInput, is a whole window of emissions plus the declared pieces, joins and freshness bounds. Its contract subscribed to the three single-event emission topics (floor-node-started, floor-node-succeeded, floor-node-failed), so the runtime dispatched every single ModelNodeEmission to the handler, ModelFloorReceiptInput.model_validate refused it with 18 validation errors and each one was dead-lettered with several error lines. The node is run in process by node_floor_simple_effect, so the contract now declares the typed local invocation (transport local, no runtime profile, no bus topic, no terminal event, since nothing published or read floor-receipts-computed), and subscribes to nothing, as node_floor_emissions_publish_effect already does with snapshot_reads. The market node runtime dogfood inventory requires a compute node to be command-addressable or to declare this local form. node_floor_simple_effect declares the three emission topics in externally_consumed_topics because the receipt calculator was their only declared subscriber and the contract topic graph refuses an orphaned producer. The piece 16 chain test read the emission topic names from the calculator subscribe list and now reads them from the producer.'
+is_seam_ticket: true
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24298-no-single-event-subscription
+  statement: node_floor_emission_compute subscribes to no topic while the three emission topics stay published by node_floor_simple_effect and read at once by node_floor_emissions_publish_effect.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a test reads the receipt calculator''s contract and it lists no topic to subscribe to, while the three emission topics stay published by the floor cycle and listed as read-at-once by the emissions publisher -- falsifier: uv run pytest tests/nodes/node_floor_emission_compute/test_contract_topics.py -q'
+  - id: AC2
+    statement: 'AC2: a test shows a single emission event is refused by the calculator''s input model, the reason it cannot be a subscriber, and the same file fails against the merge base -- falsifier: uv run pytest tests/nodes/node_floor_emission_compute/test_contract_topics.py -q -k single_event'
+  - id: AC3
+    statement: 'AC3: integrated: in the dev runtime, ten minutes after the change is deployed, the log has no error line naming node_floor_emission_compute or ModelFloorReceiptInput -- falsifier: a ten-minute read of the dev runtime log, grouped by message, that shows a dispatcher error line naming node_floor_emission_compute'
+evidence_requirements:
+- kind: tests
+  description: The contract topic tests, the piece 16 chain test and the contract graph closure test pass at the pushed head.
+  command: uv run pytest tests/nodes/node_floor_emission_compute/test_contract_topics.py tests/chains/piece16/test_piece16_chain.py tests/test_golden_chain_contract_graph_closure.py -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24298-ac1
+  description: 'AC1: the compute contract lists no subscribe topic; the producer publishes and declares the three emission topics externally consumed and the publisher reads them; fails at the merge base (two assertions).'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_floor_emission_compute/test_contract_topics.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24298-ac2
+  description: 'AC2: the whole contract topic file, which holds the single-event refusal test beside the two contract tests that fail at the merge base, so the file fails there and passes at the head.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_floor_emission_compute/test_contract_topics.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24298-ac3
+  description: 'hosted proxy for AC3: the contract topic tests and the piece 16 chain test pass; the in-runtime reading of the dev runtime log is taken on a lab host after the deploy and named in the pull request.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_floor_emission_compute/test_contract_topics.py tests/chains/piece16/test_piece16_chain.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24298-integration-proof
+  description: the contract tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24298 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_floor_emission_compute/test_contract_topics.py -q --no-cov

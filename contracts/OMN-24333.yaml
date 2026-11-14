@@ -1,0 +1,61 @@
+schema_version: 1.0.0
+ticket_id: OMN-24333
+title: The capture silence watch posts its alarms to the alerts channel
+summary: The capture silence watch's unit on h201 reads the dev database through its store reference, but each tick still exits 3 because its Slack alarm delivery has no SLACK_CHANNEL_ID bound, so two due alarms are unpublished. The installer's capture-silence-watch unit declaration now binds SLACK_CHANNEL_ID, the secret name the node's contract declares, to the alerts channel the other lab alarms post to (the id node_consumer_flow_stall_alert_effect's contract declares). A channel id is configuration, not a secret. A seam test pins the unit's value to the stall alert's declaration and runs the rendered environment through the node's real resolver to the slack-publish command.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24333-channel-binding
+  statement: The capture silence watch's unit carries the alerts channel id its node's contract names as a secret, so a due alarm is published and the tick exits 0.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the host installer''s capture-silence-watch unit binds SLACK_CHANNEL_ID, the secret name the node''s contract declares, to the channel id the stall alert node declares -- falsifier: pytest tests/nodes/node_capture_silence_watch_effect/test_capture_silence_watch_slack_channel_seam.py -q -k binds'
+  - id: AC2
+    statement: 'AC2: an environment rendered from the unit reaches the slack-publish command''s channel, and a unit without the binding publishes nothing, records the error on every delivery and still publishes its heartbeat -- falsifier: pytest tests/nodes/node_capture_silence_watch_effect/test_capture_silence_watch_slack_channel_seam.py -q -k "persists or control"'
+  - id: AC3
+    statement: 'AC3: integrated: on h201 the capture-silence-watch unit''s next tick exits 0 and writes last-run.json with exit_code 0, and each due alarm shows once in the alarm delivery log -- falsifier: ssh h201 cat ~/.local/state/omni/capture-silence-watch/last-run.json and journalctl --user -u onex-capture-silence-watch -n 20 read after the install'
+evidence_requirements:
+- kind: tests
+  description: The seam test, the node tests and the golden chain pass at the pushed head.
+  command: uv run pytest tests/nodes/node_capture_silence_watch_effect tests/test_omn19975_capture_silence_watch.py tests/test_golden_chain_capture_silence_watch_effect.py -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24333-ac1
+  description: 'AC1: the unit declares SLACK_CHANNEL_ID as a channel id and it equals the one id the stall alert contract names; the node contract declares that name as its only secret.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_capture_silence_watch_effect/test_capture_silence_watch_slack_channel_seam.py -k binds -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24333-ac2
+  description: 'AC2: the installer renders the environment, the node resolves the channel from it without a stub and publishes both alarms to that channel; the control without the binding publishes none, records the resolution error on each delivery and keeps the heartbeat.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_capture_silence_watch_effect/test_capture_silence_watch_slack_channel_seam.py -k "persists or control" -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24333-ac3
+  description: 'hosted proxy for AC3: the tests above pass; the h201 install from the branch and the unit''s next tick are read on h201 and named in the pull request.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_capture_silence_watch_effect tests/test_omn19975_capture_silence_watch.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24333-integration-proof
+  description: the seam test, the node tests and the golden chain run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24333 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/test_omn19975_capture_silence_watch.py tests/test_golden_chain_capture_silence_watch_effect.py tests/nodes/node_capture_silence_watch_effect -q --no-cov
+    cwd: .

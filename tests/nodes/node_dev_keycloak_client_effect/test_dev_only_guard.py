@@ -50,6 +50,7 @@ def _overlay(
     lane: str = "dev",
     realm: str = "omninode",
     roles: tuple[str, ...] = ("manage-users", "view-users"),
+    sign_in_client_id: str = "omnidash-spa",
 ) -> ModelDevKeycloakClientOverlay:
     return ModelDevKeycloakClientOverlay(
         lane=lane,
@@ -65,6 +66,8 @@ def _overlay(
             "client_role_path_template": "/admin/realms/{realm}/clients/{client_uuid}/roles/{role}",
             "user_client_role_mappings_path_template": "/admin/realms/{realm}/users/{user_id}/role-mappings/clients/{client_uuid}",
             "client_scope_mappings_path_template": "/admin/realms/{realm}/clients/{client_uuid}/scope-mappings/clients/{management_client_uuid}",
+            "client_protocol_mappers_path_template": "/admin/realms/{realm}/clients/{client_uuid}/protocol-mappers/models",
+            "client_protocol_mapper_path_template": "/admin/realms/{realm}/clients/{client_uuid}/protocol-mappers/models/{mapper_id}",
         },
         bootstrap={
             "env_file": ".example/.env",
@@ -79,6 +82,35 @@ def _overlay(
             "secret_key_id": "dev_keycloak_client_secret",
             "secret_folder": "/shared/env",
             "secret_key": "KEYCLOAK_DEV_CLIENT_SECRET",
+        },
+        sign_in_client={
+            "client_id": sign_in_client_id,
+            "mappers": [
+                {
+                    "name": "tenant_id",
+                    "protocol_mapper": "oidc-usermodel-attribute-mapper",
+                    "config": {
+                        "user.attribute": "tenant_id",
+                        "claim.name": "tenant_id",
+                        "id.token.claim": "false",
+                        "access.token.claim": "true",
+                        "userinfo.token.claim": "true",
+                        "jsonType.label": "String",
+                    },
+                },
+                {
+                    "name": "tenant_slug",
+                    "protocol_mapper": "oidc-usermodel-attribute-mapper",
+                    "config": {
+                        "user.attribute": "tenant_slug",
+                        "claim.name": "tenant_slug",
+                        "id.token.claim": "false",
+                        "access.token.claim": "true",
+                        "userinfo.token.claim": "true",
+                        "jsonType.label": "String",
+                    },
+                },
+            ],
         },
         secret_store=None,
     )
@@ -177,6 +209,17 @@ def test_a_role_outside_the_allowed_roles_is_refused() -> None:
     _assert_zero_calls(rig)
 
 
+def test_a_sign_in_client_outside_the_mapper_clients_is_refused() -> None:
+    rig = _build(_overlay(sign_in_client_id="rogue-spa"))
+    result = asyncio.run(
+        rig.handler.handle(ModelDevKeycloakClientCommand(lane="dev", write=True))
+    )
+    assert result.ok is False
+    assert result.outcome.value == "refused_mapper_client_not_allowed"
+    assert "rogue-spa" in result.detail
+    _assert_zero_calls(rig)
+
+
 def test_a_probe_with_an_undeclared_lane_is_refused_too() -> None:
     rig = _build(_overlay())
     result = asyncio.run(
@@ -196,6 +239,7 @@ def test_failing_control_a_contract_declaring_the_other_lane_runs_the_flow(
         "lane": "other",
         "realms": ["other-realm"],
         "allowed_roles": ["manage-users", "view-users", "manage-clients"],
+        "mapper_clients": ["omnidash-spa"],
     }
     contract_path = tmp_path / "contract.yaml"
     contract_path.write_text(yaml.dump(contract), encoding="utf-8")
@@ -215,8 +259,9 @@ def test_failing_control_a_contract_declaring_the_other_lane_runs_the_flow(
     assert result.ok is True
     assert result.outcome.value == "ensured"
     assert result.token_status == 200
-    # Three roles granted: eleven calls, the two extra being the third role lookup.
-    assert len(rig.transport.call_log) == 11
+    # Three roles granted: fifteen calls, the one extra being the third role lookup, plus the
+    # sign-in client lookup, the protocol mapper collection and the two mapper creates.
+    assert len(rig.transport.call_log) == 15
 
 
 def test_the_declared_dev_only_block_is_the_contract_file_s(tmp_path: Path) -> None:
@@ -226,6 +271,7 @@ def test_the_declared_dev_only_block_is_the_contract_file_s(tmp_path: Path) -> N
         "lane": "dev",
         "realms": ["omninode"],
         "allowed_roles": ["manage-users", "view-users"],
+        "mapper_clients": ["omnidash-spa"],
     }
 
     # And the guard honors a changed file: a dev command against a staging-only contract is refused.

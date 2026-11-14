@@ -5,8 +5,9 @@
 The bootstrap admin password moves only from the host env file into the admin token request; the client secret moves
 only between the key generator, the client representation and the token requests. Neither is ever printed, logged,
 serialized or returned, and the proof request's ``access_token`` is never stored or returned. The result carries names,
-ids and a status code only. The dev-only guard refuses, before any secret read or HTTP call, when the lane, realm or a
-requested role is not what the contract declares.
+ids and a status code only. The dev-only guard refuses, before any secret read or HTTP call, when the lane, realm, a
+requested role or the sign-in client is not what the contract declares. After the roles the same admin token also
+ensures the declared sign-in client's OIDC protocol mappers, so its tokens carry the tenant claims.
 """
 
 from __future__ import annotations
@@ -53,7 +54,10 @@ def _load_dev_only(contract_path: Path | None) -> dict[str, Any]:
 
 
 class HandlerDevKeycloakClient:
-    """Ensures one confidential dev Keycloak service-account client and proves it with a client_credentials token."""
+    """Ensures one confidential dev Keycloak service-account client and proves it with a client_credentials token.
+
+    The same admin token also ensures the declared sign-in client's tenant claim protocol mappers.
+    """
 
     def __init__(
         self,
@@ -80,6 +84,7 @@ class HandlerDevKeycloakClient:
         client_id: str | None = None,
         token_status: int | None = None,
         expected_location: str | None = None,
+        mappers_ensured: int | None = None,
     ) -> ModelDevKeycloakClientResult:
         ok = outcome in (
             EnumDevKeycloakClientOutcome.ENSURED,
@@ -101,6 +106,7 @@ class HandlerDevKeycloakClient:
             client_id=client_id,
             token_status=token_status,
             expected_location=expected_location,
+            mappers_ensured=mappers_ensured,
         )
 
     def _dev_guard(
@@ -133,6 +139,15 @@ class HandlerDevKeycloakClient:
                     EnumDevKeycloakClientOutcome.REFUSED_ROLE_NOT_ALLOWED,
                     detail=f"role {role!r} is not in the declared allowed roles {allowed_roles}",
                 )
+        mapper_clients = dev_only["mapper_clients"]
+        if self._overlay.sign_in_client.client_id not in mapper_clients:
+            return self._result(
+                EnumDevKeycloakClientOutcome.REFUSED_MAPPER_CLIENT_NOT_ALLOWED,
+                detail=(
+                    f"sign-in client {self._overlay.sign_in_client.client_id!r} is not "
+                    f"in the declared mapper clients {mapper_clients}"
+                ),
+            )
         return None
 
     async def handle(
@@ -217,6 +232,10 @@ class HandlerDevKeycloakClient:
         if roles_failed is not None:
             return roles_failed
 
+        mappers_failed = await self._ensure_mappers(admin_token)
+        if mappers_failed is not None:
+            return mappers_failed
+
         verify_url = f"{kc.base_url}{kc.token_path_template.format(realm=kc.realm)}"
         response = await self._send(
             ModelKeycloakHttpRequest(
@@ -245,9 +264,13 @@ class HandlerDevKeycloakClient:
             )
         return self._result(
             EnumDevKeycloakClientOutcome.ENSURED,
-            detail="the client_credentials grant proved the dev client",
+            detail=(
+                "the client_credentials grant proved the dev client and the sign-in "
+                "client's tenant claim mappers are in place"
+            ),
             client_id=client.client_id,
             token_status=200,
+            mappers_ensured=len(overlay.sign_in_client.mappers),
         )
 
     async def _send(self, request: ModelKeycloakHttpRequest) -> Any:
@@ -503,6 +526,120 @@ class HandlerDevKeycloakClient:
             return self._unreachable(scope, client_id=client.client_id)
         if scope.status != 204:
             return _failed(f"the client scope mapping answered {scope.status}")
+        return None
+
+    async def _ensure_mappers(
+        self, admin_token: SecretStr
+    ) -> ModelDevKeycloakClientResult | None:
+        """``None`` when every declared mapper exists on the sign-in client, else the failure result."""
+        overlay = self._overlay
+        kc = overlay.keycloak
+        sign_in = overlay.sign_in_client
+        clients_url = f"{kc.base_url}{kc.clients_path_template.format(realm=kc.realm)}"
+
+        def _failed(detail: str) -> ModelDevKeycloakClientResult:
+            return self._result(
+                EnumDevKeycloakClientOutcome.MAPPER_WRITE_FAILED,
+                detail=detail,
+                client_id=sign_in.client_id,
+            )
+
+        found = await self._send(
+            ModelKeycloakHttpRequest(
+                method="GET",
+                url=clients_url,
+                query={"clientId": sign_in.client_id},
+                bearer=admin_token,
+                timeout_seconds=kc.timeout_seconds,
+            )
+        )
+        if isinstance(found, str):
+            return self._unreachable(found, client_id=sign_in.client_id)
+        if found.status != 200:
+            return _failed(f"the sign-in client lookup answered {found.status}")
+        entry = (
+            found.json_body[0]
+            if isinstance(found.json_body, list) and found.json_body
+            else None
+        )
+        sign_in_uuid = entry.get("id") if isinstance(entry, dict) else None
+        if not isinstance(sign_in_uuid, str):
+            return self._result(
+                EnumDevKeycloakClientOutcome.MAPPER_CLIENT_NOT_FOUND,
+                detail=f"the sign-in client {sign_in.client_id!r} is not in the realm",
+                client_id=sign_in.client_id,
+            )
+
+        mappers_url = (
+            f"{kc.base_url}"
+            f"{kc.client_protocol_mappers_path_template.format(realm=kc.realm, client_uuid=sign_in_uuid)}"
+        )
+        existing = await self._send(
+            ModelKeycloakHttpRequest(
+                method="GET",
+                url=mappers_url,
+                bearer=admin_token,
+                timeout_seconds=kc.timeout_seconds,
+            )
+        )
+        if isinstance(existing, str):
+            return self._unreachable(existing, client_id=sign_in.client_id)
+        if existing.status != 200 or not isinstance(existing.json_body, list):
+            return _failed(
+                f"the sign-in client's protocol mappers answered {existing.status}"
+            )
+        existing_ids = {
+            body["name"]: body["id"]
+            for body in existing.json_body
+            if isinstance(body, dict)
+            and isinstance(body.get("name"), str)
+            and isinstance(body.get("id"), str)
+        }
+
+        for mapper in sign_in.mappers:
+            representation: dict[str, Any] = {
+                "name": mapper.name,
+                "protocol": "openid-connect",
+                "protocolMapper": mapper.protocol_mapper,
+                "config": dict(mapper.config),
+            }
+            mapper_id = existing_ids.get(mapper.name)
+            if mapper_id is not None:
+                mapper_url = (
+                    f"{kc.base_url}"
+                    f"{kc.client_protocol_mapper_path_template.format(realm=kc.realm, client_uuid=sign_in_uuid, mapper_id=mapper_id)}"
+                )
+                updated = await self._send(
+                    ModelKeycloakHttpRequest(
+                        method="PUT",
+                        url=mapper_url,
+                        bearer=admin_token,
+                        json_body={**representation, "id": mapper_id},
+                        timeout_seconds=kc.timeout_seconds,
+                    )
+                )
+                if isinstance(updated, str):
+                    return self._unreachable(updated, client_id=sign_in.client_id)
+                if updated.status not in (200, 204):
+                    return _failed(
+                        f"the mapper {mapper.name!r} update answered {updated.status}"
+                    )
+                continue
+            created = await self._send(
+                ModelKeycloakHttpRequest(
+                    method="POST",
+                    url=mappers_url,
+                    bearer=admin_token,
+                    json_body=representation,
+                    timeout_seconds=kc.timeout_seconds,
+                )
+            )
+            if isinstance(created, str):
+                return self._unreachable(created, client_id=sign_in.client_id)
+            if created.status != 201:
+                return _failed(
+                    f"the mapper {mapper.name!r} create answered {created.status}"
+                )
         return None
 
 

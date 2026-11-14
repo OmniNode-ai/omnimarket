@@ -18,8 +18,10 @@ description: >
   contexts plus an update-restricting ruleset with a bypass actor on a
   release-synced main, the "verify / verify" Receipt Gate on main, the "Lane
   Identity Gate" on dev), enforce_admins, every required check bound to a
-  reporting App, delete_branch_on_merge, a "Merge Queue" ruleset and no bypass
-  actor on an enforced merge-queue ruleset. The fleet and each repository's
+  reporting App, delete_branch_on_merge, a "Merge Queue" ruleset, no bypass
+  actor on an enforced merge-queue ruleset, and on each declared landing branch
+  an active ruleset with the update rule and exactly the declared bypass actors
+  (the landing-only ruleset). The fleet and each repository's
   role come from a deployment overlay (branch_protection_audit_overlay.v1);
   the shipped default fleet is empty. The fetch handler is the only GitHub
   access (read-only, token resolved at the effect boundary from the

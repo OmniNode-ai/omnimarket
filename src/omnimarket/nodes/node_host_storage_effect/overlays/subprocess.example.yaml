@@ -11,10 +11,24 @@ commands:
     argv: [/example/bin/prune-example, --apply]
     measured_path: /example/work
     timeout_seconds: 900
+  - name: evict_cache
+    kind: remove_entries
+    measured_path: /example/cache
+    timeout_seconds: 900
+  - name: remove_worktrees
+    kind: remove_worktrees
+    measured_path: /example/work
+    timeout_seconds: 900
+    lease_marker_names: [.example-lease]
 hosts:
+  # An entry command runs on the host itself (an empty transport prefix) and removes only entries under
+  # a root the host declares for it.
   - name: example-local-host
     transport_prefix: []
-    commands: [prune_example]
+    commands: [prune_example, evict_cache, remove_worktrees]
+    entry_roots:
+      - {command: evict_cache, path: /example/cache}
+      - {command: remove_worktrees, path: /example/work/worktrees}
   - name: example-remote-host
     transport_prefix: [ssh, -o, BatchMode=yes, example-remote-host]
     commands: [prune_example]

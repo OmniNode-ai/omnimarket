@@ -54,7 +54,7 @@ def stamp(minutes_ago: float) -> str:
 def claim(lane: str, ago: float, cells: str = "") -> str:
     return (
         f"{stamp(ago)} | CLAIM | lane={lane} | principal=dev-recorded | ticket=OMN-22478 | actor=claude | "
-        f"model=sonnet | worktree=none | est ~4 lane-hours; displaces nobody; (OMN-22478) | "
+        f"model=sonnet | worktree=wt-{lane} | est ~4 lane-hours; displaces nobody; (OMN-22478) | "
         f"parent=orchestrator-31d9{cells} | via=bus:h200 | a lane on the floor"
     )
 

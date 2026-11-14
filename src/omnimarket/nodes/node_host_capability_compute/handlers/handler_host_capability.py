@@ -61,7 +61,8 @@ CAPABILITY_SCM_S = 30
 CAPABILITY_VENV_S = 45
 CAPABILITY_LOCK_MIN = 3
 SSH_CONNECT_S = 4
-PEER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9@._-]*$")
+# One peer is one word: its destinations (``select_lab_ssh_peers``) joined by ``+``, tried in order until one answers.
+PEER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9@._+-]*$")
 
 # What the host lacks, and what its owner adds, per capability; the probe's detail follows.
 OWNER_FIX = {
@@ -175,7 +176,9 @@ cap_ssh() {
   [ -n "$CAP_PEERS" ] || { echo "unknown no-peers-named"; return 0; }
   sp=""; sb=""
   for t in $CAP_PEERS; do
-    ( probe_bound __CHECK_S__ ssh -n -o BatchMode=yes -o ConnectTimeout=__SSH_S__ -o ConnectionAttempts=1 "$t" true >/dev/null 2>&1 || echo "$t" ) > "$CAP_DIR/.ssh.$t" &
+    ( for a in $(printf '%s' "$t" | tr '+' ' '); do
+        probe_bound __CHECK_S__ ssh -n -o BatchMode=yes -o ConnectTimeout=__SSH_S__ -o ConnectionAttempts=1 "$a" true >/dev/null 2>&1 && exit 0
+      done; echo "$t" ) > "$CAP_DIR/.ssh.$t" &
     sp="$sp $!"
   done
   for p in $sp; do wait "$p"; done

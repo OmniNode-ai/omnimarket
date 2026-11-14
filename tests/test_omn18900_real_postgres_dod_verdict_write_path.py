@@ -344,3 +344,46 @@ async def test_a_runtime_failure_notice_writes_no_row_beside_a_verdict() -> None
             f"SELECT count(*) FROM {schema}.dod_verify_runs"
         )
         assert count == 1
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_a_failure_notice_with_the_runtimes_injected_keys_writes_no_row() -> None:
+    """The notice as the runtime delivers it (OMN-24313) stores nothing.
+
+    The projection seam leaves ``_db``, ``_event_type``, ``_envelope_id`` and
+    ``_tenant_id`` on the payload; the writer strips them before it reads the
+    notice, declines it without a statement, and a real verdict handled beside
+    it must still land.
+    """
+    from omnibase_infra.runtime.boundary_failure_terminal import (
+        ModelBoundaryFailureTerminal,
+    )
+
+    notice = ModelBoundaryFailureTerminal(
+        correlation_id=uuid4(),
+        failure_class="ValueError",
+        failure_code=None,
+        retryable=False,
+        failure_reason="ticket_id: Field required",
+        origin_topic="onex.cmd.omnimarket.dod-verify-start.v1",
+    ).model_dump(mode="json")
+    delivered = {
+        **notice,
+        "_db": None,
+        "_event_type": "dod_verify_completed",
+        "_envelope_id": str(uuid4()),
+        "_tenant_id": "820272f9-4aaf-5add-a2df-0af942852ab2",
+    }
+    async with _migrated_writer() as (writer, connection, schema):
+        assert await writer._project_verdict(delivered) is None
+        count = await connection.fetchval(
+            f"SELECT count(*) FROM {schema}.dod_verify_runs"
+        )
+        assert count == 0
+
+        assert await writer._project_verdict(_event()) is not None
+        count = await connection.fetchval(
+            f"SELECT count(*) FROM {schema}.dod_verify_runs"
+        )
+        assert count == 1

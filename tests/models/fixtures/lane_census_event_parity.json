@@ -1,0 +1,279 @@
+{
+ "cases": {
+  "clean": {
+   "drift": {
+    "alert_key": "lane-census-drift:census-host:e3b0c44298fc1c14",
+    "drift_count": 0,
+    "emitted_at": "2026-06-11T22:00:00+00:00",
+    "event_type": "lane-census-drift",
+    "findings": [],
+    "host": "census-host",
+    "host_id": "h101",
+    "lanes_checked": [
+     "dev"
+    ],
+    "lanes_not_applicable": [],
+    "lanes_skipped_optional_down": [
+     "optional-lane"
+    ],
+    "schema_version": "1.1.0",
+    "severity": "warning",
+    "ticket_body": "## Lane census drift detected\n\nHost: `census-host`\nLanes checked: dev\nLanes not applicable on this host: (none)\n\nThe desired-state lane census (the private lane-manifest.yaml)\ndoes not match the live runtime. Drift items below name exactly what is\nmissing or extra. This is the regression class the lane-census ratchet\n(OMN-13011) exists to catch \u2014 it would have fired on 2026-06-11 when prod\nruntime containers and the broker network were silently absent.\n\n## Findings\n\n\n## Action\nBring the lane back to declared state (compose up the absent containers / reattach the network), or update the lane manifest in the same PR if the desired state legitimately changed. Do not silence the check.",
+    "ticket_title": "lane census: no drift",
+    "topic": "onex.evt.infra.lane-census-drift.v1"
+   },
+   "host": "census-host",
+   "observed": {
+    "drift_count": 0,
+    "event_type": "lane-census-observed",
+    "findings": [],
+    "host": "census-host",
+    "host_id": "h101",
+    "lanes_checked": [
+     "dev"
+    ],
+    "lanes_not_applicable": [],
+    "lanes_skipped_optional_down": [
+     "optional-lane"
+    ],
+    "observed_at": "2026-06-11T22:00:00+00:00",
+    "schema_version": "1.1.0",
+    "topic": "onex.evt.omnibase-infra.lane-census-observed.v1"
+   },
+   "plan": {
+    "findings": [],
+    "host": "h101",
+    "lanes_checked": [
+     "dev"
+    ],
+    "lanes_not_applicable": [],
+    "lanes_skipped_optional_down": [
+     "optional-lane"
+    ]
+   }
+  },
+  "prod_outage": {
+   "drift": {
+    "alert_key": "lane-census-drift:census-host:c6ee21d25aa310e4",
+    "drift_count": 2,
+    "emitted_at": "2026-06-11T22:00:00+00:00",
+    "event_type": "lane-census-drift",
+    "findings": [
+     {
+      "container": "omnibase-infra-prod-network",
+      "detail": "lane network is not present",
+      "kind": "network_detached",
+      "lane": "prod",
+      "severity": "critical"
+     },
+     {
+      "container": "omninode-prod-runtime",
+      "detail": "required service not running",
+      "kind": "container_absent",
+      "lane": "prod",
+      "severity": "critical"
+     }
+    ],
+    "host": "census-host",
+    "host_id": "h201",
+    "lanes_checked": [
+     "prod"
+    ],
+    "lanes_not_applicable": [
+     "judge"
+    ],
+    "lanes_skipped_optional_down": [],
+    "schema_version": "1.1.0",
+    "severity": "critical",
+    "ticket_body": "## Lane census drift detected\n\nHost: `census-host`\nLanes checked: prod\nLanes not applicable on this host: judge\n\nThe desired-state lane census (the private lane-manifest.yaml)\ndoes not match the live runtime. Drift items below name exactly what is\nmissing or extra. This is the regression class the lane-census ratchet\n(OMN-13011) exists to catch \u2014 it would have fired on 2026-06-11 when prod\nruntime containers and the broker network were silently absent.\n\n## Findings\n\n- **[critical] network_detached** `omnibase-infra-prod-network` (prod): lane network is not present\n- **[critical] container_absent** `omninode-prod-runtime` (prod): required service not running\n\n## Action\nBring the lane back to declared state (compose up the absent containers / reattach the network), or update the lane manifest in the same PR if the desired state legitimately changed. Do not silence the check.",
+    "ticket_title": "fix(infra): lane drift [prod] \u2014 1x container_absent, 1x network_detached",
+    "topic": "onex.evt.infra.lane-census-drift.v1"
+   },
+   "host": "census-host",
+   "observed": {
+    "drift_count": 2,
+    "event_type": "lane-census-observed",
+    "findings": [
+     {
+      "container": "omnibase-infra-prod-network",
+      "detail": "lane network is not present",
+      "kind": "network_detached",
+      "lane": "prod",
+      "severity": "critical"
+     },
+     {
+      "container": "omninode-prod-runtime",
+      "detail": "required service not running",
+      "kind": "container_absent",
+      "lane": "prod",
+      "severity": "critical"
+     }
+    ],
+    "host": "census-host",
+    "host_id": "h201",
+    "lanes_checked": [
+     "prod"
+    ],
+    "lanes_not_applicable": [
+     "judge"
+    ],
+    "lanes_skipped_optional_down": [],
+    "observed_at": "2026-06-11T22:00:00+00:00",
+    "schema_version": "1.1.0",
+    "topic": "onex.evt.omnibase-infra.lane-census-observed.v1"
+   },
+   "plan": {
+    "findings": [
+     {
+      "container": "omnibase-infra-prod-network",
+      "detail": "lane network is not present",
+      "kind": "network_detached",
+      "lane": "prod",
+      "severity": "critical"
+     },
+     {
+      "container": "omninode-prod-runtime",
+      "detail": "required service not running",
+      "kind": "container_absent",
+      "lane": "prod",
+      "severity": "critical"
+     }
+    ],
+    "host": "h201",
+    "lanes_checked": [
+     "prod"
+    ],
+    "lanes_not_applicable": [
+     "judge"
+    ],
+    "lanes_skipped_optional_down": []
+   }
+  },
+  "warning_only": {
+   "drift": {
+    "alert_key": "lane-census-drift:census-host:ef1f331e77f28919",
+    "drift_count": 1,
+    "emitted_at": "2026-06-11T22:00:00+00:00",
+    "event_type": "lane-census-drift",
+    "findings": [
+     {
+      "container": "omninode-judge-runtime",
+      "detail": "stale tag",
+      "kind": "image_tag_mismatch",
+      "lane": "judge",
+      "severity": "warning"
+     }
+    ],
+    "host": "census-host",
+    "host_id": "h053",
+    "lanes_checked": [
+     "judge"
+    ],
+    "lanes_not_applicable": [],
+    "lanes_skipped_optional_down": [],
+    "schema_version": "1.1.0",
+    "severity": "warning",
+    "ticket_body": "## Lane census drift detected\n\nHost: `census-host`\nLanes checked: judge\nLanes not applicable on this host: (none)\n\nThe desired-state lane census (the private lane-manifest.yaml)\ndoes not match the live runtime. Drift items below name exactly what is\nmissing or extra. This is the regression class the lane-census ratchet\n(OMN-13011) exists to catch \u2014 it would have fired on 2026-06-11 when prod\nruntime containers and the broker network were silently absent.\n\n## Findings\n\n- **[warning] image_tag_mismatch** `omninode-judge-runtime` (judge): stale tag\n\n## Action\nBring the lane back to declared state (compose up the absent containers / reattach the network), or update the lane manifest in the same PR if the desired state legitimately changed. Do not silence the check.",
+    "ticket_title": "fix(infra): lane drift [judge] \u2014 1x image_tag_mismatch",
+    "topic": "onex.evt.infra.lane-census-drift.v1"
+   },
+   "host": "census-host",
+   "observed": {
+    "drift_count": 1,
+    "event_type": "lane-census-observed",
+    "findings": [
+     {
+      "container": "omninode-judge-runtime",
+      "detail": "stale tag",
+      "kind": "image_tag_mismatch",
+      "lane": "judge",
+      "severity": "warning"
+     }
+    ],
+    "host": "census-host",
+    "host_id": "h053",
+    "lanes_checked": [
+     "judge"
+    ],
+    "lanes_not_applicable": [],
+    "lanes_skipped_optional_down": [],
+    "observed_at": "2026-06-11T22:00:00+00:00",
+    "schema_version": "1.1.0",
+    "topic": "onex.evt.omnibase-infra.lane-census-observed.v1"
+   },
+   "plan": {
+    "findings": [
+     {
+      "container": "omninode-judge-runtime",
+      "detail": "stale tag",
+      "kind": "image_tag_mismatch",
+      "lane": "judge",
+      "severity": "warning"
+     }
+    ],
+    "host": "h053",
+    "lanes_checked": [
+     "judge"
+    ]
+   }
+  }
+ },
+ "kind_severity": {
+  "broker_config_mismatch": "critical",
+  "config_hash_mismatch": "critical",
+  "container_absent": "critical",
+  "container_restart_loop": "critical",
+  "container_unhealthy": "critical",
+  "desired_state_unreadable": "critical",
+  "image_tag_mismatch": "warning",
+  "lane_on_undeclared_host": "critical",
+  "network_detached": "critical",
+  "oneshot_failed": "critical",
+  "oneshot_stuck": "warning",
+  "package_version_mismatch": "critical",
+  "profile_gated_present": "warning",
+  "replicas_zero": "critical",
+  "revision_mismatch": "critical",
+  "runner_count_mismatch": "warning",
+  "runner_offline": "warning",
+  "runner_workdir_mismatch": "critical",
+  "undeclared_container": "warning",
+  "unexpected_container": "warning"
+ },
+ "now": "2026-06-11T22:00:00+00:00",
+ "validate": {
+  "bad": [
+   "schema_version '9.9.9' is not one of ['1.0.0', '1.1.0']",
+   "missing key 'event_type'",
+   "missing key 'topic'",
+   "missing key 'host'",
+   "missing key 'host_id'",
+   "missing key 'emitted_at'",
+   "missing key 'severity'",
+   "missing key 'lanes_checked'",
+   "missing key 'lanes_not_applicable'",
+   "missing key 'lanes_skipped_optional_down'",
+   "missing key 'alert_key'",
+   "missing key 'ticket_title'",
+   "missing key 'ticket_body'",
+   "keys outside the contract: ['extra']",
+   "drift_count 3 != 1 findings",
+   "findings[0].kind 'nope' is not a declared kind"
+  ],
+  "bad_event": {
+   "drift_count": 3,
+   "extra": 1,
+   "findings": [
+    {
+     "container": "c",
+     "detail": "d",
+     "kind": "nope",
+     "lane": "x",
+     "severity": "critical"
+    }
+   ],
+   "schema_version": "9.9.9"
+  },
+  "valid": []
+ }
+}

@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Example overlay for node_triage_fences_effect; copy to <root>/node_triage_fences_effect/overlay.yaml
+# and set ONEX_SKILL_OVERLAY_ROOTS to the root that holds it.
+stale_after_minutes: 45
+pr_window_hours: 6
+repos:
+  - omnibase_core
+  - omnibase_infra
+  - omnibase_spi
+  - omnibase_compat
+  - omniclaude
+  - omnimarket
+  - omnidash
+  - omniintelligence
+  - omnimemory
+  - knowledge_base
+receipt_dir: ~/.local/state/omni/remote-lanes
+running_receipt_max_age_minutes: 240
+watcher_state: null

@@ -25,6 +25,8 @@ class ModelHostTableRow(BaseModel):
     available: bool
     # Empty when the host is available.
     exclusion_reason: str
+    # The machine the publisher runs on: out of placement, still heartbeats.
+    local: bool = False
 
 
 class ModelHostTableResult(BaseModel):

@@ -9,6 +9,7 @@ test_gpu_power_caps_lab_work.py in this directory (a failing control per reason)
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable
 from typing import Any
 
@@ -70,8 +71,10 @@ def ask_the_default_sender(
     monkeypatch.setattr(
         sender_lab_work_bus, "open_lane_bus", recording_opener_that_refuses(recorded)
     )
-    return HandlerGpuPowerCaps(overlay=overlay).handle(
-        ModelGpuPowerCapsRequest(host=overlay.hosts[0].name, requested_by="lane-a")
+    return asyncio.run(
+        HandlerGpuPowerCaps(overlay=overlay).handle(
+            ModelGpuPowerCapsRequest(host=overlay.hosts[0].name, requested_by="lane-a")
+        )
     )
 
 

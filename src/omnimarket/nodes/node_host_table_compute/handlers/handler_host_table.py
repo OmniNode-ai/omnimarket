@@ -32,6 +32,7 @@ class HandlerHostTable:
                 exclusion_reason=""
                 if host.available
                 else (host.unavailable_reason or "").strip(),
+                local=host.local,
             )
             for host in request.table.hosts
         )

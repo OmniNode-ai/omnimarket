@@ -44,3 +44,6 @@ class ModelLabFillSelectionResult(BaseModel):
     # Tickets held because an earlier lane ended already-built or skipped-owned with a merged PR, listed
     # once per tick for the proof-close path instead of a fill lane (OMN-22347).
     closer: tuple[ModelLabFillDecision, ...] = ()
+    # OMN-19998: the decisions held as readback (a lane ended skipped-already-built with falsifiers
+    # not pass), one per ticket in candidate order, for the readback path instead of a fill lane.
+    readback: tuple[ModelLabFillDecision, ...] = ()

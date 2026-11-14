@@ -61,6 +61,7 @@ from omnimarket.nodes.node_projection_dod_verdict.models import (
     ModelDodVerdictRow,
     ModelDodVerdictWire,
 )
+from omnimarket.projection.envelope import strip_runner_injected_keys
 from omnimarket.projection.runner import (
     BaseProjectionRunner,
     MessageMeta,
@@ -291,10 +292,18 @@ class DodVerdictProjectionWriter(BaseProjectionRunner):
         (OMN-18901): a rehearsal comes back with no row. Logged rather than
         silent, so a run that produced no row for a legitimate reason reads
         differently from one whose write path is broken.
+
+        The failure notice is read after the runtime-injected keys are
+        stripped (the helper's set and the database adapter ``_db``, which
+        the lab proof receipts writer also pops separately), so a real notice
+        delivered with them still declines rather than falling through to the
+        verdict read.
         """
+        notice_payload = strip_runner_injected_keys(data)
+        notice_payload.pop("_db", None)
         terminal: ModelBoundaryFailureTerminal | None
         try:
-            terminal = ModelBoundaryFailureTerminal.model_validate(data)
+            terminal = ModelBoundaryFailureTerminal.model_validate(notice_payload)
         except ValidationError:
             # Not a failure notice -- the verdict read below decides its fate,
             # and a payload that satisfies neither model raises there.

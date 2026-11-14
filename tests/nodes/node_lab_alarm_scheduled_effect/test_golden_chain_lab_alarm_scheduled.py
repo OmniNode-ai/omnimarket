@@ -98,6 +98,7 @@ class _RecordingTick:
         alarm_overlay_id: str,
         environ: Mapping[str, str] | None,
         clock: Callable[[], datetime],
+        build_handler: Callable[..., Any],
     ) -> ModelLabAlarmTickOutcome:
         self.calls.append(alarm_overlay_id)
         return self._outcome
@@ -109,6 +110,7 @@ def _raising(error: Exception) -> Any:
         alarm_overlay_id: str,
         environ: Mapping[str, str] | None,
         clock: Callable[[], datetime],
+        build_handler: Callable[..., Any],
     ) -> ModelLabAlarmTickOutcome:
         raise error
 

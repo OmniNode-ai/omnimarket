@@ -13,6 +13,8 @@ keycloak:
   client_role_path_template: /admin/realms/{realm}/clients/{client_uuid}/roles/{role}
   user_client_role_mappings_path_template: /admin/realms/{realm}/users/{user_id}/role-mappings/clients/{client_uuid}
   client_scope_mappings_path_template: /admin/realms/{realm}/clients/{client_uuid}/scope-mappings/clients/{management_client_uuid}
+  client_protocol_mappers_path_template: /admin/realms/{realm}/clients/{client_uuid}/protocol-mappers/models
+  client_protocol_mapper_path_template: /admin/realms/{realm}/clients/{client_uuid}/protocol-mappers/models/{mapper_id}
 bootstrap:
   env_file: .example/.env
   username_name: ADMIN_USERNAME
@@ -27,4 +29,25 @@ client:
   secret_key_id: dev_keycloak_client_secret
   secret_folder: /shared/env
   secret_key: KEYCLOAK_DEV_CLIENT_SECRET
+sign_in_client:
+  client_id: omnidash-spa
+  mappers:
+  - name: tenant_id
+    protocol_mapper: oidc-usermodel-attribute-mapper
+    config:
+      user.attribute: tenant_id
+      claim.name: tenant_id
+      id.token.claim: "false"
+      access.token.claim: "true"
+      userinfo.token.claim: "true"
+      jsonType.label: String
+  - name: tenant_slug
+    protocol_mapper: oidc-usermodel-attribute-mapper
+    config:
+      user.attribute: tenant_slug
+      claim.name: tenant_slug
+      id.token.claim: "false"
+      access.token.claim: "true"
+      userinfo.token.claim: "true"
+      jsonType.label: String
 secret_store: null

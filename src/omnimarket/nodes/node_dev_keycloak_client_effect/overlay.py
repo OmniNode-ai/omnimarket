@@ -38,6 +38,8 @@ class ModelKeycloakOverlay(BaseModel):
     client_role_path_template: str
     user_client_role_mappings_path_template: str
     client_scope_mappings_path_template: str
+    client_protocol_mappers_path_template: str
+    client_protocol_mapper_path_template: str
 
 
 class ModelBootstrapOverlay(BaseModel):
@@ -64,6 +66,25 @@ class ModelClientOverlay(BaseModel):
     secret_key: str
 
 
+class ModelProtocolMapperOverlay(BaseModel):
+    """One OIDC protocol mapper the node ensures on the sign-in client; its config is deployment fact."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    name: str
+    protocol_mapper: str
+    config: dict[str, str]
+
+
+class ModelSignInClientOverlay(BaseModel):
+    """The one sign-in client whose tenant claim mappers the node ensures, by declared client id."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    client_id: str
+    mappers: list[ModelProtocolMapperOverlay] = Field(min_length=1)
+
+
 class ModelDevKeycloakClientOverlay(BaseModel):
     """The whole overlay document; the optional store block means the machine's own store when absent."""
 
@@ -73,6 +94,7 @@ class ModelDevKeycloakClientOverlay(BaseModel):
     keycloak: ModelKeycloakOverlay
     bootstrap: ModelBootstrapOverlay
     client: ModelClientOverlay
+    sign_in_client: ModelSignInClientOverlay
     secret_store: ModelSecretStoreOverlay | None = None
 
 
@@ -89,5 +111,7 @@ __all__ = [
     "ModelClientOverlay",
     "ModelDevKeycloakClientOverlay",
     "ModelKeycloakOverlay",
+    "ModelProtocolMapperOverlay",
+    "ModelSignInClientOverlay",
     "load_overlay",
 ]

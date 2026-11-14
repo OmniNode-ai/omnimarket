@@ -66,11 +66,9 @@ class CannedRunner:
         self._outcome = outcome
         self._real = BashCheckExecution()
 
-    def run(
-        self, command: str, cwd: Path, timeout_s: float, tail_chars: int
-    ) -> RunOutcome:
+    def run(self, command: str, cwd: Path, timeout_s: float) -> RunOutcome:
         if command == "true":
-            return self._real.run(command, cwd, timeout_s, tail_chars)
+            return self._real.run(command, cwd, timeout_s)
         return self._outcome
 
 

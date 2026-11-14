@@ -1,0 +1,24 @@
+name: node_work_ledger_reducer_scheduled_effect
+version: "0.1.0"
+description: "On each runtime tick that is due, reads a bounded window of work-ledger rows over the bus read command, runs the reducer's guard replay and rebuild, and emits one typed run event"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_work_ledger_reducer_scheduled_effect: "omnimarket.nodes.node_work_ledger_reducer_scheduled_effect"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "omnibase-infra>=0.38.3"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "schedule", "work-ledger", "OMN-24305"]
+pack: "pipeline"
+display_name: "Work Ledger Reducer Scheduled"
+node_role: "effect"
