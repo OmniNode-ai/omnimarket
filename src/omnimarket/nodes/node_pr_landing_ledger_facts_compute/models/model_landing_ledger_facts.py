@@ -10,6 +10,9 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.events.pr_landing.model_landing_review import (
+    ModelLandingReviewFacts,
+)
 from omnimarket.models.landing_decision import (
     ModelLandingCauseOwner,
     ModelLandingCauseRelease,
@@ -17,9 +20,6 @@ from omnimarket.models.landing_decision import (
 from omnimarket.models.landing_ledger_row import (
     ModelLandingLedgerRow,
     ModelLandingLedgerRows,
-)
-from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_review import (
-    ModelLandingReviewFacts,
 )
 
 

@@ -24,6 +24,11 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
+from omnimarket.events.pr_landing.model_landing_review import (
+    EnumReviewGateVerdict,
+    EnumReviewVerdict,
+    ModelReviewGateReading,
+)
 from omnimarket.nodes.node_pr_landing_decision_compute.handlers import (
     handler_pr_landing_decision as decision_module,
 )
@@ -36,11 +41,6 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.enum_landing impor
 )
 from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_facts import (
     ModelLandingFacts,
-)
-from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_review import (
-    EnumReviewGateVerdict,
-    EnumReviewVerdict,
-    ModelReviewGateReading,
 )
 
 pytestmark = pytest.mark.unit

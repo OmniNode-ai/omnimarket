@@ -76,6 +76,9 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from functools import cache
 
+from omnimarket.events.pr_landing.model_landing_review import (
+    EnumReviewGateVerdict,
+)
 from omnimarket.handlers.cause_signature import (
     CAUSE_PREFIX,
     UNREAD,
@@ -153,9 +156,6 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_lab_
 from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_liveness import (
     EnumLivenessRead,
     ModelLandingLivenessUnread,
-)
-from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_review import (
-    EnumReviewGateVerdict,
 )
 from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_state import (
     ModelLandingCauseAttempt,

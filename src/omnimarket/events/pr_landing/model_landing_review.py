@@ -14,9 +14,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_state import (
-    SHA_PATTERN,
-)
+SHA_PATTERN = r"^[0-9a-f]{40}$"
 
 
 class EnumReviewVerdict(StrEnum):

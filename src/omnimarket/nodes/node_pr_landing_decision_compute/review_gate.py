@@ -11,17 +11,17 @@ No clock and no I/O.
 
 from __future__ import annotations
 
+from omnimarket.events.pr_landing.model_landing_review import (
+    EnumReviewGateVerdict,
+    EnumReviewVerdict,
+    ModelReviewGateReading,
+)
 from omnimarket.nodes.node_pr_landing_decision_compute.models.enum_landing import (
     EnumLandingLandSkipReason,
 )
 from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_facts import (
     ModelLandingPolicy,
     ModelLandingPrFacts,
-)
-from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_review import (
-    EnumReviewGateVerdict,
-    EnumReviewVerdict,
-    ModelReviewGateReading,
 )
 
 #: The named reason a held head carries, one per non-pass verdict.

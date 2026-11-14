@@ -23,6 +23,10 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
+from omnimarket.events.pr_landing.model_landing_review import (
+    EnumReviewGateVerdict,
+    ModelLandingReviewFacts,
+)
 from omnimarket.handlers.emission_sink import ChainEmitter, InMemoryEmissionSink
 from omnimarket.nodes.node_pr_landing_decision_compute.handlers.handler_pr_landing_decision import (
     decide_landing,
@@ -34,10 +38,6 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.enum_landing impor
 from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_facts import (
     ModelLandingFacts,
     ModelLandingPrFacts,
-)
-from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_review import (
-    EnumReviewGateVerdict,
-    ModelLandingReviewFacts,
 )
 from omnimarket.nodes.node_pr_landing_decision_compute.review_gate import (
     SKIP_FOR_REVIEW,

@@ -26,6 +26,9 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from omnimarket.events.pr_landing.model_landing_review import (
+    ModelLandingReviewFacts,
+)
 from omnimarket.models.review_finding_disposition.model_review_finding_disposition_event import (
     ModelReviewFindingDispositionEntry,
 )
@@ -55,9 +58,6 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_lab_
 )
 from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_liveness import (
     ModelLandingLivenessFacts,
-)
-from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_review import (
-    ModelLandingReviewFacts,
 )
 from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_state import (
     CAUSE_KEY_PATTERN,

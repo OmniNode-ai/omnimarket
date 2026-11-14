@@ -31,6 +31,11 @@ from typing import Final
 
 from pydantic import ValidationError
 
+from omnimarket.events.pr_landing.model_landing_review import (
+    EnumReviewVerdict,
+    ModelLandingReviewFacts,
+    ModelLandingReviewVerdictRow,
+)
 from omnimarket.handlers.work_ledger_fixer_holds import (
     fixer_hold_reasons,
     fixer_hold_released_prs,
@@ -38,11 +43,6 @@ from omnimarket.handlers.work_ledger_fixer_holds import (
 from omnimarket.models.landing_decision import (
     ModelLandingCauseOwner,
     ModelLandingCauseRelease,
-)
-from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_review import (
-    EnumReviewVerdict,
-    ModelLandingReviewFacts,
-    ModelLandingReviewVerdictRow,
 )
 from omnimarket.nodes.node_pr_landing_ledger_facts_compute.models.model_landing_ledger_facts import (
     ModelLandingCauseFix,
