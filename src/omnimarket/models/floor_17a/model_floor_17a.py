@@ -447,6 +447,8 @@ class ModelFloorLane(_Frozen):
     # The ticket the lane's own ticket was minted under (the CLAIM's parent_ticket= cell): a lane on a child ticket is
     # on the work of a cause whose declared owner is that parent.
     parent_ticket: str = ""
+    # The lane's CLAIM declares ``worktree=none`` or ``mode=read-only``: it can change nothing, so it is on no row (OMN-23225).
+    read_only: bool = False
 
 
 class ModelFloorCauseIn(_Frozen):
