@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_entry_point_registration_compute
+version: "1.0.0"
+description: "Entry Point Registration Compute — pure policy (OMN-24354)."
+pack: pr_lifecycle
+node_role: compute
+display_name: "Entry Point Registration Compute"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_entry_point_registration_compute: "omnimarket.nodes.node_entry_point_registration_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ['compute', 'entry-point-registration', 'OMN-24354']

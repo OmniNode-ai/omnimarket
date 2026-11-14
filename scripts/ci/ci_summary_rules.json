@@ -354,6 +354,17 @@
             "on the same terms as the rows above; unconditional in ci.yml.",
             "byok-customer-chooses-model"
           ]
+        },
+        {
+          "name": "Bus Model Seam Gate (OMN-23995)",
+          "note": [
+            "OMN-23995: seam tests between every bus model and the consumers that read it,",
+            "generated from the node contracts. THIS LINE IS HALF THE MECHANISM, on the terms",
+            "\"Event Chain Gate\" above: a FAILURE already fails CI Summary through the default-deny",
+            "sweep, and this row makes a skipped or absent conclusion fail closed too. Unconditional",
+            "in ci.yml (no needs/if), so a skip is anomalous and never a legitimate opt-out.",
+            "bus-model-seam-gate"
+          ]
         }
       ]
     },

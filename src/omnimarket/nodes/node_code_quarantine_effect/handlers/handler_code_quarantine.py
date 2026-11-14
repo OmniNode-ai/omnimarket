@@ -13,8 +13,10 @@ is a typed outcome and is reported once, as a typed event under the run id.
 from __future__ import annotations
 
 from datetime import timedelta
+from pathlib import PurePosixPath
 
 from omnimarket.nodes.node_code_quarantine_effect.models import (
+    EnumEntityKind,
     EnumEntityState,
     EnumFailedGate,
     EnumQuarantineMode,
@@ -34,6 +36,18 @@ from omnimarket.nodes.node_code_quarantine_effect.protocols import (
     ProtocolRepository,
     QuarantineStepError,
 )
+
+
+def is_test_path(path: str) -> bool:
+    """A path is a test when a directory of it is ``tests`` or ``test``, or its file is a pytest test file."""
+    pure = PurePosixPath(path)
+    name = pure.name
+    return (
+        any(part in {"tests", "test"} for part in pure.parts[:-1])
+        or name.startswith("test_")
+        or name.endswith("_test.py")
+        or name == "conftest.py"
+    )
 
 
 class HandlerCodeQuarantine:
@@ -149,6 +163,55 @@ class HandlerCodeQuarantine:
             changed=True,
         )
 
+    def _stage_four_refusal(
+        self, request: ModelQuarantineRequest
+    ) -> ModelQuarantineResult | None:
+        """Stage 4 (OMN-23149): a module goes with its tests, never the tests alone; a skill needs a rare-path check."""
+        if request.entity_kind is EnumEntityKind.TEST_ONLY_MODULE:
+            tests_inside = [p for p in request.entity_paths if is_test_path(p)]
+            if tests_inside:
+                return self._result(
+                    request,
+                    EnumQuarantineOutcome.REFUSED_TESTS_NOT_WITH_MODULE,
+                    f"test file(s) named as the module: {', '.join(tests_inside)}; "
+                    "the tests go with the module, never alone",
+                )
+            if not request.test_references:
+                return self._result(
+                    request,
+                    EnumQuarantineOutcome.REFUSED_TESTS_NOT_WITH_MODULE,
+                    "no test is named as referencing the module; it is not a module referenced only by tests "
+                    "and stays with its tests",
+                )
+            left_behind = [
+                p for p in request.test_references if p not in request.test_paths
+            ]
+            if left_behind:
+                return self._result(
+                    request,
+                    EnumQuarantineOutcome.REFUSED_TESTS_NOT_WITH_MODULE,
+                    f"test(s) that reference the module are not leaving with it: {', '.join(left_behind)}",
+                )
+        if request.entity_kind is EnumEntityKind.SKILL_NEVER_SEEN:
+            check = request.rare_path
+            if (
+                check is None
+                or not check.evidence_ref.strip()
+                or not check.drills_checked
+            ):
+                return self._result(
+                    request,
+                    EnumQuarantineOutcome.REFUSED_RARE_PATH,
+                    "no rare-path check that read at least one drill and names its evidence; the skill stays",
+                )
+            if check.drills_using:
+                return self._result(
+                    request,
+                    EnumQuarantineOutcome.REFUSED_RARE_PATH,
+                    f"drill(s) that use the skill: {', '.join(check.drills_using)}; the skill stays",
+                )
+        return None
+
     def _quarantine(self, request: ModelQuarantineRequest) -> ModelQuarantineResult:
         evidence = request.evidence
         assert evidence is not None
@@ -169,6 +232,9 @@ class HandlerCodeQuarantine:
                 EnumQuarantineOutcome.REFUSED_PUBLIC_CONSUMER,
                 f"{evidence.public_consumers} public consumer(s) found; the entity stays",
             )
+        stage_four = self._stage_four_refusal(request)
+        if stage_four is not None:
+            return stage_four
         current = self._store.get(request.repository, request.entity)
         if current is not None and current.state is EnumEntityState.QUARANTINED:
             return self._result(
@@ -195,6 +261,7 @@ class HandlerCodeQuarantine:
             test_paths=request.test_paths,
             clock_started_at=self._clock.now(),
             restarts=current.restarts if current else 0,
+            entity_kind=request.entity_kind,
         )
         self._store.put(started)
         gate = self._failed_gate(
