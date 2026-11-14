@@ -9,6 +9,8 @@ the request is built, before the loop has started.
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 from click.testing import CliRunner
 from omnibase_core.enums.enum_delegation_traffic_class import (
@@ -75,7 +77,7 @@ def test_traffic_class_builder_refuses_synthetic_without_surface(
     root = Path(str(tmp_path))
     task = root / "task.txt"
     task.write_text("do it")
-    common = {
+    common: dict[str, Any] = {
         "worktree": root,
         "task_file": task,
         "writable": ("src/*.py",),
@@ -92,17 +94,17 @@ def test_traffic_class_builder_refuses_synthetic_without_surface(
     }
     with pytest.raises(ValueError, match="synthetic traffic requires"):
         build_code_edit_request(
-            **common,  # type: ignore[arg-type]
+            **common,
             traffic_class=EnumDelegationTrafficClass.SYNTHETIC,
         )
     built = build_code_edit_request(
-        **common,  # type: ignore[arg-type]
+        **common,
         traffic_class=EnumDelegationTrafficClass.SYNTHETIC,
         source_surface="trial",
     )
     assert built.traffic_class is EnumDelegationTrafficClass.SYNTHETIC
     assert built.source_surface == "trial"
-    default = build_code_edit_request(**common)  # type: ignore[arg-type]
+    default = build_code_edit_request(**common)
     assert default.traffic_class is EnumDelegationTrafficClass.UNCLASSIFIED
 
 

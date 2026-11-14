@@ -42,11 +42,9 @@ import sys
 import uuid
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import click
-from omnibase_core.enums.enum_delegation_traffic_class import (
-    EnumDelegationTrafficClass,
-)
 
 from omnimarket.delegated_code_edit.loop_ports import (
     IN_PROCESS_DELEGATE_FLAGS,
@@ -202,20 +200,6 @@ def code_edit_group() -> None:  # stub-ok: a click group, subcommands added belo
 )
 @click.option("--ticket", default=None, help="OMN-<n> stamped on each turn.")
 @click.option(
-    "--traffic-class",
-    type=click.Choice([member.value for member in EnumDelegationTrafficClass]),
-    default=EnumDelegationTrafficClass.UNCLASSIFIED.value,
-    show_default=True,
-    help="Declared origin of the run, stamped on each delegate turn. Synthetic "
-    "marks a trial or probe run as not real work and needs --source-surface.",
-)
-@click.option(
-    "--source-surface",
-    default=None,
-    help="Named producer surface stamped on each turn; required with "
-    "--traffic-class synthetic.",
-)
-@click.option(
     "--new-correlation",
     is_flag=True,
     help="Mint a fresh correlation id instead of the request's own (a rerun).",
@@ -277,14 +261,9 @@ def run_command(
     file_list_path: Path | None,
     check_specs: tuple[str, ...],
     formatter: tuple[str, ...],
-    max_turns: int | None,
-    check_timeout_s: int | None,
-    wall_budget_s: int | None,
     ticket_contract: Path | None,
     caller_lane: str | None,
     ticket: str | None,
-    traffic_class: str,
-    source_surface: str | None,
     new_correlation: bool,
     state_root: Path,
     omnibase_path: Path | None,
@@ -293,6 +272,7 @@ def run_command(
     delegate_in_process: bool,
     backend_id: str | None,
     max_tokens: int | None,
+    **options: Any,
 ) -> None:
     """Run one delegated code edit loop and print its compact result."""
     if resume_id is not None:
@@ -324,14 +304,10 @@ def run_command(
                 file_list=read_file_list(file_list_path),
                 cli_checks=tuple(parse_check(spec) for spec in check_specs),
                 formatter=formatter,
-                max_turns=max_turns,
-                check_timeout_s=check_timeout_s,
-                wall_budget_s=wall_budget_s,
                 ticket_contract=ticket_contract,
                 caller_lane=caller_lane,
                 ticket=ticket,
-                traffic_class=EnumDelegationTrafficClass(traffic_class),
-                source_surface=source_surface,
+                **options,
             )
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
