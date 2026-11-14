@@ -4920,6 +4920,7 @@
   "tests/unit/nodes/node_host_hygiene_orchestrator/test_overlay_model.py": 2.02,
   "tests/unit/nodes/node_host_hygiene_orchestrator/test_run_outcome.py": 2.29,
   "tests/unit/nodes/node_host_hygiene_orchestrator/test_scheduled_run.py": 1.67,
+  "tests/unit/nodes/node_host_hygiene_orchestrator/test_tick_leaves_loop_free.py": 5.55,
   "tests/unit/nodes/node_host_power_effect/test_host_power.py": 0.094,
   "tests/unit/nodes/node_host_power_effect/test_host_power_chain.py": 0.013,
   "tests/unit/nodes/node_host_power_effect/test_ilo_port_runtime.py": 0.02,
