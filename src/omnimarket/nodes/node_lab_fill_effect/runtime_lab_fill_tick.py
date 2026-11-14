@@ -39,7 +39,6 @@ from omnimarket.models.model_lane_host_pool_unreadable import (
 from omnimarket.nodes.node_friction_rollup_tick_effect.handlers.friction_rollup_tick_io import (
     write_atomic,
 )
-from omnimarket.nodes.node_lab_fill_effect import select_entry, tick_entry
 from omnimarket.nodes.node_lab_fill_effect.handlers.handler_lab_fill_select import (
     HandlerLabFillSelect,
 )
@@ -58,6 +57,8 @@ from omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_tick_overlay im
     OVERLAY_ID,
     ModelLabFillTickOverlay,
 )
+from omnimarket.nodes.node_lab_fill_effect.select_entry import main as run_select_entry
+from omnimarket.nodes.node_lab_fill_effect.tick_entry import main as run_tick_entry
 from omnimarket.nodes.node_lab_fill_selection_compute.models.model_lab_fill_selection_overlay import (
     ModelLabFillSelectionOverlay,
 )
@@ -183,7 +184,7 @@ def _select_holds(
         ledger_window_hours=overlay.selection_ledger_window_hours,
     )
     out, err = io.StringIO(), io.StringIO()
-    code = select_entry.main(
+    code = run_select_entry(
         stdin=io.StringIO(request.model_dump_json()),
         stdout=out,
         stderr=err,
@@ -240,7 +241,7 @@ def run_once(
         f"lab-fill unit: step={_STEP} hosts={len(hosts)} held={len(holds)}"
         f" free={sum(host.free for host in hosts)}\n"
     )
-    return tick_entry.main(
+    return run_tick_entry(
         stdin=io.StringIO(request.model_dump_json()),
         stdout=stdout,
         stderr=stderr,

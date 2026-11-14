@@ -9,6 +9,7 @@ tick, and the tick's step line is on stderr. Exit 0 with a lane launched per fre
 
 from __future__ import annotations
 
+import inspect
 import io
 import json
 from collections.abc import Callable
@@ -21,6 +22,9 @@ import yaml
 
 from omnimarket.nodes.node_lab_fill_effect.handlers.handler_lab_fill_select import (
     HandlerLabFillSelect,
+)
+from omnimarket.nodes.node_lab_fill_effect.handlers.handler_lab_fill_tick import (
+    HandlerLabFillTick,
 )
 from omnimarket.nodes.node_lab_fill_effect.runtime_lab_fill_tick import main
 from omnimarket.nodes.node_lane_host_pool_snapshot_effect.handlers.adapter_snapshot_file import (
@@ -219,3 +223,37 @@ def test_an_overlay_that_does_not_apply_plans_without_launching(tmp_path: Path) 
     assert len(result["dispatched"]) == 2
     assert runner.calls == []
     assert "outcome=planned free_slots=2 placed=0" in err
+
+
+def test_a_fill_pass_needs_no_model_call(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """OMN-24407 / OMN-24419: a whole pass runs with every model call path made to fail, and it still launches its lanes.
+
+    The old Mac job ran the fill as a model workflow and ended when the model account hit its limit. Here the delegation call
+    handler (the one path a model call takes in this repository) raises if it is reached, and the tick handler declares no model
+    port; the golden pass must complete with the lanes launched.
+    """
+    from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_llm_delegation_call import (
+        HandlerLlmDelegationCall,
+    )
+
+    calls: list[object] = []
+
+    def refuse(*args: object, **kwargs: object) -> None:
+        calls.append(args)
+        raise AssertionError("the fill pass reached a model call")
+
+    monkeypatch.setattr(HandlerLlmDelegationCall, "handle", refuse)
+    ports = inspect.signature(HandlerLabFillTick.__init__).parameters
+    assert not [
+        name
+        for name in ports
+        if any(word in name for word in ("model", "llm", "agent", "delegat"))
+    ]
+    env = write_unit(tmp_path)
+    write_snapshot(tmp_path)
+    code, _, _, runner = run(env, tmp_path)
+    assert code == 0
+    assert len(runner.calls) == 2
+    assert calls == []
