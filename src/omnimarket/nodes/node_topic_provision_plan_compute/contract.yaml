@@ -71,6 +71,12 @@ consumed_events:
   - event_type: ModelTopicProvisionRequest
     topic: "onex.cmd.omnimarket.topic-provision-plan-requested.v1"
     description: The command the provisioner sends this node; declared here so the platform topic provisioner (ContractTopicExtractor reads consumed_events, not runtime_dispatch) creates the topic on the broker.
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.topic-provision-plan-requested.v1
+  # Terminal events stay under runtime_dispatch: publishing them from here needs broker permission rows in the overlays
+  # repository (broker-acl-coverage-gate); add the topics and the rows together.
+  publish_topics: []
 descriptor:
   node_archetype: compute
   purity: pure
