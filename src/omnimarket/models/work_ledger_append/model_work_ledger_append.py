@@ -31,6 +31,8 @@ class EnumWorkLedgerAppendStatus(StrEnum):
     ERROR = "error"
     # append_if_absent found a row carrying the requested row id and appended nothing.
     ALREADY_PRESENT = "already-present"
+    # OMN-23154: the serve is in a fenced handover and took nothing; the caller sends the command again.
+    RETRY = "retry"
 
 
 class ModelWorkLedgerAppendRequest(BaseModel):
@@ -96,6 +98,19 @@ class ModelWorkLedgerAppendReceipt(BaseModel):
     ledger_host: str
     duration_ms: int = Field(ge=0)
     principal: PrincipalName | None = None
+    # OMN-23154: after the flip the row lands on the bus, not in the file; this is the sequence of the
+    # request's first row (its other rows take the next numbers) and ledger_lines stays empty.
+    ledger_seq: int | None = Field(default=None, ge=1)
+
+    @model_serializer(mode="wrap")
+    def _omit_unset_ledger_seq(
+        self, handler: SerializerFunctionWrapHandler
+    ) -> dict[str, Any]:
+        """A receipt from the file path is byte-for-byte what a reader older than ledger_seq accepts."""
+        data: dict[str, Any] = handler(self)
+        if data.get("ledger_seq") is None:
+            data.pop("ledger_seq", None)
+        return data
 
 
 class ModelWorkLedgerTerminalRefused(BaseModel):

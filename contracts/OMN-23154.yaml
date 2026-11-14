@@ -1,0 +1,62 @@
+schema_version: 1.0.0
+ticket_id: OMN-23154
+title: The serve process stops appending to the file in a fenced flip, with in-flight appends drained and a rollback that never recreates the file
+summary: The work-ledger append handler gains a fence (file, fenced, bus). A flip fences new commands with a retry receipt, waits for every in-flight append, then lands each accepted row on a bus ledger store with a ledger_seq and no file line; a rollback restarts the file judge on the file as it stands and never writes or recreates the file. The durable store adapter and the serve control verb that calls the flip are not in this change.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn23154-fenced-flip
+  statement: The serve stops appending to the file in a fenced flip with in-flight appends drained, and a rollback never recreates the file.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: after the flip no append reaches the file, a probe append returns a receipt with a ledger_seq and no file line, and the node verb reads it back -- falsifier: uv run pytest src/omnimarket/nodes/node_work_ledger_append_effect -q -k flip_no_file_append'
+  - id: AC2
+    statement: 'AC2: new commands during the handover get a retry receipt and no in-flight append is lost or doubled -- falsifier: uv run pytest src/omnimarket/nodes/node_work_ledger_append_effect -q -k fenced_handover_in_flight'
+  - id: AC3
+    statement: 'AC3: the rollback restarts the old judge without recreating the file as an export -- falsifier: uv run pytest src/omnimarket/nodes/node_work_ledger_append_effect -q -k rollback_without_file_recreate'
+evidence_requirements:
+- kind: tests
+  description: The flip, the fenced handover and the rollback, each with its error chain.
+  command: uv run pytest src/omnimarket/nodes/node_work_ledger_append_effect/tests/test_fenced_flip.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23154-ac1
+  description: AC1 after the flip a probe append returns a receipt with a ledger_seq and no file line, the file's bytes do not change, and the reader verb reads the row back. At the merge base the flip does not exist, so this fails.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_work_ledger_append_effect -q --no-cov --tb=line -k flip_no_file_append
+    cwd: .
+- id: dod-omn23154-ac2
+  description: AC2 a command that arrives during the handover gets a retry receipt and appends nothing, and the append in flight lands once. At the merge base the fence does not exist, so this fails.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_work_ledger_append_effect -q --no-cov --tb=line -k fenced_handover_in_flight
+    cwd: .
+- id: dod-omn23154-ac3
+  description: AC3 the rollback restarts the file judge on the file as it stands, writes nothing to it, and is refused when the file is gone rather than recreate it. At the merge base the rollback does not exist, so this fails.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_work_ledger_append_effect -q --no-cov --tb=line -k rollback_without_file_recreate
+    cwd: .
+- id: dod-omn23154-integration-proof
+  description: The pushed head runs the flip, the fenced handover and the rollback tests on a lab host over the bus and exits 0. This proves the handler's flip, fence and rollback on the lab; the durable bus store and the serve verb that calls the flip are not part of this change.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23154 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest src/omnimarket/nodes/node_work_ledger_append_effect -q --no-cov
+    cwd: .
