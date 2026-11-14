@@ -1740,3 +1740,44 @@ units:
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
     evidence_file: .local/state/omni/consumer-group-guard/last-run.json
     state_directory: .onex_state/consumer-group-guard
+  # The lab fill on the operator Mac (OMN-24419; node_lab_fill_effect's runtime_lab_fill_tick): every 1200 s one pass reads the lane host pool
+  # snapshot (the free slots per host), selects on the bus ledger reader's rows and runs the whole tick with no model in the loop. It takes the
+  # label of the morning workflow's lab-fill job it replaces (that job ran the retired lab-fill.js; its calendar minutes 10, 30 and 50 were every
+  # 20 minutes). The overlay (node_lab_fill_effect in the overlays repository) names every path, bound, repository list and the pool snapshot's
+  # age bound; the reader overlay names lab-fill-selection. This unit holds none of it.
+  lab-fill-tick:
+    platform: launchd
+    kind: registry_module_tick
+    label: ai.omninode.lab-fill
+    template: templates/ai.omninode.registry-module-tick.plist.tmpl
+    schedule:
+      start_interval: 1200
+      run_at_load: true
+      description: every 1200 s and at load
+    registry_project: omnimarket
+    # The old job's bound for one fire was 1020 s; a pass that outlives it is ended with its process group and exits 124 (run_timeout_s, OMN-22881).
+    run_timeout_s: 1020
+    tick_no_sync: true
+    interpreter_candidates:
+      - /opt/homebrew/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_lab_fill_effect.runtime_lab_fill_tick
+    entry_file: src/omnimarket/nodes/node_lab_fill_effect/runtime_lab_fill_tick.py
+    # The start check runs the main with this probe, which the main honours with no overlay read, no bus read and no write.
+    probe_argv: ["--probe"]
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
+    environment:
+      # The overlays canonical clone first (the unit's overlays and the selection and reader overlays live there), then the plugin's overlays.
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
+      OMNIBASE_PATH: "{registry_root}"
+      # The tick launches lanes through the remote-lane runner and the onex command line by name: the registry's launcher directory leads the search path.
+      PATH: "{registry_root}/omnibase_infra/scripts:{home}/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    evidence_file: .local/state/omni/lab-fill-tick/last-run.json
+    state_directory: .onex_state/lab-fill-tick
