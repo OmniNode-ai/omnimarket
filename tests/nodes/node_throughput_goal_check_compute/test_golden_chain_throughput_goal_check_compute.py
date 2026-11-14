@@ -106,3 +106,21 @@ async def test_golden_chain_over_the_bus_matches_the_recorded_tick(
         ModelThroughputGoalCheckResult.model_validate_json(result.model_dump_json())
         == result
     )
+
+
+@pytest.mark.asyncio
+async def test_result_carries_each_declared_output(tmp_path: Path) -> None:
+    tick = _TICKS[0]
+    payload = {k: v for k, v in tick.items() if k != "expected"}
+    runtime = await _run(NODE_DIR, tmp_path, payload)
+    result = runtime.handler_result
+    assert isinstance(result, ModelThroughputGoalCheckResult)
+    dumped = result.model_dump()
+    declared = _contract(NODE_DIR)["outputs"]
+    for name in ("goal_line", "findings", "lines", "record", "changed", "cells"):
+        assert name in declared
+        assert name in dumped
+    assert isinstance(dumped["findings"], list)
+    assert isinstance(dumped["lines"], list)
+    assert isinstance(dumped["changed"], bool)
+    assert isinstance(dumped["cells"], dict)
