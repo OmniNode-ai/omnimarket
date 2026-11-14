@@ -15,11 +15,11 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from omnimarket.nodes.node_landing_decision_venv_effect.handlers.adapter_subprocess_runner import (
-    AdapterSubprocessRunner,
-)
 from omnimarket.nodes.node_landing_decision_venv_effect.handlers.handler_landing_decision_venv import (
     HandlerLandingDecisionVenv,
+)
+from omnimarket.nodes.node_landing_decision_venv_effect.handlers.handler_subprocess_runner import (
+    HandlerSubprocessRunner,
 )
 from omnimarket.nodes.node_landing_decision_venv_effect.models.model_landing_decision_venv import (
     ModelLandingDecisionVenvOverlay,
@@ -154,7 +154,7 @@ def test_the_overlay_is_found_under_the_overlay_roots(
 
 
 def test_the_real_adapter_reports_a_timeout_and_a_command_that_never_started() -> None:
-    adapter = AdapterSubprocessRunner()
+    adapter = HandlerSubprocessRunner()
     slow = adapter.run([sys.executable, "-c", "import time; time.sleep(30)"], 0.3)
     assert slow.timed_out is True
     missing = adapter.run(["/no/such/interpreter"], 5)

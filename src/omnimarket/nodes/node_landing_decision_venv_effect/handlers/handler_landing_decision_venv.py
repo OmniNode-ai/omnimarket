@@ -23,8 +23,8 @@ from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayNotFoundError,
     load_structured_overlay,
 )
-from omnimarket.nodes.node_landing_decision_venv_effect.handlers.adapter_subprocess_runner import (
-    AdapterSubprocessRunner,
+from omnimarket.nodes.node_landing_decision_venv_effect.handlers.handler_subprocess_runner import (
+    HandlerSubprocessRunner,
 )
 from omnimarket.nodes.node_landing_decision_venv_effect.models.model_landing_decision_venv import (
     ModelCommandOutcome,
@@ -62,7 +62,7 @@ class HandlerLandingDecisionVenv:
         environ: Mapping[str, str] | None = None,
     ) -> None:
         self._overlay = overlay
-        self._runner: ProtocolCommandRunner = runner or AdapterSubprocessRunner()
+        self._runner: ProtocolCommandRunner = runner or HandlerSubprocessRunner()
         self._environ = environ
 
     def handle(

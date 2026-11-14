@@ -16,7 +16,7 @@ from omnimarket.nodes.node_landing_decision_venv_effect.models.model_landing_dec
 INTERPRETER_ENV = ("PYTHONPATH", "PYTHONHOME")
 
 
-class AdapterSubprocessRunner:
+class HandlerSubprocessRunner:
     def run(self, argv: Sequence[str], timeout_seconds: float) -> ModelCommandOutcome:
         env = {k: v for k, v in os.environ.items() if k not in INTERPRETER_ENV}
         try:
