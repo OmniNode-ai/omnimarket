@@ -47,6 +47,9 @@ from omnimarket.models.floor_17a.model_worklist import (
     ModelWorklistItemIn,
     WorklistKind,
 )
+from omnimarket.nodes.node_floor_simple_compute.handlers.handoff_refusals_section import (
+    build_handoff_refusals_section,
+)
 from omnimarket.nodes.node_floor_simple_compute.handlers.integration_section import (
     build_integration_section,
 )
@@ -577,6 +580,9 @@ class HandlerFloorSimple:
                 "owner_inputs": inputs,
                 "integration": build_integration_section(
                     ov.integration, request.integration
+                ),
+                "handoff_refusals": build_handoff_refusals_section(
+                    ov.handoff_refusals, request.handoff_refusals
                 ),
             }
         )
