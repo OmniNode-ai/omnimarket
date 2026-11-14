@@ -7,7 +7,7 @@ from __future__ import annotations
 from typing import Protocol, runtime_checkable
 
 from aiokafka.admin import AIOKafkaAdminClient
-from omnibase_infra.event_bus.kafka_auth import build_aiokafka_auth_kwargs_from_env
+from omnibase_infra.event_bus.kafka_auth import build_aiokafka_auth_kwargs_for
 
 
 @runtime_checkable
@@ -27,9 +27,14 @@ class AiokafkaBrokerTopicLister:
 
     async def list_topics(self) -> tuple[str, ...]:
         """List topics, filtering out internal (underscore-prefixed) topics."""
+        # The lane-aware resolver answers for THIS broker: a bound lane transport when the
+        # caller opened one, else the standard runtime Kafka environment.
+        auth = build_aiokafka_auth_kwargs_for(self._bootstrap_servers)
+        security_protocol = str(auth.pop("security_protocol", "PLAINTEXT"))
         admin = AIOKafkaAdminClient(
             bootstrap_servers=self._bootstrap_servers,
-            **build_aiokafka_auth_kwargs_from_env(),
+            security_protocol=security_protocol,
+            **auth,
         )
         await admin.start()
         try:

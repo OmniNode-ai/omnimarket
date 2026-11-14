@@ -8,6 +8,12 @@ import asyncio
 import json
 import os
 import sys
+from contextlib import AbstractContextManager, nullcontext
+
+from omnibase_infra.cli.delegate_lane_credentials import resolve_lane_binding
+from omnibase_infra.event_bus.lane_client_transport_binding import (
+    bind_lane_client_transport,
+)
 
 from omnimarket.nodes.node_topic_provision_dry_run_effect.adapters.broker_topics import (
     AiokafkaBrokerTopicLister,
@@ -33,7 +39,15 @@ def main() -> int:
     overlay = load_provision_overlay()
     rule = load_provision_rule()
     lister: ProtocolBrokerTopicLister | None = None
-    if overlay.bootstrap_env:
+    binding: AbstractContextManager[object] = nullcontext()
+    if overlay.lane:
+        # The lane's declared broker and this machine's identity for it, the way
+        # `onex scm` resolves them; the lister reads the bound transport.
+        selection, transport = resolve_lane_binding(overlay.lane)
+        if transport is not None:
+            binding = bind_lane_client_transport(transport)
+        lister = AiokafkaBrokerTopicLister(selection.bootstrap_servers)
+    elif overlay.bootstrap_env:
         addr = os.environ.get(
             overlay.bootstrap_env, ""
         )  # node-purity-ok: boundary entry reads the broker address variable the overlay names
@@ -43,9 +57,10 @@ def main() -> int:
             )
         lister = AiokafkaBrokerTopicLister(addr)
     handler = HandlerTopicProvisionDryRun(lister)
-    plan = asyncio.run(
-        handler.handle(ModelTopicProvisionDryRunRequest(overlay=overlay, rule=rule))
-    )
+    with binding:
+        plan = asyncio.run(
+            handler.handle(ModelTopicProvisionDryRunRequest(overlay=overlay, rule=rule))
+        )
     sys.stdout.write(
         json.dumps(
             {
