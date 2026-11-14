@@ -629,6 +629,7 @@ node_delegation_shrink_retry_compute = "omnimarket.nodes.node_delegation_shrink_
 node_delegation_size_band_compute = "omnimarket.nodes.node_delegation_size_band_compute"
 node_delegation_split_compute = "omnimarket.nodes.node_delegation_split_compute"
 node_delegation_synthetic_probe_compute = "omnimarket.nodes.node_delegation_synthetic_probe_compute"
+node_delegation_task_kind_guard_compute = "omnimarket.nodes.node_delegation_task_kind_guard_compute"
 node_delegation_tier_comparison_compute = "omnimarket.nodes.node_delegation_tier_comparison_compute"
 node_delivery_replay_projection_compute = "omnimarket.nodes.node_delivery_replay_projection_compute"
 node_demo_cost_compute = "omnimarket.nodes.node_demo_cost_compute"
