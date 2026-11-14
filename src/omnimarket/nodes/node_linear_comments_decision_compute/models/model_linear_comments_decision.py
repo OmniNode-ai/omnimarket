@@ -36,6 +36,7 @@ class EnumHeldClass(StrEnum):
     FLOOR_REFUSED = "floor_refused"
     TRUNCATED = "truncated"
     UNSOURCED = "unsourced"
+    NO_CONSUMER = "no_consumer"
     TRANSPORT = "transport"
     TIMEOUT = "timeout"
 
@@ -226,6 +227,7 @@ class ModelLinearCommentsDecisionResult(BaseModel):
     citation: ModelDraftCitationCheck | None = None
     truncation: ModelTruncationCheck | None = None
     held_classes: tuple[EnumHeldClass, ...] | None = None
+    retryable: tuple[bool, ...] | None = None
     held_by_class: dict[str, int] | None = None
     degraded: bool | None = None
     metrics: ModelMetricsRow | None = None

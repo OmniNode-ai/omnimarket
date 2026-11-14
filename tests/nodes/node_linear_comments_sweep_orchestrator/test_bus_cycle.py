@@ -147,6 +147,15 @@ async def drive(
         }
         if kind == broken:
             reply = {**reply, "content": "", "failure_reason": "stand-in refused"}
+        if kind == "delegate" and broken in ("transport-recover", "transport-held"):
+            if envelope.payload.backend_id is not None:
+                assert envelope.payload.backend_id == "recorded-next-draft"
+            if envelope.payload.backend_id is None or broken == "transport-held":
+                reply = {
+                    **reply,
+                    "content": "",
+                    "failure_reason": "No service was listening on a topic",
+                }
         await bus.publish(
             delegation["reply_topics"]["completed"],
             str(envelope.correlation_id).encode(),
@@ -312,3 +321,28 @@ def test_a_refused_collector_over_the_bus_terminates_as_failed() -> None:
     assert len(failed) == 1
     assert b"collect phase failed" in failed[0]
     assert asked == ["collect"]
+
+
+@pytest.mark.usefixtures("bus_environment")
+@pytest.mark.parametrize("mode", ["transport-recover", "transport-held"])
+def test_bounded_retry_and_held_candidates_cross_the_contract_bus(mode: str) -> None:
+    completed, failed, asked, decisions = asyncio.run(drive(mode))
+    assert failed == []
+    assert len(completed) == 1
+    terminal = completed[0]
+    assert asked.count("delegate") == 2 * len(SELECTED)
+    assert "classify_held" in decisions
+    if mode == "transport-recover":
+        assert terminal.accepted == len(SELECTED)
+        assert terminal.held_drafts == []
+        assert asked.count("verify") == len(SELECTED)
+    else:
+        assert terminal.accepted == 0
+        assert terminal.held == len(SELECTED)
+        assert terminal.held_by_class["no_consumer"] == len(SELECTED)
+        assert asked.count("verify") == 0
+        for row in terminal.held_drafts:
+            candidate = cast(dict[str, object], row["fallback_draft"])
+            assert candidate["label"] == "UNVERIFIED DRAFT"
+            assert candidate["verified"] is False
+            assert row["first_failure"] == "No service was listening on a topic"

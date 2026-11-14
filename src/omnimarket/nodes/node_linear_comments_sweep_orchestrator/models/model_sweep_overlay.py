@@ -11,7 +11,10 @@ from __future__ import annotations
 
 import re
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
+
+from omnimarket.enums.enum_deployment_fact_kind import EnumDeploymentFactKind
+from omnimarket.models.delegation.model_deployment_fact_marker import deployment_fact
 
 REQUIRED_TEMPLATES = (
     "linear-comments-collect",
@@ -29,13 +32,19 @@ class ModelSweepOverlay(BaseModel):
 
     templates: dict[str, str]
     values: dict[str, str]
+    retry_backend_id: str | None = Field(
+        default=None,
+        pattern=r"^\S+$",
+        description="Explicit next drafting rung; an absent binding leaves failures held.",
+        json_schema_extra=deployment_fact(EnumDeploymentFactKind.BACKEND),
+    )
 
     @classmethod
     def from_documents(cls, overlay: object, briefs: str) -> ModelSweepOverlay:
         """Validate the parsed overlay mapping and the briefs text."""
         if not isinstance(overlay, dict):
             raise ValueError("overlay must be a mapping")
-        unknown = set(overlay) - {"briefs", "values"}
+        unknown = set(overlay) - {"briefs", "values", "retry_backend_id"}
         if unknown:
             raise ValueError(
                 "overlay unknown keys: " + ", ".join(sorted(map(str, unknown)))
@@ -62,5 +71,7 @@ class ModelSweepOverlay(BaseModel):
             if not isinstance(item, str) or not item.strip():
                 raise ValueError(f"overlay value {key} must be a nonempty string")
         return cls(
-            templates=templates, values={str(k): str(v) for k, v in values.items()}
+            templates=templates,
+            values={str(k): str(v) for k, v in values.items()},
+            retry_backend_id=overlay.get("retry_backend_id"),
         )

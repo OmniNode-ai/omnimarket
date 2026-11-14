@@ -40,8 +40,12 @@ DECISION_INSTANCE = "sweep_decision"
 
 
 def _int(payload: dict[str, object], key: str) -> int:
+    return _optional_int(payload, key) or 0
+
+
+def _text(payload: dict[str, object], key: str) -> str:
     value = payload.get(key)
-    return value if isinstance(value, int) and not isinstance(value, bool) else 0
+    return value if isinstance(value, str) else ""
 
 
 def _optional_int(payload: dict[str, object], key: str) -> int | None:
@@ -126,6 +130,7 @@ class HandlerSweepBus:
             emitted_at=run.emitted_at,
             prompt=phase.prompt,
             task_type=phase.task_type,
+            backend_id=phase.backend_id,
             max_tokens=phase.max_tokens,
             requested_timeout_seconds=(
                 phase.timeout_seconds if phase.task_type == "agent_delegation" else None
@@ -152,20 +157,17 @@ class HandlerSweepBus:
         payload = self._payload_of(response, correlation)
         if payload.get("tenant_id", run.tenant_id) != run.tenant_id:
             raise ValueError("sweep terminal tenant does not match")
-        content = payload.get("content")
-        failure = payload.get("failure_reason")
-        text = content if isinstance(content, str) else ""
-        reason = failure if isinstance(failure, str) else ""
-        model_used = payload.get("model_used")
-        finish = payload.get("finish_reason")
+        text = _text(payload, "content")
+        reason = _text(payload, "failure_reason")
         truncated = payload.get("truncated")
         return ModelSweepPhaseReply(
             ok=bool(text.strip()) and not reason,
             failure=reason
             or ("" if text.strip() else "the delegation returned no content"),
             content=text,
-            model_used=model_used if isinstance(model_used, str) else "",
-            finish_reason=finish if isinstance(finish, str) else None,
+            model_used=_text(payload, "model_used"),
+            backend_id=_text(payload, "backend_id") or None,
+            finish_reason=_text(payload, "finish_reason") or None,
             truncated=truncated if isinstance(truncated, bool) else None,
             prompt_tokens=_int(payload, "prompt_tokens"),
             completion_tokens=_int(payload, "completion_tokens"),

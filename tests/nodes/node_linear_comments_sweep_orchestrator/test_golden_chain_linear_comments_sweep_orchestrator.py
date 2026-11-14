@@ -148,6 +148,7 @@ def test_one_sweep_runs_the_captured_window_to_a_typed_terminal() -> None:
         "floor_refused": 0,
         "truncated": 0,
         "unsourced": 0,
+        "no_consumer": 0,
         "transport": 0,
         "timeout": 0,
     }

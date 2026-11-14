@@ -9,7 +9,8 @@ description: >-
   Definition-B deterministic decisions of the hourly Linear-comments sweep (OMN-20680):
   which collected comments get a draft and why not (author classification, already
   answered, needs_reply), the drafting prompt, the citation check on a draft, whether a
-  delegated response was cut off, the closed held-reason classifier, the held tally with
+  delegated response was cut off, the closed held-reason classifier and measured retry
+  eligibility (unknown transport failures never qualify), the held tally with
   the degraded flag, and the per-call metrics row. Behaviour-preserving port of the pure
   block of the retired linear-comments-hourly workflow. Reads no files, calls no model,
   mutates no state; a refusal is a typed validation error naming the missing field.
@@ -60,6 +61,7 @@ outputs:
   citation: {type: object}
   truncation: {type: object}
   held_classes: {type: array}
+  retryable: {type: array, description: One boolean per held input; only measured drafting transport failures qualify.}
   held_by_class: {type: object}
   degraded: {type: bool}
   metrics: {type: object}

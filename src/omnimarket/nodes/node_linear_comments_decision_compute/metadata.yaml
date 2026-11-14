@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 name: node_linear_comments_decision_compute
 version: "1.0.0"
-description: Deterministic decisions of the hourly Linear-comments sweep
+description: Deterministic hourly comment selection, source checks, held classification and measured transport retry eligibility
 omnibase_core_compat: ">=0.47.28,<0.48.0"
 entry_points:
   onex.nodes:
