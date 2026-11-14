@@ -1,0 +1,74 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Lab Fill Launcher Effect (OMN-24109, the morning-workflows tick's judge)
+#
+# The entry point the host's morning-workflows tick calls after a lab-fill fire ended: it reads the fire's files,
+# judges them with the pure compute node node_lab_fill_fire_outcome_compute, delivers the alert the judgement names,
+# publishes the validated result and prints one JSON line with the verdict. It judges and reports; it starts no fire.
+name: node_lab_fill_launcher_effect
+contract_name: node_lab_fill_launcher_effect
+node_name: node_lab_fill_launcher_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Judges one lab-fill fire the tick observed: it reads the fire's own written result file, its run log and the day's
+  Linear snapshot, hands those facts to the pure compute node node_lab_fill_fire_outcome_compute, delivers the alert
+  that judgement names, publishes the validated result at the latest path and prints one JSON line with the verdict.
+  A fire whose overlay cannot be loaded or whose state directory is missing is refused and reported, not judged.
+
+handler:
+  module: omnimarket.nodes.node_lab_fill_launcher_effect.handlers.handler_lab_fill_launcher
+  class: HandlerLabFillLauncher
+  input_model: omnimarket.nodes.node_lab_fill_launcher_effect.models.model_lab_fill_launcher.ModelLabFillLauncherRequest
+
+# HandlerLabFillLauncher takes the overlay, the fire files, the alert sender and the clock as constructor parameters,
+# so the node runs through its own CLI, not handler_routing.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [alert-send, latest-file-write]
+  timeout_ms: 120000
+
+input_model:
+  name: ModelLabFillLauncherRequest
+  module: omnimarket.nodes.node_lab_fill_launcher_effect.models.model_lab_fill_launcher
+  description: "One fire as the tick observed it, plus the policy to judge under."
+output_model:
+  name: ModelLabFillLauncherResult
+  module: omnimarket.nodes.node_lab_fill_launcher_effect.models.model_lab_fill_launcher
+  description: "The fire's receipt: the verdict, the alert delivered and the result published."
+
+operation: launch_lab_fill_judge
+
+terminal_event: onex.evt.omnimarket.lab-fill-launcher-completed.v1
+
+runtime_dispatch:
+  external_trigger: true
+
+topics:
+  lab_fill_launcher_requested: onex.cmd.omnimarket.lab-fill-launcher-requested.v1
+  lab_fill_launcher_completed: onex.evt.omnimarket.lab-fill-launcher-completed.v1
+  lab_fill_launcher_failed: onex.evt.omnimarket.lab-fill-launcher-failed.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.lab-fill-launcher-completed.v1
+  - onex.evt.omnimarket.lab-fill-launcher-failed.v1
+
+overlay:
+  node: node_lab_fill_launcher_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+metadata:
+  ticket: OMN-24109
+  transport_type: inmemory

@@ -21,15 +21,23 @@ Target table schema (from 0000_create_intent_classification_events.sql):
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
+from typing import Final
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field
+from omnibase_infra.runtime.boundary_failure_terminal import (
+    ModelBoundaryFailureTerminal,
+)
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, ValidationError
 
 from omnimarket.projection.handler_shim import split_projection_input
 from omnimarket.projection.protocol_database import DatabaseAdapter
 
+logger = logging.getLogger(__name__)
+
 TABLE = "intent_classification_events"
 CONFLICT_KEY = "correlation_id"
+ROWS_REFUSED_KEY: Final[str] = "rows_refused_by_ordering_guard"
 
 
 class ModelIntentClassifiedEvent(BaseModel):
@@ -98,6 +106,23 @@ class ModelIntentClassifiedEvent(BaseModel):
     )
 
 
+def read_runtime_failure_notice(
+    payload: dict[str, object],
+) -> ModelBoundaryFailureTerminal | None:
+    """The runtime's own failure notice, or ``None`` for any other payload.
+
+    OMN-24332. When a handler that answers on this topic fails, the runtime
+    publishes ``ModelBoundaryFailureTerminal`` onto it. That is a known shape,
+    not a malformed intent classification, so it is declined rather than
+    dead-lettered. The notice model is ``extra="forbid"``, so a payload with an
+    unknown key is not a notice and still reaches the malformed DLQ path.
+    """
+    try:
+        return ModelBoundaryFailureTerminal.model_validate(payload)
+    except ValidationError:
+        return None
+
+
 class ModelProjectionResult(BaseModel):
     """Result of a projection batch."""
 
@@ -117,6 +142,17 @@ class HandlerProjectionIntentClassification:
         a DatabaseAdapter from input_data['_db'].
         """
         db, payload, _meta = split_projection_input(input_data)
+        notice = read_runtime_failure_notice(payload)
+        if notice is not None:
+            logger.info(
+                "intent-classification projection: runtime failure notice "
+                "(failure_class=%s, origin_topic=%s, correlation_id=%s) is not "
+                "an intent classification and is not projected",
+                notice.failure_class,
+                notice.origin_topic,
+                notice.correlation_id,
+            )
+            return {"rows_upserted": 0, "table": TABLE, ROWS_REFUSED_KEY: 1}
         event = ModelIntentClassifiedEvent(**payload)
         result = self.project(event, db)
         return result.model_dump(mode="json")
@@ -155,7 +191,9 @@ class HandlerProjectionIntentClassification:
 
 
 __all__: list[str] = [
+    "ROWS_REFUSED_KEY",
     "HandlerProjectionIntentClassification",
     "ModelIntentClassifiedEvent",
     "ModelProjectionResult",
+    "read_runtime_failure_notice",
 ]

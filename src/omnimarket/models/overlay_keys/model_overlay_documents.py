@@ -179,6 +179,9 @@ class ModelLabHostRow(_ModelOverlayBase):
     lane_ready: bool = False
     lane_not_ready_reason: str | None = None
     push: bool = True
+    # Whether the other lab hosts must hold an ssh route to this host (the ``lab-ssh`` capability of node_host_capability_compute).
+    # ``false`` marks a machine the lab does not own: its login and keys are its owner's, so no lab host is refused for lacking a route to it.
+    lab_ssh_peer: bool = True
     # 0 places no lane or landing worker on the host (OMN-22015); a lab-run unit is judged by slots, not this cap.
     cap: int | None = Field(default=None, ge=0)
     # The units the host's lab-work serve process runs at once (``serve --max-units``); omitted: the serve default.

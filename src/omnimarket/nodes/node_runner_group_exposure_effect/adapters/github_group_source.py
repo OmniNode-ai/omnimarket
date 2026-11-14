@@ -21,6 +21,7 @@ import json
 from collections.abc import Mapping
 from datetime import datetime
 from typing import Any
+from uuid import UUID
 
 import yaml
 
@@ -29,6 +30,10 @@ from omnimarket.models.runner_group_exposure import (
     ModelGroupJob,
     ModelGroupWorkflowFile,
     ModelRunnerGroupFacts,
+)
+from omnimarket.nodes.node_runner_group_exposure_effect.adapters.write_node_group_reader import (
+    GroupReadError,
+    WriteNodeGroupReader,
 )
 from omnimarket.nodes.node_runner_group_exposure_effect.models.model_exposure_probe import (
     ModelGroupRead,
@@ -58,11 +63,21 @@ class GithubGroupSource:
         http_get: ProtocolHttpGet,
         environ: Mapping[str, str],
         token_mint: ProtocolTokenMint | None = None,
+        group_reader: WriteNodeGroupReader | None = None,
+        correlation_id: UUID | None = None,
     ) -> None:
         if settings.token_mint is not None and token_mint is None:
             raise ValueError(
                 "the overlay declares token_mint, but no token minter was injected"
             )
+        if settings.group_read is not None and (
+            group_reader is None or correlation_id is None
+        ):
+            raise ValueError(
+                "the overlay declares group_read, but no group reader was injected"
+            )
+        self._group_reader = group_reader
+        self._correlation_id = correlation_id
         self._s = settings
         self._http = http_get
         self._environ = environ
@@ -233,7 +248,32 @@ class GithubGroupSource:
             group=group, files=files, jobs=jobs, read_at=now, calls=self._calls
         )
 
+    def _group_via_write_node(
+        self, reader: WriteNodeGroupReader, correlation_id: UUID
+    ) -> tuple[ModelRunnerGroupFacts, tuple[str, ...]]:
+        """The group's settings and repositories from the write node over the bus.
+
+        One bus call counts as one call of the budget. No organization call is made with this
+        source's own token, and no token is minted for it.
+        """
+        if self._calls >= self._s.max_calls:
+            raise _StopError(EnumExposureReadFailure.BUDGET_EXHAUSTED)
+        self._calls += 1
+        try:
+            facts = reader.read(
+                org=self._s.org,
+                group_id=self._s.group_id,
+                correlation_id=correlation_id,
+            )
+        except GroupReadError as error:
+            if error.failure is EnumExposureReadFailure.ORG_READ_DENIED:
+                self._missing_permission = self._s.org_read_permission
+            raise _StopError(error.failure) from error
+        return facts, facts.repositories
+
     def _group(self) -> tuple[ModelRunnerGroupFacts, tuple[str, ...]]:
+        if self._group_reader is not None and self._correlation_id is not None:
+            return self._group_via_write_node(self._group_reader, self._correlation_id)
         base = f"/orgs/{self._s.org}/actions/runner-groups/{self._s.group_id}"
         meta = self._get(base, denied_is_org=True)
         listing = self._get(f"{base}/repositories", denied_is_org=True)
