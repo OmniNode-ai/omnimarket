@@ -1,0 +1,59 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-23141
+title: "The claude plugin's topic enum import is removed from market, and topic names are read from contracts"
+summary: 'node_dependency_health_sweep no longer imports omniclaude.hooks.topics.TopicBase (an optional, INFO-only cross-check); topic names come from node contracts alone; a scan test over the market source holds the import out'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn23141-ac1
+    statement: 'no market source imports the claude plugin topic enum'
+    acceptance:
+      - id: AC1
+        statement: 'AC1: the claude plugin source holds no import of the market topic enum and reads topic names from its contract or overlay -- falsifier: uv run pytest src/omnimarket/nodes/node_network_graph_compute -q -k plugin_topic_enum_import'
+  - id: req-omn23141-ac2
+    statement: 'the topic-using paths behave the same on the recorded cases'
+    acceptance:
+      - id: AC2
+        statement: 'AC2: the plugin''s topic-using paths behave the same on the recorded cases -- falsifier: uv run pytest plugins/onex/tests -q -k topic_names_from_contract'
+evidence_requirements:
+  - kind: "tests"
+    description: "The scan test, the topology parser tests including the topic-names-from-contract case, and the node's neighbouring tests"
+    command: "uv run --frozen pytest src/omnimarket/nodes/node_network_graph_compute tests/unit/nodes/node_network_graph_compute tests/nodes/test_dep_health_contract_topology.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-001"
+    description: 'AC1: a syntax-tree scan over every market source file finds no import of omniclaude.hooks.topics; the scan reads RED on each import spelling and on the pre-change contract_topology.py'
+    source: "manual"
+    binds_ac: [AC1]
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest src/omnimarket/nodes/node_network_graph_compute -q --no-cov --tb=line -k plugin_topic_enum_import'
+        cwd: "."
+  - id: "dod-002"
+    description: 'AC2: the matched pub/sub case builds the same pub and sub edges with the plugin topic module replaced by one that raises on any read (the market sweep owns the topology paths; the ticket path plugins/onex/tests holds no such test in this repository)'
+    source: "manual"
+    binds_ac: [AC2]
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest tests/nodes/test_dep_health_contract_topology.py -q --no-cov --tb=line -k topic_names_from_contract'
+        cwd: "."
+  - id: "dod-omn23141-integration-proof"
+    description: "The pushed head ran the scan test, the topology parser tests and the node's neighbouring tests on a lab host and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23141 -- uv run --frozen pytest src/omnimarket/nodes/node_network_graph_compute tests/unit/nodes/node_network_graph_compute tests/nodes/test_dep_health_contract_topology.py -q --no-cov
+        cwd: "."
+  - id: "dod-omn23141-deploy-no-plugin-topic-import"
+    description: "Read the dependency health sweep topology source at the checked-out revision and require that it holds no import of the claude plugin topic enum. This hosted-runner probe fails when the import returns."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_dependency_health_sweep/engine/contract_topology.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "No enum owned by" > /dev/null'
+        cwd: "."
