@@ -64,9 +64,16 @@ handler_routing:
       event_model:
         name: ModelLaneTraceRequest
         module: omnimarket.nodes.node_hook_lane_trace_compute.models.model_lane_trace_request
-runtime_profiles: [main]
+runtime_dispatch:
+  addressable: false
+  invocation_mode: local
+  reason: Run from the command line (python -m omnimarket.nodes.node_hook_lane_trace_compute); no bus topic reaches it.
+  external_trigger: the command line, with the query rows piped in
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
 descriptor:
-  runtime_profiles: [main]
+  runtime_profiles: []
   node_archetype: compute
   purity: pure
   idempotent: true
@@ -74,7 +81,7 @@ descriptor:
 replay:
   deterministic: true
 metadata:
-  transport_type: inmemory
+  transport_type: local
   description: "One lane's completed calls with their full stored output and a typed label."
   author: "OmniNode Team"
   license: "MIT"

@@ -11,6 +11,7 @@ import json
 import shutil
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Literal
 
 import pytest
 import yaml
@@ -74,9 +75,9 @@ def bash_out(stdout: str, stderr: str = "") -> str:
 
 def row(
     n: int,
-    hook: str = "PostToolUse",
+    hook: Literal["PostToolUse", "PostToolUseFailure"] = "PostToolUse",
     exit_code: int | None = 0,
-    kind: str = "tool_response",
+    kind: Literal["tool_response", "tool_error"] = "tool_response",
     out: str | None = None,
     tool: str = "Bash",
 ) -> ModelLaneTraceRow:
@@ -85,10 +86,10 @@ def row(
         session_id="sess-aaaaaaaa",
         tool_use_id=f"toolu_{n:04d}abcdefgh",
         tool_name=tool,
-        hook_event_name=hook,  # type: ignore[arg-type]
+        hook_event_name=hook,
         exit_code=exit_code,
         lane=LANE,
-        content_kind=kind if out is not None else None,  # type: ignore[arg-type]
+        content_kind=kind if out is not None else None,
         output=out,
     )
 
