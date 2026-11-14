@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import Protocol
 
 from omnimarket.events.pr_landing_github.enum_pr_landing_github_failure_reason import (
     EnumPrLandingGithubFailureReason as Reason,
@@ -16,17 +16,32 @@ from omnimarket.events.pr_landing_github.enum_pr_landing_github_operation import
     EnumPrLandingGithubOperation,
 )
 
-if TYPE_CHECKING:
-    from omnimarket.events.pr_landing_github.model_pr_landing_github_failed import (
-        ModelPrLandingGithubFailed,
-    )
+
+class _FailureFields(Protocol):
+    """The fields of ModelPrLandingGithubFailed the rules read."""
+
+    @property
+    def operation(self) -> EnumPrLandingGithubOperation: ...
+    @property
+    def mode(self) -> EnumPrLandingGithubMode: ...
+    @property
+    def reason(self) -> Reason: ...
+    @property
+    def head_sha(self) -> str | None: ...
+    @property
+    def http_status(self) -> int | None: ...
+    @property
+    def pr_state(self) -> object | None: ...
+    @property
+    def quota(self) -> object | None: ...
+
 
 NO_REQUEST_REASONS = frozenset(
     {Reason.LANDING_IDENTITY_NOT_APP, Reason.MINTED_PERMISSIONS_INSUFFICIENT}
 )
 
 
-def check_failure_reason_rules(f: ModelPrLandingGithubFailed) -> None:
+def check_failure_reason_rules(f: _FailureFields) -> None:
     """Raise ValueError when a failure's fields do not fit its reason."""
     if f.mode is EnumPrLandingGithubMode.DRY_RUN:
         raise ValueError("dry_run records requests and calls nothing; it cannot fail")

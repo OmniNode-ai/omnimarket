@@ -39,12 +39,10 @@ class ProtocolLandingMutationTransportSource(Protocol):
     @property
     def identity(self) -> str:
         """A credential label for the quota reading, never a token value."""
-        ...
 
     async def transport_for(self, repository: str) -> ProtocolPrLandingGithubTransport:
         """Return a transport for ``OWNER/NAME`` or raise
         :class:`LandingIdentityRefusedError` before any request is made."""
-        ...
 
 
 __all__ = ["LandingIdentityRefusedError", "ProtocolLandingMutationTransportSource"]
