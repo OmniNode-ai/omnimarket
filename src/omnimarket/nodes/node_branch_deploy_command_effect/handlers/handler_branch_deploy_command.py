@@ -27,7 +27,7 @@ from typing import Any
 
 import yaml
 
-from omnimarket.events.deploy_agent_key_check import (
+from omnimarket.models.model_deploy_agent_key_check import (
     key_check_value,
 )
 from omnimarket.nodes.node_branch_deploy_command_effect.adapters.adapter_agent_key_check_node import (

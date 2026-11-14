@@ -13,7 +13,7 @@ import json
 
 import pytest
 
-from omnimarket.events.deploy_agent_key_check import (
+from omnimarket.models.model_deploy_agent_key_check import (
     key_check_value,
 )
 from omnimarket.nodes.node_deploy_agent_key_check_effect.handlers.handler_deploy_agent_key_check import (

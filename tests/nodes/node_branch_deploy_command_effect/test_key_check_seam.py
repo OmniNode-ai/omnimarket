@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from omnimarket.events.deploy_agent_key_check import (
+from omnimarket.models.model_deploy_agent_key_check import (
     KEY_CHECK_LABEL,
     key_check_value,
 )

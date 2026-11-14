@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from uuid import uuid4
 
-from omnimarket.events.deploy_agent_key_check import (
+from omnimarket.models.model_deploy_agent_key_check import (
     ModelDeployAgentKeyCheckRequest,
 )
 from omnimarket.nodes.node_branch_deploy_command_effect.models.model_agent_key_check_reading import (
