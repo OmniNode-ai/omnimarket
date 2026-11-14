@@ -691,6 +691,7 @@ node_environment_health_scanner = "omnimarket.nodes.node_environment_health_scan
 node_epic_team_orchestrator = "omnimarket.nodes.node_epic_team_orchestrator"
 node_error_class_normalize_compute = "omnimarket.nodes.node_error_class_normalize_compute"
 node_eval_corpus_reader_effect = "omnimarket.nodes.node_eval_corpus_reader_effect"
+node_eval_tracking_schedule_compute = "omnimarket.nodes.node_eval_tracking_schedule_compute"
 node_event_chain_generator_compute = "omnimarket.nodes.node_event_chain_generator_compute"
 node_event_emit_effect = "omnimarket.nodes.node_event_emit_effect"
 node_evidence_bundle = "omnimarket.nodes.node_evidence_bundle"
