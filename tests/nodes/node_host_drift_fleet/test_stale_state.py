@@ -2,10 +2,13 @@
 # SPDX-License-Identifier: MIT
 """A converged host stops reading as drifted; a failed read is not served as current."""
 
+import json
 from datetime import timedelta
 from typing import cast
 
 import pytest
+from omnibase_infra.event_bus.models.model_event_headers import ModelEventHeaders
+from omnibase_infra.event_bus.models.model_event_message import ModelEventMessage
 
 from omnimarket.nodes.node_host_drift_fleet import HandlerHostDriftFleet
 from omnimarket.nodes.node_host_drift_fleet.handlers.fold_host_drift_view import (
@@ -14,8 +17,10 @@ from omnimarket.nodes.node_host_drift_fleet.handlers.fold_host_drift_view import
 from omnimarket.nodes.node_host_drift_fleet.models import (
     EnumHostDriftVerdict,
     ModelHostDriftFleetRequest,
+    ModelHostDriftHeartbeatEvent,
     ModelHostDriftOpenItem,
 )
+from omnimarket.nodes.node_host_drift_fleet.node import load_topics
 from omnimarket.nodes.node_host_drift_fleet.protocols import ProtocolHostDriftFleetBus
 
 from .helpers import NOW, MemoryStore, heartbeat, overlay, resolved
@@ -113,3 +118,75 @@ async def test_failed_read_keeps_the_previous_view_and_says_so() -> None:
     assert "broker unreachable" in result.view.status_line
     assert store.view == earlier
     assert store.saves == 0
+
+
+class PartialFaultBus:
+    """Delivers one valid heartbeat on the first topic, then fails on the second."""
+
+    def __init__(self) -> None:
+        self._delivered: ModelHostDriftHeartbeatEvent | None = None
+        self._first_topic = load_topics()[0]
+
+    async def subscribe(
+        self,
+        topic: str,
+        on_message: object,
+        *,
+        group_id: str,
+        auto_offset_reset: str,
+    ) -> object:
+        if topic == self._first_topic:
+            beat = heartbeat("host-b", checked_at=NOW + timedelta(seconds=5))
+            self._delivered = beat
+            await on_message(
+                ModelEventMessage(
+                    topic=topic,
+                    value=json.dumps(
+                        {"payload": beat.model_dump(mode="json")}
+                    ).encode(),
+                    headers=ModelEventHeaders(
+                        source="test", event_type="test", timestamp=NOW
+                    ),
+                )
+            )
+
+            async def stop() -> None: ...
+
+            return stop
+        raise ConnectionError("broker unreachable")
+
+    async def subscribe_ungrouped(self, *args: object, **kwargs: object) -> object:
+        raise ConnectionError("broker unreachable")
+
+
+async def test_partial_failed_read_keeps_the_folded_view_and_says_so() -> None:
+    earlier = fold_view(
+        previous=None,
+        events=[heartbeat("host-a")],
+        overlay=overlay(),
+        now=NOW,
+        consumer_group="g",
+    )
+    store = MemoryStore(earlier)
+    bus = PartialFaultBus()
+    handler = HandlerHostDriftFleet(
+        bus=cast(ProtocolHostDriftFleetBus, bus), state_store=store
+    )
+    result = await handler.handle(
+        ModelHostDriftFleetRequest(
+            host="host-a",
+            previous=None,
+            now=NOW + timedelta(hours=1),
+            overlay=overlay(),
+        )
+    )
+    assert not result.read_ok
+    host_b = next(h for h in result.view.hosts if h.host == "host-b")
+    assert (
+        host_b.last_heartbeat_at
+        == heartbeat("host-b", checked_at=NOW + timedelta(seconds=5)).checked_at
+    )
+    assert store.view == result.view
+    assert store.saves == 1
+    assert result.view.status_line.startswith("host-drift: PARTIAL read failed")
+    assert "ConnectionError" in result.view.status_line
