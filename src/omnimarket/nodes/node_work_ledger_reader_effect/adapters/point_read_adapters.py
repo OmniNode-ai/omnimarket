@@ -74,6 +74,8 @@ def _request(query: ModelPointQuery, correlation_id: str) -> dict[str, object]:
         request["cursor"] = query.cursor
     if query.lines_only:
         request["lines_only"] = True
+    if query.claims_since is not None:
+        request["claims_since"] = _stamp(query.claims_since)
     return request
 
 

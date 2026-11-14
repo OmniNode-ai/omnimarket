@@ -24,11 +24,12 @@ advertisements:
   route: command
   argv: [onex, lab-work, hosts, --json, --bus, kafka, --bus-lane, dev]
   timeout_seconds: 40
-ledger_read:
-  route: command
+# the open lanes are one open-claims point query (the ledger node answers it from its state table, with each claim's host); the rows
+# read, ledger_read (route, command_env, timeout_seconds, row_limit), is the other source and is over the node's answer bound on a busy ledger
+open_claims_read:
+  kind: command
   command_env: EXAMPLE_LEDGER_READ_COMMAND
   timeout_seconds: 30
-  row_limit: 20000
 accounts:
   local_argv: [$OMNIBASE_PATH/.onex-dispatch-venv/bin/python, -m, omnimarket.nodes.node_claude_token_pool_effect, status, --json]
   remote_argv:

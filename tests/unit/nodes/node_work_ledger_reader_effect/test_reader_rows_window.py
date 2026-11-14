@@ -42,6 +42,7 @@ from omnimarket.nodes.node_work_ledger_reader_effect.models import (
     EnumReaderStatus,
     ModelPointAnswer,
     ModelPointQuery,
+    ModelReaderOverlay,
     ModelReaderRequest,
 )
 from omnimarket.nodes.node_work_ledger_reader_effect.overlay import load_overlay
@@ -66,7 +67,7 @@ TOPICS = {
 }
 
 
-def overlay(**fields: object):
+def overlay(**fields: object) -> ModelReaderOverlay:
     base = load_overlay({"ONEX_LEDGER_READER_OVERLAY": str(EXAMPLE)})
     return base.model_copy(update=fields)
 

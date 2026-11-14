@@ -1,0 +1,102 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_merged_change_reading_effect
+lifecycle: experimental
+node_type: EFFECT_GENERIC
+runtime_profiles: []
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Reads a list of merged pull requests against the running dev system and answers per change: in the running
+  build or not, node loaded, last run time, last result and the one missing step. The sources are reached through
+  ProtocolMergedChangeSources, resolved from the container: the change to node map (an overlay document), the build
+  provenance of the runtime host (the merged-and-running count's reader), the runtime container's log over ssh and the
+  last run of each host unit. It calls node_merged_change_reading_compute with them and returns its record. It writes
+  nothing. A source it cannot read is named unread and reads UNREAD, never NOT_RUNNING.
+input_model:
+  name: ModelMcrRunRequest
+  module: omnimarket.nodes.node_merged_change_reading_effect.models.model_merged_change_reading_run
+  description: The merged changes (repository and number), an optional clock override and an optional overlay config.
+output_model:
+  name: ModelMcrRunResult
+  module: omnimarket.nodes.node_merged_change_reading_effect.models.model_merged_change_reading_run
+  description: The readings and how many runners and unresolved merge shas the sources reported.
+handler:
+  module: omnimarket.nodes.node_merged_change_reading_effect.handlers.handler_merged_change_reading_effect
+  class: HandlerMergedChangeReadingEffect
+  input_model: omnimarket.nodes.node_merged_change_reading_effect.models.model_merged_change_reading_run.ModelMcrRunRequest
+  output_model: omnimarket.nodes.node_merged_change_reading_effect.models.model_merged_change_reading_run.ModelMcrRunResult
+dependencies:
+  - name: omnimarket.nodes.node_merged_change_reading_compute
+    dependency_type: internal
+    description: "computes the per-change reading from the facts this node reads."
+    required: true
+  - name: ProtocolMergedChangeSources
+    dependency_type: protocol
+    description: "the reading's sources (runner overlay, build provenance, runtime log, unit state), resolved from the container."
+    required: true
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_merged_change_reading_effect.handlers.handler_merged_change_reading_effect:HandlerMergedChangeReadingEffect
+  handlers:
+    - operation: handle
+      handler:
+        name: HandlerMergedChangeReadingEffect
+        module: omnimarket.nodes.node_merged_change_reading_effect.handlers.handler_merged_change_reading_effect
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: python -m omnimarket.nodes.node_merged_change_reading_effect --change <repo>#<number> ..., from a lab host with an ssh path to the runtime host, by hand or from the hourly proving pass.
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 120000
+metadata:
+  transport_type: local
+  description: Read merged changes against the running dev system and call the compute node.
+  author: OmniNode Team
+  created: '2026-11-14'
+# The real-backend profile. Overlay ids resolve through ONEX_SKILL_OVERLAY_ROOTS or the named file variable: the
+# change to node map with the lab hosts units run on, the overlay store checkouts and the manifest address (merged_change_runners), and the runtime
+# host's container identities (runtime_host_reads, shared with the merged-and-running count). The in-memory profile
+# (sources/source_in_memory.py) is the default of every test.
+runtime:
+  home_env: OMNI_HOME
+  runners_overlay:
+    overlay_id: merged_change_runners
+    overlay_file_env: MERGED_CHANGE_RUNNERS_OVERLAY_PATH
+  deployed_provenance:
+    overlay_id: runtime_host_reads
+    overlay_file_env: RUNTIME_HOST_READS_OVERLAY_PATH
+    kind: deployed
+    source_template: "build provenance {repo}@{ref}"
+    git_timeout_seconds: 60
+  # How the runtime's log and systemd show a node loaded, a consumer joined and an event published. The three
+  # patterns were read from the dev runtime's log on 2026-11-14 (omnimarket 0.4.321).
+  log:
+    filter_regex: 'Discovered contract: |Setting newly assigned partitions|Published output event to |Runtime health check: '
+    time_format: '%Y-%m-%d %H:%M:%S'
+    loaded_pattern: '^(?P<ts>\d{4}-\d\d-\d\d \d\d:\d\d:\d\d) \[\w+\] omnibase_infra\.runtime\.auto_wiring\.discovery: Discovered contract: (?P<node>\S+) '
+    subscribed_pattern: '^(?P<ts>\d{4}-\d\d-\d\d \d\d:\d\d:\d\d) \[\w+\] aiokafka\.consumer\.group_coordinator: Setting newly assigned partitions \{TopicPartition\(topic=''(?P<topic>[^'']+)''.*for group local\.omnimarket\.(?P<node>[a-z0-9_]+)\.consume'
+    published_pattern: '^(?P<ts>\d{4}-\d\d-\d\d \d\d:\d\d:\d\d) \[\w+\] \S+: Published output event to (?P<topic>\S+) '
+    health_pattern: '^(?P<ts>\d{4}-\d\d-\d\d \d\d:\d\d:\d\d) \[\w+\] \S+: Runtime health check: status=(?P<status>\w+) '
+    healthy_status: HEALTHY
+    started_at_template: '%Y-%m-%dT%H:%M:%S'
+    docker_timeout_seconds: 120
+    ssh_attempts: 3
+    manifest_contracts_key: contracts
+    manifest_name_keys: [name, entry_point_name]
+    manifest_fetch_options: -fsS --max-time 30
+    unit_show_options: --user --timestamp=utc
+    unit_show_properties: ExecMainExitTimestamp,ExecMainStatus,Result
+    unit_time_format: '%a %Y-%m-%d %H:%M:%S UTC'
+    unit_result_template: 'exit {ExecMainStatus} {Result}'
+    unit_ok_result: success
+    merge_branches: [dev, main]
+    merge_subject_pattern: '\(#{number}\)$'
+    git_timeout_seconds: 30
+    store_source: overlay store checkout
+# The default rule config is the compute node's own contract block (merged_change_reading); an overlay supplies another.

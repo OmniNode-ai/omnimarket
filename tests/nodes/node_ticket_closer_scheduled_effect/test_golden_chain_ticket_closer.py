@@ -205,22 +205,24 @@ def handler(
     )
 
 
-def run_one(
+async def run_one(
     repo: Repo,
     cand: ModelCloserCandidate,
     reading: ModelCloserVerifyReading,
     writer: Writer | None = None,
 ) -> tuple[ModelTicketCloserResult, Writer]:
     out = writer or Writer()
-    result = handler(Source([cand]), Verifier({cand.ticket_id: reading}), out).handle(
-        tick(T0)
-    )
+    result = await handler(
+        Source([cand]), Verifier({cand.ticket_id: reading}), out
+    ).handle(tick(T0))
     assert result is not None
     return result, out
 
 
-def test_golden_a_proven_ticket_is_moved_to_done_with_its_evidence(repo: Repo) -> None:
-    result, writer = run_one(repo, candidate(repo), passing(repo))
+async def test_golden_a_proven_ticket_is_moved_to_done_with_its_evidence(
+    repo: Repo,
+) -> None:
+    result, writer = await run_one(repo, candidate(repo), passing(repo))
     assert result.candidates_read is True
     assert result.examined == 1
     assert result.flipped == 1
@@ -268,13 +270,13 @@ def test_golden_a_proven_ticket_is_moved_to_done_with_its_evidence(repo: Repo) -
         ),
     ],
 )
-def test_control_each_missing_conjunct_holds_the_ticket(
+async def test_control_each_missing_conjunct_holds_the_ticket(
     repo: Repo, name: str, cand: dict[str, Any], reading: dict[str, Any]
 ) -> None:
     over = {
         key: (repo.root if value == "ROOT" else value) for key, value in reading.items()
     }
-    result, writer = run_one(
+    result, writer = await run_one(
         repo,
         candidate(repo, **cand),
         passing(repo, **over),
@@ -285,12 +287,14 @@ def test_control_each_missing_conjunct_holds_the_ticket(
     assert writer.calls == [], name
 
 
-def test_control_no_runtime_proof_says_merged_not_proven_running(repo: Repo) -> None:
-    result, _ = run_one(repo, candidate(repo, with_proof=False), passing(repo))
+async def test_control_no_runtime_proof_says_merged_not_proven_running(
+    repo: Repo,
+) -> None:
+    result, _ = await run_one(repo, candidate(repo, with_proof=False), passing(repo))
     assert "merged, not yet proven running" in result.outcomes[0].reason
 
 
-def test_control_a_loosened_rule_flips_the_unproven_ticket(
+async def test_control_a_loosened_rule_flips_the_unproven_ticket(
     repo: Repo, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The injected break: with the predicate loosened to always flip, the unproven ticket is written.
@@ -309,7 +313,9 @@ def test_control_a_loosened_rule_flips_the_unproven_ticket(
             unbound_criteria=[],
         ),
     )
-    result, writer = run_one(repo, candidate(repo, with_proof=False), passing(repo))
+    result, writer = await run_one(
+        repo, candidate(repo, with_proof=False), passing(repo)
+    )
     assert result.flipped == 1
     assert len(writer.calls) == 1
 
@@ -322,23 +328,25 @@ def test_the_rule_is_the_existing_predicate() -> None:
     assert "BLOCK_" not in text
 
 
-def test_error_a_verifier_that_cannot_run_judges_nothing(repo: Repo) -> None:
+async def test_error_a_verifier_that_cannot_run_judges_nothing(repo: Repo) -> None:
     reading = ModelCloserVerifyReading(
         ticket_id="OMN-1",
         ran=False,
         error_code="VERIFY_COULD_NOT_RUN",
         error_detail="contract unresolved",
     )
-    result, writer = run_one(repo, candidate(repo), reading)
+    result, writer = await run_one(repo, candidate(repo), reading)
     assert result.flipped == 0
     assert result.outcomes[0].action is EnumCloserAction.VERIFY_NOT_RUN
     assert "VERIFY_COULD_NOT_RUN" in result.outcomes[0].reason
     assert writer.calls == []
 
 
-def test_error_a_verifier_that_raises_is_reported_not_swallowed(repo: Repo) -> None:
+async def test_error_a_verifier_that_raises_is_reported_not_swallowed(
+    repo: Repo,
+) -> None:
     out = Writer()
-    result = handler(
+    result = await handler(
         Source([candidate(repo)]), Verifier({}, raises=RuntimeError("boom")), out
     ).handle(tick(T0))
     assert result is not None
@@ -347,49 +355,51 @@ def test_error_a_verifier_that_raises_is_reported_not_swallowed(repo: Repo) -> N
     assert out.calls == []
 
 
-def test_error_a_refused_write_leaves_the_ticket_open_and_says_why(repo: Repo) -> None:
+async def test_error_a_refused_write_leaves_the_ticket_open_and_says_why(
+    repo: Repo,
+) -> None:
     writer = Writer(receipt=ModelCloserWriteReceipt(ok=False, reason="guard refused"))
-    result, _ = run_one(repo, candidate(repo), passing(repo), writer)
+    result, _ = await run_one(repo, candidate(repo), passing(repo), writer)
     assert result.flipped == 0
     assert result.outcomes[0].action is EnumCloserAction.WRITE_REFUSED
     assert result.outcomes[0].reason == "guard refused"
     assert len(writer.calls) == 1
 
 
-def test_error_a_writer_that_raises_is_reported_not_swallowed(repo: Repo) -> None:
+async def test_error_a_writer_that_raises_is_reported_not_swallowed(repo: Repo) -> None:
     writer = Writer(raises=TimeoutError("no terminal"))
-    result, _ = run_one(repo, candidate(repo), passing(repo), writer)
+    result, _ = await run_one(repo, candidate(repo), passing(repo), writer)
     assert result.flipped == 0
     assert result.outcomes[0].action is EnumCloserAction.WRITE_REFUSED
     assert "TimeoutError" in result.outcomes[0].reason
 
 
-def test_error_an_unread_source_is_unread_never_an_empty_success() -> None:
-    result = handler(Source(None), Verifier({}), Writer()).handle(tick(T0))
+async def test_error_an_unread_source_is_unread_never_an_empty_success() -> None:
+    result = await handler(Source(None), Verifier({}), Writer()).handle(tick(T0))
     assert result is not None
     assert result.candidates_read is False
     assert result.examined == 0
     assert result.outcomes == ()
 
 
-def test_the_schedule_gate_runs_once_per_interval(repo: Repo) -> None:
+async def test_the_schedule_gate_runs_once_per_interval(repo: Repo) -> None:
     source = Source([candidate(repo)])
     h = handler(source, Verifier({"OMN-1": passing(repo)}), Writer())
-    assert h.handle(tick(T0)) is not None
-    assert h.handle(tick(T0 + timedelta(seconds=59))) is None
+    assert await h.handle(tick(T0)) is not None
+    assert await h.handle(tick(T0 + timedelta(seconds=59))) is None
     assert source.calls == 1
-    assert h.handle(tick(T0 + timedelta(seconds=60))) is not None
+    assert await h.handle(tick(T0 + timedelta(seconds=60))) is not None
     assert source.calls == 2
 
 
-def test_error_a_skipped_tick_does_not_move_the_last_run(repo: Repo) -> None:
+async def test_error_a_skipped_tick_does_not_move_the_last_run(repo: Repo) -> None:
     h = handler(Source([]), Verifier({}), Writer())
-    h.handle(tick(T0))
-    assert h.handle(tick(T0 + timedelta(seconds=30))) is None
-    assert h.handle(tick(T0 + timedelta(seconds=60))) is not None
+    await h.handle(tick(T0))
+    assert await h.handle(tick(T0 + timedelta(seconds=30))) is None
+    assert await h.handle(tick(T0 + timedelta(seconds=60))) is not None
 
 
-def test_error_a_missing_overlay_refuses_without_acting(repo: Repo) -> None:
+async def test_error_a_missing_overlay_refuses_without_acting(repo: Repo) -> None:
     source = Source([candidate(repo)])
     h = HandlerTicketCloserScheduled(
         source=source,
@@ -397,15 +407,15 @@ def test_error_a_missing_overlay_refuses_without_acting(repo: Repo) -> None:
         writer=Writer(),
         environ={},
     )
-    assert h.handle(tick(T0)) is None
+    assert await h.handle(tick(T0)) is None
     assert source.calls == 0
 
 
-def test_the_candidate_limit_is_the_overlays(repo: Repo) -> None:
+async def test_the_candidate_limit_is_the_overlays(repo: Repo) -> None:
     cands = [candidate(repo, ticket_id=f"OMN-{n}") for n in range(1, 6)]
     readings = {c.ticket_id: passing(repo, c.ticket_id) for c in cands}
     source = Source(cands)
-    result = handler(source, Verifier(readings), Writer()).handle(tick(T0))
+    result = await handler(source, Verifier(readings), Writer()).handle(tick(T0))
     assert result is not None
     assert source.limits == [3]
     assert result.examined == 3

@@ -642,8 +642,7 @@ class DelegatedCodeEditPorts:
             argv += ["--caller-lane", request.caller_lane]
         if request.ticket:
             argv += ["--ticket", request.ticket]
-        if request.traffic_class is not None:
-            argv += ["--traffic-class", request.traffic_class.value]
+        argv += ["--traffic-class", request.traffic_class.value]
         if request.source_surface:
             argv += ["--source-surface", request.source_surface]
         reply, retry_cause = self._delegate_attempt(argv)

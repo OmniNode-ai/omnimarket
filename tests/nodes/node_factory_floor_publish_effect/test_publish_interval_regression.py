@@ -8,6 +8,7 @@ import gzip
 import json
 import plistlib
 import subprocess
+import time
 from pathlib import Path
 from typing import Any
 
@@ -321,3 +322,31 @@ def test_shared_report_pages_publish_even_when_the_floor_refresh_fails(
     assert main([]) == 2
     assert calls == ["reports"]
     assert "recorded required refresh failure" in capsys.readouterr().err
+
+
+def test_refused_stages_are_served_with_the_seconds_they_took(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    served: list[dict[str, float]] = []
+
+    def refuse_access(*_args: Any, **_kwargs: Any) -> None:
+        time.sleep(0.05)
+        raise PublishRefusedError("recorded operator access refusal")
+
+    def refuse_publish(*_args: Any, **_kwargs: Any) -> None:
+        time.sleep(0.05)
+        raise PublishRefusedError("recorded floor publish refusal")
+
+    monkeypatch.setattr(
+        "omnimarket.nodes.node_factory_floor_publish_effect.runtime_factory_floor_publish.HandlerOperatorAccess.handle",
+        refuse_access,
+    )
+    monkeypatch.setattr(HandlerFactoryFloorPublish, "handle", refuse_publish)
+    monkeypatch.setattr(
+        HandlerFactoryFloorPublish,
+        "record_tick",
+        lambda _self, seconds: served.append(dict(seconds)),
+    )
+    assert main(["--skip-reports"]) == 2
+    assert served[0]["operator_access"] >= 0.05
+    assert served[0]["floor_publish"] >= 0.05

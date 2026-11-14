@@ -1,0 +1,83 @@
+schema_version: 1.0.0
+ticket_id: OMN-24177
+title: "Evals: the fixed coding test runs on a weekly schedule so accuracy over time has points"
+summary: First slice of the tracking cadence (plan task T13). It adds the window trigger node (node_eval_tracking_schedule_compute), its overlay-carried tracking record and cadence settings, and its formal model with a verdict. The trial driver's no-op on a run id it holds already exists and is exercised here. The revision-change and sample-mismatch void rules need the trial driver's stamps and the projection (tasks T6 and T4, not on the base), and the integrated reading needs the dev tab after the first window closes; both are left unbound below.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24177-window-trigger
+  statement: The weekly coding test is requested by a runtime-tick-driven trigger that gives one run per model per window on its own cadence, never early, and never makes up a missed window.
+  acceptance:
+  - id: AC1
+    statement: "AC1: one run per model per window, across a restart -- falsifier: a golden chain with two ticks in one window, and one with a restart after the send but before the record, each assert one run"
+  - id: AC2
+    statement: "AC2: each model runs on its own cadence, never early, and a missed window is not made up -- falsifier: on an injected clock a local model runs at days 0 and 7, not 6.9; GLM at days 0 and 28, not 7 or 27.9; a jump from day 1 to day 15 gives the local model one run"
+  - id: AC3
+    statement: "AC3: a model revision change mid-run gives no partial point and two tracking runs of one record run the same tasks -- falsifier: a fixture whose revision changes after half the tries closes void and draws no point; a run whose item task ids differ from the record's list reads void sample_mismatch"
+  - id: AC4
+    statement: "AC4: the window trigger's formal model shows one run per window across a crash between send and record -- falsifier: the model's verdict file, with a mutation config that drops the run-id no-op failing"
+  - id: AC5
+    statement: "AC5: integrated: on dev, after the first window closes, the Model tests tab draws the local model's first point -- falsifier: the served dev page's visible text read for that model and the run's date, beside the run-rate row"
+evidence_requirements:
+- kind: tests
+  description: The window trigger's cadence, record, overlay and golden chain tests and the formal model test pass at the pushed head.
+  command: uv run pytest tests/nodes/node_eval_tracking_schedule_compute tests/formal/test_eval_tracking_schedule_model.py -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24177-ac1
+  description: 'AC1: two ticks of one window name one run id and the trial driver starts one run; a restarted trigger after a lost send names the same request and the driver starts one run; a restarted driver over its recorded rows starts none more; the next window starts a second run (positive control).'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_eval_tracking_schedule_compute/test_golden_chain.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24177-ac2
+  description: 'AC2: on an injected clock a local model names window 0 until day 7 (6.9 included) and window 1 from day 7; the hosted model names window 0 through day 27.9 and window 1 from day 28; a jump from day 1 to day 15 names window 2 and never window 1; a tick before the epoch names nothing.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_eval_tracking_schedule_compute/test_cadence.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24177-ac4
+  description: 'AC4: the TLC model of the trigger passes its base config and each mutant fails its one invariant, including the mutant that drops the run-id no-op (M2, StartedOnce); the committed outputs, digests and verdict agree.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/formal/test_eval_tracking_schedule_model.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24177-ac3-hosted-proxy
+  description: 'hosted proxy for AC3, its scheduling half only: two tracking runs of one record carry the record''s own task list and digest, and a changed record names new run ids. The void rules (a revision change mid-run closes void and draws no point; a run whose item task ids differ from the record reads void sample_mismatch) need the trial driver''s stamps and the projection (plan tasks T6 and T4), which are not on the base; they are read by the unbound live item below.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_eval_tracking_schedule_compute/test_record.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24177-ac5-hosted-proxy
+  description: 'hosted proxy for AC5: the trigger node reads its overlay on the first tick and requests the first window of each tracked model from the overlay''s record; the served dev page read after the first window closes is the unbound live item below.'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_eval_tracking_schedule_compute/test_overlay.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24177-integration-proof-live-reading
+  description: 'Run this pull request''s own tests on a lab host at the pushed head through the lab work bus. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. It does not read AC3''s void rules or AC5''s dev page: those need plan tasks T4, T5 and T6 on dev and the first closed window, and are read from the closed event, the projection row and the served page then.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24177 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_eval_tracking_schedule_compute tests/formal/test_eval_tracking_schedule_model.py -q --no-cov -n 0
+    cwd: .

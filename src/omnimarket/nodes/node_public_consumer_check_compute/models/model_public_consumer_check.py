@@ -29,6 +29,8 @@ class EnumEntityDisposition(StrEnum):
     KEPT_SEARCH_UNREAD = "kept_search_unread"
     #: A declared rare path that names its drill.
     KEPT_RARE_PATH = "kept_rare_path"
+    #: A public scope names the archived repository the batch comes from, and the mention has no recorded resolution.
+    KEPT_ARCHIVED_REPOSITORY_MENTION = "kept_archived_repository_mention"
 
 
 class EnumBatchDecision(StrEnum):
@@ -90,6 +92,15 @@ class ModelPublicConsumerCheckRequest(BaseModel):
     repository: str = Field(min_length=1)
     entities: tuple[ModelEntity, ...] = Field(min_length=1)
     resolutions: tuple[ModelConsumerResolution, ...] = ()
+    #: The names the batch's archived repository is mentioned by (empty when the repository is not archived). A public
+    #: mention of any of them keeps every entity of the batch until the mention has a recorded resolution.
+    archived_repository_names: tuple[str, ...] = ()
+
+    @model_validator(mode="after")
+    def _archived_names_are_not_blank(self) -> ModelPublicConsumerCheckRequest:
+        if any(not name.strip() for name in self.archived_repository_names):
+            raise ValueError("an archived repository name is blank")
+        return self
 
     @model_validator(mode="after")
     def _entities_are_distinct(self) -> ModelPublicConsumerCheckRequest:
@@ -120,6 +131,19 @@ class ModelConsumerHit(BaseModel):
     matched_reference: str
     #: A hit in the entity's own repository is the graph stage's business, not a public consumer.
     own_repository: bool
+    resolved: bool
+    resolution_ref: str = ""
+
+
+class ModelArchivedMention(BaseModel):
+    """A public mention of the batch's archived repository, with the scope it was found in."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    scope: ModelSearchScope
+    locator: str
+    line: int
+    matched_name: str
     resolved: bool
     resolution_ref: str = ""
 
@@ -163,6 +187,9 @@ class ModelPublicConsumerCheckResult(BaseModel):
     decision: EnumBatchDecision
     kept_entity_ids: tuple[str, ...]
     verdicts: tuple[ModelEntityVerdict, ...]
+    #: Every public mention of the batch's archived repository that was read, and why the batch keeps its entities.
+    archived_mentions: tuple[ModelArchivedMention, ...] = ()
+    reasons: tuple[str, ...] = ()
 
 
 class ModelPublicConsumerCheckFailed(BaseModel):

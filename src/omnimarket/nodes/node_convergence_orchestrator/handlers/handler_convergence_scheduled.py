@@ -12,6 +12,7 @@ with one typed result per host, and the schedule run event the schedule verdict 
 
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
 import uuid
 from collections.abc import Callable, Mapping
@@ -79,7 +80,7 @@ class HandlerConvergenceScheduled:
             events=events,
         )
 
-    def handle(self, request: ModelRuntimeTick) -> ModelHandlerOutput[None]:
+    async def handle(self, request: ModelRuntimeTick) -> ModelHandlerOutput[None]:
         correlation_id = uuid.uuid5(
             uuid.NAMESPACE_URL, f"omnimarket:convergence-tick:{request.tick_id}"
         )
@@ -99,7 +100,10 @@ class HandlerConvergenceScheduled:
         self._gate.mark(now)
 
         sender = self._sender if self._sender is not None else build_sender(overlay)
-        hosts = DispatchConvergenceUnits(overlay, sender).dispatch()
+        # sender.send blocks until the host's receipt; the runtime calls handle on its loop, so run the dispatch off it.
+        hosts = await asyncio.to_thread(
+            DispatchConvergenceUnits(overlay, sender).dispatch
+        )
         outcome = run_outcome(hosts)
         finished_at = self._clock()
         run = ModelConvergenceRunCompleted(

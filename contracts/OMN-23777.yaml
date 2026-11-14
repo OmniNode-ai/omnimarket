@@ -1,0 +1,63 @@
+schema_version: 1.0.0
+ticket_id: OMN-23777
+title: The landing GitHub effect arms and enqueues with the writer App's token and refuses a personal token
+summary: The landing GitHub effect sent an arm, enqueue, update-branch or disarm with the contract's GITHUB_TOKEN, which a person's login can hold. It now mints the writer App's repository-scoped installation token (pull request write and contents write) through the existing credential node's minter and sends those four operations with it. With no App token to be had it refuses landing_identity_not_app, and with a minted token that lacks either write, or is not narrowed to the one repository, it refuses minted_permissions_insufficient; both refusals come before any request. Reads and re-runs keep GITHUB_TOKEN.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23777-app-identity
+  statement: The landing GitHub effect sends an arm, enqueue, update-branch and disarm only with the writer App's repository-scoped installation token, and refuses before any request when it cannot have one.
+  acceptance:
+  - id: AC1
+    statement: "AC1: with only a personal token configured, an arm request is refused landing_identity_not_app and sends nothing -- falsifier: uv run pytest tests/unit/nodes/node_pr_landing_github_effect -q -k landing_identity_not_app"
+  - id: AC2
+    statement: "AC2: a minted token without pull request and contents write permission is refused before any request -- falsifier: uv run pytest tests/unit/nodes/node_pr_landing_github_effect -q -k minted_permissions_checked"
+- id: req-omn23777-integrated
+  statement: One pull request on the dev lane is armed by the effect from the merged revision and GitHub shows the App as the merger.
+  acceptance:
+  - id: AC3
+    statement: "AC3: integrated: done only when running and observed where it runs: one pull request on the dev lane is armed by the effect from the merged revision and the merged pull request shows the App as the merger -- falsifier: the effect's completed event and the pull request's merger read back, the output pasted in the pull request"
+evidence_requirements:
+- kind: tests
+  description: The landing effect's unit tests pass at the pushed head, the two new refusals included.
+  command: uv run pytest tests/unit/nodes/node_pr_landing_github_effect -q -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23777-ac1
+  description: 'AC1: with the App credential unavailable and a personal token on the read transport, an arm, enqueue, update-branch and disarm each fail landing_identity_not_app and neither transport is sent a request; at the merge base the reason does not exist, so the check fails there.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_pr_landing_github_effect -q -p no:randomly --no-cov -k landing_identity_not_app
+    cwd: .
+- id: dod-omn23777-ac2
+  description: 'AC2: a minted grant missing pull request write, missing contents write, empty, or not narrowed to exactly the one repository fails minted_permissions_insufficient before any request on either transport.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_pr_landing_github_effect -q -p no:randomly --no-cov -k minted_permissions_checked
+    cwd: .
+- id: dod-omn23777-ac3
+  description: 'hosted proxy for AC3: an arm goes out on the minted App token and asks for exactly pull request write, contents write and metadata read; the reading on the dev lane after the merged revision runs (the effect completed event and the pull request merger) is posted as a pull request comment naming the head.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_pr_landing_github_effect -q -p no:randomly --no-cov -k arm_is_sent_with_the_minted_app_token
+    cwd: .
+- id: dod-omn23777-integration-proof
+  description: the landing effect's unit tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. The dev-lane arm of AC3 is read back after the merged revision runs.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23777 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_pr_landing_github_effect -q --no-cov -p no:randomly
