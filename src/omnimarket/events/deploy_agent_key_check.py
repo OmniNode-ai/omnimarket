@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Typed request and result models for node_deploy_agent_key_check_effect, and the check value both sides compute."""
+"""Typed request and result models for the deploy agent key check, and the check value both sides compute."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-#: The label of the key check value. The signer (node_branch_deploy_command_effect) imports ``key_check_value`` from
+#: The label of the key check value. The signer (node_branch_deploy_command_effect) and the node import ``key_check_value`` from
 #: here, so the node and the signer cannot compute different values; tests/nodes/node_deploy_agent_key_check_effect
 #: holds the golden vector.
 KEY_CHECK_LABEL: bytes = b"deploy-agent-key-check-v1"

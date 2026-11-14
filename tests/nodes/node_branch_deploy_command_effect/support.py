@@ -5,11 +5,17 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from uuid import uuid4
 
 import yaml
 
+from omnimarket.events.deploy_agent_key_check import (
+    key_check_value,
+)
+from omnimarket.nodes.node_branch_deploy_command_effect.models.model_agent_key_check_reading import (
+    ModelAgentKeyCheckReading,
+)
 from omnimarket.nodes.node_branch_deploy_command_effect.models.model_branch_deploy_command import (
     ModelBranchDeployCommandRequest,
 )
@@ -62,3 +68,26 @@ class FakeBus:
 class FailingBus:
     async def publish(self, topic: str, *, key: bytes, value: bytes) -> None:
         raise ConnectionError("bus down")
+
+
+class FakeKeyCheckReader:
+    """The key check port with a fixed reading; counts its reads."""
+
+    def __init__(
+        self, status: Literal["read", "refused"], key_check: str = "", detail: str = ""
+    ) -> None:
+        self.reading = ModelAgentKeyCheckReading(
+            status=status,
+            key_check=key_check,
+            detail=detail,
+        )
+        self.reads = 0
+
+    async def read(self) -> ModelAgentKeyCheckReading:
+        self.reads += 1
+        return self.reading
+
+
+def matching_reader() -> FakeKeyCheckReader:
+    """A reader whose agent holds the same key as the fixture signing key."""
+    return FakeKeyCheckReader("read", key_check_value(SIGNING_KEY))

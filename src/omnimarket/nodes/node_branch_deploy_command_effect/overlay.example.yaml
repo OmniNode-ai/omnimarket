@@ -5,3 +5,4 @@ hmac_secret_env: EXAMPLE_DEPLOY_AGENT_SIGNING_KEY
 scope: runtime
 build_source: workspace
 detail_max_chars: 4096
+check_agent_key: true

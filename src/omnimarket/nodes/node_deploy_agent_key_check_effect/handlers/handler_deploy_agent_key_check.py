@@ -12,7 +12,7 @@ from __future__ import annotations
 import os
 from collections.abc import Mapping
 
-from omnimarket.nodes.node_deploy_agent_key_check_effect.models.model_deploy_agent_key_check import (
+from omnimarket.events.deploy_agent_key_check import (
     ModelDeployAgentKeyCheckRequest,
     ModelDeployAgentKeyCheckResult,
     key_check_value,

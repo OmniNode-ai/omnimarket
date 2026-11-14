@@ -25,7 +25,7 @@ handler_routing:
   handlers:
     - event_model:
         name: ModelDeployAgentKeyCheckRequest
-        module: omnimarket.nodes.node_deploy_agent_key_check_effect.models.model_deploy_agent_key_check
+        module: omnimarket.events.deploy_agent_key_check
       handler:
         name: HandlerDeployAgentKeyCheck
         module: omnimarket.nodes.node_deploy_agent_key_check_effect.handlers.handler_deploy_agent_key_check
@@ -33,15 +33,15 @@ handler_routing:
 handler:
   module: omnimarket.nodes.node_deploy_agent_key_check_effect.handlers.handler_deploy_agent_key_check
   class: HandlerDeployAgentKeyCheck
-  input_model: omnimarket.nodes.node_deploy_agent_key_check_effect.models.model_deploy_agent_key_check.ModelDeployAgentKeyCheckRequest
+  input_model: omnimarket.events.deploy_agent_key_check.ModelDeployAgentKeyCheckRequest
 
 input_model:
   name: ModelDeployAgentKeyCheckRequest
-  module: omnimarket.nodes.node_deploy_agent_key_check_effect.models.model_deploy_agent_key_check
+  module: omnimarket.events.deploy_agent_key_check
   description: "The correlation id and who asked."
 output_model:
   name: ModelDeployAgentKeyCheckResult
-  module: omnimarket.nodes.node_deploy_agent_key_check_effect.models.model_deploy_agent_key_check
+  module: omnimarket.events.deploy_agent_key_check
   description: "The result: correlation id, status (served or refused), the key check value, and detail."
 
 descriptor:
