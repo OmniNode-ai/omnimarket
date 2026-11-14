@@ -34,6 +34,10 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run pytest tests/nodes/node_lab_fill_effect/test_lab_fill_send_cli.py -q --no-cov --tb=line
         cwd: .
+      - check_type: command
+        check_value: |
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_lab_fill_effect/__main__.py?ref=8d92f5b791180052ed2d315372eb052daffd826a" --jq .content | base64 -d | grep -q 'lab-fill send: step={_STEP}'
+        cwd: .
   - id: dod-omn23302-ac2
     description: AC2 reads the internal repository's main in its local clone, with a positive control that lab-fill.js is on that ref and that grep finds a word the file does hold, then reads that no line of lab-fill.js holds laneTask. The clone is on the lab and launching hosts only, so only the local Done gate runs this check. This pull request does not change lab-fill.js.
     source: manual
