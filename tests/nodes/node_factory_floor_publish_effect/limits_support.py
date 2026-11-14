@@ -24,6 +24,7 @@ TEST_LIMITS: ModelPublishLimits = ModelPublishLimits.model_validate(
             "friction_classed": 90,
             "join_refusal": 30,
             "delegation_tracker": 90,
+            "delegation_history": 90,
             "beta_board": 85,
             "mvp_launch_reads": 90,
             "floor_owner_map": 30,

@@ -178,6 +178,10 @@ runtime:
     controller_state_dir_fallback: .local/state/omni/landing
     controller_admissions_name: admissions.jsonl
     controller_admissions_tail_bytes: 4194304
+    # The controller's decision journal (OMN-23242): one merge row per tick a merge stays deferred; the handed-off refusals section
+    # counts the deferrals from its newest tail, with the ledger's hand-off and parent MSG rows and the admission record above.
+    controller_decisions_name: decisions.jsonl
+    controller_decisions_tail_bytes: 8388608
     # The friction rollup's report: the stoppages come from it, so its build time is what the stoppage rows are as of.
     friction_report_relpath: .claude_scratch/friction/friction-report.json
     runner_fleet_relpath: .onex_state/runner-fleet/runner-fleet.json

@@ -1,0 +1,58 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# Test duration record freshness, after every merge to dev (OMN-23537)
+#
+# config/test_file_durations.json (plus the per-file entries under
+# config/test_file_durations.d/) is what the 20 full-suite shards are planned from. A change
+# that adds a test file is checked for its entry in its own CI (the "Added test files are in
+# the durations record" step of the lint job). This workflow is the other half: dev branch
+# protection is not strict, so a change's own CI runs against the dev head of that moment and
+# never sees the count the merge produces. After each push to dev this run counts the test
+# files the record does not hold at every commit of the push, and fails on the first one that
+# takes the count to the limit (config/policy of node_test_duration_record_check_effect, 50),
+# naming that commit and the files it added. Removing or recording the files turns the next
+# push green.
+#
+# Only pydantic and pyyaml are needed, so there is no full uv sync.
+
+name: test-duration-record-freshness
+
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+
+# Never cancel: each push is judged against its own before/after commits.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.sha }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  test-duration-record-freshness:
+    name: test-duration-record-freshness
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+        with:
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a  # v4
+        with:
+          version: "latest"
+
+      - name: Unrecorded test files stay under the limit after this push (OMN-23537)
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+          PYTHONPATH: src
+        run: >-
+          uv run --no-project --python 3.12 --with pydantic --with pyyaml
+          python -m omnimarket.nodes.node_test_duration_record_check_effect.runtime_test_duration_record_check
+          --freshness --before "$BEFORE_SHA" --head "$HEAD_SHA"
