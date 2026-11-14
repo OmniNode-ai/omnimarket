@@ -94,3 +94,28 @@ def test_slack_command_validates_against_the_slack_node(
 def test_contract_carries_no_channel_literal() -> None:
     text = (NODE / "contract.yaml").read_text()
     assert "C0" not in text
+
+
+FINDING_TOPIC = "onex.evt.omnimarket.ticket-hand-edit-finding.v1"
+SLACK_TOPIC = "onex.cmd.omnimarket.slack-publish.v1"
+WRITTEN_TOPIC = "onex.evt.omnimarket.ticket-contract-written.v1"
+HEARTBEAT_TOPIC = "onex.evt.platform.node-heartbeat.v1"
+
+
+def test_golden_chain_topics_meet_the_neighbouring_contracts(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The node publishes its finding and the Slack node's command, on the contract's topics."""
+    bus = _contract()["event_bus"]
+    assert bus["subscribe_topics"] == [WRITTEN_TOPIC, HEARTBEAT_TOPIC]
+    assert bus["publish_topics"] == [FINDING_TOPIC, SLACK_TOPIC]
+    slack = yaml.safe_load(
+        (NODE.parent / "node_slack_publish_effect" / "contract.yaml").read_text()
+    )
+    assert SLACK_TOPIC in slack["event_bus"]["subscribe_topics"]
+    rig = make_rig(monkeypatch, tmp_path)
+    ticket, title, body = standard_ticket()
+    rig.record(written(ticket, title, body))
+    rig.reader.issues = issues_reply((ticket, title, body + "\nedited", EDITED_AT))
+    rig.sweep()
+    assert [topic for topic, _ in rig.publisher.calls] == [FINDING_TOPIC, SLACK_TOPIC]
