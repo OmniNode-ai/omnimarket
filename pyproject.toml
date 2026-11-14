@@ -777,6 +777,7 @@ node_harness_invocation_check_effect = "omnimarket.nodes.node_harness_invocation
 node_hook_chain_probe_effect = "omnimarket.nodes.node_hook_chain_probe_effect"
 node_hook_chain_probe_trigger_effect = "omnimarket.nodes.node_hook_chain_probe_trigger_effect"
 node_hook_chain_probe_verdict_effect = "omnimarket.nodes.node_hook_chain_probe_verdict_effect"
+node_hook_delegate_effect = "omnimarket.nodes.node_hook_delegate_effect"
 node_hook_drain_probe_compute = "omnimarket.nodes.node_hook_drain_probe_compute"
 node_hook_event_capture = "omnimarket.nodes.node_hook_event_capture"
 node_hook_events_by_correlation_read_effect = "omnimarket.nodes.node_hook_events_by_correlation_read_effect"
