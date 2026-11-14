@@ -1,0 +1,61 @@
+schema_version: 1.0.0
+ticket_id: OMN-23725
+title: The lane host pool snapshot unit is declared for every pool host platform and publishes at most 300 s apart
+summary: The installer declared the pool snapshot writer for systemd hosts only. This adds its launchd twin so a macOS pool host takes the same 60-second unit, and adds the unreachable-host tests the ticket's second criterion names. Installing the units on every host and the 24-hour reads are the ticket's live steps, read after the merge.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23725-every-platform
+  statement: The installer carries the lane host pool snapshot unit for both pool host platforms at a cadence under 300 s, and a host that cannot be reached reads zero free slots with a reason.
+  acceptance:
+  - id: AC1
+    statement: "AC1: every pool host publishes its first snapshot within 300 s of install and then at most 300 s apart -- falsifier: per host, the first recorded event's time minus the install time is at most 300 s, and the largest gap between consecutive onex.evt.omnimarket.lane-host-pool-snapshot-recorded.v1 events over 24 h is at most 300 s"
+  - id: AC2
+    statement: "AC2: an unreachable host appears with zero free slots and a reason -- falsifier: the snapshot of a host made unreachable in the test reads free slots 0 and names its reason; uv run pytest src/omnimarket/nodes/node_lane_host_pool_snapshot_effect -q -k unreachable"
+  - id: AC3
+    statement: "AC3: integrated: done only when running and observed in the runtime: before install, the snapshot run with its write flag off on one lab host every 300 s for a day equals the old runner's pool read for the same minute or names the difference (cheapest step 4); after install, every host's events are read from the bus for 24 h -- falsifier: the per-host compare listing and the 24 h event gap listing, pasted in the ticket"
+evidence_requirements:
+- kind: tests
+  description: The launchd unit tests and the unreachable-host tests pass at the pushed head.
+  command: uv run pytest tests/nodes/node_host_installer_registry_units/test_lane_host_pool_snapshot_launchd_unit.py tests/nodes/node_lane_host_pool_snapshot_effect/test_pool_snapshot_unreachable.py -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23725-ac1-hosted-proxy
+  description: 'hosted proxy for AC1: both platform units are declared at a 60 s interval, under the 300 s bound, with run at load, so the first reading follows an install at once; the per-host event gaps are read by the unbound live item below.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_lane_host_pool_snapshot_launchd_unit.py tests/nodes/node_host_installer_registry_units/test_lane_host_pool_snapshot_unit.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn23725-ac2
+  description: 'AC2: an unreachable host (no advertisement, or its token pool read failed) reads zero free slots and names its reason; the failing control reads free slots for the reachable host. The same run also covers the launchd unit this PR adds, so a macOS pool host takes the writer that reads this zero; the unreachable-host handler behavior predates this PR, so that part alone cannot fail at the merge base.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lane_host_pool_snapshot_effect/test_pool_snapshot_unreachable.py tests/nodes/node_host_installer_registry_units/test_lane_host_pool_snapshot_launchd_unit.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn23725-ac3-hosted-proxy
+  description: 'hosted proxy for AC3: the launchd twin renders a plist that runs the snapshot module from the branch checkout; the 24-hour compare and gap listings are read by the unbound live item below.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_lane_host_pool_snapshot_launchd_unit.py -q -n 0 --no-cov -p no:cacheprovider -k install_renders
+    cwd: .
+- id: dod-omn23725-integration-proof-live-reading
+  description: 'live: on a pool host that has the unit installed, the read-at record the unit wrote is at most 300 s old; run on h201 through the lab work bus after the install. The 24 h per-host gap listing is pasted in the ticket.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --host h201 --lane dod-live-23725 --kind test -- python3 -c 'import datetime as d,json,os,sys; r=json.load(open(os.path.join(os.environ["OMNI_HOME"], ".onex_state/lane-host-pool-snapshot/pool.json.read-at.json"))); t=d.datetime.fromisoformat(r["read_at"]); sys.exit(0 if (d.datetime.now(d.UTC)-t).total_seconds() <= 300 else 1)'
+    cwd: .
