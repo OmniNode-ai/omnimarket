@@ -59,6 +59,8 @@ from omnimarket.events.runtime_deployment import (
     ModelRedeployRolledBackEvent,
     verify_prod_deploy_grant_binding,
 )
+from omnimarket.handlers.handler_dev_roll_gate_mode import dev_roll_gate_is_live
+from omnimarket.models.dev_roll import ModelDevRollHoldRequest, ModelDevRollReleased
 from omnimarket.models.model_dev_deploy_route import (
     ModelDevDeployHealth,
 )
@@ -119,6 +121,12 @@ TOPIC_ROLLED_BACK = _topic_with_suffix(
 TOPIC_DEPLOY_REFUSED = _topic_with_suffix(
     _PUBLISH, "redeploy-deploy-refused.v1", "publish_topics"
 )
+TOPIC_DEV_ROLL_HOLD_REQUESTED = _topic_with_suffix(
+    _PUBLISH, "dev-roll-hold-requested.v1", "publish_topics"
+)
+TOPIC_DEV_ROLL_RELEASED = _topic_with_suffix(
+    _SUBSCRIBE, "dev-roll-released.v1", "subscribe_topics"
+)
 
 # OMN-17888. ``envelope.event_type`` reaches a handler in whichever of the two live wire
 # forms the producer used: the consume boundary prefers the event body's own
@@ -156,6 +164,10 @@ if _event_name(TOPIC_REBUILD_REJECTED) != EVENT_REBUILD_REJECTED:
         f"contract's subscribe topic {TOPIC_REBUILD_REJECTED!r} reduces to "
         f"({_event_name(TOPIC_REBUILD_REJECTED)!r}); the event arm would be dead"
     )
+
+EVENT_DEV_ROLL_RELEASED = "dev-roll-released"
+if _event_name(TOPIC_DEV_ROLL_RELEASED) != EVENT_DEV_ROLL_RELEASED:
+    raise ValueError("dev roll released branch differs from its contract topic")
 
 EVENT_DEV_DEPLOY_HEALTH = "dev-deploy-health"
 if _event_name(TOPIC_DEV_DEPLOY_HEALTH) != EVENT_DEV_DEPLOY_HEALTH:
@@ -343,6 +355,11 @@ class HandlerDeployPublishMonitor:
         if event_name == EVENT_REBUILD_REJECTED:
             return self._observe_rebuild_rejected(envelope)
 
+        if event_name == EVENT_DEV_ROLL_RELEASED:
+            return await self._publish_released(
+                envelope, _coerce_released(envelope.payload)
+            )
+
         command = _coerce_command(envelope.payload)
 
         refusal = verify_prod_deploy_grant_binding(
@@ -364,6 +381,25 @@ class HandlerDeployPublishMonitor:
         # redeliveries to a recreated container, which that memory could not see.
         if self._published.contains(command.correlation_id):
             return self._skip_answered_repeat(envelope, command)
+
+        # OMN-24431. With the roll gate's overlay saying live, a dev command is held
+        # and rolled with the others in its window; with the overlay off or absent it
+        # is published below exactly as before.
+        if command.runtime_lane is EnumRuntimeLane.DEV and dev_roll_gate_is_live():
+            await self._forward_to_gate(command)
+            return ModelHandlerOutput.for_effect(
+                input_envelope_id=envelope.envelope_id,
+                correlation_id=envelope.correlation_id
+                or command.correlation_id
+                or uuid4(),
+                handler_id=HANDLER_ID,
+                events=(),
+                metrics={
+                    "rebuild_published": 0.0,
+                    "duplicate_skipped": 0.0,
+                    "held_by_gate": 1.0,
+                },
+            )
 
         await self.publish_rebuild_command(command)
 
@@ -717,6 +753,56 @@ class HandlerDeployPublishMonitor:
             },
         )
 
+    async def _forward_to_gate(self, command: ModelDeployPublishCommand) -> None:
+        """Hand one dev command to node_dev_roll_gate_effect; it publishes nothing to the agent."""
+        envelope = ModelEventEnvelope[Any](
+            envelope_id=uuid4(),
+            payload=ModelDevRollHoldRequest(command=command).model_dump(mode="json"),
+            correlation_id=command.correlation_id,
+            event_type=TOPIC_DEV_ROLL_HOLD_REQUESTED,
+            payload_type="ModelDevRollHoldRequest",
+        )
+        await self._bus.publish(
+            TOPIC_DEV_ROLL_HOLD_REQUESTED,
+            key=str(command.correlation_id).encode(),
+            value=envelope.model_dump_json().encode(),
+            headers=_headers_for(TOPIC_DEV_ROLL_HOLD_REQUESTED, command.correlation_id),
+        )
+
+    async def _publish_released(
+        self,
+        envelope: ModelEventEnvelope[Any],
+        released: ModelDevRollReleased,
+    ) -> ModelHandlerOutput[None]:
+        """Publish the gate's released dev commands in order; none is held again.
+
+        A command already published (a redelivered release) is skipped through the same
+        durable record the command arm uses, so a release can be delivered twice.
+        """
+        published = 0.0
+        skipped = 0.0
+        for command in released.commands:
+            if command.runtime_lane is not EnumRuntimeLane.DEV:
+                raise ValueError(
+                    "a released command must target the dev lane; the gate holds dev commands only"
+                )
+            if self._published.contains(command.correlation_id):
+                skipped += 1.0
+                continue
+            await self.publish_rebuild_command(command)
+            published += 1.0
+        return ModelHandlerOutput.for_effect(
+            input_envelope_id=envelope.envelope_id,
+            correlation_id=envelope.correlation_id or released.release_id,
+            handler_id=HANDLER_ID,
+            events=(),
+            metrics={
+                "rebuild_published": published,
+                "duplicate_skipped": skipped,
+                "released_commands": float(len(released.commands)),
+            },
+        )
+
     async def publish_rebuild_command(self, command: ModelDeployPublishCommand) -> None:
         """Publish the signed rebuild command and record it. Does not wait for an answer.
 
@@ -866,6 +952,20 @@ def _decode_message(raw: Any) -> Any:
     if isinstance(raw, str):
         return json.loads(raw)
     return raw
+
+
+def _coerce_released(payload: Any) -> ModelDevRollReleased:
+    """Coerce the dispatched payload into the gate's ``ModelDevRollReleased``."""
+    if isinstance(payload, ModelDevRollReleased):
+        return payload
+    if isinstance(payload, Mapping):
+        return ModelDevRollReleased.model_validate(dict(payload))
+    if hasattr(payload, "model_dump"):
+        return ModelDevRollReleased.model_validate(payload.model_dump())
+    raise TypeError(
+        f"dev roll released payload must be ModelDevRollReleased or a mapping; "
+        f"got {type(payload).__name__}"
+    )
 
 
 def _coerce_command(payload: Any) -> ModelDeployPublishCommand:

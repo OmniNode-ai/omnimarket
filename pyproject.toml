@@ -655,6 +655,7 @@ node_dev_keycloak_client_effect = "omnimarket.nodes.node_dev_keycloak_client_eff
 node_dev_merge_redeploy_trigger_effect = "omnimarket.nodes.node_dev_merge_redeploy_trigger_effect"
 node_dev_roll_decision_request_effect = "omnimarket.nodes.node_dev_roll_decision_request_effect"
 node_dev_roll_failure_capture_effect = "omnimarket.nodes.node_dev_roll_failure_capture_effect"
+node_dev_roll_gate_effect = "omnimarket.nodes.node_dev_roll_gate_effect"
 node_dev_roll_request_compute = "omnimarket.nodes.node_dev_roll_request_compute"
 node_dev_roll_verify_compute = "omnimarket.nodes.node_dev_roll_verify_compute"
 node_dev_running_revision_compute = "omnimarket.nodes.node_dev_running_revision_compute"
@@ -2248,4 +2249,5 @@ markers = [
     "work_state_parity: the work-state projection projects the same items on the in-memory bus and on a Redpanda bus (needs WORK_STATE_PARITY_BOOTSTRAP for the Redpanda leg)",
     "join_j7_parity: the J7 refusal seam answers the same on the in-memory bus and on a Redpanda bus (needs JOIN_J7_PARITY_BOOTSTRAP for the Redpanda leg)",
     "host_install_parity: the host install state reducer folds the same step events on the in-memory bus and on a Redpanda bus (needs HOST_INSTALL_PARITY_BOOTSTRAP for the Redpanda leg)",
+    "dev_roll_gate_parity: the dev roll gate holds and releases the same on the in-memory bus and on a Redpanda bus (needs DEV_ROLL_GATE_PARITY_BOOTSTRAP for the Redpanda leg)",
 ]

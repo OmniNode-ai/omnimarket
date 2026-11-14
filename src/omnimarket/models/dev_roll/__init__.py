@@ -13,7 +13,12 @@ from omnimarket.models.dev_roll.model_dev_roll_event_refused import (
     ModelDevRollEventRefused,
 )
 from omnimarket.models.dev_roll.model_dev_roll_facts import ModelDevRollFacts
+from omnimarket.models.dev_roll.model_dev_roll_gate_mode import ModelDevRollGateMode
+from omnimarket.models.dev_roll.model_dev_roll_hold_request import (
+    ModelDevRollHoldRequest,
+)
 from omnimarket.models.dev_roll.model_dev_roll_record import ModelDevRollRecord
+from omnimarket.models.dev_roll.model_dev_roll_released import ModelDevRollReleased
 from omnimarket.models.dev_roll.model_dev_roll_request import ModelDevRollRequest
 from omnimarket.models.dev_roll.model_dev_tip_changed import ModelDevTipChanged
 
@@ -25,7 +30,10 @@ __all__ = [
     "ModelDevRollDecided",
     "ModelDevRollEventRefused",
     "ModelDevRollFacts",
+    "ModelDevRollGateMode",
+    "ModelDevRollHoldRequest",
     "ModelDevRollRecord",
+    "ModelDevRollReleased",
     "ModelDevRollRequest",
     "ModelDevTipChanged",
 ]

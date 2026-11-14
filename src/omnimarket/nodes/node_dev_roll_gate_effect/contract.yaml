@@ -1,0 +1,159 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_dev_roll_gate_effect
+contract_name: node_dev_roll_gate_effect
+node_name: node_dev_roll_gate_effect
+node_type: EFFECT_GENERIC
+lifecycle: experimental
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+
+runtime_profiles:
+  - main
+
+description: >
+  The dev lane's roll gate (OMN-24431). The deploy effect forwards each dev deploy
+  command here instead of publishing it to the deploy agent, when this node's overlay
+  says live. The gate holds every command in a durable store, asks the batching node
+  (node_dev_roll_request_compute) for a decision on what is held, and on a roll_now
+  decision that answers its own request releases the commands that decision rolled, all
+  together and oldest first, as one event the deploy effect publishes without holding
+  them again. It asks again on each tick and each time a roll finishes, and it settles
+  a roll from the deploy agent's completions and rejections. Every value is an overlay
+  value; the window, the minimum start interval and the health bounds are the batching
+  node's. With mode off nothing is held and anything held is released.
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 10000
+
+input_model:
+  name: ModelDevRollHoldRequest
+  module: omnimarket.models.dev_roll.model_dev_roll_hold_request
+output_model:
+  name: ModelDevRollReleased
+  module: omnimarket.models.dev_roll.model_dev_roll_released
+
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  subscribe_topics:
+    - onex.cmd.omnimarket.dev-roll-hold-requested.v1
+    - onex.cmd.omnimarket.dev-roll-gate-tick.v1
+    - onex.evt.omnimarket.dev-roll-decided.v1
+    - onex.evt.deploy.rebuild-completed.v1
+    - onex.evt.deploy.rebuild-rejected.v1
+  publish_topics:
+    - onex.cmd.omnimarket.dev-roll-decision-requested.v1
+    - onex.evt.omnimarket.dev-roll-released.v1
+    - onex.evt.omnimarket.dev-roll-gate-observed.v1
+
+published_events:
+  - event_type: "DevRollFacts"
+    topic: onex.cmd.omnimarket.dev-roll-decision-requested.v1
+    description: "One decision request: the commands held now and the last roll."
+  - event_type: "DevRollReleased"
+    topic: onex.evt.omnimarket.dev-roll-released.v1
+    description: "The held commands a roll_now decision rolled, oldest first, for the deploy effect to publish."
+  - event_type: "DevRollGateObserved"
+    topic: onex.evt.omnimarket.dev-roll-gate-observed.v1
+    description: "An input that yielded neither a decision request nor a release, with the typed reason."
+
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - operation: "dev_roll_gate.hold"
+      message_category: "command"
+      handler:
+        name: "HandlerDevRollGateHold"
+        module: "omnimarket.nodes.node_dev_roll_gate_effect.handlers.handler_dev_roll_gate_hold"
+      event_model:
+        name: "ModelDevRollHoldRequest"
+        module: "omnimarket.models.dev_roll.model_dev_roll_hold_request"
+      topic: onex.cmd.omnimarket.dev-roll-hold-requested.v1
+      description: "One dev deploy command the deploy effect forwards; held durably and answered by a decision request."
+    - operation: "dev_roll_gate.tick"
+      message_category: "command"
+      handler:
+        name: "HandlerDevRollGateTick"
+        module: "omnimarket.nodes.node_dev_roll_gate_effect.handlers.handler_dev_roll_gate_tick"
+      event_model:
+        name: "ModelDevRollGateTick"
+        module: "omnimarket.nodes.node_dev_roll_gate_effect.models.model_dev_roll_gate_tick"
+      topic: onex.cmd.omnimarket.dev-roll-gate-tick.v1
+      description: "The clock moved; a window may have ended, so the batching node is asked again."
+    - operation: "dev_roll_gate.decided"
+      message_category: "event"
+      handler:
+        name: "HandlerDevRollGateDecided"
+        module: "omnimarket.nodes.node_dev_roll_gate_effect.handlers.handler_dev_roll_gate_decided"
+      event_model:
+        name: "ModelDevRollDecided"
+        module: "omnimarket.models.dev_roll.model_dev_roll_decided"
+      topic: onex.evt.omnimarket.dev-roll-decided.v1
+      description: "A decision of the batching node; a roll_now for a request of this gate releases the commands it rolled."
+    - operation: "dev_roll_gate.rebuild_completed"
+      message_category: "event"
+      handler:
+        name: "HandlerDevRollGateCompleted"
+        module: "omnimarket.nodes.node_dev_roll_gate_effect.handlers.handler_dev_roll_gate_settled"
+      event_model:
+        name: "ModelDeployRebuildCompleted"
+        module: "omnimarket.events.runtime_deployment"
+      topic: onex.evt.deploy.rebuild-completed.v1
+      description: "The deploy agent finished a command; settles it and, at the last one, the roll."
+    - operation: "dev_roll_gate.rebuild_rejected"
+      message_category: "event"
+      handler:
+        name: "HandlerDevRollGateRejected"
+        module: "omnimarket.nodes.node_dev_roll_gate_effect.handlers.handler_dev_roll_gate_settled"
+      event_model:
+        name: "ModelDeployRebuildRejected"
+        module: "omnimarket.events.runtime_deployment"
+      topic: onex.evt.deploy.rebuild-rejected.v1
+      description: "The deploy agent will not run a command (superseded or busy); settles it."
+
+externally_produced_topics:
+  - topic: onex.cmd.omnimarket.dev-roll-gate-tick.v1
+    producer: "a lab timer unit that publishes one tick per minute, declared in the overlays repository; not installed by this change (the follow-up ticket for the timer is named in the pull request)"
+  - topic: onex.evt.omnimarket.dev-roll-decided.v1
+    producer: "node_dev_roll_request_compute (omnimarket), which decides on the decision-request topic this node publishes"
+  - topic: onex.evt.deploy.rebuild-completed.v1
+    producer: "omnibase_infra scripts/deploy-agent, a standalone uv sub-project with no node contract"
+  - topic: onex.evt.deploy.rebuild-rejected.v1
+    producer: "omnibase_infra scripts/deploy-agent (deploy_agent.agent._publish_rejection_event), a standalone uv sub-project with no node contract"
+externally_consumed_topics:
+  - onex.cmd.omnimarket.dev-roll-decision-requested.v1
+  - onex.evt.omnimarket.dev-roll-released.v1
+  - onex.evt.omnimarket.dev-roll-gate-observed.v1
+
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.dev-roll-hold-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.dev-roll-hold-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.dev-roll-gate-tick.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.dev-roll-gate-tick.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.dev-roll-decided.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.dev-roll-decided.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.deploy.rebuild-completed.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.deploy.rebuild-completed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.deploy.rebuild-rejected.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.deploy.rebuild-rejected.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.dev-roll-decision-requested.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.dev-roll-decision-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.dev-roll-released.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.dev-roll-released.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.dev-roll-gate-observed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.dev-roll-gate-observed.v1, operation: DESCRIBE}
+
+overlay:
+  node: node_dev_roll_gate_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+metadata:
+  ticket: OMN-24431

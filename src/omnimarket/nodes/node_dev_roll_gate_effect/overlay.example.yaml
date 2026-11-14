@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. A deployment's real overlay lives in the overlays repository.
+# mode off: nothing is held and anything held is released at the next input.
+mode: live
+issuer_repository_pattern: '^gha/(?P<repository>[a-z0-9_]+)/pr-[0-9]+$'
+unmatched_repository: omnimarket
+roll_unfinished_after_seconds: 3600
+ids_kept: 500
+store:
+  backend: file
+  home_env: EXAMPLE_STATE_DIR
+  relpath: dev-roll-gate

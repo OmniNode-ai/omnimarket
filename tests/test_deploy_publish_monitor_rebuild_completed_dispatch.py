@@ -314,6 +314,8 @@ def test_the_completion_entry_declares_the_completion_model() -> None:
         TOPIC_REBUILD_COMPLETED,
         TOPIC_REBUILD_REJECTED,
         "onex.evt.deploy.dev-deploy-health.v1",
+        # OMN-24431: the roll gate's release, published without being held again.
+        "onex.evt.omnimarket.dev-roll-released.v1",
     }
 
     completion = by_topic[TOPIC_REBUILD_COMPLETED]
@@ -505,6 +507,7 @@ def test_handler_branch_names_parse_to_the_live_branch_set() -> None:
         "rebuild-completed",
         "rebuild-rejected",
         "dev-deploy-health",
+        "dev-roll-released",
     }, f"handler branch set drifted: {sorted(_handler_branch_event_names())}"
 
 
@@ -735,6 +738,8 @@ def test_the_operation_guard_fires_on_the_collapsed_pre_image() -> None:
                 # would go quiet on exactly the next one added.
                 "ModelDeployRebuildRejected",
                 "ModelDevDeployHealth",
+                # OMN-24431's release arm, on the same terms as the arms above.
+                "ModelDevRollReleased",
             ),
         ),
     ), f"guard did not report the collapsed pre-image: {conflicts}"

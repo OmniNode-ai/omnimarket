@@ -108,6 +108,20 @@ handler_routing:
         name: ModelDeployRebuildRejected
         module: omnimarket.events.runtime_deployment
         description: "The deploy agent's rejection event, as it is published."
+    - operation: "redeploy.deploy.dev_roll_released"
+      topic: onex.evt.omnimarket.dev-roll-released.v1
+      message_category: event
+      handler:
+        name: HandlerDeployPublishMonitor
+        module: omnimarket.nodes.node_redeploy_deploy_effect.handlers.handler_deploy_publish_monitor
+      description: >-
+        Publish the dev deploy commands node_dev_roll_gate_effect released (OMN-24431),
+        oldest first, straight to the deploy agent. A released command is never sent
+        back to the gate.
+      input_model:
+        name: ModelDevRollReleased
+        module: omnimarket.models.dev_roll.model_dev_roll_released
+        description: "The held commands one batching decision rolled, oldest first."
 
 handler:
   module: omnimarket.nodes.node_redeploy_deploy_effect.handlers.handler_deploy_publish_monitor
@@ -155,6 +169,8 @@ event_bus:
     # nowhere, did not exist on the dev lane broker, and every rejection the agent
     # published was lost while it retried for 46 minutes against absent cluster metadata.
     - onex.evt.deploy.rebuild-rejected.v1
+    # OMN-24431. The gate's release: held dev commands, published without being held again.
+    - onex.evt.omnimarket.dev-roll-released.v1
   publish_topics:
     # Cross-service publish: deploy agent rebuild command.
     - onex.cmd.deploy.rebuild-requested.v1
@@ -163,6 +179,18 @@ event_bus:
     # OMN-13440 defense-in-depth: prod deploy refused at the EFFECT boundary when
     # the command is not target-bound to a verified prod-promotion grant.
     - onex.evt.omnimarket.redeploy-deploy-refused.v1
+    # OMN-24431. A dev command handed to the roll gate when its overlay says live.
+    - onex.cmd.omnimarket.dev-roll-hold-requested.v1
+
+# OMN-24431. The two topic uses the roll gate adds: the dev command handed to the gate and the
+# gate's release read back. The deploy effect's other topics are granted where they were added.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.dev-roll-hold-requested.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.dev-roll-hold-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.dev-roll-released.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.dev-roll-released.v1, operation: DESCRIBE}
 
 # OMN-18816. Top-level, not under event_bus: the graph validator reads this key off the
 # contract ROOT (contract_topic_graph._load_contract, data.get("externally_produced_topics")).
