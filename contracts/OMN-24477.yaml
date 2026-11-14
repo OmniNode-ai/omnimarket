@@ -61,5 +61,13 @@ dod_evidence:
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24477 --kind test -- env PYTHONDONTWRITEBYTECODE=1
       uv run --frozen pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_review_gate.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn24477-ac3-hosted-decision-path
+  description: The hosted-runnable reading of AC3, the ledger STATUS row through the facts to a held decision and a landing decision after a CLEAN row for the head; it imports models origin/dev does not hold,
+    so it fails at the merge base.
+  source: manual
   binds_ac:
   - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_review_gate_seam.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
