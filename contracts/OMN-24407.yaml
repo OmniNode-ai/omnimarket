@@ -1,0 +1,67 @@
+schema_version: 1.0.0
+ticket_id: OMN-24407
+title: Lab fill runs its select and tick steps from typed data, no AI model copying
+summary: node_lab_fill_effect gains two shell entries (select_entry and tick_entry) that read one typed JSON request on stdin and write one JSON result on stdout. The select step runs HandlerLabFillSelection on the rolling ledger's rows read from the bus work ledger query node through the reader named lab-fill-selection (a stale, unreadable or not-moved read selects nothing, exit 69), and the tick skips a ticket the selection holds. The Mac launchd switch, the install and the read of the unit's next tick are not part of this pull request (AC4 stays open).
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+  - public_api
+requirements:
+  - id: req-omn24407-select-and-tick-from-typed-data
+    statement: The lab fill selects and ticks from typed data, with the ledger read from the bus.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: the select entry returns the selection''s decisions from the rows the bus ledger reader gives it, and on a stale, unreadable or not-moved read returns a typed result with no selection and exit 69 -- falsifier: uv run pytest tests/nodes/node_lab_fill_effect/test_lab_fill_select.py tests/nodes/node_lab_fill_effect/test_seam_lab_fill_ledger_select.py -q --no-cov fails when the handler runs the selection on a not-ok read'
+      - id: AC2
+        statement: 'AC2: the tick skips a ticket the select step holds, with reason selection:<reason>, and launches it when no hold is passed -- falsifier: uv run pytest tests/nodes/node_lab_fill_effect/test_seam_lab_fill_select_to_tick.py -q --no-cov fails when the tick ignores selection_holds'
+      - id: AC3
+        statement: 'AC3: the reader overlay in the overlays repository names lab-fill-selection in moved_readers -- falsifier: pytest tests/test_lab_fill_selection_reader_overlay.py in the overlays repository fails on the overlay without the name'
+      - id: AC4
+        statement: 'AC4: integrated: the Mac lab-fill unit''s first tick after the switch runs the tick entry, and its run log names step=run_lab_fill_tick and holds no json.loads error -- falsifier: read the unit''s tick log on the Mac after install; a log with no step=run_lab_fill_tick line, or with a json.loads error, means not met'
+evidence_requirements:
+  - kind: tests
+    description: The select, select entry, tick entry and the two seam tests run at the pushed head.
+    command: uv run pytest tests/nodes/node_lab_fill_effect/test_lab_fill_select.py tests/nodes/node_lab_fill_effect/test_lab_fill_select_cli.py tests/nodes/node_lab_fill_effect/test_lab_fill_tick_cli.py tests/nodes/node_lab_fill_effect/test_seam_lab_fill_ledger_select.py tests/nodes/node_lab_fill_effect/test_seam_lab_fill_select_to_tick.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn24407-ac1
+    description: AC1 and AC2, node half; the select step over the fake port and over the real query node and reader in process (golden, error and seam), and the select-to-tick seam with a failing control. The Mac switch and the tick-log read are not met by this pull request.
+    source: manual
+    binds_ac:
+      - AC1
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_lab_fill_effect/test_lab_fill_select.py tests/nodes/node_lab_fill_effect/test_lab_fill_select_cli.py tests/nodes/node_lab_fill_effect/test_lab_fill_tick_cli.py tests/nodes/node_lab_fill_effect/test_seam_lab_fill_ledger_select.py tests/nodes/node_lab_fill_effect/test_seam_lab_fill_select_to_tick.py -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn24407-integration-proof
+    description: The pushed head ran the select, tick entry and seam tests on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this check.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: 'uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24407 -- uv run --frozen pytest tests/nodes/node_lab_fill_effect/test_lab_fill_select.py tests/nodes/node_lab_fill_effect/test_lab_fill_select_cli.py tests/nodes/node_lab_fill_effect/test_lab_fill_tick_cli.py tests/nodes/node_lab_fill_effect/test_seam_lab_fill_ledger_select.py tests/nodes/node_lab_fill_effect/test_seam_lab_fill_select_to_tick.py -q --no-cov'
+        cwd: .
+  - id: dod-omn24407-ac3
+    description: AC3 is met in the overlays repository, not here; reads the overlays branch's reader overlay for the lab-fill-selection name through the canonical clone. Only the local Done gate runs it.
+    source: manual
+    execution_scope: local_done_gate
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: command
+        check_value: git -C "$OMNI_HOME/overlays" show origin/omn-19998-fill-entry-6803-overlay:overlays/node_work_ledger_reader_effect/overlay.yaml | grep -q 'lab-fill-selection'
+        cwd: .
+  - id: dod-omn24407-ac4
+    description: AC4 is open and not met by this pull request; reads the lab-fill unit's tick log on the Mac for the tick entry's step line after the switch. Only the local Done gate runs it, and it fails until the switch is installed.
+    source: manual
+    execution_scope: local_done_gate
+    binds_ac:
+      - AC4
+    checks:
+      - check_type: command
+        check_value: grep -rq 'step=run_lab_fill_tick' "$OMNI_HOME/.onex_state/morning-workflows/runs"
+        cwd: .
