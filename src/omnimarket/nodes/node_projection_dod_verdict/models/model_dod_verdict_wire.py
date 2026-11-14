@@ -4,6 +4,6 @@
 
 from __future__ import annotations
 
-from omnimarket.events.dod_verdict_wire import ModelDodVerdictWire
+from omnimarket.models.model_dod_verdict_wire import ModelDodVerdictWire
 
 __all__ = ["ModelDodVerdictWire"]

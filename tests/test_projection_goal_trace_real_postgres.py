@@ -184,7 +184,7 @@ async def test_a_replay_writes_this_replays_rows_for_the_goal() -> None:
 
 @pytest.mark.integration
 def test_the_adapter_reads_the_shared_dod_verdict_wire() -> None:
-    from omnimarket.events.dod_verdict_wire import ModelDodVerdictWire
+    from omnimarket.models.model_dod_verdict_wire import ModelDodVerdictWire
     from omnimarket.nodes.node_projection_dod_verdict.models import (
         ModelDodVerdictWire as NodeExport,
     )
