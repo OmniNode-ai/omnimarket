@@ -233,3 +233,9 @@ def _drain(queue: asyncio.Queue[dict[str, Any]]) -> list[dict[str, Any]]:
     while not queue.empty():
         drained.append(queue.get_nowait())
     return drained
+
+
+def test_contract_declares_the_completed_and_failed_terminal_topics() -> None:
+    _, completed, failed = _contract_topics()
+    assert completed == "onex.evt.omnimarket.seam-crossing-name-completed.v1"
+    assert failed == "onex.evt.omnimarket.seam-crossing-name-failed.v1"
