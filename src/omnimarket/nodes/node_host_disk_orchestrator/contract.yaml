@@ -90,6 +90,13 @@ published_events:
   event_type: ModelHostDiskRunCompleted
 - topic: onex.evt.omnimarket.schedule-run.v1
   event_type: ModelScheduleRunEvent
+externally_produced_topics:
+- topic: onex.evt.omnimarket.host-disk-low-reported.v1
+  producer: the host disk reporter, which reports a host below its floor; not a node contract in this graph
+- topic: onex.evt.omnimarket.host-disk-evict-completed.v1
+  producer: the host eviction executor that takes host-disk-evict-requested commands and reports each result; not a node contract in this graph
+- topic: onex.evt.omnimarket.host-disk-evict-failed.v1
+  producer: the host eviction executor that takes host-disk-evict-requested commands and reports each failure; not a node contract in this graph
 externally_consumed_topics:
 - onex.evt.omnimarket.host-disk-run-completed.v1
 - onex.evt.omnimarket.schedule-run.v1
