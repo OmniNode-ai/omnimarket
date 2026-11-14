@@ -9,11 +9,11 @@ attempted.
 
 from __future__ import annotations
 
+from omnimarket.models.lab_fill.model_lab_fill_selection_request import (
+    ModelLabFillSelectionRequest,
+)
 from omnimarket.nodes.node_lab_fill_selection_compute.handlers.handler_lab_fill_selection import (
     HandlerLabFillSelection,
-)
-from omnimarket.nodes.node_lab_fill_selection_compute.models import (
-    ModelLabFillSelectionRequest,
 )
 
 from ..models.model_lab_fill_select import (
@@ -28,13 +28,22 @@ class HandlerLabFillSelect:
 
     def __init__(
         self,
-        rows: ProtocolLabFillLedgerRows,
+        rows: ProtocolLabFillLedgerRows | None = None,
         selector: HandlerLabFillSelection | None = None,
     ) -> None:
         self._rows = rows
         self._selector = selector if selector is not None else HandlerLabFillSelection()
 
     def handle(self, request: ModelLabFillSelectRequest) -> ModelLabFillSelectResult:
+        if self._rows is None:
+            # Boot constructs the handler from injectable params alone; with no bus reader wired the
+            # read is a typed unreadable result and never a selection on an empty ledger.
+            return ModelLabFillSelectResult(
+                ledger_status="unreadable",
+                ledger_reason="no ledger rows reader is wired into this handler",
+                ledger_rows=0,
+                selection=None,
+            )
         ledger = self._rows.read_rows(
             request.ledger_reader, request.ledger_window_hours
         )

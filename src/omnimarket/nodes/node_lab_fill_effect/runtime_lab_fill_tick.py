@@ -33,6 +33,9 @@ from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
     load_structured_overlay,
 )
+from omnimarket.models.lab_fill.model_lab_fill_selection_overlay import (
+    ModelLabFillSelectionOverlay,
+)
 from omnimarket.models.model_lane_host_pool_unreadable import (
     LaneHostPoolUnreadableError,
 )
@@ -59,9 +62,6 @@ from omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_tick_overlay im
 )
 from omnimarket.nodes.node_lab_fill_effect.select_entry import main as run_select_entry
 from omnimarket.nodes.node_lab_fill_effect.tick_entry import main as run_tick_entry
-from omnimarket.nodes.node_lab_fill_selection_compute.models.model_lab_fill_selection_overlay import (
-    ModelLabFillSelectionOverlay,
-)
 from omnimarket.nodes.node_lane_host_pool_snapshot_effect.handlers.adapter_snapshot_file import (
     StampedSnapshotFileLaneHostPool,
 )

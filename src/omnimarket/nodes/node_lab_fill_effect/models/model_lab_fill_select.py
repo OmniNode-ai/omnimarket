@@ -13,7 +13,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from omnimarket.nodes.node_lab_fill_selection_compute.models import (
+from omnimarket.models.lab_fill.model_lab_fill_selection_result import (
     ModelLabFillSelectionResult,
 )
 

@@ -8,12 +8,12 @@ reads no file and falls back to nothing.
 
 from __future__ import annotations
 
-from omnimarket.nodes.node_work_ledger_reader_effect.handlers import (
-    HandlerWorkLedgerReader,
-)
-from omnimarket.nodes.node_work_ledger_reader_effect.models import (
+from omnimarket.models.model_work_ledger_reader import (
     EnumReaderQuery,
     ModelReaderRequest,
+)
+from omnimarket.nodes.node_work_ledger_reader_effect.handlers import (
+    HandlerWorkLedgerReader,
 )
 
 from .protocol_lab_fill_ledger_rows import LabFillLedgerRows
