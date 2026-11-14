@@ -417,6 +417,54 @@ def test_error_chain_a_github_denial_at_the_write_node_names_the_declared_permis
     assert result.missing_permission == "example_org_permission_read"
 
 
+def test_error_chain_a_rejected_login_at_the_write_node_names_no_permission(
+    server: _PathServer, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    denied = ModelRepoWriteFailed(
+        correlation_id=UUID(int=1),
+        operation=EnumRepoWriteOperation.RUNNER_GROUP_GET,
+        repo=REPO,
+        idempotency_key="k",
+        requested_by_lane="example-exposure-reader",
+        mode=EnumRepoWriteMode.ENFORCE,
+        reason="github_refused",
+        detail="refused",
+        http_status=401,
+    )
+    result, _ = _unknown_with(
+        server,
+        tmp_path,
+        monkeypatch,
+        _answers(True, denied.model_dump(mode="json")),
+    )
+    assert result.reading.read_failure is EnumExposureReadFailure.ORG_READ_DENIED
+    assert result.missing_permission is None
+
+
+def test_error_chain_a_missing_permission_denial_404_at_the_write_node_names_the_declared_permission(
+    server: _PathServer, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    denied = ModelRepoWriteFailed(
+        correlation_id=UUID(int=1),
+        operation=EnumRepoWriteOperation.RUNNER_GROUP_GET,
+        repo=REPO,
+        idempotency_key="k",
+        requested_by_lane="example-exposure-reader",
+        mode=EnumRepoWriteMode.ENFORCE,
+        reason="github_refused",
+        detail="refused",
+        http_status=404,
+    )
+    result, _ = _unknown_with(
+        server,
+        tmp_path,
+        monkeypatch,
+        _answers(True, denied.model_dump(mode="json")),
+    )
+    assert result.reading.read_failure is EnumExposureReadFailure.ORG_READ_DENIED
+    assert result.missing_permission == "example_org_permission_read"
+
+
 def test_error_chain_an_older_write_node_shape_reads_group_read_refused_or_unreadable(
     server: _PathServer, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

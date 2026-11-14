@@ -145,28 +145,28 @@ def test_bound_profile_refuses_when_scope_overlay_cannot_load(
     assert "scope overlay could not be loaded" in str(excinfo.value)
 
 
-def test_handler_error_chain_refuses_and_holds_the_interval(
+async def test_handler_error_chain_refuses_and_holds_the_interval(
     tmp_path: Path,
 ) -> None:
     sched = contract_schedule().model_copy(update={"bus_lane": None})
     handler = HandlerTicketCloserScheduled(
         schedule=sched, environ={"TEST_HOME": str(tmp_path)}
     )
-    result = handler.handle(tick(T0))
+    result = await handler.handle(tick(T0))
     assert result is not None
     assert result.candidates_read is False
     assert result.flipped == 0
     assert result.examined == 0
     assert result.unread_reason.startswith("bound profile refused")
-    assert handler.handle(tick(T0 + timedelta(seconds=10))) is None
+    assert await handler.handle(tick(T0 + timedelta(seconds=10))) is None
 
 
-def test_handler_unread_reason_when_no_source_is_bound() -> None:
+async def test_handler_unread_reason_when_no_source_is_bound() -> None:
     sched = schedule().model_copy(
         update={"reading_source": EnumCloserReadingSource.UNREAD}
     )
     handler = HandlerTicketCloserScheduled(schedule=sched)
-    result = handler.handle(tick(T0))
+    result = await handler.handle(tick(T0))
     assert result is not None
     assert result.candidates_read is False
     assert (
@@ -179,11 +179,11 @@ class _NothingToRead:
         return None
 
 
-def test_handler_reports_a_source_that_could_not_read() -> None:
+async def test_handler_reports_a_source_that_could_not_read() -> None:
     handler = HandlerTicketCloserScheduled(
         schedule=contract_schedule(), source=_NothingToRead()
     )
-    result = handler.handle(tick(T0))
+    result = await handler.handle(tick(T0))
     assert result is not None
     assert result.candidates_read is False
     assert (
@@ -192,13 +192,13 @@ def test_handler_reports_a_source_that_could_not_read() -> None:
     )
 
 
-def test_failing_control_the_unread_and_bound_readings_differ() -> None:
+async def test_failing_control_the_unread_and_bound_readings_differ() -> None:
     unread = schedule().model_copy(
         update={"reading_source": EnumCloserReadingSource.UNREAD}
     )
     bound = contract_schedule().model_copy(update={"bus_lane": None})
-    unread_result = HandlerTicketCloserScheduled(schedule=unread).handle(tick(T0))
-    bound_result = HandlerTicketCloserScheduled(
+    unread_result = await HandlerTicketCloserScheduled(schedule=unread).handle(tick(T0))
+    bound_result = await HandlerTicketCloserScheduled(
         schedule=bound, environ={"TEST_HOME": "/home"}
     ).handle(tick(T0))
     assert unread_result is not None
@@ -228,7 +228,7 @@ class _NoWriter:
         return ModelCloserWriteReceipt(ok=False, reason="no writer in this test")
 
 
-def test_the_bound_parts_are_built_once_and_reused(
+async def test_the_bound_parts_are_built_once_and_reused(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from omnimarket.nodes.node_ticket_closer_scheduled_effect.handlers import (
@@ -249,9 +249,9 @@ def test_the_bound_parts_are_built_once_and_reused(
     handler = HandlerTicketCloserScheduled(
         schedule=contract_schedule(), environ={"TEST_HOME": str(tmp_path)}
     )
-    first = handler.handle(tick(T0))
+    first = await handler.handle(tick(T0))
     later = T0.replace(hour=13)
-    second = handler.handle(tick(later))
+    second = await handler.handle(tick(later))
     assert first is not None
     assert second is not None
     assert first.candidates_read is True
@@ -277,9 +277,11 @@ def test_seam_the_bound_profile_builds_from_the_scope_overlay_the_node_ships(
     assert isinstance(parts.source, ContractCandidateSource)
 
 
-def test_failing_control_a_bound_schedule_never_reads_as_the_unread_profile() -> None:
+async def test_failing_control_a_bound_schedule_never_reads_as_the_unread_profile() -> (
+    None
+):
     bound = contract_schedule().model_copy(update={"bus_lane": None})
-    result = HandlerTicketCloserScheduled(
+    result = await HandlerTicketCloserScheduled(
         schedule=bound, environ={"TEST_HOME": "/home"}
     ).handle(tick(T0))
     assert result is not None

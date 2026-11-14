@@ -331,6 +331,8 @@
   ["subscriber-dispatcher-resolution.yml", 64, "actions/checkout", "11d5960a326750d5838078e36cf38b85af677262"],
   ["subscriber-dispatcher-resolution.yml", 67, "actions/checkout", "11d5960a326750d5838078e36cf38b85af677262"],
   ["subscriber-dispatcher-resolution.yml", 80, "astral-sh/setup-uv", "d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86"],
+  ["test-duration-record-freshness.yml", 41, "actions/checkout", "11d5960a326750d5838078e36cf38b85af677262"],
+  ["test-duration-record-freshness.yml", 46, "astral-sh/setup-uv", "38f3f104447c67c051c4a08e39b64a148898af3a"],
   ["todo-audit-on-merge.yml", 39, "actions/checkout", "d23441a48e516b6c34aea4fa41551a30e30af803"],
   ["trufflehog-digest-drift.yml", 43, "actions/checkout", "d23441a48e516b6c34aea4fa41551a30e30af803"],
   ["url-authority-gate.yml", 54, "actions/checkout", "d23441a48e516b6c34aea4fa41551a30e30af803"],
