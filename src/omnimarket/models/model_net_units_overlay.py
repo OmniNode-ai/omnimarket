@@ -40,6 +40,8 @@ class ModelNetUnitDeclaration(BaseModel):
     platform: str
     hosts: list[str]
     service: str = ""
+    # A `systemd-system-slice` unit names the slice it limits; the name must be the basename of one file destination.
+    slice: str = ""
     serving: bool = False
     # The budget's numbers are checked by the handler, which refuses each defect with its own typed reason
     # (gpu-budget-incomplete, gpu-budget-no-room, gpu-budget-kv-floor); this document model only requires a mapping.
