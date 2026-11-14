@@ -29,7 +29,6 @@ from omnimarket.delegated_test_loop.lab_run_bus import (
 )
 from omnimarket.handlers.node_overlay_reader import OVERLAY_ROOTS_ENV
 from omnimarket.handlers.work_ledger_consume.service_writers import (
-    ModelServiceWritersPolicy,
     load_service_writers_policy,
     service_writers,
     service_writers_path,
@@ -135,6 +134,7 @@ def test_the_contract_declares_the_service_writers_source() -> None:
     policy = load_service_writers_policy()
     assert policy.overlay_id == "node_work_ledger_append_effect"
     assert policy.roots_env == OVERLAY_ROOTS_ENV
+    assert policy.config_root_env == load_writer_overlay_policy().root_env
     assert policy.schema_version == SCHEMA
 
 
@@ -159,11 +159,34 @@ def test_service_writers_path_follows_the_declared_roots(tmp_path: Path) -> None
         holding
     )
     assert service_writers_path(policy, {}) is None
-    other = ModelServiceWritersPolicy(
-        overlay_id=policy.overlay_id, roots_env="OTHER_ROOTS", schema_version=SCHEMA
-    )
+    other = policy.model_copy(update={"roots_env": "OTHER_ROOTS"})
     with pytest.raises(ValueError, match=r"^service writers overlay"):
         service_writers_path(other, {"OTHER_ROOTS": roots})
+
+
+def test_service_writers_path_falls_back_to_the_clone_beside_the_config_root(
+    tmp_path: Path,
+) -> None:
+    """The serve unit declares only the config root; the overlays clone beside it is the last root."""
+    policy = load_service_writers_policy()
+    config_root = tmp_path / "workspace" / "internal"
+    config_root.mkdir(parents=True)
+    clone = (config_root / policy.config_root_relative).resolve()
+    _write(_service_file(clone), _declared(SERVICE))
+    env = {policy.config_root_env: str(config_root)}
+    assert service_writers_path(policy, env) is not None
+    assert service_writers_path(policy, env).resolve() == _service_file(clone)
+    # A root named in the roots env wins over the clone.
+    first = tmp_path / "first"
+    _write(_service_file(first), _declared("other-service"))
+    both = {**env, policy.roots_env: str(first)}
+    assert service_writers_path(policy, both) == _service_file(first)
+    # Neither root set, or a config root with no clone beside it: no overlay.
+    assert service_writers_path(policy, {}) is None
+    assert (
+        service_writers_path(policy, {policy.config_root_env: str(tmp_path / "x")})
+        is None
+    )
 
 
 @pytest.mark.parametrize(

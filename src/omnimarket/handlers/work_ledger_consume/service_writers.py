@@ -35,6 +35,8 @@ class ModelServiceWritersPolicy(BaseModel):
 
     overlay_id: str = Field(min_length=1)
     roots_env: str = Field(min_length=1)
+    config_root_env: str = Field(min_length=1)
+    config_root_relative: str = Field(min_length=1)
     schema_version: str = Field(min_length=1)
 
 
@@ -66,15 +68,22 @@ class ModelServiceWritersOverlay(BaseModel):
 def service_writers_path(
     policy: ModelServiceWritersPolicy, environment: Mapping[str, str] | None = None
 ) -> Path | None:
-    """The node's deployment overlay under the declared roots env, or None when absent."""
+    """The node's deployment overlay under the declared roots, or None when absent.
+
+    The roots are those ``roots_env`` lists, then the overlays clone beside the workspace config root.
+    """
     env = os.environ if environment is None else environment
     if policy.roots_env != OVERLAY_ROOTS_ENV:
         raise ValueError(
             f"service writers overlay roots env must be {OVERLAY_ROOTS_ENV!r}, "
             f"the constant find_node_overlay reads"
         )
+    roots = [env.get(policy.roots_env, "")]
+    config_root = env.get(policy.config_root_env, "")
+    if config_root:
+        roots.append(str(Path(config_root) / policy.config_root_relative))
     return find_node_overlay(
-        policy.overlay_id, {policy.roots_env: env.get(policy.roots_env, "")}
+        policy.overlay_id, {policy.roots_env: os.pathsep.join(roots)}
     )
 
 
