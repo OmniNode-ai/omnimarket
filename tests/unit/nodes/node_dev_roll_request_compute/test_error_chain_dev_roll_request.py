@@ -11,15 +11,17 @@ from uuid import UUID, uuid4
 import pytest
 from pydantic import ValidationError
 
-from omnimarket.nodes.node_dev_roll_request_compute.models import (
+from omnimarket.models.dev_roll import (
     EnumDevRollEventRefusal,
     EnumDevRollHealth,
-    EnumDevRollRefusalReason,
     ModelDevRollDecided,
-    ModelDevRollPolicy,
     ModelDevRollRecord,
-    ModelDevRollRefused,
     ModelDevTipChanged,
+)
+from omnimarket.nodes.node_dev_roll_request_compute.models import (
+    EnumDevRollRefusalReason,
+    ModelDevRollPolicy,
+    ModelDevRollRefused,
 )
 from tests.unit.nodes.node_dev_roll_request_compute.chain_support import (
     COMMAND_TOPIC,

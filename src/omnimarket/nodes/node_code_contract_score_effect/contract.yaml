@@ -46,6 +46,8 @@ operations:
     description: "bash -c <check command> in the scratch worktree under the overlay's per-check limit."
     transport: process
 
+# terminal_event (OMN-24334): the answer onex run-node waits for; the failure answer stays under runtime_dispatch.terminal_events.failure.
+terminal_event: onex.evt.omnimarket.code-contract-scored.v1
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.code-contract-score-requested.v1
   terminal_events:
