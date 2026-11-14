@@ -53,7 +53,9 @@ def pool_answer(unit: str, active: str, trigger: str = TRIGGER) -> str:
 
 def test_model_refuses_unknown_field() -> None:
     with pytest.raises(ValueError, match="bogus"):
-        ModelUnitProbeResult(loaded=True, last_run=None, bogus=1)  # type: ignore[call-arg]
+        ModelUnitProbeResult.model_validate(
+            {"loaded": True, "last_run": None, "bogus": 1}
+        )
 
 
 def test_launchd_unit_loaded_with_run_record(
