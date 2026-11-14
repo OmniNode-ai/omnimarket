@@ -1,0 +1,62 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: landing_decision_venv_effect
+lifecycle: experimental
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Builds the landing controller's decision environment (an interpreter holding exactly the pydantic,
+  pydantic_core and pyyaml versions the decision pin names) on the controller's host, then asks the
+  environment's own interpreter which versions it holds and refuses on any difference from the pin.
+  A refusal removes the landing_runtime.json the controller reads, so the controller cannot run on an
+  environment that differs from its pin. build creates and checks; verify only checks.
+
+input_model: omnimarket.nodes.node_landing_decision_venv_effect.models.model_landing_decision_venv_request.ModelLandingDecisionVenvRequest
+output_model: omnimarket.nodes.node_landing_decision_venv_effect.models.model_landing_decision_venv_result.ModelLandingDecisionVenvResult
+handler:
+  module: omnimarket.nodes.node_landing_decision_venv_effect.handlers.handler_landing_decision_venv
+  class: HandlerLandingDecisionVenv
+  input_model: omnimarket.nodes.node_landing_decision_venv_effect.models.model_landing_decision_venv_request.ModelLandingDecisionVenvRequest
+  output_model: omnimarket.nodes.node_landing_decision_venv_effect.models.model_landing_decision_venv_result.ModelLandingDecisionVenvResult
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: build_landing_decision_venv
+      handler:
+        name: HandlerLandingDecisionVenv
+        module: omnimarket.nodes.node_landing_decision_venv_effect.handlers.handler_landing_decision_venv
+      input_model: omnimarket.nodes.node_landing_decision_venv_effect.models.model_landing_decision_venv_request.ModelLandingDecisionVenvRequest
+      output_model: omnimarket.nodes.node_landing_decision_venv_effect.models.model_landing_decision_venv_result.ModelLandingDecisionVenvResult
+    - operation: verify_landing_decision_venv
+      handler:
+        name: HandlerLandingDecisionVenv
+        module: omnimarket.nodes.node_landing_decision_venv_effect.handlers.handler_landing_decision_venv
+      input_model: omnimarket.nodes.node_landing_decision_venv_effect.models.model_landing_decision_venv_request.ModelLandingDecisionVenvRequest
+      output_model: omnimarket.nodes.node_landing_decision_venv_effect.models.model_landing_decision_venv_result.ModelLandingDecisionVenvResult
+
+terminal_event: onex.evt.omnimarket.landing-decision-venv-completed.v1
+
+descriptor:
+  runtime_profiles: []
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  side_effects:
+    - build creates the environment directory and installs the pinned libraries into it with pip
+    - a passing pass writes landing_runtime.json; a refused pass deletes it
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+runtime_dispatch:
+  external_trigger: The onex-landing-decision-venv CLI invokes the typed handler locally on the controller's host.
+externally_consumed_topics:
+  - onex.evt.omnimarket.landing-decision-venv-completed.v1
+
+metadata:
+  ticket: OMN-24408
+  transport_type: local
