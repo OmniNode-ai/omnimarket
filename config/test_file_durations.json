@@ -2607,6 +2607,7 @@
   "tests/nodes/node_ticket_closer_scheduled_effect/test_ticket_bus_call.py": 1.72,
   "tests/nodes/node_ticket_closer_scheduled_effect/test_ticket_done_writer.py": 1.33,
   "tests/nodes/node_ticket_closer_scheduled_effect/test_ticket_reader.py": 1.13,
+  "tests/nodes/node_ticket_closer_scheduled_effect/test_tick_leaves_loop_free.py": 1.0,
   "tests/nodes/node_ticket_closer_scheduled_effect/test_watcher_open_prs.py": 2.01,
   "tests/nodes/node_ticket_compiler/test_golden_chain_node_ticket_compiler.py": 0.03,
   "tests/nodes/node_ticket_compiler/test_ticket_compilation.py": 0.31,
