@@ -9,6 +9,7 @@ each free one must be gone. Red on a build that skips the root check or the in-u
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -103,16 +104,16 @@ def test_a_mount_point_inside_an_entry_stops_its_removal(tmp_path: Path) -> None
     real_lstat = Path.lstat
 
     class _Other:
-        def __init__(self, base: object) -> None:
+        def __init__(self, base: os.stat_result) -> None:
             self._base = base
 
         def __getattr__(self, name: str) -> object:
             if name == "st_dev":
-                return self._base.st_dev + 1  # type: ignore[attr-defined]
+                return self._base.st_dev + 1
             return getattr(self._base, name)
 
-    def fake_lstat(self: Path, *args: object, **kwargs: object) -> object:
-        info = real_lstat(self, *args, **kwargs)  # type: ignore[arg-type]
+    def fake_lstat(self: Path) -> object:
+        info = real_lstat(self)
         return _Other(info) if self.name == "payload.bin" else info
 
     with mock.patch.object(Path, "lstat", fake_lstat):
