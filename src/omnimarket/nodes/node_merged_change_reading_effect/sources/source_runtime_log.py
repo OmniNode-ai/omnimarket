@@ -139,23 +139,23 @@ class SourceRuntimeFacts:
         host = self._environ.get(env_name, "").strip()
         if not host:
             raise ValueError(f"{env_name} is not set")
-        done = self._run(
-            [
-                "ssh",
-                "-o",
-                "BatchMode=yes",
-                "-o",
-                "ConnectTimeout=10",
-                "--",
-                host,
-                "bash -s",
-            ],
-            script.encode(),
-            timeout,
-        )
-        if done.returncode:
-            raise ValueError(f"the read on {env_name} exited {done.returncode}")
-        return done.stdout.decode(errors="replace")
+        argv = [
+            "ssh",
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            "ConnectTimeout=10",
+            "--",
+            host,
+            "bash -s",
+        ]
+        code = 0
+        for _ in range(self._labels.ssh_attempts):
+            done = self._run(argv, script.encode(), timeout)
+            if done.returncode == 0:
+                return done.stdout.decode(errors="replace")
+            code = done.returncode
+        raise ValueError(f"the read on {env_name} exited {code}")
 
     def _container(self) -> str:
         o = self._overlay
@@ -191,13 +191,41 @@ class SourceRuntimeFacts:
         )
         document = json.loads(text)
         names = tuple(
-            item[labels.manifest_name_key]
-            for item in document[labels.manifest_contracts_key]
-            if isinstance(item.get(labels.manifest_name_key), str)
+            sorted(
+                {
+                    item[key]
+                    for item in document[labels.manifest_contracts_key]
+                    for key in labels.manifest_name_keys
+                    if isinstance(item.get(key), str)
+                }
+            )
         )
         if not names:
             raise ValueError("the manifest lists no contracts")
         return names
+
+    def checkout_ancestry(
+        self, path: str, shas: Sequence[str]
+    ) -> dict[str, bool | None]:
+        """Whether each sha is in the history of the checkout's head on the runtime host (None: the host could not say)."""
+        quoted = shlex.quote(path)
+        lines = ["set -u", f"H=$(git -C {quoted} rev-parse HEAD) || exit 3"]
+        for sha in shas:
+            lines.append(
+                f'git -C {quoted} merge-base --is-ancestor {shlex.quote(sha)} "$H"; '
+                f"echo {shlex.quote(sha)} $?"
+            )
+        out = self._ssh(
+            self._overlay.ssh_host_env,
+            "\n".join(lines) + "\n",
+            self._labels.docker_timeout_seconds,
+        )
+        answers: dict[str, bool | None] = dict.fromkeys(shas)
+        for line in out.splitlines():
+            sha, _, code = line.partition(" ")
+            if sha in answers and code.strip() in ("0", "1"):
+                answers[sha] = code.strip() == "0"
+        return answers
 
     def read(
         self, runners: Sequence[ModelMcrRunner]
@@ -241,7 +269,8 @@ class SourceRuntimeFacts:
                 TypeError,
                 subprocess.SubprocessError,
             ):
-                pass
+                if "loaded_nodes" not in unread:
+                    unread.append("loaded_nodes")
         # A runtime that shows no loaded node is a read that lost its lines (the container log rotates), never a fact.
         if not facts.loaded_nodes and "loaded_nodes" not in unread:
             unread.append("loaded_nodes")

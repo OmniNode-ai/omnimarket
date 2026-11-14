@@ -171,7 +171,10 @@ def test_error_unset_ssh_variable_is_unread() -> None:
 LOG_WITHOUT_DISCOVERY = "\n".join(
     line for line in LOG_TEXT.splitlines() if "Discovered contract" not in line
 )
-MANIFEST = b'{"contracts": [{"name": "node_start_path_census_compute"}, {"name": "node_other_effect"}], "errors": []}'
+MANIFEST = (
+    b'{"contracts": [{"name": "node_start_path_census_compute"}, '
+    b'{"name": "other_effect", "entry_point_name": "node_other_effect"}], "errors": []}'
+)
 
 
 def _manifest_source(ssh: _Ssh, url: str) -> SourceRuntimeFacts:
@@ -197,6 +200,7 @@ def test_loaded_nodes_come_from_the_manifest_when_the_log_rotated() -> None:
     assert {n.node for n in facts.loaded_nodes} == {
         "node_start_path_census_compute",
         "node_other_effect",
+        "other_effect",
     }
     assert facts.unread == ()
     assert any(
@@ -228,7 +232,8 @@ def test_error_manifest_unreachable_keeps_the_log_lines() -> None:
     )
     facts, _ = _manifest_source(ssh, "http://127.0.0.1:8085/m").read([])
     assert len(facts.loaded_nodes) == 2
-    assert facts.unread == ()
+    # the manifest is the complete loaded list; the log's discovery lines alone may have rotated: unread when it fails
+    assert facts.unread == ("loaded_nodes",)
 
 
 def test_a_runtime_that_is_not_healthy_reads_joins_and_publishes_unread() -> None:
@@ -243,3 +248,29 @@ def test_a_runtime_that_is_not_healthy_reads_joins_and_publishes_unread() -> Non
         # what was seen still counts
         assert len(facts.subscriptions) == 1
     assert parse_runtime_log(LOG_TEXT, labels()).unread == ()
+
+
+def test_a_refused_ssh_is_retried_by_the_contracts_attempt_count() -> None:
+    class Flaky(_Ssh):
+        def __init__(self) -> None:
+            super().__init__(
+                {
+                    "docker logs": LOG_TEXT.encode(),
+                    "docker inspect": b"2026-11-14T09:23:43.8Z\n",
+                }
+            )
+            self.calls = 0
+
+        def __call__(
+            self, argv: Sequence[str], stdin: bytes | None, timeout: int
+        ) -> subprocess.CompletedProcess[bytes]:
+            self.calls += 1
+            if self.calls == 1:
+                return subprocess.CompletedProcess(argv, 255, b"", b"refused")
+            return super().__call__(argv, stdin, timeout)
+
+    ssh = Flaky()
+    facts, started = _source(ssh).read([])
+    assert started is not None
+    assert len(facts.loaded_nodes) == 2
+    assert ssh.calls > 2

@@ -116,36 +116,80 @@ class SourceMergedChangeReading:
         self, changes: Sequence[ModelMcrChange]
     ) -> tuple[tuple[ModelMcrBuildFact, ...], tuple[str, ...], datetime | None]:
         started = self._runtime_read()[1]
-        recorded = set(self._provenance_repos)
+        store = self._store_repos()
+        recorded = set(self._provenance_repos) - store
         repos = sorted({c.repo for c in changes})
-        unread = {r for r in repos if r not in recorded}
+        unread = {r for r in repos if r not in recorded and r not in store}
         unread.update(f"{c.repo}#{c.number}" for c in changes if not c.merge_sha)
+        store_facts, store_unread = self._store_facts(changes)
+        unread.update(store_unread)
+        facts: tuple[ModelMcrBuildFact, ...] = ()
         if self._provenance is None:
-            return (), tuple(repos), started
-        merges = [
-            (c.repo, c.number, c.merge_sha)
-            for c in changes
-            if c.repo in recorded and c.merge_sha
-        ]
-        read = self._provenance.read(merges)
-        cause = read.unread_cause
-        if cause:
-            if ":" not in cause or cause.startswith("build provenance unreadable"):
-                unread.update(recorded & set(repos))
-            else:
-                unread.update(r for r in recorded if f"{r}:" in cause)
-        running = {(e.repo, e.number) for e in read.evidence}
-        facts = tuple(
-            ModelMcrBuildFact(
-                repo=c.repo,
-                number=c.number,
-                in_build=(c.repo, c.number) in running,
-                source="build provenance",
+            unread.update(recorded & set(repos))
+        else:
+            merges = [
+                (c.repo, c.number, c.merge_sha)
+                for c in changes
+                if c.repo in recorded and c.merge_sha
+            ]
+            read = self._provenance.read(merges)
+            cause = read.unread_cause
+            if cause:
+                if ":" not in cause or cause.startswith("build provenance unreadable"):
+                    unread.update(recorded & set(repos))
+                else:
+                    unread.update(r for r in recorded if f"{r}:" in cause)
+            running = {(e.repo, e.number) for e in read.evidence}
+            facts = tuple(
+                ModelMcrBuildFact(
+                    repo=c.repo,
+                    number=c.number,
+                    in_build=(c.repo, c.number) in running,
+                    source="build provenance",
+                )
+                for c in changes
+                if c.repo in recorded and c.repo not in unread and c.merge_sha
             )
-            for c in changes
-            if c.repo in recorded and c.repo not in unread and c.merge_sha
-        )
-        return facts, tuple(sorted(unread)), started
+        return (*facts, *store_facts), tuple(sorted(unread)), started
+
+    def _store_repos(self) -> set[str]:
+        return {c.repo for c in self._runners.store_checkouts}
+
+    def _store_facts(
+        self, changes: Sequence[ModelMcrChange]
+    ) -> tuple[tuple[ModelMcrBuildFact, ...], set[str]]:
+        """Build facts for repositories the runtime mounts from a checkout (the overlay store)."""
+        facts: list[ModelMcrBuildFact] = []
+        unread: set[str] = set()
+        for checkout in self._runners.store_checkouts:
+            mine = [c for c in changes if c.repo == checkout.repo]
+            if not mine:
+                continue
+            unread.update(f"{c.repo}#{c.number}" for c in mine if not c.merge_sha)
+            known = [c for c in mine if c.merge_sha]
+            try:
+                if self._runtime is None:
+                    raise ValueError("no runtime host reader")
+                answers = self._runtime.checkout_ancestry(
+                    checkout.path, [c.merge_sha for c in known]
+                )
+            except (OSError, ValueError, subprocess.SubprocessError):
+                unread.add(checkout.repo)
+                continue
+            for change in known:
+                answer = answers.get(change.merge_sha)
+                if answer is None:
+                    unread.add(f"{change.repo}#{change.number}")
+                    continue
+                facts.append(
+                    ModelMcrBuildFact(
+                        repo=change.repo,
+                        number=change.number,
+                        in_build=answer,
+                        source=self._labels.store_source,
+                    )
+                )
+        return tuple(facts), unread
 
     def read_runtime(self, runners: Sequence[ModelMcrRunner]) -> ModelMcrRuntimeFacts:
         return self._runtime_read()[0]

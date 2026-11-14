@@ -43,6 +43,19 @@ class ModelMcrRunResult(BaseModel):
     changes_without_sha: int
 
 
+class ModelMcrStoreCheckout(BaseModel):
+    """A repository whose checkout on the runtime host is what the runtime mounts (the overlay store).
+
+    A merge in the history of that checkout's head is in the running store, so the reading's build fact for it is the
+    checkout's: no provenance file records an overlay repository.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    repo: str = Field(pattern=r"^[A-Za-z0-9_.-]+$")
+    path: str = Field(pattern=r"^/[A-Za-z0-9_./-]+$")
+
+
 class ModelMcrRunnerOverlay(BaseModel):
     """The overlay document that declares how each merged change runs."""
 
@@ -53,6 +66,7 @@ class ModelMcrRunnerOverlay(BaseModel):
     # log's discovery lines are lost when the container's log rotates, so the manifest is the loaded-node source. Empty:
     # only the log's discovery lines are read.
     manifest_url: str = Field(default="", pattern=r"^(https?://[^\s]+)?$")
+    store_checkouts: tuple[ModelMcrStoreCheckout, ...] = ()
 
 
 class ModelMcrUnitHost(BaseModel):
@@ -90,8 +104,11 @@ class ModelMcrLogLabels(BaseModel):
     healthy_status: str = Field(min_length=1)
     started_at_template: str = Field(min_length=1)
     docker_timeout_seconds: int = Field(gt=0)
+    ssh_attempts: int = Field(gt=0)
     manifest_contracts_key: str = Field(min_length=1)
-    manifest_name_key: str = Field(min_length=1)
+    # A contract is listed under its own name and under the name of the entry point that loads it; the node map names
+    # the entry point (the node's directory), so both are loaded names.
+    manifest_name_keys: tuple[str, ...] = Field(min_length=1)
     manifest_fetch_options: str = Field(min_length=1)
     unit_show_options: str = Field(min_length=1)
     unit_show_properties: str = Field(min_length=1)
@@ -101,3 +118,4 @@ class ModelMcrLogLabels(BaseModel):
     merge_branches: tuple[str, ...] = Field(min_length=1)
     merge_subject_pattern: str = Field(min_length=1)
     git_timeout_seconds: int = Field(gt=0)
+    store_source: str = Field(min_length=1)

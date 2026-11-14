@@ -14,13 +14,17 @@ from omnibase_core.validators.no_unguarded_git_subprocess import (
     scrub_git_location_env,
 )
 
-from omnimarket.models.model_merged_change_reading import ModelMcrChange
+from omnimarket.models.model_merged_change_reading import (
+    ModelMcrChange,
+    ModelMcrRuntimeFacts,
+)
 from omnimarket.models.model_merged_running_count import (
     ModelMrcEvidence,
     ModelMrcEvidenceRead,
 )
 from omnimarket.nodes.node_merged_change_reading_effect.models.model_merged_change_reading_run import (
     ModelMcrRunnerOverlay,
+    ModelMcrStoreCheckout,
 )
 from omnimarket.nodes.node_merged_change_reading_effect.runtime_merged_change_reading import (
     main,
@@ -119,7 +123,8 @@ def test_error_one_repo_history_unread_keeps_the_other_read(tmp_path: Path) -> N
 def test_no_provenance_source_reads_every_repo_unread(tmp_path: Path) -> None:
     facts, unread, _ = _source(None, tmp_path).read_build(_changes())
     assert facts == ()
-    assert unread == ("omnibase_infra", "omnimarket", "overlays")
+    # the omnibase_infra change without a sha is also named
+    assert unread == ("omnibase_infra", "omnibase_infra#4", "omnimarket", "overlays")
 
 
 def _git(clone: Path, *args: str) -> str:
@@ -170,3 +175,66 @@ def test_main_refuses_when_the_registry_home_is_unset(
     monkeypatch.delenv("OMNI_HOME", raising=False)
     with pytest.raises(SystemExit, match="OMNI_HOME"):
         main(["--change", "omnimarket#1"])
+
+
+class _StoreRuntime:
+    """Stands for the runtime host reader: answers the checkout's ancestry question from a table."""
+
+    def __init__(self, answers: dict[str, bool | None], fail: bool = False) -> None:
+        self.answers = answers
+        self.fail = fail
+        self.asked: list[tuple[str, list[str]]] = []
+
+    def checkout_ancestry(self, path: str, shas: list[str]) -> dict[str, bool | None]:
+        self.asked.append((path, shas))
+        if self.fail:
+            raise ValueError("host unreachable")
+        return {s: self.answers.get(s) for s in shas}
+
+    def read(self, runners: object) -> tuple[ModelMcrRuntimeFacts, None]:
+        return ModelMcrRuntimeFacts(), None
+
+
+def _store_source(runtime: _StoreRuntime, tmp_path: Path) -> SourceMergedChangeReading:
+    return SourceMergedChangeReading(
+        runners=ModelMcrRunnerOverlay(
+            runners=(),
+            store_checkouts=(
+                ModelMcrStoreCheckout(repo="overlays", path="/srv/store/overlays"),
+            ),
+        ),
+        provenance=None,
+        provenance_repos=(),
+        runtime=runtime,  # type: ignore[arg-type]
+        labels=labels(),
+        home=tmp_path,
+    )
+
+
+def test_store_checkout_ancestry_gives_overlay_build_facts(tmp_path: Path) -> None:
+    runtime = _StoreRuntime({"c" * 40: True, "d" * 40: False})
+    changes = [
+        ModelMcrChange(repo="overlays", number=1, merge_sha="c" * 40),
+        ModelMcrChange(repo="overlays", number=2, merge_sha="d" * 40),
+        ModelMcrChange(repo="overlays", number=3, merge_sha="e" * 40),
+        ModelMcrChange(repo="overlays", number=4),
+    ]
+    facts, unread, _ = _store_source(runtime, tmp_path).read_build(changes)
+    assert {(f.number, f.in_build, f.source) for f in facts} == {
+        (1, True, "overlay store checkout"),
+        (2, False, "overlay store checkout"),
+    }
+    # the host could not say for the third; the fourth has no sha; the repository itself was read
+    assert unread == ("overlays#3", "overlays#4")
+    assert runtime.asked[0][0] == "/srv/store/overlays"
+
+
+def test_error_store_host_unreachable_reads_the_repository_unread(
+    tmp_path: Path,
+) -> None:
+    runtime = _StoreRuntime({}, fail=True)
+    facts, unread, _ = _store_source(runtime, tmp_path).read_build(
+        [ModelMcrChange(repo="overlays", number=1, merge_sha="c" * 40)]
+    )
+    assert facts == ()
+    assert unread == ("overlays",)
