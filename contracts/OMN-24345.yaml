@@ -59,7 +59,7 @@ dod_evidence:
   - AC3
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/nodes/node_dev_signed_in_read_effect/test_seam_read_route.py uv run --frozen pytest tests/nodes/node_dev_signed_in_read_effect/test_overlay.py -q --no-cov -n
+    check_value: uv run --frozen pytest tests/nodes/node_dev_signed_in_read_effect/test_seam_read_route.py tests/nodes/node_dev_signed_in_read_effect/test_seam_contract_topics.py tests/nodes/node_dev_signed_in_read_effect/test_overlay.py -q --no-cov -n
       0 -p no:randomly
     cwd: .
 - id: dod-omn24345-ac4-probe-chain
