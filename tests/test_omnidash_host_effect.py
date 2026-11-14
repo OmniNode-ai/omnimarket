@@ -102,7 +102,9 @@ class FakePorts:
         health_fails: set[str] | None = None,
         switch_fails: set[str] | None = None,
         poll_error: str | None = None,
+        drifted: set[str] | None = None,
     ) -> None:
+        self.drifted = drifted or set()
         self.tips = list(tips)
         self.build_fails = build_fails or set()
         self.health_fails = health_fails or set()
@@ -127,11 +129,19 @@ class FakePorts:
     ) -> ModelOmnidashBranchTip | None:
         return next((t for t in self.tips if t.sha == sha), None)
 
+    def config_drifted(
+        self, host: ModelOmnidashHostRow, schedule: ModelOmnidashHostSchedule, sha: str
+    ) -> bool:
+        return sha in self.drifted
+
     def build(
         self, host: ModelOmnidashHostRow, schedule: ModelOmnidashHostSchedule, sha: str
     ) -> str | None:
         self.calls.append(("build", sha))
-        return "npm run build failed (exit 2)" if sha in self.build_fails else None
+        if sha in self.build_fails:
+            return "npm run build failed (exit 2)"
+        self.drifted.discard(sha)
+        return None
 
     def check_health(
         self, host: ModelOmnidashHostRow, schedule: ModelOmnidashHostSchedule, sha: str
@@ -360,6 +370,120 @@ def test_omnidash_host_pinned_commit_is_served_then_the_tip_takes_over(
     outcome, status_path = tick(tmp_path, ports, clock)
     assert outcome == "switched"
     assert read_status(status_path).served_sha == SHA_B
+
+
+# -- a changed host row reaches the served build (OMN-22478) -----------------------------------
+def test_omnidash_host_changed_row_rebuilds_and_switches_the_served_commit(
+    tmp_path: Path,
+) -> None:
+    """Golden: the served commit is still the newest, but the row's backend changed since it was built."""
+    ports = FakePorts([tip("dev", SHA_A, 100)])
+    clock = Clock()
+    tick(tmp_path, ports, clock)
+    ports.calls.clear()
+    ports.drifted.add(SHA_A)
+    outcome, status_path = tick(tmp_path, ports, clock)
+    assert outcome == "switched"
+    assert ports.calls == [("build", SHA_A), ("health", SHA_A), ("switch", SHA_A)]
+    status = read_status(status_path)
+    assert (status.served_sha, status.last_result) == (SHA_A, "switched")
+    ports.calls.clear()
+    assert tick(tmp_path, ports, clock)[0] == "unchanged"
+    assert ports.calls == []
+
+
+def test_omnidash_host_changed_row_whose_rebuild_fails_keeps_serving_and_says_why(
+    tmp_path: Path,
+) -> None:
+    """Error: a refused rebuild of the served commit leaves it serving and writes the refusal."""
+    ports = FakePorts([tip("dev", SHA_A, 100)], build_fails=set())
+    clock = Clock()
+    tick(tmp_path, ports, clock)
+    ports.calls.clear()
+    ports.drifted.add(SHA_A)
+    ports.build_fails.add(SHA_A)
+    outcome, status_path = tick(tmp_path, ports, clock)
+    assert outcome == "refused-build"
+    assert ports.calls == [("build", SHA_A)]
+    status = read_status(status_path)
+    assert status.served_sha == SHA_A
+    assert status.refusal_reason == "npm run build failed (exit 2)"
+
+
+CONTRACT_LOCAL_STALE = (
+    "data_source:\n  projection_tenant_id: 00000000-0000-0000-0000-000000000000\n"
+    "  url: http://192.0.2.20:3003\n"
+)
+
+
+def finished_build(host: ModelOmnidashHostRow, sha: str, contract_local: str) -> Path:
+    target = SystemOmnidashHostPorts.builds_dir(host) / sha
+    target.mkdir(parents=True)
+    (target / ".omnidash-host-build-ok").write_text(sha + "\n", encoding="utf-8")
+    (target / "contract.local.yaml").write_text(contract_local, encoding="utf-8")
+    return target
+
+
+def test_omnidash_host_real_ports_reapply_a_changed_row_to_a_finished_build(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from omnimarket.nodes.node_omnidash_host_effect.handlers import (
+        adapter_omnidash_host_system as system_module,
+    )
+
+    host, schedule = row(tmp_path), load_schedule()
+    target = finished_build(host, SHA_A, CONTRACT_LOCAL_STALE)
+    ran: list[list[str]] = []
+
+    def fake_run(argv: Sequence[str], **_: object) -> subprocess.CompletedProcess[str]:
+        ran.append(list(argv))
+        return subprocess.CompletedProcess(list(argv), 0, "", "")
+
+    monkeypatch.setattr(system_module, "_run", fake_run)
+    ports = SystemOmnidashHostPorts()
+    assert ports.config_drifted(host, schedule, SHA_A) is True
+    assert ports.build(host, schedule, SHA_A) is None
+    written = yaml.safe_load((target / "contract.local.yaml").read_text())
+    assert written == {
+        "data_source": {
+            "url": host.projection_api_url,
+            "projection_tenant_id": host.projection_tenant_id,
+        }
+    }
+    assert ran == [["npm", "run", "generate:config"], ["npm", "run", "build"]]
+    assert ports.config_drifted(host, schedule, SHA_A) is False
+    ran.clear()
+    assert ports.build(host, schedule, SHA_A) is None
+    assert ran == []
+
+
+def test_omnidash_host_real_ports_put_the_old_settings_back_when_the_rebuild_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from omnimarket.nodes.node_omnidash_host_effect.handlers import (
+        adapter_omnidash_host_system as system_module,
+    )
+
+    host, schedule = row(tmp_path), load_schedule()
+    target = finished_build(host, SHA_A, CONTRACT_LOCAL_STALE)
+
+    def failing_run(
+        argv: Sequence[str], **_: object
+    ) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(list(argv), 2, "", "boom")
+
+    monkeypatch.setattr(system_module, "_run", failing_run)
+    reason = SystemOmnidashHostPorts().build(host, schedule, SHA_A)
+    assert reason is not None
+    assert reason.startswith("generate:config failed (exit 2)")
+    assert (target / "contract.local.yaml").read_text() == CONTRACT_LOCAL_STALE
+
+
+def test_omnidash_host_a_commit_with_no_finished_build_is_not_drift(
+    tmp_path: Path,
+) -> None:
+    host, schedule = row(tmp_path), load_schedule()
+    assert SystemOmnidashHostPorts().config_drifted(host, schedule, SHA_B) is False
 
 
 # -- units and idempotent install --------------------------------------------------------------
