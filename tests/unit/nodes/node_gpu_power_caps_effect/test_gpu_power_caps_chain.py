@@ -46,7 +46,9 @@ async def chain(
     seen: list[ModelGpuPowerCapsResult] = []
 
     async def node(msg: Any) -> None:
-        result = handler.handle(ModelGpuPowerCapsRequest.model_validate_json(msg.value))
+        result = await handler.handle(
+            ModelGpuPowerCapsRequest.model_validate_json(msg.value)
+        )
         if not drop_result:
             await bus.publish(EVT, key=None, value=result.model_dump_json().encode())
 
