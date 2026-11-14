@@ -61,3 +61,11 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/nodes/node_gpu_power_caps_effect/test_gpu_power_caps_chain.py tests/unit/runtime_guard -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn24373-integration-proof
+  description: The pushed head ran the focused GPU power caps tests and the runtime loop guard on a lab host through the lab work runner and exited 0. The running-runtime reading (a dev runtime booted from the change, no silence after a power-caps request, a write through the write node answering) is read from the lab receipt comment on the ticket.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24373 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_gpu_power_caps_effect tests/unit/runtime_guard -q --no-cov -n 0 -p no:randomly
+    cwd: .
