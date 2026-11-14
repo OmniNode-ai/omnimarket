@@ -28,6 +28,7 @@ from omnimarket.github_landing.github_landing_requests import (
     LIST_PAGE_SIZE,
     artifact_archive_request,
     artifact_request,
+    code_scanning_alerts_request,
     commit_check_runs_request,
     issue_comments_request,
     job_log_request,
@@ -60,6 +61,8 @@ from omnimarket.models.model_github_gateway_io import (
     ModelBranchProtectionResult,
     ModelCheckRun,
     ModelCiChecksResult,
+    ModelCodeScanningAlert,
+    ModelCodeScanningAlertsResult,
     ModelCommitCheckRunsResult,
     ModelGithubGatewayRequest,
     ModelJobLogFillResult,
@@ -886,6 +889,104 @@ def read_commit_check_runs(
     )
 
 
+def _alert_ref(request: ModelGithubGatewayRequest) -> str:
+    """The ref a code-scanning read asks about: a PR's merge ref or a branch head."""
+    if request.pr_number is not None:
+        return f"refs/pull/{request.pr_number}/merge"
+    if request.branch is not None:
+        return f"refs/heads/{request.branch}"
+    # Defensive; the request validator requires exactly one of the two.
+    raise ValueError("this operation requires pr_number or branch.")
+
+
+def _alert_unavailable_reason(
+    response: ModelGithubHttpResponse,
+) -> Literal["no_analysis", "not_enabled", "forbidden"] | None:
+    """Why GitHub has no alerts to give for the ref, or None for any other answer."""
+    if response.status not in (403, 404):
+        return None
+    message = response.message().lower()
+    if "no analysis found" in message:
+        return "no_analysis"
+    if (
+        response.status == 404
+        or "not enabled" in message
+        or "must be enabled" in message
+    ):
+        return "not_enabled"
+    return "forbidden"
+
+
+def _code_scanning_alert(raw: dict[str, object]) -> ModelCodeScanningAlert:
+    rule = raw.get("rule")
+    instance = raw.get("most_recent_instance")
+    location = instance.get("location") if isinstance(instance, dict) else None
+    start_line = location.get("start_line") if isinstance(location, dict) else None
+    return ModelCodeScanningAlert.model_validate(
+        {
+            "number": raw.get("number"),
+            "rule_id": _nested_str(rule, "id"),
+            "severity": _nested_str(rule, "severity") or None,
+            "security_severity": _nested_str(rule, "security_severity_level") or None,
+            "path": _nested_str(location, "path") or None,
+            "line": start_line if isinstance(start_line, int) else None,
+            "html_url": _nested_str(raw, "html_url") or None,
+        }
+    )
+
+
+def read_code_scanning_alerts(
+    transport: GitHubReadTransportProtocol, request: ModelGithubGatewayRequest
+) -> ModelCodeScanningAlertsResult:
+    """The open code-scanning alerts of a pull request's merge ref or a branch.
+
+    A 404 or 403 that says there is no analysis for the ref, that scanning is
+    not enabled, or that the token cannot read alerts is an ``available=False``
+    answer naming the reason. Any other non-2xx status raises
+    ``GitHubTransportError`` like the other list reads.
+    """
+    ref = _alert_ref(request)
+    first = code_scanning_alerts_request(
+        request.repo, ref, per_page=min(request.limit, LIST_PAGE_SIZE)
+    )
+    items: list[dict[str, object]] = []
+    truncated = False
+    next_request: ModelGithubHttpRequest | None = first
+    for _page in range(_MAX_PAGES):
+        if next_request is None:
+            break
+        response = transport.send_sync(next_request)
+        reason = _alert_unavailable_reason(response)
+        if reason is not None:
+            return ModelCodeScanningAlertsResult(
+                repo=request.repo,
+                ref=ref,
+                available=False,
+                unavailable_reason=reason,
+                truncated=False,
+            )
+        body = _checked(next_request, response)
+        page = body.get("value")
+        if isinstance(page, list):
+            items.extend(item for item in page if isinstance(item, dict))
+        next_request = next_page_request(response)
+        if len(items) > request.limit:
+            items, truncated = items[: request.limit], True
+            break
+        if len(items) == request.limit:
+            truncated = next_request is not None
+            break
+    else:
+        truncated = next_request is not None
+    return ModelCodeScanningAlertsResult(
+        repo=request.repo,
+        ref=ref,
+        available=True,
+        truncated=truncated,
+        alerts=[_code_scanning_alert(item) for item in items],
+    )
+
+
 def read_repo_file(
     transport: GitHubReadTransportProtocol, request: ModelGithubGatewayRequest
 ) -> ModelRepoFileResult:
@@ -1102,6 +1203,7 @@ __all__: list[str] = [
     "read_artifacts",
     "read_branch_protection",
     "read_ci_checks",
+    "read_code_scanning_alerts",
     "read_commit_check_runs",
     "read_job_log_fill",
     "read_job_log_tail",

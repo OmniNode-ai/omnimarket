@@ -192,6 +192,11 @@ SCM_VERBS: Final[tuple[ModelScmVerb, ...]] = (
                 "pr_review_threads",
                 "gh api graphql (pullRequest reviewThreads)",
             ),
+            (
+                "code-scanning-alerts",
+                "code_scanning_alerts",
+                "gh api repos/<o>/<r>/code-scanning/alerts",
+            ),
         )
     ),
 )

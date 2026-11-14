@@ -343,6 +343,17 @@ def commit_check_runs_request(
     )
 
 
+def code_scanning_alerts_request(
+    repository: str, ref: str, *, per_page: int
+) -> ModelGithubHttpRequest:
+    """GET the open code-scanning alerts of one ref (a PR merge ref or a branch)."""
+    query = _query({"state": "open", "ref": ref, "per_page": per_page})
+    return ModelGithubHttpRequest(
+        method="GET",
+        path=f"{_repo_path(repository)}/code-scanning/alerts?{query}",
+    )
+
+
 def head_check_runs_request(
     repository: str, head_sha: str, *, etag: str | None = None, page: int = 1
 ) -> ModelGithubHttpRequest:
@@ -609,6 +620,7 @@ __all__: list[str] = [
     "branch_request",
     "branch_rules_request",
     "cancel_run_request",
+    "code_scanning_alerts_request",
     "commit_check_runs_request",
     "compare_request",
     "convert_to_draft_request",
