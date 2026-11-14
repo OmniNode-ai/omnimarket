@@ -1,0 +1,86 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodeHookLaneTraceCompute
+#
+# One lane's completed calls, each with its full stored output and a typed label:
+#
+#   handle(ModelLaneTraceRequest) -> ModelLaneTraceResult
+#
+# Without rows the result carries only the READ ONLY query that reads the lane's calls from the dev projection
+# (claude_hook_events joined to session_content on session_id and tool_use_id). With the rows that query returned, the
+# result carries every call labelled ok, failed, refused or timeout by node_hook_tool_outcome_compute's handler (rules from
+# its overlay), the printed trace, and the counts. A call that printed a refusal and ended with exit code 0 is refused,
+# never ok; a call with no stored output is counted as no-output and carries no label. Pure: no clock, no I/O, no model.
+name: "node_hook_lane_trace_compute"
+contract_name: "node_hook_lane_trace_compute"
+node_name: "node_hook_lane_trace_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+description: >
+  Pure lane trace. Takes one lane name and a UTC window and returns the read-only query for that lane's completed calls;
+  takes the rows that query returned and returns each call with its full stored output, its label (ok, failed, refused,
+  timeout, or no-output when nothing is stored), its exit code and its lane, and one outcomes count. The lane name must be
+  a plain token and both bounds UTC stamps, or the request is refused before any query text is built. The label is
+  decided by node_hook_tool_outcome_compute's handler, not here. No clock, no I/O, no model.
+input_model:
+  name: "ModelLaneTraceRequest"
+  module: "omnimarket.nodes.node_hook_lane_trace_compute.models.model_lane_trace_request"
+  description: "A lane, a window, a limit and optionally the rows the query returned."
+output_model:
+  name: "ModelLaneTraceResult"
+  module: "omnimarket.nodes.node_hook_lane_trace_compute.models.model_lane_trace_result"
+  description: "The query, the labelled calls, the counts and the printed lines."
+handler:
+  module: "omnimarket.nodes.node_hook_lane_trace_compute.handlers.handler_hook_lane_trace"
+  class: "HandlerHookLaneTrace"
+  input_model: "omnimarket.nodes.node_hook_lane_trace_compute.models.model_lane_trace_request.ModelLaneTraceRequest"
+  output_model: "omnimarket.nodes.node_hook_lane_trace_compute.models.model_lane_trace_result.ModelLaneTraceResult"
+# The command line (python -m omnimarket.nodes.node_hook_lane_trace_compute) prints the query, or the trace of the rows
+# piped into it, and calls the handler below; it is named here so the contract binds it.
+in_process_entrypoint:
+  module: omnimarket.nodes.node_hook_lane_trace_compute.runtime_hook_lane_trace
+  handler:
+    name: HandlerHookLaneTrace
+    module: omnimarket.nodes.node_hook_lane_trace_compute.handlers.handler_hook_lane_trace
+    input_model: omnimarket.nodes.node_hook_lane_trace_compute.models.model_lane_trace_request.ModelLaneTraceRequest
+    output_model: omnimarket.nodes.node_hook_lane_trace_compute.models.model_lane_trace_result.ModelLaneTraceResult
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: trace_lane
+      handler:
+        name: HandlerHookLaneTrace
+        module: omnimarket.nodes.node_hook_lane_trace_compute.handlers.handler_hook_lane_trace
+      event_model:
+        name: ModelLaneTraceRequest
+        module: omnimarket.nodes.node_hook_lane_trace_compute.models.model_lane_trace_request
+runtime_profiles: [main]
+descriptor:
+  runtime_profiles: [main]
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+replay:
+  deterministic: true
+metadata:
+  transport_type: inmemory
+  description: "One lane's completed calls with their full stored output and a typed label."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-11-14"
+  tags:
+    - compute
+    - hooks
+    - lane-trace
+    - pure
