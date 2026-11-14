@@ -15,11 +15,25 @@ commands:
     measured_path: /sim/work
     timeout_seconds: 60
     simulated_effect_bytes: -1000
+  - name: evict_cache
+    kind: remove_entries
+    measured_path: /sim/cache
+    timeout_seconds: 60
+  - name: remove_worktrees
+    kind: remove_worktrees
+    measured_path: /sim/work
+    timeout_seconds: 60
+    lease_marker_names: [.sim-lease]
 hosts:
   - name: sim-host-a
     transport_prefix: []
-    commands: [prune_temp, grow_scratch]
+    commands: [prune_temp, grow_scratch, evict_cache]
     simulated_free_bytes: 20000
+    entry_roots:
+      - {command: evict_cache, path: /sim/cache}
+    simulated_entries:
+      - {path: /sim/cache/pkg-old, size_bytes: 7000}
+      - {path: /sim/cache/pkg-busy, size_bytes: 3000, in_use: true}
   - name: sim-host-b
     transport_prefix: []
     commands: [grow_scratch]
