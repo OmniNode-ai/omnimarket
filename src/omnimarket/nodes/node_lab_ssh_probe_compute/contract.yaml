@@ -18,6 +18,11 @@ description: >
   for. A parked row (available false) is never a peer and is never named. Every peer label and destination travels in
   the script as a printf %b octal escape, so a rendered script never carries another host's name in plain text. The
   bounds, the PATH export, the cache directory and the destination grammar are the caller's, injected by the caller.
+handler:
+  module: omnimarket.nodes.node_lab_ssh_probe_compute.handlers.handler_lab_ssh_probe
+  class: HandlerLabSshProbe
+  input_model: omnimarket.nodes.node_lab_ssh_probe_compute.models.model_lab_ssh_probe.ModelLabSshProbeRequest
+  output_model: omnimarket.nodes.node_lab_ssh_probe_compute.models.model_lab_ssh_probe.ModelLabSshProbeScript
 handler_routing:
   routing_strategy: operation_match
   handlers:
@@ -32,7 +37,7 @@ descriptor:
   purity: pure
   idempotent: true
   side_effects: []
-  runtime_profiles: [main]
+  runtime_profiles: []
 event_bus:
   subscribe_topics: []
   publish_topics: []
@@ -40,5 +45,5 @@ runtime_dispatch:
   external_trigger: Direct invocation with the host table rows and the host the probe runs on (python -m omnimarket.nodes.node_lab_ssh_probe_compute, one JSON request on stdin, one JSON script on stdout); the node holds no bus route, so it adds no topic.
 metadata:
   ticket: OMN-24279
-  transport_type: kafka
+  transport_type: local
 lifecycle: experimental
