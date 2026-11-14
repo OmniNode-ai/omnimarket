@@ -1,0 +1,91 @@
+schema_version: 1.0.0
+ticket_id: OMN-24441
+title: 'The register of one-offs: every Mac job that computes data outside the runtime, with its replacement'
+summary: 'Adds node_oneoff_register_compute: a pure compute node that reads the register of one-offs (an overlay) against the automation liveness overlay and the nodes that exist, and fails by name for
+  an unregistered in-scope process, an undeclared process or a replacement node that does not exist. The register data lives in the overlays repository (overlays#521).'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24441-register-of-one-offs
+  statement: The register of one-offs is read by a node against the declared process list and the nodes that exist, so a missing, undeclared or unreplaceable entry fails by name.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the one-off register read passes a consistent register and fails by name for an unregistered in-scope process, an entry naming an undeclared process, and a node replacement that does
+      not exist, each shown with the break removed reading a pass -- falsifier: pytest tests/unit/nodes/node_oneoff_register_compute/test_oneoff_register.py -q'
+  - id: AC2
+    statement: 'AC2: the node''s command reads the register overlay and the liveness overlay and answers exit 0 on a pass, exit 1 on a named failure and exit 3 with a refusal line when an overlay is missing
+      (golden and error chain) -- falsifier: pytest tests/nodes/node_oneoff_register_compute/test_golden_chain_oneoff_register.py -q'
+  - id: AC3
+    statement: 'AC3: the seam from a one-off to its replacement node fails when a replacement node is renamed or deleted -- falsifier: pytest tests/nodes/node_oneoff_register_compute/test_seam_oneoff_to_replacement_node.py
+      -q'
+  - id: AC4
+    statement: 'AC4: the register overlay holds a row or an exclusion with a reason for every process the liveness overlay declares active on the Mac, the dashboard publisher first, and the real read exits
+      0 on the branch and exits 1 naming the process when its row is removed -- falsifier: python -m omnimarket.nodes.node_oneoff_register_compute with ONEX_SKILL_OVERLAY_ROOTS at the overlays branch, exit
+      code and the unregistered_processes list'
+  - id: AC5
+    statement: 'AC5: integrated: the register read runs in the running dev runtime on its command topic and its completed event is read from the bus with the register''s counts -- falsifier: no completed
+      event on onex.evt.omnimarket.oneoff-register-completed.v1 after the command is sent'
+evidence_requirements:
+- kind: tests
+  description: The node tests pass at the pushed head.
+  command: uv run pytest tests/unit/nodes/node_oneoff_register_compute tests/nodes/node_oneoff_register_compute -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24441-ac1
+  description: 'AC1: the one-off register read passes a consistent register and fails by name for an unregistered in-scope process, an entry naming an undeclared process, and a node replacement that does
+    not exist, each shown with the break removed reading a pass'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_oneoff_register_compute/test_oneoff_register.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24441-ac2
+  description: 'AC2: the node''s command reads the register overlay and the liveness overlay and answers exit 0 on a pass, exit 1 on a named failure and exit 3 with a refusal line when an overlay is missing
+    (golden and error chain)'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_oneoff_register_compute/test_golden_chain_oneoff_register.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24441-ac3
+  description: 'AC3: the seam from a one-off to its replacement node fails when a replacement node is renamed or deleted'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_oneoff_register_compute/test_seam_oneoff_to_replacement_node.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24441-ac4
+  description: 'AC4 hosted proxy: the unit tests above pass; the real read of the register overlay on a lab host, its exit codes and the removed-row break are named in the pull request Lab line.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_oneoff_register_compute -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24441-ac5
+  description: 'AC5 integrated: not met by this pull request. The node is not yet dispatched on the dev runtime; the exact step left is in the pull request body.'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_oneoff_register_compute -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24441-integration-proof
+  description: the golden and error chain tests of the register command and the seam test run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24441 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_oneoff_register_compute -q --no-cov
