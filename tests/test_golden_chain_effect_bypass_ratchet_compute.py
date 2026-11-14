@@ -61,7 +61,8 @@ def test_golden_chain_declares_the_terminal_topics() -> None:
     contract = yaml.safe_load(CONTRACT.read_text())
     terminal = contract["runtime_dispatch"]["terminal_events"]
     assert terminal["success"] in contract["event_bus"]["publish_topics"]
-    assert terminal["failure"] in contract["event_bus"]["publish_topics"]
+    # The pure compute never publishes a failure: the runtime owns that terminal.
+    assert terminal["failure"] not in contract["event_bus"]["publish_topics"]
 
 
 @pytest.mark.asyncio

@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+# unimported-handler-allow: HandlerOnexSetup is resolved at boot from handler_routing in contract.yaml, by module path, not by a Python import
 """HandlerOnexSetup: run the onboarding walk a developer needs after installing the CLI.
 
 Steps, in order (``SETUP_STEPS``):

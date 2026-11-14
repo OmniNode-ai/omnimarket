@@ -49,6 +49,7 @@ handler_routing:
       handler:
         name: "HandlerBypassRatchet"
         module: "omnimarket.nodes.node_effect_bypass_ratchet_compute.handlers.handler_bypass_ratchet"
+terminal_event: "onex.evt.omnimarket.effect-bypass-ratchet-completed.v1"
 runtime_dispatch:
   command_topic: "onex.cmd.omnimarket.effect-bypass-ratchet-requested.v1"
   terminal_events:
@@ -63,7 +64,6 @@ event_bus:
     - "onex.cmd.omnimarket.effect-bypass-ratchet-requested.v1"
   publish_topics:
     - "onex.evt.omnimarket.effect-bypass-ratchet-completed.v1"
-    - "onex.evt.omnimarket.effect-bypass-ratchet-failed.v1"
 runtime_profiles:
   - main
 descriptor:
