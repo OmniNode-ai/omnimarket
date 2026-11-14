@@ -4,8 +4,9 @@
 
 * seam: the node's check value for the vector's key equals the value the deploy agent computes (``key_check_vector`` of
   agent_wire.json, the same vector omnibase_infra's deploy-agent tests pin), so a change on either side fails a test;
-* refusals: a differing key, an unreadable page, a page with no value and an overlay with no read configured each refuse and
-  publish nothing; the signing key is in no detail;
+* refusals: a differing key, an unreadable page, a page with no value and an overlay that configures only part of the check each
+  refuse and publish nothing; an overlay that configures none of it publishes and says it did not check; the signing key is in
+  no detail;
 * controls: the same request publishes when the agent holds the node's key, so the red is the check's.
 """
 
@@ -114,7 +115,7 @@ async def test_page_without_a_value_refuses_and_publishes_nothing() -> None:
     assert "carries no key check value" in result.detail
 
 
-async def test_overlay_without_the_read_refuses_and_publishes_nothing() -> None:
+async def test_overlay_with_no_key_check_publishes_and_says_it_did_not_check() -> None:
     bus = FakeBus()
     unconfigured = overlay().model_copy(
         update={
@@ -126,9 +127,26 @@ async def test_overlay_without_the_read_refuses_and_publishes_nothing() -> None:
     handler = HandlerBranchDeployCommand(event_bus=bus, overlay=unconfigured)
     result = await handler.handle(request())
 
+    assert result.status == "published"
+    assert [topic for topic, _, _ in bus.published] == [TOPIC]
+    assert "was not checked against the deploy agent's key" in result.detail
+
+
+@pytest.mark.parametrize(
+    "missing",
+    ["agent_health_url", "agent_health_timeout_seconds", "agent_key_check_field"],
+)
+async def test_overlay_with_part_of_the_key_check_refuses_and_publishes_nothing(
+    missing: str,
+) -> None:
+    bus = FakeBus()
+    partial = overlay().model_copy(update={missing: None})
+    handler = HandlerBranchDeployCommand(event_bus=bus, overlay=partial)
+    result = await handler.handle(request())
+
     assert result.status == "refused"
     assert bus.published == []
-    assert "names no deploy agent health url" in result.detail
+    assert "names only part of the deploy agent key check" in result.detail
 
 
 async def test_refusal_detail_is_cut_to_the_overlay_bound() -> None:

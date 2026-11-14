@@ -618,7 +618,7 @@
   "tests/nodes/node_branch_deploy_command_effect/test_command_effect.py": 3.34,
   "tests/nodes/node_branch_deploy_command_effect/test_contract.py": 2.66,
   "tests/nodes/node_branch_deploy_command_effect/test_key_check_chain.py": 2.56,
-  "tests/nodes/node_branch_deploy_command_effect/test_key_check_seam.py": 2.85,
+  "tests/nodes/node_branch_deploy_command_effect/test_key_check_seam.py": 2.7,
   "tests/nodes/node_branch_deploy_command_effect/test_overlay_ref_seam_omn24216.py": 2.59,
   "tests/nodes/node_branch_deploy_command_effect/test_trigger_seam.py": 2.48,
   "tests/nodes/node_branch_deploy_command_effect/test_wire_seam.py": 3.37,

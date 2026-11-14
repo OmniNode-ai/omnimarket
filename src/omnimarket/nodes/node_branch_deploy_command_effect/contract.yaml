@@ -15,11 +15,11 @@ node_version: {major: 1, minor: 0, patch: 0}
 
 description: >
   Branch deploy command effect. Builds the deploy agent's rebuild command envelope from a typed request and the overlay,
-  signs it with the signing key named by the overlay, and publishes it to the deploy agent's command topic. Before it
-  publishes, it reads the deploy agent's health page and compares the agent's key check value with the check value of its
-  own signing key (OMN-24396). A published command is status published; a missing signing key, a signing key that differs
-  from the agent's, an unreadable health page, a page with no key check value and an overlay that does not configure the
-  read are each refused before anything is published; a publish error is failed with the error class as detail. The
+  signs it with the signing key named by the overlay, and publishes it to the deploy agent's command topic. When the
+  overlay configures the key check, it reads the deploy agent's health page before it publishes and compares the agent's
+  key check value with the check value of its own signing key (OMN-24396). A published command is status published; a
+  missing signing key, a signing key that differs from the agent's, an unreadable health page, a page with no key check
+  value and an overlay that configures only part of the check are each refused before anything is published; a publish error is failed with the error class as detail. The
   detail is cut to the overlay bound.
 
 handler_routing:

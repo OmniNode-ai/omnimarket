@@ -7,8 +7,9 @@ package ships ``overlay.example.yaml`` with synthetic values. Nothing here has a
 except ``hmac_secret_env`` alone, tolerated absent during the transition to the overlays change (OMN-24085), because
 overlays main still holds the old subprocess-trigger document. ``hmac_secret_env`` is the NAME of the environment
 variable the runtime fills from the secret store, never a value. ``agent_health_url``, ``agent_health_timeout_seconds`` and
-``agent_key_check_field`` are tolerated absent for the same reason (OMN-24396): the handler refuses to publish while any
-of the three is absent, because it cannot then check the signing key against the deploy agent's key.
+``agent_key_check_field`` (OMN-24396) are absent until the deploy agent serves a key check value: all three absent means
+the handler does not check the signing key against the agent's key, all three present means it does, and a part of them
+refuses.
 """
 
 from __future__ import annotations
@@ -27,8 +28,8 @@ class ModelBranchDeployCommandOverlay(BaseModel):
     overlay does not name the signing key variable yet, tolerated only during the OMN-24085 transition); ``scope`` and
     ``build_source`` the scope and build-source flags; ``detail_max_chars`` the longest detail kept; ``agent_health_url``
     the deploy agent's health page, ``agent_health_timeout_seconds`` the bound of that one read and ``agent_key_check_field``
-    the health field that carries the agent's key check value (each absent means the key check is not configured, and the
-    handler refuses to publish)."""
+    the health field that carries the agent's key check value (all absent: no key check; all present: the key is checked
+    before every publish; a part: the handler refuses to publish)."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 

@@ -7,11 +7,12 @@ secret the overlay names from the environment, and publishes it to the topic the
 agent's rebuild command. It never runs a trigger script, env file or ssh key: the runtime image holds none of
 those. A missing signing key is a typed refusal; a publish error is a typed failure.
 
-Before it publishes, the handler reads the deploy agent's health page and compares the agent's key check value with the
-check value of its own signing key (OMN-24396). The deploy agent throws a command signed with another key away without a
-job and without a word to the sender (2026-11-14: the dev recovery's first command was lost that way), so a key that
-differs, a page that cannot be read, a page with no check value and an overlay that does not configure the read are each a
-typed refusal and nothing is published.
+When the overlay configures the key check, the handler reads the deploy agent's health page before it publishes and
+compares the agent's key check value with the check value of its own signing key (OMN-24396). The deploy agent throws a
+command signed with another key away without a job and without a word to the sender (2026-11-14: the dev recovery's first
+command was lost that way), so a key that differs, a page that cannot be read, a page with no check value and an overlay
+that configures only part of the check are each a typed refusal and nothing is published. An overlay that configures none
+of it publishes as before and says so in the result detail: the deploy agent does not serve a check value yet.
 """
 
 from __future__ import annotations
@@ -104,22 +105,32 @@ class HandlerBranchDeployCommand:
             self._configured_overlay = load_overlay()
         return self._configured_overlay
 
-    def _key_check_reader(self) -> ProtocolAgentKeyCheck | None:
-        """The injected reader, else the http reader the overlay configures, else None (not configured)."""
-        if self._configured_key_check_reader is not None:
-            return self._configured_key_check_reader
+    def _key_check_configured(self) -> bool | None:
+        """True when the overlay configures the whole key check, False when it configures none of it, None when half."""
         overlay = self._overlay
-        if (
-            overlay.agent_health_url is None
-            or overlay.agent_health_timeout_seconds is None
-            or overlay.agent_key_check_field is None
-        ):
-            return None
-        self._configured_key_check_reader = AgentKeyCheckHttpReader(
+        keys = (
             overlay.agent_health_url,
             overlay.agent_health_timeout_seconds,
             overlay.agent_key_check_field,
         )
+        if all(key is None for key in keys):
+            return False
+        if any(key is None for key in keys):
+            return None
+        return True
+
+    def _key_check_reader(self) -> ProtocolAgentKeyCheck:
+        """The injected reader, else the http reader the overlay configures (the overlay is fully configured here)."""
+        if self._configured_key_check_reader is None:
+            overlay = self._overlay
+            assert overlay.agent_health_url is not None
+            assert overlay.agent_health_timeout_seconds is not None
+            assert overlay.agent_key_check_field is not None
+            self._configured_key_check_reader = AgentKeyCheckHttpReader(
+                overlay.agent_health_url,
+                overlay.agent_health_timeout_seconds,
+                overlay.agent_key_check_field,
+            )
         return self._configured_key_check_reader
 
     def _refuse(
@@ -136,14 +147,16 @@ class HandlerBranchDeployCommand:
         self, request: ModelBranchDeployCommandRequest, secret: str
     ) -> ModelBranchDeployCommandResult | None:
         """A refusal when the signing key is not shown to be the deploy agent's key, else None."""
-        reader = self._key_check_reader()
-        if reader is None:
+        configured = self._key_check_configured()
+        if configured is None:
             return self._refuse(
                 request,
-                "the overlay names no deploy agent health url, timeout or key check field, so the signing key cannot be "
-                "checked against the deploy agent's key; nothing was published",
+                "the overlay names only part of the deploy agent key check (agent_health_url, "
+                "agent_health_timeout_seconds, agent_key_check_field); nothing was published",
             )
-        reading = await asyncio.to_thread(reader.read)
+        if configured is False and self._configured_key_check_reader is None:
+            return None
+        reading = await asyncio.to_thread(self._key_check_reader().read)
         if reading.status == "unreachable":
             return self._refuse(
                 request,
@@ -229,6 +242,14 @@ class HandlerBranchDeployCommand:
                 detail=type(exc).__name__,
             )
         detail = f"published to {self._topic}"
+        if (
+            self._key_check_configured() is False
+            and self._configured_key_check_reader is None
+        ):
+            detail += (
+                " (the signing key was not checked against the deploy agent's key: "
+                "the overlay configures no key check)"
+            )
         detail = detail[: overlay.detail_max_chars]
         return ModelBranchDeployCommandResult(
             correlation_id=request.correlation_id,
