@@ -21,6 +21,10 @@ from omnimarket.nodes.node_lab_fill_effect.handlers.handler_lab_fill_launch impo
 from omnimarket.nodes.node_lab_fill_effect.handlers.handler_lab_fill_send import (
     HandlerLabFillSend,
 )
+from omnimarket.nodes.node_lab_fill_effect.models import ModelLabFillLaunchResult
+from omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_send import (
+    ModelLabFillSendRequest,
+)
 from omnimarket.nodes.node_lab_fill_effect.protocols import LabFillPortError
 
 from .fakes import (
@@ -99,7 +103,7 @@ def test_send_cli_refuses_a_request_that_does_not_validate() -> None:
 
 def test_send_cli_reports_a_port_failure_and_writes_no_result(tmp_path: Path) -> None:
     class _Failing(HandlerLabFillSend):
-        def handle(self, request):  # type: ignore[no-untyped-def]
+        def handle(self, request: ModelLabFillSendRequest) -> ModelLabFillLaunchResult:
             raise LabFillPortError("RUNNER unreadable")
 
     code, out, err = _run(_json(tmp_path), _Failing())
