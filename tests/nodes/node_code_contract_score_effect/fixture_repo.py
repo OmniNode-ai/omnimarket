@@ -124,7 +124,6 @@ def overlay(fx: Fixture, **over: object) -> ModelCodeScoreOverlay:
         "scratch_root": str(fx.scratch),
         "repo_roots": {REPO: str(fx.root)},
         "protected_paths": {REPO: ("contracts/", ".github/")},
-        "output_tail_chars": 400,
     }
     values.update(over)
     return ModelCodeScoreOverlay.model_validate(values)

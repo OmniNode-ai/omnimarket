@@ -17,8 +17,8 @@ Configs
                           flight; the completion bound may end the run in any open state).
                           Invariants: TypeOK CloseOnlyUnderRule ExactlyOneClose NoTryBeforeControl
                           AtMostOneScore VerdictsReached DoneIsTerminal AtMostBoundTries
-                          StopAtFirstPass. Action properties: VerdictsStable ClosedRowFrozen
-                          LateNoEffect.
+                          StopAtFirstPass VoidOnlyOnClose. Action properties: VerdictsStable
+                          ClosedRowFrozen LateNoEffect VoidFrozen.
   CodeEvalTrial_timed     1 task, 2 models, bound 3, with the clock, hosts that come and go and a
                           tick route that can lose the run. Adds AbandonOnlyPastDeadline and
                           NudgeExpiresBeforeAbandon.
@@ -44,26 +44,37 @@ Mutants (each must violate the property named; results/M*.out)
                                          below the current one, re-queues a try past the bound)
   M9 keep going after a pass             StopAtFirstPass
   M10 the nudge never expires, liveness  NormalClose
+  M11 a closed run closes again (OMN-24173)  ExactlyOneClose (the close step without its closed guard,
+                                         so a void close or any close can be published twice)
+  M12 a closed row's void label is rewritten (OMN-24173)  VoidFrozen (the void label is set in the one
+                                         close and never after)
 
-Results (TLC 2.19, JRE 17, 4 workers, host h053)
-  CodeEvalTrial_design: clean; 3,932,055 generated, 57,590 distinct
-  CodeEvalTrial_timed: clean; 248,171 generated, 6,860 distinct
-  CodeEvalTrial_liveness: clean; 468,473 generated, 12,956 distinct
-  CodeEvalTrial_liveness_normal: clean; 50,575 generated, 1,476 distinct
-  M1_close_with_try_pending: Invariant CloseOnlyUnderRule; 2,331 generated, 71 distinct
-  M2_late_answer_changes_row: Action property VerdictsStable; 472 generated, 22 distinct
-  M2b_unknown_message_changes_row: Action property LateNoEffect; 57 generated, 6 distinct
+Results (TLC 2.19, JRE 17, 2 workers, lab host h202; re-run for OMN-24173 after the void-close extension)
+  CodeEvalTrial_design: clean; 3,945,519 generated, 57,788 distinct
+  CodeEvalTrial_timed: clean; 265,787 generated, 7,340 distinct
+  CodeEvalTrial_liveness: clean; 494,897 generated, 13,676 distinct
+  CodeEvalTrial_liveness_normal: clean; 56,911 generated, 1,656 distinct
+  M1_close_with_try_pending: Invariant CloseOnlyUnderRule; 1,782 generated, 58 distinct
+  M2_late_answer_changes_row: Action property VerdictsStable; 367 generated, 16 distinct
+  M2b_unknown_message_changes_row: Action property LateNoEffect; 29 generated, 6 distinct
   M3_place_before_control: Invariant NoTryBeforeControl; 5 generated, 4 distinct
-  M4_concurrent_scores: Invariant AtMostOneScore; 144 generated, 5 distinct
-  M5_no_nudge_expiry: Action property NudgeExpiresBeforeAbandon; 5,924 generated, 294 distinct
-  M6_bound_below_timeout: Action property AbandonOnlyPastDeadline; 5,006 generated, 246 distinct
-  M6b_bound_equals_deadline_minus_one: Action property NudgeExpiresBeforeAbandon; 4,649 generated, 234 distinct
-  M7_no_fairness: Temporal properties; 222,665 generated, 7,322 distinct
-  M8_drop_ordinal_guard: Invariant AtMostBoundTries; 26,599 generated, 679 distinct
-  M9_continue_after_pass: Invariant StopAtFirstPass; 14,842 generated, 372 distinct
-  M10_no_nudge_expiry_liveness: Temporal properties; 101,759 generated, 2,914 distinct
+  M4_concurrent_scores: Invariant AtMostOneScore; 73 generated, 5 distinct
+  M5_no_nudge_expiry: Action property NudgeExpiresBeforeAbandon; 5,578 generated, 264 distinct
+  M6_bound_below_timeout: Action property AbandonOnlyPastDeadline; 6,120 generated, 286 distinct
+  M6b_bound_equals_deadline_minus_one: Action property NudgeExpiresBeforeAbandon; 6,087 generated, 286 distinct
+  M7_no_fairness: Temporal properties were violated; 494,897 generated, 13,676 distinct
+  M8_drop_ordinal_guard: Invariant AtMostBoundTries; 26,796 generated, 679 distinct
+  M9_continue_after_pass: Invariant StopAtFirstPass; 23,399 generated, 589 distinct
+  M10_no_nudge_expiry_liveness: Temporal properties were violated; 108,095 generated, 3,094 distinct
+  M11_close_twice: Invariant ExactlyOneClose; 4,873 generated, 134 distinct
+  M12_void_changes_after_close: Action property VoidFrozen; 615 generated, 23 distinct
 
 Abstractions (what the model does not carry)
+  A void close (OMN-24173) is the one close step with a void label: any value, set with the close
+  (the label is a function of the closed row: a try still infrastructure-unscorable after its
+  retries, more than a tenth of first tries unscorable for infrastructure, or a revision change
+  mid-run) and frozen with it. An infrastructure retry (the same ordinal, the try or its score sent
+  again, up to the overlay's count) is not a transition of the model: the reducer tests carry it.
   A verdict is pass or nopass: E2's fail and unscorable and the harness-unscorable ends all let
   the sequence go on (rule 7); the per-budget n and pass counts are a function of the closed row
   and belong to the reducer tests (AC13). Hosts are one flag; answers arrive with any content, any

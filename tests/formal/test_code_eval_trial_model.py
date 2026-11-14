@@ -71,6 +71,15 @@ MUTANTS = {
         "NoNudgeExpiry",
         "Error: Temporal properties were violated",
     ),
+    # OMN-24173: the void close is the one close step; closing twice or rewriting void must fail.
+    "M11_close_twice": (
+        "CloseTwice",
+        "Error: Invariant ExactlyOneClose is violated",
+    ),
+    "M12_void_changes_after_close": (
+        "VoidChangesAfterClose",
+        "Error: Action property VoidFrozen is violated",
+    ),
 }
 
 
@@ -102,6 +111,8 @@ def test_design_config_is_the_small_config_with_every_flag_off() -> None:
         "UnknownAnswerChangesRow",
         "DropOrdinalGuard",
         "ContinueAfterPass",
+        "CloseTwice",
+        "VoidChangesAfterClose",
     ):
         assert f"{flag} = FALSE" in lines
 
@@ -116,6 +127,8 @@ def test_design_config_checks_the_ticket_invariants() -> None:
         "AtMostBoundTries",
         "VerdictsStable",
         "LateNoEffect",
+        "VoidOnlyOnClose",
+        "VoidFrozen",
     ):
         assert name in text
     assert "EverySequenceEnds" in _read(MODEL_DIR / "CodeEvalTrial_liveness.cfg")

@@ -43,7 +43,9 @@ description: >
   Code eval trial orchestrator. Keyed by the run's correlation id, it folds each
   consumed message (run request, unit receipt or failure, score, nudge) through the
   pure node_code_eval_trial_reducer, sends the returned unit commands and score
-  requests, publishes one context-ROI row per verdict, and closes the run exactly once.
+  requests, publishes one context-ROI row per verdict and one trace per scoring
+  attempt, and closes the run exactly once, void with its cause named when its
+  tries were not all scored on one model revision.
   It waits for nothing and never reads a clock the message did not carry.
 input_model:
   name: "ModelCodeEvalRunRequest"
@@ -98,6 +100,7 @@ event_bus:
     - onex.evt.omnimarket.context-roi-run-completed.v1
     - onex.cmd.omnimarket.code-eval-run-nudge.v1
     - onex.evt.omnimarket.code-eval-run-closed.v1
+    - onex.evt.omnimarket.eval-item-traced.v1
 published_events:
   - event_type: "LabWorkUnitRequest"
     topic: onex.cmd.omnimarket.lab-work-unit-requested.v1
@@ -108,6 +111,9 @@ published_events:
   - event_type: "ContextRoiRunResult"
     topic: onex.evt.omnimarket.context-roi-run-completed.v1
     description: "One verdict as one row (the context-ROI projection's existing input); its correlation id derives from run, task, model, ordinal and kind."
+  - event_type: "EvalItemTracePart"
+    topic: onex.evt.omnimarket.eval-item-traced.v1
+    description: "One numbered part of a try's trace (OMN-24173): the task as sent, the generation settings, the diff and each check's command, exit code and whole output, split under the broker bound and reassembling byte for byte to the trace's sha256. One trace per attempt, a retried or infrastructure-unscorable attempt included; event_id is the try's identity and scoring_id the attempt's."
   - event_type: "CodeEvalRunNudge"
     topic: onex.cmd.omnimarket.code-eval-run-nudge.v1
     description: "The tick route's per-run nudge."
@@ -118,6 +124,8 @@ published_events:
 # runtime_dispatch.command_topic on a lab host's `onex lab-work serve`, which is no event_bus subscription.
 externally_consumed_topics:
   - onex.cmd.omnimarket.lab-work-unit-requested.v1
+  # The trace parts are read off the broker by the eval record store (OMN-24173), outside this node graph.
+  - onex.evt.omnimarket.eval-item-traced.v1
 handler_routing:
   routing_strategy: "payload_type_match"
   handlers:
@@ -200,6 +208,12 @@ handler_routing:
         module: "omnimarket.models.code_eval_trial.model_code_eval_run_closed"
       topic: onex.evt.omnimarket.code-eval-run-closed.v1
       description: "The tick route's read of the closed event: drops the run from the nudged set."
+# The broker grants the trace topic needs (OMN-24005 coverage gate): the runtime login writes each trace part (OMN-24173).
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.eval-item-traced.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.eval-item-traced.v1, operation: DESCRIBE}
 overlay:
   node: node_code_eval_trial_orchestrator
   roots_env: ONEX_SKILL_OVERLAY_ROOTS

@@ -70,7 +70,7 @@ import posixpath
 import re
 import shlex
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Literal, cast
 
@@ -201,6 +201,16 @@ def relevant_first(
         return any(path.startswith(anchor + "/") for anchor in anchors)
 
     return [p for p in paths if near(p)] + [p for p in paths if not near(p)]
+
+
+def _turn_revision(replies: Sequence[ModelTurnReply]) -> str:
+    """The one model revision every delegate turn of the loop reported, else empty (OMN-24173).
+
+    A turn that reported none, or two turns that reported different ones, leave the try with no
+    single revision: the trial driver reads an empty revision as not observed.
+    """
+    seen = {reply.model_revision for reply in replies if reply.run_id}
+    return seen.pop() if len(seen) == 1 else ""
 
 
 def _cap(text: str, limit: int = MAX_OBSERVATION_BYTES) -> str:
@@ -502,6 +512,7 @@ class HandlerDelegatedCodeEditOrchestrator:
             local_tokens_in=sum(r.tokens_in for r in state.replies),
             local_tokens_out=sum(r.tokens_out for r in state.replies),
             wall_ms=int((time.monotonic() - started) * 1000),
+            model_revision=_turn_revision(state.replies),
             summary=state.summary[:1000],
             detail=bound_error(detail, 300),
             terminal_failure_cause=(
@@ -593,6 +604,7 @@ class HandlerDelegatedCodeEditOrchestrator:
                     run_id=cast(str, turn["run_id"]),
                     ok=cast(bool, turn["ok"]),
                     model=cast(str, turn["model"]),
+                    model_revision=cast(str, turn.get("model_revision", "")),
                     invalid_reason=cast(str, turn["invalid_reason"]),
                     tokens_in=cast(int, turn.get("tokens_in", 0)),
                     tokens_out=cast(int, turn.get("tokens_out", 0)),
@@ -741,6 +753,7 @@ class HandlerDelegatedCodeEditOrchestrator:
                     tokens_in=reply.tokens_in,
                     tokens_out=reply.tokens_out,
                     model=reply.model,
+                    model_revision=reply.model_revision,
                 )
             state.replies.append(reply)
             record: dict[str, object] = {
@@ -748,6 +761,7 @@ class HandlerDelegatedCodeEditOrchestrator:
                 "run_id": reply.run_id,
                 "ok": reply.ok,
                 "model": reply.model,
+                "model_revision": reply.model_revision,
                 "tokens_in": reply.tokens_in,
                 "tokens_out": reply.tokens_out,
                 "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(),

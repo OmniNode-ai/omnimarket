@@ -433,10 +433,7 @@ class HandlerCodeContractScore:
     ]:
         overlay = request.overlay
         sync = self._runner.run(
-            overlay.env_sync_command,
-            worktree,
-            overlay.env_sync_timeout_s,
-            overlay.output_tail_chars,
+            overlay.env_sync_command, worktree, overlay.env_sync_timeout_s
         )
         timings["env_sync_s"] += sync.duration_s
         if sync.timed_out or sync.exit_code != 0:
@@ -447,17 +444,15 @@ class HandlerCodeContractScore:
             )
         results: list[ModelCodeScoreCheckResult] = []
         for item_id, check_type, command in checks:
-            ran = self._runner.run(
-                command, worktree, overlay.check_timeout_s, overlay.output_tail_chars
-            )
+            ran = self._runner.run(command, worktree, overlay.check_timeout_s)
             timings["checks_s"] += ran.duration_s
             if ran.timed_out:
                 raise _UnscorableError(
                     EnumCodeScoreSource.HARNESS,
                     f"check {item_id} hit the {overlay.check_timeout_s} s limit",
                 )
-            if is_setup_error_run(ran.exit_code, ran.output_tail):
-                summary = parse_pytest_summary(ran.output_tail)
+            if is_setup_error_run(ran.exit_code, ran.output):
+                summary = parse_pytest_summary(ran.output)
                 errors = summary.errors if summary else 0
                 raise _UnscorableError(
                     EnumCodeScoreSource.ENV,
@@ -474,7 +469,7 @@ class HandlerCodeContractScore:
                         else EnumCodeScoreCheckOutcome.FAILED
                     ),
                     exit_code=ran.exit_code,
-                    output_tail=ran.output_tail,
+                    output=ran.output,
                 )
             )
         return tuple(results), None

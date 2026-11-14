@@ -17,12 +17,16 @@ declared) and a missing one fails loudly.
 from __future__ import annotations
 
 import hashlib
+import json
+from datetime import datetime
 from uuid import UUID, uuid5
 
 from omnibase_core.enums.enum_delegation_traffic_class import (
     EnumDelegationTrafficClass,
 )
 
+from omnimarket.enums.enum_eval_engine import EnumEvalEngine
+from omnimarket.enums.enum_eval_scorer import EnumEvalScorer
 from omnimarket.events.context_roi import (
     ModelAttemptReductionRow,
     ModelContextRoiRunResult,
@@ -40,6 +44,15 @@ from omnimarket.models.code_eval_trial.model_code_eval_task_material import (
 )
 from omnimarket.models.enum_code_score import (
     EnumCodeScoreVerdict,
+)
+from omnimarket.models.eval_item.model_eval_item_scored import (
+    event_id_of,
+    scoring_id_of,
+)
+from omnimarket.models.eval_item.model_eval_item_traced import (
+    ModelEvalItemTrace,
+    ModelEvalItemTracePart,
+    split_trace,
 )
 from omnimarket.models.model_code_score import (
     ModelCodeScoreOverlay,
@@ -119,8 +132,68 @@ def build_unit_request(
     )
 
 
+def generation_settings(
+    overlay: ModelCodeEvalRunnerOverlay, model: str, backend_id: str
+) -> tuple[tuple[str, str], ...]:
+    """What a try was generated under, as name and value pairs: the trace keeps them, the row hashes them."""
+    return (
+        ("model", model),
+        ("backend_id", backend_id),
+        ("max_turns", str(overlay.max_turns)),
+        ("try_timeout_seconds", str(overlay.try_timeout_seconds)),
+        ("max_diff_bytes", str(overlay.max_diff_bytes)),
+        ("draft_checks", "\n".join(overlay.draft_checks)),
+    )
+
+
+def generation_settings_hash(settings: tuple[tuple[str, str], ...]) -> str:
+    return hashlib.sha256(
+        json.dumps(settings, separators=(",", ":"), ensure_ascii=True).encode()
+    ).hexdigest()
+
+
+def build_trace_parts(
+    run_id: UUID,
+    verdict: ModelVerdictRow,
+    material: ModelCodeEvalTaskMaterial,
+    settings: tuple[tuple[str, str], ...],
+    scored_at: datetime,
+) -> tuple[ModelEvalItemTracePart, ...]:
+    """One try's trace as numbered parts: the task as sent, the settings, the diff and each check's whole output.
+
+    Every attempt gets one, an infrastructure-unscorable one and a retried one included. The ids are
+    the scored-item identity (``event_id``) and the scoring's own (``scoring_id``), so a retry of the
+    same ordinal shares the first and differs in the second. The driver keeps no model response text
+    (the code-edit loop hands back a diff, not the reply), so ``response_text`` stays empty.
+    """
+    trace = ModelEvalItemTrace(
+        input_text=material.task_text,
+        generation_settings=settings,
+        diff_text=verdict.draft_diff,
+        checks=verdict.checks,
+    )
+    event_id = event_id_of(
+        scorer=EnumEvalScorer.CONTRACT_CHECKS.value,
+        run_id=str(run_id),
+        task_id=verdict.task_key,
+        engine=EnumEvalEngine.LOCAL.value,
+        model_id=verdict.model_arm,
+        context_arm="off",
+        replicate=0,
+        try_ordinal=verdict.try_ordinal,
+    )
+    scoring_id = scoring_id_of(
+        event_id=event_id, scored_at=scored_at, trace_sha256=trace.sha256()
+    )
+    return split_trace(trace, event_id=event_id, scoring_id=scoring_id)
+
+
 def trial_columns(
-    verdict: ModelVerdictRow, run_id: UUID, digest: str, band: str
+    verdict: ModelVerdictRow,
+    run_id: UUID,
+    digest: str,
+    band: str,
+    settings_hash: str = "",
 ) -> dict[str, object]:
     """E3's columns for one verdict (omnimarket pull request 5835, ``ModelTrialFields``)."""
     return {
@@ -133,11 +206,18 @@ def trial_columns(
         "sequence_id": f"{run_id}:{verdict.task_key}:{verdict.model_arm}",
         "try_ordinal": 0 if verdict.is_control else verdict.try_ordinal,
         "generation_s": verdict.duration_s,
+        "model_revision": verdict.model_revision,
+        "generation_settings_hash": settings_hash,
     }
 
 
 def build_result_row(
-    run_id: UUID, digest: str, order: int, verdict: ModelVerdictRow, band: str
+    run_id: UUID,
+    digest: str,
+    order: int,
+    verdict: ModelVerdictRow,
+    band: str,
+    settings_hash: str = "",
 ) -> ModelContextRoiRunResult:
     """One verdict as its context-ROI result: the projection's existing input, one row each.
 
@@ -154,7 +234,9 @@ def build_result_row(
     )  # E3-PENDING: delete this filter when 5835 merges
     columns = {
         name: value
-        for name, value in trial_columns(verdict, run_id, digest, band).items()
+        for name, value in trial_columns(
+            verdict, run_id, digest, band, settings_hash
+        ).items()
         if name in declared
     }
     row = ModelAttemptReductionRow(
@@ -183,7 +265,10 @@ def diff_hash(diff: str) -> str:
 __all__ = [
     "build_result_row",
     "build_score_request",
+    "build_trace_parts",
     "build_unit_request",
     "diff_hash",
+    "generation_settings",
+    "generation_settings_hash",
     "trial_columns",
 ]

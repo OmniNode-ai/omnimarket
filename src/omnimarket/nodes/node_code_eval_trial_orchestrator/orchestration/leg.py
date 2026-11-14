@@ -48,6 +48,7 @@ from omnimarket.models.code_eval_trial.model_code_eval_task_material import (
     ModelCodeEvalTaskMaterial,
     task_key_for,
 )
+from omnimarket.models.eval_item.model_eval_item_traced import ModelEvalCheckTrace
 from omnimarket.models.model_code_score import (
     ModelCodeScored,
     ModelCodeScoreOverlay,
@@ -58,7 +59,10 @@ from omnimarket.models.model_lab_work_unit import (
 from omnimarket.nodes.node_code_eval_trial_orchestrator.orchestration.builders import (
     build_result_row,
     build_score_request,
+    build_trace_parts,
     build_unit_request,
+    generation_settings,
+    generation_settings_hash,
 )
 from omnimarket.nodes.node_code_eval_trial_orchestrator.orchestration.ports import (
     ProtocolCodeEvalFreeHosts,
@@ -106,6 +110,8 @@ def settings_for(config: CodeEvalLegConfig) -> ModelCodeEvalSettings:
         receipt_slack_seconds=overlay.receipt_slack_seconds,
         nudge_interval_seconds=overlay.nudge_interval_seconds,
         completion_bound_seconds=config.completion_bound_seconds,
+        infra_retries=overlay.infra_retries,
+        void_infra_first_try_percent=overlay.void_infra_first_try_percent,
     )
 
 
@@ -159,6 +165,7 @@ def to_message(
             diff_truncated=request.diff_truncated,
             loop_status=result.status.value if result is not None else None,
             duration_s=request.duration_seconds,
+            model_revision=result.model_revision if result is not None else "",
         )
     if isinstance(request, ModelLabWorkCommandFailure):
         return ModelUnitFailedMessage(unit_id=request.work_unit_id)
@@ -170,6 +177,15 @@ def to_message(
             try_ordinal=request.try_identity.try_ordinal,
             verdict=verdict.checks,
             source=verdict.source,
+            checks=tuple(
+                ModelEvalCheckTrace(
+                    command=check.command,
+                    # A check that ran has an exit code; -1 stands for one that reports none.
+                    exit_code=-1 if check.exit_code is None else check.exit_code,
+                    output=check.output,
+                )
+                for check in verdict.check_results
+            ),
         )
     if isinstance(request, ModelCodeEvalRunNudge):
         return ModelNudgeMessage(nudge=request)
@@ -217,10 +233,38 @@ def run_leg(
                     config.overlay,
                 )
             )
-        for order, verdict in enumerate(out.verdict_rows, start=1):
+        order = 0
+        for verdict in out.verdict_rows:
             band = _band(next_row, verdict.task_key)
+            settings = generation_settings(
+                config.overlay,
+                verdict.model_arm,
+                _backend_of(next_row, verdict.model_arm),
+            )
+            if not verdict.is_control:
+                emitted.extend(
+                    build_trace_parts(
+                        run_id,
+                        verdict,
+                        _material(next_row, verdict.task_key, ports),
+                        settings,
+                        now,
+                    )
+                )
+            if verdict.superseded:
+                # An attempt scored or generated again keeps its trace but draws no result row:
+                # the row's key is the ordinal, and the attempt that stands takes it.
+                continue
+            order += 1
             emitted.append(
-                build_result_row(run_id, next_row.digest, order, verdict, band)
+                build_result_row(
+                    run_id,
+                    next_row.digest,
+                    order,
+                    verdict,
+                    band,
+                    generation_settings_hash(settings),
+                )
             )
     if out.closed is not None:
         emitted.append(out.closed)
@@ -237,6 +281,13 @@ def _material(
         raise LookupError(f"task {task_key} names no candidate of run {row.run_id}")
     (material,) = ports.suite_reader.read((candidate,))
     return material
+
+
+def _backend_of(row: ModelCodeEvalRunRow, model: str) -> str:
+    for arm in row.request.arms:
+        if arm.model == model:
+            return arm.backend_id
+    return ""
 
 
 def _band(row: ModelCodeEvalRunRow, task_key: str) -> str:

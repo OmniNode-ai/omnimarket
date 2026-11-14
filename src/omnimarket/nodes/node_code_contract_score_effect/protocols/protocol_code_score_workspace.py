@@ -20,7 +20,8 @@ class RunOutcome:
     exit_code: int | None
     timed_out: bool
     duration_s: float
-    output_tail: str
+    #: The command's whole output, stdout then stderr; never cut (OMN-24173).
+    output: str
 
 
 @runtime_checkable
@@ -52,9 +53,7 @@ class ProtocolCodeScoreWorkspace(Protocol):
 class ProtocolCodeScoreRunner(Protocol):
     """Run one shell command in a worktree under a wall-clock limit."""
 
-    def run(
-        self, command: str, cwd: Path, timeout_s: float, tail_chars: int
-    ) -> RunOutcome:
+    def run(self, command: str, cwd: Path, timeout_s: float) -> RunOutcome:
         """Run ``command``; a limit hit is ``timed_out``, never an exit code."""
         ...
 

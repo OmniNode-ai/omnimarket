@@ -120,9 +120,7 @@ async def test_worktree_failure_is_unscorable_worktree(fx: Fixture) -> None:
 
 async def test_check_hitting_its_limit_is_unscorable_harness(fx: Fixture) -> None:
     class Slow:
-        def run(
-            self, command: str, cwd: Path, timeout_s: float, tail_chars: int
-        ) -> RunOutcome:
+        def run(self, command: str, cwd: Path, timeout_s: float) -> RunOutcome:
             if command == "true":
                 return RunOutcome(0, False, 0.0, "")
             return RunOutcome(None, True, timeout_s, "")
