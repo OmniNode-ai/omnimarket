@@ -1,0 +1,71 @@
+schema_version: 1.0.0
+ticket_id: OMN-23970
+title: Lab host reach check asks only for lab-owned machines and the declared keys are installed
+summary: node_host_capability_compute gains the operation select_lab_ssh_peers, which names the peers a lab host's lab-ssh probe must reach (leaving out machines the lab does not own, the probing host and unavailable rows) with each peer's fallback destinations, and the probe tries a peer's destinations in order. The lab host row gains the optional column lab_ssh_peer.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23970-peers
+  statement: The lab-ssh probe is given only lab-owned peers, each by every destination that may resolve from the probing host.
+  acceptance:
+  - id: AC1
+    statement: "AC1: a compute operation of node_host_capability_compute names the ssh peers a lab host must reach, leaving out every host whose row declares it is not a lab-owned peer, and giving each peer's fallback destinations -- falsifier: the focused test for the operation fails when the exclusion is removed"
+  - id: AC2
+    statement: "AC2: the lab host table declares the machines that are not ours as non-peers, merged only after the code that reads the setting is on the dev branch -- falsifier: loading the table with the current dev code refuses an unknown column, which shows the order of the two changes"
+  - id: AC3
+    statement: "AC3: the declared public keys are present on the lab machines that lack them, installed by the key distribution node and never appended by hand -- falsifier: a dry run of the node reports would-add above zero before and zero after"
+  - id: AC4
+    statement: "AC4: integrated: the next pool read shows the reach capability line passing on h051, h053, h201 and h202 in the running runtime -- falsifier: the read still lists a lab-owned peer as unreachable or still demands omnibook or omnidad.local"
+evidence_requirements:
+- kind: tests
+  description: The peer selection tests and the capability probe tests pass at the pushed head.
+  command: uv run pytest tests/nodes/node_host_capability_compute/test_lab_ssh_peers.py tests/nodes/node_host_capability_compute/test_host_capability_parity.py -q -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23970-ac1
+  description: 'AC1: the peer selection tests pass at the head; the golden test fails when the lab_ssh_peer column is ignored, the control builds that case.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_capability_compute/test_lab_ssh_peers.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn23970-ac2
+  description: 'hosted proxy for AC2: the host row model accepts lab_ssh_peer and defaults it true; the table change itself is a pull request in the overlays repository that stays a draft until this code is on dev.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_capability_compute/test_lab_ssh_peers.py -q -p no:randomly --no-cov -k host_table_row_carries
+    cwd: .
+- id: dod-omn23970-ac3
+  description: 'hosted proxy for AC3: the probe tests that stand in for the key reading pass here; the dry-run readings of the key distribution node before and after are posted as a pull request comment naming the head.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_capability_compute/test_lab_ssh_peers.py tests/nodes/node_host_capability_compute/test_host_capability_parity.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn23970-ac4
+  description: 'hosted proxy for AC4: the probe tries a peer by each destination in order and reports missing when none answers; the pool read of each host is posted as a pull request comment naming the head.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_capability_compute/test_host_capability_parity.py -q -p no:randomly --no-cov -k first_destination
+    cwd: .
+- id: dod-omn23970-integration-proof
+  description: the peer selection and probe tests run on a lab host at the pushed head, including the control and the destination-order test that fail at the merge base; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23970 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_host_capability_compute/test_lab_ssh_peers.py tests/nodes/node_host_capability_compute/test_host_capability_parity.py -q --no-cov -p no:randomly

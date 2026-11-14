@@ -1,0 +1,96 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodeReleaseSiblingPremiseCompute
+#
+# One release-train premise decision as a pure definition-B compute:
+#
+#   handle(ModelSiblingPremiseRequest) -> ModelSiblingPremiseVerdict
+#
+# The release train asks one question per repository: "does the dev lane run
+# candidate revision X?" The node answers it from the R2 receipts. Pure
+# function, deterministic in any input order. No clock, no I/O, no model.
+#
+# This node replaces the release train's premise that waits on a timed CI job
+# for the lane to vendor the merged sibling revision.
+name: "node_release_sibling_premise_compute"
+contract_name: "node_release_sibling_premise_compute"
+node_name: "node_release_sibling_premise_compute"
+lifecycle: experimental
+runtime_profiles: [main]
+node_type: "COMPUTE_GENERIC"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+description: >
+  Pure definition-B decision of one release-train sibling premise. Reads the
+  R2 receipts (ModelDevMergeRedeployReceipt) and determines whether the dev
+  lane vendors the candidate revision or a descendant of it. Replaces the
+  release train's premise that waits on a timed CI job for the lane to vendor
+  the merged sibling revision. Deterministic in any input order.
+input_model:
+  name: "ModelSiblingPremiseRequest"
+  module: "omnimarket.models.sibling_premise_request"
+  description: "One release-train premise question: repo, candidate SHA, descendant SHAs, receipts, as_of, pending window."
+output_model:
+  name: "ModelSiblingPremiseVerdict"
+  module: "omnimarket.models.sibling_premise_verdict"
+  description: "The verdict: state, covering merge, lane revision, correlation, receipts considered, detail."
+handler:
+  module: "omnimarket.nodes.node_release_sibling_premise_compute.handlers.handler_sibling_premise"
+  class: "HandlerSiblingPremise"
+  input_model: "omnimarket.models.sibling_premise_request.ModelSiblingPremiseRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_release_sibling_premise_compute.handlers.handler_sibling_premise:HandlerSiblingPremise"
+  handlers:
+    - operation: "decide_sibling_premise"
+      handler:
+        name: "HandlerSiblingPremise"
+        module: "omnimarket.nodes.node_release_sibling_premise_compute.handlers.handler_sibling_premise"
+terminal_event: "onex.evt.omnimarket.release-sibling-premise-decided.v1"
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.release-sibling-premise-decision-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.release-sibling-premise-decided.v1"
+    failure: "onex.evt.omnimarket.release-sibling-premise-decision-failed.v1"
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  subscribe_topics:
+    - "onex.cmd.omnimarket.release-sibling-premise-decision-requested.v1"
+  publish_topics:
+    - "onex.evt.omnimarket.release-sibling-premise-decided.v1"
+externally_consumed_topics:
+  - "onex.evt.omnimarket.release-sibling-premise-decided.v1"
+  - "onex.evt.omnimarket.release-sibling-premise-decision-failed.v1"
+metadata:
+  description: "Pure decision core of the release train's sibling premise."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-11-13"
+  tags:
+    - compute
+    - release
+    - pure
+  related_tickets:
+    - OMN-24209
+    - OMN-19998
+
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RELEASE_SIBLING_PREMISE_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.release-sibling-premise-decision-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.release-sibling-premise-decision-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.release-sibling-premise-decided.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.release-sibling-premise-decided.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.release-sibling-premise-decision-failed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.release-sibling-premise-decision-failed.v1, operation: DESCRIBE}

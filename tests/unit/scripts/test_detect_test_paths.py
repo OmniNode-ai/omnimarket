@@ -908,7 +908,7 @@ def _every_single_module_change() -> list[list[str]]:
     ]
 
 
-def test_shard_bound_no_narrowed_selection_is_estimated_past_the_target() -> None:
+def test_split_count_by_duration_no_narrowed_shard_past_target() -> None:
     target = load_policy().target_shard_seconds
     narrowed = 0
     for changed in [_HEAVY_CHANGE, _LIGHT_CHANGE, *_every_single_module_change()]:
@@ -923,7 +923,7 @@ def test_shard_bound_no_narrowed_selection_is_estimated_past_the_target() -> Non
     assert narrowed > 0
 
 
-def test_shard_bound_the_heavy_selection_is_the_planned_matrix_not_two_shards() -> None:
+def test_shards_fit_target_heavy_selection_is_the_planned_matrix() -> None:
     selection = compute_selection(
         _HEAVY_CHANGE, ADJACENCY_PATH, ref_name="omn-23296-x", event_name="pull_request"
     )
@@ -932,9 +932,7 @@ def test_shard_bound_the_heavy_selection_is_the_planned_matrix_not_two_shards() 
     assert selection.matrix == list(range(1, 21))
 
 
-def test_shard_bound_a_mid_weight_selection_gets_more_shards_than_its_path_count() -> (
-    None
-):
+def test_split_count_by_duration_mid_weight_gets_more_shards_than_paths() -> None:
     # One mid-weight path, at least three shards. The test is given its own
     # durations record so its claim does not move with the real one.
     from omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_test_selection_selector import (
