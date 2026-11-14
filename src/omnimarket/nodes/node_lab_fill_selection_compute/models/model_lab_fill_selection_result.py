@@ -6,6 +6,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from pydantic import BaseModel, ConfigDict
+
 from omnimarket.models.lab_fill import ModelLabFillPrLandPlan
 
 from .enum_lab_fill_skip_reason import EnumLabFillSkipReason
@@ -27,9 +29,10 @@ class ModelLabFillDecision:
     repo_source: str = ""
 
 
-@dataclass(frozen=True, slots=True)
-class ModelLabFillSelectionResult:
+class ModelLabFillSelectionResult(BaseModel):
     """Decisions in candidate order and retained input baselines."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     decisions: tuple[ModelLabFillDecision, ...]
     baselines: tuple[ModelLabFillInputBaseline, ...]
@@ -41,3 +44,6 @@ class ModelLabFillSelectionResult:
     # Tickets held because an earlier lane ended already-built or skipped-owned with a merged PR, listed
     # once per tick for the proof-close path instead of a fill lane (OMN-22347).
     closer: tuple[ModelLabFillDecision, ...] = ()
+    # OMN-19998: the decisions held as readback (a lane ended skipped-already-built with falsifiers
+    # not pass), one per ticket in candidate order, for the readback path instead of a fill lane.
+    readback: tuple[ModelLabFillDecision, ...] = ()

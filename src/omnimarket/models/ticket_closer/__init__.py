@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from omnimarket.models.ticket_closer.model_ticket_closer import (
     EnumCloserAction,
+    EnumCloserReadingSource,
     ModelCloserCandidate,
     ModelCloserTicketOutcome,
     ModelCloserVerifyReading,
@@ -16,6 +17,7 @@ from omnimarket.models.ticket_closer.model_ticket_closer import (
 
 __all__ = [
     "EnumCloserAction",
+    "EnumCloserReadingSource",
     "ModelCloserCandidate",
     "ModelCloserTicketOutcome",
     "ModelCloserVerifyReading",

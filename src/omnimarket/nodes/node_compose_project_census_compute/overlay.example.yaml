@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+worktree_segments:
+  - worktrees
+  - scratch
+# Directories a declared installer writes release trees under: a compose file below one counts as living in a clone.
+deployed_roots:
+  - ~/releases
+hosts:
+  - name: host-a
+    aliases:
+      - node-a
+    clone_roots:
+      - /srv/clones
+projects:
+  - project: web
+    hosts:
+      - host-a
+    compose_file: web/docker-compose.yml
+    images:
+      - service: web
+        image: registry.example.com/web:1.0.0
+standalone: []

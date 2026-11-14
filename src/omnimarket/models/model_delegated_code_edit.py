@@ -346,6 +346,7 @@ class ModelCodeEditResult(BaseModel):
     wall_ms: int = 0
     summary: str = Field(default="", max_length=1000)
     detail: str = Field(default="", max_length=300)
+    terminal_failure_cause: str | None = None
 
 
 __all__ = [

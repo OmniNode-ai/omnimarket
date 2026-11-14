@@ -95,6 +95,9 @@ class ModelLaneCensusSchedule(_Frozen):
     state_directory: NonEmptyStr
     snapshot_name: NonEmptyStr
     timeout_seconds: int = Field(gt=0)
+    # The per-project compose check reads the same host's docker inventory with this command, within this bound.
+    docker_binary: NonEmptyStr
+    project_check_timeout_seconds: int = Field(gt=0)
     cadence: ModelLaneCensusCadence
     # The only scheduler kind. A launchd job would put the census on a Docker Desktop host that
     # is often not running, which is the failure this node replaces.

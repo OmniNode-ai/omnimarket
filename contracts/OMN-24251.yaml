@@ -1,0 +1,102 @@
+schema_version: 1.0.0
+ticket_id: OMN-24251
+title: Feed the dev roll batching decision from each queued roll (shadow only)
+summary: node_dev_roll_decision_request_effect publishes the batching node's facts (node_dev_roll_request_compute, parent OMN-23532) on onex.cmd.omnimarket.dev-roll-decision-requested.v1 once per accepted
+  dev roll manifest, keeps the pending events and the shadow last roll in an injected store, clears them on each roll_now decision, and publishes no deploy-agent command. Every value is an overlay value;
+  the integrated reading is one decision row for the next queued roll from the running dev runtime.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- topics
+- public_api
+requirements:
+- id: req-omn24251-publish
+  statement: Each queued dev roll yields one decision request for the batching node.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: node_dev_roll_decision_request_effect exists in omnimarket with a contract, typed inputs for the deploy agent''s accepted-roll manifest, its rebuild-completed event and the batching
+      node''s decided event, and publishes one decision request (the batching node''s facts) on each queued roll, with every value read from an overlay -- falsifier: a bound, topic list or repository name
+      written in the node''s code, or the node loading with no overlay present'
+  - id: AC2
+    statement: 'AC2: the golden chain test and the error chain test run the node over its real contract on the in-memory bus and a join test runs it together with node_dev_roll_request_compute so one queued
+      roll produces one decision -- falsifier: the same tests pass against a node that publishes nothing, or against one that publishes twice per roll'
+  - id: AC3
+    statement: 'AC3: a seam test fails when the decision request fields, the manifest fields or the rebuild-completed fields change shape against the batching node''s facts model and the deploy agent''s
+      events spelled in this repository -- falsifier: renaming a field of the facts model leaves the test green'
+  - id: AC4
+    statement: 'AC4: shadow only: the node publishes no deploy-agent command and the per-change roll requests are untouched -- falsifier: a published command topic other than the decision request, or a
+      changed roll request step in the same change'
+- id: req-omn24251-integrated
+  statement: The decision row is read from the running dev runtime.
+  acceptance:
+  - id: AC5
+    statement: 'AC5: integrated: with the node running on the dev runtime from its branch, one decision row for the next queued roll is read from the runtime log, naming the revision running -- falsifier:
+      no decision row after a roll is queued, or a decision row with no matching queued roll'
+evidence_requirements:
+- kind: tests
+  description: The node tests at the pushed head.
+  command: uv run --frozen pytest tests/unit/nodes/node_dev_roll_decision_request_effect -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24251-ac1
+  description: 'Overlay and typed-model tests: the policy loads only from the overlay, a missing overlay or key refuses, and the source scan finds no bound or repository name.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_dev_roll_decision_request_effect/test_overlay_dev_roll_decision_request.py tests/unit/nodes/node_dev_roll_decision_request_effect/test_shadow_only_contract.py
+      tests/unit/nodes/node_dev_roll_decision_request_effect/test_handler_dev_roll_decision_request.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24251-ac2
+  description: Golden chain, error chain and the join with node_dev_roll_request_compute over the real contracts on the in-memory bus; each carries a failing control.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_dev_roll_decision_request_effect/test_golden_chain_dev_roll_decision_request.py tests/unit/nodes/node_dev_roll_decision_request_effect/test_error_chain_dev_roll_decision_request.py
+      tests/unit/nodes/node_dev_roll_decision_request_effect/test_join_dev_roll_batching.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24251-ac3
+  description: The seam test pins the manifest fields against omnibase_infra ModelDevRollManifest and the facts, tip event and record fields against the batching node's models; renamed-field controls are
+    red.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_dev_roll_decision_request_effect/test_seam_dev_roll_decision_request.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24251-ac4
+  description: 'The shadow-only contract and source scan: the published topics are exactly the three declared, none a deploy-agent command topic; the join test shows no deploy topic on the bus.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_dev_roll_decision_request_effect/test_shadow_only_contract.py tests/unit/nodes/node_dev_roll_decision_request_effect/test_join_dev_roll_batching.py
+      -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24251-ac5
+  description: The tests behind the integrated reading pass at the head; the reading itself (a decision row for the next queued roll in the running dev runtime's log) is the pull request's Lab line, since
+    hosted CI cannot reach the runtime.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_dev_roll_decision_request_effect -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24251-integration-proof
+  description: The node tests run on a lab host at the pushed head through the lab work node. The reading on the running dev runtime is the pull request's Lab line.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24251 --kind test -- env PYTHONDONTWRITEBYTECODE=1
+      uv run --frozen pytest tests/unit/nodes/node_dev_roll_decision_request_effect -q --no-cov -n 0 -p no:randomly
+    cwd: .

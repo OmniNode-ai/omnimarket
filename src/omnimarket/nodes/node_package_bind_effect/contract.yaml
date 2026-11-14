@@ -1,0 +1,71 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Package Bind Effect (OMN-24321)
+#
+# Binds one omnimarket node's package into sys.modules without running its package __init__, so a caller that holds only
+# pydantic (the landing controller's decision environment) can import the node's handlers and models. It writes no file.
+name: node_package_bind_effect
+contract_name: node_package_bind_effect
+node_name: node_package_bind_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [main]
+
+description: >
+  Binds omnimarket.nodes.<node> under a given source root into sys.modules with a namespace-package spec, without running the
+  package's __init__. A node name that is not a plain node directory name (node_ and lowercase letters, digits, underscores) and
+  a missing node directory are refused with a typed reason (bad-node-name, no-package-dir) and bind nothing. The node holds no
+  setting: the source root and the node name arrive in the request.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: bind_node_package
+      handler:
+        name: HandlerPackageBind
+        module: omnimarket.nodes.node_package_bind_effect.handlers.handler_package_bind
+      input_model: omnimarket.nodes.node_package_bind_effect.models.model_package_bind.ModelPackageBindRequest
+      output_model: omnimarket.nodes.node_package_bind_effect.models.model_package_bind.ModelPackageBindResult
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  side_effects: [sys-modules-bind]
+  runtime_profiles: [main]
+
+input_model:
+  name: ModelPackageBindRequest
+  module: omnimarket.nodes.node_package_bind_effect.models.model_package_bind
+  description: The source root, the node name and the correlation id.
+output_model:
+  name: ModelPackageBindResult
+  module: omnimarket.nodes.node_package_bind_effect.models.model_package_bind
+  description: Bound with the package and path, or refused with the reason.
+
+terminal_event: onex.evt.omnimarket.package-bind-run-completed.v1
+
+runtime_dispatch:
+  external_trigger: true
+  command_topic: onex.cmd.omnimarket.package-bind-requested.v1
+
+topics:
+  package_bind_requested: onex.cmd.omnimarket.package-bind-requested.v1
+  package_bind_run_completed: onex.evt.omnimarket.package-bind-run-completed.v1
+  package_bind_run_failed: onex.evt.omnimarket.package-bind-run-failed.v1
+
+# The node runs in process, called by its caller (the landing controller's decision bridge); no broker consumer subscribes
+# for it, so it declares no subscribe or publish topic of its own. The chain tests drive it over the in-memory bus.
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.package-bind-run-completed.v1
+  - onex.evt.omnimarket.package-bind-run-failed.v1
+
+metadata:
+  ticket: OMN-24321
+  transport_type: inmemory

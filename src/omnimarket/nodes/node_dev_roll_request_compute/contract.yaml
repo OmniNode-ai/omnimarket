@@ -43,16 +43,16 @@ description: >
   a whole. No clock, no I/O.
 input_model:
   name: "ModelDevRollFacts"
-  module: "omnimarket.nodes.node_dev_roll_request_compute.models.model_dev_roll_facts"
+  module: "omnimarket.models.dev_roll.model_dev_roll_facts"
   description: "Pending tip events, the last roll, and the snapshot time."
 output_model:
   name: "ModelDevRollDecided"
-  module: "omnimarket.nodes.node_dev_roll_request_compute.models.model_dev_roll_decided"
+  module: "omnimarket.models.dev_roll.model_dev_roll_decided"
   description: "Roll now at a ref (would_request) or hold with a reason."
 handler:
   module: "omnimarket.nodes.node_dev_roll_request_compute.handlers.handler_dev_roll_request"
   class: "HandlerDevRollRequest"
-  input_model: "omnimarket.nodes.node_dev_roll_request_compute.models.model_dev_roll_facts.ModelDevRollFacts"
+  input_model: "omnimarket.models.dev_roll.model_dev_roll_facts.ModelDevRollFacts"
 event_bus:
   version:
     major: 1
@@ -77,7 +77,7 @@ handler_routing:
         module: "omnimarket.nodes.node_dev_roll_request_compute.handlers.handler_dev_roll_request"
       event_model:
         name: "ModelDevRollFacts"
-        module: "omnimarket.nodes.node_dev_roll_request_compute.models.model_dev_roll_facts"
+        module: "omnimarket.models.dev_roll.model_dev_roll_facts"
       topic: onex.cmd.omnimarket.dev-roll-decision-requested.v1
       description: "One decision tick: pending tip events and the last roll."
 # The decided and refused events are the results a caller of the decision awaits (the topic graph gate counts

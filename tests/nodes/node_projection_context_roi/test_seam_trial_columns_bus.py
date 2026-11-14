@@ -51,6 +51,24 @@ MIGRATION_PATH = Path(
 )
 REDPANDA_FLAG = "RUN_REDPANDA_E3_SEAM"
 
+# OMN-24170: the six stamps ModelTrialFields gained travel on the event (the board's
+# fold reads them there) and are not columns of context_roi_scores: the eval item
+# store keeps them. Listing them here keeps this seam exact: the set may not name a
+# column the migration holds (test_the_unprojected_stamps_are_not_migration_columns).
+STAMPS_NOT_IN_CONTEXT_ROI_SCORES = frozenset(
+    {
+        "experiment_id",
+        "replicate",
+        "model_revision",
+        "scorer_version",
+        "generation_settings_hash",
+        "prompt_template_version",
+    }
+)
+PROJECTED_TRIAL_FIELDS = frozenset(ModelTrialFields.model_fields) - (
+    STAMPS_NOT_IN_CONTEXT_ROI_SCORES
+)
+
 BACKENDS = ["memory"] + (["redpanda"] if os.environ.get(REDPANDA_FLAG) == "1" else [])
 
 
@@ -160,7 +178,7 @@ async def test_golden_seam_run_completed_event_survives_the_bus_and_projects(
     rows = db.query("context_roi_scores")
     by_id = {row["correlation_id"]: row for row in rows}
     stored = by_id["row-try-1"]
-    for name in ModelTrialFields.model_fields:
+    for name in sorted(PROJECTED_TRIAL_FIELDS):
         assert stored[name] == getattr(try_row, name), (
             f"column {name!r} drifted over the bus"
         )
@@ -213,13 +231,13 @@ def test_seam_model_columns_equal_migration_004_columns() -> None:
     """The model's trial columns equal migration 004's added columns."""
     sql = MIGRATION_PATH.read_text(encoding="utf-8")
     migration_columns = set(re.findall(r"ADD COLUMN IF NOT EXISTS\s+(\w+)", sql))
-    model_columns = set(ModelTrialFields.model_fields)
+    model_columns = set(PROJECTED_TRIAL_FIELDS)
     assert seam_problems(model_columns, migration_columns) == []
 
 
 def test_failing_control_a_column_renamed_on_one_side_turns_the_seam_red() -> None:
     """A renamed column on one side turns the seam red; the real sets agree."""
-    model_columns = set(ModelTrialFields.model_fields)
+    model_columns = set(PROJECTED_TRIAL_FIELDS)
     sql = MIGRATION_PATH.read_text(encoding="utf-8")
     migration_columns = set(re.findall(r"ADD COLUMN IF NOT EXISTS\s+(\w+)", sql))
 
@@ -232,3 +250,11 @@ def test_failing_control_a_column_renamed_on_one_side_turns_the_seam_red() -> No
     assert any("check_seconds" in problem for problem in problems)
 
     assert seam_problems(model_columns, migration_columns) == []
+
+
+def test_the_unprojected_stamps_are_not_migration_columns() -> None:
+    """The exclusion names real model fields and no migration column (OMN-24170)."""
+    sql = MIGRATION_PATH.read_text(encoding="utf-8")
+    migration_columns = set(re.findall(r"ADD COLUMN IF NOT EXISTS\s+(\w+)", sql))
+    assert set(ModelTrialFields.model_fields) >= STAMPS_NOT_IN_CONTEXT_ROI_SCORES
+    assert not STAMPS_NOT_IN_CONTEXT_ROI_SCORES & migration_columns

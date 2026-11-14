@@ -377,6 +377,58 @@ def _updated_after(ticket_updated_at: str, attempt: _Attempt) -> bool:
     )
 
 
+def _terminal_hold(
+    candidate: ModelLabFillCandidateInput,
+    attempts: list[_Attempt],
+    deployment: ModelLabFillDeployment,
+    now: datetime,
+) -> tuple[EnumLabFillSkipReason, str, str] | None:
+    """OMN-19998: the ticket's newest terminal outcome is one the deployment holds, inside the
+    window, and neither the ticket nor its start criterion changed since the lane ended; the fill
+    waits instead of resending the same ticket. A hold-off deployment (no outcomes or a zero
+    window) holds nothing, and an unreadable stamp is not a change."""
+    if (
+        not deployment.terminal_hold_outcomes
+        or deployment.terminal_hold_window_hours <= 0
+    ):
+        return None
+    if not attempts:
+        return None
+    latest = attempts[-1]
+    if latest.terminal is None:
+        return None
+    outcome = latest.terminal.values.get("outcome", "").lower()
+    if outcome not in deployment.terminal_hold_outcomes:
+        return None
+    if now - latest.terminal.ts >= timedelta(
+        hours=deployment.terminal_hold_window_hours
+    ):
+        return None
+    if _updated_after(candidate.ticket_updated_at, latest):
+        return None
+    if _updated_after(candidate.criterion_changed_at, latest):
+        return None
+    lane = latest.lane
+    if outcome in ("skipped-already-built", "already-built"):
+        cell = latest.terminal.values.get("falsifiers", "").lower()
+        if cell == "pass":
+            return (
+                EnumLabFillSkipReason.ALREADY_BUILT,
+                "already-built:falsifiers-pass:" + lane,
+                lane,
+            )
+        return (
+            EnumLabFillSkipReason.READBACK,
+            "readback:falsifiers-" + (cell or "unread"),
+            lane,
+        )
+    return (
+        EnumLabFillSkipReason.TERMINAL_HELD,
+        "terminal-held:" + outcome,
+        lane,
+    )
+
+
 def dod_verify_fallback(
     decisions: list[ModelLabFillDecision],
     slots: int,
@@ -484,10 +536,10 @@ class HandlerLabFillSelection:
             - (len(pr_land.dispatch) if pr_land is not None else 0)
         )
         return ModelLabFillSelectionResult(
-            tuple(decisions),
-            tuple(sorted(baselines, key=lambda b: (b.ticket, b.lane))),
-            pr_land,
-            dod_verify_fallback(
+            decisions=tuple(decisions),
+            baselines=tuple(sorted(baselines, key=lambda b: (b.ticket, b.lane))),
+            pr_land=pr_land,
+            dod_verify=dod_verify_fallback(
                 decisions,
                 left,
                 request,
@@ -495,8 +547,12 @@ class HandlerLabFillSelection:
                 now,
                 {c.ticket: c.ticket_updated_at for c in request.candidates},
             ),
-            tuple(
+            closer=tuple(
                 d for d in decisions if d.reason is EnumLabFillSkipReason.ALREADY_BUILT
+            ),
+            # OMN-19998: the readback decisions, one per ticket in candidate order.
+            readback=tuple(
+                d for d in decisions if d.reason is EnumLabFillSkipReason.READBACK
             ),
         )
 
@@ -634,6 +690,14 @@ class HandlerLabFillSelection:
         for lane, claimed_pr, _ in history.open_prs:
             if pr and pr == claimed_pr:
                 return decision(EnumLabFillSkipReason.OWNED, "owned", lane), None
+        if candidate.kind not in ("pr-red", "pr-stalled"):
+            # OMN-19998: a lane ended in a held terminal outcome and the ticket did not change since;
+            # the fill waits instead of resending the same ticket. Existing gates above still win.
+            hold = _terminal_hold(
+                candidate, history.attempts.get(candidate.ticket, []), deployment, now
+            )
+            if hold is not None:
+                return decision(hold[0], hold[1], hold[2]), None
         if candidate.kind not in ("pr-red", "pr-stalled"):
             # Its implementation merged: whether the ticket is done is the closer's question
             # (dod-closeout-sweep reads every started ticket a merge names), not a code lane's.
