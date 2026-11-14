@@ -36,13 +36,15 @@ from omnimarket.models.scm import (
     EnumScmLocalRead,
     EnumScmNode,
     ModelScmBusReceipt,
-    ModelScmRefusedVerb,
     ModelScmTerminal,
     ModelScmTopics,
     ModelScmVerb,
 )
 from omnimarket.models.scm.model_scm_local_verbs import (
     SCM_LOCAL_VERBS as SCM_LOCAL_VERBS,
+)
+from omnimarket.models.scm.model_scm_refused_verbs import (
+    SCM_REFUSED_VERBS as SCM_REFUSED_VERBS,
 )
 from omnimarket.nodes.node_lab_work_unit_effect.protocols import require_ungrouped
 
@@ -52,6 +54,12 @@ _W = EnumScmNode.WRITE
 #: The verbs ``onex scm`` serves: every operation slice 1 put on the two
 #: source-control node contracts, named for the gh verb it replaces.
 SCM_VERBS: Final[tuple[ModelScmVerb, ...]] = (
+    ModelScmVerb(
+        verb="runner-group-get",
+        node=_W,
+        operation="runner_group_get",
+        replaces="gh api --method GET /orgs/{o}/actions/runner-groups/{id}",
+    ),
     *(
         ModelScmVerb(verb=v, node=_G, operation=op, replaces=gh, local_read=read)
         for v, op, gh, read in (
@@ -146,6 +154,18 @@ SCM_VERBS: Final[tuple[ModelScmVerb, ...]] = (
         operation="repo_variable_get",
         replaces="gh variable get",
     ),
+    ModelScmVerb(
+        verb="runner-list",
+        node=_W,
+        operation="runner_list",
+        replaces="gh api --method GET /orgs/{o}/actions/runners",
+    ),
+    ModelScmVerb(
+        verb="runner-remove",
+        node=_W,
+        operation="runner_remove",
+        replaces="gh api --method DELETE /orgs/{o}/actions/runners/{id}",
+    ),
     *(
         ModelScmVerb(verb=v, node=_G, operation=op, replaces=gh)
         for v, op, gh in (
@@ -176,20 +196,6 @@ SCM_VERBS: Final[tuple[ModelScmVerb, ...]] = (
     ),
 )
 
-LANDING_CONTROLLER: Final[str] = (
-    "the landing controller (hand the PR off with /omni:pr-handoff, needs=land)"
-)
-
-#: Verbs with no node operation. Not invented here: refused, naming where the
-#: work is done today.
-SCM_REFUSED_VERBS: Final[tuple[ModelScmRefusedVerb, ...]] = tuple(
-    ModelScmRefusedVerb(verb=verb, handled_by=LANDING_CONTROLLER)
-    for verb in (
-        *("pr-merge", "merge", "arm", "pr-arm"),
-        *("run-rerun", "pr-rerun", "update-branch", "pr-update-branch"),
-    )
-)
-
 
 def verb(name: str) -> ModelScmVerb:
     """The served verb named ``name``."""
@@ -218,19 +224,16 @@ def load_topics(node: EnumScmNode) -> ModelScmTopics:
             failure=str(terminals["failure"]),
         )
     return ModelScmTopics(
-        command=str(dispatch["command_topic"]),
-        success=str(contract["terminal_event"]),
+        command=str(dispatch["command_topic"]), success=str(contract["terminal_event"])
     )
 
 
 def contract_operations(node: EnumScmNode) -> tuple[str, ...]:
     """The ``operations`` names the node contract declares."""
     operations = load_contract(node).get("operations")
-    if not isinstance(operations, list):
-        return ()
     return tuple(
         str(entry["name"])
-        for entry in operations
+        for entry in (operations if isinstance(operations, list) else ())
         if isinstance(entry, dict) and "name" in entry
     )
 
@@ -284,9 +287,8 @@ class ScmBusCaller:
             correlation_id=correlation_id,
             event_type=event_type_for(topics.command),
         )
-        future: asyncio.Future[ModelScmTerminal] = (
-            asyncio.get_running_loop().create_future()
-        )
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future[ModelScmTerminal] = loop.create_future()
 
         def on_terminal(topic: str) -> Callable[[ProtocolBusMessage], Awaitable[None]]:
             async def on_message(message: ProtocolBusMessage) -> None:
@@ -298,13 +300,11 @@ class ScmBusCaller:
                     return
                 if not isinstance(raw, dict):
                     return
-                payload_dict = terminal_payload(
-                    raw, envelope.envelope_id, correlation_id
-                )
-                if payload_dict is None:
+                body = terminal_payload(raw, envelope.envelope_id, correlation_id)
+                if body is None:
                     return
-                partition = getattr(message, "partition", None)
-                offset = getattr(message, "offset", None)
+                part = getattr(message, "partition", None)
+                off = getattr(message, "offset", None)
                 future.set_result(
                     ModelScmTerminal(
                         receipt=ModelScmBusReceipt(
@@ -313,15 +313,11 @@ class ScmBusCaller:
                             command_envelope_id=envelope.envelope_id,
                             terminal_topic=topic,
                             terminal_envelope_id=_uuid_or_none(raw.get("envelope_id")),
-                            terminal_partition=(
-                                partition if isinstance(partition, int) else None
-                            ),
-                            terminal_offset=(
-                                str(offset) if offset is not None else None
-                            ),
+                            terminal_partition=part if isinstance(part, int) else None,
+                            terminal_offset=str(off) if off is not None else None,
                         ),
                         failed=topic == topics.failure,
-                        payload=payload_dict,
+                        payload=body,
                     )
                 )
 
@@ -329,9 +325,7 @@ class ScmBusCaller:
 
         unsubscribes: list[Callable[[], Awaitable[None]]] = []
         try:
-            for topic in (topics.success, topics.failure):
-                if topic is None:
-                    continue
+            for topic in filter(None, (topics.success, topics.failure)):
                 unsubscribes.append(
                     await self._bus.subscribe_ungrouped(topic, on_terminal(topic))
                 )
