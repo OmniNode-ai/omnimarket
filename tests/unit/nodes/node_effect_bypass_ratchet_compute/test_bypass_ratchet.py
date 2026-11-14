@@ -15,10 +15,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from omnimarket.nodes.node_effect_bypass_ratchet_compute.handlers.handler_bypass_ratchet import (
-    HandlerBypassRatchet,
-)
-from omnimarket.nodes.node_effect_bypass_ratchet_compute.models import (
+from omnimarket.events.effect_bypass import (
     EnumBypassCategory,
     EnumBypassFinding,
     ModelBypassBaseline,
@@ -26,6 +23,9 @@ from omnimarket.nodes.node_effect_bypass_ratchet_compute.models import (
     ModelBypassInventory,
     ModelBypassRatchetRequest,
     ModelBypassRatchetVerdict,
+)
+from omnimarket.nodes.node_effect_bypass_ratchet_compute.handlers.handler_bypass_ratchet import (
+    HandlerBypassRatchet,
 )
 
 pytestmark = pytest.mark.unit

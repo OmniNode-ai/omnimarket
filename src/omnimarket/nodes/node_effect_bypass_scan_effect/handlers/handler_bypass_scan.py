@@ -14,7 +14,7 @@ import subprocess
 from pathlib import Path, PurePosixPath
 from typing import Protocol
 
-from omnimarket.nodes.node_effect_bypass_ratchet_compute.models import (
+from omnimarket.events.effect_bypass import (
     EnumBypassCategory,
     ModelBypassCounts,
     ModelBypassInventory,

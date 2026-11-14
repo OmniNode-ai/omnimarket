@@ -8,7 +8,7 @@ import re
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from omnimarket.nodes.node_effect_bypass_ratchet_compute.models import (
+from omnimarket.events.effect_bypass import (
     EnumBypassCategory,
 )
 

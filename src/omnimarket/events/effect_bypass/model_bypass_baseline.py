@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_effect_bypass_ratchet_compute.models.enum_bypass import (
+from omnimarket.events.effect_bypass.enum_bypass import (
     EnumBypassCategory,
 )
 

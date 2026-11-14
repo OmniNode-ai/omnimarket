@@ -43,7 +43,7 @@ input_model:
   description: Which repository checkout to scan and under what name.
 output_model:
   name: ModelBypassInventory
-  module: omnimarket.nodes.node_effect_bypass_ratchet_compute.models.model_bypass_inventory
+  module: omnimarket.events.effect_bypass.model_bypass_inventory
   description: Files scanned, count per category and every site.
 
 terminal_event: onex.evt.omnimarket.effect-bypass-scan-completed.v1
