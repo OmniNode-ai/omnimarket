@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import sys
 
-from omnimarket.nodes.node_review_replay_set_effect.handlers.cli_review_replay_set import (
+from omnimarket.nodes.node_review_replay_set_effect.runtime_review_replay_set import (
     main,
 )
 
