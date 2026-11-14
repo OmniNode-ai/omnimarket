@@ -24,9 +24,6 @@ from urllib.parse import quote
 
 from pydantic import BaseModel
 
-from omnimarket.github_landing.github_landing_code_scanning import (
-    code_scanning_alerts_request,
-)
 from omnimarket.github_landing.github_landing_requests import (
     LIST_PAGE_SIZE,
     artifact_archive_request,
@@ -94,6 +91,9 @@ from omnimarket.models.model_github_gateway_io import (
     ModelTicketRefResult,
     ModelWorkflowRunsResult,
     ModelWorkflowRunSummary,
+)
+from omnimarket.models.scm.model_scm_code_scanning_request import (
+    code_scanning_alerts_request,
 )
 from omnimarket.nodes.node_github_repo_gateway_effect.transport import (
     GitHubReadTransportProtocol,
