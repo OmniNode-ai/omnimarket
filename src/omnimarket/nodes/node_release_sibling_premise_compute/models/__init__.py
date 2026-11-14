@@ -2,13 +2,13 @@
 # SPDX-License-Identifier: MIT
 """Typed models for the release sibling premise compute node."""
 
-from omnimarket.events.enum_sibling_premise import (
+from omnimarket.enums.enum_sibling_premise import (
     EnumSiblingPremiseState,
 )
-from omnimarket.events.sibling_premise_request import (
+from omnimarket.models.sibling_premise_request import (
     ModelSiblingPremiseRequest,
 )
-from omnimarket.events.sibling_premise_verdict import (
+from omnimarket.models.sibling_premise_verdict import (
     ModelSiblingPremiseVerdict,
 )
 

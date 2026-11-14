@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
-from omnimarket.events.dev_merge_redeploy import (
+from omnimarket.models.dev_merge_redeploy import (
     ModelDevMergeRedeployReceipt,
 )
 

@@ -10,7 +10,7 @@ from typing import Annotated
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
 
-from omnimarket.events.dev_merge_redeploy import (
+from omnimarket.models.dev_merge_redeploy import (
     ModelDevMergeRedeployReceipt,
 )
 

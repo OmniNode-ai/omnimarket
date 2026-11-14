@@ -11,17 +11,17 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from omnimarket.events.dev_merge_redeploy import (
+from omnimarket.enums.enum_sibling_premise import (
+    EnumSiblingPremiseState,
+)
+from omnimarket.models.dev_merge_redeploy import (
     EnumDevMergeOutcome,
     ModelDevMergeRedeployReceipt,
 )
-from omnimarket.events.enum_sibling_premise import (
-    EnumSiblingPremiseState,
-)
-from omnimarket.events.sibling_premise_request import (
+from omnimarket.models.sibling_premise_request import (
     ModelSiblingPremiseRequest,
 )
-from omnimarket.events.sibling_premise_verdict import (
+from omnimarket.models.sibling_premise_verdict import (
     ModelSiblingPremiseVerdict,
 )
 from omnimarket.nodes.node_release_sibling_premise_compute.models.errors import (

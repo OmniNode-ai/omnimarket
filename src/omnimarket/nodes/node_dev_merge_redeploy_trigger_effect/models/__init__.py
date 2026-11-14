@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """Dev-merge redeploy trigger models."""
 
-from omnimarket.events.dev_merge_redeploy import (
+from omnimarket.models.dev_merge_redeploy import (
     SUCCESS_OUTCOMES,
     EnumDevMergeOutcome,
     ModelDevMergeRedeployReceipt,

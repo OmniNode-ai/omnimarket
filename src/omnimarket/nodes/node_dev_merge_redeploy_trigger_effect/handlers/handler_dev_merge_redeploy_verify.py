@@ -15,12 +15,12 @@ failed deploy is never reported as a lane that is merely behind.
 
 from __future__ import annotations
 
-from omnimarket.events.dev_merge_redeploy import (
-    EnumDevMergeOutcome,
-)
 from omnimarket.events.runtime_deployment import (
     EnumRedeployPhase,
     ModelRedeployCompletedEvent,
+)
+from omnimarket.models.dev_merge_redeploy import (
+    EnumDevMergeOutcome,
 )
 from omnimarket.models.dev_merge_redeploy_overlay import (
     ModelDevMergeRedeployPolicy,

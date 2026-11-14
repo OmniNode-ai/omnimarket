@@ -8,7 +8,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.events.dev_merge_redeploy import (
+from omnimarket.models.dev_merge_redeploy import (
     EnumDevMergeOutcome,
 )
 from omnimarket.models.model_repo_merged import ModelRepoMerged

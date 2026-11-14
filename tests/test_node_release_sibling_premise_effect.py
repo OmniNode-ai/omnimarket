@@ -32,18 +32,18 @@ from omnimarket.delegated_test_loop.lab_run_bus import (
     event_type_for,
 )
 from omnimarket.delegated_test_loop.lane_bus import open_lab_run_bus
-from omnimarket.events.dev_merge_redeploy import (
+from omnimarket.enums.enum_sibling_premise import (
+    EnumSiblingPremiseState,
+)
+from omnimarket.lab_work.bus import _bytes
+from omnimarket.models.dev_merge_redeploy import (
     EnumDevMergeMode,
     EnumDevMergeOutcome,
     ModelDevMergeRedeployReceipt,
 )
-from omnimarket.events.enum_sibling_premise import (
-    EnumSiblingPremiseState,
-)
-from omnimarket.events.sibling_premise_verdict import (
+from omnimarket.models.sibling_premise_verdict import (
     ModelSiblingPremiseVerdict,
 )
-from omnimarket.lab_work.bus import _bytes
 from omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.handlers.protocol_dev_merge_redeploy import (
     ClassifierUnavailableError,
     ProtocolMergeFiles,

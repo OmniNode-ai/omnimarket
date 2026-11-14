@@ -34,7 +34,7 @@ input_model:
   description: "The repository, and optionally an explicit candidate revision."
 output_model:
   name: "ModelSiblingPremiseVerdict"
-  module: "omnimarket.events.sibling_premise_verdict"
+  module: "omnimarket.models.sibling_premise_verdict"
   description: "State, covering merge, lane revision, correlation, receipts considered, detail."
 handler:
   module: "omnimarket.nodes.node_release_sibling_premise_effect.handlers.handler_sibling_premise_read"

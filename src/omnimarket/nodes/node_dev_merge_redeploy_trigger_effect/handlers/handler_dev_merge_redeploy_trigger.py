@@ -20,13 +20,13 @@ import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime
 
-from omnimarket.events.dev_merge_redeploy import (
-    EnumDevMergeOutcome,
-)
 from omnimarket.events.runtime_deployment import (
     EnumBuildSource,
     EnumRedeployScope,
     EnumRuntimeLane,
+)
+from omnimarket.models.dev_merge_redeploy import (
+    EnumDevMergeOutcome,
 )
 from omnimarket.models.dev_merge_redeploy_overlay import (
     ModelDevMergeRedeployPolicy,

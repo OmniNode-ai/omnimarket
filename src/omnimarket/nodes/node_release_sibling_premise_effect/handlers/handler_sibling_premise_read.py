@@ -18,10 +18,10 @@ from collections.abc import Callable
 from datetime import datetime, timedelta
 from uuid import uuid4
 
-from omnimarket.events.sibling_premise_request import (
+from omnimarket.models.sibling_premise_request import (
     ModelSiblingPremiseRequest,
 )
-from omnimarket.events.sibling_premise_verdict import (
+from omnimarket.models.sibling_premise_verdict import (
     ModelSiblingPremiseVerdict,
 )
 from omnimarket.nodes.node_dev_merge_redeploy_trigger_effect.handlers.protocol_dev_merge_redeploy import (
