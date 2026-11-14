@@ -56,9 +56,6 @@ from typing import Final
 from omnibase_core.enums.ticket.enum_receipt_status import EnumReceiptStatus
 from omnibase_core.models.contracts.ticket.model_dod_receipt import ModelDodReceipt
 
-from omnimarket.enums.enum_dod_verify_execution_audience import (
-    EnumDodVerifyExecutionAudience,
-)
 from omnimarket.enums.enum_dod_verify_unresolved_cause import (
     EnumDodVerifyUnresolvedCause,
 )
@@ -81,6 +78,7 @@ from omnimarket.nodes.node_dod_verify.models.model_occ_replay import (
     ModelOccReplayRecord,
     ModelOccReplayRequest,
 )
+from omnimarket.nodes.node_dod_verify.services.cli_parser import build_verify_parser
 from omnimarket.nodes.node_dod_verify.services.evidence_home import (
     open_receipt_destinations,
 )
@@ -491,67 +489,7 @@ def main() -> None:
 
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
 
-    parser = argparse.ArgumentParser(
-        description="Run DoD evidence verification for a Linear ticket."
-    )
-    parser.add_argument(
-        "--ticket-id",
-        type=str,
-        required=True,
-        help="Linear ticket ID (e.g. OMN-1234)",
-    )
-    parser.add_argument(
-        "--contract-path",
-        type=str,
-        default=None,
-        help="Override path to contract YAML (default: auto-discovered from ticket ID)",
-    )
-    parser.add_argument(
-        "--full-contract-path",
-        type=str,
-        default=None,
-        help=(
-            "Path to the complete head contract YAML. The standard-ticket rules read "
-            "it when --contract-path is a scoped copy; the checks still run from "
-            "--contract-path. Needs --contract-path."
-        ),
-    )
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        default=False,
-        help="Run verification checks but do not emit events",
-    )
-    parser.add_argument(
-        "--execution-audience",
-        type=EnumDodVerifyExecutionAudience,
-        choices=list(EnumDodVerifyExecutionAudience),
-        required=True,
-        help="Authorized execution boundary: hosted or local_done_gate",
-    )
-    parser.add_argument(
-        "--correlation-id",
-        type=uuid.UUID,
-        default=None,
-        help="Correlation ID (UUID) for this run (default: auto-generated)",
-    )
-    parser.add_argument(
-        "--delegation-correlation-id",
-        type=uuid.UUID,
-        default=None,
-        help="Correlation ID (UUID) of the delegation run this verification judges",
-    )
-    parser.add_argument(
-        "--output-path",
-        type=Path,
-        default=None,
-        help=(
-            "Write the Hook-2-compatible dod_report.json receipt to this path. "
-            "When omitted, ONEX_EVIDENCE_ROOT (if set) is used to derive "
-            "<root>/<ticket-id>/dod_report.json. When neither is set, only "
-            "the state JSON is printed to stdout."
-        ),
-    )
+    parser = build_verify_parser()
 
     args = parser.parse_args()
 
