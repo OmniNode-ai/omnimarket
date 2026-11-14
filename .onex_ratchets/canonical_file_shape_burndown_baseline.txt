@@ -215,7 +215,6 @@ src/omnimarket/nodes/node_retention_cleanup/__main__.py
 src/omnimarket/nodes/node_retention_cleanup/handlers/handler_file_retention.py
 src/omnimarket/nodes/node_retired_model_reference_check_effect/__main__.py
 src/omnimarket/nodes/node_review_finding_veto_effect/__main__.py
-src/omnimarket/nodes/node_review_replay_set_effect/__main__.py
 src/omnimarket/nodes/node_review_response_parser_compute/handlers/handler_compact_strict_parse.py
 src/omnimarket/nodes/node_reviewer_eval_effect/__main__.py
 src/omnimarket/nodes/node_routing_complexity_compute/handlers/handler_complexity_scoring.py

@@ -160,6 +160,20 @@ runtime:
   join_ends:
     - join: J0
       node: node_floor_simple_effect:join_j0
+  # The nodes join J2 (piece 2 to piece 3) reads on each side (OMN-23083). Piece 2 also hosts the lane host pool snapshot, which runs on its
+  # own schedule and fails on its own; piece 3 holds nothing that answers it, so J2 read each of its failures (263 of the served board of
+  # 2026-11-14T20:16Z) as downstream_missing_typed_failure and read broken while its own chains read golden and error. The snapshot's
+  # chains still count toward piece 2's receipt. From side: the host canary the join drives (join_j2) and the host canary reading whose
+  # failure the refusal node answers (host_canary); the J1 chains (join_j1) are J1's answer, not J2's input. To side: the placement
+  # seam's chain (node_lab_placement_compute:join_j2) and the refusal node's answer under the same id (node_seam_deadline_probe_effect:join_j2).
+  join_chains:
+    - join: J2
+      from_nodes:
+        - node_host_reading_effect:join_j2
+        - node_host_reading_effect:host_canary
+      to_nodes:
+        - node_lab_placement_compute:join_j2
+        - node_seam_deadline_probe_effect:join_j2
   # The ledger the go and the ledger-written piece events are read from (OMN-22674): the live file the environment names and
   # the rolls beside it. A ledger that cannot be read draws the go and those events as unread, never as zero.
   ledger:
