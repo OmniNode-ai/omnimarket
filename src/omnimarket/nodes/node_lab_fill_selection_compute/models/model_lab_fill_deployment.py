@@ -32,6 +32,11 @@ class ModelLabFillDeployment:
     # Epics but no owners: every delegation ticket under the epics is owned, whoever its assignee is.
     delegation_epics: tuple[str, ...] = ()
     delegation_owners: tuple[str, ...] = ()
+    # OMN-19998: terminal outcomes that hold a ticket out of the fill until it changes, and the
+    # window in hours after a lane's TERMINAL the hold lasts. Empty outcomes or a zero window hold
+    # nothing off, so a deployment without them behaves exactly as before.
+    terminal_hold_outcomes: tuple[str, ...] = ()
+    terminal_hold_window_hours: int = 0
 
     @classmethod
     def from_overlay(cls, raw: object) -> ModelLabFillDeployment:
@@ -47,7 +52,8 @@ class ModelLabFillDeployment:
         if missing:
             raise ValueError("overlay missing keys: " + ", ".join(sorted(missing)))
         optional = ("delegation_epics", "delegation_owners")
-        unknown = raw.keys() - set(keys) - set(optional)
+        optional_hold = ("terminal_hold_outcomes", "terminal_hold_window_hours")
+        unknown = raw.keys() - set(keys) - set(optional) - set(optional_hold)
         if unknown:
             raise ValueError(
                 "overlay unknown keys: " + ", ".join(sorted(map(str, unknown)))
@@ -59,12 +65,24 @@ class ModelLabFillDeployment:
             for index, item in enumerate(value):
                 if not isinstance(item, str):
                     raise ValueError(f"{key}[{index}] must be a string")
+        if "terminal_hold_outcomes" in raw:
+            outcomes = raw["terminal_hold_outcomes"]
+            if not isinstance(outcomes, list) or any(
+                not isinstance(item, str) for item in outcomes
+            ):
+                raise ValueError("terminal_hold_outcomes must be a list of strings")
+        if "terminal_hold_window_hours" in raw:
+            window = raw["terminal_hold_window_hours"]
+            if isinstance(window, bool) or not isinstance(window, int) or window < 0:
+                raise ValueError("terminal_hold_window_hours must be an int >= 0")
         return cls(
             companion_repositories=tuple(raw["companion_repositories"]),
             not_work_repositories=tuple(raw["not_work_repositories"]),
             document_repositories=tuple(raw["document_repositories"]),
             delegation_epics=tuple(raw.get("delegation_epics", [])),
             delegation_owners=tuple(raw.get("delegation_owners", [])),
+            terminal_hold_outcomes=tuple(raw.get("terminal_hold_outcomes", [])),
+            terminal_hold_window_hours=raw.get("terminal_hold_window_hours", 0),
         )
 
     def __post_init__(self) -> None:
@@ -74,9 +92,13 @@ class ModelLabFillDeployment:
             "document_repositories",
             "delegation_epics",
             "delegation_owners",
+            "terminal_hold_outcomes",
         ):
             value = getattr(self, key)
             if not isinstance(value, tuple) or any(
                 not isinstance(item, str) for item in value
             ):
                 raise ValueError(f"{key} must be a tuple of strings")
+        window = self.terminal_hold_window_hours
+        if isinstance(window, bool) or not isinstance(window, int) or window < 0:
+            raise ValueError("terminal_hold_window_hours must be an int >= 0")

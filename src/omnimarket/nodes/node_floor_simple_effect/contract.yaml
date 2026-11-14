@@ -76,6 +76,11 @@ event_bus:
 
 externally_consumed_topics:
   - onex.evt.omnimarket.floor-simple-written.v1
+  # The emission topics leave the ONEX node graph here (OMN-24298): no contract subscribes to them. node_floor_emissions_publish_effect
+  # reads each once within its window (its snapshot_reads), and the receipt calculator is run in process, never dispatched one event.
+  - onex.evt.omnimarket.floor-node-started.v1
+  - onex.evt.omnimarket.floor-node-succeeded.v1
+  - onex.evt.omnimarket.floor-node-failed.v1
 
 # Where the cycle reads and writes. The overlays are found under ONEX_SKILL_OVERLAY_ROOTS (or the file the env var names).
 runtime:
@@ -173,6 +178,10 @@ runtime:
     controller_state_dir_fallback: .local/state/omni/landing
     controller_admissions_name: admissions.jsonl
     controller_admissions_tail_bytes: 4194304
+    # The controller's decision journal (OMN-23242): one merge row per tick a merge stays deferred; the handed-off refusals section
+    # counts the deferrals from its newest tail, with the ledger's hand-off and parent MSG rows and the admission record above.
+    controller_decisions_name: decisions.jsonl
+    controller_decisions_tail_bytes: 8388608
     # The friction rollup's report: the stoppages come from it, so its build time is what the stoppage rows are as of.
     friction_report_relpath: .claude_scratch/friction/friction-report.json
     runner_fleet_relpath: .onex_state/runner-fleet/runner-fleet.json

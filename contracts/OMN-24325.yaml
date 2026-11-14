@@ -1,0 +1,73 @@
+schema_version: 1.0.0
+ticket_id: OMN-24325
+title: The capture silence watch reads its database password from the secret store
+summary: The capture silence watch's unit on h201 exited 3 on every tick because OMNINODE_INTERNAL_DB_URL was unset and its environment file did not exist. The database is the dev lane's omnidash_analytics, read as the omninode_runtime login (a dev database, not prod). The installer's capture-silence-watch unit now takes two request inputs persisted in the unit, capture_watch_db_url (a postgresql address
+  with no password) and capture_watch_db_password_ref (a secret store path), plus the overlay roots the node reads its store block from. The node contract's reads_source gains password_ref_env; the reader resolves the reference through the secret_store block of the node's overlay (overlays repository, node_capture_silence_watch_effect) and fails closed when it does not resolve. The handler resolves
+  off the event loop because the reference reader runs its own loop. The store key OMNINODE_RUNTIME_PASSWORD in the dev store (folder /shared/env) was seeded through node_secret_seed_effect on h201 (create only).
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24325-password-reference
+  statement: The capture silence watch reads its dev database with a password that is only ever a secret store reference in its unit and is resolved at run time, failing closed to an UNKNOWN verdict.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the watch reads its database password from the secret store reference named by the unit''s environment and connects with it, never logging or printing it -- falsifier: pytest tests/test_omn19975_capture_silence_watch.py -q -k password_reference'
+  - id: AC2
+    statement: 'AC2: a reference that does not resolve makes the read fail closed (verdict unknown, reason names the variable only), and a database address that already carries a password is used as given -- falsifier: pytest tests/test_omn19975_capture_silence_watch.py -q -k "password_reference_unresolved or url_with_password"'
+  - id: AC3
+    statement: 'AC3: the installer renders the unit with the password-less address and the reference, and refuses an address that carries a password or a reference that is not a store path -- falsifier: pytest tests/nodes/node_host_installer_registry_units/test_capture_silence_watch_schedule.py -q'
+  - id: AC4
+    statement: 'AC4: integrated: on h201 the capture-silence-watch unit''s next tick exits 0 and writes last-run.json with exit_code 0 -- falsifier: ssh h201 cat ~/.local/state/omni/capture-silence-watch/last-run.json and journalctl --user -u onex-capture-silence-watch -n 20 read after the install'
+evidence_requirements:
+- kind: tests
+  description: The reader tests, the installer render test and the installer-to-node seam test pass at the pushed head.
+  command: uv run pytest tests/test_omn19975_capture_silence_watch.py tests/test_golden_chain_capture_silence_watch_effect.py tests/nodes/node_capture_silence_watch_effect -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24325-ac1
+  description: 'AC1: the golden tests resolve the reference through the store seam (folder and key split, the node overlay asked) and dial with the password, and the evaluation event, the log and the heartbeat carry none.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_omn19975_capture_silence_watch.py -k password_reference -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24325-ac2
+  description: 'AC2: an unresolved or malformed reference raises with the variable named and no reference or key in the text, the chain tick reports UNKNOWN for every source with a heartbeat and no alarm, and a DSN that carries a password never asks the store.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_omn19975_capture_silence_watch.py -k "password_reference_unresolved or url_with_password or password_reference_malformed" -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24325-ac3
+  description: 'AC3: the rendered unit holds the address and the reference and the overlay roots and no password, an address with a password or an incomplete one is refused, a reference the request refuses is refused by split_store_reference and the reverse, and an environment built from the persisted values gives the dialled DSN.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_capture_silence_watch_effect -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24325-ac4
+  description: 'hosted proxy for AC4: the tests above pass; the h201 install from the branch and the unit''s next tick are read on h201 and named in the pull request.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_capture_silence_watch_effect tests/test_omn19975_capture_silence_watch.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24325-integration-proof
+  description: the reader tests, the installer render test and the installer-to-node seam test run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24325 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/test_omn19975_capture_silence_watch.py tests/test_golden_chain_capture_silence_watch_effect.py tests/nodes/node_capture_silence_watch_effect -q --no-cov

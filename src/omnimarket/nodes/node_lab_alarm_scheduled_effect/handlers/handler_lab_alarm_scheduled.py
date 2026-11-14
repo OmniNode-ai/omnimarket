@@ -4,8 +4,8 @@
 
 handle takes the runtime tick. A tick inside the overlay's interval returns nothing and does not move the last-run
 time; the tick that is due loads the schedule overlay and runs the lab alarm's broker-lag handler through the shared
-tick module, returning the run event. A refused overlay or an unreadable alarm overlay is a failed run event that
-names it, never a silent skip.
+tick module, handing it the builder that binds the lag source the alarm overlay's backend names, and returning the
+run event. A refused overlay or an unreadable alarm overlay is a failed run event that names it, never a silent skip.
 """
 
 from __future__ import annotations
@@ -29,6 +29,13 @@ from omnimarket.handlers.scheduled_overlay_refusal import ScheduledOverlayRefusa
 from omnimarket.models.schedule_trigger.model_schedule_trigger import (
     ModelScheduleRunEvent,
 )
+from omnimarket.nodes.node_lab_alarm.handlers.handler_broker_lag import (
+    HandlerBrokerLag,
+)
+from omnimarket.nodes.node_lab_alarm.overlay import ModelLabAlarmOverlay
+from omnimarket.nodes.node_lab_alarm.runtime_lab_alarm import (
+    build_handler as build_lab_alarm_handler,
+)
 from omnimarket.nodes.node_lab_alarm_scheduled_effect.models import (
     ModelLabAlarmScheduleOverlay,
 )
@@ -46,6 +53,9 @@ class HandlerLabAlarmScheduled:
         tick: Callable[..., ModelLabAlarmTickOutcome] = run_lab_alarm_tick,
         environ: Mapping[str, str] | None = None,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        build_handler: Callable[
+            [ModelLabAlarmOverlay], HandlerBrokerLag
+        ] = build_lab_alarm_handler,
     ) -> None:
         self._gate = gate or ScheduleGate(
             NODE_NAME, model=ModelLabAlarmScheduleOverlay, environ=environ
@@ -53,6 +63,7 @@ class HandlerLabAlarmScheduled:
         self._tick = tick
         self._environ = environ
         self._clock = clock
+        self._build_handler = build_handler
         self._refusals = ScheduledOverlayRefusalLatch(NODE_NAME)
 
     def _event(
@@ -88,6 +99,7 @@ class HandlerLabAlarmScheduled:
                 alarm_overlay_id=overlay.alarm_overlay_id,
                 environ=self._environ,
                 clock=self._clock,
+                build_handler=self._build_handler,
             )
         except NodeOverlayError:
             return self._event(

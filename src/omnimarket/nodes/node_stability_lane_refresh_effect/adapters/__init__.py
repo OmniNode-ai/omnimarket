@@ -1,7 +1,12 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Adapters of node_stability_lane_refresh_effect: in-memory by default, real-host by overlay."""
+"""Adapters of node_stability_lane_refresh_effect: the file, git and http ports, and the bus adapters."""
 
+from omnimarket.nodes.node_stability_lane_refresh_effect.adapters.adapter_bus import (
+    BusEventPublisher,
+    BusRequestReader,
+    StabilityServeJoinTimeoutError,
+)
 from omnimarket.nodes.node_stability_lane_refresh_effect.adapters.adapter_in_memory import (
     InMemoryAppliedPinStore,
     InMemoryHealth,
@@ -19,6 +24,8 @@ from omnimarket.nodes.node_stability_lane_refresh_effect.adapters.adapter_lab_ho
 )
 
 __all__ = [
+    "BusEventPublisher",
+    "BusRequestReader",
     "FileAppliedPinStore",
     "FilePinSource",
     "GitTagCheck",
@@ -28,6 +35,7 @@ __all__ = [
     "InMemoryPinSource",
     "InMemoryTags",
     "RecordingExecutor",
+    "StabilityServeJoinTimeoutError",
     "SubprocessRefreshExecutor",
     "UnreadablePinSource",
 ]

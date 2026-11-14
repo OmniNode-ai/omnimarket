@@ -1,0 +1,179 @@
+# Eight frozen investigation questions over the two-repository corpus (OMN-23328 AC1).
+#
+# Gold answers are source-derived: every must_find fact names a repository, a path and an anchor
+# (an exact line of text) that `git grep -F` finds at the corpus commit in corpus.yaml. They were
+# written by reading the sources directly; neither arm produced or saw them. An arm is never given
+# this file.
+#
+# A run passes when it (1) cites every must_find fact marked critical with its path and symbol,
+# (2) cites at least 80 percent of all must_find facts, (3) names every relevant test file listed
+# for the question or states that none exists where the question marks none, (4) states each
+# expected ambiguity instead of resolving it by invention, and (5) cites no path that does not
+# exist at the corpus commit. A critical miss is (1) failing or (5) failing.
+schema_version: 1
+ticket: OMN-23328
+corpus: corpus.yaml
+questions:
+  - id: Q1
+    kind: protocol-to-consumer
+    question: >
+      omnibase_spi declares a runtime protocol that answers whether a node is hosted by this
+      runtime process. Name the protocol and its one method, say which omnibase_infra module
+      checks that an object conforms to it and where the object is built, name the class that is
+      passed in, and list the tests that exercise the protocol in omnibase_infra.
+    must_find:
+      - {id: Q1-F1, critical: true, repo: omnibase_spi, path: src/omnibase_spi/protocols/runtime/protocol_handler_ownership_query.py, anchor: 'def is_owned_here(self, node_name: str) -> bool:', fact: 'ProtocolHandlerOwnershipQuery has one method, is_owned_here(node_name) -> bool'}
+      - {id: Q1-F2, critical: true, repo: omnibase_infra, path: src/omnibase_infra/runtime/auto_wiring/handler_wiring.py, anchor: 'def _assert_is_ownership_query(obj: object) -> None:', fact: 'handler_wiring.py does the infra-boundary isinstance check against the protocol'}
+      - {id: Q1-F3, critical: true, repo: omnibase_infra, path: src/omnibase_infra/runtime/auto_wiring/handler_wiring.py, anchor: 'ownership_query: object = ServiceLocalHandlerOwnershipQuery(', fact: 'the instance is built once per wiring pass and then asserted'}
+      - {id: Q1-F4, critical: true, repo: omnibase_infra, path: src/omnibase_infra/runtime/auto_wiring/handler_wiring.py, anchor: 'from omnibase_core.services.service_local_handler_ownership_query import (', fact: 'the passed-in class ServiceLocalHandlerOwnershipQuery is imported from omnibase_core, outside the corpus'}
+    relevant_tests:
+      - {repo: omnibase_infra, path: tests/unit/runtime/test_handler_wiring_resolver_integration.py}
+      - {repo: omnibase_infra, path: tests/integration/runtime/test_handler_wiring_resolver_integration.py}
+      - {repo: omnibase_infra, path: tests/integration/test_omnibase_spi_runtime_protocol_floor.py}
+    expected_ambiguities:
+      - The implementing class is not in either corpus repository; an answer must say it lives in omnibase_core and must not name a class from the corpus as the implementer.
+      - handler_wiring.py has many unrelated functions about topic ownership and dispatcher ownership; they are not this protocol.
+
+  - id: Q2
+    kind: protocol-to-consumer
+    question: >
+      Which omnibase_spi protocol defines the bytes round trip for envelopes that can be split
+      into chunks? List the methods it requires, the omnibase_infra modules that use it, and the
+      tests that cover each of those modules.
+    must_find:
+      - {id: Q2-F1, critical: true, repo: omnibase_spi, path: src/omnibase_spi/protocols/chunking/protocol_chunkable_envelope.py, anchor: 'class ProtocolChunkableEnvelope(Protocol):', fact: 'the protocol is ProtocolChunkableEnvelope'}
+      - {id: Q2-F2, critical: true, repo: omnibase_spi, path: src/omnibase_spi/protocols/chunking/protocol_chunkable_envelope.py, anchor: 'def to_bytes(self) -> bytes:', fact: 'requires to_bytes'}
+      - {id: Q2-F3, critical: true, repo: omnibase_spi, path: src/omnibase_spi/protocols/chunking/protocol_chunkable_envelope.py, anchor: 'def from_bytes(cls, data: bytes) -> "ProtocolChunkableEnvelope":', fact: 'requires classmethod from_bytes'}
+      - {id: Q2-F4, critical: true, repo: omnibase_infra, path: src/omnibase_infra/gateways/chunking/chunking_gateway.py, anchor: 'envelope: ProtocolChunkableEnvelope,', fact: 'chunking_gateway.py takes the protocol as its envelope type'}
+      - {id: Q2-F5, critical: true, repo: omnibase_infra, path: src/omnibase_infra/gateways/chunking/default_chunker.py, anchor: 'envelope: ProtocolChunkableEnvelope,', fact: 'default_chunker.py splits a protocol envelope'}
+      - {id: Q2-F6, critical: true, repo: omnibase_infra, path: src/omnibase_infra/gateways/chunking/reassembly_gateway.py, anchor: 'ProtocolChunkableEnvelope | ModelChunkSeriesFailed | None:', fact: 'reassembly_gateway.py returns the protocol type, a failure model or None'}
+    relevant_tests:
+      - {repo: omnibase_infra, path: tests/unit/gateways/chunking/test_default_chunker.py}
+      - {repo: omnibase_infra, path: tests/unit/gateways/chunking/test_chunking_gateway.py}
+      - {repo: omnibase_infra, path: tests/unit/gateways/chunking/test_reassembly_gateway.py}
+      - {repo: omnibase_infra, path: tests/integration/gateways/chunking/test_chunk_reassemble_roundtrip.py}
+    expected_ambiguities:
+      - default_chunker.py declares its own EnvelopeFactory protocol whose from_bytes returns the spi protocol; that is an infra-local protocol, not a second spi protocol and not an implementer of the spi one.
+
+  - id: Q3
+    kind: protocol-to-implementers
+    question: >
+      Which classes in omnibase_infra implement omnibase_spi's project tracker protocol, directly
+      or through a base class, how does the code choose between them and which one is the default,
+      and which tests cover each implementation and the choice?
+    must_find:
+      - {id: Q3-F1, critical: true, repo: omnibase_spi, path: src/omnibase_spi/protocols/services/protocol_project_tracker.py, anchor: 'class ProtocolProjectTracker(Protocol):', fact: 'the protocol is ProtocolProjectTracker'}
+      - {id: Q3-F2, critical: true, repo: omnibase_infra, path: src/omnibase_infra/adapters/project_tracker/linear_graphql_project_tracker_adapter.py, anchor: 'class AdapterLinearGraphQLProjectTracker(MixinAsyncCircuitBreaker):', fact: 'the Linear adapter implements it structurally, with no protocol base class'}
+      - {id: Q3-F3, critical: true, repo: omnibase_infra, path: src/omnibase_infra/adapters/project_tracker/local_stub_project_tracker.py, anchor: 'class LocalStubProjectTracker:', fact: 'the JSON-backed stub implements it structurally'}
+      - {id: Q3-F4, critical: false, repo: omnibase_infra, path: src/omnibase_infra/adapters/project_tracker/adapter_project_tracker_linear.py, anchor: 'class AdapterProjectTrackerLinear(AdapterLinearGraphQLProjectTracker):', fact: 'a subclass of the Linear adapter reaches the protocol only through its parent'}
+      - {id: Q3-F5, critical: true, repo: omnibase_infra, path: src/omnibase_infra/services/project_tracker/resolver.py, anchor: 'backend: EnumProjectTrackerBackend = EnumProjectTrackerBackend.LINEAR,', fact: 'resolve_project_tracker defaults to the Linear backend'}
+      - {id: Q3-F6, critical: true, repo: omnibase_infra, path: src/omnibase_infra/enums/enum_project_tracker_backend.py, anchor: 'LOCAL_STUB = "local_stub"', fact: 'the other selectable backend is LOCAL_STUB'}
+    relevant_tests:
+      - {repo: omnibase_infra, path: tests/unit/adapters/test_linear_graphql_project_tracker_adapter.py}
+      - {repo: omnibase_infra, path: tests/unit/adapters/test_local_stub_project_tracker.py}
+      - {repo: omnibase_infra, path: tests/unit/adapters/test_adapter_project_tracker_linear.py}
+      - {repo: omnibase_infra, path: tests/services/test_resolver.py}
+      - {repo: omnibase_infra, path: tests/integration/services/test_resolver_integration.py}
+    expected_ambiguities:
+      - No class inherits the protocol; an answer that searches only for subclasses finds none. The resolver returns the instance through a typing cast.
+      - The Linear subclass is an implementer only through its parent and is not a third backend.
+
+  - id: Q4
+    kind: protocol-to-implementers-and-consumers
+    question: >
+      Which omnibase_infra classes implement omnibase_spi's LLM provider protocol, which classes
+      hold providers typed by it, and which tests cover them? Say also where a method-count
+      exemption for the OpenAI adapter is recorded.
+    must_find:
+      - {id: Q4-F1, critical: true, repo: omnibase_spi, path: src/omnibase_spi/protocols/llm/protocol_llm_provider.py, anchor: 'class ProtocolLLMProvider(Protocol):', fact: 'the protocol is ProtocolLLMProvider'}
+      - {id: Q4-F2, critical: true, repo: omnibase_infra, path: src/omnibase_infra/adapters/llm/adapter_llm_provider_openai.py, anchor: 'class AdapterLlmProviderOpenai:', fact: 'the OpenAI-compatible adapter implements the protocol'}
+      - {id: Q4-F3, critical: true, repo: omnibase_infra, path: src/omnibase_infra/adapters/overseer/adapter_llm_provider_scoped.py, anchor: 'class AdapterLlmProviderScoped:', fact: 'the scope-enforcing wrapper in the overseer adapters also implements it'}
+      - {id: Q4-F4, critical: true, repo: omnibase_infra, path: src/omnibase_infra/adapters/llm/adapter_model_router.py, anchor: 'self._providers: dict[str, ProtocolLLMProvider] = {}', fact: 'the model router holds providers typed by the protocol'}
+      - {id: Q4-F5, critical: true, repo: omnibase_infra, path: src/omnibase_infra/adapters/llm/adapter_llm_tool_provider.py, anchor: 'self._providers: dict[str, ProtocolLLMProvider] = {}', fact: 'the tool provider holds providers typed by the protocol'}
+      - {id: Q4-F6, critical: false, repo: omnibase_infra, path: src/omnibase_infra/validation/validation_exemptions.yaml, anchor: 'AdapterLlmProviderOpenai implements the SPI ProtocolLLMProvider protocol', fact: 'the method-count exemption is recorded in validation_exemptions.yaml'}
+    relevant_tests:
+      - {repo: omnibase_infra, path: tests/unit/adapters/llm/test_adapter_llm_provider_openai.py}
+      - {repo: omnibase_infra, path: tests/unit/adapters/llm/test_adapter_model_router.py}
+      - {repo: omnibase_infra, path: tests/unit/adapters/llm/test_adapter_llm_tool_provider.py}
+      - {repo: omnibase_infra, path: tests/unit/adapters/test_scoped_adapters.py}
+    expected_ambiguities:
+      - adapters/llm/model_llm_adapter_response.py mentions the protocol only in a docstring; it is neither an implementer nor a holder of providers.
+      - AdapterModelRouter and AdapterLlmToolProvider consume providers and are not implementers.
+      - The protocol imports JsonType from omnibase_core; that type is outside the corpus.
+
+  - id: Q5
+    kind: contract-to-producers-and-consumers
+    question: >
+      omnibase_spi defines a per-call LLM metrics contract. Which omnibase_infra code builds it,
+      which code publishes it and under which topic key, and how does the Postgres cost writer
+      consume it, as the typed contract or otherwise? List the tests.
+    must_find:
+      - {id: Q5-F1, critical: true, repo: omnibase_spi, path: src/omnibase_spi/contracts/measurement/contract_llm_call_metrics.py, anchor: 'class ContractLlmCallMetrics(BaseModel):', fact: 'the contract is ContractLlmCallMetrics'}
+      - {id: Q5-F2, critical: true, repo: omnibase_infra, path: src/omnibase_infra/models/llm/adapter_llm_usage_to_contract.py, anchor: 'def to_call_metrics(', fact: 'to_call_metrics converts ModelLlmUsage into the contract'}
+      - {id: Q5-F3, critical: true, repo: omnibase_infra, path: src/omnibase_infra/nodes/node_llm_inference_effect/handlers/handler_llm_openai_compatible.py, anchor: 'metrics = ContractLlmCallMetrics(', fact: 'the OpenAI-compatible handler constructs it'}
+      - {id: Q5-F4, critical: true, repo: omnibase_infra, path: src/omnibase_infra/nodes/node_llm_inference_effect/services/service_llm_metrics_publisher.py, anchor: 'self._topic_llm_call = topic_registry.resolve(topic_keys.LLM_CALL_COMPLETED)', fact: 'the publisher resolves topic key LLM_CALL_COMPLETED'}
+      - {id: Q5-F5, critical: true, repo: omnibase_infra, path: src/omnibase_infra/nodes/node_llm_inference_effect/services/service_llm_metrics_publisher.py, anchor: 'topic_keys.LLM_CALL_COMPLETED: ', fact: 'the key stands for the llm-call-completed event topic, named in the publisher docstring'}
+      - {id: Q5-F6, critical: true, repo: omnibase_infra, path: src/omnibase_infra/services/observability/llm_cost_aggregation/writer_postgres.py, anchor: 'event: Event dictionary from ContractLlmCallMetrics.', fact: 'the Postgres writer consumes event dictionaries, not the typed contract'}
+    relevant_tests:
+      - {repo: omnibase_infra, path: tests/unit/models/effects/test_adapter_llm_usage_to_contract.py}
+      - {repo: omnibase_infra, path: tests/unit/nodes/node_llm_inference_effect/handlers/test_handler_llm_openai_compatible_metrics.py}
+      - {repo: omnibase_infra, path: tests/unit/services/observability/llm_cost_aggregation/test_contract_validation.py}
+      - {repo: omnibase_infra, path: tests/integration/test_llm_dispatch_wiring.py}
+    expected_ambiguities:
+      - writer_postgres.py names the contract only in docstrings and imports nothing from omnibase_spi; an answer that lists it as a typed consumer is wrong.
+      - registry_infra_llm_inference_effect.py mentions the contract in documentation only.
+
+  - id: Q6
+    kind: value-set-to-emitters
+    question: >
+      omnibase_spi's enrichment result contract limits enrichment_type to a fixed set of values.
+      Name the values, name the omnibase_infra adapter that produces each, say which adapter
+      builds the result in more than one place, and list the tests for the adapters.
+    must_find:
+      - {id: Q6-F1, critical: true, repo: omnibase_spi, path: src/omnibase_spi/contracts/enrichment/contract_enrichment_result.py, anchor: 'enrichment_type: Literal["code_analysis", "similarity", "summarization"] = Field(', fact: 'the three values are code_analysis, similarity and summarization'}
+      - {id: Q6-F2, critical: true, repo: omnibase_infra, path: src/omnibase_infra/adapters/llm/adapter_code_analysis_enrichment.py, anchor: 'Returns ContractEnrichmentResult with enrichment_type="code_analysis"', fact: 'AdapterCodeAnalysisEnrichment emits code_analysis'}
+      - {id: Q6-F3, critical: true, repo: omnibase_infra, path: src/omnibase_infra/adapters/llm/adapter_similarity_enrichment.py, anchor: 'Returns ContractEnrichmentResult with enrichment_type="similarity"', fact: 'AdapterSimilarityEnrichment emits similarity'}
+      - {id: Q6-F4, critical: true, repo: omnibase_infra, path: src/omnibase_infra/adapters/llm/adapter_summarization_enrichment.py, anchor: 'Returns ContractEnrichmentResult with enrichment_type="summarization"', fact: 'AdapterSummarizationEnrichment emits summarization'}
+      - {id: Q6-F5, critical: false, repo: omnibase_infra, path: src/omnibase_infra/adapters/llm/adapter_summarization_enrichment.py, anchor: '# ContractEnrichmentResult requires summary_markdown min_length=1', fact: 'the summarization adapter builds the result on several paths and must keep summary_markdown non-empty'}
+    relevant_tests:
+      - {repo: omnibase_infra, path: tests/unit/adapters/llm/test_adapter_code_analysis_enrichment.py}
+      - {repo: omnibase_infra, path: tests/unit/adapters/llm/test_adapter_similarity_enrichment.py}
+      - {repo: omnibase_infra, path: tests/unit/adapters/llm/test_adapter_summarization_enrichment.py}
+    expected_ambiguities:
+      - CHANGELOG.md in omnibase_infra also names the contract; it is documentation, not an emitter.
+
+  - id: Q7
+    kind: nested-contract-to-producers
+    question: >
+      omnibase_spi's delegated response contract carries an attribution contract. Which
+      omnibase_infra adapters build the response and its attribution, which tests exercise them,
+      and does any test name the attribution contract directly?
+    must_find:
+      - {id: Q7-F1, critical: true, repo: omnibase_spi, path: src/omnibase_spi/contracts/delegation/contract_delegated_response.py, anchor: 'attribution: ContractDelegationAttribution = Field(', fact: 'the response carries a required attribution field'}
+      - {id: Q7-F2, critical: true, repo: omnibase_infra, path: src/omnibase_infra/adapters/llm/adapter_code_review_analysis.py, anchor: 'attribution = ContractDelegationAttribution(', fact: 'code review adapter builds the attribution'}
+      - {id: Q7-F3, critical: true, repo: omnibase_infra, path: src/omnibase_infra/adapters/llm/adapter_documentation_generation.py, anchor: 'attribution = ContractDelegationAttribution(', fact: 'documentation generation adapter builds the attribution'}
+      - {id: Q7-F4, critical: true, repo: omnibase_infra, path: src/omnibase_infra/adapters/llm/adapter_test_boilerplate_generation.py, anchor: 'attribution = ContractDelegationAttribution(', fact: 'test boilerplate adapter builds the attribution'}
+    relevant_tests:
+      - {repo: omnibase_infra, path: tests/unit/adapters/llm/test_adapter_code_review_analysis.py}
+      - {repo: omnibase_infra, path: tests/unit/adapters/llm/test_adapter_documentation_generation.py}
+      - {repo: omnibase_infra, path: tests/unit/adapters/llm/test_adapter_test_boilerplate_generation.py}
+      - {repo: omnibase_infra, path: tests/integration/adapters/llm/test_adapter_documentation_generation_integration.py}
+    expected_ambiguities:
+      - No omnibase_infra test file names ContractDelegationAttribution; the attribution is covered only through the response tests. An answer must say that and must not invent a test named for it.
+
+  - id: Q8
+    kind: consumer-symbol-to-definition-and-tests
+    question: >
+      omnibase_infra's default contract loader raises two exceptions that come from omnibase_spi.
+      Name them, say where omnibase_spi defines them, and say which tests in each repository
+      exercise each exception, including any exception no test exercises.
+    must_find:
+      - {id: Q8-F1, critical: true, repo: omnibase_infra, path: src/omnibase_infra/contracts/defaults/loader.py, anchor: 'from omnibase_spi.exceptions import TemplateNotFoundError, TemplateParseError', fact: 'the loader imports both exceptions from omnibase_spi.exceptions'}
+      - {id: Q8-F2, critical: true, repo: omnibase_spi, path: src/omnibase_spi/exceptions.py, anchor: 'class TemplateNotFoundError(TemplateError):', fact: 'TemplateNotFoundError is defined in omnibase_spi exceptions.py'}
+      - {id: Q8-F3, critical: true, repo: omnibase_spi, path: src/omnibase_spi/exceptions.py, anchor: 'class TemplateParseError(TemplateError):', fact: 'TemplateParseError is defined in omnibase_spi exceptions.py'}
+      - {id: Q8-F4, critical: true, repo: omnibase_infra, path: src/omnibase_infra/contracts/defaults/loader.py, anchor: 'raise TemplateParseError(', fact: 'the loader raises TemplateParseError for invalid YAML'}
+    relevant_tests:
+      - {repo: omnibase_infra, path: tests/unit/contracts/defaults/test_loader.py}
+      - {repo: omnibase_infra, path: tests/integration/test_spi_default_contract_loader.py}
+    expected_ambiguities:
+      - Both infra test files exercise only TemplateNotFoundError; no test in either repository names TemplateParseError, and no omnibase_spi test names either exception. An answer must report that gap and must not invent a test for it.

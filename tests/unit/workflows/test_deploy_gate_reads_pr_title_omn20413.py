@@ -55,15 +55,14 @@ def _run_gate_step(tmp_path: Path, title: str, body: str) -> list[str]:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     record = tmp_path / "validator-argv.txt"
-    body_file = tmp_path / "body.txt"
-    body_file.write_text(body)
+
     _write_exe(
         bin_dir / "gh",
         "#!/usr/bin/env bash\n"
         'if [ "$1 $2" = "pr diff" ]; then\n'
         "  echo src/omnimarket/nodes/node_e2e_bridge_effect/contract.yaml\n"
         'elif [ "$1 $2" = "pr view" ]; then\n'
-        f"  cat {shlex.quote(str(body_file))}\n"
+        "  exit 2\n"
         "else\n"
         "  exit 2\n"
         "fi\n",
@@ -79,6 +78,7 @@ def _run_gate_step(tmp_path: Path, title: str, body: str) -> list[str]:
         "GH_TOKEN": "unused",
         "PR_NUMBER": "3817",
         "PR_TITLE": title,
+        "PR_BODY": body,
         "GITHUB_REPOSITORY": "OmniNode-ai/omnimarket",
         "CONTRACTS_DIR": gate["env"]["CONTRACTS_DIR"],
         "VALIDATOR": gate["env"]["VALIDATOR"],

@@ -1,0 +1,66 @@
+schema_version: "1.0.0"
+ticket_id: OMN-23149
+title: "Stage 4 of unused-code removal: a module referenced only by tests leaves with those tests, and a skill never seen goes only after a rare-path check names no drill that uses it"
+summary: >-
+  node_code_quarantine_effect gains the two reads of stage 4. A quarantine request whose entity kind is test-only-module is
+  refused when it names a test file as the module, names no test that references the module, or leaves a referencing test out
+  of the tests that leave with it, so the tests never go alone. A request whose entity kind is skill-never-seen is refused
+  unless it carries a rare-path check that names its evidence and read at least one drill, and is refused when any drill read
+  uses the skill. The kind is stored on the record. Requests without a kind read as before. Two new typed outcomes carry the
+  refusals, four named source mutations each turn the stage-4 chain red, and the acceptance reads run on the in-memory rig and
+  on the real files and git rig. Reading the code graph and the drills, and the standing run that publishes the verdicts, are
+  not part of this change.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn23149-stage-4-quarantine-reads
+    statement: A module referenced only by tests leaves with its tests, and a skill never seen leaves only after a rare-path check that names no drill using it, by the quarantine node.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: a module referenced only by tests is removed together with those tests and never the tests alone -- falsifier: uv run pytest src/omnimarket/nodes/node_code_quarantine_effect -q -k stage_4_tests_go_with_module'
+      - id: AC2
+        statement: 'AC2: a skill never seen goes only after a rare-path check names no drill that uses it -- falsifier: uv run pytest src/omnimarket/nodes/node_code_quarantine_effect -q -k stage_4_skill_rare_path'
+evidence_requirements:
+  - kind: tests
+    description: The quarantine node's acceptance reads, golden, error and stage-4 chains and named mutations, on the in-memory rig and on the real files and git rig.
+    command: uv run --frozen pytest src/omnimarket/nodes/node_code_quarantine_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn23149-ac1
+    description: The AC1 falsifier of the ticket passes on the in-memory rig and on the real files and git rig.
+    source: manual
+    execution_scope: hosted_and_local
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest src/omnimarket/nodes/node_code_quarantine_effect -q --no-cov -k stage_4_tests_go_with_module
+        cwd: .
+  - id: dod-omn23149-ac2
+    description: The AC2 falsifier of the ticket passes on the in-memory rig and on the real files and git rig.
+    source: manual
+    execution_scope: hosted_and_local
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest src/omnimarket/nodes/node_code_quarantine_effect -q --no-cov -k stage_4_skill_rare_path
+        cwd: .
+  - id: dod-omn23149-deploy-source-readback
+    description: 'Hosted-runner deploy source readback: the published quarantine handler at the evaluated commit must equal the checkout byte for byte. This checks published source; the lab run of the node from the branch is in the pull request body.'
+    source: manual
+    checks:
+      - check_type: command
+        check_value: |-
+          bash -o pipefail -c 'curl --fail --silent --show-error "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_code_quarantine_effect/handlers/handler_code_quarantine.py" | cmp - src/omnimarket/nodes/node_code_quarantine_effect/handlers/handler_code_quarantine.py'
+        cwd: .
+  - id: dod-omn23149-stage-4-integration-proof
+    description: The pushed head ran the quarantine node tests on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: 'uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23149 -- uv run --frozen pytest src/omnimarket/nodes/node_code_quarantine_effect -q --no-cov'
+        cwd: .

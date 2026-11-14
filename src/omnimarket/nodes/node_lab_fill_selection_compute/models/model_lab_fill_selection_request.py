@@ -45,6 +45,9 @@ class ModelLabFillCandidateInput:
     parents: tuple[str, ...] = ()
     state_type: str = ""
     criterion: str = ""
+    # OMN-19998: the newest change of the ticket's start criterion, supplied by the caller; empty is
+    # unknown, so it never releases a hold.
+    criterion_changed_at: str = ""
 
 
 @dataclass(frozen=True, slots=True)

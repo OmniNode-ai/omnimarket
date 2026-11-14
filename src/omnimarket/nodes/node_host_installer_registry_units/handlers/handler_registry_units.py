@@ -1038,6 +1038,9 @@ class HandlerRegistryUnits:
             service_path.unlink(missing_ok=True)
             timer_path.unlink(missing_ok=True)
             self.run([*systemctl, "daemon-reload"])
+            # A unit that failed before its removal stays on `systemctl --user --failed` until its mark is reset;
+            # a refusal is ignored, the removal has already happened (OMN-23961).
+            self.run([*systemctl, "reset-failed", f"{label}.service", f"{label}.timer"])
             return self.result(
                 request,
                 0,

@@ -1,0 +1,86 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Floor Delegation History Effect
+#
+# One run, a step of the factory floor publish beside the delegation tracker. It reads (1) the lab projection's delegation_events by
+# psql over ssh in one read only transaction, grouped by hour, model and task type server side (attempts, accepted, timeouts, cost,
+# latencies of the runs each model answered, first and last seen), (2) the delegation routing overlay's backend settings through
+# the routing overlay loader, (3) the experiment reports of every host the overlay lists (stamped reports and results files, read
+# through one shell listing per host), then folds them with node_floor_delegation_history_compute and writes delegation-history.json.
+# A source that cannot be read is named in the document's sources and is never read as zero; when the projection cannot be read
+# and a previous file exists, the previous file stays (the publish serves it) and the run reports not ok.
+name: node_floor_delegation_history_effect
+contract_name: node_floor_delegation_history_effect
+node_name: node_floor_delegation_history_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: []
+
+description: >
+  Reads the delegation projection, the routing overlay and the lab experiment reports, folds them with
+  node_floor_delegation_history_compute, and writes delegation-history.json for the floor's Delegation tab.
+
+handler:
+  module: omnimarket.nodes.node_floor_delegation_history_effect.handlers.handler_floor_delegation_history
+  class: HandlerFloorDelegationHistory
+  input_model: omnimarket.nodes.node_floor_delegation_history_effect.models.model_floor_delegation_history.ModelFloorDelegationHistoryRequest
+  output_model: omnimarket.nodes.node_floor_delegation_history_effect.models.model_floor_delegation_history.ModelFloorDelegationHistoryResult
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: run_floor_delegation_history
+      handler:
+        name: HandlerFloorDelegationHistory
+        module: omnimarket.nodes.node_floor_delegation_history_effect.handlers.handler_floor_delegation_history
+      input_model: omnimarket.nodes.node_floor_delegation_history_effect.models.model_floor_delegation_history.ModelFloorDelegationHistoryRequest
+      output_model: omnimarket.nodes.node_floor_delegation_history_effect.models.model_floor_delegation_history.ModelFloorDelegationHistoryResult
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 80000
+  side_effects:
+    - reads the delegation events table of the lab's database over ssh in a read only transaction
+    - reads the experiment reports of each host the overlay lists (ssh, or the local directory)
+    - writes the history file the publish copies to the serving hosts
+
+input_model:
+  name: ModelFloorDelegationHistoryRequest
+  module: omnimarket.nodes.node_floor_delegation_history_effect.models.model_floor_delegation_history
+  description: The registry home.
+output_model:
+  name: ModelFloorDelegationHistoryResult
+  module: omnimarket.nodes.node_floor_delegation_history_effect.models.model_floor_delegation_history
+  description: Whether the file was written, where, and the counts of its three sections.
+
+runtime_dispatch:
+  external_trigger: python -m omnimarket.nodes.node_floor_delegation_history_effect run, as the delegation_history step of python -m omnimarket.nodes.node_factory_floor_publish_effect, from the registry module tick that the host installer contract declares.
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+runtime:
+  home_env: OMNI_HOME
+  # The deployment overlay <root>/node_floor_delegation_history_effect/overlay.yaml under ONEX_SKILL_OVERLAY_ROOTS, or the file the
+  # variable names: the database's ssh target and compose names, the hosts and directories of the experiment reports, the engine
+  # rules, the serving settings and the arm rules. There is no packaged fallback.
+  overlay_id: node_floor_delegation_history_effect
+  overlay_file_env: ONEX_FLOOR_DELEGATION_HISTORY_OVERLAY
+  output_relpath: .claude_scratch/factory-floor/delegation-history.json
+  projection_table: delegation_events
+  projection_data_source: real
+  # The projection read groups 14 days of runs server side in one read only transaction; the tracker's routes read took 1.4 s for 44,000
+  # rows on 2026-11-14 and this one returns the latency of every run, so it is given more time.
+  projection_read_timeout_seconds: 40
+  report_read_timeout_seconds: 25
+  ssh_connect_timeout_seconds: 10
+  stamp_pattern: '(\d{4})-(\d{2})-(\d{2})T(\d{2})(\d{2})Z'
+
+metadata:
+  transport_type: local

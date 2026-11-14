@@ -101,3 +101,43 @@ def test_release_synced_and_main_exempt_sets_are_disjoint(tmp_path: Path) -> Non
     )
     with pytest.raises(BranchProtectionOverlayError, match="repo_a"):
         _load(path)
+
+
+def test_overlay_landing_branches_load_as_typed_entries(tmp_path: Path) -> None:
+    path = _write(
+        tmp_path,
+        f"schema_version: {OVERLAY_SCHEMA_VERSION}\n"
+        "landing_branches:\n"
+        "  - repo: omnimarket\n"
+        "    branch: dev\n"
+        "    bypass_actors:\n"
+        "      - {actor_type: Integration, actor_id: 4361937}\n"
+        "      - {actor_type: OrganizationAdmin, actor_id: 1}\n",
+    )
+    (entry,) = _load(path).landing_branches
+    assert (entry.repo, entry.branch) == ("omnimarket", "dev")
+    assert [actor.label() for actor in entry.bypass_actors] == [
+        "Integration:4361937:pull_request",
+        "OrganizationAdmin:1:pull_request",
+    ]
+
+
+def test_overlay_landing_branches_must_be_mappings(tmp_path: Path) -> None:
+    path = _write(
+        tmp_path,
+        f"schema_version: {OVERLAY_SCHEMA_VERSION}\nlanding_branches: [omnimarket]\n",
+    )
+    with pytest.raises(BranchProtectionOverlayError, match="list of mappings"):
+        _load(path)
+
+
+def test_overlay_landing_branch_with_an_unknown_field_is_refused(
+    tmp_path: Path,
+) -> None:
+    path = _write(
+        tmp_path,
+        f"schema_version: {OVERLAY_SCHEMA_VERSION}\n"
+        "landing_branches:\n  - {repo: omnimarket, branch: dev, bogus: 1}\n",
+    )
+    with pytest.raises(BranchProtectionOverlayError):
+        _load(path)

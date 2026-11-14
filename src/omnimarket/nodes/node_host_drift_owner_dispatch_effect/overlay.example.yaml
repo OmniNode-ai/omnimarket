@@ -1,0 +1,73 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. The deployment's overlay lives at <root>/node_host_drift_owner_dispatch_effect/overlay.yaml under a root
+# named in ONEX_SKILL_OVERLAY_ROOTS. No key has a default. The runtime backend reads the checker's state file, reads the
+# live lanes from the ledger over the bus and starts a lane through the remote-lane runner.
+backend: inmemory
+state_path: .onex_state/example-drift/state.json
+dispatch_record_path: .onex_state/example-drift-owner/dispatched.json
+excluded_kinds: [heartbeat]
+excluded_keys: [unit:example-drift]
+alarm:
+  lane: example-drift-owner
+  actor: timer:example-drift-owner
+  friction_class: host-drift
+  condition: host_drift
+  ticket: OMN-1
+  evidence_limit: 300
+policy:
+  alarm_actor: timer:example-drift-owner
+  conditions: [host_drift]
+  owner_required_after_hours: 6
+  redispatch_after_hours: 24
+live_lanes:
+  query_command: [example-onex, ledger, query, --bus-lane, example-lane]
+  lookback_hours: 72
+  row_limit: 50
+  timeout_seconds: 120
+dispatch:
+  interpreter: python3
+  runner_env: EXAMPLE_REMOTE_LANE_RUNNER
+  subcommand: run
+  model: sonnet
+  ticket: OMN-1
+  briefs_dir: .onex_state/example-drift-owner/briefs
+  settle_seconds: 20
+  extra_args: [--parent, example-drift, --priority-class, process-fix]
+brief:
+  lane_brief_script: skills/lane-brief/scripts/lane_brief.py
+  rules_block_script: scripts/lane_rules_block.py
+  runner_root_levels: 4
+  ledger_env: EXAMPLE_LEDGER_PATH
+  parent: example-orchestrator
+  landing_lane: example-landing
+  landing_ruling_lane: example-ruling-lane
+  landing_ruling: "2026-01-01T00:00:00Z"
+  out_of_scope: any change to the lane-brief script or the remote-lane runner
+  repo: none
+  effort: high
+  route_band: B3
+  route_dims: S2A1R1V2N1C1J1
+  check_where: lab
+  command_timeout_seconds: 120
+  regenerate_attempts: 2
+  sections:
+    exemplars: "EXEMPLARS: read the example nodes before writing and match their shape."
+    seams: "SEAMS: name every topic, contract or model your change shares and add the test that fails when either side changes shape."
+    runtime: "RUNTIME: work is done only when observed running where it runs; name the host, the revision and the receipt."
+    delegation: "DELEG: drafts go through the delegation step first; end with a DELEGATION line carrying every run id."
+# The secret store the brief check's environment values are read from when the unit's environment holds none (synthetic).
+secret_store:
+  provider: infisical
+  address: http://example-store.invalid:8880
+  project_id: 00000000-0000-4000-8000-000000000000
+  environment: dev
+  root_folder: /
+  identity_file: .example/.env
+  client_id_ref: EXAMPLE_CLIENT_ID
+  client_secret_ref: EXAMPLE_CLIENT_SECRET
+# The names the lane-brief check reads from its environment and the store entry each is filled from (synthetic).
+brief_environment:
+  folder: /example/lane-env
+  settings:
+    - {env: EXAMPLE_LINEAR_KEY, secret: EXAMPLE_LINEAR_KEY}

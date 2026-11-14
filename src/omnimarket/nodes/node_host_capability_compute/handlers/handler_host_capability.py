@@ -57,6 +57,8 @@ CAPABILITY_CHECK_S = 6
 CAPABILITY_SCM_S = 30
 CAPABILITY_VENV_S = 45
 CAPABILITY_LOCK_MIN = 3
+# One peer is one word: its destinations (``select_lab_ssh_peers``) joined by ``+``.
+PEER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9@._+-]*$")
 
 # What the host lacks, and what its owner adds, per capability; the probe's detail follows.
 OWNER_FIX = {

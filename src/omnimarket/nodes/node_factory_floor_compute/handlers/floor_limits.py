@@ -17,6 +17,7 @@ from omnimarket.models.model_factory_floor_input import (
     ModelFactoryFloorRequest,
     ModelFloorCloudAccount,
     ModelFloorLimitsConfig,
+    ModelLimitAccountVerdict,
     ModelLimitApiKey,
     ModelLimitEngine,
     ModelLimitLabRung,
@@ -348,8 +349,55 @@ def _rung_rows(
     return rows
 
 
+ACCOUNT_COUNT_KEYS = (
+    "accounts_usable",
+    "accounts_draining",
+    "accounts_limited",
+    "accounts_unknown",
+)
+
+
+def _account_counts(
+    pool: ModelLimitTokenPool,
+    verdicts: Sequence[ModelLimitAccountVerdict] | None,
+    now: datetime,
+) -> Values:
+    """The host's accounts by usage verdict; empty when no verdict was made, so the counts read UNKNOWN, never zero.
+
+    A revoked token is not an account in use (it is in ``revoked``). A limit mark on this host's token makes it limited;
+    otherwise its account's verdict decides, and an account with no verdict (no reading, a stale one, or none judged)
+    is unknown and never usable. ``accounts_usable`` includes the draining accounts: they take work until they limit.
+    """
+    if verdicts is None:
+        return {}
+    by_label = {v.label: v.verdict for v in verdicts}
+    counts = dict.fromkeys(ACCOUNT_COUNT_KEYS, 0)
+    for token in pool.tokens:
+        if token.revoked:
+            continue
+        mark = _parse(token.limited_until)
+        verdict = (
+            "limited"
+            if mark is not None and mark > now
+            else by_label.get(token.label, "unknown")
+        )
+        if verdict == "ok":
+            counts["accounts_usable"] += 1
+        elif verdict == "drain":
+            counts["accounts_usable"] += 1
+            counts["accounts_draining"] += 1
+        elif verdict == "limited":
+            counts["accounts_limited"] += 1
+        else:
+            counts["accounts_unknown"] += 1
+    return dict(counts)
+
+
 def _pool_rows(
-    pools: Sequence[ModelLimitTokenPool], now: datetime, cfg: ModelFloorLimitsConfig
+    pools: Sequence[ModelLimitTokenPool],
+    now: datetime,
+    cfg: ModelFloorLimitsConfig,
+    verdicts: Sequence[ModelLimitAccountVerdict] | None = None,
 ) -> list[ModelFloorLimitRow]:
     rows: list[ModelFloorLimitRow] = []
     for p in sorted(pools, key=lambda p: p.host):
@@ -383,7 +431,18 @@ def _pool_rows(
         }
         if limited_stamps:
             values["limited_until"] = max(limited_stamps)
-        rows.append(_row("host_account_pool", p.host, p.source, p.read_at, values))
+        accounts = _account_counts(p, verdicts, now)
+        values.update(accounts)
+        rows.append(
+            _row(
+                "host_account_pool",
+                p.host,
+                p.source,
+                p.read_at,
+                values,
+                unknown_fields=() if accounts else ACCOUNT_COUNT_KEYS,
+            )
+        )
     return rows
 
 
@@ -413,7 +472,7 @@ def compute_limits(request: ModelFactoryFloorRequest) -> ModelFloorLimits:
     if facts.token_pools is None:
         unread.append("token_pools")
     else:
-        rows += _pool_rows(facts.token_pools, now, cfg)
+        rows += _pool_rows(facts.token_pools, now, cfg, facts.account_verdicts)
 
     idle_fresh = facts.idle_slot_hours is not None and _fresh(
         facts.idle_slot_hours_read_at, now, cfg
