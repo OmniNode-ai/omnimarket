@@ -13,7 +13,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.events.host_table import (
+from omnimarket.models.host_table import (
     ModelHostTableResult,
 )
 from omnimarket.models.model_merged_running_count import (

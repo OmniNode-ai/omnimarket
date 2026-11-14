@@ -15,7 +15,7 @@ from pydantic import (
     model_validator,
 )
 
-from omnimarket.events.host_table import (
+from omnimarket.models.host_table import (
     ModelHostTableResult,
 )
 

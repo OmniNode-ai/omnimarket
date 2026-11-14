@@ -12,7 +12,7 @@ from datetime import timedelta
 
 import pytest
 
-from omnimarket.events.host_table import ModelHostTableRequest
+from omnimarket.models.host_table import ModelHostTableRequest
 from omnimarket.models.overlay_keys import ModelLabHostsTable
 from omnimarket.nodes.node_host_table_compute.handlers.handler_host_table import (
     HandlerHostTable,

@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from omnimarket.events.host_table import ModelHostTableRequest
+from omnimarket.models.host_table import ModelHostTableRequest
 from omnimarket.nodes.node_factory_floor_effect.source_loader import load_host_table
 from omnimarket.nodes.node_host_table_compute.handlers.handler_host_table import (
     HandlerHostTable,

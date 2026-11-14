@@ -9,7 +9,7 @@ does no I/O.
 
 from __future__ import annotations
 
-from omnimarket.events.host_table import (
+from omnimarket.models.host_table import (
     ModelHostTableRequest,
     ModelHostTableResult,
     ModelHostTableRow,

@@ -7,13 +7,13 @@ from __future__ import annotations
 from collections.abc import Mapping
 from datetime import UTC, datetime
 
-from omnimarket.events.host_table import (
+from omnimarket.handlers.node_overlay_reader import load_structured_overlay
+from omnimarket.models.host_table import (
     ModelHostTableRow,
 )
-from omnimarket.events.host_table_keys import (
+from omnimarket.models.host_table_keys import (
     ModelHostTableKeysOverlay,
 )
-from omnimarket.handlers.node_overlay_reader import load_structured_overlay
 from omnimarket.nodes.node_host_table_keys_ingest_effect.handlers.store_host_keys import (
     StoreHostKeysValkey,
 )

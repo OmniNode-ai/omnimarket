@@ -9,7 +9,7 @@ from typing import Protocol
 
 import redis
 
-from omnimarket.events.host_table_keys import ModelHostTableKeysOverlay
+from omnimarket.models.host_table_keys import ModelHostTableKeysOverlay
 
 
 class ProtocolHostKeyStore(Protocol):

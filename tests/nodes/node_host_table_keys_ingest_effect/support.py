@@ -7,7 +7,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from omnimarket.events.host_table_keys import (
+from omnimarket.models.host_table_keys import (
     ModelHostTableKeysOverlay,
 )
 from omnimarket.models.overlay_store.model_overlay_store import (

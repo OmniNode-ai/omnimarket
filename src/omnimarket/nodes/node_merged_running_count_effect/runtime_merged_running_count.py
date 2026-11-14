@@ -17,15 +17,15 @@ from typing import Any
 
 import yaml
 
-from omnimarket.events.host_table import (
-    ModelHostTableRequest,
-    ModelHostTableResult,
-)
 from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
     load_structured_overlay,
 )
 from omnimarket.handlers.overlay_keys import resolve_lab_hosts_table
+from omnimarket.models.host_table import (
+    ModelHostTableRequest,
+    ModelHostTableResult,
+)
 from omnimarket.models.model_merged_running_count import (
     ModelMergedRunningCountResult,
     ModelMrcConfig,

@@ -14,7 +14,7 @@ from datetime import datetime
 
 from pydantic import ValidationError
 
-from omnimarket.events.host_table_keys import (
+from omnimarket.models.host_table_keys import (
     ModelHostTableKeysDocument,
     ModelHostTableKeysOverlay,
     ModelHostTableKeysReading,

@@ -22,11 +22,11 @@ from typing import Any, Literal
 import yaml
 from pydantic import ValidationError
 
-from omnimarket.events.host_table import (
-    ModelHostTableRequest,
-)
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.handlers.overlay_keys import resolve_lab_hosts_table
+from omnimarket.models.host_table import (
+    ModelHostTableRequest,
+)
 from omnimarket.models.model_factory_floor_input import (
     CiState,
     ModelFactoryFloorConfig,
