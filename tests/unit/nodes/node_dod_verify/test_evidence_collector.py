@@ -28,6 +28,14 @@ from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
 from omnimarket.nodes.node_dod_verify.services.evidence_collector import (
     EvidenceCollector,
 )
+from tests.unit.nodes.node_dod_verify.omn_23771_standard_ticket import (
+    AT_CUTOVER,
+    REPOSITORY,
+    standard_contract,
+    synced_yaml,
+    write_contract,
+    write_overlay,
+)
 
 
 def _write_contract(
@@ -1884,3 +1892,86 @@ class TestHandlerWithCollector:
         )
         assert isinstance(result, dict)
         assert result["status"] == "failed"
+
+
+@pytest.mark.unit
+class TestStandardTicketContractSchema:
+    """OMN-23771 AC1 and AC2: the contract goes through the core model."""
+
+    @staticmethod
+    def _checkout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+        root = tmp_path / REPOSITORY
+        root.mkdir()
+        monkeypatch.setenv("OMNI_HOME", str(tmp_path))
+        monkeypatch.delenv("REPO", raising=False)
+        monkeypatch.setenv(
+            "ONEX_SKILL_OVERLAY_ROOTS", str(write_overlay(tmp_path / "overlay-root"))
+        )
+        return root
+
+    def test_contract_schema_invalid_for_an_unknown_key(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        checkout = self._checkout(tmp_path, monkeypatch)
+        # Positive control: the same contract without the unknown key is accepted.
+        good = write_contract(checkout, synced_yaml(standard_contract()))
+        accepted = EvidenceCollector().collect(AT_CUTOVER, contract_path=str(good))
+        assert [r.status for r in accepted] == [EnumEvidenceCheckStatus.VERIFIED]
+
+        data = yaml.safe_load(good.read_text(encoding="utf-8"))
+        data["surprise_key"] = "x"
+        bad = write_contract(
+            checkout, yaml.safe_dump(data, sort_keys=False), name="bad.yaml"
+        )
+        results = EvidenceCollector().collect(AT_CUTOVER, contract_path=str(bad))
+        assert len(results) == 1
+        assert results[0].status == EnumEvidenceCheckStatus.FAILED
+        assert (results[0].message or "").startswith("contract_schema_invalid")
+        assert "surprise_key" in (results[0].message or "")
+
+    def test_full_contract_path_validated_not_the_scoped_copy(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        checkout = self._checkout(tmp_path, monkeypatch)
+        full_data = standard_contract()
+        full_data["proof_class"] = "deployed"
+        full_data["requirements"][0]["acceptance"].append(
+            {
+                "id": "AC2",
+                "statement": "running",
+                "falsifier": "the health endpoint answers",
+                "integrated": True,
+            }
+        )
+        full_data["dod_evidence"].append(
+            {
+                "id": "dod-002",
+                "description": "running",
+                "binds_ac": ["AC2"],
+                "checks": [
+                    {"check_type": "endpoint", "check_value": "http://host/health"}
+                ],
+            }
+        )
+        full = write_contract(checkout, synced_yaml(full_data), name="full.yaml")
+
+        # The scoped copy drops dod-002 and AC2, so on its own it is not code-only
+        # and carries no bound integrated criterion: the model refuses it.
+        scoped_data = standard_contract()
+        scoped_data["proof_class"] = "deployed"
+        scoped = write_contract(
+            checkout, yaml.safe_dump(scoped_data, sort_keys=False), name="scoped.yaml"
+        )
+
+        alone = EvidenceCollector().collect(AT_CUTOVER, contract_path=str(scoped))
+        assert (alone[0].message or "").startswith("contract_schema_invalid")
+
+        results = EvidenceCollector().collect(
+            AT_CUTOVER, contract_path=str(scoped), full_contract_path=str(full)
+        )
+        assert not any(
+            (r.message or "").startswith("contract_schema_invalid") for r in results
+        )
+        # The checks run from the scoped copy: its one check, not the full contract's two.
+        assert [r.evidence_id for r in results] == ["dod-001"]
+        assert results[0].status == EnumEvidenceCheckStatus.VERIFIED
