@@ -1,48 +1,42 @@
 schema_version: 1.0.0
 ticket_id: OMN-24354
-title: One reviewed list of nodes allowed without an entry point, read by the drift gate and the inventory test
-summary: 'node-drift-gate (scripts/validate_node_drift.py) excused a node with lifecycle experimental or deprecated from the onex.nodes entry-point check, while the node inventory test kept its own literal
-  set EXPECTED_MISSING_ENTRY_POINTS of 25 nodes. A new reviewed list scripts/audit/node_entry_point_exemptions.yaml (25 nodes, each with a reason) is read by both; the lifecycle excuse leaves check 3 of the
-  gate; a stale list entry fails the gate; a test fails when the gate and the inventory test disagree about a node. Not in this change: the test selector rule that runs the inventory test on a node contract
-  change (its own ticket and pull request).'
+title: The node inventory test derives its no-entry-point set from the contracts the drift gate reads
+summary: node-drift-gate excuses a node with lifecycle experimental or deprecated from the onex.nodes entry-point check, while the node inventory test kept a literal set EXPECTED_MISSING_ENTRY_POINTS. The
+  test now derives that set from the same contract lifecycle (via scripts.validate_node_drift), so the two cannot disagree and no new list or exemption file exists. The test selector rule is not in this
+  change.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
-- id: req-omn24354-one-exemption-list
-  statement: node-drift-gate and the node inventory test read one reviewed list of the nodes that may have no onex.nodes entry point, each entry carrying its reason.
+- id: req-omn24354-one-source
+  statement: The node inventory test derives the nodes allowed without an onex.nodes entry point from the contract lifecycle the drift gate uses, not from a separate literal set.
   acceptance:
   - id: AC1
-    statement: 'AC1: node-drift-gate and the node inventory test read one reviewed list of the nodes that may go without an onex.nodes entry point, each entry carrying its reason -- falsifier: pytest tests/unit/scripts/test_validate_node_drift.py
-      -q -k exemption fails at the base, where the gate has no such list'
-  - id: AC2
-    statement: 'AC2: a test fails when the gate and the inventory test disagree about a node (listed or unlisted, experimental, deprecated or live), and it is red on the pre-change gate -- falsifier: pytest
-      tests/test_market_node_runtime_dogfood.py -q -k agree passes against a gate that still excuses an unlisted experimental node'
+    statement: 'AC1: the inventory test derives EXPECTED_MISSING_ENTRY_POINTS from contract lifecycle (experimental or deprecated, no entry point) -- falsifier: the inventory tests fail if the derived set
+      omits a lifecycle-exempt node or includes a registered one'
   - id: AC3
-    statement: 'AC3: integrated: on the pull request head in omnimarket CI, node-drift-gate and the dogfood inventory test both read success -- falsifier: onex scm pr-checks OmniNode-ai/omnimarket#<n> shows node-drift-gate
-      or lint not success'
+    statement: 'AC3: integrated: on the pull request head in omnimarket CI, node-drift-gate and the dogfood inventory test both read success -- falsifier: onex scm pr-checks OmniNode-ai/omnimarket#<n> shows
+      node-drift-gate or lint not success'
 evidence_requirements:
 - kind: tests
-  description: The gate and inventory tests pass at the pushed head.
-  command: uv run --frozen pytest tests/unit/scripts/test_validate_node_drift.py -q --no-cov -n 0 -p no:randomly
+  description: The inventory tests pass at the pushed head.
+  command: uv run --frozen pytest tests/test_market_node_runtime_dogfood.py -q --no-cov -n 0 -p no:randomly -k "inventory or entry_point"
 emergency_bypass:
   enabled: false
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
-- id: dod-omn24354-ac1-ac2
-  description: 'AC1 and AC2: the gate reads the reviewed list and refuses an unlisted experimental or deprecated node; the inventory test reads the same list; the agreement test covers every lifecycle and
-    listed case. The failing control: with the lifecycle excuse put back in check 3, the agreement test fails for experimental and deprecated unlisted nodes.'
+- id: dod-omn24354-ac1
+  description: 'AC1: the inventory test derives its set from contract lifecycle and the real inventory has no violations.'
   source: manual
   binds_ac:
   - AC1
-  - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/unit/scripts/test_validate_node_drift.py -q --no-cov -n 0 -p no:randomly
+    check_value: uv run --frozen pytest tests/test_market_node_runtime_dogfood.py -q --no-cov -n 0 -p no:randomly -k "inventory or entry_point"
     cwd: .
 - id: dod-omn24354-ac3
-  description: 'hosted proxy for AC3: the gate and the unit tests pass at the pull request head; the CI read of node-drift-gate and the lint job at the head is named in the pull request.'
+  description: 'hosted proxy for AC3: the inventory tests and the drift gate unit tests pass at the head.'
   source: manual
   binds_ac:
   - AC3

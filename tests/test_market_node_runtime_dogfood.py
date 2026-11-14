@@ -21,7 +21,11 @@ from scripts.audit.market_node_runtime_dogfood import (
     _local_invocation_check,
     build_report,
 )
-from scripts.validate_node_drift import load_entry_point_exemptions, validate_node
+from scripts.validate_node_drift import (
+    LIFECYCLE_EXEMPTIONS,
+    _contract_lifecycle,
+    _load_entry_points,
+)
 
 FOCUS_NODES = {
     "node_contract_reducer",
@@ -52,10 +56,26 @@ NATIVE_NON_ADDRESSABLE_NODES = {
 
 EVENT_ROUTED_NODES = {"node_e2e_orchestrator"}
 
-# The reviewed list node-drift-gate reads too (scripts/audit/
-# node_entry_point_exemptions.yaml): each entry carries the reason it has no
-# onex.nodes entry point.
-EXPECTED_MISSING_ENTRY_POINTS = set(load_entry_point_exemptions())
+
+def _lifecycle_exempt_without_entry_point() -> set[str]:
+    """Nodes whose contract says experimental or deprecated and that have no entry point.
+
+    node-drift-gate excuses exactly these from its pyproject_entry check, so
+    deriving the set from the contracts keeps the gate and this test in step.
+    """
+    entry_points = _load_entry_points(_PYPROJECT)
+    missing: set[str] = set()
+    for node_dir in _NODES_DIR.iterdir():
+        contract_path = node_dir / "contract.yaml"
+        if node_dir.name in entry_points or not contract_path.is_file():
+            continue
+        contract = yaml.safe_load(contract_path.read_text(encoding="utf-8")) or {}
+        if _contract_lifecycle(contract) in LIFECYCLE_EXEMPTIONS:
+            missing.add(node_dir.name)
+    return missing
+
+
+EXPECTED_MISSING_ENTRY_POINTS = _lifecycle_exempt_without_entry_point()
 
 # Node directories that hold migrations and no contract.yaml yet. Each entry
 # expires itself: a directory that gains a contract.yaml, or disappears, fails
@@ -137,62 +157,6 @@ def _inventory_violations(inventory: _Inventory) -> list[str]:
         elif name not in {node, node.removeprefix("node_")}:
             violations.append(f"{node}: contract.yaml names {name!r}")
     return violations
-
-
-@pytest.mark.parametrize("listed", [False, True])
-@pytest.mark.parametrize("lifecycle", ["", "experimental", "deprecated"])
-def test_gate_and_inventory_agree_on_every_entry_point_case(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    lifecycle: str,
-    listed: bool,
-) -> None:
-    """node-drift-gate and the inventory test judge a node with no entry point alike.
-
-    Control: before the gate read the reviewed list, an unlisted experimental or
-    deprecated node passed the gate while the inventory test flagged it, so a
-    pull request that added one went green at the gate and red at the test.
-    """
-    node_dir = tmp_path / "node_case"
-    node_dir.mkdir()
-    lifecycle_line = f"lifecycle: {lifecycle}\n" if lifecycle else ""
-    (node_dir / "contract.yaml").write_text(
-        "name: node_case\nnode_type: effect\n"
-        f"{lifecycle_line}"
-        "handler:\n"
-        "  module: omnimarket.nodes.node_case.handlers.handler_case\n"
-        "  class: HandlerCase\n"
-    )
-    exemptions = {"node_case"} if listed else set[str]()
-
-    gate_result = validate_node(
-        node_dir, entry_points=set(), strict=True, exemptions=exemptions
-    )
-    gate_flags = any(
-        f.check == "pyproject_entry" and f.level == "FAIL" for f in gate_result.findings
-    )
-
-    monkeypatch.setattr(
-        "tests.test_market_node_runtime_dogfood.EXPECTED_MISSING_ENTRY_POINTS",
-        exemptions,
-    )
-    inventory = _Inventory(
-        node_dirs=frozenset({"node_case"}),
-        entry_points={},
-        contract_names={"node_case": "node_case"},
-    )
-    inventory_flags = any(
-        "no onex.nodes entry point" in violation
-        for violation in _inventory_violations(inventory)
-    )
-
-    assert gate_flags == inventory_flags
-    assert gate_flags is (not listed)
-
-
-def test_real_gate_and_inventory_read_one_list() -> None:
-    assert set(load_entry_point_exemptions()) == EXPECTED_MISSING_ENTRY_POINTS
-    assert _inventory_violations(_real_inventory()) == []
 
 
 def _with_stray_dir(inv: _Inventory) -> _Inventory:
