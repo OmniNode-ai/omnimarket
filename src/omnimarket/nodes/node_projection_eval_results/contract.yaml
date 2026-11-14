@@ -1,0 +1,119 @@
+---
+name: projection_eval_results
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+# This projection writes TENANT-domain tables, so its writer resolves the tenant_projection
+# binding; exactly one process holds that credential, the consolidated writer that boots
+# RUNTIME_PROFILE=tenant-projection. See node_projection_delegation_eval for the boundary.
+runtime_profiles: [tenant-projection]
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_projection_eval_results.models.model_eval_projection_io.ModelEvalProjectionRequest
+description: >
+  OMN-24171. Rule-7a projection that keeps every scored try, its whole trace and each model's
+  pass rate. It subscribes to the coding trial's per-try rows, the reviewer-model verdicts on
+  live work, the code run's close and the trace parts, and writes eval_item_scores (one row per
+  scored try, every field of the scored-item record), eval_item_traces (every part of every
+  scoring's trace, never replaced), eval_run_closes (what a run's close registered, so a close
+  that arrives first is not lost) and eval_run_rates (a pass rate per run recounted from first
+  tries). A redelivered or replayed event changes nothing: an item is replaced only by a later
+  scored_at, and at an equal one the greater outcome digest stands. A run that has a close shows
+  no rate until every first try it closed over is held. It publishes a compact snapshot of the
+  tracking runs, on every change and on each runtime tick.
+handler:
+  module: omnimarket.nodes.node_projection_eval_results.handlers.handler_projection_eval_results
+  class: HandlerProjectionEvalResults
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    # Only the writer is routed (OMN-19833): a routed pure fold is handed the raw event beside
+    # the writer and cannot report a write. The writer calls the fold in process (rule 7a).
+    - operation: eval_results_projection_writer
+      handler:
+        name: EvalResultsProjectionWriter
+        module: omnimarket.nodes.node_projection_eval_results.handlers.handler_eval_results_writer
+      handler_module: omnimarket.nodes.node_projection_eval_results.handlers.handler_eval_results_writer
+terminal_event: onex.snapshot.projection.eval-results.v1  # onex-topic-allow: projection snapshot topic
+golden_path:
+  - "Receive a coding-trial try row, a judged verdict, a run close or a trace part"
+  - "Read the standing rows the fold names and decide: later scored_at wins, at an equal one the greater outcome digest"
+  - "Upsert the items, insert the trace parts, store the close and recount the run's rates from first tries"
+  - "Publish the compact snapshot of the tracking runs, and again on each runtime tick"
+dod_evidence:
+  - test: tests/test_golden_chain_projection_eval_results.py::test_golden_chain_fills_the_three_tables_and_replay_changes_nothing
+    description: "The golden chain over all four source topics gives the expected item, trace and run-rate rows, and replaying every event gives the same tables"
+  - test: tests/nodes/node_projection_eval_results/test_item_storage.py::test_equal_time_pair_leaves_the_same_row_in_either_order
+    description: "Two events for one item at an equal time that differ in any stored field leave the same row in either arrival order"
+  - test: tests/nodes/node_projection_eval_results/test_item_storage.py::test_every_field_of_the_event_model_is_stored
+    description: "Every field of the event model is stored, so a dropped column fails"
+  - test: tests/nodes/node_projection_eval_results/test_rates.py::test_close_shows_no_rate_until_the_last_event
+    description: "A close shows no snapshot rate until all its attempts are in, in either delivery order"
+  - test: tests/nodes/node_projection_eval_results/test_snapshot.py::test_worst_case_snapshot_fits_under_the_bound
+    description: "The snapshot at the retention limits fits under 900,000 bytes; an oversized fixture and a 201-character model id each get a typed refusal"
+  - test: tests/nodes/node_projection_eval_results/test_writer.py::test_a_tick_republishes_with_a_new_publish_time_and_unchanged_run_times
+    description: "A tick republishes the snapshot with a new publish time and unchanged run times"
+db_io:
+  db_tables:
+    - name: eval_item_scores
+      database_ref: application
+      schema: public
+      migration: "0000_create_eval_results_tables.sql"
+      access: read_write
+      role: eval_item_scores
+    - name: eval_item_traces
+      database_ref: application
+      schema: public
+      migration: "0000_create_eval_results_tables.sql"
+      access: read_write
+      role: eval_item_traces
+    - name: eval_run_closes
+      database_ref: application
+      schema: public
+      migration: "0000_create_eval_results_tables.sql"
+      access: read_write
+      role: eval_run_closes
+    - name: eval_run_rates
+      database_ref: application
+      schema: public
+      migration: "0000_create_eval_results_tables.sql"
+      access: read_write
+      role: eval_run_rates
+  dedupe_key: [tenant_id, item_key]
+  ordering_key: scored_at
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.context-roi-run-completed.v1
+    - onex.evt.omnimarket.delegation-acceptance-judged.v1
+    - onex.evt.omnimarket.code-eval-run-closed.v1
+    - onex.evt.omnimarket.eval-item-traced.v1
+    - onex.intent.platform.runtime-tick.v1
+  publish_topics:
+    - onex.snapshot.projection.eval-results.v1  # onex-topic-allow: projection snapshot topic
+  dlq_topics:
+    - onex.dlq.omnimarket.projection-eval-results-malformed.v1
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.context-roi-run-completed.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.context-roi-run-completed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.delegation-acceptance-judged.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.delegation-acceptance-judged.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.code-eval-run-closed.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.code-eval-run-closed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.eval-item-traced.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.eval-item-traced.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.intent.platform.runtime-tick.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.intent.platform.runtime-tick.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.snapshot.projection.eval-results.v1, operation: WRITE}  # onex-topic-allow: projection snapshot topic
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.snapshot.projection.eval-results.v1, operation: DESCRIBE}  # onex-topic-allow: projection snapshot topic
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.dlq.omnimarket.projection-eval-results-malformed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.dlq.omnimarket.projection-eval-results-malformed.v1, operation: DESCRIBE}
+externally_consumed_topics:
+  - onex.snapshot.projection.eval-results.v1  # onex-topic-allow: projection snapshot topic
+metadata:
+  transport_type: kafka
+  description: "Every scored try, its trace and each model's pass rate"
+  author: "OmniNode Team"
+  license: MIT
+  created: "2026-11-14"
+  tags: [projection, evals, reducer]
+  related_tickets: ["OMN-24171"]
