@@ -57,15 +57,28 @@ class ModelReaderRequest(BaseModel):
     lane: str | None = Field(default=None, pattern=_LANE)
     ticket: str | None = Field(default=None, pattern=r"^[A-Z][A-Z0-9]*-[0-9]+$")
     read_parity: bool = False
-    # Required for a rows read; also allowed (optional) for an open-claims read, where it
-    # means "claims opened within the last window_hours"; refused for every other query.
+    # Required (or ``since`` is) for a rows read; also allowed (optional) for an
+    # open-claims read, where it means "claims opened within the last window_hours";
+    # refused for every other query.
     window_hours: int | None = Field(default=None, ge=1, le=24 * 30)
+    # The absolute window of a rows read; the open-ended end means now.
+    since: AwareDatetime | None = None
+    until: AwareDatetime | None = None
 
     @model_validator(mode="after")
-    def _window_hours_matches_query(self) -> ModelReaderRequest:
+    def _window_matches_query(self) -> ModelReaderRequest:
         if self.query is EnumReaderQuery.ROWS:
-            if self.window_hours is None:
-                raise ValueError("a rows read names its window_hours")
+            if self.window_hours is not None and self.since is not None:
+                raise ValueError("a rows read names window_hours or since, not both")
+            if self.window_hours is None and self.since is None:
+                raise ValueError("a rows read names its window_hours or its since")
+            if self.until is not None:
+                if self.since is None:
+                    raise ValueError("until is only for a rows read that names since")
+                if self.until <= self.since:
+                    raise ValueError("until is not later than its since")
+        elif self.since is not None or self.until is not None:
+            raise ValueError("since and until are only for a rows read")
         elif (
             self.query is not EnumReaderQuery.OPEN_CLAIMS
             and self.window_hours is not None
