@@ -1,46 +1,55 @@
 schema_version: 1.0.0
 ticket_id: OMN-24354
-title: The node inventory test derives its no-entry-point set from the contracts the drift gate reads
-summary: node-drift-gate excuses a node with lifecycle experimental or deprecated from the onex.nodes entry-point check, while the node inventory test kept a literal set EXPECTED_MISSING_ENTRY_POINTS. The
-  test now derives that set from the same contract lifecycle (via scripts.validate_node_drift), so the two cannot disagree and no new list or exemption file exists. The test selector rule is not in this
-  change.
+title: One reviewed list of nodes allowed without an entry point, read by the drift gate and the inventory test
+summary: The reviewed list of node directories that may have no onex.nodes entry point, each with its reason, is the config section of node_entry_point_registration_compute's contract. node-drift-gate and the
+  node inventory test both ask that node, so they cannot disagree about a node, and a lifecycle of experimental or deprecated no longer excuses a node on its own. No new exemption file exists and the gate script
+  shrinks.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
 - id: req-omn24354-one-source
-  statement: The node inventory test derives the nodes allowed without an onex.nodes entry point from the contract lifecycle the drift gate uses, not from a separate literal set.
+  statement: node-drift-gate and the node inventory test read one reviewed list of nodes allowed without an onex.nodes entry point, held in a node contract, each entry carrying its reason.
   acceptance:
   - id: AC1
-    statement: 'AC1: the inventory test derives EXPECTED_MISSING_ENTRY_POINTS from contract lifecycle (experimental or deprecated, no entry point) -- falsifier: the inventory tests fail if the derived set
-      omits a lifecycle-exempt node or includes a registered one'
+    statement: 'AC1: node-drift-gate and the node inventory test read one reviewed list of the nodes that may go without an onex.nodes entry point, each entry carrying its reason -- falsifier: pytest tests/unit/scripts/test_validate_node_drift.py -q -k exemption'
+  - id: AC2
+    statement: 'AC2: a test fails when the gate and the inventory test disagree about a node (listed or unlisted, experimental, deprecated or live), and it is red on the pre-change gate -- falsifier: pytest tests/test_market_node_runtime_dogfood.py -q -k agree'
   - id: AC3
-    statement: 'AC3: integrated: on the pull request head in omnimarket CI, node-drift-gate and the dogfood inventory test both read success -- falsifier: onex scm pr-checks OmniNode-ai/omnimarket#<n> shows
-      node-drift-gate or lint not success'
+    statement: 'AC3: integrated: on the pull request head in omnimarket CI, node-drift-gate and the dogfood inventory test both read success, and the lint job''s dogfood step is not skipped -- falsifier: onex scm pr-checks OmniNode-ai/omnimarket#<n> shows node-drift-gate and lint not success'
 evidence_requirements:
 - kind: tests
-  description: The inventory tests pass at the pushed head.
-  command: uv run --frozen pytest tests/test_market_node_runtime_dogfood.py -q --no-cov -n 0 -p no:randomly -k "inventory or entry_point"
+  description: The gate exemption tests, the agreement tests and the node's golden and error chain tests pass at the pushed head.
+  command: uv run --frozen pytest tests/unit/scripts/test_validate_node_drift.py tests/nodes/node_entry_point_registration_compute -q --no-cov -n 0 -p no:randomly
 emergency_bypass:
   enabled: false
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn24354-ac1
-  description: 'AC1: the inventory test derives its set from contract lifecycle and the real inventory has no violations.'
+  description: 'AC1: the gate reads the reviewed list through node_entry_point_registration_compute and a listed or unlisted node is judged by that list alone.'
   source: manual
   binds_ac:
   - AC1
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/test_market_node_runtime_dogfood.py -q --no-cov -n 0 -p no:randomly -k "inventory or entry_point"
+    check_value: uv run --frozen pytest tests/unit/scripts/test_validate_node_drift.py -q --no-cov -n 0 -p no:randomly -k exemption
+    cwd: .
+- id: dod-omn24354-ac2
+  description: 'AC2: the gate and the inventory test agree on every listed or unlisted, experimental, deprecated or live case, and the test is red on the pre-change gate.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_market_node_runtime_dogfood.py -q --no-cov -n 0 -p no:randomly -k "agree or one_list"
     cwd: .
 - id: dod-omn24354-ac3
-  description: 'hosted proxy for AC3: the inventory tests and the drift gate unit tests pass at the head.'
+  description: 'hosted proxy for AC3: the gate runs clean on the whole tree and the node tests pass at the head.'
   source: manual
   binds_ac:
   - AC3
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/unit/scripts/test_validate_node_drift.py -q --no-cov -n 0 -p no:randomly
+    check_value: uv run --frozen pytest tests/nodes/node_entry_point_registration_compute tests/nodes/node_integration_reading_publish_effect/test_integration_nodes_registered.py -q --no-cov -n 0 -p no:randomly
     cwd: .
