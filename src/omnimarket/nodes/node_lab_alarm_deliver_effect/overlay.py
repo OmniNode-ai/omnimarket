@@ -66,6 +66,31 @@ class ModelLedgerSettings(BaseModel):
     dedupe_window_minutes: int = Field(ge=1)
 
 
+class ModelOwnerRoute(BaseModel):
+    """The owner one alarm condition's episode is routed to: one push notice and one MSG row."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: The lane the MSG row is addressed to.
+    lane: str = Field(min_length=1)
+    #: The ticket the MSG row carries in its ``ticket=`` cell.
+    ticket: str = Field(pattern=r"^OMN-\d+$")
+    #: The category the push notice is posted under.
+    push_category: str = Field(min_length=1)
+    #: ``{condition}``, ``{subject}``, ``{detail}`` and ``{evidence}`` are filled in.
+    push_template: str = Field(min_length=1)
+    #: The MSG row's free text; the same placeholders are filled in.
+    text_template: str = Field(min_length=1)
+
+    @field_validator("push_template", "text_template")
+    @classmethod
+    def _placeholders(cls, value: str) -> str:
+        for name in ("{condition}", "{subject}", "{detail}", "{evidence}"):
+            if name not in value:
+                raise ValueError(f"the template names no {name}")
+        return value
+
+
 class ModelDeliveryOverlay(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -73,6 +98,8 @@ class ModelDeliveryOverlay(BaseModel):
     backend: Literal["inmemory", "runtime"]
     channel: ModelChannelSettings
     ledger: ModelLedgerSettings
+    #: Per-condition routes to an owner: one push notice and one MSG row addressed to the owner lane.
+    owner_routes: dict[str, ModelOwnerRoute]
     #: Where the episodes (active subjects, last ledger row, rows still to write) are kept between ticks.
     state_path: str = Field(min_length=1)
 
@@ -86,5 +113,6 @@ __all__ = [
     "ModelChannelSettings",
     "ModelDeliveryOverlay",
     "ModelLedgerSettings",
+    "ModelOwnerRoute",
     "load_overlay",
 ]
