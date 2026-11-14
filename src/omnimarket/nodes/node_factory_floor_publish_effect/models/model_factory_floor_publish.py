@@ -522,6 +522,8 @@ class ModelFactoryFloorPublishRuntime(BaseModel):
     delegation_tracker_page_relpath: str = Field(min_length=1)
     delegation_tracker_data_relpath: str = Field(min_length=1)
     delegation_history_data_relpath: str = Field(min_length=1)
+    # The age in seconds past which the Delegation tab draws the history as too old, with no number; the publisher writes it into the page.
+    delegation_history_max_age_seconds: int = Field(gt=0)
     floor_page_relpath: str = Field(min_length=1)
     # The directory, relative to the node, holding the vendored theme files named by ``names.theme_css``.
     theme_css_relpath: str = Field(min_length=1)

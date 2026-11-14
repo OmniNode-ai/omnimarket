@@ -5,7 +5,8 @@
 <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <style>
-:root{--ink:#1c2024;--mute:#646b73;--line:#dfe2e6;--bg:#f6f7f8;--card:#fff;--red:#b3261e;--amber:#a56a00;--green:#1f7a4d;--blue:#2b6cb0;--grey:#9aa1a9}
+:root{--ink:#1c2024;--mute:#646b73;--line:#dfe2e6;--bg:#f6f7f8;--card:#fff;--red:#b3261e;--amber:#a56a00;--green:#1f7a4d;--blue:#2b6cb0;--grey:#9aa1a9;--s0:#2b6cb0;--s1:#c2571a;--s2:#1f7a4d;--s3:#8a4fb0;--s4:#a56a00;--s5:#b3261e;--s6:#2a8a8a;--s7:#6b737b;--inp:#fff}
+@media(prefers-color-scheme:dark){:root{--ink:#e6e8ea;--mute:#9aa3ab;--line:#30363c;--bg:#14171a;--card:#1c2024;--red:#ff8378;--amber:#e8a43a;--green:#5ac277;--blue:#7fb2e5;--grey:#6b737b;--s0:#7fb2e5;--s1:#f0955a;--s2:#5ac277;--s3:#c79ae6;--s4:#e8a43a;--s5:#ff8378;--s6:#5fc7c7;--s7:#9aa3ab;--inp:#14171a;color-scheme:dark}}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
 main{max-width:960px;margin:0 auto;padding:20px 16px 32px}
 .frozen{background:var(--red);color:#fff;border-radius:8px;padding:12px 16px;margin-bottom:12px;font-weight:650}
@@ -47,7 +48,7 @@ h3{font-size:16px;margin:18px 0 8px}
 .details>summary small{font-weight:400;color:var(--mute);font-size:13px}
 .ctl{display:grid;grid-template-columns:2fr 1fr;gap:8px;padding:0 14px 10px}
 .ctl label{display:grid;gap:2px;font-size:12px;color:var(--mute);font-weight:650;min-width:0}
-.ctl input,.ctl select{font:inherit;font-size:15px;padding:7px 8px;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--ink);min-width:0;width:100%}
+.ctl input,.ctl select{font:inherit;font-size:15px;padding:7px 8px;border:1px solid var(--line);border-radius:6px;background:var(--inp);color:var(--ink);min-width:0;width:100%}
 .pager{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:8px 14px 12px;flex-wrap:wrap}
 .pager button{font-size:14px;font-weight:650;padding:6px 14px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink)}
 .pager button[disabled]{color:var(--grey);cursor:default}.pager span{font-size:13px;color:var(--mute)}
@@ -66,11 +67,35 @@ dialog::backdrop{background:rgba(20,24,28,.45)}
 .db dt{color:var(--mute)}.db dd{margin:0;overflow-wrap:anywhere}
 .db h4{font-size:14px;margin:14px 0 4px}
 .db ul.plain{margin:0;padding-left:18px;font-size:14px}
-@media(max-width:640px){main{padding:14px 10px 24px}.cards{grid-template-columns:1fr}.ctl{grid-template-columns:1fr}}
+.views{display:flex;gap:6px;margin:0 0 14px;flex-wrap:wrap}
+.views button{font-size:15px;font-weight:650;padding:7px 14px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--mute)}
+.views button[aria-pressed="true"]{color:var(--ink);border-color:var(--blue);box-shadow:inset 0 -3px 0 var(--blue)}
+.view[hidden]{display:none}
+.chart{width:100%;height:auto;display:block;font:12px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:var(--mute)}
+.chart text{fill:var(--mute)}
+.charts{display:grid;grid-template-columns:repeat(auto-fill,minmax(420px,1fr));gap:12px}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:13px;color:var(--mute);margin:4px 0 0}
+.legend svg{vertical-align:middle;margin-right:4px}
+.tw{overflow-x:auto;background:var(--card);border:1px solid var(--line);border-radius:8px}
+.mt{width:100%;border-collapse:collapse;font-size:14px;min-width:760px}
+.mt th,.mt td{padding:7px 10px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+.mt th:first-child,.mt td:first-child,.mt th.l,.mt td.l{text-align:left}
+.mt th{font-size:12px;color:var(--mute);font-weight:650}.mt tr:last-child td{border-bottom:0}
+.mt small{display:block;color:var(--mute);font-size:12px}
+.exp h2 small{font-weight:400;color:var(--mute);font-size:13px}
+.verdict{font-weight:650;margin:0;font-size:14px}
+.strip{display:inline-block;vertical-align:middle;margin-left:8px;height:12px;width:auto}
+@media(max-width:640px){main{padding:14px 10px 24px}.cards,.charts{grid-template-columns:1fr}.ctl{grid-template-columns:1fr}}
 </style>
 </head><body><main>
 <div class="tabs" role="tablist" aria-label="Floor views"><a role="tab" href="index.html#process">Process</a><a role="tab" href="index.html#machines">Machines</a><a role="tab" href="compare.html">Better or worse</a><a role="tab" id="tab-delegation" href="delegation.html" aria-selected="true">Delegation</a></div>
 <div id="alert"><div class="frozen">Reading the delegation tracker...</div></div>
+<div id="halert"></div>
+<div class="views" id="views" role="group" aria-label="Delegation views"><button type="button" data-view="models" aria-pressed="true">Models</button><button type="button" data-view="success" aria-pressed="false">Success over time</button><button type="button" data-view="experiments" aria-pressed="false">Experiments</button><button type="button" data-view="scenarios" aria-pressed="false">Scenarios</button></div>
+<section id="v-models" class="view"><h3>Models <small id="msum"></small></h3><div id="models"></div></section>
+<section id="v-success" class="view" hidden><h3>Success over time <small id="ssumh"></small></h3><div id="success"></div></section>
+<section id="v-experiments" class="view" hidden><h3>Experiments <small id="esum"></small></h3><div id="experiments"></div></section>
+<section id="v-scenarios" class="view" hidden>
 <div id="ship"></div>
 <div id="cards" class="cards"></div>
 <h3>Delegations by route <small id="rsum"></small></h3>
@@ -89,6 +114,7 @@ dialog::backdrop{background:rgba(20,24,28,.45)}
 </details>
 <h3>Sources</h3>
 <ul id="src" class="list"></ul>
+</section>
 <div class="more"><a href="index.html">Back to the floor</a></div>
 </main>
 <dialog id="dlg" aria-labelledby="dlg-title"><div class="dh"><div><h2 id="dlg-title"></h2><small id="dlg-kick"></small></div><button type="button" id="dlg-close">Close</button></div><div class="db" id="dlg-body"></div></dialog>
@@ -96,7 +122,8 @@ dialog::backdrop{background:rgba(20,24,28,.45)}
 "use strict";
 const DATA = "delegation-tracker.json", MAX_AGE_S = 900, REFRESH_MS = 30000;
 const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const ago = s => s == null ? "never" : s < 120 ? s + " s ago" : s < 7200 ? Math.floor(s / 60) + " min ago" : s < 172800 ? Math.floor(s / 3600) + " h ago" : Math.floor(s / 86400) + " d ago";
+const dur = s => s < 120 ? s + " s" : s < 7200 ? Math.floor(s / 60) + " min" : s < 172800 ? Math.floor(s / 3600) + " h" : Math.floor(s / 86400) + " d";
+const ago = s => s == null ? "never" : dur(s) + " ago";
 const since = iso => { const t = Date.parse(iso); return Number.isFinite(t) ? Math.max(0, Math.floor((Date.now() - t) / 1000)) : null; };
 const safe = u => /^https:\/\//.test(String(u || "")) ? u : "";
 const $ = id => document.getElementById(id);
@@ -143,6 +170,139 @@ function drawCards(){
   $("cards").innerHTML = scn + tk;
 }
 
+// ---- inline SVG charts: pure functions from numbers to a string; no library, colours from the page's variables ----------------
+const pc = x => x == null || !Number.isFinite(x) ? "n/a" : Math.round(x * 100) + " %";
+const sv = i => "var(--s" + (i % 8) + ")";
+// 8 colours x 3 line styles = 24 looks, so no two series of one chart share both (a chart draws a model once, indexed among its own models)
+const DASHES = ["", "6 3", "2 3"], dash = i => DASHES[Math.floor(i / 8) % DASHES.length];
+const dashAttr = i => dash(i) ? ` stroke-dasharray="${dash(i)}"` : "";
+function lineChart(o){
+  const W = 360, H = 170, L = 38, R = 8, T = 8, B = 24, pw = W - L - R, ph = H - T - B, xs = o.xs, ymax = o.yMax || 1;
+  const X = i => L + (xs.length < 2 ? pw / 2 : pw * i / (xs.length - 1)), Y = v => T + ph * (1 - Math.min(v, ymax) / ymax);
+  if (!o.series.some(s => s.points.some(p => p))) return `<p class="empty">No data in the window.</p>`;
+  let g = "";
+  for (const f of [0, 0.5, 1]) g += `<line x1="${L}" x2="${W - R}" y1="${Y(ymax * f)}" y2="${Y(ymax * f)}" stroke="var(--line)"/><text x="${L - 4}" y="${Y(ymax * f) + 4}" text-anchor="end">${esc(o.yFmt(ymax * f))}</text>`;
+  for (const i of [0, Math.floor((xs.length - 1) / 2), xs.length - 1]) g += `<text x="${X(i)}" y="${H - 6}" text-anchor="${i === 0 ? "start" : i === xs.length - 1 ? "end" : "middle"}">${esc(xs[i])}</text>`;
+  for (const s of o.series) {
+    const col = sv(s.idx); let run = [], line = "", dots = "", band = "";
+    const flush = () => { if (run.length > 1) { line += `<polyline fill="none" stroke="${col}" stroke-width="2"${dashAttr(s.idx)} points="${run.map(r => X(r.i) + "," + Y(r.p.y)).join(" ")}"/>`;
+      if (o.band && run.every(r => r.p.lo != null && r.p.hi != null)) band += `<polygon fill="${col}" fill-opacity=".15" points="${run.map(r => X(r.i) + "," + Y(r.p.hi)).join(" ")} ${run.slice().reverse().map(r => X(r.i) + "," + Y(r.p.lo)).join(" ")}"/>`; } run = []; };
+    s.points.forEach((p, i) => { if (!p) return flush(); run.push({i, p}); dots += `<circle cx="${X(i)}" cy="${Y(p.y)}" r="3" fill="${col}"><title>${esc(s.name + " " + xs[i] + ": " + o.yFmt(p.y) + " (n=" + p.n + ")")}</title></circle>`; if (s.points[i + 1] === undefined || !s.points[i + 1]) flush(); });
+    g += band + line + dots;
+  }
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(o.title)}">${g}</svg>`;
+}
+function barWhiskerChart(o){
+  if (!o.rows.length) return `<p class="empty">No arms.</p>`;
+  const W = 360, L = 118, R = 50, RH = 26, T = 6, pw = W - L - R, H = T + RH * o.rows.length + 22, X = v => L + pw * Math.min(Math.max(v, 0), 1);
+  let g = "";
+  o.rows.forEach((r, i) => {
+    const y = T + RH * i, mid = y + RH / 2, name = r.label.length > 18 ? r.label.slice(0, 17) + "…" : r.label;
+    const okv = Number.isFinite(r.value), oki = okv && Number.isFinite(r.lo) && Number.isFinite(r.hi);
+    g += `<g><title>${esc(r.label + ": " + (okv ? o.xFmt(r.value) : "not recorded") + (oki ? " (" + o.xFmt(r.lo) + " to " + o.xFmt(r.hi) + ")" : ", no interval recorded") + ", n=" + r.n)}</title><text x="${L - 6}" y="${mid + 4}" text-anchor="end">${esc(name)}</text>`
+      + (okv ? `<rect x="${L}" y="${y + 4}" width="${Math.max(1, X(r.value) - L)}" height="${RH - 12}" fill="${sv(i)}" fill-opacity=".55"/>` : "")
+      + (oki ? `<line x1="${X(r.lo)}" x2="${X(r.hi)}" y1="${mid}" y2="${mid}" stroke="var(--ink)" stroke-width="1.5"/><line x1="${X(r.lo)}" x2="${X(r.lo)}" y1="${mid - 4}" y2="${mid + 4}" stroke="var(--ink)" stroke-width="1.5"/><line x1="${X(r.hi)}" x2="${X(r.hi)}" y1="${mid - 4}" y2="${mid + 4}" stroke="var(--ink)" stroke-width="1.5"/>` : "")
+      + `<text x="${W - R + 4}" y="${mid + 4}">${esc(okv ? o.xFmt(r.value) : "n/a")}</text></g>`;
+  });
+  if (o.baseline != null) g += `<line x1="${X(o.baseline)}" x2="${X(o.baseline)}" y1="${T}" y2="${T + RH * o.rows.length}" stroke="var(--amber)" stroke-width="1.5" stroke-dasharray="4 3"/><text x="${X(o.baseline)}" y="${H - 6}" text-anchor="middle">baseline ${esc(o.xFmt(o.baseline))}</text>`;
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(o.title)}">${g}</svg>`;
+}
+function strip(items){
+  const run = (items || []).slice().reverse(), ok = run.filter(x => x === "pass").length;
+  if (!run.length) return `<span class="empty">no runs yet</span>`;
+  return `<svg class="strip" viewBox="0 0 ${run.length * 10} 10" width="${run.length * 10}" height="10" role="img" aria-label="${run.length} runs, ${ok} passed">${run.map((x, i) => `<rect x="${i * 10 + 1}" y="1" width="8" height="8" rx="1" fill="${x === "pass" ? "var(--green)" : "var(--red)"}"><title>${esc(x)}</title></rect>`).join("")}</svg>`;
+}
+
+// ---- the history document (delegation-history.json): models, series, experiments. A test records every field this page reads and holds
+// each name against the schema model of omnimarket.models.floor_delegation_history, so a field renamed there fails here.
+// HIST_MAX_AGE_S: the token is replaced at publish time with delegation_history_max_age_seconds from the node contract.
+const HISTORY = "delegation-history.json", HISTORY_SCHEMA = "omnimarket.floor_delegation_history.v1", HIST_MAX_AGE_S = __HISTORY_MAX_AGE_S__;
+let hist = null, hfailure = "";
+const histRenderable = d => !!d && typeof d === "object" && d.schema_id === HISTORY_SCHEMA && Number.isFinite(Date.parse(d.generated_at)) && Array.isArray(d.models) && Array.isArray(d.series) && Array.isArray(d.experiments) && Number.isFinite(d.window_days) && d.window_days > 0;
+async function loadHistory(){
+  try {
+    const r = await fetch(HISTORY, {cache: "no-store"});
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const next = await r.json();
+    if (!histRenderable(next)) throw new Error("the history has no renderable shape, schema id or generated_at");
+    hist = next; hfailure = "";
+  } catch (e) { hfailure = String(e.message || e); }
+  drawHistory();
+}
+const money = x => x == null || !Number.isFinite(x) ? "n/a" : "$" + (x < 1 ? x.toFixed(3) : x.toFixed(2));
+const secs = ms => ms == null || !Number.isFinite(ms) ? "n/a" : ms < 10000 ? (ms / 1000).toFixed(1) + " s" : Math.round(ms / 1000) + " s";
+const day = iso => String(iso).slice(0, 10);
+function priceText(m){
+  const free = x => x == null || x === 0;
+  if (m.engine_kind === "local" && free(m.price_in_usd_per_mtok) && free(m.price_out_usd_per_mtok)) return "no price (local)";
+  if (m.price_in_usd_per_mtok == null && m.price_out_usd_per_mtok == null) return "price not recorded";
+  return money(m.price_in_usd_per_mtok) + " in / " + money(m.price_out_usd_per_mtok) + " out per M tokens";
+}
+function settingsText(m){
+  return [m.context_tokens != null ? m.context_tokens + " ctx" : "", m.quantization || "", m.thinking === "on" ? "thinking on" : m.thinking === "off" ? "thinking off" : ""].filter(Boolean).join(", ") || "not recorded";
+}
+// the entry of one model and one task kind ("*" is every task kind of the model together)
+const seriesOf = (model, kind) => hist.series.find(r => r.model === model && r.task_kind === kind);
+function drawModels(){
+  const rows = hist.models.map(m => {
+    const all = seriesOf(m.id, "*"), tot = all && all.total, rate = tot && tot.attempts && tot.success ? tot.success : null;
+    return `<tr><td class="l"><b>${esc(m.id)}</b></td><td class="l">${esc(m.engine_kind)}</td><td class="l">${esc(m.host == null ? "hosted" : m.host)}</td><td class="l">${esc(settingsText(m))}</td><td class="l">${esc(priceText(m))}</td>`
+      + `<td>${rate && rate.rate != null ? esc(pc(rate.rate)) + `<small>${esc(pc(rate.wilson_low))} to ${esc(pc(rate.wilson_high))}, n=${esc(tot.attempts)}</small>` : "no attempts"}</td>`
+      + `<td>${esc(secs(tot ? tot.p50_latency_ms : null))}</td><td>${tot && tot.accepted ? esc(money(tot.cost_usd / tot.accepted)) : "n/a"}</td><td>${esc(m.last_seen ? ago(since(m.last_seen)) : "never")}</td></tr>`;
+  }).join("");
+  $("msum").textContent = hist.models.length + " models, last " + hist.window_days + " days";
+  $("models").innerHTML = hist.models.length ? `<div class="tw"><table class="mt"><thead><tr><th class="l">Model</th><th class="l">Engine</th><th class="l">Host</th><th class="l">Settings</th><th class="l">Price</th><th>Success, window</th><th>p50 latency</th><th>Cost per accepted</th><th>Last seen</th></tr></thead><tbody>${rows}</tbody></table></div>` : `<p class="empty">No model has been seen.</p>`;
+}
+function drawSuccess(){
+  const kinds = [...new Set(hist.series.map(r => r.task_kind))].filter(k => k !== "*").sort(), ids = hist.models.map(m => m.id);
+  const xs = [...new Set(hist.series.filter(r => r.task_kind !== "*").flatMap(r => r.days.map(q => day(q.bucket))))].sort();
+  $("ssumh").textContent = kinds.length + " task kinds, per day, UTC";
+  $("success").innerHTML = kinds.length ? `<div class="charts">` + kinds.map(k => {
+    const mine = hist.series.filter(r => r.task_kind === k), used = ids.filter(id => mine.some(r => r.model === id));
+    const at = (id, x) => { const r = mine.find(q => q.model === id), q = r && r.days.find(z => day(z.bucket) === x); return q && q.attempts ? q : null; };
+    const pts = (id, f) => xs.map(x => { const q = at(id, x); return q ? f(q) : null; });
+    const sr = used.map(id => ({name: id, idx: used.indexOf(id), points: pts(id, q => q.success && q.success.rate != null ? {y: q.success.rate, lo: q.success.wilson_low, hi: q.success.wilson_high, n: q.attempts} : null)}));
+    const lr = used.map(id => ({name: id, idx: used.indexOf(id), points: pts(id, q => q.p50_latency_ms != null ? {y: q.p50_latency_ms / 1000, n: q.attempts} : null)}));
+    const lmax = Math.max(1, ...lr.flatMap(s => s.points.filter(Boolean).map(p => p.y)));
+    return `<section class="card"><h2>${esc(k)}</h2><p>Accepted over attempts per day; the band is the 95 % interval.</p>`
+      + lineChart({title: k + " success rate per day", xs, series: sr, yMax: 1, yFmt: pc, band: true})
+      + `<p>Median latency per day.</p>` + lineChart({title: k + " median latency per day", xs, series: lr, yMax: lmax, yFmt: v => v.toFixed(1) + " s", band: false})
+      + `<div class="legend">${used.map((id, i) => `<span><svg width="22" height="10" viewBox="0 0 22 10" aria-hidden="true"><line x1="0" x2="22" y1="5" y2="5" stroke="${sv(i)}" stroke-width="3"${dashAttr(i)}/></svg>${esc(id)}</span>`).join("")}</div></section>`;
+  }).join("") + `</div>` : `<p class="empty">No attempts in the window.</p>`;
+}
+function drawExperiments(){
+  const ex = hist.experiments.slice().sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  $("esum").textContent = ex.length + " experiments, newest first";
+  $("experiments").innerHTML = ex.length ? `<div class="charts">` + ex.map(e => {
+    const base = e.majority_baseline ? e.majority_baseline.accuracy : null;
+    const rows = e.arms.map(a => ({label: a.label + (a.settings ? " (" + a.settings + ")" : ""), value: a.accuracy, lo: a.wilson_low, hi: a.wilson_high, n: a.n}));
+    const gpu = e.arms.map(a => a.label + " " + (a.gpu_seconds == null ? "n/a" : Math.round(a.gpu_seconds) + " GPU s") + ", p50 " + (a.p50_latency_s == null ? "n/a" : a.p50_latency_s + " s")).join("; ");
+    const hash = e.task_set && e.task_set.hash ? "task set " + String(e.task_set.hash).slice(0, 12) : "no task set hash";
+    const tests = (e.paired || []).map(q => `<li>${esc(q.test)}: ${esc(q.arm_a)} vs ${esc(q.arm_b)}, p=${esc(q.p_value == null ? "n/a" : Number(q.p_value).toPrecision(2))}</li>`).join("");
+    return `<section class="card exp"><h2>${esc(e.question)} <small>${esc(day(e.date))}</small></h2><p>n=${esc(e.n)}, ${base == null ? "no majority baseline stated" : "majority baseline " + esc(pc(base))}, ${esc(hash)}.</p>`
+      + barWhiskerChart({title: e.id + " accuracy by arm", rows, baseline: base, xFmt: pc})
+      + `<p class="verdict">${esc(e.verdict == null ? "no verdict stated" : e.verdict)}</p>${tests ? `<ul>${tests}</ul>` : ""}<p>${esc(gpu)}</p></section>`;
+  }).join("") + `</div>` : `<p class="empty">No experiment has been recorded.</p>`;
+}
+function drawHistory(){
+  const a = $("halert");
+  if (!hist) {
+    a.innerHTML = `<div class="frozen">The delegation history cannot be read (${esc(hfailure)}). The models, success and experiments views are empty until it can.</div>`;
+    for (const id of ["models", "success", "experiments"]) $(id).innerHTML = `<p class="empty">No history to draw.</p>`;
+    for (const id of ["msum", "ssumh", "esum"]) $(id).textContent = "";
+    return;
+  }
+  const age = since(hist.generated_at), failed = (hist.sources || []).filter(s => !s.ok).map(s => esc(s.id) + ": " + esc(s.detail));
+  a.innerHTML = (hfailure ? `<div class="frozen">The last history refresh failed (${esc(hfailure)}); this is the history from ${ago(age)}.</div>` : age > HIST_MAX_AGE_S ? `<div class="frozen">The history is ${dur(age)} old, the limit is ${Math.floor(HIST_MAX_AGE_S / 3600)} h. Everything in these views is old.</div>` : "")
+    + (failed.length ? `<div class="frozen">A source of the history could not be read, so a view above is short: ${failed.join("; ")}.</div>` : "");
+  if (age == null || age > HIST_MAX_AGE_S) {
+    for (const id of ["models", "success", "experiments"]) $(id).innerHTML = `<p class="empty">The history is too old to draw (${esc(dur(age == null ? 0 : age))} old); no number is shown.</p>`;
+    for (const id of ["msum", "ssumh", "esum"]) $(id).textContent = "";
+    return;
+  }
+  drawModels(); drawSuccess(); drawExperiments();
+}
+
 // ---- delegations per hour by route: local, GLM, other and the local share; only a fresh reading is drawn as numbers -------------
 const pct = x => x == null ? "no delegations" : (x * 100).toFixed(1) + " %";
 const hourText = iso => { const t = new Date(iso); return Number.isFinite(t.getTime()) ? t.toISOString().slice(5, 13).replace("T", " ") + ":00Z" : String(iso); };
@@ -161,7 +321,7 @@ const chip = (text, tone) => `<span class="chip ${esc(tone)}">${esc(text)}</span
 function scnRow(s){
   const [word, tone] = SCN[s.state] || [s.state, "grey"];
   const when = s.latest_at ? "latest " + ago(since(s.latest_at)) : "";
-  return `<li><button type="button" class="row" data-open="scn:${esc(s.id)}" aria-haspopup="dialog"><span class="t"><b>${esc(s.id)}</b> ${esc(s.title)}${chip(s.result_text, tone)}<small>${esc(s.workflow)}${s.overdue ? " · no run for more than twice its cadence" : ""}</small></span><span class="r">${esc(when)}</span></button></li>`;
+  return `<li><button type="button" class="row" data-open="scn:${esc(s.id)}" aria-haspopup="dialog"><span class="t"><b>${esc(s.id)}</b> ${esc(s.title)}${chip(s.result_text, tone)}${strip(s.recent)}<small>${esc(s.workflow)}${s.overdue ? " · no run for more than twice its cadence" : ""}</small></span><span class="r">${esc(when)}</span></button></li>`;
 }
 function tkSub(t){
   if (t.group === "pr_open") return t.prs.filter(p => p.state === "open").map(p => p.ref + " " + p.ci).join(", ");
@@ -256,7 +416,7 @@ function drawAlert(){
   document.title = (failure || age > MAX_AGE_S ? "STALE " : "") + "Factory floor: delegation" + (doc.shippable ? " (shippable)" : " (not shippable)");
   let a = "";
   if (failure) a += `<div class="frozen">The last refresh failed (${esc(failure)}); this is the tracker from ${ago(age)}.</div>`;
-  else if (age > MAX_AGE_S) a += `<div class="frozen">The tracker is ${ago(age)} old, the limit is ${Math.floor(MAX_AGE_S / 60)} min. Everything below is old.</div>`;
+  else if (age > MAX_AGE_S) a += `<div class="frozen">The tracker is ${dur(age)} old, the limit is ${Math.floor(MAX_AGE_S / 60)} min. Everything below is old.</div>`;
   const bad = doc.sources.filter(s => !s.ok);
   if (bad.length) a += `<div class="frozen warn">${esc(bad.map(s => s.title).join(", "))} could not be read fresh; rows that depend on ${bad.length > 1 ? "them are" : "it is"} drawn unread.</div>`;
   $("alert").innerHTML = a;
@@ -270,9 +430,19 @@ function draw(){
   $("tsum").textContent = `${doc.counts.tickets_total} tickets`;
   fillGroups(); drawTickets(); drawSources(); refreshPanel();
 }
+// ---- the four views: one is shown, the address hash names it ---------------------------------------------------------------
+const VIEWS = ["models", "success", "experiments", "scenarios"];
+function showView(name){
+  const v = VIEWS.indexOf(name) >= 0 ? name : VIEWS[0];
+  for (const id of VIEWS) { const sec = $("v-" + id); if (sec) sec.hidden = id !== v; }
+  const bar = $("views"); if (bar && bar.querySelectorAll) for (const b of bar.querySelectorAll("button")) b.setAttribute("aria-pressed", String(b.dataset.view === v));
+  if (window.location && window.location.hash !== "#" + v) { try { window.location.hash = v; } catch (e) { /* a page with no address bar */ } }
+}
+if (window.addEventListener) window.addEventListener("hashchange", () => showView(window.location.hash.slice(1)));
 document.addEventListener("click", e => {
-  const t = e.target && e.target.closest ? e.target.closest("[data-open],[data-page]") : null;
+  const t = e.target && e.target.closest ? e.target.closest("[data-open],[data-page],[data-view]") : null;
   if (!t) return;
+  if (t.dataset.view) { showView(t.dataset.view); return; }
   if (t.dataset.page) { st.page = Math.max(0, st.page + Number(t.dataset.page)); if (doc) drawTickets(); return; }
   openKey(t.dataset.open, t);
 });
@@ -280,5 +450,5 @@ $("dlg-close").addEventListener("click", closePanel);
 $("dlg").addEventListener("click", e => { if (e.target === $("dlg")) closePanel(); });
 $("q").addEventListener("input", () => { st.q = $("q").value; st.page = 0; if (doc) drawTickets(); });
 $("grp").addEventListener("change", () => { st.grp = $("grp").value; st.page = 0; if (doc) drawTickets(); });
-load(); setInterval(load, REFRESH_MS); setInterval(() => { if (doc) drawAlert(); }, 10000);
+showView(window.location && window.location.hash ? window.location.hash.slice(1) : ""); loadHistory(); load(); setInterval(load, REFRESH_MS); setInterval(loadHistory, REFRESH_MS); setInterval(() => { if (doc) drawAlert(); }, 10000);
 </script></body></html>
