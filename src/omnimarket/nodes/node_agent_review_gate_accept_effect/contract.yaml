@@ -19,7 +19,11 @@ description: >-
   no passing quorum, no blocking finding from a succeeded voter and a typed cause for every
   unsuccessful voter; an agent pass never overrides a CI blocked verdict. Anything it
   cannot read or verify refuses. The publisher identity and the verifier endpoint are
-  deployment facts of the agent_review_gate_accept overlay.
+  deployment facts of the agent_review_gate_accept overlay. Only degraded,
+  degraded_quorum and no_models quorum verdicts are eligible for receipts. An unknown
+  verdict refuses as verdict_unrecognised; an explicit quorum with a missing or malformed
+  verdict refuses as verdict_unread before reading reviews. Legacy results that omit
+  quorum entirely retain their model-count interpretation.
 input_model:
   name: ModelGateAcceptRequest
   module: omnimarket.nodes.node_agent_review_gate_accept_effect.models.model_gate_accept
@@ -73,6 +77,7 @@ config:
     transport: in_memory
     receipt_fence: onex-review-receipt
     blocking_severities: [critical, error]
+    degraded_verdicts: [degraded, degraded_quorum, no_models]
     causes:
       credit_exhausted:
         - '^\[ONEX_CORE_205_SERVICE_UNAVAILABLE\] Server error \(503\) from [^\n]*? :: response_body=\{\s*"error":\s*\{\s*"type":\s*"[a-z_]+",\s*"reason":\s*"credit_exhausted"'

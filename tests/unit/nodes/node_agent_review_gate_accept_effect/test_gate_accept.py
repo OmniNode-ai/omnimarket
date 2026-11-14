@@ -7,6 +7,7 @@ Each test runs in both profiles (see ``conftest``) with fake review and verifier
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 
 import pytest
@@ -389,3 +390,71 @@ async def test_the_reviews_are_read_for_the_requests_pull_request(
     gate = make_gate(LOST_BOTH, [plain_review()])
     await gate.decide(request_for(pull_request=77))
     assert gate.reviews.reads == [(REPO, 77)]
+
+
+@pytest.mark.parametrize(
+    "verdict",
+    ["approved", "PASSED", "degraded_quorum_typo", "unknown", "Degraded", " passed"],
+)
+async def test_unknown_verdict_refuses_before_reading_reviews(
+    make_gate: MakeGate, verdict: str
+) -> None:
+    gate = make_gate(
+        result_file(voter("voter-1", error=CREDIT_ERROR), verdict=verdict),
+        [receipt_review("rcpt-1")],
+        FakeVerifier({"rcpt-1": accepted("rcpt-1")}),
+    )
+    result = await gate.decide(request_for())
+    assert result.decision is Decision.REFUSE
+    assert result.reason.value == "verdict_unrecognised"
+    assert gate.reviews.reads == []
+    assert gate.verifier.calls == []
+    assert "decision=refuse" in gate.files.files[OUTPUT_PATH].splitlines()
+    assert result.summary_line in gate.files.files[SUMMARY_PATH]
+
+
+@pytest.mark.parametrize(
+    "quorum",
+    [
+        None,
+        {},
+        {"verdict": ""},
+        {"verdict": None},
+        {"verdict": True},
+        {"verdict": 7},
+        {"verdict": ["degraded"]},
+        {"verdict": {"verdict": "degraded"}},
+        "degraded",
+        ["degraded"],
+    ],
+)
+async def test_malformed_explicit_verdict_refuses_without_legacy_inference(
+    make_gate: MakeGate, quorum: object
+) -> None:
+    document = json.loads(LOST_BOTH)
+    document["quorum"] = quorum
+    gate = make_gate(
+        json.dumps(document),
+        [receipt_review("rcpt-1")],
+        FakeVerifier({"rcpt-1": accepted("rcpt-1")}),
+    )
+    result = await gate.decide(request_for())
+    assert result.decision is Decision.REFUSE
+    assert result.reason.value == "verdict_unread"
+    assert gate.reviews.reads == []
+    assert gate.verifier.calls == []
+
+
+@pytest.mark.parametrize("verdict", ["degraded", "degraded_quorum", "no_models"])
+async def test_known_degraded_verdict_still_accepts_an_exact_head_receipt(
+    make_gate: MakeGate, verdict: str
+) -> None:
+    gate = make_gate(
+        result_file(voter("voter-1", error=CREDIT_ERROR), verdict=verdict),
+        [receipt_review("rcpt-1")],
+        FakeVerifier({"rcpt-1": accepted("rcpt-1")}),
+    )
+    result = await gate.decide(request_for())
+    assert result.decision is Decision.PASS_AGENT
+    assert result.reason is Reason.RECEIPT_ACCEPTED
+    assert gate.verifier.calls[0].head_sha == HEAD
