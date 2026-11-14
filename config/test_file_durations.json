@@ -5476,6 +5476,7 @@
   "tests/unit/nodes/test_golden_chain_work_events.py": 0.12,
   "tests/unit/nodes/test_golden_chain_work_events_bus_backed_omn17772.py": 0.21,
   "tests/unit/nodes/test_golden_chain_work_ledger_emit_effect.py": 0.02,
+  "tests/unit/nodes/test_host_role_baseline_event_bus.py": 1.5,
   "tests/unit/nodes/test_integ_event_bus_omn19998.py": 1.5,
   "tests/unit/nodes/test_merge_sweep_plan_runtime_tick.py": 5.4,
   "tests/unit/nodes/test_node_contract_registry/test_contract_registry_handler.py": 0.17,
