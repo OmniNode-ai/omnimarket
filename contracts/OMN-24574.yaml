@@ -1,0 +1,53 @@
+schema_version: 1.0.0
+ticket_id: OMN-24574
+title: The host installer sets up the friction rollup unit from the rebuilt report node
+summary: node_host_installer_registry_units declares a launchd unit friction-rollup (label ai.omninode.friction-rollup, every 7200 seconds) that runs the module of node_friction_rollup_tick_effect, so the Mac's friction rollup timer can run the node instead of the copied tree of the private host installer.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24574-unit
+  statement: The registry units installer renders and installs a friction-rollup unit that runs the friction rollup tick module with the ledger path and the overlay roots in its environment, and refuses a checkout that does not carry the module.
+  acceptance:
+  - id: AC1
+    statement: "AC1: the registry unit list names a friction-rollup unit whose rendered launchd job has the label ai.omninode.friction-rollup, StartInterval 7200, and runs the tick module with the overlay roots in its environment -- falsifier: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_friction_rollup_unit.py -q --no-cov -n 0 -k 'declared or renders'"
+  - id: AC2
+    statement: "AC2: an install of the unit from a checkout that does not carry the tick module is refused and no launchctl call runs -- falsifier: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_friction_rollup_unit.py -q --no-cov -n 0 -k refused"
+  - id: AC3
+    statement: "AC3: integrated: on the operator's Mac after the install, ~/.local/state/omni/friction-rollup/last-run.json shows class_rules_applied true and a time after the install, and the unit's log line names the rebuilt report -- falsifier: the last-run file is older than the install or the unit's output names the old report"
+evidence_requirements:
+- kind: tests
+  description: The friction rollup unit tests at the pushed head.
+  command: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_friction_rollup_unit.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+- id: dod-omn24574-unit
+  description: The declared, rendered-plist and seam tests pass.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_friction_rollup_unit.py -q --no-cov -n 0 -p no:randomly -k "declared or renders or arguments"
+    cwd: .
+- id: dod-omn24574-refusal
+  description: A checkout without the tick module is refused and no launchctl call runs.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_friction_rollup_unit.py -q --no-cov -n 0 -p no:randomly -k refused
+    cwd: .
+- id: dod-omn24574-ac3
+  description: The tests behind the integrated reading pass (the unit renders the job the Mac runs); the live reading on the Mac is recorded in a comment once the installed unit runs.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_friction_rollup_unit.py -q --no-cov -n 0 -p no:randomly -k renders
+    cwd: .
