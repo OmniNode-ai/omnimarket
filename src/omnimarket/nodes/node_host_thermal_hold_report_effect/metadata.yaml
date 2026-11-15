@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_host_thermal_hold_report_effect
+version: 0.1.0
+description: >
+  Delivers the queued status rows of the h202 thermal guard's outbox to the rolling ledger and posts one alarm MSG row per thermal hold episode (trip and release) to the overlay's to_lane.
+omnibase_core_compat: '>=0.47.31,<0.48.0'
+entry_points:
+  onex.nodes:
+    node_host_thermal_hold_report_effect: omnimarket.nodes.node_host_thermal_hold_report_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: filesystem
+dependencies: []
+license: MIT
+authors:
+- OmniNode Team
+tags:
+- effect
+- lab
+pack: operator_tooling
+display_name: Host Thermal Hold Report Effect
+node_role: effect

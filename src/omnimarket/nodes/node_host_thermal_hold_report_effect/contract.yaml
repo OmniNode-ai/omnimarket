@@ -1,0 +1,63 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_host_thermal_hold_report_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Reports on a host's thermal guard from the guard's own state directory (OMN-19998). The guard closes the lab-run folder
+  when the CPU is hot and writes a latch file only an operator removes; its status rows could not reach the ledger and
+  waited in an outbox file. One run does two things. It delivers the queued rows through the declared ledger bus append
+  command: a delivered row leaves the outbox, a row that could not be delivered stays, a row the ledger refuses is moved
+  to a refused file with the refusal text in the result, and none is dropped. It posts ONE ledger MSG to the overlay's
+  to_lane when the latch appears (trip) and ONE when it is gone after a trip (release), each naming the host, the
+  temperature and what an operator does next; the hourly tick prints such a MSG as a MISSING inbox line. A latch that
+  cannot be read, or whose shape changed, is a typed error and never reads as a release. Every setting is the overlay's.
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: report
+      handler:
+        name: HandlerHostThermalHoldReport
+        module: omnimarket.nodes.node_host_thermal_hold_report_effect.handlers.handler_host_thermal_hold_report
+      input_model: omnimarket.nodes.node_host_thermal_hold_report_effect.models.model_host_thermal_hold_report.ModelHostThermalHoldReportRequest
+      output_model: omnimarket.nodes.node_host_thermal_hold_report_effect.models.model_host_thermal_hold_report.ModelHostThermalHoldReportResult
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  side_effects:
+    - moves the guard's outbox file aside while it delivers, and puts the rows it could not deliver back
+    - appends refused rows to the guard's refused file
+    - replaces the node's own episode file
+    - appends ledger rows through the declared bus append command
+  runtime_profiles:
+    - effects
+
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.host-thermal-hold-report-requested.v1]
+  publish_topics: [onex.evt.omnimarket.host-thermal-hold-reported.v1]
+
+terminal_event: onex.evt.omnimarket.host-thermal-hold-reported.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.host-thermal-hold-report-requested.v1
+externally_consumed_topics: [onex.evt.omnimarket.host-thermal-hold-reported.v1]
+
+# The broker grants the node's two topics need (OMN-24005 coverage gate): the runtime login reads the request and writes
+# the terminal event.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.host-thermal-hold-report-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.host-thermal-hold-report-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-thermal-hold-reported.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-thermal-hold-reported.v1, operation: DESCRIBE}
+
+metadata:
+  ticket: OMN-19998
+  transport_type: cli
+lifecycle: experimental
