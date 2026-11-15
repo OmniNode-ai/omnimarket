@@ -5,7 +5,7 @@
 The recorded case: a rendered database catalog holds a ``sha256:`` fingerprint line at line 493 of nine files. One
 pull request added a table, another added four eval-table grants; each rewrote that one line to its own value and
 added its own list rows. Both diffs carry the same removed line, and under a shared ticket that one shared digest
-was enough to read them as the same change. The guard now compares the added lines when both sides add any.
+was enough to read them as the same change. The guard compares added lines and removed lines apart from the declared shared catalog line.
 """
 
 from __future__ import annotations
@@ -98,7 +98,7 @@ def test_parse_diff_separates_added_lines_from_the_shared_removed_line() -> None
     assert set(state_panel.added_digest) < set(state_panel.digest)
 
 
-def test_two_pull_requests_replacing_one_catalog_line_with_different_content_pass() -> (
+def test_duplicate_guard_eval_grants_one_shared_catalog_line_distinct_content_clears() -> (
     None
 ):
     result = run(EVAL_GRANTS, (open_pr(STATE_PANEL),))
@@ -127,5 +127,53 @@ def test_two_pure_deletions_of_the_same_line_are_still_the_same_change() -> None
         f"-  sha256: {OLD_FINGERPRINT}\n"
     )
     result = run(deletion, (open_pr(deletion),))
+
+    assert result.state == "adopt"
+
+
+def test_duplicate_guard_shared_removals_with_different_added_lines_refuse() -> None:
+    """Two diffs that delete the same 20 lines are one change, whatever each adds in their place."""
+    removed = "".join(f"-    legacy_setting_{n:02d}: enabled\n" for n in range(20))
+
+    def diff(added: str) -> str:
+        return (
+            "diff --git a/src/app/config.yaml b/src/app/config.yaml\n"
+            "--- a/src/app/config.yaml\n"
+            "+++ b/src/app/config.yaml\n"
+            "@@ -10,20 +10 @@ settings:\n"
+            f"{removed}"
+            f"+    {added}\n"
+        )
+
+    mine, theirs = diff("modern_setting_one: on"), diff("another_replacement: off")
+    path = "src/app/config.yaml"
+    new_touch = {f.path: f for f in parse_diff(mine).files}[path]
+    old_touch = {f.path: f for f in parse_diff(theirs).files}[path]
+    assert len(set(new_touch.removed_digest) & set(old_touch.removed_digest)) == 20
+    assert not set(new_touch.added_digest) & set(old_touch.added_digest)
+
+    result = run(mine, (open_pr(theirs),))
+
+    assert result.state == "adopt"
+    assert result.adopt_pr == "omnibase_infra#5998"
+    assert result.evidence[0].kind is EnumDuplicateEvidence.LINES
+
+
+def test_duplicate_guard_one_shared_removed_line_that_is_not_a_catalog_line_refuses() -> (
+    None
+):
+    """Only the declared catalog fingerprint line is excused; any other shared removed line still counts."""
+
+    def diff(added: str) -> str:
+        return (
+            "diff --git a/src/app/config.yaml b/src/app/config.yaml\n"
+            "--- a/src/app/config.yaml\n"
+            "+++ b/src/app/config.yaml\n"
+            "@@ -10 +10 @@ settings:\n"
+            "-    legacy_setting: enabled\n"
+            f"+    {added}\n"
+        )
+
+    result = run(diff("first_replacement: on"), (open_pr(diff("second_one: off")),))
 
     assert result.state == "adopt"

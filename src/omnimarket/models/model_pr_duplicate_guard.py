@@ -97,6 +97,10 @@ class ModelDuplicateDigestConfig(BaseModel):
 
     min_line_chars: int = Field(ge=1)
     prefix_chars: int = Field(ge=1, le=40)
+    #: Regular expressions for the declared shared catalog lines: a rendered catalog rewrites one such line (its
+    #: content fingerprint) in every pull request that touches the catalog, so a removed line that matches one
+    #: never counts toward ``removed_digest``.
+    shared_catalog_line_patterns: tuple[str, ...] = ()
 
 
 def _repo_key(repo: str) -> str:
@@ -194,6 +198,9 @@ class ModelFileTouch(BaseModel):
     #: that line's removal, so the removed side says nothing about whether the changes are alike; the guard
     #: compares these when both sides have any and falls back to ``digest`` otherwise (a pure deletion).
     added_digest: tuple[str, ...] = ()
+    #: Sorted unique sha1 prefixes of the removed lines alone, less the declared shared catalog lines. Two diffs
+    #: that delete the same lines are the same change whatever each adds in their place.
+    removed_digest: tuple[str, ...] = ()
     #: For each pre-image span of this file's diff that the new branch also changes, the commits that introduced
     #: the changed lines (read with ``git blame``). Empty unless the caller named a replaced pull request.
     attributed: tuple[ModelSpanCommits, ...] = ()

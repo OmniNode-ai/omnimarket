@@ -8,8 +8,8 @@ records plus a ``git diff -U0`` against the merge base) and the rolling ledger t
 when any of these holds, naming the pull request to take over:
 
 - ``branch``: a pull request is already open from this branch;
-- ``lines``: overlapping existing lines or the same added file, and the same change: changed lines (the added
-  ones when both sides add any, so a base line both replace does not count as shared) at least
+- ``lines``: overlapping existing lines or the same added file, and the same change: added lines or removed
+  lines (a declared shared catalog line both replace does not count as shared) at least
   ``config.intent.min_same_change_similarity`` alike, or at least ``min_same_ticket_similarity`` alike under a
   shared ticket (a shared ticket alone, with changed lines that share almost nothing, is one ticket over many pull
   requests); proximity with different intent supplies only a note;
@@ -311,14 +311,19 @@ def _similarity(
 ) -> float | None:
     """Share of the changed-line digests two diffs have in common on ``paths``; None when either side has none.
 
-    The added lines decide when both sides have any: two diffs that replace one base line both remove it, and
-    that shared removal is not a shared change (a rendered catalog's fingerprint line changes in every pull
-    request that touches the catalog). A side with no added lines (a pure deletion) is compared on all its lines.
+    Added lines and removed lines are each compared when both sides have any, and the higher share decides: two
+    diffs that replace one declared shared catalog line (a rendered catalog's fingerprint, excluded from
+    ``removed_digest``) with different content are not one change, but two diffs that delete the same lines are,
+    whatever each adds. A side with neither (a pure deletion of catalog lines) is compared on all its lines.
     """
-    mine_added = {d for f in new.files if f.path in paths for d in f.added_digest}
-    theirs_added = {d for f in other.files if f.path in paths for d in f.added_digest}
-    if mine_added and theirs_added:
-        return len(mine_added & theirs_added) / len(mine_added | theirs_added)
+    scores: list[float] = []
+    for field in ("added_digest", "removed_digest"):
+        mine = {d for f in new.files if f.path in paths for d in getattr(f, field)}
+        theirs = {d for f in other.files if f.path in paths for d in getattr(f, field)}
+        if mine and theirs:
+            scores.append(len(mine & theirs) / len(mine | theirs))
+    if scores:
+        return max(scores)
     mine = {d for f in new.files if f.path in paths for d in f.digest}
     theirs = {d for f in other.files if f.path in paths for d in f.digest}
     if not (mine and theirs):

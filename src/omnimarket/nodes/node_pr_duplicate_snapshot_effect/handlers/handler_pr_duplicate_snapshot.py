@@ -125,6 +125,8 @@ def parse_diff(diff: str) -> ModelPrTouch:
     spans: dict[str, list[tuple[int, int]]] = {}
     digests: dict[str, set[str]] = {}
     added_digests: dict[str, set[str]] = {}
+    removed_digests: dict[str, set[str]] = {}
+    catalog_lines = [re.compile(p) for p in config.shared_catalog_line_patterns]
     added: set[str] = set()
     current: str | None = None
     in_hunk = False
@@ -135,6 +137,7 @@ def parse_diff(diff: str) -> ModelPrTouch:
             spans[current] = []
             digests[current] = set()
             added_digests[current] = set()
+            removed_digests[current] = set()
             in_hunk = False
         elif current is None:
             continue
@@ -156,6 +159,8 @@ def parse_diff(diff: str) -> ModelPrTouch:
                     digests[current].add(digest)
                     if line[0] == "+":
                         added_digests[current].add(digest)
+                    elif not any(p.search(text) for p in catalog_lines):
+                        removed_digests[current].add(digest)
     return ModelPrTouch(
         files=tuple(
             ModelFileTouch(
@@ -164,6 +169,7 @@ def parse_diff(diff: str) -> ModelPrTouch:
                 spans=tuple(found),
                 digest=tuple(sorted(digests[path])),
                 added_digest=tuple(sorted(added_digests[path])),
+                removed_digest=tuple(sorted(removed_digests[path])),
             )
             for path, found in sorted(spans.items())
         )
