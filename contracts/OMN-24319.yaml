@@ -54,3 +54,12 @@ dod_evidence:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24319 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/clone_dirty_converge -q --no-cov
     cwd: .
+- id: dod-omn24319-unit-render
+  description: The canonical clone sync unit installer is the omnimarket node node_host_installer_clone_sync_units (moved from the private host installer); its rendered launchd and systemd units run from the registry root, carry ONEX_SKILL_OVERLAY_ROOTS, and the systemd unit writes to the journal, so the REFUSED line with its alarm outcome reaches journalctl. The render tests do not run at the merge base, where the node does not exist.
+  source: generated
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_installer_clone_sync_units -q --no-cov -p no:randomly
+    cwd: .
