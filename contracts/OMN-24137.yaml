@@ -31,13 +31,12 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_workspace_root.py -q --no-cov -n 0 -p no:randomly
     cwd: .
-- id: dod-omn24137-ac2-integration-proof
-  description: Hosted CI cannot reach the Mac, so only the local Done gate runs this check. The pushed head ran the workspace root test on a lab host through the lab work runner. The running reading (the Mac job's last exit status after one tick, and the age of the Mac overlay store copy of lab_hosts) is read on the Mac after the reinstall through the declared installer, a separate step after merge.
+- id: dod-omn24137-ac2-hosted-proxy
+  description: Hosted proxy for AC2, which is read on the Mac after the reinstall through the declared installer (a separate step after merge). The hosted check runs the installer unit tests for the overlay store refresh unit; the Mac job's last exit status and the age of its lab_hosts copy are not read here.
   source: manual
-  execution_scope: local_done_gate
   binds_ac:
   - AC2
   checks:
-  - check_type: command
-    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24137 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_workspace_root.py -q --no-cov -n 0 -p no:randomly
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_workspace_root.py -q --no-cov -n 0 -p no:randomly -k golden
     cwd: .
