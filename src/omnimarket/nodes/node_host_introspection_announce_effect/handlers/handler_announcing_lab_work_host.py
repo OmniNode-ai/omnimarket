@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """A lab-work host that announces its facts beside each capacity advertisement (OMN-24367).
 
-Kept apart from ``bus.py`` and ``cli.py`` so the baselined files do not grow. The announcement is new and read by
+Kept apart from ``lab_work/bus.py`` and ``lab_work/cli.py`` so the baselined files do not grow. The announcement is new and read by
 nothing yet, so a failed announcement is logged and never stops the capacity beat or the serve process.
 """
 

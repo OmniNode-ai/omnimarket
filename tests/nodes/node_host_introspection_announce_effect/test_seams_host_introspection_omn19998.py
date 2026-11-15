@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import pytest
 
-from omnimarket.lab_work.announcing_host import AnnouncingLabWorkHost
 from omnimarket.lab_work.bus import load_lab_work_topics
 from omnimarket.models.model_host_capacity_advertisement import (
     ModelHostCapacityAdvertisement,
@@ -20,6 +19,9 @@ from omnimarket.nodes.node_host_introspection_announce_effect.handlers import (
     HandlerHostFactsReadEffect,
     HostAnnouncer,
     load_host_announce_topics,
+)
+from omnimarket.nodes.node_host_introspection_announce_effect.handlers.handler_announcing_lab_work_host import (
+    AnnouncingLabWorkHost,
 )
 from omnimarket.nodes.node_host_introspection_announce_effect.models import (
     ModelHostFactsProbeRequest,
