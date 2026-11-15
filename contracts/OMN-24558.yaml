@@ -1,0 +1,73 @@
+schema_version: 1.0.0
+ticket_id: OMN-24558
+title: 'One-copy check: fail when one behaviour has two live copies or a venv writer takes no lock'
+summary: 'ROOT 8 of the recursive five whys of 2026-11-15: one behaviour exists in several copies, or one resource has several writers, and nothing says which is live. The lab fill waste fix (omnimarket 6126) landed in a copy no unit called while the copy the throughput tick imported kept sending owned and blocked tickets for 22 hours. Two nodes: node_one_copy_check_compute decides, from overlay values only, multiple_live, none_live, fix_not_live and writer_without_lock over the referrers it is given and lists the copies nothing runs; node_one_copy_check_effect reads the units, ticks and writer sources the overlay names under a registry root. A violation is a returned result and a one_copy_violation failure on the floor emission chain; an unreadable or empty read is a typed failure.'
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn24558-one-copy-check
+  statement: One behaviour has one live implementation that an installed unit or tick runs, the fix landed in that one, and every writer of a host venv takes the venv lock; a check fails when not.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the pure check returns multiple_live when two implementations of one behaviour are referenced by an installed unit or tick, fix_not_live when the fix landed in a copy no unit runs, none_live when none is referenced, writer_without_lock for a venv writer with no lock, and passes on the corrected state -- falsifier: pytest src/omnimarket/nodes/node_one_copy_check_compute/tests/test_one_copy_check.py -q'
+  - id: AC2
+    statement: 'AC2: the shaped evidence of the 2026-11-14 lab fill fails the check and its corrected state passes, and the installed unit lab-fill-tick is read from the host installer contract so a rename on either side fails -- falsifier: pytest src/omnimarket/nodes/node_one_copy_check_compute/tests/test_one_copy_check_evidence.py -q'
+  - id: AC3
+    statement: 'AC3: the effect reads real files, a violation fails the emission chain with one_copy_violation, an unreadable source is a typed referrers_unreadable failure, and each has a golden control -- falsifier: pytest src/omnimarket/nodes/node_one_copy_check_effect/tests/test_one_copy_check_effect.py -q'
+  - id: AC4
+    statement: 'AC4: integrated: on a lab host the effect, run over the deployment overlay and the registry root, reads exactly one live lab fill implementation and ok=True -- falsifier: the same run reads ok=False with finding multiple_live while a second copy is still referenced by an installed unit or tick'
+evidence_requirements:
+- kind: tests
+  description: The decision, evidence and effect tests at the pushed head; they fail at origin/dev where the nodes do not exist.
+  command: env -u PYTHONPATH uv run --frozen pytest src/omnimarket/nodes/node_one_copy_check_compute/tests/test_one_copy_check.py src/omnimarket/nodes/node_one_copy_check_compute/tests/test_one_copy_check_evidence.py src/omnimarket/nodes/node_one_copy_check_effect/tests/test_one_copy_check_effect.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24558-ac1
+  description: 'The decision tests: the failing control (two copies fail, the corrected state passes), fix_not_live, none_live, the source kind that makes nothing live, the writer without a lock and the comment line, the order independence, the golden and error chains on the in-memory backend with their controls, and the overlay refusals.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_one_copy_check_compute/tests/test_one_copy_check.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24558-ac2
+  description: 'The evidence tests: the tick-only state fails with fix_not_live, the tick with the unit declared fails with multiple_live, the corrected state passes, the unit-to-implementation seam reads the real host installer contract, and two venv writers fail with their lock line removed.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_one_copy_check_compute/tests/test_one_copy_check_evidence.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24558-ac3
+  description: 'The effect tests on the real file backend: the file reader, the golden chain, the violation chain with its corrected control, and the missing source file as a typed failure.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_one_copy_check_effect/tests/test_one_copy_check_effect.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24558-ac4-running-runtime
+  description: 'The running-runtime reading: the effect run on a lab host over the deployment overlay and the registry root. Today it reads ok=False with multiple_live for the lab fill; it reads ok=True once exactly one fill implementation is referenced by an installed unit or tick. The receipt is the lab receipt comment on the ticket.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_one_copy_check_effect/tests/test_one_copy_check_effect.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24558-integration-proof
+  description: 'The pushed head ran the decision, evidence and effect tests on a lab host through the lab work runner and exited 0. It binds no acceptance criterion: the running-runtime reading (AC4) is read from the effect run over the deployment overlay and the registry root.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24558 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest src/omnimarket/nodes/node_one_copy_check_compute/tests/test_one_copy_check.py src/omnimarket/nodes/node_one_copy_check_compute/tests/test_one_copy_check_evidence.py src/omnimarket/nodes/node_one_copy_check_effect/tests/test_one_copy_check_effect.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
