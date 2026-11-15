@@ -141,8 +141,6 @@ requirements:
     statement: "CodeRabbit is removed from the review-gate code: the coderabbit-triage node, skills and registrations are gone, and no arm gate, merge-state, fix-routing, comment-resolution or inventory path counts, waits on or parses CodeRabbit threads."
   - id: "req-core-pin-compatibility"
     statement: "The omnibase-core dependency and override floors must fit the newest recorded omnibase_infra pin, and the recorded incompatible incident pair must be refused."
-  - id: "req-session-capability-digest"
-    statement: "A session that opens inside a registry root starts with the cached capability digest, a stale or missing digest is named with its fix, and a session elsewhere is not touched, decided by a contract-declared effect node that reads two cached files and never blocks a session."
   - id: "req-ci-red-watcher-facts-only"
     statement: "The CI-red triage reader uses watcher facts without launching gh, and incomplete observations record facts-unavailable without starting an effect."
   - id: "req-repository-prose-removed"
@@ -537,9 +535,6 @@ evidence_requirements:
   - kind: "tests"
     description: "AC62: the hook push rehearsal caller runs on pull requests and merge-queue entries at a full-SHA pin and its path-regex selects the hook paths."
     command: "uv run pytest tests/ci/test_omn17427_hook_push_rehearsal_caller.py -q -p no:randomly"
-  - kind: "tests"
-    description: "AC63: the session-start capability digest node prints inside a registry root, stays silent outside, names a stale digest with its fix and exits 0 on every input."
-    command: "uv run pytest tests/test_session_capability_digest.py -q -p no:randomly"
   - kind: "tests"
     description: "AC67: the local GitHub PR reads answers the triage PR reads from the watcher state and clones, and the handler runs on it without a GitHub token."
     command: "uv run pytest tests/nodes/node_linear_triage/test_local_github_pr_reads.py -q"
@@ -1832,12 +1827,6 @@ dod_evidence:
         reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC71 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac71-veto-keeps-other-findings still runs its own tests."
         retired_by: "contractbatch-0750"
         retired_at: "2026-11-09T08:09:00Z"
-      - item: "dod-omn17427-ac63-session-capability-digest"
-        label: "AC63"
-        reason_kind: no_longer_applicable
-        reason: "The live ticket OMN-17427 carries no labelled criteria (omnimarket#5150 read it on 2026-11-05), so AC63 was never on it: it is a criterion this repository's contract declared on its own for another change. dod-omn17427-ac63-session-capability-digest still runs its own tests."
-        retired_by: "contractbatch-0750"
-        retired_at: "2026-11-09T08:09:00Z"
       - item: "dod-omn17427-ac61-remove-coderabbit"
         label: "AC81"
         reason_kind: no_longer_applicable
@@ -2086,21 +2075,6 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_review_finding_veto_effect/handlers/handler_review_finding_veto.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("HandlerReviewFindingVeto", "ast.parse", "yaml.safe_load_all", "json.loads")); print("review finding veto deploy probe: PASS")'
-  - id: "dod-omn17427-ac63-session-capability-digest"
-    description: "node_session_capability_digest_effect prints the cached digest inside a registry root, nothing outside, a STALE line with its fix when the digest is missing or old, and exits 0 on every input."
-    source: "manual"
-    checks:
-      - check_type: "test_passes"
-        check_value: "uv run pytest tests/test_session_capability_digest.py -q -p no:randomly"
-        cwd: "${OMNI_HOME}/omnimarket"
-    binds_ac: ["AC63"]
-  - id: "dod-omn17427-ac63-digest-deploy-probe"
-    description: "Deploy probe. GitHub serves the session capability digest handler at the checked-out HEAD with its freshness bound and its STALE line. It fails at the merge base, where the node does not exist, and needs only GitHub access and Python on the hosted runner."
-    source: "manual"
-    checks:
-      - check_type: "command"
-        check_value: >-
-          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_session_capability_digest_effect/handlers/handler_session_capability_digest.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("STALE_AFTER_MINUTES = 45", "CAPABILITY DIGEST STALE")); print("session capability digest deploy probe: PASS")'
   - id: "dod-omn17427-ac66-repository-prose-removed"
     description: "The removed prose files are absent and the root README links the public knowledge base. It fails at the merge base, where the files exist and the README is long."
     source: "manual"

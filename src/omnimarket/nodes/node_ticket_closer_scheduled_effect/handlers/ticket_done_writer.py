@@ -31,6 +31,9 @@ class ProtocolTicketWriteCall(Protocol):
 def _refusal_reason(terminal: ModelScmTerminal, default: str) -> str:
     reason = terminal.payload.get("reason")
     text = reason if isinstance(reason, str) and reason else default
+    cause = terminal.payload.get("terminal_failure_cause")
+    if isinstance(cause, str) and cause and cause != text:
+        text = f"{text}: {cause}"
     codes = terminal.payload.get("finding_codes")
     if isinstance(codes, list) and codes:
         text = f"{text} [{', '.join(str(code) for code in codes)}]"
