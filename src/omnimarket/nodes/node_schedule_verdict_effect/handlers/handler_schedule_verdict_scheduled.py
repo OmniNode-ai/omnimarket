@@ -17,6 +17,7 @@ from datetime import UTC, datetime
 from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 
 from omnimarket.handlers.node_overlay_reader import (
+    NodeOverlayError,
     NodeOverlayNotFoundError,
     load_structured_overlay,
 )
@@ -24,7 +25,8 @@ from omnimarket.handlers.schedule_gate import ScheduleGate
 from omnimarket.handlers.schedule_run_store import get_schedule_run_store
 from omnimarket.handlers.scheduled_overlay_refusal import ScheduledOverlayRefusalLatch
 from omnimarket.models.schedule_trigger.model_schedule_trigger import (
-    ModelScheduleDeclaration,
+    ModelScheduleBlock,
+    ModelScheduleUnreadableJob,
     ModelScheduleVerdictOverlay,
     ModelScheduleVerdictRequest,
     ModelScheduleVerdictResult,
@@ -78,26 +80,23 @@ class HandlerScheduleVerdictScheduled:
         if not self._gate.due(now):
             return None
         self._gate.mark(now)
-        declarations: list[ModelScheduleDeclaration] = []
+        declarations: list[ModelScheduleBlock] = []
+        unreadable: list[ModelScheduleUnreadableJob] = []
         for job_overlay_id in overlay.job_overlay_ids:
             try:
                 declarations.append(
                     load_structured_overlay(
                         job_overlay_id,
-                        ModelScheduleDeclaration,
+                        ModelScheduleBlock,
                         self._env(),
                     )
                 )
-            except NodeOverlayNotFoundError as exc:
-                self._refusals.refuse(exc)
-                return None
-        if not declarations:
-            self._refusals.refuse(
-                NodeOverlayNotFoundError(
-                    "node_schedule_verdict_effect: no declared job overlays could be loaded"
+            except NodeOverlayError as exc:
+                unreadable.append(
+                    ModelScheduleUnreadableJob(
+                        overlay_id=job_overlay_id, detail=str(exc)
+                    )
                 )
-            )
-            return None
         store = self._store or get_schedule_run_store()
         result = self._compute.handle(
             ModelScheduleVerdictRequest(
@@ -105,6 +104,7 @@ class HandlerScheduleVerdictScheduled:
                 observed_since=self._observed_since,
                 declared=tuple(declarations),
                 states=store.state(),
+                unreadable=tuple(unreadable),
             )
         )
         self._refusals.recovered()

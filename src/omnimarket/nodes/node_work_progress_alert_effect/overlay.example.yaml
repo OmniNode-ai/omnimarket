@@ -4,3 +4,7 @@ ignore:
   actors: ["script:example-worker"]
 lookback_seconds: 86400
 check_interval_seconds: 300
+# The bus the node's client reaches it on, read by onex run-node.
+event_bus:
+  type: kafka
+  lane: example-lane
