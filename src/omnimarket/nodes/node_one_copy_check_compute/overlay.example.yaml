@@ -1,0 +1,28 @@
+# Example overlay for node_one_copy_check_compute. Copy to <root>/node_one_copy_check_compute/overlay.yaml under a root named in
+# ONEX_SKILL_OVERLAY_ROOTS. The package ships no value for any of these settings; the deployment's own is in the deployment overlay store.
+#
+# behaviours: one row per behaviour that must exist once. An implementation is LIVE when one of its markers is a substring of the text of an
+#   installed unit or tick (a referrer of kind unit or tick). fix_landed_in names the implementation the latest fix landed in; it must be
+#   the live one.
+# resources: one row per resource with several possible writers. A referrer that holds a write marker and none of the lock markers is a
+#   writer without the lock.
+# referrer_sources: what the file reader reads under the registry root. kind unit: an installed unit's declaration (yaml_key picks the
+#   unit's subtree of a YAML file); kind tick: a scheduled tick's source; kind source: a writer's source.
+emission_piece: 10
+behaviours:
+  - name: example_fill
+    fix_landed_in: market_copy
+    implementations:
+      - id: tick_copy
+        markers: ["pkg_a.nodes.node_example_fill"]
+      - id: market_copy
+        markers: ["pkg_b.nodes.node_example_fill"]
+resources:
+  - name: example_host_venv
+    write_markers: ["uv pip install --python"]
+    lock_markers: ["staging-lock-acquire"]
+    comment_prefixes: ["#"]
+referrer_sources:
+  - {id: "unit:example-fill-tick", kind: unit, path: "pkg_b/units.yaml", yaml_key: "units.example-fill-tick"}
+  - {id: "tick:example-tick", kind: tick, path: "pkg_a/tick.py"}
+  - {id: "writer:example-reconcile", kind: source, path: "pkg_a/reconcile.sh"}

@@ -1,0 +1,69 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_one_copy_check_compute
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: compute
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: >
+  The one-copy check (ROOT 8 of the recursive five whys of 2026-11-15): one behaviour must exist as one implementation
+  that an installed unit or tick runs, and one resource must have writers that all take its lock. On 2026-11-11 the lab
+  fill's waste fix (omnimarket 6126) landed in a copy no unit called while the copy the throughput tick imported kept
+  sending owned and blocked tickets for 22 hours, and the dispatch venv drifted three times in two days with three
+  writers. This node reads the installed units, the ticks and the writers' sources through an injected reader (in
+  memory by default; the file reader is the real backend in node_one_copy_check_effect, its sources named by the overlay) and decides: a behaviour
+  with two or more implementations referenced is multiple_live; one with none is none_live; one whose fix_landed_in
+  implementation is not the referenced one is fix_not_live; an implementation no unit or tick references is listed as
+  a copy nothing runs; a referrer that writes a resource and takes none of its lock markers is writer_without_lock.
+  Every behaviour, marker, resource and source is an overlay value; the package holds none. The read runs under the
+  floor's emission contract: a start, then a success, or a failure one_copy_violation when the check finds anything, or
+  referrers_unreadable or referrers_silent when it could not read. A silent read is never "no violation".
+handler:
+  module: omnimarket.nodes.node_one_copy_check_compute.handlers.handler_one_copy_check
+  class: HandlerOneCopyCheck
+  input_model: omnimarket.nodes.node_one_copy_check_compute.models.model_one_copy_check.ModelOneCopyCheckRequest
+  output_model: omnimarket.nodes.node_one_copy_check_compute.models.model_one_copy_check.ModelOneCopyCheckResult
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+dependency_ownership:
+  overlay: "Owned by the caller (a lane's check step or a tick), which loads the node overlay and constructs the handler in process."
+runtime_dispatch:
+  external_trigger: Direct Python invocation; the chain events go to the floor's emission journal.
+# Read through omnimarket.handlers.node_overlay_reader.load_structured_overlay: <root>/node_one_copy_check_compute/overlay.yaml
+# under a root in ONEX_SKILL_OVERLAY_ROOTS. No packaged value; a missing or invalid overlay refuses naming the setting.
+deployment_overlay:
+  name: node_one_copy_check_compute
+  required: true
+  fields:
+  - emission_piece
+  - behaviours
+  - resources
+  - referrer_sources
+  description: The floor piece the chain is counted under, every behaviour with its implementations and the markers that
+    show a unit or tick runs one, the resources with their write and lock markers, and the units, ticks and sources the
+    file reader reads.
+protocol_dependencies:
+- name: ProtocolReferrerReader
+  module: omnimarket.nodes.node_one_copy_check_compute.protocols.protocol_referrer_reader
+  default: InMemoryReferrerReader
+  real_backend: FileReferrerReader  # in node_one_copy_check_effect, which does the file reads
+- name: ProtocolEmissionSink
+  module: omnimarket.handlers.emission_sink
+  default: InMemoryEmissionSink
+  real_backend: JsonlEmissionSink
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  runtime_profiles: []
+metadata:
+  ticket: OMN-19998
+  transport_type: local
+lifecycle: experimental

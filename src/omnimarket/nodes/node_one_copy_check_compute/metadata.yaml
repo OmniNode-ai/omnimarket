@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_one_copy_check_compute
+version: 0.1.0
+description: Fail when one behaviour has two or more implementations that an installed unit or tick references, when
+  the fix landed in a copy that is not the referenced one, or when a venv writer takes no lock.
+omnibase_core_compat: '>=0.47.31,<0.48.0'
+entry_points:
+  onex.nodes:
+    node_one_copy_check_compute: omnimarket.nodes.node_one_copy_check_compute
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies: []
+license: MIT
+authors:
+- OmniNode Team
+tags:
+- compute
+- one-copy
+- in_process
+pack: operator_tooling
+display_name: One Copy Check Compute
+node_role: compute

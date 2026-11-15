@@ -1,0 +1,22 @@
+release_staging_lock() {
+  [[ -n "$STAGING_LOCK" ]] || return 0
+  rm -f "$STAGING_LOCK"
+  STAGING_LOCK=""
+}
+
+# The holder record, the live-or-dead judgement and the decline are the node's
+# (node_venv_atomic_install, OMN-16932): it exits 4 when a live peer holds the lock,
+# which this run reports as a skip and not a failure.
+acquire_staging_lock() {
+  local path="$1.lock"
+  python3 "$_ATOMIC_TOOL" staging-lock-acquire --path "$path" --pid "$$" || exit $?
+  STAGING_LOCK="$path"
+  trap release_staging_lock EXIT
+}
+
+  # OMN-16262 ordering (provider first, lock second) still holds afterwards,
+  # because the co-install below forces a second lock pass.
+  if [[ ! -x "$DISPATCH_PYTHON" || "$rebuild" -eq 1 ]]; then
+    say "dispatch venv: creating $target_venv from $INFRA_DIR/uv.lock${base_python:+ on $base_python}"
+    trace "UV_PROJECT_ENVIRONMENT=$target_venv uv sync --frozen --inexact --project $INFRA_DIR ${dispatch_python_arg[*]}"
+    if ! (cd "$INFRA_DIR" && as_owner env -u PYTHONPATH UV_PROJECT_ENVIRONMENT="$target_venv" \

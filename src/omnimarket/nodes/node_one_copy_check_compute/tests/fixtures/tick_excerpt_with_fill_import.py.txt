@@ -1,0 +1,7 @@
+sys.path.insert(0, str(NODE_SRC := Path(found.src) if (found := src_resolution.HandlerScriptNodeSrc().handle(src_resolution.ModelScriptNodeSrcRequest(__file__, tuple(map(str, NODE_SRCS))))).src else s
+adoption, adoption_node = (importlib.import_module(f"legacy_pkg.nodes.node_adoption_recovery_effect.{part}") for part in ("handler", "node"))
+ownership = importlib.import_module("legacy_pkg.nodes.node_cause_claim_ownership_effect.handler")
+fill = importlib.import_module("legacy_pkg.nodes.node_idle_slot_fill_effect.handler")  # OMN-17427: lab never idle; OMN-19998: the landing goal's scope and hourly check
+stuck = importlib.import_module("legacy_pkg.nodes.node_stuck_owner_actor_effect.handler")  # OMN-17427: a stall gets an actor
+bounds = importlib.import_module("legacy_pkg.nodes.node_tick_read_budget_compute.step_run")  # OMN-19815: the run's bound
+host_pool = importlib.import_module("legacy_pkg.nodes.node_host_pool_alarm_effect.handler")  # OMN-17427: a host that cannot be read is said
