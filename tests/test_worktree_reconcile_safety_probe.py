@@ -399,3 +399,42 @@ def test_a_dead_tree_is_never_removed_and_waits_for_a_person(
     assert done.removed == 0
     assert done.failures == 0
     assert done.needs_human >= 1
+
+
+def test_a_tree_the_ledger_never_names_is_kept(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A fresh ledger that holds no closed claim for the tree does not show its owner finished."""
+    clone, root, tree = _locked_tree(tmp_path)
+    ledger = tmp_path / "ledger"
+    ledger.write_text(
+        f"{_stamp(1.0)} | CLAIM | lane=a | ticket=OMN-1 | worktree=omni_worktrees/OMN-1/repo\n"
+        f"{_stamp(0.5)} | TERMINAL | lane=a | ticket=OMN-1 | worktree=omni_worktrees/OMN-1/repo\n"
+    )
+    result = run_with(
+        probe_for(FakeMergedPrReader(), monkeypatch),
+        root,
+        monkeypatch,
+        execute=True,
+        ledger_path=str(ledger),
+        policy=POLICY,
+    )
+    row = result.decided_events[0]
+    assert row.facts.ledger_known
+    assert not row.facts.owner_finished
+    assert (row.outcome, row.decision.reasons) == ("kept", ("git_locked",))
+    assert tree.exists()
+    assert str(tree) in run_git(clone, "worktree", "list")
+    # CONTROL: the ledger names the tree and shows its lane finished: removed.
+    _clone2, root2, tree2 = _locked_tree(tmp_path / "control")
+    ledger2 = _finished_ledger(tmp_path / "control")
+    result2 = run_with(
+        probe_for(FakeMergedPrReader(), monkeypatch),
+        root2,
+        monkeypatch,
+        execute=True,
+        ledger_path=str(ledger2),
+        policy=POLICY,
+    )
+    assert result2.decided_events[0].outcome == "removed"
+    assert not tree2.exists()
