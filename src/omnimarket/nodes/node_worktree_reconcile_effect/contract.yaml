@@ -143,9 +143,10 @@ outputs:
     type: object
     description: Run counts, freed bytes and paths requiring a human, and every
       removal named in decision order (removed_paths), split out by how the tree
-      left the disk (pruned_paths for dead trees, unlocked_paths for stale-locked
-      trees unlocked before their removal) plus the live locked trees the run
-      kept (live_locked_paths).
+      left the disk (unlocked_paths for stale-locked trees unlocked before their
+      removal) plus the live locked trees the run kept (live_locked_paths). A tree
+      whose gitdir cannot be read is kept and named in needs_human_paths, never
+      removed.
   errors:
     type: list[str]
     description: Run-level discovery or decider failures.

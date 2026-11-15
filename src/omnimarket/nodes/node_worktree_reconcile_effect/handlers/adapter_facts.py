@@ -20,7 +20,12 @@ from omnimarket.events.worktree_reconcile import (
     ModelWorktreeFacts,
     ModelWorktreeReconcileCommand,
 )
-from omnimarket.handlers.handler_ledger_claims import claimed, live_claims
+from omnimarket.handlers.handler_ledger_claims import (
+    ModelLedgerRead,
+    claimed,
+    owner_finished,
+    read_ledger,
+)
 from omnimarket.handlers.rules_unit_roots import UnitRoots
 from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_commands import (
     MergedPrEvidenceUnavailableError,
@@ -234,7 +239,7 @@ class GitWorktreeFactsProbe:
         # a sandbox's leftover under a registry root) is counted and never removed.
         self._standalone: frozenset[Path] = frozenset()
         self._cwds: tuple[Path, ...] = ()
-        self._claims: tuple[str, ...] = ()
+        self._ledger: ModelLedgerRead | None = None
         self._errors: tuple[str, ...] = ()
         # Remote refs are refreshed once per canonical clone per run, not once per
         # worktree: keyed by the clone's common git dir, True when the fetch worked.
@@ -258,11 +263,11 @@ class GitWorktreeFactsProbe:
             errors.append("unit_snapshot_failed")
         # A shared ledger is appended to every few seconds, so a changed ledger is
         # the normal state, not an error: claims are re-read before each removal.
-        try:
-            self._claims = self._read_claims(now)
-        except OSError:
-            self._claims = ()
-            errors.append("ledger_unreadable")
+        self._ledger = self._read_ledger(now)
+        if self._ledger is not None and not self._ledger.fresh:
+            errors.append(
+                f"{PROBE_DEFERRED_PREFIX}ledger_not_fresh:{self._ledger.reason}"
+            )
         excluded = tuple(Path(p).resolve() for p in command.exclude_paths)
         self._fetched = {}
         candidates: dict[Path, Path] = {}
@@ -390,12 +395,26 @@ class GitWorktreeFactsProbe:
             heads = self._merged_heads[slug]
         return None if heads is None else head in heads
 
-    def _read_claims(self, now: datetime) -> tuple[str, ...]:
+    def _read_ledger(
+        self, now: datetime, *, rolled_files: bool = True
+    ) -> ModelLedgerRead | None:
+        """A fresh bounded read of the named ledger; None when the host names none.
+
+        The rolled files are read only where a decision needs a lane's old TERMINAL (a locked
+        tree); a read for live claims alone takes the live file, which is the cheap one.
+        """
         assert self._command is not None
         if not self._command.ledger_path:
-            return ()
-        text = Path(self._command.ledger_path).read_text(encoding="utf-8")
-        return live_claims(text, now, self._command.policy.quiet_hours)
+            return None
+        policy = self._command.policy
+        return read_ledger(
+            Path(self._command.ledger_path),
+            now,
+            quiet_hours=policy.quiet_hours,
+            max_age_hours=policy.ledger_max_age_hours,
+            lookback_days=policy.ledger_lookback_days if rolled_files else 0,
+            max_bytes=policy.ledger_max_bytes,
+        )
 
     def revalidate(
         self, facts: ModelWorktreeFacts, now: datetime
@@ -407,15 +426,13 @@ class GitWorktreeFactsProbe:
         fresh = self._probe(Path(facts.path), Path(facts.root), now, measure_size=False)
         errors = list(self._errors)
         cwds = self._cwds
-        claims = self._claims
         try:
             cwds = process_cwds()
         except (OSError, subprocess.SubprocessError, RuntimeError):
             errors.append("process_revalidation_failed")
-        try:
-            claims = self._read_claims(now)
-        except OSError:
-            errors.append("ledger_unreadable")
+        read = self._read_ledger(now, rolled_files=facts.worktree_locked)
+        if read is not None and not read.fresh:
+            errors.append(f"{PROBE_DEFERRED_PREFIX}ledger_not_fresh:{read.reason}")
         # A unit may have been installed since discovery: ask again just before removal.
         try:
             units = self._unit_reader.read()
@@ -429,7 +446,13 @@ class GitWorktreeFactsProbe:
                 "live_process": any(
                     cwd == path or cwd.is_relative_to(path) for cwd in cwds
                 ),
-                "live_claim": claimed(path, Path(facts.root), claims),
+                "live_claim": (
+                    claimed(path, Path(facts.root), read.live_claims)
+                    if read is not None
+                    else False
+                ),
+                "ledger_known": read is not None and read.fresh,
+                "owner_finished": owner_finished(path, Path(facts.root), read),
                 "live_unit": units.naming(str(path)),
                 # Size is not re-measured; keep what discovery measured rather
                 # than a 0 that could read as an empty tree.
@@ -466,8 +489,13 @@ class GitWorktreeFactsProbe:
             live_process=any(
                 cwd == path or cwd.is_relative_to(path) for cwd in self._cwds
             ),
-            live_claim=claimed(path, root, self._claims),
-            ledger_known=bool(self._command.ledger_path),
+            live_claim=(
+                claimed(path, root, self._ledger.live_claims)
+                if self._ledger is not None
+                else False
+            ),
+            ledger_known=self._ledger is not None and self._ledger.fresh,
+            owner_finished=owner_finished(path, root, self._ledger),
             live_unit=self._units.naming(str(path)),
             probe_errors=self._errors,
         )

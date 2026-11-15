@@ -73,10 +73,10 @@ def test_error_chain_a_deferred_tree_reaches_the_event_and_the_projection(
 
 
 @pytest.mark.unit
-def test_golden_chain_a_dead_and_a_stale_locked_tree_leave_and_are_named(
+def test_golden_chain_a_stale_locked_tree_leaves_and_a_dead_tree_stays_and_both_are_named(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Compute decides, the effect removes and names each removal, the projection folds it."""
+    """The stale-locked tree is removed and named; the dead tree stays NEEDS_HUMAN."""
     dead = facts(
         path="trees/task/dead",
         gitdir_missing=True,
@@ -86,8 +86,10 @@ def test_golden_chain_a_dead_and_a_stale_locked_tree_leave_and_are_named(
     stale = facts(
         path="trees/task/stale",
         worktree_locked=True,
+        worktree_lock_reason="worktree_lock_reason",
         git_locked=True,
         ledger_known=True,
+        owner_finished=True,
         content_merged=True,
         last_activity_age_hours=30.0,
         size_bytes=60,
@@ -100,7 +102,7 @@ def test_golden_chain_a_dead_and_a_stale_locked_tree_leave_and_are_named(
         live_claim=True,
         content_merged=True,
     )
-    policy = ModelWorktreeReconcilePolicy(prune_dead_worktrees=True)
+    policy = ModelWorktreeReconcilePolicy(lane_lock_reasons=("worktree_lock_reason",))
     decisions = HandlerWorktreeReconcileCompute().handle(
         ModelWorktreeReconcileRequest(facts=(dead, stale, live), policy=policy)
     )
@@ -108,47 +110,43 @@ def test_golden_chain_a_dead_and_a_stale_locked_tree_leave_and_are_named(
     result = fake.handler().handle(command(policy=policy))
     assert [row.decision for row in result.decided_events] == list(decisions.decisions)
     assert [row.outcome for row in result.decided_events] == [
-        "pruned",
+        "needs_human",
         "removed",
         "kept",
     ]
     done = result.completed_event
-    assert done.removed_paths == ("trees/task/dead", "trees/task/stale")
-    assert done.pruned_paths == ("trees/task/dead",)
+    assert done.removed_paths == ("trees/task/stale",)
     assert done.unlocked_paths == ("trees/task/stale",)
+    assert done.needs_human_paths == ("trees/task/dead",)
     assert done.live_locked_paths == ("trees/task/live",)
-    assert (done.removed, done.pruned, done.failures, done.freed_bytes) == (
-        1,
-        1,
-        0,
-        100,
-    )
+    assert (done.removed, done.failures, done.freed_bytes) == (1, 0, 60)
     topic, completed = fake.events[-1]
     writer = WorktreeReconcileProjectionWriter()
     db = RecordingDB()
     monkeypatch.setattr(writer, "_db", db)
     written = writer.handle(completed.model_dump(mode="json") | {"_topic": topic})
     assert written["rows_upserted"] == 1
+    assert "pruned" not in written
 
 
 @pytest.mark.unit
 def test_error_chain_a_removal_that_raises_is_a_failure_and_not_a_named_removal(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    dead = facts(
-        path="trees/task/dead", gitdir_missing=True, last_activity_age_hours=100.0
+    removable = facts(
+        path="trees/task/removable",
+        content_merged=True,
+        last_activity_age_hours=100.0,
     )
-    fake = Fakes((dead,))
+    fake = Fakes((removable,))
 
     def refuse(fact: object, now: object) -> None:
         raise OSError("trash on another filesystem")
 
     monkeypatch.setattr(fake, "remove", refuse)
-    result = fake.handler().handle(
-        command(policy=ModelWorktreeReconcilePolicy(prune_dead_worktrees=True))
-    )
+    result = fake.handler().handle(command())
     assert result.decided_events[0].outcome == "failed"
     assert result.decided_events[0].error == "OSError"
     done = result.completed_event
-    assert (done.failures, done.pruned) == (1, 0)
-    assert (done.removed_paths, done.pruned_paths, done.unlocked_paths) == ((), (), ())
+    assert done.failures == 1
+    assert (done.removed_paths, done.unlocked_paths) == ((), ())

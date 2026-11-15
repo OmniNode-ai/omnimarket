@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 """Non-forced linked removal and same-filesystem standalone trash."""
 
+import contextlib
 import os
 import shutil
 from datetime import datetime
@@ -28,21 +29,29 @@ class GitWorktreeRemover:
             if not (path / ".git").is_file():
                 raise ValueError("linked worktree identity changed")
             if facts.gitdir_missing:
-                # The gitdir is gone, so git cannot remove the tree itself:
-                # it is junk moved to the trash like a standalone clone.
-                self._trash(path, root, now)
-            else:
-                common = git(
-                    str(path),
-                    "rev-parse",
-                    "--path-format=absolute",
-                    "--git-common-dir",
-                ).stdout.strip()
-                if facts.worktree_locked:
-                    # A stale lock would refuse the removal; the rules proved
-                    # nothing live holds the tree, so the marker goes first.
-                    git(common, "worktree", "unlock", str(path))
+                raise ValueError("gitdir unreadable")
+            common = git(
+                str(path),
+                "rev-parse",
+                "--path-format=absolute",
+                "--git-common-dir",
+            ).stdout.strip()
+            if facts.worktree_locked:
+                # A stale lock would refuse the removal; the rules proved
+                # nothing live holds the tree, so the marker goes first.
+                git(common, "worktree", "unlock", str(path))
+            try:
                 git(common, "worktree", "remove", str(path))
+            except Exception:
+                if facts.worktree_locked:
+                    # The unlock above must not outlive a removal that failed: put the lock
+                    # back with its reason. A failure of the relock never hides the original.
+                    relock = ["worktree", "lock"]
+                    if facts.worktree_lock_reason:
+                        relock += ["--reason", facts.worktree_lock_reason]
+                    with contextlib.suppress(Exception):
+                        git(common, *relock, str(path))
+                raise
             ticket = path.parent
             if (
                 ticket != root

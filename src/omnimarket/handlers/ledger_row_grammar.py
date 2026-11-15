@@ -41,6 +41,7 @@ from collections.abc import Iterable
 from pathlib import Path
 
 from omnimarket.handlers import ledger_claim_contract as claim_contract
+from omnimarket.handlers import ledger_running_path_cell as running_path_cell
 from omnimarket.handlers import ledger_worktree_cell as worktree_cell
 from omnimarket.handlers.ledger_accounting_cells import accounting_cells
 
@@ -52,6 +53,7 @@ __all__ = [
     "LEGACY_TYPE_MAP",
     "TOOL_INTERNAL_TYPES",
     "delegation_cell_reason",
+    "governed_terminal_row",
     "governs",
     "grammar_json",
     "hold_instruction_refusal",
@@ -64,6 +66,7 @@ __all__ = [
     "refusal_for_state",
     "row_refusals",
     "ruling_link_refusals",
+    "running_path_refusal",
 ]
 
 GRAMMAR_VERSION = "ledger-row-grammar/2"
@@ -280,6 +283,8 @@ GRAMMAR: dict[str, dict[str, object]] = {
             "pr",
             "squash",
             "worktree",
+            "running_path",
+            "running_line",
         ],
         "rules": [
             "friction=none, or friction=<one line> naming this lane's FRICTION row(s), which "
@@ -292,6 +297,10 @@ GRAMMAR: dict[str, dict[str, object]] = {
             "worktree=removed:<path>, pinned-removed:<path>@<archive>, kept:<path>:<reason> or "
             "none is required when the CLAIM it closes named a worktree path; removed and "
             "pinned-removed are refused while the path still exists (OMN-20148)",
+            "outcome=done or handed-off carries running_path=<entry point> with "
+            "running_line=<one line from its latest run>, or "
+            "running_path=none-ci-only:<reason> (OMN-24535); enforced from the stamp in "
+            "ONEX_LEDGER_REQUIRE_RUNNING_PATH (default OFF)",
         ],
     },
     "FRICTION": {
@@ -814,6 +823,11 @@ def _governed_terminal_row(line: str) -> Row | None:
     return row
 
 
+# Public alias: callers outside this module (the running_path_share operation of the
+# grammar node) apply the same governed-TERMINAL test the refusal checks here apply.
+governed_terminal_row = _governed_terminal_row
+
+
 def _declared_cells(line: str) -> dict[str, str]:
     """Keep the first non-empty declared accounting value for each key."""
     cells: dict[str, str] = {}
@@ -1199,6 +1213,35 @@ def quoted_owner_cell_refusals(row: Row) -> list[str]:
     ]
 
 
+def running_path_refusal(line: str, from_stamp: str | None) -> str | None:
+    """The running-path refusal of a TERMINAL row (OMN-24535), or None.
+
+    None for a row that is not a TERMINAL, for a machine identity (``actor=script:*``,
+    ``actor=launchd:*``, ``model=none``) and for a row the rule lets through at ``from_stamp``
+    (None is off; ``running_path_cell.EVERY_ROW_STAMP`` judges every row). The cells are read
+    from every pipe cell that declares them, so ``outcome=done delegated=1 runs=x`` in one cell
+    is still an outcome of done."""
+    row = _governed_terminal_row(line)
+    if row is None:
+        return None
+    cells = running_path_cell.declared_values(line)
+    outcomes = cells["outcome"]
+    # A row that names more than one outcome is judged on the one that confirms the work.
+    confirming = [
+        value
+        for value in outcomes
+        if value.strip().lower() in running_path_cell.CONFIRMING_OUTCOMES
+    ]
+    chosen = confirming[0] if confirming else (outcomes[0] if outcomes else None)
+    return running_path_cell.terminal_refusal(
+        stamp=row.stamp,
+        outcome=chosen,
+        paths=cells["running_path"],
+        lines=cells["running_line"],
+        from_stamp=from_stamp,
+    )
+
+
 def row_refusals(line: str) -> list[str]:
     """Every reason `line` (one row-opening line) breaks the grammar. Empty
     when it conforms."""
@@ -1254,6 +1297,9 @@ def row_refusals(line: str) -> list[str]:
             reasons.append(check)
     if row.row_type == "TERMINAL":
         check = worktree_cell.terminal_shape_refusal(worktree_values)
+        if check:
+            reasons.append(check)
+        check = running_path_refusal(line, running_path_cell.enforced_from())
         if check:
             reasons.append(check)
 

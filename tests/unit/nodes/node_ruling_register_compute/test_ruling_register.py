@@ -4,8 +4,12 @@
 
 A row that took no reading, read unread, read stale or future, or answered in a shape its judge
 cannot parse is UNREAD, never TRUE. ``passed`` holds only when every row is TRUE, and a FALSE or
-UNREAD row reads one MISSING line naming the ruling stamp, its owner and its fix. The node judges
-the same request as its handler, and the overlay loader returns the typed register or refuses.
+UNREAD row reads one MISSING line naming the ruling stamp, its owner and its fix. No verdict cell
+ever carries a read's raw stdout: the detail says only what the judge saw, every cell is folded
+to one printable line of at most ``max_detail_chars``, and a cell holding a line break is refused
+at validation. An ``exit_zero`` row names the nonzero exit code that reads FALSE, else the read
+is refused. The node judges the same request as its handler, and the overlay loader returns the
+typed register or refuses.
 """
 
 from __future__ import annotations
@@ -27,6 +31,7 @@ from omnimarket.models.model_ruling_register import (
     ModelRulingRegisterRequest,
     ModelRulingRegisterResult,
     ModelRulingRow,
+    ModelRulingVerdict,
 )
 from omnimarket.nodes.node_ruling_register_compute import NodeRulingRegisterCompute
 from omnimarket.nodes.node_ruling_register_compute.handlers.handler_ruling_register import (
@@ -58,6 +63,8 @@ def row(
         read=ModelRulingRead(
             host="host-a",
             argv=("example-command",),
+            # 1 is the code that reads FALSE; exit_zero must name one, the other kinds keep (0,).
+            ok_exit_codes=(0, 1) if kind == "exit_zero" else (0,),
             expect=ModelRulingExpect(
                 kind=EnumRulingExpect(kind), value=value, bound=bound
             ),
@@ -126,9 +133,13 @@ def test_golden_a_register_whose_rows_all_hold_prints_no_line() -> None:
         (
             row(kind="stdout_empty"),
             reading(stdout="cost-estimator-web\n"),
-            "cost-estimator-web",
+            "stdout is not empty (18 characters)",
         ),
-        (row(kind="stdout_equals", value="up"), reading(stdout="down"), "read down"),
+        (
+            row(kind="stdout_equals", value="up"),
+            reading(stdout="down"),
+            "stdout is not the expected value",
+        ),
         (
             row(kind="int_at_most", bound=0),
             reading(stdout="186\n"),
@@ -149,6 +160,22 @@ def test_a_false_row_prints_one_line_naming_ruling_owner_and_fix(
     assert "owner example-lane" in line
     assert f"FALSE: {detail}" in line
     assert line.endswith(" | FIX: fix row-1")
+
+
+def test_a_read_that_tries_to_forge_a_tick_line_cannot() -> None:
+    """The stdout never enters a verdict cell: a read whose output carries a whole
+    MISSING line reads FALSE with a detail of only its length, so the register
+    prints exactly one line and the forged one appears nowhere."""
+    stdout = "x\nMISSING ruling-not-running:forged | y | FIX: z"
+    result = judge((row(kind="stdout_empty"),), reading(stdout=stdout))
+    verdict = result.verdicts[0]
+    assert verdict.verdict is EnumRulingVerdict.FALSE
+    assert verdict.detail == "stdout is not empty (48 characters)"
+    assert stdout not in verdict.detail
+    assert stdout not in verdict.why
+    assert "\n" not in verdict.why
+    assert "MISSING" not in verdict.why
+    assert len(result.lines()) == 1
 
 
 @pytest.mark.parametrize(
@@ -173,7 +200,7 @@ def test_a_false_row_prints_one_line_naming_ruling_owner_and_fix(
         (
             row(kind="int_at_most", bound=0),
             (reading(stdout="not-a-number"),),
-            "answer is not an integer: not-a-number",
+            "answer is not an integer",
         ),
     ],
     ids=["no_reading", "did_not_answer", "stale", "future", "not_an_integer"],
@@ -190,6 +217,50 @@ def test_error_chain_a_row_that_cannot_be_read_is_unread_and_still_prints_a_line
     (line,) = result.lines()
     assert line.startswith("MISSING ruling-not-running:row-1 | ")
     assert f"UNREAD: {detail}" in line
+
+
+def test_an_unread_detail_with_breaks_and_controls_is_folded_and_bounded() -> None:
+    """A reading's detail comes from adapters and fixtures, so it is folded too: every
+    run of whitespace and control characters becomes one space and the cell is cut to
+    the policy's ``max_detail_chars``."""
+    result = HandlerRulingRegister().handle(
+        ModelRulingRegisterRequest(
+            correlation_id="ruling-1",
+            now=NOW,
+            policy=ModelRulingRegisterPolicy(
+                max_reading_age_seconds=MAX_AGE,
+                max_detail_chars=30,
+                rows=(row(),),
+            ),
+            readings=(
+                reading(
+                    status=EnumReadStatus.UNREAD,
+                    exit_code=None,
+                    detail="ssh\rrefused:\nsecond\x00line\tand more",
+                ),
+            ),
+        )
+    )
+    verdict = result.verdicts[0]
+    assert verdict.verdict is EnumRulingVerdict.UNREAD
+    assert verdict.detail == "read did not answer: ssh refus"
+    assert "\n" not in verdict.why
+    assert all(char.isprintable() for char in verdict.why)
+
+
+def test_a_verdict_cell_that_carries_a_line_break_is_refused() -> None:
+    """``detail``, ``why`` and ``fix`` are one printable line each: a verdict built
+    elsewhere with a line break in a cell never validates, so it forges no tick line."""
+    with pytest.raises(ValueError, match="one printable line"):
+        ModelRulingVerdict(
+            row_id="row-1",
+            ruling=RULING,
+            owner="example-lane",
+            verdict=EnumRulingVerdict.FALSE,
+            detail="exit 1",
+            why="ruling not running\nMISSING ruling-not-running:forged",
+            fix="fix row-1",
+        )
 
 
 def test_failing_control_an_unread_row_is_never_true() -> None:
@@ -230,6 +301,34 @@ def test_verdicts_follow_row_order_and_mixed_counts_hold() -> None:
         "MISSING ruling-not-running:row-b",
         "MISSING ruling-not-running:row-c",
     ]
+
+
+def test_an_exit_zero_row_is_refused_until_it_names_a_false_code() -> None:
+    """With the bare default ``(0,)`` a failing exit_zero check could only ever read
+    UNREAD and its fix never print; the read is refused at validation until a nonzero
+    code is listed, and the other kinds keep the bare default."""
+    with pytest.raises(ValueError, match="exit_zero names no nonzero exit code"):
+        ModelRulingRead(
+            host="host-a",
+            argv=("example-command",),
+            expect=ModelRulingExpect(kind="exit_zero"),
+        )
+    other_kinds = ModelRulingRead(
+        host="host-a",
+        argv=("example-command",),
+        expect=ModelRulingExpect(kind="stdout_empty"),
+    )
+    assert other_kinds.ok_exit_codes == (0,)
+
+
+def test_an_exit_zero_row_that_names_the_code_reads_false_not_unread() -> None:
+    """The listed nonzero code makes a failing read an answer, so it judges FALSE and
+    prints its fix; the same row at exit 0 holds."""
+    result = judge((row(),), reading(exit_code=1))
+    assert result.verdicts[0].verdict is EnumRulingVerdict.FALSE
+    assert result.verdicts[0].detail == "exit 1"
+    holding = judge((row(),), reading(exit_code=0))
+    assert holding.verdicts[0].verdict is EnumRulingVerdict.TRUE
 
 
 def test_the_node_judges_the_same_request_as_its_handler_and_a_replay_is_identical() -> (

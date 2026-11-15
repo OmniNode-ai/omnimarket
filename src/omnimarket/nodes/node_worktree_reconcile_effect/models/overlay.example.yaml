@@ -15,11 +15,17 @@ hosts:
     policy:
       quiet_hours: 6
       stale_hours: 72
-      # A worktree lock nothing backs (no live claim in the ledger above, no process, no unit) older than this is unlocked and judged
-      # like any tree. Only a host that names a ledger_path can call a lock stale; without one every locked tree stays.
+      # A worktree lock is judged stale only when its reason is one of lane_lock_reasons (the text the lane runner writes; a person's
+      # lock is never stale), the ledger named by ledger_path was read fresh just now (its newest row younger than
+      # ledger_max_age_hours, the rolled files of the last ledger_lookback_days days read too, under ledger_max_bytes) and shows the
+      # owning lane finished, and the tree is quiet past stale_lock_hours. Only then is it unlocked and judged like any tree; clean,
+      # pushed and merged work is what a removal needs. Without a ledger_path, or with an unread one, every locked tree stays.
       stale_lock_hours: 24
-      # A linked worktree whose gitdir is gone (git cannot read it) is moved to the trash past stale_hours when true, else a person decides.
-      prune_dead_worktrees: false
+      lane_lock_reasons: ["codex lane running (OMN-20363)"]
+      ledger_max_age_hours: 6
+      ledger_lookback_days: 30
+      ledger_max_bytes: 536870912
+      # A linked worktree whose gitdir is gone (git cannot read it) is never removed: it is kept and reported for a person.
       allow_standalone_clone_removal: false
       max_removals_per_run: 200
       # A systemd EnvironmentFile the run user cannot open: declared by the host overlay, never obtained by changing a file mode.

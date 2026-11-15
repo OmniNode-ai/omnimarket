@@ -69,6 +69,10 @@ def classify(
         # A pin preserves HEAD only; a clone may hold other unpushed branches.
         if facts.kind == Kind.STANDALONE_CLONE:
             return Decision.NEEDS_HUMAN, "clone_unpushed_work"
+        if facts.worktree_locked:
+            # Only a stale lock gets here: a locked tree is removed only when its
+            # branch is pushed, so unpushed work is never pinned and removed.
+            return Decision.KEEP, "locked_unpushed_work"
         return Decision.PIN_AND_REMOVE, "unpushed_work_stale"
     if facts.kind == Kind.STANDALONE_CLONE and not facts.has_remote:
         return Decision.NEEDS_HUMAN, "ambiguous"

@@ -32,8 +32,6 @@ class HandlerProjectionWorktreeReconcile:
                     "deferred",
                     "deferred_paths",
                     "removed_paths",
-                    "pruned",
-                    "pruned_paths",
                     "unlocked_paths",
                     "live_locked_paths",
                 }

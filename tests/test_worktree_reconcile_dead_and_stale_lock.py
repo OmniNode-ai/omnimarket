@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""A dead worktree is pruned and a stale-locked one unlocked and removed (OMN-22799).
+"""A dead worktree is kept and reported; a stale-locked one is unlocked and removed (OMN-22799).
 
 Recorded case: a lane locked its tree with ``git worktree lock`` and left; a later
 cleanup removed the clone's worktrees directory out from under other trees. The tick
@@ -8,9 +8,9 @@ kept both forever: the locked tree read ``git_locked`` with no claim, process or
 behind the marker, and the dead tree failed every git command, so its head could not
 be read at all. The lock marker and the named gitdir are now facts, so a lock nothing
 backs goes stale past ``policy.stale_lock_hours`` and is unlocked before a normal
-removal, and a tree whose gitdir is gone is dead junk the ``prune_dead_worktrees``
-knob moves to the trash. Every tree that leaves the disk is named in the completed
-event, split out by how it left.
+removal, and a tree whose gitdir is gone is dead junk a person decides, never removed.
+Every tree that leaves the disk is named in the completed event, split out by how it
+left.
 """
 
 import json
@@ -19,6 +19,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from omnimarket.events.worktree_reconcile import (
     EnumWorktreeReconcileDecision as Decision,
@@ -38,7 +39,7 @@ from omnimarket.nodes.node_worktree_reconcile_effect.handlers import adapter_fac
 from omnimarket.nodes.node_worktree_reconcile_effect.handlers.probe_classes import (
     PROBE_NEEDS_HUMAN_PREFIX,
 )
-from tests.test_worktree_reconcile_compute import ALLOW, facts
+from tests.test_worktree_reconcile_compute import facts
 from tests.test_worktree_reconcile_effect import (
     FakeMergedPrReader,
     git_fixture,
@@ -53,22 +54,39 @@ LOCK_REASON = "codex lane running (OMN-20363)"
 # The clock run_with ticks at: fixture writes land far in its past.
 FUTURE = datetime(2100, 1, 1, tzinfo=UTC)
 NESTED = f"{PROBE_NEEDS_HUMAN_PREFIX}nested_repository"
-PRUNE = ModelWorktreeReconcilePolicy(
-    allowed_remote_owners=("owner",), prune_dead_worktrees=True
+LANE = ModelWorktreeReconcilePolicy(
+    allowed_remote_owners=("owner",),
+    lane_lock_reasons=(LOCK_REASON,),
 )
 
 
 def test_the_two_knobs_live_in_the_policy_model() -> None:
     policy = ModelWorktreeReconcilePolicy()
     assert policy.stale_lock_hours == 24.0
-    assert policy.prune_dead_worktrees is False
+    assert policy.lane_lock_reasons == ()
+    assert policy.ledger_max_age_hours == 6.0
+    assert policy.ledger_lookback_days == 0
+    with pytest.raises(ValidationError):
+        ModelWorktreeReconcilePolicy(prune_dead_worktrees=True)
 
 
 def test_a_lock_is_stale_only_when_nothing_backs_it() -> None:
     assert stale_lock(
-        facts(worktree_locked=True, ledger_known=True, last_activity_age_hours=25.0),
-        ALLOW,
+        facts(
+            worktree_locked=True,
+            ledger_known=True,
+            worktree_lock_reason=LOCK_REASON,
+            owner_finished=True,
+            last_activity_age_hours=25.0,
+        ),
+        LANE,
     )
+    base: dict[str, object] = {
+        "worktree_locked": True,
+        "ledger_known": True,
+        "worktree_lock_reason": LOCK_REASON,
+        "owner_finished": True,
+    }
     for updates in (
         {"ref_locked": True},
         {"live_process": True},
@@ -76,21 +94,28 @@ def test_a_lock_is_stale_only_when_nothing_backs_it() -> None:
         {"live_unit": "onex-hourly.service"},
         {"last_activity_age_hours": 23.9},
         {"last_activity_age_hours": None},
+        {"owner_finished": False},
+        {"ledger_known": False},
+        {"worktree_lock_reason": "held by a person"},
     ):
-        assert not stale_lock(
-            facts(worktree_locked=True, ledger_known=True, **updates), ALLOW
-        )
+        merged = {**base, **updates}
+        assert not stale_lock(facts(**merged), LANE)
     # No lock marker, nothing to call stale.
-    assert not stale_lock(facts(last_activity_age_hours=25.0), ALLOW)
+    assert not stale_lock(facts(last_activity_age_hours=25.0), LANE)
 
 
 def test_a_stale_locked_merged_tree_is_removed_and_unlocked() -> None:
     stale = facts(
-        worktree_locked=True, ledger_known=True, git_locked=True, content_merged=True
+        worktree_locked=True,
+        ledger_known=True,
+        git_locked=True,
+        content_merged=True,
+        worktree_lock_reason=LOCK_REASON,
+        owner_finished=True,
     )
     row = (
         HandlerWorktreeReconcileCompute()
-        .handle(ModelWorktreeReconcileRequest(facts=(stale,), policy=ALLOW))
+        .handle(ModelWorktreeReconcileRequest(facts=(stale,), policy=LANE))
         .decisions[0]
     )
     assert row.decision == Decision.REMOVE
@@ -112,10 +137,17 @@ def test_a_stale_locked_merged_tree_is_removed_and_unlocked() -> None:
 def test_a_lock_something_backs_stays_a_keep(
     updates: dict[str, object], reason: str
 ) -> None:
-    held = facts(worktree_locked=True, git_locked=True, content_merged=True, **updates)
+    held = facts(
+        worktree_locked=True,
+        git_locked=True,
+        content_merged=True,
+        worktree_lock_reason=LOCK_REASON,
+        owner_finished=True,
+        **updates,
+    )
     row = (
         HandlerWorktreeReconcileCompute()
-        .handle(ModelWorktreeReconcileRequest(facts=(held,), policy=ALLOW))
+        .handle(ModelWorktreeReconcileRequest(facts=(held,), policy=LANE))
         .decisions[0]
     )
     assert (row.decision, row.reasons) == (Decision.KEEP, (reason,))
@@ -123,10 +155,17 @@ def test_a_lock_something_backs_stays_a_keep(
 
 def test_the_stale_lock_threshold_is_the_policy_knob() -> None:
     stale = facts(
-        worktree_locked=True, ledger_known=True, git_locked=True, content_merged=True
+        worktree_locked=True,
+        ledger_known=True,
+        git_locked=True,
+        content_merged=True,
+        worktree_lock_reason=LOCK_REASON,
+        owner_finished=True,
     )
     patient = ModelWorktreeReconcilePolicy(
-        allowed_remote_owners=("owner",), stale_lock_hours=1000.0
+        allowed_remote_owners=("owner",),
+        lane_lock_reasons=(LOCK_REASON,),
+        stale_lock_hours=1000.0,
     )
     row = (
         HandlerWorktreeReconcileCompute()
@@ -152,8 +191,9 @@ def test_a_stale_locked_merged_tree_is_unlocked_and_removed(
     ledger = tmp_path / "ledger"
     # The tree's lane closed its claim: a terminal, so no live claim names the tree.
     ledger.write_text(
-        "2099-12-01T00:00:00Z | CLAIM | lane=a | ticket=task | running\n"
-        "2099-12-01T01:00:00Z | TERMINAL | lane=a | ticket=task | done\n"
+        "2099-12-31T20:00:00Z | CLAIM | lane=a | ticket=task | running\n"
+        "2099-12-31T21:00:00Z | TERMINAL | lane=a | ticket=task | done\n"
+        "2099-12-31T23:00:00Z | STATUS | lane=a | ticket=task | later\n"
     )
     result = run_with(
         probe_for(FakeMergedPrReader(), monkeypatch),
@@ -161,6 +201,7 @@ def test_a_stale_locked_merged_tree_is_unlocked_and_removed(
         monkeypatch,
         execute=True,
         ledger_path=str(ledger),
+        policy=LANE,
     )
     row = result.decided_events[0]
     assert row.facts.worktree_locked
@@ -176,7 +217,7 @@ def test_a_stale_locked_merged_tree_is_unlocked_and_removed(
     assert (done.removed, done.failures) == (1, 0)
     assert done.unlocked_paths == (str(tree),)
     assert done.removed_paths == (str(tree),)
-    assert (done.pruned, done.pruned_paths, done.live_locked_paths) == (0, (), ())
+    assert not hasattr(done, "pruned")
 
 
 def test_without_a_ledger_a_locked_tree_stays_and_is_named_live_locked(
@@ -185,7 +226,11 @@ def test_without_a_ledger_a_locked_tree_stays_and_is_named_live_locked(
     """No ledger read means "no live claim" proves nothing: the lock holds."""
     clone, root, tree = locked_merged_tree(tmp_path)
     result = run_with(
-        probe_for(FakeMergedPrReader(), monkeypatch), root, monkeypatch, execute=True
+        probe_for(FakeMergedPrReader(), monkeypatch),
+        root,
+        monkeypatch,
+        execute=True,
+        policy=LANE,
     )
     row = result.decided_events[0]
     assert not row.facts.ledger_known
@@ -208,6 +253,7 @@ def test_the_same_locked_tree_with_a_live_claim_stays_and_is_named_live_locked(
         monkeypatch,
         execute=True,
         ledger_path=str(ledger),
+        policy=LANE,
     )
     row = result.decided_events[0]
     assert row.facts.live_claim
@@ -215,7 +261,8 @@ def test_the_same_locked_tree_with_a_live_claim_stays_and_is_named_live_locked(
     done = result.completed_event
     assert done.failures == 0
     assert done.live_locked_paths == (str(tree),)
-    assert (done.removed_paths, done.unlocked_paths, done.pruned_paths) == ((), (), ())
+    assert done.removed_paths == ()
+    assert done.unlocked_paths == ()
     assert tree.exists()
     assert str(tree) in run_git(clone, "worktree", "list")
 
@@ -231,7 +278,7 @@ def dead_tree(root: Path, age_hours: float = 100.0, ticket: str = "task") -> Pat
     return tree
 
 
-def test_a_dead_tree_past_the_stale_age_is_pruned_and_named(
+def test_a_dead_tree_past_the_stale_age_waits_for_a_person_and_is_named(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _, root, _ = git_fixture(tmp_path)
@@ -241,23 +288,22 @@ def test_a_dead_tree_past_the_stale_age_is_pruned_and_named(
         root,
         monkeypatch,
         execute=True,
-        policy=PRUNE,
+        policy=LANE,
     )
     row = result.decided_events[0]
     assert row.facts.gitdir_missing
     assert row.facts.probe_errors == ()
     assert row.facts.file_names == ("notes.txt",)
-    assert row.decision.reasons == ("dead_worktree",)
-    assert row.outcome == "pruned"
+    assert (row.outcome, row.decision.reasons) == (
+        "needs_human",
+        ("gitdir_unreadable",),
+    )
     done = result.completed_event
-    assert done.failures == 0
-    assert done.pruned == 1
-    assert done.pruned_paths == (str(tree),)
-    assert done.removed_paths == (str(tree),)
-    assert done.removed == 0
-    assert not tree.exists()
-    assert not tree.parent.exists()  # the empty ticket directory went with it
-    assert (root / ".onex_state" / "worktree-reconcile-trash" / "2100-01-01").is_dir()
+    assert (done.failures, done.needs_human) == (0, 1)
+    assert done.needs_human_paths == (str(tree),)
+    assert done.removed_paths == ()
+    assert tree.exists()
+    assert not (root / ".onex_state" / "worktree-reconcile-trash").exists()
 
 
 def test_without_the_prune_knob_a_dead_tree_waits_for_a_person(
@@ -266,15 +312,22 @@ def test_without_the_prune_knob_a_dead_tree_waits_for_a_person(
     _, root, _ = git_fixture(tmp_path)
     tree = dead_tree(root)
     result = run_with(
-        probe_for(FakeMergedPrReader(), monkeypatch), root, monkeypatch, execute=True
+        probe_for(FakeMergedPrReader(), monkeypatch),
+        root,
+        monkeypatch,
+        execute=True,
+        policy=LANE,
     )
     row = result.decided_events[0]
     assert row.facts.gitdir_missing
-    assert (row.outcome, row.decision.reasons) == ("needs_human", ("dead_worktree",))
+    assert (row.outcome, row.decision.reasons) == (
+        "needs_human",
+        ("gitdir_unreadable",),
+    )
     done = result.completed_event
     assert (done.failures, done.needs_human) == (0, 1)
     assert done.needs_human_paths == (str(tree),)
-    assert (done.pruned, done.pruned_paths, done.removed_paths) == (0, (), ())
+    assert done.removed_paths == ()
     assert tree.exists()
 
 
@@ -288,7 +341,7 @@ def test_a_dead_tree_newer_than_the_stale_age_waits(
         root,
         monkeypatch,
         execute=True,
-        policy=PRUNE,
+        policy=LANE,
     )
     row = result.decided_events[0]
     assert (row.outcome, row.decision.reasons) == ("kept", ("not_stale",))
@@ -303,7 +356,7 @@ def test_a_dead_tree_a_process_works_in_is_kept(
     tree = dead_tree(root)
     probe = probe_for(FakeMergedPrReader(), monkeypatch)
     monkeypatch.setattr(adapter_facts, "process_cwds", lambda: (tree.resolve(),))
-    result = run_with(probe, root, monkeypatch, execute=True, policy=PRUNE)
+    result = run_with(probe, root, monkeypatch, execute=True, policy=LANE)
     row = result.decided_events[0]
     assert row.facts.live_process
     assert (row.outcome, row.decision.reasons) == ("kept", ("live_process",))
@@ -322,7 +375,7 @@ def test_a_dead_tree_holding_a_nested_repository_goes_to_a_person(
         root,
         monkeypatch,
         execute=True,
-        policy=PRUNE,
+        policy=LANE,
     )
     row = result.decided_events[0]
     assert row.facts.probe_errors == (NESTED,)
@@ -331,12 +384,12 @@ def test_a_dead_tree_holding_a_nested_repository_goes_to_a_person(
         ("nested_repository",),
     )
     done = result.completed_event
-    assert (done.failures, done.pruned) == (0, 0)
+    assert done.failures == 0
     assert done.removed_paths == ()
     assert tree.exists()
 
 
-def test_a_merged_only_host_still_prunes_a_dead_tree(
+def test_a_merged_only_host_never_removes_a_dead_tree(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _, root, _ = git_fixture(tmp_path)
@@ -349,14 +402,13 @@ def test_a_merged_only_host_still_prunes_a_dead_tree(
         policy=ModelWorktreeReconcilePolicy(
             allowed_remote_owners=("owner",),
             merged_only=True,
-            prune_dead_worktrees=True,
+            lane_lock_reasons=(LOCK_REASON,),
         ),
     )
     row = result.decided_events[0]
-    assert row.outcome == "pruned"
-    assert result.completed_event.pruned_paths == (str(tree),)
-    assert result.completed_event.failures == 0
-    assert not tree.exists()
+    assert row.outcome == "needs_human"
+    assert result.completed_event.removed_paths == ()
+    assert tree.exists()
 
 
 def test_an_old_receipt_without_the_new_columns_still_loads() -> None:
@@ -381,8 +433,6 @@ def test_an_old_receipt_without_the_new_columns_still_loads() -> None:
     loaded = ModelWorktreeReconcileRunCompletedEvent.model_validate_json(old)
     assert (
         loaded.removed_paths,
-        loaded.pruned,
-        loaded.pruned_paths,
         loaded.unlocked_paths,
         loaded.live_locked_paths,
-    ) == ((), 0, (), (), ())
+    ) == ((), (), ())

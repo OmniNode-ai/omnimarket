@@ -58,8 +58,6 @@ def test_fold_leaves_the_removal_lists_off_the_host_row() -> None:
         ModelWorktreeReconcileProjectionRequest(
             event=event(
                 removed_paths=("trees/task/a", "trees/task/b"),
-                pruned=1,
-                pruned_paths=("trees/task/a",),
                 unlocked_paths=("trees/task/b",),
                 live_locked_paths=("trees/task/c",),
             )
@@ -69,8 +67,6 @@ def test_fold_leaves_the_removal_lists_off_the_host_row() -> None:
     dumped = row.model_dump()
     for name in (
         "removed_paths",
-        "pruned",
-        "pruned_paths",
         "unlocked_paths",
         "live_locked_paths",
     ):
