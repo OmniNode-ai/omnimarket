@@ -62,8 +62,9 @@ from __future__ import annotations
 
 import argparse
 import os
+import socket
 import sys
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from getpass import getpass
 from pathlib import Path
 
@@ -74,6 +75,7 @@ from omnimarket.handlers.node_overlay_reader import (
     find_node_overlay,
     load_structured_overlay,
 )
+from omnimarket.handlers.overlay_store.bus_opener import open_lane_bus, workspace_root
 from omnimarket.models.engine_login import ModelEngineLoginSteer
 from omnimarket.models.model_claude_pool_revoke_cause import ModelRevokeCauseRequest
 from omnimarket.nodes.node_claude_pool_refill_effect.handlers.handler_claude_pool_refill import (
@@ -85,6 +87,10 @@ from omnimarket.nodes.node_claude_pool_revoke_cause_compute.handlers.handler_rev
 from omnimarket.nodes.node_claude_token_pool_effect.handlers.adapter_limit_probe import (
     HeadlessLimitProbe,
 )
+from omnimarket.nodes.node_claude_token_pool_effect.handlers.adapter_pool_mark_events import (
+    BusPoolMarkEventSink,
+    InMemoryPoolMarkEventSink,
+)
 from omnimarket.nodes.node_claude_token_pool_effect.handlers.adapter_rotation_ports import (
     FileTokenFile,
     MirrorMarksSource,
@@ -92,6 +98,9 @@ from omnimarket.nodes.node_claude_token_pool_effect.handlers.adapter_rotation_po
 from omnimarket.nodes.node_claude_token_pool_effect.handlers.handler_claude_token_pool import (
     ClaudeTokenPoolRefusedError,
     HandlerClaudeTokenPool,
+)
+from omnimarket.nodes.node_claude_token_pool_effect.handlers.handler_claude_token_pool_status_view import (
+    HandlerClaudeTokenPoolStatusView,
 )
 from omnimarket.nodes.node_claude_token_pool_effect.handlers.handler_claude_token_rotation_tick import (
     HandlerClaudeTokenAssign,
@@ -110,6 +119,10 @@ from omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_po
     ModelClaudeTokenPoolRequest,
     ModelPoolLabelLanes,
 )
+from omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_pool_status_view import (
+    ModelPoolStatusViewRequest,
+    ModelPoolStatusViewResult,
+)
 from omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_rotation import (
     ModelClaudeTokenAssignRequest,
     ModelClaudeTokenAssignResult,
@@ -117,11 +130,20 @@ from omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_ro
     ModelClaudeTokenRotationResult,
     ModelRotationOverlay,
 )
+from omnimarket.nodes.node_claude_token_pool_effect.protocols.protocol_pool_mark_events import (
+    ProtocolPoolMarkEventSink,
+)
 
 EXIT_REFUSED = 2
 EXIT_EMPTY = 3
 EXIT_ALL_LIMITED = 4
 EXIT_START_REFUSED = 5
+
+
+_ACTOR_HELP = (
+    "who asked for this change, written on its mark event; left out, the variable the overlay's mark_events.actor_env "
+    "names says, and without one the event reads unattributed"
+)
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -161,6 +183,7 @@ def _parser() -> argparse.ArgumentParser:
         "mark-limited", help="the account behind --label hit its usage limit"
     )
     mark.add_argument("--label", required=True)
+    mark.add_argument("--actor", default=None, help=_ACTOR_HELP)
     mark.add_argument("--seconds", required=True, type=float)
     mark.add_argument(
         "--exact",
@@ -172,6 +195,7 @@ def _parser() -> argparse.ArgumentParser:
         help="the OAuth token behind --label was revoked; skip it until re-added",
     )
     revoke.add_argument("--label", required=True)
+    revoke.add_argument("--actor", default=None, help=_ACTOR_HELP)
     revoke.add_argument(
         "--evidence-stdin",
         action="store_true",
@@ -211,7 +235,14 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="also count the use of that token in the pool",
     )
-    status = verbs.add_parser("status", help="print the pool status line")
+    status = verbs.add_parser(
+        "status",
+        help=(
+            "print the pool status line; on a host the overlay does not declare it reads the marks from the "
+            "overlay's marks source, or says plainly it reads an unsynced local copy and names no limited or "
+            "revoked label"
+        ),
+    )
     status.add_argument(
         "--json", action="store_true", help="the whole result as JSON (no token)"
     )
@@ -228,6 +259,81 @@ def _pasted() -> str:
 
 def load_overlay() -> ModelRotationOverlay:
     return load_structured_overlay(NODE_NAME, ModelRotationOverlay)
+
+
+def read_overlay() -> ModelRotationOverlay | None:
+    """The deployed overlay, or ``None`` when this host cannot read one (absent, refused by the model, unreadable)."""
+    try:
+        return load_overlay()
+    except (NodeOverlayError, ValidationError, OSError):
+        return None
+
+
+def mark_event_wiring(
+    overlay: ModelRotationOverlay | None, env: Mapping[str, str] | None = None
+) -> tuple[ProtocolPoolMarkEventSink | None, str | None]:
+    """The sink for the pool's mark events and the default ``who``, from the overlay's ``mark_events`` and ``event_bus``.
+
+    ``(None, None)`` when the overlay declares no mark events. An in-memory bus holds the events in the process; a
+    kafka bus publishes them on the lane's broker.
+    """
+    if overlay is None or overlay.mark_events is None or overlay.event_bus is None:
+        return None, None
+    environ = os.environ if env is None else env
+    bus = overlay.event_bus
+    sink: ProtocolPoolMarkEventSink
+    if bus.type == "inmemory":
+        sink = InMemoryPoolMarkEventSink()
+    else:
+        sink = BusPoolMarkEventSink(
+            overlay.mark_events,
+            lambda: open_lane_bus(
+                bus="kafka",
+                lane=bus.lane,
+                kafka_bootstrap=None,
+                root=workspace_root(environ),
+            ),
+        )
+    return sink, environ.get(overlay.mark_events.actor_env) or None
+
+
+def run_status(
+    host: str | None = None,
+    *,
+    overlay: ModelRotationOverlay | None = None,
+    overlay_read: bool | None = None,
+    home: Path | None = None,
+    pool: HandlerClaudeTokenPool | None = None,
+) -> ModelPoolStatusViewResult:
+    """The pool status of ``host`` with the production ports: its pool, the overlay's marks source over ssh or in place."""
+    declared = overlay if overlay is not None else read_overlay()
+    name = host or socket.gethostname().split(".")[0]
+    claude_pool = pool or HandlerClaudeTokenPool(host=name)
+    source = declared.marks_source if declared is not None else None
+    source_address = (source.ssh_target or "").split(".", 1)[0] if source else ""
+    handler = HandlerClaudeTokenPoolStatusView(
+        pool=claude_pool,
+        overlay=declared,
+        marks_source=MirrorMarksSource(
+            home=home or Path.home(),
+            mirror_path=source.mirror_path if source is not None else "",
+            ssh_target=None
+            if source is None or name in (source.host, source_address)
+            else source.ssh_target,
+        ),
+        local_copy_written_at=claude_pool.written_at,
+    )
+    return handler.handle(ModelPoolStatusViewRequest(host=name))
+
+
+def _status(args: argparse.Namespace) -> int:
+    result = run_status()
+    if getattr(args, "json", False):
+        sys.stdout.write(result.model_dump_json(indent=2) + "\n")
+    else:
+        sys.stdout.write(result.status_line + "\n")
+    # A copy that could not be judged against the source says so in its exit status, as a tick that fell back does.
+    return EXIT_EMPTY if result.basis == "unsynced_local_copy" else 0
 
 
 def run_steer(ledger: ProtocolLedgerText) -> ModelEngineLoginSteer | None:
@@ -306,7 +412,13 @@ def run_tick(
             )
         root = Path(root_text)
     source = declared.marks_source
-    claude_pool = pool or HandlerClaudeTokenPool(host=host)
+    mark_sink, _ = mark_event_wiring(declared)
+    claude_pool = pool or HandlerClaudeTokenPool(
+        host=host,
+        mark_event_sink=mark_sink,
+        # The tick is its own asker: the unit that runs it names who changed the marks.
+        default_actor=load_schedule().unit_name,
+    )
     recheck = declared.limit_recheck
     handler = HandlerClaudeTokenRotation(
         pool=claude_pool,
@@ -537,6 +649,13 @@ def main(
         except (NodeOverlayError, ValidationError, ValueError, OSError) as exc:
             sys.stderr.write(f"INDETERMINATE: {type(exc).__name__}: {exc}\n")
             return EXIT_EMPTY
+    if args.verb == "status" and handler is None:
+        # A caller that hands in its own pool (a test, an embedding process) asked that pool, so the plain read below answers it.
+        try:
+            return _status(args)
+        except (NodeOverlayError, ValidationError, ValueError, OSError) as exc:
+            sys.stderr.write(f"INDETERMINATE: {type(exc).__name__}: {exc}\n")
+            return EXIT_EMPTY
     if args.verb == "export" and sys.stdout.isatty():
         sys.stderr.write(
             "refusing to write a token to a terminal; pipe it: ... export --label L | <store writer>\n"
@@ -577,10 +696,16 @@ def main(
                 filter(None, (getattr(args, "drain_labels", "") or "").split(","))
             ),
             lane_counts=parse_lane_counts(getattr(args, "lanes", None)),
+            actor=getattr(args, "actor", None),
         )
         if handler is None and args.verb == "resolve":
             cap, cap_read = read_lane_cap()
             handler = HandlerClaudeTokenPool(lane_cap=cap, lane_cap_read=cap_read)
+        if handler is None and args.verb in ("add", "mark-limited", "mark-revoked"):
+            mark_sink, mark_actor = mark_event_wiring(read_overlay())
+            handler = HandlerClaudeTokenPool(
+                mark_event_sink=mark_sink, default_actor=mark_actor
+            )
         result = (handler or HandlerClaudeTokenPool()).handle(request)
     except (ClaudeTokenPoolRefusedError, ValueError) as refusal:
         sys.stderr.write(f"claude-pool refused: {refusal}\n")
