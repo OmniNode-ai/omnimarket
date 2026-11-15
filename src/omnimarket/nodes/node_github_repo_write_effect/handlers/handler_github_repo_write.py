@@ -1463,6 +1463,27 @@ async def _runner_list(run: _Run) -> ModelRepoWriteCompleted:
     return run.completed(runners=tuple(await _runners_pages(run, organization)))
 
 
+def _exposure_field_faults(meta: dict[str, object]) -> list[str]:
+    """Each exposure field the group body is missing or holds with a wrong type.
+
+    ``name`` must be a string and ``allows_public_repositories`` and
+    ``restricted_to_selected_workflows`` booleans; the model needs all three to
+    tell an exposed group from an unexposed one, so each faulty field is named
+    in the refusal instead of filled with a default.
+    """
+    faults: list[str] = []
+    for field, kind in (
+        ("name", str),
+        ("allows_public_repositories", bool),
+        ("restricted_to_selected_workflows", bool),
+    ):
+        if field not in meta:
+            faults.append(f"{field} (absent)")
+        elif not isinstance(meta[field], kind):
+            faults.append(f"{field} (wrong type)")
+    return faults
+
+
 async def _runner_group_get(run: _Run) -> ModelRepoWriteCompleted:
     """One runner group's settings and every repository it is open to.
 
@@ -1502,10 +1523,12 @@ async def _runner_group_get(run: _Run) -> ModelRepoWriteCompleted:
         or not isinstance(allows_public, bool)
         or not isinstance(restricted, bool)
     ):
+        held = ", ".join(sorted(meta)) or "none"
         raise run.refused(
             EnumRepoWriteRefusal.GITHUB_REFUSED,
-            f"runner group {group_id} on {organization} answered a body without "
-            "name, allows_public_repositories and restricted_to_selected_workflows",
+            f"runner group {group_id} on {organization} answered a body with "
+            + ", ".join(_exposure_field_faults(meta))
+            + f"; it held the keys {held}",
         )
     return run.completed(
         runner_group=ModelRepoWriteRunnerGroup(

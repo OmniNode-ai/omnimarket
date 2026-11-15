@@ -243,6 +243,43 @@ async def test_a_body_without_the_exposure_fields_is_refused_not_defaulted() -> 
     ).handle(_request())
     assert isinstance(result, ModelRepoWriteFailed), result
     assert result.reason is EnumRepoWriteRefusal.GITHUB_REFUSED
+    assert "allows_public_repositories (absent)" in result.detail
+    assert "restricted_to_selected_workflows (absent)" in result.detail
+    assert "id, name" in result.detail
+    assert "name (absent)" not in result.detail
+
+
+async def test_the_refusal_detail_never_carries_a_body_value() -> None:
+    body = {
+        "id": _GROUP,
+        "name": "example-group",
+        "visibility": "secret-marker-value",
+    }
+    fake = _Fake([(_GROUP_REQUEST, _ok(body)), (_PAGE_1, _ok(_repos(0)))])
+    result = await _handler(
+        fake, _overlay(ModelRunnerGroupEntry(organization=_ORG, group_id=_GROUP))
+    ).handle(_request())
+    assert isinstance(result, ModelRepoWriteFailed), result
+    assert result.reason is EnumRepoWriteRefusal.GITHUB_REFUSED
+    assert "secret-marker-value" not in result.detail
+    assert "visibility" in result.detail
+
+
+async def test_a_wrong_typed_field_is_named_as_wrong_type() -> None:
+    body = {
+        "id": _GROUP,
+        "name": "example-group",
+        "allows_public_repositories": "false",
+        "restricted_to_selected_workflows": True,
+    }
+    fake = _Fake([(_GROUP_REQUEST, _ok(body)), (_PAGE_1, _ok(_repos(0)))])
+    result = await _handler(
+        fake, _overlay(ModelRunnerGroupEntry(organization=_ORG, group_id=_GROUP))
+    ).handle(_request())
+    assert isinstance(result, ModelRepoWriteFailed), result
+    assert result.reason is EnumRepoWriteRefusal.GITHUB_REFUSED
+    assert "allows_public_repositories (wrong type)" in result.detail
+    assert "restricted_to_selected_workflows (" not in result.detail
 
 
 async def test_dry_run_plans_only_the_group_read() -> None:

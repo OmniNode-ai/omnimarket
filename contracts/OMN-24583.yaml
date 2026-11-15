@@ -1,0 +1,56 @@
+schema_version: 1.0.0
+ticket_id: OMN-24583
+title: The runner group check names the missing field when it refuses GitHub's answer
+summary: node_github_repo_write_effect refuses a runner group answer that lacks name, allows_public_repositories or restricted_to_selected_workflows with reason github_refused and a detail that names no field, so the hourly exposure reading cannot say which field is missing. The refusal detail now names each absent or wrongly typed field and the key names the answer held (names only, never values). The refusal conditions, models, contract and overlay do not change.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24583-names-missing-field
+  statement: A runner group answer refused for a missing or wrongly typed field names that field and the keys the answer held, never a value.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a runner group answer that lacks name, allows_public_repositories or restricted_to_selected_workflows is refused with each missing field named and the keys the answer held, and the reason stays github_refused -- falsifier: pytest tests/unit/nodes/node_github_repo_write_effect/test_handler_runner_group_get.py -q -k without_the_exposure_fields fails on dev, where the detail names no field'
+  - id: AC2
+    statement: 'AC2: failing control: a value in the answer never appears in the refusal detail -- falsifier: test_the_refusal_detail_never_carries_a_body_value fails if the detail ever includes a body value'
+  - id: AC3
+    statement: 'AC3: error chain: a field of the wrong type is named as wrong type and a correctly typed one is not named -- falsifier: test_a_wrong_typed_field_is_named_as_wrong_type fails if the detail names a correct field or omits the wrong one'
+  - id: AC4
+    statement: 'AC4: integrated: after the change runs on the development runtime, onex scm runner-group-get OmniNode-ai/omnimarket --group-id 7 answers a detail that names each missing field and the keys held, read in the answer''s detail -- falsifier: the answer still reads "answered a body without name, allows_public_repositories and restricted_to_selected_workflows" with no field named'
+evidence_requirements:
+- kind: tests
+  description: The runner group read tests of the write node, including the missing-field refusal, the no-value control and the wrong-type error chain.
+  command: uv run pytest tests/unit/nodes/node_github_repo_write_effect/test_handler_runner_group_get.py -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24583-names-field
+  description: 'AC1 to AC3: the refusal names the faulty fields and held keys, never a value; against the base handler the three new or extended tests fail.'
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_github_repo_write_effect/test_handler_runner_group_get.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn24583-runtime-read
+  description: 'AC4 integrated: read in the dev runtime after the rebuild with the change, by onex scm runner-group-get for group 7; not read at the pushed head.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: command
+    check_value: onex scm runner-group-get OmniNode-ai/omnimarket --group-id 7 --bus-lane dev --lane <lane>
+    cwd: .
+- id: dod-omn24583-integration-proof
+  description: 'Run the runner group read tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. It binds no acceptance criterion: the runtime reading (AC4) is read in the dev runtime after the rebuild with the change.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24583 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_github_repo_write_effect/test_handler_runner_group_get.py -q -n 0 --no-cov
+    cwd: .
