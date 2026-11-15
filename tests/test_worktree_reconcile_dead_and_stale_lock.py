@@ -65,9 +65,12 @@ def test_the_two_knobs_live_in_the_policy_model() -> None:
     assert policy.stale_lock_hours == 24.0
     assert policy.lane_lock_reasons == ()
     assert policy.ledger_max_age_hours == 6.0
-    assert policy.ledger_lookback_days == 0
+    assert policy.ledger_lookback_days == 3
     with pytest.raises(ValidationError):
         ModelWorktreeReconcilePolicy(prune_dead_worktrees=True)
+    # A lookback of 0 would hide a CLAIM that rolled into an archive file.
+    with pytest.raises(ValidationError):
+        ModelWorktreeReconcilePolicy(ledger_lookback_days=0)
 
 
 def test_a_lock_is_stale_only_when_nothing_backs_it() -> None:
@@ -231,6 +234,7 @@ def test_without_a_ledger_a_locked_tree_stays_and_is_named_live_locked(
         monkeypatch,
         execute=True,
         policy=LANE,
+        ledger_path=None,
     )
     row = result.decided_events[0]
     assert not row.facts.ledger_known
