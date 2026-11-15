@@ -90,6 +90,17 @@ def _mine(result) -> set[tuple[str, str, str]]:
     }
 
 
+def _sender_refusal(node: str) -> str | None:
+    """The sender's refusal text for node; None when it resolves or cannot be resolved for another reason."""
+    try:
+        cli_run_node._resolve_node_topics(node)
+    except ModelOnexError as error:
+        return str(error)
+    except Exception:
+        return None
+    return None
+
+
 def test_the_sender_topics_match_the_caller_rows_for_every_packaged_node() -> None:
     """The command topic run-node sends to and the terminal it reads are the command and terminal uses the derivation reads."""
     by_node: dict[str, dict[str, str]] = {}
@@ -174,12 +185,7 @@ def test_a_caller_of_a_node_without_a_terminal_event_is_refused_like_the_sender(
     no_terminal = sorted(
         {u.node for u in uses if u.command} - {u.node for u in uses if u.terminal}
     )
-    for node in no_terminal:
-        try:
-            cli_run_node._resolve_node_topics(node)
-        except ModelOnexError as error:
-            assert "terminal_event" in str(error)  # noqa: PT017
-            return
-        except Exception:
-            continue
-    # no packaged contract declares no terminal_event: the tmp_path refusal above is the case
+    refusals = [_sender_refusal(node) for node in no_terminal]
+    messages = [message for message in refusals if message is not None]
+    assert messages, "the sender refused no packaged node for a missing terminal_event"
+    assert all("terminal_event" in message for message in messages)
