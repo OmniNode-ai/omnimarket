@@ -120,19 +120,23 @@ def load_landing_lease_use() -> ModelLandingLeaseUse:
 
 
 @functools.cache
+def _reducer_overlay() -> ModelLeaseOverlay:
+    return load_lease_overlay()
+
+
 def cached_lease_overlay() -> ModelLeaseOverlay:
     """The reducer's overlay, read once per process (never once per tick).
 
     The overlay root is deployment configuration fixed at boot, so the first read stands for
     the process; ``clear_lease_caches`` forgets it.
     """
-    return load_lease_overlay()
+    return _reducer_overlay()
 
 
 def clear_lease_caches() -> None:
     """Forget the contract and overlay reads, so the next use reads them again."""
     _landing_use.cache_clear()
-    cached_lease_overlay.cache_clear()
+    _reducer_overlay.cache_clear()
 
 
 def holder_of(use: ModelLandingLeaseUse, subject: str) -> str:
