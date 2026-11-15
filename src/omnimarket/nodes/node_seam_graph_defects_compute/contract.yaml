@@ -63,6 +63,7 @@ handler_routing:
         name: "HandlerSeamGraphDefects"
         module: "omnimarket.nodes.node_seam_graph_defects_compute.handlers.handler_seam_graph_defects"
       topic: "onex.cmd.omnimarket.seam-graph-defects-requested.v1"
+terminal_event: "onex.evt.omnimarket.seam-graph-defects-completed.v1"
 runtime_dispatch:
   command_topic: "onex.cmd.omnimarket.seam-graph-defects-requested.v1"
   terminal_events:

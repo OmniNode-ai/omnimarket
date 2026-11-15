@@ -282,3 +282,30 @@ class HandlerSeamGraphDefects:
     def handle(self, request: ModelSeamGraphRequest) -> ModelSeamGraphDefectReport:
         """Loads the facts of the pinned checkouts and derives the defects."""
         return derive_seam_defects(load_seam_graph_facts(request), request.rule)
+
+    def handle_terminal(
+        self, request: ModelSeamGraphRequest
+    ) -> ModelSeamGraphDefectReport:
+        """Like handle, but a refused scan returns an empty report with the cause.
+
+        The cause lands in terminal_failure_cause, which the runtime publishes
+        on the contract's failure terminal; no clean report is ever claimed.
+        """
+        try:
+            return self.handle(request)
+        except ValueError as error:
+            return ModelSeamGraphDefectReport(
+                counts=ModelSeamGraphCounts(
+                    nodes=0,
+                    topics=0,
+                    publish_edges=0,
+                    subscribe_edges=0,
+                    overlay_edges=0,
+                    caller_edges=0,
+                    import_edges=0,
+                ),
+                groups=(),
+                contracts_read=0,
+                contracts_unreadable=(),
+                terminal_failure_cause=str(error),
+            )

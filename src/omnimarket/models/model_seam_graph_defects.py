@@ -170,3 +170,6 @@ class ModelSeamGraphDefectReport(BaseModel):
     groups: tuple[ModelSeamDefectGroup, ...]
     contracts_read: int
     contracts_unreadable: tuple[str, ...]
+    # Set only on a refused scan; the runtime publishes a result carrying a
+    # cause on the contract's failure terminal.
+    terminal_failure_cause: str | None = None

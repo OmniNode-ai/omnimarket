@@ -351,6 +351,16 @@ def test_error_chain_handler_refuses_repo_without_checkout() -> None:
         HandlerSeamGraphDefects().handle(request)
 
 
+def test_error_chain_handle_terminal_carries_failure_cause() -> None:
+    request = ModelSeamGraphRequest(rule=_rule(), repo_roots={})
+
+    report = HandlerSeamGraphDefects().handle_terminal(request)
+
+    assert report.terminal_failure_cause is not None
+    assert "repo_a" in report.terminal_failure_cause
+    assert report.contracts_read == 0
+
+
 def test_error_chain_extra_field_refused() -> None:
     with pytest.raises(ValidationError):
         ModelSeamNodeFact(**_node().model_dump(), surprise=1)
