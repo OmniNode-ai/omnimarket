@@ -16,9 +16,6 @@ import shlex
 import sys
 from typing import Never
 
-from omnimarket.nodes.node_ledger_outbox_settle_effect.adapters.adapter_publisher_sender import (
-    PublisherSender,
-)
 from omnimarket.nodes.node_ledger_outbox_settle_effect.handlers.handler_outbox_settle import (
     HandlerOutboxSettle,
     Sender,
@@ -46,12 +43,17 @@ def main(argv: list[str] | None = None, *, sender: Sender | None = None) -> int:
     try:
         args = parser.parse_args(argv)
         request = ModelOutboxSettleRequest.model_validate_json(args.input)
-        use = sender
-        if use is None:
-            use = PublisherSender(
-                shlex.split(args.publisher_argv), lane=args.lane, host=args.host
+        if sender is None:
+            if not shlex.split(args.publisher_argv):
+                raise ValueError("the publisher argv prefix is empty")
+            request = request.model_copy(
+                update={
+                    "publisher_argv": tuple(shlex.split(args.publisher_argv)),
+                    "lane": args.lane,
+                    "host": args.host,
+                }
             )
-        result = HandlerOutboxSettle(use).handle(request)
+        result = HandlerOutboxSettle(sender).handle(request)
     except (ValueError, OSError) as exc:
         sys.stderr.write(f"INDETERMINATE: {exc}\n")
         return 3

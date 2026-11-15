@@ -15,6 +15,12 @@ from omnimarket.nodes.node_ledger_outbox_settle_effect.__main__ import main
 from omnimarket.nodes.node_ledger_outbox_settle_effect.adapters.adapter_publisher_sender import (
     PublisherSender,
 )
+from omnimarket.nodes.node_ledger_outbox_settle_effect.handlers.handler_outbox_settle import (
+    HandlerOutboxSettle,
+)
+from omnimarket.nodes.node_ledger_outbox_settle_effect.models.model_outbox_settle import (
+    ModelOutboxSettleRequest,
+)
 
 from .test_outbox_settle import REQ, Publisher, refused_request, stamp
 
@@ -81,3 +87,34 @@ def test_publisher_sender_answers_pending_when_the_publisher_cannot_start() -> N
         "row\n", REQ
     )
     assert result.exit_code == 75
+
+
+def test_handler_runs_with_no_sender_when_the_request_names_a_publisher(
+    ledger: Path, tmp_path: Path
+) -> None:
+    """Auto-wired the handler is built with no argument; the request's publisher builds the sender."""
+    script = tmp_path / "publisher_ok.py"
+    script.write_text(
+        "import json, sys\n"
+        "rid = sys.argv[sys.argv.index('--request-id') + 1]\n"
+        "print(json.dumps({'request_id': rid, 'status': 'accepted'}))\n",
+        encoding="utf-8",
+    )
+    refused_request(ledger, "row\n", REQ, "bus pending")
+    request = ModelOutboxSettleRequest(
+        ledger_path=str(ledger), publisher_argv=(sys.executable, str(script))
+    )
+    result = HandlerOutboxSettle().handle(request)
+    assert (result.settled, result.remaining, result.stopped) == (1, 0, "")
+
+
+def test_handler_with_no_sender_and_no_publisher_stops_and_keeps_the_request(
+    ledger: Path,
+) -> None:
+    refused_request(ledger, "row\n", REQ, "bus pending")
+    result = HandlerOutboxSettle().handle(
+        ModelOutboxSettleRequest(ledger_path=str(ledger))
+    )
+    assert result.settled == 0
+    assert result.remaining == 1
+    assert "no publisher" in result.stopped

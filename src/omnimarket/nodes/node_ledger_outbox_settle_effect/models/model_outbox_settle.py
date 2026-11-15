@@ -15,7 +15,8 @@ class ModelOutboxSettleRequest(BaseModel):
 
     ``operation`` ``settle`` sends each refused request again (see the handler); ``due`` only reads whether one has
     waited out ``retry_interval_s`` since its last refusal. ``min_age_s`` leaves a refusal younger than it alone.
-    ``now`` is the clock: unset, the handler reads the wall clock once; a test or a replay passes it.
+    ``publisher_argv`` (with ``lane`` and ``host``) names the publisher command the default sender runs; a handler built
+    with a sender ignores it. ``now`` is the clock: unset, the handler reads the wall clock once; a test or a replay passes it.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -26,6 +27,9 @@ class ModelOutboxSettleRequest(BaseModel):
     retry_interval_s: float = Field(default=3600.0, gt=0)
     stale_stamp_age_s: float = Field(default=23 * 3600.0, gt=0)
     now: datetime | None = None
+    publisher_argv: tuple[str, ...] = ()
+    lane: str = "outbox-settle"
+    host: str = ""
 
 
 class ModelOutboxSettleResult(BaseModel):

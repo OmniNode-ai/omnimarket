@@ -231,8 +231,26 @@ def settle_due(ledger: Path, now: datetime, retry_interval_s: float) -> bool:
 class HandlerOutboxSettle:
     """``handle(request) -> result``: settle the refused requests of one ledger's bus outbox."""
 
-    def __init__(self, sender: Sender) -> None:
-        self._send = sender
+    def __init__(self, sender: Sender | None = None) -> None:
+        """``sender`` is optional: unset, the settle builds the publisher sender from the request's ``publisher_argv``.
+
+        A test or a caller supplies its own sender; the runtime constructs the handler with no argument and the
+        request carries the publisher (the shape of the other effect nodes, whose real adapter is the default).
+        """
+        self._sender = sender
+
+    def _sender_for(self, request: ModelOutboxSettleRequest) -> Sender | None:
+        if self._sender is not None:
+            return self._sender
+        if not request.publisher_argv:
+            return None
+        from omnimarket.nodes.node_ledger_outbox_settle_effect.adapters.adapter_publisher_sender import (
+            PublisherSender,
+        )
+
+        return PublisherSender(
+            request.publisher_argv, lane=request.lane, host=request.host
+        )
 
     def handle(self, request: ModelOutboxSettleRequest) -> ModelOutboxSettleResult:
         ledger = Path(request.ledger_path)
@@ -264,6 +282,13 @@ class HandlerOutboxSettle:
         request: ModelOutboxSettleRequest,
         moment: datetime,
     ) -> ModelOutboxSettleResult:
+        send = self._sender_for(request)
+        if send is None:
+            return ModelOutboxSettleResult(
+                operation="settle",
+                remaining=len(outbox_refused(ledger)),
+                stopped="no publisher: supply publisher_argv or a sender",
+            )
         settled = resent = refused = 0
         stopped = ""
         for item in outbox_refused(ledger):
@@ -273,7 +298,7 @@ class HandlerOutboxSettle:
                 continue
             if moment.timestamp() - modified < request.min_age_s:
                 continue
-            result = self._send(item.payload, item.request_id)
+            result = send(item.payload, item.request_id)
             if result.exit_code == 0:
                 status = (
                     result.receipt.get("status")
@@ -296,7 +321,7 @@ class HandlerOutboxSettle:
             if all_row_stamps_stale(item.payload, moment, request.stale_stamp_age_s):
                 new_id = settle_request_id(item.request_id)
                 payload = restamp_rows(item.payload, item.request_id, moment)
-                resend = self._send(payload, new_id)
+                resend = send(payload, new_id)
                 if resend.exit_code == 0:
                     _settle_receipt(directory, item, body, "resent-restamped", moment)
                     item.path.unlink(missing_ok=True)

@@ -112,3 +112,12 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_ledger_outbox_settle_effect/test_main_outbox_settle.py -q --no-cov -p no:randomly
     cwd: .
+- id: dod-omn24239-outbox-settle-auto-wired
+  description: The settle handler is built with no argument by the runtime (the publisher comes from the request's publisher_argv), the auto-wire test passes, and a handler built with no sender runs a settle; the added tests fail on the previous head where the sender was required.
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_ledger_outbox_settle_effect tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py -q --no-cov -p no:randomly
+    cwd: .
