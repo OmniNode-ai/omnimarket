@@ -9,7 +9,9 @@ ever carries a read's raw stdout: the detail says only what the judge saw, every
 to one printable line of at most ``max_detail_chars``, and a cell holding a line break is refused
 at validation. An ``exit_zero`` row names the nonzero exit code that reads FALSE, else the read
 is refused. The node judges the same request as its handler, and the overlay loader returns the
-typed register or refuses.
+typed register or refuses. A row the policy refused (a validation failure, a repeated row id, a
+command outside ``allowed_commands``) reads UNREAD with its refusal reason; the refused rows and
+the allowlist are test_refused_rows_and_allowlist.py's subject.
 """
 
 from __future__ import annotations
@@ -100,7 +102,9 @@ def judge(
             correlation_id="ruling-1",
             now=NOW,
             policy=ModelRulingRegisterPolicy(
-                max_reading_age_seconds=MAX_AGE, rows=rows
+                max_reading_age_seconds=MAX_AGE,
+                rows=rows,
+                allowed_commands=("example-command",),
             ),
             readings=readings,
         )
@@ -231,6 +235,7 @@ def test_an_unread_detail_with_breaks_and_controls_is_folded_and_bounded() -> No
                 max_reading_age_seconds=MAX_AGE,
                 max_detail_chars=30,
                 rows=(row(),),
+                allowed_commands=("example-command",),
             ),
             readings=(
                 reading(
@@ -338,7 +343,9 @@ def test_the_node_judges_the_same_request_as_its_handler_and_a_replay_is_identic
         correlation_id="ruling-1",
         now=NOW,
         policy=ModelRulingRegisterPolicy(
-            max_reading_age_seconds=MAX_AGE, rows=(row(),)
+            max_reading_age_seconds=MAX_AGE,
+            rows=(row(),),
+            allowed_commands=("example-command",),
         ),
         readings=(reading(exit_code=1),),
     )
@@ -368,9 +375,43 @@ def test_the_overlay_loader_returns_the_typed_register(
     policy = load_ruling_register_policy()
     assert len(policy.rows) >= 2
     assert policy.max_reading_age_seconds >= 1
+    # the shipped example lists its prefixes and refuses none of its own rows
+    assert policy.allowed_commands == ("example-census-command", "example-queue-count")
+    assert policy.refused_rows == ()
 
 
-def test_the_overlay_loader_refuses_a_row_with_no_read(
+def test_the_overlay_loader_refuses_a_row_with_no_read_into_refused_rows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A row without its read no longer refuses the overlay: the loader returns the
+    policy with that one row refused, its reason naming the missing field."""
+    install_node_overlay(
+        monkeypatch,
+        tmp_path,
+        "node_ruling_register_compute",
+        {
+            "max_reading_age_seconds": 600,
+            "allowed_commands": ["example-command"],
+            "rows": [
+                {
+                    "row_id": "row-1",
+                    "ruling": RULING,
+                    "must_be_true": "the example ruling holds",
+                    "owner": "none",
+                    "fix": "fix row-1",
+                }
+            ],
+        },
+    )
+    policy = load_ruling_register_policy()
+    assert policy.rows == ()
+    (refused,) = policy.refused_rows
+    assert refused.row_id == "row-1"
+    assert refused.owner == "none"
+    assert "read" in refused.reason
+
+
+def test_the_overlay_loader_refuses_an_overlay_that_names_no_allowed_commands(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     install_node_overlay(
@@ -384,6 +425,12 @@ def test_the_overlay_loader_refuses_a_row_with_no_read(
                     "row_id": "row-1",
                     "ruling": RULING,
                     "must_be_true": "the example ruling holds",
+                    "read": {
+                        "host": "host-a",
+                        "argv": ["example-command"],
+                        "ok_exit_codes": [0, 1],
+                        "expect": {"kind": "exit_zero"},
+                    },
                     "owner": "none",
                     "fix": "fix row-1",
                 }

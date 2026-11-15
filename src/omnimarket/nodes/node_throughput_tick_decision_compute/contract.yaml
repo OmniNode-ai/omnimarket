@@ -96,6 +96,7 @@ inputs:
   seam_readings: {type: object, required: false, description: "Typed readings of a finalized publish window; an absent field leaves this check disabled until the runtime caller is wired."}
   ruling_register: {type: object, required: false, description: "The standing-rulings register's judgement (node_ruling_register_compute result, OMN-24478); each FALSE or UNREAD row prints a MISSING ruling-not-running line. The tick's facts read supplies it from the overlay; an absent field leaves this check disabled."}
   ruling_register_unread: {type: str, required: false, description: "Why the standing-rulings register could not be read (OMN-24478); a non-empty value prints MISSING ruling-not-running:register, so an unread register is never silently skipped."}
+  ruling_register_sink_errors: {type: list, required: false, description: "The register read's journal write failures (OMN-24556), one `<row_id>: <exception name>` entry per row whose read event the journal did not take; a non-empty value prints one UNKNOWN ruling-register-journal line beside the register's own findings."}
 outputs:
   lines: {type: list}
   status_line: {type: str}

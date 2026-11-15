@@ -8,8 +8,10 @@ argv directly, a remote host's argv through the route's prefix with the host's t
 substituted and the argv shlex-joined as one final argument. A read never raises: a host
 with no target, a command that did not run, timed out, wrote output that is not UTF-8,
 was handed an argv holding a NUL or exited with a code the row does not accept all read
-UNREAD, and UNREAD is never TRUE. Nothing about a host or a target is in this file; the
-route is.
+UNREAD, and UNREAD is never TRUE. The handler bounds the whole register read by the
+route's ``total_timeout_seconds`` and hands each row the budget it has left; a port runs
+its read under the lesser of its own timeout and that budget. Nothing about a host or a
+target is in this file; the route is.
 """
 
 from __future__ import annotations
@@ -59,7 +61,10 @@ class InMemoryRulingReadPort:
         self._readings = readings
         self._clock = clock
 
-    def read(self, row: ModelRulingRow) -> ModelRulingReading:
+    def read(
+        self, row: ModelRulingRow, budget_seconds: int | None = None
+    ) -> ModelRulingReading:
+        # the in-memory read is instant, so it spends none of the budget it is handed
         reading = self._readings.get(row.row_id)
         if reading is None:
             return ModelRulingReading(
@@ -85,7 +90,9 @@ class CommandRulingReadPort:
         self._runner = runner
         self._clock = clock
 
-    def read(self, row: ModelRulingRow) -> ModelRulingReading:
+    def read(
+        self, row: ModelRulingRow, budget_seconds: int | None = None
+    ) -> ModelRulingReading:
         host = row.read.host
         if host in self._route.local_hosts:
             argv = list(row.read.argv)
@@ -97,8 +104,13 @@ class CommandRulingReadPort:
                 for token in self._route.remote_argv_prefix
             ]
             argv = [*prefix, shlex.join(list(row.read.argv))]
+        # the read runs under the lesser of the route's own timeout and the caller's
+        # remaining budget, so one row cannot spend more than it was left with
+        timeout_seconds = self._route.timeout_seconds
+        if budget_seconds is not None:
+            timeout_seconds = min(timeout_seconds, budget_seconds)
         try:
-            exit_code, stdout = self._runner(argv, self._route.timeout_seconds)
+            exit_code, stdout = self._runner(argv, timeout_seconds)
         except (
             OSError,
             subprocess.TimeoutExpired,

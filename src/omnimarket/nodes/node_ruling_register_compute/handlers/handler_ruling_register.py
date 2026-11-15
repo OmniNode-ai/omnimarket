@@ -9,6 +9,9 @@
   reading never raises; it reads UNREAD.
 * A TRUE row reads no tick line; a FALSE or UNREAD row reads the MISSING line
   naming its ruling stamp, why it is not running and its owner's fix.
+* After the policy rows' verdicts, every refused row of the policy reads one
+  UNREAD verdict carrying its refusal reason; refused rows count as unread and
+  refuse the register.
 * No verdict cell ever carries a read's raw output: the detail is one printable
   line built without the stdout, and ``one_line`` folds the row's own cells and
   the detail to the policy's ``max_detail_chars``, so a read's output can forge
@@ -24,6 +27,7 @@ from omnimarket.models.model_ruling_register import (
     EnumRulingExpect,
     EnumRulingVerdict,
     ModelRulingReading,
+    ModelRulingRefusedRow,
     ModelRulingRegisterRequest,
     ModelRulingRegisterResult,
     ModelRulingRow,
@@ -52,10 +56,15 @@ class HandlerRulingRegister:
 
     def handle(self, request: ModelRulingRegisterRequest) -> ModelRulingRegisterResult:
         verdicts = tuple(self._judge_row(row, request) for row in request.policy.rows)
+        verdicts += tuple(
+            self._judge_refused_row(refused, request)
+            for refused in request.policy.refused_rows
+        )
         counts = Counter(verdict.verdict for verdict in verdicts)
         return ModelRulingRegisterResult(
             correlation_id=request.correlation_id,
-            passed=counts[EnumRulingVerdict.TRUE] == len(verdicts),
+            passed=counts[EnumRulingVerdict.TRUE] == len(verdicts)
+            and not request.policy.refused_rows,
             verdicts=verdicts,
             true_count=counts[EnumRulingVerdict.TRUE],
             false_count=counts[EnumRulingVerdict.FALSE],
@@ -109,6 +118,26 @@ class HandlerRulingRegister:
             detail=detail,
             why=why,
             fix=fix,
+        )
+
+    def _judge_refused_row(
+        self, refused: ModelRulingRefusedRow, request: ModelRulingRegisterRequest
+    ) -> ModelRulingVerdict:
+        """One refused row's verdict: UNREAD with its refusal reason.
+
+        The reason is built from validation error fields and messages in the policy, so no
+        raw input value can enter a cell; ``one_line`` folds every cell to the policy's
+        ``max_detail_chars`` anyway. A refused row counts as unread and never TRUE.
+        """
+        limit = request.policy.max_detail_chars
+        return ModelRulingVerdict(
+            row_id=refused.row_id,
+            ruling=refused.ruling,
+            owner=one_line(refused.owner, limit),
+            verdict=EnumRulingVerdict.UNREAD,
+            detail=one_line(refused.reason, limit),
+            why=one_line(f"register row refused: {refused.reason}", limit),
+            fix="correct this row in the node_ruling_register_compute overlay",
         )
 
     def _judge_reading(

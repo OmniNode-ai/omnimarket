@@ -9,6 +9,7 @@ stdout, and one ``RULING-REGISTER `` JSON line of the judged result on stderr. T
 code is 0 when every row is TRUE, 1 when any is FALSE or UNREAD (a refused read is never
 TRUE) and 3 when an overlay is missing or refuses to validate. The in-memory route builds
 its port with no fixtures: on the CLI path only the command route takes real readings.
+A row the register's whole-read budget did not reach reads UNREAD, never dropped.
 A journal write that failed is one ``RULING-REGISTER-JOURNAL-ERROR <text>`` line on
 stderr per failed row; it changes no exit code.
 """
@@ -67,7 +68,8 @@ def read_register(
     Loads the policy and the route from the overlay roots, builds the read port (the
     injected one, else an in-memory port with no fixtures for an in-memory route, else the
     route's command port), builds the journal sink from the route's ``journal_env``, runs
-    the read handler and then the judge, and returns the judged result with the read's
+    the read handler under the route's whole-read budget -- a row the budget did not reach
+    reads UNREAD -- and then the judge, and returns the judged result with the read's
     ``sink_errors``. A missing or invalid overlay raises ``NodeOverlayError``; the caller
     decides the exit code.
     """
@@ -85,7 +87,11 @@ def read_register(
     sink = JournalRulingSink(Path(journal)) if journal else InMemoryRulingSink()
     correlation_id = uuid.uuid4().hex
     read = HandlerRulingRegisterRead(
-        read_port, sink, load_topics(), clock=clock
+        read_port,
+        sink,
+        load_topics(),
+        total_timeout_seconds=route.total_timeout_seconds,
+        clock=clock,
     ).handle(ModelRulingReadRequest(correlation_id=correlation_id, policy=policy))
     judged = HandlerRulingRegister().handle(
         ModelRulingRegisterRequest(

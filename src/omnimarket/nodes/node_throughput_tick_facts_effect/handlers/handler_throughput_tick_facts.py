@@ -307,7 +307,13 @@ class HandlerThroughputTickFacts:
             installed = os.pathsep.join(request.installed_roots)
             roots = f"{roots}{os.pathsep}{installed}" if roots else installed
         try:
-            facts["ruling_register"] = self._ruling_register.read(roots)
+            judged, sink_errors = self._ruling_register.read(roots)
+            facts["ruling_register"] = judged
+            if sink_errors:
+                # OMN-24556: the read's journal write failures ride to the tick
+                # decision as its UNKNOWN; a read the journal took leaves the facts
+                # unchanged.
+                facts["ruling_register_sink_errors"] = list(sink_errors)
         except (
             Exception
         ) as exc:  # the tick's unread register is a reason, never a raise

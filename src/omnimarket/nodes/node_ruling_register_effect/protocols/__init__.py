@@ -16,9 +16,15 @@ from omnimarket.nodes.node_ruling_register_effect.models import (
 
 
 class ProtocolRulingReadPort(Protocol):
-    """One row's read: the reading its command saw on its host, never a raise."""
+    """One row's read: the reading its command saw on its host, never a raise.
 
-    def read(self, row: ModelRulingRow) -> ModelRulingReading: ...
+    A port bounds its read by the lesser of its own timeout and ``budget_seconds``
+    when the caller hands it one.
+    """
+
+    def read(
+        self, row: ModelRulingRow, budget_seconds: int | None = None
+    ) -> ModelRulingReading: ...
 
 
 class ProtocolRulingEventSink(Protocol):
