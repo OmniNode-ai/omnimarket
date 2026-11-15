@@ -18,7 +18,7 @@ requirements:
 evidence_requirements:
 - kind: tests
   description: The registry and baseline tests pass at the pushed head.
-  command: uv run pytest tests/ci/test_entry_points_sorted_merge.py tests/ci/test_node_entry_point_guard_wiring.py tests/ci/test_canonical_file_shape_burndown_omn21524.py tests/gates/test_contract_publish_parity.py tests/ci/test_imperative_contract_guard_caller_omn21002.py -q -n 0 --no-cov -p no:cacheprovider
+  command: uv run pytest tests/ci/test_retired_context_nodes_omn24517.py tests/ci/test_entry_points_sorted_merge.py tests/ci/test_node_entry_point_guard_wiring.py tests/ci/test_canonical_file_shape_burndown_omn21524.py tests/gates/test_contract_publish_parity.py tests/ci/test_imperative_contract_guard_caller_omn21002.py -q -n 0 --no-cov -p no:cacheprovider
 emergency_bypass:
   enabled: false
   justification: ''
@@ -40,7 +40,7 @@ dod_evidence:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/ci/test_entry_points_sorted_merge.py tests/ci/test_node_entry_point_guard_wiring.py tests/ci/test_canonical_file_shape_burndown_omn21524.py tests/gates/test_contract_publish_parity.py tests/ci/test_imperative_contract_guard_caller_omn21002.py -q -n 0 --no-cov -p no:cacheprovider
+    check_value: uv run pytest tests/ci/test_retired_context_nodes_omn24517.py tests/ci/test_entry_points_sorted_merge.py tests/ci/test_node_entry_point_guard_wiring.py tests/ci/test_canonical_file_shape_burndown_omn21524.py tests/gates/test_contract_publish_parity.py tests/ci/test_imperative_contract_guard_caller_omn21002.py -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
 - id: dod-omn24517-integration-proof
   description: 'lab proxy: the entry point, baseline and allowlist tests run on a lab host at the pushed head; the ready read of the development runtime after the install is taken by the orchestrator and is not claimed by this local check'
@@ -48,7 +48,7 @@ dod_evidence:
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24517 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/ci/test_entry_points_sorted_merge.py tests/ci/test_node_entry_point_guard_wiring.py tests/ci/test_canonical_file_shape_burndown_omn21524.py tests/gates/test_contract_publish_parity.py tests/ci/test_imperative_contract_guard_caller_omn21002.py -q --no-cov -p no:randomly
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24517 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/ci/test_retired_context_nodes_omn24517.py tests/ci/test_entry_points_sorted_merge.py tests/ci/test_node_entry_point_guard_wiring.py tests/ci/test_canonical_file_shape_burndown_omn21524.py tests/gates/test_contract_publish_parity.py tests/ci/test_imperative_contract_guard_caller_omn21002.py -q --no-cov -p no:randomly
     cwd: .
 - id: dod-omn24517-ac3
   description: 'hosted proxy for AC3: the registry tests pass; the ready read of the development runtime is taken after the merge and recorded on the pull request.'
@@ -57,5 +57,5 @@ dod_evidence:
   - AC3
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/ci/test_entry_points_sorted_merge.py tests/ci/test_node_entry_point_guard_wiring.py tests/ci/test_canonical_file_shape_burndown_omn21524.py tests/gates/test_contract_publish_parity.py tests/ci/test_imperative_contract_guard_caller_omn21002.py -q -n 0 --no-cov -p no:cacheprovider
+    check_value: uv run pytest tests/ci/test_retired_context_nodes_omn24517.py tests/ci/test_entry_points_sorted_merge.py tests/ci/test_node_entry_point_guard_wiring.py tests/ci/test_canonical_file_shape_burndown_omn21524.py tests/gates/test_contract_publish_parity.py tests/ci/test_imperative_contract_guard_caller_omn21002.py -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
