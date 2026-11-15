@@ -14,9 +14,11 @@ the real handler's EXPIRE is shown to depend on the rule and not on the input.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from importlib import resources
 from uuid import UUID
 
 import pytest
+import yaml
 
 from omnimarket.models.install_request import (
     EnumInstallRequestAction,
@@ -220,3 +222,29 @@ def test_without_the_expiry_rule_an_expired_request_reads_execute() -> None:
     decision = _DecisionWithoutExpiryRule().handle(_decision_input(now=PAST_EXPIRY_NOW))
     assert decision.action is EnumInstallRequestAction.EXECUTE
     assert decision.reason == "safe"
+
+
+def test_the_node_is_addressable_on_its_declared_topics() -> None:
+    """The contract's command topic and terminals are the literals the runtime and the state coverage gate read."""
+    contract = yaml.safe_load(
+        resources.files("omnimarket.nodes.node_install_request_decision_compute")
+        .joinpath("contract.yaml")
+        .read_text()
+    )
+    dispatch = contract["runtime_dispatch"]
+    assert (
+        dispatch["command_topic"]
+        == "onex.cmd.omnimarket.install-request-decision-requested.v1"
+    )
+    assert (
+        dispatch["terminal_events"]["success"]
+        == "onex.evt.omnimarket.install-request-decision-completed.v1"
+    )
+    assert (
+        dispatch["terminal_events"]["failure"]
+        == "onex.evt.omnimarket.install-request-decision-failed.v1"
+    )
+    assert (
+        contract["handler_routing"]["handlers"][0]["operation"]
+        == "decide_install_request"
+    )

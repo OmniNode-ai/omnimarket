@@ -46,7 +46,7 @@ from collections.abc import Awaitable, Callable, Sequence
 from datetime import UTC, datetime, timedelta
 from importlib import resources
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 import yaml
 from omnibase_core.event_bus.util_consumer_group import derive_service_group_id
@@ -58,7 +58,11 @@ from omnimarket.delegated_test_loop.lab_run_bus import (
     envelope_bytes_for,
     event_type_for,
 )
-from omnimarket.delegated_test_loop.lane_bus import LabRunBusError, open_lab_run_bus
+from omnimarket.delegated_test_loop.lane_bus import (
+    BusKind,
+    LabRunBusError,
+    open_lab_run_bus,
+)
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.models.install_request import (
     EnumInstallRequestAction,
@@ -288,7 +292,8 @@ class InstallRequestHost:
         try:
             async with self._install_lock:
                 handled = await asyncio.to_thread(self._handler.handle, request)
-        except Exception as exc:  # fallback-ok: answered on the failure terminal and logged, never swallowed
+        except Exception as exc:
+            # A handler crash is answered on the failure terminal and logged, never swallowed.
             logger.exception(
                 "install-request host %s: handler raised for %s",
                 self._host,
@@ -421,7 +426,7 @@ def open_install_request_bus(
     A declared Kafka lane needs the workspace root that holds its lane declaration; an explicit broker address needs none.
     """
     return open_lab_run_bus(
-        bus=bus,  # type: ignore[arg-type]
+        bus=cast(BusKind, bus),
         lane=lane,
         kafka_bootstrap=kafka_bootstrap,
         **{_WORKSPACE_KW: workspace_root},

@@ -377,3 +377,11 @@ def test_a_results_line_that_is_no_json_is_indeterminate(
     assert code == 3
     assert captured.err.startswith("INDETERMINATE:")
     assert captured.out == ""
+
+
+def test_the_topics_are_the_declared_literals() -> None:
+    """The state coverage gate reads the node's declared topics as quoted names in its tests."""
+    topics = load_install_request_topics()
+    assert topics.command == "onex.cmd.omnimarket.install-requested.v1"
+    assert topics.success == "onex.evt.omnimarket.install-request-completed.v1"
+    assert topics.failure == "onex.evt.omnimarket.install-request-failed.v1"

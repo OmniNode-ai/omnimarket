@@ -15,9 +15,11 @@ from __future__ import annotations
 
 import random
 from datetime import UTC, datetime
+from importlib import resources
 from uuid import UUID
 
 import pytest
+import yaml
 
 from omnimarket.models.install_request import (
     EnumInstallRequestStatus,
@@ -273,3 +275,29 @@ def test_without_the_verified_clears_rule_a_verified_request_stays_owed() -> Non
     )
     assert reading.owed == 1
     assert reading.expired == 0
+
+
+def test_the_node_is_addressable_on_its_declared_topics() -> None:
+    """The contract's command topic and terminals are the literals the runtime and the state coverage gate read."""
+    contract = yaml.safe_load(
+        resources.files("omnimarket.nodes.node_install_request_owed_compute")
+        .joinpath("contract.yaml")
+        .read_text()
+    )
+    dispatch = contract["runtime_dispatch"]
+    assert (
+        dispatch["command_topic"]
+        == "onex.cmd.omnimarket.install-request-owed-requested.v1"
+    )
+    assert (
+        dispatch["terminal_events"]["success"]
+        == "onex.evt.omnimarket.install-request-owed-completed.v1"
+    )
+    assert (
+        dispatch["terminal_events"]["failure"]
+        == "onex.evt.omnimarket.install-request-owed-failed.v1"
+    )
+    assert (
+        contract["handler_routing"]["handlers"][0]["operation"]
+        == "read_install_requests_owed"
+    )

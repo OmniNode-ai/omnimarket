@@ -41,9 +41,41 @@ descriptor:
   timeout_ms: 1000
 
 # The installer effect calls the handler in process; the node has no bus surface of its own.
+# The runtime addresses the node on its command topic; the two terminals are runtime_dispatch.terminal_events. The installer
+# effect also calls the handler in process.
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_install_request_decision_compute.handlers.handler_install_request_decision:HandlerInstallRequestDecision"
+  handlers:
+    - operation: "decide_install_request"
+      handler:
+        name: "HandlerInstallRequestDecision"
+        module: "omnimarket.nodes.node_install_request_decision_compute.handlers.handler_install_request_decision"
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.install-request-decision-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.install-request-decision-completed.v1"
+    failure: "onex.evt.omnimarket.install-request-decision-failed.v1"
 event_bus:
-  subscribe_topics: []
-  publish_topics: []
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  subscribe_topics:
+    - "onex.cmd.omnimarket.install-request-decision-requested.v1"
+  publish_topics:
+    - "onex.evt.omnimarket.install-request-decision-completed.v1"
+    - "onex.evt.omnimarket.install-request-decision-failed.v1"
+
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.install-request-decision-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.install-request-decision-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.install-request-decision-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.install-request-decision-completed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.install-request-decision-failed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.install-request-decision-failed.v1, operation: DESCRIBE}
 
 metadata:
   ticket: OMN-19998
