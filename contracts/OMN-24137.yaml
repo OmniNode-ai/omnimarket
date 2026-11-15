@@ -1,41 +1,43 @@
 schema_version: 1.0.0
 ticket_id: OMN-24137
 title: Test that the Mac overlay store refresh job carries its workspace root
-summary: The launchd unit overlay-store-refresh declares OMNIBASE_PATH and ONEX_WORKSPACE_CONFIG_ROOT since OMN-24052, but only the declaration was tested. A new test renders the real plist the installer writes and reads the workspace root from it the way the store read does, with a failing control for a unit without the key. No running code changes.
+summary: The overlay store refresh job on the Mac failed on every run because the installed copy did not carry the workspace root, so the Mac's copy of the lab host list went stale. The setting was already declared in the installer contract; only the declaration was checked, not the launchd file the Mac runs. This adds one test that renders the job through the installer and checks that OMNIBASE_PATH is the registry root and not the job root, and that the overlay store's workspace reader finds it. No running code changes.
 is_seam_ticket: false
 interface_change: false
+interfaces_touched: []
 requirements:
-- id: req-omn24137-rendered-plist-workspace-root
-  statement: The rendered launchd plist of overlay-store-refresh carries the registry root as OMNIBASE_PATH and the overlay store reader finds it.
+- id: req-omn24137-workspace-root-in-rendered-job
+  statement: The rendered launchd job of the overlay store refresh unit carries the registry root as OMNIBASE_PATH, and the overlay store's workspace reader finds it there.
   acceptance:
   - id: AC1
-    statement: 'AC1: the rendered launchd plist of overlay-store-refresh carries the registry root as OMNIBASE_PATH, not its job root, and the overlay store''s workspace reader finds it -- falsifier: uv run pytest tests/nodes/node_host_installer_registry_units/test_log_directory.py -q -n 0 --no-cov fails when OMNIBASE_PATH is removed from the unit''s environment in the installer contract'
+    statement: 'AC1: the rendered launchd plist of overlay-store-refresh carries the registry root as OMNIBASE_PATH, not its job root, and the overlay store''s workspace reader finds it -- falsifier: uv run pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_workspace_root.py -q -n 0 --no-cov fails when OMNIBASE_PATH is removed from the unit''s environment in the installer contract'
   - id: AC2
     statement: 'AC2: integrated: after the Mac reinstall, ai.omninode.overlay-store-refresh exits 0 on its next tick and the Mac overlay store copy of lab_hosts is under 21600 s old -- falsifier: launchctl list shows a last exit status other than 0, or the lab_hosts copy is older than 21600 s, read on the Mac after one tick'
 evidence_requirements:
 - kind: tests
-  description: The rendered-plist workspace root tests pass at the pushed head.
-  command: uv run pytest tests/nodes/node_host_installer_registry_units/test_log_directory.py -q -n 0 --no-cov -p no:cacheprovider
+  description: The rendered-job workspace root test, with its failing control for a unit declared without the setting.
+  command: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_workspace_root.py -q --no-cov -n 0 -p no:randomly
 emergency_bypass:
   enabled: false
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
-- id: dod-omn24137-ac1
-  description: 'AC1: the rendered-plist tests pass at the head; with OMNIBASE_PATH removed from the unit in the contract two of three fail (measured).'
+- id: dod-omn24137-ac1-rendered-job-workspace-root
+  description: The test renders the overlay-store-refresh unit through the installer and reads OMNIBASE_PATH from the plist; with the setting removed from the unit's environment in the installer contract all four of its tests fail (measured on the lane worktree).
   source: manual
   binds_ac:
   - AC1
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_log_directory.py -q -n 0 --no-cov -p no:cacheprovider
+    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_workspace_root.py -q --no-cov -n 0 -p no:randomly
     cwd: .
-- id: dod-omn24137-ac2
-  description: 'hosted proxy for AC2: the installer unit tests pass; the Mac launchd exit status and lab_hosts copy age are read after the reinstall and named in a pull request comment.'
+- id: dod-omn24137-ac2-integration-proof
+  description: Hosted CI cannot reach the Mac, so only the local Done gate runs this check. The pushed head ran the workspace root test on a lab host through the lab work runner. The running reading (the Mac job's last exit status after one tick, and the age of the Mac overlay store copy of lab_hosts) is read on the Mac after the reinstall through the declared installer, a separate step after merge.
   source: manual
+  execution_scope: local_done_gate
   binds_ac:
   - AC2
   checks:
-  - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_load_unit.py -q -n 0 --no-cov -p no:cacheprovider
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24137 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_workspace_root.py -q --no-cov -n 0 -p no:randomly
     cwd: .
