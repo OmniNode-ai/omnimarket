@@ -50,12 +50,20 @@ handler_routing:
       handler:
         name: "HostAnnouncer"
         module: "omnimarket.nodes.node_host_introspection_announce_effect.handlers.handler_host_announcer"
+    - operation: "host_lab_work_announcements"
+      handler:
+        name: "AnnouncingLabWorkHost"
+        module: "omnimarket.nodes.node_host_introspection_announce_effect.handlers.handler_announcing_lab_work_host"
 descriptor:
   node_archetype: effect
   purity: effectful
   idempotent: false
   timeout_ms: 60000
 runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.host-introspection-announce-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.lab-host-announced.v1"
+    failure: "onex.evt.omnimarket.lab-host-announce-failed.v1"
   external_trigger: "The lab-work serve process calls HostAnnouncer.announce once per capacity beat and HostAnnouncer.stop on exit."
 announce:
   announced_topic: "onex.evt.omnimarket.lab-host-announced.v1"

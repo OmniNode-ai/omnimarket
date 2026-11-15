@@ -20,6 +20,7 @@ capabilities:
   side_effect_class: write
 dependencies:
   - omnibase_infra
+  - click>=8.1.0
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ['effect', 'host-introspection', 'OMN-24367']
