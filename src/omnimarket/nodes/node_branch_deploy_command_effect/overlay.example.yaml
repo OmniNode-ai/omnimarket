@@ -10,3 +10,18 @@ check_agent_key: true
 event_bus:
   type: kafka
   lane: example-lane
+# The store the node's own entry resolves the signing key from when the variable hmac_secret_env names is unset in
+# its environment (OMN-24611): folder, key name and store addressing only, never a value. The variable set in the
+# environment wins and the store is never asked; a store that does not return the key refuses the send.
+signing_key_store:
+  folder: /shared/env
+  key: EXAMPLE_SIGNING_KEY
+  secret_store:
+    provider: example-provider
+    address: https://store.example.invalid
+    project_id: 00000000-0000-4000-8000-000000000000
+    environment: example
+    root_folder: /
+    client_id_ref: EXAMPLE_CLIENT_ID
+    client_secret_ref: EXAMPLE_CLIENT_SECRET
+    identity_file: .example/identity.env

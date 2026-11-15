@@ -1,0 +1,82 @@
+schema_version: 1.0.0
+ticket_id: OMN-24611
+title: The dev deploy agent signs with its own dev-only key
+summary: 'The secret store node (node_secret_store_effect) gains a generated dev-only entry DEPLOY_AGENT_DEV_HMAC_SECRET and one declared operation, deliver_key_to_env_file, that writes the stored key as one DEPLOY_AGENT_HMAC_SECRET line into the file the dev deploy agent''s unit reads (~/.omnibase/deploy-agent-dev-signing-key.env, mode 0600), without the value ever being printed, logged or put on a command line. The sender node (node_branch_deploy_command_effect) gains an optional signing_key_store block in its settings: when the variable hmac_secret_env names is unset, its own entry resolves the key from the store, and a store that does not return it ends the send with a typed refusal and no publish. The runtime and a set variable behave as before.'
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn24611-store
+  statement: The secret store node generates the dev-only signing key and delivers it into the dev agent's env file, value unseen.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: the secret store''s own node holds a generated dev-only entry DEPLOY_AGENT_DEV_HMAC_SECRET, created without the value being printed -- falsifier: the node''s generate test fails on the contract without the entry, and the store''s name list lacks DEPLOY_AGENT_DEV_HMAC_SECRET'
+- id: req-omn24611-sender
+  statement: The sender's own entry resolves the signing key from the store when its variable is unset, and refuses with no publish when the store does not return it.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: the key check value the dev agent serves equals the key check value of the store''s entry on the sending lab hosts -- falsifier: the key check node answers different check values for the agent and for the store entry'
+- id: req-omn24611-unit
+  statement: The dev agent unit side is the omnibase_infra pull request of this ticket.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the dev deploy agent''s unit declares one EnvironmentFile for its own signing key file and lists the key name as protected, and no other unit names that file -- falsifier: pytest scripts/deploy-agent/tests/unit/test_dev_agent_own_signing_key_omn24565.py fails 4 tests against the dev unit on origin/dev'
+- id: req-omn24611-integrated
+  statement: The dev agent accepts a signed no-op sent from h051 after the install.
+  acceptance:
+  - id: AC4
+    statement: 'AC4: integrated: from h051 one signed no-op command is accepted by the dev agent on h201 after its unit is installed, and the live agent''s unit file digest is identical before and after, read on h201 -- falsifier: the running dev agent on lab host h201 rejects the command as an invalid signature, or the live unit digest read back after the install differs from the one before'
+evidence_requirements:
+- kind: tests
+  description: The secret store node's generate and delivery tests and the sender node's tests.
+  command: uv run pytest tests/unit/nodes/node_secret_store_effect/test_generate_deploy_agent_dev_key.py tests/unit/nodes/node_secret_store_effect/test_deliver_key_to_env_file.py tests/unit/nodes/node_secret_store_effect/test_deliver_key_cli.py tests/unit/nodes/node_secret_store_effect/test_seam_deploy_agent_dev_signing_key.py -q -n 0 --no-cov -p no:cacheprovider && uv run pytest tests/nodes/node_branch_deploy_command_effect -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24611-ac1-unit-pr
+  description: The unit's own tests are in the omnibase_infra pull request of this ticket; here the secret store contract spells the file name the unit reads, pinned by the seam test on both names.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_secret_store_effect/test_seam_deploy_agent_dev_signing_key.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn24611-ac2-generated-and-delivered
+  description: The contract declares the generated key and its delivery; the golden tests generate the key in a fake store, deliver it to a file of mode 0600 and read no value in any result or log; a contract copy without the entry refuses.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_secret_store_effect/test_generate_deploy_agent_dev_key.py tests/unit/nodes/node_secret_store_effect/test_deliver_key_to_env_file.py tests/unit/nodes/node_secret_store_effect/test_deliver_key_cli.py tests/unit/nodes/node_secret_store_effect/test_seam_deploy_agent_dev_signing_key.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn24611-ac3-sender-store
+  description: With the variable unset the entry signs under the stored key and publishes once; the same input without the settings block refuses with the missing-key refusal; a store that does not return the key publishes nothing; the real entry assembly is exercised with the store's network seam replaced.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_branch_deploy_command_effect -q -n 0 --no-cov -p no:cacheprovider
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn24611-ac4-integrated
+  description: The running reading (one signed no-op from h051 accepted by the dev agent on h201, the live unit digest before and after) is read on those hosts after the install and cited in a pull request comment; the hosted runner reads the delivery operation from the contract at the checked-out commit.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: command
+    check_value: 'grep -q ''operation: deliver_key_to_env_file'' src/omnimarket/nodes/node_secret_store_effect/contract.yaml'
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn24611-integration-proof
+  description: 'Run the focused tests of the secret store node''s generate and delivery and of the sender node on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. It binds no acceptance criterion; the reading on h201 and h051 (AC4) is read on those hosts after the install.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24611 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_secret_store_effect tests/nodes/node_branch_deploy_command_effect -q -n 0 --no-cov
+    cwd: .

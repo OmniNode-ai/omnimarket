@@ -9,6 +9,10 @@ overlays main still holds the old subprocess-trigger document. ``hmac_secret_env
 variable the runtime fills from the secret store, never a value. ``check_agent_key`` (OMN-24396) is absent until the deploy path is ready for the check: absent or false means
 the handler does not check the signing key against the agent's key, true means it asks node_deploy_agent_key_check_effect
 for the agent's key check value before every publish and refuses a command signed with another key.
+``signing_key_store`` (OMN-24611) names where the node's own entry resolves the signing key from when the
+``hmac_secret_env`` variable is unset in its environment: the folder and key name in the store, and the store
+addressing block. Names and addresses only, never a value; the variable set in the environment wins and the store
+is never asked.
 """
 
 from __future__ import annotations
@@ -19,8 +23,26 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
 from omnimarket.models.bus_binding.model_node_event_bus import ModelNodeEventBus
+from omnimarket.models.secret_store.model_secret_store_overlay import (
+    ModelSecretStoreOverlay,
+)
 
 NODE_NAME = "node_branch_deploy_command_effect"
+
+
+class ModelSigningKeyStoreOverlay(BaseModel):
+    """Where the entry resolves the deploy agent's signing key when the variable ``hmac_secret_env`` names is unset
+    (OMN-24611): a folder and key name in the secret store, and the store addressing. Names and addresses only, never
+    a value; the variable set in the environment wins and the store is never asked."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: The folder holding the key, absolute; taken relative to the store's root folder.
+    folder: str = Field(pattern=r"^/")
+    #: The NAME of the key in the store, never a value.
+    key: str = Field(min_length=1)
+    #: The store addressing block: provider, address and identity references.
+    secret_store: ModelSecretStoreOverlay
 
 
 class ModelBranchDeployCommandOverlay(BaseModel):
@@ -30,7 +52,9 @@ class ModelBranchDeployCommandOverlay(BaseModel):
     whether the signing key is checked against the deploy agent's key before every publish (absent or false: it is not);
     ``event_bus`` the bus a caller outside the lane's runtime dials to send the signed command (read by the node's own entry through
     ``resolve_dialable_broker``; the broker address stays in the lane declaration). Absent, the command can only be
-    sent through the lane's runtime (OMN-19998)."""
+    sent through the lane's runtime (OMN-19998). ``signing_key_store`` the store the node's own entry resolves the
+    signing key from when the ``hmac_secret_env`` variable is unset (OMN-24611); absent, an unset variable refuses
+    as before."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -40,6 +64,7 @@ class ModelBranchDeployCommandOverlay(BaseModel):
     detail_max_chars: int = Field(ge=1)
     check_agent_key: StrictBool | None = None
     event_bus: ModelNodeEventBus | None = None
+    signing_key_store: ModelSigningKeyStoreOverlay | None = None
 
     # These four keys belong to the retired subprocess trigger; they are read by nothing and are removed, with
     # hmac_secret_env made required again, in the change that follows the overlays change (OMN-24085 follow-up).

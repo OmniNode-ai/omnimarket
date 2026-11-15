@@ -13,6 +13,11 @@ deploy agent throws a command signed with another key away without a job and wit
 the dev recovery's first command was lost that way), so a key that differs, or a check value the node did not serve, is a
 typed refusal and nothing is published; a mismatch names both check values in typed result fields (never a key). An
 overlay that does not set it publishes as before and says so in the result detail.
+
+Outside the lane's runtime, a handler built with a ``signing_key_reader`` (OMN-24611) resolves the signing key from
+the store the overlay's ``signing_key_store`` names when the variable ``hmac_secret_env`` names is unset; a store
+that does not return it is a typed refusal and nothing is published. The variable set in the environment wins and
+the store is never asked; a handler built with no reader behaves exactly as before.
 """
 
 from __future__ import annotations
@@ -43,6 +48,9 @@ from omnimarket.nodes.node_branch_deploy_command_effect.overlay import (
 )
 from omnimarket.nodes.node_branch_deploy_command_effect.protocols.protocol_agent_key_check import (
     ProtocolAgentKeyCheck,
+)
+from omnimarket.nodes.node_branch_deploy_command_effect.protocols.protocol_signing_key import (
+    ProtocolSigningKey,
 )
 from omnimarket.nodes.node_deploy_agent_key_check_effect.handlers.handler_deploy_agent_key_check import (
     HandlerDeployAgentKeyCheck,
@@ -85,9 +93,11 @@ class HandlerBranchDeployCommand:
         overlay: ModelBranchDeployCommandOverlay | None = None,
         environ: Mapping[str, str] | None = None,
         key_check_reader: ProtocolAgentKeyCheck | None = None,
+        signing_key_reader: ProtocolSigningKey | None = None,
     ) -> None:
         self._bus: Any = event_bus
         self._configured_key_check_reader = key_check_reader
+        self._configured_signing_key_reader = signing_key_reader
         self._configured_overlay = overlay
         self._environ: Mapping[str, str] = (
             environ if environ is not None else os.environ
@@ -198,6 +208,15 @@ class HandlerBranchDeployCommand:
                 detail="the overlay names no signing key variable (hmac_secret_env is absent)",
             )
         secret = self._environ.get(overlay.hmac_secret_env, "").strip()
+        if not secret and self._configured_signing_key_reader is not None:
+            reading = await self._configured_signing_key_reader.read()
+            if reading.status == "refused":
+                return self._refuse(
+                    request,
+                    f"the signing key variable is not set and the secret store did not return it "
+                    f"({reading.detail}); nothing was published",
+                )
+            secret = reading.key.get_secret_value()
         if not secret:
             return ModelBranchDeployCommandResult(
                 correlation_id=request.correlation_id,
