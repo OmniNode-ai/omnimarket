@@ -36,6 +36,9 @@ from omnimarket.models.model_delegated_code_edit import (
 from omnimarket.models.model_host_capacity_advertisement import (
     ModelHostCapacityAdvertisement,
 )
+from omnimarket.models.model_host_capacity_probe_request import (
+    ModelHostCapacityProbeRequest,
+)
 
 #: A unit may run at most this long; the caller's wait adds slack on top.
 MAX_TIMEOUT_SECONDS: int = 7200
@@ -180,24 +183,6 @@ class ModelLabWorkUnitReceipt(BaseModel):
     diff_truncated: bool = False
     #: The loop receipt's ``result`` when the loop wrote one.
     code_edit_result: ModelCodeEditResult | None = None
-
-
-class ModelHostCapacityProbeRequest(BaseModel):
-    """What the serve process asks its advertising effect for on each beat."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    host_name: str
-    cadence_seconds: int = Field(default=10, ge=1, le=600)
-    tools: list[str] = Field(default_factory=list, max_length=32)
-    running_units: int = Field(default=0, ge=0)
-    max_units: int = Field(default=1, ge=1, le=64)
-    rank_penalty: float = Field(default=0.0, ge=0.0, le=10.0)
-
-    @field_validator("host_name")
-    @classmethod
-    def _plain(cls, value: str) -> str:
-        return _check_name(value)
 
 
 __all__ = [
