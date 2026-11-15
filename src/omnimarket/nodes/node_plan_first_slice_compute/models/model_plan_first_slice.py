@@ -12,17 +12,9 @@ section's word count and one plain sentence of detail.
 
 from __future__ import annotations
 
-from enum import StrEnum
-
 from pydantic import BaseModel, ConfigDict, Field
 
-
-class EnumPlanFirstSliceVerdict(StrEnum):
-    """What the plan's first-slice check found."""
-
-    OK = "ok"
-    NO_FIRST_SLICE_SECTION = "no_first_slice_section"
-    EMPTY_FIRST_SLICE_SECTION = "empty_first_slice_section"
+from omnimarket.enums.enum_plan_first_slice_verdict import EnumPlanFirstSliceVerdict
 
 
 class ModelPlanFirstSliceSettings(BaseModel):
