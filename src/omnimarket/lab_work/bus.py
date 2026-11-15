@@ -222,6 +222,9 @@ class LabWorkHost:
         )
         self._lane_reader = lane_reader
         self.running = 0
+        #: Set when the drain topic could not be subscribed at start; the host
+        #: keeps serving lab work but holds no drain mark until it can.
+        self.drain_unreadable = False
         self.processed = 0
         self.advertised = 0
         self.checks = 0
@@ -259,13 +262,23 @@ class LabWorkHost:
         # never one per call -- and its name stays under the lab work consumer
         # group prefix the host login's ACL rows cover.
         drain_group = f"{host_group_id(self._host)}.drain-{uuid.uuid4().hex[:8]}"
-        self._drain_unsubscribe = await _subscribe(
-            self._bus,
-            self._drain_topic,
-            self._on_drain,
-            drain_group,
-            "earliest",
-        )
+        try:
+            self._drain_unsubscribe = await _subscribe(
+                self._bus,
+                self._drain_topic,
+                self._on_drain,
+                drain_group,
+                "earliest",
+            )
+        except Exception as exc:  # fallback-ok: a login without the drain topic's ACL row must not stop the serve from starting
+            logger.error(
+                "lab-work drain: the drain topic %s could not be subscribed (%s); "
+                "this host holds no drain mark until it can",
+                self._drain_topic,
+                exc,
+            )
+            self._drain_unsubscribe = None
+            self.drain_unreadable = True
         logger.info("lab-work host %s serving %s", self._host, self._topics.command)
 
     async def stop(self) -> None:

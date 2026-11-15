@@ -250,6 +250,83 @@ def test_a_mark_reads_not_draining_at_its_expiry_instant() -> None:
     assert command.reads_draining(command.until) is False
 
 
+class _DrainRefusingBus:
+    """The in-memory bus with the broker's ACL refusal on the drain topic.
+
+    A host login with no ACL row on the drain command topic gets a
+    TopicAuthorizationFailedError out of subscribe; this wrapper raises that
+    failure for the drain topic and forwards every other topic unchanged.
+    """
+
+    def __init__(self, bus: EventBusInmemory) -> None:
+        self._bus = bus
+
+    async def publish(
+        self, topic: str, key: bytes | None, value: bytes, headers: Any = None
+    ) -> object:
+        return await self._bus.publish(topic, key, value, headers)
+
+    async def subscribe(
+        self,
+        topic: str,
+        node_identity: Any = None,
+        on_message: Callable[[Any], Awaitable[None]] | None = None,
+        *,
+        group_id: str | None = None,
+    ) -> Callable[[], Awaitable[None]]:
+        if topic == load_host_drain_topic():
+            raise RuntimeError("TopicAuthorizationFailedError")
+        return await self._bus.subscribe(
+            topic, on_message=on_message, group_id=group_id
+        )
+
+
+def test_a_refused_drain_subscription_leaves_the_serve_running() -> None:
+    """A login with no ACL row on the drain topic loses only that subscribe:
+    the serve starts, keeps advertising lab work, and reads no drain mark --
+    where a start() that raises crash-loops the whole serve process."""
+
+    async def scenario() -> ModelHostCapacityAdvertisement:
+        normal_bus = EventBusInmemory(environment="local", group="drain-mark-test")
+        await normal_bus.start()
+        normal = LabWorkHost(
+            normal_bus,
+            HandlerLabWorkUnitEffect(HOST, _Runner()),  # type: ignore[arg-type]
+            HandlerHostCapacityAdvertiseEffect(_Reader()),
+            now=lambda: NOW,
+        )
+        await normal.start(advertise=False)
+        try:
+            assert normal.drain_unreadable is False
+        finally:
+            await normal.stop()
+            await normal_bus.close()
+
+        inner = EventBusInmemory(environment="local", group="drain-mark-test")
+        await inner.start()
+        bus = _DrainRefusingBus(inner)
+        host = LabWorkHost(
+            bus,
+            HandlerLabWorkUnitEffect(HOST, _Runner()),  # type: ignore[arg-type]
+            HandlerHostCapacityAdvertiseEffect(_Reader()),
+            now=lambda: NOW,
+        )
+        assert host.drain_unreadable is False
+        await host.start(advertise=False)
+        ad: ModelHostCapacityAdvertisement | None = None
+        try:
+            assert host.drain_unreadable is True
+            ad = await host.advertise_once()
+        finally:
+            await host.stop()
+            await inner.close()
+        assert ad is not None
+        return ad
+
+    ad = asyncio.run(scenario())
+    assert draining_until_from_tools(ad.tools) is None
+
+
 def test_a_restarted_serve_rebuilds_the_mark_from_the_topic() -> None:
     """The mark survives a serve restart: the next start joins a fresh drain
     group, replays the topic, and advertises the mark again without any new
