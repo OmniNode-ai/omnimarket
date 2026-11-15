@@ -46,12 +46,14 @@ def _request(
     engine = root / "omniclaude/plugins/onex/hooks/lib/canonical_clone_sync.py"
     engine.parent.mkdir(parents=True)
     engine.write_text("", encoding="utf-8")
-    return ModelCloneSyncUnitsRequest(
-        unit=unit,  # type: ignore[arg-type]
-        mode=mode,  # type: ignore[arg-type]
-        home=str(tmp_path / "home"),
-        registry_root=str(root),
-        ledger_path=str(tmp_path / "ledger.md"),
+    return ModelCloneSyncUnitsRequest.model_validate(
+        {
+            "unit": unit,
+            "mode": mode,
+            "home": str(tmp_path / "home"),
+            "registry_root": str(root),
+            "ledger_path": str(tmp_path / "ledger.md"),
+        }
     )
 
 
@@ -98,10 +100,8 @@ def test_the_ledger_path_and_registry_root_are_declared_with_no_default(
     assert str(tmp_path / "ledger.md") in text
     assert f"{tmp_path}/registry/.onex_state" in text
     with pytest.raises(ValueError, match="ledger_path"):
-        ModelCloneSyncUnitsRequest(
-            unit="canonical-clone-sync",
-            home="/h",
-            registry_root="/o",  # type: ignore[call-arg]
+        ModelCloneSyncUnitsRequest.model_validate(
+            {"unit": "canonical-clone-sync", "home": "/h", "registry_root": "/o"}
         )
 
 
