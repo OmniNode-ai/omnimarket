@@ -1,0 +1,80 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_ci_state_verdict_compute
+node_type: compute
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Definition-B deterministic decisions of ci-watch's CI verdict (OMN-20686). Turns the facts a caller
+  read (the PR watcher's record for the PR, or the PR, required contexts, check-run copies, legacy
+  statuses, workflow runs and check suites a GitHub read returned, or a failing log) into what ci_state
+  printed, which scratch files it wrote and how it exited: GREEN, RED or PENDING keyed on the newest copy
+  of each required context (a superseded red copy reads PENDING, a copy without timestamps sorts newest),
+  exit 3 for a read that cannot be trusted, the watcher's own answer with zero GitHub requests when its
+  state is fresh, a request for the head's check suites when a GREEN is blocked on GitHub, and the
+  evidence-line class (C10, C13) a gate log names. Reads no files, runs no process, has no clock,
+  mutates nothing. Behaviour-preserving port of the decisions of the retired ci-watch ci_state.py;
+  reading GitHub and the watcher state file, and writing the scratch files, are not ported by this node.
+input_model:
+  name: ModelCiStateVerdictRequest
+  module: omnimarket.nodes.node_ci_state_verdict_compute.models.model_ci_state_verdict
+output_model:
+  name: ModelCiStateVerdictResult
+  module: omnimarket.nodes.node_ci_state_verdict_compute.models.model_ci_state_verdict
+handler:
+  module: omnimarket.nodes.node_ci_state_verdict_compute.handlers.handler_ci_state_verdict
+  class: HandlerCiStateVerdict
+  input_model: omnimarket.nodes.node_ci_state_verdict_compute.models.model_ci_state_verdict.ModelCiStateVerdictRequest
+  output_model: omnimarket.nodes.node_ci_state_verdict_compute.models.model_ci_state_verdict.ModelCiStateVerdictResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_ci_state_verdict_compute.handlers.handler_ci_state_verdict:HandlerCiStateVerdict
+  handlers:
+    - operation: decide_ci_state_verdict
+      handler:
+        name: HandlerCiStateVerdict
+        module: omnimarket.nodes.node_ci_state_verdict_compute.handlers.handler_ci_state_verdict
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+inputs:
+  operation: {type: str, required: true, enum: [watcher, live, classify-log], description: Which read the caller made.}
+  full: {type: str, required: false, description: owner/repo of the PR.}
+  number: {type: str, required: false, description: The PR number as text.}
+  now: {type: str, required: false, description: ISO 8601 UTC read time stamped by the caller.}
+  watcher: {type: object, required: false, description: The PR watcher's record for the PR.}
+  watcher_unavailable: {type: str, required: false, description: Why the watcher state could not be used at all.}
+  pr: {type: object, required: false, description: The PR record a GitHub read returned.}
+  required: {type: object, required: false, description: Required context to the source that requires it.}
+  check_runs: {type: list, required: false, description: Every check-run copy at the head.}
+  statuses: {type: list, required: false, description: The latest legacy status per context.}
+  workflow_runs: {type: list, required: false, description: The workflow runs at the head.}
+  check_suites: {type: list, required: false, description: The check suites at the head, once read.}
+  log_text: {type: str, required: false, description: A failing gate log to classify.}
+outputs:
+  action: {type: str, enum: [answer, read-github, read-check-suites]}
+  exit_code: {type: int}
+  stdout_lines: {type: list}
+  stderr_lines: {type: list}
+  files: {type: object}
+  fallback_reason: {type: str}
+  verdict: {type: str}
+terminal_event: onex.evt.omnimarket.ci-state-verdict-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.ci-state-verdict-requested.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.ci-state-verdict-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.ci-state-verdict-completed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.ci-state-verdict-completed.v1
+metadata:
+  transport_type: inmemory
+  description: ci-watch CI verdict decisions
+  author: OmniNode Team
+  created: "2026-10-09"
+  related_tickets: [OMN-20686]

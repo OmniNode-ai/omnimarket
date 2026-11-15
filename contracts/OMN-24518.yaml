@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-24518
 title: Retire 17 unused host, install and lane start nodes
-summary: Retire 7 omnimarket nodes that the unused-node surveys found with no caller and that were searched again by meaning across the core, interface, infrastructure, market and client repositories and the plugin skills. The node directories, their own tests, their package entry points, their rows in the duration record and the baselines that listed them are removed. No check is widened and no ratchet is lowered other than rows of the removed nodes.
+summary: Retire 6 omnimarket nodes that the unused-node surveys found with no caller and that were searched again by meaning across the core, interface, infrastructure, market and client repositories and the plugin skills. The node directories, their own tests, their package entry points, their rows in the duration record and the baselines that listed them are removed. No check is widened and no ratchet is lowered other than rows of the removed nodes.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -25,13 +25,13 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn24518-ac1
-  description: 'AC1: none of the 7 node directories exists and none of their entry points remains in pyproject.toml at the head. The ticket text counts the first-pass list; this change retires the 7 named in the pull request after an age and overlap exclusion.'
+  description: 'AC1: none of the 6 node directories exists and none of their entry points remains in pyproject.toml at the head. The ticket text counts the first-pass list; this change retires the 6 named in the pull request after an age and overlap exclusion.'
   source: manual
   binds_ac:
   - AC1
   checks:
   - check_type: command
-    check_value: sh -c 'for n in node_candidate_pool_compute node_ci_state_verdict_compute node_key_pool_expiry_alert_compute node_prod_health_fact_resolver_effect node_session_capability_digest_effect node_skill_exec_decision_compute node_worktree_lease_compute; do test ! -e src/omnimarket/nodes/$n || exit 1; grep -q "^$n = " pyproject.toml && exit 1; done; exit 0'
+    check_value: sh -c 'for n in node_candidate_pool_compute node_key_pool_expiry_alert_compute node_prod_health_fact_resolver_effect node_session_capability_digest_effect node_skill_exec_decision_compute node_worktree_lease_compute; do test ! -e src/omnimarket/nodes/$n || exit 1; grep -q "^$n = " pyproject.toml && exit 1; done; exit 0'
     cwd: .
 - id: dod-omn24518-ac2
   description: 'AC2: the entry point, baseline and allowlist tests pass at the head.'
