@@ -1,0 +1,61 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Host Introspection Compute
+# Direct invocation only: no event bus or terminal event. The announce effect node publishes the result.
+name: "node_host_introspection_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+runtime_profiles: []
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: "1.0.0"
+description: >-
+  Build one lab host's announcement from the facts read on the host (identity, roles, cores, memory, graphics
+  cards, models served, runtimes, installed software with versions and commits, lane accounts, availability)
+  and the capacity advertisement read at the same beat. The announcement carries a digest of the facts that
+  changes when a version, commit, runtime or any other fact changes and does not change with load.
+input_model:
+  name: "ModelHostIntrospectionRequest"
+  module: "omnimarket.nodes.node_host_introspection_compute.models.model_host_announcement"
+  description: "The host's facts, its capacity advertisement, the reason and the time."
+output_model:
+  name: "ModelHostAnnouncement"
+  module: "omnimarket.nodes.node_host_introspection_compute.models.model_host_announcement"
+  description: "The host's facts, capacity and the digest of the facts."
+handler:
+  module: "omnimarket.nodes.node_host_introspection_compute.handlers.handler_host_introspection"
+  class: "HandlerHostIntrospection"
+  input_model: "omnimarket.nodes.node_host_introspection_compute.models.model_host_announcement.ModelHostIntrospectionRequest"
+  output_model: "omnimarket.nodes.node_host_introspection_compute.models.model_host_announcement.ModelHostAnnouncement"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_host_introspection_compute.handlers.handler_host_introspection:HandlerHostIntrospection"
+  handlers:
+    - operation: "handle"
+      handler:
+        name: "HandlerHostIntrospection"
+        module: "omnimarket.nodes.node_host_introspection_compute.handlers.handler_host_introspection"
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: "Direct Python invocation of the handler by node_host_introspection_announce_effect's announcer."
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 5000
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: true
+metadata:
+  transport_type: local
+  description: "Host Introspection Compute: pure announcement and facts digest, no external transport."
+  author: "OmniNode Team"
+  created: "2026-11-15"
+  tags: ['compute', 'host-introspection', 'OMN-24367']
+  related_tickets: ['OMN-24367']

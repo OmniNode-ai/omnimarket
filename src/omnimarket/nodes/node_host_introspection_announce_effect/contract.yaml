@@ -1,0 +1,81 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Host Introspection Announce Effect (OMN-24367)
+#
+# WHO HOSTS THIS NODE. The `onex lab-work serve` process on each pool host, the same process that publishes the
+# capacity advertisement (node_lab_work_unit_effect). It reads the host, builds the announcement with
+# node_host_introspection_compute and publishes it. The shared runtimes must NOT attach it, for the reason
+# node_lab_work_unit_effect gives, so the contract declares runtime_dispatch and NO event_bus block.
+#
+# WHEN IT ANNOUNCES. `start` on the first beat, `facts_changed` when the facts digest changes, `heartbeat` every
+# heartbeat_seconds, `stop` on the way out. A host that cannot read its facts publishes a typed failure on the
+# failed topic and no announcement. The announcement carries the capacity advertisement of the same beat.
+#
+# THE TWO TOPICS need a publish grant for the host's bus principal before a host can publish them.
+name: "node_host_introspection_announce_effect"
+lifecycle: experimental
+node_type: "EFFECT_GENERIC"
+runtime_profiles: [effects]
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version: "0.1.0"
+description: >
+  Reads this lab host's facts and announces the host on the bus: identity, roles, capacity, graphics cards,
+  models served, runtimes, installed software, lane accounts and availability, with the reason (start,
+  facts_changed, heartbeat, stop). An unreadable host publishes a typed failure and no announcement.
+input_model:
+  name: "ModelHostFactsProbeRequest"
+  module: "omnimarket.nodes.node_host_introspection_announce_effect.models.model_host_introspection_announce"
+  description: "The host name and what the serving process knows of the host: roles, models served, availability, software to report."
+output_model:
+  name: "ModelHostFacts"
+  module: "omnimarket.nodes.node_host_introspection_compute.models.model_host_announcement"
+  description: "The facts read on the host."
+handler:
+  module: "omnimarket.nodes.node_host_introspection_announce_effect.handlers.handler_host_facts_read_effect"
+  class: "HandlerHostFactsReadEffect"
+  input_model: "omnimarket.nodes.node_host_introspection_announce_effect.models.model_host_introspection_announce.ModelHostFactsProbeRequest"
+  output_model: "omnimarket.nodes.node_host_introspection_compute.models.model_host_announcement.ModelHostFacts"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_host_introspection_announce_effect.handlers.handler_host_facts_read_effect:HandlerHostFactsReadEffect"
+  handlers:
+    - operation: "read_host_facts"
+      handler:
+        name: "HandlerHostFactsReadEffect"
+        module: "omnimarket.nodes.node_host_introspection_announce_effect.handlers.handler_host_facts_read_effect"
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: false
+  timeout_ms: 60000
+runtime_dispatch:
+  external_trigger: "The lab-work serve process calls HostAnnouncer.announce once per capacity beat and HostAnnouncer.stop on exit."
+announce:
+  announced_topic: "onex.evt.omnimarket.lab-host-announced.v1"
+  failed_topic: "onex.evt.omnimarket.lab-host-announce-failed.v1"
+  heartbeat_seconds: 30
+# The announcements leave the node graph here: the registry reads them once it subscribes (OMN-19998 plan).
+externally_consumed_topics:
+  - onex.evt.omnimarket.lab-host-announced.v1
+  - onex.evt.omnimarket.lab-host-announce-failed.v1
+published_events:
+  - event_type: ModelHostAnnouncement
+    topic: onex.evt.omnimarket.lab-host-announced.v1
+    description: "This host's facts, capacity, facts digest and the reason it announced."
+  - event_type: ModelHostIntrospectionFailure
+    topic: onex.evt.omnimarket.lab-host-announce-failed.v1
+    description: "This host could not read its facts and published no announcement."
+metadata:
+  transport_type: kafka
+  description: "Host introspection announce effect, hosted by the lab-work serve process on each pool host"
+  author: "OmniNode Team"
+  created: "2026-11-15"
+  tags:
+    - "effect"
+    - "host-introspection"
+    - "OMN-24367"
+  related_tickets:
+    - "OMN-24367"

@@ -38,8 +38,15 @@ from omnimarket.delegated_test_loop.lane_bus import (
 )
 from omnimarket.lab_work.bus import (
     DEFAULT_MAX_COMMAND_AGE_SECONDS,
+    DEFAULT_TOOLS,
     LabWorkCaller,
     LabWorkHost,
+)
+from omnimarket.nodes.node_host_introspection_announce_effect.handlers import (
+    HostAnnouncer,
+)
+from omnimarket.nodes.node_host_introspection_announce_effect.models import (
+    ModelHostFactsProbeRequest,
 )
 from omnimarket.nodes.node_lab_placement_compute.handlers import newest_per_host
 from omnimarket.nodes.node_lab_placement_compute.models import (
@@ -156,6 +163,24 @@ def lab_work_group(ctx: click.Context) -> None:
 @click.option(
     "--work-root", type=click.Path(file_okay=False, path_type=Path), default=None
 )
+@click.option(
+    "--role",
+    "roles",
+    multiple=True,
+    help="A role this host holds, announced on the bus (repeat for several).",
+)
+@click.option(
+    "--served-model",
+    "served_models",
+    multiple=True,
+    help="A model this host serves, announced on the bus (repeat for several).",
+)
+@click.option(
+    "--announce/--no-announce",
+    default=True,
+    show_default=True,
+    help="Announce this host's facts on the bus beside its capacity advertisement.",
+)
 def serve_command(
     omnibase_path: Path | None,
     bus: BusKind,
@@ -169,8 +194,11 @@ def serve_command(
     max_command_age: int,
     max_commands: int,
     work_root: Path | None,
+    roles: tuple[str, ...],
+    served_models: tuple[str, ...],
+    announce: bool,
 ) -> None:
-    """Serve lab work units addressed to this host, and advertise its capacity."""
+    """Serve lab work units addressed to this host, and advertise its capacity and its facts."""
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s"
     )
@@ -204,6 +232,19 @@ def serve_command(
                 max_units=max_units,
                 rank_penalty=rank_penalty,
                 max_command_age_seconds=max_command_age,
+                announcer=(
+                    HostAnnouncer(
+                        opened,
+                        ModelHostFactsProbeRequest(
+                            host_name=host_name,
+                            roles=list(roles),
+                            models_served=list(served_models),
+                            software=list(DEFAULT_TOOLS),
+                        ),
+                    )
+                    if announce
+                    else None
+                ),
             )
             await host.start()
             try:
