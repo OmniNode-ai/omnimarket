@@ -4,8 +4,10 @@
 
 ``ModelThroughputTickFacts`` carries the keys the retired throughput_tick.py put on the request it gave
 node_throughput_tick_decision_compute. A key the script did not set is not set here either: read the
-result with ``model_dump(exclude_unset=True)`` to get the script's request. ``ModelGoalFacts`` carries
-what the goal check reads.
+result with ``model_dump(exclude_unset=True)`` to get the script's request. The two exceptions are the
+standing-rulings register's judgement and its unread reason (OMN-24478), which the script never read;
+strip those two keys to get the script's request exactly. ``ModelGoalFacts`` carries what the goal
+check reads.
 """
 
 from __future__ import annotations
@@ -14,6 +16,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.models.model_ruling_register import ModelRulingRegisterResult
 from omnimarket.models.model_throughput_goal_scope import ModelGoalScope
 
 _TS = r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$"
@@ -82,6 +85,21 @@ class ModelThroughputTickFacts(BaseModel):
     land_like_operator: list[str] | None = None
     open_history: list[dict[str, Any]] | None = None
     repo_status: dict[str, Any] | None = None
+    ruling_register: ModelRulingRegisterResult | None = Field(
+        default=None,
+        description=(
+            "The standing-rulings register's judgement (OMN-24478), read from the "
+            "node_ruling_register_compute overlay; the tick decision prints one MISSING "
+            "ruling-not-running line per row that is not TRUE."
+        ),
+    )
+    ruling_register_unread: str | None = Field(
+        default=None,
+        description=(
+            "Why the standing-rulings register could not be read, when it could not; "
+            "never a raise."
+        ),
+    )
 
 
 class ModelGoalFacts(BaseModel):

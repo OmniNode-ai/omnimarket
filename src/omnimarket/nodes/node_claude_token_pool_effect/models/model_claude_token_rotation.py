@@ -24,6 +24,9 @@ from omnimarket.models.model_claude_pool_revoke_recheck import (
 from omnimarket.models.model_claude_pool_revoke_staleness import (
     ModelRevokeStalenessPolicy,
 )
+from omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_pool_mark_event import (
+    ModelPoolMarkEventsSettings,
+)
 
 
 class ModelRotationMark(BaseModel):
@@ -265,9 +268,17 @@ class ModelRotationOverlay(BaseModel):
     #: call is refused at broker resolution; present => the same typed block every other node overlay carries.
     #: The tick itself never reads it.
     event_bus: ModelNodeEventBus | None = None
+    #: Where every change of a token mark is published (OMN-19998): the topic and the environment variable that names who ran
+    #: the command. Absent => no mark event is published (the pool answers ``mark_events_state=not_configured``); present =>
+    #: ``event_bus`` must name the bus the events go to.
+    mark_events: ModelPoolMarkEventsSettings | None = None
 
     @model_validator(mode="after")
     def _shape(self) -> ModelRotationOverlay:
+        if self.mark_events is not None and self.event_bus is None:
+            raise ValueError(
+                "mark_events is declared but event_bus is not: the events need a bus to be published on"
+            )
         names = [host.name for host in self.hosts]
         if len(set(names)) != len(names):
             raise ValueError("overlay hosts name a host twice")
