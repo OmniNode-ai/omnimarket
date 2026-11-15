@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-24634
 title: 'Work-ledger projection: sequence live rows (UnsequencedLiveRowError) instead of failing'
-summary: A live onex-ledger row that arrives with no ledger_seq is now given the next ledger_seq by the projection, in arrival order under the ledger advisory lock, instead of being refused. A listed source with no declared way to order it is still counted and refused to the poison dead-letter topic with its reason. The projection's loop probe no longer chains every failure to "no running event loop", and a projection failure is logged with its own type and message.
+summary: A live onex-ledger row that arrives with no ledger_seq is now given a provisional ledger_seq by the projection (the next after the tip, under the ledger advisory lock) instead of being refused; the judge's own number for that sequence outranks it, so the projection moves its row and the judge's next row still projects. A listed source with no declared way to order it is still counted and refused to the poison dead-letter topic with its reason. The projection's loop probe no longer chains every failure to "no running event loop", and a projection failure is logged with its own type and message.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []

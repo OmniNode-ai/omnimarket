@@ -56,6 +56,8 @@ class _FakeConnection:
         yield
 
     async def fetchval(self, sql: str, *args: Any) -> Any:
+        if "ledger_seq_provisional FROM" in sql:
+            return False  # every row here carries the judge's sequence (OMN-24634)
         ledger_id, seq, row_id = args
         for held in self.rows.values():
             if (
@@ -81,9 +83,19 @@ class _FakeConnection:
                 },
             )
         elif sql.lstrip().startswith("INSERT INTO omninode_internal.work_ledger_rows"):
-            row_id, ledger_id, _ts, _type, _lane, _tickets, raw, _source, _at, seq = (
-                args
-            )
+            (
+                row_id,
+                ledger_id,
+                _ts,
+                _type,
+                _lane,
+                _tickets,
+                raw,
+                _source,
+                _at,
+                seq,
+                *_,
+            ) = args
             for held in self.rows.values():
                 if (
                     seq is not None

@@ -52,7 +52,8 @@ class ModelWorkLedgerProjectionConfig(BaseModel):
     ledger_id: str = Field(min_length=1)
     #: Sources whose rows must carry a ledger_seq to be projected (OMN-23488).
     sequence_required_sources: tuple[str, ...]
-    #: OMN-24634: the listed sources whose unsequenced rows the projection orders by arrival under the ledger lock.
+    #: OMN-24634: the listed sources whose unsequenced rows the projection gives a provisional ledger_seq
+    #: (tip+1 under the ledger lock); the judge's own number for that sequence outranks it.
     sequence_assigned_sources: tuple[str, ...] = ()
     #: The row types work_ledger_latest keeps the newest row of per lane and per ticket (OMN-23606).
     latest_row_types: frozenset[str] = Field(min_length=1)
