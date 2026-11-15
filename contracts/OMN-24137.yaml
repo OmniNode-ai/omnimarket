@@ -28,8 +28,8 @@ dod_evidence:
   binds_ac:
   - AC1
   checks:
-  - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_workspace_root.py -q --no-cov -n 0 -p no:randomly
+  - check_type: command
+    check_value: grep -q test_overlay_store_refresh_workspace_root.py config/test_file_durations.d/tests__nodes__node_host_installer_registry_units__test_overlay_store_refresh_workspace_root.json && uv run pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_workspace_root.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn24137-ac2-hosted-proxy
   description: Hosted proxy for AC2, which is read on the Mac after the reinstall through the declared installer (a separate step after merge). The hosted check runs the installer unit tests for the overlay store refresh unit; the Mac job's last exit status and the age of its lab_hosts copy are not read here.
@@ -37,6 +37,6 @@ dod_evidence:
   binds_ac:
   - AC2
   checks:
-  - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_workspace_root.py -q --no-cov -n 0 -p no:randomly -k golden
+  - check_type: command
+    check_value: grep -q test_overlay_store_refresh_workspace_root.py config/test_file_durations.d/tests__nodes__node_host_installer_registry_units__test_overlay_store_refresh_workspace_root.json && uv run pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_workspace_root.py -q --no-cov -n 0 -p no:randomly -k golden
     cwd: .
