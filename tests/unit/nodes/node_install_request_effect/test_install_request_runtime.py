@@ -7,7 +7,9 @@ same handler the handler tests exercise, runs it on a worker thread and
 publishes the typed result on the success terminal, keyed by the request id. A
 command that is no request is answered on the failure terminal. A held request
 (a blocker file on the host) is decided again after the overlay's retry
-interval and answers once the blocker is gone.
+interval and answers once the blocker is gone. The ``owed`` command is the
+offline reading: it reads a published-requests file and the result journal and
+reports the installs still owed, exit 1 when one expired.
 """
 
 from __future__ import annotations
@@ -15,8 +17,9 @@ from __future__ import annotations
 import asyncio
 import json
 import subprocess
+import uuid
 from collections.abc import Sequence
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -24,8 +27,11 @@ import pytest
 
 from omnimarket.delegated_test_loop.lane_bus import LabRunBusError
 from omnimarket.models.install_request import (
+    EXPIRED_MARK,
+    NOT_RUNNING_MARK,
     EnumInstallRequestStatus,
     EnumInstallTarget,
+    ModelInstallRequest,
     ModelInstallRequestDraft,
     ModelInstallRequestResult,
 )
@@ -41,6 +47,7 @@ from omnimarket.nodes.node_install_request_effect.overlay import (
 from omnimarket.nodes.node_install_request_effect.runtime_install_request import (
     InstallRequestHost,
     load_install_request_topics,
+    main,
     open_install_request_bus,
     publish_request,
 )
@@ -264,3 +271,109 @@ async def test_a_declared_kafka_lane_with_no_workspace_root_is_refused_by_name(
             bus="kafka", lane="dev", kafka_bootstrap=None
         ):
             pytest.fail("the lane must not open without its declaration")
+
+
+def _request(expires_in: timedelta) -> ModelInstallRequest:
+    """The example draft as a published request, expiring ``expires_in`` from now."""
+    return ModelInstallRequest(
+        **_draft().model_dump(),
+        request_id=uuid.uuid4(),
+        requested_at=NOW,
+        expires_at=NOW + expires_in,
+    )
+
+
+def _z_stamp(moment: datetime) -> str:
+    """The ISO-8601-with-Z stamp the ``--now`` argument takes."""
+    return moment.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _run_owed(
+    tmp_path: Path,
+    request: ModelInstallRequest,
+    results_text: str | None,
+    now: str,
+) -> int:
+    """Write the one request (and the journal when given), then read the owed CLI."""
+    requests_path = tmp_path / "requests.jsonl"
+    requests_path.write_text(request.model_dump_json() + "\n", encoding="utf-8")
+    results_path = tmp_path / "results.jsonl"
+    if results_text is not None:
+        results_path.write_text(results_text, encoding="utf-8")
+    return main(
+        [
+            "owed",
+            "--requests",
+            str(requests_path),
+            "--results",
+            str(results_path),
+            "--now",
+            now,
+        ]
+    )
+
+
+def test_owed_names_the_unverified_request_inside_its_expiry(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    request = _request(expires_in=timedelta(minutes=120))
+    code = _run_owed(tmp_path, request, None, _z_stamp(NOW))
+
+    assert code == 0
+    out = capsys.readouterr().out
+    assert str(request.request_id) in out
+    assert NOT_RUNNING_MARK in out
+    assert out.endswith("owed=1 expired=0\n")
+
+
+def test_owed_exits_1_when_an_owed_request_is_past_its_expiry(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    request = _request(expires_in=timedelta(minutes=120))
+    code = _run_owed(
+        tmp_path,
+        request,
+        None,
+        _z_stamp(request.expires_at + timedelta(minutes=1)),
+    )
+
+    assert code == 1
+    out = capsys.readouterr().out
+    assert out.startswith(EXPIRED_MARK)
+    assert out.endswith("owed=1 expired=1\n")
+
+
+def test_a_verified_result_clears_the_request_even_past_its_expiry(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    request = _request(expires_in=timedelta(minutes=120))
+    result = ModelInstallRequestResult(
+        request_id=request.request_id,
+        host=request.host,
+        unit=request.unit,
+        status=EnumInstallRequestStatus.VERIFIED,
+        at=NOW + timedelta(minutes=5),
+        revision=UNIT_TREE_COMMIT,
+        verify_line=request.expected_line,
+    )
+    code = _run_owed(
+        tmp_path,
+        request,
+        result.model_dump_json() + "\n",
+        _z_stamp(request.expires_at + timedelta(minutes=1)),
+    )
+
+    assert code == 0
+    assert capsys.readouterr().out.endswith("owed=0 expired=0\n")
+
+
+def test_a_results_line_that_is_no_json_is_indeterminate(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    request = _request(expires_in=timedelta(minutes=120))
+    code = _run_owed(tmp_path, request, "not json\n", _z_stamp(NOW))
+
+    captured = capsys.readouterr()
+    assert code == 3
+    assert captured.err.startswith("INDETERMINATE:")
+    assert captured.out == ""

@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""``python -m omnimarket.nodes.node_install_request_effect serve|publish`` (OMN-19998, root 5).
+"""``python -m omnimarket.nodes.node_install_request_effect serve|publish|owed``
+(OMN-19998, root 5).
 
 * :class:`InstallRequestHost` runs on the host that serves install requests. It
   reads the node's command topic behind a consumer group of its own (one per
@@ -13,14 +14,20 @@
   decided again after the overlay's retry interval.
 * :func:`publish_request` is the lane side: it stamps the draft with its id and
   its expiry from the overlay, publishes it on the command topic and returns it.
+* ``owed`` is the offline reading: it reads a file of published requests and
+  the JSON-lines result journal, hands both to
+  :class:`HandlerInstallRequestOwed` and prints one line per owed install --
+  it opens no bus.
 
 The host applies no command-age limit of its own: the request's own
 ``expires_at`` is the bound, and the decision compute expires what stopped
 being worth running, so a retained command is answered or expired, never
 dropped unnamed.
 
-Exit codes: 0 the host served until it was stopped / the draft was published;
-1 the bus could not be opened; 3 a deployment fact is missing (INDETERMINATE).
+Exit codes: 0 the host served until it was stopped / the draft was published /
+the owed reading was printed; 1 the bus could not be opened / an owed install
+expired; 3 a deployment fact or a record is missing or unreadable
+(INDETERMINATE).
 """
 
 from __future__ import annotations
@@ -55,6 +62,7 @@ from omnimarket.delegated_test_loop.lane_bus import LabRunBusError, open_lab_run
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.models.install_request import (
     EnumInstallRequestAction,
+    ModelInstallOwedInput,
     ModelInstallRequest,
     ModelInstallRequestDraft,
     ModelInstallRequestResult,
@@ -68,6 +76,9 @@ from omnimarket.nodes.node_install_request_effect.overlay import (
     NODE_NAME,
     ModelInstallRequestEffectOverlay,
     load_overlay,
+)
+from omnimarket.nodes.node_install_request_owed_compute.handlers.handler_install_request_owed import (
+    HandlerInstallRequestOwed,
 )
 from omnimarket.nodes.node_unit_tree_install_effect.node import (
     NodeUnitTreeInstallEffect,
@@ -469,7 +480,70 @@ async def _publish_command(args: argparse.Namespace) -> None:
         request = await publish_request(
             bus, draft, overlay, now=lambda: datetime.now(UTC)
         )
-    sys.stdout.write(request.model_dump_json(indent=1) + "\n")
+    sys.stdout.write(request.model_dump_json() + "\n")
+
+
+def _add_owed_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--requests",
+        required=True,
+        help="the JSON-lines file of published requests (one request per line)",
+    )
+    parser.add_argument(
+        "--results",
+        required=True,
+        help="the JSON-lines result journal; a missing file reads as no results",
+    )
+    parser.add_argument(
+        "--now", help="the reading time, ISO-8601 with Z, instead of the clock"
+    )
+
+
+def _read_json_lines[ModelT: BaseModel](path: Path, kind: type[ModelT]) -> list[ModelT]:
+    """Read one ``kind`` JSON object per line; a missing file holds no records."""
+    if not path.exists():
+        return []
+    records: list[ModelT] = []
+    with path.open(encoding="utf-8") as handle:
+        for number, raw in enumerate(handle, start=1):
+            text = raw.strip()
+            if not text:
+                continue
+            try:
+                records.append(kind.model_validate_json(text))
+            except ValidationError as exc:
+                raise ValueError(
+                    f"{path} line {number} is no {kind.__name__} JSON line: {exc}"
+                ) from exc
+    return records
+
+
+def _owed_command(args: argparse.Namespace) -> int:
+    requests_path = Path(args.requests)
+    if not requests_path.exists():
+        raise ValueError(
+            f"{requests_path} does not exist: no published requests to read"
+        )
+    if args.now is not None:
+        try:
+            now = datetime.fromisoformat(args.now)
+        except ValueError as exc:
+            raise ValueError(f"--now {args.now!r} is no ISO-8601 stamp: {exc}") from exc
+    else:
+        now = datetime.now(UTC)
+    reading = HandlerInstallRequestOwed().handle(
+        ModelInstallOwedInput(
+            requests=tuple(_read_json_lines(requests_path, ModelInstallRequest)),
+            results=tuple(
+                _read_json_lines(Path(args.results), ModelInstallRequestResult)
+            ),
+            now=now,
+        )
+    )
+    for entry in reading.lines:
+        sys.stdout.write(entry.line + "\n")
+    sys.stdout.write(f"owed={reading.owed} expired={reading.expired}\n")
+    return 1 if reading.expired else 0
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -486,12 +560,20 @@ def main(argv: Sequence[str] | None = None) -> int:
             help="read one draft JSON on stdin, publish it, print the request",
         )
     )
+    _add_owed_arguments(
+        commands.add_parser(
+            "owed",
+            help="read the result journal, print the installs still owed",
+        )
+    )
     args = parser.parse_args(list(sys.argv[1:] if argv is None else argv))
     try:
         if args.command == "serve":
             asyncio.run(_serve_command(args))
-        else:
+        elif args.command == "publish":
             asyncio.run(_publish_command(args))
+        else:
+            return _owed_command(args)
     except LabRunBusError as exc:
         sys.stderr.write(f"{type(exc).__name__}: {exc}\n")
         return 1
