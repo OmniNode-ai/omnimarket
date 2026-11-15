@@ -1,0 +1,72 @@
+schema_version: 1.0.0
+ticket_id: OMN-24550
+title: The ticket closer says why it reads nothing and why a close is refused
+summary: 'On dev the scheduled closer ran 26 times in 24 hours and examined nothing: its candidate source returns nothing because the runtime container holds no registry clones and no PR watcher state file,
+  and its result said only that it could not read. A Done write to the ticket node is refused by the Done-write guard, whose nested verifier fails for the same missing clones, and the write effect reported
+  only operation_failed. This change makes the write effect report a Done-guard refusal as done_write_refused with the guard''s reason and any other unexpected failure with its exception class, carries
+  that cause into the closer''s outcome, gives every closer run a STATUS line, and makes the bound profile refuse by name when no scope repository clone or no PR watcher state file exists.'
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- topics
+requirements:
+- id: req-omn24550-closer-cause
+  statement: A closer run and a refused Done write each say why, in a typed result a reader can act on.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a Done write the guard refuses reaches the caller as a typed failure naming the guard''s reason, and any other unexpected failure names its exception class without its text -- falsifier:
+      uv run pytest tests/nodes/node_linear_ticket_write_effect -q -k "done_write_refusal or unknown_failure", failing with the old handler restored'
+  - id: AC2
+    statement: 'AC2: every closer run, refused or unread included, carries a STATUS line, and a host with no scope-repository clone or no PR watcher state file refuses naming which is missing -- falsifier:
+      uv run pytest tests/nodes/node_ticket_closer_scheduled_effect -q -k "status_line or no_scope_repository or watcher_state", failing with the old bound profile restored'
+  - id: AC3
+    statement: 'AC3: integrated: on the dev runtime the closer''s next run logs its STATUS line naming the missing clones or watcher state, and a Done write against the ticket node returns done_write_refused
+      with the guard''s reason instead of operation_failed -- falsifier: the same two reads on the revision before this change show no STATUS line and operation_failed with no finding code'
+evidence_requirements:
+- kind: tests
+  description: The ticket write effect and closer node tests pass at the pushed head.
+  command: uv run pytest tests/nodes/node_linear_ticket_write_effect tests/nodes/node_ticket_closer_scheduled_effect -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24550-ac1
+  description: 'AC1: a Done-guard refusal is a typed done_write_refused failure carrying the guard''s reason, and an unknown failure names its class only; the control shows the old handler answering operation_failed
+    with no finding code.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_linear_ticket_write_effect/test_golden_chain_linear_ticket_write_effect.py tests/nodes/node_ticket_closer_scheduled_effect/test_ticket_done_writer.py -q -n
+      0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24550-ac2
+  description: 'AC2: every closer result carries a STATUS line and the bound profile refuses naming the missing clone or watcher state file; the control shows the old bound profile building on an empty
+    root.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_ticket_closer_scheduled_effect/test_bound_profile.py tests/nodes/node_ticket_closer_scheduled_effect/test_golden_chain_ticket_closer.py -q -n 0 --no-cov -p
+      no:cacheprovider
+    cwd: .
+- id: dod-omn24550-ac3
+  description: 'hosted proxy for AC3: the closer contract topics and the ticket write seam tests pass; the dev-runtime reading is taken after install and named in the pull request.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_ticket_closer_scheduled_effect/test_contract_topics.py tests/nodes/node_ticket_closer_scheduled_effect/test_seam_ticket_write.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24550-integration-proof
+  description: the closer and ticket write tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24550 --kind test -- env PYTHONDONTWRITEBYTECODE=1
+      uv run --frozen pytest tests/nodes/node_linear_ticket_write_effect tests/nodes/node_ticket_closer_scheduled_effect -q --no-cov
