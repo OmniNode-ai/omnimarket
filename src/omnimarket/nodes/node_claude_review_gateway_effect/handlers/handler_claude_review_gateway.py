@@ -821,6 +821,38 @@ class ClaudeReviewGateway:
             )
         ]
 
+    async def probe_keys(self, payload: Mapping[str, Any]) -> list[tuple[str, str]]:
+        """One call per bound key, each key's display name with its credit state (OMN-24562).
+
+        States are ``funded``, ``out_of_credit``, ``refused`` (another key failure) and
+        ``unreachable`` (a failure that says nothing about the key). Nothing here sets a key
+        aside, publishes an event or returns a credential reference or a provider message.
+        """
+        states: list[tuple[str, str]] = []
+        for key in _host_keys(self._catalog, self._request, self._clock()):
+            if not await self._key_values.get_secret(key.api_key_ref):
+                states.append((key.name, "refused"))
+                continue
+            try:
+                outcome = await asyncio.to_thread(
+                    self._call, self._translate(payload, key)
+                )
+            except (ModelOnexError, OSError):
+                states.append((key.name, "unreachable"))
+                continue
+            if outcome.success:
+                states.append((key.name, "funded"))
+            elif not _is_key_failure(outcome):
+                states.append((key.name, "unreachable"))
+            elif (
+                _key_failure_cause(outcome)
+                is EnumDelegationFailureClass.PROVIDER_BILLING
+            ):
+                states.append((key.name, "out_of_credit"))
+            else:
+                states.append((key.name, "refused"))
+        return states
+
     def _translate(
         self, payload: Mapping[str, Any], key: ModelReviewGatewayKey
     ) -> ModelLlmDelegationCallRequest:

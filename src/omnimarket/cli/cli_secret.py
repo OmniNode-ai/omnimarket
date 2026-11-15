@@ -1227,6 +1227,86 @@ _REVIEW_GATEWAY_DRY_RUN_PAYLOAD: dict[str, object] = {
 }
 
 
+@models_group.command("review-gateway-key-probe")
+@click.option("--tenant", required=True, help="The tenant whose keys are probed.")
+@click.option("--model", "model_option", required=True, help="The Claude model probed.")
+@click.option("--host", default=None, help="This machine's lab host table row.")
+@click.option(
+    "--state-dir",
+    type=click.Path(file_okay=False, path_type=Path),
+    required=True,
+    help="Where the last state of each key is kept.",
+)
+@click.option(
+    "--ledger",
+    type=click.Path(dir_okay=False, path_type=Path),
+    envvar="ONEX_LEDGER_PATH",
+    required=True,
+    help="The ledger a key's credit flip is appended to.",
+)
+def review_gateway_key_probe(
+    tenant: str,
+    model_option: str,
+    host: str | None,
+    state_dir: Path,
+    ledger: Path,
+) -> None:
+    """Probe each review key bound to this host with one token; ledger a credit flip (OMN-24562)."""
+    from omnimarket.handlers.handler_review_key_credit_probe import (
+        PROBE_PAYLOAD,
+        record,
+    )
+    from omnimarket.nodes.node_claude_review_gateway_effect.handlers.handler_claude_review_gateway import (
+        GATEWAY_PLAN,
+        ClaudeReviewGateway,
+    )
+    from omnimarket.nodes.node_claude_review_gateway_effect.models.model_claude_review_gateway import (
+        ModelClaudeReviewGatewayRequest,
+        ModelReviewGatewayOverlay,
+    )
+    from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_llm_delegation_call import (
+        HandlerLlmDelegationCall,
+    )
+
+    bound_host = _resolve_bound_host(host)
+    if bound_host is None:
+        raise click.ClickException("the probe needs this machine's lab host row.")
+    backend = resolve_byok_provider_backend("anthropic", GATEWAY_PLAN)
+    if backend is None:
+        raise click.ClickException(
+            "the provider catalogue offers no anthropic api_native backend."
+        )
+    store = _tenant_key_store()
+    gateway = ClaudeReviewGateway(
+        ModelClaudeReviewGatewayRequest(
+            host=bound_host,
+            tenant_id=tenant,
+            model=model_option,
+            cloud_refused_repositories=("none",),
+        ),
+        catalog=SqliteDatabaseAdapter(store.db_path),
+        key_values=store,
+        call=HandlerLlmDelegationCall(),
+        endpoint_url=backend.endpoint_url,
+        overlay=ModelReviewGatewayOverlay(key_set_aside_ttl_seconds=1),
+        event_bus=None,
+    )
+    states = asyncio.run(gateway.probe_keys(PROBE_PAYLOAD))
+    try:
+        changed = record(
+            states,
+            state_dir=state_dir,
+            ledger=ledger,
+            host=bound_host,
+            model=model_option,
+        )
+    except RuntimeError as exc:
+        raise click.ClickException(str(exc)) from None
+    for name, state in states:
+        click.echo(f"review-key-probe: {name} {state}")
+    click.echo(f"review-key-probe: {len(changed)} flip(s) written")
+
+
 @models_group.command("review-gateway")
 @click.option(
     "--tenant",
