@@ -142,37 +142,6 @@ def test_malformed_policy_refuses_instead_of_falling_back():
             )
 
 
-def test_fill_reads_the_declared_ceiling_instead_of_a_dispatcher_constant(monkeypatch):
-    from omnimarket.nodes.node_idle_slot_fill_effect.handlers.handler_idle_slot_fill import (
-        HandlerIdleSlotFill,
-    )
-    from omnimarket.nodes.node_idle_slot_fill_effect.models import (
-        ModelIdleSlotFillRequest,
-    )
-
-    request = ModelIdleSlotFillRequest(
-        now="2026-10-26T19:59:00Z",
-        hosts=[{"name": "host-a", "admission": {"claude_slots": 1}}],
-        lines=["MISSING lab-headroom:host-a | free Claude slots 1"],
-        backlog=[
-            {
-                "kind": "lab-repair",
-                "key": "recorded",
-                "ticket": "OMN-21396",
-                "brief": "Replay the recorded repair.",
-            }
-        ],
-    )
-    assert HandlerIdleSlotFill().handle(request).sends[0]["model"] == "sonnet"
-    lowered = ModelLaneModelPolicy.model_validate(
-        {**policy.load_policy().model_dump(), "ceiling": "codex"}
-    )
-    monkeypatch.setattr(policy, "load_policy", lambda: lowered)
-    result = HandlerIdleSlotFill().handle(request)
-    assert result.sends == []
-    assert result.idle_after == 1
-
-
 @pytest.mark.asyncio
 async def test_contract_terminal_event_carries_the_policy_decision():
     import json

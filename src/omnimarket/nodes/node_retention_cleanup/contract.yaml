@@ -176,15 +176,14 @@ retention_policy:
         keep_days: 14
         action: archive
         readers: [lane_scratch.py, the lane that minted the path]
-      # Readers: node_lab_fill_effect reads */*.json to see running lanes and
-      # node_throughput_tick_decision_compute reads receipts inside its window
-      # (hours). The ledger STATUS and TERMINAL rows are the durable record.
+      # Readers: node_throughput_tick_decision_compute reads receipts inside its
+      # window (hours). The ledger STATUS and TERMINAL rows are the durable record.
       - name: remote-lane-receipts
         path: ~/.local/state/omni/remote-lanes
         pattern: "*/*.json"
         keep_days: 14
         action: archive
-        readers: [node_lab_fill_effect, node_throughput_tick_decision_compute]
+        readers: [node_throughput_tick_decision_compute]
       # Launching-host run outputs live beside receipts, outside ~/lab-run/runs.
       # They are history: archive at seven days, never the receipts' plain delete.
       - name: remote-lane-outputs

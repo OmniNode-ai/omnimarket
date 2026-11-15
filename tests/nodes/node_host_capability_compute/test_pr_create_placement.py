@@ -141,11 +141,8 @@ HOST_NAME = re.compile(r"\bh\d{3}\b|\b\d{1,3}(?:\.\d{1,3}){3}\b")
 PLACEMENT_AND_FILL_NODES = (
     "node_host_capability_compute",
     "node_lab_placement_compute",
-    "node_lab_fill_effect",
     "node_lab_fill_orchestrator",
-    "node_lab_fill_plan_compute",
     "node_lab_fill_receipt_table_compute",
-    "node_lab_fill_selection_compute",
     "node_throughput_tick_decision_compute",
     "node_hourly_tick_decision_compute",
     "node_hourly_tick_effect",

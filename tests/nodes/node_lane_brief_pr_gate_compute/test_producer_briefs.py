@@ -3,8 +3,7 @@
 """AC1: one brief per omnimarket producer passes the real gate under ``enforce``.
 
 Every repository name and id below is an invented fixture. The producers are the code paths that
-write a brief naming a repository: the idle-slot fill, its cloud backlog, the lab fill (a ticket
-row and its diagnose lane), the dev red-cause receiver, the controller fix plan, the exception
+write a brief naming a repository: the dev red-cause receiver, the controller fix plan, the exception
 queue and the brief assembler.
 """
 
@@ -24,10 +23,6 @@ from omnimarket.nodes.node_dev_cause_lane_receiver_effect.handlers import (
     handler_dev_cause_lane_start as dev_cause,
 )
 from omnimarket.nodes.node_exception_queue_effect import handler as exception_queue
-from omnimarket.nodes.node_idle_slot_fill_effect import cloud_backlog
-from omnimarket.nodes.node_idle_slot_fill_effect.handlers import handler_idle_slot_fill
-from omnimarket.nodes.node_lab_fill_effect.handlers import handler_lab_fill_tick
-from tests.nodes.node_idle_slot_fill_effect.overlay_fixture import ENV
 from tests.nodes.node_lane_brief_draft_compute.test_assemble_lane_brief import (
     _request as assemble_request,
 )
@@ -41,29 +36,6 @@ from tests.nodes.node_lane_brief_pr_gate_compute.test_pr_gate import (
 pytestmark = pytest.mark.unit
 
 TICKET = "OMN-90001"
-
-
-def _idle_fill(tmp_path: Path) -> str:
-    item = {"kind": "ticket", "key": "k1", "repo": REPO_A, "fact": "f"}
-    return handler_idle_slot_fill.brief(item, "lane-a", "sonnet", "parent-a", TICKET)
-
-
-def _cloud_backlog(tmp_path: Path) -> str:
-    item = {"ticket": TICKET, "repo": REPO_A, "source": "s", "fact": "f"}
-    return cloud_backlog.brief(item, "cloud-lane", "parent-a")
-
-
-def _lab_fill_row(tmp_path: Path) -> str:
-    request = SimpleNamespace(
-        engine="codex",
-        authority_ruling="RULING x",
-        authority_lane="lane-x",
-        parent_ticket=TICKET,
-        parent="parent-a",
-        landing_lane="landing-controller",
-    )
-    row = {"ticket": TICKET, "kind": "approved", "id": "r1", "repo": REPO_A}
-    return handler_lab_fill_tick._brief(request, "lane-a", row, "marker")
 
 
 def _dev_cause(tmp_path: Path) -> str:
@@ -128,9 +100,6 @@ def _assembled(tmp_path: Path) -> str:
 
 
 PRODUCERS: dict[str, Callable[[Path], str]] = {
-    "idle_slot_fill": _idle_fill,
-    "cloud_backlog": _cloud_backlog,
-    "lab_fill": _lab_fill_row,
     "dev_cause_receiver": _dev_cause,
     "controller_fix_plan": _controller_fix,
     "exception_queue": _exception_queue,
@@ -142,7 +111,6 @@ PRODUCERS: dict[str, Callable[[Path], str]] = {
 def test_ac1_each_producers_brief_passes_the_real_gate_under_enforce(
     name: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", ENV["ONEX_SKILL_OVERLAY_ROOTS"])
     text = PRODUCERS[name](tmp_path)
     repo = "omnimarket" if name == "brief_assembler" else REPO_A
     assert f"\nOpens PR in: {repo}\n" in text
@@ -152,31 +120,6 @@ def test_ac1_each_producers_brief_passes_the_real_gate_under_enforce(
         state=ROOM,
     )
     assert result.verdict is Verdict.ADMITTED, result.line
-
-
-def test_ac1_the_lab_fill_diagnose_brief_declares_it_opens_no_pr() -> None:
-    request = SimpleNamespace(
-        engine="codex",
-        authority_ruling="RULING x",
-        authority_lane="lane-x",
-        parent_ticket=TICKET,
-        parent="parent-a",
-        landing_lane="landing-controller",
-        run_key="rk",
-        fire_id="f1",
-    )
-    result = SimpleNamespace(
-        skipped=[],
-        refusals=[],
-        free_slots=2,
-        placed=0,
-        outcome="o",
-        refusals_cell="-",
-        parked=[],
-    )
-    alarm = SimpleNamespace(streak=3)
-    text = handler_lab_fill_tick._diagnose_brief(request, "lane-a", result, alarm)
-    assert check(text, config=ENFORCE).verdict is Verdict.ADMITTED
 
 
 def test_a_producer_with_no_repository_leaves_the_line_out_and_the_gate_reports_it() -> (
