@@ -25,6 +25,11 @@ DELEGATION_SUMMARY_VIEW_STEPS = (
         "omn23169_delegation_summary_excludes_experiment",
         "sqlite/delegation_summary_view_v2.sql",
     ),
+    # OMN-24615 AC4, AC6: keeps NULL-data_source runs, counts only evaluated runs, names the model that ran.
+    (
+        "omn24615_delegation_summary_evaluated_runs",
+        "sqlite/delegation_summary_view_v3.sql",
+    ),
 )
 
 
