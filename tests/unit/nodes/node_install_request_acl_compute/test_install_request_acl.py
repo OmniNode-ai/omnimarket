@@ -144,7 +144,10 @@ def test_golden_two_hosts_two_publishers():
         "onex.cmd.omnimarket.install-requested-from-logina.v1",
         EnumAclOperation.DESCRIBE,
     ) in a_grants
-    assert len(a_grants) == 4
+    assert {name for kind, name, op in a_grants if op is EnumAclOperation.WRITE} == {
+        _topics().writer_command_topic("logina"),
+        _topics().command,
+    }
 
     # loginc is a publisher only
     pc = principals["User:loginc"]
@@ -159,7 +162,10 @@ def test_golden_two_hosts_two_publishers():
         "onex.cmd.omnimarket.install-requested-from-loginc.v1",
         EnumAclOperation.DESCRIBE,
     ) in c_grants
-    assert len(c_grants) == 4
+    assert {name for kind, name, op in c_grants if op is EnumAclOperation.WRITE} == {
+        _topics().writer_command_topic("loginc"),
+        _topics().command,
+    }
 
     # host1 is a host principal; its allowed logins are logina and loginb
     ph1 = principals["User:host1"]
@@ -364,3 +370,43 @@ def test_failing_control_widened_prefix():
         )
         is False
     )
+
+
+def test_a_publisher_reads_every_install_topic_for_the_owed_reading_and_writes_none_of_them() -> (
+    None
+):
+    """The owed reading runs under a lane login: it reads every writer topic, every result topic and a group of the node's
+    prefix, and still holds no write on another login's topic or on a result topic."""
+    declared = _handler().handle(_request())
+    topics = _topics()
+    for login in ("logina", "loginb", "loginc"):
+        for other in ("logina", "loginb", "loginc"):
+            assert permits(
+                declared,
+                login,
+                EnumAclResourceType.TOPIC,
+                topics.writer_command_topic(other),
+                EnumAclOperation.READ,
+            )
+        for host in ("host1", "host2"):
+            assert permits(
+                declared,
+                login,
+                EnumAclResourceType.TOPIC,
+                topics.result_topic(host),
+                EnumAclOperation.READ,
+            )
+            assert not permits(
+                declared,
+                login,
+                EnumAclResourceType.TOPIC,
+                topics.result_topic(host),
+                EnumAclOperation.WRITE,
+            )
+        assert permits(
+            declared,
+            login,
+            EnumAclResourceType.GROUP,
+            host_group_id("x") + ".owed.abc",
+            EnumAclOperation.READ,
+        )

@@ -870,6 +870,24 @@ async def _login_topic_host(open_bus: Callable[[], Any], tmp_path: Path) -> None
             topics.success,
         ]
 
+        # the same login runs the owed reading: its rows grant every read the reading makes
+        from omnimarket.nodes.node_install_request_effect.runtime_install_request import (
+            read_owed,
+        )
+
+        reader = _BrokerRows(bus, declaration, PUBLISHER)
+        reading = await read_owed(
+            reader,  # type: ignore[arg-type]
+            _two_login_overlay(scene.root),
+            lambda: datetime.now(UTC),
+        )
+        assert {topic for topic, _ in reader.read} == {
+            topics.writer_command_topic(PUBLISHER),
+            topics.writer_command_topic(SECOND),
+            topics.result_topic(HOST_LOGIN),
+        }
+        assert reading.owed == 0
+
         # the other login writes the first login's topic: the rows refuse it before it reaches the bus
         forger = _BrokerRows(bus, declaration, SECOND)
         forged = _request(_draft(scene.second), expires_in=timedelta(hours=2))

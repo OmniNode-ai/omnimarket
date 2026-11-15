@@ -54,7 +54,7 @@ def permits(
     )
 
 
-_PUBLISHER_ROLE = "install request publisher: writes only its own writer topic"
+_PUBLISHER_ROLE = "install request publisher: writes only its own writer topic, reads the install request topics for the owed reading"
 _HOST_ROLE = "install request host: reads the writer topics of the logins its row allows and writes its results"
 _BOTH_ROLE = "install request publisher and host"
 
@@ -98,6 +98,33 @@ class HandlerInstallRequestAcl:
                     (topics.writer_command_topic(login), topics.command),
                     write,
                 )
+        # A publisher also runs the owed reading from its login: it reads every writer topic and every result topic (read
+        # only; a request names no secret) under a consumer group of the node's own prefix.
+        reader_topics = tuple(
+            dict.fromkeys(
+                [
+                    *(
+                        topics.writer_command_topic(login)
+                        for allowed in allowed_by_host_login.values()
+                        for login in allowed
+                    ),
+                    *(topics.result_topic(host) for host in allowed_by_host_login),
+                ]
+            )
+        )
+        for login in {
+            login for allowed in allowed_by_host_login.values() for login in allowed
+        }:
+            topic_rows(login, _PUBLISHER_ROLE, reader_topics, read)
+            grants[login].update(
+                (
+                    EnumAclResourceType.GROUP,
+                    EnumAclPattern.PREFIXED,
+                    request.group_prefix,
+                    operation,
+                )
+                for operation in read
+            )
         for host_login, allowed in allowed_by_host_login.items():
             topic_rows(
                 host_login,
