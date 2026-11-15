@@ -39,6 +39,7 @@ from omnimarket.nodes.node_github_repo_gateway_effect.models.model_gateway_io im
     EnumArtifactFetchRefusal,
     EnumGithubGatewayOperation,
     ModelArtifactsResult,
+    ModelCodeScanningAlertsResult,
     ModelCommitCheckRunsResult,
     ModelGithubGatewayRequest,
     ModelGithubGatewayResponse,
@@ -50,6 +51,7 @@ from omnimarket.nodes.node_github_repo_gateway_effect.models.model_gateway_io im
     ModelPrReviewThreadsResult,
     ModelPrTextResult,
     ModelReleasesResult,
+    ModelRepoFileResult,
     ModelRunJobsResult,
     ModelWorkflowRunsResult,
 )
@@ -90,6 +92,8 @@ SCM_READ_RESULT_MODELS: dict[EnumGithubGatewayOperation, type[BaseModel]] = {
     EnumGithubGatewayOperation.MERGED_PR: ModelMergedPrResult,
     EnumGithubGatewayOperation.PR_REVIEW_THREADS: ModelPrReviewThreadsResult,
     EnumGithubGatewayOperation.OPEN_PR_FACTS: ModelOpenPrFactsResult,
+    EnumGithubGatewayOperation.REPO_FILE: ModelRepoFileResult,
+    EnumGithubGatewayOperation.CODE_SCANNING_ALERTS: ModelCodeScanningAlertsResult,
 }
 
 

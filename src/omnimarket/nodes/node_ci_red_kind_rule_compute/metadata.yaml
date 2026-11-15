@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_ci_red_kind_rule_compute
+version: "0.1.0"
+description: "Name the kind of a failed CI check from its check name by an overlay rule table, so a name that decides the kind never costs a model call"
+omnibase_core_compat: ">=0.47.73,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_ci_red_kind_rule_compute: "omnimarket.nodes.node_ci_red_kind_rule_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+dependencies:
+  - "omnibase_core>=0.47.73"
+  - "omnibase-infra>=0.38.75"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "triage", "ci-red", "rule"]
+pack: "core"
+display_name: "CI Red Kind Rule Compute"
+node_role: "compute"

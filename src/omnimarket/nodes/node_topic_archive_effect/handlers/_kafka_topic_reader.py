@@ -34,15 +34,20 @@ class AiokafkaTopicReader:
         if self._consumer is None:
             from aiokafka import AIOKafkaConsumer
             from omnibase_infra.event_bus.kafka_auth import (
-                build_aiokafka_auth_kwargs_from_env,
+                build_aiokafka_auth_kwargs_for,
             )
 
+            # The lane-aware resolver answers for THIS broker: a bound lane transport when the
+            # caller opened one, else the standard runtime Kafka environment (OMN-24209).
+            auth = build_aiokafka_auth_kwargs_for(self._bootstrap)
+            security_protocol = str(auth.pop("security_protocol", "PLAINTEXT"))
             self._consumer = AIOKafkaConsumer(
                 bootstrap_servers=self._bootstrap,
                 group_id=None,
                 enable_auto_commit=False,
                 auto_offset_reset="earliest",
-                **build_aiokafka_auth_kwargs_from_env(),
+                security_protocol=security_protocol,
+                **auth,
             )
             await self._consumer.start()
         return self._consumer
@@ -59,13 +64,16 @@ class AiokafkaTopicReader:
         # first live run. Ask the broker through the admin API instead.
         from aiokafka.admin import AIOKafkaAdminClient
         from omnibase_infra.event_bus.kafka_auth import (
-            build_aiokafka_auth_kwargs_from_env,
+            build_aiokafka_auth_kwargs_for,
         )
 
         await self._client()  # resolves the bootstrap address
+        auth = build_aiokafka_auth_kwargs_for(self._bootstrap)
+        security_protocol = str(auth.pop("security_protocol", "PLAINTEXT"))
         admin = AIOKafkaAdminClient(
             bootstrap_servers=self._bootstrap,
-            **build_aiokafka_auth_kwargs_from_env(),
+            security_protocol=security_protocol,
+            **auth,
         )
         await admin.start()
         try:

@@ -25,6 +25,10 @@ class ModelParityReceiptRequest(BaseModel):
         default="",
         description="Interpreter that runs the parity check (it holds omnimarket and a database driver).",
     )
+    verb_command: str = Field(
+        default="",
+        description="Command prefix of the ledger readers; passed to the parity check as --verb-command so the receipt counts per-verb differences. Empty: the receipt says verb_diff=not-run.",
+    )
     dsn_overlay_path: str = Field(
         default="",
         description="Overlay file holding the host variable name, the database and the user.",

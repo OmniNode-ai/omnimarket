@@ -19,6 +19,9 @@ from omnimarket.nodes.node_stability_lane_refresh_effect.models import (
     ModelRunOutcome,
     ModelStabilityRefreshCommand,
 )
+from omnimarket.nodes.node_stability_lane_refresh_effect.overlay import (
+    ModelStabilityHostOverlay,
+)
 from tests.nodes.node_stability_lane_refresh_effect.stability_support import (
     ALL_TAGS,
     OTHER,
@@ -35,6 +38,13 @@ def command(**changes: object) -> ModelStabilityRefreshCommand:
     values: dict[str, object] = {"correlation_id": "c1"}
     values.update(changes)
     return ModelStabilityRefreshCommand.model_validate(values)
+
+
+class UnreadableDiskFree:
+    """A disk reading that cannot be taken: every read raises."""
+
+    def free_bytes(self, path: str) -> int:
+        raise PermissionError(path)
 
 
 def test_stability_pin_differs_without_bump_exits_nonzero_and_runs_nothing() -> None:
@@ -156,6 +166,74 @@ def test_stability_pin_unreadable_pin_is_refused() -> None:
     result = rig.handler.handle(command())
     assert result.outcome is Outcome.REFUSED_PIN_UNREADABLE
     assert result.exit_code != 0
+
+
+def test_stability_disk_floor_below_the_floor_refuses_and_runs_nothing() -> None:
+    rig = Rig(free_gib=99.9)
+    result = rig.handler.handle(command(execute=True))
+    assert result.outcome is Outcome.REFUSED_LOW_DISK
+    assert result.exit_code == 67
+    assert rig.runner.calls == []
+    assert "99.9 GiB free on /example/home" in result.detail
+    assert "100.0 GiB floor" in result.detail
+
+
+def test_stability_disk_floor_free_exactly_at_the_floor_passes_and_runs() -> None:
+    rig = Rig(free_gib=100)
+    result = rig.handler.handle(command(execute=True))
+    assert result.outcome is Outcome.REFRESHED
+    assert result.exit_code == 0
+    assert rig.runner.executed
+
+
+def test_stability_disk_floor_unreadable_reading_refuses_and_runs_nothing() -> None:
+    rig = Rig(disk=UnreadableDiskFree())
+    result = rig.handler.handle(command(execute=True))
+    assert result.outcome is Outcome.REFUSED_LOW_DISK
+    assert result.exit_code == 67
+    assert "disk floor unreadable: PermissionError" in result.detail
+    assert rig.runner.calls == []
+
+
+def test_stability_host_overlay_loads_without_the_disk_floor_and_leaves_it_none() -> (
+    None
+):
+    values = {
+        key: value
+        for key, value in overlay().model_dump().items()
+        if key != "disk_floor"
+    }
+    loaded = ModelStabilityHostOverlay.model_validate(values)
+    assert loaded.disk_floor is None
+
+
+def test_stability_refresh_without_a_declared_disk_floor_refuses_and_reads_no_disk() -> (
+    None
+):
+    rig = Rig(host_overlay=overlay(disk_floor=None))
+    result = rig.handler.handle(command(execute=True))
+    assert result.outcome is Outcome.REFUSED_LOW_DISK
+    assert result.exit_code == 67
+    assert rig.runner.calls == []
+    assert rig.disk.asked == []
+    assert "no disk floor" in result.detail
+
+
+def test_stability_disk_floor_already_pinned_with_low_disk_answers_already_pinned() -> (
+    None
+):
+    rig = Rig(applied=PIN, free_gib=1)
+    result = rig.handler.handle(command(execute=True))
+    assert result.outcome is Outcome.ALREADY_PINNED
+    assert result.exit_code == 0
+    assert rig.runner.calls == []
+    assert rig.disk.asked == []
+
+
+def test_stability_disk_floor_reads_the_overlay_volume() -> None:
+    rig = Rig()
+    rig.handler.handle(command(execute=True))
+    assert rig.disk.asked == [overlay().disk_floor.path]
 
 
 def test_stability_host_overlay_reaches_the_refresh_environment_by_name_and_value() -> (

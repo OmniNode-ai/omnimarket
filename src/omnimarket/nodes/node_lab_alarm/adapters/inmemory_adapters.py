@@ -4,23 +4,30 @@
 
 from __future__ import annotations
 
-from collections.abc import Collection, Mapping
+from collections.abc import Collection, Mapping, Sequence
 from datetime import datetime
 from typing import Any
 
+from omnimarket.nodes.node_lab_alarm.models.model_lab_alarm_delegation_chain_canary import (
+    ModelCanaryRun,
+)
 from omnimarket.nodes.node_lab_alarm.models.model_lab_alarm_effects_held import (
     ModelEffectsGroupReading,
     ModelEscalationBrief,
 )
 from omnimarket.nodes.node_lab_alarm.protocols import (
+    CanaryRunsUnreadableError,
     EffectsGroupReadError,
     GroupNeverCommittedError,
     GroupUnreadableError,
+    HeartbeatUnreadableError,
     LaneDispatchError,
+    LedgerUnreadableError,
     ListenerRefusedError,
     ListenerUnresolvableError,
     ManifestUnreachableError,
     ManifestUnreadableError,
+    ProjectionUnreadableError,
     RunRecordUnwritableError,
 )
 
@@ -162,15 +169,83 @@ class InMemoryListenerProbe:
             raise ListenerRefusedError(f"{address} is not a fixture address")
 
 
+class InMemoryHeartbeatSource:
+    """Serves one heartbeat document, or refuses as an agent that cannot be read."""
+
+    def __init__(
+        self, document: Mapping[str, Any] | None = None, error: str | None = None
+    ) -> None:
+        self.document = document
+        self.error = error
+        self.reads = 0
+
+    def read(self) -> Mapping[str, Any]:
+        self.reads += 1
+        if self.error is not None or self.document is None:
+            raise HeartbeatUnreadableError(self.error or "no heartbeat document")
+        return self.document
+
+
+class InMemoryCanaryRunSource:
+    """Serves the canary workflow's runs, or refuses as a surface that cannot be read."""
+
+    def __init__(
+        self, runs: Sequence[ModelCanaryRun] = (), error: str | None = None
+    ) -> None:
+        self.runs: tuple[ModelCanaryRun, ...] = tuple(runs)
+        self.error = error
+
+    def read(self) -> tuple[ModelCanaryRun, ...]:
+        if self.error is not None:
+            raise CanaryRunsUnreadableError(self.error)
+        return self.runs
+
+
+class InMemoryLedgerNewest:
+    """The ledger's newest canonical row, or a refusal as a file that cannot be read."""
+
+    def __init__(
+        self, newest: tuple[datetime, str] | None = None, error: str | None = None
+    ) -> None:
+        self.newest_row = newest
+        self.error = error
+
+    def newest(self) -> tuple[datetime, str]:
+        if self.error is not None or self.newest_row is None:
+            raise LedgerUnreadableError(self.error or "no ledger row")
+        return self.newest_row
+
+
+class InMemoryProjectionNewest:
+    """The projection's newest row_ts, None for a window that holds none, or a refusal."""
+
+    def __init__(
+        self, newest: datetime | None = None, error: str | None = None
+    ) -> None:
+        self.newest_row = newest
+        self.error = error
+        self.since_calls: list[datetime] = []
+
+    def newest(self, since: datetime) -> datetime | None:
+        self.since_calls.append(since)
+        if self.error is not None:
+            raise ProjectionUnreadableError(self.error)
+        return self.newest_row
+
+
 __all__ = [
+    "InMemoryCanaryRunSource",
     "InMemoryDispatcher",
     "InMemoryEffectsGroups",
     "InMemoryGrowthStreaks",
+    "InMemoryHeartbeatSource",
     "InMemoryHeldState",
     "InMemoryLag",
+    "InMemoryLedgerNewest",
     "InMemoryListenerProbe",
     "InMemoryManifest",
     "InMemoryManifestCache",
+    "InMemoryProjectionNewest",
     "InMemoryRunRecords",
     "InMemorySamples",
 ]

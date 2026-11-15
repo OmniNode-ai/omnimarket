@@ -234,11 +234,9 @@ class _MarkingReader(_Reader):
         super().__init__(read)
         self._marker = marker
 
-    def read_evidence(
-        self, now: datetime, *, hosts_table: Path | None = None
-    ) -> ModelMrcEvidenceRead:
+    def read_evidence(self, now: datetime) -> ModelMrcEvidenceRead:
         self._marker.write_text("read", encoding="utf-8")
-        return super().read_evidence(now, hosts_table=hosts_table)
+        return super().read_evidence(now)
 
 
 def _waiting_reader(tmp_path: Path, marker: Path, wait_seconds: float) -> Path:

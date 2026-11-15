@@ -1,0 +1,76 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - the hourly check's record step (OMN-23734)
+name: node_throughput_tick_record_effect
+contract_name: node_throughput_tick_record_effect
+node_name: node_throughput_tick_record_effect
+lifecycle: experimental
+node_type: effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+runtime_profiles: [effects]
+description: >-
+  Keeps the rows the retired throughput_tick.py kept in its state directory: the heartbeat the
+  checker reads, the open-count history the trend finding reads, the open status-check units and the
+  verdict events, and the goal check's record. A write that cannot be made is never raised: it is a
+  finding (open-trend-history, repo-status-units, goal-check-record) or the heartbeat's write error,
+  in the script's own text, and the other rows are still kept. Parity-tested on 20 recorded ticks.
+input_model:
+  name: ModelThroughputTickRecordRequest
+  module: omnimarket.nodes.node_throughput_tick_record_effect.models.model_throughput_tick_record
+  description: Which rows to keep this tick.
+output_model:
+  name: ModelThroughputTickRecordResult
+  module: omnimarket.nodes.node_throughput_tick_record_effect.models.model_throughput_tick_record
+  description: The rows kept and the findings for the rows that could not be.
+handler:
+  module: omnimarket.nodes.node_throughput_tick_record_effect.handlers.handler_throughput_tick_record
+  class: HandlerThroughputTickRecord
+  input_model: omnimarket.nodes.node_throughput_tick_record_effect.models.model_throughput_tick_record.ModelThroughputTickRecordRequest
+  output_model: omnimarket.nodes.node_throughput_tick_record_effect.models.model_throughput_tick_record.ModelThroughputTickRecordResult
+dependencies:
+  - name: ProtocolTickStateStore
+    dependency_type: protocol
+    description: "the tick's state directory; the file store by default (a write goes to a pid-named scratch file and is renamed over the row), an in-memory store in tests."
+    required: true
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_throughput_tick_record_effect.handlers.handler_throughput_tick_record:HandlerThroughputTickRecord
+  handlers:
+    - operation: record_throughput_tick
+      topic: onex.cmd.omnimarket.throughput-tick-record-requested.v1
+      handler:
+        name: HandlerThroughputTickRecord
+        module: omnimarket.nodes.node_throughput_tick_record_effect.handlers.handler_throughput_tick_record
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.throughput-tick-record-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.throughput-tick-record-completed.v1
+terminal_event: onex.evt.omnimarket.throughput-tick-record-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.throughput-tick-record-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.throughput-tick-record-completed.v1
+descriptor:
+  node_archetype: effect
+  purity: side_effecting
+  runtime_profiles: [effects]
+  idempotent: true
+  timeout_ms: 5000
+  side_effects:
+    - writes the heartbeat, open-count history, repo-status units, repo-status events and goal-check rows under the request's state_dir
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.throughput-tick-record-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.throughput-tick-record-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.throughput-tick-record-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.throughput-tick-record-completed.v1, operation: DESCRIBE}
+
+metadata:
+  transport_type: inmemory
+  description: The hourly check's record step
+  author: OmniNode Team
+  created: "2026-11-14"
+  related_tickets: [OMN-23734]

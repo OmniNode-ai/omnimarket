@@ -22,7 +22,11 @@ from typing import Any, Literal
 import yaml
 from pydantic import ValidationError
 
-from omnimarket.handlers.node_overlay_reader import find_node_overlay
+from omnimarket.handlers.node_overlay_reader import NodeOverlayError
+from omnimarket.handlers.overlay_keys import resolve_lab_hosts_table
+from omnimarket.models.host_table import (
+    ModelHostTableRequest,
+)
 from omnimarket.models.model_factory_floor_input import (
     CiState,
     ModelFactoryFloorConfig,
@@ -82,6 +86,10 @@ from omnimarket.nodes.node_factory_floor_effect.models.model_factory_floor_runti
     ModelFactoryFloorPlanRef,
     ModelFactoryFloorTaskLinks,
 )
+from omnimarket.nodes.node_host_table_compute.handlers.handler_host_table import (
+    HandlerHostTable,
+    HostTableRefusedError,
+)
 from omnimarket.nodes.node_lane_container_budget_compute.handlers.handler_lane_container_budget import (
     HandlerLaneContainerBudget,
 )
@@ -91,7 +99,7 @@ TICKET_RE = re.compile(r"\bOMN-\d+\b")
 PR_RE = re.compile(r"\b[A-Za-z][A-Za-z0-9_.-]*#\d+\b")
 TS_FMT = "%Y-%m-%dT%H:%M:%SZ"
 ID_KEY_RE = re.compile(
-    r"^(?:lane|from|ticket|tickets|parent_ticket|pr|prs|id|re|until|task|state|subject|verdict|outcome|closes-claim|closes-CLAIM|host|model|actor|to|run|head|ruling|cited-rulings|mechanism-ticket)$"
+    r"^(?:lane|from|ticket|tickets|parent_ticket|pr|prs|id|re|until|task|state|subject|verdict|outcome|closes-claim|closes-CLAIM|host|model|actor|to|run|head|worktree|mode|ruling|cited-rulings|mechanism-ticket)$"
 )
 STATUS_TYPES = {
     "in progress": "started",
@@ -146,6 +154,9 @@ _TS_SHAPE = re.compile(r"\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):\d{2}:\d{2}Z", re.A
 def _ledger_ts(value: str) -> datetime | None:
     """A ledger row's UTC stamp. A zero-padded ``TS_FMT`` stamp is read by the C parser (strptime is the cost of a 14-day
     read: one call per row, about 250,000 rows); anything else takes the strict parse and so keeps its old answer."""
+    if not value:
+        # An absent cell (most rows carry no ``until=``) is no stamp; strptime would raise on it, one raise per row.
+        return None
     if _TS_SHAPE.fullmatch(value):
         try:
             return datetime.fromisoformat(value[:-1]).replace(tzinfo=UTC)
@@ -163,6 +174,8 @@ def _tickets(*values: str) -> tuple[str, ...]:
 
 
 def _csv(*values: str) -> tuple[str, ...]:
+    if not any(values):
+        return ()
     return tuple(
         dict.fromkeys(part for value in values for part in value.split(",") if part)
     )
@@ -238,6 +251,8 @@ def parse_ledger_rows(text: str) -> tuple[ModelFloorLedgerRow, ...]:
             lane=fields.get("lane") or fields.get("from", ""),
             tickets=_csv(fields.get("ticket", ""), fields.get("tickets", "")),
             parent_tickets=_csv(fields.get("parent_ticket", "")),
+            read_only=fields.get("worktree") == "none"
+            or fields.get("mode") == "read-only",
             prs=_csv(fields.get("pr", ""), fields.get("prs", "")),
             row_id=fields.get("id", ""),
             re=fields.get("re", ""),
@@ -1067,19 +1082,6 @@ def resolve_dir(environ: Mapping[str, str], env_name: str, fallback: str) -> Pat
     return Path(value) if value else Path.home() / fallback
 
 
-def resolve_host_table(
-    environ: Mapping[str, str], env_name: str, home: Path, relpath: str
-) -> Path | None:
-    """The shared lab host table: the file ``env_name`` names, else ``relpath`` under ``home`` when the floor overlay
-    declares one, else the ``lab_hosts`` overlay found through the overlay roots. None when none supplies it."""
-    value = environ.get(env_name, "").strip()
-    if value:
-        return Path(value)
-    if relpath:
-        return home / relpath
-    return find_node_overlay("lab_hosts", environ)
-
-
 def split_reading(text: str) -> list[str]:
     """Split a pool reading on the commas outside square brackets (the Claude pool cell holds commas)."""
     parts: list[str] = []
@@ -1231,20 +1233,29 @@ def host_drift_cause(path: Path) -> str:
     return f"the host-drift fleet projection {path.name} exists but could not be parsed"
 
 
-def load_host_table(path: Path) -> tuple[ModelFloorHostRow, ...] | None:
+def load_host_table(environ: Mapping[str, str]) -> tuple[ModelFloorHostRow, ...] | None:
+    """The shared lab host table through the one host-table reader; None when it names no readable
+    table or the handler refuses its rows, never an empty tuple."""
+
     def read() -> tuple[ModelFloorHostRow, ...]:
-        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        result = HandlerHostTable().handle(
+            ModelHostTableRequest(table=resolve_lab_hosts_table(environ))
+        )
         return tuple(
             ModelFloorHostRow(
-                host=str(row["name"]),
-                cap=row.get("cap"),
-                available=row.get("available") is not False,
-                unavailable_reason=str(row.get("unavailable_reason") or ""),
+                host=row.name,
+                cap=row.cap,
+                available=row.available,
+                unavailable_reason=row.exclusion_reason,
+                local=row.local,
             )
-            for row in data["hosts"]
+            for row in result.rows
         )
 
-    return _optional(read)
+    try:
+        return read()
+    except (NodeOverlayError, HostTableRefusedError):
+        return None
 
 
 def _mapping(value: Any) -> dict[str, Any]:

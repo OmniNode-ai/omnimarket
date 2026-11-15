@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_merged_change_reading_effect
+version: "1.0.0"
+description: Reads a list of merged changes against the running system (build provenance, runtime log, unit state) and answers per change
+omnibase_core_compat: ">=0.47.28,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_merged_change_reading_effect: omnimarket.nodes.node_merged_change_reading_compute
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  side_effect_class: read_only
+dependencies:
+  - pydantic>=2.11.0
+  - pyyaml
+authors: [OmniNode Team]
+license: MIT
+tags: [effect, merged-changes, runtime-reading]
+node_role: effect
+pack: "routing"
+display_name: "Merged Change Reading Compute"

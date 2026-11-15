@@ -1,0 +1,61 @@
+schema_version: 1.0.0
+ticket_id: OMN-24321
+title: A node binds a named node package into the interpreter without its start-up file
+summary: node_package_bind_effect binds one omnimarket node's package into sys.modules with a namespace-package spec and without running the package __init__, so a caller that holds only pydantic (the landing controller's decision environment) imports the node's handlers and models. The source root and node name arrive in the request; a malformed node name or a missing node directory is refused with a typed reason and binds nothing. It replaces the bind that lived inside the landing decision bridge.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24321-package-bind
+  statement: A named node package binds into the interpreter without running its package __init__, and a request that cannot bind is refused with a typed reason.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the handler binds a node package whose __init__ raises, serving its handlers and its contract.yaml, and refuses a missing or malformed node name without binding anything -- falsifier: uv run --frozen pytest tests/nodes/node_package_bind_effect/test_handler_package_bind.py -q --no-cov (the control case shows the plain import raising)'
+  - id: AC2
+    statement: 'AC2: the golden chain ends in the run-completed event and the error chains end in one run-failed event with the reason, on the in-memory bus -- falsifier: uv run --frozen pytest tests/nodes/node_package_bind_effect -k chain -q --no-cov'
+  - id: AC3
+    statement: "AC3: integrated: the landing controller's decision bridge binds the decision package through this node and reports stale_fleet with only pydantic and pyyaml available -- falsifier: the bridge's own environment test (test_landing_decision_env.py in the controller's repository) on the pinned commit"
+evidence_requirements:
+- kind: tests
+  description: The package bind node tests, handler, golden and error chains.
+  command: uv run --frozen pytest tests/nodes/node_package_bind_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24321-ac1
+  description: On host h053 the handler tests pass (bound with the raising __init__ skipped, refused for a missing directory and for five malformed names, and the control case shows the plain import raising).
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_package_bind_effect/test_handler_package_bind.py -q --no-cov
+    cwd: .
+- id: dod-omn24321-ac2
+  description: On host h053 the golden chain (with a named break that turns it red) and the three error chains pass on the in-memory bus.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_package_bind_effect -k chain -q --no-cov
+    cwd: .
+- id: dod-omn24321-ac3
+  description: "AC3: integrated: not read in this repository. The controller's pull request for OMN-24297 pins this commit and its test_landing_decision_env.py reads the bridge through the node; the controller read is recorded there."
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_package_bind_effect -q --no-cov
+    cwd: .
+- id: dod-omn24321-integration-proof
+  description: Run this pull request's own tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check; it binds no criterion for the hosted check. The live reading is recorded in the pull request's Lab line.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24321 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_package_bind_effect -q --no-cov
+    cwd: .

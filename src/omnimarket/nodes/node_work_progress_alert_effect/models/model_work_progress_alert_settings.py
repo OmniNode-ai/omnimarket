@@ -6,6 +6,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field, PositiveInt
 
+from omnimarket.models.bus_binding.model_node_event_bus import ModelNodeEventBus
+
 
 class ModelIgnoreList(BaseModel):
     """Lanes the alert never judges: lane-id globs and ``actor=`` globs."""
@@ -26,3 +28,4 @@ class ModelWorkProgressAlertSettings(BaseModel):
     ignore: ModelIgnoreList
     lookback_seconds: PositiveInt
     check_interval_seconds: PositiveInt
+    event_bus: ModelNodeEventBus | None = Field(default=None, strict=False)

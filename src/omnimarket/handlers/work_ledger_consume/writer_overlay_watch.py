@@ -14,6 +14,14 @@ group's committed offset, so rows it published before it was declared are append
 overlay that cannot be read or is malformed keeps the writers already served; it never empties
 them. Where the overlay lives, which roles write and how often it is checked are declared in the
 contract, not here.
+
+OMN-24330: a service login such as the dev runtime's own has no person login or device, so it
+cannot be a row of the developer principal overlay. Its writers are declared in the append
+node's own deployment overlay (``service_writers``), found the way every node overlay is found.
+The watch takes that overlay as a second, independent source: each source keeps its own change
+token and its own last good writers, so an unreadable or malformed source keeps its previous
+writers and a source with no path contributes nothing. The served set is the union of the
+install-time writers and both sources' writers.
 """
 
 from __future__ import annotations
@@ -24,12 +32,19 @@ import logging
 import os
 import re
 from collections.abc import Awaitable, Callable, Iterable, Mapping
+from functools import partial
 from pathlib import Path
 from typing import Protocol
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from omnimarket.handlers.work_ledger_consume.service_writers import (
+    ModelServiceWritersPolicy,
+    load_service_writers_policy,
+    service_writers,
+    service_writers_path,
+)
 from omnimarket.work_ledger_bus.bus import (
     WORK_LEDGER_APPEND_NODE,
     WorkLedgerAppendHost,
@@ -124,7 +139,7 @@ def overlay_writers(
 
 
 class WriterOverlayWatch:
-    """Serve the install-time writers plus the overlay's writing rows, following the file."""
+    """Serve the install-time writers plus both overlay sources' writing rows, following each file."""
 
     def __init__(
         self,
@@ -135,6 +150,8 @@ class WriterOverlayWatch:
         principal_pattern: str,
         apply: ApplyWriters,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+        service_locate: Callable[[], Path | None] | None = None,
+        service_policy: ModelServiceWritersPolicy | None = None,
     ) -> None:
         self._path = path
         self._policy = policy
@@ -145,56 +162,92 @@ class WriterOverlayWatch:
         self._seen: tuple[int, int] | None = None
         self._task: asyncio.Task[None] | None = None
         self.overlay_writers: frozenset[str] = frozenset()
+        self.service_writers: frozenset[str] = frozenset()
+        self._service_locate = service_locate
+        self._service_policy = service_policy
+        self._service_seen: tuple[int, int] | None = None
 
     @property
     def writers(self) -> frozenset[str]:
-        return self._static | self.overlay_writers
+        return self._static | self.overlay_writers | self.service_writers
 
-    async def refresh(self) -> bool:
-        """Read the overlay if it changed; True when the served writers changed."""
-        if self._path is None:
-            return False
+    def _has_source(self) -> bool:
+        return self._path is not None or self._service_locate is not None
+
+    def _read_source(
+        self,
+        path: Path,
+        parse: Callable[[str], frozenset[str]],
+        seen: tuple[int, int] | None,
+        last: frozenset[str],
+    ) -> tuple[frozenset[str], tuple[int, int] | None]:
+        """Read one source if it changed; keep its last good writers when it cannot be read."""
         try:
-            stat = self._path.stat()
+            stat = path.stat()
         except OSError as exc:
             logger.warning(
                 "work-ledger writer overlay %s unreadable (%s); writers unchanged",
-                self._path,
+                path,
                 exc,
             )
-            return False
-        seen = (stat.st_mtime_ns, stat.st_size)
-        if seen == self._seen:
-            return False
+            return last, seen
+        token = (stat.st_mtime_ns, stat.st_size)
+        if token == seen:
+            return last, seen
         try:
-            found = overlay_writers(
-                self._path.read_text(encoding="utf-8"), self._policy, self._pattern
-            )
+            found = parse(path.read_text(encoding="utf-8"))
         except (OSError, UnicodeError, ValueError) as exc:
             logger.error(
                 "work-ledger writer overlay %s refused (%s); writers unchanged",
-                self._path,
+                path,
                 exc,
             )
+            return last, seen
+        if found == last:
+            return last, token
+        return found, token
+
+    async def refresh(self) -> bool:
+        """Read each source if it changed; True when the served writers changed."""
+        if not self._has_source():
             return False
-        self._seen = seen
-        if found == self.overlay_writers:
+        before = self.writers
+        if self._path is not None:
+            self.overlay_writers, self._seen = self._read_source(
+                self._path,
+                lambda text: overlay_writers(text, self._policy, self._pattern),
+                self._seen,
+                self.overlay_writers,
+            )
+        service_policy = self._service_policy
+        if self._service_locate is not None and service_policy is not None:
+            path = self._service_locate()
+            if path is not None:
+                self.service_writers, self._service_seen = self._read_source(
+                    path,
+                    partial(
+                        service_writers,
+                        policy=service_policy,
+                        principal_pattern=self._pattern,
+                    ),
+                    self._service_seen,
+                    self.service_writers,
+                )
+        if self.writers == before:
             return False
-        added = sorted(found - self.overlay_writers - self._static)
-        removed = sorted(self.overlay_writers - found - self._static)
-        self.overlay_writers = found
+        added = sorted(self.writers - before)
+        removed = sorted(before - self.writers)
         changed = await self._apply(self.writers)
         if changed:
             logger.warning(
-                "work-ledger writers from %s: added %s, removed %s",
-                self._path,
+                "work-ledger writers: added %s, removed %s",
                 added or "none",
                 removed or "none",
             )
         return changed
 
     def start(self) -> None:
-        if self._task is None and self._path is not None:
+        if self._task is None and self._has_source():
             self._task = asyncio.create_task(self._run())
 
     async def stop(self) -> None:
@@ -230,6 +283,10 @@ async def follow_overlay_writers(
         logger.warning(
             "%s is unset: serving the install-time writers only", policy.root_env
         )
+    service_policy = load_service_writers_policy()
+
+    def service_locate() -> Path | None:
+        return service_writers_path(service_policy, environment)
 
     async def apply(writers: frozenset[str]) -> bool:
         handler.writers.replace(writers)
@@ -241,6 +298,8 @@ async def follow_overlay_writers(
         static_writers=static_writers,
         principal_pattern=host.topics.writer_principal_pattern,
         apply=apply,
+        service_locate=service_locate,
+        service_policy=service_policy,
     )
     await watch.refresh()
     watch.start()

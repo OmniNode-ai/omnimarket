@@ -9,6 +9,16 @@ valkey:
   host_env: EXAMPLE_VALKEY_HOST
   port_env: EXAMPLE_VALKEY_PORT
   password_env: EXAMPLE_VALKEY_PASSWORD
+  password_ref_env: EXAMPLE_VALKEY_PASSWORD_REF
   database: 0
   connect_timeout_seconds: 3
   operation_timeout_seconds: 5
+secret_store:
+  provider: infisical
+  address: https://secrets.example.invalid
+  project_id: 00000000-0000-4000-8000-000000000000
+  environment: dev
+  root_folder: /
+  identity_file: .example/.env
+  client_id_ref: EXAMPLE_CLIENT_ID
+  client_secret_ref: EXAMPLE_CLIENT_SECRET

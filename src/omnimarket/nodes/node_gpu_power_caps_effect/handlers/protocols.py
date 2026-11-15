@@ -6,6 +6,10 @@ from __future__ import annotations
 
 from typing import Protocol
 
+from omnimarket.models.model_lab_work_unit import (
+    ModelLabWorkUnitReceipt,
+    ModelLabWorkUnitRequest,
+)
 from omnimarket.nodes.node_gpu_power_caps_effect.models.model_gpu_power_caps import (
     ModelGpuCard,
     ModelGpuSetRun,
@@ -27,3 +31,10 @@ class ProtocolGpuPowerCapsBackend(Protocol):
     def set_limit(
         self, host: ModelGpuPowerCapsHost, index: int, watts: int
     ) -> ModelGpuSetRun: ...
+
+
+class ProtocolLabWorkSender(Protocol):
+    """Sends one lab work unit to a pool host and waits for its receipt. Never raises for an
+    unanswered unit: it returns an infra_error receipt."""
+
+    def send(self, request: ModelLabWorkUnitRequest) -> ModelLabWorkUnitReceipt: ...

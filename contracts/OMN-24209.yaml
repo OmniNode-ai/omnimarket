@@ -1,0 +1,63 @@
+schema_version: 1.0.0
+ticket_id: OMN-24209
+title: Release premise reads the rebuild reports from the bus
+summary: The release train's premise that the dev lane vendors the merged sibling revision waits on a timed CI job and reads INDETERMINATE when the deploy agent's queue is deeper than the job can wait. Two new omnimarket nodes move the premise onto the deploy agent's own receipt. node_release_sibling_premise_compute decides, as a pure function, from the dev-merge redeploy receipts the R2 node publishes (ready only when a verified receipt covers the candidate revision or a later merge on the branch, else the named reason). node_release_sibling_premise_effect reads that receipt topic and the branch history through injected readers, calls the compute node and publishes one verdict event. The old release train script is not changed in this pull request.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- topics
+requirements:
+- id: req-omn24209-premise-on-receipt
+  statement: The sibling-revision premise is read from the R2 node's receipt on the bus, with one typed state per way it can fail to hold.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a pure rule reads the rebuild reports for one merged revision and returns ready only when a verified report covers that revision or a later merge on the same branch, otherwise the named reason (behind, deploy not done, unreadable, deadline missed, absent) -- falsifier: pytest tests/test_node_release_sibling_premise_compute.py -q'
+  - id: AC2
+    statement: 'AC2: the read node reads the report topic and the branch history through injected readers, publishes one verdict event, and refuses with a typed error when the topic or the clone cannot be read -- falsifier: pytest tests/test_node_release_sibling_premise_effect.py -q'
+  - id: AC3
+    statement: 'AC3: the read runs on a lab host against the real broker and returns a verdict for the current dev head; it is integrated when that verdict event is read in the running runtime -- falsifier: run the node''s read verb on the lab host against the dev bus lane and read the verdict event published on onex.evt.omnimarket.release-sibling-premise-read.v1'
+evidence_requirements:
+- kind: tests
+  description: The compute and effect node tests and the R2 seam test pass at the pushed head.
+  command: uv run pytest tests/test_node_release_sibling_premise_compute.py tests/test_node_release_sibling_premise_effect.py tests/test_node_release_sibling_premise_seam_r2.py -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24209-ac1
+  description: 'AC1: the compute node returns ready for a verified receipt of the candidate or of a descendant (a folded rebuild), pending or absent when no receipt covers it, and the mapped state for every other outcome; with the covering rule broken the folded case reads behind.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_node_release_sibling_premise_compute.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24209-ac2
+  description: 'AC2: the effect node publishes one verdict on its success topic and one typed failure on its failure topic, in memory and on the in-memory bus; the seam test with the R2 receipt fails when either side changes shape.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_node_release_sibling_premise_effect.py tests/test_node_release_sibling_premise_seam_r2.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24209-ac3
+  description: 'hosted proxy for AC3: the unit tests above pass; the live read on the lab host against the dev bus lane, the revision it ran and the verdict event are named in the pull request Lab line.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_node_release_sibling_premise_effect.py tests/test_node_release_sibling_premise_seam_r2.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24209-integration-proof
+  description: the compute, effect and R2 seam tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. The live read is named in the pull request Lab line.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24209 --kind test -- env PYTHONDONTWRITEBYTECODE=1
+      uv run --frozen pytest tests/test_node_release_sibling_premise_compute.py tests/test_node_release_sibling_premise_effect.py tests/test_node_release_sibling_premise_seam_r2.py
+      -q --no-cov

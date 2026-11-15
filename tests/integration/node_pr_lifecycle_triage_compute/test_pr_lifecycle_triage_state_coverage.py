@@ -43,10 +43,17 @@ def test_triage_declares_output_topic() -> None:
     assert "onex.evt.omnimarket.pr-lifecycle-triage-completed.v1" in publish_topics
 
 
-def test_triage_subscribes_inventory_completed_topic() -> None:
-    """The contract-declared subscribe topic keeps its literal wire string."""
+def test_triage_subscribes_no_topic() -> None:
+    """OMN-24121: the node subscribes nothing.
+
+    It dropped onex.evt.omnimarket.pr-lifecycle-inventory-completed.v1: its
+    route validates payloads into ModelPrTriageInput, which the inventory
+    event's ModelPrInventoryOutput payload cannot satisfy, so the triage node
+    gains nothing from the subscription — the orchestrator calls it in process.
+    The reducer (node_pr_lifecycle_state_reducer) remains the topic's consumer.
+    """
     subscribe_topics = _load_contract()["event_bus"]["subscribe_topics"]
-    assert "onex.evt.omnimarket.pr-lifecycle-inventory-completed.v1" in subscribe_topics
+    assert subscribe_topics == []
 
 
 def test_triage_verdict_classes_are_pinned() -> None:

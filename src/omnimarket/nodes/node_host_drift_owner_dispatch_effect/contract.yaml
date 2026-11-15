@@ -1,0 +1,94 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Host Drift Owner Dispatch (OMN-24239)
+#
+# The host drift checker raised its escalations as journal lines and started no lane (the dispatch command was never
+# set): ledger-writer:bus stayed open 17.7 days and env-file:host-env 6.6 days. This node is the owner step: it reads
+# the checker's open items, hands them to the alarm owner responder (node_alarm_owner_responder_compute), and starts one
+# lane per uncovered cause through the remote-lane runner.
+name: node_host_drift_owner_dispatch_effect
+contract_name: node_host_drift_owner_dispatch_effect
+node_name: node_host_drift_owner_dispatch_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  One pass over the open items of a host's drift checker. Each item that is not run staleness (the liveness
+  watchdog's) is rendered as the FRICTION row the alarm owner responder reads, stamped with the moment the item was
+  first seen. The responder answers one dispatch per cause key that is past the policy's bound, not dispatched inside
+  its window and not covered by a live lane (read from the rolling ledger over the bus, never from the host's stale
+  file copy). For each dispatch the node completes the task text into a lane brief through the lane-brief path (the
+  standing rules block, the ticket's text, the 3a constraints, and the overlay's exemplar, seam, runtime and delegation
+  lines), runs the lane-brief check on the written bytes, and only a brief that passed the check, which leaves the stamp
+  the runner reads, goes to the remote-lane runner (a brief the check refused is a typed lane entry with brief_checked
+  false, never handed over and not recorded). A request with dry_run true starts nothing and records nothing, runs the
+  check, and names the lane, the command it would run and the sha256 the check stamped. A placement that fails is a
+  typed lane entry with started false and is not recorded, so the next pass retries it. Every bound, actor, path,
+  command and brief line is the overlay's.
+
+handler:
+  module: omnimarket.nodes.node_host_drift_owner_dispatch_effect.handlers.handler_host_drift_owner_dispatch
+  class: HandlerHostDriftOwnerDispatch
+  input_model: omnimarket.nodes.node_host_drift_owner_dispatch_effect.models.model_host_drift_owner_dispatch.ModelDriftOwnerRequest
+
+# HandlerHostDriftOwnerDispatch takes the overlay, the open items, the live lanes, the dispatch record, the brief
+# writer, the lane runner and the clock as constructor parameters, so it is built by the node's runtime module and
+# declares no handler_routing.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [ledger-read, brief-file-write, lane-brief-check, dispatch-record-write, lane-start]
+  timeout_ms: 600000
+
+input_model:
+  name: ModelDriftOwnerRequest
+  module: omnimarket.nodes.node_host_drift_owner_dispatch_effect.models.model_host_drift_owner_dispatch
+  description: Whether the pass is a dry run.
+output_model:
+  name: ModelDriftOwnerResult
+  module: omnimarket.nodes.node_host_drift_owner_dispatch_effect.models.model_host_drift_owner_dispatch
+  description: Items read, rows rendered, the lanes placed, failed or refused at the brief check, the causes skipped and the rows refused.
+
+terminal_event: onex.evt.omnimarket.host-drift-owner-dispatch-completed.v1
+
+runtime_dispatch:
+  external_trigger: true
+  command_topic: onex.cmd.omnimarket.host-drift-owner-dispatch-requested.v1
+
+topics:
+  dispatch_requested: onex.cmd.omnimarket.host-drift-owner-dispatch-requested.v1
+  dispatch_completed: onex.evt.omnimarket.host-drift-owner-dispatch-completed.v1
+  dispatch_failed: onex.evt.omnimarket.host-drift-owner-dispatch-failed.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.host-drift-owner-dispatch-completed.v1
+  - onex.evt.omnimarket.host-drift-owner-dispatch-failed.v1
+
+overlay:
+  node: node_host_drift_owner_dispatch_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+dod_evidence:
+  - test: tests/nodes/node_host_drift_owner_dispatch_effect/test_golden_chain.py
+    description: "Two open items past the bound with no covering lane start two lanes, and a second pass over the same items starts none"
+  - test: tests/nodes/node_host_drift_owner_dispatch_effect/test_error_chain.py
+    description: "A refused placement is a failed lane entry that is not recorded and is retried on the next pass"
+  - test: tests/nodes/node_host_drift_owner_dispatch_effect/test_seam.py
+    description: "The row rendered from an open item parses into the cause key the alarm owner responder dispatches on, and a changed cell name dispatches nothing"
+
+  - test: tests/nodes/node_host_drift_owner_dispatch_effect/test_brief_check.py
+    description: "A brief the lane-brief check refuses is never handed to the runner and is not recorded; the bytes the check stamped are the bytes at the path the runner is given; the runner refuses a brief the check never stamped"
+
+metadata:
+  ticket: OMN-24239
+  transport_type: inmemory

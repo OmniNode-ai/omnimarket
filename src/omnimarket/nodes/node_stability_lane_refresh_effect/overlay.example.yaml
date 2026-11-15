@@ -17,9 +17,21 @@ consumer_groups:
   EXAMPLE_CONSUMER_GROUP_PREFIX: example-box
 workspace_config_root: /example/config-clone
 registry_root: /example/registry_root
+# The volume whose free space a refresh reads and the GiB floor below which it refuses to run.
+# Every value here is synthetic; supply your host's volume and floor.
+disk_floor:
+  path: /example/registry_root
+  min_free_gib: 100
 pin_file: /example/config-clone/config/lab/lane-overlays/example-lane.release-pin.yaml
 refresh_script: /example/registry_root/omnibase_infra/scripts/runtime_build/refresh_stability_lane.sh
 state_dir: /example/state/stability-lane-refresh
 deploy_reason: "OMN-0: example refresh"
 refresh_timeout_seconds: 3600
 health_timeout_seconds: 10
+serve:
+  bus_lane: example-bus-lane
+  workspace_root: /example/omninode
+  consumer_group: local.omnimarket.node_stability_lane_refresh_effect.consume.v1.example-box
+  max_records: 100
+  read_timeout_s: 30.0
+  join_timeout_s: 10.0

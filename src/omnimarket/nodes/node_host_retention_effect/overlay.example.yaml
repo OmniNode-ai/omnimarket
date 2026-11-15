@@ -119,3 +119,27 @@ hosts:
         min_gib: 20
         ci_prune: false
         timeout_seconds: 1800
+        # After the prune, if the cache still holds more than cap_gib, evict whole entries of the listed
+        # buckets (the contract names the allowed ones) oldest-first until the cache is at or under cap_gib.
+        # An entry is kept when it is hardlinked into a virtual environment, changed within keep_days,
+        # named by a live process, or is not a plain folder.
+        cap:
+          cap_gib: 40
+          buckets: [archive-v0, git-v0/checkouts]
+          keep_days: 7
+  # macOS host with uv cache and pre-commit store
+  - name: pool-mac
+    docker_timeout_seconds: 5
+    docker_mount_guard: false
+    age_classes:
+      - name: pre-commit-store
+        kind: pre_commit_store
+        root: ~/.cache/pre-commit
+        index_db: ~/.cache/pre-commit/db.db
+        keep_days: 7
+    uv_caches:
+      - path: ~/.cache/uv
+        uv_binary: ~/.local/bin/uv
+        min_gib: 10
+        ci_prune: false
+        timeout_seconds: 1800

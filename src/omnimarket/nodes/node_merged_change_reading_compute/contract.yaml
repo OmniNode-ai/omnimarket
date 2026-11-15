@@ -1,0 +1,84 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_merged_change_reading_compute
+lifecycle: experimental
+node_type: COMPUTE_GENERIC
+runtime_profiles: []
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Reads a list of merged changes against the running system and answers per change: in the running build or
+  not, node loaded, last run time, last result, and the one missing step when it is not running. The change
+  to node map (how each change runs: schedule, topic, route, host unit, overlay value, library), the build
+  facts and the runtime facts arrive as typed models from a reader. Reads no files, runs no process, has no
+  clock (the caller supplies now), mutates nothing.
+input_model:
+  name: ModelMcrRequest
+  module: omnimarket.models.model_merged_change_reading
+output_model:
+  name: ModelMcrResult
+  module: omnimarket.models.model_merged_change_reading
+handler:
+  module: omnimarket.nodes.node_merged_change_reading_compute.handlers.handler_merged_change_reading
+  class: HandlerMergedChangeReading
+  input_model: omnimarket.models.model_merged_change_reading.ModelMcrRequest
+  output_model: omnimarket.models.model_merged_change_reading.ModelMcrResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_merged_change_reading_compute.handlers.handler_merged_change_reading:HandlerMergedChangeReading
+  handlers:
+    - operation: read_merged_changes
+      handler:
+        name: HandlerMergedChangeReading
+        module: omnimarket.nodes.node_merged_change_reading_compute.handlers.handler_merged_change_reading
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: node_merged_change_reading_effect reads the sources and calls HandlerMergedChangeReading.handle with this contract's config block.
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 1000
+metadata:
+  transport_type: local
+  description: Per merged change, in build or not, node loaded, last run, last result and the one missing step. Pure.
+  author: OmniNode Team
+  created: '2026-11-14'
+# The declared config (ModelMcrConfig). An overlay supplies another object of the same type. The requirement names
+# (in_build, node_loaded, subscribed, ran, result, ok) are fixed by the handler; every word below is declared here.
+merged_change_reading:
+  schema_id: omnimarket.merged_change_reading.v1
+  verdict_running: SEEN_RUNNING
+  verdict_not_running: NOT_RUNNING
+  verdict_unread: UNREAD
+  no_runner_step: no_declared_runner
+  no_runner_next_action: declare how this change runs (node, trigger topic, result topic or unit) in the runner overlay
+  requirements:
+    - requirement: in_build
+      missing_step: not_in_build
+      next_action: roll dev with the merge
+    - requirement: node_loaded
+      missing_step: node_not_loaded
+      next_action: the runtime did not discover the node contract; check the build and the contract
+    - requirement: subscribed
+      missing_step: no_trigger_subscription
+      next_action: no consumer joined the node's trigger topic; add the subscription or the overlay value
+    - requirement: ran
+      missing_step: no_run_since_build
+      next_action: nothing ran it since the build started; the schedule or the caller does not exist yet
+    - requirement: result
+      missing_step: no_result
+      next_action: the node left no result; read its error log
+    - requirement: ok
+      missing_step: last_run_failed
+      next_action: the last run ended in failure; read the unit log and fix its cause
+  run_kinds:
+    - {kind: schedule, requires: [in_build, node_loaded, subscribed, ran, result]}
+    - {kind: topic, requires: [in_build, node_loaded, subscribed, ran, result]}
+    - {kind: route, requires: [in_build, node_loaded, ran, result]}
+    - {kind: host_unit, requires: [in_build, ran, result, ok]}
+    - {kind: overlay_value, requires: [in_build]}
+    - {kind: library, requires: [in_build, ran]}

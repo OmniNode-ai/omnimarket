@@ -44,7 +44,7 @@ CLOSE_RULE = "your TERMINAL states what you did and what backs it. A lane that o
 LINES = [
     "# Lane {lane} (parent {parent_lane}, ticket {ticket})",
     "Dispatched by the lab-fill controller, run {run_key}, for the {pillar} pillar, {placement}",
-    "AUTHORITY: operator RULING {authority_ruling} lane={authority_lane} ticket={parent_ticket} in docs/tracking/ROLLING_WORK_LEDGER.md (find it with lane_brief.py grep '{authority_ruling} | RULING'): the lab-fill ruling, M4 tickets first and the approved-work list when lanes are free. This dispatch is that ruling's mechanism, and its scope is this one item. {landing}",
+    "AUTHORITY: operator RULING {authority_ruling} lane={authority_lane} ticket={authority_ticket} in docs/tracking/ROLLING_WORK_LEDGER.md (find it with lane_brief.py grep '{authority_ruling} | RULING'): the lab-fill ruling, M4 tickets first and the approved-work list when lanes are free. This dispatch is that ruling's mechanism, and its scope is this one item. {landing}",
     "WORKTREE PRECONDITIONS: Before mkdir, git clone, git -C or git worktree add, resolve the session's OMNI_HOME and the destination {where}; never redefine OMNI_HOME inline or use a home-directory default. Resolve variables from that session and resolve cd and every git -C from the command's actual working directory before execution. A sibling omni_worktrees beside any other clone is stray. An existing destination must be a clean linked worktree of the owning clone with no live peer owner. For omnibase_internal use the declared OMNIBASE_INTERNAL_HOME (an absolute existing canonical registry directory) or the sanctioned sibling of OMNI_HOME; if the live host guard lists only $OMNI_HOME/omni_worktrees, use $OMNI_HOME/omni_worktrees/{lane}/{repo_or_placeholder} instead. An invalid destination must refuse once with the guard's documented reason; stop and report it without retrying another stray path.",
     "TASK: {what}",
     "REPOSITORY: {repo}, chosen from where the work lives ({repo_source}), not a default. If the work belongs to another repository, name it in your TERMINAL and stop; do not build it here. Write the cell owning-repo=<repository> (that repository's directory name) in that TERMINAL: the next tick sends this ticket there.",
@@ -132,6 +132,7 @@ class HandlerLabFillLaneRender:
             if extra.get("escalated") is True
             else "it is red on its current head and no live lane owns it",
             "landing": LAND_SENTENCE if land else LANDING_SENTENCE,
+            "authority_ticket": cfg.authority_ticket or cfg.parent_ticket,
         }
         task = (
             LAND_TASK

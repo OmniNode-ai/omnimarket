@@ -1,0 +1,87 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Lane Inbox Wait (OMN-24459)
+#
+# A wait that ends early: a running lane sitting in a long wait cannot see its inbox, so the wait helper polls
+# the lane's inbox on the lane's behalf until a binding MSG or HOLD is addressed to the lane, a stop order
+# arrives, or the wait's budget is spent.
+name: node_lane_inbox_wait_effect
+contract_name: node_lane_inbox_wait_effect
+node_name: node_lane_inbox_wait_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Waits out one budget on a lane's behalf, polling the lane's inbox so the lane itself can stay in its wait.
+  Each poll reads the inbox window through the injected inbox source (the in-memory scripted source, or the
+  overlay's reader module in a subprocess) and decides: a binding MSG or HOLD addressed to the lane or to the
+  overlay's all target, that no ACK of the lane and no RELEASE answers, wakes the wait with the rows; a binding
+  MSG carrying the overlay's stop cell is a stop order and ends the wait STOP ahead of any plain binding row. A
+  row older than the command's since, one addressed to another lane, one from the lane itself, and a HOLD
+  carrying a skip cell that does not name the lane never wake it. The rows are the rolling ledger's own row
+  grammar. A quiet inbox is WAITED only once the budget is spent - the wait always reads at least once and
+  reads once more at the end of the budget - and the budget is read on the injected monotonic clock with the
+  sleeps through the injected sleeper, never inline, so the in-memory backend runs a long wait in no real time.
+  The first read failing (or every read failing) is UNREADABLE; a later single failure is recorded on the result
+  and the wait goes on. A budget above the overlay's max_wait_seconds is refused, never clipped. Every bound,
+  interval and cell is the overlay's; the backend comes from the overlay.
+
+handler:
+  module: omnimarket.nodes.node_lane_inbox_wait_effect.handlers.handler_lane_inbox_wait
+  class: HandlerLaneInboxWait
+  input_model: omnimarket.models.lane_inbox_wait.ModelLaneInboxWaitCommand
+
+# HandlerLaneInboxWait takes the overlay settings, the inbox source, the sleeper and the monotonic clock as
+# constructor parameters, so it is built by its caller (the lane's runtime, or the node's own runtime module)
+# and declares no handler_routing.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [subprocess-read]
+  timeout_ms: 3900000
+
+input_model:
+  name: ModelLaneInboxWaitCommand
+  module: omnimarket.models.lane_inbox_wait
+  description: The correlation id, the lane, the wait's budget, and the stamp only rows after which count.
+output_model:
+  name: ModelLaneInboxWaitResult
+  module: omnimarket.models.lane_inbox_wait
+  description: The outcome, the binding rows listed, the poll count, the time spent, and the read failures.
+
+terminal_event: onex.evt.omnimarket.lane-inbox-wait-completed.v1
+
+runtime_dispatch:
+  external_trigger: true
+  command_topic: onex.cmd.omnimarket.lane-inbox-wait-requested.v1
+
+topics:
+  wait_requested: onex.cmd.omnimarket.lane-inbox-wait-requested.v1
+  wait_started: onex.evt.omnimarket.lane-inbox-wait-started.v1
+  wait_woken: onex.evt.omnimarket.lane-inbox-wait-woken.v1
+  wait_completed: onex.evt.omnimarket.lane-inbox-wait-completed.v1
+  wait_failed: onex.evt.omnimarket.lane-inbox-wait-failed.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.lane-inbox-wait-started.v1
+  - onex.evt.omnimarket.lane-inbox-wait-woken.v1
+  - onex.evt.omnimarket.lane-inbox-wait-completed.v1
+  - onex.evt.omnimarket.lane-inbox-wait-failed.v1
+
+overlay:
+  node: node_lane_inbox_wait_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+metadata:
+  ticket: OMN-24459
+  transport_type: inmemory

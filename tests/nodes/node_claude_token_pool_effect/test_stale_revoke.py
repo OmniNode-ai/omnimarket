@@ -65,6 +65,8 @@ STATUS_ROW_KEYS = {
     "fingerprint",
     "revoked_at",
     "limited_at",
+    "probed_at",
+    "revoke_cause",
 }
 
 
@@ -289,8 +291,15 @@ def test_pool_executes_only_a_command_that_matches_its_fingerprint_and_stamp(
 def test_seam_mirror_row_keys_are_written_and_read_by_the_same_names(
     tmp_path: Path,
 ) -> None:
+    probed = "2026-11-10T09:30:00Z"
     rig = Rig(tmp_path, "h053")
-    rig.patch(LABEL, revoked_at=REVOKED, limited_at=LIMITED_AFTER)
+    rig.patch(
+        LABEL,
+        revoked_at=REVOKED,
+        limited_at=LIMITED_AFTER,
+        revoke_cause="challenged",
+        probed_at=probed,
+    )
     rig.pool.handle(ModelClaudeTokenPoolRequest(operation="status"))
     mirror = tmp_path / "h053" / "cache" / "claude-token-pool.json"
     rows = json.loads(mirror.read_text(encoding="utf-8"))["tokens"]
@@ -304,6 +313,7 @@ def test_seam_mirror_row_keys_are_written_and_read_by_the_same_names(
         REVOKED,
         LIMITED_AFTER,
     )
+    assert (mark.revoke_cause, mark.probed_at) == ("challenged", probed)
 
 
 def test_seam_compute_command_is_accepted_by_the_pool_unchanged(

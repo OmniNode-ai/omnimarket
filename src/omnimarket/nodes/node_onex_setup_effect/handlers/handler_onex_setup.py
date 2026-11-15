@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+# unimported-handler-allow: HandlerOnexSetup is resolved at boot from handler_routing in contract.yaml, by module path, not by a Python import
 """HandlerOnexSetup: run the onboarding walk a developer needs after installing the CLI.
 
 Steps, in order (``SETUP_STEPS``):
@@ -29,7 +30,10 @@ import shlex
 import shutil
 import subprocess
 import tempfile
+import threading
+import uuid
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from omnibase_core.cli.cli_user_config import USER_CONFIG_TEMPLATE, read_user_config
@@ -37,7 +41,7 @@ from omnibase_core.errors.model_onex_error import ModelOnexError
 from omnibase_infra.handlers.handler_workspace_config_root_resolve import (
     DEVELOPER_WORKSPACE_CONFIG_RELATIVE_PATH,
 )
-from pydantic import ValidationError
+from pydantic import SecretStr, ValidationError
 
 from omnimarket.handlers.routing.byok_provider_backends import (
     customer_provider_catalogue,
@@ -470,6 +474,45 @@ def prove_model(request: ModelOnexSetupRequest) -> ModelOnexSetupReceipt:
 ModelStep = Callable[[ModelOnexSetupRequest], ModelOnexSetupReceipt]
 
 
+def _off_event_loop[T](call: Callable[[], T]) -> T:
+    """Run ``call`` on a worker thread and return its result (a raised error propagates).
+
+    The runtime calls this handler on its running event loop, and the model step stores the key
+    through code that starts its own loop with asyncio.run, which refuses to start on a thread
+    that already runs one.
+    """
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(call).result()
+
+
+# The CLI hosts this node on the local runtime, which records every command it carries, so the
+# provider key cannot ride on the command. The CLI parks it here, in this process only, and the
+# command carries the token; handle() takes the key back out before any step runs.
+_PARKED_KEYS: dict[str, SecretStr] = {}
+_PARKED_KEYS_LOCK = threading.Lock()
+
+
+def park_key(key: SecretStr) -> str:
+    """Hold ``key`` in this process and return the token that names it."""
+    token = uuid.uuid4().hex
+    with _PARKED_KEYS_LOCK:
+        _PARKED_KEYS[token] = key
+    return token
+
+
+def take_key(token: str | None) -> SecretStr | None:
+    """Remove and return the key parked under ``token``; None for no token or an unknown one."""
+    if token is None:
+        return None
+    with _PARKED_KEYS_LOCK:
+        return _PARKED_KEYS.pop(token, None)
+
+
+def discard_key(token: str | None) -> None:
+    """Drop a parked key nobody took."""
+    take_key(token)
+
+
 class HandlerOnexSetup:
     """Keep the v1 contract shape while dispatching to the one setup engine."""
 
@@ -484,6 +527,12 @@ class HandlerOnexSetup:
             ModelSetupPlan,
         )
 
+        # OMN-24432 (dev): the CLI parks the key and the command carries only its
+        # token, because the local runtime records every command.
+        if request.key is None and request.key_handoff is not None:
+            request = request.model_copy(
+                update={"key": take_key(request.key_handoff), "key_handoff": None}
+            )
         refused = refused_before_any_step(request)
         if refused is not None:
             return refused
@@ -531,11 +580,15 @@ class HandlerOnexSetup:
                 if request.key is not None
                 else {}
             )
-            journal = HandlerSetupWorkflow(
-                onex_home=request.onex_home,
-                credentials=credentials,
-                model_step=self._model_step,
-            ).handle(plan)
+            # The runtime calls handle() on its event loop and the model step
+            # starts its own (asyncio.run), so the workflow runs on a worker thread.
+            journal = _off_event_loop(
+                lambda: HandlerSetupWorkflow(
+                    onex_home=request.onex_home,
+                    credentials=credentials,
+                    model_step=self._model_step,
+                ).handle(plan)
+            )
         except (OSError, ValueError):
             return _refuse(
                 request,
@@ -594,9 +647,12 @@ __all__ = [
     "URL_PROVIDERS",
     "HandlerOnexSetup",
     "compose_available",
+    "discard_key",
+    "park_key",
     "prove_model",
     "recorded_state",
     "refused_before_any_step",
     "retry_command",
+    "take_key",
     "which",
 ]

@@ -36,13 +36,16 @@ from omnimarket.models.scm import (
     EnumScmLocalRead,
     EnumScmNode,
     ModelScmBusReceipt,
-    ModelScmRefusedVerb,
     ModelScmTerminal,
     ModelScmTopics,
     ModelScmVerb,
 )
+from omnimarket.models.scm.model_scm_gateway_verbs import SCM_GATEWAY_VERBS
 from omnimarket.models.scm.model_scm_local_verbs import (
     SCM_LOCAL_VERBS as SCM_LOCAL_VERBS,
+)
+from omnimarket.models.scm.model_scm_refused_verbs import (
+    SCM_REFUSED_VERBS as SCM_REFUSED_VERBS,
 )
 from omnimarket.nodes.node_lab_work_unit_effect.protocols import require_ungrouped
 
@@ -53,65 +56,43 @@ _W = EnumScmNode.WRITE
 #: source-control node contracts, named for the gh verb it replaces.
 SCM_VERBS: Final[tuple[ModelScmVerb, ...]] = (
     ModelScmVerb(
-        verb="pr-view",
-        node=_G,
-        operation="pr_text",
-        replaces="gh pr view",
-        local_read=EnumScmLocalRead.PR_VIEW,
+        verb="runner-group-get",
+        node=_W,
+        operation="runner_group_get",
+        replaces="gh api --method GET /orgs/{o}/actions/runner-groups/{id}",
     ),
-    ModelScmVerb(
-        verb="pr-status",
-        node=_G,
-        operation="pr_status",
-        replaces="gh pr view --json mergeStateStatus",
-        local_read=EnumScmLocalRead.PR_STATUS,
-    ),
-    ModelScmVerb(
-        verb="pr-checks",
-        node=_G,
-        operation="ci_checks",
-        replaces="gh pr checks",
-        local_read=EnumScmLocalRead.PR_CHECKS,
-    ),
-    ModelScmVerb(
-        verb="pr-list",
-        node=_G,
-        operation="open_prs_list",
-        replaces="gh pr list",
-        local_read=EnumScmLocalRead.PR_LIST,
-    ),
-    ModelScmVerb(
-        verb="pr-merge-commit",
-        node=_G,
-        operation="merge_commit_sha",
-        replaces="gh pr view --json mergeCommit",
-        local_read=EnumScmLocalRead.PR_MERGE_COMMIT,
-    ),
-    ModelScmVerb(
-        verb="run-list", node=_G, operation="workflow_runs", replaces="gh run list"
-    ),
-    ModelScmVerb(
-        verb="run-view", node=_G, operation="run_jobs", replaces="gh run view"
-    ),
-    ModelScmVerb(
-        verb="job-log-fill", node=_G, operation="job_log_fill", replaces="gh job log"
-    ),
-    ModelScmVerb(
-        verb="run-download", node=_G, operation="artifacts", replaces="gh run download"
-    ),
-    ModelScmVerb(
-        verb="release-list", node=_G, operation="releases", replaces="gh release list"
-    ),
-    ModelScmVerb(
-        verb="pr-heads",
-        node=_G,
-        operation="pr_heads",
-        replaces="gh pr list --state merged --json headRefName,headRefOid",
-        local_read=EnumScmLocalRead.PR_HEADS,
-    ),
-    # OMN-21146: the reads node_dod_verify sends the gateway.
-    ModelScmVerb(
-        verb="open-pr-facts", node=_G, operation="open_pr_facts", replaces="gh pr list"
+    *(
+        ModelScmVerb(verb=v, node=_G, operation=op, replaces=gh, local_read=read)
+        for v, op, gh, read in (
+            ("pr-view", "pr_text", "gh pr view", EnumScmLocalRead.PR_VIEW),
+            (
+                "pr-status",
+                "pr_status",
+                "gh pr view --json mergeStateStatus",
+                EnumScmLocalRead.PR_STATUS,
+            ),
+            ("pr-checks", "ci_checks", "gh pr checks", EnumScmLocalRead.PR_CHECKS),
+            ("pr-list", "open_prs_list", "gh pr list", EnumScmLocalRead.PR_LIST),
+            (
+                "pr-merge-commit",
+                "merge_commit_sha",
+                "gh pr view --json mergeCommit",
+                EnumScmLocalRead.PR_MERGE_COMMIT,
+            ),
+            ("run-list", "workflow_runs", "gh run list", None),
+            ("run-view", "run_jobs", "gh run view", None),
+            ("job-log-fill", "job_log_fill", "gh job log", None),
+            ("run-download", "artifacts", "gh run download", None),
+            ("release-list", "releases", "gh release list", None),
+            (
+                "pr-heads",
+                "pr_heads",
+                "gh pr list --state merged --json headRefName,headRefOid",
+                EnumScmLocalRead.PR_HEADS,
+            ),
+            # OMN-21146: the reads node_dod_verify sends the gateway.
+            ("open-pr-facts", "open_pr_facts", "gh pr list", None),
+        )
     ),
     ModelScmVerb(
         verb="pr-create", node=_W, operation="pr_create", replaces="gh pr create"
@@ -162,48 +143,31 @@ SCM_VERBS: Final[tuple[ModelScmVerb, ...]] = (
         operation="pr_label",
         replaces="gh api --method POST /repos/{o}/{r}/issues/{n}/labels",
     ),
-    *(
-        ModelScmVerb(verb=v, node=_G, operation=op, replaces=gh)
-        for v, op, gh in (
-            ("pr-review", "review_gate", "gh pr view --json reviewDecision"),
-            ("pr-ticket", "ticket_ref", "gh pr view --json headRefName"),
-            (
-                "branch-protection",
-                "branch_protection",
-                "gh api repos/<o>/<r>/branches/<b>/protection",
-            ),
-            ("job-log", "job_log_tail", "gh api repos/<o>/<r>/actions/jobs/<id>/logs"),
-            (
-                "commit-check-runs",
-                "commit_check_runs",
-                "gh api repos/<o>/<r>/commits/<sha>/check-runs",
-            ),
-            (
-                "pr-merged",
-                "merged_pr",
-                "gh pr view --json state,mergedAt,mergeCommit,headRefOid",
-            ),
-            (
-                "pr-threads",
-                "pr_review_threads",
-                "gh api graphql (pullRequest reviewThreads)",
-            ),
-        )
+    ModelScmVerb(
+        verb="variable-set",
+        node=_W,
+        operation="repo_variable_set",
+        replaces="gh variable set",
     ),
-)
-
-LANDING_CONTROLLER: Final[str] = (
-    "the landing controller (hand the PR off with /omni:pr-handoff, needs=land)"
-)
-
-#: Verbs with no node operation. Not invented here: refused, naming where the
-#: work is done today.
-SCM_REFUSED_VERBS: Final[tuple[ModelScmRefusedVerb, ...]] = tuple(
-    ModelScmRefusedVerb(verb=verb, handled_by=LANDING_CONTROLLER)
-    for verb in (
-        *("pr-merge", "merge", "arm", "pr-arm"),
-        *("run-rerun", "pr-rerun", "update-branch", "pr-update-branch"),
-    )
+    ModelScmVerb(
+        verb="variable-get",
+        node=_W,
+        operation="repo_variable_get",
+        replaces="gh variable get",
+    ),
+    ModelScmVerb(
+        verb="runner-list",
+        node=_W,
+        operation="runner_list",
+        replaces="gh api --method GET /orgs/{o}/actions/runners",
+    ),
+    ModelScmVerb(
+        verb="runner-remove",
+        node=_W,
+        operation="runner_remove",
+        replaces="gh api --method DELETE /orgs/{o}/actions/runners/{id}",
+    ),
+    *SCM_GATEWAY_VERBS,
 )
 
 
@@ -234,19 +198,16 @@ def load_topics(node: EnumScmNode) -> ModelScmTopics:
             failure=str(terminals["failure"]),
         )
     return ModelScmTopics(
-        command=str(dispatch["command_topic"]),
-        success=str(contract["terminal_event"]),
+        command=str(dispatch["command_topic"]), success=str(contract["terminal_event"])
     )
 
 
 def contract_operations(node: EnumScmNode) -> tuple[str, ...]:
     """The ``operations`` names the node contract declares."""
     operations = load_contract(node).get("operations")
-    if not isinstance(operations, list):
-        return ()
     return tuple(
         str(entry["name"])
-        for entry in operations
+        for entry in (operations if isinstance(operations, list) else ())
         if isinstance(entry, dict) and "name" in entry
     )
 
@@ -300,9 +261,8 @@ class ScmBusCaller:
             correlation_id=correlation_id,
             event_type=event_type_for(topics.command),
         )
-        future: asyncio.Future[ModelScmTerminal] = (
-            asyncio.get_running_loop().create_future()
-        )
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future[ModelScmTerminal] = loop.create_future()
 
         def on_terminal(topic: str) -> Callable[[ProtocolBusMessage], Awaitable[None]]:
             async def on_message(message: ProtocolBusMessage) -> None:
@@ -314,13 +274,11 @@ class ScmBusCaller:
                     return
                 if not isinstance(raw, dict):
                     return
-                payload_dict = terminal_payload(
-                    raw, envelope.envelope_id, correlation_id
-                )
-                if payload_dict is None:
+                body = terminal_payload(raw, envelope.envelope_id, correlation_id)
+                if body is None:
                     return
-                partition = getattr(message, "partition", None)
-                offset = getattr(message, "offset", None)
+                part = getattr(message, "partition", None)
+                off = getattr(message, "offset", None)
                 future.set_result(
                     ModelScmTerminal(
                         receipt=ModelScmBusReceipt(
@@ -329,15 +287,11 @@ class ScmBusCaller:
                             command_envelope_id=envelope.envelope_id,
                             terminal_topic=topic,
                             terminal_envelope_id=_uuid_or_none(raw.get("envelope_id")),
-                            terminal_partition=(
-                                partition if isinstance(partition, int) else None
-                            ),
-                            terminal_offset=(
-                                str(offset) if offset is not None else None
-                            ),
+                            terminal_partition=part if isinstance(part, int) else None,
+                            terminal_offset=str(off) if off is not None else None,
                         ),
                         failed=topic == topics.failure,
-                        payload=payload_dict,
+                        payload=body,
                     )
                 )
 
@@ -345,9 +299,7 @@ class ScmBusCaller:
 
         unsubscribes: list[Callable[[], Awaitable[None]]] = []
         try:
-            for topic in (topics.success, topics.failure):
-                if topic is None:
-                    continue
+            for topic in filter(None, (topics.success, topics.failure)):
                 unsubscribes.append(
                     await self._bus.subscribe_ungrouped(topic, on_terminal(topic))
                 )

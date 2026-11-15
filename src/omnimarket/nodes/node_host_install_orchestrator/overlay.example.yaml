@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. A deployment's real overlay lives in the overlays repository.
+digest_algorithm: sha256
+context_limit: 64
+systemd_paths:
+  - "{home}/.config/systemd/user/{label}.service"
+  - "{home}/.config/systemd/user/{label}.timer"
+launchd_paths:
+  - "{home}/Library/LaunchAgents/{label}.plist"
+detail_max_chars: 400

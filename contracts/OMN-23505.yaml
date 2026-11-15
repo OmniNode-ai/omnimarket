@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-23505
 title: Move the merge check's list loading into a factory building block
-summary: node_ci_summary_registry_compute resolves the CI Summary poller's sweep-exclusion registry and its per-check advisory/blocking registry (check-mode contract plus overlay) from their parsed contents into exclusions, the conclusions each declared check adds to success, and named refusals for a missing or malformed registry. Its runtime module reads the request as JSON on stdin and answers on stdout so the workflow step can keep the result in a file the poller, which runs with no installed packages, reads. This change adds the node and its tests; the gate switch to read it lands with the pull request that needs the room (omnimarket#5397).
+summary: node_ci_summary_registry_compute resolves the CI Summary poller's sweep-exclusion registry and its per-check advisory/blocking registry (check-mode contract plus overlay) from their parsed contents into exclusions, the conclusions each declared check adds to success, and named refusals for a missing or malformed registry. Its runtime module reads the request as JSON on stdin and answers on stdout so the workflow step can keep the result in a file the poller, which runs with no installed packages, reads. The node, its tests and the gate switch (the workflow step resolves the registries through the node; scripts/ci/ci_summary_gate.py holds no loader) are merged; this change adds the gate-side tests that pin the switch.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -13,6 +13,8 @@ requirements:
     statement: 'AC1: a node in omnimarket reads the sweep-exclusion list and the check-mode contract and overlay, and returns the same exclusions, check modes and refusals the poller computed before -- falsifier: uv run --frozen pytest tests/unit/nodes/test_golden_chain_node_ci_summary_registry_compute.py -q -k ''golden or parity'''
   - id: AC2
     statement: 'AC2: a missing, unparsable or malformed list is refused with a named error and admits nothing -- falsifier: uv run --frozen pytest tests/unit/nodes/test_golden_chain_node_ci_summary_registry_compute.py -q -k ''error or refuses'''
+  - id: AC3
+    statement: 'AC3: the poller''s workflow step calls the node and scripts/ci/ci_summary_gate.py no longer holds the two loaders, so its code lines are below the baselined limit -- falsifier: uv run --frozen pytest tests/unit/scripts/ci/test_ci_summary_gate.py -q -k ''registry_from_node'''
 evidence_requirements:
 - kind: tests
   description: The registry node's golden, parity, error, runtime and failing-control tests.
@@ -39,6 +41,15 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/unit/nodes/test_golden_chain_node_ci_summary_registry_compute.py -q -n 0 --no-cov -p no:randomly -k 'error or refuses or control or runtime or contract'
+    cwd: .
+- id: dod-omn23505-gate-reads-node
+  description: The gate source names neither list file and holds at most the baselined 1504 code lines, a gate that opens a list file is caught by the same detector, the gate reads exactly what the node resolved, and a refusal the node reports fails the sweep closed. At the merge base these four tests do not exist.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/scripts/ci/test_ci_summary_gate.py -q -n 0 --no-cov -p no:randomly -k 'registry_from_node'
     cwd: .
 - id: dod-omn23505-integration-proof-lab
   description: Runs the node tests at the pushed head on a lab host through the lab work runner. Hosted CI cannot reach the lab runner, so only the local Done gate runs this unbound item.

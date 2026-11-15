@@ -73,7 +73,6 @@ class ModelFactoryFloorLaneSources(BaseModel):
     placement_dir_env: str = Field(min_length=1)
     placement_dir_fallback: str = Field(min_length=1)
     lane_marker_min_id: int = Field(gt=0)
-    host_table_env: str = Field(min_length=1)
     controller_dir_env: str = Field(min_length=1)
     controller_dir_fallback: str = Field(min_length=1)
     process_start_grace_seconds: int = Field(ge=0)
@@ -122,6 +121,8 @@ class ModelLedgerArchiveWindow(BaseModel):
 
     The names are the deployment's, in its overlay: the variable holding the live ledger's path, the variable that says the ledger
     record is the file, the archive directory beside the live file, the archive file pattern and the date inside an archive's name.
+    ``read_workers`` and ``cache_ttl_seconds`` tune the window read's cache misses: how many archives are read at once and how long
+    a cached archive's rows are kept.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -131,6 +132,10 @@ class ModelLedgerArchiveWindow(BaseModel):
     archive_subdir: str = Field(min_length=1)
     archive_glob: str = Field(min_length=1)
     archive_date_pattern: str = Field(min_length=1)
+    # How many archives the window read may read at once; absent: one at a time, as before.
+    read_workers: int | None = Field(default=None, ge=1)
+    # How long a cached archive's rows are kept; absent: the source read cache's own backstop.
+    cache_ttl_seconds: int | None = Field(default=None, ge=1)
 
 
 class ModelFactoryFloorRuntime(BaseModel):

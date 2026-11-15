@@ -4,7 +4,8 @@
 
 One small Claude Code call under the label's stored token, placed by ``node_llm_delegation_call_effect``
 (``runtime_claude_probe``, the same typed request and receipt the refill's credential probe uses). The token
-travels in the call's environment only; the answer this returns names a verdict and a reset time, never text.
+travels in the call's environment only; the answer this returns names a verdict — ``limited``, ``ok``,
+``refused`` (the token was tried and it failed) or ``error``, which proves nothing — and a reset time, never text.
 """
 
 from __future__ import annotations
@@ -125,7 +126,12 @@ def parse_reset(
 
 
 class HeadlessLimitProbe:
-    """Probes one label's token with the typed credential probe and reads the answer against the settings."""
+    """Probes one label's token with the typed credential probe and reads the answer against the settings.
+
+    An answer that is neither a limit nor a clean reply shows the token was tried and failed
+    (``refused``), unless its text carries a challenge marker — a 403 challenge page proves
+    nothing about the token, so that stays an ``error``.
+    """
 
     def __init__(
         self,
@@ -136,6 +142,7 @@ class HeadlessLimitProbe:
         run: ProbeRunner | None = None,
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
         python: str = sys.executable,
+        challenge_markers: Sequence[str] = (),
     ) -> None:
         self._secret = secret
         self._settings = settings
@@ -145,6 +152,9 @@ class HeadlessLimitProbe:
         )
         self._now = now
         self._python = python
+        #: Case-insensitive substrings a 403 challenge page's output carries (the revoke-recheck
+        #: settings' markers); empty, every tried-and-failed answer is taken at face value.
+        self._challenge_markers = tuple(challenge_markers)
 
     def probe(self, label: str) -> ModelLimitProbeAnswer:
         probed_at = self._now()
@@ -185,6 +195,12 @@ class HeadlessLimitProbe:
             )
         if receipt.exit_cause == "answered" and (receipt.exit_code or 0) == 0:
             return ModelLimitProbeAnswer(verdict="ok", probed_at=probed_at)
+        if receipt.exit_cause in ("answered", "process_failed"):
+            if any(
+                marker.lower() in text.lower() for marker in self._challenge_markers
+            ):
+                return ModelLimitProbeAnswer(verdict="error", probed_at=probed_at)
+            return ModelLimitProbeAnswer(verdict="refused", probed_at=probed_at)
         return ModelLimitProbeAnswer(verdict="error", probed_at=probed_at)
 
 

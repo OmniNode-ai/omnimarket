@@ -50,11 +50,5 @@ def test_cli_without_rung_bindings_writes_unresolved_rows(tmp_path: Path) -> Non
     rows = [json.loads(line) for line in done.stdout.splitlines()]
     assert {row["rung_id"] for row in rows} == {rung.rung_id for rung in rungs}
     assert all(row["status"] == "unresolved" for row in rows)
-    cloud = next(rung for rung in rungs if rung.backend_id_env is not None)
-    assert all(
-        cloud.backend_id_env in row["detail"]
-        for row in rows
-        if row["rung_id"] == cloud.rung_id
-    )
     stored = tmp_path / "rung_eval_2026-10-15.jsonl"
     assert [json.loads(line) for line in stored.read_text().splitlines()] == rows

@@ -13,13 +13,17 @@ import sys
 from collections.abc import Callable
 from functools import wraps
 from getpass import getpass
+from importlib import resources
 from pathlib import Path
 from shutil import get_terminal_size
 from typing import Any
 
 import click
+import yaml
 from click.core import ParameterSource
+from omnibase_core.cli.cli_run_node import run_node_in_process
 from omnibase_core.cli.cli_user_config import user_config_path
+from omnibase_core.errors.model_onex_error import ModelOnexError
 from pydantic import SecretStr
 
 from omnimarket.handlers.handler_endpoint_catalog import HandlerEndpointCatalog
@@ -29,6 +33,8 @@ from omnimarket.nodes.node_onex_setup_effect.cli_choices import ask_choices
 from omnimarket.nodes.node_onex_setup_effect.cli_workflow import run_workflow_cli
 from omnimarket.nodes.node_onex_setup_effect.handlers.handler_onex_setup import (
     KEYLESS_PROVIDERS,
+    discard_key,
+    park_key,
     recorded_state,
 )
 from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_plugins import (
@@ -39,6 +45,10 @@ from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_preflight im
 )
 from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_workflow import (
     HandlerSetupWorkflow,
+)
+from omnimarket.nodes.node_onex_setup_effect.models import (
+    ModelOnexSetupRequest,
+    ModelOnexSetupResult,
 )
 from omnimarket.nodes.node_onex_setup_effect.models.model_setup_banner import (
     ModelSetupBanner,
@@ -91,6 +101,42 @@ def _workflow_cli(ctx: click.Context, **kwargs: Any) -> None:
         read_key=_read_key,
         **kwargs,
     )
+
+
+NODE_PACKAGE = "omnimarket.nodes.node_onex_setup_effect"
+NODE_NAME = "node_onex_setup_effect"
+
+
+def _run_through_runtime(request: ModelOnexSetupRequest) -> ModelOnexSetupResult:
+    """Publish the walk's command on the local runtime and read its terminal result.
+
+    The contract names the topic and the time the walk may take (``descriptor.timeout_ms``).
+    """
+    contract_path = Path(str(resources.files(NODE_PACKAGE) / "contract.yaml"))
+    contract = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
+    timeout_s = int(contract["descriptor"]["timeout_ms"]) // 1000
+    token = park_key(request.key) if request.key is not None else None
+    payload = request.model_dump(mode="json", exclude={"key"})
+    payload["key_handoff"] = token
+    try:
+        produced = run_node_in_process(NODE_NAME, contract_path, payload, timeout_s)
+    except ModelOnexError as error:
+        raise click.ClickException(error.message) from error
+    finally:
+        discard_key(token)
+    return ModelOnexSetupResult.model_validate(produced)
+
+
+def _report(result: ModelOnexSetupResult) -> None:
+    for outcome in result.steps:
+        status = "done" if outcome.changed else "unchanged"
+        click.echo(f"[{status}] {outcome.step}: {outcome.detail}")
+    if result.receipt is not None:
+        receipt = result.receipt
+        click.echo(
+            f"Receipt: provider={receipt.provider} model={receipt.model} "
+            f"backend={receipt.backend_id or '-'} tested_at={receipt.tested_at}"
+        )
 
 
 def _read_key(provider: str | None, interactive: bool) -> SecretStr | None:

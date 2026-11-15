@@ -1,0 +1,51 @@
+schema_version: 1.0.0
+ticket_id: OMN-24181
+title: Move the old host installer's background jobs into the one installer, three jobs covered and two added
+summary: The old host installer in the frozen internal repository offers 46 unit kinds; onex-host-install-units covers 3 of them (floor-alarm, factory-floor-publish, silent-failure-alarm). This change adds two more to the one installer's declared units, rescue-patch-review and consumer-group-guard, both launchd registry module ticks whose modules already live in omnimarket. The internal repository's removal of the old installer's code for the three covered units is a separate pull request of this ticket.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24181-units-in-the-one-installer
+  statement: The one installer declares rescue-patch-review and consumer-group-guard so they install, report and refuse like every other registry unit.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: onex-host-install-units declares rescue-patch-review and consumer-group-guard as launchd units that render, install and refuse a checkout without their entry file -- falsifier: pytest tests/nodes/node_host_installer_registry_units/test_old_installer_module_tick_units.py -q fails at the merge base'
+  - id: AC3
+    statement: 'AC3: integrated: on a lab host, onex-host-install-units rescue-patch-review --dry-run and consumer-group-guard --dry-run exit 0 and print their rendered unit from the branch revision, and --list-units names both -- falsifier: a non-zero exit or a missing label in the printed unit'
+evidence_requirements:
+- kind: tests
+  description: The declared-unit test passes at the pushed head and fails at the merge base.
+  command: uv run pytest tests/nodes/node_host_installer_registry_units/test_old_installer_module_tick_units.py -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24181-ac1
+  description: 'AC1: both units are declared with their interval, module and entry file, render a plist with the branch checkout, refuse a checkout without the entry file and make no launchctl call on a dry run.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_old_installer_module_tick_units.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24181-ac3
+  description: 'hosted proxy for AC3: the declared-unit tests above pass; the dry-run reads on the lab host and the list-units read are named in the pull request Lab line.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_old_installer_module_tick_units.py tests/nodes/node_host_installer_registry_units/test_golden_chain_host_installer_registry_units.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24181-integration-proof
+  description: the declared-unit test and the golden chain test run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24181 --kind test -- env PYTHONDONTWRITEBYTECODE=1
+      uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_old_installer_module_tick_units.py tests/nodes/node_host_installer_registry_units/test_golden_chain_host_installer_registry_units.py
+      -q --no-cov

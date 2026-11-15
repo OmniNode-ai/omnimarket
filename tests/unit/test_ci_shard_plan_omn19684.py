@@ -159,7 +159,7 @@ def test_record_sums_per_test_seconds_into_files_and_means_over_runs() -> None:
 
 
 def test_committed_record_balances_the_real_tree_within_target() -> None:
-    record: dict[str, float] = json.loads(RECORD.read_text(encoding="utf-8"))
+    record: dict[str, float] = planner.read_record(RECORD)
     assert record, "config/test_file_durations.json is empty"
     assert all(isinstance(v, (int, float)) and v >= 0 for v in record.values())
     files = planner.discover_test_files(REPO_ROOT)
@@ -180,7 +180,7 @@ def test_committed_record_balances_the_real_tree_within_target() -> None:
 
 
 def test_committed_record_names_nearly_every_test_file() -> None:
-    record: dict[str, float] = json.loads(RECORD.read_text(encoding="utf-8"))
+    record: dict[str, float] = planner.read_record(RECORD)
     files = planner.discover_test_files(REPO_ROOT)
     _, unrecorded = planner.file_weights(files, record)
     fraction = len(unrecorded) / len(files)
