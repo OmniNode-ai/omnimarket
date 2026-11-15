@@ -66,7 +66,7 @@ dod_evidence:
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: journalctl --user -u onex-temp-retention.service --since -2h --no-pager | grep -q '"windows":{[^}]*"/tmp":'
+    check_value: ssh h053 journalctl --user -u onex-temp-retention.service --since -2h --no-pager | grep -q '"windows":{[^}]*"/tmp":'
     cwd: .
 - id: dod-omn24523-ac2-run-on-h053
   description: The node run on h053 from the branch overlay removed /tmp entries; the receipt names removed paths under /tmp and a count above zero, read from the receipt and not only checked for existence.
