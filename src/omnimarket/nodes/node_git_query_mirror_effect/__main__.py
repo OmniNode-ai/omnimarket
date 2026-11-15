@@ -18,6 +18,8 @@ Usage::
     python -m omnimarket.nodes.node_git_query_mirror_effect on-base --repo omnimarket --pr 2905
     python -m omnimarket.nodes.node_git_query_mirror_effect log --repo omnimarket --pr 2905
     python -m omnimarket.nodes.node_git_query_mirror_effect status --repo omnimarket
+    python -m omnimarket.nodes.node_git_query_mirror_effect is-ancestor \
+        --repo omnimarket --ancestor <sha> --descendant <sha>
 
 The mirror root is ``$ONEX_GIT_QUERY_MIRROR_ROOT``, else
 ``$ONEX_STATE_DIR/git-query-mirrors``; with neither set the CLI refuses.
@@ -51,6 +53,7 @@ _COMMANDS: dict[str, EnumGitQueryOperation] = {
     "conflicts": EnumGitQueryOperation.CONFLICTS,
     "on-base": EnumGitQueryOperation.ON_BASE,
     "log": EnumGitQueryOperation.LOG,
+    "is-ancestor": EnumGitQueryOperation.IS_ANCESTOR,
 }
 
 
@@ -91,6 +94,16 @@ def main(argv: list[str] | None = None) -> int:
         "--base", default=None, help="Base branch (default: the repo default branch)."
     )
     parser.add_argument(
+        "--ancestor",
+        default=None,
+        help="is-ancestor only: the candidate ancestor commit sha (40 hex).",
+    )
+    parser.add_argument(
+        "--descendant",
+        default=None,
+        help="is-ancestor only: the candidate descendant commit sha (40 hex).",
+    )
+    parser.add_argument(
         "--max-age",
         type=int,
         default=DEFAULT_MAX_AGE_S,
@@ -108,6 +121,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     op = _COMMANDS[args.command]
+    if op is not EnumGitQueryOperation.IS_ANCESTOR and (
+        args.ancestor is not None or args.descendant is not None
+    ):
+        return _usage_error(parser, f"{args.command} takes no --ancestor/--descendant")
 
     try:
         root = resolve_mirror_root()
@@ -116,7 +133,16 @@ def main(argv: list[str] | None = None) -> int:
     mirror = GitQueryMirror(root=root)
 
     repos = [_slug(r) for r in (args.repo or [])]
-    if op in (EnumGitQueryOperation.SYNC, EnumGitQueryOperation.STATUS):
+    if op is EnumGitQueryOperation.IS_ANCESTOR:
+        if len(repos) != 1 or args.ancestor is None or args.descendant is None:
+            return _usage_error(
+                parser,
+                f"{args.command} needs exactly one --repo, --ancestor and --descendant",
+            )
+        if args.pr is not None:
+            return _usage_error(parser, f"{args.command} takes no --pr")
+        targets = repos
+    elif op in (EnumGitQueryOperation.SYNC, EnumGitQueryOperation.STATUS):
         targets = repos or list(REGISTRY_REPOS)
     else:
         if len(repos) != 1 or args.pr is None:
@@ -132,6 +158,8 @@ def main(argv: list[str] | None = None) -> int:
             repo=repo,
             pr_number=args.pr,
             base=args.base,
+            ancestor_sha=args.ancestor,
+            descendant_sha=args.descendant,
             max_age_s=args.max_age,
             allow_gh_fallback=not args.no_gh_fallback,
             # The CLI publishes nothing, so it must not move the merge-scan watermark.
