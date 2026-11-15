@@ -1,8 +1,5 @@
 {
   "src/omnimarket/nodes/node_factory_floor_compute/tests/test_single_integration_state.py": 0.17,
-  "src/omnimarket/nodes/node_one_copy_check_compute/tests/test_one_copy_check.py": 0.5,
-  "src/omnimarket/nodes/node_one_copy_check_compute/tests/test_one_copy_check_evidence.py": 0.5,
-  "src/omnimarket/nodes/node_one_copy_check_effect/tests/test_one_copy_check_effect.py": 0.5,
   "src/omnimarket/nodes/node_seam_reading_compute/tests/test_no_producer_topic_list.py": 0.3,
   "tests/analysis/test_ast_import_scanner.py": 0.17,
   "tests/chain/test_landing_bus_start_failure.py": 0.14,
