@@ -1,0 +1,82 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Host Introspection Announce Effect (OMN-19998)
+#
+# RULING 2026-11-14T03:36:15Z (operator): a node can be a whole computer; when a new system comes online it introspects, and
+# the registry subscribes. This node is the host side: it reads one host (identity, role, cores, memory, GPUs, models served,
+# runtimes, installed software with commits, the accounts able to run lanes, availability) and publishes it on the bus at start,
+# when the facts change, on a heartbeat, and at stop.
+#
+# WHO HOSTS THIS NODE. A process on each host (``python -m omnimarket.nodes.node_host_introspection_announce_effect serve``),
+# for the reason node_lab_work_unit_effect gives: an attached copy in a runtime container would announce the container's machine,
+# not the host's. So the contract declares runtime_dispatch and NO event_bus block; the runtime auto-wiring attaches only
+# contracts that declare both handler_routing and event_bus.
+#
+# WHAT IT REPLACES. The capacity advertisement of node_lab_work_unit_effect stays until the registry reads this announcement; the
+# announcement nests that advertisement as ``capacity``. Retirement steps are listed in the pull request.
+name: "node_host_introspection_announce_effect"
+lifecycle: experimental
+node_type: "EFFECT_GENERIC"
+runtime_profiles: [effects]
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version: "0.1.0"
+description: >
+  Reads this host (facts through an injected reader, capacity through the capacity effect, its row in the lab host table)
+  and publishes a host introspection announcement at start, on change, on a heartbeat and at stop. A reading that cannot be
+  taken publishes a typed failure, never a zero-filled announcement.
+input_model:
+  name: "ModelHostIntrospectionProbeRequest"
+  module: "omnimarket.nodes.node_host_introspection_announce_effect.models.model_host_introspection_probe_request"
+  description: "Host name and the reason for this announcement."
+output_model:
+  name: "ModelHostIntrospectionAnnouncement"
+  module: "omnimarket.models.model_host_introspection_announcement"
+  description: "The announcement the registry subscribes to."
+handler:
+  module: "omnimarket.nodes.node_host_introspection_announce_effect.handlers.handler_host_introspection_gather"
+  class: "HandlerHostIntrospectionGather"
+  input_model: "omnimarket.nodes.node_host_introspection_announce_effect.models.model_host_introspection_probe_request.ModelHostIntrospectionProbeRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_host_introspection_announce_effect.handlers.handler_host_introspection_gather:HandlerHostIntrospectionGather"
+  handlers:
+    - operation: "gather_host_introspection"
+      handler:
+        name: "HandlerHostIntrospectionGather"
+        module: "omnimarket.nodes.node_host_introspection_announce_effect.handlers.handler_host_introspection_gather"
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: false
+  timeout_ms: 60000
+runtime_dispatch:
+  external_trigger: "The host process (python -m omnimarket.nodes.node_host_introspection_announce_effect serve) runs HostAnnouncer on the overlay's cadence."
+announce:
+  announced_topic: "onex.evt.omnimarket.host-introspection-announced.v1"
+  failed_topic: "onex.evt.omnimarket.host-introspection-failed.v1"
+# The registry and placement read the announcement; neither is a node of this graph yet (the registry plan owns that side).
+externally_consumed_topics:
+  - onex.evt.omnimarket.host-introspection-announced.v1
+  - onex.evt.omnimarket.host-introspection-failed.v1
+published_events:
+  - event_type: ModelHostIntrospectionAnnouncement
+    topic: onex.evt.omnimarket.host-introspection-announced.v1
+    description: "One host's identity, roles, capacity, GPUs, models, runtimes, software, lane accounts, availability and facts digest."
+  - event_type: ModelHostIntrospectionFailure
+    topic: onex.evt.omnimarket.host-introspection-failed.v1
+    description: "The host is alive and its facts could not be read: the error type and message."
+metadata:
+  transport_type: kafka
+  description: "Host introspection announcer, hosted by a process on each host and reached over the bus"
+  author: "OmniNode Team"
+  created: "2026-11-14"
+  tags:
+    - "effect"
+    - "host-introspection"
+    - "registry"
+    - "OMN-19998"
+  related_tickets:
+    - "OMN-19998"
