@@ -194,7 +194,8 @@ class ReceiptLaneSource:
     never a measured zero. A lane receipt counts when it is not final and it names the host, read from ``host`` or,
     failing that, from ``prerequisites.host``; a non-final receipt that names no host raises ValueError so the count
     reads unreadable. Status and the launcher ``pid`` no longer matter: a non-final receipt counts whatever its
-    status and even when its launcher pid is dead.
+    status and even when its launcher pid is dead. A submitted-job record (``*.job.json``) names no host: it is
+    ignored when the receipt of its run beside it is final, and otherwise reads the count unreadable.
     """
 
     def __init__(self, directory: Path) -> None:
@@ -212,6 +213,19 @@ class ReceiptLaneSource:
             if isinstance(nested, str) and nested:
                 return nested
         return None
+
+    @staticmethod
+    def _require_final_receipt(job: Path, data: Mapping[str, object]) -> None:
+        """Raise ValueError unless the submitted job's run has a final receipt beside it."""
+        final_receipt = job.with_name(f"{data['run_id']}.json")
+        try:
+            finished = json.loads(final_receipt.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            finished = None
+        if not isinstance(finished, dict) or finished.get("final") is not True:
+            raise ValueError(
+                f"lane job {job} has no final receipt: it may be running on any host"
+            )
 
     def running(self, host_name: str) -> int:
         # The listing itself is the read: a missing or unreadable directory raises, it never reads as zero.
@@ -232,6 +246,11 @@ class ReceiptLaneSource:
                     ) from exc
                 if not isinstance(data, dict) or "run_id" not in data:
                     # A file that is not a lane receipt holds no evidence of a lane: it is ignored.
+                    continue
+                if receipt.name.endswith(".job.json"):
+                    # A submitted-job record names no host. It is a finished lane when its run's receipt in the same
+                    # directory is final; otherwise the lane may be running on any host: the count reads unreadable.
+                    self._require_final_receipt(receipt, data)
                     continue
                 if data.get("final") is True:
                     # A final receipt is done; it never counts, whatever its host.

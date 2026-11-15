@@ -273,3 +273,45 @@ def test_the_top_level_host_wins_over_prerequisites(tmp_path: Path) -> None:
     )
     assert ReceiptLaneSource(tmp_path).running("a") == 1
     assert ReceiptLaneSource(tmp_path).running("b") == 0
+
+
+def _job(directory: Path, lane: str, run_id: str) -> None:
+    """A submitted-job record beside the runner's receipts: it names no host."""
+    lane_dir = directory / lane
+    lane_dir.mkdir(parents=True, exist_ok=True)
+    (lane_dir / f"{run_id}.job.json").write_text(
+        json.dumps({"run_id": run_id, "lane": lane, "runner": {}, "spec": {}}),
+        encoding="utf-8",
+    )
+
+
+def test_a_submitted_job_with_a_final_receipt_beside_it_is_ignored(
+    tmp_path: Path,
+) -> None:
+    _job(tmp_path, "lane-1", "r1")
+    (tmp_path / "lane-1" / "r1.json").write_text(
+        json.dumps({"run_id": "r1", "host": "a", "final": True, "status": "done"}),
+        encoding="utf-8",
+    )
+    assert ReceiptLaneSource(tmp_path).running("a") == 0
+
+
+def test_a_submitted_job_with_no_final_receipt_reads_unreadable(
+    tmp_path: Path,
+) -> None:
+    """A lane submitted and not yet placed may run on any host: the count must not read zero."""
+    _job(tmp_path, "lane-1", "r1")
+    with pytest.raises(ValueError, match="no final receipt"):
+        ReceiptLaneSource(tmp_path).running("a")
+
+
+def test_a_submitted_job_whose_receipt_is_not_final_reads_unreadable(
+    tmp_path: Path,
+) -> None:
+    _job(tmp_path, "lane-1", "r1")
+    (tmp_path / "lane-1" / "r1.json").write_text(
+        json.dumps({"run_id": "r1", "host": "b", "status": "running"}),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="no final receipt"):
+        ReceiptLaneSource(tmp_path).running("a")
