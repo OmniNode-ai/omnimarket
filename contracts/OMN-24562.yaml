@@ -1,0 +1,50 @@
+schema_version: 1.0.0
+ticket_id: OMN-24562
+title: Review gateway skips a refused key and a standing probe alarms on a credit flip
+summary: 'The review gateway on the launching Mac crash-looped, and once it served, the first call that hit an out-of-credit key failed the whole review with 503 because publishing the key-set-aside event
+  was refused by the bus topic ACL. A refused or unreachable key-state publication now defers the event (queued, same event id, replayed in order) and the review moves on to the next key. A new
+  `onex models review-gateway-key-probe` reads each bound key with one token and appends a ledger STATUS row carrying alarm=review-key-credit when a key''s credit state differs from the last run. Not in
+  this change: the host unit and the broker ACL for the key-state topics.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24562-skip
+  statement: A key-state event the bus refuses never turns a skipped key into a refused review, and the event is replayed with its stable id.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: with a bus that refuses the first publication, the review still reaches the next funded key and the refused event is replayed in order -- falsifier: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect/test_claude_review_gateway.py
+      -q -k defers_the_event'
+- id: req-omn24562-probe
+  statement: A standing per-key credit probe writes one alarm row when a key flips state and never writes a credential.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: a flip writes one STATUS row with alarm=review-key-credit, a first run and an unreachable read write none, and no row or result carries a key reference -- falsifier: uv run pytest
+      tests/unit/nodes/node_claude_review_gateway_effect/test_review_key_credit_probe_omn24562.py -q'
+evidence_requirements:
+- kind: tests
+  description: The focused tests at the pushed head.
+  command: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24562-ac1
+  description: 'AC1: a refused key-state publication defers the event and the review still reaches the next funded key'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect/test_claude_review_gateway.py -q --no-cov -p no:randomly -k defers_the_event
+    cwd: .
+- id: dod-omn24562-ac2
+  description: 'AC2: the probe writes one alarm row per flip and no credential'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect/test_review_key_credit_probe_omn24562.py -q --no-cov -p no:randomly
+    cwd: .
