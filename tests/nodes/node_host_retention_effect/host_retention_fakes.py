@@ -389,9 +389,10 @@ def results_class(
         "loader": loader if loader is not None else loader_fields(),
         "terminal_keep_days": terminal_keep_days,
         "lane_pattern": lane_pattern,
+        "receipt": receipt
+        if receipt is not None
+        else {"root": str(root), "glob": "{lane}/*.json"},
     }
-    if receipt is not None:
-        terminal["receipt"] = receipt
     class_fields: dict[str, Any] = {
         "name": name,
         "kind": "lane_results",

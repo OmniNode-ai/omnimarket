@@ -225,6 +225,9 @@ def test_an_entry_holding_a_symlink_or_a_guarded_folder_is_never_archived(
     assert old.exists(), guard
     assert kept_reasons(result) == {"lane-omega": "not_archivable"}, guard
     assert archive.archived == []
+    assert result.totals[0].unknown_count == 1, (
+        "an entry kept forever is counted, never silent"
+    )
 
 
 def test_control_the_same_entry_without_it_is_archived(tmp_path: Path) -> None:

@@ -216,7 +216,7 @@ def test_golden_chain_terminal_guard_through_the_node_and_the_real_closure_adapt
     assert not closed.exists()
     assert unrecorded.exists()
     assert [(Path(k.path).name, k.reason) for k in result.kept] == [
-        ("open-lane", "no_terminal")
+        ("open-lane", "finished_unknown")
     ]
     assert len(seen) == 1
     assert seen[0][-4:] == ["--reader", "host-retention", "--window-hours", "720"]

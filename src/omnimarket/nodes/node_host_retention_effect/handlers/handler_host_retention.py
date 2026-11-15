@@ -14,7 +14,7 @@ import fnmatch
 import os
 import re
 import time
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -56,6 +56,9 @@ from omnimarket.nodes.node_host_retention_effect.models.model_host_retention imp
     ModelTerminalGuard,
     ModelUvBucketBound,
     ModelUvCache,
+)
+from omnimarket.nodes.node_retention_cleanup.handlers.handler_file_retention import (
+    load_file_policy,
 )
 from omnimarket.nodes.node_temp_retention_effect.handlers.handler_temp_retention import (
     ProcessReferences,
@@ -170,11 +173,35 @@ def _terminal_refusals(
     return refusals
 
 
+def consent_archive_roots() -> dict[str, str]:
+    """The real path of every folder node_retention_cleanup's policy archives, with its entry as the label.
+
+    The operator's archive consent holds while an entry is disabled (this node owns the folder then), so
+    every entry whose action is archive counts, enabled or not.
+    """
+    labels: dict[str, list[str]] = {}
+    for entry in load_file_policy().entries:
+        if entry.action == "archive":
+            path = os.path.realpath(os.path.expandvars(os.path.expanduser(entry.path)))
+            labels.setdefault(path, []).append(
+                f"{entry.name} ({entry.consent_ref or 'archive rule'})"
+            )
+    return {path: ", ".join(names) for path, names in labels.items()}
+
+
 def validate_declarations(
-    row: ModelHostRetention, bounds: ModelRetentionBounds
+    row: ModelHostRetention,
+    bounds: ModelRetentionBounds,
+    consent_roots: Mapping[str, str] | None = None,
 ) -> list[str]:
-    """Every refusal text for a host row (empty when valid)."""
-    refusals: list[str] = []
+    """Every refusal text for a host row (empty when valid).
+
+    ``consent_roots`` defaults to the folders node_retention_cleanup's policy archives: a lane_results
+    class on one of them that does not archive is refused.
+    """
+    refusals: list[str] = row.consent_refusals(
+        consent_archive_roots() if consent_roots is None else consent_roots
+    )
     for age in row.age_classes:
         try:
             _check_declared_path(
@@ -295,8 +322,6 @@ def _finished(
             if state.terminal > now - terminal.terminal_keep_days * _DAY:
                 return "", "terminal_too_new"
             return "ledger", None
-    if terminal.receipt is None:
-        return "", "no_terminal"
     run = match.groupdict().get("run") or ""
     for token in [lane, run] if run else [lane]:
         if not _LANE_TOKEN.fullmatch(token) or ".." in token:
@@ -776,7 +801,7 @@ class HandlerHostRetention:
                 kept_count=sum(k.class_name == name for k in out.kept),
                 unknown_count=sum(
                     k.class_name == name
-                    and k.reason in ("no_terminal", "finished_unknown")
+                    and k.reason in ("finished_unknown", "not_archivable")
                     for k in out.kept
                 ),
                 archived_count=out.archived.get(name, 0),

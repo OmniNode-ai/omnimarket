@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 import re
+from collections.abc import Mapping
 from typing import Annotated, Literal, Self
 
 from pydantic import (
@@ -74,15 +75,14 @@ class ModelTerminalGuard(_Frozen):
     ``loader`` reads the ledger rows of the last ``window_hours``. ``terminal_keep_days`` is how many days
     old the lane's newest TERMINAL must be for the entry to go; a lane whose TERMINAL falls outside the
     loader's window is kept. ``lane_pattern`` is a full-match regular expression of an entry name with a
-    named group ``lane``; an entry the pattern does not match names no lane and is kept. ``receipt``
-    adds the lane's own receipt files as evidence: when the receipt ``glob`` holds ``{run}``,
-    ``lane_pattern`` must have a group named ``run`` as well.
+    named group ``lane``; an entry the pattern does not match names no lane and is kept. ``receipt`` is
+    required: a lane the ledger window does not hold is judged by its receipts.
     """
 
     loader: ModelLedgerLoader
     terminal_keep_days: float = Field(gt=0)
     lane_pattern: NonEmptyStr
-    receipt: ModelReceiptEvidence | None = None
+    receipt: ModelReceiptEvidence
 
     @model_validator(mode="after")
     def lane_pattern_names_lane(self) -> Self:
@@ -96,11 +96,7 @@ class ModelTerminalGuard(_Frozen):
             raise ValueError(
                 f"lane_pattern {self.lane_pattern!r} must have a group named 'lane'"
             )
-        if (
-            self.receipt is not None
-            and "{run}" in self.receipt.glob
-            and "run" not in pattern.groupindex
-        ):
+        if "{run}" in self.receipt.glob and "run" not in pattern.groupindex:
             raise ValueError(
                 f"lane_pattern {self.lane_pattern!r} must have a group named 'run' "
                 f"when the receipt glob {self.receipt.glob!r} holds {{run}}"
@@ -153,7 +149,6 @@ class ModelAgeClass(_Frozen):
             raise ValueError("archive is only for lane_results")
         if (
             self.terminal is not None
-            and self.terminal.receipt is not None
             and self.terminal.receipt.dead_after_days is not None
             and self.terminal.receipt.dead_after_days <= self.keep_days
         ):
@@ -276,6 +271,23 @@ class ModelHostRetention(_Frozen):
         True  # keep any entry a running container bind-mounts (or holds a mount inside)
     )
 
+    def consent_refusals(self, consent_roots: Mapping[str, str]) -> list[str]:
+        """Refusal texts for a lane_results class rooted at a root the operator's archive consent names.
+
+        ``consent_roots`` maps an absolute real path to the label of the policy entry that names it. A class
+        whose real root is one of them and whose ``archive`` is false would delete what the consent says is
+        archived, so it is refused.
+        """
+        refusals: list[str] = []
+        for age in self.age_classes:
+            label = consent_roots.get(os.path.realpath(age.root))
+            if age.kind == "lane_results" and label is not None and not age.archive:
+                refusals.append(
+                    f"{age.name}: root {age.root} is archived under node_retention_cleanup's "
+                    f"policy entry {label}; set archive: true, a plain delete is refused"
+                )
+        return refusals
+
     @model_validator(mode="after")
     def at_least_one_class(self) -> Self:
         if not self.age_classes and not self.runner_groups and not self.uv_caches:
@@ -396,7 +408,6 @@ class ModelRetentionKept(_Frozen):
         "under_budget",
         "below_min",
         "store_locked",
-        "no_terminal",
         "terminal_too_new",
         "lane_unnamed",
         "lane_open",

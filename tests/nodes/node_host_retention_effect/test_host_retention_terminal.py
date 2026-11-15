@@ -93,7 +93,7 @@ def test_dry_run_lists_closed_old_lanes_with_bytes_and_removes_nothing(
     assert all(path.exists() for path in entries.values())
     assert kept_reasons(result) == {
         "lane-young": "too_new",
-        "lane-delta": "no_terminal",
+        "lane-delta": "finished_unknown",
         "lane-gamma": "terminal_too_new",
         "result-plain": "lane_unnamed",
     }
@@ -127,7 +127,7 @@ def test_kept_a_lane_without_a_terminal_is_never_removed(tmp_path: Path) -> None
     result = run(tmp_path, fields, ports=make_ports(closure=FakeClosure({})))
 
     assert old.exists()
-    assert kept_reasons(result) == {"lane-omega": "no_terminal"}
+    assert kept_reasons(result) == {"lane-omega": "finished_unknown"}
 
 
 def test_kept_a_terminal_younger_than_the_window(tmp_path: Path) -> None:
@@ -201,7 +201,7 @@ def test_the_loader_runs_once_for_classes_that_share_it(tmp_path: Path) -> None:
     assert len(closure.calls) == 1
     assert closure.calls[0].argv[-2:] == ("-m", LOADER_MODULE)
     assert not (west / "lane-omega").exists()
-    assert kept_reasons(result) == {"lane-theta": "no_terminal"}
+    assert kept_reasons(result) == {"lane-theta": "finished_unknown"}
 
 
 # ------------------------------------------------------------------------------------ refusals

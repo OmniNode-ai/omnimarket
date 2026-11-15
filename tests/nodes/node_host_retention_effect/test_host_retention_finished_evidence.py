@@ -127,7 +127,7 @@ def test_control_the_same_lane_without_receipt_evidence_is_kept_forever(
     result = run(tmp_path, fields, ports=make_ports(closure=FakeClosure({})))
 
     assert old.exists()
-    assert kept_reasons(result) == {"lane-omega": "no_terminal"}
+    assert kept_reasons(result) == {"lane-omega": "finished_unknown"}
     assert result.totals[0].unknown_count == 1
 
 

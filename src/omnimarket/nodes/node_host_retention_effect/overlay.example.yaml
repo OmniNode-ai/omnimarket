@@ -32,6 +32,7 @@ hosts:
         kind: lane_results
         root: $OMNI_HOME/.claude_scratch/reports
         keep_days: 7
+        archive: true
         # Also held until the lane's TERMINAL on the rolling work ledger is old. The loader command is the contract's one ledger reader; the
         # entry name must name a lane through lane_pattern, or it is kept.
         terminal:
@@ -42,6 +43,10 @@ hosts:
             timeout_seconds: 120
           terminal_keep_days: 7
           lane_pattern: "(?P<lane>.+)"
+          receipt:
+            root: ~/.local/state/omni/remote-lanes
+            glob: "{lane}/rlane-*.json"
+            dead_after_days: 30
       - name: delegation-receipts
         kind: lane_results
         root: $OMNI_HOME/.claude_scratch/delegation-receipts
@@ -58,6 +63,7 @@ hosts:
         kind: lane_results
         root: ~/.local/state/omni/remote-lanes
         keep_days: 7
+        archive: true
     runner_groups:
       - ids: ["1", "2", "3", "4", "5"]
         container_template: hp053-ci-runner-{id}
