@@ -67,7 +67,10 @@ def load_host_drain_topic() -> str:
     )
     text = contract.read_text(encoding="utf-8")
     data = yaml.safe_load(text)
-    return data["topics"]["host_drain_requested"]
+    topic = data["topics"]["host_drain_requested"]
+    if not isinstance(topic, str) or not topic:
+        raise ValueError("the contract names no host_drain_requested topic")
+    return topic
 
 
 __all__ = [
