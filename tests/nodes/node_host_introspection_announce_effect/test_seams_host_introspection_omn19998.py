@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """OMN-24367 AC2 -- the capacity inside the announcement is the capacity advertisement, field for field.
 
-Both are published by one ``LabWorkHost`` beat on the in-memory bus; the announcement's ``capacity`` is compared with
+Both are published by one ``AnnouncingLabWorkHost`` beat on the in-memory bus; the announcement's ``capacity`` is compared with
 the advertisement published at the same beat, and the field set with the advertisement model's own fields, so a field
 gained or lost on either side fails here.
 """
@@ -11,7 +11,8 @@ from __future__ import annotations
 
 import pytest
 
-from omnimarket.lab_work.bus import LabWorkHost, load_lab_work_topics
+from omnimarket.lab_work.announcing_host import AnnouncingLabWorkHost
+from omnimarket.lab_work.bus import load_lab_work_topics
 from omnimarket.models.model_host_capacity_advertisement import (
     ModelHostCapacityAdvertisement,
 )
@@ -82,7 +83,7 @@ async def test_announced_capacity_equals_the_capacity_advertisement() -> None:
         ModelHostFactsProbeRequest(host_name=HOST),
         facts_handler=HandlerHostFactsReadEffect(FakeFactsReader()),
     )
-    host = LabWorkHost(
+    host = AnnouncingLabWorkHost(
         bus,
         _Work(),
         HandlerHostCapacityAdvertiseEffect(_Reader()),
@@ -107,7 +108,7 @@ async def test_a_failing_announcement_never_stops_the_capacity_beat() -> None:
     bus = RecordingBus()
     await bus.start()
     bus.down = {load_host_announce_topics().announced}
-    host = LabWorkHost(
+    host = AnnouncingLabWorkHost(
         bus,
         _Work(),
         HandlerHostCapacityAdvertiseEffect(_Reader()),

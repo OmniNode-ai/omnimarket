@@ -135,7 +135,7 @@ class HostAnnouncer:
     ) -> ModelHostAnnouncement | ModelHostIntrospectionFailure | None:
         try:
             facts = await asyncio.to_thread(self._facts.handle, self._probe)
-        except Exception as exc:  # fallback-ok: an unreadable host publishes a typed failure, never a guess
+        except Exception as exc:
             return await self._publish_failure(self._reason(None, stopping), exc)
         digest = facts_digest(facts)
         reason = self._reason(digest, stopping)

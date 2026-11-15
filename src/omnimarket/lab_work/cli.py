@@ -27,7 +27,7 @@ import signal
 import sys
 import uuid
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import click
 
@@ -36,18 +36,8 @@ from omnimarket.delegated_test_loop.lane_bus import (
     LabRunBusError,
     open_lab_run_bus,
 )
-from omnimarket.lab_work.bus import (
-    DEFAULT_MAX_COMMAND_AGE_SECONDS,
-    DEFAULT_TOOLS,
-    LabWorkCaller,
-    LabWorkHost,
-)
-from omnimarket.nodes.node_host_introspection_announce_effect.handlers import (
-    HostAnnouncer,
-)
-from omnimarket.nodes.node_host_introspection_announce_effect.models import (
-    ModelHostFactsProbeRequest,
-)
+from omnimarket.lab_work import announcing_host
+from omnimarket.lab_work.bus import DEFAULT_MAX_COMMAND_AGE_SECONDS, LabWorkCaller
 from omnimarket.nodes.node_lab_placement_compute.handlers import newest_per_host
 from omnimarket.nodes.node_lab_placement_compute.models import (
     DEFAULT_MAX_LOAD_PER_CORE,
@@ -109,7 +99,7 @@ def _hard_exit(code: int) -> None:
 
 
 async def serve_until_stopped(
-    host: LabWorkHost, stop: asyncio.Event, max_commands: int
+    host: announcing_host.AnnouncingLabWorkHost, stop: asyncio.Event, max_commands: int
 ) -> int:
     """Serve until told to stop; leave the process non-zero when the host's worker is stuck."""
     while not stop.is_set():
@@ -163,24 +153,7 @@ def lab_work_group(ctx: click.Context) -> None:
 @click.option(
     "--work-root", type=click.Path(file_okay=False, path_type=Path), default=None
 )
-@click.option(
-    "--role",
-    "roles",
-    multiple=True,
-    help="A role this host holds, announced on the bus (repeat for several).",
-)
-@click.option(
-    "--served-model",
-    "served_models",
-    multiple=True,
-    help="A model this host serves, announced on the bus (repeat for several).",
-)
-@click.option(
-    "--announce/--no-announce",
-    default=True,
-    show_default=True,
-    help="Announce this host's facts on the bus beside its capacity advertisement.",
-)
+@announcing_host.announce_options
 def serve_command(
     omnibase_path: Path | None,
     bus: BusKind,
@@ -194,11 +167,9 @@ def serve_command(
     max_command_age: int,
     max_commands: int,
     work_root: Path | None,
-    roles: tuple[str, ...],
-    served_models: tuple[str, ...],
-    announce: bool,
+    **announce: Any,
 ) -> None:
-    """Serve lab work units addressed to this host, and advertise its capacity and its facts."""
+    """Serve lab work units addressed to this host, and advertise its capacity."""
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s"
     )
@@ -225,26 +196,14 @@ def serve_command(
             kafka_bootstrap=kafka_bootstrap,
             omni_home=omnibase_path,
         ) as opened:
-            host = LabWorkHost(
+            host = announcing_host.AnnouncingLabWorkHost(
                 opened,
                 work,
                 HandlerHostCapacityAdvertiseEffect(),
                 max_units=max_units,
                 rank_penalty=rank_penalty,
                 max_command_age_seconds=max_command_age,
-                announcer=(
-                    HostAnnouncer(
-                        opened,
-                        ModelHostFactsProbeRequest(
-                            host_name=host_name,
-                            roles=list(roles),
-                            models_served=list(served_models),
-                            software=list(DEFAULT_TOOLS),
-                        ),
-                    )
-                    if announce
-                    else None
-                ),
+                **announce,
             )
             await host.start()
             try:

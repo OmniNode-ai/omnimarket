@@ -47,9 +47,6 @@ from omnimarket.delegated_test_loop.lab_run_bus import (
     event_type_for,
 )
 from omnimarket.models.model_lab_work_held_unit import ModelLabWorkHeldUnit
-from omnimarket.nodes.node_host_introspection_announce_effect.handlers import (
-    HostAnnouncer,
-)
 from omnimarket.nodes.node_lab_placement_compute import handlers, models
 from omnimarket.nodes.node_lab_work_unit_effect.handlers import HostAdvertiser
 from omnimarket.nodes.node_lab_work_unit_effect.models import (
@@ -192,7 +189,6 @@ class LabWorkHost:
         progress_seconds: float = DEFAULT_PROGRESS_SECONDS,
         check_seconds: float = _WATCH_SECONDS,
         clock: Callable[[], float] = time.monotonic,
-        announcer: HostAnnouncer | None = None,
     ) -> None:
         self._bus = bus
         self._work = work_handler
@@ -208,9 +204,6 @@ class LabWorkHost:
         self._check_seconds = check_seconds
         self._clock = clock
         self.advertiser = HostAdvertiser(self._host)
-        #: Announces this host's facts beside each capacity advertisement (OMN-24367); None announces nothing.
-        self._announcer = announcer
-        self._last_ad: ModelHostCapacityAdvertisement | None = None
         self._queue: asyncio.Queue[ProtocolBusMessage] = asyncio.Queue()
         self._tasks: list[asyncio.Task[None]] = []
         self._beat_task: asyncio.Task[None] | None = None
@@ -250,19 +243,7 @@ class LabWorkHost:
         )
         logger.info("lab-work host %s serving %s", self._host, self._topics.command)
 
-    async def _announce(self, stopping: bool = False) -> None:
-        """Announce the host beside the capacity beat; it never stops the capacity beat or the serve process."""
-        if self._announcer is None or self._last_ad is None:
-            return
-        try:
-            call = self._announcer.stop if stopping else self._announcer.announce
-            await asyncio.wait_for(call(self._last_ad), self._topics.cadence_seconds)
-        except Exception:  # fallback-ok: the announcement is new and read by nothing yet; capacity must keep flowing
-            logger.exception("lab-work host %s: host announcement failed", self._host)
-
     async def stop(self) -> None:
-        if self._beat_task is not None:
-            await self._announce(stopping=True)
         if self._unsubscribe is not None:
             await self._unsubscribe()
             self._unsubscribe = None
@@ -297,8 +278,6 @@ class LabWorkHost:
         self.advertised += await self.advertiser.publish(
             self._bus, self._topics.capacity, ad
         )
-        self._last_ad = ad
-        await self._announce()
         return ad
 
     async def _beat(self) -> None:
