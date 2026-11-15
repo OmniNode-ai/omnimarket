@@ -173,3 +173,17 @@ def test_an_unopenable_lane_is_refused_by_name(
     result = _invoke(gateway_env)
     assert result.exit_code != 0
     assert "declared bus lane 'dev' could not be opened" in result.output
+
+
+def test_seam_the_real_lane_opener_still_matches_the_helper_binding() -> None:
+    """Seam: the helper binds the opener's arguments by declared order.
+
+    ``_register_on_declared_bus`` refuses an opener whose first three parameters are not
+    bus, lane and kafka_bootstrap or that does not take exactly four; the review gateway and
+    the tenant-key registration share that helper, so a reshaped opener fails here first.
+    """
+    import inspect
+
+    names = tuple(inspect.signature(lane_bus.open_lab_run_bus).parameters)
+    assert names[:3] == ("bus", "lane", "kafka_bootstrap")
+    assert len(names) == 4
