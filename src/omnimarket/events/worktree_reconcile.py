@@ -9,6 +9,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.models import model_worktree_removal as removal
 from omnimarket.models.model_worktree_reconcile_policy import (
     ModelWorktreeReconcilePolicy as Policy,
 )
@@ -36,7 +37,7 @@ class EnumDecidedBy(StrEnum):
     MODEL = "model"
 
 
-class ModelWorktreeFacts(ModelWorktreeReconcileBase):
+class ModelWorktreeFacts(removal.ModelWorktreeLockFacts):
     """Only metadata; never file contents or credentials from remote URLs."""
 
     host: str
@@ -56,21 +57,6 @@ class ModelWorktreeFacts(ModelWorktreeReconcileBase):
         Literal["rebase", "merge", "cherry-pick", "bisect"] | None
     ) = None
     git_locked: bool = False
-    # The tree's own lock marker file (`locked` in its gitdir) and that file's
-    # text: the lane that wrote it says why it holds the tree. A lock is stale
-    # when no lane, process, unit or ref lock backs it and the tree is quiet
-    # past policy.stale_lock_hours.
-    worktree_locked: bool = False
-    worktree_lock_reason: str = ""
-    # The run read a ledger (the command named one): only then is "no live claim names
-    # this tree" evidence, so only then can a lock be called stale.
-    ledger_known: bool = False
-    # A transient git lock (index.lock or HEAD.lock): a command is running or
-    # died mid-write, so the lock is never called stale.
-    ref_locked: bool = False
-    # The tree's .git file names a gitdir that no longer exists: git cannot
-    # read the tree at all, so its head is dead work left on the disk.
-    gitdir_missing: bool = False
     head_on_remote: bool = False
     content_merged: bool = False
     # HEAD is exactly the head commit of a merged pull request of this repository,
@@ -150,19 +136,11 @@ class ModelWorktreeReconcileDecidedEvent(ModelWorktreeReconcileBase):
     host: str
     facts: ModelWorktreeFacts
     decision: ModelWorktreeDecisionRecord
-    outcome: Literal[
-        "dry_run",
-        "removed",
-        "pruned",
-        "pinned_and_removed",
-        "kept",
-        "needs_human",
-        "failed",
-    ]
+    outcome: removal.WorktreeOutcome
     error: str | None = None
 
 
-class ModelWorktreeReconcileRunCompletedEvent(ModelWorktreeReconcileBase):
+class ModelWorktreeReconcileRunCompletedEvent(removal.ModelWorktreeRemovalReport):
     correlation_id: UUID
     host: str
     started_at: datetime
@@ -177,16 +155,6 @@ class ModelWorktreeReconcileRunCompletedEvent(ModelWorktreeReconcileBase):
     needs_human_paths: tuple[str, ...]
     deferred: int = Field(default=0, ge=0)
     deferred_paths: tuple[str, ...] = ()
-    # Every tree that left the disk (removed, pinned_and_removed or pruned), in
-    # decision order, so a receipt names each removal. The narrower lists say
-    # how it left: pruned names the dead trees, unlocked the stale-locked ones.
-    removed_paths: tuple[str, ...] = ()
-    pruned: int = Field(default=0, ge=0)
-    pruned_paths: tuple[str, ...] = ()
-    unlocked_paths: tuple[str, ...] = ()
-    # Trees whose worktree lock is not stale (a live lane, process, unit or ref
-    # lock backs it, or the tree is still quiet only briefly): kept and named.
-    live_locked_paths: tuple[str, ...] = ()
 
 
 class ModelWorktreeReconcileRunResult(ModelWorktreeReconcileBase):

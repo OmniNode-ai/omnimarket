@@ -27,6 +27,7 @@ from omnimarket.events.worktree_reconcile import (
     ModelWorktreeReconcileRequest,
     ModelWorktreeReconcileRunCompletedEvent,
 )
+from omnimarket.handlers.rules_worktree_lock import stale_lock
 from omnimarket.models.model_worktree_reconcile_policy import (
     ModelWorktreeReconcilePolicy,
 )
@@ -37,7 +38,6 @@ from omnimarket.nodes.node_worktree_reconcile_effect.handlers import adapter_fac
 from omnimarket.nodes.node_worktree_reconcile_effect.handlers.probe_classes import (
     PROBE_NEEDS_HUMAN_PREFIX,
 )
-from omnimarket.worktree_reconcile.rules import stale_lock
 from tests.test_worktree_reconcile_compute import ALLOW, facts
 from tests.test_worktree_reconcile_effect import (
     FakeMergedPrReader,

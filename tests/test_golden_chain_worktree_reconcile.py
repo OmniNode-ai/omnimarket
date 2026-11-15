@@ -132,9 +132,9 @@ def test_golden_chain_a_dead_and_a_stale_locked_tree_leave_and_are_named(
 
 
 @pytest.mark.unit
-def test_error_chain_a_removal_that_raises_is_a_failure_and_not_a_named_removal() -> (
-    None
-):
+def test_error_chain_a_removal_that_raises_is_a_failure_and_not_a_named_removal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     dead = facts(
         path="trees/task/dead", gitdir_missing=True, last_activity_age_hours=100.0
     )
@@ -143,7 +143,7 @@ def test_error_chain_a_removal_that_raises_is_a_failure_and_not_a_named_removal(
     def refuse(fact: object, now: object) -> None:
         raise OSError("trash on another filesystem")
 
-    fake.remove = refuse  # type: ignore[method-assign]
+    monkeypatch.setattr(fake, "remove", refuse)
     result = fake.handler().handle(
         command(policy=ModelWorktreeReconcilePolicy(prune_dead_worktrees=True))
     )

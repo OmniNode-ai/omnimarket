@@ -21,6 +21,8 @@ from omnimarket.events.worktree_reconcile import (
     ModelWorktreeReconcileRunCompletedEvent,
     ModelWorktreeReconcileRunResult,
 )
+from omnimarket.handlers.rules_worktree_lock import live_reason, stale_lock
+from omnimarket.models.model_worktree_removal import WorktreeOutcome
 from omnimarket.nodes.node_worktree_reconcile_effect.handlers.probe_classes import (
     probe_class,
     route_needs_human,
@@ -33,12 +35,7 @@ from omnimarket.nodes.node_worktree_reconcile_effect.protocols import (
     ProtocolWorktreePinner,
     ProtocolWorktreeRemover,
 )
-from omnimarket.worktree_reconcile.rules import (
-    apply_model_verdicts,
-    live_reason,
-    reconcile,
-    stale_lock,
-)
+from omnimarket.worktree_reconcile.rules import apply_model_verdicts, reconcile
 
 # Repositories acted on at once. Trees of one repository stay serial (they share
 # its git metadata and locks); different repositories are independent, and on a
@@ -214,15 +211,7 @@ class HandlerWorktreeReconcile:
         facts: ModelWorktreeFacts,
         row: ModelWorktreeDecisionRecord,
     ) -> ModelWorktreeReconcileDecidedEvent:
-        outcome: Literal[
-            "dry_run",
-            "removed",
-            "pruned",
-            "pinned_and_removed",
-            "kept",
-            "needs_human",
-            "failed",
-        ] = "kept"
+        outcome: WorktreeOutcome = "kept"
         error = None
         if row.decision == Decision.NEEDS_HUMAN:
             outcome = "needs_human"
