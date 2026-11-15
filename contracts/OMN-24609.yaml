@@ -73,3 +73,11 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/test_lab_sli_collect_reading_exit.py tests/test_host_reconcile_clone_lock_state.py -q --no-cov -p no:randomly
     cwd: .
+- id: dod-omn24609-integration-proof
+  description: 'Integration proof run on a lab host at the pushed head: both focused test files run through lab-work. The real clone refusal script output (index.lock and both onex-canonical-clone-sync.lock files, aged) was passed through the node''s lock judge on h051: the two flock files were dropped and index.lock kept; the Mac reads (launchctl list status, the next reconcile run output) are the orchestrator''s after the install and are not claimed by this check.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24609 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/test_lab_sli_collect_reading_exit.py tests/test_host_reconcile_clone_lock_state.py -q --no-cov -p no:randomly
+    cwd: .
