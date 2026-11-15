@@ -126,6 +126,12 @@ class ModelLaneSettings(_Frozen):
     runs_list_key: str = Field(min_length=1)
     #: Key of the correlation id in the ``onex delegate --json`` output.
     delegate_id_key: str = Field(min_length=1)
+    #: Key of the delegation status in the ``onex delegate --json`` output.
+    delegate_status_key: str = Field(min_length=1)
+    #: Status value in that key that means the delegation ended failed.
+    delegate_failed_status: str = Field(min_length=1)
+    #: Keys of the failure reason in the output, read in order until one is a non-empty string.
+    delegate_reason_keys: tuple[str, ...] = Field(min_length=1)
     #: The bus sub-block, required when the backend is ``bus``.
     bus: ModelBusSettings | None = None
 
@@ -346,6 +352,18 @@ def send_delegate(
         raise LaneReadError(
             f"the delegate command (exit {code}) printed no JSON"
         ) from exc
+    if isinstance(parsed, dict) and (
+        parsed.get(settings.delegate_status_key) == settings.delegate_failed_status
+    ):
+        reason = "no reason given"
+        for reason_key in settings.delegate_reason_keys:
+            value = parsed.get(reason_key)
+            if isinstance(value, str) and value:
+                reason = value
+                break
+        raise LaneReadError(
+            f"the delegate command (exit {code}) ended failed: {reason}"
+        )
     correlation_id = (
         parsed.get(settings.delegate_id_key) if isinstance(parsed, dict) else None
     )

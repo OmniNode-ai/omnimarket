@@ -106,6 +106,9 @@ lane:
   delegate_timeout_seconds: 300
   runs_list_key: runs
   delegate_id_key: correlation_id
+  delegate_status_key: status
+  delegate_failed_status: failed
+  delegate_reason_keys: [failure_reason, terminal_failure_reason]
   totals_keys:
     runs: delegation_runs
     tokens: total_tokens
