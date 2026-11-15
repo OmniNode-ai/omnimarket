@@ -16,7 +16,7 @@ requirements:
   - id: AC3
     statement: 'AC3: error chain: the existing refusal tests for a missing path and a clone that cannot fast-forward still pass unchanged -- falsifier: pytest tests/nodes/node_canonical_clone_refresh_effect/test_declared_clone_tick.py -q -k error fails if either refusal stops being reported'
   - id: AC4
-    statement: 'AC4: integrated: after the unit is reinstalled on h101 through onex-host-install-units from this branch, the unit''s last-run file on h101 reads exit_code 0 and both declared clones up_to_date or fast_forwarded, read from that file with its time -- falsifier: the last-run file still reads refused with path_missing for the knowledge base clone'
+    statement: 'AC4: integrated: the local transport reads a real git clone on disk through a path rooted at $OMNI_HOME, resolved against the registry root while the process environment names a different directory -- falsifier: pytest tests/nodes/node_canonical_clone_refresh_effect/test_declared_clone_tick.py -q -k local_transport fails on dev, where the transport does not take that root'
 evidence_requirements:
 - kind: tests
   description: The declared clone tick tests (golden, error, local transport control) and the unit render test.
@@ -37,12 +37,19 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_canonical_clone_refresh_effect/test_declared_clone_tick.py tests/nodes/node_host_installer_registry_units/test_declared_clone_refresh_unit.py -q -n 0 --no-cov -p no:cacheprovider
     cwd: ${OMNI_HOME}/omnimarket
-- id: dod-omn24590-runtime-read
-  description: 'AC4 integrated readback; the hosted runner has no h101 state directory, so only the local Done gate runs it: run on h101 after the unit is reinstalled from this branch through onex-host-install-units; it exits 0 only when the last-run file reads exit_code 0 and exits 1 when the file is missing or reads a refusal.'
+- id: dod-omn24590-local-transport
+  description: 'AC4: the local transport tests run a real git clone through a registry root that differs from the process OMNI_HOME; against dev they fail.'
   source: manual
-  execution_scope: local_done_gate
   binds_ac:
   - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_canonical_clone_refresh_effect/test_declared_clone_tick.py -q -n 0 --no-cov -p no:cacheprovider -k local_transport
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn24590-runtime-read
+  description: 'h101 readback after the unit is reinstalled from this branch through onex-host-install-units; the hosted runner has no h101 state directory, so only the local Done gate runs it. It exits 0 only when the last-run file reads exit_code 0 and exits 1 when the file is missing or reads a refusal.'
+  source: manual
+  execution_scope: local_done_gate
   checks:
   - check_type: command
     check_value: jq -e '.exit_code == 0' ~/.local/state/omni/declared-clone-refresh/last-run.json
