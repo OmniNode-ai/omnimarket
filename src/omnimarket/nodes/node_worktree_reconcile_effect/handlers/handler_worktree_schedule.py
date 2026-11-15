@@ -30,6 +30,7 @@ from omnimarket.nodes.node_worktree_reconcile_effect.models.model_worktree_sched
 
 CONTRACT = Path(__file__).resolve().parents[1] / "contract.yaml"
 MODULE = "omnimarket.nodes.node_worktree_reconcile_effect"
+SHELL = "/bin/sh"
 DROPIN_NAME = "10-low-priority.conf"
 Runner = Callable[[list[str]], subprocess.CompletedProcess[str]]
 
@@ -132,20 +133,6 @@ def load_overlay(path: str, host: str) -> ModelWorktreeScheduleOverlay:
     if command.ledger_path:
         absolute_path(command.ledger_path)
     return resolved
-
-
-def environment_file_variables(path: str) -> dict[str, str]:
-    """The KEY=VALUE lines of the host environment file; launchd can read no EnvironmentFile."""
-    variables: dict[str, str] = {}
-    for line in Path(path).read_text(encoding="utf-8").splitlines():
-        if not line.strip() or line.lstrip().startswith("#"):
-            continue
-        name, _, value = line.partition("=")
-        value = value.strip()
-        if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
-            value = value[1:-1]
-        variables[name.strip()] = value
-    return variables
 
 
 class HandlerWorktreeSchedule:
@@ -448,9 +435,15 @@ class HandlerWorktreeSchedule:
     ) -> str:
         """The one launchd agent plist of the host timer, refused when it would run from a worktree."""
         resources = schedule.resources
+        overlay_path = str(absolute_path(request.overlay_path))
         document = {
             "Label": schedule.launchd_label,
             "ProgramArguments": [
+                SHELL,
+                "-c",
+                'set -a; . "$1"; shift; exec "$@"',
+                "onex-worktree-reconcile",
+                overlay.environment_file,
                 overlay.python,
                 "-m",
                 MODULE,
@@ -458,12 +451,11 @@ class HandlerWorktreeSchedule:
                 "--host",
                 request.host,
                 "--overlay",
-                str(absolute_path(request.overlay_path)),
+                overlay_path,
             ],
             "WorkingDirectory": str(project),
             "EnvironmentVariables": {
                 "PYTHONPATH": f"{project}/src",
-                **environment_file_variables(overlay.environment_file),
             },
             "StartInterval": schedule.interval_seconds,
             "RunAtLoad": True,

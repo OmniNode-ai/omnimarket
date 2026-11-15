@@ -165,7 +165,7 @@ class HandlerWorktreeReconcile:
             freed_bytes=sum(
                 e.facts.size_bytes or 0
                 for e in events
-                if e.outcome in ("removed", "pinned_and_removed", "pruned")
+                if e.outcome in ("removed", "pinned_and_removed")
             ),
             needs_human_paths=tuple(
                 e.facts.path
@@ -177,19 +177,16 @@ class HandlerWorktreeReconcile:
                 e.facts.path for e in events if probe_class(e.facts) == "deferred"
             ),
             # Every removal is named, in decision order, so a receipt says what
-            # left the disk and how: pruned dead trees and stale-locked trees
-            # that had to be unlocked first.
+            # left the disk and how: stale-locked trees that had to be unlocked first.
             removed_paths=tuple(
                 e.facts.path
                 for e in events
-                if e.outcome in ("removed", "pinned_and_removed", "pruned")
+                if e.outcome in ("removed", "pinned_and_removed")
             ),
-            pruned=sum(e.outcome == "pruned" for e in events),
-            pruned_paths=tuple(e.facts.path for e in events if e.outcome == "pruned"),
             unlocked_paths=tuple(
                 e.facts.path
                 for e in events
-                if e.outcome in ("removed", "pinned_and_removed", "pruned")
+                if e.outcome in ("removed", "pinned_and_removed")
                 and e.facts.worktree_locked
             ),
             live_locked_paths=tuple(
@@ -262,8 +259,6 @@ class HandlerWorktreeReconcile:
                                 outcome = (
                                     "pinned_and_removed"
                                     if row.decision == Decision.PIN_AND_REMOVE
-                                    else "pruned"
-                                    if fresh.gitdir_missing
                                     else "removed"
                                 )
                 except Exception as exc:
@@ -288,15 +283,10 @@ class HandlerWorktreeReconcile:
     ) -> bool:
         if not new.facts_complete or new.dirty or live_reason(new, command.policy):
             return False
-        if old.gitdir_missing:
-            # Git cannot read a dead tree, so there is no HEAD or branch to
-            # re-identify: the safe answer is that the re-probe still finds the
-            # same gitdir gone, with nothing live holding the tree.
-            return (
-                new.facts_complete
-                and new.gitdir_missing
-                and not live_reason(new, command.policy)
-            )
+        if old.gitdir_missing or new.gitdir_missing:
+            return False
+        if new.worktree_locked and not (new.ledger_known and new.owner_finished):
+            return False
         if (old.path, old.root, old.kind, old.head_sha, old.branch) != (
             new.path,
             new.root,

@@ -14,9 +14,18 @@ class ModelWorktreeReconcilePolicy(BaseModel):
     # activity for this many hours is stale: the lane that left it is gone, so
     # the tree is unlocked and judged by the normal rules.
     stale_lock_hours: float = Field(default=24.0, ge=0, allow_inf_nan=False)
-    # True: a dead worktree (its .git file names a gitdir that no longer
-    # exists) is pruned to the trash; False: a person decides.
-    prune_dead_worktrees: bool = False
+    # The exact lock-reason texts the lane runners write with `git worktree lock`.
+    # Only a lock whose reason is listed here may ever be judged stale; a person's
+    # lock (any other reason, or none) is kept and named. Empty: no lock is stale.
+    lane_lock_reasons: tuple[str, ...] = ()
+    # The ledger a stale-lock judgement rests on is read fresh each time: its newest
+    # row must be younger than this many hours (an empty, rolled or frozen file is
+    # not a ledger that shows a lane finished), the rolled files of the last
+    # ledger_lookback_days days beside it are read too (0: the live file only), and
+    # the read stops as unread when it would take more than ledger_max_bytes.
+    ledger_max_age_hours: float = Field(default=6.0, gt=0, allow_inf_nan=False)
+    ledger_lookback_days: int = Field(default=0, ge=0)
+    ledger_max_bytes: int = Field(default=268435456, gt=0)
     allow_standalone_clone_removal: bool = True
     max_removals_per_run: int = Field(default=200, ge=0)
     # A standalone clone whose origin owner is not listed is always kept (a

@@ -47,6 +47,10 @@ def launchd_overlay(tmp_path: Path) -> Path:
     document = yaml.safe_load(path.read_text())
     document["schedulers"] = {"lab-host": "launchd"}
     path.write_text(yaml.safe_dump(document))
+    env_file = tmp_path / "host.env"
+    env_file.write_text("SECRET_NAME=secret-value-xyz\n")
+    document["environment_file"] = str(env_file)
+    path.write_text(yaml.safe_dump(document))
     return path
 
 
@@ -91,8 +95,15 @@ def test_render_launchd_host_is_an_agent_plist(tmp_path: Path) -> None:
     assert "--overlay" in arguments
     assert str(path) in arguments
     environment = document["EnvironmentVariables"]
-    assert environment["PYTHONPATH"] == f"{tmp_path / 'project'}/src"
-    assert environment["KAFKA_BROKERS"] == "localhost:9092"
+    assert environment == {"PYTHONPATH": f"{tmp_path / 'project'}/src"}
+    # The host environment file is sourced by the shell, never copied into the world-readable
+    # plist: its values and names must not appear, only the file path the shell sources.
+    overlay_document = yaml.safe_load(path.read_text())
+    env_file = overlay_document["environment_file"]
+    assert env_file in arguments
+    assert "SECRET_NAME" not in environment
+    assert "secret-value-xyz" not in result.plist
+    assert "SECRET_NAME" not in result.plist
     # Failing control: the same overlay without schedulers still renders the systemd
     # unit and carries no plist, so the declared manager is what changed the render.
     overlay_document = yaml.safe_load(path.read_text())

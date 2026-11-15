@@ -1,25 +1,25 @@
 schema_version: 1.0.0
 ticket_id: OMN-24560
 title: Worktree reconcile removes dead and stale-locked working copies and runs on the Mac
-summary: The worktree reconcile node prunes a dead worktree (its gitdir is gone) and unlocks and removes a stale-locked one (no live ledger claim, process or unit, quiet past stale_lock_hours), names every removal in the run-completed event, and its schedule installer can install a launchd agent so the Mac runs the node in place of the frozen triage runner.
+summary: The worktree reconcile node keeps and reports a worktree whose gitdir cannot be read, unlocks and removes a stale-locked one only when the lock is a lane's own, a fresh bounded ledger read shows the owning lane finished and the tree is clean, pushed and merged, restores the lock when a removal fails, names every removal in the run-completed event, and its schedule installer can install a launchd agent (a reference to the environment file, never its values) so the Mac runs the node in place of the frozen triage runner.
 is_seam_ticket: true
 interface_change: true
 interfaces_touched:
 - public_api
 requirements:
 - id: req-omn24560-dead-and-stale-lock
-  statement: A dead worktree is pruned and reported, a stale-locked tree is unlocked and removed when its work is merged, a live lock is kept and named, and every removal is listed in the run-completed event.
+  statement: A tree is removed only when its git metadata is readable, it has no uncommitted or untracked work, its branch is pushed and, for a locked tree, the ledger was read fresh and shows the owning lane finished; anything unreadable is kept and reported, and every removal is listed in the run-completed event.
   acceptance:
   - id: AC1
-    statement: 'AC1: a linked worktree whose .git file names a gitdir that no longer exists is no longer a probe failure: past stale_hours with prune_dead_worktrees true it is pruned and reported (outcome pruned), with the knob false it is needs_human, and a young one, a held one and one holding a nested repository are never removed -- falsifier: uv run pytest tests/test_worktree_reconcile_dead_and_stale_lock.py -q'
+    statement: 'AC1: a linked worktree whose .git file names a gitdir that no longer exists (a dead or unmounted gitdir) is never removed on any policy: past stale_hours it is needs_human (reason gitdir_unreadable) and named, a young one is kept, and the policy no longer accepts prune_dead_worktrees -- falsifier: uv run pytest tests/test_worktree_reconcile_dead_and_stale_lock.py tests/test_worktree_reconcile_safety_rules.py tests/test_worktree_reconcile_safety_probe.py -q'
   - id: AC2
-    statement: 'AC2: a worktree lock with no live ledger claim, process, unit or ref lock, with a ledger read and quiet past stale_lock_hours, is unlocked and removed only when its work is merged on a merged_only host, while a lock held by a live claim, a young tree, a ref lock or a run with no ledger is kept and named in live_locked_paths -- falsifier: uv run pytest tests/test_worktree_reconcile_dead_and_stale_lock.py -q'
+    statement: 'AC2: a locked tree is unlocked and removed only when its lock reason is one of the policy lane lock reasons, the ledger read is fresh (newest row inside ledger_max_age_hours, bounded by ledger_max_bytes, archive rolls read for ledger_lookback_days) and shows the owning lane finished, no live CLAIM of a successor on the same ticket maps to it, no process, unit or ref lock holds it, it is quiet past stale_lock_hours, clean, pushed and merged; a person lock, a lagging or empty ledger, a successor, uncommitted work, an unpushed branch and a dry run each keep the tree, each with a failing control, and a failed removal restores the lock -- falsifier: uv run pytest tests/test_worktree_reconcile_ledger_read.py tests/test_worktree_reconcile_safety_rules.py tests/test_worktree_reconcile_safety_probe.py tests/test_worktree_reconcile_dead_and_stale_lock.py -q'
   - id: AC3
-    statement: 'AC3: the run-completed event lists every removal (removed_paths, pruned_paths, unlocked_paths, live_locked_paths), old receipts still load, the per-host projection still writes its row, and golden and error chain event tests pass -- falsifier: uv run pytest tests/test_golden_chain_worktree_reconcile.py tests/test_worktree_reconcile_projection.py -q'
+    statement: 'AC3: the run-completed event lists every removal (removed_paths, unlocked_paths, live_locked_paths), old receipts still load, the per-host projection still writes its row, and golden and error chain event tests pass -- falsifier: uv run pytest tests/test_golden_chain_worktree_reconcile.py tests/test_worktree_reconcile_projection.py -q'
   - id: AC4
-    statement: 'AC4: the schedule installer renders and installs a launchd agent for a host the overlay declares as launchd, resolves per-host paths with the registry root variable, and leaves the systemd render unchanged -- falsifier: uv run pytest tests/test_worktree_reconcile_schedule.py tests/test_worktree_reconcile_schedule_launchd.py tests/test_worktree_reconcile_schedule_paths.py -q'
+    statement: 'AC4: the schedule installer renders and installs a launchd agent for a host the overlay declares as launchd, resolves per-host paths with the registry root variable, writes the host environment file by reference and never by value into the world-readable plist, and leaves the systemd render unchanged -- falsifier: uv run pytest tests/test_worktree_reconcile_schedule.py tests/test_worktree_reconcile_schedule_launchd.py tests/test_worktree_reconcile_schedule_paths.py -q'
   - id: AC5
-    statement: 'AC5: integrated: after the orchestrator installs the Mac from the overlay, the Mac''s next scheduled run exits 0 and its receipt removes or names each of the 12 trees the old triage runner failed on, and the h202 unit installed from the branch reads exit 0 -- falsifier: launchctl print of the Mac agent plus the Mac state directory latest.json, and systemctl --user show onex-worktree-reconcile.service -p ExecMainStatus on h202'
+    statement: 'AC5: integrated: a dry-run tick of the branch build on a lab host reads the host''s real worktrees, removes none, and names each locked tree with the decision the rules gave it (a person lock and a live lane kept, a dead tree needs_human); the orchestrator''s dry-run command on the launching Mac names each of the 12 stuck trees the same way, with the Mac row at execute false until that first reading is taken -- falsifier: the dry-run receipt latest.json of the host (removed 0, every locked tree with a reason) and the Mac dry-run output'
 evidence_requirements:
 - kind: tests
   description: The node's focused tests at the pushed head; the new test file fails on the code before this change (it imports stale_lock, which did not exist).
@@ -30,22 +30,22 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn24560-ac1
-  description: 'AC1: a dead worktree is pruned or sent to a person by the knob, never removed young, held or nested; against the code before this change the file fails at import.'
+  description: 'AC1: a dead worktree is kept and reported to a person, never removed, on any policy; against the code before this change the file fails at import.'
   source: manual
   binds_ac:
   - AC1
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/test_worktree_reconcile_dead_and_stale_lock.py -q
+    check_value: uv run pytest tests/test_worktree_reconcile_dead_and_stale_lock.py tests/test_worktree_reconcile_safety_rules.py tests/test_worktree_reconcile_safety_probe.py -q
     cwd: .
 - id: dod-omn24560-ac2
-  description: 'AC2: a stale lock is unlocked and removed only when merged; a live lock, a young tree, a ref lock and a run with no ledger keep the tree.'
+  description: 'AC2: a stale lock is unlocked and removed only when the lock is a lane lock, the ledger read is fresh and shows the owner finished, and the tree is clean, pushed and merged; a person lock, a successor, a lagging ledger, uncommitted work, an unpushed branch and a dry run keep the tree.'
   source: manual
   binds_ac:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/test_worktree_reconcile_dead_and_stale_lock.py -q
+    check_value: uv run pytest tests/test_worktree_reconcile_ledger_read.py tests/test_worktree_reconcile_safety_rules.py tests/test_worktree_reconcile_safety_probe.py tests/test_worktree_reconcile_dead_and_stale_lock.py -q
     cwd: .
 - id: dod-omn24560-ac3
   description: 'AC3: the completed event names every removal; golden and error chain tests and the projection tests pass.'

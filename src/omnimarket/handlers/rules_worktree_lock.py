@@ -14,17 +14,20 @@ from omnimarket.models.model_worktree_reconcile_policy import (
 def stale_lock(facts: ModelWorktreeFacts, policy: ModelWorktreeReconcilePolicy) -> bool:
     """Whether the tree's worktree lock marker is stale: nothing backs it.
 
-    A lane's CLAIM, a process working in the tree or an installed unit naming it
-    holds the lock. A ref lock (index.lock or HEAD.lock) means a git command is
-    running or died mid-write, so the lock marker is never called stale while
-    one exists. The ledger is the authority: live_claim is False unless a live
-    CLAIM names this tree (a lane with a TERMINAL or no live CLAIM names none),
-    and that absence counts only when the run read a ledger (ledger_known); a
-    host that declares none keeps every locked tree.
+    Only a lane's own lock may be judged: the reason in the marker must be one of
+    policy.lane_lock_reasons (what the lane runner writes), so a person's lock, a
+    tool's lock or a lock with no reason is never stale. Then the ledger is the
+    authority, and only a fresh read of it counts (ledger_known): it must map the
+    tree to a lane CLAIM that a TERMINAL closed with no open CLAIM naming it
+    (owner_finished), and no live CLAIM of a successor may map to it (live_claim). A process working in the tree, an installed unit naming it,
+    or a ref lock (index.lock or HEAD.lock: a git command is running or died
+    mid-write) holds the lock whatever the ledger says.
     """
     return bool(
         facts.worktree_locked
+        and facts.worktree_lock_reason.strip() in policy.lane_lock_reasons
         and facts.ledger_known
+        and facts.owner_finished
         and not facts.ref_locked
         and not facts.live_process
         and not facts.live_claim
@@ -58,12 +61,9 @@ def dead_decision(
     """A dead tree holds no checkout anyone can reach; git cannot even read its head.
 
     A tree this young may be a lane mid-setup, so it waits for the stale age like any other
-    work; past it, the overlay's prune knob decides between the trash and a person.
+    work; past it, the tree is named for a person: a dead gitdir is never removed, only
+    reported.
     """
     if age < policy.stale_hours:
         return Decision.KEEP, "not_stale"
-    return (
-        (Decision.REMOVE, "dead_worktree")
-        if policy.prune_dead_worktrees
-        else (Decision.NEEDS_HUMAN, "dead_worktree")
-    )
+    return Decision.NEEDS_HUMAN, "gitdir_unreadable"
