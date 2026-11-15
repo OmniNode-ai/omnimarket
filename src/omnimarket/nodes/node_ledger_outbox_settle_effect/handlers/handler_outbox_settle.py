@@ -21,6 +21,7 @@ from __future__ import annotations
 import fcntl
 import hashlib
 import json
+import os
 import re
 import uuid
 from collections.abc import Callable
@@ -166,10 +167,38 @@ def all_row_stamps_stale(payload: str, now: datetime, stale_after_s: float) -> b
     return starts > 0
 
 
+def _write_atomic(path: Path, text: str) -> None:
+    """Write ``text`` to a temporary name, fsync and rename it, so a reader never sees half a file."""
+    tmp = path.with_name(f".{path.name}.tmp")
+    with tmp.open("w", encoding="utf-8") as handle:
+        handle.write(text)
+        handle.flush()
+        os.fsync(handle.fileno())
+    tmp.replace(path)
+
+
+def _mtime(path: Path) -> float | None:
+    """The file's modification time, or None when it is gone (another process settled it)."""
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return None
+
+
+def _read_body(path: Path) -> dict[str, object] | None:
+    try:
+        body = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return body if isinstance(body, dict) else None
+
+
 def _rewrite_refusal(request: OutboxRequest, message: str) -> None:
-    body = json.loads(request.path.read_text(encoding="utf-8"))
+    body = _read_body(request.path)
+    if body is None:
+        return
     body["refusal"] = message[-600:]
-    request.path.write_text(json.dumps(body, sort_keys=True), encoding="utf-8")
+    _write_atomic(request.path, json.dumps(body, sort_keys=True))
 
 
 def _settle_receipt(
@@ -187,15 +216,14 @@ def _settle_receipt(
         "settled_at": now.strftime(STAMP_FORMAT),
         "original": body,
     }
-    (target / request.path.name).write_text(
-        json.dumps(record, sort_keys=True), encoding="utf-8"
-    )
+    _write_atomic(target / request.path.name, json.dumps(record, sort_keys=True))
 
 
 def settle_due(ledger: Path, now: datetime, retry_interval_s: float) -> bool:
     """Whether a refused request has waited out the retry interval since its last refusal."""
     return any(
-        now.timestamp() - request.path.stat().st_mtime >= retry_interval_s
+        (modified := _mtime(request.path)) is not None
+        and now.timestamp() - modified >= retry_interval_s
         for request in outbox_refused(ledger)
     )
 
@@ -239,9 +267,12 @@ class HandlerOutboxSettle:
         settled = resent = refused = 0
         stopped = ""
         for item in outbox_refused(ledger):
-            if moment.timestamp() - item.path.stat().st_mtime < request.min_age_s:
+            modified = _mtime(item.path)
+            body = _read_body(item.path)
+            if modified is None or body is None:
                 continue
-            body = json.loads(item.path.read_text(encoding="utf-8"))
+            if moment.timestamp() - modified < request.min_age_s:
+                continue
             result = self._send(item.payload, item.request_id)
             if result.exit_code == 0:
                 status = (
