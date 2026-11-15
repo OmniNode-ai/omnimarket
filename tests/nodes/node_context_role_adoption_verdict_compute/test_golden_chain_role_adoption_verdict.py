@@ -143,10 +143,7 @@ def test_contract_declares_topics_models_handler_and_entry_point() -> None:
         registered["node_context_role_adoption_verdict_compute"].load() is node_package
     )
     metadata = yaml.safe_load((NODE_DIR / "metadata.yaml").read_text())
-    canonical = yaml.safe_load(
-        (NODE_DIR.parent / "node_ci_state_verdict_compute/metadata.yaml").read_text()
-    )
-    assert metadata["omnibase_core_compat"] == canonical["omnibase_core_compat"]
+    assert metadata["omnibase_core_compat"] == ">=0.47.28,<0.48.0"
     assert metadata["pack"] == "core"
     assert metadata["capabilities"]["side_effect_class"] == "pure"
     assert metadata["tags"] == ["compute", "context", "evaluation"]
