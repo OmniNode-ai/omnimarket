@@ -31,6 +31,13 @@ from omnimarket.nodes.node_host_retention_effect.models.model_host_retention imp
     ModelLedgerLoader,
     ModelUvArchiveEntry,
 )
+from omnimarket.nodes.node_retention_cleanup.handlers.handler_file_retention import (
+    _ensure_archive,
+    _has_marker,
+    _is_protected,
+    _verify_archive,
+    load_file_policy,
+)
 from omnimarket.nodes.node_temp_retention_effect.handlers.handler_temp_retention import (
     ProcessReferences,
     read_process_references,
@@ -131,11 +138,34 @@ _LOADER_ANSWERED_EXITS = (
 
 
 class LaneClosurePort(Protocol):
-    """The newest TERMINAL of each closed lane, read from the rolling work ledger."""
+    """The newest CLAIM and TERMINAL of each lane, read from the rolling work ledger."""
 
-    def closed_lanes(self, loader: ModelLedgerLoader) -> dict[str, float] | None:
-        """lane -> epoch seconds of its newest TERMINAL, for each lane whose newest
-        TERMINAL is not older than its newest CLAIM; None when the ledger could not be read."""
+    def lane_states(
+        self, loader: ModelLedgerLoader
+    ) -> dict[str, LaneLedgerState] | None:
+        """lane -> epoch seconds of its newest CLAIM and of its newest TERMINAL in the
+        window; None when the ledger could not be read."""
+
+
+@dataclass(frozen=True)
+class ReceiptReading:
+    """What the receipt files matched in one lane's receipt root say.
+
+    ``files`` counts every matched path; ``unreadable`` counts those that could not be parsed or are
+    not plain regular files; ``not_final`` counts parsed receipts whose JSON ``final`` is false;
+    ``newest_mtime`` is the newest mtime over the matched files, 0.0 when there are none.
+    """
+
+    files: int
+    unreadable: int
+    not_final: int
+    newest_mtime: float
+
+
+class LaneReceiptsPort(Protocol):
+    """Read the receipt files of one lane."""
+
+    def read(self, root: str, pattern: str) -> ReceiptReading: ...
 
 
 class ContainerMountPort(Protocol):
@@ -168,6 +198,25 @@ class PreCommitStorePort(Protocol):
     def forget(
         self, index_db: str, repo_path: str
     ) -> Literal["forgotten", "unreferenced", "locked"]: ...
+
+
+class ArchivePort(Protocol):
+    """Verified copies of aging entries, written outside the trees the pass removes."""
+
+    def root(self) -> Path | None:
+        """The archive root, or None when none is declared or it is not a directory."""
+
+    def archive(self, source: Path, dest: Path) -> int:
+        """Leave a verified copy of ``source`` at ``dest``; return its size in bytes."""
+
+    def verify(self, source: Path, dest: Path) -> None:
+        """Raise OSError when the copy at ``dest`` does not match ``source``."""
+
+    def synced(self, dest: Path) -> bool:
+        """True when the copy at ``dest`` is known to have reached its sync target."""
+
+    def archivable(self, source: Path) -> bool:
+        """True when everything under ``source`` goes into the copy: no symlink and nothing the archive code leaves out."""
 
 
 class DockerCiHostState:
@@ -391,15 +440,25 @@ class FilesystemLaneLiveness:
         return lanes
 
 
-def fold_closed_lanes(lines: Iterable[str]) -> dict[str, float]:
-    """lane -> epoch of its newest TERMINAL, for the lanes the ledger rows show closed.
+@dataclass(frozen=True)
+class LaneLedgerState:
+    """The newest CLAIM and the newest TERMINAL of one lane, in epoch seconds.
+
+    ``None`` when the lane has no row of that kind in the window.
+    """
+
+    claim: float | None
+    terminal: float | None
+
+
+def fold_lane_states(lines: Iterable[str]) -> dict[str, LaneLedgerState]:
+    """The newest CLAIM and TERMINAL of every lane the ledger rows name, sorted by lane.
 
     The ledger's own row grammar reads each row; only a CLAIM or TERMINAL row that names its lane in a
-    ``lane=<token>`` cell and carries a zoned stamp dates a lane. A lane is closed when it has a TERMINAL
-    and no CLAIM newer than it.
+    ``lane=<token>`` cell and carries a zoned stamp dates a lane. Every lane with any CLAIM or
+    TERMINAL row of the window appears, whether or not it is closed.
     """
-    newest_claim: dict[str, float] = {}
-    newest_terminal: dict[str, float] = {}
+    states: dict[str, LaneLedgerState] = {}
     for line in lines:
         row = parse_row(line, types=_DATED_ROW_TYPES)
         if row is None:
@@ -413,13 +472,16 @@ def fold_closed_lanes(lines: Iterable[str]) -> dict[str, float]:
             continue
         if stamp.tzinfo is None:
             continue
-        newest = newest_claim if row.row_type == "CLAIM" else newest_terminal
-        newest[lane] = max(newest.get(lane, 0.0), stamp.timestamp())
-    return {
-        lane: terminal
-        for lane, terminal in sorted(newest_terminal.items())
-        if lane not in newest_claim or terminal >= newest_claim[lane]
-    }
+        current = states.get(lane)
+        claim = None if current is None else current.claim
+        terminal = None if current is None else current.terminal
+        epoch = stamp.timestamp()
+        if row.row_type == "CLAIM":
+            claim = epoch if claim is None else max(claim, epoch)
+        else:
+            terminal = epoch if terminal is None else max(terminal, epoch)
+        states[lane] = LaneLedgerState(claim=claim, terminal=terminal)
+    return {lane: states[lane] for lane in sorted(states)}
 
 
 class LoaderLaneClosure:
@@ -430,7 +492,9 @@ class LoaderLaneClosure:
     answered) carry rows; any other exit, a timeout or a missing binary is an unreadable ledger.
     """
 
-    def closed_lanes(self, loader: ModelLedgerLoader) -> dict[str, float] | None:
+    def lane_states(
+        self, loader: ModelLedgerLoader
+    ) -> dict[str, LaneLedgerState] | None:
         argv = [
             *loader.argv,
             "--reader",
@@ -444,7 +508,57 @@ class LoaderLaneClosure:
             return None
         if proc.returncode not in _LOADER_ANSWERED_EXITS:
             return None
-        return fold_closed_lanes(proc.stdout.splitlines())
+        return fold_lane_states(proc.stdout.splitlines())
+
+
+class FilesystemLaneReceipts:
+    """Read the receipt files of one lane from the filesystem.
+
+    A receipt whose JSON ``final`` is true says the run finished; ``final`` false counts toward
+    ``not_final``. A parse error, a non-object body or a missing or non-bool ``final`` is unreadable,
+    as is a matched path that is a symlink or not a regular file; nothing over 1 MiB is read.
+    """
+
+    _MAX_BYTES = 1 << 20
+
+    def read(self, root: str, pattern: str) -> ReceiptReading:
+        base = Path(os.path.expanduser(root))
+        if not base.is_dir():
+            return ReceiptReading(files=0, unreadable=0, not_final=0, newest_mtime=0.0)
+        files = 0
+        unreadable = 0
+        not_final = 0
+        newest = 0.0
+        for match in base.glob(pattern):
+            files += 1
+            try:
+                info = match.lstat()
+            except OSError:
+                unreadable += 1
+                continue
+            newest = max(newest, info.st_mtime)
+            if (
+                match.is_symlink()
+                or not match.is_file()
+                or info.st_size > self._MAX_BYTES
+            ):
+                unreadable += 1
+                continue
+            try:
+                document = json.loads(match.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                unreadable += 1
+                continue
+            if not isinstance(document, dict) or not isinstance(
+                document.get("final"), bool
+            ):
+                unreadable += 1
+                continue
+            if not document["final"]:
+                not_final += 1
+        return ReceiptReading(
+            files=files, unreadable=unreadable, not_final=not_final, newest_mtime=newest
+        )
 
 
 class DockerContainerMounts:
@@ -554,9 +668,50 @@ class SqlitePreCommitStore:
             os.close(descriptor)
 
 
+class RetentionCleanupArchive:
+    """Archive through ``node_retention_cleanup``'s own verified-copy code.
+
+    The archive root is the directory the file-retention contract's ``archive_root_env`` names; a
+    source is copied there as ``.gz`` or ``.tar.gz`` and read back by checksum before the pass may
+    remove it, and ``synced`` reads the contract's ``synced_marker_xattr`` off the copy.
+    """
+
+    def root(self) -> Path | None:
+        raw = os.environ.get(load_file_policy().archive_root_env)
+        if not raw:
+            return None
+        path = Path(raw)
+        return path if path.is_dir() else None
+
+    def archive(self, source: Path, dest: Path) -> int:
+        return _ensure_archive(source, dest)
+
+    def verify(self, source: Path, dest: Path) -> None:
+        _verify_archive(source, dest)
+
+    def archivable(self, source: Path) -> bool:
+        """The archive code copies regular files and leaves out symlinks and its own protected names (.git, memory,
+        the ledger); an entry holding any of them would lose them at removal, so it is not archivable."""
+        if source.is_symlink() or _is_protected(source):
+            return False
+        if not source.is_dir():
+            return True
+        for current, dirs, files in os.walk(source, followlinks=False):
+            for name in (*dirs, *files):
+                if _is_protected(Path(name)) or os.path.islink(
+                    os.path.join(current, name)
+                ):
+                    return False
+        return True
+
+    def synced(self, dest: Path) -> bool:
+        marker = load_file_policy().synced_marker_xattr
+        return not marker or _has_marker(dest, marker)
+
+
 @dataclass(frozen=True)
 class HostRetentionPorts:
-    """The ten ports a handler needs, with a ``default()`` of the real adapters."""
+    """The twelve ports a handler needs, with a ``default()`` of the real adapters."""
 
     runner_state: CiHostStatePort
     runner_remove: CiHostRemovePort
@@ -568,6 +723,8 @@ class HostRetentionPorts:
     disk: DiskPort
     pre_commit_store: PreCommitStorePort
     lane_closure: LaneClosurePort = field(default_factory=LoaderLaneClosure)
+    lane_receipts: LaneReceiptsPort = field(default_factory=FilesystemLaneReceipts)
+    archive: ArchivePort = field(default_factory=RetentionCleanupArchive)
 
     @classmethod
     def default(cls, docker_timeout_s: float) -> HostRetentionPorts:
@@ -582,4 +739,6 @@ class HostRetentionPorts:
             disk=ShutilDisk(),
             pre_commit_store=SqlitePreCommitStore(),
             lane_closure=LoaderLaneClosure(),
+            lane_receipts=FilesystemLaneReceipts(),
+            archive=RetentionCleanupArchive(),
         )

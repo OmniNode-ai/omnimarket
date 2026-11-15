@@ -33,9 +33,11 @@ from omnimarket.nodes.node_host_retention_effect.handlers.host_retention_ports i
     DockerContainerMounts,
     FilesystemLaneLiveness,
     FilesystemUnitFiles,
+    LaneLedgerState,
     LoaderLaneClosure,
+    RetentionCleanupArchive,
     SqlitePreCommitStore,
-    fold_closed_lanes,
+    fold_lane_states,
 )
 from omnimarket.nodes.node_host_retention_effect.models.model_host_retention import (
     ModelHostRetentionOverlay,
@@ -44,6 +46,9 @@ from omnimarket.nodes.node_host_retention_effect.models.model_host_retention imp
 )
 from omnimarket.nodes.node_ledger_rows_loader_effect.runtime_rows_loader import (
     main as loader_main,
+)
+from omnimarket.nodes.node_retention_cleanup.handlers.handler_file_retention import (
+    load_file_policy,
 )
 from tests.nodes.node_host_retention_effect.host_retention_fakes import (
     LOADER_MODULE,
@@ -316,7 +321,7 @@ LOADER_ARGV = [
 CLOSED_ROWS = (
     "2026-10-01T00:00:00Z | CLAIM | lane=a | ticket=OMN-1 | work",
     "2026-10-02T00:00:00Z | TERMINAL | lane=a | ticket=OMN-1 | outcome=done | work",
-    # b TERMINALed and then re-claimed: a CLAIM newer than the TERMINAL is not closed
+    # b TERMINALed and then re-claimed: the fold carries both, closedness is the handler's call
     "2026-10-03T00:00:00Z | TERMINAL | lane=b | ticket=OMN-2 | outcome=done | work",
     "2026-10-04T00:00:00Z | CLAIM | lane=b | ticket=OMN-2 | work",
     # c has only a CLAIM
@@ -331,12 +336,20 @@ CLOSED_ROWS = (
 )
 
 
-def test_ledger_seam_fold_closed_lanes_from_loader_rows() -> None:
-    assert fold_closed_lanes(CLOSED_ROWS) == {
-        "a": epoch("2026-10-02T00:00:00Z"),
-        "d": epoch("2026-10-08T00:00:00Z"),
+def test_ledger_seam_fold_lane_states_from_loader_rows() -> None:
+    assert fold_lane_states(CLOSED_ROWS) == {
+        "a": LaneLedgerState(
+            claim=epoch("2026-10-01T00:00:00Z"),
+            terminal=epoch("2026-10-02T00:00:00Z"),
+        ),
+        "b": LaneLedgerState(
+            claim=epoch("2026-10-04T00:00:00Z"),
+            terminal=epoch("2026-10-03T00:00:00Z"),
+        ),
+        "c": LaneLedgerState(claim=epoch("2026-10-05T00:00:00Z"), terminal=None),
+        "d": LaneLedgerState(claim=None, terminal=epoch("2026-10-08T00:00:00Z")),
     }
-    assert fold_closed_lanes(()) == {}
+    assert fold_lane_states(()) == {}
 
 
 def test_ledger_seam_the_adapter_runs_the_loader_command_and_reads_its_exit_codes(
@@ -344,16 +357,24 @@ def test_ledger_seam_the_adapter_runs_the_loader_command_and_reads_its_exit_code
 ) -> None:
     out = "\n".join(CLOSED_ROWS) + "\n"
     expected = {
-        "a": epoch("2026-10-02T00:00:00Z"),
-        "d": epoch("2026-10-08T00:00:00Z"),
+        "a": LaneLedgerState(
+            claim=epoch("2026-10-01T00:00:00Z"),
+            terminal=epoch("2026-10-02T00:00:00Z"),
+        ),
+        "b": LaneLedgerState(
+            claim=epoch("2026-10-04T00:00:00Z"),
+            terminal=epoch("2026-10-03T00:00:00Z"),
+        ),
+        "c": LaneLedgerState(claim=epoch("2026-10-05T00:00:00Z"), terminal=None),
+        "d": LaneLedgerState(claim=None, terminal=epoch("2026-10-08T00:00:00Z")),
     }
     for code in (0, 10):
         seen = completed(monkeypatch, code, out)
-        assert LoaderLaneClosure().closed_lanes(LOADER) == expected, code
+        assert LoaderLaneClosure().lane_states(LOADER) == expected, code
         assert seen == [LOADER_ARGV], "the loader argv plus its reader and window"
     for code in (69, 1, 3):
         completed(monkeypatch, code, out)
-        assert LoaderLaneClosure().closed_lanes(LOADER) is None, (
+        assert LoaderLaneClosure().lane_states(LOADER) is None, (
             f"exit {code} carries no rows"
         )
 
@@ -373,7 +394,7 @@ def test_ledger_seam_a_loader_that_cannot_run_is_unreadable_not_empty(
 
     monkeypatch.setattr(subprocess, "run", fake)
 
-    assert LoaderLaneClosure().closed_lanes(LOADER) is None
+    assert LoaderLaneClosure().lane_states(LOADER) is None
 
 
 def test_ledger_seam_row_shape_is_the_one_the_ledger_writer_grammar_parses() -> None:
@@ -388,8 +409,11 @@ def test_ledger_seam_row_shape_is_the_one_the_ledger_writer_grammar_parses() -> 
     assert (claim.row_type, claim.token("lane")) == ("CLAIM", "a")
     assert (terminal.row_type, terminal.token("lane")) == ("TERMINAL", "a")
 
-    assert fold_closed_lanes([claim_row, terminal_row]) == {
-        terminal.token("lane"): epoch(terminal.stamp)
+    assert fold_lane_states([claim_row, terminal_row]) == {
+        terminal.token("lane"): LaneLedgerState(
+            claim=epoch(claim.stamp),
+            terminal=epoch(terminal.stamp),
+        )
     }
 
 
@@ -434,8 +458,12 @@ def test_ledger_seam_the_closure_folds_what_the_real_loader_prints(
     printed = capsys.readouterr().out
 
     assert code == 0
-    assert fold_closed_lanes(printed.splitlines()) == {
-        "lane-a": epoch("2026-11-09T10:05:00Z")
+    assert fold_lane_states(printed.splitlines()) == {
+        "lane-a": LaneLedgerState(
+            claim=epoch("2026-11-09T10:00:00Z"),
+            terminal=epoch("2026-11-09T10:05:00Z"),
+        ),
+        "lane-b": LaneLedgerState(claim=epoch("2026-11-09T10:10:00Z"), terminal=None),
     }
 
 
@@ -525,6 +553,7 @@ def test_unit_seam_the_mac_timer_runs_this_node_for_the_lane_results_class() -> 
         "__OMNI_HOME__": "/o",
         "__OMNIMARKET_DIR__": "/m",
         "__OVERLAY_ROOT__": "/r",
+        "__ARCHIVE_ROOT__": "/a",
         "__HOST_NAME__": "pool-a",
     }
     text = PLIST_TEMPLATE.read_text()
@@ -540,15 +569,122 @@ def test_unit_seam_the_mac_timer_runs_this_node_for_the_lane_results_class() -> 
         in command
     )
     assert document["EnvironmentVariables"]["ONEX_SKILL_OVERLAY_ROOTS"] == "/r"
-    assert "--dry-run" not in command, (
-        "the timer removes; a dry run is the same command with the flag"
+    assert command.endswith("--dry-run"), (
+        "the timer lists and removes nothing until the first reading is taken and the flag is removed by hand"
     )
+    # The archive root the unit sets is the variable node_retention_cleanup's file policy names, the one the node reads.
+    assert document["EnvironmentVariables"][load_file_policy().archive_root_env] == "/a"
     # The command line the unit names parses with the node's own parser.
     args = runtime_host_retention._parser().parse_args(
-        ["run", "--host", "pool-a", "--class", "lane_results"]
+        ["run", "--host", "pool-a", "--class", "lane_results", "--dry-run"]
     )
     assert (args.host, args.classes, args.dry_run) == (
         "pool-a",
         ["lane_results"],
-        False,
+        True,
     )
+
+
+# ------------------------------------------------------------------ one owner of the two folders
+
+
+def _enabled_entry_overlaps(entries: Any, classes: Any) -> list[str]:
+    """Names of the enabled file_retention entries whose path a host retention class also roots."""
+    roots = {age.root for age in classes}
+    return [
+        entry.name
+        for entry in entries
+        if entry.enabled and os.path.expanduser(entry.path) in roots
+    ]
+
+
+def _example_mac_classes(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> list[Any]:
+    monkeypatch.setenv("HOME", str(tmp_path.resolve()))
+    overlay = ModelHostRetentionOverlay.model_validate(
+        yaml.safe_load((NODE_DIR / "overlay.example.yaml").read_text())
+    )
+    return [
+        age
+        for row in overlay.hosts
+        for age in row.age_classes
+        if age.kind == "lane_results"
+    ]
+
+
+def test_one_owner_seam_the_two_folders_are_archived_here_and_disabled_in_the_cleanup_contract(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """node_retention_cleanup keeps the operator's archive consent for the receipt store and the lab-run runs
+    folder as disabled entries; this node archives them under a keep window no shorter than the entry's.
+    Either side changing shape (an entry enabled again, a class dropping the archive, a shorter window) fails here."""
+    policy = load_file_policy()
+    classes = _example_mac_classes(monkeypatch, tmp_path)
+    # A class root written ~/... is expanded when the overlay loads; the entry's path is compared expanded the same way.
+    archived = {age.root: age for age in classes if age.archive}
+    owned = {
+        entry.path: entry
+        for entry in policy.entries
+        if os.path.expanduser(entry.path) in archived and entry.action == "archive"
+    }
+    assert set(owned) == {"~/.local/state/omni/remote-lanes", "~/lab-run/runs"}, (
+        "both folders are in the cleanup contract's archive rule and archived here"
+    )
+    for path, entry in owned.items():
+        assert entry.enabled is False, f"{entry.name}: two nodes would own {path}"
+        assert archived[os.path.expanduser(path)].keep_days >= entry.keep_days, (
+            entry.name
+        )
+        assert entry.consent_ref or entry.name == "remote-lane-receipts", entry.name
+    assert _enabled_entry_overlaps(policy.entries, classes) == []
+
+
+def test_one_owner_seam_control_an_enabled_entry_on_the_same_folder_is_seen_as_two_owners(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    classes = _example_mac_classes(monkeypatch, tmp_path)
+    entries = [
+        entry.model_copy(update={"enabled": True})
+        for entry in load_file_policy().entries
+    ]
+
+    overlaps = _enabled_entry_overlaps(entries, classes)
+
+    assert {"remote-lane-receipts", "lab-run-lane-dirs"} <= set(overlaps)
+
+
+def test_archive_seam_the_root_is_the_variable_the_cleanup_policy_names(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    name = load_file_policy().archive_root_env
+    adapter = RetentionCleanupArchive()
+    monkeypatch.delenv(name, raising=False)
+    assert adapter.root() is None, "no archive root is no archive: nothing is removed"
+    monkeypatch.setenv(name, str(tmp_path / "absent"))
+    assert adapter.root() is None, "a root that is not a folder is no archive"
+    monkeypatch.setenv(name, str(tmp_path))
+    assert adapter.root() == tmp_path
+
+
+def test_archive_seam_the_adapter_calls_an_entry_archivable_only_when_the_archive_code_copies_all_of_it(
+    tmp_path: Path,
+) -> None:
+    adapter = RetentionCleanupArchive()
+    plain = tmp_path / "plain"
+    (plain / "sub").mkdir(parents=True)
+    (plain / "sub" / "f").write_bytes(b"x")
+    assert adapter.archivable(plain)
+
+    linked = tmp_path / "linked"
+    linked.mkdir()
+    (linked / "f").write_bytes(b"x")
+    os.symlink(plain, linked / "link")
+    assert not adapter.archivable(linked), (
+        "a symlink inside is not copied, so not archivable"
+    )
+
+    for left_out in (".git", "memory"):
+        held = tmp_path / f"held-{left_out}"
+        (held / left_out).mkdir(parents=True)
+        (held / "f").write_bytes(b"x")
+        assert not adapter.archivable(held), left_out
+    assert not adapter.archivable(tmp_path / "linked" / "link"), "a symlink entry"

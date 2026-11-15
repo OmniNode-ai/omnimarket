@@ -55,18 +55,34 @@ class ModelLedgerLoader(_Frozen):
     timeout_seconds: float = Field(gt=0)
 
 
+class ModelReceiptEvidence(_Frozen):
+    """Where the lane's own receipt files live, and when they say the lane died.
+
+    ``glob`` is a glob relative to ``root`` and may hold the placeholders ``{lane}`` and ``{run}``. A
+    receipt whose JSON ``final`` is true says the run finished; a receipt that is not final and
+    untouched for ``dead_after_days`` says the lane died.
+    """
+
+    root: HostPath
+    glob: NonEmptyStr
+    dead_after_days: float | None = Field(default=None, gt=0)
+
+
 class ModelTerminalGuard(_Frozen):
     """Hold a lane_results entry until its lane is TERMINAL on the rolling work ledger.
 
     ``loader`` reads the ledger rows of the last ``window_hours``. ``terminal_keep_days`` is how many days
     old the lane's newest TERMINAL must be for the entry to go; a lane whose TERMINAL falls outside the
     loader's window is kept. ``lane_pattern`` is a full-match regular expression of an entry name with a
-    named group ``lane``; an entry the pattern does not match names no lane and is kept.
+    named group ``lane``; an entry the pattern does not match names no lane and is kept. ``receipt``
+    adds the lane's own receipt files as evidence: when the receipt ``glob`` holds ``{run}``,
+    ``lane_pattern`` must have a group named ``run`` as well.
     """
 
     loader: ModelLedgerLoader
     terminal_keep_days: float = Field(gt=0)
     lane_pattern: NonEmptyStr
+    receipt: ModelReceiptEvidence | None = None
 
     @model_validator(mode="after")
     def lane_pattern_names_lane(self) -> Self:
@@ -80,6 +96,15 @@ class ModelTerminalGuard(_Frozen):
             raise ValueError(
                 f"lane_pattern {self.lane_pattern!r} must have a group named 'lane'"
             )
+        if (
+            self.receipt is not None
+            and "{run}" in self.receipt.glob
+            and "run" not in pattern.groupindex
+        ):
+            raise ValueError(
+                f"lane_pattern {self.lane_pattern!r} must have a group named 'run' "
+                f"when the receipt glob {self.receipt.glob!r} holds {{run}}"
+            )
         return self
 
 
@@ -87,7 +112,8 @@ class ModelAgeClass(_Frozen):
     """One directory whose direct entries age out after ``keep_days``.
 
     ``protected_name_patterns`` are full-match regular expressions of entry names that are never
-    removed.
+    removed. ``archive`` holds only for ``lane_results``: an entry that ages out is archived before
+    it goes.
     """
 
     name: NonEmptyStr
@@ -97,6 +123,7 @@ class ModelAgeClass(_Frozen):
     protected_name_patterns: tuple[NonEmptyStr, ...] = ()
     index_db: HostPath | None = None
     terminal: ModelTerminalGuard | None = None
+    archive: bool = False
 
     @model_validator(mode="after")
     def patterns_compile(self) -> Self:
@@ -122,6 +149,18 @@ class ModelAgeClass(_Frozen):
     def terminal_rule(self) -> Self:
         if self.terminal is not None and self.kind != "lane_results":
             raise ValueError("terminal is only for lane_results")
+        if self.archive and self.kind != "lane_results":
+            raise ValueError("archive is only for lane_results")
+        if (
+            self.terminal is not None
+            and self.terminal.receipt is not None
+            and self.terminal.receipt.dead_after_days is not None
+            and self.terminal.receipt.dead_after_days <= self.keep_days
+        ):
+            raise ValueError(
+                f"receipt dead_after_days {self.terminal.receipt.dead_after_days} must "
+                f"be greater than keep_days {self.keep_days}"
+            )
         return self
 
 
@@ -322,13 +361,19 @@ class ModelHostRetentionRequest(_Frozen):
 
 
 class ModelRetentionItem(_Frozen):
-    """One entry the pass would remove or evict."""
+    """One entry the pass would remove or evict.
+
+    ``finished_by`` names the evidence that said the lane's run finished; ``archived_to`` is where a
+    removed entry's archive sits.
+    """
 
     class_name: NonEmptyStr
     path: NonEmptyStr
     bytes: int = Field(default=0, ge=0)
     action: Literal["remove", "evict", "uv_prune"]
     reason: str = ""
+    finished_by: Literal["", "ledger", "receipt_final", "receipt_dead"] = ""
+    archived_to: str = ""
 
 
 class ModelRetentionKept(_Frozen):
@@ -354,6 +399,12 @@ class ModelRetentionKept(_Frozen):
         "no_terminal",
         "terminal_too_new",
         "lane_unnamed",
+        "lane_open",
+        "finished_unknown",
+        "receipt_not_final",
+        "not_archivable",
+        "archive_unavailable",
+        "pending_sync",
     ]
 
 
@@ -375,6 +426,8 @@ class ModelClassTotals(_Frozen):
     removed_count: int = 0
     freed_bytes: int = 0
     kept_count: int = 0
+    unknown_count: int = 0
+    archived_count: int = 0
 
 
 class ModelHostRetentionResult(_Frozen):
