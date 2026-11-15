@@ -1,0 +1,59 @@
+schema_version: 1.0.0
+ticket_id: OMN-22971
+title: The review replay set's recall test runs the roster over merged heads and fails under its frozen recall bar
+summary: node_review_replay_set_effect freezes a recall bar and defect labels beside its frozen replay set, under a hash that names the set and is written before any roster is scored, and scores a roster's verdicts against it. A roster whose recall over the labelled defective items is below the bar does not pass.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- topics
+- public_api
+requirements:
+- id: req-omn22971-recall-bar
+  statement: Recall of a roster over the frozen replay set is computed against a bar frozen beforehand, a roster below the bar fails, and the bar and the set are refused when either was changed after freezing.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: recall over the replay set is computed and a roster below the frozen bar fails -- falsifier: uv run pytest src/omnimarket/nodes/node_review_replay_set_effect -q -k recall_bar'
+  - id: AC2
+    statement: 'AC2: the bar and the replay set carry a hash frozen before the first run -- falsifier: uv run pytest src/omnimarket/nodes/node_review_replay_set_effect -q -k frozen_hash'
+evidence_requirements:
+- kind: tests
+  description: Recall bar and frozen hash tests of the review replay set node
+  command: uv run pytest src/omnimarket/nodes/node_review_replay_set_effect -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn22971-recall-bar
+  description: AC1 proven by the recall_bar tests.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_review_replay_set_effect -q -k recall_bar
+    cwd: .
+- id: dod-omn22971-frozen-hash
+  description: AC2 proven by the frozen_hash tests.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_review_replay_set_effect -q -k frozen_hash
+    cwd: .
+- id: dod-omn22971-deploy-conditions
+  description: 'Deploy probe the hosted runner can run: the node contract at the checked-out commit declares the score_recall operation; the line does not exist at the merge base, so the probe fails there.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_review_replay_set_effect/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "review_replay_set.score_recall" > /dev/null'
+    cwd: .
+- id: dod-omn22971-integration-proof
+  description: The change is run on a lab host at the pushed head and the host, sha and exit code are named in the pull request.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane fill-ticket-OMN-22971-20261114T2008Z -- uv run pytest src/omnimarket/nodes/node_review_replay_set_effect -q
+    cwd: .

@@ -538,7 +538,6 @@ def test_machine_bays_and_lanes_are_read_from_the_declared_sources_end_to_end(
                 "roles": [],
                 "release_required_repos": [],
                 "held_gates": [],
-                "host_table_relpath": "tables/hosts.yaml",
                 "machines": [
                     {
                         "host": "h201",
@@ -551,15 +550,19 @@ def test_machine_bays_and_lanes_are_read_from_the_declared_sources_end_to_end(
         ),
     )
     monkeypatch.setenv("ONEX_FACTORY_FLOOR_OVERLAY", str(overlay))
-    monkeypatch.delenv("ONEX_LAB_RUN_HOSTS", raising=False)
+    # The board's host list reads the one host table reader, pinned here by the file the overlay store's projection writes.
+    monkeypatch.setenv(
+        "ONEX_LAB_RUN_HOSTS", str(world["home"] / "tables" / "hosts.yaml")
+    )
     _write(
         world["home"] / "tables" / "hosts.yaml",
         yaml.safe_dump(
             {
                 "hosts": [
-                    {"name": "h201", "cap": 4},
+                    {"name": "h201", "target": "h201.lan", "cap": 4},
                     {
                         "name": "h202",
+                        "target": "h202.lan",
                         "available": False,
                         "unavailable_reason": "down for repair; later",
                     },

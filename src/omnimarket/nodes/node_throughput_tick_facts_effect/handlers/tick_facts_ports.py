@@ -1,12 +1,18 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The facts step's host source (real programs and files) and a scripted one for tests (OMN-23734)."""
+"""The facts step's host source (real programs and files), a scripted one for tests, and the register source (OMN-23734, OMN-24478)."""
 
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 
+from omnimarket.handlers.node_overlay_reader import OVERLAY_ROOTS_ENV
+from omnimarket.models.model_ruling_register import ModelRulingRegisterResult
+from omnimarket.nodes.node_ruling_register_effect.runtime_ruling_register import (
+    read_register,
+)
 from omnimarket.nodes.node_throughput_tick_facts_effect.models.model_throughput_tick_facts import (
     ModelProcessOutcome,
 )
@@ -74,4 +80,22 @@ class ScriptedTickFactsSource:
         return str(path) in self.files
 
 
-__all__ = ["HostTickFactsSource", "ScriptedTickFactsSource"]
+class RulingRegisterSource:
+    """The standing-rulings register read from the overlay roots, through the register
+    CLI path's own runtime (``node_ruling_register_effect.read_register``); an absent or
+    invalid overlay raises ``NodeOverlayError``."""
+
+    def read(self, overlay_roots: str) -> ModelRulingRegisterResult:
+        # The process environment stays visible so the route's journal variable is read;
+        # the request's roots decide where the overlays are.
+        judged, _ = read_register(
+            environ={**os.environ, OVERLAY_ROOTS_ENV: overlay_roots}
+        )
+        return judged
+
+
+__all__ = [
+    "HostTickFactsSource",
+    "RulingRegisterSource",
+    "ScriptedTickFactsSource",
+]

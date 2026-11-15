@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_host_drift_plugin_install_judge_compute
+version: 1.0.0
+description: Judge one plugin repair attempt from the installed record before and after it, so an install that changed nothing is alert only and spends no fix attempt.
+pack: distributed_validation
+node_role: compute
+display_name: Host Drift Plugin Install Judge Compute
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_host_drift_plugin_install_judge_compute: omnimarket.nodes.node_host_drift_plugin_install_judge_compute
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: pure
+dependencies:
+- pydantic>=2.0.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- compute
+- host-drift

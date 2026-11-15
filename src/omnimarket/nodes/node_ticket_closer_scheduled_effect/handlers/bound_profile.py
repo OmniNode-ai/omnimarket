@@ -86,6 +86,18 @@ def bound_closer_parts(
             f"scope overlay could not be loaded: {type(exc).__name__}"
         ) from exc
     root = Path(home)
+    if not any(
+        (root / repository.name).is_dir() and (root / repository.name / ".git").exists()
+        for repository in scope.pr_repositories
+    ):
+        raise BoundProfileRefusedError(
+            f"no clone of any scope repository under {schedule.home_env}"
+        )
+    state = watcher_state_path(root, environ)
+    if not state.is_file():
+        raise BoundProfileRefusedError(
+            "the PR watcher state file is absent at its declared path"
+        )
     call = bus_ticket_call(
         bus_lane=schedule.bus_lane,
         timeout_s=schedule.ticket_timeout_seconds,
