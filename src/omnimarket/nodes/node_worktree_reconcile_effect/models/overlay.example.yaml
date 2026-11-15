@@ -30,6 +30,8 @@ hosts:
       max_removals_per_run: 200
       # A systemd EnvironmentFile the run user cannot open: declared by the host overlay, never obtained by changing a file mode.
       unreadable_environment_files: {}
+      # A launchd definition the run user cannot read or parse: declared by the host overlay, never obtained by changing a file mode.
+      unreadable_launchd_definitions: {}
     # Template only: each scheduled tick generates its own correlation UUID.
     correlation_id: 00000000-0000-4000-8000-000000000000
 # A host whose layout differs (a Mac under launchd) is declared beside the hosts. `$OMNI_HOME` at the start of a path is the

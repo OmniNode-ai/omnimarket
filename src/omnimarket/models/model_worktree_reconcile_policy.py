@@ -43,6 +43,13 @@ class ModelWorktreeReconcilePolicy(BaseModel):
     unreadable_environment_files: dict[str, tuple[str, ...]] = Field(
         default_factory=dict
     )
+    # What a launchd definition (a plist) the run user cannot read or parse holds, declared by the host overlay: key = the
+    # file's absolute path, value = the absolute paths it holds that matter to the live-path set (empty: it holds none).
+    # Nothing is read with elevated rights and no file mode changes; an unreadable or malformed definition the host does
+    # not declare still fails the snapshot.
+    unreadable_launchd_definitions: dict[str, tuple[str, ...]] = Field(
+        default_factory=dict
+    )
 
     @field_validator("unreadable_environment_files")
     @classmethod
@@ -58,6 +65,24 @@ class ModelWorktreeReconcilePolicy(BaseModel):
                 if not path.startswith("/"):
                     raise ValueError(
                         f"unreadable_environment_files[{file}] holds a path"
+                        f" that is not absolute: {path}"
+                    )
+        return declared
+
+    @field_validator("unreadable_launchd_definitions")
+    @classmethod
+    def _declared_definitions_and_paths_are_absolute(
+        cls, declared: dict[str, tuple[str, ...]]
+    ) -> dict[str, tuple[str, ...]]:
+        for file, paths in declared.items():
+            if not file.startswith("/"):
+                raise ValueError(
+                    f"unreadable_launchd_definitions key is not an absolute path: {file}"
+                )
+            for path in paths:
+                if not path.startswith("/"):
+                    raise ValueError(
+                        f"unreadable_launchd_definitions[{file}] holds a path"
                         f" that is not absolute: {path}"
                     )
         return declared

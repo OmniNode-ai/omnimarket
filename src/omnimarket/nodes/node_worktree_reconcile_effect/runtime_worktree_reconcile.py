@@ -76,7 +76,9 @@ def run_command(
     handler = create_handler_worktree_reconcile(
         probe=GitWorktreeFactsProbe(
             unit_reader=(
-                LaunchdUnitRootReader()
+                LaunchdUnitRootReader(
+                    declared_definitions=command.policy.unreadable_launchd_definitions
+                )
                 if sys.platform == "darwin"
                 else SystemdUnitRootReader(
                     declared_environment_files=command.policy.unreadable_environment_files
