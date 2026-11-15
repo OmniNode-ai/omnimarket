@@ -10,6 +10,8 @@ covering the runtimes is refused by the model's own check, which is what a regis
 
 from __future__ import annotations
 
+from typing import Any, cast
+
 import pytest
 from pydantic import ValidationError
 
@@ -39,7 +41,7 @@ pytestmark = pytest.mark.unit
 
 
 def _handle(**kwargs: object) -> ModelHostIntrospectionAnnouncement:
-    return HandlerHostIntrospection().handle(request(**kwargs))  # type: ignore[arg-type]
+    return HandlerHostIntrospection().handle(request(**cast(Any, kwargs)))
 
 
 def test_golden_the_announcement_is_sorted_and_carries_the_capacity() -> None:
@@ -140,7 +142,7 @@ def test_control_a_digest_that_ignores_the_runtimes_is_refused_by_the_model(
 
     def drops_runtimes(**kwargs: object) -> str:
         kwargs["runtimes"] = ()
-        return real(**kwargs)  # type: ignore[arg-type]
+        return real(**cast(Any, kwargs))
 
     monkeypatch.setattr(handler_host_introspection, "facts_digest", drops_runtimes)
     with pytest.raises(

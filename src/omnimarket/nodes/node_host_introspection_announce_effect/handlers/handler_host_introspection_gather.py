@@ -20,6 +20,9 @@ from datetime import UTC, datetime
 from typing import Literal
 
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
+from omnimarket.models.model_host_capacity_probe_request import (
+    ModelHostCapacityProbeRequest,
+)
 from omnimarket.models.model_host_introspection_announcement import (
     ModelHostIntrospectionAnnouncement,
 )
@@ -46,9 +49,6 @@ from omnimarket.nodes.node_host_introspection_compute.handlers.handler_host_intr
 )
 from omnimarket.nodes.node_lab_work_unit_effect.handlers.handler_host_capacity_advertise_effect import (
     HandlerHostCapacityAdvertiseEffect,
-)
-from omnimarket.nodes.node_lab_work_unit_effect.models.model_lab_work_unit import (
-    ModelHostCapacityProbeRequest,
 )
 
 

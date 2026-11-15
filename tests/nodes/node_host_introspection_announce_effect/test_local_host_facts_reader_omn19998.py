@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 
@@ -48,7 +49,7 @@ class Machine:
 def _reader(machine: Machine, http: object | None = None) -> LocalHostFactsReader:
     return LocalHostFactsReader(
         run=machine.run,
-        http_get_json=http or (lambda *_args: {"data": [{"id": "model-x"}]}),  # type: ignore[arg-type]
+        http_get_json=cast(Any, http or (lambda *_args: {"data": [{"id": "model-x"}]})),
         system=lambda: ("Linux", "x86_64", "6.8.0"),
         hostnames=lambda: (HOST,),
         boot_id=lambda: "boot-1",
@@ -161,7 +162,9 @@ def test_a_software_probe_that_fails_leaves_its_cell_unread_and_keeps_the_row(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     overlay = install_overlay(monkeypatch, tmp_path)
-    interpreter = overlay.software[0].version.argv[0]  # type: ignore[union-attr]
+    version = overlay.software[0].version
+    assert version is not None
+    interpreter = version.argv[0]
     machine = Machine({**FULL, interpreter: HostFactsUnreadableError("exited 1")})
     facts = _reader(machine).read(overlay, ModelHostReadTargets(host_name=HOST))
     rows = [s for s in facts.software if s.kind is EnumSoftwareKind.PACKAGE]
