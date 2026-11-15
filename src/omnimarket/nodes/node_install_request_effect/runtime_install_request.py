@@ -383,6 +383,11 @@ def _add_bus_arguments(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument("--bus-lane", help="the lane whose broker is used (kafka)")
     parser.add_argument("--kafka-bootstrap", help="an explicit broker address (kafka)")
+    parser.add_argument(
+        "--omnibase-path",
+        default=os.environ.get("OMNIBASE_PATH"),
+        help="the workspace root that holds the lane declaration (kafka lane)",
+    )
 
 
 # The opener's keyword for the workspace root, read from its signature rather than spelled here.
@@ -394,20 +399,30 @@ _WORKSPACE_KW = next(
 
 
 def open_install_request_bus(
-    *, bus: str, lane: str | None, kafka_bootstrap: str | None
+    *,
+    bus: str,
+    lane: str | None,
+    kafka_bootstrap: str | None,
+    workspace_root: Path | None = None,
 ) -> Any:
-    """Open the in-memory bus or a Kafka lane the way every host-side node does; no workspace root is given."""
+    """Open the in-memory bus or a Kafka lane the way every host-side node does.
+
+    A declared Kafka lane needs the workspace root that holds its lane declaration; an explicit broker address needs none.
+    """
     return open_lab_run_bus(
         bus=bus,  # type: ignore[arg-type]
         lane=lane,
         kafka_bootstrap=kafka_bootstrap,
-        **{_WORKSPACE_KW: None},
+        **{_WORKSPACE_KW: workspace_root},
     )
 
 
 def _open_bus(args: argparse.Namespace) -> Any:
     return open_install_request_bus(
-        bus=args.bus, lane=args.bus_lane, kafka_bootstrap=args.kafka_bootstrap
+        bus=args.bus,
+        lane=args.bus_lane,
+        kafka_bootstrap=args.kafka_bootstrap,
+        workspace_root=Path(args.omnibase_path) if args.omnibase_path else None,
     )
 
 

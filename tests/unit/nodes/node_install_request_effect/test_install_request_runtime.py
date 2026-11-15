@@ -22,6 +22,7 @@ from typing import Any
 
 import pytest
 
+from omnimarket.delegated_test_loop.lane_bus import LabRunBusError
 from omnimarket.models.install_request import (
     EnumInstallRequestStatus,
     EnumInstallTarget,
@@ -251,3 +252,15 @@ async def test_a_held_request_answers_once_the_blocker_is_gone(
         assert result.request_id == request.request_id
         assert result.status is EnumInstallRequestStatus.VERIFIED
         await host.stop()
+
+
+async def test_a_declared_kafka_lane_with_no_workspace_root_is_refused_by_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The first run of the served host on the dev lane failed on exactly this: a lane declaration is read from a workspace root."""
+    monkeypatch.delenv("OMNIBASE_PATH", raising=False)
+    with pytest.raises(LabRunBusError, match="workspace root"):
+        async with open_install_request_bus(
+            bus="kafka", lane="dev", kafka_bootstrap=None
+        ):
+            pytest.fail("the lane must not open without its declaration")
