@@ -124,7 +124,7 @@ def test_sha_absent_from_mirror_leaves_the_answer_unread(
     assert res.ok is False
     assert res.is_ancestor is None
     assert res.error is not None
-    assert ghost in res.error
+    assert res.error == f"mirror lacks commit {ghost}"
     assert res.ancestor_sha == ask.ancestor_sha
     assert res.descendant_sha == ask.descendant_sha
     assert res.mirror_path is not None
@@ -231,7 +231,7 @@ def test_handler_chain_carries_the_unread_result(
     assert result.ok is False
     assert result.is_ancestor is None
     assert result.error is not None
-    assert ghost in result.error
+    assert result.error == f"mirror lacks commit {ghost}"
 
 
 # --- the CLI -------------------------------------------------------------------------
