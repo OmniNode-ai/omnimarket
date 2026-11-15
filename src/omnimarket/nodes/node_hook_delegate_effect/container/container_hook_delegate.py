@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from omnibase_core.container import ModelONEXContainer
 from omnibase_core.utils.util_run_coro_sync import run_coro_sync
 
@@ -37,6 +39,9 @@ def build_handler(cli: object | None = None) -> HandlerHookDelegate:
     return HandlerHookDelegate(create_hook_delegate_container(cli))
 
 
-def build_prompt_handler(cli: object | None = None) -> HandlerPromptDelegate:
-    """The prompt handler (OMN-23413 AC33), built from its container the same way."""
-    return HandlerPromptDelegate(create_hook_delegate_container(cli))
+def build_prompt_handler(
+    cli: object | None = None, sensitive: Callable[[str], bool] | None = None
+) -> HandlerPromptDelegate:
+    """The prompt handler (OMN-23413 AC33), built from its container the same way.
+    ``sensitive`` is the caller's sensitivity check for recent conversation."""
+    return HandlerPromptDelegate(create_hook_delegate_container(cli), sensitive)

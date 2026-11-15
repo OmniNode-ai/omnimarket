@@ -32,12 +32,12 @@ import pytest
 
 from omnimarket.nodes.node_hook_delegate_effect.container import build_prompt_handler
 from omnimarket.nodes.node_hook_delegate_effect.handlers.handler_prompt_delegate import (
-    DECLINE_TOKEN,
     HISTORY_CHARS,
     PROMPT_CRITERIA,
     PROMPT_TIMEOUT_S,
 )
 from omnimarket.nodes.node_hook_delegate_effect.models import (
+    DECLINE_TOKEN,
     EnumDelegateCliState,
     EnumPromptDelegateOutcome,
     ModelDelegateCliRun,
@@ -113,6 +113,27 @@ def _task(argv: list[str]) -> str:
 
 
 # --- delegating ---------------------------------------------------------------
+
+
+def test_sensitive_conversation_is_never_sent_with_the_prompt(tmp_path: Path) -> None:
+    """P7 (OMN-23413): a secret said earlier in the session never reaches the
+    delegated model; the prompt is still delegated, without that conversation."""
+    transcript = tmp_path / "transcript.jsonl"
+    rows = [
+        {"type": "user", "message": {"content": "my db login is SECRET-VALUE"}},
+        {"type": "user", "message": {"content": "now about TCP"}},
+    ]
+    transcript.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+    cli = _Cli(_doc(_ANSWER, "r-sens"))
+    request = ModelPromptDelegateRequest(
+        prompt="TCP vs UDP?", session_id="ac33", transcript_path=str(transcript)
+    )
+    handler = build_prompt_handler(cli, sensitive=lambda text: "SECRET" in text)
+    assert handler.handle(request).outcome is EnumPromptDelegateOutcome.ANSWERED
+    ((argv, _),) = cli.calls
+    assert "SECRET-VALUE" not in _task(argv)
+    assert "now about TCP" not in _task(argv)  # the whole excerpt is withheld
+    assert "TCP vs UDP?" in _task(argv)
 
 
 def test_any_prompt_is_delegated_and_its_answer_blocks_claude() -> None:

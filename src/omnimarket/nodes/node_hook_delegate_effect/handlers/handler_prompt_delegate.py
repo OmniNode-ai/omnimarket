@@ -22,7 +22,7 @@ import hashlib
 import json
 import os
 import re
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -164,8 +164,15 @@ def context_output(context: str) -> str:
 class HandlerPromptDelegate:
     """Delegates one prompt through HandlerHookDelegate and composes the hook output."""
 
-    def __init__(self, container: ModelONEXContainer) -> None:
+    def __init__(
+        self,
+        container: ModelONEXContainer,
+        sensitive: Callable[[str], bool] | None = None,
+    ) -> None:
         self._delegate = HandlerHookDelegate(container)
+        #: The caller's sensitivity check (omniclaude's gate). Recent conversation
+        #: it flags is never sent: the prompt is delegated without it (OMN-23413).
+        self._sensitive = sensitive
 
     def handle(self, request: ModelPromptDelegateRequest) -> ModelPromptDelegateResult:
         skipped = skip_reason(request.prompt)
@@ -204,12 +211,12 @@ class HandlerPromptDelegate:
     def _hook_request(
         self, request: ModelPromptDelegateRequest
     ) -> ModelHookDelegateRequest:
+        excerpt = transcript_excerpt(request.transcript_path)
+        if excerpt and self._sensitive is not None and self._sensitive(excerpt):
+            excerpt = ""
         context = "\n\n".join(
             part
-            for part in (
-                transcript_excerpt(request.transcript_path),
-                self._pending(request.session_id, CONTEXT_CHARS),
-            )
+            for part in (excerpt, self._pending(request.session_id, CONTEXT_CHARS))
             if part
         )
         limit = PROMPT_TIMEOUT_S
