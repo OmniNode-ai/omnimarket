@@ -31,14 +31,12 @@ from pydantic import (
 )
 
 from omnimarket.config.settings import Settings
+from omnimarket.handlers.projection_dlq_source import build_envelope_with_source
 from omnimarket.handlers.runtime_delivery_host import KeptPools
 from omnimarket.models.model_message_meta import MessageMeta as MessageMeta
 from omnimarket.models.model_projection_request import ModelProjectionRequest
 from omnimarket.models.model_projection_stats import ProjectionStats
-from omnimarket.projection.dlq import (
-    build_dlq_envelope,
-    correlation_id_from_payload,
-)
+from omnimarket.projection.dlq import correlation_id_from_payload
 from omnimarket.projection.envelope import unwrap_envelope
 from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.snapshot_publisher import (
@@ -1268,7 +1266,8 @@ class BaseProjectionRunner(ABC):
             )
             return False
         correlation_id = correlation_id_from_payload(data, fallback=meta.fallback_id)
-        envelope = build_dlq_envelope(
+        envelope = build_envelope_with_source(
+            meta,
             original_message=data,
             failure_reason=f"poison projection error: {err}",
             handler=type(self).__name__,

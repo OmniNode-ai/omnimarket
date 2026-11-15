@@ -28,3 +28,11 @@ units:
     # skips docker update when the running container already matches.
     memory_gib: 4
     memory_swap_gib: 8
+    # OMN-24249: when the container's network or published port is wrong at install, the
+    # installer recreates this one service through its compose declaration and reads the
+    # container again before it writes the unit.
+    recreate:
+      compose_file: /etc/omni/example-broker-compose.yaml
+      env_file: /etc/omni/example-broker.env
+      project: example-broker
+      service: broker

@@ -1,10 +1,10 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The real backend: the lane's served manifest over HTTP, the lane's broker over aiokafka, the broker's external listener over TCP, a state file.
+"""The real backend: the lane's served manifest over HTTP, the lane's broker over aiokafka, a declared broker's consumer groups over the confluent_kafka admin client, the broker's external listener over TCP, a state file.
 
-The broker address and login come from the lane declaration the dev-lane clients resolve, never from an
-ambient variable. Nothing here prints or returns a credential or a broker address: a failure is named by
-its exception type only.
+The lane's broker address and login come from the lane declaration the dev-lane clients resolve, never
+from an ambient variable; ``AdminLag`` reads the address its overlay declares. Nothing here prints or
+returns a credential or a broker address: a failure is named by its exception type only.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ import subprocess
 import time
 import urllib.error
 import urllib.request
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -34,13 +34,100 @@ from omnimarket.nodes.node_lab_alarm.protocols import (
     EffectsGroupReadError,
     GroupNeverCommittedError,
     GroupUnreadableError,
+    HeartbeatUnreadableError,
     LaneDispatchError,
+    LedgerUnreadableError,
     ListenerRefusedError,
     ListenerUnresolvableError,
     ManifestUnreachableError,
     ManifestUnreadableError,
     RunRecordUnwritableError,
 )
+
+
+class FileLedgerNewest:
+    """The newest canonical row in the tail of the ledger file: ``<UTC stamp> | <TYPE> |`` with TYPE in ``row_types``.
+
+    Only the last ``tail_bytes`` are read, so a row earlier than that is never seen. A file that cannot be read, or
+    whose tail holds no such row, is unread, never current.
+    """
+
+    def __init__(self, path: Path, tail_bytes: int, row_types: Sequence[str]) -> None:
+        self._path = path
+        self._tail_bytes = tail_bytes
+        self._pattern = re.compile(
+            r"^(?P<ts>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z) \| "
+            rf"(?P<type>{'|'.join(re.escape(row_type) for row_type in row_types)}) \|",
+            re.MULTILINE,
+        )
+
+    def newest(self) -> tuple[datetime, str]:
+        try:
+            with self._path.open("rb") as handle:
+                size = handle.seek(0, os.SEEK_END)
+                start = max(0, size - self._tail_bytes)
+                handle.seek(start)
+                raw = handle.read()
+        except OSError as exc:
+            raise LedgerUnreadableError(
+                f"ledger could not be read ({type(exc).__name__})"
+            ) from exc
+        text = raw.decode("utf-8", errors="replace")
+        if start > 0:
+            # The first line of a mid-file read is a fragment, not a row.
+            text = text.partition("\n")[2]
+        newest: tuple[datetime, str] | None = None
+        for match in self._pattern.finditer(text):
+            stamp = datetime.strptime(match.group("ts"), "%Y-%m-%dT%H:%M:%SZ").replace(
+                tzinfo=UTC
+            )
+            if newest is None or stamp > newest[0]:
+                newest = (stamp, match.group("type"))
+        if newest is None:
+            raise LedgerUnreadableError(
+                f"ledger holds no canonical row in its last {self._tail_bytes} bytes"
+            )
+        return newest
+
+
+class HttpHeartbeatSource:
+    """The deploy agent's heartbeat document: one GET of the full URL, read as a JSON object.
+
+    Anything but an HTTP 200 carrying a JSON object is unread, never an empty document.
+    """
+
+    def __init__(self, url: str, timeout_seconds: float) -> None:
+        self._url = url
+        self._timeout = timeout_seconds
+
+    def read(self) -> Mapping[str, Any]:
+        if not self._url.startswith("http://"):
+            raise HeartbeatUnreadableError(f"{self._url!r} is not an http URL")
+        try:
+            with (
+                urllib.request.urlopen(  # no-contract-check: the deploy agent's heartbeat read; port boundary, url injected by the overlay-built reader
+                    self._url, timeout=self._timeout
+                ) as response
+            ):
+                if response.status != 200:
+                    raise HeartbeatUnreadableError(
+                        f"the agent answered HTTP {response.status}"
+                    )
+                payload = json.loads(response.read())
+        except (
+            urllib.error.URLError,
+            TimeoutError,
+            OSError,
+            http.client.HTTPException,
+        ) as exc:
+            raise HeartbeatUnreadableError(
+                f"no answer from the agent ({type(exc).__name__})"
+            ) from exc
+        except ValueError as exc:
+            raise HeartbeatUnreadableError("the agent's answer is not JSON") from exc
+        if not isinstance(payload, dict):
+            raise HeartbeatUnreadableError("the agent's answer is not a JSON object")
+        return payload
 
 
 class HttpManifest:
@@ -70,9 +157,11 @@ class HttpManifest:
         failure = "OSError"
         for attempt in range(1, self._attempts + 1):
             try:
-                with urllib.request.urlopen(
-                    self._url, timeout=self._timeout
-                ) as response:
+                with (
+                    urllib.request.urlopen(  # no-contract-check: the lane's served-manifest read; port boundary, url injected by the overlay-built reader
+                        self._url, timeout=self._timeout
+                    ) as response
+                ):
                     payload = json.loads(response.read())
             except (
                 urllib.error.URLError,
@@ -188,7 +277,7 @@ class KafkaLag:
             raise GroupNeverCommittedError(
                 f"group {group} holds no committed offset on any partition"
             )
-        consumer = AIOKafkaConsumer(
+        consumer = AIOKafkaConsumer(  # no-contract-check: end-offsets read for the lane's own broker; port boundary behind ProtocolGroupLagReader
             client_id="broker-lag-alarm-consumer",
             security_protocol=security_protocol,
             **kwargs,
@@ -217,6 +306,92 @@ class KafkaLag:
             raise GroupUnreadableError(
                 f"group {group} unreadable ({type(exc).__name__})"
             ) from None
+
+
+def _committed_request(group: str) -> Any:
+    """The read-committed request for one group; built lazily so the import stays lazy."""
+    from confluent_kafka import ConsumerGroupTopicPartitions
+
+    return ConsumerGroupTopicPartitions(group)
+
+
+def _end_offset_key(topic: str, partition: int) -> tuple[Any, Any]:
+    """One list-offsets key with its latest-offset spec; built lazily so the import stays lazy."""
+    from confluent_kafka import TopicPartition
+
+    # The class confluent_kafka.admin re-exports, from the module that types it.
+    from confluent_kafka.admin._listoffsets import OffsetSpec
+
+    latest: Callable[[], Any] = OffsetSpec.latest
+    return TopicPartition(topic, partition), latest()
+
+
+def _end_offsets(
+    admin: Any, keys: list[tuple[str, int]], timeout_seconds: float
+) -> dict[tuple[str, int], int]:
+    if not keys:
+        return {}
+    futures = admin.list_offsets(
+        dict(_end_offset_key(topic, partition) for topic, partition in keys),
+        request_timeout=timeout_seconds,
+    )
+    return {
+        (tp.topic, tp.partition): int(f.result(timeout=timeout_seconds).offset)
+        for tp, f in futures.items()
+    }
+
+
+class AdminLag:
+    """Committed offsets against partition end offsets on one declared broker, the admin client only.
+
+    No consumer is built and no group is joined, so reading a group moves nothing, and the read
+    carries no credential: the address is the overlay's ``bootstrap_servers`` alone. A broker failure
+    is named by its exception type only, never its text, which carries the address.
+    """
+
+    def __init__(
+        self,
+        bootstrap_servers: str,
+        timeout_seconds: float,
+        admin_factory: Callable[[dict[str, str]], Any] | None = None,
+    ) -> None:
+        self._bootstrap_servers = bootstrap_servers
+        self._timeout = timeout_seconds
+        self._admin_factory = admin_factory
+
+    def total_lag(self, group: str) -> int:
+        try:
+            return self._read(group)
+        except (GroupNeverCommittedError, GroupUnreadableError):
+            raise
+        except Exception as exc:  # classify by type, never echo str(exc)
+            raise GroupUnreadableError(
+                f"group {group} unreadable ({type(exc).__name__})"
+            ) from None
+
+    def _read(self, group: str) -> int:
+        from confluent_kafka.admin import AdminClient
+
+        admin = (self._admin_factory or AdminClient)(
+            {"bootstrap.servers": self._bootstrap_servers}
+        )
+        future = admin.list_consumer_group_offsets(
+            [_committed_request(group)], request_timeout=self._timeout
+        )[group]
+        committed = future.result(timeout=self._timeout).topic_partitions
+        held = [tp for tp in committed if int(tp.offset) >= 0]
+        if not held:
+            raise GroupNeverCommittedError(
+                f"group {group} holds no committed offset on any partition"
+            )
+        ends = _end_offsets(
+            admin, [(tp.topic, tp.partition) for tp in held], self._timeout
+        )
+        total = 0
+        for tp in held:
+            end = ends[(tp.topic, tp.partition)]
+            total += max(0, end - int(tp.offset))
+        return total
 
 
 class FileSamples:
@@ -471,12 +646,15 @@ class TcpApiVersionsProbe:
 
 
 __all__ = [
+    "AdminLag",
     "CommandLaneDispatcher",
     "FileGrowthStreaks",
     "FileHeldState",
+    "FileLedgerNewest",
     "FileManifestCache",
     "FileRunRecords",
     "FileSamples",
+    "HttpHeartbeatSource",
     "HttpManifest",
     "KafkaEffectsGroups",
     "KafkaLag",

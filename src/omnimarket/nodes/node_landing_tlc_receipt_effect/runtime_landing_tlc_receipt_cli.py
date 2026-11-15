@@ -10,8 +10,6 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from omnimarket.handlers.runtime_paths import runtime_dir
-
 from .handlers.handler_landing_tlc_publish import HandlerLandingTlcPublish
 from .handlers.handler_landing_tlc_sync import HandlerLandingTlcSync
 from .models import ModelLandingTlcPublishRequest, ModelLandingTlcSyncRequest
@@ -35,11 +33,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     publish.add_argument("--out-dir", type=Path, required=True)
     sync = commands.add_parser("sync")
     sync.add_argument("--gate-script", type=Path, required=True)
-    sync.add_argument(
-        "--state-dir",
-        type=Path,
-        default=Path(runtime_dir("landing_tlc_receipt.state_dir", "LANDING_STATE_DIR")),
-    )
+    sync.add_argument("--state-dir", type=Path, default=None)
     sync.add_argument("--repo", type=_repository, required=True)
     sync.add_argument("--keep-newest", type=int, default=3)
     args = parser.parse_args(argv)
@@ -58,10 +52,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         for reason in built.reasons:
             sys.stdout.write(reason + "\n")
         return int(built.status != "published")
+    # Imported here: the publish verb runs in CI from this node's own files, and the handlers package pulls in the rest of omnimarket.
+    from omnimarket.handlers.runtime_paths import runtime_dir
+
+    state_dir = (
+        args.state_dir
+        if args.state_dir is not None
+        else Path(runtime_dir("landing_tlc_receipt.state_dir", "LANDING_STATE_DIR"))
+    )
     synced = HandlerLandingTlcSync().handle(
         ModelLandingTlcSyncRequest(
             gate_script=args.gate_script.expanduser(),
-            state_dir=args.state_dir.expanduser(),
+            state_dir=state_dir.expanduser(),
             repo=args.repo,
             keep_newest=args.keep_newest,
         )

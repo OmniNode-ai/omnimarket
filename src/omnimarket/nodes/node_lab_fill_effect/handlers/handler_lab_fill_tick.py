@@ -445,6 +445,14 @@ class HandlerLabFillTick:
                         ticket=ticket, row_id=row_id, reason="invalid-row"
                     )
                 )
+            elif ticket in request.selection_holds:
+                skipped.append(
+                    ModelLabFillTickSkip(
+                        ticket=ticket,
+                        row_id=row_id,
+                        reason=f"selection:{request.selection_holds[ticket]}",
+                    )
+                )
             elif row.get("blocked_until"):
                 skipped.append(
                     ModelLabFillTickSkip(

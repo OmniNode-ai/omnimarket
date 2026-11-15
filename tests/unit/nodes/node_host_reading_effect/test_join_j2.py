@@ -26,6 +26,7 @@ from omnimarket.handlers.emission_sink import ChainEmitter, InMemoryEmissionSink
 from omnimarket.lab_work.bus import LabWorkCaller, LabWorkHost, load_lab_work_topics
 from omnimarket.models.floor_17a import (
     ModelFloorReceiptInput,
+    ModelJoinChains,
     ModelJoinDef,
     ModelNodeEmission,
     ModelPieceDef,
@@ -38,6 +39,9 @@ from omnimarket.models.model_join_j2 import (
 from omnimarket.models.overlay_keys import ModelLabHostRow, ModelLabHostsTable
 from omnimarket.nodes.node_floor_emission_compute.handlers.handler_floor_receipt import (
     HandlerFloorReceipt,
+)
+from omnimarket.nodes.node_floor_simple_effect.handlers.handler_floor_simple_tick import (
+    load_runtime,
 )
 from omnimarket.nodes.node_host_reading_effect.handlers.join_j2 import (
     JoinJ2,
@@ -187,8 +191,14 @@ def _caller(world: _World) -> LabWorkCaller:
     return world.caller
 
 
-def _receipts(world: _World, *, now: datetime | None = None) -> Any:
-    emissions = tuple(world.sink.events)
+def _receipts(
+    world: _World,
+    *,
+    now: datetime | None = None,
+    extra: tuple[ModelNodeEmission, ...] = (),
+    join_chains: tuple[ModelJoinChains, ...] = (),
+) -> Any:
+    emissions = (*world.sink.events, *extra)
     return HandlerFloorReceipt().handle(
         ModelFloorReceiptInput(
             now=now or datetime.now(UTC) + timedelta(seconds=1),
@@ -208,6 +218,7 @@ def _receipts(world: _World, *, now: datetime | None = None) -> Any:
             freshness_max_age_s=900,
             error_max_age_s=3600,
             chain_deadline_s=30,
+            join_chains=join_chains,
         )
     )
 
@@ -541,3 +552,127 @@ def test_error_an_advertisement_read_that_raises_after_the_canary_start_ends_the
         ("failure", "upstream_canary_raised")
     ]
     assert _broken_chains(world) == []
+
+
+# OMN-23083: J2 reads its own pipeline's chains on piece 2, not the host pool snapshot's.
+# The chain nodes as the production overlay names them (overlay join_j2 settings), which the contract's join_chains lists.
+PROD_SETTINGS = SETTINGS.model_copy(
+    update={
+        "canary_node": "node_host_reading_effect:join_j2",
+        "seam_node": "node_lab_placement_compute:join_j2",
+    }
+)
+POOL_SNAPSHOT_NODE = "node_lane_host_pool_snapshot_effect"
+HOST_CANARY_NODE = "node_host_reading_effect:host_canary"
+
+
+def _failed_chain(
+    node: str, cid: str, ended: datetime, piece: int = 2
+) -> tuple[ModelNodeEmission, ...]:
+    """A piece 2 chain of a node outside the J2 join: a start and a typed failure, with nothing in piece 3 for its id."""
+    base = {"node": node, "piece": piece, "correlation_id": cid}
+    return (
+        ModelNodeEmission.model_validate(
+            {**base, "phase": "start", "emitted_at": ended - timedelta(seconds=1)}
+        ),
+        ModelNodeEmission.model_validate(
+            {
+                **base,
+                "phase": "failure",
+                "emitted_at": ended,
+                "failure_code": "pool_unreadable",
+            }
+        ),
+    )
+
+
+def _j2_world_with_pool_failures(
+    count: int, node: str = POOL_SNAPSHOT_NODE
+) -> tuple[_World, tuple[ModelNodeEmission, ...], datetime]:
+    async def scenario(world: _World) -> tuple[ModelJoinJ2HostResult, ...]:
+        await world.open()
+        assert world.caller is not None
+        handler = JoinJ2(
+            settings=PROD_SETTINGS,
+            caller=world.caller,
+            sink=world.sink,
+            backend="in_memory",
+        )
+        await world.serve(POOLED[0], _EchoRunner())
+        return await handler.run_hosts((POOLED[0], SILENT))
+
+    world, _ = _run(scenario)
+    now = datetime.now(UTC) + timedelta(seconds=120)
+    extra = tuple(
+        event
+        for i in range(count)
+        for event in _failed_chain(node, f"pool-{i}", now - timedelta(seconds=60))
+    )
+    return world, extra, now
+
+
+def _j2_scope() -> tuple[ModelJoinChains, ...]:
+    return tuple(c for c in load_runtime().join_chains if c.join == "J2")
+
+
+def test_golden_a_pool_snapshot_failure_is_not_a_j2_finding_and_j2_still_reads_passed() -> (
+    None
+):
+    world, extra, now = _j2_world_with_pool_failures(3)
+    scoped = _receipts(world, now=now, extra=extra, join_chains=_j2_scope())
+    assert scoped.findings == ()
+    assert scoped.joins[0].state == "passed"
+    # the snapshot's chains still count toward piece 2's own receipt
+    assert scoped.pieces[0].error_at is not None
+    assert len(scoped.chains) == len(_receipts(world, now=now, extra=extra).chains)
+
+
+def test_error_control_without_the_scope_the_same_failures_break_j2() -> None:
+    world, extra, now = _j2_world_with_pool_failures(3)
+    unscoped = _receipts(world, now=now, extra=extra)
+    assert [f.code for f in unscoped.findings] == [
+        "downstream_missing_typed_failure"
+    ] * 3
+    assert unscoped.joins[0].state == "broken"
+
+
+def test_error_control_a_host_canary_failure_with_no_piece_3_answer_still_breaks_j2() -> (
+    None
+):
+    world, extra, now = _j2_world_with_pool_failures(1, node=HOST_CANARY_NODE)
+    scoped = _receipts(world, now=now, extra=extra, join_chains=_j2_scope())
+    assert [f.code for f in scoped.findings] == ["downstream_missing_typed_failure"]
+    assert scoped.joins[0].state == "broken"
+
+
+def test_error_control_dropping_the_piece_3_refusal_of_the_join_s_own_failure_breaks_j2() -> (
+    None
+):
+    world, _, now = _j2_world_with_pool_failures(0)
+    silent_cid = next(
+        e.correlation_id
+        for e in world.sink.events
+        if e.piece == PROD_SETTINGS.canary_piece
+        and e.phase == "failure"
+        and e.node.startswith(PROD_SETTINGS.canary_node)
+    )
+    world.sink.events[:] = [
+        e
+        for e in world.sink.events
+        if not (e.piece == PROD_SETTINGS.seam_piece and e.correlation_id == silent_cid)
+    ]
+    scoped = _receipts(world, now=now, join_chains=_j2_scope())
+    assert [f.code for f in scoped.findings] == ["downstream_missing_typed_failure"]
+    assert scoped.joins[0].state == "broken"
+
+
+def test_golden_the_declared_nodes_are_the_ones_the_join_emits_on_each_side() -> None:
+    world, _, _ = _j2_world_with_pool_failures(0)
+    (scope,) = _j2_scope()
+    emitted = {
+        piece: {e.node for e in world.sink.events if e.piece == piece}
+        for piece in (PROD_SETTINGS.canary_piece, PROD_SETTINGS.seam_piece)
+    }
+    assert emitted[PROD_SETTINGS.canary_piece] <= set(scope.from_nodes)
+    assert emitted[PROD_SETTINGS.seam_piece] <= set(scope.to_nodes)
+    assert POOL_SNAPSHOT_NODE not in scope.from_nodes

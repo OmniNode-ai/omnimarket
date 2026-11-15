@@ -5,7 +5,9 @@
 from collections.abc import Mapping
 
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
-from omnimarket.nodes.node_dev_roll_request_compute.models import ModelDevRollPolicy
+from omnimarket.nodes.node_dev_roll_request_compute.models import (
+    ModelDevRollPolicy,
+)
 
 NODE_NAME = "node_dev_roll_request_compute"
 

@@ -1,0 +1,26 @@
+name: node_projection_dlq_redrive_effect
+version: "1.0.0"
+description: "Re-project refused delegation records from the source coordinates on their dead letters."
+omnibase_core_compat: ">=0.46.13,<0.47.0"
+entry_points:
+  onex.nodes:
+    node_projection_dlq_redrive_effect: "omnimarket.nodes.node_projection_dlq_redrive_effect"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: database_write
+dependencies:
+  - "omnibase_core>=0.46.13"
+  - "omnibase-infra>=0.38.3"
+  - "aiokafka"
+  - "pyyaml"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "projection", "dead-letter", "redrive"]
+pack: "observability"
+display_name: "Projection Dead-Letter Redrive Effect"
+node_role: "effect"

@@ -11,3 +11,5 @@ class ModelReadsSource(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
     binding_ref: str = Field(..., min_length=1)
     dsn_env: str = Field(..., pattern=r"^[A-Z_][A-Z0-9_]*$")
+    # the NAME of the variable the host installer sets to the password's secret store reference
+    password_ref_env: str | None = Field(default=None, pattern=r"^[A-Z_][A-Z0-9_]*$")

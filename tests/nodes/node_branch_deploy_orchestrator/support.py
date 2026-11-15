@@ -70,6 +70,7 @@ from tests.nodes.node_branch_deploy_command_effect.support import (
     SIGNING_KEY,
     FailingBus,
     FakeBus,
+    matching_reader,
 )
 
 NODES = Path(__file__).resolve().parents[3] / "src/omnimarket/nodes"
@@ -242,7 +243,10 @@ class Plant:
             )
             environ = {} if outcome == "refused" else {SIGNING_ENV: SIGNING_KEY}
             handler = HandlerBranchDeployCommand(
-                bus, overlay=command_overlay(), environ=environ
+                bus,
+                overlay=command_overlay(),
+                environ=environ,
+                key_check_reader=matching_reader(),
             )
             result = asyncio.run(handler.handle(payload))
             if isinstance(bus, FakeBus):

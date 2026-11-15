@@ -198,9 +198,11 @@ class HandlerBranchDeployOrchestrator:
         if mode == "deploy":
             git_ref = request.head_sha
             image_ref = ""
+            overlay_ref = request.overlay_ref
         else:
             git_ref = request.rollback_head_sha
             image_ref = request.rollback_image
+            overlay_ref = ""
         return ModelBranchDeployOutput(
             topic=TOPIC_COMMAND_REQUESTED,
             payload=ModelBranchDeployCommandRequest(
@@ -211,6 +213,7 @@ class HandlerBranchDeployOrchestrator:
                 pr_number=request.pr_number,
                 git_ref=git_ref,
                 image_ref=image_ref,
+                overlay_ref=overlay_ref,
                 rollback_actor=request.actor,
                 rollback_reason=request.rollback_reason,
                 requested_by=request.actor,

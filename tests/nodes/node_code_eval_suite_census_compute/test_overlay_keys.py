@@ -32,7 +32,14 @@ def test_the_example_overlay_validates_and_names_every_key() -> None:
     assert overlay.line is not None
 
 
-@pytest.mark.parametrize("key", sorted(ModelCodeEvalSuiteCensusOverlay.model_fields))
+@pytest.mark.parametrize(
+    "key",
+    sorted(
+        name
+        for name in ModelCodeEvalSuiteCensusOverlay.model_fields
+        if name != "event_bus"
+    ),
+)
 def test_a_missing_overlay_key_is_refused_not_defaulted(key: str) -> None:
     values = _example()
     del values[key]

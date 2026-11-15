@@ -1,0 +1,68 @@
+schema_version: 1.0.0
+ticket_id: OMN-24315
+title: Host reconcile checks the dispatch environment against the lock list it was built from
+summary: 'node_host_reconcile_effect now reads the dispatch venv .built-from marker that omnibase_infra promote-floor writes (omnibase_infra#5949), writes the core validator facts file and calls ValidatorVenvBuildLock
+  (omnibase_core OMN-22649), recording one venv_build_lock fact (ModelVenvBuildLockFact). node_host_reconcile_compute judges it from the validator valid flag: valid reads ALREADY_AT_TARGET, invalid reads LOCK_MISMATCH,
+  a validator that judged no surface reads INDETERMINATE, and the surface venv:build-lock is not a dispatch premise so a mismatch alone does not block the floor stamp. A torn marker (key missing, copy unreadable
+  or hash differs) reads UNHEALTHY; a venv with no marker yet is a skipped-check diagnostic. Not in this change: the marker writer (omnibase_infra#5949) and the read on a rebuilt venv on h051 (AC3).'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24315-venv-build-lock-caller
+  statement: The host reconcile pass reports whether the dispatch venv matches the lock it was built from, using the core build-lock validator.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the host reconcile pass reads the dispatch venv .built-from marker, calls the core build-lock validator and records one venv:build-lock surface (a venv whose installed packages differ from
+      the lock it was built from reads LOCK_MISMATCH, a torn marker reads UNHEALTHY, no marker is a skipped diagnostic) -- falsifier: pytest tests/test_host_reconcile_venv_build_lock_effect.py -q (all nine tests
+      fail without the wiring in handler_host_reconcile_effect.py)'
+  - id: AC2
+    statement: 'AC2: the compute node judges the venv_build_lock fact from the validator valid flag and a lock mismatch alone does not block the floor stamp -- falsifier: pytest tests/test_host_reconcile_venv_build_lock.py
+      -q (fails at the merge base, where the venv_build_lock fact kind does not exist)'
+  - id: AC3
+    statement: 'AC3: integrated: on h051 the reconcile check run from the branch against a dispatch venv stamped by the marker writer reports the venv:build-lock surface ALREADY_AT_TARGET in its receipt -- falsifier:
+      read the check receipt on h051; an absent venv:build-lock surface, LOCK_MISMATCH or UNHEALTHY fails'
+evidence_requirements:
+- kind: tests
+  description: The effect, compute and seam tests pass at the pushed head.
+  command: uv run --frozen pytest tests/test_host_reconcile_venv_build_lock_effect.py tests/test_host_reconcile_venv_build_lock.py -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24315-ac1
+  description: 'AC1: the effect tests build a dispatch venv with a marker and read the validator verdict through the real core validator; all nine fail with the wiring removed (the pre-image of the handler).'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_host_reconcile_venv_build_lock_effect.py -q
+    cwd: .
+- id: dod-omn24315-ac2
+  description: 'AC2: the compute tests cover the golden verdict, the lock mismatch, the validator that judged nothing, and the schema refusals.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_host_reconcile_venv_build_lock.py -q
+    cwd: .
+- id: dod-omn24315-ac3
+  description: 'hosted proxy for AC3: the effect tests pass at the pull request head; the check run on h051 is read in the running lab and named in the pull request.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_host_reconcile_venv_build_lock_effect.py -q
+    cwd: .
+- id: dod-omn24315-integration-proof
+  description: the effect and compute tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24315 --kind test -- env PYTHONDONTWRITEBYTECODE=1
+      uv run --frozen pytest tests/test_host_reconcile_venv_build_lock_effect.py tests/test_host_reconcile_venv_build_lock.py -q --no-cov

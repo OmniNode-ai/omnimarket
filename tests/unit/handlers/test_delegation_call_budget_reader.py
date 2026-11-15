@@ -19,8 +19,10 @@ from omnimarket.handlers.node_overlay_reader import (
 )
 from omnimarket.handlers.routing.measured_correct_ceiling import CODE_BUDGET_OVERLAY_ID
 from omnimarket.models.model_delegation_code_budget import (
+    EnumCodeBudgetRefusal,
     ModelCodeBudgetOverlay,
     ModelCodeBudgetRequest,
+    ModelDraftMeasurement,
 )
 from omnimarket.nodes.node_delegation_code_budget_compute.handlers.handler_delegation_code_budget import (
     HandlerDelegationCodeBudget,
@@ -147,3 +149,31 @@ def test_strict_blank_class_refuses(tmp_path: Path) -> None:
     _write_overlay(tmp_path)
     with pytest.raises(CallBudgetNotDeclaredError):
         require_call_budget_s("  ", _env(tmp_path))
+
+
+def test_planted_180_is_the_budget_then_600_after_edit(tmp_path: Path) -> None:
+    """The planted value is the budget until the overlay is edited to another."""
+    _write_overlay(tmp_path, code_generation=180)
+    assert read_call_budget_s("code_generation", _env(tmp_path)) == 180.0
+    _write_overlay(tmp_path, code_generation=600)
+    assert read_call_budget_s("code_generation", _env(tmp_path)) == 600.0
+
+
+def test_size_over_ceiling_refuses_for_measured_593_6(tmp_path: Path) -> None:
+    """A measured size whose 1.5x margin rounds over the ceiling refuses with no budget."""
+    _write_overlay(tmp_path)
+    overlay = load_structured_overlay(
+        CODE_BUDGET_OVERLAY_ID, ModelCodeBudgetOverlay, _env(tmp_path)
+    )
+    request = ModelCodeBudgetRequest(
+        operation="size",
+        task_class="code_generation",
+        overlay=overlay,
+        measurements=[
+            ModelDraftMeasurement(engine="glm", duration_s=d, completed=True)
+            for d in (335.9, 400.0, 593.6)
+        ],
+    )
+    result = HandlerDelegationCodeBudget().handle(request)
+    assert result.refusal is EnumCodeBudgetRefusal.OVER_CEILING
+    assert result.call_budget_s is None

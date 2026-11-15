@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import datetime as dt
+import logging
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
@@ -171,9 +172,10 @@ async def test_error_an_off_window_tick_publishes_nothing(overlay_root: Path) ->
 
 
 async def test_error_without_an_overlay_the_schedule_wires_and_refuses_on_its_first_tick(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
-    from omnimarket.handlers.node_overlay_reader import NodeOverlayError
     from omnimarket.nodes.node_lab_test_harness_schedule_compute.handlers import (
         HandlerLabTestHarnessSchedule,
     )
@@ -189,8 +191,18 @@ async def test_error_without_an_overlay_the_schedule_wires_and_refuses_on_its_fi
         scheduler_id="golden-chain",
         tick_interval_ms=1000,
     )
-    with pytest.raises(NodeOverlayError):
-        handler.handle(tick)
+    with caplog.at_level(
+        logging.ERROR, logger="omnimarket.handlers.scheduled_overlay_refusal"
+    ):
+        for _ in range(50):
+            assert handler.handle(tick) is None
+    errors = [
+        record
+        for record in caplog.records
+        if record.levelno == logging.ERROR
+        and "node=node_lab_test_harness_effect" in record.getMessage()
+    ]
+    assert len(errors) == 1
 
 
 def _request(run_id: str = "run-golden") -> ModelLabTestHarnessRequested:

@@ -57,6 +57,8 @@ class ModelReaderRequest(BaseModel):
     lane: str | None = Field(default=None, pattern=_LANE)
     ticket: str | None = Field(default=None, pattern=r"^[A-Z][A-Z0-9]*-[0-9]+$")
     read_parity: bool = False
+    # Required for a rows read; also allowed (optional) for an open-claims read, where it
+    # means "claims opened within the last window_hours"; refused for every other query.
     window_hours: int | None = Field(default=None, ge=1, le=24 * 30)
 
     @model_validator(mode="after")
@@ -64,8 +66,11 @@ class ModelReaderRequest(BaseModel):
         if self.query is EnumReaderQuery.ROWS:
             if self.window_hours is None:
                 raise ValueError("a rows read names its window_hours")
-        elif self.window_hours is not None:
-            raise ValueError("window_hours is only for a rows read")
+        elif (
+            self.query is not EnumReaderQuery.OPEN_CLAIMS
+            and self.window_hours is not None
+        ):
+            raise ValueError("window_hours is only for a rows or an open-claims read")
         return self
 
 

@@ -335,6 +335,6 @@ def test_runtime_discovery_routes_nothing_to_the_new_operation() -> None:
     assert operations == ["triage_prs"]
     assert "HandlerClassifyHeadChecks" not in handler_names
     assert contract.event_bus is not None
-    assert list(contract.event_bus.subscribe_topics) == [
-        "onex.evt.omnimarket.pr-lifecycle-inventory-completed.v1"
-    ]
+    # OMN-24121: the node no longer subscribes the inventory topic — its route
+    # could not validate the inventory event, and triage is called in process.
+    assert list(contract.event_bus.subscribe_topics) == []
