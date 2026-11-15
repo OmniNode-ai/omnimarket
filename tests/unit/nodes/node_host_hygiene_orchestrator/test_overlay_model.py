@@ -125,7 +125,7 @@ def test_overlay_without_event_bus_leaves_it_none() -> None:
 def test_event_bus_unknown_key_refused() -> None:
     doc = _valid_overlay()
     doc["event_bus"] = {"type": "kafka", "lane": "dev", "nonsense": 1}
-    with pytest.raises(ValidationError, match="event_bus"):
+    with pytest.raises(ValidationError, match="event_bus.nonsense"):
         ModelHostHygieneOrchestratorOverlay.model_validate(doc)
 
 

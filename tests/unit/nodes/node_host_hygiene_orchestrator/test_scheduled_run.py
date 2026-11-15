@@ -18,6 +18,9 @@ import yaml
 from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 
 from omnimarket.handlers.schedule_gate import ScheduleGate
+from omnimarket.models.model_host_capacity_advertisement import (
+    ModelHostCapacityAdvertisement,
+)
 from omnimarket.models.model_host_disk_reading import (
     ModelDiskClassReading,
     ModelHostDiskRead,
@@ -41,6 +44,9 @@ from omnimarket.nodes.node_host_hygiene_orchestrator.handlers.contract_config im
 from omnimarket.nodes.node_host_hygiene_orchestrator.handlers.handler_host_hygiene_scheduled import (
     NODE_NAME,
     HandlerHostHygieneScheduled,
+)
+from omnimarket.nodes.node_host_hygiene_orchestrator.handlers.host_capacity_readings import (
+    HostCapacityStore,
 )
 from omnimarket.nodes.node_host_hygiene_orchestrator.handlers.host_disk_readings import (
     HostDiskReadingStore,
@@ -103,13 +109,37 @@ def _store_with_reading(
     return store
 
 
+def _fresh_capacity(
+    overlay: ModelHostHygieneOrchestratorOverlay, now: dt.datetime = T0
+) -> HostCapacityStore:
+    """A fresh, clean advertisement for every declared host: none is held."""
+    capacity = HostCapacityStore(max_hosts=8)
+    for row in overlay.hosts:
+        capacity.record(
+            ModelHostCapacityAdvertisement(
+                host_name=row.name,
+                cores=8,
+                load1=0.1,
+                mem_available_bytes=1 << 30,
+                advertised_at=now - dt.timedelta(seconds=10),
+                cadence_seconds=10,
+            )
+        )
+    return capacity
+
+
 def _handler(
-    store: HostDiskReadingStore, sender: InMemoryHostHygieneSender
+    store: HostDiskReadingStore,
+    sender: InMemoryHostHygieneSender,
+    capacity: HostCapacityStore | None = None,
 ) -> HandlerHostHygieneScheduled:
     overlay = _overlay()
+    if capacity is None:
+        capacity = _fresh_capacity(overlay)
     return HandlerHostHygieneScheduled(
         gate=ScheduleGate(NODE_NAME, declaration=overlay),
         store=store,
+        capacity=capacity,
         sender=sender,
         clock=lambda: T0 + dt.timedelta(seconds=5),
     )
@@ -243,6 +273,7 @@ async def test_a_cleanup_that_ran_waits_its_interval_even_when_it_failed() -> No
     later = T0 + dt.timedelta(seconds=overlay.run_interval_seconds + 1)
     store = _store_with_reading(90, later - dt.timedelta(seconds=30))
     handler._store = store  # a fresh reading for the later tick
+    handler._capacity = _fresh_capacity(overlay, later)
     run, _ = _payloads(await handler.handle(_tick(later)))
 
     reasons = {item.cleanup_id: item.reason for item in run.decided}
@@ -268,6 +299,7 @@ async def test_a_unit_that_never_reached_its_host_is_sent_again_on_the_next_due_
 
     later = T0 + dt.timedelta(seconds=overlay.run_interval_seconds + 1)
     handler._store = _store_with_reading(90, later - dt.timedelta(seconds=30))
+    handler._capacity = _fresh_capacity(overlay, later)
     await handler.handle(_tick(later))
 
     assert len(sender.sent) == 4

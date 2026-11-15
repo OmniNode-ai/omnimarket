@@ -3,7 +3,9 @@
 """HandlerHostHygieneDecision: per (host, cleanup) due decisions, as a pure function.
 
 Definition-B compute: ``handle(request: ModelHostHygieneDecisionRequest) -> ModelHostHygieneDecision``.
-No clock (``now`` is an input), no I/O, no hard-coded threshold.
+No clock (``now`` is an input), no I/O, no hard-coded threshold. A host whose facts carry a
+non-empty ``held_reason`` is held, so every one of its cleanups is decided not due as
+``HOST_HELD`` before the interval, pressure and unread rules.
 """
 
 from __future__ import annotations
@@ -42,16 +44,19 @@ def decide_host_hygiene(
         }
         for cleanup_id in host_facts.cleanup_ids:
             policy = policy_by_id[cleanup_id]
-            due, reason = _decide_one(
-                policy,
-                fresh=fresh,
-                used_fraction=used_fraction,
-                since_dispatch=(
-                    (request.now - last_dispatch[cleanup_id]).total_seconds()
-                    if cleanup_id in last_dispatch
-                    else None
-                ),
-            )
+            if host_facts.held_reason:
+                due, reason = False, EnumHostHygieneReason.HOST_HELD
+            else:
+                due, reason = _decide_one(
+                    policy,
+                    fresh=fresh,
+                    used_fraction=used_fraction,
+                    since_dispatch=(
+                        (request.now - last_dispatch[cleanup_id]).total_seconds()
+                        if cleanup_id in last_dispatch
+                        else None
+                    ),
+                )
             items.append(
                 ModelHostHygieneDecisionItem(
                     host=host_facts.host,

@@ -29,6 +29,7 @@ class EnumHostHygieneReason(StrEnum):
     UNREAD_SKIPPED = "unread_skipped"
     BELOW_THRESHOLD = "below_threshold"
     INTERVAL_NOT_ELAPSED = "interval_not_elapsed"
+    HOST_HELD = "host_held"
 
 
 class EnumHostHygieneUnreadPolicy(StrEnum):
@@ -59,6 +60,7 @@ class ModelHostHygieneHostFacts(_Frozen):
     cleanup_ids: tuple[str, ...] = Field(min_length=1)
     reading: ModelHostHygieneReading | None = None
     last_dispatched: tuple[ModelHostHygieneLastDispatch, ...] = ()
+    held_reason: str = ""
 
 
 class ModelHostHygieneDecisionRequest(_Frozen):

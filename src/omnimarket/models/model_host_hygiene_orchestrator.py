@@ -120,6 +120,19 @@ class ModelHostHygieneOrchestratorOverlay(ModelScheduleDeclaration):
                     raise ValueError(
                         f"host {h.name!r} declares unknown cleanup id {cid!r}"
                     )
+        # the run-node reply lane and the lab-work unit lane must be one bus
+        if (
+            self.event_bus is not None
+            and self.lab_work.bus_lane is not None
+            and self.event_bus.lane is not None
+            and self.event_bus.lane != self.lab_work.bus_lane
+        ):
+            raise ValueError(
+                "event_bus lane "
+                f"{self.event_bus.lane!r} differs from lab_work bus lane "
+                f"{self.lab_work.bus_lane!r}; the run-node reply lane and the "
+                "lab-work unit lane must be one bus"
+            )
         return self
 
 
@@ -148,6 +161,13 @@ class EnumHostHygieneRunOutcome(StrEnum):
     PARTIAL = "partial"
     FAILED = "failed"
     NOTHING_DUE = "nothing_due"
+
+
+class ModelHostHygieneRunRequested(_Frozen):
+    """An on-demand request to run host hygiene now, carrying the caller's context."""
+
+    requested_by: str = ""
+    reason: str = ""
 
 
 class ModelHostHygieneRunCompleted(_Frozen):
@@ -186,6 +206,7 @@ __all__: list[str] = [
     "ModelHostHygieneLabWork",
     "ModelHostHygieneOrchestratorOverlay",
     "ModelHostHygieneRunCompleted",
+    "ModelHostHygieneRunRequested",
     "ModelHostHygieneUnitResult",
     "run_outcome",
 ]

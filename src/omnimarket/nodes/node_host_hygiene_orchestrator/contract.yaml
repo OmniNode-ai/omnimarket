@@ -15,8 +15,9 @@ contract_version:
   minor: 0
   patch: 0
 node_version: 1.0.0
-description: Records host disk readings and, on a runtime tick, dispatches the due host hygiene
-  cleanups as lab work units; the cleanups, hosts and thresholds come from the overlay.
+description: Records host disk readings and, on a runtime tick or an on-demand command, dispatches the due host hygiene
+  cleanups as lab work units; the cleanups, hosts and thresholds come from the overlay; which
+  hosts are held is read from their capacity advertisements.
 contract_name: node_host_hygiene_orchestrator
 node_name: node_host_hygiene_orchestrator
 handler_routing:
@@ -40,6 +41,24 @@ handler_routing:
     event_model:
       name: ModelHostDiskReadFailed
       module: omnimarket.models.model_host_disk_reading
+  - operation: record_host_capacity
+    topic: onex.evt.omnimarket.lab-host-capacity-advertised.v1
+    message_category: event
+    handler:
+      name: HandlerHostHygieneRecordCapacity
+      module: omnimarket.nodes.node_host_hygiene_orchestrator.handlers.handler_host_hygiene_record_read
+    event_model:
+      name: ModelHostCapacityAdvertisement
+      module: omnimarket.models.model_host_capacity_advertisement
+  - operation: host_hygiene.run_requested
+    topic: onex.cmd.omnimarket.host-hygiene-run-requested.v1
+    message_category: command
+    handler:
+      name: HandlerHostHygieneRunRequested
+      module: omnimarket.nodes.node_host_hygiene_orchestrator.handlers.handler_host_hygiene_run_requested
+    event_model:
+      name: ModelHostHygieneRunRequested
+      module: omnimarket.models.model_host_hygiene_orchestrator
   - operation: host_hygiene.scheduled_run
     topic: onex.intent.platform.runtime-tick.v1
     handler:
@@ -54,9 +73,11 @@ input_subscriptions:
   operation: host_hygiene.scheduled_run
 event_bus:
   subscribe_topics:
+  - onex.cmd.omnimarket.host-hygiene-run-requested.v1
   - onex.evt.omnimarket.host-disk-read.v1
   - onex.evt.omnimarket.host-disk-read-failed.v1
   - onex.intent.platform.runtime-tick.v1
+  - onex.evt.omnimarket.lab-host-capacity-advertised.v1
   publish_topics:
   - onex.evt.omnimarket.host-hygiene-run-completed.v1
   - onex.evt.omnimarket.schedule-run.v1
@@ -116,5 +137,7 @@ broker_acl_grants:
   - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.lab-work-unit-failed.v1, operation: DESCRIBE}
   - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.lab-host-capacity-advertised.v1, operation: READ}
   - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.lab-host-capacity-advertised.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.host-hygiene-run-requested.v1, operation: READ}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.host-hygiene-run-requested.v1, operation: DESCRIBE}
   - {resource_type: GROUP, pattern: PREFIXED, name: local.omnimarket.node_host_hygiene_orchestrator.consume.v1., operation: READ}
   - {resource_type: GROUP, pattern: PREFIXED, name: local.omnimarket.node_host_hygiene_orchestrator.consume.v1., operation: DESCRIBE}

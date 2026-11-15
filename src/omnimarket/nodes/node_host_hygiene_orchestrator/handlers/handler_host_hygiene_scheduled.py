@@ -15,7 +15,6 @@ tick sends it again.
 
 from __future__ import annotations
 
-import asyncio
 import datetime as dt
 import uuid
 from collections.abc import Callable, Mapping
@@ -27,34 +26,27 @@ from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 from omnimarket.handlers.node_overlay_reader import NodeOverlayNotFoundError
 from omnimarket.handlers.schedule_gate import ScheduleGate
 from omnimarket.handlers.scheduled_overlay_refusal import ScheduledOverlayRefusalLatch
-from omnimarket.models.model_host_hygiene import (
-    ModelHostHygieneCleanupPolicy,
-    ModelHostHygieneDecisionRequest,
-    ModelHostHygieneHostFacts,
-    ModelHostHygieneLastDispatch,
-)
 from omnimarket.models.model_host_hygiene_orchestrator import (
     EnumHostHygieneRunOutcome,
     EnumHostHygieneUnitOutcome,
     ModelHostHygieneOrchestratorOverlay,
     ModelHostHygieneRunCompleted,
-    run_outcome,
-)
-from omnimarket.nodes.node_host_hygiene_decision_compute.handlers.handler_host_hygiene_decision import (
-    decide_host_hygiene,
 )
 from omnimarket.nodes.node_host_hygiene_orchestrator.handlers.contract_config import (
     run_completed_topic,
     schedule_run_topic,
 )
-from omnimarket.nodes.node_host_hygiene_orchestrator.handlers.dispatch_host_hygiene import (
-    DispatchHostHygieneUnits,
-)
-from omnimarket.nodes.node_host_hygiene_orchestrator.handlers.handler_host_hygiene_record_read import (
-    HOST_DISK_READINGS,
+from omnimarket.nodes.node_host_hygiene_orchestrator.handlers.host_capacity_readings import (
+    HostCapacityStore,
 )
 from omnimarket.nodes.node_host_hygiene_orchestrator.handlers.host_disk_readings import (
     HostDiskReadingStore,
+)
+from omnimarket.nodes.node_host_hygiene_orchestrator.handlers.host_hygiene_run import (
+    DISPATCH_MEMORY,
+    DispatchMemory,
+    HostHygieneRun,
+    NODE_NAME,
 )
 from omnimarket.nodes.node_host_hygiene_orchestrator.handlers.protocols import (
     ProtocolHostHygieneLabWorkSender,
@@ -63,16 +55,7 @@ from omnimarket.nodes.node_host_hygiene_orchestrator.handlers.sender_factory imp
     build_sender,
 )
 
-NODE_NAME = "node_host_hygiene_orchestrator"
 HANDLER_ID = f"{NODE_NAME}.host_hygiene.scheduled_run"
-#: The outcomes that mean the command ran on the host, so the cleanup waits its interval.
-_RAN = frozenset(
-    {
-        EnumHostHygieneUnitOutcome.COMPLETED,
-        EnumHostHygieneUnitOutcome.FAILED,
-        EnumHostHygieneUnitOutcome.TIMED_OUT,
-    }
-)
 
 
 def _utc_now() -> dt.datetime:
@@ -87,18 +70,30 @@ class HandlerHostHygieneScheduled:
         *,
         gate: ScheduleGate | None = None,
         store: HostDiskReadingStore | None = None,
+        capacity: HostCapacityStore | None = None,
         sender: ProtocolHostHygieneLabWorkSender | None = None,
         environ: Mapping[str, str] | None = None,
         clock: Callable[[], dt.datetime] = _utc_now,
+        memory: DispatchMemory | None = None,
     ) -> None:
         self._gate = gate or ScheduleGate(
             NODE_NAME, model=ModelHostHygieneOrchestratorOverlay, environ=environ
         )
-        self._store = HOST_DISK_READINGS if store is None else store
+        self._store = store
+        self._capacity = capacity
         self._sender = sender
         self._clock = clock
         self._refusals = ScheduledOverlayRefusalLatch(NODE_NAME)
-        self._dispatched: dict[tuple[str, str], dt.datetime] = {}
+        self._memory = memory if memory is not None else DISPATCH_MEMORY
+        self._run = HostHygieneRun(
+            gate=self._gate,
+            store=self._store,
+            capacity=self._capacity,
+            sender=self._sender,
+            environ=environ,
+            clock=self._clock,
+            memory=self._memory,
+        )
 
     def _output(
         self, correlation_id: uuid.UUID, events: tuple[ModelEventEnvelope[object], ...]
@@ -110,83 +105,25 @@ class HandlerHostHygieneScheduled:
             events=events,
         )
 
-    def _facts(
-        self, overlay: ModelHostHygieneOrchestratorOverlay
-    ) -> tuple[ModelHostHygieneHostFacts, ...]:
-        return tuple(
-            ModelHostHygieneHostFacts(
-                host=row.name,
-                cleanup_ids=row.cleanup_ids,
-                reading=self._store.reading_for(row.name, row.pressure_volume),
-                last_dispatched=tuple(
-                    ModelHostHygieneLastDispatch(
-                        cleanup_id=cleanup_id,
-                        dispatched_at=self._dispatched[(row.name, cleanup_id)],
-                    )
-                    for cleanup_id in row.cleanup_ids
-                    if (row.name, cleanup_id) in self._dispatched
-                ),
-            )
-            for row in overlay.hosts
-        )
-
     async def handle(self, request: ModelRuntimeTick) -> ModelHandlerOutput[None]:
         correlation_id = uuid.uuid5(
             uuid.NAMESPACE_URL, f"omnimarket:host-hygiene-tick:{request.tick_id}"
         )
         try:
-            overlay = self._gate.declaration()
-            if not isinstance(overlay, ModelHostHygieneOrchestratorOverlay):
-                raise NodeOverlayNotFoundError(
-                    f"{NODE_NAME}: the overlay is not a host hygiene orchestrator overlay"
-                )
-        except NodeOverlayNotFoundError as exc:
-            self._refusals.refuse(exc)
+            overlay = self._run.declaration()
+        except NodeOverlayNotFoundError:
             return self._output(correlation_id, ())
-        self._refusals.recovered()
+
         now = request.now.astimezone(dt.UTC)
         if not self._gate.due(now):
             return self._output(correlation_id, ())
         self._gate.mark(now)
 
-        decision = decide_host_hygiene(
-            ModelHostHygieneDecisionRequest(
-                now=now,
-                max_reading_age_seconds=overlay.max_reading_age_seconds,
-                cleanups=tuple(
-                    ModelHostHygieneCleanupPolicy(
-                        cleanup_id=c.cleanup_id,
-                        min_used_fraction=c.min_used_fraction,
-                        min_interval_seconds=c.min_interval_seconds,
-                        when_unread=c.when_unread,
-                    )
-                    for c in overlay.cleanups
-                ),
-                hosts=self._facts(overlay),
-            )
+        run, units = await self._run.run(
+            overlay, now, f"{overlay.job_id}-{request.tick_id}", str(request.tick_id)
         )
-        sender = self._sender if self._sender is not None else build_sender(overlay)
-        # sender.send blocks until the host's receipt; the runtime calls handle on its loop, so run the dispatch off it.
-        units = await asyncio.to_thread(
-            DispatchHostHygieneUnits(overlay, sender).dispatch, decision.due_items()
-        )
-        for unit in units:
-            if unit.outcome in _RAN:
-                self._dispatched[(unit.host, unit.cleanup_id)] = now
 
-        outcome = run_outcome(units)
-        finished_at = self._clock()
-        run = ModelHostHygieneRunCompleted(
-            run_id=f"{overlay.job_id}-{request.tick_id}",
-            job_id=overlay.job_id,
-            tick_id=str(request.tick_id),
-            started_at=now,
-            finished_at=finished_at,
-            outcome=outcome,
-            decided=decision.items,
-            units=units,
-        )
-        ok = outcome in (
+        ok = run.outcome in (
             EnumHostHygieneRunOutcome.COMPLETED,
             EnumHostHygieneRunOutcome.NOTHING_DUE,
         )
@@ -196,7 +133,7 @@ class HandlerHostHygieneScheduled:
         schedule = self._gate.run_event(
             tick_id=str(request.tick_id),
             scheduled_for=request.now,
-            fired_at=finished_at,
+            fired_at=run.finished_at,
             outcome="completed" if ok else "failed",
             detail=f"units={len(units)} completed={completed} not_completed={len(units) - completed}",
         )
@@ -213,4 +150,4 @@ class HandlerHostHygieneScheduled:
         return self._output(correlation_id, (run_envelope, schedule_envelope))
 
 
-__all__: list[str] = ["NODE_NAME", "HandlerHostHygieneScheduled"]
+__all__: list[str] = ["HANDLER_ID", "HandlerHostHygieneScheduled"]
