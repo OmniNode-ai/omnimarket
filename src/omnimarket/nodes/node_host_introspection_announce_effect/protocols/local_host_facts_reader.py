@@ -16,6 +16,8 @@ import os
 import re
 import shutil
 import subprocess
+import time
+from collections.abc import Callable
 from pathlib import Path
 
 from omnimarket.nodes.node_host_introspection_announce_effect.protocols.protocol_host_facts_reader import (
@@ -36,6 +38,9 @@ from omnimarket.nodes.node_lab_work_unit_effect.protocols.local_host_reader impo
 
 RUNTIMES: tuple[str, ...] = ("docker", "podman", "python3", "node", "uv", "kubectl")
 _VERSION_TIMEOUT_S = 10.0
+#: A reading is reused for this long: versions change when something is installed, and the announcer reads once per
+#: capacity beat (every ten seconds), which would spawn a dozen processes a beat for facts that move rarely.
+FACTS_TTL_SECONDS = 60.0
 _VERSION = re.compile(r"\d+(?:\.\d+)+[\w.+-]*")
 _COMMIT = re.compile(r"\b(?:commit\s+|\()([0-9a-f]{7,40})\b")
 
@@ -69,10 +74,32 @@ def version_and_commit(program: str, path: str) -> tuple[str, str] | None:
 class LocalHostFactsReader:
     """Reads this machine."""
 
-    def __init__(self, home: Path | None = None) -> None:
+    def __init__(
+        self,
+        home: Path | None = None,
+        now: Callable[[], float] = time.monotonic,
+        ttl_seconds: float = FACTS_TTL_SECONDS,
+    ) -> None:
         self._home = home
+        self._now = now
+        self._ttl = ttl_seconds
+        self._cached: tuple[float, tuple[str, ...], HostFactsReading] | None = None
 
     def read(self, software: list[str]) -> HostFactsReading:
+        """The host's facts; a good reading is reused for the TTL, a failed one never is."""
+        key = tuple(sorted(set(software)))
+        stamp = self._now()
+        if (
+            self._cached is not None
+            and self._cached[1] == key
+            and stamp - self._cached[0] < self._ttl
+        ):
+            return self._cached[2]
+        reading = self._read(list(key))
+        self._cached = (stamp, key, reading)
+        return reading
+
+    def _read(self, software: list[str]) -> HostFactsReading:
         cores = os.cpu_count() or 0
         if cores <= 0:
             raise HostFactsUnreadableError("cpu count is unknown")
