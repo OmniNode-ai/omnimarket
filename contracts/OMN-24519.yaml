@@ -33,6 +33,9 @@ dod_evidence:
   - check_type: command
     check_value: sh -c 'for n in node_extraction_fold_compute node_extraction_verify_compute node_transcript_chunk_compute node_review_equivalence_reducer node_review_finding_identity_compute; do test ! -e src/omnimarket/nodes/$n || exit 1; grep -q "^$n = " pyproject.toml && exit 1; done; exit 0'
     cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_retired_nodes_omn24519.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
 - id: dod-omn24519-ac2
   description: 'AC2: the entry point, baseline and allowlist tests pass at the head.'
   source: manual
