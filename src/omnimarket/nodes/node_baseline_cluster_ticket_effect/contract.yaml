@@ -124,7 +124,7 @@ broker_acl_grants:
 dod_evidence:
 - test: src/omnimarket/nodes/node_baseline_cluster_ticket_effect/tests/test_handler_baseline_cluster_ticket.py
   description: Two reports of the same cluster make one ticket and one comment; with the signature search blinded the same two reports make two tickets.
-- test: tests/nodes/node_baseline_cluster_ticket/test_baseline_cluster_ticket_gate_seam.py
+- test: tests/nodes/node_cluster_ticket/test_cluster_ticket_gate_seam.py
   description: The description the node writes passes the real ticket-creation gate, and a description without the Diagnosis or Gate line is refused by it.
 metadata:
   ticket: OMN-19998

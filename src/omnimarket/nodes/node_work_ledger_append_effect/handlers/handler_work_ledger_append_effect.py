@@ -11,6 +11,8 @@ from datetime import datetime
 from typing import Literal
 
 from omnimarket.events.model_ledger_row_event import work_ledger_row_id
+from omnimarket.handlers import ledger_row_grammar as grammar
+from omnimarket.handlers import ledger_running_path_cell as running_path_cell
 from omnimarket.handlers.relay_admission import (
     CoreRelayAdmission,
     load_relay_requires_rule,
@@ -308,6 +310,21 @@ class HandlerWorkLedgerAppendEffect:
                 65,
                 "\n".join((*relay_refusals, self._relay_rule.fix)),
             )
+        # OMN-24535: a TERMINAL that confirms work names the running path (the grammar's own rule, one
+        # source); refused here in file and bus mode alike, before the lock, with nothing appended.
+        from_stamp = running_path_cell.enforced_from()
+        row_number = 0
+        for line in request.rows.splitlines():
+            if not _ROW_START.match(line):
+                continue
+            row_number += 1
+            running_refusal = grammar.running_path_refusal(line, from_stamp)
+            if running_refusal is not None:
+                return receipt(
+                    EnumWorkLedgerAppendStatus.REFUSED,
+                    65,
+                    f"row {row_number}: {running_refusal}",
+                )
         if any(row_type in _AUTHORITY_TYPES for row_type in rows) and (
             authenticated_principal != self._operator_principal
         ):
