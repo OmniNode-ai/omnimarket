@@ -1,0 +1,114 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract — node_work_state_panel_reducer
+#
+# Pure reducer: delta(held_row, event, now) -> decision
+# Folds each scheduled work-state projection event into the panel's persisted
+# row, one row per projector, materialized into the DATABASE via the runtime's
+# state_io dispatch seam (see the `state_io` block below). The handler performs
+# no I/O and makes no database call, and nothing is published.
+name: node_work_state_panel_reducer
+contract_name: node_work_state_panel_reducer
+node_name: node_work_state_panel_reducer
+node_type: reducer
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+
+description: >
+  Pure reducer that folds each projected work-state event into the panel's
+  persisted row. delta(held_row, event, now) -> decision. As of 0.1.0 the state
+  of record is a projector-keyed row in the database, loaded and CAS-persisted by
+  the runtime's state_io dispatch seam; the handler performs no I/O. REDUCER
+  nodes return projections[] only — no events, intents, or result. Nothing is
+  published: the durable output is the row itself, not an emission.
+
+# The durable binding for this reducer's state: one row per projector (the
+# event's `projector` string, the contract-declared `state_io.key`), so the
+# `unread` and `file_sources` profiles fold into separate rows.
+#
+# Rollout rule: the producer (node_work_state_projection_scheduled_effect) and
+# this reducer are installed from the SAME omnimarket revision. The reducer only
+# consumes the producer's wire payload (ModelWorkStateProjectedEvent); it never
+# copies it or re-derives it, and it publishes nothing. A revision mismatch
+# between the two would surface as an undecodable fold (UNDECODABLE), which the
+# row records as its last refusal — a fail-closed, observable refusal, not a
+# silent divergence.
+state_io:
+  database: "${env.ONEX_WORK_STATE_PANEL_STATE_DATABASE:omnibase_infra}"
+  table: "${env.ONEX_WORK_STATE_PANEL_STATE_TABLE:work_state_panel_state}"
+  key: "projector"
+  codec:
+    module: "omnimarket.nodes.node_work_state_panel_reducer.state_codec"
+    name: "StateIoCodec"
+
+input_model:
+  name: ModelWorkStateProjectedEvent
+  module: omnimarket.models.work_state_projection.model_work_state_projected_event
+  # This is the WIRE payload of ONE subscribed message, the producer's own class
+  # imported verbatim — never copied. Prior state is supplied by the runtime
+  # from the `state_io` row above, not read by the handler from anywhere.
+  description: "The wire payload of one scheduled work-state projection run."
+
+output_model:
+  name: ModelWorkStatePanelRow
+  module: omnimarket.models.work_state_panel.model_work_state_panel_row
+  description: "The panel row after applying the event (HELD or EMPTY)."
+
+handler:
+  module: omnimarket.nodes.node_work_state_panel_reducer.handlers.handler_work_state_panel_reducer
+  class: HandlerWorkStatePanelReducer
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: reduce_work_state_panel
+      handler:
+        name: HandlerWorkStatePanelReducer
+        module: omnimarket.nodes.node_work_state_panel_reducer.handlers.handler_work_state_panel_reducer
+      handler_module: omnimarket.nodes.node_work_state_panel_reducer.handlers.handler_work_state_panel_reducer
+      event_model:
+        name: ModelWorkStateProjectedEvent
+        module: omnimarket.models.work_state_projection.model_work_state_projected_event
+      event_type: omnimarket.work-state-projected
+      description: >
+        Fold one projected work-state event into the projector-keyed panel row,
+        deciding accepted / duplicate / superseded / key_mismatch / undecodable /
+        future_dated.
+
+input_subscriptions:
+  - topic: "onex.evt.omnimarket.work-state-projected.v1"
+    operation: "reduce_work_state_panel"
+
+descriptor:
+  # `purity: pure` is literally true: the handler performs no I/O and makes no
+  # database call. The runtime's state_io seam owns the database read and write.
+  node_archetype: reducer
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.work-state-projected.v1
+
+# The broker grants the node's one topic needs (OMN-24005 coverage gate): the runtime login reads the work-state projected event. The
+# consumer group rows follow once the runtime's derived group name is read (plan S0(e)).
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.work-state-projected.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.work-state-projected.v1, operation: DESCRIBE}
+
+metadata:
+  transport_type: kafka
+  description: "Work-state panel reducer — folds each projected work-state event into the projector-keyed panel row"
+  author: "OmniNode Platform Team"
+  created: "2026-11-14"
+  tags:
+    - reducer
+    - work-state
+    - panel
+    - OMN-19998
+  related_tickets:
+    - OMN-19998
