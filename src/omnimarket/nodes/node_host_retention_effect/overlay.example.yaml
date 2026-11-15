@@ -138,10 +138,50 @@ hosts:
           buckets: [archive-v0, git-v0/checkouts]
           keep_days: 7
   # macOS host with uv cache and pre-commit store
+  # A launching host (a Mac): its receipt store and lab-run runs folder, archived, never plain deleted (node_retention_cleanup's contract keeps the
+  # operator's archive consent for these two folders and lists them as disabled entries: this node is their one owner). A lane the ledger
+  # window holds goes by its TERMINAL; an older lane goes by its own receipt files; whatever neither can say is kept and counted as unknown.
   - name: pool-mac
     docker_timeout_seconds: 5
     docker_mount_guard: false
+    lane_run_roots: [~/lab-run/runs]
+    receipt_roots: [~/.local/state/omni/remote-lanes]
+    unit_roots: [~/Library/LaunchAgents]
     age_classes:
+      - name: remote-lane-receipts
+        kind: lane_results
+        root: ~/.local/state/omni/remote-lanes
+        keep_days: 14
+        archive: true
+        terminal:
+          loader:
+            argv: [$OMNI_HOME/.onex-dispatch-venv/bin/python, -m, omnimarket.nodes.node_ledger_rows_loader_effect]
+            reader: host-retention
+            window_hours: 48
+            timeout_seconds: 600
+          terminal_keep_days: 1
+          lane_pattern: "(?P<lane>.+)"
+          receipt:
+            root: ~/.local/state/omni/remote-lanes
+            glob: "{lane}/rlane-*.json"
+            dead_after_days: 30
+      - name: lab-run-runs
+        kind: lane_results
+        root: ~/lab-run/runs
+        keep_days: 7
+        archive: true
+        terminal:
+          loader:
+            argv: [$OMNI_HOME/.onex-dispatch-venv/bin/python, -m, omnimarket.nodes.node_ledger_rows_loader_effect]
+            reader: host-retention
+            window_hours: 48
+            timeout_seconds: 600
+          terminal_keep_days: 1
+          lane_pattern: '(?P<run>(?:rlane-)?(?P<lane>.+)-[0-9a-f]{6})(?:\.ctx)?'
+          receipt:
+            root: ~/.local/state/omni/remote-lanes
+            glob: "*/{run}.json"
+            dead_after_days: 30
       - name: pre-commit-store
         kind: pre_commit_store
         root: ~/.cache/pre-commit

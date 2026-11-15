@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-24543
 title: Aged lane receipts and run folders are removed only once the ledger shows the lane finished
-summary: The orchestrating Mac holds about 130 GiB of our own state with no step that ages it (lab-run runs 35 GiB, remote-lane receipts 10 GiB, more than 5,000 receipt folders older than a week). This adds a TERMINAL guard to the lane_results classes of node_host_retention_effect, so a receipt or run folder goes only when it is older than its keep window and its lane has a TERMINAL on the ledger (and no later CLAIM). The TERMINAL is read by running the ledger rows loader the overlay names, so the node opens no ledger file, and a ledger that cannot be read removes nothing. A launchd unit template runs the pass on the Mac, and the Mac's row and the reader name are overlay values.
+summary: "The orchestrating Mac holds about 155 GiB of our own state with no step that ages it (session transcripts 49, lab-run runs 35, worktrees 24; remote-lane receipts 12,896 folders). node_host_retention_effect is the ONE owner of the receipt store and the lab-run runs folder (node_retention_cleanup keeps its three entries on them disabled, as the archive rule and consent). A lane_results entry is ARCHIVED into the same archive root and removed only after the verified read-back, and only when it is older than its keep window and its lane finished: a ledger TERMINAL old enough (read through the ledger rows loader, no ledger file opened), or for a lane the ledger window does not hold, its own receipt files all final, or not final and untouched for a declared dead-lane age. A lane the ledger shows open, whose name names no lane, or whose finished-ness no source can say is kept (the unknown count is printed), and an unreadable ledger removes nothing. The launchd unit template runs in dry run until the first reading is taken."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -10,11 +10,11 @@ requirements:
   statement: A lane_results entry is removed only when it is older than its keep window and its lane has a TERMINAL on the ledger, read through the ledger rows loader.
   acceptance:
   - id: AC1
-    statement: "AC1: a dry run lists every receipt or run folder older than 7 days whose lane has a ledger TERMINAL at least the declared days old, with its bytes, and removes nothing, and a real run removes exactly that list -- falsifier: uv run pytest tests/nodes/node_host_retention_effect/test_host_retention_terminal.py -k 'dry_run or execute' -q fails at the merge base"
+    statement: "AC1: a dry run lists every receipt or run folder older than 7 days whose lane has a finished row on the ledger at least 1 day old, with its bytes, and removes nothing; a real run removes exactly that list -- falsifier: uv run pytest tests/nodes/node_host_retention_effect/test_host_retention_terminal.py -k \"dry_run or execute\" fails at the merge base"
   - id: AC2
-    statement: "AC2: a folder whose lane has no TERMINAL, whose TERMINAL is younger than the window, whose name names no lane, or when the ledger cannot be read, is never removed -- falsifier: uv run pytest tests/nodes/node_host_retention_effect/test_host_retention_terminal.py -k kept -q fails at the merge base"
+    statement: "AC2: a folder whose lane has no finished row, whose finished row is younger than 1 day, whose name names no lane, or when the ledger cannot be read, is never removed -- falsifier: uv run pytest tests/nodes/node_host_retention_effect/test_host_retention_terminal.py -k kept fails at the merge base"
   - id: AC3
-    statement: "AC3: the loader's own printed rows are what the retention step reads as closed lanes, the example overlay stays inside the contract bounds, and the Mac timer runs this node's command line -- falsifier: uv run pytest tests/nodes/node_host_retention_effect/test_host_retention_seams.py -k 'ledger_seam or overlay_seam or unit_seam' -q fails at the merge base"
+    statement: "AC3: the Mac row and its unit declare the two folders and the ledger paths from overlay values, and what the ledger rows loader prints is what the retention step reads as finished lanes -- falsifier: uv run pytest tests/nodes/node_host_retention_effect/test_host_retention_seams.py -k \"ledger_seam or overlay_seam or unit_seam\" fails at the merge base"
   - id: AC4
     statement: "AC4: integrated: the retention unit run on the Mac lists removed bytes and the remote-lane receipt folder count falls from 12,896, read back with the time -- falsifier: the Mac run's JSON shows removed bytes above zero and a later count of the receipt folders below 12,896"
 evidence_requirements:
