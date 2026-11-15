@@ -8,7 +8,9 @@ published as a ``ModelHostInstallReduceCommand`` carrying the last record the re
 sends nothing further for that install until the reducer's next record comes back (it never sends a second step with a
 stale prior). Steps: dry-run render and install through the registry installer effect, snapshot, read and restore through
 the file effect, the readback compute, one run read (registry mode status), and an automatic rollback after a failed
-install, verify or run.
+install, verify or run. The typed install request for a unit tree or plugin tree at a merged commit is a second typed
+input: the orchestrator remembers it by id and the per-host install request effect carries it out; the result that
+effect publishes ends the request with the same terminal event.
 """
 
 from __future__ import annotations
@@ -44,6 +46,11 @@ from omnimarket.models.host_install_state import (
 )
 from omnimarket.models.host_installer_registry_units import (
     ModelRegistryUnitsResult,
+)
+from omnimarket.models.install_request import (
+    EnumInstallRequestStatus,
+    ModelInstallRequest,
+    ModelInstallRequestResult,
 )
 from omnimarket.nodes.node_host_install_orchestrator.models.model_host_install_orchestrator import (
     EnumHostInstallNext,
@@ -112,6 +119,7 @@ class HandlerHostInstallOrchestrator:
         self._configured_overlay = overlay
         self._clock = clock if clock is not None else _utc_now
         self._contexts: OrderedDict[UUID, ModelHostInstallContext] = OrderedDict()
+        self._tree_requests: OrderedDict[UUID, ModelInstallRequest] = OrderedDict()
 
     @property
     def _overlay(self) -> ModelHostInstallOrchestratorOverlay:
@@ -121,7 +129,7 @@ class HandlerHostInstallOrchestrator:
 
     @property
     def known_installs(self) -> tuple[UUID, ...]:
-        return tuple(self._contexts)
+        return tuple(self._contexts) + tuple(self._tree_requests)
 
     async def handle(
         self, envelope: ModelEventEnvelope[Any]
@@ -156,6 +164,10 @@ class HandlerHostInstallOrchestrator:
             return self._on_readback_result(payload)
         if isinstance(payload, ModelHostInstallRecord):
             return self._on_record(payload)
+        if isinstance(payload, ModelInstallRequest):
+            return self._on_install_request(payload)
+        if isinstance(payload, ModelInstallRequestResult):
+            return self._on_install_result(payload)
         logger.warning("host install orchestrator ignored %s", type(payload).__name__)
         return ()
 
@@ -166,6 +178,12 @@ class HandlerHostInstallOrchestrator:
         self._contexts.move_to_end(key)
         while len(self._contexts) > self._overlay.context_limit:
             self._contexts.popitem(last=False)
+
+    def _remember_tree_request(self, request: ModelInstallRequest) -> None:
+        self._tree_requests[request.request_id] = request
+        self._tree_requests.move_to_end(request.request_id)
+        while len(self._tree_requests) > self._overlay.context_limit:
+            self._tree_requests.popitem(last=False)
 
     def _awaiting(
         self, key: UUID, phase: EnumHostInstallPhase
@@ -295,7 +313,7 @@ class HandlerHostInstallOrchestrator:
             ),
         )
 
-    # -- the five consumed payloads ------------------------------------------------------------------------------
+    # -- the seven consumed payloads -----------------------------------------------------------------------------
 
     def _on_request(
         self, request: ModelHostInstallRequest
@@ -496,3 +514,50 @@ class HandlerHostInstallOrchestrator:
             return (self._registry(request, "status"),)
         self._remember(key, context.model_copy(update={"phase": PHASE.ROLLBACK}))
         return (self._file(request, "restore"),)
+
+    def _on_install_request(
+        self, request: ModelInstallRequest
+    ) -> tuple[ModelHostInstallOutput, ...]:
+        self._remember_tree_request(request)
+        return ()
+
+    def _on_install_result(
+        self, result: ModelInstallRequestResult
+    ) -> tuple[ModelHostInstallOutput, ...]:
+        request = self._tree_requests.pop(result.request_id, None)
+        if request is None:
+            logger.warning(
+                "host install orchestrator ignored an install request result for %s",
+                result.request_id,
+            )
+            return ()
+        return (self._tree_completed(result),)
+
+    def _tree_completed(
+        self, result: ModelInstallRequestResult
+    ) -> ModelHostInstallOutput:
+        outcome: Literal["installed", "rolled_back", "failed"]
+        if result.status is EnumInstallRequestStatus.VERIFIED:
+            state = EnumHostInstallState.RUN_OK
+            outcome = "installed"
+        elif result.rolled_back:
+            state = EnumHostInstallState.ROLLED_BACK
+            outcome = "rolled_back"
+        else:
+            state = EnumHostInstallState.FAILED
+            outcome = "failed"
+        return ModelHostInstallOutput(
+            topic=TOPIC_COMPLETED,
+            payload=ModelHostInstallCompleted(
+                correlation_id=result.request_id,
+                host=result.host,
+                unit=result.unit,
+                final_state=state,
+                outcome=outcome,
+                installed_digest="",
+                detail=self._cut(
+                    f"{result.status}:{result.reason} revision={result.revision} "
+                    f"{result.verify_line}".strip()
+                ),
+            ),
+        )

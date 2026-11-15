@@ -9,6 +9,7 @@ from typing import Literal
 from omnibase_core.types import JsonType
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.models.install_request import ModelInstallOwedReading
 from omnimarket.models.lab_fill import ModelLabFillPrLandFacts, ModelLabFillPrLandPlan
 from omnimarket.models.model_engine_experiment import ModelEngineExperimentRow
 from omnimarket.models.model_lab_daemon_drift import ModelLabDaemonDrift
@@ -503,6 +504,13 @@ class ModelThroughputTickRequest(BaseModel):
         default=2.0,
         gt=0,
         description="A daemon lagging its source tip for longer than this is MISSING; a younger lag is a NOTE.",
+    )
+    install_owed: ModelInstallOwedReading | None = Field(
+        default=None,
+        description=(
+            "The install request owed reading read off the bus; None skips the "
+            "install-owed finding and its `checked` entry (OMN-24546)."
+        ),
     )
     repo_status: ModelRepoStatusFacts | None = Field(
         default=None,

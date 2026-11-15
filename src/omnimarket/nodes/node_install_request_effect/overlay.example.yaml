@@ -10,22 +10,43 @@ max_command_age_seconds: 21600
 output_max_chars: 400
 journal_dir_env: EXAMPLE_INSTALL_JOURNAL_DIR
 journal_file: install-request-results.jsonl
+# The login the lane publishes install requests under (the in-memory bus holds no broker login to read).
+publisher_login_env: EXAMPLE_INSTALL_PUBLISHER_LOGIN
+# How long the owed reading waits past the last envelope the bus hands it before it counts the log read.
+owed_quiet_seconds: 30
+git_command: [/usr/bin/git]
 hosts:
   - name: example-host
     blocker_files:
       - /tmp/example-install.lock
+    # The only logins whose requests this host answers; every other publisher is refused, not journalled.
+    allowed_publishers: [example-lane-bot]
     units:
       - name: example-unit
         kind: unit-tree
-        repositories: [Example-Org/example-repo]
+        repositories:
+          - name: Example-Org/example-repo
+            mirror_path: /srv/example-host/mirrors/example-repo
+            remote_ref_prefix: "origin/"
+            landing_branch: main
+            review_branches: [integration]
         prepare_argv: [/usr/bin/env, example-refresh, "{repository}", "{ref}"]
-        verify_prefixes:
-          - [/usr/bin/env, example-verify]
-        branch_ref_prefix: origin/
+        verifies:
+          - name: example-verify
+            argv: [/usr/bin/env, example-verify, --unit, example-unit]
+            expected_line: "example-unit ok"
       - name: example-plugin-tree
         kind: plugin-tree
-        repositories: [Example-Org/example-plugin-repo]
-        installer_argv: [/usr/bin/env, example-install-tree, --branch, "{ref}"]
-        verify_prefixes:
-          - [/usr/bin/env, example-verify-plugin]
+        repositories:
+          - name: Example-Org/example-plugin-repo
+            mirror_path: /srv/example-host/mirrors/example-plugin-repo
+            remote_ref_prefix: "origin/"
+            landing_branch: main
+        installer_argv:
+          [/usr/bin/env, example-install-tree, --branch, "{ref}", --commit, "{sha}"]
+        rollback_argv: [/usr/bin/env, example-install-tree, --branch, "{ref}", --force]
+        verifies:
+          - name: example-verify-plugin
+            argv: [/usr/bin/env, example-verify-plugin, --tree]
+            expected_line: "installed at {revision}"
         revision_pattern: "installed revision ([0-9a-f]{7,40})"

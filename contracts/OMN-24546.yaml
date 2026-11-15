@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-24546
 title: "Install requests: a lane ends with a typed request the host installer carries out"
-summary: A lane that ends with a change needing an install on a named host publishes one typed install request on the bus; the installer on that host decides, installs through the declared installer with its own rollback, runs the request's verify command and publishes a typed result. The request owns the NOT RUNNING line until a verified result exists, and a request not verified inside its expiry prints one line for the throughput tick.
+summary: A lane that ends with a change needing an install on a named host publishes one typed install request on the bus; the installer on that host decides, installs through the declared installer with its own rollback, runs the unit's declared verify (the request only names which) and publishes a typed result. The request owns the NOT RUNNING line until a verified result exists, and a request not verified inside its expiry prints one line for the throughput tick.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -47,7 +47,7 @@ dod_evidence:
     check_value: uv run pytest tests/unit/nodes/node_install_request_owed_compute -q -p no:randomly --no-cov
     cwd: .
 - id: dod-omn24546-ac3
-  description: "AC3: the effect tests pass at the head, covering the golden unit-tree and plugin-tree installs and the typed refusals; the failing control lets an undeclared verify command through and the runner is then called."
+  description: "AC3: the effect tests pass at the head, covering the golden unit-tree and plugin-tree installs and the typed refusals; the failing controls let an undeclared verify name, an unlisted publisher, an unmerged commit, an older commit and a failed verify without rollback through, and each then runs the installer or ends with no restore."
   source: manual
   binds_ac:
   - AC3
@@ -72,6 +72,24 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/nodes/node_install_request_effect/test_install_request_runtime.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn24546-ac3-real-git
+  description: "AC3: the mirror reads (resolve a ref to a commit, merged into the landing branch, older than the installed one) run against real git in a temporary repository; the failing control is an unmerged branch that is refused and never installed."
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_install_request_effect/test_install_request_real_git.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn24546-ac4-orchestrator
+  description: "AC4: the typed request is an input of node_host_install_orchestrator (its request and result routes end one install with the host install terminal event); the failing control is a result for an unknown request that must publish nothing."
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_install_orchestrator -q -p no:randomly --no-cov
     cwd: .
 - id: dod-omn24546-integration-proof
   description: the node tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check

@@ -4,20 +4,63 @@
 
 Found at ``<root>/node_install_request_effect/overlay.yaml`` under a root named in ``ONEX_SKILL_OVERLAY_ROOTS``. The package
 ships ``overlay.example.yaml`` with synthetic values. Nothing here has a default: an absent key refuses the load and names it.
-A host installs only the units its row names, from the repositories the unit names, with the verify commands the unit names:
-a request cannot widen any of the three.
+A host installs only the units its row names, from the repositories the unit names, with the verifies the unit names, for
+the logins the host names: a request cannot widen any of the four.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
+from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
-from omnimarket.models.install_request import EnumInstallTarget
+from omnimarket.models.install_request import REPOSITORY_PATTERN, EnumInstallTarget
 
 NODE_NAME = "node_install_request_effect"
+
+
+class ModelInstallRepositoryRow(BaseModel):
+    """One repository a unit may be installed from, and the host's own mirror of it."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: The repository as ``owner/name``.
+    name: str = Field(pattern=REPOSITORY_PATTERN)
+    #: Absolute path of the host's own clone. Refs are resolved and merges are read here, never on the message's word.
+    mirror_path: str = Field(min_length=1)
+    #: The remote prefix the mirror reads branch names through, e.g. ``origin/``.
+    remote_ref_prefix: str = Field(min_length=1)
+    #: The branch a change must already be merged into before it installs.
+    landing_branch: str = Field(min_length=1)
+    #: Other branches whose holding the change counts as merged (review branches).
+    review_branches: tuple[str, ...] = ()
+
+    @model_validator(mode="after")
+    def _shape(self) -> ModelInstallRepositoryRow:
+        if not Path(self.mirror_path).is_absolute():
+            raise ValueError(
+                f"repository {self.name} declares a relative mirror_path {self.mirror_path}"
+            )
+        return self
+
+
+class ModelInstallVerifyRow(BaseModel):
+    """One named verify a unit declares; a request may only point at one of these.
+
+    The argv and the expected line live here, never in the message: nothing from
+    a request is ever run, and the request's only hold on the verify is its name.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: The name a request's ``verify`` cell names.
+    name: str = Field(min_length=1)
+    #: The argv that runs; no cell of it is ever taken from a request.
+    argv: tuple[str, ...] = Field(min_length=1)
+    #: The line the verify's output must hold; ``{revision}`` is replaced by the resolved commit.
+    expected_line: str = Field(min_length=1)
 
 
 class ModelInstallUnitRow(BaseModel):
@@ -27,17 +70,18 @@ class ModelInstallUnitRow(BaseModel):
 
     name: str = Field(min_length=1)
     kind: EnumInstallTarget
-    #: Repositories (owner/name) the unit may be installed from.
-    repositories: tuple[str, ...] = Field(min_length=1)
-    #: argv of the declared installer for a plugin-tree unit; ``{ref}`` is the request's ref. Empty for a unit-tree unit,
-    #: whose installer is node_unit_tree_install_effect and its own overlay.
+    #: The repositories the unit may be installed from, each with the host's own mirror of it.
+    repositories: tuple[ModelInstallRepositoryRow, ...] = Field(min_length=1)
+    #: argv of the declared installer for a plugin-tree unit; ``{ref}`` is the request's ref and ``{sha}`` the resolved
+    #: commit. Empty for a unit-tree unit, whose installer is node_unit_tree_install_effect and its own overlay.
     installer_argv: tuple[str, ...] = ()
+    #: argv that restores the previous revision for a plugin-tree unit; ``{ref}`` is replaced by it. Empty for a
+    #: unit-tree unit, whose installer rolls its own tree back.
+    rollback_argv: tuple[str, ...] = ()
     #: argv run before the installer (the clone refresh that brings the branch); ``{repository}`` and ``{ref}`` are replaced.
     prepare_argv: tuple[str, ...] = ()
-    #: A verify command is run only when it starts with one of these argv prefixes.
-    verify_prefixes: tuple[tuple[str, ...], ...] = Field(min_length=1)
-    #: A request names a branch; the unit-tree installer reads ``<prefix><ref>`` from the clone. A commit sha is used as is.
-    branch_ref_prefix: str = ""
+    #: The named verifies a request may point at.
+    verifies: tuple[ModelInstallVerifyRow, ...] = Field(min_length=1)
     #: Regular expression with one group, applied to the installer's output to read the installed revision; empty reads none.
     revision_pattern: str = ""
 
@@ -49,8 +93,23 @@ class ModelInstallUnitRow(BaseModel):
             raise ValueError(
                 f"unit-tree unit {self.name} installs through node_unit_tree_install_effect, not installer_argv"
             )
-        if any(not prefix for prefix in self.verify_prefixes):
-            raise ValueError(f"unit {self.name} declares an empty verify prefix")
+        if self.kind is EnumInstallTarget.PLUGIN_TREE and not self.rollback_argv:
+            raise ValueError(f"plugin-tree unit {self.name} declares no rollback_argv")
+        if self.kind is EnumInstallTarget.UNIT_TREE and self.rollback_argv:
+            raise ValueError(
+                f"unit-tree unit {self.name} rolls back through its installer, not rollback_argv"
+            )
+        repositories = [row.name for row in self.repositories]
+        if len(repositories) != len(set(repositories)):
+            raise ValueError(f"unit {self.name} declares a repository twice")
+        verifies = [row.name for row in self.verifies]
+        if len(verifies) != len(set(verifies)):
+            raise ValueError(f"unit {self.name} declares a verify twice")
+        for row in self.verifies:
+            if any(not part for part in row.argv):
+                raise ValueError(
+                    f"unit {self.name} declares verify {row.name} with an empty argument"
+                )
         return self
 
 
@@ -60,6 +119,9 @@ class ModelInstallHostRow(BaseModel):
     name: str = Field(min_length=1)
     #: Files whose presence means the host is not safe to install on now (an install lock, a landing lock).
     blocker_files: tuple[str, ...] = ()
+    #: The logins that may publish an install request for this host; any other publisher's request is refused and its
+    #: refusal is kept out of the result journal.
+    allowed_publishers: tuple[str, ...] = Field(min_length=1)
     units: tuple[ModelInstallUnitRow, ...] = Field(min_length=1)
 
     @model_validator(mode="after")
@@ -87,6 +149,13 @@ class ModelInstallRequestEffectOverlay(BaseModel):
     #: The environment variable naming the directory the result journal lives in, and the journal's name inside it.
     journal_dir_env: str = Field(min_length=1)
     journal_file: str = Field(min_length=1)
+    #: The environment variable naming the login the lane publishes install requests under; the in-memory bus holds no
+    #: broker login to read, so the publisher reads it from here.
+    publisher_login_env: str = Field(min_length=1)
+    #: How many seconds the owed reading waits past the last envelope the bus hands it before it counts the log read.
+    owed_quiet_seconds: int = Field(ge=1)
+    #: The argv prefix that runs git on this host (e.g. ``[/usr/bin/git]``); the mirror is read through it.
+    git_command: tuple[str, ...] = Field(min_length=1)
     hosts: tuple[ModelInstallHostRow, ...] = Field(min_length=1)
 
     @model_validator(mode="after")
@@ -109,7 +178,9 @@ def load_overlay(
 __all__ = [
     "NODE_NAME",
     "ModelInstallHostRow",
+    "ModelInstallRepositoryRow",
     "ModelInstallRequestEffectOverlay",
     "ModelInstallUnitRow",
+    "ModelInstallVerifyRow",
     "load_overlay",
 ]

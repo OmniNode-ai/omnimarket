@@ -3,11 +3,13 @@
 """Typed install request, result, decision and owed reading (OMN-19998, root 5: the install request).
 
 A lane that ends with a change that needs an install on a named host (a lab host or the launching Mac) publishes one
-``ModelInstallRequest`` on the bus. The installer node on that host decides with the pure decision compute, runs the
-declared installer when it is safe, and publishes one ``ModelInstallRequestResult`` carrying the line the verify command
-printed. Until a ``verified`` result exists the request owns the ``NOT RUNNING`` line; one not verified inside its
-expiry is the ``expired`` line the throughput tick shows. Every model here is shared by the decision compute, the owed
-reading compute and the effect node, so a change of shape in one breaks the seam test of the others.
+``ModelInstallRequest`` on the bus. The installer node on that host decides with the pure decision compute, resolves the
+request's ref on its own mirror, runs the declared installer when it is safe, and publishes one
+``ModelInstallRequestResult`` carrying the line the verify the request NAMES printed. The message never carries a
+command or an expected line: the host runs only what its own overlay declares. Until a ``verified`` result exists the
+request owns the ``NOT RUNNING`` line; one not verified inside its expiry is the ``expired`` line the throughput tick
+shows. Every model here is shared by the decision compute, the owed reading compute and the effect node, so a change of
+shape in one breaks the seam test of the others.
 """
 
 from __future__ import annotations
@@ -40,6 +42,7 @@ class EnumInstallRequestAction(StrEnum):
     """What the installer on a host does with one request."""
 
     EXECUTE = "execute"
+    REFUSE = "refuse"
     HOLD = "hold"
     EXPIRE = "expire"
     SKIP_DONE = "skip_done"
@@ -62,7 +65,11 @@ def _aware(value: datetime, name: str) -> None:
 
 
 class ModelInstallRequestDraft(BaseModel):
-    """What a lane gives the publisher; the publisher adds the id and both times from the overlay's expiry."""
+    """What a lane gives the publisher; the publisher adds the id and both times from the overlay's expiry.
+
+    The request names the verify by the name the unit's overlay row declares and carries no command and no expected
+    line: the host runs only what its own overlay declares, so a message can never talk the host into running code.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -72,15 +79,15 @@ class ModelInstallRequestDraft(BaseModel):
     repository: str = Field(pattern=REPOSITORY_PATTERN)
     ref: str = Field(pattern=REF_PATTERN)
     unit: str = Field(pattern=UNIT_PATTERN)
-    verify_command: tuple[str, ...] = Field(min_length=1)
-    expected_line: str = Field(min_length=1)
+    #: The NAME of a verify the unit's overlay row declares; never a command.
+    verify: str = Field(pattern=UNIT_PATTERN)
+    #: True only when the request deliberately goes back to an older commit.
+    rollback: bool = False
 
     @model_validator(mode="after")
     def _shape(self) -> ModelInstallRequestDraft:
         if ".." in self.ref.split("/"):
             raise ValueError("ref must not contain '..'")
-        if any(not part for part in self.verify_command):
-            raise ValueError("verify_command holds an empty argument")
         return self
 
 
@@ -117,6 +124,8 @@ class ModelInstallRequestResult(BaseModel):
     #: A short code: ``ok``, ``unit_unknown``, ``installer_failed``, ``verify_mismatch``, ``expired`` and so on.
     reason: str = ""
     detail: str = ""
+    #: True when the host restored its previous revision after this result's install or verify failed.
+    rolled_back: bool = False
 
     @model_validator(mode="after")
     def _time(self) -> ModelInstallRequestResult:
@@ -132,8 +141,24 @@ class ModelInstallRequestResult(BaseModel):
         return f"installed={self.host}:{self.revision} observed={self.verify_line}"
 
 
+class ModelInstallRequestReceived(BaseModel):
+    """One request as the serving host read it off the bus, with the envelope producer.
+
+    The publisher is the log the envelope named. It is the decision compute's refusal fact: a request from a login the
+    host's overlay row does not allow is refused, and the refusal is not journalled, so a forged message cannot poison
+    the idempotency of a real request id.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    request: ModelInstallRequest
+    #: The envelope producer the host read; empty string when the envelope named none.
+    publisher: str = ""
+
+
 class ModelInstallRequestDecisionInput(BaseModel):
-    """The facts the installer on ``executor_host`` read: the request, the clock, any result already published."""
+    """The facts the installer on ``executor_host`` read: the request, the clock, any result already published, who
+    published it and the logins and command age the overlay allows."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -143,6 +168,12 @@ class ModelInstallRequestDecisionInput(BaseModel):
     prior_result: ModelInstallRequestResult | None = None
     #: Reasons the host is not safe to install on right now (an install lock held, a unit mid-run); empty means safe.
     blockers: tuple[str, ...] = ()
+    #: The envelope producer the host read; empty string when the envelope named none.
+    publisher: str = ""
+    #: The logins that may publish a request for this host; the overlay's host row declares them.
+    allowed_publishers: tuple[str, ...]
+    #: A request older than this many seconds at decision time is expired even inside its own expiry.
+    max_age_seconds: int = Field(ge=1)
 
     @model_validator(mode="after")
     def _time(self) -> ModelInstallRequestDecisionInput:
@@ -208,5 +239,6 @@ __all__: list[str] = [
     "ModelInstallRequestDecision",
     "ModelInstallRequestDecisionInput",
     "ModelInstallRequestDraft",
+    "ModelInstallRequestReceived",
     "ModelInstallRequestResult",
 ]

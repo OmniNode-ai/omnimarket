@@ -1,6 +1,6 @@
 name: node_install_request_effect
 version: "0.1.0"
-description: "Install request effect: install one unit or tree on this host when it is safe, run the verify command, publish the typed result"
+description: "Install request effect: install one unit or tree on this host when it is safe, run the unit's declared verify, publish the typed result"
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:
   onex.nodes:

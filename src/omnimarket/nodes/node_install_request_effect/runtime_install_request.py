@@ -8,16 +8,27 @@
   host, so every host sees every request and answers its own), hands each
   request to :class:`HandlerInstallRequest` on a worker thread -- an install
   runs minutes and the consumer must never block in its callback -- and
-  publishes the typed result on the node's success terminal. A command that is
-  no request, or a handler that raises, is answered on the failure terminal and
-  logged, never swallowed. A held request (a blocker on the host) is kept and
-  decided again after the overlay's retry interval.
+  publishes the typed result on the node's success terminal. A command that
+  carries no envelope is answered on the failure terminal and never reaches the
+  handler, a command whose payload is no request is answered there too, and a
+  handler that raises is answered there as well: nothing is swallowed. The
+  envelope's ``producer`` travels with the request as its publisher, the fact
+  the decision refuses a login the host's overlay row does not allow. A held
+  request (a blocker on the host) is kept and decided again after the overlay's
+  retry interval.
 * :func:`publish_request` is the lane side: it stamps the draft with its id and
-  its expiry from the overlay, publishes it on the command topic and returns it.
-* ``owed`` is the offline reading: it reads a file of published requests and
-  the JSON-lines result journal, hands both to
-  :class:`HandlerInstallRequestOwed` and prints one line per owed install --
-  it opens no bus.
+  its expiry from the overlay, publishes it on the command topic under the
+  publishing login (the envelope's ``producer``) and returns it. The ``publish``
+  command reads that login from the broker principal on a lane bus, and from
+  the overlay's ``publisher_login_env`` variable on the in-memory bus.
+* :func:`read_owed` is the bus reading: it subscribes to the command topic and
+  the success terminal with a group of its own, counts every command envelope
+  whose producer is in the allowed publishers of the host row the request
+  itself names (a forged or unknown-host command is ignored), takes every
+  result payload from the success terminal, stops after the overlay's quiet
+  seconds without an envelope and hands the records to
+  :class:`HandlerInstallRequestOwed`. It opens no journal: the bus is the
+  record.
 
 The host applies no command-age limit of its own: the request's own
 ``expires_at`` is the bound, and the decision compute expires what stopped
@@ -61,14 +72,17 @@ from omnimarket.delegated_test_loop.lab_run_bus import (
 from omnimarket.delegated_test_loop.lane_bus import (
     BusKind,
     LabRunBusError,
+    bound_lane_principal,
     open_lab_run_bus,
 )
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.models.install_request import (
     EnumInstallRequestAction,
     ModelInstallOwedInput,
+    ModelInstallOwedReading,
     ModelInstallRequest,
     ModelInstallRequestDraft,
+    ModelInstallRequestReceived,
     ModelInstallRequestResult,
 )
 from omnimarket.nodes.node_install_request_effect.handlers.handler_install_request import (
@@ -156,6 +170,45 @@ def _uuid_or_none(value: object) -> uuid.UUID | None:
         return None
 
 
+class ModelCommandEnvelope(BaseModel):
+    """The parts of a command envelope the host and the owed reading read.
+
+    A message is a command only when it carries a parseable envelope id and an
+    object payload; a bare request is never one. ``producer`` is the publishing
+    login the envelope stamped, empty when it named none.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    payload: dict[str, object]
+    envelope_id: uuid.UUID
+    producer: str = ""
+    correlation_id: uuid.UUID | None = None
+
+
+def _read_envelope(raw: object) -> ModelCommandEnvelope | None:
+    """Read the command envelope off one bus record; None when there is none.
+
+    A bare request (or any other object without a parseable ``envelope_id`` and
+    an object ``payload``) reads as none: the host answers it on the failure
+    terminal and the owed reading ignores it -- a bare object is never validated
+    as a request.
+    """
+    if not isinstance(raw, dict):
+        return None
+    envelope_id = _uuid_or_none(raw.get("envelope_id"))
+    payload = raw.get("payload")
+    if envelope_id is None or not isinstance(payload, dict):
+        return None
+    producer = raw.get("producer")
+    return ModelCommandEnvelope(
+        payload=payload,
+        envelope_id=envelope_id,
+        producer=producer if isinstance(producer, str) and producer else "",
+        correlation_id=_uuid_or_none(raw.get("correlation_id")),
+    )
+
+
 def _subscribe_kwargs(bus: ProtocolLabRunBus) -> dict[str, str]:
     """Read retained records from the start when the bus can say so.
 
@@ -208,7 +261,7 @@ class InstallRequestHost:
         #: One install at a time on a host: two installs of one tree would race on its rename.
         self._install_lock = asyncio.Lock()
         self._tasks: set[asyncio.Task[None]] = set()
-        self._held: list[ModelInstallRequest] = []
+        self._held: list[ModelInstallRequestReceived] = []
         self._retry: asyncio.Task[None] | None = None
         self._unsubscribe: Callable[[], Awaitable[None]] | None = None
         self.processed = 0
@@ -256,67 +309,95 @@ class InstallRequestHost:
             logger.warning(
                 "install-request host %s: unreadable command: %s", self._host, exc
             )
-            return
-        if not isinstance(raw, dict):
-            logger.warning(
-                "install-request host %s: command is not an object", self._host
+            await self._publish_failure(
+                None,
+                None,
+                "",
+                f"the command has no envelope: the record is unreadable: {exc}",
             )
             return
-        command_id = _uuid_or_none(raw.get("envelope_id"))
-        payload = raw.get("payload", raw)
+        envelope = _read_envelope(raw)
+        if envelope is None:
+            logger.warning(
+                "install-request host %s: command has no envelope", self._host
+            )
+            await self._publish_failure(
+                None,
+                None,
+                self._claimed_request_id(raw),
+                "the command has no envelope: an install request travels only"
+                " inside a command envelope with a parseable envelope id and an"
+                " object payload",
+            )
+            return
         try:
-            request = ModelInstallRequest.model_validate(payload)
+            request = ModelInstallRequest.model_validate(envelope.payload)
         except ValidationError as exc:
             await self._publish_failure(
-                command_id,
-                _uuid_or_none(raw.get("correlation_id")),
-                str(payload.get("request_id", "")) if isinstance(payload, dict) else "",
+                envelope.envelope_id,
+                envelope.correlation_id,
+                str(envelope.payload.get("request_id", "")),
                 f"the command is not an install request: {exc}",
             )
             return
-        task = asyncio.create_task(self._serve(request, command_id))
+        received = ModelInstallRequestReceived(
+            request=request, publisher=envelope.producer
+        )
+        task = asyncio.create_task(self._serve(received, envelope.envelope_id))
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
 
+    @staticmethod
+    def _claimed_request_id(raw: object) -> str:
+        """The request id the message claims, for the failure's own record: a
+        bare request names it at its top level, an enveloped one in its payload."""
+        if not isinstance(raw, dict):
+            return ""
+        payload = raw.get("payload")
+        body = payload if isinstance(payload, dict) else raw
+        claimed = body.get("request_id")
+        return str(claimed) if isinstance(claimed, str) else ""
+
     async def _serve(
-        self, request: ModelInstallRequest, command_id: uuid.UUID | None
+        self, received: ModelInstallRequestReceived, command_id: uuid.UUID | None
     ) -> None:
-        if request.request_id in self._in_flight:
+        request_id = received.request.request_id
+        if request_id in self._in_flight:
             logger.info(
                 "install-request host %s: %s is already being served",
                 self._host,
-                request.request_id,
+                request_id,
             )
             return
-        self._in_flight.add(request.request_id)
+        self._in_flight.add(request_id)
         try:
             async with self._install_lock:
-                handled = await asyncio.to_thread(self._handler.handle, request)
-        except Exception as exc:  # fallback-ok: answered on the failure terminal and logged, never swallowed
+                handled = await asyncio.to_thread(self._handler.handle, received)
+        except Exception as exc:
             logger.exception(
                 "install-request host %s: handler raised for %s",
                 self._host,
-                request.request_id,
+                request_id,
             )
             await self._publish_failure(
                 command_id,
-                request.request_id,
-                str(request.request_id),
+                request_id,
+                str(request_id),
                 f"{type(exc).__name__}: {exc}",
             )
             return
         finally:
-            self._in_flight.discard(request.request_id)
+            self._in_flight.discard(request_id)
             self.processed += 1
         if handled.result is not None:
-            await self._publish_result(request, handled.result)
+            await self._publish_result(received.request, handled.result)
             return
         if handled.decision.action is EnumInstallRequestAction.HOLD:
-            self._held.append(request)
+            self._held.append(received)
             logger.info(
                 "install-request host %s: held %s (%s); deciding again in %ss",
                 self._host,
-                request.request_id,
+                request_id,
                 handled.decision.detail,
                 self._overlay.hold_retry_seconds,
             )
@@ -326,8 +407,8 @@ class InstallRequestHost:
         while True:
             await asyncio.sleep(self._overlay.hold_retry_seconds)
             due, self._held = self._held, []
-            for request in due:
-                await self._serve(request, None)
+            for received in due:
+                await self._serve(received, None)
 
     async def _publish_result(
         self, request: ModelInstallRequest, result: ModelInstallRequestResult
@@ -364,13 +445,35 @@ class InstallRequestHost:
         )
 
 
+def _command_envelope_bytes(
+    topic: str,
+    payload: dict[str, object],
+    correlation_id: uuid.UUID,
+    producer: str,
+) -> bytes:
+    """The command envelope the way ``envelope_bytes_for`` builds it, with the
+    publishing login stamped as ``producer`` -- the fact the host and the owed
+    reading check against the overlay row's ``allowed_publishers``. A login of
+    none stamps no producer, which the host reads as a refusal."""
+    return _envelope_bytes(
+        ModelEventEnvelope[dict[str, object]](
+            payload=payload,
+            correlation_id=correlation_id,
+            event_type=event_type_for(topic),
+            producer=producer or None,
+        )
+    )
+
+
 async def publish_request(
     bus: ProtocolLabRunBus,
     draft: ModelInstallRequestDraft,
     overlay: ModelInstallRequestEffectOverlay,
     now: Callable[[], datetime],
+    publisher: str,
 ) -> ModelInstallRequest:
-    """Stamp the draft with its id and the overlay's expiry, publish it, return it."""
+    """Stamp the draft with its id and the overlay's expiry, publish it under
+    ``publisher``'s login, return it."""
     stamp = now()
     request = ModelInstallRequest(
         **draft.model_dump(),
@@ -382,11 +485,106 @@ async def publish_request(
     await bus.publish(
         topics.command,
         str(request.request_id).encode("utf-8"),
-        envelope_bytes_for(
-            topics.command, request.model_dump(mode="json"), request.request_id
+        _command_envelope_bytes(
+            topics.command,
+            request.model_dump(mode="json"),
+            request.request_id,
+            publisher,
         ),
     )
     return request
+
+
+def _owed_group_id() -> str:
+    """A consumer group of its own per reading, so a reading on a lane reads the
+    whole retained log from the start and leaves no offset behind for the next."""
+    return (
+        f"{derive_service_group_id(NODE_NAME, service=GROUP_SERVICE)}"
+        f".owed.{uuid.uuid4().hex}"
+    )
+
+
+async def read_owed(
+    bus: ProtocolLabRunBus,
+    overlay: ModelInstallRequestEffectOverlay,
+    now: Callable[[], datetime],
+    group_id: str | None = None,
+) -> ModelInstallOwedReading:
+    """Read the installs still owed off the bus: every allowed command, every
+    published result, handed to :class:`HandlerInstallRequestOwed`.
+
+    The command topic and the success terminal are subscribed with a group of
+    their own; every well-formed command envelope whose producer is in the
+    allowed publishers of the host row the request itself names counts as a
+    request -- a forged login, an unknown host or a bare object is ignored,
+    never counted, never printed as owed -- and every result payload on the
+    success terminal clears its request id. The reading stops after the
+    overlay's ``owed_quiet_seconds`` without an envelope, unsubscribes and
+    reads: it opens no journal, the bus is the record.
+    """
+    topics = load_install_request_topics()
+    requests: list[ModelInstallRequest] = []
+    results: list[ModelInstallRequestResult] = []
+    arrived = asyncio.Event()
+
+    async def _on_command(message: ProtocolBusMessage) -> None:
+        arrived.set()
+        try:
+            raw = json.loads(message.value)
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return
+        envelope = _read_envelope(raw)
+        if envelope is None:
+            return
+        try:
+            request = ModelInstallRequest.model_validate(envelope.payload)
+        except ValidationError:
+            return
+        row = overlay.host(request.host)
+        if row is None or envelope.producer.casefold() not in {
+            login.casefold() for login in row.allowed_publishers
+        }:
+            return
+        requests.append(request)
+
+    async def _on_result(message: ProtocolBusMessage) -> None:
+        arrived.set()
+        try:
+            raw = json.loads(message.value)
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return
+        envelope = _read_envelope(raw)
+        if envelope is None:
+            return
+        try:
+            results.append(ModelInstallRequestResult.model_validate(envelope.payload))
+        except ValidationError:
+            return
+
+    group = group_id if group_id is not None else _owed_group_id()
+    unsubscribe_command = await _subscribe(bus, topics.command, _on_command, group)
+    try:
+        unsubscribe_success = await _subscribe(bus, topics.success, _on_result, group)
+    except BaseException:
+        await unsubscribe_command()
+        raise
+    try:
+        while True:
+            arrived.clear()
+            try:
+                await asyncio.wait_for(
+                    arrived.wait(), timeout=overlay.owed_quiet_seconds
+                )
+            except TimeoutError:
+                break
+    finally:
+        await unsubscribe_success()
+        await unsubscribe_command()
+    return HandlerInstallRequestOwed().handle(
+        ModelInstallOwedInput(
+            requests=tuple(requests), results=tuple(results), now=now()
+        )
+    )
 
 
 # ---------------------------------------------------------------------- the CLI
@@ -477,73 +675,61 @@ async def _serve_command(args: argparse.Namespace) -> None:
             await host.stop()
 
 
+def _publisher_for(
+    args: argparse.Namespace, overlay: ModelInstallRequestEffectOverlay
+) -> str:
+    """The login the request is published under: the broker principal a declared
+    lane bus authenticated as, or -- on the in-memory bus and on an explicit
+    broker address, which hold no declared broker login -- the overlay's
+    ``publisher_login_env`` variable's value."""
+    if args.bus == "kafka" and args.bus_lane:
+        return bound_lane_principal()
+    login = os.environ.get(overlay.publisher_login_env, "").strip()
+    if not login:
+        raise ValueError(
+            f"{overlay.publisher_login_env} is not set;"
+            " the in-memory bus has no broker login to publish under"
+        )
+    return login
+
+
 async def _publish_command(args: argparse.Namespace) -> None:
     overlay = load_overlay()
     draft = ModelInstallRequestDraft.model_validate_json(sys.stdin.read())
     async with _open_bus(args) as bus:
+        publisher = _publisher_for(args, overlay)
         request = await publish_request(
-            bus, draft, overlay, now=lambda: datetime.now(UTC)
+            bus, draft, overlay, now=lambda: datetime.now(UTC), publisher=publisher
         )
     sys.stdout.write(request.model_dump_json() + "\n")
 
 
 def _add_owed_arguments(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument(
-        "--requests",
-        required=True,
-        help="the JSON-lines file of published requests (one request per line)",
-    )
-    parser.add_argument(
-        "--results",
-        required=True,
-        help="the JSON-lines result journal; a missing file reads as no results",
-    )
+    _add_bus_arguments(parser)
     parser.add_argument(
         "--now", help="the reading time, ISO-8601 with Z, instead of the clock"
     )
 
 
-def _read_json_lines[ModelT: BaseModel](path: Path, kind: type[ModelT]) -> list[ModelT]:
-    """Read one ``kind`` JSON object per line; a missing file holds no records."""
-    if not path.exists():
-        return []
-    records: list[ModelT] = []
-    with path.open(encoding="utf-8") as handle:
-        for number, raw in enumerate(handle, start=1):
-            text = raw.strip()
-            if not text:
-                continue
-            try:
-                records.append(kind.model_validate_json(text))
-            except ValidationError as exc:
-                raise ValueError(
-                    f"{path} line {number} is no {kind.__name__} JSON line: {exc}"
-                ) from exc
-    return records
+def _parse_now(raw: str | None) -> datetime | None:
+    """The reading time the ``--now`` argument names; None reads the clock."""
+    if raw is None:
+        return None
+    try:
+        return datetime.fromisoformat(raw)
+    except ValueError as exc:
+        raise ValueError(f"--now {raw!r} is no ISO-8601 stamp: {exc}") from exc
 
 
-def _owed_command(args: argparse.Namespace) -> int:
-    requests_path = Path(args.requests)
-    if not requests_path.exists():
-        raise ValueError(
-            f"{requests_path} does not exist: no published requests to read"
-        )
-    if args.now is not None:
-        try:
-            now = datetime.fromisoformat(args.now)
-        except ValueError as exc:
-            raise ValueError(f"--now {args.now!r} is no ISO-8601 stamp: {exc}") from exc
-    else:
-        now = datetime.now(UTC)
-    reading = HandlerInstallRequestOwed().handle(
-        ModelInstallOwedInput(
-            requests=tuple(_read_json_lines(requests_path, ModelInstallRequest)),
-            results=tuple(
-                _read_json_lines(Path(args.results), ModelInstallRequestResult)
-            ),
-            now=now,
-        )
-    )
+async def _owed_command(args: argparse.Namespace) -> int:
+    overlay = load_overlay()
+    fixed = _parse_now(args.now)
+
+    def now() -> datetime:
+        return fixed if fixed is not None else datetime.now(UTC)
+
+    async with _open_bus(args) as bus:
+        reading = await read_owed(bus, overlay, now)
     for entry in reading.lines:
         sys.stdout.write(entry.line + "\n")
     sys.stdout.write(f"owed={reading.owed} expired={reading.expired}\n")
@@ -567,7 +753,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     _add_owed_arguments(
         commands.add_parser(
             "owed",
-            help="read the result journal, print the installs still owed",
+            help="read the bus, print the installs still owed",
         )
     )
     args = parser.parse_args(list(sys.argv[1:] if argv is None else argv))
@@ -577,7 +763,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         elif args.command == "publish":
             asyncio.run(_publish_command(args))
         else:
-            return _owed_command(args)
+            return asyncio.run(_owed_command(args))
     except LabRunBusError as exc:
         sys.stderr.write(f"{type(exc).__name__}: {exc}\n")
         return 1
