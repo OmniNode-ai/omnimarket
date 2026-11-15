@@ -26,15 +26,15 @@ from unittest.mock import patch
 import pytest
 import yaml
 
-from omnimarket.nodes.node_lease_receipt_reducer.handlers.handler_lease_receipt_reducer import (
-    HandlerLeaseReceiptReducer,
-)
-from omnimarket.nodes.node_lease_receipt_reducer.models.enum_lease import (
+from omnimarket.models.lease_receipt.enum_lease import (
     EnumLeaseOperation,
 )
-from omnimarket.nodes.node_lease_receipt_reducer.models.model_lease_reduce import (
+from omnimarket.models.lease_receipt.model_lease_reduce import (
     ModelLeaseReduceInput,
     ModelLeaseReduceOutput,
+)
+from omnimarket.nodes.node_lease_receipt_reducer.handlers.handler_lease_receipt_reducer import (
+    HandlerLeaseReceiptReducer,
 )
 from omnimarket.nodes.node_pr_landing_decision_compute.handlers import (
     handler_pr_landing_decision as decision_node,

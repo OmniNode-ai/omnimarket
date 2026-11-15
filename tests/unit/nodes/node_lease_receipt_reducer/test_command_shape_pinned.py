@@ -13,12 +13,12 @@ from __future__ import annotations
 import pytest
 from pydantic import BaseModel
 
-from omnimarket.nodes.node_lease_receipt_reducer.models.model_lease_reduce import (
+from omnimarket.models.lease_receipt.model_lease_reduce import (
     ModelLeaseCaller,
     ModelLeaseReduceInput,
     ModelLeaseReduceOutput,
 )
-from omnimarket.nodes.node_lease_receipt_reducer.models.model_lease_table import (
+from omnimarket.models.lease_receipt.model_lease_table import (
     ModelLeaseEntry,
     ModelLeaseReceipt,
     ModelLeaseRetained,

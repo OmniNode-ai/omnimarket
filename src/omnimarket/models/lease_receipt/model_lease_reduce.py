@@ -9,12 +9,12 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_lease_receipt_reducer.models.enum_lease import (
+from omnimarket.models.lease_receipt.enum_lease import (
     EnumLeaseOperation,
     EnumLeaseReason,
     EnumLeaseStatus,
 )
-from omnimarket.nodes.node_lease_receipt_reducer.models.model_lease_table import (
+from omnimarket.models.lease_receipt.model_lease_table import (
     ModelLeaseTable,
 )
 

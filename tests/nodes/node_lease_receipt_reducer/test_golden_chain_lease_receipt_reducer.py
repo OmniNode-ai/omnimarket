@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from omnimarket.nodes.node_lease_receipt_reducer.models.enum_lease import (
+from omnimarket.models.lease_receipt.enum_lease import (
     EnumLeaseStatus,
 )
 from tests.chain.lease_chain import ModelLeaseChainOverlay

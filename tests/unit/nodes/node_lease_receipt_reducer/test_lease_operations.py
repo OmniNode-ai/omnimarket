@@ -25,31 +25,31 @@ from typing import Final
 
 import pytest
 
-from omnimarket.nodes.node_lease_receipt_reducer.handlers import (
-    handler_lease_receipt_reducer as reducer_module,
-)
-from omnimarket.nodes.node_lease_receipt_reducer.handlers.handler_lease_receipt_reducer import (
-    HandlerLeaseReceiptReducer,
-)
-from omnimarket.nodes.node_lease_receipt_reducer.models.enum_lease import (
+from omnimarket.models.lease_receipt.enum_lease import (
     EnumLeaseOperation,
     EnumLeaseReason,
     EnumLeaseReleaseRule,
     EnumLeaseStatus,
 )
-from omnimarket.nodes.node_lease_receipt_reducer.models.model_lease_overlay import (
+from omnimarket.models.lease_receipt.model_lease_overlay import (
     ModelLeaseKindConfig,
     ModelLeaseOverlay,
 )
-from omnimarket.nodes.node_lease_receipt_reducer.models.model_lease_reduce import (
+from omnimarket.models.lease_receipt.model_lease_reduce import (
     ModelLeaseCaller,
     ModelLeaseReduceInput,
 )
-from omnimarket.nodes.node_lease_receipt_reducer.models.model_lease_table import (
+from omnimarket.models.lease_receipt.model_lease_table import (
     ModelLeaseEntry,
     ModelLeaseReceipt,
     ModelLeaseRetained,
     ModelLeaseTable,
+)
+from omnimarket.nodes.node_lease_receipt_reducer.handlers import (
+    handler_lease_receipt_reducer as reducer_module,
+)
+from omnimarket.nodes.node_lease_receipt_reducer.handlers.handler_lease_receipt_reducer import (
+    HandlerLeaseReceiptReducer,
 )
 
 pytestmark = pytest.mark.unit

@@ -86,21 +86,21 @@ from __future__ import annotations
 import re
 from datetime import datetime, timedelta
 
-from omnimarket.nodes.node_lease_receipt_reducer.models.enum_lease import (
+from omnimarket.models.lease_receipt.enum_lease import (
     EnumLeaseOperation,
     EnumLeaseReason,
     EnumLeaseReleaseRule,
     EnumLeaseStatus,
 )
-from omnimarket.nodes.node_lease_receipt_reducer.models.model_lease_overlay import (
+from omnimarket.models.lease_receipt.model_lease_overlay import (
     ModelLeaseKindConfig,
     ModelLeaseOverlay,
 )
-from omnimarket.nodes.node_lease_receipt_reducer.models.model_lease_reduce import (
+from omnimarket.models.lease_receipt.model_lease_reduce import (
     ModelLeaseReduceInput,
     ModelLeaseReduceOutput,
 )
-from omnimarket.nodes.node_lease_receipt_reducer.models.model_lease_table import (
+from omnimarket.models.lease_receipt.model_lease_table import (
     ModelLeaseEntry,
     ModelLeaseReceipt,
     ModelLeaseRetained,

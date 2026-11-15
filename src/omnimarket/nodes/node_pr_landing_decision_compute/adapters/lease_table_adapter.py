@@ -31,22 +31,22 @@ from pydantic import BaseModel, ConfigDict
 from omnimarket.handlers.handler_packaged_contract_loader import (
     load_packaged_contract_section,
 )
-from omnimarket.nodes.node_lease_receipt_reducer.handlers.handler_lease_receipt_reducer import (
-    HandlerLeaseReceiptReducer,
-)
-from omnimarket.nodes.node_lease_receipt_reducer.models.enum_lease import (
+from omnimarket.models.lease_receipt.enum_lease import (
     EnumLeaseOperation,
     EnumLeaseStatus,
 )
-from omnimarket.nodes.node_lease_receipt_reducer.models.model_lease_reduce import (
+from omnimarket.models.lease_receipt.model_lease_reduce import (
     ModelLeaseCaller,
     ModelLeaseReduceInput,
     ModelLeaseReduceOutput,
 )
-from omnimarket.nodes.node_lease_receipt_reducer.models.model_lease_table import (
+from omnimarket.models.lease_receipt.model_lease_table import (
     ModelLeaseEntry,
     ModelLeaseReceipt,
     ModelLeaseTable,
+)
+from omnimarket.nodes.node_lease_receipt_reducer.handlers.handler_lease_receipt_reducer import (
+    HandlerLeaseReceiptReducer,
 )
 from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_state import (
     ModelLandingLease,

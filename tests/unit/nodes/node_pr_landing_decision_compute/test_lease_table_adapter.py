@@ -20,23 +20,23 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from omnimarket.nodes.node_lease_receipt_reducer.handlers.handler_lease_receipt_reducer import (
-    HandlerLeaseReceiptReducer,
-)
-from omnimarket.nodes.node_lease_receipt_reducer.models.enum_lease import (
+from omnimarket.models.lease_receipt.enum_lease import (
     EnumLeaseOperation,
     EnumLeaseReason,
     EnumLeaseStatus,
 )
-from omnimarket.nodes.node_lease_receipt_reducer.models.model_lease_reduce import (
+from omnimarket.models.lease_receipt.model_lease_reduce import (
     ModelLeaseReduceInput,
     ModelLeaseReduceOutput,
 )
-from omnimarket.nodes.node_lease_receipt_reducer.models.model_lease_table import (
+from omnimarket.models.lease_receipt.model_lease_table import (
     ModelLeaseEntry,
     ModelLeaseReceipt,
     ModelLeaseRetained,
     ModelLeaseTable,
+)
+from omnimarket.nodes.node_lease_receipt_reducer.handlers.handler_lease_receipt_reducer import (
+    HandlerLeaseReceiptReducer,
 )
 from omnimarket.nodes.node_pr_landing_decision_compute.adapters import (
     lease_table_adapter as adapter,

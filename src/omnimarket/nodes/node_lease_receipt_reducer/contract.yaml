@@ -56,16 +56,16 @@ description: >
   overlay does not name is refused before the command is read further.
 input_model:
   name: "ModelLeaseReduceInput"
-  module: "omnimarket.nodes.node_lease_receipt_reducer.models.model_lease_reduce"
+  module: "omnimarket.models.lease_receipt.model_lease_reduce"
   description: "One lease command: the caller, the operation, the subject, now, and the kind's table."
 output_model:
   name: "ModelLeaseReduceOutput"
-  module: "omnimarket.nodes.node_lease_receipt_reducer.models.model_lease_reduce"
+  module: "omnimarket.models.lease_receipt.model_lease_reduce"
   description: "The reply: recorded with the written table, or refused with the reason and the input table."
 handler:
   module: "omnimarket.nodes.node_lease_receipt_reducer.handlers.handler_lease_receipt_reducer"
   class: "HandlerLeaseReceiptReducer"
-  input_model: "omnimarket.nodes.node_lease_receipt_reducer.models.model_lease_reduce.ModelLeaseReduceInput"
+  input_model: "omnimarket.models.lease_receipt.model_lease_reduce.ModelLeaseReduceInput"
 handler_routing:
   routing_strategy: "operation_match"
   default_handler: "omnimarket.nodes.node_lease_receipt_reducer.handlers.handler_lease_receipt_reducer:HandlerLeaseReceiptReducer"

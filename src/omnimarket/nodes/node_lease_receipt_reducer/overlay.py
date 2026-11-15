@@ -21,7 +21,7 @@ from omnimarket.handlers.node_overlay_reader import (
     find_node_overlay,
     load_structured_overlay,
 )
-from omnimarket.nodes.node_lease_receipt_reducer.models.model_lease_overlay import (
+from omnimarket.models.lease_receipt.model_lease_overlay import (
     ModelLeaseOverlay,
 )
 
