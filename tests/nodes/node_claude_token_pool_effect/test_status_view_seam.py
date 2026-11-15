@@ -13,6 +13,7 @@ own pool wrote, the Mac's pool is a real pool whose local marks are two weeks st
 
 from __future__ import annotations
 
+import io
 import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -23,6 +24,9 @@ from pydantic import SecretStr
 from omnimarket.inference.local_byok_credential_adapter import LocalByokCredentialStore
 from omnimarket.nodes.node_claude_token_pool_effect import (
     runtime_claude_token_pool as cli,
+)
+from omnimarket.nodes.node_claude_token_pool_effect.handlers import (
+    handler_claude_token_pool,
 )
 from omnimarket.nodes.node_claude_token_pool_effect.handlers.adapter_rotation_ports import (
     MirrorMarksSource,
@@ -37,6 +41,7 @@ from omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_ro
     ModelRotationMark,
     ModelRotationOverlay,
 )
+from omnimarket.projection import sqlite_database
 
 pytestmark = pytest.mark.unit
 
@@ -252,3 +257,42 @@ def test_failing_control_the_old_status_names_the_revoke_the_source_cleared(
     old = mac.handle(ModelClaudeTokenPoolRequest(operation="status", dry_run=True))
     assert old.revoked == ("onexbot",)
     assert "revoked=onexbot" in old.status_line
+
+
+def test_status_entries_prints_the_pool_result_not_the_view(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Through ``main`` on the pool it builds itself: --entries prints the pool's own entries, plain status still prints the view.
+
+    A handler argument cannot test this (it bypasses the flag: the plain read answers the same pool),
+    so the pool is isolated where its files are found on a host: the two locations the modules took
+    from ``$HOME`` at import are pointed under ``tmp_path``, and the entries are seeded through ``add``.
+    """
+    # No pool overlay under these roots: the plain status answers unsynced (the view), never a marks source.
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path))
+    monkeypatch.setenv("ONEX_WORKSPACE_CONFIG_ROOT", str(tmp_path))
+    monkeypatch.setattr(
+        sqlite_database,
+        "_DEFAULT_EVIDENCE_DB_PATH",
+        tmp_path / ".omninode" / "delegation" / "delegation.sqlite",
+    )
+    monkeypatch.setattr(
+        handler_claude_token_pool,
+        "STATUS_MIRROR",
+        tmp_path / ".cache" / "omni" / "claude-token-pool.json",
+    )
+    for label in LABELS:
+        monkeypatch.setattr("sys.stdin", io.StringIO(fake_token(label)))
+        assert cli.main(["add", "--label", label]) == 0
+    capsys.readouterr()
+    assert cli.main(["status", "--json", "--entries"]) == 0
+    body = json.loads(capsys.readouterr().out)
+    assert isinstance(body["tokens"], list)
+    assert [t["label"] for t in body["tokens"]] == list(LABELS)
+    assert all(t["fingerprint"] for t in body["tokens"])
+    capsys.readouterr()
+    assert cli.main(["status", "--json"]) == cli.EXIT_EMPTY
+    view = json.loads(capsys.readouterr().out)
+    assert view["basis"] == "unsynced_local_copy"
+    assert isinstance(view["tokens"], int)
+    assert view["tokens"] == len(LABELS)
