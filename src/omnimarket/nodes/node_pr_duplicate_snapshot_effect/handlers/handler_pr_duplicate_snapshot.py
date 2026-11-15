@@ -124,6 +124,7 @@ def parse_diff(diff: str) -> ModelPrTouch:
     config = load_digest_config()
     spans: dict[str, list[tuple[int, int]]] = {}
     digests: dict[str, set[str]] = {}
+    added_digests: dict[str, set[str]] = {}
     added: set[str] = set()
     current: str | None = None
     in_hunk = False
@@ -133,6 +134,7 @@ def parse_diff(diff: str) -> ModelPrTouch:
             current = header[1]
             spans[current] = []
             digests[current] = set()
+            added_digests[current] = set()
             in_hunk = False
         elif current is None:
             continue
@@ -148,11 +150,12 @@ def parse_diff(diff: str) -> ModelPrTouch:
             elif in_hunk and line.startswith(("-", "+")):
                 text = line[1:].strip()
                 if text and len(text) >= config.min_line_chars:
-                    digests[current].add(
-                        sha1(
-                            (line[0] + text).encode(), usedforsecurity=False
-                        ).hexdigest()[: config.prefix_chars]
-                    )
+                    digest = sha1(
+                        (line[0] + text).encode(), usedforsecurity=False
+                    ).hexdigest()[: config.prefix_chars]
+                    digests[current].add(digest)
+                    if line[0] == "+":
+                        added_digests[current].add(digest)
     return ModelPrTouch(
         files=tuple(
             ModelFileTouch(
@@ -160,6 +163,7 @@ def parse_diff(diff: str) -> ModelPrTouch:
                 added=path in added,
                 spans=tuple(found),
                 digest=tuple(sorted(digests[path])),
+                added_digest=tuple(sorted(added_digests[path])),
             )
             for path, found in sorted(spans.items())
         )

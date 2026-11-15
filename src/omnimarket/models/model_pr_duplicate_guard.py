@@ -190,6 +190,10 @@ class ModelFileTouch(BaseModel):
     spans: tuple[tuple[int, int], ...] = ()
     #: Sorted unique sha1 prefixes of normalized, signed changed lines.
     digest: tuple[str, ...] = ()
+    #: Sorted unique sha1 prefixes of the added lines alone. Two diffs that replace the same base line both carry
+    #: that line's removal, so the removed side says nothing about whether the changes are alike; the guard
+    #: compares these when both sides have any and falls back to ``digest`` otherwise (a pure deletion).
+    added_digest: tuple[str, ...] = ()
     #: For each pre-image span of this file's diff that the new branch also changes, the commits that introduced
     #: the changed lines (read with ``git blame``). Empty unless the caller named a replaced pull request.
     attributed: tuple[ModelSpanCommits, ...] = ()

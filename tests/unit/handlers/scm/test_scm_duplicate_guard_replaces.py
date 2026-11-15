@@ -100,10 +100,12 @@ class World:
         commit_edit(self.lane, SKILL, SKILL_LINE, GLM_SKILL, message="lane route")
         commit_edit(self.lane, ENGINE, ENGINE_LINE, GLM_ENGINE, message="lane engine")
 
-    def bundle_edits_again(self, path: str, line: int) -> None:
+    def bundle_edits_again(
+        self, path: str, line: int, text: str = "reworded by the bundle"
+    ) -> None:
         """A later commit of the bundle that is NOT the draft's changes a line the draft changed."""
         git(self.seed, "checkout", "-q", "omn-19998-retention-stdin")
-        commit_edit(self.seed, path, line, "reworded by the bundle", message="rework")
+        commit_edit(self.seed, path, line, text, message="rework")
         self.bundle_sha = git(self.seed, "rev-parse", "HEAD")
         git(self.seed, "push", "-q", "origin", "omn-19998-retention-stdin")
         git(self.seed, "checkout", "-q", "main")
@@ -230,7 +232,10 @@ def test_replaces_the_closed_draft_sets_its_overlaps_aside_and_allows_the_create
 def test_an_overlap_from_a_commit_outside_the_replaced_change_still_refuses(
     world: World,
 ) -> None:
+    # The bundle reworks the line, then writes the very change the new branch makes: the shared added line is the
+    # same fix, and no commit of the replaced draft introduced it, so it still refuses.
     world.bundle_edits_again(ENGINE, ENGINE_LINE)
+    world.bundle_edits_again(ENGINE, ENGINE_LINE, GLM_ENGINE)
 
     result = invoke(world.args(REPLACED))
 
