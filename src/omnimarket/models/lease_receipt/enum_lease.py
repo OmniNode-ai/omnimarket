@@ -65,6 +65,11 @@ class EnumLeaseReason(StrEnum):
     WRONG_SUBJECT = "wrong-subject"
     HOLDER_RUN_MISMATCH = "holder-run-mismatch"
     OUTCOME_REF_INVALID = "outcome-ref-invalid"
+    VERSION_CONFLICT = "table-version-conflict"
+    DEADLINE_PAST = "deadline-not-after-now"
+    LEASE_EXPIRED = "lease-expired"
+    NOW_REGRESSED = "now-regressed"
+    NOW_OUT_OF_BOUNDS = "now-out-of-bounds"
 
 
 __all__: list[str] = [

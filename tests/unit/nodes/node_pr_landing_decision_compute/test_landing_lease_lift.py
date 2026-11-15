@@ -17,7 +17,6 @@ Three things are read here, each with a failing control:
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Final
@@ -33,14 +32,18 @@ from omnimarket.models.lease_receipt.model_lease_reduce import (
     ModelLeaseReduceInput,
     ModelLeaseReduceOutput,
 )
+from omnimarket.models.lease_receipt.model_lease_table import (
+    ModelLeaseEntry,
+    ModelLeaseReceipt,
+)
 from omnimarket.nodes.node_lease_receipt_reducer.handlers.handler_lease_receipt_reducer import (
     HandlerLeaseReceiptReducer,
 )
+from omnimarket.nodes.node_pr_landing_decision_compute.adapters import (
+    lease_table_adapter as adapter,
+)
 from omnimarket.nodes.node_pr_landing_decision_compute.handlers import (
     handler_pr_landing_decision as decision_node,
-)
-from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_state import (
-    ModelLandingLease,
 )
 from tests.unit.nodes.node_pr_landing_decision_compute.landing_world import (
     run_scenario,
@@ -91,50 +94,75 @@ def _operations_of_run(spec: dict[str, Any]) -> list[EnumLeaseOperation]:
     return seen
 
 
-class RevertedBridge:
-    """The pre-lift arithmetic in plain code: one counter, one set, one discard rule."""
+class RevertedBridge(adapter.LandingLeaseBridge):
+    """The pre-lift arithmetic in plain code: one counter, one set, one discard rule.
 
-    def __init__(
-        self,
-        leases: Iterable[ModelLandingLease],
-        revoked_lease_ids: Iterable[int],
-        next_lease_id: int,
-    ) -> None:
-        self._leases = {le.lease_id: le for le in leases}
-        self._revoked = set(revoked_lease_ids)
-        self._next = next_lease_id
-
-    @property
-    def next_lease_id(self) -> int:
-        return self._next
-
-    @property
-    def revoked_ids(self) -> set[int]:
-        return self._revoked
+    It keeps the table the decision now reads its lease state from, but writes it without the
+    reducer: the revert of the lift that the invocation assertion must see.
+    """
 
     def acquire(self, subject: str, now: datetime, deadline_at: datetime) -> int:
-        lease_id = self._next
-        self._next += 1
+        lease_id = self.table.next_epoch
+        entry = ModelLeaseEntry(
+            subject=subject,
+            epoch=lease_id,
+            holder_run=adapter.holder_of(self._use, subject),
+            granted_at=now,
+            deadline_at=deadline_at,
+        )
+        self.table = self.table.model_copy(
+            update={
+                "next_epoch": lease_id + 1,
+                "leases": (*self.table.leases, entry),
+            }
+        )
         return lease_id
 
-    def release(self, subject: str, epoch: int, now: datetime) -> bool:
-        return True
+    def release(self, subject: str, epoch: int, now: datetime) -> None:
+        self.table = self.table.model_copy(
+            update={
+                "leases": tuple(e for e in self.table.leases if e.subject != subject),
+                "receipts": tuple(
+                    r for r in self.table.receipts if r.subject != subject
+                ),
+            }
+        )
 
-    def revoke(self, subject: str, epoch: int, now: datetime) -> bool:
-        self._revoked.add(epoch)
-        return True
+    def revoke(self, subject: str, epoch: int, now: datetime) -> None:
+        self.table = self.table.model_copy(
+            update={
+                "leases": tuple(
+                    e.model_copy(update={"revoked": True}) if e.epoch == epoch else e
+                    for e in self.table.leases
+                ),
+                "revoked_epochs": tuple(sorted({*self.table.revoked_epochs, epoch})),
+            }
+        )
 
     def record_result(
         self, subject: str, epoch: int, now: datetime, outcome_ref: str
     ) -> bool:
-        lease = self._leases.get(epoch)
-        return (
-            epoch not in self._revoked
-            and lease is not None
-            and not lease.revoked
-            and lease.result_recorded_at is None
-            and lease.pr == subject
+        lease = next((e for e in self.table.leases if e.epoch == epoch), None)
+        has_receipt = any(r.epoch == epoch for r in self.table.receipts)
+        if (
+            epoch in self.table.revoked_epochs
+            or lease is None
+            or lease.revoked
+            or has_receipt
+            or lease.subject != subject
+        ):
+            return False
+        receipt = ModelLeaseReceipt(
+            subject=subject,
+            epoch=epoch,
+            run=lease.holder_run,
+            recorded_at=now,
+            outcome_ref=outcome_ref,
         )
+        self.table = self.table.model_copy(
+            update={"receipts": (*self.table.receipts, receipt)}
+        )
+        return True
 
 
 def test_the_capture_reaches_both_allocation_sites_and_the_discard() -> None:

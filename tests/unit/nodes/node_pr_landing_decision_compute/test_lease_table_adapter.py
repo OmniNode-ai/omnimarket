@@ -160,7 +160,11 @@ def assert_round_trip(
     view = landing_view(payloads, revoked, next_id)
     lifted = adapter.landing_from_table(bridge.table, payloads)
     assert lifted == view
-    assert adapter.table_from_landing(*lifted, USE) == bridge.table
+    # The version and as_of are the reducer's own bookkeeping of the writes it made: landing
+    # state carries neither, so the identity is read without them.
+    assert adapter.table_from_landing(*lifted, USE) == bridge.table.model_copy(
+        update={"version": 0, "as_of": None}
+    )
 
 
 @pytest.mark.unit
@@ -189,7 +193,7 @@ def test_landing_table_round_trip_is_the_identity_over_three_ticks() -> None:
 
     # Tick 2: revoke the recorded lease and record the new worker's result.
     now2 = NOW + timedelta(minutes=2)
-    assert bridge.revoke(PR_A, 1, now2) is True
+    bridge.revoke(PR_A, 1, now2)
     payloads[1] = payloads[1].model_copy(update={"revoked": True})
     revoked.add(1)
     assert bridge.revoked_ids == revoked
@@ -201,9 +205,9 @@ def test_landing_table_round_trip_is_the_identity_over_three_ticks() -> None:
     # epoch exists only as a retained entry, which no landing state can
     # express, so the re-acquires land before the tick's round trip is read.
     now3 = NOW + timedelta(minutes=3)
-    assert bridge.release(PR_C, 3, now3) is True
+    bridge.release(PR_C, 3, now3)
     del payloads[3]
-    assert bridge.release(PR_A, 1, now3) is True
+    bridge.release(PR_A, 1, now3)
     del payloads[1]
     granted_c = bridge.acquire(PR_C, now3, now3 + timedelta(days=2))
     assert granted_c == 5
@@ -380,11 +384,17 @@ def test_every_landing_lease_field_is_mapped_or_named_as_staying_with_the_landin
 
 
 @pytest.mark.unit
-def test_acquire_on_a_held_subject_refuses_and_leaves_the_table_unchanged() -> None:
+def test_acquire_on_a_held_subject_raises_the_typed_refusal_and_leaves_the_table() -> (
+    None
+):
     leases, revoked, next_id = world()
     bridge = adapter.LandingLeaseBridge(leases.values(), revoked, next_id)
     before = bridge.table
-    assert bridge.acquire(PR_B, NOW, NOW + timedelta(days=1)) is None
+    with pytest.raises(adapter.LandingLeaseRefusedError) as refused:
+        bridge.acquire(PR_B, NOW, NOW + timedelta(days=1))
+    assert refused.value.reason is EnumLeaseReason.HELD
+    assert refused.value.operation is EnumLeaseOperation.ACQUIRE
+    assert refused.value.subject == PR_B
     assert bridge.table == before
     assert bridge.next_lease_id == next_id
 
@@ -395,6 +405,7 @@ def test_record_result_twice_records_once() -> None:
     bridge = adapter.LandingLeaseBridge(leases.values(), revoked, next_id)
     at = NOW + timedelta(minutes=1)
     assert bridge.record_result(PR_B, 2, at, "omnibus") is True
+    # the second answer is the contract's expected discard (already-recorded), never a raise
     assert bridge.record_result(PR_B, 2, at + timedelta(minutes=1), "omnibus") is False
 
 
@@ -421,10 +432,15 @@ def test_every_bridge_method_speaks_to_the_reducer_exactly_once(
     leases, revoked, next_id = world()
     bridge = adapter.LandingLeaseBridge(leases.values(), revoked, next_id)
     at = NOW + timedelta(minutes=1)
-    assert bridge.acquire(PR_B, at, at + timedelta(days=1)) is None
-    assert bridge.release(PR_B, 2, at) is False
-    assert bridge.revoke(PR_B, 2, at) is False
-    assert bridge.record_result(PR_B, 2, at, "omnibus") is False
+    # held is not a discard reason: every operation but the result discard raises it
+    with pytest.raises(adapter.LandingLeaseRefusedError):
+        bridge.acquire(PR_B, at, at + timedelta(days=1))
+    with pytest.raises(adapter.LandingLeaseRefusedError):
+        bridge.release(PR_B, 2, at)
+    with pytest.raises(adapter.LandingLeaseRefusedError):
+        bridge.revoke(PR_B, 2, at)
+    with pytest.raises(adapter.LandingLeaseRefusedError):
+        bridge.record_result(PR_B, 2, at, "omnibus")
     assert [call.operation for call in calls] == [
         EnumLeaseOperation.ACQUIRE,
         EnumLeaseOperation.RELEASE,

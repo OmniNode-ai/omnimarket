@@ -76,6 +76,7 @@ def _overlay(admitted: tuple[str, ...] = (ADMITTED,)) -> ModelLeaseOverlay:
                     EnumLeaseOperation.RECORD_RECEIPT,
                 ),
                 max_ttl_seconds=604800,
+                max_now_skew_seconds=1_000_000_000,
                 admitted_callers=admitted,
                 retain_receipts=False,
                 max_receipts_per_subject=1,

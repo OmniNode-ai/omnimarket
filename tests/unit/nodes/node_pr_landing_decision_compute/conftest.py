@@ -9,21 +9,28 @@ equality is read as the sha-256 of the decision's canonical JSON (sorted keys,
 no whitespace), kept per test and per call in
 ``tests/fixtures/pr_landing_decision/lease_lift_golden.json``.
 
+The gate runs by default: ``compare`` unless ``LANDING_LEASE_PARITY`` says
+otherwise, so every CI split of this directory compares against the capture.
+
 * ``LANDING_LEASE_PARITY=capture`` writes the file at the end of the session
   (run once on ``origin/dev``, before the lift).
-* ``LANDING_LEASE_PARITY=compare`` fails each test whose decisions differ from
-  the capture.
-* unset: this file does nothing, so an ordinary run is untouched.
+* ``LANDING_LEASE_PARITY=off`` disables the gate (a developer's local choice;
+  no CI configuration sets it).
+* anything else, including unset: ``compare``. A test id the capture does not
+  know fails too when its file is captured (a test added after the lift has
+  no pre-lift baseline to compare against; capture it on the pre-lift base).
+  A whole new file -- one the capture never saw -- is not a parity subject.
+
+The gate's rules live in ``lease_parity.py`` next to this conftest, so they
+can be unit-tested directly (``test_lease_parity_gate.py``).
 """
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 from collections.abc import Iterator
-from pathlib import Path
-from typing import Any, Final
+from typing import Any
 
 import pytest
 
@@ -33,53 +40,23 @@ from omnimarket.nodes.node_pr_landing_decision_compute.handlers import (
 from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_decision import (
     ModelLandingDecision,
 )
-
-PARITY_ENV: Final = "LANDING_LEASE_PARITY"
-GOLDEN_PATH: Final = (
-    Path(__file__).resolve().parents[4]
-    / "tests"
-    / "fixtures"
-    / "pr_landing_decision"
-    / "lease_lift_golden.json"
+from tests.unit.nodes.node_pr_landing_decision_compute.lease_parity import (
+    GOLDEN_PATH,
+    PARITY_ENV,
+    entry,
+    parity_mode,
+    parity_verdict,
 )
 
 _captured: dict[str, list[dict[str, Any]]] = {}
-
-
-def canonical(decision: ModelLandingDecision) -> str:
-    return json.dumps(
-        decision.model_dump(mode="json"), sort_keys=True, separators=(",", ":")
-    )
-
-
-def _entry(decision: ModelLandingDecision) -> dict[str, Any]:
-    dispatched = [
-        (
-            action.cause_brief.brief_class.value
-            if action.cause_brief is not None
-            else action.brief.brief_class.value
-            if action.brief is not None
-            else ""
-        )
-        for action in decision.actions
-        if action.kind.value == "dispatch_worker"
-    ]
-    return {
-        "sha256": hashlib.sha256(canonical(decision).encode()).hexdigest(),
-        "dispatched": dispatched,
-        "recorded": len(decision.recorded_outcomes),
-        "discarded": sum(
-            1 for action in decision.actions if action.kind.value == "discard_result"
-        ),
-    }
 
 
 @pytest.fixture(autouse=True)
 def lease_lift_parity(
     request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
 ) -> Iterator[None]:
-    mode = os.environ.get(PARITY_ENV, "")
-    if not mode:
+    mode = parity_mode()
+    if mode == "off":
         yield
         return
     real = decision_node._decision
@@ -87,7 +64,7 @@ def lease_lift_parity(
 
     def wrapped(*args: Any, **kwargs: Any) -> ModelLandingDecision:
         decision = real(*args, **kwargs)
-        calls.append(_entry(decision))
+        calls.append(entry(decision))
         return decision
 
     monkeypatch.setattr(decision_node, "_decision", wrapped)
@@ -97,11 +74,9 @@ def lease_lift_parity(
         _captured[nodeid] = calls
         return
     golden = json.loads(GOLDEN_PATH.read_text(encoding="utf-8"))
-    if nodeid not in golden:
-        return
-    want = [entry["sha256"] for entry in golden[nodeid]]
-    got = [entry["sha256"] for entry in calls]
-    assert got == want, f"{nodeid}: decisions differ from the pre-lift capture"
+    verdict = parity_verdict(nodeid, calls, golden)
+    if verdict is not None:
+        pytest.fail(verdict)
 
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:

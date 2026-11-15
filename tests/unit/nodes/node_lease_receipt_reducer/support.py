@@ -44,6 +44,7 @@ def slot_overlay(*, retain_receipts: bool = True, bound: int = 3) -> ModelLeaseO
                 release_rule=EnumLeaseReleaseRule.EXPIRY,
                 operations_enabled=tuple(EnumLeaseOperation),
                 max_ttl_seconds=3600,
+                max_now_skew_seconds=1_000_000_000,
                 admitted_callers=(SLOT_CALLER,),
                 retain_receipts=retain_receipts,
                 max_receipts_per_subject=bound,

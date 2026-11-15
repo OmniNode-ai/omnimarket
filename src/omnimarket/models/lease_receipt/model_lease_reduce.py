@@ -5,9 +5,15 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    computed_field,
+    model_validator,
+)
 
 from omnimarket.models.lease_receipt.enum_lease import (
     EnumLeaseOperation,
@@ -86,9 +92,21 @@ class ModelLeaseReduceOutput(BaseModel):
     )
     table: ModelLeaseTable
 
+    @model_validator(mode="before")
+    @classmethod
+    def _drop_derived_cause(cls, data: Any) -> Any:
+        """A dumped reply carries the derived cause; it is recomputed, never read back."""
+        if isinstance(data, dict) and "terminal_failure_cause" in data:
+            return {k: v for k, v in data.items() if k != "terminal_failure_cause"}
+        return data
+
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def terminal_failure_cause(self) -> str | None:
-        """The refusal reason on a refused reply, so the runtime publishes the failure terminal."""
+        """The refusal reason on a refused reply, so the runtime publishes the failure terminal.
+
+        A computed field: it is in ``model_dump`` too, so a dumped reply names its failure.
+        """
         if self.status is EnumLeaseStatus.REFUSED:
             return self.reason.value
         return None

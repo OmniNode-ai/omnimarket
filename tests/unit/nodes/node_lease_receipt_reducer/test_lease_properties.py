@@ -50,9 +50,6 @@ from omnimarket.models.lease_receipt.model_lease_table import (
 from omnimarket.nodes.node_lease_receipt_reducer.handlers import (
     handler_lease_receipt_reducer as reducer_module,
 )
-from omnimarket.nodes.node_lease_receipt_reducer.handlers.handler_lease_receipt_reducer import (
-    HandlerLeaseReceiptReducer,
-)
 from tests.unit.nodes.node_lease_receipt_reducer.support import (
     NOW,
     SLOT_CALLER,
@@ -78,6 +75,7 @@ def _overlay() -> ModelLeaseOverlay:
             release_rule=rule,
             operations_enabled=tuple(EnumLeaseOperation),
             max_ttl_seconds=3600,
+            max_now_skew_seconds=1_000_000_000,
             admitted_callers=(SLOT_CALLER,),
             retain_receipts=True,
             max_receipts_per_subject=2,
@@ -230,7 +228,9 @@ def _check(
 
 def explore(kind: str) -> int:
     """Breadth-first over every reachable table within the bounds; returns the states seen."""
-    handler = HandlerLeaseReceiptReducer(_overlay())
+    # The pure rule set, not the stateful handler: this walk carries every reachable table
+    # itself, so it asks what the rules do to each table, not what one store holds.
+    overlay = _overlay()
     evidence_kind = kind == EVIDENCE_KIND
     start = ModelLeaseTable(kind=kind)
     seen = {start.model_dump_json()}
@@ -241,7 +241,7 @@ def explore(kind: str) -> int:
             continue
         for request in _commands(table):
             try:
-                reply = handler.handle(request)
+                reply = reducer_module.reduce_lease(request, overlay)
             except Exception as exc:
                 raise AssertionError(
                     f"the reducer raised {type(exc).__name__} on {request.operation.value}"

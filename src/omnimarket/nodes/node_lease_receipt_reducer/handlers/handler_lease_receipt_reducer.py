@@ -1,16 +1,19 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""HandlerLeaseReceiptReducer: one lease-reduce command, as a pure function.
+"""HandlerLeaseReceiptReducer: the single writer of the lease tables.
 
-Definition-B compute: ``handle(request: ModelLeaseReduceInput) ->
-ModelLeaseReduceOutput``. No clock (``now`` is the command's time), no I/O,
-no state file. The caller owns the lease table: it passes one kind's table in
-and writes the recorded reply's table back; a refused reply carries the input
-table unchanged. The handler never raises on a bad request: every failure is
-a refused output with a typed reason, and the same command against the same
-table and overlay gives the same reply.
+``reduce_lease`` is the pure rule set: ``reduce_lease(request, overlay, trusted_now)
+-> ModelLeaseReduceOutput``, no I/O, no state file, the same command against the
+same table, overlay and clock reading giving the same reply. ``HandlerLeaseReceiptReducer.handle``
+wraps it with the state: the authoritative table of each kind lives behind an
+injected store (in memory by default), a command must carry exactly the held table
+(``table-version-conflict`` otherwise, the reply carrying the held table), a
+recorded write is stored by compare and swap on the version read, and the
+command's ``now`` is bounded by the reducer's own clock. The handler never raises
+on a bad request: every failure is a refused output with a typed reason.
 
-The checks run in one fixed order, first failure wins, for every operation:
+The checks run in one fixed order, first failure wins, for every operation (the
+held-table check of ``handle`` sits between admission and these):
 
 1. The table's kind is not in the overlay's lease kinds (``unknown-kind``).
 2. The caller's principal is not in the kind's admitted callers
@@ -23,12 +26,17 @@ The checks run in one fixed order, first failure wins, for every operation:
 5. On record_receipt, the outcome_ref does not fully match the kind's
    outcome_ref pattern (``outcome-ref-invalid``); the empty string is always
    allowed.
+6. The command's ``now`` is further from the reducer's clock than the kind's
+   ``max_now_skew_seconds`` (``now-out-of-bounds``).
+7. The command's ``now`` is before the table's ``as_of``, the time of its last
+   recorded write (``now-regressed``).
 
 Then the operation applies. ``lease`` is the live lease of the subject — the
 row from its grant until its release, revoked or not — and ``current_epoch``
 is the lease's epoch if live, else the subject's retained epoch, else None:
 
-- ACQUIRE needs holder_run and deadline_at (``missing-field``). A deadline
+- ACQUIRE needs holder_run and deadline_at (``missing-field``). A deadline not
+  after ``now`` is ``deadline-not-after-now``. A deadline
   beyond the kind's max ttl is ``ttl-exceeded``; a subject with a live lease
   is ``held`` (the reply names the holder run and epoch). Otherwise a new
   lease is granted at the table's next_epoch, next_epoch advances by one and
@@ -37,7 +45,8 @@ is the lease's epoch if live, else the subject's retained epoch, else None:
   counter and never reused.
 - RENEW needs epoch, holder_run and deadline_at. No live lease is
   ``not-held``; another epoch is ``epoch-mismatch``; another holder run is
-  ``holder-mismatch``; a revoked epoch is ``revoked-epoch``; then the ttl is
+  ``holder-mismatch``; a revoked epoch is ``revoked-epoch``; a lease whose
+  deadline has passed is ``lease-expired``; then the deadline and the ttl are
   checked as acquire. The epoch stays, the deadline moves.
 - RELEASE needs epoch. No live lease is ``not-held``; another epoch is
   ``epoch-mismatch``. The kind's release rule applies: an evidence kind
@@ -51,7 +60,7 @@ is the lease's epoch if live, else the subject's retained epoch, else None:
   change (idempotent). Otherwise the lease is marked revoked and its epoch
   joins the table's revoked epochs. The lease stays until released.
 - TAKE_OVER needs holder_run, epoch (the epoch the new holder read) and
-  deadline_at. The ttl is checked first. The epoch the command read must
+  deadline_at. The deadline and the ttl are checked first. The epoch the command read must
   equal the subject's current epoch: no current epoch, or a higher one read,
   is ``unknown-epoch``; a lower one is ``epoch-beaten``. A live lease is
   takeable only when the kind releases on expiry and the lease's deadline
@@ -84,7 +93,8 @@ caller's tuples arrive in.
 from __future__ import annotations
 
 import re
-from datetime import datetime, timedelta
+from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 
 from omnimarket.models.lease_receipt.enum_lease import (
     EnumLeaseOperation,
@@ -106,7 +116,13 @@ from omnimarket.models.lease_receipt.model_lease_table import (
     ModelLeaseRetained,
     ModelLeaseTable,
 )
+from omnimarket.nodes.node_lease_receipt_reducer.handlers.handler_lease_table_store_memory import (
+    InMemoryLeaseTableStore,
+)
 from omnimarket.nodes.node_lease_receipt_reducer.overlay import load_lease_overlay
+from omnimarket.nodes.node_lease_receipt_reducer.protocols.protocol_lease_table_store import (
+    ProtocolLeaseTableStore,
+)
 
 # --------------------------------------------------------------------- rules
 # Each rule a failing control breaks is its own module-level function, called
@@ -142,6 +158,45 @@ def _release_allowed(
 def _holder_matches(lease: ModelLeaseEntry, holder_run: str | None) -> bool:
     """Whether the command's holder run is the lease's holder run."""
     return holder_run == lease.holder_run
+
+
+def _deadline_past(deadline_at: datetime, now: datetime) -> bool:
+    """Whether the command's deadline is not after its own now: a lease born expired."""
+    return deadline_at <= now
+
+
+def _lease_expired(lease: ModelLeaseEntry, now: datetime) -> bool:
+    """Whether the lease's deadline has passed at the command's now."""
+    return now >= lease.deadline_at
+
+
+def _now_out_of_bounds(
+    kind: ModelLeaseKindConfig, now: datetime, trusted_now: datetime | None
+) -> bool:
+    """Whether the command's now sits further from the reducer's clock than the kind allows."""
+    if trusted_now is None:
+        return False
+    return abs(now - trusted_now) > timedelta(seconds=kind.max_now_skew_seconds)
+
+
+def _now_regressed(table: ModelLeaseTable, now: datetime) -> bool:
+    """Whether the command's now is before the last recorded write of the table."""
+    return table.as_of is not None and now < table.as_of
+
+
+def _table_is_current(held: ModelLeaseTable | None, presented: ModelLeaseTable) -> bool:
+    """Whether the table the caller presented is exactly the table the reducer holds.
+
+    No held table is current for any presented table: the first admitted writer
+    of a kind seeds it. A held table is compared whole, not by its version
+    alone, so a forged table that borrows the version is refused too.
+    """
+    return held is None or held == presented
+
+
+def _system_now() -> datetime:
+    """The reducer's own clock, used when none is injected."""
+    return datetime.now(UTC)
 
 
 # ------------------------------------------------------------------- helpers
@@ -196,6 +251,8 @@ def _sorted_table(table: ModelLeaseTable) -> ModelLeaseTable:
     """The written table with every tuple in its canonical order."""
     return ModelLeaseTable(
         kind=table.kind,
+        version=table.version,
+        as_of=table.as_of,
         next_epoch=table.next_epoch,
         leases=tuple(sorted(table.leases, key=lambda lease: lease.subject)),
         revoked_epochs=tuple(sorted(table.revoked_epochs)),
@@ -228,8 +285,9 @@ def _refusal(
     reason: EnumLeaseReason,
     held_by_run: str | None = None,
     held_epoch: int | None = None,
+    table: ModelLeaseTable | None = None,
 ) -> ModelLeaseReduceOutput:
-    """The refused reply: the typed reason, the input table unchanged."""
+    """The refused reply: the typed reason; the input table unchanged unless the held one is named."""
     return ModelLeaseReduceOutput(
         correlation_id=request.correlation_id,
         operation=request.operation,
@@ -238,7 +296,7 @@ def _refusal(
         reason=reason,
         held_by_run=held_by_run,
         held_epoch=held_epoch,
-        table=request.table,
+        table=request.table if table is None else table,
     )
 
 
@@ -251,16 +309,22 @@ def _revoked_epochs_with(table: ModelLeaseTable, epoch: int) -> tuple[int, ...]:
 def _table_with(
     table: ModelLeaseTable,
     *,
+    now: datetime,
     next_epoch: int | None = None,
     leases: tuple[ModelLeaseEntry, ...] | None = None,
     revoked_epochs: tuple[int, ...] | None = None,
     receipts: tuple[ModelLeaseReceipt, ...] | None = None,
     retained: tuple[ModelLeaseRetained, ...] | None = None,
 ) -> ModelLeaseTable:
-    """The table with the named parts replaced, every tuple in canonical order."""
+    """The table with the named parts replaced, every tuple in canonical order.
+
+    A write: the version counts it and ``as_of`` is the command's time.
+    """
     return _sorted_table(
         ModelLeaseTable(
             kind=table.kind,
+            version=table.version + 1,
+            as_of=now,
             next_epoch=table.next_epoch if next_epoch is None else next_epoch,
             leases=table.leases if leases is None else leases,
             revoked_epochs=(
@@ -284,6 +348,8 @@ def _reduce_acquire(
     deadline_at = request.deadline_at
     if holder_run is None or deadline_at is None:
         return _refusal(request, EnumLeaseReason.MISSING_FIELD)
+    if _deadline_past(deadline_at, request.now):
+        return _refusal(request, EnumLeaseReason.DEADLINE_PAST)
     if _ttl_exceeded(kind, deadline_at, request.now):
         return _refusal(request, EnumLeaseReason.TTL_EXCEEDED)
     table = request.table
@@ -307,6 +373,7 @@ def _reduce_acquire(
         granted.epoch,
         _table_with(
             table,
+            now=request.now,
             next_epoch=_epoch_after_grant(table),
             leases=(*table.leases, granted),
             retained=tuple(
@@ -334,13 +401,21 @@ def _reduce_renew(
         return _refusal(request, EnumLeaseReason.HOLDER_MISMATCH)
     if lease.revoked:
         return _refusal(request, EnumLeaseReason.REVOKED_EPOCH)
+    if _lease_expired(lease, request.now):
+        return _refusal(request, EnumLeaseReason.LEASE_EXPIRED)
+    if _deadline_past(deadline_at, request.now):
+        return _refusal(request, EnumLeaseReason.DEADLINE_PAST)
     if _ttl_exceeded(kind, deadline_at, request.now):
         return _refusal(request, EnumLeaseReason.TTL_EXCEEDED)
     renewed = lease.model_copy(update={"deadline_at": deadline_at})
     return _recorded(
         request,
         lease.epoch,
-        _table_with(table, leases=(*_others(table, lease.subject), renewed)),
+        _table_with(
+            table,
+            now=request.now,
+            leases=(*_others(table, lease.subject), renewed),
+        ),
     )
 
 
@@ -374,6 +449,7 @@ def _reduce_release(
         lease.epoch,
         _table_with(
             table,
+            now=request.now,
             leases=_others(table, request.subject),
             receipts=receipts,
             retained=(*table.retained, released),
@@ -401,6 +477,7 @@ def _reduce_revoke(
         lease.epoch,
         _table_with(
             table,
+            now=request.now,
             leases=(*_others(table, lease.subject), revoked),
             revoked_epochs=_revoked_epochs_with(table, lease.epoch),
         ),
@@ -415,6 +492,8 @@ def _reduce_take_over(
     deadline_at = request.deadline_at
     if holder_run is None or read_epoch is None or deadline_at is None:
         return _refusal(request, EnumLeaseReason.MISSING_FIELD)
+    if _deadline_past(deadline_at, request.now):
+        return _refusal(request, EnumLeaseReason.DEADLINE_PAST)
     if _ttl_exceeded(kind, deadline_at, request.now):
         return _refusal(request, EnumLeaseReason.TTL_EXCEEDED)
     table = request.table
@@ -444,6 +523,7 @@ def _reduce_take_over(
         granted.epoch,
         _table_with(
             table,
+            now=request.now,
             next_epoch=_epoch_after_grant(table),
             leases=(*_others(table, request.subject), granted),
             revoked_epochs=_revoked_epochs_with(table, current_epoch),
@@ -496,15 +576,24 @@ def _reduce_record_receipt(
     )
     kept = mine[-kind.max_receipts_per_subject :] if kind.retain_receipts else mine
     receipts = (*[r for r in table.receipts if r.subject != subject], *kept)
-    return _recorded(request, epoch, _table_with(table, receipts=receipts))
+    return _recorded(
+        request, epoch, _table_with(table, now=request.now, receipts=receipts)
+    )
 
 
 # -------------------------------------------------------------------- reduce
 def reduce_lease(
     request: ModelLeaseReduceInput,
     overlay: ModelLeaseOverlay,
+    *,
+    trusted_now: datetime | None = None,
 ) -> ModelLeaseReduceOutput:
-    """One lease reduce: the command and the overlay in, the reply out."""
+    """One lease reduce: the command and the overlay in, the reply out.
+
+    ``trusted_now`` is the reducer's own clock reading; with it the command's
+    ``now`` is bounded (``now-out-of-bounds``), without it only the table's
+    ``as_of`` bounds it (``now-regressed``).
+    """
     kind = overlay.lease_kinds.get(request.table.kind)
     if kind is None:
         return _refusal(request, EnumLeaseReason.UNKNOWN_KIND)
@@ -520,6 +609,10 @@ def reduce_lease(
         and not _fully_matches(kind.outcome_ref_pattern, request.outcome_ref)
     ):
         return _refusal(request, EnumLeaseReason.OUTCOME_REF_INVALID)
+    if _now_out_of_bounds(kind, request.now, trusted_now):
+        return _refusal(request, EnumLeaseReason.NOW_OUT_OF_BOUNDS)
+    if _now_regressed(request.table, request.now):
+        return _refusal(request, EnumLeaseReason.NOW_REGRESSED)
     operation = request.operation
     if operation is EnumLeaseOperation.ACQUIRE:
         return _reduce_acquire(request, kind)
@@ -535,26 +628,75 @@ def reduce_lease(
 
 
 class HandlerLeaseReceiptReducer:
-    """The lease receipt reducer: pure definition-B compute over one command.
+    """The lease receipt reducer: the single writer of its lease tables.
 
-    The overlay is read once at construction (the deployment's overlay when
-    one is mounted, else the packaged contract's default kind); the handle
-    call itself is pure and reads nothing but the request and that overlay.
+    The overlay is read once at construction (the deployment's overlay when one
+    is mounted, else the packaged contract's default kind). The authoritative
+    table of each kind lives behind the injected store (in memory by default);
+    the reducer's own clock bounds every command's ``now``.
+
+    ``handle`` runs in this order, first failure wins:
+
+    1. an unknown kind or a caller the kind does not admit is refused as
+       ``reduce_lease`` refuses it: admission comes first, so an outside
+       caller never sees a held table;
+    2. the table the caller presented must be the table the store holds,
+       whole (``table-version-conflict``, the reply carrying the held table so
+       the caller can resync); a kind with no held table is seeded by its first
+       admitted writer, and a restarted reducer is re-seeded the same way;
+    3. the pure reduce runs against the presented table with the clock's now;
+    4. a recorded write is stored by compare and swap on the version the
+       reducer read: of two writers that read one version exactly one wins and
+       the other gets ``table-version-conflict``, never a second epoch.
     """
 
-    def __init__(self, overlay: ModelLeaseOverlay | None = None) -> None:
+    def __init__(
+        self,
+        overlay: ModelLeaseOverlay | None = None,
+        *,
+        store: ProtocolLeaseTableStore | None = None,
+        clock: Callable[[], datetime] | None = None,
+    ) -> None:
         self._overlay = overlay if overlay is not None else load_lease_overlay()
+        self._store: ProtocolLeaseTableStore = (
+            store if store is not None else InMemoryLeaseTableStore()
+        )
+        self._clock: Callable[[], datetime] = (
+            clock if clock is not None else _system_now
+        )
 
     def handle(self, request: ModelLeaseReduceInput) -> ModelLeaseReduceOutput:
         """Reduce one lease command; a bad request is a refused reply, never a raise."""
-        return reduce_lease(request, self._overlay)
+        kind_name = request.table.kind
+        kind = self._overlay.lease_kinds.get(kind_name)
+        if kind is None or request.caller.principal not in kind.admitted_callers:
+            return reduce_lease(request, self._overlay)
+        held = self._store.read(kind_name)
+        if not _table_is_current(held, request.table):
+            return _refusal(request, EnumLeaseReason.VERSION_CONFLICT, table=held)
+        reply = reduce_lease(request, self._overlay, trusted_now=self._clock())
+        if reply.status is not EnumLeaseStatus.RECORDED or reply.table == request.table:
+            return reply
+        read_version = None if held is None else held.version
+        if not self._store.compare_and_write(kind_name, read_version, reply.table):
+            return _refusal(
+                request,
+                EnumLeaseReason.VERSION_CONFLICT,
+                table=self._store.read(kind_name),
+            )
+        return reply
 
 
 __all__: list[str] = [
     "HandlerLeaseReceiptReducer",
+    "_deadline_past",
     "_epoch_after_grant",
     "_holder_matches",
     "_is_revoked_epoch",
+    "_lease_expired",
+    "_now_out_of_bounds",
+    "_now_regressed",
     "_release_allowed",
+    "_table_is_current",
     "reduce_lease",
 ]

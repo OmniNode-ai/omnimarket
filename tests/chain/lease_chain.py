@@ -26,7 +26,7 @@ import os
 import uuid
 from collections.abc import Iterator
 from contextlib import AbstractContextManager, AsyncExitStack, contextmanager
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Final, Literal
 
@@ -161,6 +161,12 @@ class LeaseBus:
         self.topic_refused = topics["refused"]
         self.waiting: dict[str, asyncio.Future[dict[str, Any]]] = {}
         self.carried: list[str] = []  # topic of every message the bus carried
+        # The node's one long-lived handler: it owns the lease tables (single writer), so every
+        # command of a run meets the table the run's earlier commands wrote. The chain drives
+        # virtual time through its commands, so the node's clock reads the command's own now;
+        # the clock bound itself is read in the reducer's now-bounds tests.
+        self.node_now = datetime.now(UTC)
+        self.node = HandlerLeaseReceiptReducer(clock=lambda: self.node_now)
 
     async def start(self) -> None:
         raise NotImplementedError
@@ -171,13 +177,13 @@ class LeaseBus:
     async def stop(self) -> None:
         raise NotImplementedError
 
-    @staticmethod
-    def serve(raw: bytes) -> bytes:
+    def serve(self, raw: bytes) -> bytes:
         """The node's side: validate the command, reduce it, return the reply."""
         request = json.loads(raw)
         try:
             command = ModelLeaseReduceInput.model_validate(request["command"])
-            reply = HandlerLeaseReceiptReducer().handle(command)
+            self.node_now = command.now
+            reply = self.node.handle(command)
         except Exception as exc:
             return json.dumps(
                 {

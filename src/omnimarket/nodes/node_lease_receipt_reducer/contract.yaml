@@ -4,16 +4,21 @@
 # ONEX Node Contract
 # Node: NodeLeaseReceiptReducer
 #
-# One lease command as a pure reduce:
+# One lease command as a reduce:
 #
 #   handle(ModelLeaseReduceInput) -> ModelLeaseReduceOutput
 #
-# The caller owns the lease table: the command carries one kind's table in,
-# and the reply carries it back — written on a recorded reply, unchanged on a
-# refusal with a typed reason. No clock (now is the command's time), no I/O,
-# no state file in the handler; every fact a rule needs (kinds, key patterns,
-# admitted callers, ttl bounds, receipt rules) lives in the overlay, never in
-# code.
+# The reducer is the single writer of its lease tables (RULING 2026-11-14T20:34:32Z).
+# It holds the authoritative table of each kind behind an injected store (in
+# memory by default; no state file, no database in this slice). A command carries
+# the table the caller read; a table that is not exactly the held one is refused
+# table-version-conflict and the reply carries the held table, so of two callers
+# that read one version exactly one writes. A recorded write bumps the table's
+# version and sets its as_of. The command's now is bounded: within the kind's
+# max_now_skew_seconds of the reducer's own clock (now-out-of-bounds) and never
+# before the table's as_of (now-regressed); a deadline not after now is
+# deadline-not-after-now. Every fact a rule needs (kinds, key patterns, admitted
+# callers, ttl and skew bounds, receipt rules) lives in the overlay, never in code.
 #
 # The checks run in one fixed order, first failure wins: unknown kind,
 # caller not admitted (internal-only: an outside caller is refused before
@@ -47,11 +52,12 @@ node_version:
   minor: 1
   patch: 0
 description: >
-  Pure reduce of one lease command over one kind's lease table. Reads the
-  command (caller, operation, subject, now, the operation's fields) and the
-  table the caller owns, and returns the recorded reply with the written
-  table, or the refused reply with a typed reason and the input table
-  unchanged. Deterministic in any input order; never raises on a bad
+  Single-writer reduce of one lease command over one kind's lease table. Reads
+  the command (caller, operation, subject, now, the operation's fields) and the
+  table the caller read, checks it against the table the reducer holds, and
+  returns the recorded reply with the written table, or the refused reply with a
+  typed reason and the input table unchanged (the held table on a version
+  conflict). Deterministic in any input order; never raises on a bad
   request. Fail-closed on admission: a caller whose principal the kind's
   overlay does not name is refused before the command is read further.
 input_model:
@@ -127,13 +133,13 @@ admission:
     data is held in a lease table.
 descriptor:
   node_archetype: compute
-  purity: pure
-  idempotent: true
+  purity: impure  # holds the authoritative lease tables behind the injected store and reads the reducer's own clock
+  idempotent: false  # a repeated command meets the table the first one wrote
   timeout_ms: 1000
 replay:
-  deterministic: true
+  deterministic: false  # the reply depends on the held table and the clock, not on the command alone
 metadata:
-  description: "Pure lease receipt reducer over one caller-owned lease table."
+  description: "Single-writer lease receipt reducer over one lease table per kind."
   author: "OmniNode Team"
   license: "MIT"
   created: "2026-11-14"
@@ -159,6 +165,8 @@ config:
         - revoke
         - record_receipt
       max_ttl_seconds: 604800
+      # How far a command's now may sit from the reducer's own clock (OMN-24484 review, finding 5).
+      max_now_skew_seconds: 300
       admitted_callers:
         - landing-controller
       retain_receipts: false

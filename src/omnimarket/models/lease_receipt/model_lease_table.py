@@ -2,10 +2,13 @@
 # SPDX-License-Identifier: MIT
 """The lease table the caller owns: it passes one in and writes the reply's back.
 
-The reducer holds no state between commands. Every command names one kind's
-table, and the reply carries that table — written on a recorded reply, the
-input unchanged on a refusal. ``next_epoch`` is one counter per table and is
-never reused: a lease released today still leaves every later grant above it.
+The reducer is the single writer of its tables: it holds the authoritative
+table of each kind behind its store, and a command must carry exactly the table
+the reducer holds (the ``version`` counts the recorded writes), else it is
+refused with ``table-version-conflict`` and the reply carries the held table.
+The reply carries one kind's table — written on a recorded reply, the input
+unchanged on a refusal. ``next_epoch`` is one counter per table and is never
+reused: a lease released today still leaves every later grant above it.
 """
 
 from __future__ import annotations
@@ -79,6 +82,15 @@ class ModelLeaseTable(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     kind: str = Field(..., min_length=1)
+    version: int = Field(
+        default=0,
+        ge=0,
+        description="The count of recorded writes the reducer made to this table.",
+    )
+    as_of: datetime | None = Field(
+        default=None,
+        description="The command time of the last recorded write; a command may not run before it.",
+    )
     next_epoch: int = Field(default=1, ge=1)
     leases: tuple[ModelLeaseEntry, ...] = ()
     revoked_epochs: tuple[int, ...] = ()

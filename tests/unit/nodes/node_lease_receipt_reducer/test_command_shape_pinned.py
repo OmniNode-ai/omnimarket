@@ -55,6 +55,8 @@ PINNED: dict[type[BaseModel], set[str]] = {
     },
     ModelLeaseTable: {
         "kind",
+        "version",
+        "as_of",
         "next_epoch",
         "leases",
         "revoked_epochs",
@@ -81,3 +83,10 @@ def test_the_shape_is_pinned(model: type[BaseModel]) -> None:
 
 def test_control_an_added_field_is_red() -> None:
     assert set(ModelLeaseTable.model_fields) | {"extra"} != PINNED[ModelLeaseTable]
+
+
+def test_the_reply_names_its_failure_in_its_dump() -> None:
+    """The derived cause is part of the reply's serialized shape (Fable finding 6)."""
+    assert set(ModelLeaseReduceOutput.model_computed_fields) == {
+        "terminal_failure_cause"
+    }

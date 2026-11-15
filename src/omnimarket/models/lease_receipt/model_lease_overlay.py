@@ -42,6 +42,14 @@ class ModelLeaseKindConfig(BaseModel):
     admitted_callers: tuple[str, ...] = Field(..., min_length=1)
     retain_receipts: bool
     max_receipts_per_subject: int = Field(..., ge=1)
+    max_now_skew_seconds: int = Field(
+        ...,
+        ge=0,
+        description=(
+            "How far a command's now may sit from the reducer's own clock; a "
+            "command outside it is refused now-out-of-bounds."
+        ),
+    )
     outcome_ref_pattern: str = Field(
         ...,
         description=(
