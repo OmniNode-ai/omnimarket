@@ -1,0 +1,50 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Install request decision COMPUTE (OMN-19998, root 5: the install request)
+#
+# One install request, read by the installer on one host: execute, hold, expire, skip or ignore. Pure: no clock (the caller
+# supplies now), no I/O. Exemplar: node_pr_landing_decision_compute.
+name: node_install_request_decision_compute
+contract_name: node_install_request_decision_compute
+node_name: node_install_request_decision_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+lifecycle: experimental
+runtime_profiles: [main]
+
+description: >
+  Decides what the installer on one host does with one typed install request. A request for another host is ignored; a
+  request that already has a verified result is skipped (the request id is the idempotency key); a request past its expiry
+  is expired and never executed; a request on a host with a blocker (an install lock held, a unit mid-run) is held with the
+  blocker as its reason; every other request is executed. The order of those rules is fixed and the first that applies wins.
+
+handler:
+  module: omnimarket.nodes.node_install_request_decision_compute.handlers.handler_install_request_decision
+  class: HandlerInstallRequestDecision
+  input_model: omnimarket.models.install_request.ModelInstallRequestDecisionInput
+  output_model: omnimarket.models.install_request.ModelInstallRequestDecision
+
+input_model:
+  name: ModelInstallRequestDecisionInput
+  module: omnimarket.models.install_request
+  description: The request, the executing host, the clock, any result already published and the host's blockers.
+output_model:
+  name: ModelInstallRequestDecision
+  module: omnimarket.models.install_request
+  description: The action and its reason code.
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+
+# The installer effect calls the handler in process; the node has no bus surface of its own.
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+metadata:
+  ticket: OMN-19998
+  transport_type: inmemory

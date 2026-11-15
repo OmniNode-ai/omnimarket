@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. The deployment's overlay lives at <root>/node_install_request_effect/overlay.yaml under a root named in
+# ONEX_SKILL_OVERLAY_ROOTS. No key has a default.
+host_name_env: EXAMPLE_INSTALL_HOST_NAME
+default_expiry_minutes: 120
+command_timeout_seconds: 600
+hold_retry_seconds: 60
+max_command_age_seconds: 21600
+output_max_chars: 400
+journal_dir_env: EXAMPLE_INSTALL_JOURNAL_DIR
+journal_file: install-request-results.jsonl
+hosts:
+  - name: example-host
+    blocker_files:
+      - /tmp/example-install.lock
+    units:
+      - name: example-unit
+        kind: unit-tree
+        repositories: [Example-Org/example-repo]
+        prepare_argv: [/usr/bin/env, example-refresh, "{repository}", "{ref}"]
+        verify_prefixes:
+          - [/usr/bin/env, example-verify]
+        branch_ref_prefix: origin/
+      - name: example-plugin-tree
+        kind: plugin-tree
+        repositories: [Example-Org/example-plugin-repo]
+        installer_argv: [/usr/bin/env, example-install-tree, --branch, "{ref}"]
+        verify_prefixes:
+          - [/usr/bin/env, example-verify-plugin]
+        revision_pattern: "installed revision ([0-9a-f]{7,40})"

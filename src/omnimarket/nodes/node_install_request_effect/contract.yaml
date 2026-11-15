@@ -1,0 +1,96 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Install request EFFECT (OMN-19998, root 5: the install request)
+#
+# The installer on one host reads typed install requests from the bus, decides with node_install_request_decision_compute,
+# installs through the declared installer (node_unit_tree_install_effect for a unit tree, the overlay's declared installer for
+# the launching host's plugin tree), runs the request's verify command and publishes one typed result. Exemplars:
+# node_join_refusal_effect (contract, overlay, entry point) and node_unit_tree_install_effect (injected installer and runner).
+name: node_install_request_effect
+contract_name: node_install_request_effect
+node_name: node_install_request_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Executes an install request on the host that serves it. A request for another host is ignored. A request already verified
+  is not run twice (the result journal keeps the request id). An expired request is answered `expired` and never run. A host
+  with a blocker holds the request and decides again after the overlay's retry interval. A unit or repository the host's
+  overlay row does not name, or a verify command that starts with no prefix the unit names, is refused with a typed reason
+  before anything is written. Otherwise the installer runs (the unit tree installer rolls its own tree back when its checks
+  fail), then the verify command; the request is `verified` only when a line of the command's output holds the expected line.
+  A result that is not `verified` leaves the request owing its NOT RUNNING line.
+
+handler:
+  module: omnimarket.nodes.node_install_request_effect.handlers.handler_install_request
+  class: HandlerInstallRequest
+  input_model: omnimarket.models.install_request.ModelInstallRequest
+  output_model: omnimarket.nodes.node_install_request_effect.models.model_install_request_effect.ModelInstallRequestHandled
+
+# HandlerInstallRequest takes the overlay, the unit tree installer, the command runner, the result journal and the clock as
+# constructor parameters; the host process (runtime_install_request.py) serves it over the bus.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [host-install, verify-command, result-journal-append]
+  timeout_ms: 1800000
+
+input_model:
+  name: ModelInstallRequest
+  module: omnimarket.models.install_request
+  description: One request to install one unit or tree on one host, with its verify command and expected line.
+output_model:
+  name: ModelInstallRequestHandled
+  module: omnimarket.nodes.node_install_request_effect.models.model_install_request_effect
+  description: The decision, and the typed result when the host answered.
+
+terminal_event: onex.evt.omnimarket.install-request-completed.v1
+
+runtime_dispatch:
+  external_trigger: true
+  command_topic: onex.cmd.omnimarket.install-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.install-request-completed.v1
+    failure: onex.evt.omnimarket.install-request-failed.v1
+
+topics:
+  install_requested: onex.cmd.omnimarket.install-requested.v1
+  install_request_completed: onex.evt.omnimarket.install-request-completed.v1
+  install_request_failed: onex.evt.omnimarket.install-request-failed.v1
+
+# The host process subscribes with a consumer group of its own per host (every host sees every request and answers its own);
+# it is not a runtime-dispatched subscriber, so the contract lists no subscribe topic.
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.install-request-completed.v1
+  - onex.evt.omnimarket.install-request-failed.v1
+
+# The host process is the installer's login (the host reconciler principal, as for the host install orchestrator): it reads the
+# command topic and writes the two terminals. A lane's own login publishing the command is declared with the lab logins in the
+# overlays repository, not here.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_HOST_RECONCILER_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.install-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.install-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.install-request-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.install-request-completed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.install-request-failed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.install-request-failed.v1, operation: DESCRIBE}
+
+overlay:
+  node: node_install_request_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+metadata:
+  ticket: OMN-19998
+  transport_type: kafka
