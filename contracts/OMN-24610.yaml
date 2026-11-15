@@ -1,0 +1,78 @@
+schema_version: 1.0.0
+ticket_id: OMN-24610
+title: Host hygiene job can be asked to run once on demand and leaves held computers alone
+summary: The merged change of OMN-24557 only let the overlay model of node_host_hygiene_orchestrator carry the shared event_bus key. A review found that an on-demand call through onex run-node still cannot work, because the command is published to the first subscribed topic of the node's contract (the host disk reading topic) and answered only by a terminal event with the caller's correlation id, and the node had neither. This change gives the node its own request topic as the first subscribed topic, a request model and a handler that run the same decision, dispatch and run event code as the scheduled tick without asking the schedule gate or moving its last-run time, and a terminal run event under the caller's correlation id (a typed refusal when the overlay cannot be read). A host that its own capacity guard holds is left alone by the decision compute instead of being read as unread, the held fact is fed by a small injected port over the existing capacity advertisement reader, and an event_bus lane that differs from the lab_work bus lane is refused by the overlay model. Not in this change - the cleanup rules, the schedule, the dispatch, the overlays repository settings and the bus-backed advertisement source for the running node.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- topics
+- events
+requirements:
+- id: req-omn24610-on-demand
+  statement: One run of the host hygiene job can be asked for through the node's own command topic, answers under the caller's correlation id, does not move the schedule, and never sends a cleanup to a held computer.
+  acceptance:
+  - id: AC1
+    statement: "AC1: a request on the node's own request topic starts a run and the terminal event carries the caller's correlation id; the request topic is the first subscribed topic"
+  - id: AC2
+    statement: "AC2: an on-demand run ignores the schedule gate and does not move the last-run time"
+  - id: AC3
+    statement: "AC3: a held host is sent no cleanup"
+  - id: AC4
+    statement: "AC4: an event_bus lane that differs from the lab_work bus lane is refused"
+  - id: AC5
+    statement: "AC5: integrated: a request through onex run-node is read in the running dev runtime and its terminal event carries the caller's correlation id"
+evidence_requirements:
+- kind: tests
+  description: The on-demand route, the seam to the onex run-node resolver, the held host decision and the overlay lane tie tests at the pushed head; each fails against the code before this change.
+  command: uv run pytest tests/unit/nodes/node_host_hygiene_orchestrator/test_on_demand_run.py tests/unit/nodes/node_host_hygiene_decision_compute/test_held_host.py -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24610-ac1
+  description: 'AC1: the request on the first subscribed topic runs and the terminal event carries the caller correlation id (envelope and payload); the seam test reads the contract first topic through onex run-node resolver; the same tests fail on the contract and handlers before this change.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_host_hygiene_orchestrator/test_on_demand_run.py tests/unit/nodes/node_host_hygiene_orchestrator/test_on_demand_seam.py tests/chains/host_hygiene -q -n 0 --no-cov -p no:cacheprovider -k 'on_demand or request_topic'
+    cwd: .
+- id: dod-omn24610-ac2
+  description: 'AC2: the on-demand run sends when the schedule gate says not due and the gate last-run time is unchanged afterwards.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_host_hygiene_orchestrator/test_on_demand_run.py -q -n 0 --no-cov -p no:cacheprovider -k 'gate or last_run'
+    cwd: .
+- id: dod-omn24610-ac3
+  description: 'AC3: a held host with no reading is not dispatched under when_unread=dispatch, on the decision compute and through the scheduled and on-demand routes.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_host_hygiene_decision_compute/test_held_host.py tests/unit/nodes/node_host_hygiene_orchestrator/test_hold_reader.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24610-ac4
+  description: 'AC4: the overlay model refuses an event_bus lane that differs from the lab_work bus lane; the nested unknown-key test now fails on the model before the event_bus field.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_host_hygiene_orchestrator/test_overlay_model.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24610-integration-proof
+  description: 'AC5 is not claimable locally: an on-demand run through onex run-node is read in the running dev runtime after the runtime carries this change and the overlays repository holds the event_bus block; the tests above are the hosted proxy (in-memory bus, the contract first topic read through the run-node resolver) and are not the integrated read.'
+  source: manual
+  binds_ac:
+  - AC5
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24610 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_host_hygiene_orchestrator/test_on_demand_seam.py -q --no-cov -p no:randomly
+    cwd: .

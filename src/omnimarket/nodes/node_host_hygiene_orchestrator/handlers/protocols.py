@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from datetime import datetime
 from typing import Protocol
 
 from omnimarket.models.model_lab_work_unit import (
@@ -19,3 +21,13 @@ class ProtocolHostHygieneLabWorkSender(Protocol):
     """
 
     def send(self, request: ModelLabWorkUnitRequest) -> ModelLabWorkUnitReceipt: ...
+
+
+class ProtocolHostHoldReader(Protocol):
+    """Which hosts their own capacity guard holds: host name -> the guard's reason.
+
+    A host not in the mapping is not held. A reader that cannot read raises;
+    the caller decides.
+    """
+
+    def held_hosts(self, now: datetime, max_age_seconds: int) -> Mapping[str, str]: ...
