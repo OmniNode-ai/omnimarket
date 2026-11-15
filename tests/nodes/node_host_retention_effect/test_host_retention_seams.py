@@ -22,6 +22,7 @@ import pytest
 import yaml
 
 from omnimarket.handlers.ledger_row_grammar import parse_row
+from omnimarket.handlers.overlay_keys import CONFIG_ROOT_ENV
 from omnimarket.nodes.node_host_retention_effect import runtime_host_retention
 from omnimarket.nodes.node_host_retention_effect.handlers.handler_host_retention import (
     CONTRACT_PATH,
@@ -545,22 +546,41 @@ PLIST_TEMPLATE = (
     / "ai.omninode.host-retention.plist.template"
 )
 
+UNIT_VALUES = {
+    "__HOME__": "/h",
+    "__OMNI_HOME__": "/o",
+    "__OMNIMARKET_DIR__": "/m",
+    "__OVERLAY_ROOT__": "/r",
+    "__WORKSPACE_CONFIG_ROOT__": "/c",
+    "__ARCHIVE_ROOT__": "/a",
+    "__HOST_NAME__": "pool-a",
+}
 
-def test_unit_seam_the_mac_timer_runs_this_node_for_the_lane_results_class() -> None:
-    """The unit and the node share one command line: the module, the verb, the class and the overlay roots."""
-    values = {
-        "__HOME__": "/h",
-        "__OMNI_HOME__": "/o",
-        "__OMNIMARKET_DIR__": "/m",
-        "__OVERLAY_ROOT__": "/r",
-        "__ARCHIVE_ROOT__": "/a",
-        "__HOST_NAME__": "pool-a",
-    }
+
+def _render_plist(values: dict[str, str]) -> dict[str, Any]:
+    """The unit template with every placeholder replaced, read back as a plist document."""
     text = PLIST_TEMPLATE.read_text()
     for placeholder, value in values.items():
         text = text.replace(placeholder, value)
     assert "__" not in text.replace("__main__", ""), "every placeholder is replaced"
-    document = plistlib.loads(text.encode())
+    return plistlib.loads(text.encode())
+
+
+def _missing_unit_variables(environment: dict[str, str]) -> list[str]:
+    """Required unit variable names that the rendered environment does not carry, sorted."""
+    required = (
+        "HOME",
+        "OMNI_HOME",
+        "ONEX_SKILL_OVERLAY_ROOTS",
+        CONFIG_ROOT_ENV,
+        load_file_policy().archive_root_env,
+    )
+    return sorted(name for name in required if name not in environment)
+
+
+def test_unit_seam_the_mac_timer_runs_this_node_for_the_lane_results_class() -> None:
+    """The unit and the node share one command line: the module, the verb, the class and the overlay roots."""
+    document = _render_plist(UNIT_VALUES)
 
     assert document["Label"] == "ai.omninode.host-retention"
     command = document["ProgramArguments"][-1]
@@ -569,6 +589,7 @@ def test_unit_seam_the_mac_timer_runs_this_node_for_the_lane_results_class() -> 
         in command
     )
     assert document["EnvironmentVariables"]["ONEX_SKILL_OVERLAY_ROOTS"] == "/r"
+    assert document["EnvironmentVariables"][CONFIG_ROOT_ENV] == "/c"
     assert command.endswith("--dry-run"), (
         "the timer lists and removes nothing until the first reading is taken and the flag is removed by hand"
     )
@@ -583,6 +604,22 @@ def test_unit_seam_the_mac_timer_runs_this_node_for_the_lane_results_class() -> 
         ["lane_results"],
         True,
     )
+
+
+def test_unit_seam_the_unit_environment_carries_what_the_loader_reads() -> None:
+    """The unit sets every variable the ledger rows loader and the archive port read from the environment."""
+    environment = _render_plist(UNIT_VALUES)["EnvironmentVariables"]
+
+    assert _missing_unit_variables(environment) == []
+    assert environment[CONFIG_ROOT_ENV] == "/c"
+
+
+def test_unit_seam_control_a_unit_without_the_workspace_root_is_seen_missing() -> None:
+    environment = _render_plist(UNIT_VALUES)["EnvironmentVariables"]
+
+    assert _missing_unit_variables(environment) == []
+    del environment[CONFIG_ROOT_ENV]
+    assert _missing_unit_variables(environment) == [CONFIG_ROOT_ENV]
 
 
 # ------------------------------------------------------------------ one owner of the two folders

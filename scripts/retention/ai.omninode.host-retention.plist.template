@@ -13,7 +13,9 @@
   Every window, path and the loader command is a value of the node's overlay row for this host (overlays repository,
   node_host_retention_effect), never of this file.
   Replace __HOME__, __OMNI_HOME__, __OMNIMARKET_DIR__ (a clean omnimarket checkout on dev), __OVERLAY_ROOT__ (the
-  folder of the overlays clone that holds <node>/overlay.yaml), __ARCHIVE_ROOT__ (the folder archive entries copy into, the
+  folder of the overlays clone that holds <node>/overlay.yaml), __WORKSPACE_CONFIG_ROOT__ (the checkout that holds
+  config/lab/ci_bus_lanes.yaml: the ledger rows loader reads the dev bus address from it, and without it answers
+  unreadable, so nothing is removed), __ARCHIVE_ROOT__ (the folder archive entries copy into, the
   same ONEX_RETENTION_ARCHIVE_ROOT node_retention_cleanup uses; with none, an archive entry removes nothing) and
   __HOST_NAME__ (this host's row name) before loading it. StartCalendarInterval fires a missed slot on wake. Each run prints
   one JSON result: every entry removed with its bytes and archive path, every entry kept with its reason, the totals per
@@ -50,6 +52,8 @@
     <string>__OMNI_HOME__</string>
     <key>ONEX_SKILL_OVERLAY_ROOTS</key>
     <string>__OVERLAY_ROOT__</string>
+    <key>ONEX_WORKSPACE_CONFIG_ROOT</key>
+    <string>__WORKSPACE_CONFIG_ROOT__</string>
     <key>ONEX_RETENTION_ARCHIVE_ROOT</key>
     <string>__ARCHIVE_ROOT__</string>
   </dict>
