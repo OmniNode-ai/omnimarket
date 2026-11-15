@@ -644,7 +644,8 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # +4 net for the merge-override alarm effect tables (declared and created in this PR) and the CREATE for code_eval_trial_state = 130.
     # +2 for OMN-23865's host_disk_class and host_disk_volume, declared and created in the same PR = 132.
     # +1 for skill_executions, created by node_projection_skill_lifecycle = 133.
-    assert census["source_created_tables"] == 133
+    # +2 for OMN-20034's goal_trace_events and goal_traces, created by node_projection_goal_trace = 135.
+    assert census["source_created_tables"] == 135
     # 63 as of OMN-15631 (rebased onto OMN-16316/OMN-16293): 59 as of
     # OMN-16146, +2 for OMN-16293's two omnibase_infra#2818 catalog
     # declarations (savings_injection_signals, savings_validator_catch_signals)
