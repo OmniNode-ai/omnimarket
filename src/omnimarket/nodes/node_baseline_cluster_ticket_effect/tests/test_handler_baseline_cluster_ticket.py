@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from omnimarket.nodes.node_baseline_cluster_ticket_effect.adapters.adapter_inmemory_cluster_ticket_store import (
@@ -58,8 +60,8 @@ def request(**overrides: object) -> ModelBaselineClusterReportRequest:
     return ModelBaselineClusterReportRequest.model_validate(base)
 
 
-def handler(store: object) -> HandlerBaselineClusterTicket:
-    return HandlerBaselineClusterTicket(store)  # type: ignore[arg-type]
+def handler(store: Any) -> HandlerBaselineClusterTicket:
+    return HandlerBaselineClusterTicket(store)
 
 
 def test_two_runs_of_the_same_cluster_make_one_ticket() -> None:
