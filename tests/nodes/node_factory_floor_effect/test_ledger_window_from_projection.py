@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import builtins
 import subprocess
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -30,6 +30,9 @@ from omnimarket.nodes.node_factory_floor_effect.handlers.ledger_window_from_proj
     ProjectionRead,
     ProjectionReadFactory,
     read_ledger_window_from_projection,
+)
+from omnimarket.nodes.node_factory_floor_effect.models.model_ledger_projection_window import (
+    ModelProjectionWindow,
 )
 from omnimarket.nodes.node_factory_floor_effect.source_loader import (
     SourceRefusedError,
@@ -46,6 +49,7 @@ from omnimarket.nodes.node_work_ledger_reader_effect.handlers import (
     HandlerWorkLedgerReader,
 )
 from omnimarket.nodes.node_work_ledger_reader_effect.models import (
+    EnumReaderParity,
     EnumReaderQuery,
     EnumReaderStatus,
     ModelInMemoryReadRoute,
@@ -125,8 +129,10 @@ def _result(
     lines: Sequence[str] = (),
     status: EnumReaderStatus = EnumReaderStatus.OK,
     file_read: bool = False,
+    matched: int | None = None,
+    parity: EnumReaderParity = EnumReaderParity.EXACT,
 ) -> ModelReaderResult:
-    """The reader node's answer: ok with ``lines``, or the status named."""
+    """The reader node's answer: ok with ``lines``, or the status named; ``matched`` is the rows the node says it matched."""
     return ModelReaderResult(
         reader=request.reader,
         query=request.query,
@@ -134,9 +140,10 @@ def _result(
         reason="node-answered-fresh",
         source="node",
         lines=tuple(lines),
-        matched=len(lines),
+        matched=len(lines) if matched is None else matched,
         watermark=NOW if status is EnumReaderStatus.OK else None,
         max_watermark_age_s=900,
+        parity=parity,
         file_read=file_read,
     )
 
@@ -144,35 +151,74 @@ def _result(
 SETTLE = 3600
 
 
+class FakeClock:
+    """A controllable clock the fake reads advance: ``now`` is its time in seconds."""
+
+    def __init__(self) -> None:
+        self.now = 0.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
 class FakeProjection:
     """The projection behind the reader node: a factory handing out one fresh read per day, each
-    answering the lines of the day its ``since`` names, and recording every request."""
+    answering the lines of the day its ``since`` names, and recording every request.
 
-    def __init__(self, lines_by_day: Mapping[str, Sequence[str]]) -> None:
+    ``matched_by_day`` overrides the rows the node says it matched for a day; ``parity`` is what a
+    parity read answers; each read advances ``clock`` by ``tick`` seconds."""
+
+    def __init__(
+        self,
+        lines_by_day: Mapping[str, Sequence[str]],
+        *,
+        matched_by_day: Mapping[str, int] | None = None,
+        parity: EnumReaderParity = EnumReaderParity.EXACT,
+        clock: FakeClock | None = None,
+        tick: float = 0.0,
+    ) -> None:
         self._lines_by_day = dict(lines_by_day)
+        self._matched_by_day = dict(matched_by_day or {})
+        self._parity = parity
+        self._clock = clock
+        self._tick = tick
         self.requests: list[ModelReaderRequest] = []
         self.reads = 0
 
     def __call__(self) -> ProjectionRead:
         self.reads += 1
-        lines_by_day = self._lines_by_day
-        requests = self.requests
 
         def read(request: ModelReaderRequest) -> ModelReaderResult:
-            requests.append(request)
+            self.requests.append(request)
             day = f"{request.since:%Y-%m-%d}" if request.since else ""
-            return _result(request, lines=lines_by_day.get(day, ()))
+            result = _result(
+                request,
+                lines=self._lines_by_day.get(day, ()),
+                matched=self._matched_by_day.get(day),
+                parity=self._parity,
+            )
+            if self._clock is not None:
+                self._clock.now += self._tick
+            return result
 
         return read
 
+    @property
+    def days(self) -> list[str]:
+        """The day each read asked for, in the order the reads were made."""
+        return [f"{r.since:%Y-%m-%d}" for r in self.requests if r.since is not None]
 
-def _window(
+
+def _window_full(
     factory: ProjectionReadFactory,
     *,
     cache: CachedSourceReader | None = None,
     now: datetime = NOW,
     window_days: int = 3,
-) -> tuple[ModelFloorLedgerRow, ...]:
+    deadline_seconds: int = 600,
+    clock: Callable[[], float] | None = None,
+) -> ModelProjectionWindow:
+    extra = {} if clock is None else {"clock": clock}
     return read_ledger_window_from_projection(
         reader=READER,
         read_factory=factory,
@@ -183,7 +229,19 @@ def _window(
         cache_ttl_seconds=900,
         read_workers=None,
         settle_seconds=SETTLE,
+        deadline_seconds=deadline_seconds,
+        **extra,
     )
+
+
+def _window(
+    factory: ProjectionReadFactory,
+    *,
+    cache: CachedSourceReader | None = None,
+    now: datetime = NOW,
+    window_days: int = 3,
+) -> tuple[ModelFloorLedgerRow, ...]:
+    return _window_full(factory, cache=cache, now=now, window_days=window_days).rows
 
 
 def _answer(lines: tuple[str, ...], watermark: datetime = NOW) -> InMemoryPointRead:
@@ -205,7 +263,7 @@ def test_golden_one_rows_read_per_day_and_the_rows_land_in_day_order() -> None:
         ("STATUS", "l3"),
     ]
     # one fresh read per day: three closed days with exact since/until, today open-ended
-    [day1, day2, day3, today] = factory.requests
+    [today, day1, day2, day3] = factory.requests
     assert factory.reads == 4
     for request in factory.requests:
         assert request.reader == READER
@@ -231,23 +289,24 @@ def test_the_same_lines_answered_for_every_day_are_not_duplicated() -> None:
     point = _answer(LINES)
     rows = _window(lambda: _handler(point).handle)
     assert [row.lane for row in rows] == ["l1", "l2", "l3"]
-    assert len(point.requests) == 4
+    # one rows read per day, and the parity read of today's answer
+    assert len(point.requests) == 5
 
 
 def test_a_second_call_reads_only_today_through_the_cache() -> None:
     cache, _backend = memory_reader()
     first_factory = FakeProjection(LINES_BY_DAY)
     first = _window(first_factory, cache=cache)
-    assert [f"{r.since:%Y-%m-%d}" for r in first_factory.requests] == [
+    assert first_factory.days == [
+        "2026-11-14",
         "2026-11-11",
         "2026-11-12",
         "2026-11-13",
-        "2026-11-14",
-    ]
+    ], "today is read before any closed day"
     assert cache.tally.stores == 3, "today's rows were kept"
     second_factory = FakeProjection(LINES_BY_DAY)
     second = _window(second_factory, cache=cache, now=NOW + timedelta(minutes=5))
-    assert [f"{r.since:%Y-%m-%d}" for r in second_factory.requests] == ["2026-11-14"], (
+    assert second_factory.days == ["2026-11-14"], (
         "a closed day was read from the projection again"
     )
     assert second == first
@@ -258,11 +317,11 @@ def test_failing_control_without_a_cache_every_closed_day_is_read_again() -> Non
     first = _window(FakeProjection(LINES_BY_DAY))
     second_factory = FakeProjection(LINES_BY_DAY)
     second = _window(second_factory)
-    assert [f"{r.since:%Y-%m-%d}" for r in second_factory.requests] == [
+    assert second_factory.days == [
+        "2026-11-14",
         "2026-11-11",
         "2026-11-12",
         "2026-11-13",
-        "2026-11-14",
     ], "a closed day was kept without a cache"
     assert second == first
 
@@ -271,14 +330,14 @@ def test_error_reader_not_moved_is_refused_for_the_day() -> None:
     """The overlay moves the read: a reader it does not name keeps its own read, so the
     projection read refuses the day and the point read is never asked."""
     point = _answer(LINES)
-    with pytest.raises(SourceRefusedError, match=r"not-moved.*2026-11-11"):
+    with pytest.raises(SourceRefusedError, match=r"not-moved.*2026-11-14"):
         _window(lambda: _handler(point, moved_readers=("some-other-reader",)).handle)
     assert point.requests == []
 
 
 def test_error_unreadable_is_refused_never_empty() -> None:
     """The node did not answer: refused with the day and its reason named, never an empty window."""
-    with pytest.raises(SourceRefusedError, match=r"unreadable.*2026-11-11"):
+    with pytest.raises(SourceRefusedError, match=r"unreadable.*2026-11-14"):
         _window(lambda: _handler(InMemoryPointRead()).handle)
 
 
@@ -389,3 +448,137 @@ def test_failing_control_the_file_window_read_trips_the_guard(
             plugin_root_env="CLAUDE_PLUGIN_ROOT",
             ledger_rows_file=None,
         )
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# OMN-24490 review fixes: a closed day is kept only from an answer that is fresh for that day, the answer's
+# completeness is compared and named, the read holds to its deadline, and a row at midnight lands in its own day.
+# ---------------------------------------------------------------------------------------------------------------
+
+LATE = "2026-11-13T23:59:30Z | STATUS | lane=late | ticket=OMN-7 | worktree=none | the late row"
+
+
+def test_error_a_lagging_projection_does_not_store_a_short_yesterday() -> None:
+    """The projection lags past settle_seconds: today holds no row yet and yesterday lacks its last row. The short day is read
+    and counted but never kept; once the projection recovers the next run reads it again and sees the late row."""
+    cache, _backend = memory_reader()
+    lagging = {**LINES_BY_DAY, "2026-11-14": ()}
+    first_factory = FakeProjection(lagging)
+    first = _window_full(first_factory, cache=cache)
+    assert cache.tally.stores == 0, (
+        "a closed day was kept before the projection held a row after it"
+    )
+    assert not any(row.lane == "late" for row in first.rows)
+
+    recovered = {**LINES_BY_DAY, "2026-11-13": (DAY3, LATE)}
+    second_factory = FakeProjection(recovered)
+    second = _window_full(second_factory, cache=cache)
+    assert "2026-11-13" in second_factory.days, "yesterday came from the cache"
+    assert any(row.lane == "late" for row in second.rows)
+    assert cache.tally.stores == 3, (
+        "the closed days were kept once the projection held them"
+    )
+    third_factory = FakeProjection(recovered)
+    _window_full(third_factory, cache=cache)
+    assert third_factory.days == ["2026-11-14"]
+
+
+def test_failing_control_wall_clock_alone_would_have_kept_the_short_day() -> None:
+    """The old rule judged only the wall clock: at NOW yesterday is long past settle_seconds, so it would have been kept
+    after the lagging run above. The new rule keeps nothing, so the read can fail."""
+    midnight = NOW.replace(hour=0, minute=0)
+    assert (NOW - midnight).total_seconds() >= SETTLE
+    cache, _backend = memory_reader()
+    _window_full(FakeProjection({**LINES_BY_DAY, "2026-11-14": ()}), cache=cache)
+    assert cache.tally.stores == 0
+
+
+def test_a_row_at_exactly_midnight_utc_belongs_to_the_day_it_starts() -> None:
+    """A row stamped 00:00:00 UTC is in the day that starts there: the closed day's end is exclusive, its start inclusive.
+    The midnight row of today also proves the projection holds a row at the end of yesterday, so yesterday is kept."""
+    first_midnight = "2026-11-13T00:00:00Z | CLAIM | lane=mid-y | ticket=OMN-8 | worktree=none | at midnight"
+    second_midnight = "2026-11-14T00:00:00Z | CLAIM | lane=mid-t | ticket=OMN-9 | worktree=none | at midnight"
+    point = _answer((first_midnight, second_midnight))
+    cache, _backend = memory_reader()
+    window = _window_full(lambda: _handler(point).handle, cache=cache)
+    assert [row.lane for row in window.rows] == ["mid-y", "mid-t"]
+    assert window.gaps == ("read parity unread",)
+    assert cache.tally.stores == 3
+    before = len(point.requests)
+    _window_full(lambda: _handler(point).handle, cache=cache)
+    again = point.requests[before:]
+    assert {q.since for q in again if q.lane is None} == {
+        datetime(2026, 11, 14, tzinfo=UTC)
+    }, "a closed day was read again"
+
+
+def test_error_a_day_short_of_the_rows_the_node_matched_is_named_and_not_kept() -> None:
+    """The node matched 2 rows for 2026-11-12 and returned 1 line: the gap is named on the window and the day is read again next run."""
+    cache, _backend = memory_reader()
+    first_factory = FakeProjection(LINES_BY_DAY, matched_by_day={"2026-11-12": 2})
+    first = _window_full(first_factory, cache=cache)
+    assert first.gaps == ("2026-11-12: 1 of 2 rows returned",)
+    assert "2026-11-12: 1 of 2 rows returned" in first.cause()
+    assert cache.tally.stores == 2, "the short day was kept"
+    second_factory = FakeProjection(LINES_BY_DAY)
+    second = _window_full(second_factory, cache=cache)
+    assert second_factory.days == ["2026-11-14", "2026-11-12"]
+    assert second.gaps == ()
+    assert second.cause() == ""
+
+
+def test_error_read_parity_other_than_exact_is_named() -> None:
+    """Today's read asks for the parity verdict, no closed day's does, and a verdict that is not exact is named on the window."""
+    unread = FakeProjection(LINES_BY_DAY, parity=EnumReaderParity.UNREAD)
+    window = _window_full(unread)
+    assert window.gaps == ("read parity unread",)
+    assert window.cause() == "read parity unread"
+    asked = {f"{r.since:%Y-%m-%d}": r.read_parity for r in unread.requests}
+    assert asked == {
+        "2026-11-14": True,
+        "2026-11-11": False,
+        "2026-11-12": False,
+        "2026-11-13": False,
+    }
+    assert _window_full(FakeProjection(LINES_BY_DAY)).gaps == ()
+
+
+def test_error_a_spent_deadline_reports_the_days_unread() -> None:
+    """Each read takes 6 s of a 10 s deadline: today and the first closed day are read, the two that wait behind them are not."""
+    clock = FakeClock()
+    factory = FakeProjection(LINES_BY_DAY, clock=clock, tick=6.0)
+    window = _window_full(factory, deadline_seconds=10, clock=clock)
+    assert window.unread_days == ("2026-11-12", "2026-11-13")
+    assert factory.days == ["2026-11-14", "2026-11-11"]
+    assert [row.lane for row in window.rows] == ["day1", "l1", "l2", "l3"]
+    assert "2026-11-12, 2026-11-13" in window.cause()
+
+
+def test_failing_control_with_time_left_every_day_is_read() -> None:
+    clock = FakeClock()
+    factory = FakeProjection(LINES_BY_DAY, clock=clock, tick=6.0)
+    window = _window_full(factory, deadline_seconds=600, clock=clock)
+    assert window.unread_days == ()
+    assert factory.days == ["2026-11-14", "2026-11-11", "2026-11-12", "2026-11-13"]
+
+
+def test_error_a_refused_today_stores_no_closed_day() -> None:
+    """Today is read first and refused before any closed day is read or kept (the closed days used to be kept before today's refusal)."""
+    cache, _backend = memory_reader()
+    requests: list[ModelReaderRequest] = []
+
+    def factory() -> ProjectionRead:
+        def read(request: ModelReaderRequest) -> ModelReaderResult:
+            requests.append(request)
+            return _result(
+                request,
+                lines=LINES_BY_DAY.get(f"{request.since:%Y-%m-%d}", ()),
+                status=EnumReaderStatus.STALE,
+            )
+
+        return read
+
+    with pytest.raises(SourceRefusedError, match=r"stale.*2026-11-14"):
+        _window_full(factory, cache=cache)
+    assert cache.tally.stores == 0
+    assert [r.until for r in requests] == [None], "a closed day was read before today"
