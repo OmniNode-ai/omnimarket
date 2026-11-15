@@ -33,6 +33,9 @@ dod_evidence:
   - check_type: command
     check_value: sh -c 'for n in node_candidate_pool_compute node_key_pool_expiry_alert_compute node_prod_health_fact_resolver_effect node_session_capability_digest_effect node_skill_exec_decision_compute node_worktree_lease_compute; do test ! -e src/omnimarket/nodes/$n || exit 1; grep -q "^$n = " pyproject.toml && exit 1; done; exit 0'
     cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_entry_points_sorted_merge.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
 - id: dod-omn24518-ac2
   description: 'AC2: the entry point, baseline and allowlist tests pass at the head.'
   source: manual
