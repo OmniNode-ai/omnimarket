@@ -130,7 +130,7 @@ class ModelLaneSettings(_Frozen):
     delegate_status_key: str = Field(min_length=1)
     #: Status value in that key that means the delegation ended failed.
     delegate_failed_status: str = Field(min_length=1)
-    #: Keys of the failure reason in the output, read in order until one is a non-empty string.
+    #: Dotted paths of the failure reason in the output, read in order until one is a non-empty string.
     delegate_reason_keys: tuple[str, ...] = Field(min_length=1)
     #: The bus sub-block, required when the backend is ``bus``.
     bus: ModelBusSettings | None = None
@@ -324,6 +324,16 @@ def delegate_transport_args(
     return ("--bus", overlay.bus)
 
 
+def _dig(document: object, path: str) -> object:
+    """The value at the dotted ``path`` of nested mappings in ``document``, or ``None`` where the path breaks."""
+    node = document
+    for part in path.split("."):
+        if not isinstance(node, dict):
+            return None
+        node = node.get(part)
+    return node
+
+
 def send_delegate(
     settings: ModelLaneSettings,
     request: ModelSendRequest,
@@ -356,8 +366,8 @@ def send_delegate(
         parsed.get(settings.delegate_status_key) == settings.delegate_failed_status
     ):
         reason = "no reason given"
-        for reason_key in settings.delegate_reason_keys:
-            value = parsed.get(reason_key)
+        for reason_path in settings.delegate_reason_keys:
+            value = _dig(parsed, reason_path)
             if isinstance(value, str) and value:
                 reason = value
                 break

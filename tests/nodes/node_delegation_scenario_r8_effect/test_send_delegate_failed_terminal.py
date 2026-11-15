@@ -69,13 +69,23 @@ def _lane_with_delegate_output(
     )
 
 
-def _delegate_output(**reason_by_key: str) -> str:
-    """A failed delegate output carrying ``reason_by_key``."""
-    body: dict[str, str] = {
+def _nested(path: str, value: str) -> dict[str, object]:
+    """``value`` at the dotted ``path`` of nested mappings, the shape the deployed lane's delegate answer carries."""
+    *parents, leaf = path.split(".")
+    inner: dict[str, object] = {leaf: value}
+    for parent in reversed(parents):
+        inner = {parent: inner}
+    return inner
+
+
+def _delegate_output(reason_path: str | None = None) -> str:
+    """A failed delegate output carrying ``REASON`` at ``reason_path``, or no reason at all."""
+    body: dict[str, object] = {
         SETTINGS.delegate_id_key: "run-1",
         SETTINGS.delegate_status_key: SETTINGS.delegate_failed_status,
     }
-    body.update(reason_by_key)
+    if reason_path is not None:
+        body.update(_nested(reason_path, REASON))
     return json.dumps(body)
 
 
@@ -99,7 +109,7 @@ def test_error_chain_a_failed_delegate_output_names_its_failure_reason(
     """A delegate output whose status is the failed one raises a LaneReadError naming the reason."""
     lane = _lane_with_delegate_output(
         monkeypatch,
-        _delegate_output(**{SETTINGS.delegate_reason_keys[0]: REASON}),
+        _delegate_output(SETTINGS.delegate_reason_keys[0]),
     )
     with pytest.raises(LaneReadError) as raised:
         lane.send(_request())
@@ -113,7 +123,7 @@ def test_error_chain_without_the_first_reason_key_the_fallback_key_carries_it(
     """Without the first declared reason key, the next declared key carries the reason."""
     lane = _lane_with_delegate_output(
         monkeypatch,
-        _delegate_output(**{SETTINGS.delegate_reason_keys[1]: REASON}),
+        _delegate_output(SETTINGS.delegate_reason_keys[1]),
     )
     with pytest.raises(LaneReadError) as raised:
         lane.send(_request())

@@ -108,7 +108,8 @@ lane:
   delegate_id_key: correlation_id
   delegate_status_key: status
   delegate_failed_status: failed
-  delegate_reason_keys: [failure_reason, terminal_failure_reason]
+  # Dotted paths in the `onex delegate --json` answer; the deployed lane's refusal text is the terminal payload's error_message (measured 2026-11-15).
+  delegate_reason_keys: [result.terminal_payload.payload.error_message, failure_reason, terminal_failure_reason]
   totals_keys:
     runs: delegation_runs
     tokens: total_tokens

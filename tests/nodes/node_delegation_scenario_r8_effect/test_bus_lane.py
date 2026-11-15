@@ -270,11 +270,12 @@ def test_error_chain_a_refused_delegation_fails_the_scenario_at_runs_sent_with_t
     fake = FakeTenantBus()
 
     def refused(argv: Sequence[str], timeout: float) -> tuple[int, str]:
+        # The shape the deployed lane's delegate answer carries (measured 2026-11-15): the refusal text sits in the terminal payload.
         return 1, json.dumps(
             {
                 SETTINGS.delegate_id_key: "run-1",
                 SETTINGS.delegate_status_key: SETTINGS.delegate_failed_status,
-                SETTINGS.delegate_reason_keys[0]: refusal,
+                "result": {"terminal_payload": {"payload": {"error_message": refusal}}},
             }
         )
 
