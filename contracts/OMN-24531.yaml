@@ -14,7 +14,7 @@ requirements:
 evidence_requirements:
 - kind: tests
   description: The ladder node tests at the pushed head; with the node absent they fail at import, and the three injected-break tests show the stop, the return to the author and the non-blocking reading failing for real.
-  command: uv run pytest tests/unit/nodes/node_plan_review_ladder_compute -q -p no:randomly --no-cov
+  command: uv run pytest tests/unit/nodes/node_plan_review_ladder_compute -q --no-cov -n 0 -p no:randomly
 emergency_bypass:
   enabled: false
   justification: ''
@@ -27,7 +27,7 @@ dod_evidence:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/unit/nodes/node_plan_review_ladder_compute -q -p no:randomly --no-cov
+    check_value: uv run pytest tests/unit/nodes/node_plan_review_ladder_compute -q --no-cov -n 0 -p no:randomly
     cwd: .
   ac_bindings:
   - label: AC2
@@ -39,5 +39,5 @@ dod_evidence:
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24531 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_plan_review_ladder_compute -q -p no:randomly --no-cov
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24531 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_plan_review_ladder_compute -q --no-cov -n 0 -p no:randomly
     cwd: .
