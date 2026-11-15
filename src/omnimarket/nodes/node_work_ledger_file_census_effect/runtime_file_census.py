@@ -31,9 +31,13 @@ from omnimarket.nodes.node_work_ledger_file_census_effect.handlers import (
     HandlerFileCensus,
 )
 from omnimarket.nodes.node_work_ledger_file_census_effect.models import (
+    ModelCensusRepository,
     ModelCensusRequest,
 )
-from omnimarket.nodes.node_work_ledger_file_census_effect.overlay import load_overlay
+from omnimarket.nodes.node_work_ledger_file_census_effect.overlay import (
+    OVERLAY_FILE_ENV,
+    load_overlay,
+)
 
 _HEADER = (
     "# Shrink-only ratchet: executable readers and writers of the ledger file's name or path variable,\n"
@@ -56,6 +60,25 @@ def main(
         metavar="NAME=PATH",
         help="where a registered repository sits when it is not <root>/<name>",
     )
+    parser.add_argument(
+        "--ratchet-file",
+        default=None,
+        metavar="PATH",
+        help="where this repository's ratchet file is, in place of the overlay's ratchet_file",
+    )
+    parser.add_argument(
+        "--register",
+        default=None,
+        metavar="NAME",
+        help="the repository this run counts, registered for this run in place of the overlay's "
+        "repositories list; its checkout is named with --directory",
+    )
+    parser.add_argument(
+        "--packaged-overlay",
+        action="store_true",
+        help="use the overlay shipped with this node in place of one found "
+        "under the overlay roots",
+    )
     parser.add_argument("--verbose", action="store_true", help="print every hit")
     parser.add_argument(
         "--json-facts",
@@ -64,7 +87,18 @@ def main(
     )
     args = parser.parse_args(argv)
     env = os.environ if environ is None else environ
-    overlay = load_overlay(env)
+    packaged = Path(__file__).resolve().parent / "overlay.example.yaml"
+    overlay = load_overlay(
+        {**env, OVERLAY_FILE_ENV: str(packaged)} if args.packaged_overlay else env
+    )
+    if args.register:
+        overlay = overlay.model_copy(
+            update={
+                "repositories": (
+                    ModelCensusRepository(name=args.register, own_line=False),
+                )
+            }
+        )
     root_text = env.get(overlay.registry_root_env, "").strip()
     if not root_text:
         sys.stderr.write(f"CENSUS unreadable: {overlay.registry_root_env} is not set\n")
@@ -73,7 +107,9 @@ def main(
     sink: ProtocolEmissionSink = (
         JsonlEmissionSink(Path(journal)) if journal else InMemoryEmissionSink()
     )
-    store = YamlRatchetStore(Path(overlay.ratchet_file))
+    store = YamlRatchetStore(
+        Path(args.ratchet_file) if args.ratchet_file else Path(overlay.ratchet_file)
+    )
     result = HandlerFileCensus(
         overlay,
         GitRepositorySource(

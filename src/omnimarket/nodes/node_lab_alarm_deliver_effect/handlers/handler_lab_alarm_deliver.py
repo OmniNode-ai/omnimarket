@@ -6,7 +6,9 @@ Edge-triggered, as scripts/lab_alarm.py is: a subject is delivered when it ENTER
 again until its condition reads OK. An INDETERMINATE read neither clears nor starts an episode ("I could not
 tell" is not "it recovered"). The channel step is once per episode and a failure is a typed failure of the
 run; the ledger step is retried on every later request until the row lands, and a subject that clears and
-re-raises inside the overlay's window appends no second row. A request that does not write delivers nothing
+re-raises inside the overlay's window appends no second row. A condition the overlay routes to an owner
+also gets, once per episode under the same window, one push notice on the alert channel and one MSG row
+addressed to the owner lane, retried the same way. A request that does not write delivers nothing
 and keeps nothing.
 """
 
@@ -33,6 +35,7 @@ from omnimarket.models.lab_alarm_delivery import (
 from omnimarket.nodes.node_lab_alarm_deliver_effect.overlay import (
     ModelDeliveryOverlay,
     ModelLedgerSettings,
+    ModelOwnerRoute,
 )
 from omnimarket.nodes.node_lab_alarm_deliver_effect.protocols import (
     LedgerAppendError,
@@ -46,6 +49,8 @@ CONTRACT = Path(__file__).resolve().parents[1] / "contract.yaml"
 _ACTIVE = "active"
 _LAST_ROW = "ledger_last_row"
 _PENDING = "ledger_pending"
+_OWNER_PENDING = "owner_pending"
+_OWNER_LAST = "owner_last"
 _STAMP = "%Y-%m-%dT%H:%M:%SZ"
 _FAILURE_LIMIT = 300
 _ROW_BREAKERS = re.compile(r"\s+")
@@ -98,6 +103,31 @@ def render_ledger_row(
     return " | ".join(cells)
 
 
+def render_owner_row(
+    *,
+    route: ModelOwnerRoute,
+    lane: str,
+    text: str,
+    stamp: datetime,
+    request_id: str,
+) -> str:
+    """One MSG row addressed to the route's owner lane, carrying the route's ticket and the request id."""
+    stamped = stamp.astimezone(UTC).strftime(_STAMP)
+    from_lane = _cell(lane)
+    ident = f"{stamped}-{from_lane}"
+    cells = [
+        stamped,
+        "MSG",
+        f"from={from_lane}",
+        f"to={_cell(route.lane)}",
+        f"id={_cell(ident)}",
+        f"ticket={_cell(route.ticket)}",
+        f"req={_cell(request_id)}",
+        _cell(text),
+    ]
+    return " | ".join(cells)
+
+
 def _iso(moment: datetime) -> str:
     return moment.astimezone(UTC).strftime(_STAMP)
 
@@ -145,6 +175,15 @@ class HandlerLabAlarmDeliver:
         pending: dict[str, dict[str, str]] = {
             key: dict(entry) for key, entry in dict(loaded.get(_PENDING, {})).items()
         }
+        owner_last: dict[str, str] = {
+            key: stamped
+            for key, stamped in dict(loaded.get(_OWNER_LAST, {})).items()
+            if now - datetime.strptime(stamped, _STAMP).replace(tzinfo=UTC) < window
+        }
+        owner_pending: dict[str, dict[str, str]] = {
+            key: dict(entry)
+            for key, entry in dict(loaded.get(_OWNER_PENDING, {})).items()
+        }
         prefix = f"{request.condition}:"
         cleared: tuple[str, ...] = ()
         if request.outcome is EnumDeliveryCondition.OK:
@@ -154,6 +193,7 @@ class HandlerLabAlarmDeliver:
 
         steps: dict[str, ModelAlarmDelivery] = {}
         work: dict[str, dict[str, str]] = dict(pending)
+        owner_work: dict[str, dict[str, str]] = dict(owner_pending)
         retried = tuple(pending)
         if request.outcome is EnumDeliveryCondition.ALARM:
             for alarm in request.alarms:
@@ -180,11 +220,30 @@ class HandlerLabAlarmDeliver:
                         "evidence": request.evidence or "no evidence recorded",
                         "raised_at": _iso(now),
                     }
+                owner = EnumDeliveryStep.NOT_DUE
+                if (
+                    alarm.condition in self._overlay.owner_routes
+                    and key not in owner_pending
+                ):
+                    # A pending entry keeps its raised_at and its pushed flag; the owner step
+                    # below retries it. A stamp in the window suppresses the whole owner step.
+                    if key in owner_last:
+                        owner = EnumDeliveryStep.SUPPRESSED
+                    else:
+                        owner_work[key] = {
+                            "condition": alarm.condition,
+                            "subject": alarm.subject,
+                            "detail": alarm.detail,
+                            "evidence": request.evidence or "no evidence recorded",
+                            "raised_at": _iso(now),
+                            "pushed": "no",
+                        }
                 steps[key] = ModelAlarmDelivery(
                     key=key,
                     channel=channel,
                     channel_ref=channel_ref,
                     ledger=ledger,
+                    owner=owner,
                     failure=failure,
                 )
 
@@ -213,12 +272,46 @@ class HandlerLabAlarmDeliver:
                 }
             )
 
-        self._state.save({_ACTIVE: active, _LAST_ROW: last_row, _PENDING: pending})
+        for key, entry in owner_work.items():
+            step, request_id, failure = self._deliver_owner(key, entry, now)
+            if step is EnumDeliveryStep.FAILED:
+                owner_pending[key] = entry
+            else:
+                owner_pending.pop(key, None)
+                owner_last[key] = _iso(now)
+            prior = steps.get(
+                key,
+                ModelAlarmDelivery(
+                    key=key,
+                    channel=EnumDeliveryStep.NOT_DUE,
+                    ledger=EnumDeliveryStep.NOT_DUE,
+                ),
+            )
+            steps[key] = prior.model_copy(
+                update={
+                    "owner": step,
+                    "owner_request_id": request_id,
+                    "failure": "; ".join(
+                        part for part in (prior.failure, failure) if part
+                    ),
+                }
+            )
+
+        saved: dict[str, Any] = {
+            _ACTIVE: active,
+            _LAST_ROW: last_row,
+            _PENDING: pending,
+        }
+        if owner_pending:
+            saved[_OWNER_PENDING] = owner_pending
+        if owner_last:
+            saved[_OWNER_LAST] = owner_last
+        self._state.save(saved)
         deliveries = tuple(steps.values())
         failed = [d for d in deliveries if d.failure]
         ran = any(
-            EnumDeliveryStep.DELIVERED in (d.channel, d.ledger)
-            or EnumDeliveryStep.DUPLICATE is d.ledger
+            EnumDeliveryStep.DELIVERED in (d.channel, d.ledger, d.owner)
+            or EnumDeliveryStep.DUPLICATE in (d.ledger, d.owner)
             for d in deliveries
         )
         outcome = (
@@ -287,6 +380,58 @@ class HandlerLabAlarmDeliver:
         )
         return step, request_id, ""
 
+    def _deliver_owner(
+        self, key: str, entry: dict[str, str], now: datetime
+    ) -> tuple[EnumDeliveryStep, str, str]:
+        """The owner step: one push notice, then one MSG row, each retried until it lands."""
+        settings = self._overlay.ledger
+        route = self._overlay.owner_routes.get(entry["condition"])
+        if route is None:
+            # The overlay no longer routes this condition: a kept entry has nothing left to deliver.
+            return EnumDeliveryStep.NOT_DUE, "", ""
+        request_id = str(
+            uuid5(UUID(settings.request_namespace), f"owner|{key}|{entry['raised_at']}")
+        )
+        evidence = _cell(entry["evidence"], limit=settings.evidence_limit)
+        filled = {
+            "condition": entry["condition"],
+            "subject": entry["subject"],
+            "detail": entry["detail"],
+            "evidence": evidence,
+        }
+        failures: list[str] = []
+        if entry.get("pushed", "no") == "no":
+            receipt = self._channel.send(
+                category=route.push_category,
+                text=route.push_template.format(**filled),
+            )
+            if receipt.delivered:
+                entry["pushed"] = "yes"
+            else:
+                failures.append(
+                    f"channel: {(receipt.failure or 'refused')[:_FAILURE_LIMIT]}"
+                )
+        row = render_owner_row(
+            route=route,
+            lane=settings.lane,
+            text=route.text_template.format(**filled),
+            stamp=now,
+            request_id=request_id,
+        )
+        try:
+            answer = self._ledger.append(request_id=request_id, row=row)
+        except LedgerAppendError as exc:
+            failures.append(f"ledger: {str(exc)[:_FAILURE_LIMIT]}")
+            return EnumDeliveryStep.FAILED, request_id, "; ".join(failures)
+        if failures:
+            return EnumDeliveryStep.FAILED, request_id, "; ".join(failures)
+        step = (
+            EnumDeliveryStep.DUPLICATE
+            if answer == "duplicate"
+            else EnumDeliveryStep.DELIVERED
+        )
+        return step, request_id, ""
+
 
 def events_for(
     result: ModelLabAlarmDeliveryResult, topics: Mapping[str, str]
@@ -307,6 +452,7 @@ def events_for(
                 "key": d.key,
                 "channel": d.channel.value,
                 "ledger": d.ledger.value,
+                "owner": d.owner.value,
             },
         )
         for d in result.deliveries
@@ -344,4 +490,5 @@ __all__ = [
     "load_topics",
     "parse_command",
     "render_ledger_row",
+    "render_owner_row",
 ]

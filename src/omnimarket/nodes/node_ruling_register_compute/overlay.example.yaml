@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. A deployment's real overlay lives in the overlays repository.
+max_reading_age_seconds: 600
+rows:
+  - row_id: example-ruling-live
+    ruling: "2026-07-01T10:00:00Z"
+    must_be_true: The census command exits zero on host-a
+    read:
+      host: host-a
+      argv: [example-census-command]
+      ok_exit_codes: [0]
+      expect:
+        kind: exit_zero
+    owner: example-lane
+    fix: Re-run the census and page the lane
+  - row_id: example-ruling-int
+    ruling: "2026-07-02T11:30:00Z"
+    must_be_true: The pending queue stays at ten or fewer
+    read:
+      host: host-a
+      argv: [example-queue-count]
+      ok_exit_codes: [0]
+      expect:
+        kind: int_at_most
+        bound: 10
+    owner: none
+    fix: Drain the pending queue

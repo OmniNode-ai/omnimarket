@@ -43,9 +43,7 @@ NOW = datetime(2026, 10, 31, 12, 0, 0, tzinfo=UTC)
 
 
 class _Reader:
-    def read(
-        self, now: datetime, *, hosts_table: Path | None = None
-    ) -> ModelMergedRunningCountResult:
+    def read(self, now: datetime) -> ModelMergedRunningCountResult:
         return HandlerMergedRunningCount().handle(
             ModelMergedRunningCountRequest(
                 now=now, config=load_contract_config(), prs=(), hosts=()
@@ -54,9 +52,7 @@ class _Reader:
 
 
 class _Broken:
-    def read(
-        self, now: datetime, *, hosts_table: Path | None = None
-    ) -> ModelMergedRunningCountResult:
+    def read(self, now: datetime) -> ModelMergedRunningCountResult:
         raise OSError("the PR watcher state is gone")
 
 
@@ -133,10 +129,10 @@ def test_merged_running_cli_binds_the_count_reader(
     assert document["floor"]["merged_running"] is not None
 
 
-def test_merged_running_receives_the_floor_overlay_host_table(
+def test_merged_running_reader_reads_the_host_table_from_env(
     world: dict[str, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The publish tick has an overlay table and no host-table environment variable."""
+    """The merged-running reader resolves the host table from the environment."""
     monkeypatch.delenv("ONEX_LAB_RUN_HOSTS", raising=False)
     overlay = world["home"] / "floor-overlay.yaml"
     overlay.write_text(
@@ -152,18 +148,11 @@ def test_merged_running_receives_the_floor_overlay_host_table(
         )
     )
     monkeypatch.setenv("ONEX_FACTORY_FLOOR_OVERLAY", str(overlay))
-    (world["home"] / "hosts.yaml").write_text("hosts: []\n")
-    received: list[Path | None] = []
-
-    class Reader:
-        def read(
-            self, now: datetime, *, hosts_table: Path | None = None
-        ) -> ModelMergedRunningCountResult:
-            received.append(hosts_table)
-            return _Reader().read(now)
-
-    document = _record(world, Reader())
-    assert received == [world["home"] / "hosts.yaml"]
+    (world["home"] / "hosts.yaml").write_text(
+        "hosts: [{name: h051, target: h051.lan, cap: 2}]\n"
+    )
+    monkeypatch.setenv("ONEX_LAB_RUN_HOSTS", str(world["home"] / "hosts.yaml"))
+    document = _record(world, _Reader())
     assert document["floor"]["merged_running"] is not None
 
 
@@ -176,7 +165,7 @@ def test_merged_running_real_reader_uses_the_resolved_table_without_the_env(
 
     home = world["home"]
     monkeypatch.setenv("OMNI_HOME", str(home))
-    monkeypatch.delenv("ONEX_LAB_RUN_HOSTS", raising=False)
+    monkeypatch.setenv("ONEX_LAB_RUN_HOSTS", str(home / "hosts.yaml"))
     monkeypatch.delenv("ONEX_PR_WATCHER_STATE", raising=False)
     monkeypatch.delenv("ONEX_LAB_PASS_RECEIPTS_URL", raising=False)
     monkeypatch.delenv("ONEX_LAB_PASS_LANE", raising=False)
@@ -197,7 +186,9 @@ def test_merged_running_real_reader_uses_the_resolved_table_without_the_env(
         )
     )
     monkeypatch.setenv("ONEX_FACTORY_FLOOR_OVERLAY", str(overlay))
-    (home / "hosts.yaml").write_text("hosts: [{name: h051, cap: 2}]\n")
+    (home / "hosts.yaml").write_text(
+        "hosts: [{name: h051, target: h051.lan, cap: 2}]\n"
+    )
     (home / ".claude_scratch/pr-watcher/state.json").write_text(
         json.dumps(
             {

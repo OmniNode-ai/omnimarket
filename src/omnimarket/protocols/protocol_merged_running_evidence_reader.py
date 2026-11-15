@@ -5,7 +5,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 from omnimarket.models.model_merged_running_count import ModelMrcEvidenceRead
@@ -19,9 +18,7 @@ class ProtocolMergedRunningEvidenceReader(Protocol):
     of its sources says so, and the caller then treats the evidence as unread rather than as complete.
     """
 
-    def read_evidence(
-        self, now: datetime, *, hosts_table: Path | None = None
-    ) -> ModelMrcEvidenceRead:
+    def read_evidence(self, now: datetime) -> ModelMrcEvidenceRead:
         """Raise when the sources cannot be built at all."""
         ...
 
