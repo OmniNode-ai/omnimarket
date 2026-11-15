@@ -1,0 +1,8 @@
+# Overlay of the plan first-slice check: <root>/node_plan_first_slice_compute/overlay.yaml under a root named in
+# ONEX_SKILL_OVERLAY_ROOTS. Every key is required; the real values live in the overlays repository.
+first_slice_headings:
+  - first slice
+min_section_words: 20
+later_rung_headings:
+  - later rungs
+  - ladder
