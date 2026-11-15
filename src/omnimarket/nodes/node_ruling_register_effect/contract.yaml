@@ -47,7 +47,9 @@ input_model:
 output_model:
   name: ModelRulingReadResult
   module: omnimarket.models.model_ruling_register
-  description: One reading per row, in row order.
+  description: >-
+    One reading per row, in row order; sink_errors holds one entry per journal write that did not land,
+    the row id then the error type.
 
 runtime_dispatch:
   external_trigger: true
@@ -68,6 +70,14 @@ externally_consumed_topics:
 overlay:
   node: node_ruling_register_effect
   roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+# The node packages no command allowlist, and that is a decision, not a gap. The
+# overlay is the deployment owner's trust boundary: whoever writes the overlay
+# already controls what the host runs, so an allowlist shipped in the package
+# would gate nothing. The port executes argv without a shell and a remote argv
+# travels as one shlex-quoted argument, so a deployment that wants a restriction
+# sets allowed_commands on the register policy in its overlay and the register
+# refuses a row whose read.argv[0] is outside it.
 
 metadata:
   ticket: OMN-24478
