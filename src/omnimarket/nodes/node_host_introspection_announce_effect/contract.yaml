@@ -14,6 +14,9 @@
 #
 # WHAT IT REPLACES. The capacity advertisement of node_lab_work_unit_effect stays until the registry reads this announcement; the
 # announcement nests that advertisement as ``capacity``. Retirement steps are listed in the pull request.
+#
+# NO handler_routing: the handler takes the overlay, the facts reader and the host table as constructor arguments that the boot
+# resolver cannot inject, and the host process builds it itself (HostAnnouncer). Declaring a route would quarantine it at boot.
 name: "node_host_introspection_announce_effect"
 lifecycle: experimental
 node_type: "EFFECT_GENERIC"
@@ -39,14 +42,6 @@ handler:
   module: "omnimarket.nodes.node_host_introspection_announce_effect.handlers.handler_host_introspection_gather"
   class: "HandlerHostIntrospectionGather"
   input_model: "omnimarket.nodes.node_host_introspection_announce_effect.models.model_host_introspection_probe_request.ModelHostIntrospectionProbeRequest"
-handler_routing:
-  routing_strategy: "operation_match"
-  default_handler: "omnimarket.nodes.node_host_introspection_announce_effect.handlers.handler_host_introspection_gather:HandlerHostIntrospectionGather"
-  handlers:
-    - operation: "gather_host_introspection"
-      handler:
-        name: "HandlerHostIntrospectionGather"
-        module: "omnimarket.nodes.node_host_introspection_announce_effect.handlers.handler_host_introspection_gather"
 descriptor:
   node_archetype: effect
   purity: effectful
