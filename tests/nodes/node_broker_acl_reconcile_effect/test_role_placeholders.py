@@ -42,6 +42,8 @@ PLACEHOLDER = "ONEX_ACL_BRANCH_DEPLOY_PRINCIPAL"
 ROLE_LOGIN = "User:role-login"
 ENV_LOGIN = "User:env-login"
 TOPIC = "onex.cmd.omnimarket.branch-deploy-command-requested.v1"
+FLEET_PACKAGE = "ONEX_ACL_FLEET_PACKAGE"
+FLEET_GROUP = "local.fleetpkg.host_drift_fleet.h"
 
 
 def _env(
@@ -201,4 +203,101 @@ def test_the_principals_example_names_a_role_placeholder_and_loads() -> None:
     overlay = ModelBrokerAclPrincipalsOverlay.model_validate(yaml.safe_load(text))
     assert overlay.placeholder_logins() == {
         "ONEX_ACL_EXAMPLE_RUNTIME_PRINCIPAL": "User:example-runtime-login"
+    }
+
+
+def _env_with_values(tmp_path: Path, values: dict[str, str]) -> dict[str, str]:
+    """`_env` for an overlay that also carries placeholder_values: its role names no placeholder, so these fill names."""
+    scope = contract()["broker_acl_reconcile"]["derive_principals_scope"]
+    target = tmp_path / scope
+    target.mkdir(parents=True)
+    document: dict[str, Any] = {
+        "scope": scope,
+        "ticket": "OMN-24106",
+        "why": "a test scope",
+        "roles": [_role(placeholders=())],
+        "placeholder_values": values,
+    }
+    (target / "overlay.yaml").write_text(yaml.safe_dump(document), encoding="utf-8")
+    env = {key: value for key, value in ENV.items() if key != FLEET_PACKAGE}
+    env["ONEX_SKILL_OVERLAY_ROOTS"] = str(tmp_path)
+    return env
+
+
+def test_placeholder_value_fills_a_contract_placeholder(tmp_path: Path) -> None:
+    """The overlay's placeholder_values fill the contract's fleet package name: apply succeeds using it."""
+    remote = FakeRemote()
+    env = _env_with_values(tmp_path, {FLEET_PACKAGE: "fleetpkg"})
+    result = _apply(env, remote)
+    assert result.exit_code == 0
+    rows = [grant for grant in remote.live if grant.name == FLEET_GROUP]
+    assert rows
+    assert all(grant.resource_type == "GROUP" for grant in rows)
+    assert not any("${" in grant.name for grant in remote.live)
+
+
+def test_missing_placeholder_value_is_refused_by_name(tmp_path: Path) -> None:
+    """Failing control: no placeholder_values and no environment variable is refused naming the name."""
+    remote = FakeRemote()
+    env = _env_with_values(tmp_path, {})
+    result = _apply(env, remote)
+    assert result.exit_code == 2
+    assert FLEET_PACKAGE in result.error
+    assert remote.live == set()
+
+
+def test_placeholder_value_named_by_a_role_is_refused() -> None:
+    """A placeholder_values name a role also names, a lowercase name and an empty value are refused naming the name."""
+    with pytest.raises(ValidationError) as conflict:
+        ModelBrokerAclPrincipalsOverlay(
+            scope="a scope",
+            ticket="OMN-24106",
+            why="a test scope",
+            roles=(
+                ModelNodeRole(
+                    name="units",
+                    role="a unit",
+                    nodes=[NODE],
+                    principals=(ROLE_LOGIN,),
+                    placeholders=(PLACEHOLDER,),
+                ),
+            ),
+            placeholder_values={PLACEHOLDER: "x"},
+        )
+    assert PLACEHOLDER in str(conflict.value)
+    quiet = ModelNodeRole(
+        name="units", role="a unit", nodes=[NODE], principals=(ROLE_LOGIN,)
+    )
+    for bad in ({"onex_acl_a": "x"}, {"ONEX_ACL_A_PRINCIPAL": ""}):
+        with pytest.raises(ValidationError) as refused:
+            ModelBrokerAclPrincipalsOverlay(
+                scope="a scope",
+                ticket="OMN-24106",
+                why="a test scope",
+                roles=(quiet,),
+                placeholder_values=bad,
+            )
+        assert next(iter(bad)) in str(refused.value)
+
+
+def test_placeholder_fills_merges_logins_and_values() -> None:
+    """placeholder_fills maps role placeholders to the role's login and placeholder_values to their values."""
+    overlay = ModelBrokerAclPrincipalsOverlay(
+        scope="a scope",
+        ticket="OMN-24106",
+        why="a test scope",
+        roles=(
+            ModelNodeRole(
+                name="units",
+                role="a unit",
+                nodes=[NODE],
+                principals=(ROLE_LOGIN,),
+                placeholders=("ONEX_ACL_A_PRINCIPAL",),
+            ),
+        ),
+        placeholder_values={"ONEX_ACL_B_PRINCIPAL": "fleetpkg"},
+    )
+    assert overlay.placeholder_fills() == {
+        "ONEX_ACL_A_PRINCIPAL": ROLE_LOGIN,
+        "ONEX_ACL_B_PRINCIPAL": "fleetpkg",
     }

@@ -202,7 +202,7 @@ def derived_grants(
 def role_logins(
     settings: Mapping[str, Any], environ: Mapping[str, str]
 ) -> dict[str, str]:
-    """The placeholders a principals overlay's roles fill, so no new environment variable is needed."""
+    """The names a principals overlay fills: its roles supply logins and its placeholder_values the non-login names."""
     scope = settings.get("derive_principals_scope")
     if not scope:
         return {}
@@ -210,7 +210,7 @@ def role_logins(
         overlay = load_principals_overlay(scope, environ)
     except NodeOverlayNotFoundError:
         return {}
-    return overlay.placeholder_logins()
+    return overlay.placeholder_fills()
 
 
 def _run(argv: Sequence[str], timeout: float) -> subprocess.CompletedProcess[str]:

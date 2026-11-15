@@ -1,0 +1,55 @@
+schema_version: 1.0.0
+ticket_id: OMN-24589
+title: The broker permission node reads its two non-login names from the declaration file
+summary: The broker permission reconcile node (node_broker_acl_reconcile_effect) refuses to run on the lab hosts while any ${NAME} placeholder in a node contract's broker_acl_grants is unset. Nine of the eleven unset names are logins, filled by roles of the broker_acl_principals overlay (an overlay change in the overlays repository). Two are not logins held by a dev role (a consumer group package name, and a login of the stability broker). The principals overlay model gains placeholder_values for them, the node reads them with the roles' logins (placeholder_fills), and a name a role also holds, a lowercase name or an empty value is refused by name.
+is_seam_ticket: true
+interface_change: true
+requirements:
+- id: req-omn24589-placeholder-values
+  statement: The reconcile node fills a contract placeholder from the principals overlay's placeholder_values when no role holds it and the environment does not set it, and refuses by name a malformed or doubly named value.
+  acceptance:
+  - id: AC1
+    statement: "AC1: the permission node fills a contract placeholder from the declaration file's placeholder_values when no role holds it and no environment variable is set -- falsifier: pytest tests/nodes/node_broker_acl_reconcile_effect/test_role_placeholders.py -k placeholder_value_fills -q fails on the base branch"
+  - id: AC2
+    statement: "AC2: a placeholder_values name that a role also holds, a lowercase name, an empty value, and a name with no value anywhere are each refused naming the name -- falsifier: pytest tests/nodes/node_broker_acl_reconcile_effect/test_role_placeholders.py -k \"refused\" -q"
+  - id: AC3
+    statement: "AC3: the dry run on a lab host from this branch with the declaration branch no longer stops at unset names and lists the rows for the capture silence watch login as to add -- falsifier: the dry run prints an unset: refusal or omits those rows"
+  - id: AC4
+    statement: "AC4: integrated: the next tick of the capture silence watch unit on the h201 lab host after the add side is applied exits 0 -- falsifier: the unit's error log shows a TopicAuthorizationFailedError line after the apply"
+evidence_requirements:
+- kind: tests
+  description: The placeholder role and value tests, including the failing controls, and the neighbouring broker permission node tests.
+  command: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_broker_acl_reconcile_effect/test_role_placeholders.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24589-ac1-golden
+  description: The golden test applies with an overlay whose placeholder_values holds the fleet package name and no environment variable, and the group rows carry the name.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_broker_acl_reconcile_effect/test_role_placeholders.py -q --no-cov -n 0 -p no:randomly -k placeholder_value_fills
+    cwd: .
+- id: dod-omn24589-ac2-error-chain
+  description: A missing value is refused by name with exit code 2 and no broker change; a name a role also holds, a lowercase name and an empty value are refused by the overlay model, naming the name.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_broker_acl_reconcile_effect/test_role_placeholders.py -q --no-cov -n 0 -p no:randomly -k refused
+    cwd: .
+- id: dod-omn24589-ac3-hosted-half
+  description: The hosted half of AC3. The node's placeholder tests pass, which is the same loading of the declaration file the lab dry run depends on.
+  source: manual
+  binds_ac:
+  - AC3
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_broker_acl_reconcile_effect/test_role_placeholders.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
