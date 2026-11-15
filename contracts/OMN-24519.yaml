@@ -45,6 +45,9 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/ci/test_entry_points_sorted_merge.py tests/ci/test_node_entry_point_guard_wiring.py tests/ci/test_canonical_file_shape_burndown_omn21524.py tests/gates/test_contract_publish_parity.py tests/ci/test_imperative_contract_guard_caller_omn21002.py -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_retired_nodes_omn24519.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
 - id: dod-omn24519-integration-proof
   description: 'lab proxy: the entry point, baseline and allowlist tests run on a lab host at the pushed head; the ready read of the development runtime after the install is taken by the orchestrator and is not claimed by this local check'
   source: manual
@@ -61,4 +64,7 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/ci/test_entry_points_sorted_merge.py tests/ci/test_node_entry_point_guard_wiring.py tests/ci/test_canonical_file_shape_burndown_omn21524.py tests/gates/test_contract_publish_parity.py tests/ci/test_imperative_contract_guard_caller_omn21002.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_retired_nodes_omn24519.py -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
