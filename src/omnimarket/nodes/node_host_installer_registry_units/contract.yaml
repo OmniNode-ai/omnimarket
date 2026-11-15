@@ -1671,6 +1671,9 @@ units:
     required_environment_inputs: [ONEX_HOST_NAME]
     evidence_file: .local/state/omni/claude-pool-rotation-tick/last-run.json
     state_directory: .onex_state/claude-pool-rotation-tick
+    # h101's registry root links to an external volume, launchd could not open logs or stand in a working directory there, exit 78.
+    log_directory: .local/state/omni/claude-pool-rotation-tick
+    launchd_root: .local/state/omni/claude-pool-rotation-tick
   silent-failure-alarm:
     platform: launchd
     kind: registry_module_tick
