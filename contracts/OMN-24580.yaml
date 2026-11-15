@@ -43,7 +43,7 @@ dod_evidence:
   - AC3
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_claude_pool_refill_effect/test_claude_pool_refill.py -q -n 0 --no-cov -p no:cacheprovider -k overlay
+    check_value: uv run pytest tests/nodes/node_claude_pool_refill_effect/test_claude_pool_refill_overlay_roots.py -q -n 0 --no-cov -p no:cacheprovider -k overlay_path_prefers
     cwd: .
 - id: dod-omn24580-ac4-seam
   description: 'AC4 seam: the pool status --entries output (the pool result) is what the refill reads; a status view answer is refused with the typed refusal.'
