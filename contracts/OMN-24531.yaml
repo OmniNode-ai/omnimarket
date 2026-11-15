@@ -41,6 +41,8 @@ dod_evidence:
   - label: AC2
     criterion_hash: 84c4615668ba3332dbabbf75f1ec5e0f767071561852ff3a8a7565c0f16ed217
     proposed_by: claude-code
+    accepted_by: lane=landing-L39248-claude_sonnet
+    accepted_at: "2026-11-15T04:30:00Z"
 - id: dod-omn24531-ac3-hosted-proxy
   description: 'AC3 hosted proxy: the golden and chain cases show the stop and the next piece in the node''s result and its start-then-success event; the read of one plan review run in the running runtime
     is the unbound integration proof item below and is not claimed by this check.'
@@ -55,6 +57,8 @@ dod_evidence:
   - label: AC3
     criterion_hash: dc9c8080174480af3063349fdf8d0b175a0d34e3362c59c49df721934fa8afa5
     proposed_by: claude-code
+    accepted_by: lane=landing-L39248-claude_sonnet
+    accepted_at: "2026-11-15T04:30:00Z"
 - id: dod-omn24531-integration-proof
   description: The ladder node tests run on a lab host at the pushed head; the read of one plan review run in the running runtime (AC3) is taken after the node is installed and is not claimed here.
   source: manual
