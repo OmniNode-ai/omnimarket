@@ -63,3 +63,12 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_host_installer_clone_sync_units -q --no-cov -p no:randomly
     cwd: .
+- id: dod-omn24319-fix-list-timers-and-ledger-status
+  description: The systemd install reads the timer the listing shows (a zero exit with no timer listed fails the install and starts nothing) and the status of both platforms names whether ONEX_LEDGER_PATH is declared; the three added tests fail on the previous head.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_installer_clone_sync_units -q --no-cov -p no:randomly
+    cwd: .

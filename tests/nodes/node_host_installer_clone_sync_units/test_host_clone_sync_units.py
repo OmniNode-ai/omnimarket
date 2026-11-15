@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from omnimarket.handlers.wip_admission_brief_gate import LEDGER_ENV
 from omnimarket.nodes.node_host_installer_clone_sync_units.handlers.handler_clone_sync_units import (
     HandlerCloneSyncUnits,
     load_units,
@@ -118,7 +119,13 @@ def test_a_dry_run_writes_nothing_and_runs_no_command(tmp_path: Path) -> None:
 def test_a_systemd_install_writes_both_units_and_enables_the_timer(
     tmp_path: Path,
 ) -> None:
-    runner = Recorder()
+    runner = Recorder(
+        {
+            "systemctl --user": subprocess.CompletedProcess(
+                [], 0, "NEXT onex-canonical-clone-sync.timer\n", ""
+            )
+        }
+    )
     result = HandlerCloneSyncUnits(runner).handle(
         _request(tmp_path, "canonical-clone-sync-systemd", "install")
     )
@@ -198,7 +205,13 @@ def test_both_declared_units_name_the_overlay_root() -> None:
 
 
 def test_a_systemd_install_is_checked_with_list_timers(tmp_path: Path) -> None:
-    listing = Recorder()
+    listing = Recorder(
+        {
+            "systemctl --user": subprocess.CompletedProcess(
+                [], 0, "NEXT onex-canonical-clone-sync.timer\n", ""
+            )
+        }
+    )
     ok = HandlerCloneSyncUnits(listing).handle(
         _request(tmp_path, "canonical-clone-sync-systemd", "install")
     )
@@ -301,3 +314,62 @@ def test_an_os_error_while_writing_the_units_is_a_typed_failure_not_a_raise(
     assert result.status == "failure"
     assert result.exit_code == 1
     assert result.stderr.strip()
+
+
+def test_a_systemd_install_fails_when_list_timers_exits_zero_but_lists_no_timer(
+    tmp_path: Path,
+) -> None:
+    """``list-timers <name>`` exits 0 with ``0 timers listed.`` for a timer that is not there: read the listing."""
+    runner = Recorder(
+        {
+            "systemctl --user": subprocess.CompletedProcess(
+                [], 0, "0 timers listed.\n", ""
+            )
+        }
+    )
+    result = HandlerCloneSyncUnits(runner).handle(
+        _request(tmp_path, "canonical-clone-sync-systemd", "install")
+    )
+    assert result.status == "failure"
+    assert result.exit_code == 1
+    assert "not listed by list-timers" in result.stderr
+    assert [
+        "systemctl",
+        "--user",
+        "start",
+        "onex-canonical-clone-sync.service",
+    ] not in (runner.calls)
+
+
+def test_a_systemd_status_names_whether_the_ledger_path_is_declared(
+    tmp_path: Path,
+) -> None:
+    request = _request(tmp_path, "canonical-clone-sync-systemd", "status")
+    missing = HandlerCloneSyncUnits(Recorder()).handle(request)
+    assert f"{LEDGER_ENV} MISSING" in missing.stdout
+    unit_dir = tmp_path / "home/.config/systemd/user"
+    unit_dir.mkdir(parents=True)
+    (unit_dir / "onex-canonical-clone-sync.service").write_text(
+        f"Environment={LEDGER_ENV}=/x\n", encoding="utf-8"
+    )
+    declared = HandlerCloneSyncUnits(Recorder()).handle(request)
+    assert f"{LEDGER_ENV} declared" in declared.stdout
+
+
+def test_a_launchd_status_names_whether_the_ledger_path_is_declared(
+    tmp_path: Path,
+) -> None:
+    request = _request(tmp_path, "canonical-clone-sync", "status")
+    runner = Recorder(
+        {"launchctl print": subprocess.CompletedProcess([], 0, "    pid = 1\n", "")}
+    )
+    assert (
+        f"{LEDGER_ENV} MISSING" in HandlerCloneSyncUnits(runner).handle(request).stdout
+    )
+    label = str(load_units()["canonical-clone-sync"]["label"])
+    plist = tmp_path / "home/Library/LaunchAgents" / f"{label}.plist"
+    plist.parent.mkdir(parents=True)
+    plist.write_text(f"<key>{LEDGER_ENV}</key>", encoding="utf-8")
+    assert (
+        f"{LEDGER_ENV} declared" in HandlerCloneSyncUnits(runner).handle(request).stdout
+    )

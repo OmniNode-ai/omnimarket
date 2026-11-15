@@ -4,7 +4,7 @@
 
 Moved from the private host installer's ``canonical-clone-sync`` units. The agent runs omniclaude's sync engine through
 omnimarket's dirty-converge node from the registry's dispatch venv. Each platform gives the tick, in its own
-environment, ``OMNI_HOME``, ``ONEX_LEDGER_PATH`` (no default, so a converge row reaches the writer and not an
+environment, ``OMNI_HOME``, the ledger path variable (no default, so a converge row reaches the writer and not an
 untracked pending file) and each key of the unit's declared ``environment`` with ``{home}`` and ``{registry_root}`` filled:
 that carries ``ONEX_SKILL_OVERLAY_ROOTS``, so the tick finds the lab alarm delivery overlay.
 
@@ -28,6 +28,7 @@ from xml.sax.saxutils import escape
 
 import yaml
 
+from omnimarket.handlers.wip_admission_brief_gate import LEDGER_ENV
 from omnimarket.nodes.node_host_installer_clone_sync_units.models.model_clone_sync_units import (
     ModelCloneSyncUnitsRequest,
     ModelCloneSyncUnitsResult,
@@ -63,6 +64,13 @@ def tail(log: Path, count: int) -> str:
     return "".join(lines[-count:])
 
 
+def ledger_path_line(unit_file: Path) -> str:
+    """The status line saying whether the installed unit file declares the ledger path variable."""
+    variable = LEDGER_ENV
+    text = unit_file.read_text(encoding="utf-8") if unit_file.is_file() else ""
+    return f"{variable} {'declared' if variable in text else 'MISSING'}\n"
+
+
 def load_units() -> dict[str, dict[str, Any]]:
     declared = yaml.safe_load((NODE_DIR / "contract.yaml").read_text(encoding="utf-8"))
     return dict(declared["units"])
@@ -77,7 +85,7 @@ def agent_environment(
         "HOME": request.home,
         "OMNI_HOME": request.registry_root,
         "ONEX_STATE_DIR": state,
-        "ONEX_LEDGER_PATH": request.ledger_path,
+        LEDGER_ENV: request.ledger_path,
         "PATH": f"{request.home}/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
     }
     for name, template in (unit.get("environment") or {}).items():
@@ -211,6 +219,7 @@ class HandlerCloneSyncUnits:
                 for line in loaded.stdout.splitlines():
                     if re.match(r"^\s+(runs|last exit code|state|pid) ", line):
                         out.append(line + "\n")
+                out.append(ledger_path_line(plist))
                 for log in (
                     state / f"{LOG_STEM}.out.log",
                     state / f"{LOG_STEM}.err.log",
@@ -225,6 +234,7 @@ class HandlerCloneSyncUnits:
                 ["systemctl", "--user", "list-timers", timer_name, "--no-pager"]
             )
             out.append(timers.stdout)
+            out.append(ledger_path_line(unit_dir / service_name))
             journal = self._command(
                 ["journalctl", "--user", "-u", service_name, "-n", "20", "--no-pager"]
             )
@@ -331,11 +341,11 @@ class HandlerCloneSyncUnits:
             ["systemctl", "--user", "list-timers", timer_name, "--no-pager"]
         )
         out.append(listed.stdout)
-        if listed.returncode:
+        if listed.returncode or timer_name not in listed.stdout:
             return result(
                 listed.returncode or 1,
                 changed=True,
-                stderr=f"{timer_name} is not listed by list-timers after the install:\n{listed.stderr}",
+                stderr=f"{timer_name} is not listed by list-timers after the install:\n{listed.stdout}{listed.stderr}",
             )
         self._command(["systemctl", "--user", "start", service_name])
         journal = self._command(

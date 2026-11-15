@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import yaml
@@ -18,7 +19,15 @@ from .test_host_clone_sync_units import Recorder, _request
 def test_clone_sync_golden_chain_installs_the_systemd_units_through_the_node(
     tmp_path: Path,
 ) -> None:
-    node = NodeHostInstallerCloneSyncUnits(Recorder())
+    node = NodeHostInstallerCloneSyncUnits(
+        Recorder(
+            {
+                "systemctl --user": subprocess.CompletedProcess(
+                    [], 0, "NEXT onex-canonical-clone-sync.timer\n", ""
+                )
+            }
+        )
+    )
     contract = yaml.safe_load(node.contract_path.read_text())
     assert contract["name"] == "node_host_installer_clone_sync_units"
     assert (
