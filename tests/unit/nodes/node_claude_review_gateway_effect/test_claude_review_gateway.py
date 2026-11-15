@@ -1174,7 +1174,7 @@ async def test_only_one_concurrent_request_claims_an_expired_key() -> None:
 
 
 @pytest.mark.parametrize("failed_transition", ["set_aside", "retry"])
-async def test_failed_bus_publication_is_replayed_before_more_key_calls(
+async def test_failed_bus_publication_defers_the_event_and_never_fails_the_review(
     failed_transition: str,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
@@ -1197,7 +1197,7 @@ async def test_failed_bus_publication_is_replayed_before_more_key_calls(
 
     clock = [_NOW]
     bus = FlakyBus()
-    call = FakeCall([_fail(EnumDelegationFailureClass.PROVIDER_BILLING), _ok()])
+    call = FakeCall([_fail(EnumDelegationFailureClass.PROVIDER_BILLING), _ok(), _ok()])
     gateway = ClaudeReviewGateway(
         ModelClaudeReviewGatewayRequest(
             host=_HOST,
@@ -1213,22 +1213,29 @@ async def test_failed_bus_publication_is_replayed_before_more_key_calls(
         event_bus=bus,
         clock=lambda: clock[0],
     )
-    if failed_transition == "retry":
-        assert (await gateway.complete(_PAYLOAD))[0] == 503
-        clock[0] += timedelta(seconds=17)
-    status, reply = await gateway.complete(_PAYLOAD)
-    assert status == 503
-    assert reply["error"]["type"] == "gateway_dependency_unavailable"
     secret = _value(str(_row("key-a")["api_key_ref"]))
-    assert secret not in json.dumps(reply)
-    assert secret not in caplog.text
-    assert len(call.calls) == 1
     if failed_transition == "set_aside":
+        # OMN-24562: the refused key is skipped and the refused publication is
+        # deferred; neither turns into a dependency failure.
+        status, reply = await gateway.complete(_PAYLOAD)
+        assert status == 503
+        assert reply["error"]["type"] == "gateway_keys_set_aside"
+        assert len(call.calls) == 1
+        assert bus.events == []
         assert (await gateway.complete(_PAYLOAD))[0] == 503
         assert len(call.calls) == 1
         clock[0] += timedelta(seconds=17)
-    assert (await gateway.complete(_PAYLOAD))[0] == 200
-    assert len(call.calls) == 2
+        assert (await gateway.complete(_PAYLOAD))[0] == 200
+        assert len(call.calls) == 2
+    else:
+        assert (await gateway.complete(_PAYLOAD))[0] == 503
+        clock[0] += timedelta(seconds=17)
+        # The retry event cannot be published, the retry itself still runs.
+        assert (await gateway.complete(_PAYLOAD))[0] == 200
+        assert len(call.calls) == 2
+        assert [json.loads(v)["transition"] for _, _, v in bus.events] == ["set_aside"]
+        assert (await gateway.complete(_PAYLOAD))[0] == 200
+    assert secret not in caplog.text
     events = [json.loads(value) for _, _, value in bus.events]
     assert [event["transition"] for event in events] == ["set_aside", "retry"]
     replayed = [e for e in bus.attempts if e["transition"] == failed_transition]

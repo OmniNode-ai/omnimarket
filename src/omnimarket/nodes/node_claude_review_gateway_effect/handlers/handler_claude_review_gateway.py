@@ -764,17 +764,35 @@ class ClaudeReviewGateway:
         await self._flush_key_events()
 
     async def _flush_key_events(self) -> None:
-        """Retain failed publications with stable event ids; block calls until flushed."""
+        """Retain failed publications with stable event ids and replay them in order.
+
+        A failed publication defers the event and never fails the call (OMN-24562).
+        """
         if self._event_bus is None:
             raise RuntimeError("review gateway: key-state event bus is required")
         async with self._publish_lock:
             while self._pending_events:
                 event = self._pending_events[0]
-                await self._event_bus.publish(
-                    topic=self._topics[0 if event.transition == "set_aside" else 1],
-                    key=event.key_ref.encode(),
-                    value=event.model_dump_json().encode(),
-                )
+                try:
+                    await self._event_bus.publish(
+                        topic=self._topics[0 if event.transition == "set_aside" else 1],
+                        key=event.key_ref.encode(),
+                        value=event.model_dump_json().encode(),
+                    )
+                except (ModelOnexError, OSError):
+                    # OMN-24562: a refused or unreachable key-state topic must not
+                    # turn a skipped key into a refused review (chain of
+                    # responders, RULING 2026-11-03T20:42:53Z). The set-aside
+                    # state is already held here; the event stays queued with its
+                    # stable id and is replayed in order on the next call.
+                    # Dependency exception text may include a provider message or
+                    # a secret, so none is logged.
+                    logger.warning(
+                        "review gateway: key-state event publication deferred "
+                        "(%d queued)",
+                        len(self._pending_events),
+                    )
+                    return
                 self._pending_events.popleft()
 
     async def _refuse_key(
