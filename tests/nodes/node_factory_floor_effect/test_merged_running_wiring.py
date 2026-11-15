@@ -167,8 +167,6 @@ def test_merged_running_real_reader_uses_the_resolved_table_without_the_env(
     monkeypatch.setenv("OMNI_HOME", str(home))
     monkeypatch.setenv("ONEX_LAB_RUN_HOSTS", str(home / "hosts.yaml"))
     monkeypatch.delenv("ONEX_PR_WATCHER_STATE", raising=False)
-    monkeypatch.delenv("ONEX_LAB_PASS_RECEIPTS_URL", raising=False)
-    monkeypatch.delenv("ONEX_LAB_PASS_LANE", raising=False)
     ledger = home / "ledger.md"
     ledger.write_text("")
     monkeypatch.setenv("ONEX_LEDGER_PATH", str(ledger))

@@ -131,10 +131,6 @@ allowlisted_handlers:
     violations:
       - missing_handler_routing
     ticket: OMN-11883
-  - path: omnimarket/nodes/node_candidate_pool_compute/handlers/handler_candidate_pool.py
-    violations:
-      - missing_handler_routing
-    ticket: OMN-11883
   - path: omnimarket/nodes/node_chain_diff/handlers/handler_chain_diff.py
     violations:
       - missing_handler_routing
