@@ -227,6 +227,8 @@ async def test_golden_a_proven_ticket_is_moved_to_done_with_its_evidence(
     assert result.examined == 1
     assert result.flipped == 1
     assert result.outcomes[0].action is EnumCloserAction.FLIPPED_DONE
+    assert result.status_line.startswith("STATUS ticket-closer candidates_read=")
+    assert result.status_line.endswith("unread=none")
     assert len(writer.calls) == 1
     call = writer.calls[0]
     assert call["ticket_id"] == "OMN-1"
