@@ -53,3 +53,19 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_broker_acl_reconcile_effect/test_role_placeholders.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn24589-seam-placeholder-list
+  description: The seam test fails when a node contract adds, renames or drops a broker placeholder name without the list spelled in the test (and the declaration file that fills it) being updated; its two failing controls show an added and a dropped name.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_broker_acl_reconcile_effect/test_contract_placeholder_seam.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24589-ac4-integration-proof
+  description: Hosted CI cannot reach the dev broker, so only the local Done gate runs this unbound check. The pushed head ran the placeholder and seam tests on a lab host through the lab work runner and exited 0. The running reading (dry run counts, the apply, the readback, the capture silence watch tick on h201) is read from the lab receipt in the pull request comment.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-omn24589 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_broker_acl_reconcile_effect/test_role_placeholders.py tests/nodes/node_broker_acl_reconcile_effect/test_contract_placeholder_seam.py -q --no-cov -n 0 -p no:randomly
