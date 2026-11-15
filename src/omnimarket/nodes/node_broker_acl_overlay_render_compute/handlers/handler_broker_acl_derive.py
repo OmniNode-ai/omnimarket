@@ -184,6 +184,16 @@ class HandlerBrokerAclDerive:
                         code=_CODES.CALLED_NODE_WITHOUT_TERMINAL, detail=node
                     )
                 )
+            prefix = config["derive_caller_command_prefix"]
+            outside = [topic for topic in commands if not topic.startswith(prefix)]
+            if outside:
+                findings.append(
+                    ModelBrokerAclFinding(
+                        code=_CODES.CALLED_NODE_COMMAND_NOT_A_COMMAND_TOPIC,
+                        detail=f"{node}: {', '.join(outside)}",
+                    )
+                )
+                continue
             for principal in sorted(callers_of[node]):
                 for topic in commands:
                     add(

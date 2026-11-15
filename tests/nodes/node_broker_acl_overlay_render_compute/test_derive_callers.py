@@ -199,3 +199,22 @@ def test_a_terminal_event_outside_publish_topics_serves_a_caller_not_a_runner(
     ran = _derive(tmp_path, _overlay(roles=[_role(nodes=["node_alpha_effect"])]))
     assert EVT not in {r.name for r in ran.rows}
     assert EVT not in ran.uncovered_topics
+
+
+def test_a_called_node_reacting_to_an_event_topic_is_refused(tmp_path: Path) -> None:
+    """Error chain: a first subscribe topic outside the command prefix would grant a write on an event topic; it refuses.
+
+    The measured case: ci_watch subscribes to onex.evt.github.pr-status.v1, so a caller row would let six lab logins publish
+    pull request status events that other consumers trust. Failing control: the same node under a command topic derives.
+    """
+    event_topic = "onex.evt.github.pr-status.v1"
+    _contract(tmp_path, "node_alpha_effect", [event_topic], [EVT])
+    refused = _derive(tmp_path, _overlay(roles=[_role(calls=["node_alpha_effect"])]))
+    assert refused.status == "refused"
+    assert _CODES.CALLED_NODE_COMMAND_NOT_A_COMMAND_TOPIC in {
+        f.code for f in refused.findings
+    }
+    assert refused.rows == ()
+    _contract(tmp_path, "node_alpha_effect", [CMD], [EVT])
+    derived = _derive(tmp_path, _overlay(roles=[_role(calls=["node_alpha_effect"])]))
+    assert derived.status == "derived"
