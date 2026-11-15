@@ -36,7 +36,7 @@ from omnimarket.nodes.node_delegation_scenario_r8_effect.handlers.adapter_r8_lan
 )
 
 
-def _load_topics(package: str) -> ModelScmTopics:
+def load_node_topics(package: str) -> ModelScmTopics:
     """The tenant node's dispatch topics, read from its contract like the ticket CLI reads its own."""
     contract = yaml.safe_load(
         resources.files(package).joinpath("contract.yaml").read_text()
@@ -74,8 +74,8 @@ def build_bus_request(
 ) -> BusRequest:
     """The callable the lane injects: it opens the bus and publishes one tenant read command."""
     topics = {
-        EnumTenantReadKind.SAVINGS: _load_topics(savings_node),
-        EnumTenantReadKind.DELEGATIONS: _load_topics(delegations_node),
+        EnumTenantReadKind.SAVINGS: load_node_topics(savings_node),
+        EnumTenantReadKind.DELEGATIONS: load_node_topics(delegations_node),
     }
 
     def request(
