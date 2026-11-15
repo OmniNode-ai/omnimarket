@@ -292,7 +292,7 @@ class InstallRequestHost:
         try:
             async with self._install_lock:
                 handled = await asyncio.to_thread(self._handler.handle, request)
-        except Exception as exc:  # fallback-ok: answered on the failure terminal and logged, never swallowed
+        except Exception as exc:
             logger.exception(
                 "install-request host %s: handler raised for %s",
                 self._host,
