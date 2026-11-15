@@ -224,6 +224,72 @@ def first_choice_routes(
     return tuple(routes)
 
 
+def selected_model_routes(
+    task_type: str, *, db_path: Path | None = None
+) -> tuple[ModelResolvedDelegationBackend, ...]:
+    """Every model the developer selected in onex, in the order delegation tries them.
+
+    OMN-23413 AC22: what ``onex models`` and the TUI's /config stored, and
+    nothing else: the model chosen first, then the Local Models declared by
+    URL, then each key's chosen models (keys in registration order, each key's
+    models in its own order), then each named
+    connection's models. A key whose last test failed is left out (OMN-21259).
+    The same order ``onex models list --ladder`` shows, with named connections
+    after it. Rungs another tool wrote into the overlay (the built-in local
+    tier) are not a selection and are never part of it.
+    """
+    routes: list[ModelResolvedDelegationBackend] = [
+        *first_choice_routes(task_type, db_path=db_path),
+        *registered_local_model_routes(task_type),
+    ]
+    # Keys in the order they were registered: the order dispatch walks them.
+    for provider in registered_local_byok_providers(
+        db_path=db_path, registration_order=True
+    ):
+        if provider == _LOCAL_URL_PROVIDER:
+            continue
+        if local_byok_key_test_failed(provider, db_path=db_path):
+            continue
+        plan = resolve_local_byok_credential_plan(provider, db_path=db_path)
+        byok = resolve_byok_provider_backend(provider, plan=plan)
+        if byok is None or not byok.customer_routable:
+            continue
+        route = resolve_pinned_byok_route(byok.backend_id, db_path=db_path)
+        if route is None:
+            continue
+        models = resolve_local_byok_credential_models(provider, db_path=db_path)
+        if not models:
+            routes.append(route)
+        for chosen in models:
+            routes.append(route.model_copy(update={"model_id": chosen}))
+    overlay = local_model_tests_path(db_path).with_name("bifrost_overrides.yaml")
+    for row in read_named_connections(db_path=db_path):
+        connection = ModelEndpointConnection.model_validate(row)
+        for model in connection.models:
+            try:
+                named = resolve_delegation_backend(
+                    task_type,
+                    backend_id=connection.backend_id(model),
+                    overlay_path=overlay,
+                )
+            except (OSError, ValueError):
+                continue
+            if (
+                named.model_id == model
+                and named.endpoint_ref == connection.url + "/v1/chat/completions"
+                and named.secret_ref == connection.secret_ref
+            ):
+                routes.append(named)
+    seen: set[tuple[str, str]] = set()
+    ordered: list[ModelResolvedDelegationBackend] = []
+    for route in routes:
+        key = (route.backend_id, route.model_id)
+        if key not in seen:
+            seen.add(key)
+            ordered.append(route)
+    return tuple(ordered)
+
+
 __all__: list[str] = [
     "FIRST_CHOICE_FILE",
     "clear_first_choice",
@@ -232,5 +298,6 @@ __all__: list[str] = [
     "first_choice_routes",
     "read_first_choice",
     "read_first_choice_url",
+    "selected_model_routes",
     "write_first_choice",
 ]

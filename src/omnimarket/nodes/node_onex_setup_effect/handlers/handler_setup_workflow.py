@@ -45,6 +45,7 @@ from omnimarket.nodes.node_onex_setup_effect.models.model_setup_plan import (
 )
 from omnimarket.nodes.node_onex_setup_effect.protocols.protocol_setup_step import (
     ProtocolSetupStep,
+    SetupStepRefusedError,
 )
 
 
@@ -173,12 +174,14 @@ class HandlerSetupWorkflow:
         self._read_legacy = read_legacy
 
     @staticmethod
-    def _failure(step: str, *, changed: bool) -> ModelSetupObservation:
+    def _failure(
+        step: str, *, changed: bool, fix: str | None = None
+    ) -> ModelSetupObservation:
         return ModelSetupObservation(
             step=step,
             status="failure",
             changed=changed,
-            fix="Check the component, then run onex setup --action repair.",
+            fix=fix or "Check the component, then run onex setup --action repair.",
         )
 
     def _observe(
@@ -232,6 +235,10 @@ class HandlerSetupWorkflow:
                         observation = self._observe(step, plan).model_copy(
                             update={"changed": True}
                         )
+                except SetupStepRefusedError as refused:  # a message for the user
+                    observation = self._failure(
+                        step.name, changed=True, fix=str(refused)
+                    )
                 except Exception:
                     # An effect may fail after a partial mutation; preserve that fact.
                     observation = self._failure(step.name, changed=True)

@@ -37,7 +37,7 @@ _SENTINEL = "sk-or-sentinel-ac15-7f3a9c41"
 
 
 async def _status() -> ModelTuiStatus:
-    return ModelTuiStatus(workspace="~/ws", model="m", gateway=False)
+    return ModelTuiStatus(model="m", delegation="off")
 
 
 @pytest.fixture(autouse=True)

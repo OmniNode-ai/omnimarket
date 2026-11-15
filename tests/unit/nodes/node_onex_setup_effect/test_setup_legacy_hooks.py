@@ -1,6 +1,21 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Legacy owner seam: missing closure, edited state and rerun are distinct."""
+"""Legacy owner seam: missing closure, edited state and rerun are distinct.
+
+AC38 (OMN-23413 Amendment 11): delegation is two hooks, the prompt hook
+(UserPromptSubmit) and the subagent hook (PreToolUse Agent|Task). Seen
+2026-11-14: `onex delegation status` said "on" while the bundle onex installs
+from carried only the subagent hook, so no prompt was ever delegated.
+Failure modes:
+  B1  a bundle without the prompt hook is reported installed ("on").
+  B2  a bundle without the subagent hook is reported installed ("on").
+  B3  `onex delegation on` (with or without --replace) runs the installer for
+      such a bundle, rewriting settings without ever reaching "on".
+  B4  an older, untouched install that has only the subagent hook is not
+      named as missing the prompt hook, so status can read it as "on".
+  B5  an observation does not say, hook by hook, whether the prompt hook and
+      the subagent hook are installed, so the TUI can show only one switch.
+"""
 
 import json
 import shlex
@@ -19,7 +34,7 @@ from omnimarket.nodes.node_onex_setup_effect.models.model_setup_plan import (
 pytestmark = pytest.mark.unit
 
 
-def bundle(tmp_path, monkeypatch):
+def bundle(tmp_path, monkeypatch, *, drop=()):
     home = tmp_path / "home"
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
@@ -31,7 +46,7 @@ def bundle(tmp_path, monkeypatch):
     installer.write_text("#!/bin/bash\nexit 0\n")
     plugin = source / "plugins/onex"
     for name in (
-        "hooks/scripts/delegate.sh",
+        "hooks/scripts/pre_tool_use_delegation.sh",
         "hooks/scripts/account.sh",
         "lib/guard.sh",
         "hooks/lib/runner.py",
@@ -41,13 +56,23 @@ def bundle(tmp_path, monkeypatch):
         file.write_text("# required " + name)
     manifest = {
         "hooks": {
+            "UserPromptSubmit": [
+                {
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": "ONEX_DELEGATION_HOOK=prompts bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/pre_tool_use_delegation.sh",
+                        }
+                    ],
+                }
+            ],
             "PreToolUse": [
                 {
                     "matcher": "Agent|Task",
                     "hooks": [
                         {
                             "type": "command",
-                            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/delegate.sh",
+                            "command": "ONEX_DELEGATION_HOOK=subagents bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/pre_tool_use_delegation.sh",
                         }
                     ],
                 }
@@ -64,6 +89,8 @@ def bundle(tmp_path, monkeypatch):
             ],
         }
     }
+    for event in drop:
+        manifest["hooks"].pop(event)
     (plugin / "hooks/hooks-delegation.v1.json").write_text(json.dumps(manifest))
     assets = {"marketplace": str(source / "plugins"), "installer": str(installer)}
     monkeypatch.setattr(
@@ -72,14 +99,7 @@ def bundle(tmp_path, monkeypatch):
         staticmethod(lambda: assets),
         raising=False,
     )
-    monkeypatch.setattr(module, "gateway_hook_enabled", lambda: True)
-    monkeypatch.setattr(
-        module,
-        "manage_gateway_hooks",
-        lambda *_args, **_kwargs: type(
-            "State", (), {"status": "success", "registered": True, "fix": None}
-        )(),
-    )
+    monkeypatch.setattr(module, "delegation_switch_enabled", lambda: True)
     installed = home / ".omninode/delegation"
     commands = []
 
@@ -102,6 +122,16 @@ def bundle(tmp_path, monkeypatch):
                             + hook["command"]
                         )
             (installed / "hooks-delegation.json").write_text(json.dumps(rendered))
+            (installed / "rollback-manifest.json").write_text(
+                json.dumps(
+                    {
+                        "claude_settings": str(profile / "settings.json"),
+                        "installed_hook_config": str(
+                            installed / "hooks-delegation.json"
+                        ),
+                    }
+                )
+            )
             profile.mkdir(exist_ok=True)
             (profile / "settings.json").write_text(
                 json.dumps({**rendered, "unrelated": "preserved"})
@@ -173,9 +203,7 @@ def test_hooks_refuse_modified_user_owned_state_before_install_or_disposal(
     assert file.read_text() == "# later user changes"
 
 
-def test_hook_disposal_calls_canonical_uninstaller_and_preserves_gateway_lifecycle(
-    tmp_path, monkeypatch
-):
+def test_hook_disposal_calls_canonical_uninstaller(tmp_path, monkeypatch):
     owner, plan, _installed, _profile, installer, commands = bundle(
         tmp_path, monkeypatch
     )
@@ -225,3 +253,105 @@ def test_missing_bundle_is_action_required_on_observe_and_apply(tmp_path, monkey
     assert result is not None
     assert result.status == "action_required"
     assert commands == []
+
+
+@pytest.mark.parametrize(
+    ("drop", "named"),
+    [(("UserPromptSubmit",), "prompt"), (("PreToolUse",), "subagent")],
+)
+@pytest.mark.parametrize("replace", [False, True])
+def test_a_bundle_without_both_delegation_hooks_is_never_on(
+    tmp_path, monkeypatch, drop, named, replace
+):
+    """B1, B2, B3."""
+    owner, plan, installed, _profile, _installer, commands = bundle(
+        tmp_path, monkeypatch, drop=drop
+    )
+    owner._replace = replace
+    seen = owner.observe(plan)
+    assert seen.status == "action_required"
+    assert named in seen.evidence["bundle_missing"]
+    assert named in str(seen.fix)
+    result = owner.apply(plan)
+    assert result is not None
+    assert result.status == "action_required"
+    assert commands == []
+    assert not (installed / "hooks-delegation.json").exists()
+
+
+def test_an_older_install_without_the_prompt_hook_names_it(tmp_path, monkeypatch):
+    """B4."""
+    from omnimarket.nodes.node_onex_setup_effect.setup_legacy_hooks import (
+        record_installed_hooks,
+    )
+
+    owner, plan, installed, profile, _installer, _commands = bundle(
+        tmp_path, monkeypatch
+    )
+    assert owner.apply(plan) is None
+    # What an earlier onex left: the subagent hook only, recorded as installed.
+    for path in (installed / "hooks-delegation.json", profile / "settings.json"):
+        data = json.loads(path.read_text())
+        data["hooks"].pop("UserPromptSubmit")
+        path.write_text(json.dumps(data))
+    record_installed_hooks(profile)
+    seen = owner.observe(plan)
+    assert seen.evidence.get("installed") == "older"
+    assert "prompt" in seen.evidence.get("installed_missing", "")
+    assert "prompt" in str(seen.fix)
+
+
+def test_the_two_labelled_hooks_count_as_both_hooks():
+    """Both hooks run the delegation script, each named by its label (OMN-23413)."""
+    from omnimarket.nodes.node_onex_setup_effect.setup_legacy_hooks import (
+        missing_delegation_hooks,
+    )
+
+    def row(command):
+        return {"hooks": [{"type": "command", "command": command}]}
+
+    rows = {
+        "UserPromptSubmit": [
+            row(
+                "ONEX_DELEGATION_HOOK=prompts /x/hooks/scripts/pre_tool_use_delegation.sh"
+            )
+        ],
+        "PreToolUse": [
+            {
+                "matcher": "^(Agent|Task)$",
+                **row(
+                    "ONEX_DELEGATION_HOOK=subagents /x/hooks/scripts/pre_tool_use_delegation.sh"
+                ),
+            }
+        ],
+    }
+    assert missing_delegation_hooks(rows) == []
+    assert missing_delegation_hooks({"PreToolUse": rows["PreToolUse"]}) == [
+        "prompt (UserPromptSubmit)"
+    ]
+    bash_only = {**rows, "PreToolUse": [{"matcher": "Bash", **row("/x/guard.sh")}]}
+    assert missing_delegation_hooks(bash_only) == ["subagent (PreToolUse Agent|Task)"]
+
+
+def test_every_observation_says_which_hooks_are_installed(tmp_path, monkeypatch):
+    """B5: before install both missing, after install both installed, and an
+    older subagent-only install names the prompt hook missing."""
+    from omnimarket.nodes.node_onex_setup_effect.setup_legacy_hooks import (
+        record_installed_hooks,
+    )
+
+    owner, plan, installed, profile, _installer, _commands = bundle(
+        tmp_path, monkeypatch
+    )
+    before = owner.observe(plan).evidence
+    assert (before["prompt_hook"], before["subagent_hook"]) == ("missing", "missing")
+    assert owner.apply(plan) is None
+    after = owner.observe(plan).evidence
+    assert (after["prompt_hook"], after["subagent_hook"]) == ("installed", "installed")
+    for path in (installed / "hooks-delegation.json", profile / "settings.json"):
+        data = json.loads(path.read_text())
+        data["hooks"].pop("UserPromptSubmit")
+        path.write_text(json.dumps(data))
+    record_installed_hooks(profile)
+    older = owner.observe(plan).evidence
+    assert (older["prompt_hook"], older["subagent_hook"]) == ("missing", "installed")

@@ -2,22 +2,23 @@
 # whether to ask for a server URL or a key and which canonical owner registers
 # the choice. Routing never reads it, and no code compares a provider name
 # (deployment-fact gate). Loaded by models/model_setup_provider_traits.py.
-url_required: [local, openai_compatible, ollama]
-# The user's own server: keyless unless they say it needs a key.
-endpoint_auth: [ollama]
+url_required: [local, openai_compatible]
+# The user's own server, a Local Model: keyless unless they say it needs a key
+# (OMN-23413: any model server, by its endpoint URL).
+endpoint_auth: [local]
 # The credential owner a provider's key is stored under, when not its own.
 key_provider:
-  ollama: openai_compatible
+  local: openai_compatible
 # The canonical endpoint owner a selection registers as, keyed or keyless.
 registers_as:
-  ollama:
+  local:
     keyed: openai_compatible
     keyless: local
 # What the TUI's /config offers, in this order; /config opens on the first.
 # A provider in url_required asks for its server's URL, which nothing fills in
 # for the user (the server they already use is offered when one is set up);
 # any other asks for its key. Each hint comes from the provider's own docs
-# (aistudio.google.com/docs/api-key, docs.ollama.com/faq, openrouter.ai/docs).
+# (aistudio.google.com/docs/api-key, openrouter.ai/docs).
 picker:
   - provider: gemini
     label: Google Gemini
@@ -34,6 +35,6 @@ picker:
   - provider: local
     label: Local Model
     hint: >-
-      Any model server that speaks the OpenAI API: Ollama, vLLM, llama.cpp, LM
-      Studio or MLX. Enter its address; its models load on their own and the
-      server is named from its answer.
+      Any model server you run that speaks the OpenAI API. Enter its endpoint
+      URL; its models load on their own and the server is named from its
+      answer.

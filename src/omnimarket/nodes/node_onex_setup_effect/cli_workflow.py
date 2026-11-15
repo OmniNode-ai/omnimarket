@@ -30,6 +30,9 @@ from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_workflow imp
 from omnimarket.nodes.node_onex_setup_effect.models.model_setup_plan import (
     ModelSetupPlan,
 )
+from omnimarket.nodes.node_onex_setup_effect.models.model_setup_provider_traits import (
+    setup_provider_traits,
+)
 
 
 def run_workflow_cli(
@@ -54,9 +57,6 @@ def run_workflow_cli(
     prepared_credentials: dict[str, SecretStr] | None = None,
     connection_id: str | None = None,
     native_messages: bool | None = None,
-    gateway_connection: str | None = None,
-    gateway_model: str | None = None,
-    gateway_port: int | None = None,
     compose_file: Path | None = None,
     topology_file: Path | None = None,
     completion_name: str | None = None,
@@ -86,9 +86,6 @@ def run_workflow_cli(
                 or endpoint_auth
                 or connection_id
                 or native_messages is not None
-                or gateway_connection
-                or gateway_model
-                or gateway_port is not None
                 or compose_file is not None
                 or topology_file is not None
                 or completion_name is not None
@@ -149,17 +146,6 @@ def run_workflow_cli(
                             saved.local_stack if saved is not None and reuse else None
                         )
                     ),
-                    "gateway": (
-                        {
-                            "connection_id": gateway_connection,
-                            "model": gateway_model,
-                            "port": gateway_port or 0,
-                        }
-                        if gateway_connection
-                        or gateway_model
-                        or gateway_port is not None
-                        else (saved.gateway if saved is not None and reuse else None)
-                    ),
                 }
             )
         unsupported = set(plan.components) - workflow_factory.supported_components()
@@ -215,9 +201,7 @@ def run_workflow_cli(
         for selection in pending_keys:
             name = selection.provider
             identity = selection.credential_identity
-            key = read_key(
-                "openai_compatible" if name == "ollama" else name, interactive
-            )
+            key = read_key(setup_provider_traits().key_name(name), interactive)
             if key is None:
                 raise click.ClickException(
                     "A selected provider needs a credential on hidden input or stdin. Nothing was installed."

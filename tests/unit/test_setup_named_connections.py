@@ -97,7 +97,7 @@ def test_setup_cli_connection_routes_secret_to_named_owner(
             "--connection",
             "mine",
             "--provider",
-            "ollama",
+            "local",
             "--endpoint-auth",
             "api-key",
             "--url",
@@ -146,7 +146,7 @@ def test_named_observation_requires_every_model_proof_and_does_not_write(
         workspace=tmp_path,
         providers=[
             {
-                "provider": "ollama",
+                "provider": "local",
                 "connection_id": "mine",
                 "url": "http://127.0.0.1:9999",
                 "models": ["a", "b"],

@@ -155,7 +155,10 @@ class TestTheProviderListFollowsTheCatalogue:
     def test_a_fresh_profile_lists_glm_not_set_up(self) -> None:
         result = CliRunner().invoke(models_group, ["list"])
         assert result.exit_code == 0, result.output
-        assert "GLM         not set up" in result.output.splitlines()
+        assert (
+            f"{handler_model_keys.MODEL_LABELS['glm']:<{handler_model_keys.LABEL_WIDTH}} not set up"
+            in (result.output.splitlines())
+        )
 
     def test_a_fresh_profile_lists_every_offered_provider(self) -> None:
         result = CliRunner().invoke(models_group, ["list", "--json"])
@@ -197,7 +200,10 @@ class TestModelsAddGlm:
         assert "glm" in registered_local_byok_providers()
         assert resolve_local_byok_credential_model("glm") == "glm-5.3-flash"
         assert delegate.pins == ["byok-glm-general"]
-        assert "GLM         ✓ answered (glm-5.3-flash)" in result.output
+        assert (
+            f"{handler_model_keys.MODEL_LABELS['glm']:<{handler_model_keys.LABEL_WIDTH}} "
+            "✓ answered (glm-5.3-flash)"
+        ) in result.output
 
     def test_list_shows_glm_set_up_after_add(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path

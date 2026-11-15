@@ -4,9 +4,10 @@
 
 The URL authority gate requires every URL to resolve from a contract or an
 integration catalog, never a literal in source. The loopback host of the
-processes setup starts is contract metadata; third-party addresses (Claude
-Code's vendor installer) are in the node's integration_endpoints.yaml, because
-the contract overlay boundary keeps endpoint literals out of contract.yaml.
+processes setup starts is contract metadata. Setup contacts no third-party
+address: since OMN-23413 (operator 2026-11-13) it never installs Claude Code,
+so the node's integration_endpoints.yaml, which held only that installer's
+URL, is gone.
 """
 
 from __future__ import annotations
@@ -33,11 +34,6 @@ def _value(name: str, key: str | None, field: str) -> str:
     if not isinstance(value, str) or not value:
         raise ValueError(f"The setup node's {name} does not declare {field}")
     return value
-
-
-def claude_code_installer_url() -> str:
-    """Claude Code's own vendor installer, run only when the user selects Claude."""
-    return _value("integration_endpoints.yaml", None, "claude_code_installer_url")
 
 
 def loopback_url(port: int) -> str:

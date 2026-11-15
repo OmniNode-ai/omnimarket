@@ -11,7 +11,6 @@ Failure modes, each caught below:
   FM11 picking the second server's row sent ``models first local MODEL`` with no
        URL, so the CLI could not tell which server was meant.
   FM12 the "Now:" line could not say which server is tried first.
-  FM8  two servers of one kind on one port got one gateway connection name.
 """
 
 from __future__ import annotations
@@ -27,7 +26,6 @@ from omnimarket.nodes.node_onex_setup_effect.cli_tui import (
     DelegationScreen,
     ModelPickScreen,
     OnexTui,
-    connection_name,
 )
 from tests.unit.nodes.node_onex_setup_effect.test_onex_tui import (
     _root,
@@ -164,21 +162,13 @@ async def test_the_now_line_names_the_server_tried_first() -> None:
         assert "vllm.test" not in now
 
 
-def test_two_servers_of_one_kind_on_one_port_get_two_connection_names() -> None:
-    """FM8."""
-    first = connection_name("vLLM", "http://gpu-a.test:8000")
-    second = connection_name("vLLM", "http://gpu-b.test:8000")
-    assert first != second
-    assert all(name[:1].isalpha() and len(name) <= 64 for name in (first, second))
-
-
 # The screens must say only what is true (OMN-23413, operator 2026-11-13):
 #   S1  the status bar named a model while Auto picks per task, and said "model
 #       not set" before it had read anything.
 #   S2  /config said "Selected: none yet" with three models set up, and offered
 #       127.0.0.1:11434 instead of the user's own server.
-#   S3  the /delegation gateway note named a model two servers run without
-#       saying which server.
+#   S3  the /delegation table named a model two servers run without saying
+#       which server.
 #   S4  a delegated task's answering model replaced the model shown as first.
 
 
@@ -189,7 +179,7 @@ async def test_the_status_bar_says_auto_and_how_many_models_when_none_is_first()
     from omnimarket.nodes.node_onex_setup_effect.cli_tui import ModelTuiStatus
 
     async def auto() -> ModelTuiStatus:
-        return ModelTuiStatus(workspace="~/ws", models=3)
+        return ModelTuiStatus(models=3)
 
     app = OnexTui(root=_root, runner=_Runner([]), load_status=auto)
     async with app.run_test() as pilot:
@@ -209,7 +199,7 @@ async def test_the_status_bar_says_reading_until_the_setup_is_read() -> None:
 
     async def slow() -> ModelTuiStatus:
         await gate.wait()
-        return ModelTuiStatus(workspace="~/ws", models=0)
+        return ModelTuiStatus(models=0)
 
     app = OnexTui(root=_root, runner=_Runner([]), load_status=slow)
     async with app.run_test() as pilot:
@@ -228,9 +218,7 @@ async def test_the_status_bar_names_the_server_of_the_first_model() -> None:
     from omnimarket.nodes.node_onex_setup_effect.cli_tui import ModelTuiStatus
 
     async def first() -> ModelTuiStatus:
-        return ModelTuiStatus(
-            workspace="~/ws", model=_MODEL, first_url=_LLAMA, models=3
-        )
+        return ModelTuiStatus(model=_MODEL, first_url=_LLAMA, models=3)
 
     app = OnexTui(root=_root, runner=_Runner([]), load_status=first)
     async with app.run_test() as pilot:
@@ -262,8 +250,10 @@ async def test_config_shows_what_is_set_up_and_offers_the_users_own_server() -> 
         assert "3 models · 3 servers" in summary
 
 
-async def test_the_gateway_note_names_each_server() -> None:
-    """S3."""
+async def test_delegation_table_names_each_selected_server() -> None:
+    """S3: hook delegation includes each selected server."""
+    from textual.widgets import DataTable
+
     runner = _Runner(
         [],
         by_command={
@@ -282,10 +272,17 @@ async def test_the_gateway_note_names_each_server() -> None:
     app = OnexTui(root=_root, runner=runner, load_status=_status, read_server=native)
     async with app.run_test(size=(170, 46)) as pilot:
         await _open(pilot, "/delegation")
-        note = str(app.screen.query_one("#dnote", Static).render())
-        assert f"{_MODEL} on vllm.test:8000" in note
-        assert f"{_MODEL} on llama.test:8000" in note
-        assert "saluki" not in note
+        table = app.screen.query_one("#selected").query_one(DataTable)
+        rows = [
+            " ".join(str(cell) for cell in table.get_row_at(i))
+            for i in range(table.row_count)
+        ]
+        for model, server in (
+            (_MODEL, "vllm.test:8000"),
+            (_MODEL, "llama.test:8000"),
+            ("saluki", "ollama.test:11434"),
+        ):
+            assert any(model in row and server in row for row in rows), rows
 
 
 async def test_a_delegated_task_does_not_change_the_model_shown_as_first() -> None:
@@ -324,7 +321,7 @@ async def test_a_delegated_task_does_not_change_the_model_shown_as_first() -> No
 
 async def test_config_lists_providers_in_yaml_order_and_fills_no_url() -> None:
     """P1, P2."""
-    from textual.widgets import Input, Select
+    from textual.widgets import Input, RadioButton
 
     from omnimarket.nodes.node_onex_setup_effect.cli_tui import SetupScreen
     from omnimarket.nodes.node_onex_setup_effect.models.model_setup_provider_traits import (
@@ -337,9 +334,9 @@ async def test_config_lists_providers_in_yaml_order_and_fills_no_url() -> None:
         await _open(pilot, "/config")
         assert isinstance(app.screen, SetupScreen)
         picker = setup_provider_traits().picker
-        select = app.screen.query_one("#provider", Select)
+        select = app.screen.query_one("#provider")  # radio options (OMN-23413)
         assert select.value == picker[0].provider
-        assert [value for _, value in select._options if value is not Select.BLANK] == [
+        assert [b.name for b in select.query(RadioButton)] == [
             entry.provider for entry in picker
         ]
         assert picker[-1].provider == "local"
@@ -474,11 +471,11 @@ async def test_saving_delegation_keeps_delegation_open_and_shows_the_outcome() -
     app = _app(runner)
     async with app.run_test(size=(170, 46)) as pilot:
         await _open(pilot, "/delegation")
-        app.screen.query_one("#on").value = True
+        app.screen.set_all(True)
         await pilot.press("ctrl+s")
         await _settle(pilot)
         assert isinstance(app.screen, DelegationScreen)
-        assert [c for c in runner.calls if c[:2] == ("hooks", "enable")]
+        assert [c for c in runner.calls if c[:2] == ("delegation", "on")]  # OMN-23413
         assert "delegation is on" in str(app.screen.query_one("#dnote").render())
 
 

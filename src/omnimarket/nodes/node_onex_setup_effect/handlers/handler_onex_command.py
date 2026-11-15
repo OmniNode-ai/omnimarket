@@ -10,6 +10,9 @@ stops its process. Bound in this node's contract under cli_served_handlers.
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import os
+import signal
 import subprocess
 import sys
 from collections.abc import Callable
@@ -17,9 +20,21 @@ from pathlib import Path
 
 
 def _stop(process: asyncio.subprocess.Process) -> None:
-    """End a cancelled onex run so it does not keep working in the background."""
-    if process.returncode is None:
-        process.kill()
+    """End a cancelled onex run and every process it started, so none keeps working.
+
+    OMN-23413: killing only the onex process left `onex delegate`'s
+    multiprocessing worker and resource tracker running under PID 1, so a
+    cancelled task could go on calling the model. Each run is started in its
+    own session (start_new_session=True), so its pid is its process group and
+    the whole group is ended. Drafted by onex delegate run b201a7e0.
+    """
+    if process.returncode is not None:
+        return
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        with contextlib.suppress(ProcessLookupError):
+            process.kill()
 
 
 class HandlerOnexCommand:
@@ -42,6 +57,7 @@ class HandlerOnexCommand:
             else asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
+            start_new_session=True,
         )
         assert process.stdout is not None
         if stdin is not None and process.stdin is not None:
@@ -67,6 +83,7 @@ class HandlerOnexCommand:
             else asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            start_new_session=True,
         )
         try:
             out, err = await process.communicate(

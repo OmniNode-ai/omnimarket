@@ -99,6 +99,15 @@ help: >-
 # /config loads a provider's models this long after the key or URL stops
 # changing; a key shorter than min_key_length is never sent.
 auto_find_seconds: 0.8
+# The live line under the log while a task runs (OMN-23413, operator
+# 2026-11-13: "like coding agents cli: spinner verb ... can cancel esc"). The
+# frames are braille dots, which every terminal font draws.
+activity:
+  frames: ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+  frame_seconds: 0.1
+  verbs: ["Delegating", "Working", "Thinking", "Reasoning", "Composing"]
+  verb_seconds: 3
+  line: "{frame} {verb}… {seconds}s · esc to cancel"
 # A Done or Failed pop-up after an action stays this long.
 toast_seconds: 6
 # A test's failure reason is cut to this many characters on screen.
@@ -107,6 +116,9 @@ reason_chars: 160
 # again; an older one, or one a tab has shown, is read again after the tab opens.
 fresh_seconds: 30
 min_key_length: 8
+# /config's "Set up now" line names the models while it fits one line of the
+# tab (160 columns at most); past this it counts them per provider.
+basket_names_max_chars: 140
 
 # The model table every model screen shows: /config (tick models), /model
 # (pick the first or Auto) and /delegation (read-only). Columns, words and
@@ -181,44 +193,62 @@ model_table:
   help:
     config: "Tab next screen · Space ticks · Enter moves on · I details · / search · F filter · S sort · Ctrl+S saves · Esc back"
     model: "Tab next screen · Enter selects · A auto · R remove · I details · / search · F filter · S sort · Esc back"
-    delegation: "Tab next screen · Space switches · M mode · I details · Ctrl+S saves · Esc back"
+    delegation: "Tab next screen · Space switches · I details · Ctrl+S saves · Esc back"
     dashboard: "Tab next screen · S start · Enter opens · X stop · Esc back"
 
-# /delegation (OMN-23413 AC25, AC26): nothing is typed. Each mode names the onex
-# commands it runs; "{connection}" and "{model}" are filled from the selected
-# model that can serve it. The screen holds no command, bit or word of its own.
+# /delegation: one switch for prompts and subagent tasks; no model binding.
 delegation:
   title: Claude Code delegation
-  switch_label: Delegate Claude Code work to your selected models
   table_title: Your selected models (from /config), in the order delegation tries them
-  modes:
-    - id: hook
-      label: "Subagent tasks: the delegation hook routes them across your models"
-      detail: "Claude Code keeps its own model for the conversation. When it hands a task to a subagent, the ONEX hook sends that task to your selected models, in order, and returns the answer. Works with any selected model."
-      needs_gateway_model: false
-      enable:
-        - [setup, --yes, --no-interactive, --json, --component, claude-plugin, --component, claude-hooks]
-        - [hooks, enable, post_skill_delegation_enforcer]
-      disable:
-        - [hooks, disable, post_skill_delegation_enforcer]
-    - id: gateway
-      label: "All Claude Code requests: through the ONEX gateway"
-      detail: "Every Claude Code request, the conversation included, goes to a local ONEX gateway that answers with one of your models instead of Anthropic. Needs a selected model whose connection speaks the Anthropic Messages API."
-      needs_gateway_model: true
-      enable:
-        - [setup, --yes, --no-interactive, --json, --component, claude-gateway, --gateway-connection, "{connection}", --gateway-model, "{model}"]
-      disable:
-        - [claude, disable, --yes]
-  switched_on: "Claude Code delegation is on: {mode}."
+  enable:
+    - [delegation, "on", --json]
+  disable:
+    - [delegation, "off", --json]
+  switched_on: "Claude Code delegation is on: prompts and subagent tasks."
+  # Operator 2026-11-15, "build separate switches": a hook's box pauses only it.
+  switched_on_prompts: "Claude Code delegation is on for prompts; subagent tasks are paused."
+  switched_on_subagents: "Claude Code delegation is on for subagent tasks; prompts are paused."
   switched_off: "Claude Code delegation is off."
   not_switched: "Claude Code delegation was not switched {state}: {reason}"
   nothing_ticked: "Tick at least one model first: click it, or press Space on it."
-  # Registers a server that speaks Anthropic Messages as a connection, so the
-  # gateway can use it; run first when the chosen model has no connection yet.
-  connect: [models, connect, "{connection}", --url, "{url}", --model, "{model}", --native-messages, --no-test, --yes, --json]
   no_models: "Select a model with /config first: Claude delegation needs at least one selected model."
-  no_gateway_model: "None of your selected models' servers answers Anthropic Messages, which the gateway needs. Use the delegation hook, or select a model on such a server (Ollama does) with /config."
-  gateway_marker: Gateway
+  # OMN-23413, operator 2026-11-14: the switch's state is written out, and each of
+  # the two hooks it installs is shown with whether Claude Code has it.
+  glyph_on: "●"
+  glyph_off: "○"
+  state_on: "ON"
+  state_off: "OFF"
+  state_pending: "press Save to apply"
+  # Review 2026-11-15: a state nobody has read is never drawn as OFF.
+  glyph_unknown: "◌"
+  state_reading: "checking…"
+  state_unread: "status could not be read"
+  hooks_title: "Each switch delegates through its own hook in Claude Code; both off removes the hooks."
+  hooks:
+    - key: prompt_hook
+      label: Delegate prompts
+      name: Prompt hook
+      what: every prompt goes to delegation first
+      switch: prompts
+      pause_flag: --no-prompts
+    - key: subagent_hook
+      label: Delegate subagent tasks
+      name: Subagent hook
+      what: subagent tasks go to delegation
+      switch: subagents
+      pause_flag: --no-subagents
+  hook_installed: installed
+  hook_missing: not installed
+  hook_unknown: not read yet
+  hook_unread: not read
+  hook_paused: paused
+  # Save sends nothing from a state that was not read (review 2026-11-15).
+  save_reading: "Delegation's state is still being read, so Save changed nothing; save again once it shows."
+  save_unread: "Delegation's state could not be read, so Save changed nothing. Switch it on here, or run /delegation off to switch it off."
+  save_just_read: "Delegation's state was just read and is shown above; Save changed nothing."
+  # OMN-23413, operator 2026-11-13: Claude Code is the user's own install; the
+  # tab detects it with setup's read-only check and says so, and never installs it.
+  claude_check: [delegation, status, --json]
 
 # /dashboard (OMN-23413): the local dashboard as the fourth tab. Its state is
 # read from the CLI's own JSON; each button runs the onex command named here.
@@ -273,7 +303,12 @@ words:
   removed: "{model} removed ({provider})"
   remove_failed: "could not remove {model}: {reason}"
   # /config: what is set up already, shown before anything new is ticked.
-  basket_current: "Set up now: {models}. Tick more to add them, or Esc to keep these."
+  basket_current: "Set up now: {models}"
+  # OMN-23413: when the names do not fit one line (34 names filled seven lines
+  # of /config on 2026-11-13), a count per provider instead.
+  # The key line under it already says Space ticks and Esc goes back; the
+  # sentence that repeated it is gone (operator 2026-11-13: "no unnecessary stuff").
+  basket_counted: "Set up now: {count} · {providers}"
   setting_up: "Setting up {provider} · {models} …"
   also_added: "also added {models}"
   adding_failed: "adding {models}: {reason}"
@@ -294,16 +329,24 @@ words:
   still_working: "still working… the tab closes or changes once this finishes"
   tab_loading: "opening {tab}…"
   # The one line under the tabs: how many models, on how many servers, and the first.
-  summary: "{dot} {models} models · {servers} servers · {first}"
+  summary: "{dot} {models} · {servers} · {first}"
+  summary_no_servers: "{dot} {models} · {first}"
   summary_auto: "Auto picks per task"
   summary_first: "{model} first"
   # The status bar at the foot of the main screen.
   status_reading: "reading your setup…"
   status_none: "no model set up · /config"
-  status_auto: "Auto · {count} models"
+  status_auto: "Auto · {count}"
   status_first: "{model} first"
-  gateway_on: "gateway on"
-  gateway_off: "gateway off"
+  # Claude Code delegation in the status bar, as it is (OMN-23413).
+  delegation_off: "delegation off"
+  delegation_hook: "delegation on · prompts and tasks"
+  delegation_hook_prompts: "delegation on · prompts only"
+  delegation_hook_tasks: "delegation on · tasks only"
+  delegation_reading: "delegation: checking…"
+  delegation_unknown: "delegation: status could not be read"
+  delegation_unreadable: "could not read delegation's state ({reason}); /delegation shows it as not read"
+  status_no_line: "no status line"
   status_working: "working {seconds}s · esc cancels"
   status_hint: "/ commands · ctrl+c quit"
   status_unavailable: "status unavailable: {error}"
@@ -326,9 +369,23 @@ words:
   setup_ready: "Ready: {provider} · {models}. Type a task to try it, or /model to choose which goes first."
   # One delegated task's facts, and the status bar's note of the last one.
   run_unknown_model: "unknown model"
+  # A Save while another onex setup holds the setup lock (OMN-23413): the first
+  # Save may still be installing Claude Code, a download of about 200 MB.
+  setup_busy: "another setup is still running (it may be installing Claude Code); wait for it to finish, then save again"
+  claude_checking: "Claude Code: checking…"
+  claude_ready: "Claude Code: ready"
+  claude_installed: "Claude Code: installed · Save adds the ONEX plugin and switches the hooks on"
+  claude_signed_out: "Claude Code: installed, not signed in · run claude and sign in, then save"
+  claude_missing: "Claude Code is not installed. Install it yourself from claude.com/claude-code, then switch delegation on here."
+  claude_unknown: "could not check Claude Code; Save will try and report what it finds"
   run_tokens: "{tokens} tokens"
+  # Operator 2026-11-13: tokens in point down, tokens out point up.
+  run_tokens_in_out: "↓{tokens_in} in · ↑{tokens_out} out"
   run_seconds: "{seconds} s"
   run_cost: "${cost}"
+  # A zero cost with cost_measured false is unknown, not free (audit S9-1, OMN-24224).
+  run_cost_unmeasured: "cost not measured"
   run_saved: "saved ${saved}"
   run_id: "run {run}"
   last_run: "last run {model} ${cost}"
+  last_run_unmeasured: "last run {model} · cost not measured"

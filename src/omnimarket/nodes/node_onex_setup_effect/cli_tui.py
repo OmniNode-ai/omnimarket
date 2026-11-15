@@ -17,14 +17,14 @@ import json
 import re
 import shlex
 import time
+from collections import Counter
 from collections.abc import Awaitable, Callable, Mapping
-from pathlib import Path
-from typing import ClassVar, Protocol, TypeVar, cast
+from typing import ClassVar, Literal, Protocol, TypeVar, cast
 from urllib.parse import urlparse
 
 import click
 from omnibase_core.cli.cli_user_config import user_config_path
-from pydantic import BaseModel, ConfigDict, SecretStr
+from pydantic import BaseModel, ConfigDict, Field, SecretStr
 from rich.align import Align
 from rich.console import Group
 from rich.markdown import Markdown
@@ -32,7 +32,7 @@ from rich.text import Text
 from textual import on
 from textual.app import App, ComposeResult, SuspendNotSupported
 from textual.binding import Binding, BindingType
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen, Screen
 from textual.theme import Theme
 from textual.timer import Timer
@@ -42,8 +42,9 @@ from textual.widgets import (
     Input,
     Label,
     OptionList,
+    RadioButton,
+    RadioSet,
     RichLog,
-    Select,
     Static,
     Switch,
     Tab,
@@ -163,19 +164,85 @@ class ModelTuiCommand(BaseModel):
         return "/" + " ".join(self.path)
 
 
+#: Claude Code delegation as `onex delegation status` read it; "unknown" when
+#: the read failed (review 2026-11-15).
+DelegationState = Literal["off", "hook", "unknown"]
+
+#: The command groups whose palette commands change what the status bar shows,
+#: so it is read again after them (review 2026-11-15: `/delegation on` left
+#: the bar and the next /delegation tab on the state from before).
+_STATE_GROUPS: tuple[tuple[str, ...], ...] = (("models",), ("delegation",), ("hooks",))
+#: Of those, the ones that switch delegation: its state is unread until then.
+_SWITCH_GROUPS: tuple[tuple[str, ...], ...] = (("delegation",), ("hooks",))
+
+
 class ModelTuiStatus(BaseModel):
     """What the status bar shows, read from the CLI (OMN-23413)."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    workspace: str
     #: The model tried first; ``None`` when Auto picks per task.
     model: str | None = None
     #: The server the first model runs on, for a model added by URL.
     first_url: str | None = None
     #: How many models are set up; ``None`` until the setup is read.
     models: int | None = None
-    gateway: bool = False
+    #: Claude Code delegation as it is: off or on (the hooks), "unknown" when
+    #: the read failed, ``None`` until it is read. No folder: delegation is
+    #: system-wide (OMN-23413).
+    delegation: DelegationState | None = None
+    #: Each delegation hook as `onex delegation status` read it: prompt_hook and
+    #: subagent_hook, "installed" or "missing"; empty until it is read.
+    hooks: dict[str, str] = Field(default_factory=dict)
+    #: Why the delegation read failed; ``None`` when it was read.
+    problem: str | None = None
+
+
+def _delegation_state(hook: str | None) -> DelegationState:
+    """The state `onex delegation status` reports: a failed read is neither on
+    nor off (review 2026-11-15: drawn as OFF, an untouched Save switched off)."""
+    if hook == "on":
+        return "hook"
+    return "off" if hook == "off" else "unknown"
+
+
+def _delegation_read(
+    code: int, text: str
+) -> tuple[DelegationState, dict[str, str], str | None]:
+    """(state, hooks, why it failed) from `onex delegation status --json` output.
+
+    A non-zero exit, no status line or an unknown status is "unknown", never off.
+    """
+    document = _last_json_object(text)
+    status = document.get("status") if document is not None else None
+    state = _delegation_state(status if isinstance(status, str) else None)
+    if code or document is None or state == "unknown":
+        why = _say("exit_code", code=code) if code else _say("status_no_line")
+        return ("unknown", {}, f"{why}: {_last_line(text, '')}")
+    return (state, _with_switches(_hook_presence(document), document), None)
+
+
+def _with_switches(
+    hooks: dict[str, str], document: dict[str, object]
+) -> dict[str, str]:
+    """An installed hook whose own switch is off reads "paused" (status's
+    "switches", operator 2026-11-15: "build separate switches")."""
+    switches = document.get("switches")
+    if not isinstance(switches, dict):
+        return hooks
+    merged = dict(hooks)
+    for hook in tui_design().delegation.hooks:
+        if (
+            switches.get(hook.switch) == "paused"
+            and merged.get(hook.key) == "installed"
+        ):
+            merged[hook.key] = "paused"
+    return merged
+
+
+def _count(n: int, noun: str) -> str:
+    """``1 model``, ``2 models``."""
+    return f"{n} {noun}" if n == 1 else f"{n} {noun}s"
 
 
 class ModelTuiSetupChoice(BaseModel):
@@ -263,14 +330,6 @@ def command_tree(root: click.Group) -> tuple[ModelTuiCommand, ...]:
     return tuple(sorted(found, key=lambda entry: entry.path))
 
 
-def display_path(path: Path) -> str:
-    """A folder under the user's home shown as ~/..., as terminals show it."""
-    try:
-        return "~/" + str(path.relative_to(Path.home()))
-    except ValueError:
-        return str(path)
-
-
 def _last_json_object(text: str) -> dict[str, object] | None:
     """The delegate result: the last line of stdout that parses as an object."""
     for line in reversed(text.splitlines()):
@@ -297,12 +356,11 @@ def _failure_reason(document: dict[str, object]) -> str | None:
 
 
 async def load_status() -> ModelTuiStatus:
-    """Default model and gateway state, read through the CLI's own JSON output."""
+    """Default model and delegation state, read through the CLI's own JSON output."""
     runner = HandlerOnexCommand()
     model: str | None = None
     first_url: str | None = None
     count = 0
-    gateway = False
     lines: list[str] = []
     await runner.stream(("models", "list", "--json"), lines.append)
     for row in _json_rows("\n".join(lines)):
@@ -320,20 +378,45 @@ async def load_status() -> ModelTuiStatus:
         if row.get("tried_first") and row.get("first_model"):
             model = str(row["first_model"])
             first_url = str(row["first_url"]) if row.get("first_url") else None
-    claude: list[str] = []
-    await runner.stream(("claude", "status", "--json"), claude.append)
-    for line in claude:
-        try:
-            gateway = bool(json.loads(line).get("enabled"))
-        except ValueError:
-            continue
+    hook: list[str] = []
+    # The hook read asks Claude Code (about 3 s, 7 s measured 2026-11-15).
+    code = await runner.stream(tui_design().delegation.claude_check, hook.append)
+    delegation, hooks, problem = _delegation_read(code, "\n".join(hook))
     return ModelTuiStatus(
-        workspace=display_path(Path.cwd()),
         model=model,
         first_url=first_url,
         models=count,
-        gateway=gateway,
+        delegation=delegation,
+        hooks=hooks,
+        problem=problem,
     )
+
+
+def _hook_presence(doc: object) -> dict[str, str]:
+    """prompt_hook and subagent_hook from status's claude-hooks evidence."""
+    observations = doc.get("observations") if isinstance(doc, dict) else None
+    for observation in observations if isinstance(observations, list) else ():
+        evidence = (
+            observation.get("evidence") if isinstance(observation, dict) else None
+        )
+        if isinstance(evidence, dict) and observation.get("step") == "claude-hooks":
+            return {
+                key: str(evidence[key])
+                for key in ("prompt_hook", "subagent_hook")
+                if key in evidence
+            }
+    return {}
+
+
+def _measured_cost(metrics: dict[str, object]) -> float | None:
+    """The run's cost in USD, or None when it was not measured: no cost_usd, or a
+    zero the backend marks cost_measured false, which means unknown, not free."""
+    value = metrics.get("cost_usd")
+    if not isinstance(value, int | float):
+        return None
+    if not value and metrics.get("cost_measured") is False:
+        return None
+    return float(value)
 
 
 def _last_line(out: str, err: str) -> str:
@@ -341,8 +424,40 @@ def _last_line(out: str, err: str) -> str:
     return lines[-1] if lines else "no output"
 
 
+def claude_code_state(document: dict[str, object] | None) -> tuple[str, str]:
+    """(state, fix) from `onex delegation status --json`: not_installed,
+    signed_out, ready, installed, or unknown (OMN-23413). The CLI's top-level
+    claude_code is used when it names a state (audit S9-14); an older document
+    without it is read from the claude-plugin step."""
+    if document is None:
+        return ("unknown", "")
+    named = document.get("claude_code")
+    if named in ("not_installed", "signed_out", "ready", "installed"):
+        return (str(named), "" if named == "ready" else str(document.get("fix") or ""))
+    steps = document.get("observations")
+    step = next(
+        (
+            o
+            for o in (steps if isinstance(steps, list) else [])
+            if isinstance(o, dict) and o.get("step") == "claude-plugin"
+        ),
+        None,
+    )
+    if step is None:
+        return ("unknown", "")
+    fix = str(step.get("fix") or "")
+    marked = (step.get("evidence") or {}).get("claude_code")
+    if marked in ("not_installed", "signed_out"):
+        return (str(marked), fix)
+    if step.get("status") == "success":
+        return ("ready", "")
+    return ("installed", fix)
+
+
 def _stopped_by(out: str, err: str) -> str:
     """The one step that stopped a setup run, with its fix, else the last line."""
+    if _SETUP_LOCK in out or _SETUP_LOCK in err:  # say what to do, not the error
+        return _say("setup_busy")
     for document in reversed(_json_rows(out)):
         steps = document.get("observations")
         for step in steps if isinstance(steps, list) else ():
@@ -351,6 +466,37 @@ def _stopped_by(out: str, err: str) -> str:
                 return f"{step.get('step')} — {fix or step.get('status')}"
     return _last_line(out, err)
 
+
+def _delegation_fix(out: str, err: str, *, on: bool) -> str:
+    """Why `onex delegation on|off --json` failed, in the command's own words:
+    its top-level fix, and for off the claude-hooks step's, which names a
+    refused hook removal (review 2026-11-15: the first failing setup step's fix
+    sent the user to `onex setup`, which the TUI does not offer)."""
+    if _SETUP_LOCK in out or _SETUP_LOCK in err:
+        return _say("setup_busy")
+    document = _last_json_object(out)
+    if document is None:
+        return _stopped_by(out, err)
+    steps = document.get("observations")
+    hooks = next(
+        (
+            step
+            for step in (steps if isinstance(steps, list) else ())
+            if isinstance(step, dict)
+            and step.get("step") == "claude-hooks"
+            and step.get("status") not in ("success", None)
+            and step.get("fix")
+        ),
+        None,
+    )
+    if not on and hooks is not None:
+        return str(hooks["fix"])
+    fix = document.get("fix")
+    return str(fix) if fix else _stopped_by(out, err)
+
+
+#: Both setup lock refusals (setup run, and setup or plugin change) contain it.
+_SETUP_LOCK = "holds the setup lock"
 
 # The CLI's failure text leads with how delegation routed ("returned_to_caller:
 # quality_veto; no model you chose finished the task; ..."), and the cause comes
@@ -523,10 +669,10 @@ def _summary_text(selection: ModelTuiSelection) -> Text:
         else _say("summary_auto")
     )
     line = _say(
-        "summary",
+        "summary" if servers else "summary_no_servers",
         dot=tui_design().model_table.status_pill,
-        models=len(selection.entries),
-        servers=servers,
+        models=_count(len(selection.entries), "model"),
+        servers=_count(servers, "server"),
         first=first,
     )
     return Text(line, style=_style("secondary", "bold"))
@@ -639,11 +785,12 @@ class SetupScreen(_TabbedScreen[None]):
     SetupScreen { align: center middle; }
     #form { width: 92%; max-width: 160; height: 92%; border: round $primary; padding: 0 2; background: $panel; }
     #form .summary { height: 1; margin: 0 0 1 0; }
-    #form Input, #form Select { margin-bottom: 0; }
+    #form Input { margin-bottom: 0; }
+    #provider { width: 100%; border: none; padding: 0 1; margin-bottom: 1; }
     #found { height: 1fr; min-height: 3; display: none; }
     #note { color: $text-muted; height: auto; }
     #basket { color: $success; height: auto; }
-    #keys { color: $text-muted; height: 1; }
+    #keys { color: $text-muted; height: auto; }
     #buttons { height: 3; dock: bottom; align-horizontal: right; }
     """
     BINDINGS = [
@@ -676,11 +823,8 @@ class SetupScreen(_TabbedScreen[None]):
             yield Label(_say("config_title"))
             choices = _picker()
             first = choices[0]
-            yield Select(
-                [(e.label, e.provider) for e in choices],
-                value=first.provider,
-                allow_blank=False,
-                id="provider",
+            yield Choice(
+                [(e.label, e.provider) for e in choices], first.provider, id="provider"
             )
             yield Input(placeholder=_say("key_placeholder"), password=True, id="key")
             yield Input(
@@ -708,7 +852,7 @@ class SetupScreen(_TabbedScreen[None]):
         self._schedule_find()
 
     def _provider(self) -> str:
-        return str(self.query_one("#provider", Select).value)
+        return self.query_one("#provider", Choice).value
 
     def _stored_url(self, provider: str) -> str | None:
         """The server the user already runs ``provider``'s models on, if any."""
@@ -725,11 +869,20 @@ class SetupScreen(_TabbedScreen[None]):
         """What is set up already, or that nothing is, before anything is ticked."""
         if not self._selection.entries:
             return _say("basket_empty")
-        return _say(
+        named = _say(
             "basket_current",
             models=", ".join(
                 _on_server(e.model_id, e.server_url) for e in self._selection.entries
             ),
+        )
+        if len(named) <= tui_design().basket_names_max_chars:
+            return named
+        per_provider = Counter(e.provider for e in self._selection.entries)
+        total = len(self._selection.entries)
+        return _say(
+            "basket_counted",
+            count=f"{total} model{'' if total == 1 else 's'}",
+            providers=" · ".join(f"{_label(p)} {n}" for p, n in per_provider.items()),
         )
 
     def _as_stored(self, entry: ModelCatalogEntry, url: str) -> ModelCatalogEntry:
@@ -763,7 +916,7 @@ class SetupScreen(_TabbedScreen[None]):
         self.query_one("#key").display = hosted
         self.query_one("#url").display = not hosted
 
-    def on_select_changed(self, event: Select.Changed) -> None:
+    def on_radio_set_changed(self, event: RadioSet.Changed) -> None:
         self._show_fields()
         self.query_one("#key" if _hosted(self._provider()) else "#url", Input).focus()
         self.query_one("#note", Static).update(_hint(self._provider()))
@@ -979,14 +1132,6 @@ class ModelTuiSelection(BaseModel):
     first: tuple[str, str] | None = None
     #: The server the first model runs on, for a model added by URL.
     first_url: str | None = None
-    #: entry key -> connection id, for selected models the gateway can serve.
-    gateway: dict[str, str] = {}
-    #: entry key -> (connection to register, server URL), for selected models on
-    #: a server that answers Anthropic Messages but is not a connection yet.
-    connect: dict[str, tuple[str, str]] = {}
-
-    def serves_gateway(self, key: str) -> bool:
-        return key in self.gateway or key in self.connect
 
 
 def server_models(rows: list[dict[str, object]]) -> dict[str, list[tuple[str, str]]]:
@@ -1030,7 +1175,6 @@ def selected_models(
     first = (str(chosen["provider"]), str(chosen["first_model"])) if chosen else None
     first_url = str(chosen["first_url"]) if chosen and chosen.get("first_url") else None
     seen = {entry_key(e) for e in entries}
-    gateway: dict[str, str] = {}
     for connection in connections:
         provider = str(connection.get("provider") or "")
         models = connection.get("models")
@@ -1047,36 +1191,7 @@ def selected_models(
             if key not in seen:
                 entries.append(entry)
                 seen.add(key)
-            if connection.get("native_messages"):
-                gateway[key] = str(connection.get("connection_id"))
-    connect: dict[str, tuple[str, str]] = {}
-    for entry in entries:
-        base = entry.server_url
-        said = (
-            (servers or {}).get((entry.provider, entry.model_id, base))
-            if base
-            else None
-        )
-        key = entry_key(entry)
-        if said and said.native_messages and base and key not in gateway:
-            connect[key] = (connection_name(said.server or entry.provider, base), base)
-    return ModelTuiSelection(
-        entries=tuple(entries),
-        first=first,
-        first_url=first_url,
-        gateway=gateway,
-        connect=connect,
-    )
-
-
-def connection_name(kind: str, base: str) -> str:
-    """A stable connection id for a server: its kind, host and port, e.g.
-    ollama-gpu-a-test-11434. The host is in it so two servers of one kind on
-    one port (two lab hosts, say) get two names (OMN-23413)."""
-    parsed = urlparse(base)
-    where = "-".join(str(p) for p in (parsed.hostname, parsed.port) if p)
-    name = re.sub(r"[^a-z0-9_-]+", "-", f"{kind}-{where}".lower())
-    return (name if name[:1].isalpha() else f"m{name}")[:64]
+    return ModelTuiSelection(entries=tuple(entries), first=first, first_url=first_url)
 
 
 class ModelTuiDelegationChoice(BaseModel):
@@ -1085,170 +1200,326 @@ class ModelTuiDelegationChoice(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     on: bool
-    mode: str
     commands: tuple[tuple[str, ...], ...]
+    #: What a successful run says; ``None`` is the plain on or off sentence.
+    done: str | None = None
+
+
+class Choice(RadioSet):
+    """A choice with every option shown and one marked; the TUI has no dropdown.
+
+    Operator 2026-11-13, on a dropdown that showed the chosen mode above a list
+    holding it again: "why two?", then "in tui no dropdown at any places,
+    instead use radio buttons for visibility". ``value`` is the marked option's
+    id, as a Select's was.
+    """
+
+    def __init__(
+        self, options: list[tuple[str, str]], value: str, *, id: str | None = None
+    ) -> None:
+        self._ids = [option_id for _, option_id in options]
+        #: The marked id. A RadioSet never lets its pressed button be turned off
+        #: directly (it turns it back on), so the id is kept here rather than
+        #: read from buttons that are mid-change.
+        self._value = value if value in self._ids else self._ids[0]
+        super().__init__(
+            *(
+                RadioButton(label, value=option_id == self._value, name=option_id)
+                for label, option_id in options
+            ),
+            id=id,
+        )
+
+    @property
+    def value(self) -> str:
+        return self._value
+
+    @value.setter
+    def value(self, wanted: str) -> None:
+        if wanted not in self._ids:
+            raise ValueError(f"{wanted!r} is not one of {self._ids}")
+        self._value = wanted
+        for button in self.query(RadioButton):
+            if button.name == wanted:
+                button.value = True  # the RadioSet turns the old one off
+
+    def on_radio_set_changed(self, event: RadioSet.Changed) -> None:
+        # A click or a key marked another option; the event goes on to the screen.
+        if event.pressed.name:
+            self._value = event.pressed.name
 
 
 class DelegationScreen(_TabbedScreen[None]):
-    """Your selected models and one switch; nothing is typed (OMN-23413 AC25)."""
+    """Your selected models and one switch per delegation hook; nothing is typed
+    (OMN-23413 AC25; operator 2026-11-15: "build separate switches")."""
 
     CSS = """
     DelegationScreen { align: center middle; }
     #deleg { width: 92%; max-width: 160; height: 92%; border: round $primary; padding: 0 2; background: $panel; }
     #deleg .summary { height: 1; margin: 0 0 1 0; }
-    #on { border: tall $primary; background: $surface; }
-    #on .switch--slider { color: $text-muted; background: $boost; }
-    #on.-on .switch--slider { color: $success; }
-    #deleg Select { margin-bottom: 0; }
-    #switch-row { height: auto; }
-    #switch-row Label { padding: 1 1 0 0; }
+    .hook-switch { height: auto; }
+    .hook-switch Label { width: 24; padding: 1 1 0 0; }
+    .hook-switch Switch { width: 12; border: tall $primary; background: $surface; }
+    .hook-switch Switch .switch--slider { color: $error 70%; background: $boost; }
+    .hook-switch Switch.-on .switch--slider { color: $success; }
+    .hook-text { width: 1fr; height: 3; padding: 0 0 0 2; }
+    .hook, .hook-what { height: 1; text-wrap: nowrap; text-overflow: ellipsis; }
+    .hook { margin-top: 1; }
+    .hook-what { color: $text-muted; }
+    #on-state { height: auto; padding: 0 0 0 2; text-style: bold; }
+    #hooks-title { margin-bottom: 1; }
+    #hooks-end { height: 1; }
+    #dbody { height: 1fr; scrollbar-size-vertical: 1; }
+    #selected { min-height: 4; }
+    #dfoot { height: auto; }
     #dnote { color: $text-muted; height: auto; }
-    #dkeys { color: $text-muted; height: 1; }
-    #dbuttons { height: 3; dock: bottom; align-horizontal: right; }
+    #dkeys { color: $text-muted; height: auto; }
+    #dbuttons { height: 3; align-horizontal: right; }
     """
     TAB = "delegation"
     NOTE = "#dnote"
     BINDINGS = [
         Binding("escape", "cancel", _say("button_cancel")),
         Binding("ctrl+s", "save", _say("button_save"), priority=True),
-        Binding("space", "flip", "Switch", show=False),
-        Binding("m", "next_mode", "Mode", show=False),
+        Binding("space", "flip", "Switch both", show=False),
     ]
 
-    def __init__(self, selection: ModelTuiSelection, enabled: bool) -> None:
+    def __init__(
+        self,
+        selection: ModelTuiSelection,
+        delegation: DelegationState | None = None,
+        hooks: dict[str, str] | None = None,
+    ) -> None:
         super().__init__()
         self._selection = selection
-        self._enabled = enabled
+        #: The state as last read: ``None`` until a read lands, "unknown" when
+        #: it failed; neither is drawn as OFF (review 2026-11-15).
+        self._saved = delegation
+        #: Drawn as it is (OMN-23413, 2026-11-13: hook delegation that was on
+        #: once showed off).
+        self._enabled = delegation == "hook"
+        #: Each hook's installed state, as status read it (OMN-23413).
+        self._hooks = dict(hooks or {})
+        #: Claude Code's state once the check answers; "checking" until then.
+        self._claude_state = "checking"
 
     def compose(self) -> ComposeResult:
         words = tui_design().delegation
-        modes = words.modes
-        capable = any(
-            self._selection.serves_gateway(k)
-            for k in map(entry_key, self._selection.entries)
-        )
-        start = next(
-            (
-                m.id
-                for m in modes
-                if m.needs_gateway_model == (self._enabled and capable)
-            ),
-            modes[0].id,
-        )
         with Vertical(id="deleg"):
             yield _tab_strip(self.TAB)
             yield _summary(self._selection)
-            yield Label(Text(words.title, style=_style("primary", "bold")))
-            yield Select(
-                [(m.label, m.id) for m in modes],
-                value=start,
-                allow_blank=False,
-                id="mode",
-            )
-            yield Static("", id="mdetail")
-            with Horizontal(id="switch-row"):
-                yield Label(words.switch_label)
-                yield Switch(value=self._enabled, id="on")
-            yield Label(Text(words.table_title, style=_style("muted")))
-            yield ModelTable(
-                selectable=False,
-                provider_labels={e.provider: e.label for e in _picker()},
-                id="selected",
-            )
-            yield Static("", id="dnote")
-            yield Static(
-                keycaps(tui_design().model_table.help["delegation"]), id="dkeys"
-            )
-            with Horizontal(id="dbuttons"):
-                yield Button(_say("button_save"), variant="primary", id="dsave")
-                yield Button(_say("button_cancel"), id="dcancel")
+            # Review 2026-11-15: at 80x24 the parts above the buttons need more
+            # rows than there are, so they scroll; the note, the key line and
+            # the buttons always show under them.
+            with VerticalScroll(id="dbody"):
+                yield Label(Text(words.title, style=_style("primary", "bold")))
+                yield Label(
+                    Text(words.hooks_title, style=_style("muted")), id="hooks-title"
+                )
+                saved = self._saved_boxes()
+                for hook in words.hooks:
+                    # Operator 2026-11-15: one switch per hook; both off removes
+                    # the hooks, one off pauses that hook.
+                    with Horizontal(classes="hook-switch"):
+                        yield Label(hook.label)
+                        yield Switch(value=saved[hook.key], id=f"use-{hook.key}")
+                        # Two lines beside the switch, so 80 columns keep the
+                        # state word: the hook and its state, then what it does.
+                        with Vertical(classes="hook-text"):
+                            yield Static(
+                                self._hook_text(hook.key),
+                                id=f"hook-{hook.key}",
+                                classes="hook",
+                            )
+                            yield Static(hook.what, classes="hook-what")
+                yield Static(self._state_text(), id="on-state")
+                yield Static("", id="hooks-end")
+                # OMN-23413: is Claude Code there? Read from setup's own check.
+                yield Static(
+                    Text(_say("claude_checking"), style=_style("muted")), id="claude"
+                )
+                yield Label(Text(words.table_title, style=_style("muted")))
+                yield ModelTable(
+                    selectable=False,
+                    provider_labels={e.provider: e.label for e in _picker()},
+                    id="selected",
+                )
+            with Vertical(id="dfoot"):
+                yield Static("", id="dnote")
+                yield Static(
+                    keycaps(tui_design().model_table.help["delegation"]), id="dkeys"
+                )
+                with Horizontal(id="dbuttons"):
+                    yield Button(_say("button_save"), variant="primary", id="dsave")
+                    yield Button(_say("button_cancel"), id="dcancel")
 
     def on_mount(self) -> None:
+        self.run_worker(self._check_claude(), group="claude", exclusive=True)
         table = self.query_one("#selected", ModelTable)
         table.set_entries(self._selection.entries)
-        table.focus_rows()
-        self._describe_mode()
+        # The keyboard goes to the list without scrolling the switch away.
+        table.query_one("#mt-rows", DataTable).focus(scroll_visible=False)
         words = tui_design().delegation
         note = self.query_one("#dnote", Static)
         if not self._selection.entries:
             note.update(Text(words.no_models, style=_style("warning")))
-            return
-        capable = [
-            _on_server(e.model_id, e.server_url)
-            for e in self._selection.entries
-            if self._selection.serves_gateway(entry_key(e))
-        ]
-        if capable:
-            note.update(f"{words.gateway_marker}: {', '.join(capable)}")
 
-    def _describe_mode(self) -> None:
-        wanted = str(self.query_one("#mode", Select).value)
-        mode = next(m for m in tui_design().delegation.modes if m.id == wanted)
-        self.query_one("#mdetail", Static).update(
-            Text(mode.detail, style=_style("muted"))
-        )
-
-    def on_select_changed(self, event: Select.Changed) -> None:
-        self._describe_mode()
+    async def _check_claude(self) -> None:
+        """Fill the Claude Code line: ready, installed, signed out or missing."""
+        state, _fix = await cast("OnexTui", self.app).claude_code()
+        self._claude_state = state
+        line, colour = {
+            "ready": (_say("claude_ready"), "success"),
+            "installed": (_say("claude_installed"), "info"),
+            "signed_out": (_say("claude_signed_out"), "warning"),
+            "not_installed": (_say("claude_missing"), "error"),
+        }.get(state, (_say("claude_unknown"), "muted"))
+        self.query_one("#claude", Static).update(Text(line, style=_style(colour)))
 
     def action_flip(self) -> None:
-        switch = self.query_one("#on", Switch)
-        switch.value = not switch.value
+        """Space switches both: on when any is off, otherwise off."""
+        self.set_all(not all(self._boxes().values()))
 
-    def action_next_mode(self) -> None:
-        order = [m.id for m in tui_design().delegation.modes]
-        select = self.query_one("#mode", Select)
-        select.value = order[(order.index(str(select.value)) + 1) % len(order)]
+    def set_all(self, value: bool) -> None:
+        for switch in self.query(".hook-switch Switch").results(Switch):
+            switch.value = value
 
-    def _choice(self) -> ModelTuiDelegationChoice | str:
-        """The commands to run, or the reason nothing can be switched."""
+    def any_on(self) -> bool:
+        """Whether a switch, as it stands, delegates through its hook."""
+        return any(self._boxes().values())
+
+    def _state_text(self) -> Text:
+        """ON (a switch delegates) or OFF in words, and "press Save to apply"
+        while the switches differ from the saved state (OMN-23413, operator
+        2026-11-14). A state not read yet, or whose read failed, is said as
+        such, never as OFF (review 2026-11-15)."""
         words = tui_design().delegation
-        on = self.query_one("#on", Switch).value
-        wanted = str(self.query_one("#mode", Select).value)
-        mode = next(m for m in words.modes if m.id == wanted)
-        fill: dict[str, str] = {}
-        first: tuple[tuple[str, ...], ...] = ()
-        if on and not self._selection.entries:
-            return words.no_models
-        if on and mode.needs_gateway_model:
-            pick = next(
-                (
-                    e
-                    for e in self._selection.entries
-                    if self._selection.serves_gateway(entry_key(e))
-                ),
-                None,
+        boxes = self._boxes()
+        on = any(boxes.values())
+        moved = boxes != self._saved_boxes()
+        if not moved and self._saved in (None, "unknown"):
+            reading = self._saved is None
+            return Text(
+                f"{words.glyph_unknown} "
+                + (words.state_reading if reading else words.state_unread),
+                style=_style("muted" if reading else "warning", "bold"),
             )
-            if pick is None:
-                return words.no_gateway_model
-            key = entry_key(pick)
-            if key in self._selection.gateway:
-                fill = {
-                    "connection": self._selection.gateway[key],
-                    "model": pick.model_id,
-                }
-            else:
-                name, url = self._selection.connect[key]
-                fill = {"connection": name, "model": pick.model_id, "url": url}
-                first = (words.connect,)
-        steps = (*first, *mode.enable) if on else mode.disable
-        return ModelTuiDelegationChoice(
-            on=on,
-            mode=mode.id,
-            commands=tuple(
-                tuple(part.format(**fill) for part in step) for step in steps
-            ),
+        parts: list[tuple[str, str]] = [
+            (
+                f"{words.glyph_on} {words.state_on}"
+                if on
+                else f"{words.glyph_off} {words.state_off}",
+                _style("success" if on else "muted", "bold"),
+            )
+        ]
+        if moved:
+            parts.append((f"  · {words.state_pending}", _style("warning")))
+        return Text.assemble(*parts)
+
+    def _saved_boxes(self) -> dict[str, bool]:
+        """Which hooks delegate, as status read them: none while delegation is
+        off, and not a paused one."""
+        return {
+            hook.key: self._enabled and self._hooks.get(hook.key) != "paused"
+            for hook in tui_design().delegation.hooks
+        }
+
+    def _boxes(self) -> dict[str, bool]:
+        """Each hook's switch as it stands, or as composed when not drawn yet."""
+        drawn = {
+            switch.id: switch.value
+            for switch in self.query(".hook-switch Switch").results(Switch)
+        }
+        saved = self._saved_boxes()
+        return {key: drawn.get(f"use-{key}", saved[key]) for key in saved}
+
+    def _hook_text(self, key: str) -> Text:
+        """One hook's line: its name and whether Claude Code has it; what it
+        does is the line under it (review 2026-11-15, 80 columns)."""
+        words = tui_design().delegation
+        hook = next(h for h in words.hooks if h.key == key)
+        state = self._hooks.get(key)
+        unread = words.hook_unread if self._saved == "unknown" else words.hook_unknown
+        word, colour, glyph = {
+            "installed": (words.hook_installed, "success", words.glyph_on),
+            "missing": (words.hook_missing, "warning", words.glyph_off),
+            "paused": (words.hook_paused, "warning", words.glyph_off),
+        }.get(state or "", (unread, "muted", words.glyph_off))
+        return Text.assemble(
+            (f"{glyph} ", _style(colour)),
+            (f"{hook.name}  ", _style("primary", "bold")),
+            (word, _style(colour, "bold")),
         )
+
+    def show_state(
+        self, delegation: DelegationState | None, hooks: dict[str, str]
+    ) -> None:
+        """Redraw from status read again: after a Save, when the start-up read
+        lands, after a palette command (OMN-23413, review 2026-11-15). A switch
+        the user has not moved moves to the state read."""
+        untouched = self._boxes() == self._saved_boxes()
+        self._saved = delegation
+        self._enabled = delegation == "hook"
+        self._hooks = dict(hooks)
+        if not list(self.query("#on-state")):  # not composed: compose draws it
+            return
+        for hook in tui_design().delegation.hooks:
+            self.query_one(f"#hook-{hook.key}", Static).update(
+                self._hook_text(hook.key)
+            )
+        if untouched:
+            for key, value in self._saved_boxes().items():
+                self.query_one(f"#use-{key}", Switch).value = value
+        self.query_one("#on-state", Static).update(self._state_text())
+
+    def on_switch_changed(self, _event: Switch.Changed) -> None:
+        self.query_one("#on-state", Static).update(self._state_text())
 
     def action_save(self) -> None:
         """Switch here and stay; the outcome shows on this tab."""
-        choice = self._choice()
-        if isinstance(choice, str):
-            self.query_one("#dnote", Static).update(
-                Text(choice, style=_style("warning"))
-            )
+        if self.any_on() and not self._selection.entries:
+            self._note(tui_design().delegation.no_models, "warning")
             return
-        self._run(lambda app: app.apply_delegation(choice))
+        self._run(self._save)
+
+    async def _save(self, app: OnexTui) -> Text | str | None:
+        """Check Claude Code again, then run the switch's commands, or say why
+        nothing was sent. Nothing is sent from a state nobody has read, and an
+        untouched switch never sends off over a failed read (review 2026-11-15)."""
+        words = tui_design().delegation
+        boxes = self._boxes()
+        on = any(boxes.values())  # both off is delegation off: the hooks go
+        touched = boxes != self._saved_boxes()
+        unread = self._saved not in ("off", "hook")
+        if on or unread:  # the tab may be minutes old: ask again, not the cache
+            await self._check_claude()
+        if self._saved is None:
+            return Text(words.save_reading, style=_style("warning"))
+        if unread and not touched:
+            said = (
+                words.save_unread if self._saved == "unknown" else words.save_just_read
+            )
+            return Text(said, style=_style("warning"))
+        if on and self._claude_state == "not_installed":  # the user installs it
+            line = str(self.query_one("#claude", Static).render())
+            return Text(line, style=_style("warning"))
+        if not on:
+            return await app.apply_delegation(
+                ModelTuiDelegationChoice(on=False, commands=words.disable)
+            )
+        flags = tuple(h.pause_flag for h in words.hooks if not boxes[h.key])
+        sentences: dict[tuple[str, ...], str] = {
+            ("--no-subagents",): words.switched_on_prompts,
+            ("--no-prompts",): words.switched_on_subagents,
+        }
+        done = sentences.get(flags)
+        return await app.apply_delegation(
+            ModelTuiDelegationChoice(
+                on=True,
+                commands=tuple((*argv, *flags) for argv in words.enable),
+                done=done,
+            )
+        )
 
     def _show_selection(self) -> None:
         super()._show_selection()
@@ -1275,7 +1546,7 @@ class ModelPickScreen(_TabbedScreen[None]):
     #pick { width: 92%; max-width: 160; height: 92%; border: round $primary; padding: 0 2; background: $panel; }
     #pick .summary { height: 1; margin: 0 0 1 0; }
     #pnote { color: $text-muted; height: auto; }
-    #pkeys { color: $text-muted; height: 1; }
+    #pkeys { color: $text-muted; height: auto; }
     #auto { width: auto; margin-bottom: 0; }
     """
     BINDINGS = [
@@ -1292,12 +1563,6 @@ class ModelPickScreen(_TabbedScreen[None]):
 
     def compose(self) -> ComposeResult:
         words = tui_design().model_table
-        first = self._selection.first
-        current = (
-            _first_text(first[0], first[1], self._selection.first_url)
-            if first
-            else words.auto_label
-        )
         with Vertical(id="pick"):
             yield _tab_strip(self.TAB)
             yield _summary(self._selection)
@@ -1307,10 +1572,7 @@ class ModelPickScreen(_TabbedScreen[None]):
                     style=_style("primary", "bold"),
                 )
             )
-            yield Static(
-                Text(_say("model_now", current=current), style=_style("success")),
-                id="pnow",
-            )
+            yield Static(self._now(), id="pnow")
             yield Button(words.auto_label + "  (A)", id="auto")
             yield ModelTable(
                 selectable=False,
@@ -1332,7 +1594,7 @@ class ModelPickScreen(_TabbedScreen[None]):
         current = (
             _first_text(first[0], first[1], self._selection.first_url)
             if first
-            else tui_design().model_table.auto_label
+            else _say("summary_auto")
         )
         return Text(_say("model_now", current=current), style=_style("success"))
 
@@ -1572,10 +1834,12 @@ class OnexTui(App[int]):
     TITLE = "onex"
     CSS = """
     Screen { layout: vertical; }
-    #output { height: 1fr; border: round $primary-background; padding: 0 1; }
+    #conversation { height: 1fr; border: round $primary-background; }
+    #output { height: auto; max-height: 100%; padding: 0 1; }
     #palette { height: auto; max-height: 12; border: round $accent; display: none; }
     #prompt { border: round $accent; }
     #status { height: 1; padding: 0 1; background: $panel; color: $text-muted; }
+    #activity { height: 1; padding: 0 1; display: none; }
     """
     BINDINGS = [
         Binding("ctrl+c", "interrupt", "Cancel or quit", priority=True),
@@ -1626,11 +1890,12 @@ class OnexTui(App[int]):
         self._runner: ProtocolTuiRunner = runner or HandlerOnexCommand()
         self._list_models = list_models
         self._load_status = load_status or globals()["load_status"]
-        self._status = ModelTuiStatus(workspace=display_path(Path.cwd()))
+        self._status = ModelTuiStatus()
         self._last_run = ""
         self._active_task: Worker[None] | None = None
         self._task_started = 0.0
         self._ticker: Timer | None = None
+        self._spinner: Timer | None = None
         self._history: list[str] = []
         self._recall = 0
         #: Whether the last /config save set up every choice.
@@ -1651,7 +1916,12 @@ class OnexTui(App[int]):
         ] = {}
 
     def compose(self) -> ComposeResult:
-        yield RichLog(id="output", wrap=True, markup=False, highlight=False)
+        # OMN-23413: the log grows with what it holds and the live line sits
+        # right under its last line, as in a coding agent's CLI, not at the
+        # bottom of the window (operator 2026-11-13: "why too much gap").
+        with Vertical(id="conversation"):
+            yield RichLog(id="output", wrap=True, markup=False, highlight=False)
+            yield Static(id="activity")
         yield OptionList(id="palette")
         yield Input(
             id="prompt",
@@ -1670,10 +1940,38 @@ class OnexTui(App[int]):
 
     async def _refresh_status(self) -> None:
         try:
-            self._status = await self._load_status()
+            status = await self._load_status()
         except Exception as error:  # status is a convenience; never crash on it
             self._write(_say("status_unavailable", error=error))
+            status = self._status.model_copy(
+                update={"delegation": "unknown", "hooks": {}, "problem": str(error)}
+            )
+        else:
+            if status.problem:  # a failed read says why (review 2026-11-15)
+                self._write(
+                    Text(
+                        _say("delegation_unreadable", reason=status.problem),
+                        style=_style("warning"),
+                    )
+                )
+        self._show_status(status)
+
+    def _show_status(self, status: ModelTuiStatus) -> None:
+        """The status bar and any open /delegation tab show ``status``: a tab
+        opened before a read landed is redrawn when it lands (review 2026-11-15)."""
+        self._status = status
         self._render_status()
+        for screen in self.screen_stack:
+            if isinstance(screen, DelegationScreen):
+                screen.show_state(status.delegation, status.hooks)
+
+    def _forget_delegation(self) -> None:
+        """Delegation may have changed: unread until the next read lands."""
+        self._show_status(
+            self._status.model_copy(
+                update={"delegation": None, "hooks": {}, "problem": None}
+            )
+        )
 
     def _render_status(self) -> None:
         sep = ("  ·  ", _style("muted"))
@@ -1687,33 +1985,35 @@ class OnexTui(App[int]):
             )
         elif status.models:
             routing = (
-                _say("status_auto", count=status.models),
+                _say("status_auto", count=_count(status.models, "model")),
                 _style("secondary", "bold"),
             )
         else:
             routing = (_say("status_none"), _style("warning", "bold"))
         pill = tui_design().model_table.status_pill
+        on = status.delegation == "hook"
+        paused = {key for key, state in status.hooks.items() if state == "paused"}
+        delegating = {
+            frozenset({"prompt_hook"}): "delegation_hook_tasks",
+            frozenset({"subagent_hook"}): "delegation_hook_prompts",
+        }.get(frozenset(paused), "delegation_hook")
+        delegation = {
+            "hook": (_say(delegating), _style("success", "bold")),
+            "off": (_say("delegation_off"), _style("muted")),
+            "unknown": (_say("delegation_unknown"), _style("warning")),
+        }.get(
+            status.delegation or "",
+            (_say("delegation_reading"), _style("muted", "italic")),
+        )
         parts: list[tuple[str, str]] = [
-            (f"{pill} ", _style("success" if status.gateway else "muted")),
+            (f"{pill} ", _style("success" if on else "muted")),
             routing,
             sep,
-            (
-                (_say("gateway_on"), _style("success", "bold"))
-                if status.gateway
-                else (_say("gateway_off"), _style("muted"))
-            ),
-            sep,
-            (status.workspace, _style("muted")),
+            delegation,
         ]
         if self._last_run:
             parts += [sep, (self._last_run, _style("accent"))]
-        if self._active_task is not None:
-            seconds = int(time.monotonic() - self._task_started)
-            parts += [
-                sep,
-                (_say("status_working", seconds=seconds), _style("warning", "bold")),
-            ]
-        else:
+        if self._active_task is None:  # while one runs, the live line says so
             parts += [sep, (_say("status_hint"), _style("muted"))]
         self._main().query_one("#status", Static).update(Text.assemble(*parts))
 
@@ -1790,6 +2090,11 @@ class OnexTui(App[int]):
     def _start_task(self, work: Awaitable[None]) -> None:
         self._task_started = time.monotonic()
         self._ticker = self.set_interval(1, self._render_status)
+        activity = tui_design().activity
+        self._spinner = self.set_interval(activity.frame_seconds, self._render_activity)
+        self._render_activity()
+        self._main().query_one("#activity", Static).display = True
+        self._fit_log()
         self._active_task = self.run_worker(
             self._guarded(work), group="task", exclusive=True, exit_on_error=False
         )
@@ -1808,7 +2113,41 @@ class OnexTui(App[int]):
             self._active_task = None
             if self._ticker is not None:
                 self._ticker.stop()
+            if self._spinner is not None:
+                self._spinner.stop()
+                self._spinner = None
+            self._main().query_one("#activity", Static).display = False
+            self._fit_log()
             self._render_status()
+
+    def _fit_log(self) -> None:
+        """Leave one row under a full log for the live line while it shows."""
+        main = self._main()
+        live = main.query_one("#activity", Static).display
+        main.query_one("#output", RichLog).styles.max_height = (
+            max(1, main.query_one("#conversation").content_region.height - 1)
+            if live
+            else "100%"
+        )
+
+    def on_resize(self) -> None:
+        if self._active_task is not None:
+            self._fit_log()
+
+    def _render_activity(self) -> None:
+        """The live line: a spinner frame, a verb and the seconds so far."""
+        activity = tui_design().activity
+        elapsed = time.monotonic() - self._task_started
+        frame = activity.frames[
+            int(elapsed / activity.frame_seconds) % len(activity.frames)
+        ]
+        verb = activity.verbs[
+            int(elapsed / activity.verb_seconds) % len(activity.verbs)
+        ]
+        line = activity.line.format(frame=frame, verb=verb, seconds=int(elapsed))
+        self._main().query_one("#activity", Static).update(
+            Text(line, style=_style("accent", "bold"))
+        )
 
     def action_close_palette(self) -> None:
         self.query_one("#palette", OptionList).display = False
@@ -1936,7 +2275,9 @@ class OnexTui(App[int]):
             code = await self._runner.stream(argv, self._emit)
         if code:
             self._write(_say("exit_code", code=code))
-        if entry.path[:1] in (("models",), ("claude",)):
+        if entry.path[:1] in _SWITCH_GROUPS:
+            self._forget_delegation()
+        if entry.path[:1] in _STATE_GROUPS:
             self.run_worker(self._refresh_status(), exclusive=True, group="status")
 
     async def open_tab(self, name: str) -> None:
@@ -1985,7 +2326,10 @@ class OnexTui(App[int]):
             )
         if name == "delegation":
             return cast(
-                Screen[object], DelegationScreen(selection, self._status.gateway)
+                Screen[object],
+                DelegationScreen(
+                    selection, self._status.delegation, self._status.hooks
+                ),
             )
         if name == "dashboard":
             return cast(Screen[object], DashboardScreen(selection))
@@ -2178,7 +2522,7 @@ class OnexTui(App[int]):
             code, out, err = await self._runner.capture(argv)
             if code:
                 failed = True
-                reason = _stopped_by(out, err)
+                reason = _delegation_fix(out, err, on=choice.on)
                 outcome = Text(
                     f"{glyphs.failed} "
                     + words.not_switched.format(state=state, reason=reason),
@@ -2186,17 +2530,33 @@ class OnexTui(App[int]):
                 )
                 break
         else:
-            mode = next(m for m in words.modes if m.id == choice.mode)
-            done = (
-                words.switched_on.format(mode=mode.label)
-                if choice.on
-                else words.switched_off
+            done = choice.done or (
+                words.switched_on if choice.on else words.switched_off
             )
             outcome = Text(f"{glyphs.done} {done}", style=_style("success"))
-        await self._refresh_status()
+        await self._refresh_status()  # the open tab shows the state just read
         if outcome is not None:
             self._toast(outcome, ok=not failed)
         return outcome
+
+    async def claude_code(self) -> tuple[str, str]:
+        """Whether Claude Code is installed and signed in, from setup's own check."""
+        try:
+            code, out, _ = await self._runner.capture(
+                tui_design().delegation.claude_check
+            )
+        except Exception:  # a check that cannot run never blocks a Save
+            return ("unknown", "")
+        # The same read says whether delegation is on: shown when it landed; a
+        # failed one leaves the state as last read (review 2026-11-15).
+        delegation, hooks, _ = _delegation_read(code, out)
+        if delegation != "unknown":
+            self._show_status(
+                self._status.model_copy(
+                    update={"delegation": delegation, "hooks": hooks, "problem": None}
+                )
+            )
+        return claude_code_state(_last_json_object(out))
 
     async def dashboard_state(self) -> dict[str, object]:
         """`onex dashboard status --json`: the dashboard's real state."""
@@ -2294,7 +2654,6 @@ class OnexTui(App[int]):
                 f"{tui_design().glyphs.task} {task}", style=_style("secondary", "bold")
             )
         )
-        self._write(Text(_say("delegating"), style=_style("muted", "italic")))
         code, out, err = await self._runner.capture(("delegate", task, "--json"))
         document = _last_json_object(out)
         result = document.get("result") if document else None
@@ -2314,15 +2673,31 @@ class OnexTui(App[int]):
         metrics = result.get("metrics")
         metrics = metrics if isinstance(metrics, dict) else {}
         model = str(result.get("model_name") or _say("run_unknown_model"))
-        cost = float(metrics.get("cost_usd") or 0.0)
+        cost = _measured_cost(metrics)
         facts = [model]
-        if metrics.get("total_tokens"):
+        tokens_in, tokens_out = (
+            metrics.get("input_tokens"),
+            metrics.get("output_tokens"),
+        )
+        if tokens_in or tokens_out:
+            facts.append(
+                _say(
+                    "run_tokens_in_out",
+                    tokens_in=f"{int(tokens_in or 0):,}",
+                    tokens_out=f"{int(tokens_out or 0):,}",
+                )
+            )
+        elif metrics.get("total_tokens"):
             facts.append(_say("run_tokens", tokens=f"{int(metrics['total_tokens']):,}"))
         if metrics.get("latency_ms"):
             facts.append(
                 _say("run_seconds", seconds=f"{int(metrics['latency_ms']) / 1000:.1f}")
             )
-        facts.append(_say("run_cost", cost=f"{cost:.4f}"))
+        facts.append(
+            _say("run_cost", cost=f"{cost:.4f}")
+            if cost is not None
+            else _say("run_cost_unmeasured")
+        )
         if metrics.get("cost_savings_usd"):
             facts.append(
                 _say("run_saved", saved=f"{float(metrics['cost_savings_usd']):.4f}")
@@ -2339,9 +2714,11 @@ class OnexTui(App[int]):
             )
         )
         # The model that answered is the last run's, not the one tried first.
-        self._last_run = _say("last_run", model=model, cost=f"{cost:.4f}") + (
-            f" · {_say('run_id', run=run_id[:8])}" if run_id else ""
-        )
+        self._last_run = (
+            _say("last_run", model=model, cost=f"{cost:.4f}")
+            if cost is not None
+            else _say("last_run_unmeasured", model=model)
+        ) + (f" · {_say('run_id', run=run_id[:8])}" if run_id else "")
         self._render_status()
 
 

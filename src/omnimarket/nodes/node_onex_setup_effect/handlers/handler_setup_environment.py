@@ -48,6 +48,9 @@ from omnimarket.nodes.node_onex_setup_effect.models.model_setup_provider_traits 
 from omnimarket.nodes.node_onex_setup_effect.models.model_setup_step_request import (
     ModelSetupStepRequest,
 )
+from omnimarket.nodes.node_onex_setup_effect.protocols.protocol_setup_step import (
+    SetupStepRefusedError,
+)
 
 _Step = Literal["workspace", "user_config", "runtime_config", "identity", "models"]
 
@@ -295,20 +298,29 @@ class HandlerSetupEnvironment:
     def apply(self, plan: ModelSetupPlan) -> ModelSetupObservation | None:
         if self.name == "workspace":
             if plan.workspace.exists() and not plan.workspace.is_dir():
-                raise ValueError(
-                    "Choose a directory; the existing workspace file was preserved"
+                raise SetupStepRefusedError(
+                    f"{plan.workspace} is a file, not a folder; choose a folder for "
+                    "the workspace. The file was preserved."
                 )
             owned = _read(plan.workspace / ".onex-setup-workspace")
             legacy = _read(plan.workspace / ".omninode-dev-setup")
             if owned is not None and owned != "onex setup\n":
-                raise ValueError("The workspace marker is foreign and was preserved")
+                raise SetupStepRefusedError(
+                    f"{plan.workspace} is marked by another tool, so setup will not "
+                    "use it as an ONEX workspace. Start onex in your workspace "
+                    "folder or an empty one, then save again."
+                )
             if (
                 plan.workspace.exists()
                 and any(plan.workspace.iterdir())
                 and owned != "onex setup\n"
                 and legacy != "This workspace was created by omninode-dev-setup.\n"
             ):
-                raise ValueError("Review the foreign workspace before onboarding")
+                raise SetupStepRefusedError(
+                    f"{plan.workspace} already holds other files, so setup will not "
+                    "make it an ONEX workspace. Start onex in your workspace folder "
+                    "or an empty one, then save again."
+                )
             original.ensure_workspace(plan.workspace)
             original.write_if_changed(
                 plan.workspace / ".onex-setup-workspace", "onex setup\n"

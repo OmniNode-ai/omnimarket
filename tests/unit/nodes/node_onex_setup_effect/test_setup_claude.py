@@ -262,3 +262,111 @@ def test_plugin_toggle_refuses_ambiguous_profiles_before_command(
     registry.write_text(json.dumps(data))
     with pytest.raises(ValueError, match="conflicting"):
         HandlerSetupClaude(claude_home=claude, executable=binary).set_enabled(False)
+
+
+def test_setup_never_installs_claude_code_and_says_so(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """OMN-23413, operator 2026-11-13: "claude should be already installed, if not
+    the user should do it separately; detect and inform". Before, a missing
+    binary made setup download and run Claude Code's installer (a 240 MB
+    download that a /delegation Save waited on for ~10 minutes)."""
+    from importlib import metadata
+
+    from omnimarket.nodes.node_onex_setup_effect.handlers import (
+        handler_setup_claude as module,
+    )
+
+    claude, _, _ = fixture(tmp_path)
+    marketplace = tmp_path / "bundle"
+    marketplace.mkdir()
+    entry = SimpleNamespace(
+        load=lambda: (
+            lambda: {
+                "marketplace": str(marketplace),
+                "installer": str(tmp_path / "installer"),
+                "package_version": "fixture",
+            }
+        )
+    )
+    monkeypatch.setattr(metadata, "entry_points", lambda **_: [entry])
+    monkeypatch.setattr(module.shutil, "which", lambda _name: None)
+    ran: list[tuple[str, ...]] = []
+
+    def handle(_self: object, request: object) -> SimpleNamespace:
+        ran.append(request.argv)  # type: ignore[attr-defined]
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(module.HandlerSetupCommand, "handle", handle)
+    component = HandlerSetupClaude(claude_home=claude, executable=tmp_path / "none")
+    plan = ModelSetupPlan(workspace=tmp_path, components=("claude-plugin",))
+    applied = component.apply(plan)
+    assert ran == []  # nothing downloaded, installed or run
+    assert applied is not None
+    assert applied.evidence.get("claude_code") == "not_installed"
+    assert "Install it yourself" in (applied.fix or "")
+    observed = component.observe(plan)
+    assert observed.evidence.get("claude_code") == "not_installed"
+
+
+def test_a_signed_out_claude_code_is_marked_for_the_tui(tmp_path: Path) -> None:
+    """The Delegation tab tells "not signed in" apart from "not installed"."""
+    claude, _, binary = fixture(tmp_path, logged_in=False)
+    observed = HandlerSetupClaude(claude_home=claude, executable=binary).observe(
+        ModelSetupPlan(workspace=tmp_path)
+    )
+    assert observed.status == "action_required"
+    assert observed.evidence.get("claude_code") == "signed_out"
+
+
+def test_sign_in_is_reported_before_the_plugin_is_added(tmp_path: Path) -> None:
+    """OMN-23413: the /delegation tab said "Save adds the ONEX plugin" and the Save
+    then stopped at "Sign in to Claude Code". Sign-in is the user's step, so the
+    read-only check reports it first, before the plugin that Save adds itself."""
+    claude, _, binary = fixture(tmp_path, logged_in=False)
+    (claude / "plugins" / "installed_plugins.json").write_text(
+        json.dumps({"version": 2, "plugins": {}})
+    )
+    observed = HandlerSetupClaude(claude_home=claude, executable=binary).observe(
+        ModelSetupPlan(workspace=tmp_path)
+    )
+    assert observed.evidence.get("claude_code") == "signed_out"
+
+
+@pytest.mark.parametrize("named", [False, True])
+def test_a_signed_in_claude_code_in_its_default_folder_reads_signed_in(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, named: bool
+) -> None:
+    """OMN-23413, seen 2026-11-13 on a Mac signed in with claude.ai: Claude Code
+    keys its sign-in by CLAUDE_CONFIG_DIR, so naming even the default ~/.claude
+    reads another keychain entry. `claude auth status` said loggedIn true plain
+    and false with CLAUDE_CONFIG_DIR=~/.claude, and /delegation said "not signed
+    in". The stand-in signs in only when the variable is not forced."""
+    home = tmp_path / "home"
+    home.mkdir()
+    claude, _, binary = fixture(home)
+    default = home / ".claude"
+    claude.rename(default)
+    binary.write_text(
+        f"#!{sys.executable}\nimport json,os\n"
+        'print(json.dumps({"loggedIn": "CLAUDE_CONFIG_DIR" not in os.environ}))\n'
+    )
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+    step = HandlerSetupClaude(claude_home=default if named else None, executable=binary)
+    observed = step.observe(ModelSetupPlan(workspace=home))
+    assert observed.evidence.get("claude_code") != "signed_out", observed
+
+
+def test_a_registered_developer_profile_is_reported(tmp_path: Path) -> None:
+    """OMN-23413 D9: the global command picks the profile already registered."""
+    claude, _, binary = fixture(tmp_path)
+    step = HandlerSetupClaude(claude_home=claude, executable=binary)
+    assert step.developer_registered() is False
+    registry = claude / "plugins" / "installed_plugins.json"
+    data = json.loads(registry.read_text())
+    data["plugins"]["onex@omninode-tools-dev"] = data["plugins"].pop(
+        "onex@omninode-tools"
+    )
+    registry.write_text(json.dumps(data))
+    assert step.developer_registered() is True

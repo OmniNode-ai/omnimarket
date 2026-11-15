@@ -13,6 +13,8 @@ was left and every delegation test failed.
 Failure modes:
   E1  removing the last local model writes a routes file that empties routing.
   E2  a routes file already holding a bare `backends:` empties routing.
+  E3  delegate's own backend resolution fails on that file ("'NoneType' object
+      is not iterable").
 """
 
 from __future__ import annotations
@@ -56,3 +58,20 @@ def test_a_bare_backends_line_keeps_the_contracts_backends(tmp_path: Path) -> No
     overlay.write_text("backends:\n")
     config = load_bifrost_delegation_config(overlay_path=overlay)
     assert len(config.backends) > 0
+
+
+def test_delegate_routing_reads_a_bare_backends_line(tmp_path: Path) -> None:
+    """E3: `onex delegate` itself, not only the bifrost loader, reads the file.
+
+    Seen 2026-11-13 in the operator's TUI: with the same `backends:` file every
+    typed task failed "delegation failed: 'NoneType' object is not iterable"
+    (run 618e3dc2), from `list(overlay.get("backends", []))`: the default
+    applies to a missing key, not to a null one.
+    """
+    from omnimarket.handlers.routing.delegation_backend_resolution import (
+        load_bifrost_backends,
+    )
+
+    overlay = tmp_path / "bifrost_overrides.yaml"
+    overlay.write_text("backends:\n")
+    assert len(load_bifrost_backends(overlay_path=overlay)) > 0

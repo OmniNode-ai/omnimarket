@@ -934,8 +934,15 @@ class HandlerProjectionDelegation:
             row["premium_counterfactual"] = canonical_counterfactual.model_dump(
                 mode="json"
             )
+        # OMN-23413: delegation_events.created_at is NOT NULL, and the local
+        # SQLite evidence store has no DB default for it (the OMN-13171 gap this
+        # path still had, which failed every Claude gateway receipt). Mirror the
+        # event's own time, on insert only, so an update never moves it.
+        row.setdefault("created_at", event.timestamp or now)
         ok = bool(
-            self._write_delegation_row(db, row, insert_only_columns=tenant_insert_only)
+            self._write_delegation_row(
+                db, row, insert_only_columns=tenant_insert_only | {"created_at"}
+            )
         )
         # OMN-13235: event-source the per-tenant ceiling budget state. No-op for
         # free_local / metered tiers (no monthly cap); for budgeted tiers it draws

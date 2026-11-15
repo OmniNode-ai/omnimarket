@@ -12,24 +12,17 @@ import json
 import os
 import shutil
 import sys
-import tempfile
 import time
 from importlib import metadata
 from pathlib import Path
 from typing import Literal
 
-from omnimarket.handlers.claude_gateway_settings import (
-    gateway_hook_enabled,
-    manage_gateway_hooks,
-)
+from omnimarket.handlers.delegation_hook_switch import delegation_switch_enabled
 from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_command import (
     HandlerSetupCommand,
 )
 from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_environment import (
     _read,
-)
-from omnimarket.nodes.node_onex_setup_effect.handlers.setup_contract_values import (
-    claude_code_installer_url,
 )
 from omnimarket.nodes.node_onex_setup_effect.models.model_setup_claude_request import (
     ModelSetupClaudeRequest,
@@ -44,12 +37,32 @@ from omnimarket.nodes.node_onex_setup_effect.models.model_setup_plan import (
     ModelSetupPlan,
 )
 from omnimarket.nodes.node_onex_setup_effect.setup_legacy_hooks import (
+    ClaudeSettingsError,
+    hook_rows,
+    keep_installed_hooks,
     observe_legacy_hooks,
+    read_claude_settings,
+    record_installed_hooks,
+)
+
+#: The shell's ONEX_HOOKS_MASK wins over the switch onex saves (the hooks read it first).
+SWITCH_OVERRIDE_FIX = (
+    "Your shell sets ONEX_HOOKS_MASK without the delegation bit, and it overrides "
+    "the switch onex saves, so delegation stays off. Unset ONEX_HOOKS_MASK (or add "
+    "POST_SKILL_DELEGATION_ENFORCER to it), then run onex delegation on again."
 )
 
 
+def _settings_problem(step: str, error: ClaudeSettingsError) -> ModelSetupObservation:
+    return ModelSetupObservation(
+        step=step,
+        status="action_required",
+        fix=f"Claude Code's settings cannot be used: {error}. Fix that, then run onex delegation on again.",
+    )
+
+
 class HandlerSetupClaude:
-    """Observe or reconcile the selected plugin profile and gateway hook rows."""
+    """Observe or reconcile the selected plugin profile and delegation hook rows."""
 
     def __init__(
         self,
@@ -57,11 +70,22 @@ class HandlerSetupClaude:
         name: Literal["claude-plugin", "claude-hooks"] = "claude-plugin",
         claude_home: Path | None = None,
         executable: Path | None = None,
+        replace: bool = False,
     ) -> None:
         self.name = name
-        self._claude = claude_home or Path(
-            os.environ.get("CLAUDE_CONFIG_DIR", str(Path.home() / ".claude"))
-        )
+        # --replace: hooks onex has no record of writing are copied aside, then
+        # reinstalled; without it they are never overwritten (OMN-23413).
+        self._replace = replace
+        own = Path(os.environ.get("CLAUDE_CONFIG_DIR", str(Path.home() / ".claude")))
+        self._claude = claude_home or own
+        # Claude Code keys its sign-in by CLAUDE_CONFIG_DIR: naming even the
+        # default ~/.claude reads another keychain entry, and a signed-in user
+        # read as signed out (OMN-23413, 2026-11-13). So the variable is set only
+        # for a folder Claude Code would not use on its own; a user's own value
+        # is inherited unchanged.
+        self._environment = {"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"}
+        if self._claude.expanduser().resolve() != own.expanduser().resolve():
+            self._environment["CLAUDE_CONFIG_DIR"] = str(self._claude)
         selected = shutil.which("claude")
         self._binary = executable or (
             Path(selected) if selected else Path.home() / ".local" / "bin" / "claude"
@@ -78,6 +102,17 @@ class HandlerSetupClaude:
                 return applied
         return adapter.observe(request.plan)
 
+    def _claude_code_installed(self) -> bool:
+        return self._binary.is_file() and os.access(self._binary, os.X_OK)
+
+    def _not_installed(self) -> ModelSetupObservation:
+        return ModelSetupObservation(
+            step=self.name,
+            status="unavailable",
+            evidence={"claude_code": "not_installed"},
+            fix="Claude Code is not installed. Install it yourself (claude.com/claude-code), then repeat this component setup.",
+        )
+
     def _run(self, argv: tuple[str, ...], *, network: bool = False) -> str:
         result = None
         for attempt in range(3 if network else 1):
@@ -85,10 +120,7 @@ class HandlerSetupClaude:
                 ModelSetupCommandRequest(
                     argv=argv,
                     cwd=Path.home(),
-                    environment={
-                        "CLAUDE_CONFIG_DIR": str(self._claude),
-                        "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
-                    },
+                    environment=self._environment,
                     timeout_seconds=180 if network else 10,
                 )
             )
@@ -123,6 +155,15 @@ class HandlerSetupClaude:
             ]
         return selected
 
+    def developer_registered(self) -> bool:
+        """Whether the developer ONEX plugin profile is registered for the user.
+
+        A command with no workspace (onex delegation) cannot tell a developer from
+        a customer by folder, so it keeps the profile already there rather than
+        adding the customer one beside it (OMN-23413, 2026-11-13).
+        """
+        return bool(self._registrations().get("onex@omninode-tools-dev"))
+
     def set_enabled(self, enabled: bool) -> None:
         """Toggle the single registered ONEX user profile through Claude's owner."""
         installed = self._registrations()
@@ -155,6 +196,8 @@ class HandlerSetupClaude:
                     legacy = observe_legacy_hooks(
                         self._legacy_installer(), self._claude
                     )
+                except ClaudeSettingsError as error:
+                    return _settings_problem(self.name, error)
                 except (OSError, ValueError, RuntimeError):
                     return ModelSetupObservation(
                         step=self.name,
@@ -163,40 +206,55 @@ class HandlerSetupClaude:
                     )
                 if legacy.status != "success":
                     return legacy
-                state = manage_gateway_hooks("status", claude_home=self._claude)
-                if (
-                    state.status == "success"
-                    and state.registered
-                    and not gateway_hook_enabled()
-                ):
+                # Each hook's installed state reaches status and the TUI (OMN-23413).
+                hooks = {
+                    key: legacy.evidence[key]
+                    for key in ("prompt_hook", "subagent_hook")
+                    if key in legacy.evidence
+                }
+                if not delegation_switch_enabled():
+                    # A shell's ONEX_HOOKS_MASK decided this, not the saved switch.
+                    if "ONEX_HOOKS_MASK" in os.environ:
+                        return ModelSetupObservation(
+                            step=self.name,
+                            status="action_required",
+                            evidence={"switch_override": "ONEX_HOOKS_MASK", **hooks},
+                            fix=SWITCH_OVERRIDE_FIX,
+                        )
                     return ModelSetupObservation(
                         step=self.name,
                         status="unavailable",
+                        evidence=hooks,
                         fix="Enable POST_SKILL_DELEGATION_ENFORCER with onex hooks enable POST_SKILL_DELEGATION_ENFORCER and remove any conflicting ONEX_HOOKS_MASK override.",
                     )
                 return ModelSetupObservation(
                     step=self.name,
-                    status="success"
-                    if state.status == "success" and state.registered
-                    else "unavailable"
-                    if state.status == "success"
-                    else "failure",
+                    status="success",
                     evidence={
                         "switch": "POST_SKILL_DELEGATION_ENFORCER",
                         "restart_sessions": "required after registration changes",
+                        **hooks,
                     },
-                    fix=state.fix
-                    or (
-                        None
-                        if state.registered
-                        else "Run onex setup --action repair with the Claude plugin and hooks components selected."
-                    ),
                 )
-            if not self._binary.is_file() or not os.access(self._binary, os.X_OK):
+            if not self._claude_code_installed():
+                return self._not_installed()
+            # OMN-23413: signing in is the user's step, so it is reported before
+            # the plugin that setup adds itself; the /delegation tab then says
+            # "not signed in" before a Save rather than after it.
+            auth = self._commands.handle(
+                ModelSetupCommandRequest(
+                    argv=(str(self._binary), "auth", "status", "--json"),
+                    timeout_seconds=10,
+                    environment=self._environment,
+                )
+            )
+            status = json.loads(auth.stdout)
+            if not isinstance(status, dict) or status.get("loggedIn") is not True:
                 return ModelSetupObservation(
                     step=self.name,
-                    status="unavailable",
-                    fix="Install Claude Code, then repeat this component setup.",
+                    status="action_required",
+                    evidence={"claude_code": "signed_out"},
+                    fix="Sign in to Claude Code yourself, then repeat onex setup --action repair. Existing login settings were preserved.",
                 )
             installed = self._registrations()
             customer, developer = (
@@ -242,24 +300,6 @@ class HandlerSetupClaude:
                     step=self.name,
                     status="unavailable",
                     fix="Repair the stale ONEX plugin manifest through its marketplace installer.",
-                )
-            auth = self._commands.handle(
-                ModelSetupCommandRequest(
-                    argv=(str(self._binary), "auth", "status", "--json"),
-                    timeout_seconds=10,
-                    environment={
-                        "CLAUDE_CONFIG_DIR": str(self._claude),
-                        "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
-                    },
-                )
-            )
-            status = json.loads(auth.stdout)
-            if not isinstance(status, dict) or status.get("loggedIn") is not True:
-                return ModelSetupObservation(
-                    step=self.name,
-                    status="action_required",
-                    evidence={"plugin": wanted},
-                    fix="Sign in to Claude Code yourself, then repeat onex setup --action repair. Existing login settings were preserved.",
                 )
             return ModelSetupObservation(
                 step=self.name,
@@ -345,37 +385,65 @@ class HandlerSetupClaude:
             )
         return Path(value)
 
-    def remove_hooks(self) -> None:
-        """Dispose through the two existing owners, preserving edited user state."""
+    def remove_delegation_hooks(self) -> None:
+        """Remove the legacy owner's registrations, preserving edited user state."""
+        root = Path.home() / ".omninode" / "delegation"
+        config = root / "hooks-delegation.json"
+        settings = self._claude / "settings.json"
+        if not config.is_file():
+            registered = any(
+                str(root) + "/" in str(hook.get("command", ""))
+                for groups in hook_rows(read_claude_settings(self._claude)).values()
+                for group in groups
+                for hook in group.get("hooks") or []
+            )
+            if registered or (root / "plugin").exists():
+                raise ValueError("Installed delegation ownership config is missing")
+            return
+        manifest = json.loads((root / "rollback-manifest.json").read_text())
+        if (
+            not _same_path(manifest.get("claude_settings"), settings)
+            or not _same_path(manifest.get("installed_hook_config"), config)
+            or not settings.is_file()
+        ):
+            raise ValueError(
+                "Delegation belongs to a different or changed Claude profile"
+            )
         installer = self._legacy_installer()
-        state = observe_legacy_hooks(installer, self._claude)
+        # Removal asks only whether the install changed; a bundle that lacks a
+        # hook does not stop removing what it installed (review 2026-11-15).
+        state = observe_legacy_hooks(installer, self._claude, require_both=False)
         if state.status == "action_required":
             raise ValueError(
                 "Installed delegation files or settings changed; preserve them before removal"
             )
-        if (
-            Path.home() / ".omninode" / "delegation" / "hooks-delegation.json"
-        ).exists():
-            self._run(
-                ("/bin/bash", str(installer), "--uninstall", "--python", sys.executable)
-            )
-        result = manage_gateway_hooks("uninstall", claude_home=self._claude)
-        if result.status != "success":
-            raise ValueError("Owned auxiliary gateway hook removal was refused")
+        self._run(
+            ("/bin/bash", str(installer), "--uninstall", "--python", sys.executable)
+        )
+
+    def remove_hooks(self) -> None:
+        """Dispose through the delegation hooks' owner, preserving edited user state."""
+        self.remove_delegation_hooks()
 
     def apply(self, plan: ModelSetupPlan) -> ModelSetupObservation | None:
         if self.name == "claude-hooks":
             try:
                 installer = self._legacy_installer()
                 legacy = observe_legacy_hooks(installer, self._claude)
+            except ClaudeSettingsError as error:
+                return _settings_problem(self.name, error)
             except (OSError, ValueError, RuntimeError):
                 return ModelSetupObservation(
                     step=self.name,
                     status="action_required",
                     fix="Install or repair the packaged delegation hook assets with onex install omninode-claude, then retry setup.",
                 )
+            if legacy.evidence.get("bundle_missing"):
+                return legacy  # AC38: reinstalling this bundle can never reach "on"
             if legacy.status == "action_required":
-                return legacy
+                if not self._replace:
+                    return legacy
+                keep_installed_hooks(self._claude)
             if legacy.status != "success":
                 self._run(
                     (
@@ -390,13 +458,9 @@ class HandlerSetupClaude:
                 legacy = observe_legacy_hooks(installer, self._claude)
                 if legacy.status != "success":
                     return legacy
+            record_installed_hooks(self._claude)
             if self.observe(plan).status == "success":
                 return None
-            result = manage_gateway_hooks("install", claude_home=self._claude)
-            if result.status != "success" or not result.registered:
-                raise ValueError(
-                    "The canonical gateway hook installer refused the settings change"
-                )
             self._run(
                 (
                     str(Path(sys.executable).parent / "onex"),
@@ -419,30 +483,10 @@ class HandlerSetupClaude:
                     status="action_required",
                     fix="Install or repair the customer asset bundle with onex install omninode-claude (or the selected local wheel), then repeat setup. The installed customer_assets entry point could not be resolved.",
                 )
-        if not self._binary.is_file():
-            with tempfile.TemporaryDirectory(
-                prefix="onex-claude-install-"
-            ) as directory:
-                script = Path(directory) / "install.sh"
-                self._run(
-                    (
-                        "curl",
-                        "-fsSL",
-                        "--retry",
-                        "3",
-                        claude_code_installer_url(),
-                        "-o",
-                        str(script),
-                    ),
-                    network=True,
-                )
-                self._run(("/bin/bash", str(script)), network=True)
-            selected = shutil.which("claude")
-            self._binary = (
-                Path(selected)
-                if selected
-                else Path.home() / ".local" / "bin" / "claude"
-            )
+        if not self._claude_code_installed():
+            # OMN-23413, operator 2026-11-13: Claude Code is the user's own
+            # install; setup detects and says so, and never downloads it.
+            return self._not_installed()
         if plan.developer:
             self._run(
                 (str(self._binary), "plugin", "marketplace", "add", str(marketplace)),
@@ -463,3 +507,8 @@ class HandlerSetupClaude:
             wanted = "onex@omninode-tools"
         self._run((str(self._binary), "plugin", "install", wanted), network=True)
         return None
+
+
+def _same_path(recorded: object, actual: Path) -> bool:
+    """The installer records paths as the shell spelled them ("dir//settings.json")."""
+    return isinstance(recorded, str) and Path(recorded).resolve() == actual.resolve()

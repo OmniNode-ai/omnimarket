@@ -230,10 +230,13 @@ def test_multiple_local_models_are_tried_in_order_before_any_key(
         )
     )
 
-    assert [model for _, model in effect.calls] == [_FIRST, _SECOND, "key-model"]
+    # OMN-23413 AC22: the two local models are the whole selection here (the
+    # ladder's "key" route above is stubbed, never registered), so the run tries
+    # them in order and ends on the last one's failure; an unselected ladder
+    # responder is never reached.
+    assert [model for _, model in effect.calls] == [_FIRST, _SECOND]
     assert [a["backend_id"] for a in result["attempts"]] == [
         "local-url",
         "local-url-2",
-        _KEY_ROUTE,
     ]
-    assert result["status"] == "completed"
+    assert result["status"] == "failed"

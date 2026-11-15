@@ -3,13 +3,12 @@
 """Report and test the models delegation can use (OMN-20817).
 
 A developer can use any combination of Gemini, OpenRouter, OpenAI, Anthropic,
-GLM and Ollama; delegation chooses among the ones set up. This effect answers
+GLM and a Local Model; delegation chooses among the ones set up. This effect answers
 two questions for ``onex models`` and for onboarding, which calls it once per
 chosen model:
 
 * which providers are set up on this machine: a key stored for a keyed provider
-  (the same registration ``onex secret set`` makes), or, for Ollama, local
-  routes pointing at Ollama's port (the ``ollama`` block of the model config);
+  (the same registration ``onex secret set`` makes);
 * (OMN-21162) a local model server on an OpenAI-compatible URL, with no key:
   ``add_local`` checks the URL answers, then declares it as one backend in the
   local routes overlay beside whatever else the overlay holds;
@@ -92,12 +91,9 @@ from omnimarket.projection.sqlite_database import default_evidence_db_path
 
 PROVIDERS: tuple[ModelProvider, ...] = get_args(ModelProvider)
 
-#: The backend onboarding points at Ollama.
-OLLAMA_BACKEND = "local-coder"
-
 #: The keyless server named by URL (OMN-21162), and the backend ``onex models add
-#: local --url`` declares for it: its own id, so the Ollama routes and any other
-#: overlay entry are left as they are.
+#: local --url`` declares for it: its own id, so any other overlay entry is left
+#: as it is.
 LOCAL_URL_PROVIDER: ModelProvider = "local"
 
 #: The overlay entry for a local URL: every field an overlay-added backend must
@@ -126,7 +122,6 @@ OVERLAY_DEFAULT_PROVIDERS: frozenset[str] = frozenset(_DEFAULT_MODEL_ENV)
 
 _TEST_PROMPT = "Reply with exactly one word: hello"
 _TEST_TIMEOUT_S = 300
-_MODEL_CONFIG = Path(__file__).resolve().parents[3] / "configs/bifrost_delegation.yaml"
 _CONTRACT = Path(__file__).resolve().parents[1] / "contract.yaml"
 
 
@@ -393,7 +388,7 @@ def _text(value: object) -> str | None:
 
 
 #: The providers whose models the developer runs: no price, no key.
-_LOCAL_PROVIDERS: tuple[ModelProvider, ...] = ("local", "ollama")
+_LOCAL_PROVIDERS: tuple[ModelProvider, ...] = (LOCAL_URL_PROVIDER,)
 
 
 def _manifest_price_per_1k(model: str) -> tuple[Decimal, Decimal] | None:
@@ -526,7 +521,7 @@ class HandlerModelSetup:
         """Every routable model in the order delegation tries it (OMN-23167).
 
         The model chosen with ``onex models first`` leads, then the local models
-        (a URL's, then Ollama's) in the order declared, then each key's models in
+        (each server's, by URL) in the order declared, then each key's models in
         its own order. A key whose last test failed is not routed, so it is not
         listed; the model the rule ``only`` would skip is still listed, with its
         cost class.
@@ -544,7 +539,7 @@ class HandlerModelSetup:
                 provider
             ):
                 continue
-            # Ollama declares its routes, not model names: its backend is the rung.
+            # A provider that names no model is routed by its backend alone.
             names = status.models or (self.backend_for(provider) or provider,)
             ordered.extend((provider, name) for name in names)
         first = next(
@@ -963,42 +958,20 @@ class HandlerModelSetup:
         return local_model_tests_path()
 
     def overrides_path(self) -> Path:
-        """The local routes file onboarding writes when it sets up Ollama."""
+        """The local routes overlay a Local Model is declared in."""
         return self._state_dir() / "bifrost_overrides.yaml"
 
     # -- set up? -----------------------------------------------------------
 
     def is_set_up(self, provider: ModelProvider) -> bool:
-        if provider == "ollama":
-            return self._ollama_routes_configured()
         if provider == LOCAL_URL_PROVIDER:
             return self._local_url_entry() is not None
         if self._read_only:
             return provider in credential_read_adapter.registered_providers()
         return provider in registered_local_byok_providers()
 
-    def _ollama_routes_configured(self) -> bool:
-        try:
-            config = yaml.safe_load(_MODEL_CONFIG.read_text(encoding="utf-8")) or {}
-            port = (config.get("ollama") or {}).get("port")
-            overrides = (
-                yaml.safe_load(self.overrides_path().read_text(encoding="utf-8")) or {}
-            )
-        except (OSError, yaml.YAMLError):
-            return False
-        if not port:
-            return False
-        return any(
-            isinstance(backend, dict)
-            and backend.get("backend_id") == OLLAMA_BACKEND
-            and f":{port}/" in str(backend.get("endpoint_url", ""))
-            for backend in overrides.get("backends") or []
-        )
-
     @staticmethod
     def backend_for(provider: ModelProvider) -> str | None:
-        if provider == "ollama":
-            return OLLAMA_BACKEND
         if provider == LOCAL_URL_PROVIDER:
             return LOCAL_URL_BACKEND
         backend = resolve_byok_provider_backend(provider)
@@ -1179,8 +1152,7 @@ class HandlerModelSetup:
                 )
             )
             and not (
-                provider not in (LOCAL_URL_PROVIDER, "ollama")
-                and local_byok_key_test_failed(provider)
+                provider != LOCAL_URL_PROVIDER and local_byok_key_test_failed(provider)
             )
         )
         results = self._read_results() if local_entries else {}
@@ -1223,7 +1195,7 @@ class HandlerModelSetup:
 
     @staticmethod
     def _stored_model(provider: ModelProvider) -> str | None:
-        if provider in ("ollama", LOCAL_URL_PROVIDER):
+        if provider == LOCAL_URL_PROVIDER:
             return None
         return resolve_local_byok_credential_model(provider)
 
@@ -1262,7 +1234,7 @@ class HandlerModelSetup:
         every_throttled: tuple[str, ...] = ()
         if (
             first
-            and provider not in ("ollama", LOCAL_URL_PROVIDER)
+            and provider != LOCAL_URL_PROVIDER
             and exit_code != 0
             and _was_throttled(stdout, stderr)
         ):
@@ -1470,7 +1442,6 @@ def _render_item(entry: dict[str, object], indent: str) -> str:
 __all__ = [
     "LOCAL_URL_BACKEND",
     "LOCAL_URL_PROVIDER",
-    "OLLAMA_BACKEND",
     "PROVIDERS",
     "DelegateRunner",
     "HandlerModelSetup",

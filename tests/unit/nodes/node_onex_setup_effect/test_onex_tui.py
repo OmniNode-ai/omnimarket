@@ -157,9 +157,7 @@ def test_command_tree_picks_up_a_command_added_later() -> None:
         _models.commands.pop("benchmark")
 
 
-def test_command_tree_of_the_real_onex_has_the_setup_models_and_claude_commands() -> (
-    None
-):
+def test_command_tree_of_the_real_onex_has_the_setup_and_models_commands() -> None:
     from omnibase_core.cli.cli_commands import cli
 
     paths = {entry.path for entry in command_tree(cli)}
@@ -167,8 +165,6 @@ def test_command_tree_of_the_real_onex_has_the_setup_models_and_claude_commands(
         ("setup",),
         ("delegate",),
         ("models", "connect"),
-        ("claude", "enable"),
-        ("claude", "status"),
         ("tui",),
     ):
         assert expected in paths, expected
@@ -231,14 +227,14 @@ class _Runner:
 
 
 async def _status() -> ModelTuiStatus:
-    return ModelTuiStatus(workspace="~/ws", model="Qwen3.8-27B", gateway=False)
+    return ModelTuiStatus(model="Qwen3.8-27B", delegation="off")
 
 
 def _app(runner: _Runner) -> OnexTui:
     return OnexTui(root=_root, runner=runner, load_status=_status)
 
 
-_READS = {("models", "list"), ("models", "connections"), ("claude", "status")}
+_READS = {("models", "list"), ("models", "connections")}
 
 
 def _actions(runner: _Runner) -> list[tuple[str, ...]]:
@@ -390,14 +386,15 @@ async def test_a_prompting_command_runs_in_the_real_terminal() -> None:
         assert _commands(runner) == []
 
 
-async def test_status_bar_shows_workspace_model_and_gateway() -> None:
+async def test_status_bar_shows_the_model_and_delegation() -> None:
+    """OMN-23413: delegation as it is, and no folder (it is system-wide)."""
     app = _app(_Runner([]))
     async with app.run_test() as pilot:
         await pilot.pause()
         status = str(app.query_one("#status").render())
-        assert "~/ws" in status
         assert "Qwen3.8-27B" in status
-        assert "gateway off" in status
+        assert "delegation off" in status
+        assert "~/" not in status
 
 
 async def test_slash_quit_exits() -> None:
@@ -429,16 +426,6 @@ async def test_up_and_down_recall_earlier_entries_when_the_palette_is_closed() -
         assert prompt.value == "second"
         await pilot.press("down")
         assert prompt.value == ""
-
-
-def test_a_folder_under_home_is_shown_with_a_tilde(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    from omnimarket.nodes.node_onex_setup_effect.cli_tui import display_path
-
-    monkeypatch.setenv("HOME", str(tmp_path))
-    assert display_path(tmp_path / "ws") == "~/ws"
-    assert display_path(Path("/opt/elsewhere")) == "/opt/elsewhere"
 
 
 async def _type[T](pilot: Pilot[T], text: str) -> None:
@@ -708,7 +695,7 @@ async def test_config_refuses_to_save_with_no_model_selected() -> None:
         assert not [call for call in runner.calls if call[0] == "setup"]
 
 
-def _selected_rows(*, gateway: bool) -> dict[tuple[str, ...], str]:
+def _selected_rows(*, connection: bool) -> dict[tuple[str, ...], str]:
     """`models list` and `models connections` as the CLI prints them."""
     rows = "\n".join(
         json.dumps(row)
@@ -722,14 +709,14 @@ def _selected_rows(*, gateway: bool) -> dict[tuple[str, ...], str]:
             {"provider": "ollama", "set_up": True, "models": ["llama3.2"]},
         )
     )
-    connection = {
-        "connection_id": "lab-gateway",
+    named = {
+        "connection_id": "lab-server",
         "provider": "openai_compatible",
         "url": "http://127.0.0.1:8085",
         "models": ["Qwen3.8-27B"],
         "native_messages": True,
     }
-    listing = {"status": "ready", "connections": [connection] if gateway else []}
+    listing = {"status": "ready", "connections": [named] if connection else []}
     return {("models", "list"): rows, ("models", "connections"): json.dumps(listing)}
 
 
@@ -739,7 +726,7 @@ async def test_delegation_asks_for_nothing_and_shows_the_selected_models() -> No
 
     from omnimarket.nodes.node_onex_setup_effect.cli_tui import DelegationScreen
 
-    runner = _Runner([], by_command=_selected_rows(gateway=False))
+    runner = _Runner([], by_command=_selected_rows(connection=False))
     app = _app(runner)
     async with app.run_test(size=(140, 44)) as pilot:
         await _type(pilot, "/delegation")
@@ -764,24 +751,26 @@ async def test_delegation_hook_mode_runs_the_design_commands_on_and_off() -> Non
         tui_design,
     )
 
-    hook = next(m for m in tui_design().delegation.modes if m.id == "hook")
-    runner = _Runner([], by_command=_selected_rows(gateway=False))
+    hook = tui_design().delegation
+    runner = _Runner([], by_command=_selected_rows(connection=False))
     app = _app(runner)
     async with app.run_test(size=(140, 44)) as pilot:
         await _type(pilot, "/delegation")
         await pilot.press("enter")
         await pilot.pause()
         await pilot.pause()
-        app.screen.query_one("#on").value = True
+        app.screen.set_all(True)
         await _press(pilot, app, "dsave")
         for _ in range(6):
             await pilot.pause()
         assert _actions(runner)[-len(hook.enable) :] == list(hook.enable)
-        assert "Claude Code delegation is on: Subagent tasks" in _log_text(app)
+        assert "Claude Code delegation is on: prompts and subagent tasks" in _log_text(
+            app
+        )
         assert "Welcome To OmniNode" not in _log_text(app)  # one line only
 
         # The tab stays open: switch off from the same screen.
-        app.screen.query_one("#on").value = False
+        app.screen.set_all(False)
         await _press(pilot, app, "dsave")
         for _ in range(6):
             await pilot.pause()
@@ -805,58 +794,11 @@ async def test_delegation_refuses_to_turn_on_with_no_selected_model() -> None:
         await pilot.pause()
         await pilot.pause()
         before = len(runner.calls)
-        app.screen.query_one("#on").value = True
+        app.screen.set_all(True)
         await _press(pilot, app, "dsave")
         await pilot.pause()
         assert isinstance(app.screen, DelegationScreen)
         assert tui_design().delegation.no_models in str(
-            app.screen.query_one("#dnote").render()
-        )
-        assert len(runner.calls) == before
-
-
-async def test_gateway_mode_fills_connection_and_model_from_the_selection() -> None:
-    """The gateway gets a selected model whose connection speaks native Messages."""
-    runner = _Runner([], by_command=_selected_rows(gateway=True))
-    app = _app(runner)
-    async with app.run_test(size=(140, 44)) as pilot:
-        await _type(pilot, "/delegation")
-        await pilot.press("enter")
-        await pilot.pause()
-        await pilot.pause()
-        app.screen.query_one("#mode").value = "gateway"
-        app.screen.query_one("#on").value = True
-        await pilot.pause()
-        await _press(pilot, app, "dsave")
-        for _ in range(6):
-            await pilot.pause()
-        assert _actions(runner)[-1][-4:] == (
-            "--gateway-connection",
-            "lab-gateway",
-            "--gateway-model",
-            "Qwen3.8-27B",
-        )
-
-
-async def test_gateway_mode_refuses_with_no_gateway_capable_model() -> None:
-    from omnimarket.nodes.node_onex_setup_effect.models.model_tui_design import (
-        tui_design,
-    )
-
-    runner = _Runner([], by_command=_selected_rows(gateway=False))
-    app = _app(runner)
-    async with app.run_test(size=(140, 44)) as pilot:
-        await _type(pilot, "/delegation")
-        await pilot.press("enter")
-        await pilot.pause()
-        await pilot.pause()
-        before = len(runner.calls)
-        app.screen.query_one("#mode").value = "gateway"
-        app.screen.query_one("#on").value = True
-        await pilot.pause()
-        await _press(pilot, app, "dsave")
-        await pilot.pause()
-        assert tui_design().delegation.no_gateway_model in str(
             app.screen.query_one("#dnote").render()
         )
         assert len(runner.calls) == before
@@ -1297,7 +1239,7 @@ async def test_model_names_each_local_model_by_the_server_that_runs_it() -> None
         assert isinstance(grid.get_row_at(0)[0], Text)
 
 
-# The six regressions the tabs, one-click ticks and gateway changes guard against:
+# The regressions the tabs and one-click ticks guard against:
 #   T1: Tab and Shift+Tab do not cycle between /config, /model, /delegation tabs,
 #       or clicking a tab does not open it.
 #   T2: Clicking a model row in /config does not tick it, or the list does not
@@ -1308,8 +1250,6 @@ async def test_model_names_each_local_model_by_the_server_that_runs_it() -> None
 #       line, or omits the failing step name and its fix.
 #   T5: The local model server is queried more than once, or a 404/405 response
 #       to the Anthropic Messages route is not treated as "no".
-#   T6: Gateway mode fails to register the server as a connection, or starts the
-#       gateway only after user input instead of automatically.
 
 
 async def test_tab_and_shift_tab_cycle_the_three_screens_and_a_click_opens_one() -> (
@@ -1323,7 +1263,7 @@ async def test_tab_and_shift_tab_cycle_the_three_screens_and_a_click_opens_one()
         SetupScreen,
     )
 
-    app = _app(_Runner([], by_command=_selected_rows(gateway=False)))
+    app = _app(_Runner([], by_command=_selected_rows(connection=False)))
     async with app.run_test(size=(140, 44)) as pilot:
         await _open_config(pilot, app)
         seen = [type(app.screen)]
@@ -1402,11 +1342,11 @@ async def test_a_failed_switch_prints_one_line_with_the_step_and_its_fix() -> No
             ]
         }
     )
-    rows = _selected_rows(gateway=False)
+    rows = _selected_rows(connection=False)
     runner = _Runner(
         ["Welcome To OmniNode Delegation Onboarding"],
         code=1,
-        by_command={**rows, ("setup", "--yes"): stopped},
+        by_command={**rows, ("delegation", "on"): stopped},  # OMN-23413: global switch
     )
     app = _app(runner)
     async with app.run_test(size=(140, 44)) as pilot:
@@ -1414,7 +1354,7 @@ async def test_a_failed_switch_prints_one_line_with_the_step_and_its_fix() -> No
         await pilot.press("enter")
         await pilot.pause()
         await pilot.pause()
-        app.screen.query_one("#on").value = True
+        app.screen.set_all(True)
         await _press(pilot, app, "dsave")
         await pilot.pause()
         await pilot.pause()
@@ -1425,73 +1365,3 @@ async def test_a_failed_switch_prints_one_line_with_the_step_and_its_fix() -> No
         assert "Install or repair the customer asset bundle" in flat
         assert "Welcome To OmniNode" not in text
         assert "The rest" not in text
-
-
-async def test_gateway_registers_a_server_that_speaks_messages_then_starts_it() -> None:
-    """T6: nothing typed: the connection comes from the server the model runs on."""
-    from omnimarket.models.model_local_server_details import ModelLocalServerDetails
-    from omnimarket.nodes.node_onex_setup_effect.models.model_tui_design import (
-        tui_design,
-    )
-
-    rows = json.dumps(
-        {
-            "provider": "local",
-            "set_up": True,
-            "models": ["saluki:latest"],
-            "local_models": [
-                {
-                    "model": "saluki:latest",
-                    "base_url": "http://ollama.test:11434",
-                    "backend_id": "local-url",
-                }
-            ],
-        }
-    )
-    runner = _Runner(
-        [],
-        by_command={
-            ("models", "list"): rows,
-            ("models", "connections"): json.dumps({"connections": []}),
-        },
-    )
-
-    def read_server(base: str, models: tuple[str, ...]):
-        return {
-            m: ModelLocalServerDetails(server="Ollama", native_messages=True)
-            for m in models
-        }
-
-    app = OnexTui(
-        root=_root, runner=runner, load_status=_status, read_server=read_server
-    )
-    async with app.run_test(size=(140, 44)) as pilot:
-        await _type(pilot, "/delegation")
-        await pilot.press("enter")
-        await pilot.pause()
-        await pilot.pause()
-        app.screen.query_one("#mode").value = "gateway"
-        app.screen.query_one("#on").value = True
-        await pilot.pause()
-        await _press(pilot, app, "dsave")
-        await pilot.pause()
-        await pilot.pause()
-        connect = [c for c in runner.calls if c[:2] == ("models", "connect")]
-        assert connect == [
-            tuple(
-                part.format(
-                    connection="ollama-ollama-test-11434",
-                    url="http://ollama.test:11434",
-                    model="saluki:latest",
-                )
-                for part in tui_design().delegation.connect
-            )
-        ]
-        setup = [c for c in runner.calls if c[0] == "setup"]
-        assert setup[-1][-4:] == (
-            "--gateway-connection",
-            "ollama-ollama-test-11434",
-            "--gateway-model",
-            "saluki:latest",
-        )
-        assert runner.calls.index(connect[0]) < runner.calls.index(setup[-1])

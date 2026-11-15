@@ -54,6 +54,9 @@ from omnimarket.nodes.node_onex_setup_effect.models import (
     ModelOnexSetupState,
     ModelOnexSetupStepOutcome,
 )
+from omnimarket.nodes.node_onex_setup_effect.models.model_setup_provider_traits import (
+    setup_provider_traits,
+)
 
 SETUP_STEPS: tuple[str, ...] = (
     "workspace",
@@ -62,15 +65,15 @@ SETUP_STEPS: tuple[str, ...] = (
     "runtime_config",
     "model",
 )
-#: Hosted choices come from the canonical provider registry. Local and Ollama
-#: are endpoint-only setup modes; neither provisions model software.
+#: Hosted choices come from the canonical provider registry. A Local Model is an
+#: endpoint-only setup mode (any model server, by URL); it provisions no software.
 SETUP_PROVIDERS: tuple[str, ...] = tuple(
-    dict.fromkeys((*customer_provider_catalogue(), "local", "ollama"))
+    dict.fromkeys((*customer_provider_catalogue(), "local"))
 )
 #: Providers setup refuses, each with its problem and the way to reach it instead.
 REFUSED_PROVIDERS: dict[str, tuple[str, str]] = {}
-URL_PROVIDERS: tuple[str, ...] = ("local", "openai_compatible", "ollama")
-KEYLESS_PROVIDERS: tuple[str, ...] = ("local", "ollama")
+URL_PROVIDERS: tuple[str, ...] = ("local", "openai_compatible")
+KEYLESS_PROVIDERS: tuple[str, ...] = ("local",)
 ARGUMENTS_STEP = "arguments"
 SETUP_MARKER = "# generated-by: onex setup"
 INSTALL_SH_MARKER = "# generated-by: omnibase install.sh"
@@ -569,7 +572,8 @@ class HandlerOnexSetup:
                             "provider": request.provider.lower(),
                             "models": [request.model],
                             "url": request.url,
-                            "api_key_required": request.provider.lower() == "ollama"
+                            "api_key_required": request.provider.lower()
+                            in setup_provider_traits().endpoint_auth
                             and request.key is not None,
                         }
                     ],

@@ -17,7 +17,6 @@ ModelProvider = Literal[
     "reflection",  # OMN-23413: Reflection AI's OpenAI-compatible API, by key
     "anthropic",
     "glm",
-    "ollama",
     "local",
     # OMN-21263: any other endpoint that speaks the OpenAI API, by URL, with a key.
     "openai_compatible",

@@ -152,6 +152,41 @@ def _decimal(value: Any) -> Decimal | None:
     return number if number.is_finite() and number >= 0 else None
 
 
+def pricing_models_dev_index() -> ModelsDevIndex:
+    """models.dev as the delegation call reads it to price a model (OMN-23413 AC35).
+
+    The same cached index the model table reads, refetched when older than its
+    configured age. Tests replace this function so no unit test reads the network.
+    """
+    from omnibase_core.cli.cli_user_config import user_config_path
+
+    return load_models_dev(user_config_path().parent)
+
+
+def models_dev_price_per_1m(
+    provider: str, model_id: str
+) -> tuple[Decimal, Decimal] | None:
+    """A model's ``(input, output)`` USD per 1M tokens as models.dev lists it, or None.
+
+    OMN-23413 AC35: the provider's own catalogue and the model registry come
+    first; this is read only for a model neither prices. ``provider`` is the ONEX
+    provider id, mapped to models.dev's through ``provider_ids``. None when the
+    provider has no models.dev id, models.dev does not list the model, or the
+    entry states no input or output price.
+    """
+    md_provider = catalog_config()["provider_ids"].get(provider)
+    if not md_provider:
+        return None
+    metadata = pricing_models_dev_index().models.get((str(md_provider), model_id))
+    cost = metadata.get("cost") if metadata else None
+    if not isinstance(cost, dict):
+        return None
+    price_in, price_out = _decimal(cost.get("input")), _decimal(cost.get("output"))
+    if price_in is None or price_out is None:
+        return None
+    return price_in, price_out
+
+
 def _positive(value: Any) -> int | None:
     return value if isinstance(value, int) and value > 0 else None
 

@@ -89,7 +89,6 @@ from omnimarket.nodes.node_model_setup_effect.credential_output import (
 from omnimarket.nodes.node_model_setup_effect.handlers.handler_model_setup import (
     LOCAL_URL_PROVIDER,
     OVERLAY_DEFAULT_PROVIDERS,
-    PROVIDERS,
     HandlerModelSetup,
     ModelSetupRefusedError,
     key_looks_like,
@@ -100,6 +99,9 @@ from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_request i
 )
 from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_result import (
     ModelModelTestResult,
+)
+from omnimarket.nodes.node_onex_setup_effect.models.model_setup_provider_traits import (
+    setup_provider_traits,
 )
 from omnimarket.nodes.node_projection_tenant_credentials.local_catalog_fold import (
     fold_registered_tenant_key,
@@ -838,7 +840,7 @@ def check_captured(reference: str, accessor: str) -> None:
 # ---------------------------------------------------------------------------
 
 _MODEL_LABELS = model_keys.MODEL_LABELS
-_OLLAMA_HOW = model_keys.OLLAMA_HOW
+_LABEL_WIDTH = model_keys.LABEL_WIDTH
 _LOCAL_HOW = model_keys.LOCAL_HOW
 _NOT_ROUTED = "Delegation does not use this key until its test passes."
 
@@ -851,7 +853,7 @@ def _show_model_test(result: ModelModelTestResult, as_json: bool) -> None:
     if as_json:
         click.echo(result.model_dump_json())
         return
-    label = f"{_MODEL_LABELS[result.provider]:<11}"
+    label = f"{_MODEL_LABELS[result.provider]:<{_LABEL_WIDTH}}"
     if result.status == "passed":
         click.echo(f"{label} ✓ answered ({result.model or result.backend_id})")
     elif result.status == "throttled":
@@ -866,12 +868,10 @@ def _show_model_test(result: ModelModelTestResult, as_json: bool) -> None:
     elif result.status == "failed":
         failed_on = f"{result.model}: " if result.model else ""
         click.echo(f"{label} ✗ {failed_on}{result.reason}")
-        if result.provider != "ollama" and result.provider != LOCAL_URL_PROVIDER:
+        if result.provider != LOCAL_URL_PROVIDER:
             # OMN-21259: a key that failed its test is kept but not routed.
             click.echo(f"  {_NOT_ROUTED}")
             click.echo(f"  Fix it, then run: onex models test {result.provider}")
-    elif result.provider == "ollama":
-        click.echo(f"{label} not set up. {_OLLAMA_HOW}")
     elif result.provider == LOCAL_URL_PROVIDER:
         click.echo(f"{label} not set up. {_LOCAL_HOW}")
     else:
@@ -904,14 +904,15 @@ def _read_model_key(provider: str) -> str:
     return value
 
 
-_model_choice = click.Choice(PROVIDERS, case_sensitive=False)
+_model_choice = model_keys.ModelProviderChoice()
 
 
 models_group = click.Group(
     "models",
     help=(
-        "Set up the models delegation can use: Gemini, OpenRouter, OpenAI, "
-        "Anthropic, GLM (z.ai), Ollama, or a local model server by URL.\n\nSet up any "
+        "Set up the models delegation can use: Google Gemini, OpenRouter, OpenAI, "
+        "Reflection AI, Anthropic, GLM (z.ai), or a Local Model: any model server "
+        "you run, by its endpoint URL.\n\nSet up any "
         "combination; delegation chooses among them for each task."
     ),
     commands=list(MODEL_COMMANDS),  # onex models first (OMN-21346), only
@@ -941,9 +942,23 @@ models_group = click.Group(
         "OpenAI-compatible API, such as http://<host>:<port>; local needs no key."
     ),
 )
+@click.option(
+    "--key",
+    "needs_key",
+    is_flag=True,
+    help=(
+        "local only: the server needs a key. It is read from stdin when piped, or "
+        "asked for at a hidden prompt, and stored as onex setup stores a Local "
+        "Model's key (OMN-23413)."
+    ),
+)
 @model_json
 def add_model(
-    provider: str, model_options: tuple[str, ...], url: str | None, as_json: bool
+    provider: str,
+    model_options: tuple[str, ...],
+    url: str | None,
+    needs_key: bool,
+    as_json: bool,
 ) -> None:
     """Store PROVIDER's key, then test it with one delegation pinned to it.
 
@@ -955,7 +970,8 @@ def add_model(
     ``openai_compatible`` is any endpoint that speaks the OpenAI API and needs a key:
     ``--url`` names its base URL, and each ``--model`` is checked against /v1/models.
 
-    ``local`` asks for no key: ``--url`` names a model server that speaks the
+    ``local`` is a Local Model: any model server you run, with no key unless
+    ``--key`` says it needs one. ``--url`` names a server that speaks the
     OpenAI-compatible API and each ``--model`` a model it runs. It must answer before
     it is declared in the local routes. Local models are tried in order before any key;
     ``onex models reorder local`` and ``onex models remove local --model`` change them.
@@ -967,6 +983,13 @@ def add_model(
             "--url is for a local model server: onex models add local --url "
             "<base url> --model <name>"
         )
+    if needs_key and name != "local":
+        raise click.ClickException("--key is for a Local Model: onex models add local")
+    if name == "local" and needs_key:
+        if url is None or not model_options:
+            raise click.ClickException(_LOCAL_HOW)
+        # The same owner onex setup registers a keyed Local Model as.
+        name = setup_provider_traits().registration("local", keyed=True)
     if name == "local":
         if url is None or not model_options:
             raise click.ClickException(_LOCAL_HOW)
@@ -984,30 +1007,16 @@ def add_model(
         if any(result.status != "passed" for result in added.tests):
             sys.exit(1)
         return
-    if name == "ollama":
-        if not handler.is_set_up("ollama"):
-            raise click.ClickException(_OLLAMA_HOW)
-        if model_options:
-            raise click.ClickException(
-                f"--model does not apply to Ollama. {_OLLAMA_HOW}"
-            )
-    else:
-        if len(set(model_options)) != len(model_options):
-            raise click.ClickException("a model is named twice. Nothing was stored.")
-        key = _read_model_key(name)
-        # OMN-20816: the shared path; the dashboard's GET /models lists what it stores.
-        try:
-            result = model_keys.add_key(
-                name, key, model_options, url=url, ask_model=_ask_model, echo=click.echo
-            )
-        except model_keys.ModelKeyRefusedError as refusal:
-            raise _refused(refusal) from None
-        _show_model_test(result, as_json)
-        if result.status != "passed":
-            sys.exit(1)
-        return
-    request = ModelModelSetupRequest(operation="test", provider=name)
-    (result,) = handler.handle(request).tests
+    if len(set(model_options)) != len(model_options):
+        raise click.ClickException("a model is named twice. Nothing was stored.")
+    key = _read_model_key(name)
+    # OMN-20816: the shared path; the dashboard's GET /models lists what it stores.
+    try:
+        result = model_keys.add_key(
+            name, key, model_options, url=url, ask_model=_ask_model, echo=click.echo
+        )
+    except model_keys.ModelKeyRefusedError as refusal:
+        raise _refused(refusal) from None
     _show_model_test(result, as_json)
     if result.status != "passed":
         sys.exit(1)
@@ -1038,11 +1047,16 @@ def test_models(provider: str | None, as_json: bool) -> None:
 @model_json
 def list_models(as_json: bool) -> None:
     """Each provider: set up or not, and its last test result."""
-    for row in listed(as_json):  # OMN-21267: the rule in force first
+    rows = listed(as_json)  # OMN-21267: the rule in force first
+    if not as_json:
+        # OMN-23413: the TUI's /config order; the one tried first still leads.
+        order = {p: i for i, p in enumerate(model_keys.LISTED_PROVIDERS)}
+        rows = tuple(sorted(rows, key=lambda r: (not r.tried_first, order[r.provider])))
+    for row in rows:
         if as_json:
             click.echo(row.model_dump_json())
             continue
-        label = f"{_MODEL_LABELS[row.provider]:<11}"
+        label = f"{_MODEL_LABELS[row.provider]:<{_LABEL_WIDTH}}"
         last = row.last_test
         models = models_text(row)
         if not row.set_up:
@@ -1060,7 +1074,7 @@ def list_models(as_json: bool) -> None:
                 f"{label} set up, last test FAILED {last.tested_at}{failed_on}: "
                 f"{last.reason}{models}"
             )
-            # A keyed provider; Ollama and local have none.
+            # A keyed provider; a keyless Local Model has none.
             if resolve_byok_provider_backend(row.provider) is not None:
                 click.echo(f"  {_NOT_ROUTED} Run: onex models test {row.provider}")
 
@@ -1142,8 +1156,6 @@ def add_model_to_key(provider: str, model_options: tuple[str, ...]) -> None:
     not asked for again.
     """
     name = provider.lower()
-    if name == "ollama":
-        raise click.ClickException(f"Ollama has no key to add models to. {_OLLAMA_HOW}")
     if name == "local":
         raise click.ClickException(
             "add a local model with its URL, after the ones already declared: "
@@ -1223,11 +1235,6 @@ def remove_model(
             ),
         )
         return
-    if name == "ollama":
-        raise click.ClickException(
-            f"Ollama's routes are in {handler.overrides_path()}; delete that file "
-            "to stop using Ollama, and quit the Ollama app."
-        )
     if name == "local":
         try:
             handler.handle(ModelModelSetupRequest(operation="remove_local", url=url))

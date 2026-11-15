@@ -2167,11 +2167,10 @@ lab_onboarding:
     identifier: port_busy
     owner: 'onex setup: component port checks'
     disposition: integrated
-    reason: Dashboard and Claude gateway lifecycle owners bind explicit loopback listeners and return
+    reason: The dashboard lifecycle owner binds explicit loopback listeners and returns
       actionable collision/start failures while preserving unrelated services. Ports are selected component
       inputs, not universal port assumptions.
     verification:
-    - tests/e2e/test_setup_gateway_lifecycle.py
     - tests/e2e/test_setup_dashboard_lifecycle.py
   - source: walk
     kind: function

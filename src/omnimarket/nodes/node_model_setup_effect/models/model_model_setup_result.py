@@ -17,7 +17,7 @@ class ModelModelTestResult(BaseModel):
     """One test delegation pinned to a provider's backend.
 
     ``not_set_up`` means nothing was run: the provider has no key stored, or
-    (Ollama) no local routes point at it, or (local) no URL is declared.
+    or (a Local Model) no URL is declared.
 
     ``throttled`` (OMN-21464) means the provider answered HTTP 429: a retryable
     condition of the provider or the model, and no verdict on the key. It is

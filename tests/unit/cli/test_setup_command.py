@@ -411,9 +411,8 @@ class TestSetupFailureAndResume:
         failed = _run(args)
         assert failed.exit_code == 1, failed.output
         actual_step = {"prerequisites": "preflight", "model": "models"}.get(step, step)
-        assert re.search(
-            rf"\[(failure|unavailable|action_required)\] {actual_step}\b", failed.output
-        ), failed.output
+        # Through the local runtime (OMN-24455) a failed step reads "step '<step>' failed".
+        assert re.search(rf"step '{actual_step}' failed", failed.output), failed.output
         fix_lines = [
             line for line in failed.output.splitlines() if line.startswith("Fix: ")
         ]

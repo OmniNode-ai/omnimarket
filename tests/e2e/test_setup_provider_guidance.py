@@ -51,7 +51,7 @@ def test_large_catalog_requires_explicit_shortlist_before_probe_consent(tmp_path
     @click.command()
     def choose():
         chosen = ask_choices(
-            "ollama",
+            "local",
             None,
             url,
             discover=lambda **_: ModelEndpointModelsResult(

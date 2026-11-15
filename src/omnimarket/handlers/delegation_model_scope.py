@@ -9,7 +9,7 @@ skip; when the rule leaves no model, the run is refused before any provider
 call. With no rule, routing is what it was.
 
 A local model is one the developer runs: a model ``onex models add local``
-declared by URL, or a keyless rung of the local tier (Ollama). A free model is
+declared by URL, or a keyless rung of the local tier. A free model is
 a local one, or one the provider catalogue declares free: a plan billed as a
 free tier, a model the catalogue tags ``free`` (an OpenRouter ``:free`` id), or
 a model whose declared price is zero. Anything else counts as paid.

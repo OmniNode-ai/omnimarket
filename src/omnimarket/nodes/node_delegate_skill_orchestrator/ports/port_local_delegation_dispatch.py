@@ -131,6 +131,7 @@ from omnimarket.events.provider_quota import ModelProviderQuotaObserved
 from omnimarket.handlers.delegation_first_choice import (
     first_choice_route,
     first_choice_routes,
+    selected_model_routes,
 )
 from omnimarket.handlers.delegation_model_scope import (
     is_free_model,
@@ -496,6 +497,8 @@ _DELEGATION_EVENTS_TABLE = "delegation_events"
 # ``handle_gate_result`` default (``max_escalation_attempts=2``) so a task class
 # without a contract-declared budget still escalates the same bounded number of
 # times on both paths.
+#: OMN-23413: how many unselected responders one lookup may pass over.
+_MAX_UNSELECTED_SKIPS = 32
 _DEFAULT_MAX_ESCALATIONS = 2
 
 # OMN-20844: the ``terminal_failure_reason`` values a quality-refused ladder
@@ -2316,6 +2319,88 @@ class LocalDelegationDispatchPort:
             if local_rungs:
                 backend = local_rungs[0]
 
+        # OMN-23413 AC22: the models selected in onex (``onex models``, the TUI's
+        # /config) are the only responders. Every way the run moves on stays as
+        # it was (local models in order, each key's models, the keys in
+        # registration order, retries and known caps), but a responder that is
+        # not selected (a built-in tier, a platform key, a rung another tool
+        # wrote into the overlay) is passed over as if it were not declared.
+        # With nothing selected, the run takes its ladder as before.
+        selection: tuple[ModelResolvedDelegationBackend, ...] = ()
+        if backend_id is None and model is None and probe_walk is None:
+            selection = selected_model_routes(task_type)
+        selected_ids = frozenset(route.backend_id for route in selection)
+        # A selected key may answer on another rung's id (OMN-17373 credential
+        # substitution); it is still the developer's own selected key.
+        selected_refs = frozenset(
+            route.secret_ref for route in selection if route.secret_ref
+        )
+
+        def is_selected(candidate: ModelResolvedDelegationBackend) -> bool:
+            return not selected_ids or (
+                candidate.backend_id in selected_ids
+                or (
+                    candidate.secret_ref is not None
+                    and candidate.secret_ref in selected_refs
+                )
+            )
+
+        if selected_ids:
+            if not is_selected(backend):
+                backend = selection[0]
+            if not is_selected(ladder_entry):
+                rung_ids = {rung.backend_id for rung in local_rungs}
+                ladder_entry = next(
+                    (r for r in selection if r.backend_id not in rung_ids),
+                    backend,
+                )
+
+        def resolve_next_backend(
+            **kwargs: Any,
+        ) -> ModelResolvedDelegationBackend | None:
+            if not selected_ids:
+                return self._resolve_next_backend(**kwargs)
+            tiers = set(kwargs.pop("excluded_tiers", frozenset()))
+            refs = set(kwargs.pop("excluded_backend_refs", frozenset()))
+            for _ in range(_MAX_UNSELECTED_SKIPS):
+                found = self._resolve_next_backend(
+                    excluded_tiers=frozenset(tiers),
+                    excluded_backend_refs=frozenset(refs),
+                    **kwargs,
+                )
+                if found is None or is_selected(found):
+                    return found
+                tiers.add(_routing_tier_name(found))
+                refs.add(found.backend_id)
+            return None
+
+        def resolve_sibling_backend(
+            **kwargs: Any,
+        ) -> ModelResolvedDelegationBackend | None:
+            if not selected_ids:
+                return self._resolve_sibling_backend(**kwargs)
+            refs = set(kwargs.pop("excluded_backend_refs", frozenset()))
+            for _ in range(_MAX_UNSELECTED_SKIPS):
+                found = self._resolve_sibling_backend(
+                    excluded_backend_refs=frozenset(refs), **kwargs
+                )
+                if found is None or is_selected(found):
+                    return found
+                refs.add(found.backend_id)
+            return None
+
+        def next_customer_key_route(
+            *args: Any, **kwargs: Any
+        ) -> ModelResolvedDelegationBackend | None:
+            found = next_registered_byok_route(*args, **kwargs)
+            return found if found is None or is_selected(found) else None
+
+        def next_chosen_model_route(
+            *args: Any, **kwargs: Any
+        ) -> ModelResolvedDelegationBackend | None:
+            found = next_chosen_model_byok_route(*args, **kwargs)
+            return found if found is None or is_selected(found) else None
+
         def next_local_rung(
             failed: ModelResolvedDelegationBackend,
         ) -> ModelResolvedDelegationBackend | None:
@@ -2517,7 +2602,7 @@ class LocalDelegationDispatchPort:
             if local_next is not None:
                 return local_next
             if _is_customer_byok_route(skipped) and model is None:
-                chosen_next = next_chosen_model_byok_route(
+                chosen_next = next_chosen_model_route(
                     skipped,
                     tried_models=frozenset(tried_byok_models),
                     quota_state=self._quota_snapshot(quota_observations),
@@ -2526,7 +2611,7 @@ class LocalDelegationDispatchPort:
                     return chosen_next
             skipped_tier = _routing_tier_name(skipped)
             quota = self._quota_snapshot(quota_observations)
-            sibling = self._resolve_sibling_backend(
+            sibling = resolve_sibling_backend(
                 current_tier=skipped_tier,
                 task_type=task_type,
                 excluded_backend_refs=frozenset(excluded_backend_refs),
@@ -2536,7 +2621,7 @@ class LocalDelegationDispatchPort:
             if sibling is not None:
                 return sibling
             excluded_tiers.add(skipped_tier)
-            next_backend = self._resolve_next_backend(
+            next_backend = resolve_next_backend(
                 current_tier=skipped_tier,
                 task_type=task_type,
                 excluded_tiers=frozenset(excluded_tiers),
@@ -2553,7 +2638,7 @@ class LocalDelegationDispatchPort:
             ):
                 # The same next-key fallback a failed attempt takes when no
                 # declared house rung can offer the customer's next provider.
-                return next_registered_byok_route(
+                return next_customer_key_route(
                     skipped,
                     tried_backend_ids=frozenset(excluded_backend_refs),
                     quota_state=quota,
@@ -2816,7 +2901,7 @@ class LocalDelegationDispatchPort:
                 excluded_backend_refs.add(backend.backend_id)
                 over_budget_next: ModelResolvedDelegationBackend | None = None
                 if pinned_backend_id is None and escalation_count < max_escalations:
-                    over_budget_next = self._resolve_next_backend(
+                    over_budget_next = resolve_next_backend(
                         current_tier=current_tier,
                         task_type=task_type,
                         excluded_tiers=frozenset(excluded_tiers),
@@ -2935,7 +3020,7 @@ class LocalDelegationDispatchPort:
                     excluded_backend_refs.add(backend.backend_id)
                     skip_next: ModelResolvedDelegationBackend | None = None
                     if pinned_backend_id is None and escalation_count < max_escalations:
-                        skip_next = self._resolve_next_backend(
+                        skip_next = resolve_next_backend(
                             current_tier=current_tier,
                             task_type=task_type,
                             excluded_tiers=frozenset(excluded_tiers),
@@ -3159,7 +3244,7 @@ class LocalDelegationDispatchPort:
                 tried_byok_models.add((backend.backend_id, backend.model_id))
                 next_chosen_model: ModelResolvedDelegationBackend | None = None
                 if customer_route and may_move_on and model is None:
-                    next_chosen_model = next_chosen_model_byok_route(
+                    next_chosen_model = next_chosen_model_route(
                         backend,
                         tried_models=frozenset(tried_byok_models),
                         quota_state=self._quota_snapshot(quota_observations),
@@ -3174,7 +3259,7 @@ class LocalDelegationDispatchPort:
                 # tier's GLM rung sat untried.
                 transport_sibling: ModelResolvedDelegationBackend | None = None
                 if may_move_on and next_chosen_model is None:
-                    transport_sibling = self._resolve_sibling_backend(
+                    transport_sibling = resolve_sibling_backend(
                         current_tier=current_tier,
                         task_type=task_type,
                         excluded_backend_refs=frozenset(excluded_backend_refs),
@@ -3201,7 +3286,7 @@ class LocalDelegationDispatchPort:
                     ).kind
                     is EnumTransitionKind.MOVE
                 ):
-                    escalated_backend = self._resolve_next_backend(
+                    escalated_backend = resolve_next_backend(
                         current_tier=current_tier,
                         task_type=task_type,
                         excluded_tiers=frozenset(excluded_tiers),
@@ -3223,7 +3308,7 @@ class LocalDelegationDispatchPort:
                     and escalated_backend is None
                     and next_chosen_model is None
                 ):
-                    next_customer_key = next_registered_byok_route(
+                    next_customer_key = next_customer_key_route(
                         backend,
                         tried_backend_ids=frozenset(excluded_backend_refs),
                         quota_state=self._quota_snapshot(quota_observations),
@@ -3820,7 +3905,7 @@ class LocalDelegationDispatchPort:
                 shrink_ports = _LocalShrinkPorts(
                     run_attempt=self._run_single_attempt,
                     is_accepted=self._is_quality_accepted,
-                    next_backend=self._resolve_next_backend,
+                    next_backend=resolve_next_backend,
                     evaluate_gate=self._evaluate_quality_gate,
                     caps=shrink_caps,
                     backend=backend,
@@ -4145,7 +4230,7 @@ class LocalDelegationDispatchPort:
                 and not no_escalation
                 and _is_customer_byok_route(backend)
             ):
-                next_chosen_model_after_gate = next_chosen_model_byok_route(
+                next_chosen_model_after_gate = next_chosen_model_route(
                     backend,
                     tried_models=frozenset(tried_byok_models),
                     quota_state=self._quota_snapshot(quota_observations),
@@ -4168,7 +4253,7 @@ class LocalDelegationDispatchPort:
             gate_sibling = (
                 None
                 if ladder_stopped_by_veto or pinned_backend_id is not None
-                else self._resolve_sibling_backend(
+                else resolve_sibling_backend(
                     current_tier=current_tier,
                     task_type=task_type,
                     excluded_backend_refs=frozenset(excluded_backend_refs),
@@ -4237,7 +4322,7 @@ class LocalDelegationDispatchPort:
             elif climb.cause is EnumEscalationCause.ESCALATION_LIMIT:
                 ladder_stop_reasons.append(_MAX_ESCALATION_ATTEMPTS_REACHED_REASON)
             elif pinned_backend_id is None:
-                next_backend = self._resolve_next_backend(
+                next_backend = resolve_next_backend(
                     current_tier=current_tier,
                     task_type=task_type,
                     excluded_tiers=frozenset(excluded_tiers),
@@ -4258,7 +4343,7 @@ class LocalDelegationDispatchPort:
                 and _is_customer_byok_route(backend)
                 and current_tier != registered_byok_tier_name()
             ):
-                next_backend = next_registered_byok_route(
+                next_backend = next_customer_key_route(
                     backend,
                     tried_backend_ids=frozenset(excluded_backend_refs),
                     quota_state=self._quota_snapshot(quota_observations),

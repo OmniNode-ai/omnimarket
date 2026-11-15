@@ -11,22 +11,48 @@ node_version:
   minor: 0
   patch: 0
 description: >
-  Answer one delegated Claude Code subagent task. omniclaude's PreToolUse delegation hook classifies an
-  Agent or Task call and hands a delegatable one here, in process. The effect runs onex delegate with the
-  task class the classifier's intent maps to, within the request's time limit, and returns the answer, the
-  model and the run id. Every other outcome (no onex on PATH, a run that failed, timed out or gave no
-  answer, the ONEX gateway already routing the session) is returned so the hook passes the task through to
-  Claude Code: a subagent is never blocked without an answer.
+  Answer one delegated Claude Code prompt or subagent task. omniclaude's subagent hook
+  (onex_delegate_subagents.sh, PreToolUse Agent/Task) classifies an Agent/Task call and hands a
+  delegatable one here, in process. The effect runs onex delegate with the task class the classifier's
+  intent maps to, the subagent rules and the decline token, within the request's time limit, and returns
+  the answer, the model and the run id. The rules tell the model it cannot read files, run commands or use
+  tools, so a task that needs them is declined and the real subagent runs. Every other outcome (no onex on PATH, a run that failed, timed out or gave no
+  answer) is returned so the hook passes the task through to
+  Claude Code: a subagent is never blocked without an answer. When the request carries a decline token and
+  the model's reply declares it, the outcome is declined, even if onex delegate's quality gates vetoed
+  that short reply; the token opening the reply counts in any case or Markdown with a colon, dash or bracket
+  after it. Accepted answers and declines are reused for identical tasks within a session turn; every new
+  prompt invalidates the previous turn's answers. The prompt_delegate operation (OMN-23413 AC33) takes
+  every prompt omniclaude's prompt hook (onex_delegate_prompts.sh, UserPromptSubmit) submits: slash
+  commands, prompts starting with @claude, sensitive prompts and prompts with a pasted image go to Claude; any other prompt is delegated with the recent conversation (sent only when the caller's sensitivity check,
+  run on every turn the excerpt touches, passes it; without a check it is never sent), its own
+  rules, criteria, token cap, 90 s limit and decline token. It returns the hook's whole output: a block
+  carrying an accepted answer, so Claude Code makes no model call, or, when the prompt passes to Claude,
+  the delegated exchanges Claude has not yet seen, once.
 handler:
   module: omnimarket.nodes.node_hook_delegate_effect.handlers.handler_hook_delegate
   class: HandlerHookDelegate
   input_model: omnimarket.nodes.node_hook_delegate_effect.models.model_hook_delegate.ModelHookDelegateRequest
   output_model: omnimarket.nodes.node_hook_delegate_effect.models.model_hook_delegate.ModelHookDelegateResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_hook_delegate_effect.handlers.handler_hook_delegate:HandlerHookDelegate
+  handlers:
+  - operation: hook_delegate
+    handler:
+      name: HandlerHookDelegate
+      module: omnimarket.nodes.node_hook_delegate_effect.handlers.handler_hook_delegate
+  - operation: prompt_delegate
+    input_model: omnimarket.nodes.node_hook_delegate_effect.models.model_prompt_delegate.ModelPromptDelegateRequest
+    output_model: omnimarket.nodes.node_hook_delegate_effect.models.model_prompt_delegate.ModelPromptDelegateResult
+    handler:
+      name: HandlerPromptDelegate
+      module: omnimarket.nodes.node_hook_delegate_effect.handlers.handler_prompt_delegate
 event_bus:
   subscribe_topics: []
   publish_topics: []
 runtime_dispatch:
-  external_trigger: Direct Python invocation by omniclaude's PreToolUse delegation hook runner.
+  external_trigger: Direct Python invocation by omniclaude's UserPromptSubmit and PreToolUse delegation hook runner.
 dependency_ownership:
 - cli
 protocol_dependencies:
@@ -44,6 +70,7 @@ descriptor:
   idempotent: false
   side_effects:
   - process-run
+  - file-write
   timeout_ms: 240000
   runtime_profiles: []
 metadata:

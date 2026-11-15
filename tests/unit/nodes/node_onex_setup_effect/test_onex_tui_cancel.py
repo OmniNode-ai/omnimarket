@@ -56,7 +56,7 @@ class _SlowRunner:
 
 
 async def _status() -> ModelTuiStatus:
-    return ModelTuiStatus(workspace="~/ws", model="slow-27b", gateway=False)
+    return ModelTuiStatus(model="slow-27b", delegation="off")
 
 
 def _status_text(app: OnexTui) -> str:
@@ -82,8 +82,8 @@ async def test_a_running_task_shows_progress_and_the_key_cancels_it(key: str) ->
         await _ask(pilot, "hi")
         await pilot.pause(1.2)
         assert _commands(runner) == [("delegate", "hi", "--json")]
-        assert "esc cancels" in _status_text(app)
-        assert "working" in _status_text(app)
+        # The live line says it (OMN-23413); the status bar no longer repeats it.
+        assert "esc to cancel" in str(app.query_one("#activity").render())
         await pilot.press(key)
         await pilot.pause()
         assert runner.cancelled == 1

@@ -80,7 +80,7 @@ def invoke(tmp_path: Path, url: str, answer: str):
             "--component",
             "delegation",
             "--provider",
-            "ollama",
+            "local",
             "--url",
             url,
         ],
@@ -116,7 +116,7 @@ def test_picker_excludes_404_orders_throttle_and_preserves_user_order(
     assert "deprecated model" in result.stderr
     assert "gone-model" not in result.stdout
     assert result.stdout.index("ready-model") < result.stdout.index("busy-model")
-    assert "Models: ollama: busy-model, ready-model" in result.stdout
+    assert "Models: local: busy-model, ready-model" in result.stdout
     assert result.returncode != 0  # User declined the apply, after choosing.
     assert not (tmp_path / "workspace").exists()
     (tmp_path / "model-probe-evidence.json").write_text(
@@ -138,5 +138,5 @@ def test_all_throttled_remain_selectable_with_busy_notice(tmp_path: Path) -> Non
         result = invoke(tmp_path, url, "y\nsecond,first\nn\n")
     assert len(calls) == 2, result.stdout + result.stderr
     assert "all listed models are busy" in result.stdout.lower()
-    assert "Models: ollama: second, first" in result.stdout
+    assert "Models: local: second, first" in result.stdout
     assert not (tmp_path / "workspace").exists()

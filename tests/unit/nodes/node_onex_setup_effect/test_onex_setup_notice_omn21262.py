@@ -11,6 +11,7 @@ OMN-23207 model-step tests use.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -57,8 +58,10 @@ def test_notice_printed_before_any_step_unattended(
     assert result.exit_code == 0, result.output
     assert LADDER_NOTICE in result.output, "notice not printed unattended"
     notice_at = result.output.index(LADDER_NOTICE)
-    # OMN-23413 reports each step as "[success] <step>" (was "[done]").
-    assert notice_at < result.output.index("[success]"), "notice must come before steps"
+    # Through the local runtime (OMN-24455) each step reads "[done|unchanged] <step>:".
+    first_step = re.search(r"^\[(?:done|unchanged)\] ", result.output, re.MULTILINE)
+    assert first_step is not None, result.output
+    assert notice_at < first_step.start(), "notice must come before steps"
     assert notice_at < result.output.index("Receipt: "), (
         "notice must come before the receipt"
     )

@@ -28,7 +28,9 @@ def _snapshot(root: Path) -> dict[str, bytes]:
     }
 
 
-def test_ollama_verify_uses_the_same_engine_without_installing(tmp_path: Path) -> None:
+def test_local_model_verify_uses_the_same_engine_without_installing(
+    tmp_path: Path,
+) -> None:
     home, workspace = tmp_path / "home", tmp_path / "workspace"
     home.mkdir()
     workspace.mkdir()
@@ -46,7 +48,7 @@ def test_ollama_verify_uses_the_same_engine_without_installing(tmp_path: Path) -
             "--component",
             "delegation",
             "--provider",
-            "ollama",
+            "local",
             "--model",
             "user-managed-model:custom",
             "--url",

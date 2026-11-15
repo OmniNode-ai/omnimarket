@@ -162,34 +162,60 @@ class ModelTuiModelTable(BaseModel):
     help: dict[str, str]
 
 
-class ModelTuiDelegationMode(BaseModel):
-    """One way to delegate Claude Code work, and the onex commands that switch it."""
+class ModelTuiDelegationHook(BaseModel):
+    """One delegation hook as /delegation shows it (OMN-23413)."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    id: str = Field(min_length=1)
+    #: Its evidence key in `onex delegation status --json` (claude-hooks step).
+    key: Literal["prompt_hook", "subagent_hook"]
+    #: The switch's own label (operator 2026-11-15: one switch per hook).
     label: str
-    detail: str
-    needs_gateway_model: bool
-    enable: tuple[tuple[str, ...], ...] = Field(min_length=1)
-    disable: tuple[tuple[str, ...], ...] = Field(min_length=1)
+    name: str
+    what: str
+    #: Its key in status's "switches" (~/.onex/delegation.json), and the
+    #: `onex delegation on` flag that pauses it (operator 2026-11-15).
+    switch: Literal["prompts", "subagents"]
+    pause_flag: str = Field(pattern=r"^--no-[a-z]+$")
 
 
 class ModelTuiDelegation(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     title: str
-    switch_label: str
     table_title: str
-    modes: tuple[ModelTuiDelegationMode, ...] = Field(min_length=1)
+    enable: tuple[tuple[str, ...], ...] = Field(min_length=1)
+    disable: tuple[tuple[str, ...], ...] = Field(min_length=1)
     switched_on: str
+    switched_on_prompts: str
+    switched_on_subagents: str
     switched_off: str
     not_switched: str
     nothing_ticked: str
-    connect: tuple[str, ...] = Field(min_length=1)
     no_models: str
-    no_gateway_model: str
-    gateway_marker: str
+    glyph_on: str = Field(min_length=1)
+    glyph_off: str = Field(min_length=1)
+    state_on: str
+    state_off: str
+    state_pending: str
+    #: A state not read yet, or whose read failed: never drawn as OFF.
+    glyph_unknown: str = Field(min_length=1)
+    state_reading: str
+    state_unread: str
+    hooks_title: str
+    hooks: tuple[ModelTuiDelegationHook, ...] = Field(min_length=2, max_length=2)
+    hook_installed: str
+    hook_missing: str
+    hook_unknown: str
+    hook_unread: str
+    hook_paused: str
+    #: What an untouched Save says when the state was not read (it sends nothing).
+    save_reading: str
+    save_unread: str
+    save_just_read: str
+    #: OMN-23413: setup's read-only check of the claude-plugin step, run when the
+    #: tab opens; its evidence.claude_code says installed, signed out or missing.
+    claude_check: tuple[str, ...] = Field(min_length=1)
 
 
 class ModelTuiDashboard(BaseModel):
@@ -209,6 +235,21 @@ class ModelTuiDashboard(BaseModel):
     opened: str
     stopped: str
     failed: str
+
+
+class ModelTuiActivity(BaseModel):
+    """The live line while a task runs, as coding agents' CLIs show (OMN-23413)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: Spinner frames, shown in turn every ``frame_seconds``.
+    frames: tuple[str, ...] = Field(min_length=2)
+    frame_seconds: float = Field(gt=0)
+    #: Words for what is happening, shown in turn every ``verb_seconds``.
+    verbs: tuple[str, ...] = Field(min_length=1)
+    verb_seconds: float = Field(gt=0)
+    #: ``{frame}``, ``{verb}`` and ``{seconds}`` are filled in.
+    line: str = Field(min_length=1)
 
 
 class ModelTuiTabSpec(BaseModel):
@@ -232,6 +273,7 @@ class ModelTuiDesign(BaseModel):
     model_table: ModelTuiModelTable
     delegation: ModelTuiDelegation
     dashboard: ModelTuiDashboard
+    activity: ModelTuiActivity
     tabs: tuple[ModelTuiTabSpec, ...] = Field(min_length=1)
     #: The model screens' sentences, by name; ``{name}`` parts are filled in.
     words: dict[str, str]
@@ -246,6 +288,9 @@ class ModelTuiDesign(BaseModel):
     #: A setup read this recent, and not shown yet, opens a tab as it is.
     fresh_seconds: float = Field(gt=0)
     min_key_length: int = Field(ge=1)
+    #: /config names the models set up while that line fits in this many
+    #: characters; past it, a count per provider (OMN-23413).
+    basket_names_max_chars: int = Field(ge=40)
 
     @model_validator(mode="after")
     def _draws_correctly(self) -> ModelTuiDesign:

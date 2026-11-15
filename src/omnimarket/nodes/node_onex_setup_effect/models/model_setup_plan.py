@@ -9,7 +9,6 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from .model_setup_gateway import ModelSetupGatewaySelection
 from .model_setup_local_stack import ModelSetupLocalStackSelection
 from .model_setup_provider import ModelSetupProvider
 
@@ -25,7 +24,6 @@ class ModelSetupPlan(BaseModel):
     providers: tuple[ModelSetupProvider, ...] = ()
     developer: bool = False
     set_aside: bool = Field(default=False, exclude=True)
-    gateway: ModelSetupGatewaySelection | None = None
     local_stack: ModelSetupLocalStackSelection | None = None
     completion_name: str | None = Field(default=None, max_length=100)
 

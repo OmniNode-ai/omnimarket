@@ -113,12 +113,12 @@ def test_old_database_listing_is_read_only(tmp_path: Path) -> None:
     assert (db.read_bytes(), db.stat().st_mtime_ns, db.stat().st_mode) == before
 
 
-def test_ollama_help_requires_user_managed_runtime() -> None:
-    from omnimarket.handlers.handler_model_keys import OLLAMA_HOW
+def test_local_model_help_requires_user_managed_runtime() -> None:
+    from omnimarket.handlers.handler_model_keys import LOCAL_HOW
 
-    assert "endpoint" in OLLAMA_HOW.lower()
-    assert "installed by onboarding" not in OLLAMA_HOW
-    assert "downloads a model" not in OLLAMA_HOW
+    assert "endpoint" in LOCAL_HOW.lower()
+    assert "installed by onboarding" not in LOCAL_HOW
+    assert "downloads a model" not in LOCAL_HOW
 
 
 def test_secret_read_preserves_old_schema_and_file_metadata(tmp_path: Path) -> None:

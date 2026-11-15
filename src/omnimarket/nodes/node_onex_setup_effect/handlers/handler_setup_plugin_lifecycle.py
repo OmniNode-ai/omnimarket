@@ -172,8 +172,8 @@ def start_dashboard(onex_home: Path) -> None:
     HandlerSetupDashboard(onex_home=onex_home).apply(plan)
 
 
-def remove_gateway_hooks(onex_home: Path) -> None:
-    """Dispose legacy and auxiliary hooks through their existing settings owners."""
+def remove_claude_hooks(onex_home: Path) -> None:
+    """Dispose the delegation hooks through their existing settings owner."""
     from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_claude import (
         HandlerSetupClaude,
     )
@@ -182,7 +182,7 @@ def remove_gateway_hooks(onex_home: Path) -> None:
     HandlerSetupClaude(name="claude-hooks").remove_hooks()
 
 
-def install_gateway_hooks(onex_home: Path) -> None:
+def install_claude_hooks(onex_home: Path) -> None:
     from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_claude import (
         HandlerSetupClaude,
     )
@@ -193,7 +193,12 @@ def install_gateway_hooks(onex_home: Path) -> None:
     plan = HandlerSetupWorkflow.saved_plan(onex_home)
     if plan is None:
         raise ValueError("Run onex setup to select Claude configuration first")
-    HandlerSetupClaude(name="claude-hooks").apply(plan)
+    refused = HandlerSetupClaude(name="claude-hooks").apply(plan)
+    if refused is not None and refused.status != "success":
+        # The policy is saved only after this returns, so nothing installed is a failure.
+        raise ValueError(
+            refused.fix or "The Claude Code delegation hooks were not installed"
+        )
 
 
 def _switch_claude_plugin(enabled: bool) -> None:

@@ -75,13 +75,15 @@ class HandlerSetupCommand:
             if any(secret in value for secret in self._secrets):
                 environment.pop(name)
         environment.update(request.environment)
+        hidden = request.stdin.get_secret_value() if request.stdin is not None else None
         try:
             completed = subprocess.run(
                 request.argv,
                 cwd=request.cwd,
-                input=request.stdin.get_secret_value()
-                if request.stdin is not None
-                else None,
+                input=hidden,
+                # Output is captured, so a prompt on the user's terminal would wait
+                # unseen until the timeout; a command with no hidden input reads nothing.
+                stdin=subprocess.DEVNULL if hidden is None else None,
                 text=True,
                 capture_output=True,
                 check=False,

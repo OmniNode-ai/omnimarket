@@ -30,6 +30,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Literal, cast
 
+import click
 from pydantic import SecretStr, ValidationError
 
 from omnimarket.handlers import openai_compatible_endpoint as endpoints
@@ -76,6 +77,9 @@ from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_result im
     ModelModelStatus,
     ModelModelTestResult,
 )
+from omnimarket.nodes.node_onex_setup_effect.models.model_setup_provider_traits import (
+    setup_provider_traits,
+)
 from omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_tenant_credentials_store import (
     apply_credential_registered,
     apply_credential_revoked,
@@ -105,33 +109,56 @@ class LastUsableModelRefusedError(ModelKeyRefusedError):
     """Removing this provider would leave delegation no usable model (OMN-20816)."""
 
 
-MODEL_LABELS: dict[str, str] = {
-    "gemini": "Gemini",
-    "openrouter": "OpenRouter",
-    "openai": "OpenAI",
-    "reflection": "Reflection",  # OMN-23413; fits the 11-wide list column
-    "anthropic": "Anthropic",
-    "glm": "GLM",
-    "ollama": "Ollama",
-    "local": "Local URL",
-    "openai_compatible": "OpenAI-compatible",  # OMN-21263: any endpoint, by URL
-}
-OLLAMA_HOW = (
-    "Run Ollama yourself, then connect its endpoint: onex setup --provider ollama --url URL. "
-    "ONEX never installs Ollama or downloads models."
-)
-LOCAL_HOW = (
-    "Declare a model server on an OpenAI-compatible URL (LM Studio, llama.cpp, "
-    "vLLM, MLX) with: onex models add local --url <base url> --model <name>"
+#: OMN-23413: the order every surface lists providers in: the TUI's /config
+#: picker first, then the ones only the CLI offers. Every model server the
+#: developer runs is one Local Model, named by its endpoint URL.
+_PICKER_ORDER = [p.provider for p in setup_provider_traits().picker_providers()]
+LISTED_PROVIDERS: tuple[ModelProvider, ...] = tuple(
+    sorted(
+        PROVIDERS,
+        key=lambda p: (
+            _PICKER_ORDER.index(p) if p in _PICKER_ORDER else len(_PICKER_ORDER)
+        ),
+    )
 )
 
+#: The CLI's own name for a provider the TUI's /config does not offer.
+_CLI_ONLY_LABELS: dict[str, str] = {
+    "anthropic": "Anthropic",
+    "glm": "GLM",
+    "openai_compatible": "OpenAI-compatible",  # OMN-21263: any endpoint, by URL
+}
+#: One name per provider on every surface (OMN-23413): the TUI's /config picker
+#: names a provider, and the CLI says the same.
+MODEL_LABELS: dict[str, str] = {
+    **_CLI_ONLY_LABELS,
+    **{p.provider: p.label for p in setup_provider_traits().picker_providers()},
+}
+#: The provider column's width in text output: the longest name.
+LABEL_WIDTH = max(len(label) for label in MODEL_LABELS.values())
+LOCAL_HOW = (
+    "A Local Model is any model server you run that speaks the OpenAI API. Add it "
+    "by its endpoint URL: onex models add local --url <endpoint url> --model <name> "
+    "(add --key when the server needs one). "
+    "ONEX never installs a server or downloads models."
+)
+
+
+class ModelProviderChoice(click.Choice):  # type: ignore[type-arg]
+    """The PROVIDER argument of ``onex models``: the listed providers, one name
+    each, the same set and names the TUI's /config uses (OMN-23413)."""
+
+    def __init__(self) -> None:
+        super().__init__(LISTED_PROVIDERS, case_sensitive=False)
+
+
 #: The providers the dashboard's Credentials page lists (OMN-20816 decision (b)):
-#: the ticket's four. Anthropic and a local URL are managed in the terminal.
+#: the ticket's keyed three. Anthropic and a Local Model are managed in the
+#: terminal.
 DASHBOARD_PROVIDERS: tuple[ModelProvider, ...] = (
     "gemini",
     "openrouter",
     "openai",
-    "ollama",
 )
 #: The providers whose key ``remove_key`` deletes.
 KEYED_PROVIDERS: tuple[ModelProvider, ...] = (
@@ -800,7 +827,7 @@ def refuse_last_usable(provider: str) -> None:
 def remove_key(provider: str, echo: Echo = _quiet) -> None:
     """Delete ``provider``'s stored key, unless it is the last usable model.
 
-    Keys only: Ollama's routes and a local URL are removed in the terminal, as
+    Keys only: a Local Model is removed in the terminal, as
     before, and the guard does not cover them.
     """
     handler = model_handler()
@@ -819,14 +846,16 @@ def remove_key(provider: str, echo: Echo = _quiet) -> None:
 __all__ = [
     "DASHBOARD_PROVIDERS",
     "KEYED_PROVIDERS",
+    "LABEL_WIDTH",
+    "LISTED_PROVIDERS",
     "LOCAL_HOW",
     "MODEL_LABELS",
-    "OLLAMA_HOW",
     "PENDING_CREDENTIAL_EVENTS_NAME",
     "AskModel",
     "Echo",
     "LastUsableModelRefusedError",
     "ModelKeyRefusedError",
+    "ModelProviderChoice",
     "add_key",
     "check_chosen_model",
     "delete_key",

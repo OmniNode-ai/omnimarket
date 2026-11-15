@@ -99,24 +99,11 @@ plugins:
     version: 1.0.0
     recommended: true
     lifecycle:
-      enable: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_plugin_lifecycle:install_gateway_hooks
-      disable: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_plugin_lifecycle:remove_gateway_hooks
+      enable: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_plugin_lifecycle:install_claude_hooks
+      disable: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_plugin_lifecycle:remove_claude_hooks
     components: [claude-hooks]
     requires: [claude-plugin]
     steps:
       - name: claude-hooks
         factory: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_claude:HandlerSetupClaude
         options: {name: claude-hooks}
-  - id: claude-gateway
-    api_version: 1
-    version: 1.0.0
-    components: [claude-gateway]
-    requires: [client]
-    lifecycle:
-      enable: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_gateway:start_gateway
-      disable: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_gateway:stop_gateway
-      timeout_seconds: 60
-    steps:
-      - name: claude-gateway
-        factory: omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_gateway:HandlerSetupGateway
-        context: [onex_home]

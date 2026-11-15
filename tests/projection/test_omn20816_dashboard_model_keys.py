@@ -87,7 +87,8 @@ _OR_MODEL_2 = "anthropic/claude-sonnet-x"
 _OAI_MODEL = "gpt-5-nano"
 _ANT_MODEL = "claude-haiku-5-5"
 _LISTED = [_OR_MODEL, _OR_MODEL_2, _OAI_MODEL, _ANT_MODEL]
-_PAGE_PROVIDERS = ["gemini", "openrouter", "openai", "ollama"]
+# OMN-23413: Ollama is no provider of its own; a Local Model is managed in the terminal.
+_PAGE_PROVIDERS = ["gemini", "openrouter", "openai"]
 
 
 class _Delegations:

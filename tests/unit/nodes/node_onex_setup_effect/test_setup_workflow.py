@@ -370,3 +370,46 @@ def test_no_empty_or_ambiguous_workflow(tmp_path: Path) -> None:
         with pytest.raises(ValueError, match="Setup requires"):
             HandlerSetupWorkflow(onex_home=tmp_path / "onex", steps=steps)
     assert not (tmp_path / "onex").exists()
+
+
+def test_a_refusal_shows_its_own_reason_and_other_errors_stay_generic(
+    tmp_path: Path,
+) -> None:
+    """OMN-23413, seen 2026-11-13 in /delegation: the workspace step refused the
+    operator's work folder and the TUI said only "Check the component". A step's
+    SetupStepRefusedError is shown; any other exception stays generic (its text
+    may carry secrets, see SECRET_SENTINEL_71 above)."""
+    from omnimarket.nodes.node_onex_setup_effect.protocols.protocol_setup_step import (
+        SetupStepRefusedError,
+    )
+
+    class Refusing(MarkerStep):
+        def apply(self, plan: ModelSetupPlan) -> None:
+            raise SetupStepRefusedError("Use an empty folder for the workspace.")
+
+    step = Refusing("workspace", tmp_path / "effects")
+    result = HandlerSetupWorkflow(onex_home=tmp_path / "onex", steps=(step,)).handle(
+        plan_at(tmp_path)
+    )
+    assert result.observations[-1].status == "failure"
+    assert result.observations[-1].fix == "Use an empty folder for the workspace."
+
+
+def test_a_folder_with_other_files_is_refused_by_name(tmp_path: Path) -> None:
+    """The real workspace step names the folder and writes nothing into it."""
+    from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_environment import (
+        HandlerSetupEnvironment,
+    )
+    from omnimarket.nodes.node_onex_setup_effect.protocols.protocol_setup_step import (
+        SetupStepRefusedError,
+    )
+
+    folder = tmp_path / "work root"
+    folder.mkdir()
+    (folder / "notes.txt").write_text("mine")
+    step = HandlerSetupEnvironment(name="workspace", onex_home=tmp_path / "onex")
+    with pytest.raises(SetupStepRefusedError) as refused:
+        step.apply(ModelSetupPlan(workspace=folder))
+    assert str(folder) in str(refused.value)
+    assert "already holds other files" in str(refused.value)
+    assert sorted(p.name for p in folder.iterdir()) == ["notes.txt"]

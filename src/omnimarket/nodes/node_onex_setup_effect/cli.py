@@ -127,6 +127,30 @@ def _run_through_runtime(request: ModelOnexSetupRequest) -> ModelOnexSetupResult
     return ModelOnexSetupResult.model_validate(produced)
 
 
+def _setup_through_runtime(ctx: click.Context, request: ModelOnexSetupRequest) -> None:
+    """Run the setup command on the local runtime and report it; a failed step exits 1
+    with its fix and retry (OMN-24455)."""
+    result = _run_through_runtime(request)
+    _report(result)
+    if result.failure is None:
+        return
+    failure = result.failure
+    click.echo(f"onex setup: step '{failure.step}' failed: {failure.problem}", err=True)
+    click.echo(f"Fix: {failure.fix}", err=True)
+    click.echo(f"Retry: {failure.retry}", err=True)
+    if request.key is not None:
+        click.echo(
+            "The key was not kept in the command: give it again on stdin.", err=True
+        )
+    click.echo(
+        "Steps before this one are complete and are kept; the retry resumes here."
+        if result.steps
+        else "No step ran and nothing was written.",
+        err=True,
+    )
+    ctx.exit(1)
+
+
 def _report(result: ModelOnexSetupResult) -> None:
     for outcome in result.steps:
         status = "done" if outcome.changed else "unchanged"
@@ -242,7 +266,8 @@ def current_folder_workspace(cwd: Path, home: Path) -> Path | None:
 @click.option(
     "--provider",
     default=None,
-    help="Choose a registered provider or an externally managed local/Ollama endpoint.",
+    help="Choose a registered provider, or local: a Local Model, any model server "
+    "you run, by its endpoint --url.",
 )
 @click.option("--model", default=None, help="The model the key, or the server, runs.")
 @click.option(
@@ -257,20 +282,6 @@ def current_folder_workspace(cwd: Path, home: Path) -> Path | None:
     help="Explicitly declare Anthropic Messages support for this named endpoint.",
 )
 @click.option(
-    "--gateway-connection",
-    default=None,
-    help="Named connection with explicitly declared native Messages support.",
-)
-@click.option(
-    "--gateway-model", default=None, help="Model for Claude gateway requests."
-)
-@click.option(
-    "--gateway-port",
-    type=click.IntRange(0, 65535),
-    default=None,
-    help="Loopback gateway port; 0 allocates an available port.",
-)
-@click.option(
     "--compose-file",
     type=click.Path(path_type=Path),
     help="Existing Compose file for optional local stack.",
@@ -283,13 +294,13 @@ def current_folder_workspace(cwd: Path, home: Path) -> Path | None:
 @click.option(
     "--url",
     default=None,
-    help="Base URL of an already running server; required for local, ollama and openai_compatible.",
+    help="Base URL of an already running server; required for local and openai_compatible.",
 )
 @click.option(
     "--endpoint-auth",
     type=click.Choice(["none", "api-key"]),
     default=None,
-    help="Ollama endpoint authentication (default: none); keys use hidden input or stdin.",
+    help="A Local Model server's authentication (default: none); keys use hidden input or stdin.",
 )
 @click.option(
     "--preflight-only",
@@ -356,9 +367,6 @@ def setup_command(
     endpoint_auth: str | None,
     connection_id: str | None,
     native_messages: bool | None,
-    gateway_connection: str | None,
-    gateway_model: str | None,
-    gateway_port: int | None,
     compose_file: Path | None,
     topology_file: Path | None,
     completion_name: str | None,
@@ -381,7 +389,7 @@ def setup_command(
         endpoint_auth is not None
         and provider not in setup_provider_traits().endpoint_auth
     ):
-        raise click.ClickException("--endpoint-auth is for --provider ollama.")
+        raise click.ClickException("--endpoint-auth is for --provider local.")
     if connection_id and provider and "," in provider:
         raise click.ClickException(
             "One named connection addresses one server. Use a plan for multiple connections."
@@ -471,16 +479,6 @@ def setup_command(
             components = tuple(
                 dict.fromkeys((*(components or ("delegation",)), "local-stack"))
             )
-        if gateway_connection or gateway_model or gateway_port is not None:
-            if not gateway_connection or not gateway_model:
-                raise click.ClickException(
-                    "Supply both --gateway-connection and --gateway-model."
-                )
-            components = tuple(
-                dict.fromkeys(
-                    (*(components or ("delegation", "dashboard")), "claude-gateway")
-                )
-            )
         if install_path == "docker":
             components = tuple(
                 dict.fromkeys((*(components or ("delegation",)), "docker"))
@@ -527,6 +525,36 @@ def setup_command(
                     credentials=prepared_credentials,
                     connection_id=connection_id,
                 )
+    if (
+        not interactive
+        and components == ("delegation",)
+        and plan_file is None
+        and action is None
+        and not json_output
+        and not developer
+        and install_path in (None, "local")
+        and endpoint_auth is None
+        and connection_id is None
+        and native_messages is None
+        and completion_name is None
+        and not set_aside
+    ):
+        # OMN-24455: the unattended delegation setup is the node's command on the
+        # local runtime, which records it; HandlerOnexSetup runs this same workflow.
+        _setup_through_runtime(
+            ctx,
+            ModelOnexSetupRequest(
+                workspace=workspace,
+                install_path=install_path,
+                onex_home=onex_home,
+                provider=provider.lower() if provider else None,
+                model=model,
+                url=url,
+                key=_read_key(provider, interactive),
+                unattended=True,
+            ),
+        )
+        return
     _workflow_cli(
         ctx,
         workspace=workspace,
@@ -545,9 +573,6 @@ def setup_command(
         prepared_credentials=prepared_credentials,
         connection_id=connection_id,
         native_messages=native_messages,
-        gateway_connection=gateway_connection,
-        gateway_model=gateway_model,
-        gateway_port=gateway_port,
         compose_file=compose_file,
         topology_file=topology_file,
         completion_name=completion_name,

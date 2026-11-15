@@ -8,9 +8,12 @@ from typing import cast
 
 import click
 
-from omnimarket.handlers.handler_model_keys import MODEL_LABELS, model_handler
+from omnimarket.handlers.handler_model_keys import (
+    MODEL_LABELS,
+    ModelProviderChoice,
+    model_handler,
+)
 from omnimarket.nodes.node_model_setup_effect.handlers.handler_model_setup import (
-    PROVIDERS,
     ModelSetupRefusedError,
 )
 from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_request import (
@@ -50,9 +53,7 @@ def models_text(row: ModelModelStatus) -> str:
 
 
 @click.command("first")
-@click.argument(
-    "provider", required=False, type=click.Choice(PROVIDERS, case_sensitive=False)
-)
+@click.argument("provider", required=False, type=ModelProviderChoice())
 @click.argument("model", required=False)
 @click.option(
     "--url",
