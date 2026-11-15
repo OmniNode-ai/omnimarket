@@ -11,7 +11,7 @@ contract_version: {major: 1, minor: 0, patch: 0}
 node_version: {major: 1, minor: 0, patch: 0}
 node_type: compute
 lifecycle: experimental
-runtime_profiles: [main]
+runtime_profiles: []
 
 description: >
   Decides what the installer on one host does with one typed install request. A request for another host is ignored; a
@@ -38,6 +38,7 @@ descriptor:
   node_archetype: compute
   purity: pure
   idempotent: true
+  runtime_profiles: []
   timeout_ms: 1000
 
 # The installer effect calls the handler in process; the node has no bus surface of its own.
@@ -45,6 +46,8 @@ event_bus:
   subscribe_topics: []
   publish_topics: []
 
+runtime_dispatch:
+  external_trigger: Direct Python invocation by the install request effect, with the request, the executing host, the clock and the host's blockers.
 metadata:
   ticket: OMN-19998
-  transport_type: inmemory
+  transport_type: local

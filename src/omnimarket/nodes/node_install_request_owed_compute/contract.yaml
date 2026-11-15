@@ -12,7 +12,7 @@ contract_version: {major: 1, minor: 0, patch: 0}
 node_version: {major: 1, minor: 0, patch: 0}
 node_type: compute
 lifecycle: experimental
-runtime_profiles: [main]
+runtime_profiles: []
 
 description: >
   A request with no verified result is owed. While it is inside its expiry its line reads `<unit> NOT RUNNING: owned by
@@ -40,12 +40,15 @@ descriptor:
   node_archetype: compute
   purity: pure
   idempotent: true
+  runtime_profiles: []
   timeout_ms: 1000
 
 event_bus:
   subscribe_topics: []
   publish_topics: []
 
+runtime_dispatch:
+  external_trigger: Direct Python invocation by the install request owed command, with every request, every result and the clock.
 metadata:
   ticket: OMN-19998
-  transport_type: inmemory
+  transport_type: local

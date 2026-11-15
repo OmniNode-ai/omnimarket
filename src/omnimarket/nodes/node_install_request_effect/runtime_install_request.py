@@ -58,7 +58,11 @@ from omnimarket.delegated_test_loop.lab_run_bus import (
     envelope_bytes_for,
     event_type_for,
 )
-from omnimarket.delegated_test_loop.lane_bus import LabRunBusError, open_lab_run_bus
+from omnimarket.delegated_test_loop.lane_bus import (
+    BusKind,
+    LabRunBusError,
+    open_lab_run_bus,
+)
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.models.install_request import (
     EnumInstallRequestAction,
@@ -411,7 +415,7 @@ _WORKSPACE_KW = next(
 
 def open_install_request_bus(
     *,
-    bus: str,
+    bus: BusKind,
     lane: str | None,
     kafka_bootstrap: str | None,
     workspace_root: Path | None = None,
@@ -421,7 +425,7 @@ def open_install_request_bus(
     A declared Kafka lane needs the workspace root that holds its lane declaration; an explicit broker address needs none.
     """
     return open_lab_run_bus(
-        bus=bus,  # type: ignore[arg-type]
+        bus=bus,
         lane=lane,
         kafka_bootstrap=kafka_bootstrap,
         **{_WORKSPACE_KW: workspace_root},

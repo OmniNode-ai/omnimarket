@@ -158,6 +158,13 @@ async def _wait_for(messages: list[dict[str, object]]) -> None:
         await asyncio.sleep(0.05)
 
 
+def test_the_declared_topics_are_the_contract_topics() -> None:
+    topics = load_install_request_topics()
+    assert topics.command == "onex.cmd.omnimarket.install-requested.v1"
+    assert topics.success == "onex.evt.omnimarket.install-request-completed.v1"
+    assert topics.failure == "onex.evt.omnimarket.install-request-failed.v1"
+
+
 async def test_a_published_request_is_served_and_its_result_comes_back(
     tmp_path: Path,
 ) -> None:
