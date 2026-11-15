@@ -59,6 +59,9 @@ from omnimarket.nodes.node_factory_floor_effect.models.model_factory_floor_runti
     ModelFactoryFloorOverlay,
     ModelLedgerProjectionWindow,
 )
+from omnimarket.nodes.node_factory_floor_effect.models.model_ledger_projection_window import (
+    ModelProjectionWindow,
+)
 from omnimarket.nodes.node_factory_floor_effect.phoenix_reader import (
     load_phoenix_traces,
 )
@@ -198,6 +201,11 @@ def _degraded_reading(
     return health.model_copy(update={"cause": cause})
 
 
+def _read_file_window(**kwargs: Any) -> ModelProjectionWindow:
+    """The window the ledger file read produced: the file read's rows, with no days or partial answers of its own to name."""
+    return ModelProjectionWindow(rows=read_ledger_window(**kwargs))
+
+
 FACTORY_FLOOR_STEP = "factory_floor"
 
 
@@ -222,8 +230,9 @@ class HandlerFactoryFloorEffect:
         window_days: int,
         now: datetime,
         kinds: frozenset[str],
-    ) -> tuple[ModelFloorLedgerRow, ...]:
-        """The window's rows from the work ledger projection, or a refusal: no reader bound is a refusal, never the file."""
+        deadline_seconds: int,
+    ) -> ModelProjectionWindow:
+        """The window the work ledger projection read produced, or a refusal: no reader bound is a refusal, never the file."""
         if self._ledger_projection_read is None:
             raise SourceRefusedError(
                 "the overlay names ledger_projection and no work ledger reader is bound: bind the reader or supply ledger_rows_file"
@@ -238,6 +247,7 @@ class HandlerFactoryFloorEffect:
             cache_ttl_seconds=projection.cache_ttl_seconds,
             read_workers=projection.read_workers,
             settle_seconds=projection.settle_seconds,
+            deadline_seconds=deadline_seconds,
         )
 
     def _read_merged_running(
@@ -393,10 +403,11 @@ class HandlerFactoryFloorEffect:
                 window_days=rt.ledger_window_days,
                 now=now,
                 kinds=kinds,
+                deadline_seconds=rt.ledger_timeout_seconds,
             )
         else:
             ledger_read = cloud_pool.submit(
-                read_ledger_window,
+                _read_file_window,
                 archive_cache=self._source_cache,
                 archive=overlay.ledger_archives if overlay is not None else None,
                 environ=os.environ,
@@ -466,7 +477,8 @@ class HandlerFactoryFloorEffect:
         )
         merged_running, merged_running_cause = self._read_merged_running(now)
         running_evidence, running_cause = self._read_running_evidence(now)
-        ledger = ledger_read.result()
+        ledger_window = ledger_read.result()
+        ledger = ledger_window.rows
         ledger_read_at = (
             _file_time(Path(request.ledger_rows_file))
             if request.ledger_rows_file
@@ -491,17 +503,30 @@ class HandlerFactoryFloorEffect:
                 read_at=watcher.last_tick,
                 count=len(watcher.prs),
             ),
-            source_health(
-                source="ledger",
-                now=now,
-                max_age_min=bars.ledger,
-                read_at=ledger_read_at,
-                # Unresolved evidence the archive rolls hold is part of the ledger: a ledger whose rolls could not be
-                # read is unread, so a stop kept only in a roll is never reported absent.
-                count=len(ledger) if ledger_unresolved is not None else None,
-                cause=f"archive rolls unread: {unresolved_cause}"
-                if unresolved_cause
-                else "",
+            _degraded_reading(
+                source_health(
+                    source="ledger",
+                    now=now,
+                    max_age_min=bars.ledger,
+                    read_at=ledger_read_at,
+                    # Unresolved evidence the archive rolls hold is part of the ledger: a ledger whose rolls could not be
+                    # read is unread, so a stop kept only in a roll is never reported absent. A day the projection read
+                    # never read (the deadline was spent on other days) is unread too, named by the window's cause.
+                    count=(
+                        len(ledger)
+                        if ledger_unresolved is not None
+                        and not ledger_window.unread_days
+                        else None
+                    ),
+                    cause=(
+                        f"archive rolls unread: {unresolved_cause}"
+                        if unresolved_cause
+                        else ledger_window.cause()
+                        if ledger_window.unread_days
+                        else ""
+                    ),
+                ),
+                ledger_window.cause(),
             ),
             source_health(
                 source="plans_today",

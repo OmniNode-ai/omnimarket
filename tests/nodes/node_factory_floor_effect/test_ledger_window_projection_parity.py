@@ -17,6 +17,7 @@ import json
 import pathlib
 import re
 import subprocess
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
@@ -114,7 +115,8 @@ def test_parity_file_window_and_projection_window_give_the_same_rows() -> None:
         cache_ttl_seconds=900,
         read_workers=None,
         settle_seconds=3600,
-    )
+        deadline_seconds=600,
+    ).rows
     assert {row.kind for row in from_file} == {
         "CLAIM",
         "RULING",
@@ -279,3 +281,56 @@ def test_error_projection_named_but_no_reader_bound_is_refused(
         _run_step(world, files, monkeypatch)
     assert accesses == []
     assert calls == []
+
+
+def test_error_the_floor_step_names_the_unread_days_on_the_ledger_source_health(
+    world: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The read deadline the step passes is the contract's ledger_timeout_seconds; with it spent before the closed days start, the
+    ledger source reads unread and its cause names the days, so the board never shows a short window as read."""
+    files = _prepare(world, monkeypatch)
+    _name_projection(files)
+    _file_ledger_env(world, monkeypatch)
+    projection = _projection_handler()
+    deadlines: list[int] = []
+    ticks = iter([0.0])
+
+    def spent_clock() -> float:
+        return next(ticks, 10_000.0)
+
+    def real_with_spent_clock(**kwargs: Any) -> Any:
+        deadlines.append(kwargs["deadline_seconds"])
+        return read_ledger_window_from_projection(**kwargs, clock=spent_clock)
+
+    monkeypatch.setattr(
+        effect_module, "read_ledger_window_from_projection", real_with_spent_clock
+    )
+    _request, record = _run_step(
+        world, files, monkeypatch, projection_read=lambda: projection.handle
+    )
+    assert deadlines == [load_contract(CONTRACT).runtime.ledger_timeout_seconds]
+    ledger = next(
+        entry for entry in record["sources"]["health"] if entry["source"] == "ledger"
+    )
+    assert ledger["state"] == "unread", ledger
+    first_day = f"{NOW - timedelta(days=WINDOW_DAYS):%Y-%m-%d}"
+    assert "projection days unread" in ledger["cause"]
+    assert first_day in ledger["cause"]
+
+
+def test_golden_step_names_the_parity_the_projection_read_could_not_measure(
+    world: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A window read at parity unread stays read and says so in its cause."""
+    files = _prepare(world, monkeypatch)
+    _name_projection(files)
+    _file_ledger_env(world, monkeypatch)
+    projection = _projection_handler()
+    _request, record = _run_step(
+        world, files, monkeypatch, projection_read=lambda: projection.handle
+    )
+    ledger = next(
+        entry for entry in record["sources"]["health"] if entry["source"] == "ledger"
+    )
+    assert ledger["state"] == "read", ledger
+    assert "read parity unread" in ledger["cause"]
