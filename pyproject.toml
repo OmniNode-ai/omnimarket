@@ -714,6 +714,7 @@ node_external_deadman_check_compute = "omnimarket.nodes.node_external_deadman_ch
 node_extraction_fold_compute = "omnimarket.nodes.node_extraction_fold_compute"
 node_extraction_rung_harness_compute = "omnimarket.nodes.node_extraction_rung_harness_compute"
 node_extraction_verify_compute = "omnimarket.nodes.node_extraction_verify_compute"
+node_fable_review_gate_compute = "omnimarket.nodes.node_fable_review_gate_compute"
 node_factory_floor_compute = "omnimarket.nodes.node_factory_floor_compute"
 node_factory_floor_effect = "omnimarket.nodes.node_factory_floor_effect"
 node_factory_floor_publish_effect = "omnimarket.nodes.node_factory_floor_publish_effect"
