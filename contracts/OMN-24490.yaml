@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-24490
 title: Factory board reads the work log from the database copy, not from files
-summary: The factory floor step reads its 14-day ledger window as one rows read of the work ledger projection through the moved work ledger reader, opening no ledger file, no archive file and no reader subprocess; a refused or stale read is a named refusal, never an empty window and never a file read (ledger cutover wave 0).
+summary: The factory floor step reads its 14-day ledger window from the work ledger projection through the moved work ledger reader, one UTC day at a time (today first, then each closed day, within the step's ledger read deadline), opening no ledger file, no archive file and no reader subprocess; a closed day is kept in the cache only from a complete answer taken while the projection is current, a refused read is a named refusal, a day left unread when the deadline is spent is reported unread, and a day whose returned line count is below the rows the node matched is reported as a gap, never an empty window and never a file read (ledger cutover wave 0).
 is_seam_ticket: true
 interface_change: false
 interfaces_touched: []
@@ -12,7 +12,7 @@ requirements:
   - id: AC1
     statement: 'AC1: the factory floor step''s ledger window read, with the projection block in its overlay, returns the window''s rows from the work ledger projection and opens no ledger file, archive file or reader subprocess -- falsifier: pytest tests/nodes/node_factory_floor_effect/test_ledger_window_from_projection.py -q'
   - id: AC2
-    statement: 'AC2: a reader the work ledger reader does not move, an unreadable answer and a stale answer each end the read with a named refusal and never an empty window or a file read -- falsifier: pytest tests/nodes/node_factory_floor_effect/test_ledger_window_from_projection.py -k error -q'
+    statement: 'AC2: a reader the work ledger reader does not move, an unreadable answer and a stale answer for today each end the read with a named refusal and never an empty window or a file read; a closed day is stored in the cache only when its answer is complete and the projection holds a row stamped after the day ends, and a day left unread at the read deadline or short of the rows the node matched is named on the ledger source health -- falsifier: pytest tests/nodes/node_factory_floor_effect/test_ledger_window_from_projection.py -k error -q'
   - id: AC3
     statement: 'AC3: the projection window read and the file window read of the same ledger window give the same rows for the kinds the floor keeps whole -- falsifier: pytest tests/nodes/node_factory_floor_effect/test_ledger_window_projection_parity.py -q'
   - id: AC4
