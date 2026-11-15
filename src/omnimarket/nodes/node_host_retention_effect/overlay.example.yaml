@@ -146,7 +146,6 @@ hosts:
     docker_mount_guard: false
     lane_run_roots: [~/lab-run/runs]
     receipt_roots: [~/.local/state/omni/remote-lanes]
-    unit_roots: [~/Library/LaunchAgents]
     age_classes:
       - name: remote-lane-receipts
         kind: lane_results
