@@ -36,7 +36,7 @@ from omnimarket.nodes.node_lab_work_unit_effect.protocols.local_host_reader impo
     _search_path,
 )
 
-RUNTIMES: tuple[str, ...] = ("docker", "podman", "python3", "node", "uv", "kubectl")
+RUNTIMES: tuple[str, ...] = ("python3", "node", "uv", "kubectl", "podman", "docker")
 _VERSION_TIMEOUT_S = 10.0
 #: A reading is reused for this long: versions change when something is installed, and the announcer reads once per
 #: capacity beat (every ten seconds), which would spawn a dozen processes a beat for facts that move rarely.

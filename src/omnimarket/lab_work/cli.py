@@ -31,16 +31,13 @@ from typing import Any, cast
 
 import click
 
+import omnimarket.nodes.node_host_introspection_announce_effect.handlers.handler_announcing_lab_work_host as announcing
 from omnimarket.delegated_test_loop.lane_bus import (
     BusKind,
     LabRunBusError,
     open_lab_run_bus,
 )
 from omnimarket.lab_work.bus import DEFAULT_MAX_COMMAND_AGE_SECONDS, LabWorkCaller
-from omnimarket.nodes.node_host_introspection_announce_effect.handlers.handler_announcing_lab_work_host import (
-    AnnouncingLabWorkHost,
-    announce_options,
-)
 from omnimarket.nodes.node_lab_placement_compute.handlers import newest_per_host
 from omnimarket.nodes.node_lab_placement_compute.models import (
     DEFAULT_MAX_LOAD_PER_CORE,
@@ -102,7 +99,7 @@ def _hard_exit(code: int) -> None:
 
 
 async def serve_until_stopped(
-    host: AnnouncingLabWorkHost, stop: asyncio.Event, max_commands: int
+    host: announcing.AnnouncingLabWorkHost, stop: asyncio.Event, max_commands: int
 ) -> int:
     """Serve until told to stop; leave the process non-zero when the host's worker is stuck."""
     while not stop.is_set():
@@ -156,7 +153,7 @@ def lab_work_group(ctx: click.Context) -> None:
 @click.option(
     "--work-root", type=click.Path(file_okay=False, path_type=Path), default=None
 )
-@announce_options
+@announcing.announce_options
 def serve_command(
     omnibase_path: Path | None,
     bus: BusKind,
@@ -199,7 +196,7 @@ def serve_command(
             kafka_bootstrap=kafka_bootstrap,
             omni_home=omnibase_path,
         ) as opened:
-            host = AnnouncingLabWorkHost(
+            host = announcing.AnnouncingLabWorkHost(
                 opened,
                 work,
                 HandlerHostCapacityAdvertiseEffect(),
