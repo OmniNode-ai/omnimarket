@@ -18,7 +18,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from omnimarket.nodes.node_plan_first_slice_compute.models.model_plan_first_slice import (
+from omnimarket.events.enum_plan_first_slice_verdict import (
     EnumPlanFirstSliceVerdict,
 )
 

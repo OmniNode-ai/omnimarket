@@ -19,7 +19,7 @@ overlay.
 
 from __future__ import annotations
 
-from omnimarket.nodes.node_plan_first_slice_compute.models.model_plan_first_slice import (
+from omnimarket.events.enum_plan_first_slice_verdict import (
     EnumPlanFirstSliceVerdict,
 )
 from omnimarket.nodes.node_plan_review_ladder_compute.models.model_plan_review_ladder import (
