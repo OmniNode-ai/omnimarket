@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import threading
 from collections.abc import Coroutine
 from concurrent.futures import ThreadPoolExecutor
@@ -84,6 +85,8 @@ from omnimarket.projection.runner import (
     MessageMeta,
 )
 
+logger = logging.getLogger(__name__)
+
 ROWS_TABLE = "omninode_internal.work_ledger_rows"
 STATE_TABLE = "omninode_internal.work_ledger_state"
 CONFLICTS_TABLE = "omninode_internal.work_ledger_seq_conflicts"
@@ -114,6 +117,14 @@ _INSERT_SEQ_CONFLICT = f"""
     VALUES ($1, $2, $3, $4, $5, $6, $7)
     ON CONFLICT (row_id) DO NOTHING
 """
+
+# OMN-24634: the order of arrival on the ledger's single-partition topic is the order. A live row with no
+# sequence takes the next number after the ledger's tip, under the same advisory lock every writer holds.
+# A redelivery finds its own stored sequence first and keeps it: a stored sequence is never reassigned.
+_HELD_SEQ = f"SELECT ledger_seq FROM {ROWS_TABLE} WHERE row_id = $1"
+_NEXT_SEQ = (
+    f"SELECT COALESCE(MAX(ledger_seq), 0) + 1 FROM {ROWS_TABLE} WHERE ledger_id = $1"
+)
 
 _ADVISORY_LOCK = "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))"
 
@@ -199,13 +210,13 @@ _T = TypeVar("_T")
 
 
 class UnsequencedLiveRowError(PoisonEventError, WorkLedgerFoldError):
-    """A live dual-write source row arrived with no ledger_seq (OMN-23488).
+    """A live dual-write source row arrived with no ledger_seq and no declared way to order it (OMN-23488).
 
-    A row of a source listed in ``sequence_required_sources`` that carries no
-    ``ledger_seq`` is a write to a ledger file that is not the canonical one.
-    Refused before any database statement, so the runtime classifies it POISON
-    and routes it to the poison DLQ topic instead of projecting it. The backfill
-    source (ledger-emit) is not listed and still projects unsequenced.
+    A row of a source listed in ``sequence_required_sources`` is given its ledger_seq by the
+    projection when the source is also in ``sequence_assigned_sources`` (OMN-24634). A listed
+    source that is not assigned is refused before any database statement, so the runtime
+    classifies it POISON and routes it to the poison DLQ topic. The backfill source
+    (ledger-emit) is not listed and still projects unsequenced.
     """
 
 
@@ -280,6 +291,11 @@ class WorkLedgerProjectionWriter(BaseProjectionRunner):
             self._contract["work_ledger"]
         )
         self._dispatch_lock = threading.Lock()
+        #: OMN-24634: every live row that arrived with no ledger_seq is counted exactly once, as
+        #: sequenced here or as dead-lettered; rows_in == sequenced + dead_lettered.
+        self.unsequenced_live_rows_in = 0
+        self.unsequenced_live_rows_sequenced = 0
+        self.unsequenced_live_rows_dead_lettered = 0
 
     @property
     def poison_dlq_topics(self) -> list[str]:
@@ -315,7 +331,21 @@ class WorkLedgerProjectionWriter(BaseProjectionRunner):
         topic = request.topic_or(topics[0] if topics else "")
         meta = request.message_meta(topic)
         with self._dispatch_lock:
-            written = self._run(self._project_one_message(topic, request.payload, meta))
+            try:
+                written = self._run(
+                    self._project_one_message(topic, request.payload, meta)
+                )
+            except Exception as err:
+                # OMN-24634: the failure is logged here with its own type and message, as the top-level
+                # error, before the runtime classifies it.
+                logger.error(
+                    "work-ledger projection failed on %s: %s: %s",
+                    topic,
+                    type(err).__name__,
+                    err,
+                    exc_info=err,
+                )
+                raise
         # ``rows_upserted`` is the key the runtime's write-path guard reads.
         return {"rows_upserted": written}
 
@@ -332,9 +362,15 @@ class WorkLedgerProjectionWriter(BaseProjectionRunner):
 
     @staticmethod
     def _run(coro: Coroutine[Any, Any, _T]) -> _T:
+        # OMN-24634: the loop probe sits outside the except block. Running the coroutine inside
+        # ``except RuntimeError`` chained every projection failure to "no running event loop" as its
+        # context, which buried the real cause (UnsequencedLiveRowError) in the traceback.
         try:
             asyncio.get_running_loop()
+            running = True
         except RuntimeError:
+            running = False
+        if not running:
             return asyncio.run(coro)
         with ThreadPoolExecutor(max_workers=1) as pool:
             return pool.submit(asyncio.run, coro).result()
@@ -362,14 +398,19 @@ class WorkLedgerProjectionWriter(BaseProjectionRunner):
         if request.ledger_id != self._config.ledger_id:
             raise WorkLedgerFoldError("configured ledger_id mismatch")
         result = fold_row(request)
-        if (
+        needs_seq = (
             result.row.ledger_seq is None
             and result.row.source in self._config.sequence_required_sources
-        ):
-            raise UnsequencedLiveRowError(
-                f"unsequenced-live-row: source {result.row.source!r} requires a "
-                f"ledger_seq; row_id {result.row.row_id}"
-            )
+        )
+        if needs_seq:
+            self.unsequenced_live_rows_in += 1
+            if result.row.source not in self._config.sequence_assigned_sources:
+                # No declared way to order this source: counted, refused to the poison DLQ with its reason.
+                self.unsequenced_live_rows_dead_lettered += 1
+                raise UnsequencedLiveRowError(
+                    f"unsequenced-live-row: source {result.row.source!r} requires a "
+                    f"ledger_seq and is not in sequence_assigned_sources; row_id {result.row.row_id}"
+                )
         expected_id = str(work_ledger_event_id(result.row.ledger_id, result.row.row_id))
         if data.get("event_id") is not None and str(data["event_id"]) not in {
             expected_id,
@@ -382,6 +423,12 @@ class WorkLedgerProjectionWriter(BaseProjectionRunner):
         row = result.row
         async with self._db.pool.acquire() as conn, conn.transaction():
             await conn.execute(_ADVISORY_LOCK, f"work-ledger:{request.ledger_id}")
+            if needs_seq:
+                held = await conn.fetchval(_HELD_SEQ, row.row_id)
+                if held is None:
+                    held = await conn.fetchval(_NEXT_SEQ, row.ledger_id)
+                row = row.model_copy(update={"ledger_seq": int(held or 1)})
+                self.unsequenced_live_rows_sequenced += 1
             if row.ledger_seq is not None:
                 holder = await conn.fetchval(
                     _SEQ_HOLDER, row.ledger_id, row.ledger_seq, row.row_id

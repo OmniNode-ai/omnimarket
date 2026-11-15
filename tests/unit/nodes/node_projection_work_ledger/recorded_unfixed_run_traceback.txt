@@ -1,0 +1,27 @@
+Traceback (most recent call last):
+  File "handlers/handler_work_ledger_projection.py", line 336, in _run
+    asyncio.get_running_loop()
+    ~~~~~~~~~~~~~~~~~~~~~~~~^^
+RuntimeError: no running event loop
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "reproduce.py", line 7, in <module>
+    m.WorkLedgerProjectionWriter._run(boom())
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^
+  File "handlers/handler_work_ledger_projection.py", line 338, in _run
+    return asyncio.run(coro)
+           ~~~~~~~~~~~^^^^^^
+  File "<python>/lib/python3.13/asyncio/runners.py", line 196, in run
+    return runner.run(main)
+           ~~~~~~~~~~^^^^^^
+  File "<python>/lib/python3.13/asyncio/runners.py", line 119, in run
+    return self._loop.run_until_complete(task)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "<python>/lib/python3.13/asyncio/base_events.py", line 726, in run_until_complete
+    return future.result()
+           ~~~~~~~~~~~~~^^
+  File "reproduce.py", line 5, in boom
+    raise m.UnsequencedLiveRowError("unsequenced-live-row: source 'onex-ledger' requires a ledger_seq; row_id deadbeef")
+omnimarket.nodes.node_projection_work_ledger.handlers.handler_work_ledger_projection.UnsequencedLiveRowError: unsequenced-live-row: source 'onex-ledger' requires a ledger_seq; row_id deadbeef

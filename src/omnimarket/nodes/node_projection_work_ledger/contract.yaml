@@ -120,6 +120,9 @@ work_ledger:
   # refused to the poison dead-letter topic. The backfill source ledger-emit is
   # not listed.
   sequence_required_sources: [onex-ledger]
+  # OMN-24634: a listed source named here gets its ledger_seq from the projection, in arrival order on the
+  # ledger's single-partition topic, under the ledger advisory lock. A listed source not named here is refused.
+  sequence_assigned_sources: [onex-ledger]
   # OMN-23606: the row types work_ledger_latest keeps the newest row of, per lane and per ticket. A board or lane
   # placement reads that table (the work ledger query node's latest-state query) instead of paging raw rows.
   # Migration 0011's backfill names the same list; a test pins the two equal.
