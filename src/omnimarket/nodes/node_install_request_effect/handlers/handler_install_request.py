@@ -19,9 +19,13 @@ of its review branches), the declared installer (node_unit_tree_install_effect
 for a unit tree, the overlay's installer argv for the plugin tree) and the
 verify the request NAMES by name -- the verify's argv and expected line live in
 the overlay, never in the message, so nothing a request carries is ever run.
-The revision the installer reports must equal the resolved sha. A verify that
-fails, or a revision that differs, rolls the host back to its previous verified
-revision before the answer is written, and the answer says whether it did.
+The revision the installer reports must equal the resolved sha. The revision the
+host stands at is read from the host itself before anything is written (the unit
+tree installer's recorded revision, the plugin unit's declared current-revision
+read). A verify that fails, a plugin installer that fails, or a revision that
+differs, rolls the host back to that revision before the answer is written, the
+restored tree is read again, and the answer says it rolled back only when that
+read held.
 
 Every setting is an overlay value: no timeout, path, prefix, git command or
 host name lives in this file. The only literals are the sha pattern that
@@ -75,6 +79,10 @@ from omnimarket.nodes.node_unit_tree_install_effect.models.model_unit_tree_insta
 #: reaches the mirror as it is; anything else is read through the repository
 #: row's own remote ref prefix.
 _SHA = re.compile(r"[0-9a-f]{7,40}")
+
+#: The unit tree installer's checks whose failure means it could not read the unit at all (an unknown unit, a missing
+#: root), against the "no record" check that reads a unit with nothing installed yet.
+_UNREADABLE_CHECKS = frozenset({"unit", "root"})
 
 Runner = Callable[[Sequence[str], int], subprocess.CompletedProcess[str]]
 
@@ -331,14 +339,25 @@ class HandlerInstallRequest:
                 reason="ref_not_merged",
             )
 
-        installed = self.journal.latest_verified(self.executor_host, request.unit)
-        if installed is not None and installed.revision == sha:
+        # The revision the host stands at is read from the host itself (the unit tree installer's own recorded
+        # revision, the plugin unit's declared current-revision read), never from the local journal: a first request
+        # reads nothing installed, and a journal the host lost does not hide a revision it holds.
+        read_ok, installed, read_detail = self._current_revision(unit, request)
+        if not read_ok:
+            return self._answer(
+                decision,
+                request,
+                status=EnumInstallRequestStatus.REFUSED,
+                reason="current_revision_unreadable",
+                detail=read_detail,
+            )
+        if installed and installed == sha:
             # Already at the resolved commit: nothing installs, only the verify runs.
             return self._verify_only(decision, request, verify, sha)
         if (
-            installed is not None
+            installed
             and not request.rollback
-            and self._is_ancestor(repository, sha, installed.revision)
+            and self._is_ancestor(repository, sha, installed)
         ):
             return self._answer(
                 decision,
@@ -346,7 +365,7 @@ class HandlerInstallRequest:
                 status=EnumInstallRequestStatus.REFUSED,
                 reason="older_than_installed",
                 detail=(
-                    f"{sha} is older than the installed {installed.revision};"
+                    f"{sha} is older than the installed {installed};"
                     " only a rollback request goes back"
                 ),
             )
@@ -367,13 +386,21 @@ class HandlerInstallRequest:
                 )
             )
             if tree.verdict != "pass":
-                # The unit tree installer rolls its own tree back when its checks fail.
+                # The unit tree installer rolls its own tree back when its checks fail; its own verify reads the
+                # restored tree again before the answer says so.
+                rolled_back = False
+                rollback_detail = "nothing was swapped: no rollback needed"
+                if tree.verdict == "rolled-back":
+                    rolled_back, rollback_detail = self._reverify_tree(
+                        request, installed
+                    )
                 return self._answer(
                     decision,
                     request,
                     status=EnumInstallRequestStatus.INSTALL_FAILED,
                     reason=f"installer_{tree.verdict}",
-                    detail=self._tail(tree.detail),
+                    detail=f"{self._tail(tree.detail)}; rollback: {rollback_detail}",
+                    rolled_back=rolled_back,
                 )
             revision = tree.commit
         else:
@@ -383,12 +410,15 @@ class HandlerInstallRequest:
             ]
             done = self.runner(argv, self.overlay.command_timeout_seconds)
             if done.returncode != 0:
+                # A plugin installer that failed may have written part of the tree: restore what stood before.
+                rolled_back, rollback_detail = self._rollback(request, unit, installed)
                 return self._answer(
                     decision,
                     request,
                     status=EnumInstallRequestStatus.INSTALL_FAILED,
                     reason="installer_failed",
-                    detail=self._tail(done.stdout + done.stderr),
+                    detail=f"{self._tail(done.stdout + done.stderr)}; rollback: {rollback_detail}",
+                    rolled_back=rolled_back,
                 )
             if unit.revision_pattern:
                 found = re.search(unit.revision_pattern, done.stdout)
@@ -537,20 +567,94 @@ class HandlerInstallRequest:
             detail,
         )
 
+    def _current_revision(
+        self, unit: ModelInstallUnitRow, request: ModelInstallRequest
+    ) -> tuple[bool, str, str]:
+        """The revision the host stands at: ``(readable, revision, detail)``; revision is empty when nothing is installed.
+
+        A unit tree is read through the unit tree installer's own ``verify`` (the commit it recorded); a plugin tree
+        through the unit's declared ``current_revision_argv`` and ``revision_pattern``. A host that cannot be read
+        (installer root or unit unknown, the read command exits non-zero) is not readable: the request is refused
+        before anything is written, because a rollback target that cannot be read cannot be restored.
+        """
+        if unit.kind is EnumInstallTarget.UNIT_TREE:
+            if self.unit_tree_installer is None:
+                raise ValueError(
+                    "no unit tree installer was given, so a unit-tree request"
+                    " cannot be installed"
+                )
+            tree = self.unit_tree_installer.handle(
+                ModelUnitTreeInstallRequest(
+                    operation="verify", unit=request.unit, host=self.executor_host
+                )
+            )
+            broken = [
+                check
+                for check in tree.checks
+                if check.name in _UNREADABLE_CHECKS and not check.ok
+            ]
+            if broken:
+                return (
+                    False,
+                    "",
+                    f"the unit tree installer cannot read {request.unit}:"
+                    f" {self._tail(broken[0].detail)}",
+                )
+            return True, tree.commit, ""
+        done = self.runner(
+            list(unit.current_revision_argv), self.overlay.command_timeout_seconds
+        )
+        if done.returncode != 0:
+            return (
+                False,
+                "",
+                f"the current-revision read exited {done.returncode}:"
+                f" {self._tail(done.stderr or done.stdout)}",
+            )
+        found = re.search(unit.revision_pattern, done.stdout)
+        return (
+            True,
+            (found.group(1) if found is not None and found.groups() else ""),
+            "",
+        )
+
+    def _reverify_tree(
+        self, request: ModelInstallRequest, previous: str
+    ) -> tuple[bool, str]:
+        """Read a unit tree again through its installer's ``verify`` after a restore: ``(held, detail)``."""
+        if self.unit_tree_installer is None:
+            raise ValueError("no unit tree installer was given")
+        if not previous:
+            return False, "nothing was installed before: nothing to restore"
+        again = self.unit_tree_installer.handle(
+            ModelUnitTreeInstallRequest(
+                operation="verify", unit=request.unit, host=self.executor_host
+            )
+        )
+        if again.verdict == "pass" and again.commit == previous:
+            return True, f"restored {previous}; the installer's verify holds"
+        return (
+            False,
+            f"restored {previous} but the installer's verify reads {again.verdict}"
+            f" at {again.commit or 'no revision'}: {self._tail(again.detail)}",
+        )
+
     def _rollback(
         self,
         request: ModelInstallRequest,
         unit: ModelInstallUnitRow,
-        previous: ModelInstallRequestResult | None,
+        previous: str,
     ) -> tuple[bool, str]:
-        """Try to restore the previous verified revision: ``(restored, detail)``.
+        """Try to restore the revision the host stood at and read it again: ``(restored and verified, detail)``.
 
-        With no previous revision nothing is restored and the detail says so. A
-        unit tree rolls back through its own installer; a plugin tree runs the
-        overlay's declared rollback argv with ``{ref}`` the previous revision.
+        ``previous`` is what the host itself read before anything was written; empty means nothing was installed and
+        nothing is restored. A unit tree rolls back through its own installer and is read again with that installer's
+        ``verify``; a plugin tree runs the overlay's declared rollback argv with ``{ref}`` the previous revision, then
+        reads the revision again and runs the request's named verify at the previous revision. The result says
+        ``rolled_back`` only when that second read held.
         """
-        if previous is None:
-            return False, "no prior revision to restore"
+        if not previous:
+            return False, "nothing was installed before: nothing to restore"
         if unit.kind is EnumInstallTarget.UNIT_TREE:
             if self.unit_tree_installer is None:
                 raise ValueError(
@@ -562,25 +666,40 @@ class HandlerInstallRequest:
                     operation="install",
                     unit=request.unit,
                     host=self.executor_host,
-                    ref=previous.revision,
+                    ref=previous,
                 )
             )
             if restored.verdict != "pass":
                 return (
                     False,
-                    f"restore of {previous.revision} failed:"
-                    f" {self._tail(restored.detail)}",
+                    f"restore of {previous} failed: {self._tail(restored.detail)}",
                 )
-            return True, f"restored {previous.revision}"
-        argv = [arg.replace("{ref}", previous.revision) for arg in unit.rollback_argv]
+            return self._reverify_tree(request, previous)
+        argv = [arg.replace("{ref}", previous) for arg in unit.rollback_argv]
         done = self.runner(argv, self.overlay.command_timeout_seconds)
         if done.returncode != 0:
             return (
                 False,
-                f"restore of {previous.revision} failed:"
+                f"restore of {previous} failed:"
                 f" {self._tail(done.stderr or done.stdout)}",
             )
-        return True, f"restored {previous.revision}"
+        read_ok, standing, read_detail = self._current_revision(unit, request)
+        if not read_ok or standing != previous:
+            return (
+                False,
+                f"restored {previous} but the host reads"
+                f" {standing or 'no revision'} after it: {read_detail}",
+            )
+        verify = next((v for v in unit.verifies if v.name == request.verify), None)
+        if verify is None:
+            return False, f"restored {previous} but the verify {request.verify} is gone"
+        verified, _reason, _line, verify_detail = self._run_verify(verify, previous)
+        if not verified:
+            return (
+                False,
+                f"restored {previous} but the verify fails again: {verify_detail}",
+            )
+        return True, f"restored {previous}; the verify holds"
 
     # ----------------------------------------------------------------- plumbing
 

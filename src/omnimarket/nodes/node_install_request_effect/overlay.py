@@ -76,8 +76,13 @@ class ModelInstallUnitRow(BaseModel):
     #: commit. Empty for a unit-tree unit, whose installer is node_unit_tree_install_effect and its own overlay.
     installer_argv: tuple[str, ...] = ()
     #: argv that restores the previous revision for a plugin-tree unit; ``{ref}`` is replaced by it. Empty for a
-    #: unit-tree unit, whose installer rolls its own tree back.
+    #: unit-tree unit, whose installer rolls its own tree back. The host runs the unit's verify again after it.
     rollback_argv: tuple[str, ...] = ()
+    #: argv a plugin-tree unit declares to read the revision the host stands at now, run before anything is written; its stdout
+    #: goes through ``revision_pattern``. Exit 0 with no match reads nothing installed; a non-zero exit reads unreadable and
+    #: the request is refused before anything is written. Empty for a unit-tree unit, whose installer's own ``verify`` reads
+    #: the revision it recorded.
+    current_revision_argv: tuple[str, ...] = ()
     #: argv run before the installer (the clone refresh that brings the branch); ``{repository}`` and ``{ref}`` are replaced.
     prepare_argv: tuple[str, ...] = ()
     #: The named verifies a request may point at.
@@ -95,6 +100,17 @@ class ModelInstallUnitRow(BaseModel):
             )
         if self.kind is EnumInstallTarget.PLUGIN_TREE and not self.rollback_argv:
             raise ValueError(f"plugin-tree unit {self.name} declares no rollback_argv")
+        if self.kind is EnumInstallTarget.PLUGIN_TREE and not (
+            self.current_revision_argv and self.revision_pattern
+        ):
+            raise ValueError(
+                f"plugin-tree unit {self.name} declares no current_revision_argv with a revision_pattern:"
+                " a host that cannot read what it stands at cannot roll back to it"
+            )
+        if self.kind is EnumInstallTarget.UNIT_TREE and self.current_revision_argv:
+            raise ValueError(
+                f"unit-tree unit {self.name} reads its revision through its installer's verify, not current_revision_argv"
+            )
         if self.kind is EnumInstallTarget.UNIT_TREE and self.rollback_argv:
             raise ValueError(
                 f"unit-tree unit {self.name} rolls back through its installer, not rollback_argv"

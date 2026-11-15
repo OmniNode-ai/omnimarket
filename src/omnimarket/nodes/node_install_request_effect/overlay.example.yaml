@@ -45,6 +45,8 @@ hosts:
         installer_argv:
           [/usr/bin/env, example-install-tree, --branch, "{ref}", --commit, "{sha}"]
         rollback_argv: [/usr/bin/env, example-install-tree, --branch, "{ref}", --force]
+        # Reads the revision the host stands at now, before anything is written (the rollback target on a first request).
+        current_revision_argv: [/usr/bin/env, example-install-tree, --status]
         verifies:
           - name: example-verify-plugin
             argv: [/usr/bin/env, example-verify-plugin, --tree]

@@ -28,6 +28,7 @@ from __future__ import annotations
 from datetime import timedelta
 
 from omnimarket.models.install_request import (
+    PUBLISHER_REFUSED_REASON,
     EnumInstallRequestAction,
     EnumInstallRequestStatus,
     ModelInstallRequestDecision,
@@ -53,7 +54,7 @@ class HandlerInstallRequestDecision:
             return ModelInstallRequestDecision(
                 request_id=request_id,
                 action=EnumInstallRequestAction.REFUSE,
-                reason="publisher_not_allowed",
+                reason=PUBLISHER_REFUSED_REASON,
             )
         prior = request.prior_result
         if prior is not None and prior.request_id == request_id:

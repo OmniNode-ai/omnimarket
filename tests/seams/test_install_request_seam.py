@@ -40,17 +40,23 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from omnimarket.delegated_test_loop.lab_run_bus import ProtocolLabRunBus
+from omnimarket.delegated_test_loop.lab_run_bus import (
+    ProtocolLabRunBus,
+    envelope_bytes_for,
+)
 from omnimarket.models.install_request import (
     EXPIRED_MARK,
     NOT_RUNNING_MARK,
+    UNREAD_MARK,
     EnumInstallRequestStatus,
     EnumInstallTarget,
     ModelInstallOwedInput,
+    ModelInstallOwedReading,
     ModelInstallRequest,
     ModelInstallRequestDraft,
     ModelInstallRequestReceived,
     ModelInstallRequestResult,
+    ModelInstallUnreadRequest,
 )
 from omnimarket.nodes.node_install_request_decision_compute.handlers.handler_install_request_decision import (
     HandlerInstallRequestDecision,
@@ -80,9 +86,6 @@ from omnimarket.nodes.node_install_request_owed_compute.handlers.handler_install
 from omnimarket.nodes.node_pr_handoff_install_proof_compute.handlers.handler_install_proof import (
     INSTALLED_RE,
     OBSERVED_RE,
-)
-from omnimarket.nodes.node_throughput_tick_decision_compute.models.model_throughput_tick_decision import (
-    ModelThroughputTickRequest,
 )
 from omnimarket.nodes.node_unit_tree_install_effect.models.model_unit_tree_install import (
     ModelUnitTreeInstallRequest,
@@ -309,10 +312,33 @@ class _Host:
         )
         return request, ModelInstallRequestResult.model_validate(envelope["payload"])
 
+    async def forge(
+        self, draft: ModelInstallRequestDraft, topic_login: str
+    ) -> ModelInstallRequest:
+        """Publish a request on ``topic_login``'s writer topic whose envelope claims the allowed login as producer,
+        and give the host a moment to (not) answer it."""
+        request = _request(draft, expires_in=timedelta(hours=2))
+        envelope = json.loads(
+            envelope_bytes_for(
+                self.topics.command,
+                request.model_dump(mode="json"),
+                request.request_id,
+            )
+        )
+        envelope["producer"] = PUBLISHER
+        await self.bus.publish(
+            self.topics.writer_command_topic(topic_login),
+            str(request.request_id).encode("utf-8"),
+            json.dumps(envelope).encode("utf-8"),
+        )
+        await self.host.drain()
+        await asyncio.sleep(2.0 if "kafka" in repr(type(self.bus)).lower() else 0.2)
+        return request
+
     async def bare(self, request: ModelInstallRequest) -> dict[str, Any]:
         """Publish a request with no envelope around it and read the failure terminal's answer."""
         await self.bus.publish(
-            self.topics.command,
+            self.topics.writer_command_topic(PUBLISHER),
             str(request.request_id).encode("utf-8"),
             request.model_dump_json().encode("utf-8"),
         )
@@ -380,13 +406,16 @@ async def _golden(open_bus: Callable[[], Any], tmp_path: Path) -> None:
 async def _errors(open_bus: Callable[[], Any], tmp_path: Path) -> None:
     scene = _scene(tmp_path)
     async with _served(open_bus, scene) as served:
-        # 1. A login the host row does not name is refused, answered and never journalled.
-        forged, forged_result = await served.ask(_draft(scene.first), publisher=FORGER)
-        assert forged_result.status is EnumInstallRequestStatus.REFUSED
-        assert forged_result.reason == "publisher_not_allowed"
+        # 1. A login the host row does not name writes a topic the host never reads: no answer, nothing
+        # journalled, nothing installed; a producer cell naming the allowed login changes nothing, because the
+        # publisher is the topic's login (the broker's per-principal WRITE grant), never a cell the sender wrote.
+        forged = await served.forge(_draft(scene.first), topic_login=FORGER)
+        assert forged is not None
         assert served.journal.get(forged.request_id) is None
         assert not _tree(scene).exists()
-        assert forged_result.integration_line() == ""
+        assert not any(
+            r["correlation_id"] == str(forged.request_id) for r in served.results
+        )
         # 2. A commit no landing branch holds is refused and the installer never ran.
         unmerged, unmerged_result = await served.ask(_draft(scene.unmerged))
         assert unmerged_result.status is EnumInstallRequestStatus.REFUSED
@@ -501,24 +530,32 @@ def test_the_expired_line_carries_the_mark_the_tick_matches_and_a_not_running_on
     assert after.lines[0].line.startswith(EXPIRED_MARK)
 
 
-def test_the_owed_reading_rides_the_throughput_tick_request_as_one_typed_field() -> (
-    None
-):
-    """The tick prints the owed reading the way the owed compute shapes it: a shape change on either side fails here."""
+def test_the_owed_reading_round_trips_as_json_with_its_unread_cells() -> None:
+    """The reading is read across a process by its model: a renamed ``unread`` or ``readable`` cell is refused."""
     reading = HandlerInstallRequestOwed().handle(
         ModelInstallOwedInput(
             requests=(_request(_draft("a" * 40), expires_in=timedelta(hours=2)),),
+            unread_requests=(
+                ModelInstallUnreadRequest(
+                    request_id=uuid.uuid4(), host="h9", reason="no such host"
+                ),
+            ),
             now=datetime(2026, 11, 15, 3, 0, tzinfo=UTC),
         )
     )
-    tick = ModelThroughputTickRequest.model_validate(
-        {
-            "now": "2026-11-15T03:00:00Z",
-            "launchctl": "not_loaded",
-            "install_owed": reading.model_dump(mode="json"),
-        }
+    wire = reading.model_dump(mode="json")
+    assert ModelInstallOwedReading.model_validate(wire) == reading
+    assert (reading.owed, reading.unread, reading.readable) == (1, 1, True)
+    assert reading.lines[-1].line.startswith(UNREAD_MARK)
+    renamed = {("unreadable" if k == "unread" else k): v for k, v in wire.items()}
+    with pytest.raises(ValidationError):
+        ModelInstallOwedReading.model_validate(renamed)
+    quiet = HandlerInstallRequestOwed().handle(
+        ModelInstallOwedInput(
+            bus_quiet=True, now=datetime(2026, 11, 15, 3, 0, tzinfo=UTC)
+        )
     )
-    assert tick.install_owed == reading
+    assert quiet.readable is False
 
 
 def test_the_unit_tree_installer_models_still_carry_the_cells_the_effect_reads() -> (
@@ -597,7 +634,16 @@ def test_the_effect_topics_are_the_contract_topics_and_the_host_reads_them_from_
     assert topics.failure == contract["topics"]["install_request_failed"]
     assert contract["runtime_dispatch"]["terminal_events"]["success"] == topics.success
     granted = {g["name"] for g in contract["broker_acl_grants"][0]["grants"]}
-    assert {topics.command, topics.success, topics.failure} <= granted
+    assert {topics.success, topics.failure} <= granted
+    # The host reads the writer topics, never the shared command topic (the orchestrator's input).
+    assert topics.command not in granted
+    prefix = topics.writer_command_topic("x").rsplit("x", 1)[0]
+    prefixed = {
+        g["name"]
+        for g in contract["broker_acl_grants"][0]["grants"]
+        if g["pattern"] == "PREFIXED"
+    }
+    assert prefixed == {prefix}
 
 
 def test_the_example_overlay_loads_through_the_overlay_model(tmp_path: Path) -> None:
@@ -627,6 +673,11 @@ def test_without_the_decision_expiry_rule_an_expired_request_would_have_been_ins
 
     class Installer:
         def handle(self, request: Any) -> Any:
+            if request.operation == "verify":
+                # The host's own read of what it stands at: nothing installed yet.
+                return ModelUnitTreeInstallResult(
+                    operation="verify", unit=request.unit, verdict="fail"
+                )
             root_calls.append(request.ref)
             raise RuntimeError("installer reached")
 

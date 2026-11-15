@@ -69,7 +69,6 @@ from omnibase_core.types import JsonType
 
 from omnimarket.handlers.handler_engine_ladder import load_engine_ladder
 from omnimarket.handlers.rules_lab_fill_pr_land import plan_pr_land_fallback
-from omnimarket.models.install_request import ModelInstallOwedReading
 from omnimarket.models.lab_fill import ModelLabFillPrLandFacts, ModelLabFillPrLandPlan
 from omnimarket.models.model_engine_experiment import (
     NO_ENGINE,
@@ -191,10 +190,6 @@ DEPLOY_DRIFT_FIX = (
     "the host's lab daemon sync (python -m omnimarket.nodes.node_lab_daemon_sync_effect) installs "
     "main through the daemon's own installer every tick; read its alarm and fix lane in "
     "~/.local/state/omni/lab-daemon-sync/<host>.json on that host, and never install a branch by hand"
-)
-INSTALL_OWED_FIX = (
-    "publish the install request again or run the host's installer by hand; read the "
-    "result journal on the host"
 )
 
 
@@ -1452,18 +1447,6 @@ def check_deploy_drift(
             rep.note(f"{loop} | {why}")
 
 
-def check_install_owed(rep: Report, reading: ModelInstallOwedReading) -> None:
-    """Every install request with no verified result prints its own owed line (OMN-24546): an
-    expired one is MISSING `install-owed:<request id>`; a not_running one inside its expiry is a
-    NOTE. The lines run in the order the owed reading carries them."""
-    rep.checked.append("install-owed")
-    for line in reading.lines:
-        if line.kind == "expired":
-            rep.miss(f"install-owed:{line.request_id}", line.line, INSTALL_OWED_FIX)
-        else:
-            rep.note(line.line)
-
-
 def check_engine_experiments(
     rep: Report, request: ModelThroughputTickRequest, now: datetime
 ) -> None:
@@ -1846,8 +1829,6 @@ class HandlerThroughputTickDecision:
             check_venv_divergence(rep, request, now)
         if request.deploy_drifts is not None:
             check_deploy_drift(rep, request, now)
-        if request.install_owed is not None:
-            check_install_owed(rep, request.install_owed)
         if request.engine_experiments is not None:
             check_engine_experiments(rep, request, now)
         repo_status = (

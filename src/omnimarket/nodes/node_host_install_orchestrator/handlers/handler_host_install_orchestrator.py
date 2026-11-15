@@ -48,6 +48,7 @@ from omnimarket.models.host_installer_registry_units import (
     ModelRegistryUnitsResult,
 )
 from omnimarket.models.install_request import (
+    PUBLISHER_REFUSED_REASON,
     EnumInstallRequestStatus,
     ModelInstallRequest,
     ModelInstallRequestResult,
@@ -524,13 +525,36 @@ class HandlerHostInstallOrchestrator:
     def _on_install_result(
         self, result: ModelInstallRequestResult
     ) -> tuple[ModelHostInstallOutput, ...]:
-        request = self._tree_requests.pop(result.request_id, None)
+        request = self._tree_requests.get(result.request_id)
         if request is None:
             logger.warning(
                 "host install orchestrator ignored an install request result for %s",
                 result.request_id,
             )
             return ()
+        if result.host != request.host or result.unit != request.unit:
+            logger.warning(
+                "host install orchestrator ignored a result for %s that names %s on %s,"
+                " not the remembered %s on %s",
+                result.request_id,
+                result.unit,
+                result.host,
+                request.unit,
+                request.host,
+            )
+            return ()
+        if (
+            result.status is EnumInstallRequestStatus.REFUSED
+            and result.reason == PUBLISHER_REFUSED_REASON
+        ):
+            # A refusal of a publisher is answered but never journalled: a message that forged the request id
+            # must not end the real request, whose own publisher's result is still to come.
+            logger.warning(
+                "host install orchestrator kept %s: a publisher refusal does not end it",
+                result.request_id,
+            )
+            return ()
+        self._tree_requests.pop(result.request_id, None)
         return (self._tree_completed(result),)
 
     def _tree_completed(

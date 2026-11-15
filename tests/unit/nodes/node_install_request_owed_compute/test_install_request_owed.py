@@ -6,9 +6,12 @@ A request with no verified result is owed; a verified result clears it whatever
 order the records arrive in. Inside its expiry an owed request owns the NOT
 RUNNING line; past it the INSTALL-REQUEST-EXPIRED line, the one the throughput
 tick shows. Both lines are pinned here character for character, because the tick
-matches on those two marks. The last test is a failing control: with the
-verified-clears rule removed from a copy of the handler, a verified request
-stays owed, so the real handler's clearing is shown to depend on the rule.
+matches on those two marks. A record that arrived but cannot be read back is not
+dropped: it is listed as an INSTALL-REQUEST-UNREAD line after the owed lines, and
+a quiet bus reads readable=False with no lines at all. The last test is a failing
+control: with the verified-clears rule removed from a copy of the handler, a
+verified request stays owed, so the real handler's clearing is shown to depend on
+the rule.
 """
 
 from __future__ import annotations
@@ -26,6 +29,7 @@ from omnimarket.models.install_request import (
     ModelInstallOwedReading,
     ModelInstallRequest,
     ModelInstallRequestResult,
+    ModelInstallUnreadRequest,
 )
 from omnimarket.nodes.node_install_request_owed_compute.handlers.handler_install_request_owed import (
     HandlerInstallRequestOwed,
@@ -61,6 +65,12 @@ EXPIRED_LINE = (
 )
 
 FAILED_SUFFIX = "; last result verify_failed: verify_mismatch"
+
+#: The exact unread line an unread request on the example host owns, no suffix.
+UNREAD_LINE = (
+    "INSTALL-REQUEST-UNREAD 5c9f6d64-1a11-4a01-9d0e-6a1b2c3d4e02 "
+    "on example-host: no record read back"
+)
 
 
 def _request(
@@ -102,14 +112,32 @@ def _result(
     )
 
 
+def _unread(
+    *,
+    request_id: UUID = REQUEST_B_ID,
+    host: str = "example-host",
+    reason: str = "no record read back",
+) -> ModelInstallUnreadRequest:
+    """One unread request as the bus reader would have reported it."""
+    return ModelInstallUnreadRequest(request_id=request_id, host=host, reason=reason)
+
+
 def _reading(
     requests: tuple[ModelInstallRequest, ...] = (),
     results: tuple[ModelInstallRequestResult, ...] = (),
     now: datetime = NOW,
+    unread_requests: tuple[ModelInstallUnreadRequest, ...] = (),
+    bus_quiet: bool = False,
 ) -> ModelInstallOwedReading:
     """Read the records through the real handler; one call, one reading."""
     return HandlerInstallRequestOwed().handle(
-        ModelInstallOwedInput(requests=requests, results=results, now=now)
+        ModelInstallOwedInput(
+            requests=requests,
+            results=results,
+            now=now,
+            unread_requests=unread_requests,
+            bus_quiet=bus_quiet,
+        )
     )
 
 
@@ -201,6 +229,82 @@ def test_no_records_read_nothing_owed() -> None:
     assert reading.owed == 0
     assert reading.expired == 0
     assert reading.lines == ()
+
+
+@pytest.mark.unit
+def test_a_quiet_bus_reads_unread_with_no_lines() -> None:
+    """``bus_quiet`` means the bus reading itself is unread, never a true owed zero.
+
+    Records may still be held from an earlier read: the flag overrides them all,
+    so a quiet bus can never read as a real all-clear.
+    """
+    reading = _reading(
+        requests=(_request(),),
+        unread_requests=(_unread(),),
+        bus_quiet=True,
+    )
+    assert reading.owed == 0
+    assert reading.expired == 0
+    assert reading.unread == 0
+    assert reading.readable is False
+    assert reading.lines == ()
+
+
+@pytest.mark.unit
+def test_an_unread_request_adds_one_line_after_the_owed_lines() -> None:
+    """An unread request is counted and listed; the owed reading is unchanged."""
+    reading = _reading(requests=(_request(),), unread_requests=(_unread(),))
+    assert reading.owed == 1
+    assert reading.expired == 0
+    assert reading.unread == 1
+    assert reading.readable is True
+    # The unread line comes after the owed lines.
+    assert [line.kind for line in reading.lines] == ["not_running", "unread"]
+    line = reading.lines[1]
+    assert line.request_id == REQUEST_B_ID
+    assert line.line == UNREAD_LINE
+
+
+@pytest.mark.unit
+def test_a_verified_result_clears_an_unread_request() -> None:
+    """A request a verified result cleared is not listed as unread."""
+    reading = _reading(
+        results=(_result(request_id=REQUEST_B_ID),),
+        unread_requests=(_unread(request_id=REQUEST_B_ID),),
+    )
+    assert reading.owed == 0
+    assert reading.expired == 0
+    assert reading.unread == 0
+    assert reading.lines == ()
+
+
+@pytest.mark.unit
+def test_duplicate_unread_ids_count_once() -> None:
+    """The request id is the key here too: the second unread record under it is dropped."""
+    first = _unread(request_id=REQUEST_B_ID)
+    second = _unread(
+        request_id=REQUEST_B_ID, host="other-host", reason="second reading"
+    )
+    reading = _reading(unread_requests=(first, second))
+    assert reading.owed == 0
+    assert reading.unread == 1
+    assert len(reading.lines) == 1
+    # The first record under the id is the one kept.
+    assert reading.lines[0].line == UNREAD_LINE
+
+
+@pytest.mark.unit
+def test_unread_lines_run_in_request_id_order() -> None:
+    """The unread lines are ordered by request id, whatever order the records arrived in."""
+    reading = _reading(
+        unread_requests=(
+            _unread(request_id=REQUEST_C_ID),
+            _unread(request_id=REQUEST_B_ID),
+        )
+    )
+    assert reading.unread == 2
+    assert [line.request_id for line in reading.lines] == [REQUEST_B_ID, REQUEST_C_ID]
+    assert all(line.kind == "unread" for line in reading.lines)
 
 
 @pytest.mark.unit

@@ -16,6 +16,7 @@ from uuid import UUID, uuid4
 import pytest
 
 from omnimarket.models.install_request import (
+    PUBLISHER_REFUSED_REASON,
     EnumInstallRequestStatus,
     EnumInstallTarget,
     ModelInstallRequest,
@@ -213,3 +214,87 @@ def test_failing_control_without_the_ignore_an_unknown_result_would_publish() ->
     )
     outputs = orchestrator.decide(result, uuid4())
     assert [out.topic for out in outputs] == [TOPIC_COMPLETED]
+
+
+def test_error_chain_a_forged_publisher_refusal_does_not_end_the_real_request() -> None:
+    """A refusal of a publisher is answered but never journalled: it must not pop the request, so the real
+    publisher's own result (which still comes) ends it."""
+    orchestrator = HandlerHostInstallOrchestrator(orchestrator_overlay(), StepClock())
+    ask = tree_request()
+    orchestrator.decide(ask, ask.request_id)
+
+    forged = orchestrator.decide(
+        tree_result(
+            ask.request_id,
+            EnumInstallRequestStatus.REFUSED,
+            reason=PUBLISHER_REFUSED_REASON,
+        ),
+        ask.request_id,
+    )
+    assert forged == ()
+    assert orchestrator.known_installs == (ask.request_id,)
+
+    real = orchestrator.decide(
+        tree_result(
+            ask.request_id,
+            EnumInstallRequestStatus.VERIFIED,
+            revision=REVISION,
+            verify_line=VERIFY_LINE,
+        ),
+        ask.request_id,
+    )
+    assert _completed(real).outcome == "installed"
+    assert orchestrator.known_installs == ()
+
+
+def test_error_chain_a_result_for_another_host_or_unit_does_not_end_the_request() -> (
+    None
+):
+    orchestrator = HandlerHostInstallOrchestrator(orchestrator_overlay(), StepClock())
+    ask = tree_request()
+    orchestrator.decide(ask, ask.request_id)
+    for other in (
+        tree_result(
+            ask.request_id,
+            EnumInstallRequestStatus.VERIFIED,
+            revision=REVISION,
+            verify_line=VERIFY_LINE,
+        ).model_copy(update={"host": "host-b"}),
+        tree_result(
+            ask.request_id,
+            EnumInstallRequestStatus.VERIFIED,
+            revision=REVISION,
+            verify_line=VERIFY_LINE,
+        ).model_copy(update={"unit": "unit-b"}),
+    ):
+        assert orchestrator.decide(other, ask.request_id) == ()
+        assert orchestrator.known_installs == (ask.request_id,)
+
+
+class _WithoutPublisherRefusalIgnore(HandlerHostInstallOrchestrator):
+    """The failing control: the same handler with the publisher-refusal and host/unit checks removed."""
+
+    def _on_install_result(
+        self, result: ModelInstallRequestResult
+    ) -> tuple[ModelHostInstallOutput, ...]:
+        if self._tree_requests.pop(result.request_id, None) is None:
+            return ()
+        return (self._tree_completed(result),)
+
+
+def test_failing_control_without_the_refusal_check_a_forged_refusal_pops_the_request() -> (
+    None
+):
+    orchestrator = _WithoutPublisherRefusalIgnore(orchestrator_overlay(), StepClock())
+    ask = tree_request()
+    orchestrator.decide(ask, ask.request_id)
+    outputs = orchestrator.decide(
+        tree_result(
+            ask.request_id,
+            EnumInstallRequestStatus.REFUSED,
+            reason=PUBLISHER_REFUSED_REASON,
+        ),
+        ask.request_id,
+    )
+    assert [out.topic for out in outputs] == [TOPIC_COMPLETED]
+    assert orchestrator.known_installs == ()

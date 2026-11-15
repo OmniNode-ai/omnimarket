@@ -4,31 +4,38 @@
 (OMN-19998, root 5).
 
 * :class:`InstallRequestHost` runs on the host that serves install requests. It
-  reads the node's command topic behind a consumer group of its own (one per
-  host, so every host sees every request and answers its own), hands each
-  request to :class:`HandlerInstallRequest` on a worker thread -- an install
-  runs minutes and the consumer must never block in its callback -- and
-  publishes the typed result on the node's success terminal. A command that
-  carries no envelope is answered on the failure terminal and never reaches the
-  handler, a command whose payload is no request is answered there too, and a
-  handler that raises is answered there as well: nothing is swallowed. The
-  envelope's ``producer`` travels with the request as its publisher, the fact
-  the decision refuses a login the host's overlay row does not allow. A held
-  request (a blocker on the host) is kept and decided again after the overlay's
-  retry interval.
+  reads the writer command topic of every login its overlay row allows
+  (``onex.cmd.omnimarket.install-requested-from-<login>.v1``) behind a consumer
+  group of its own (one per host, so every host sees every request and answers
+  its own), hands each request to :class:`HandlerInstallRequest` on a worker
+  thread -- an install runs minutes and the consumer must never block in its
+  callback -- and publishes the typed result on the node's success terminal. The
+  PUBLISHER of a request is the login of the topic it arrived on: the broker's
+  per-principal WRITE grant lets a login write only its own topic, so the broker
+  attests the sender, as it does for the work ledger's writer topics. The
+  envelope's ``producer`` is a cell the sender writes and is never read for
+  identity. A command that carries no envelope is answered on the failure
+  terminal and never reaches the handler, a command whose payload is no request
+  is answered there too, and a handler that raises is answered there as well:
+  nothing is swallowed. A held request (a blocker on the host) is kept and
+  decided again after the overlay's retry interval.
 * :func:`publish_request` is the lane side: it stamps the draft with its id and
-  its expiry from the overlay, publishes it on the command topic under the
-  publishing login (the envelope's ``producer``) and returns it. The ``publish``
-  command reads that login from the broker principal on a lane bus, and from
-  the overlay's ``publisher_login_env`` variable on the in-memory bus.
-* :func:`read_owed` is the bus reading: it subscribes to the command topic and
-  the success terminal with a group of its own, counts every command envelope
-  whose producer is in the allowed publishers of the host row the request
-  itself names (a forged or unknown-host command is ignored), takes every
-  result payload from the success terminal, stops after the overlay's quiet
-  seconds without an envelope and hands the records to
-  :class:`HandlerInstallRequestOwed`. It opens no journal: the bus is the
-  record.
+  its expiry from the overlay and publishes it on the writer topic of the
+  publishing login, plus once on the shared command topic that
+  node_host_install_orchestrator consumes as its typed input (the orchestrator
+  only remembers it; no host reads it). The ``publish`` command reads the login
+  from the broker principal on a lane bus, and from the overlay's
+  ``publisher_login_env`` variable on the in-memory bus.
+* :func:`read_owed` is the bus reading: it subscribes to the writer topic of every
+  login any host row names and the success terminal with a group of its own,
+  counts every command envelope whose topic login is allowed by the host row the
+  request itself names, takes every result payload from the success terminal,
+  stops after the overlay's quiet seconds without an envelope and hands the
+  records to :class:`HandlerInstallRequestOwed`. A request that names a host the
+  reader's overlay does not hold, or comes from a login that host does not
+  allow, is listed as UNREAD, never dropped; a reading in which no envelope
+  arrived at all reads ``readable=False`` (unread), never ``owed=0``. It opens no
+  journal: the bus is the record.
 
 The host applies no command-age limit of its own: the request's own
 ``expires_at`` is the bound, and the decision compute expires what stopped
@@ -37,8 +44,8 @@ dropped unnamed.
 
 Exit codes: 0 the host served until it was stopped / the draft was published /
 the owed reading was printed; 1 the bus could not be opened / an owed install
-expired; 3 a deployment fact or a record is missing or unreadable
-(INDETERMINATE).
+expired or was unread; 3 a deployment fact or a record is missing or unreadable,
+or the owed reading read no record at all (INDETERMINATE).
 """
 
 from __future__ import annotations
@@ -50,11 +57,13 @@ import inspect
 import json
 import logging
 import os
+import re
 import signal
 import sys
 import uuid
 from collections.abc import Awaitable, Callable, Sequence
 from datetime import UTC, datetime, timedelta
+from functools import partial
 from importlib import resources
 from pathlib import Path
 from typing import Any, Protocol
@@ -84,6 +93,7 @@ from omnimarket.models.install_request import (
     ModelInstallRequestDraft,
     ModelInstallRequestReceived,
     ModelInstallRequestResult,
+    ModelInstallUnreadRequest,
 )
 from omnimarket.nodes.node_install_request_effect.handlers.handler_install_request import (
     HandlerInstallRequest,
@@ -109,13 +119,21 @@ GROUP_SERVICE = "omnimarket"
 
 
 class ModelInstallRequestTopics(BaseModel):
-    """The node's ``runtime_dispatch`` topics."""
+    """The node's ``runtime_dispatch`` topics and its per-login writer topics."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     command: str
     success: str
     failure: str
+    writer_command_topic_template: str
+    writer_principal_pattern: str
+
+    def writer_command_topic(self, principal: str) -> str:
+        """The command topic the login ``principal`` writes; a login outside the pattern has none."""
+        if re.fullmatch(self.writer_principal_pattern, principal) is None:
+            raise ValueError(f"invalid writer principal {principal!r}")
+        return self.writer_command_topic_template.format(principal=principal)
 
 
 class ModelInstallRequestCommandFailure(BaseModel):
@@ -137,18 +155,25 @@ class ProtocolBusMessage(Protocol):
 
 
 def load_install_request_topics(node: str = NODE_NAME) -> ModelInstallRequestTopics:
-    """Read the command and terminal topics from the node's contract."""
+    """Read the command, terminal and writer topics from the node's contract."""
     text = (
         resources.files(f"omnimarket.nodes.{node}")
         .joinpath("contract.yaml")
         .read_text()
     )
-    dispatch = yaml.safe_load(text)["runtime_dispatch"]
+    contract = yaml.safe_load(text)
+    dispatch = contract["runtime_dispatch"]
     terminals = dispatch["terminal_events"]
+    writer = contract["writer_topics"]
     return ModelInstallRequestTopics(
         command=dispatch["command_topic"],
         success=terminals["success"],
         failure=terminals["failure"],
+        writer_command_topic_template=(
+            f"onex.{writer['kind']}.{writer['producer']}."
+            f"{writer['name_prefix']}{{principal}}.v{writer['version']}"
+        ),
+        writer_principal_pattern=writer["principal_pattern"],
     )
 
 
@@ -174,15 +199,14 @@ class ModelCommandEnvelope(BaseModel):
     """The parts of a command envelope the host and the owed reading read.
 
     A message is a command only when it carries a parseable envelope id and an
-    object payload; a bare request is never one. ``producer`` is the publishing
-    login the envelope stamped, empty when it named none.
+    object payload; a bare request is never one. The envelope's ``producer`` is
+    deliberately not read: the sender writes it, so it is no identity.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     payload: dict[str, object]
     envelope_id: uuid.UUID
-    producer: str = ""
     correlation_id: uuid.UUID | None = None
 
 
@@ -200,11 +224,9 @@ def _read_envelope(raw: object) -> ModelCommandEnvelope | None:
     payload = raw.get("payload")
     if envelope_id is None or not isinstance(payload, dict):
         return None
-    producer = raw.get("producer")
     return ModelCommandEnvelope(
         payload=payload,
         envelope_id=envelope_id,
-        producer=producer if isinstance(producer, str) and producer else "",
         correlation_id=_uuid_or_none(raw.get("correlation_id")),
     )
 
@@ -263,29 +285,71 @@ class InstallRequestHost:
         self._tasks: set[asyncio.Task[None]] = set()
         self._held: list[ModelInstallRequestReceived] = []
         self._retry: asyncio.Task[None] | None = None
-        self._unsubscribe: Callable[[], Awaitable[None]] | None = None
+        self._unsubscribes: list[Callable[[], Awaitable[None]]] = []
+        #: The writer topics the broker could not serve at start; a login whose topic is absent cannot publish anyway.
+        self.unserved: tuple[str, ...] = ()
         self.processed = 0
 
     @property
     def topics(self) -> ModelInstallRequestTopics:
         return self._topics
 
+    def _publishers(self) -> tuple[str, ...]:
+        """The logins this host's overlay row allows, each with a writer topic of its own."""
+        row = self._overlay.host(self._host)
+        if row is None:
+            raise ValueError(
+                f"{self._host} is no host in the install overlay;"
+                " the deployment named a host this effect cannot serve"
+            )
+        return tuple(dict.fromkeys(row.allowed_publishers))
+
     async def start(self) -> None:
+        publishers = self._publishers()
+        topics = {
+            principal: self._topics.writer_command_topic(principal)
+            for principal in publishers
+        }
         self._retry = asyncio.create_task(self._retry_held())
-        self._unsubscribe = await _subscribe(
-            self._bus, self._topics.command, self._on_message, self._group_id
-        )
+        unserved: list[str] = []
+        for principal, topic in topics.items():
+            try:
+                self._unsubscribes.append(
+                    await _subscribe(
+                        self._bus,
+                        topic,
+                        partial(self._on_message, publisher=principal),
+                        self._group_id,
+                    )
+                )
+            except (
+                Exception
+            ) as exc:  # an absent writer topic cannot carry a request; serve the others
+                logger.error(
+                    "install-request host %s: writer topic %s is not served (%s: %s)",
+                    self._host,
+                    topic,
+                    type(exc).__name__,
+                    exc,
+                )
+                unserved.append(topic)
+        self.unserved = tuple(unserved)
+        if not self._unsubscribes:
+            raise ValueError(
+                f"install-request host {self._host} serves no writer topic:"
+                f" none of {sorted(topics.values())} could be subscribed"
+            )
         logger.info(
-            "install-request host %s serving %s as group %s",
+            "install-request host %s serving %d writer topics as group %s",
             self._host,
-            self._topics.command,
+            len(self._unsubscribes),
             self._group_id,
         )
 
     async def stop(self) -> None:
-        if self._unsubscribe is not None:
-            await self._unsubscribe()
-            self._unsubscribe = None
+        for unsubscribe in self._unsubscribes:
+            await unsubscribe()
+        self._unsubscribes = []
         tasks = [*self._tasks]
         if self._retry is not None:
             tasks.append(self._retry)
@@ -302,7 +366,8 @@ class InstallRequestHost:
         while self._tasks:
             await asyncio.gather(*list(self._tasks))
 
-    async def _on_message(self, message: ProtocolBusMessage) -> None:
+    async def _on_message(self, message: ProtocolBusMessage, *, publisher: str) -> None:
+        """One record of ``publisher``'s writer topic: the topic's login is the publisher."""
         try:
             raw = json.loads(message.value)
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -340,9 +405,7 @@ class InstallRequestHost:
                 f"the command is not an install request: {exc}",
             )
             return
-        received = ModelInstallRequestReceived(
-            request=request, publisher=envelope.producer
-        )
+        received = ModelInstallRequestReceived(request=request, publisher=publisher)
         task = asyncio.create_task(self._serve(received, envelope.envelope_id))
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
@@ -446,21 +509,15 @@ class InstallRequestHost:
 
 
 def _command_envelope_bytes(
-    topic: str,
-    payload: dict[str, object],
-    correlation_id: uuid.UUID,
-    producer: str,
+    topic: str, payload: dict[str, object], correlation_id: uuid.UUID
 ) -> bytes:
-    """The command envelope the way ``envelope_bytes_for`` builds it, with the
-    publishing login stamped as ``producer`` -- the fact the host and the owed
-    reading check against the overlay row's ``allowed_publishers``. A login of
-    none stamps no producer, which the host reads as a refusal."""
+    """The command envelope the way ``envelope_bytes_for`` builds it. It names no
+    sender: the topic it is written to is the sender's identity."""
     return _envelope_bytes(
         ModelEventEnvelope[dict[str, object]](
             payload=payload,
             correlation_id=correlation_id,
             event_type=event_type_for(topic),
-            producer=producer or None,
         )
     )
 
@@ -472,8 +529,10 @@ async def publish_request(
     now: Callable[[], datetime],
     publisher: str,
 ) -> ModelInstallRequest:
-    """Stamp the draft with its id and the overlay's expiry, publish it under
-    ``publisher``'s login, return it."""
+    """Stamp the draft with its id and the overlay's expiry, publish it on the
+    writer topic of ``publisher``'s login (the host's identity fact) and once on
+    the shared command topic (node_host_install_orchestrator's typed input),
+    return it."""
     stamp = now()
     request = ModelInstallRequest(
         **draft.model_dump(),
@@ -482,15 +541,18 @@ async def publish_request(
         expires_at=stamp + timedelta(minutes=overlay.default_expiry_minutes),
     )
     topics = load_install_request_topics()
+    payload = request.model_dump(mode="json")
+    key = str(request.request_id).encode("utf-8")
+    writer_topic = topics.writer_command_topic(publisher)
+    await bus.publish(
+        writer_topic,
+        key,
+        _command_envelope_bytes(writer_topic, payload, request.request_id),
+    )
     await bus.publish(
         topics.command,
-        str(request.request_id).encode("utf-8"),
-        _command_envelope_bytes(
-            topics.command,
-            request.model_dump(mode="json"),
-            request.request_id,
-            publisher,
-        ),
+        key,
+        _command_envelope_bytes(topics.command, payload, request.request_id),
     )
     return request
 
@@ -513,21 +575,29 @@ async def read_owed(
     """Read the installs still owed off the bus: every allowed command, every
     published result, handed to :class:`HandlerInstallRequestOwed`.
 
-    The command topic and the success terminal are subscribed with a group of
-    their own; every well-formed command envelope whose producer is in the
-    allowed publishers of the host row the request itself names counts as a
-    request -- a forged login, an unknown host or a bare object is ignored,
-    never counted, never printed as owed -- and every result payload on the
-    success terminal clears its request id. The reading stops after the
-    overlay's ``owed_quiet_seconds`` without an envelope, unsubscribes and
-    reads: it opens no journal, the bus is the record.
+    The writer command topic of every login any host row names and the success
+    terminal are subscribed with a group of their own. A well-formed command
+    envelope counts as a request when the topic's login is one the host row the
+    request itself names allows. A request that names a host this reader's
+    overlay does not hold, or arrives on the topic of a login its host does not
+    allow, is never dropped: it is handed over as unread, named with its reason.
+    A bare object, an unreadable record or a payload that is no request has no
+    id to name and is ignored. Every result payload on the success terminal
+    clears its request id. The reading stops after the overlay's
+    ``owed_quiet_seconds`` without an envelope; when no envelope arrived at all
+    the reading is unread (``readable=False``), never an owed zero. It opens no
+    journal: the bus is the record.
     """
     topics = load_install_request_topics()
     requests: list[ModelInstallRequest] = []
+    unread: list[ModelInstallUnreadRequest] = []
     results: list[ModelInstallRequestResult] = []
     arrived = asyncio.Event()
+    seen = 0
 
-    async def _on_command(message: ProtocolBusMessage) -> None:
+    async def _on_command(message: ProtocolBusMessage, *, publisher: str) -> None:
+        nonlocal seen
+        seen += 1
         arrived.set()
         try:
             raw = json.loads(message.value)
@@ -541,13 +611,34 @@ async def read_owed(
         except ValidationError:
             return
         row = overlay.host(request.host)
-        if row is None or envelope.producer.casefold() not in {
+        if row is None:
+            unread.append(
+                ModelInstallUnreadRequest(
+                    request_id=request.request_id,
+                    host=request.host,
+                    reason=(
+                        f"this reader's overlay holds no host {request.host}:"
+                        f" the publisher {publisher} cannot be checked"
+                    ),
+                )
+            )
+            return
+        if publisher.casefold() not in {
             login.casefold() for login in row.allowed_publishers
         }:
+            unread.append(
+                ModelInstallUnreadRequest(
+                    request_id=request.request_id,
+                    host=request.host,
+                    reason=f"publisher {publisher} is not allowed for {request.host}",
+                )
+            )
             return
         requests.append(request)
 
     async def _on_result(message: ProtocolBusMessage) -> None:
+        nonlocal seen
+        seen += 1
         arrived.set()
         try:
             raw = json.loads(message.value)
@@ -561,12 +652,31 @@ async def read_owed(
         except ValidationError:
             return
 
+    principals = tuple(
+        dict.fromkeys(
+            login for host in overlay.hosts for login in host.allowed_publishers
+        )
+    )
     group = group_id if group_id is not None else _owed_group_id()
-    unsubscribe_command = await _subscribe(bus, topics.command, _on_command, group)
+    unsubscribes: list[Callable[[], Awaitable[None]]] = []
+
+    async def _release() -> None:
+        for unsubscribe in reversed(unsubscribes):
+            await unsubscribe()
+
     try:
-        unsubscribe_success = await _subscribe(bus, topics.success, _on_result, group)
+        for principal in principals:
+            unsubscribes.append(
+                await _subscribe(
+                    bus,
+                    topics.writer_command_topic(principal),
+                    partial(_on_command, publisher=principal),
+                    group,
+                )
+            )
+        unsubscribes.append(await _subscribe(bus, topics.success, _on_result, group))
     except BaseException:
-        await unsubscribe_command()
+        await _release()
         raise
     try:
         while True:
@@ -578,11 +688,14 @@ async def read_owed(
             except TimeoutError:
                 break
     finally:
-        await unsubscribe_success()
-        await unsubscribe_command()
+        await _release()
     return HandlerInstallRequestOwed().handle(
         ModelInstallOwedInput(
-            requests=tuple(requests), results=tuple(results), now=now()
+            requests=tuple(requests),
+            results=tuple(results),
+            unread_requests=tuple(unread),
+            bus_quiet=seen == 0,
+            now=now(),
         )
     )
 
@@ -730,10 +843,18 @@ async def _owed_command(args: argparse.Namespace) -> int:
 
     async with _open_bus(args) as bus:
         reading = await read_owed(bus, overlay, now)
+    if not reading.readable:
+        sys.stdout.write(
+            "owed=unread: no record arrived on the install request topics within the"
+            " quiet window, so the bus reading is unread, not zero owed\n"
+        )
+        return 3
     for entry in reading.lines:
         sys.stdout.write(entry.line + "\n")
-    sys.stdout.write(f"owed={reading.owed} expired={reading.expired}\n")
-    return 1 if reading.expired else 0
+    sys.stdout.write(
+        f"owed={reading.owed} expired={reading.expired} unread={reading.unread}\n"
+    )
+    return 1 if reading.expired or reading.unread else 0
 
 
 def main(argv: Sequence[str] | None = None) -> int:

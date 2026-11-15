@@ -26,9 +26,14 @@ REPOSITORY_PATTERN = r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
 REF_PATTERN = r"^[A-Za-z0-9_][A-Za-z0-9_./-]*$"
 UNIT_PATTERN = r"^[A-Za-z0-9_][A-Za-z0-9_.-]*$"
 
-#: The two words the owed line carries; the throughput tick matches on them (the seam test pins both).
+#: The words the owed and unread lines carry; the throughput tick matches on them (the seam test pins them).
 NOT_RUNNING_MARK = "NOT RUNNING"
 EXPIRED_MARK = "INSTALL-REQUEST-EXPIRED"
+UNREAD_MARK = "INSTALL-REQUEST-UNREAD"
+
+#: The reason of a refusal for a publisher the host row does not allow: answered, never journalled, and never the answer
+#: that ends a request (a real request id may still be answered by its own publisher).
+PUBLISHER_REFUSED_REASON = "publisher_not_allowed"
 
 
 class EnumInstallTarget(StrEnum):
@@ -190,6 +195,16 @@ class ModelInstallRequestDecision(BaseModel):
     detail: str = ""
 
 
+class ModelInstallUnreadRequest(BaseModel):
+    """One request a reader could not read back off the bus: the id, the host and why."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    request_id: UUID
+    host: str
+    reason: str
+
+
 class ModelInstallOwedInput(BaseModel):
     """Every request and every result a reader holds, and the clock."""
 
@@ -197,6 +212,10 @@ class ModelInstallOwedInput(BaseModel):
 
     requests: tuple[ModelInstallRequest, ...] = ()
     results: tuple[ModelInstallRequestResult, ...] = ()
+    #: The records that arrived but could not be read back; each is listed as an unread line.
+    unread_requests: tuple[ModelInstallUnreadRequest, ...] = ()
+    #: True when no record at all arrived on the bus within the quiet window: the bus reading itself is unread.
+    bus_quiet: bool = False
     now: datetime
 
     @model_validator(mode="after")
@@ -209,26 +228,35 @@ class ModelInstallOwedLine(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     request_id: UUID
-    kind: Literal["not_running", "expired"]
+    kind: Literal["not_running", "expired", "unread"]
     line: str
 
 
 class ModelInstallOwedReading(BaseModel):
-    """``owed`` counts the requests with no verified result; ``expired`` counts those of them past their expiry."""
+    """``owed`` counts the requests with no verified result; ``expired`` counts those of them past their expiry.
+
+    ``unread`` counts the requests the reader could not read back off the bus;
+    ``readable`` is False only when the bus itself was quiet, so the reading is
+    unread rather than a true zero.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     owed: int = Field(ge=0)
     expired: int = Field(ge=0)
+    unread: int = Field(default=0, ge=0)
+    readable: bool = True
     lines: tuple[ModelInstallOwedLine, ...] = ()
 
 
 __all__: list[str] = [
     "EXPIRED_MARK",
     "NOT_RUNNING_MARK",
+    "PUBLISHER_REFUSED_REASON",
     "REF_PATTERN",
     "REPOSITORY_PATTERN",
     "UNIT_PATTERN",
+    "UNREAD_MARK",
     "EnumInstallRequestAction",
     "EnumInstallRequestStatus",
     "EnumInstallTarget",
@@ -241,4 +269,5 @@ __all__: list[str] = [
     "ModelInstallRequestDraft",
     "ModelInstallRequestReceived",
     "ModelInstallRequestResult",
+    "ModelInstallUnreadRequest",
 ]

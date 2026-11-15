@@ -49,6 +49,7 @@ from omnimarket.nodes.node_install_request_effect.overlay import (
     ModelInstallVerifyRow,
 )
 from omnimarket.nodes.node_unit_tree_install_effect.models.model_unit_tree_install import (
+    ModelUnitTreeCheck,
     ModelUnitTreeInstallRequest,
     ModelUnitTreeInstallResult,
 )
@@ -159,6 +160,11 @@ def _overlay(
                             "--branch",
                             "{ref}",
                             "--force",
+                        ),
+                        current_revision_argv=(
+                            "/usr/bin/env",
+                            "example-install-tree",
+                            "--status",
                         ),
                         verifies=(
                             ModelInstallVerifyRow(
@@ -280,17 +286,54 @@ class _ScriptedRunner:
 
 
 class _FakeInstaller:
-    """The unit tree installer: one verdict, one commit, every request kept."""
+    """The unit tree installer: one verdict and commit for an install, and the revision a ``verify`` reads.
 
-    def __init__(self, verdict: str = "pass", commit: str = NEW_COMMIT) -> None:
+    ``installed`` is the revision the host stands at (what the installer's own record holds): a ``verify`` reads
+    it back, a host with none reads the installer's "no record". A successful install moves it to the commit it
+    installed; a failed one leaves it. ``requests`` keeps the installs, ``reads`` the verifies.
+    """
+
+    def __init__(
+        self,
+        verdict: str = "pass",
+        commit: str = NEW_COMMIT,
+        installed: str | None = None,
+        restore_failed_tree: bool = False,
+    ) -> None:
         self.requests: list[ModelUnitTreeInstallRequest] = []
+        self.reads: list[ModelUnitTreeInstallRequest] = []
         self._verdict = verdict
         self._commit = commit
+        #: None reads the journal's last verified revision (the harness sets it), "" reads nothing installed.
+        self.installed = installed
+        self._restore_failed_tree = restore_failed_tree
 
     def handle(
         self, request: ModelUnitTreeInstallRequest
     ) -> ModelUnitTreeInstallResult:
+        if request.operation == "verify":
+            self.reads.append(request)
+            standing = self.installed or ""
+            return ModelUnitTreeInstallResult(
+                operation="verify",
+                unit=request.unit,
+                verdict="pass"
+                if standing and not self._restore_failed_tree
+                else "fail",
+                commit=standing,
+                checks=()
+                if standing
+                else (
+                    ModelUnitTreeCheck(
+                        name="recorded-revision", ok=False, detail="no record"
+                    ),
+                ),
+                detail="read" if standing else "no record",
+            )
         self.requests.append(request)
+        # An install of the previous revision (a restore) moves the host back to it.
+        if self._verdict == "pass":
+            self.installed = request.ref or self._commit
         return ModelUnitTreeInstallResult(
             operation=request.operation,
             unit=request.unit,
@@ -309,14 +352,31 @@ def _handler(
     journal: InMemoryResultJournal | None = None,
     overlay: ModelInstallRequestEffectOverlay | None = None,
 ) -> HandlerInstallRequest:
+    chosen_journal = journal if journal is not None else InMemoryResultJournal()
+    chosen_installer = installer if installer is not None else _FakeInstaller()
+    if chosen_installer.installed is None:
+        # The host stands where its journal says it last verified, unless the test says otherwise.
+        seeded = chosen_journal.latest_verified("example-host", "example-unit")
+        chosen_installer.installed = seeded.revision if seeded is not None else ""
     return HandlerInstallRequest(
         overlay=overlay if overlay is not None else _overlay(),
         executor_host="example-host",
-        unit_tree_installer=installer if installer is not None else _FakeInstaller(),
+        unit_tree_installer=chosen_installer,
         runner=runner if runner is not None else _ScriptedRunner(),
-        journal=journal if journal is not None else InMemoryResultJournal(),
+        journal=chosen_journal,
         now=lambda: NOW,
     )
+
+
+def _plugin_status(revision: str = "") -> dict[tuple[str, ...], tuple[int, str, str]]:
+    """The plugin unit's declared current-revision read: ``revision`` installed, or nothing installed yet."""
+    return {
+        ("example-install-tree", "--status"): (
+            0,
+            f"installed revision {revision}\n" if revision else "not installed\n",
+            "",
+        )
+    }
 
 
 def _merged_mirror(
@@ -462,6 +522,7 @@ def test_golden_plugin_tree_install_reads_the_revision_from_the_pattern() -> Non
     resolved sha, its pattern reads the revision back, and nothing rolls back."""
     runner = _ScriptedRunner(
         answers={
+            **_plugin_status(),
             ("rev-parse", "omn-19998-plugin"): (0, f"{NEW_COMMIT}\n", ""),
             ("merge-base", "origin/main"): (0, "", ""),
             ("example-install-tree",): (0, f"installed revision {NEW_COMMIT}\n", ""),
@@ -485,7 +546,7 @@ def test_golden_plugin_tree_install_reads_the_revision_from_the_pattern() -> Non
     assert handled.result.rolled_back is False
     assert handled.result.verify_line == "plugin tree ok"
     assert installer.requests == []
-    assert runner.calls_with("example-install-tree") == [
+    assert runner.calls_with("--commit") == [
         (
             "/usr/bin/env",
             "example-install-tree",
@@ -742,6 +803,7 @@ def test_an_installer_verdict_other_than_pass_fails_the_install_without_verifyin
 def test_a_failing_plugin_tree_installer_fails_the_install() -> None:
     runner = _ScriptedRunner(
         answers={
+            **_plugin_status(),
             ("rev-parse", "omn-19998-plugin"): (0, f"{NEW_COMMIT}\n", ""),
             ("merge-base", "origin/main"): (0, "", ""),
             ("example-install-tree",): (3, "", "no such branch"),
@@ -762,6 +824,8 @@ def test_a_failing_plugin_tree_installer_fails_the_install() -> None:
     assert handled.result.status is EnumInstallRequestStatus.INSTALL_FAILED
     assert handled.result.reason == "installer_failed"
     assert "no such branch" in handled.result.detail
+    assert "nothing was installed before" in handled.result.detail
+    assert handled.result.rolled_back is False
     assert runner.calls_with("example-verify-plugin") == []
     assert runner.calls_with("--force") == []
 
@@ -823,16 +887,27 @@ def test_a_failing_verify_rolls_the_unit_tree_back_to_the_previous_revision() ->
 def test_a_failing_verify_rolls_the_plugin_tree_back_with_the_declared_argv() -> None:
     """The plugin tree's rollback is the overlay's ``rollback_argv`` with
     ``{ref}`` the previous revision, run through the runner."""
-    runner = _ScriptedRunner(
+    scripted = _ScriptedRunner(
         answers={
+            **_plugin_status(PREVIOUS_COMMIT),
             ("rev-parse", "omn-19998-plugin"): (0, f"{NEW_COMMIT}\n", ""),
             ("merge-base", "origin/main"): (0, "", ""),
             ("merge-base", PREVIOUS_COMMIT): (1, "", ""),
             ("example-install-tree", "--force"): (0, "forced back\n", ""),
             ("example-install-tree",): (0, f"installed revision {NEW_COMMIT}\n", ""),
-            ("example-verify-plugin",): (0, "nothing of note\n", ""),
         }
     )
+    verify_outputs = iter(["nothing of note\n", "plugin tree ok\n"])
+
+    def runner(argv: Sequence[str], timeout: int) -> subprocess.CompletedProcess[str]:
+        """The named verify fails on the new tree and holds again on the restored one."""
+        if "example-verify-plugin" in argv:
+            scripted.calls.append(tuple(argv))
+            return subprocess.CompletedProcess(
+                args=list(argv), returncode=0, stdout=next(verify_outputs), stderr=""
+            )
+        return scripted(argv, timeout)
+
     journal = _seeded_journal(unit="example-plugin-tree")
     handled = _handler(runner=runner, journal=journal).handle(
         _received(
@@ -849,10 +924,15 @@ def test_a_failing_verify_rolls_the_plugin_tree_back_with_the_declared_argv() ->
     assert handled.result.status is EnumInstallRequestStatus.VERIFY_FAILED
     assert handled.result.reason == "verify_mismatch"
     assert handled.result.rolled_back is True
-    assert f"restored {PREVIOUS_COMMIT}" in handled.result.detail
-    assert runner.calls_with("--force") == [
+    assert f"restored {PREVIOUS_COMMIT}; the verify holds" in handled.result.detail
+    assert scripted.calls_with("--force") == [
         ("/usr/bin/env", "example-install-tree", "--branch", PREVIOUS_COMMIT, "--force")
     ]
+    # The restore is read again: a status read and the named verify both run after the forced restore.
+    force_at = max(n for n, call in enumerate(scripted.calls) if "--force" in call)
+    after = scripted.calls[force_at + 1 :]
+    assert any("--status" in call for call in after)
+    assert any("example-verify-plugin" in call for call in after)
 
 
 def test_a_failing_verify_with_no_previous_revision_names_it_in_the_detail() -> None:
@@ -871,7 +951,7 @@ def test_a_failing_verify_with_no_previous_revision_names_it_in_the_detail() -> 
     assert handled.result.status is EnumInstallRequestStatus.VERIFY_FAILED
     assert handled.result.reason == "verify_failed"
     assert handled.result.rolled_back is False
-    assert "no prior revision to restore" in handled.result.detail
+    assert "nothing was installed before" in handled.result.detail
     assert "exit 4" in handled.result.detail
     assert [r.ref for r in installer.requests] == [NEW_COMMIT]
 
@@ -1212,3 +1292,227 @@ def test_the_older_check_is_what_keeps_the_older_commit_refused() -> None:
     assert loose.result is not None
     assert loose.result.status is EnumInstallRequestStatus.VERIFIED
     assert [r.ref for r in loose_installer.requests] == [PREVIOUS_COMMIT]
+
+
+# ----------------------------------------- the host's own reading of what it stands at
+
+
+def _plugin_request(**overrides: object) -> ModelInstallRequestReceived:
+    return _received(
+        kind=EnumInstallTarget.PLUGIN_TREE,
+        repository="Example-Org/example-plugin-repo",
+        ref="omn-19998-plugin",
+        unit="example-plugin-tree",
+        verify="example-verify-plugin",
+        **overrides,
+    )
+
+
+def _plugin_answers(
+    *,
+    status: dict[tuple[str, ...], tuple[int, str, str]],
+    installer: tuple[int, str, str],
+) -> dict[tuple[str, ...], tuple[int, str, str]]:
+    return {
+        **status,
+        ("rev-parse", "omn-19998-plugin"): (0, f"{NEW_COMMIT}\n", ""),
+        ("merge-base", "origin/main"): (0, "", ""),
+        ("merge-base", PREVIOUS_COMMIT): (1, "", ""),
+        ("example-install-tree", "--force"): (0, "forced back\n", ""),
+        ("example-install-tree",): installer,
+        ("example-verify-plugin",): (0, "plugin tree ok\n", ""),
+    }
+
+
+def test_a_failing_plugin_installer_rolls_back_to_the_revision_the_host_reads_and_reverifies() -> (
+    None
+):
+    """The journal is empty, yet the host reads PREVIOUS through its declared status: the failed
+    installer is rolled back to it, the restored tree is read again, and the named verify runs again."""
+    runner = _ScriptedRunner(
+        answers=_plugin_answers(
+            status=_plugin_status(PREVIOUS_COMMIT), installer=(3, "", "half written")
+        )
+    )
+    handled = _handler(runner=runner).handle(_plugin_request())
+
+    assert handled.result is not None
+    assert handled.result.status is EnumInstallRequestStatus.INSTALL_FAILED
+    assert handled.result.reason == "installer_failed"
+    assert handled.result.rolled_back is True
+    assert f"restored {PREVIOUS_COMMIT}; the verify holds" in handled.result.detail
+    assert runner.calls_with("--force") == [
+        ("/usr/bin/env", "example-install-tree", "--branch", PREVIOUS_COMMIT, "--force")
+    ]
+    assert len(runner.calls_with("example-verify-plugin")) == 1
+
+
+def test_a_rollback_whose_reverify_fails_is_not_reported_as_rolled_back() -> None:
+    """The restore exits 0 but the named verify no longer holds on the restored tree: the answer
+    says it did not roll back, and names why."""
+    answers = _plugin_answers(
+        status=_plugin_status(PREVIOUS_COMMIT), installer=(3, "", "half written")
+    )
+    answers[("example-verify-plugin",)] = (0, "something else\n", "")
+    handled = _handler(runner=_ScriptedRunner(answers=answers)).handle(
+        _plugin_request()
+    )
+
+    assert handled.result is not None
+    assert handled.result.rolled_back is False
+    assert (
+        f"restored {PREVIOUS_COMMIT} but the verify fails again"
+        in handled.result.detail
+    )
+
+
+def test_a_rollback_that_leaves_the_host_at_another_revision_is_not_rolled_back() -> (
+    None
+):
+    """The restore exits 0 but the status read after it names another revision."""
+    answers = _plugin_answers(
+        status=_plugin_status(PREVIOUS_COMMIT), installer=(3, "", "half written")
+    )
+    runner = _ScriptedRunner(answers=answers)
+    reads = iter([PREVIOUS_COMMIT, OTHER_COMMIT])
+
+    def status_then_other(
+        argv: Sequence[str], timeout: int
+    ) -> subprocess.CompletedProcess[str]:
+        if "--status" in argv:
+            return subprocess.CompletedProcess(
+                args=list(argv),
+                returncode=0,
+                stdout=f"installed revision {next(reads)}\n",
+                stderr="",
+            )
+        return runner(argv, timeout)
+
+    handled = HandlerInstallRequest(
+        overlay=_overlay(),
+        executor_host="example-host",
+        unit_tree_installer=_FakeInstaller(installed=""),
+        runner=status_then_other,
+        journal=InMemoryResultJournal(),
+        now=lambda: NOW,
+    ).handle(_plugin_request())
+
+    assert handled.result is not None
+    assert handled.result.rolled_back is False
+    assert f"the host reads {OTHER_COMMIT} after it" in handled.result.detail
+
+
+def test_a_unit_tree_rollback_is_read_again_through_the_installers_verify() -> None:
+    """The restore install passes but the installer's own verify of the restored tree fails: not rolled back."""
+    runner = _ScriptedRunner(
+        answers={
+            **_merged_mirror(),
+            ("merge-base", PREVIOUS_COMMIT): (1, "", ""),
+            ("example-verify",): (4, "", "dark"),
+        }
+    )
+    installer = _FakeInstaller(installed=PREVIOUS_COMMIT, restore_failed_tree=True)
+    handled = _handler(runner=runner, installer=installer).handle(_received())
+
+    assert handled.result is not None
+    assert handled.result.status is EnumInstallRequestStatus.VERIFY_FAILED
+    assert handled.result.rolled_back is False
+    assert "the installer's verify reads fail" in handled.result.detail
+    assert [r.ref for r in installer.requests] == [NEW_COMMIT, PREVIOUS_COMMIT]
+    assert installer.reads[-1].operation == "verify"
+
+
+def test_the_installed_revision_comes_from_the_host_not_from_the_journal() -> None:
+    """An empty journal does not hide a newer installed revision: the host's own record reads NEW,
+    so the older commit is refused. With the host reading nothing, the same request installs."""
+    answers = {
+        **_merged_mirror(ref="older", sha=PREVIOUS_COMMIT),
+        ("merge-base", NEW_COMMIT): (0, "", ""),
+        ("example-verify",): (0, "example-unit ok\n", ""),
+    }
+    standing = _FakeInstaller(installed=NEW_COMMIT, commit=PREVIOUS_COMMIT)
+    refused = _handler(
+        runner=_ScriptedRunner(answers=answers), installer=standing
+    ).handle(_received(ref="older"))
+    assert refused.result is not None
+    assert refused.result.reason == "older_than_installed"
+    assert standing.requests == []
+
+    fresh = _FakeInstaller(installed="", commit=PREVIOUS_COMMIT)
+    first = _handler(runner=_ScriptedRunner(answers=answers), installer=fresh).handle(
+        _received(ref="older")
+    )
+    assert first.result is not None
+    assert first.result.status is EnumInstallRequestStatus.VERIFIED
+
+
+def test_a_current_revision_read_that_fails_refuses_before_anything_is_written() -> (
+    None
+):
+    runner = _ScriptedRunner(
+        answers={
+            ("example-install-tree", "--status"): (2, "", "no tree here"),
+            **_plugin_answers(
+                status={}, installer=(0, f"installed revision {NEW_COMMIT}\n", "")
+            ),
+        }
+    )
+    handled = _handler(runner=runner).handle(_plugin_request())
+
+    assert handled.result is not None
+    assert handled.result.status is EnumInstallRequestStatus.REFUSED
+    assert handled.result.reason == "current_revision_unreadable"
+    assert "no tree here" in handled.result.detail
+    assert runner.calls_with("--commit") == []
+
+
+def test_an_installer_that_cannot_read_the_unit_refuses_before_anything_is_written() -> (
+    None
+):
+    class _BlindInstaller(_FakeInstaller):
+        def handle(
+            self, request: ModelUnitTreeInstallRequest
+        ) -> ModelUnitTreeInstallResult:
+            if request.operation == "verify":
+                return ModelUnitTreeInstallResult(
+                    operation="verify",
+                    unit=request.unit,
+                    verdict="fail",
+                    checks=(
+                        ModelUnitTreeCheck(
+                            name="root", ok=False, detail="root variable missing"
+                        ),
+                    ),
+                )
+            return super().handle(request)
+
+    installer = _BlindInstaller()
+    handled = _handler(
+        runner=_ScriptedRunner(answers=_merged_mirror()), installer=installer
+    ).handle(_received())
+
+    assert handled.result is not None
+    assert handled.result.reason == "current_revision_unreadable"
+    assert installer.requests == []
+
+
+def test_an_installer_that_rolled_itself_back_is_read_again_before_the_answer_says_so() -> (
+    None
+):
+    """The unit tree installer reports ``rolled-back`` and the host stands at PREVIOUS: its verify
+    reads PREVIOUS, so the result is rolled back; the first install (nothing before) is not."""
+    runner = _ScriptedRunner(answers=_merged_mirror())
+    back = _handler(
+        runner=runner,
+        installer=_FakeInstaller(verdict="rolled-back", installed=PREVIOUS_COMMIT),
+    ).handle(_received())
+    assert back.result is not None
+    assert back.result.reason == "installer_rolled-back"
+    assert back.result.rolled_back is True
+
+    first = _handler(
+        runner=_ScriptedRunner(answers=_merged_mirror()),
+        installer=_FakeInstaller(verdict="rolled-back", installed=""),
+    ).handle(_received(request_id=OTHER_REQUEST_ID))
+    assert first.result is not None
+    assert first.result.rolled_back is False

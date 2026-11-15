@@ -17,8 +17,9 @@ runtime_profiles: [effects]
 
 description: >
   Executes an install request on the host that serves it, after the checks the host's own overlay row sets. A request reaches
-  the host only inside a command envelope; its producer is the publisher, and a publisher the host row does not name is
-  refused (its refusal is answered but never journalled). A request for another host is ignored. A request already answered
+  the host only inside a command envelope on the writer topic of the publishing login (the publisher is that topic's login,
+  attested by the broker's per-principal WRITE grant, never a cell the sender wrote), and a publisher the host row does not
+  name is refused (its refusal is answered but never journalled). A request for another host is ignored. A request already answered
   (verified or failed) is not run again, whatever redelivers it. An expired request, or one older than the overlay's maximum
   command age, is answered `expired` and never run. A host with a blocker holds the request and decides again after the
   overlay's retry interval. A unit, a repository or a verify name the host's overlay row does not declare is refused with a
@@ -27,8 +28,10 @@ description: >
   or unresolvable ref is refused. A commit already installed for the host and unit runs its verify only; an older commit is
   refused unless the request says rollback. Otherwise the installer installs that commit (the unit tree installer rolls its
   own tree back when its checks fail), then the unit's DECLARED verify runs (the request only names which); the request is
-  `verified` only when a line of the output holds the declared expected line. A failed verify, or an installer that reports
-  another commit than the one checked, is rolled back to the previous verified revision. A result that is not `verified`
+  `verified` only when a line of the output holds the declared expected line. A failed verify, a failed plugin installer, or an installer that reports
+  another commit than the one checked, is rolled back to the revision the host itself reads as installed (the unit tree
+  installer's own recorded revision, or the plugin unit's declared current-revision read, before anything is written) and the
+  rollback is verified again with the same installer or verify; the result says rolled back only when that re-verify held. A result that is not `verified`
   leaves the request owing its NOT RUNNING line.
 
 handler:
@@ -70,6 +73,19 @@ runtime_dispatch:
     success: onex.evt.omnimarket.install-request-completed.v1
     failure: onex.evt.omnimarket.install-request-failed.v1
 
+# One writer command topic per publishing login: onex.<kind>.<producer>.<name_prefix><principal>.v<version>. The host takes the
+# publisher from the topic a request arrived on, never from a cell the sender wrote: each login may WRITE only its own topic
+# (the per-principal topic WRITE grant of the deployment's broker ACL, as for node_work_ledger_append_effect), so the broker
+# attests who sent it. The parts are declared apart because a `{principal}` slot inside a full topic string fails the
+# architecture lint's topic-name rule. The shared command topic above stays the typed input of node_host_install_orchestrator,
+# which only remembers a request and ends it on the host's result; the host never reads it.
+writer_topics:
+  kind: "cmd"
+  producer: "omnimarket"
+  name_prefix: "install-requested-from-"
+  version: 1
+  principal_pattern: "^[a-z0-9][a-z0-9-]{0,62}$"
+
 topics:
   install_requested: onex.cmd.omnimarket.install-requested.v1
   install_request_completed: onex.evt.omnimarket.install-request-completed.v1
@@ -86,13 +102,14 @@ externally_consumed_topics:
   - onex.evt.omnimarket.install-request-failed.v1
 
 # The host process is the installer's login (the host reconciler principal, as for the host install orchestrator): it reads the
-# command topic and writes the two terminals. A lane's own login publishing the command is declared with the lab logins in the
-# overlays repository, not here.
+# writer command topics (the prefixed grant below) and writes the two terminals. A lane's own login publishing is declared with
+# the lab logins in the deployment's per-principal grants, not here: each login may WRITE only
+# onex.cmd.omnimarket.install-requested-from-<its own login>.v1, which is what makes the topic the sender's identity.
 broker_acl_grants:
   - principal: "${ONEX_ACL_HOST_RECONCILER_PRINCIPAL}"
     grants:
-      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.install-requested.v1, operation: READ}
-      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.install-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: PREFIXED, name: onex.cmd.omnimarket.install-requested-from-, operation: READ}
+      - {resource_type: TOPIC, pattern: PREFIXED, name: onex.cmd.omnimarket.install-requested-from-, operation: DESCRIBE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.install-request-completed.v1, operation: WRITE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.install-request-completed.v1, operation: DESCRIBE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.install-request-failed.v1, operation: WRITE}

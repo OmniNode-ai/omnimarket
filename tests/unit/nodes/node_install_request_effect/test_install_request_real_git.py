@@ -253,15 +253,32 @@ def _verified_result(*, request_id: UUID, revision: str) -> ModelInstallRequestR
 
 
 class _EchoInstaller:
-    """The unit tree installer: echoes the commit it was asked for as installed."""
+    """The unit tree installer: echoes the commit it was asked for as installed and remembers it.
+
+    ``standing`` is the revision the host stands at: an install moves it to the commit it was asked for, and a
+    ``verify`` reads it back the way the real installer reads its own record (nothing installed reads "no record").
+    ``requests`` keeps the installs, ``reads`` the verifies.
+    """
 
     def __init__(self) -> None:
         self.requests: list[ModelUnitTreeInstallRequest] = []
+        self.reads: list[ModelUnitTreeInstallRequest] = []
+        self.standing = ""
 
     def handle(
         self, request: ModelUnitTreeInstallRequest
     ) -> ModelUnitTreeInstallResult:
+        if request.operation == "verify":
+            self.reads.append(request)
+            return ModelUnitTreeInstallResult(
+                operation="verify",
+                unit=request.unit,
+                verdict="pass" if self.standing else "fail",
+                commit=self.standing,
+                detail="read" if self.standing else "no record",
+            )
         self.requests.append(request)
+        self.standing = request.ref
         return ModelUnitTreeInstallResult(
             operation=request.operation,
             unit=request.unit,
@@ -278,7 +295,13 @@ def _handler(
     journal: InMemoryResultJournal,
     verify_program: str = GOOD_VERIFY_PROGRAM,
 ) -> HandlerInstallRequest:
-    """The real handler: real git through the real ``default_runner``, a fixed clock."""
+    """The real handler: real git through the real ``default_runner``, a fixed clock.
+
+    The host stands where its journal says it last verified, unless the installer already holds a revision.
+    """
+    seeded = journal.latest_verified(HOST, "real-unit")
+    if seeded is not None and not installer.standing:
+        installer.standing = seeded.revision
     return HandlerInstallRequest(
         overlay=_overlay(repo.path, verify_program),
         executor_host=HOST,

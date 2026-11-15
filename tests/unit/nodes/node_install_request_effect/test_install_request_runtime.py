@@ -277,6 +277,17 @@ def test_the_declared_topics_are_the_contract_topics() -> None:
     assert topics.command == "onex.cmd.omnimarket.install-requested.v1"
     assert topics.success == "onex.evt.omnimarket.install-request-completed.v1"
     assert topics.failure == "onex.evt.omnimarket.install-request-failed.v1"
+    assert (
+        topics.writer_command_topic("example-lane-bot")
+        == "onex.cmd.omnimarket.install-requested-from-example-lane-bot.v1"
+    )
+
+
+def test_a_login_outside_the_principal_pattern_has_no_writer_topic() -> None:
+    topics = load_install_request_topics()
+    for login in ("Upper-Case", "has space", "", "-leading-dash", "a/b"):
+        with pytest.raises(ValueError, match="invalid writer principal"):
+            topics.writer_command_topic(login)
 
 
 async def test_a_published_request_is_served_and_its_result_comes_back(
@@ -315,12 +326,13 @@ async def test_a_published_request_is_served_and_its_result_comes_back(
         await host.stop()
 
 
-async def test_a_request_from_a_publisher_the_host_does_not_allow_is_refused(
+async def test_a_request_on_the_topic_of_a_login_the_host_does_not_allow_is_never_seen(
     tmp_path: Path,
 ) -> None:
-    """The envelope's producer is the refusal fact: a login outside the host row's
-    allowed publishers is answered refused for its own id and never journalled,
-    and the handler's installer is never called."""
+    """The publisher is the topic's login, which the broker attests: a login outside the host
+    row's allowed publishers writes a topic the host never reads, so nothing is answered, nothing
+    is journalled and the installer is never called -- and a forged ``producer`` cell naming an
+    allowed login, written to that topic, changes nothing."""
     async with open_install_request_bus(
         bus="inmemory", lane=None, kafka_bootstrap=None
     ) as bus:
@@ -335,25 +347,91 @@ async def test_a_request_from_a_publisher_the_host_does_not_allow_is_refused(
             now=lambda: NOW,
         )
         topics = load_install_request_topics()
-        results: list[dict[str, object]] = []
+        answers: list[dict[str, object]] = []
 
         async def capture(message: Any) -> None:
-            results.append(json.loads(message.value))
+            answers.append(json.loads(message.value))
 
         await bus.subscribe(topics.success, on_message=capture, group_id="capture")
+        await bus.subscribe(topics.failure, on_message=capture, group_id="capture")
         await host.start()
         request = await publish_request(
             bus, _draft(), overlay, now=lambda: NOW, publisher="somebody-else"
         )
+        forged = _request(expires_in=timedelta(minutes=120))
+        envelope = json.loads(
+            envelope_bytes_for(
+                topics.command, forged.model_dump(mode="json"), forged.request_id
+            )
+        )
+        envelope["producer"] = ALLOWED_PUBLISHER
+        await bus.publish(
+            topics.writer_command_topic("somebody-else"),
+            None,
+            json.dumps(envelope).encode("utf-8"),
+        )
         await host.drain()
 
-        assert len(results) == 1
-        result = ModelInstallRequestResult.model_validate(results[0]["payload"])
-        assert result.request_id == request.request_id
-        assert result.status is EnumInstallRequestStatus.REFUSED
-        assert result.reason == "publisher_not_allowed"
+        assert answers == []
         assert journal.get(request.request_id) is None
+        assert journal.get(forged.request_id) is None
         assert installer.requests == []
+        assert host.processed == 0
+        await host.stop()
+
+
+async def test_the_publisher_is_the_topic_login_and_never_the_envelope_producer(
+    tmp_path: Path,
+) -> None:
+    """An allowed login's topic carries a request whose envelope producer names someone else: the
+    request is served as the topic's login (the producer cell is never read), and the handler is
+    handed that login."""
+    async with open_install_request_bus(
+        bus="inmemory", lane=None, kafka_bootstrap=None
+    ) as bus:
+        overlay = _overlay(blocker=str(tmp_path / "no-such.lock"))
+        recording = _RecordingHandler(_handler(overlay, InMemoryResultJournal()))
+        host = InstallRequestHost(
+            bus, recording, overlay, "example-host", now=lambda: NOW
+        )
+        topics = load_install_request_topics()
+        await host.start()
+        request = _request(expires_in=timedelta(minutes=120))
+        envelope = json.loads(
+            envelope_bytes_for(
+                topics.command, request.model_dump(mode="json"), request.request_id
+            )
+        )
+        envelope["producer"] = "somebody-else"
+        await bus.publish(
+            topics.writer_command_topic(ALLOWED_PUBLISHER),
+            None,
+            json.dumps(envelope).encode("utf-8"),
+        )
+        await host.drain()
+
+        assert [r.publisher for r in recording.received] == [ALLOWED_PUBLISHER]
+        await host.stop()
+
+
+async def test_a_host_with_no_servable_writer_topic_refuses_to_start(
+    tmp_path: Path,
+) -> None:
+    """A host that could subscribe to none of its logins' topics serves nothing: it says so at start."""
+    async with open_install_request_bus(
+        bus="inmemory", lane=None, kafka_bootstrap=None
+    ) as bus:
+        overlay = _overlay(blocker=str(tmp_path / "no-such.lock"))
+
+        async def refuse(*args: Any, **kwargs: Any) -> Any:
+            raise RuntimeError("topic not found")
+
+        bus.subscribe = refuse  # type: ignore[method-assign]
+        host = InstallRequestHost(
+            bus, _handler(overlay, InMemoryResultJournal()), overlay, "example-host"
+        )
+        with pytest.raises(ValueError, match="serves no writer topic"):
+            await host.start()
         await host.stop()
 
 
@@ -380,7 +458,7 @@ async def test_a_bare_request_with_no_envelope_is_answered_on_the_failure_termin
         await host.start()
         request = _request(expires_in=timedelta(minutes=120))
         await bus.publish(
-            topics.command,
+            topics.writer_command_topic(ALLOWED_PUBLISHER),
             str(request.request_id).encode("utf-8"),
             json.dumps(request.model_dump(mode="json")).encode("utf-8"),
         )
@@ -416,7 +494,7 @@ async def test_a_command_that_is_no_request_lands_on_the_failure_topic(
         await bus.subscribe(topics.failure, on_message=capture, group_id="capture")
         await host.start()
         await bus.publish(
-            topics.command,
+            topics.writer_command_topic(ALLOWED_PUBLISHER),
             None,
             envelope_bytes_for(topics.command, {"host": "example-host"}, uuid.uuid4()),
         )
@@ -468,28 +546,42 @@ async def test_a_held_request_answers_once_the_blocker_is_gone(
         await host.stop()
 
 
-async def test_publish_request_stamps_the_producer_on_the_command_envelope() -> None:
-    """The publishing login travels as the envelope's producer: the fact the host
-    and the owed reading check against the overlay row's allowed publishers."""
+async def test_publish_request_writes_the_publishers_topic_and_the_orchestrators_input() -> (
+    None
+):
+    """The request goes to the writer topic of the publishing login (the host's identity fact) and
+    once to the shared command topic (the orchestrator's typed input); the envelope names no sender."""
     async with open_install_request_bus(
         bus="inmemory", lane=None, kafka_bootstrap=None
     ) as bus:
         topics = load_install_request_topics()
-        commands: list[dict[str, object]] = []
+        writer: list[dict[str, object]] = []
+        shared: list[dict[str, object]] = []
 
-        async def capture(message: Any) -> None:
-            commands.append(json.loads(message.value))
+        async def capture_writer(message: Any) -> None:
+            writer.append(json.loads(message.value))
 
-        await bus.subscribe(topics.command, on_message=capture, group_id="capture")
+        async def capture_shared(message: Any) -> None:
+            shared.append(json.loads(message.value))
+
+        await bus.subscribe(
+            topics.writer_command_topic(ALLOWED_PUBLISHER),
+            on_message=capture_writer,
+            group_id="capture-writer",
+        )
+        await bus.subscribe(
+            topics.command, on_message=capture_shared, group_id="capture-shared"
+        )
         request = await publish_request(
             bus, _draft(), _overlay(), now=lambda: NOW, publisher=ALLOWED_PUBLISHER
         )
 
-        assert len(commands) == 1
-        envelope = commands[0]
-        assert envelope["producer"] == ALLOWED_PUBLISHER
-        assert envelope["correlation_id"] == str(request.request_id)
-        assert ModelInstallRequest.model_validate(envelope["payload"]) == request
+        assert len(writer) == 1
+        assert len(shared) == 1
+        for envelope in (writer[0], shared[0]):
+            assert not envelope.get("producer")
+            assert envelope["correlation_id"] == str(request.request_id)
+            assert ModelInstallRequest.model_validate(envelope["payload"]) == request
 
 
 async def _read_owed(
@@ -595,9 +687,9 @@ async def test_read_owed_marks_a_request_past_its_expiry() -> None:
         assert reading.lines[0].line.startswith(EXPIRED_MARK)
 
 
-async def test_read_owed_ignores_a_forged_producer_and_a_bare_request() -> None:
-    """A request from a login the host row does not allow is never counted, and
-    a bare request object -- no envelope -- is never validated as one."""
+async def test_read_owed_ignores_a_login_no_host_names_and_a_bare_request() -> None:
+    """A login no host row names has no topic the reading subscribes to, and a bare request
+    object -- no envelope -- is never validated as one: neither is counted."""
     async with open_install_request_bus(
         bus="inmemory", lane=None, kafka_bootstrap=None
     ) as bus:
@@ -610,7 +702,7 @@ async def test_read_owed_ignores_a_forged_producer_and_a_bare_request() -> None:
             bare = _request(expires_in=timedelta(minutes=120))
             topics = load_install_request_topics()
             await bus.publish(
-                topics.command,
+                topics.writer_command_topic(ALLOWED_PUBLISHER),
                 None,
                 json.dumps(bare.model_dump(mode="json")).encode("utf-8"),
             )
@@ -618,7 +710,78 @@ async def test_read_owed_ignores_a_forged_producer_and_a_bare_request() -> None:
         reading = await _read_owed(bus, overlay, lambda: NOW, "owed-forged", publish)
 
         assert reading.owed == 0
-        assert reading.expired == 0
+        assert reading.unread == 0
+        assert reading.lines == ()
+        assert reading.readable is True
+
+
+async def test_read_owed_lists_a_request_for_a_host_the_reader_does_not_hold_as_unread() -> (
+    None
+):
+    """The reader's overlay holds no ``other-host``: the request cannot be checked, so it is
+    listed unread -- never dropped, never an owed zero."""
+    async with open_install_request_bus(
+        bus="inmemory", lane=None, kafka_bootstrap=None
+    ) as bus:
+        overlay = _overlay()
+        published: list[ModelInstallRequest] = []
+
+        async def publish() -> None:
+            published.append(
+                await publish_request(
+                    bus,
+                    _draft().model_copy(update={"host": "other-host"}),
+                    overlay,
+                    now=lambda: NOW,
+                    publisher=ALLOWED_PUBLISHER,
+                )
+            )
+
+        reading = await _read_owed(bus, overlay, lambda: NOW, "owed-unread", publish)
+
+        assert reading.owed == 0
+        assert reading.unread == 1
+        assert [line.kind for line in reading.lines] == ["unread"]
+        assert str(published[0].request_id) in reading.lines[0].line
+        assert "other-host" in reading.lines[0].line
+
+
+async def test_read_owed_lists_a_request_from_a_login_its_host_does_not_allow_as_unread() -> (
+    None
+):
+    """A login another host row allows writes a request naming this host: listed unread."""
+    async with open_install_request_bus(
+        bus="inmemory", lane=None, kafka_bootstrap=None
+    ) as bus:
+        base = _overlay()
+        second = base.hosts[0].model_copy(
+            update={"name": "second-host", "allowed_publishers": ("second-lane-bot",)}
+        )
+        overlay = base.model_copy(update={"hosts": (*base.hosts, second)})
+
+        async def publish() -> None:
+            await publish_request(
+                bus, _draft(), overlay, now=lambda: NOW, publisher="second-lane-bot"
+            )
+
+        reading = await _read_owed(bus, overlay, lambda: NOW, "owed-cross", publish)
+
+        assert reading.owed == 0
+        assert reading.unread == 1
+        assert (
+            "second-lane-bot is not allowed for example-host" in reading.lines[0].line
+        )
+
+
+async def test_a_quiet_bus_reads_unread_and_not_zero_owed() -> None:
+    """No envelope at all inside the quiet window: ``readable`` is False, never ``owed=0``."""
+    async with open_install_request_bus(
+        bus="inmemory", lane=None, kafka_bootstrap=None
+    ) as bus:
+        reading = await read_owed(bus, _overlay(), lambda: NOW, "owed-quiet")
+
+        assert reading.readable is False
+        assert reading.owed == 0
         assert reading.lines == ()
 
 
@@ -648,15 +811,16 @@ def _overlay_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(root))
 
 
-def test_the_owed_command_takes_the_bus_arguments_and_prints_the_summary(
+def test_the_owed_command_reads_a_quiet_bus_as_unread_with_exit_3(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     _overlay_root(tmp_path, monkeypatch)
 
     code = main(["owed", "--bus", "inmemory"])
 
-    assert code == 0
-    assert capsys.readouterr().out == "owed=0 expired=0\n"
+    # A bus that holds no record at all within the quiet window is unread, never a clean zero.
+    assert code == 3
+    assert capsys.readouterr().out.startswith("owed=unread")
 
 
 def test_the_owed_command_takes_no_requests_file_argument(
@@ -698,7 +862,7 @@ def test_the_owed_command_prints_one_line_per_owed_request_and_exits_1_when_one_
     code = main(["owed", "--bus", "inmemory"])
 
     assert code == 1
-    assert capsys.readouterr().out == f"{line.line}\nowed=1 expired=1\n"
+    assert capsys.readouterr().out == f"{line.line}\nowed=1 expired=1 unread=0\n"
 
 
 def test_the_publisher_is_the_lane_principal_on_a_declared_lane_and_the_overlay_login_otherwise(
