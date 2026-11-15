@@ -7,7 +7,9 @@ from __future__ import annotations
 from datetime import datetime
 
 from omnimarket.nodes.node_host_drain_effect.models.model_host_drain import (
+    EnumHostReadKind,
     EnumRunnerActivity,
+    ModelDrainMark,
 )
 
 
@@ -60,6 +62,8 @@ class StuckWorkerStopper:
 class DroppingDrainStore:
     """The injected break of the drain: accepts the write and keeps nothing."""
 
+    durable = False
+
     def set_draining(
         self,
         host_name: str,
@@ -79,3 +83,28 @@ class DroppingDrainStore:
 
     def until_of(self, host_name: str) -> datetime | None:
         return None
+
+    def mark_of(self, host_name: str) -> ModelDrainMark | None:
+        return None
+
+
+class FixedHostRead:
+    """A host read that answers fixed counts per host, or raises when the host is named in ``unreadable``."""
+
+    def __init__(
+        self,
+        name: str,
+        kind: EnumHostReadKind,
+        counts: dict[str, int],
+        *,
+        unreadable: frozenset[str] = frozenset(),
+    ) -> None:
+        self.name = name
+        self.kind = kind
+        self.counts = counts
+        self.unreadable = unreadable
+
+    def read(self, host_name: str) -> int:
+        if host_name in self.unreadable:
+            raise OSError(f"{self.name}: the host {host_name} cannot be read")
+        return self.counts.get(host_name, 0)

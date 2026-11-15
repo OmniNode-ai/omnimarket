@@ -50,9 +50,13 @@ def test_drain_status_line_verb_prints_the_line_not_json(
         ["status", "--host", "example-host-a", "--line"], overlay=overlay, environ={}
     )
     out = capsys.readouterr().out.strip()
-    # The example overlay's lane count command does not exist on this host: the count is unreadable, never zero.
+    # The example overlay's lane count and host read commands do not exist on this host: every count is
+    # unreadable, never zero.
     assert code == 0
-    assert out == "example-host-a not draining: lane count unreadable"
+    assert out == (
+        "example-host-a not draining: lane count unreadable; "
+        "host read lanes=unreadable units=unreadable model_servers=unreadable"
+    )
 
 
 def test_a_refused_drain_prints_its_code_and_detail_as_the_line(

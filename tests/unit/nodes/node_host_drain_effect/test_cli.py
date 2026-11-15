@@ -16,10 +16,13 @@ from omnimarket.nodes.node_host_drain_effect.overlay import ModelHostDrainOverla
 def _jsonl(
     overlay: ModelHostDrainOverlay, home: Path
 ) -> tuple[ModelHostDrainOverlay, dict[str, str]]:
-    # Lane counts come from a command the test points at /bin/echo-like python; only the profile changes here.
+    # Lane counts and host reads come from commands the test points at /bin/echo-like python; only the
+    # profile changes here.
     document = overlay.model_dump(mode="json")
     document["profile"] = "jsonl"
     document["lanes"]["count_command"] = ["python3", "-c", "print(0)", "{host}"]
+    for read in document["host_reads"]:
+        read["command"] = ["python3", "-c", "print(0)", "{host}", read["kind"]]
     return (
         ModelHostDrainOverlay.model_validate(document),
         {overlay.emission.home_env: str(home)},

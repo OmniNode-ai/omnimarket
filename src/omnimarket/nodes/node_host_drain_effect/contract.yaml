@@ -10,9 +10,13 @@ runtime_profiles: []
 description: >
   A host leaves placement by a command, not by a data pull request (rebuild plan 7.4, piece 2, OMN-22905).
   The drain verb sets one host draining in the drain store and reads it back: the lab placement judge refuses
-  every new unit for a draining host, running lanes are counted and left to finish, and the host reads drained
-  when the count is 0. The lane count is read either from the remote-lane runner's own receipts or from an argv
-  that prints it, whichever the overlay's lanes block names, and an unreadable count is never a measured zero.
+  every new unit for a draining host and running lanes are left to finish. The host reads safe to power down only
+  from a reading of the host itself (OMN-24489): every host read the overlay declares (its lanes, its units, its
+  model servers, each an argv that prints a count) and this machine's remote-lane runner receipts (every
+  receipt that is not final counts, whatever its status or launcher pid; a receipt that cannot be read, or names no
+  host, is unreadable) read 0 on two passes around the mark read, and the mark outlives the process. Anything
+  unread, any count above 0, a mark held in memory or a host with no host read is NOT SAFE, and an unreadable
+  count is never a measured zero.
   The idle-only runner stop first sets the runner's host draining and reads it back, so no start is admitted
   while it reads and acts, then stops a runner only when its process table shows no worker process; a busy or
   unreadable runner is refused and nothing is stopped, and the host returns to the state it had unless the runner

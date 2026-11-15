@@ -8,7 +8,9 @@ from datetime import datetime
 from typing import Protocol
 
 from omnimarket.nodes.node_host_drain_effect.models.model_host_drain import (
+    EnumHostReadKind,
     EnumRunnerActivity,
+    ModelDrainMark,
 )
 
 
@@ -17,7 +19,13 @@ class ProtocolDrainStore(Protocol):
 
     A drain mark is time-bounded: a draining record whose ``until`` is at or behind the store's clock reads as not
     draining. The in-memory store is the default; the real stores are durable.
+
+    ``durable`` says whether a mark outlives the process that wrote it: a store whose marks die with the process can
+    never back a SAFE reading. ``mark_of`` is the raw record the clock has not judged, so one status reads one mark
+    and one clock and the line it prints cannot disagree with itself.
     """
+
+    durable: bool
 
     def set_draining(
         self,
@@ -37,11 +45,28 @@ class ProtocolDrainStore(Protocol):
         """The mark's until while the host reads draining, else None."""
         ...
 
+    def mark_of(self, host_name: str) -> ModelDrainMark | None:
+        """The host's record as held, whether or not it is past its until; None when the host has none."""
+        ...
+
 
 class ProtocolLaneSource(Protocol):
     """How many lanes run on a host now."""
 
     def running(self, host_name: str) -> int: ...
+
+
+class ProtocolHostRead(Protocol):
+    """One reading of the host itself: how many lanes, units or model servers are busy there now.
+
+    ``read`` raises OSError, ValueError or subprocess.SubprocessError when the host cannot be read: the caller reads a
+    raise as unreadable, which is never SAFE.
+    """
+
+    name: str
+    kind: EnumHostReadKind
+
+    def read(self, host_name: str) -> int: ...
 
 
 class ProtocolRunnerProbe(Protocol):
@@ -62,6 +87,7 @@ class ProtocolRunnerStopper(Protocol):
 
 __all__ = [
     "ProtocolDrainStore",
+    "ProtocolHostRead",
     "ProtocolLaneSource",
     "ProtocolRunnerProbe",
     "ProtocolRunnerStopper",

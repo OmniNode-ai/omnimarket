@@ -18,6 +18,9 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
+from omnimarket.nodes.node_host_drain_effect.models.model_host_drain import (
+    EnumHostReadKind,
+)
 
 NODE_NAME = "node_host_drain_effect"
 EXAMPLE_OVERLAY = Path(__file__).with_name("overlay.example.yaml")
@@ -151,6 +154,25 @@ class ModelLaneCountSettings(_Frozen):
         return self
 
 
+class ModelHostReadSettings(_Frozen):
+    """SAFE to power down is a reading of the host itself, so the overlay must declare a host read for its lanes,
+    its units and its model servers.
+
+    ``command`` is an argv that prints the count of ``kind`` busy on ``{host}`` as one integer. No shell.
+    """
+
+    name: str = Field(min_length=1)
+    kind: EnumHostReadKind
+    command: tuple[str, ...] = Field(min_length=1)
+    timeout_seconds: int = Field(ge=1)
+
+    @model_validator(mode="after")
+    def _command_names_the_host(self) -> ModelHostReadSettings:
+        if not any("{host}" in part for part in self.command):
+            raise ValueError("command must name {host}")
+        return self
+
+
 class ModelEmissionSettings(_Frozen):
     """Where the chain events of the real profiles go: the journal the floor reads its receipts from."""
 
@@ -166,6 +188,8 @@ class ModelHostDrainOverlay(_Frozen):
     #: Absent: this deployment declares no runner stop; the drain verb alone is deployed and ``runner-stop`` is refused.
     runner_stop: ModelRunnerStopSettings | None = None
     lanes: ModelLaneCountSettings
+    #: The reads of the host itself; every kind exactly once, names unique: a SAFE reading is a reading of the host.
+    host_reads: tuple[ModelHostReadSettings, ...] = Field(min_length=1)
     emission: ModelEmissionSettings
 
     @model_validator(mode="after")
@@ -177,6 +201,25 @@ class ModelHostDrainOverlay(_Frozen):
         )
         if unknown:
             raise ValueError(f"runner hosts not in drain.hosts: {unknown}")
+        return self
+
+    @model_validator(mode="after")
+    def _host_reads_cover_every_kind_once(self) -> ModelHostDrainOverlay:
+        kinds = [read.kind for read in self.host_reads]
+        missing = sorted(kind for kind in EnumHostReadKind if kind not in kinds)
+        if missing:
+            raise ValueError(
+                f"host_reads declares no read for kind(s): {[k.value for k in missing]}"
+            )
+        twice = sorted({k for k in kinds if kinds.count(k) > 1})
+        if twice:
+            raise ValueError(
+                f"host_reads declares kind(s) twice: {[k.value for k in twice]}"
+            )
+        names = [read.name for read in self.host_reads]
+        if len(names) != len(set(names)):
+            dupes = sorted({n for n in names if names.count(n) > 1})
+            raise ValueError(f"host_reads names are not unique: {dupes}")
         return self
 
     def runner(self, name: str) -> ModelRunnerRow | None:

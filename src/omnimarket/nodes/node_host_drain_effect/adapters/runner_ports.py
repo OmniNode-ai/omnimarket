@@ -5,7 +5,6 @@
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 from collections.abc import Callable, Mapping
 from pathlib import Path
@@ -189,23 +188,30 @@ class CommandLaneSource:
 class ReceiptLaneSource:
     """Counts a host's running lanes from the remote-lane runner's own receipts.
 
-    Reads ``<directory>/<lane>/<receipt>.json``. A receipt counts when it names the host, is not final, is preparing
-    or running, and its ``pid``, when it has one, is alive. A receipt that does not parse is skipped; a directory
-    that cannot be listed raises OSError: an unreadable count is never a measured zero.
+    Reads ``<directory>/<lane>/*.json``. A file is a lane receipt only when it parses to a dict carrying the key
+    ``run_id``; a dict without ``run_id`` is not a lane receipt and is ignored. A receipt that cannot be read raises
+    OSError and one that does not parse as JSON raises ValueError, each naming the file path: an unreadable count is
+    never a measured zero. A lane receipt counts when it is not final and it names the host, read from ``host`` or,
+    failing that, from ``prerequisites.host``; a non-final receipt that names no host raises ValueError so the count
+    reads unreadable. Status and the launcher ``pid`` no longer matter: a non-final receipt counts whatever its
+    status and even when its launcher pid is dead.
     """
 
     def __init__(self, directory: Path) -> None:
         self._directory = directory
 
     @staticmethod
-    def _pid_alive(pid: int) -> bool:
-        try:
-            os.kill(pid, 0)
-        except ProcessLookupError:
-            return False
-        except PermissionError:
-            return True
-        return True
+    def _host_of(data: Mapping[str, object]) -> str | None:
+        """The host a receipt names: ``host`` when a non-empty string, else ``prerequisites.host`` when it is."""
+        host = data.get("host")
+        if isinstance(host, str) and host:
+            return host
+        prerequisites = data.get("prerequisites")
+        if isinstance(prerequisites, Mapping):
+            nested = prerequisites.get("host")
+            if isinstance(nested, str) and nested:
+                return nested
+        return None
 
     def running(self, host_name: str) -> int:
         # The listing itself is the read: a missing or unreadable directory raises, it never reads as zero.
@@ -214,17 +220,26 @@ class ReceiptLaneSource:
         for lane_dir in lane_dirs:
             for receipt in lane_dir.glob("*.json"):
                 try:
-                    data = json.loads(receipt.read_text(encoding="utf-8"))
-                    if not isinstance(data, dict):
-                        continue
-                    if (
-                        data.get("host") == host_name
-                        and not data.get("final")
-                        and data.get("status") in ("preparing", "running")
-                        and (not data.get("pid") or self._pid_alive(int(data["pid"])))
-                    ):
-                        count += 1
-                except (OSError, ValueError, TypeError):
-                    # A receipt that cannot be read or parsed holds no evidence of a lane.
+                    text = receipt.read_text(encoding="utf-8")
+                except OSError as exc:
+                    # A receipt that cannot be read holds no evidence of a lane: the count reads unreadable.
+                    raise OSError(f"cannot read lane receipt: {receipt}") from exc
+                try:
+                    data = json.loads(text)
+                except ValueError as exc:
+                    raise ValueError(
+                        f"lane receipt does not parse as JSON: {receipt}"
+                    ) from exc
+                if not isinstance(data, dict) or "run_id" not in data:
+                    # A file that is not a lane receipt holds no evidence of a lane: it is ignored.
                     continue
+                if data.get("final") is True:
+                    # A final receipt is done; it never counts, whatever its host.
+                    continue
+                host = self._host_of(data)
+                if host is None:
+                    # A non-final receipt that names no host cannot be attributed: read it as unreadable.
+                    raise ValueError(f"lane receipt names no host: {receipt}")
+                if host == host_name:
+                    count += 1
         return count

@@ -36,6 +36,9 @@ from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
     NodeOverlayNotFoundError,
 )
+from omnimarket.nodes.node_host_drain_effect.adapters.host_reads import (
+    CommandHostRead,
+)
 from omnimarket.nodes.node_host_drain_effect.adapters.runner_ports import (
     CommandLaneSource,
     CommandWorkerProbe,
@@ -198,6 +201,7 @@ def run(
         if overlay.lanes.receipts_dir is not None
         else CommandLaneSource(overlay.lanes)
     )
+    host_reads = tuple(CommandHostRead(r) for r in overlay.host_reads)
     drain = HandlerHostDrain(
         overlay.drain,
         store=store,
@@ -205,6 +209,7 @@ def run(
         sink=sink,
         clock=clock,
         backend=backend,
+        host_reads=host_reads,
     )
     result = drain.handle(
         ModelHostDrainRequest(

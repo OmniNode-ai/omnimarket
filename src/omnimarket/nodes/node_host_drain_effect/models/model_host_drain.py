@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -30,6 +30,43 @@ class EnumDrainOutcome(StrEnum):
     START_ADMITTED = "start_admitted"
     START_REFUSED = "start_refused"
     FAILED = "failed"
+
+
+class EnumHostReadKind(StrEnum):
+    """What a host's own reading covers: its running lanes, its units and its model servers."""
+
+    LANES = "lanes"
+    UNITS = "units"
+    MODEL_SERVERS = "model_servers"
+
+
+class ModelDrainMark(_Frozen):
+    """One host's drain record as the store holds it, before the clock judges it."""
+
+    draining: bool
+    #: When the mark expires; None: no expiry.
+    until: datetime | None = None
+
+    def reads_draining(self, now: datetime) -> bool:
+        """Whether the mark reads as draining at ``now``: draining, and not at or past its until."""
+        if not self.draining:
+            return False
+        if self.until is None:
+            return True
+        until = (
+            self.until
+            if self.until.tzinfo is not None
+            else self.until.replace(tzinfo=UTC)
+        )
+        return now < until
+
+
+class ModelHostReadResult(_Frozen):
+    """One host read of a status: what was read and the count, None when it could not be read."""
+
+    name: str
+    kind: EnumHostReadKind
+    count: int | None = Field(default=None, ge=0)
 
 
 class EnumRunnerActivity(StrEnum):
@@ -66,6 +103,11 @@ class ModelHostDrainResult(_Frozen):
     #: None when the count could not be read: an unknown count is never a measured zero.
     lanes_running: int | None = Field(default=0, ge=0)
     drained: bool = False
+    #: True only when the host itself was read and showed nothing running: every host read (lanes, units, model
+    #: servers) and the runner's receipts read 0 twice, on a durable drain mark. Anything unread is False.
+    safe: bool = False
+    #: The host reads of this status, in the overlay's order; empty when none is declared.
+    host_reads: tuple[ModelHostReadResult, ...] = ()
     #: When the drain mark expires: the host reads not draining from here on. None when it is not draining.
     until: datetime | None = None
     #: One line saying whether the host is safe to power down; an unreadable lane count is never safe.
@@ -93,10 +135,13 @@ class ModelIdleRunnerStopResult(_Frozen):
 __all__ = [
     "EnumDrainOp",
     "EnumDrainOutcome",
+    "EnumHostReadKind",
     "EnumRunnerActivity",
     "EnumRunnerStopOutcome",
+    "ModelDrainMark",
     "ModelHostDrainRequest",
     "ModelHostDrainResult",
+    "ModelHostReadResult",
     "ModelIdleRunnerStopRequest",
     "ModelIdleRunnerStopResult",
 ]

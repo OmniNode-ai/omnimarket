@@ -19,6 +19,10 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
+from omnimarket.nodes.node_host_drain_effect.models.model_host_drain import (
+    ModelDrainMark,
+)
+
 #: A record per host: whether it reads draining and when its mark expires (None: no expiry).
 Record = tuple[bool, datetime | None]
 
@@ -41,6 +45,9 @@ def _reads_draining(record: Record | None, now: datetime) -> bool:
 
 
 class InMemoryDrainStore:
+    #: A mark here dies with the process: it can never back a SAFE reading.
+    durable = False
+
     def __init__(self, *, clock: Callable[[], datetime] = _now) -> None:
         self._clock = clock
         self._records: dict[str, Record] = {}
@@ -73,6 +80,15 @@ class InMemoryDrainStore:
         if record is None or not _reads_draining(record, self._clock()):
             return None
         return None if record[1] is None else _as_utc(record[1])
+
+    def mark_of(self, host_name: str) -> ModelDrainMark | None:
+        """The host's record as held, whether or not it is past its until."""
+        record = self._records.get(host_name)
+        return (
+            None
+            if record is None
+            else ModelDrainMark(draining=record[0], until=record[1])
+        )
 
 
 def _record(
@@ -118,6 +134,9 @@ def _state_of(line: str) -> tuple[str, Record] | None:
 
 class JsonlDrainStore:
     """Append-only file of drain records; the state is the fold of the file, so a restart keeps it."""
+
+    #: A mark here is a line in a file that outlives the process.
+    durable = True
 
     def __init__(self, path: Path, *, clock: Callable[[], datetime] = _now) -> None:
         self._path = path
@@ -173,3 +192,12 @@ class JsonlDrainStore:
         if record is None or not _reads_draining(record, self._clock()):
             return None
         return record[1]
+
+    def mark_of(self, host_name: str) -> ModelDrainMark | None:
+        """The host's record as held, whether or not it is past its until."""
+        record = self._read().get(host_name)
+        return (
+            None
+            if record is None
+            else ModelDrainMark(draining=record[0], until=record[1])
+        )

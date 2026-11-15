@@ -5,12 +5,14 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 
 from omnimarket.handlers.emission_sink import InMemoryEmissionSink
 from omnimarket.nodes.node_host_drain_effect.adapters.fakes import (
     DroppingDrainStore,
+    FixedHostRead,
     FixedLaneSource,
 )
 from omnimarket.nodes.node_host_drain_effect.adapters.stores import (
@@ -23,6 +25,7 @@ from omnimarket.nodes.node_host_drain_effect.handlers.handler_host_drain import 
 from omnimarket.nodes.node_host_drain_effect.models.model_host_drain import (
     EnumDrainOp,
     EnumDrainOutcome,
+    EnumHostReadKind,
     ModelHostDrainRequest,
 )
 from omnimarket.nodes.node_host_drain_effect.overlay import ModelHostDrainOverlay
@@ -95,14 +98,23 @@ def test_start_on_draining_host_is_refused(
 
 def test_drained_reads_true_once_the_last_lane_finishes(
     overlay: ModelHostDrainOverlay,
-    store: InMemoryDrainStore,
     lanes: FixedLaneSource,
     sink: InMemoryEmissionSink,
+    tmp_path: Path,
 ) -> None:
-    handler = _handler(overlay, store, lanes, sink)
-    handler.handle(
+    handler = HandlerHostDrain(
+        overlay.drain,
+        store=JsonlDrainStore(tmp_path / "drain.jsonl", clock=lambda: NOW),
+        lanes=lanes,
+        sink=sink,
+        clock=lambda: NOW,
+        backend="in_memory",
+        host_reads=[FixedHostRead(kind.value, kind, {}) for kind in EnumHostReadKind],
+    )
+    drained = handler.handle(
         ModelHostDrainRequest(op=EnumDrainOp.DRAIN, host_name="example-host-a")
     )
+    assert drained.drained is False
     lanes.counts["example-host-a"] = 0
     status = handler.handle(
         ModelHostDrainRequest(op=EnumDrainOp.STATUS, host_name="example-host-a")
