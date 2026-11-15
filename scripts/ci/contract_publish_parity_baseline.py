@@ -100,7 +100,6 @@ PARITY_DEBT: tuple[str, ...] = (
     "node_pr_lifecycle_triage_compute",
     "node_pr_review_orchestrator",
     "node_process_watchdog",
-    "node_prod_health_fact_resolver_effect",
     "node_prod_promotion_grant_resolver_effect",
     "node_projection_cost_summary",
     "node_projection_cost_token_usage",
