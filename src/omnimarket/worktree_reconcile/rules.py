@@ -16,13 +16,17 @@ from omnimarket.events.worktree_reconcile import (
     EnumWorktreeReconcileDecision as Decision,
 )
 from omnimarket.handlers import rules_worktree_removal as removal
-from omnimarket.handlers.rules_worktree_lock import dead_decision, live_reason
+from omnimarket.handlers.rules_worktree_lock import (
+    dead_decision,
+    live_reason,
+    removal_unproven,
+)
 from omnimarket.models.model_worktree_reconcile_policy import (
     ModelWorktreeReconcilePolicy,
 )
 
 
-def classify(
+def _classify(
     facts: ModelWorktreeFacts, policy: ModelWorktreeReconcilePolicy
 ) -> tuple[Decision, str]:
     if not facts.facts_complete:
@@ -79,6 +83,22 @@ def classify(
     return Decision.KEEP, "not_stale"
 
 
+def classify(
+    facts: ModelWorktreeFacts, policy: ModelWorktreeReconcilePolicy
+) -> tuple[Decision, str]:
+    """The decision, held at keep unless a fresh ledger read proves the removal.
+
+    No tree leaves the disk on the judgement alone: every removal answer rests
+    on ledger evidence (owner_finished), so an unread ledger keeps the tree with
+    the reason it is unread.
+    """
+    decision, reason = _classify(facts, policy)
+    unproven = removal_unproven(facts)
+    if decision in removal.REMOVING and unproven is not None:
+        return Decision.KEEP, unproven
+    return decision, reason
+
+
 def reconcile(
     request: ModelWorktreeReconcileRequest,
 ) -> ModelWorktreeReconcileDecisions:
@@ -130,6 +150,8 @@ def apply_model_verdicts(
                     or live_reason(fact, decisions.policy) is not None
                     # A pin preserves HEAD only, never a clone's other branches.
                     or fact.kind == Kind.STANDALONE_CLONE
+                    or removal_unproven(fact) is not None
+                    or fact.gitdir_missing
                 )
             )
         )

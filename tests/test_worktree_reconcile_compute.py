@@ -36,6 +36,10 @@ def facts(**updates: object) -> ModelWorktreeFacts:
         head_sha="abc",
         remote_owner="owner",
         last_activity_age_hours=100,
+        # A fresh ledger read that shows the owner finished: a tree is removed only
+        # with that proof (OMN-24560); tests of the unread case override both.
+        ledger_known=True,
+        owner_finished=True,
     ).model_copy(update=updates)
 
 

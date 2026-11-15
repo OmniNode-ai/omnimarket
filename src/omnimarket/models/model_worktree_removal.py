@@ -36,6 +36,10 @@ class ModelWorktreeLockFacts(BaseModel):
     # empty, rolled or frozen file, is not a read): only then is "no live claim names
     # this tree" evidence, so only then can a lock be called stale.
     ledger_known: bool = False
+    # Why the ledger was not read ("not_declared" when the host names no
+    # ledger_path, else the reader's reason: missing, empty, frozen, ...);
+    # empty when it was read.
+    ledger_unread_reason: str = ""
     # That fresh read maps this tree to at least one lane CLAIM with a later TERMINAL
     # and no open CLAIM names it: the owning lane is shown finished. (A live successor CLAIM on the
     # tree's ticket is read as live_claim, not here.)
@@ -62,3 +66,6 @@ class ModelWorktreeRemovalReport(BaseModel):
     # Trees whose worktree lock is not stale (a live lane, process, unit or ref
     # lock backs it, or the tree is still quiet only briefly): kept and named.
     live_locked_paths: tuple[str, ...] = ()
+    # The reason the run's ledger read failed, so every removal was held;
+    # empty when read.
+    ledger_unread: str = ""

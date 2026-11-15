@@ -21,10 +21,11 @@ class ModelWorktreeReconcilePolicy(BaseModel):
     # The ledger a stale-lock judgement rests on is read fresh each time: its newest
     # row must be younger than this many hours (an empty, rolled or frozen file is
     # not a ledger that shows a lane finished), the rolled files of the last
-    # ledger_lookback_days days beside it are read too (0: the live file only), and
+    # ledger_lookback_days days are always read (a CLAIM that rolled into an
+    # archive file would otherwise be hidden, so 0 is no longer allowed), and
     # the read stops as unread when it would take more than ledger_max_bytes.
     ledger_max_age_hours: float = Field(default=6.0, gt=0, allow_inf_nan=False)
-    ledger_lookback_days: int = Field(default=0, ge=0)
+    ledger_lookback_days: int = Field(default=3, ge=1)
     ledger_max_bytes: int = Field(default=268435456, gt=0)
     allow_standalone_clone_removal: bool = True
     max_removals_per_run: int = Field(default=200, ge=0)

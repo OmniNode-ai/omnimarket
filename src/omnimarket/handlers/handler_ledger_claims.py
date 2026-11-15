@@ -3,6 +3,7 @@
 """Ledger claim reading shared by worktree reconcile and worktree lease."""
 
 import re
+from collections.abc import Iterable
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -58,6 +59,41 @@ def _row(line: str, index: int) -> tuple[datetime, int, str, str, str] | None:
     return stamp, index, lane, cells[1], line
 
 
+def _fold(
+    rows: Iterable[tuple[datetime, int, str, str, str]],
+) -> tuple[dict[str, list[str]], list[str], dict[str, datetime]]:
+    """Fold ledger rows in order into (open claims per lane, closed rows, last stamp per lane).
+
+    Every row refreshes the lane's heartbeat stamp; a CLAIM opens its line on the lane;
+    a TERMINAL or RELEASE closes the lane's open claims.
+    """
+    claims: dict[str, list[str]] = {}
+    closed: list[str] = []
+    latest: dict[str, datetime] = {}
+    for stamp, _, lane, kind, line in sorted(rows):
+        latest[lane] = stamp
+        if kind == "CLAIM":
+            claims.setdefault(lane, []).append(line)
+        elif kind in _CLOSING:
+            closed.extend(claims.pop(lane, []))
+    return claims, closed, latest
+
+
+def _live(
+    claims: dict[str, list[str]],
+    heartbeat: dict[str, datetime],
+    now: datetime,
+    quiet_hours: float,
+) -> tuple[str, ...]:
+    """The open claim rows of every lane whose last row is still within the quiet window."""
+    return tuple(
+        row
+        for lane, entries in claims.items()
+        if (now - heartbeat[lane]).total_seconds() < quiet_hours * 3600
+        for row in entries
+    )
+
+
 def live_claims(text: str, now: datetime, quiet_hours: float) -> tuple[str, ...]:
     """Keep each CLAIM until a later terminal, using all lane rows as heartbeat."""
     rows = [
@@ -65,20 +101,8 @@ def live_claims(text: str, now: datetime, quiet_hours: float) -> tuple[str, ...]
         for index, line in enumerate(text.splitlines())
         if (row := _row(line, index)) is not None
     ]
-    claims: dict[str, list[str]] = {}
-    latest: dict[str, datetime] = {}
-    for stamp, _, lane_name, kind, text_row in sorted(rows):
-        latest[lane_name] = stamp
-        if kind == "CLAIM":
-            claims.setdefault(lane_name, []).append(text_row)
-        elif kind in ("TERMINAL", "RELEASE"):
-            claims[lane_name] = []
-    return tuple(
-        row
-        for lane, entries in claims.items()
-        if (now - latest[lane]).total_seconds() < quiet_hours * 3600
-        for row in entries
-    )
+    claims, _, latest = _fold(rows)
+    return _live(claims, latest, now, quiet_hours)
 
 
 def claim_names_tree(path: Path, root: Path, row: str) -> bool:
@@ -172,22 +196,10 @@ def read_ledger(
         return _unread("clock_skew")
     if (now - newest).total_seconds() > max_age_hours * 3600:
         return _unread("frozen")
-    claims: dict[str, list[str]] = {}
-    closed: list[str] = []
-    for _, _, lane, kind, line in sorted(rows):
-        if kind == "CLAIM":
-            claims.setdefault(lane, []).append(line)
-        else:
-            closed.extend(claims.pop(lane, []))
-    quiet_after = quiet_hours * 3600
+    claims, closed, _ = _fold(rows)
     return ModelLedgerRead(
         fresh=True,
-        live_claims=tuple(
-            row
-            for lane, entries in claims.items()
-            if (now - heartbeat[lane]).total_seconds() < quiet_after
-            for row in entries
-        ),
+        live_claims=_live(claims, heartbeat, now, quiet_hours),
         open_claims=tuple(row for entries in claims.values() for row in entries),
         closed_claims=tuple(closed),
     )

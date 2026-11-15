@@ -20,6 +20,13 @@ requirements:
     statement: 'AC4: the schedule installer renders and installs a launchd agent for a host the overlay declares as launchd, resolves per-host paths with the registry root variable, writes the host environment file by reference and never by value into the world-readable plist, and leaves the systemd render unchanged -- falsifier: uv run pytest tests/test_worktree_reconcile_schedule.py tests/test_worktree_reconcile_schedule_launchd.py tests/test_worktree_reconcile_schedule_paths.py -q'
   - id: AC5
     statement: 'AC5: integrated: a dry-run tick of the branch build on a lab host reads the host''s real worktrees, removes none, and names each locked tree with the decision the rules gave it (a person lock and a live lane kept, a dead tree needs_human); the orchestrator''s dry-run command on the launching Mac names each of the 12 stuck trees the same way, with the Mac row at execute false until that first reading is taken -- falsifier: the dry-run receipt latest.json of the host (removed 0, every locked tree with a reason) and the Mac dry-run output'
+- id: req-omn24560-unlocked-proof
+  statement: No tree, locked or not, leaves the disk without a fresh bounded ledger read that shows no live CLAIM names it; merged work then goes, any other work only when the read also shows its owner finished, an unread ledger keeps every tree, the run says why the ledger was unread, and a CLAIM rolled into an archive file stays visible.
+  acceptance:
+  - id: AC6
+    statement: 'AC6: an unlocked tree is removed or pinned only with the same proof a locked tree needs: the ledger read is fresh (ledger_known), and pushed or unpushed work also needs the owning lane shown finished; with the ledger unread the tree is kept with reason ledger_unread, with the owner not shown finished it is kept with reason owner_unfinished, the model cannot pin such a tree, and the revalidation just before the removal refuses it -- falsifier: uv run pytest tests/test_worktree_reconcile_unlocked_proof.py -q'
+  - id: AC7
+    statement: 'AC7: a ledger that cannot be read (missing, empty, frozen, too large, in the future) is reported as unread in the run-completed event (ledger_unread, and the run error ledger_unread:<reason> when the host names a ledger), never as a deferred probe error; a host that names no ledger reports not_declared; the archive lookback is never 0 and always read, so a CLAIM rolled into an archive file still keeps its tree; a failed relock after a failed removal raises RelockFailedError; the claim fold is the one `live_claims` shares with the ledger read -- falsifier: uv run pytest tests/test_worktree_reconcile_unlocked_proof.py tests/test_golden_chain_worktree_reconcile.py tests/test_worktree_reconcile_safety_probe.py tests/test_worktree_reconcile_ledger_read.py -q'
 evidence_requirements:
 - kind: tests
   description: The node's focused tests at the pushed head; the new test file fails on the code before this change (it imports stale_lock, which did not exist).
@@ -64,6 +71,24 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/test_worktree_reconcile_schedule.py tests/test_worktree_reconcile_schedule_launchd.py tests/test_worktree_reconcile_schedule_paths.py -q
+    cwd: .
+- id: dod-omn24560-ac6
+  description: 'AC6: an unlocked tree needs the same fresh ledger proof; unread keeps it, an owner not shown finished keeps unmerged work, the model cannot pin it and the revalidation refuses it; each has a failing control.'
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_worktree_reconcile_unlocked_proof.py -q
+    cwd: .
+- id: dod-omn24560-ac7
+  description: 'AC7: an unread ledger is named in the run-completed event, the lookback is always read and never 0, a failed relock is named, and the golden and error chain event tests pass.'
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_worktree_reconcile_unlocked_proof.py tests/test_golden_chain_worktree_reconcile.py tests/test_worktree_reconcile_safety_probe.py tests/test_worktree_reconcile_ledger_read.py -q
     cwd: .
 - id: dod-omn24560-integration-proof
   description: 'AC5 lab proxy: the node tests run on a lab host at the pushed head; the h202 unit read and the Mac run after the orchestrator install are read by the orchestrator and are not claimed here.'

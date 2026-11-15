@@ -74,13 +74,14 @@ def test_postgres_latest_host_run(monkeypatch: pytest.MonkeyPatch) -> None:
         writer = module.WorktreeReconcileProjectionWriter()
         writer.bind_projection_database_url(dsn)
         # A run that deferred trees and unlocked a stale-locked one (OMN-22799)
-        # still writes its host row: the removal lists stay off it.
+        # still writes its host row: the removal lists and the unread-ledger reason stay off it.
         latest = event(
             deferred=2,
             deferred_paths=("trees/task/a", "trees/task/b"),
             removed_paths=("trees/task/c", "trees/task/d"),
             unlocked_paths=("trees/task/d",),
             live_locked_paths=("trees/task/e",),
+            ledger_unread="frozen",
         )
         for incoming, expected in (
             (latest, 1),

@@ -150,3 +150,82 @@ def test_error_chain_a_removal_that_raises_is_a_failure_and_not_a_named_removal(
     done = result.completed_event
     assert done.failures == 1
     assert (done.removed_paths, done.unlocked_paths) == ((), ())
+
+
+@pytest.mark.unit
+def test_golden_chain_a_read_ledger_names_no_unread_reason() -> None:
+    """A fresh ledger read that proves the removal names no unread reason anywhere:
+    the tree leaves, the run is clean and the receipt still reaches the projection."""
+    fact = facts(head_on_remote=True, size_bytes=123)
+    decisions = HandlerWorktreeReconcileCompute().handle(
+        ModelWorktreeReconcileRequest(facts=(fact,))
+    )
+    fake = Fakes((fact,))
+    effect: HandlerWorktreeReconcile = fake.handler()
+    result = effect.handle(command())
+    assert result.decided_events[0].decision == decisions.decisions[0]
+    assert result.decided_events[0].outcome == "removed"
+    assert result.completed_event.removed == 1
+    assert result.completed_event.ledger_unread == ""
+    assert result.errors == ()
+    writer = WorktreeReconcileProjectionWriter()
+    db = RecordingDB()
+    writer._db = db  # type: ignore[assignment]
+    topic, completed = fake.events[-1]
+    written = writer.handle(completed.model_dump(mode="json") | {"_topic": topic})
+    assert written["rows_upserted"] == 1
+    assert db.calls[0][1][8] == 123
+
+
+@pytest.mark.unit
+def test_error_chain_an_unread_ledger_keeps_the_unlocked_tree_and_names_the_reason(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unread ledger keeps the tree and fails the run with the reader's reason; a
+    host that names no ledger reports "not_declared" without failing, and either
+    completed event still reaches the per-host projection."""
+    frozen = facts(
+        path="trees/task/frozen",
+        head_on_remote=True,
+        ledger_known=False,
+        ledger_unread_reason="frozen",
+    )
+    fake = Fakes((frozen,))
+    result = fake.handler().handle(command())
+    decided = result.decided_events[0]
+    assert decided.decision.reasons == ("ledger_unread",)
+    assert decided.outcome == "kept"
+    assert fake.removed == []
+    assert result.completed_event.ledger_unread == "frozen"
+    assert result.errors == ("ledger_unread:frozen",)
+    assert result.completed_event.failures == 1
+    topic, completed = fake.events[-1]
+    writer = WorktreeReconcileProjectionWriter()
+    db = RecordingDB()
+    monkeypatch.setattr(writer, "_db", db)
+    written = writer.handle(completed.model_dump(mode="json") | {"_topic": topic})
+    assert written["rows_upserted"] == 1
+    # CONTROL: the same unread tree on a host that names no ledger reports
+    # "not_declared", fails nothing, and removes nothing either.
+    control = Fakes(
+        (
+            facts(
+                path="trees/task/frozen",
+                head_on_remote=True,
+                ledger_known=False,
+                ledger_unread_reason="not_declared",
+            ),
+        )
+    )
+    control_result = control.handler().handle(command())
+    assert control_result.decided_events[0].decision.reasons == ("ledger_unread",)
+    assert control_result.completed_event.ledger_unread == "not_declared"
+    assert control_result.errors == ()
+    assert control_result.completed_event.failures == 0
+    assert control.removed == []
+    topic, completed = control.events[-1]
+    writer = WorktreeReconcileProjectionWriter()
+    db = RecordingDB()
+    monkeypatch.setattr(writer, "_db", db)
+    written = writer.handle(completed.model_dump(mode="json") | {"_topic": topic})
+    assert written["rows_upserted"] == 1

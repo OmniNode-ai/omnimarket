@@ -3,9 +3,12 @@
 """What holds a worktree: its lock, its processes and claims, and a gitdir that is gone (OMN-24560)."""
 
 from omnimarket.events.worktree_reconcile import (
+    EnumWorktreeKind,
+    ModelWorktreeFacts,
+)
+from omnimarket.events.worktree_reconcile import (
     EnumWorktreeReconcileDecision as Decision,
 )
-from omnimarket.events.worktree_reconcile import ModelWorktreeFacts
 from omnimarket.models.model_worktree_reconcile_policy import (
     ModelWorktreeReconcilePolicy,
 )
@@ -52,6 +55,27 @@ def live_reason(
         or facts.last_activity_age_hours < policy.quiet_hours
     ):
         return "recent_activity"
+    return None
+
+
+def removal_unproven(facts: ModelWorktreeFacts) -> str | None:
+    """The reason a tree may not leave the disk, or None when removal is proven.
+
+    No tree is removed without a fresh ledger read: an unread ledger cannot show
+    a live claim, so "nothing live" would be an absence of evidence, not
+    evidence, and an unread ledger keeps every tree. Once the fresh read is in
+    hand, an empty orphan directory holds no work and merged work is safe (a
+    live claim is already kept by live_reason); any other work may go only when
+    the read shows the owning lane finished.
+    """
+    if not facts.ledger_known:
+        return "ledger_unread"
+    if facts.kind == EnumWorktreeKind.ORPHAN_DIR:
+        return None
+    if facts.content_merged or facts.merged_pr_head:
+        return None
+    if not facts.owner_finished:
+        return "owner_unfinished"
     return None
 
 

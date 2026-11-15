@@ -34,6 +34,7 @@ class HandlerProjectionWorktreeReconcile:
                     "removed_paths",
                     "unlocked_paths",
                     "live_locked_paths",
+                    "ledger_unread",
                 }
             )
         )

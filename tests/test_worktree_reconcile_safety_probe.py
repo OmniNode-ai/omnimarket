@@ -204,7 +204,7 @@ def test_a_live_successor_claim_keeps_the_tree(
     assert not tree2.exists()
 
 
-def test_a_lagging_ledger_defers_every_tree(
+def test_a_lagging_ledger_reads_unread_and_keeps_every_tree(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     clone, root, tree = _locked_tree(tmp_path)
@@ -223,10 +223,15 @@ def test_a_lagging_ledger_defers_every_tree(
         policy=POLICY.model_copy(update={"ledger_max_age_hours": 6.0}),
     )
     done = result.completed_event
-    assert done.failures == 0
+    # A frozen ledger is unread, not deferred: waiting does not read it, so the run
+    # says so (a failure a person must see) and every tree stays.
+    assert done.ledger_unread == "frozen"
+    assert result.errors == ("ledger_unread:frozen",)
+    assert done.failures == 1
     assert done.removed == 0
     assert done.removed_paths == ()
-    assert done.deferred >= 1
+    assert done.deferred == 0
+    assert result.decided_events[0].decision.reasons == ("git_locked",)
     assert tree.exists()
     assert str(tree) in run_git(clone, "worktree", "list")
     # CONTROL: a fresh ledger row removes the tree.

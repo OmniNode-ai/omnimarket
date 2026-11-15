@@ -21,7 +21,11 @@ from omnimarket.events.worktree_reconcile import (
     ModelWorktreeReconcileRunCompletedEvent,
     ModelWorktreeReconcileRunResult,
 )
-from omnimarket.handlers.rules_worktree_lock import live_reason, stale_lock
+from omnimarket.handlers.rules_worktree_lock import (
+    live_reason,
+    removal_unproven,
+    stale_lock,
+)
 from omnimarket.models.model_worktree_removal import WorktreeOutcome
 from omnimarket.nodes.node_worktree_reconcile_effect.handlers.probe_classes import (
     probe_class,
@@ -83,6 +87,14 @@ class HandlerWorktreeReconcile:
         except Exception as exc:
             facts = ()
             errors.append(f"discovery_failed:{type(exc).__name__}:{str(exc)[:200]}")
+        ledger_unread = next(
+            (f.ledger_unread_reason for f in facts if f.ledger_unread_reason), ""
+        )
+        if ledger_unread and ledger_unread != "not_declared":
+            # A declared ledger that cannot be read is a failure a person must
+            # see; a host that names none is a configuration the receipt
+            # reports without failing.
+            errors.append(f"ledger_unread:{ledger_unread}")
         decisions = route_needs_human(
             reconcile(
                 ModelWorktreeReconcileRequest(facts=facts, policy=command.policy)
@@ -194,6 +206,7 @@ class HandlerWorktreeReconcile:
                 for e in events
                 if e.facts.worktree_locked and not stale_lock(e.facts, command.policy)
             ),
+            ledger_unread=ledger_unread,
         )
         self._publisher.publish(self._completed_topic, completed)
         return ModelWorktreeReconcileRunResult(
@@ -286,6 +299,8 @@ class HandlerWorktreeReconcile:
         if old.gitdir_missing or new.gitdir_missing:
             return False
         if new.worktree_locked and not (new.ledger_known and new.owner_finished):
+            return False
+        if removal_unproven(new) is not None:
             return False
         if (old.path, old.root, old.kind, old.head_sha, old.branch) != (
             new.path,

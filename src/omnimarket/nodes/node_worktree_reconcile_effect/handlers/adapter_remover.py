@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: MIT
 """Non-forced linked removal and same-filesystem standalone trash."""
 
-import contextlib
 import os
 import shutil
 from datetime import datetime
@@ -14,6 +13,10 @@ from omnimarket.events.worktree_reconcile import ModelWorktreeFacts
 from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_commands import (
     git,
 )
+
+
+class RelockFailedError(RuntimeError):
+    """The removal failed and the lock it had lifted could not be put back."""
 
 
 class GitWorktreeRemover:
@@ -42,15 +45,19 @@ class GitWorktreeRemover:
                 git(common, "worktree", "unlock", str(path))
             try:
                 git(common, "worktree", "remove", str(path))
-            except Exception:
+            except Exception as removal_error:
                 if facts.worktree_locked:
                     # The unlock above must not outlive a removal that failed: put the lock
                     # back with its reason. A failure of the relock never hides the original.
                     relock = ["worktree", "lock"]
                     if facts.worktree_lock_reason:
                         relock += ["--reason", facts.worktree_lock_reason]
-                    with contextlib.suppress(Exception):
+                    try:
                         git(common, *relock, str(path))
+                    except Exception:
+                        raise RelockFailedError(
+                            f"removal failed and relock failed for {path}"
+                        ) from removal_error
                 raise
             ticket = path.parent
             if (

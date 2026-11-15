@@ -263,11 +263,9 @@ class GitWorktreeFactsProbe:
             errors.append("unit_snapshot_failed")
         # A shared ledger is appended to every few seconds, so a changed ledger is
         # the normal state, not an error: claims are re-read before each removal.
+        # An unread ledger is not a deferral either (nothing resolves by waiting):
+        # its reason rides the facts as ledger_unread_reason and keeps every tree.
         self._ledger = self._read_ledger(now)
-        if self._ledger is not None and not self._ledger.fresh:
-            errors.append(
-                f"{PROBE_DEFERRED_PREFIX}ledger_not_fresh:{self._ledger.reason}"
-            )
         excluded = tuple(Path(p).resolve() for p in command.exclude_paths)
         self._fetched = {}
         candidates: dict[Path, Path] = {}
@@ -395,13 +393,12 @@ class GitWorktreeFactsProbe:
             heads = self._merged_heads[slug]
         return None if heads is None else head in heads
 
-    def _read_ledger(
-        self, now: datetime, *, rolled_files: bool = True
-    ) -> ModelLedgerRead | None:
+    def _read_ledger(self, now: datetime) -> ModelLedgerRead | None:
         """A fresh bounded read of the named ledger; None when the host names none.
 
-        The rolled files are read only where a decision needs a lane's old TERMINAL (a locked
-        tree); a read for live claims alone takes the live file, which is the cheap one.
+        The rolled files of the last ledger_lookback_days days are always read
+        with the live file: a CLAIM that rolled into an archive file would
+        otherwise be hidden from every judgement the read vouches for.
         """
         assert self._command is not None
         if not self._command.ledger_path:
@@ -412,7 +409,7 @@ class GitWorktreeFactsProbe:
             now,
             quiet_hours=policy.quiet_hours,
             max_age_hours=policy.ledger_max_age_hours,
-            lookback_days=policy.ledger_lookback_days if rolled_files else 0,
+            lookback_days=policy.ledger_lookback_days,
             max_bytes=policy.ledger_max_bytes,
         )
 
@@ -430,9 +427,7 @@ class GitWorktreeFactsProbe:
             cwds = process_cwds()
         except (OSError, subprocess.SubprocessError, RuntimeError):
             errors.append("process_revalidation_failed")
-        read = self._read_ledger(now, rolled_files=facts.worktree_locked)
-        if read is not None and not read.fresh:
-            errors.append(f"{PROBE_DEFERRED_PREFIX}ledger_not_fresh:{read.reason}")
+        read = self._read_ledger(now)
         # A unit may have been installed since discovery: ask again just before removal.
         try:
             units = self._unit_reader.read()
@@ -452,6 +447,13 @@ class GitWorktreeFactsProbe:
                     else False
                 ),
                 "ledger_known": read is not None and read.fresh,
+                "ledger_unread_reason": (
+                    read.reason
+                    if read is not None and not read.fresh
+                    else "not_declared"
+                    if read is None
+                    else ""
+                ),
                 "owner_finished": owner_finished(path, Path(facts.root), read),
                 "live_unit": units.naming(str(path)),
                 # Size is not re-measured; keep what discovery measured rather
@@ -495,6 +497,13 @@ class GitWorktreeFactsProbe:
                 else False
             ),
             ledger_known=self._ledger is not None and self._ledger.fresh,
+            ledger_unread_reason=(
+                self._ledger.reason
+                if self._ledger is not None and not self._ledger.fresh
+                else "not_declared"
+                if self._ledger is None
+                else ""
+            ),
             owner_finished=owner_finished(path, root, self._ledger),
             live_unit=self._units.naming(str(path)),
             probe_errors=self._errors,

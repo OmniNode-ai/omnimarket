@@ -380,7 +380,13 @@ def test_real_git_merged_removed_dirty_kept(
         decided_topic=decided,
         completed_topic=completed,
     )
-    result = handler.handle(command(roots=(str(root),), decider_command=None))
+    result = handler.handle(
+        command(
+            roots=(str(root),),
+            decider_command=None,
+            ledger_path=str(fresh_ledger(root.parent)),
+        )
+    )
     assert not clean.exists()
     assert not clean.parent.exists()
     assert dirty.exists()
@@ -963,6 +969,17 @@ def probe_for(
     return GitWorktreeFactsProbe(unit_reader=units, merged_pr_reader=reader)
 
 
+def fresh_ledger(directory: Path) -> Path:
+    """A ledger read fresh against the year 2100 test clock: no CLAIM names any tree.
+
+    A tree is removed only with a fresh ledger read (OMN-24560), so a test that removes
+    one under that clock names this file as the host's ledger.
+    """
+    ledger = directory / "fresh-ledger.md"
+    ledger.write_text("2099-12-31T23:30:00Z | STATUS | lane=other | unrelated\n")
+    return ledger
+
+
 def run_with(
     probe: GitWorktreeFactsProbe,
     root: Path,
@@ -971,6 +988,8 @@ def run_with(
 ) -> ModelWorktreeReconcileRunResult:
     fake = Fakes(())
     monkeypatch.setattr(fake, "now", lambda: datetime(2100, 1, 1, tzinfo=UTC))
+    if "ledger_path" not in updates:
+        updates["ledger_path"] = str(fresh_ledger(root.parent))
     decided, completed = publish_topics()
     handler = HandlerWorktreeReconcile(
         probe=probe,
