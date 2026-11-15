@@ -282,6 +282,17 @@ def test_a_cap_bucket_not_named_by_contract_is_refused(tmp_path: Path) -> None:
     assert result.items == ()
 
 
+def test_a_cap_naming_git_v2_checkouts_is_still_refused(tmp_path: Path) -> None:
+    """Failing control: the contract naming git-v1 does not make the next git folder name evictable."""
+    path = tmp_path / "uv-cache"
+    path.mkdir()
+    cache = _uv_cache(path, cap_gib=30.0, buckets=("archive-v0", "git-v2/checkouts"))
+    result = _run_uv(tmp_path, cache, ports=make_ports())
+    assert result.status == "refused"
+    assert any("'git-v2/checkouts'" in r and "contract" in r for r in result.refusals)
+    assert result.items == ()
+
+
 def test_keep_days_below_contract_floor_is_refused(tmp_path: Path) -> None:
     path = tmp_path / "uv-cache"
     path.mkdir()
@@ -425,6 +436,38 @@ def test_seam_real_archive_reads_git_checkouts_two_levels_deep(tmp_path: Path) -
         archive.remove(str(bucket), "repoA/../repoB/rev9")
 
 
+def test_seam_real_archive_reads_git_v1_checkouts_and_keeps_the_ok_markers(
+    tmp_path: Path,
+) -> None:
+    """uv 0.13's git cache is ``checkouts/<database>/<revision>`` with a ``<revision>.ok`` marker file beside each checkout."""
+    bucket = tmp_path / "git-v1" / "checkouts"
+    (bucket / "dbhash" / "rev1").mkdir(parents=True)
+    (bucket / "dbhash" / "rev1" / "f").write_bytes(b"x" * 4096)
+    (bucket / "dbhash" / "rev2").mkdir()
+    (bucket / "dbhash" / "rev2" / "f").write_bytes(b"y" * 8192)
+    (bucket / "dbhash" / "rev1.ok").write_bytes(b"")
+    (bucket / "dbhash" / "rev2.ok").write_bytes(b"")
+
+    archive = FilesystemUvArchive()
+    entries = {e.name: e for e in archive.scan(str(bucket), 2, 1800.0)}
+
+    assert set(entries) == {
+        "dbhash/rev1",
+        "dbhash/rev2",
+        "dbhash/rev1.ok",
+        "dbhash/rev2.ok",
+    }
+    assert entries["dbhash/rev1"].bytes == 4096
+    assert entries["dbhash/rev2"].bytes == 8192
+    assert entries["dbhash/rev1.ok"].special is True
+    assert entries["dbhash/rev2.ok"].special is True
+    archive.remove(str(bucket), "dbhash/rev1")
+    assert not (bucket / "dbhash" / "rev1").exists()
+    assert (bucket / "dbhash" / "rev2").exists(), "a sibling revision stays"
+    assert (bucket / "dbhash" / "rev1.ok").exists(), "the marker files stay"
+    assert (bucket / "dbhash" / "rev2.ok").exists()
+
+
 def test_seam_real_archive_scan_past_its_deadline_is_an_error_not_a_partial_list(
     tmp_path: Path,
 ) -> None:
@@ -436,13 +479,19 @@ def test_seam_real_archive_scan_past_its_deadline_is_an_error_not_a_partial_list
         FilesystemUvArchive().scan(str(bucket), 1, -1.0)
 
 
-def test_seam_real_uv_layout_names_two_buckets_and_the_overlay_example_loads() -> None:
-    """The contract names uv's two growing folders with their depths; the overlay example's cap buckets are all among them."""
+def test_seam_real_uv_layout_names_three_buckets_and_the_overlay_example_loads() -> (
+    None
+):
+    """The contract names uv's growing folders with their depths; the overlay example's cap buckets are all among them."""
     bounds = load_bounds()
     assert {
         name: (bound.depth, bound.keep_linked)
         for name, bound in bounds.uv_evictable_buckets.items()
-    } == {"archive-v0": (1, True), "git-v0/checkouts": (2, False)}
+    } == {
+        "archive-v0": (1, True),
+        "git-v0/checkouts": (2, False),
+        "git-v1/checkouts": (2, False),
+    }
     overlay = yaml.safe_load(
         (CONTRACT_PATH.parent / "overlay.example.yaml").read_text(encoding="utf-8")
     )
@@ -489,6 +538,42 @@ def test_oldest_first_runs_across_both_buckets_and_scans_each_at_its_depth(
     assert sorted(archive.scans) == [
         (str(path / "archive-v0"), 1),
         (str(path / "git-v0" / "checkouts"), 2),
+    ]
+    assert result.errors == ()
+
+
+def test_oldest_first_runs_across_archive_and_git_v1_and_scans_each_at_its_depth(
+    tmp_path: Path,
+) -> None:
+    """A git-v1 revision checkout older than every wheel goes first; each bucket is scanned at the depth the contract declares."""
+    path = tmp_path / "uv-cache"
+    path.mkdir()
+    day = 86400.0
+    archive = FakeUvArchive(
+        entries={
+            "archive-v0": _entries(
+                ("wheel-old", 10 * _GIB, NOW - 20 * day, False, False),
+                ("wheel-new", 10 * _GIB, NOW - 2 * day, False, False),
+            ),
+            "git-v1/checkouts": _entries(
+                ("repoA/rev-oldest", 10 * _GIB, NOW - 40 * day, False, False),
+                ("repoA/rev-mid", 10 * _GIB, NOW - 10 * day, False, False),
+            ),
+        }
+    )
+    uv = FakeUv(size=60 * _GIB, after=60 * _GIB)
+    cache = _uv_cache(path, cap_gib=30.0, buckets=("archive-v0", "git-v1/checkouts"))
+
+    result = _run_uv(tmp_path, cache, ports=make_ports(uv=uv, uv_archive=archive))
+
+    assert archive.removed == [
+        "git-v1/checkouts/repoA/rev-oldest",
+        "archive-v0/wheel-old",
+        "git-v1/checkouts/repoA/rev-mid",
+    ]
+    assert sorted(archive.scans) == [
+        (str(path / "archive-v0"), 1),
+        (str(path / "git-v1" / "checkouts"), 2),
     ]
     assert result.errors == ()
 

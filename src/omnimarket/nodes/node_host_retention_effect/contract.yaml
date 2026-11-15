@@ -95,10 +95,13 @@ retention_bounds:
   # (uv makes a new one for every revision it installs and never removes an old one; it rebuilds a missing one from its git
   # database). `keep_linked` keeps an entry in which a file has more than one hard link: a virtual environment shares the
   # unpacked wheel that way, so an archive entry so linked is in use; a git checkout is hard-linked to uv's own git database,
-  # never to a virtual environment, so the link there guards nothing. A cap naming any other folder is refused.
+  # never to a virtual environment, so the link there guards nothing. uv 0.13 names its git folder git-v1 and puts a
+  # `<revision>.ok` marker file beside each checkout (a marker is not a folder, so the scan reports it as a special entry and
+  # the cap keeps it). A cap naming any other folder is refused.
   uv_evictable_buckets:
     archive-v0: {depth: 1, keep_linked: true}
     git-v0/checkouts: {depth: 2, keep_linked: false}
+    git-v1/checkouts: {depth: 2, keep_linked: false}
 metadata:
   transport_type: inmemory
   execution_locus: host-local
