@@ -33,6 +33,9 @@ dod_evidence:
   - check_type: command
     check_value: sh -c 'for n in node_context_adr_select_compute node_context_compaction_receipts_fold_compute node_context_doc_section_select_compute node_context_experiment_compute node_context_exploration_policy_compute node_context_gate_cascade_compute node_context_invariants_select_compute node_context_role_adoption_verdict_compute node_context_round_one_eval_compute node_context_source_git_effect node_delegation_context_pack_budget_compute node_design_plan_context_compute node_report_format_compute node_checkpoint_capture_effect; do test ! -e src/omnimarket/nodes/$n || exit 1; grep -q "^$n = " pyproject.toml && exit 1; done; exit 0'
     cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_retired_context_nodes_omn24517.py -q --no-cov -n 0
+    cwd: .
 - id: dod-omn24517-ac2
   description: 'AC2: the entry point, baseline and allowlist tests pass at the head.'
   source: manual

@@ -32,7 +32,7 @@ requirements:
 evidence_requirements:
   - kind: "tests"
     description: "Round-one scorer rules for OMN-21141."
-    command: "uv run pytest tests/test_golden_chain_context_round_one_eval_compute.py -q -n 0"
+    command: "uv run pytest tests/ci/test_retired_context_nodes_omn24517.py -q --no-cov -n 0"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -43,7 +43,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/test_golden_chain_context_round_one_eval_compute.py -q -n 0 -k 'eligible_rung or next_action or latency'"
+        check_value: "uv run pytest tests/ci/test_retired_context_nodes_omn24517.py -q --no-cov -n 0"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-omn21141-ac2-identity-and-replay"
@@ -51,7 +51,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/test_golden_chain_context_round_one_eval_compute.py -q -n 0 -k 'identity_mismatch or replay'"
+        check_value: "uv run pytest tests/ci/test_retired_context_nodes_omn24517.py -q --no-cov -n 0"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
   - id: "dod-omn21141-ac3-proposition-rule-and-controls"
@@ -59,7 +59,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/test_golden_chain_context_round_one_eval_compute.py -q -n 0 -k 'overlap_kind or corrected_ruling or controls_count or te1_fixture'"
+        check_value: "uv run pytest tests/ci/test_retired_context_nodes_omn24517.py -q --no-cov -n 0"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
   - id: "dod-omn21141-ac4-whole-and-chunked"
@@ -67,7 +67,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/test_golden_chain_context_round_one_eval_compute.py -q -n 0 -k 'whole_chunked or single_mode'"
+        check_value: "uv run pytest tests/ci/test_retired_context_nodes_omn24517.py -q --no-cov -n 0"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC4"]
   - id: "dod-omn21141-ac5-positive-control"
@@ -75,7 +75,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/test_golden_chain_context_round_one_eval_compute.py -q -n 0 -k 'positive_control or zero_'"
+        check_value: "uv run pytest tests/ci/test_retired_context_nodes_omn24517.py -q --no-cov -n 0"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC5"]
   - id: "dod-omn21141-ac6-wilson"
@@ -83,7 +83,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/test_golden_chain_context_round_one_eval_compute.py -q -n 0 -k 'wilson or input_order'"
+        check_value: "uv run pytest tests/ci/test_retired_context_nodes_omn24517.py -q --no-cov -n 0"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC6"]
   - id: "dod-omn21141-deploy-probe"
