@@ -13,6 +13,9 @@ run 0e876819 "refusal phrases: i cannot", run 4f2f6103 "TASK_MISMATCH".
   D3  with no token in the request, behaviour changes (it must stay FAILED/ANSWERED).
   D4  prose that only mentions the token is treated as a decline.
   D5  the real receipt nesting (receipt.result.handler_result) is not read.
+  L3  a subagent request built by of(), as the hook builds it, sends no rules
+      (seen in review 2026-11-15: the test built its request by hand with no
+      token, so it passed whether or not of() attached them).
 """
 
 from __future__ import annotations
@@ -24,6 +27,8 @@ import pytest
 
 from omnimarket.nodes.node_hook_delegate_effect.container import build_handler
 from omnimarket.nodes.node_hook_delegate_effect.models import (
+    DECLINE_TOKEN,
+    SUBAGENT_RULES,
     EnumDelegateCliState,
     EnumHookDelegateOutcome,
     ModelDelegateCliRun,
@@ -193,13 +198,22 @@ def test_a_prompt_request_sends_its_own_bar_to_onex_delegate() -> None:
     assert args[args.index("--max-tokens") + 1] == "2048"
 
 
-def test_a_subagent_request_sends_none_of_them() -> None:
-    """L3: the Agent/Task path is unchanged."""
+def test_a_subagent_request_sends_its_rules_and_the_task_class_bar() -> None:
+    """L3: of() attaches the subagent rules, which carry the decline token, and
+    no prompt bar: a subagent answer is graded by its task class."""
     doc = {"run_id": "r", "result": {"response": "ok", "model_name": "m"}}
     cli = _Recording(_exited(doc, code=0))
-    build_handler(cli).handle(_request(token=""))
-    for flag in ("--system-prompt", "--criteria", "--criteria-mode", "--max-tokens"):
-        assert flag not in cli.args
+    request = ModelHookDelegateRequest.of(
+        {"prompt": "write tests for parse_config"}, "{...}", "test", 240
+    )
+    assert request.decline_token == DECLINE_TOKEN
+    build_handler(cli).handle(request)
+    args = cli.args
+    assert args[args.index("--system-prompt") + 1] == SUBAGENT_RULES
+    assert f"{DECLINE_TOKEN}:" in SUBAGENT_RULES
+    assert args[args.index("--task-type") + 1] == "test"
+    for flag in ("--criteria", "--criteria-mode", "--max-tokens"):
+        assert flag not in args
 
 
 @pytest.mark.parametrize(

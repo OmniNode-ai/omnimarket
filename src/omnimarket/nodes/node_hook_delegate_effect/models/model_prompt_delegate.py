@@ -23,8 +23,23 @@ class EnumPromptDelegateOutcome(StrEnum):
     SENSITIVE = "sensitive"
     #: The prompt carries a pasted image ("[Image #N]"), which only Claude sees.
     HAS_IMAGE = "has_image"
+    #: Claude Code delivered something the user did not type (another session's
+    #: message, a subagent's report, a task notification); it needs the session.
+    NOT_FROM_USER = "not_from_user"
     #: The delegation ran and gave no answer; ``detail`` names the hook outcome.
     NOT_ANSWERED = "not_answered"
+
+
+class EnumPromptExcerpt(StrEnum):
+    """What became of the recent conversation sent with a delegated prompt."""
+
+    SENT = "sent"
+    #: No transcript, or no text turns in it.
+    NONE = "none"
+    #: The caller's sensitivity check flagged it (review 2026-11-15, R1).
+    WITHHELD_SENSITIVE = "withheld_sensitive"
+    #: The caller gave no sensitivity check, so it is never sent (fail closed, R3).
+    WITHHELD_UNCHECKED = "withheld_unchecked"
 
 
 class ModelPromptDelegateRequest(BaseModel):
@@ -80,6 +95,10 @@ class ModelPromptDelegateResult(BaseModel):
     detail: str = Field(default="", description="The hook outcome when not answered.")
     model: str = ""
     run_id: str = ""
+    excerpt: EnumPromptExcerpt | None = Field(
+        default=None,
+        description="The recent conversation's fate; None when nothing was delegated.",
+    )
     hook_output: str = Field(
         default="",
         description=(
@@ -92,4 +111,5 @@ class ModelPromptDelegateResult(BaseModel):
     @property
     def log_line(self) -> str:
         why = f"{self.outcome}:{self.detail}" if self.detail else str(self.outcome)
-        return f"prompt {why} model={self.model or '-'} run={self.run_id or '-'}"
+        line = f"prompt {why} model={self.model or '-'} run={self.run_id or '-'}"
+        return f"{line} excerpt={self.excerpt}" if self.excerpt else line

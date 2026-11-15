@@ -17,6 +17,9 @@ import json
 import os
 import re
 import tempfile
+import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -53,6 +56,16 @@ _PASS_THROUGH = {
     EnumDelegateCliState.NOT_STARTED: EnumHookDelegateOutcome.FAILED,
 }
 
+#: Outcomes reused for an identical task within a turn. A decline is reused too:
+#: delegating the same task again only delays the real subagent (review
+#: 2026-11-15, R5). A failure is not, so the next identical task may answer.
+_REUSED = frozenset(
+    {EnumHookDelegateOutcome.ANSWERED, EnumHookDelegateOutcome.DECLINED}
+)
+
+#: The turn file's key for the current turn's id; task keys are sha256 hex.
+_TURN = "_turn"
+
 
 class HandlerHookDelegate:
     """Runs `onex delegate <task> --json` through the container's ProtocolDelegateCli."""
@@ -79,40 +92,50 @@ class HandlerHookDelegate:
         finally:
             Path(temporary).unlink(missing_ok=True)
 
+    @staticmethod
+    @contextmanager
+    def _locked_turn(path: Path) -> Iterator[dict[str, Any]]:
+        """The turn file's content under the session lock."""
+        path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        with open(path.with_suffix(".lock"), "a") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            try:
+                answers = json.loads(path.read_text())
+            except (OSError, ValueError):
+                answers = {}
+            yield answers if isinstance(answers, dict) else {}
+
     def begin_turn(self, session_id: str) -> None:
         """Even an ineligible new prompt invalidates the previous turn's answers."""
         if not session_id:
             return
         path = self._turn_file(session_id)
-        path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        with open(path.with_suffix(".lock"), "a") as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX)
-            self._save_turn(path, {})
+        with self._locked_turn(path):
+            self._save_turn(path, {_TURN: uuid.uuid4().hex})
 
     def handle(self, request: ModelHookDelegateRequest) -> ModelHookDelegateResult:
         path = self._turn_file(request.session_id)
         if not request.session_id or not path.is_file():
             return self._delegate(request)
-        # Only the hook path owns this cache. Different sessions do not share
-        # state; a session lock prevents concurrent identical tasks running twice.
-        with open(path.with_suffix(".lock"), "a") as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX)
-            try:
-                answers = json.loads(path.read_text())
-                if not isinstance(answers, dict):
-                    answers = {}
-            except (OSError, ValueError):
-                answers = {}
-            key = hashlib.sha256(request.task.strip().encode()).hexdigest()
-            if key in answers:
-                cached = ModelHookDelegateResult.model_validate(answers[key])
-                if cached.answered:
-                    return cached
-            result = self._delegate(request)
-            if result.answered:
-                answers[key] = result.model_dump(mode="json")
-                self._save_turn(path, answers)
-            return result
+        # Only the hook path owns this cache; different sessions do not share it.
+        # The session lock covers the turn file only, never the `onex delegate`
+        # run: held for the run, a session's subagent tasks ran one after another
+        # and a new prompt's begin_turn waited for them (review 2026-11-15, R5).
+        # Identical tasks started together may each run once.
+        key = hashlib.sha256(request.task.strip().encode()).hexdigest()
+        with self._locked_turn(path) as answers:
+            turn = answers.get(_TURN)
+            cached = _reusable(answers.get(key))
+        if cached is not None:
+            return cached
+        result = self._delegate(request)
+        if result.outcome in _REUSED:
+            with self._locked_turn(path) as answers:
+                # A new prompt reset the turn while this ran: keep nothing.
+                if answers.get(_TURN) == turn:
+                    answers[key] = result.model_dump(mode="json")
+                    self._save_turn(path, answers)
+        return result
 
     def _delegate(self, request: ModelHookDelegateRequest) -> ModelHookDelegateResult:
         args = ["delegate", request.task, "--json"]
@@ -139,18 +162,46 @@ class HandlerHookDelegate:
         return read_answer(ran.stdout)
 
 
+def _reusable(entry: object) -> ModelHookDelegateResult | None:
+    """A turn file entry this turn may reuse, else None."""
+    if not isinstance(entry, dict):
+        return None
+    try:
+        cached = ModelHookDelegateResult.model_validate(entry)
+    except ValueError:  # a damaged entry is delegated again, never trusted
+        return None
+    return cached if cached.outcome in _REUSED else None
+
+
 #: How deep read_decline looks for the model's raw reply inside a receipt.
 _DECLINE_SEARCH_DEPTH = 8
 
+#: Markdown and quoting that may open a line before the token, and close it after.
+_OPENERS = r"[\s`*_~>#\[(\"']*"
+_CLOSERS = r"[`*_~\])\"'.]*"
+#: What may follow the token when it opens a reply: nothing, a colon, a dash or
+#: a bracket, or anything once a closing bracket wrapped it ("[TOKEN] reason").
+_SEPARATOR = r"(?:(?<=\])|\s*(?:$|[:\-\u2013\u2014(\[]))"
+
 
 def _declares(text: str, token: str) -> bool:
-    """The reply declares the token: "token:" anywhere, or the token alone on a line.
+    """The reply declares the token.
 
-    Models that reason aloud put the decline inline at the end (Qwen3.8-27B,
-    run 33bab27a: 'the response is `TOKEN: needs the user's files`'). A passing
-    mention of the token without its colon is not a decline.
+    Declared when "token:" appears anywhere, or the reply opens with the token
+    (after any heading lines), in any case and any Markdown, followed by nothing,
+    a colon, a dash or a bracket (seen in review 2026-11-15, R4: "**TOKEN**:",
+    "`TOKEN`:", "token:", "TOKEN - reason" were read as answers). Models that
+    reason aloud put the decline inline at the end (Qwen3.8-27B, run 33bab27a:
+    'the response is `TOKEN: needs the user's files`'). A passing mention of the
+    token in prose is not a decline.
     """
-    if re.search(rf"(?<![A-Za-z0-9_]){re.escape(token)}\s*:", text):
+    escaped = re.escape(token)
+    if re.search(rf"(?<![A-Za-z0-9_]){escaped}[`*_]*\s*:", text):
+        return True
+    lines = [line for line in text.splitlines() if line.strip()]
+    opening = re.compile(rf"{_OPENERS}{escaped}{_CLOSERS}{_SEPARATOR}", re.IGNORECASE)
+    first_text = next((line for line in lines if not line.lstrip().startswith("#")), "")
+    if any(opening.match(line) for line in (*lines[:1], first_text)):
         return True
     return any(
         line.strip().strip("`*_>.").strip() == token for line in text.splitlines()

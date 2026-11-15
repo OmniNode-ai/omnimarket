@@ -13,6 +13,7 @@ from .model_hook_delegate import (
 )
 from .model_prompt_delegate import (
     EnumPromptDelegateOutcome,
+    EnumPromptExcerpt,
     ModelPromptDelegateRequest,
     ModelPromptDelegateResult,
 )
@@ -23,6 +24,7 @@ __all__ = [
     "EnumDelegateCliState",
     "EnumHookDelegateOutcome",
     "EnumPromptDelegateOutcome",
+    "EnumPromptExcerpt",
     "ModelDelegateCliRun",
     "ModelHookDelegateRequest",
     "ModelHookDelegateResult",

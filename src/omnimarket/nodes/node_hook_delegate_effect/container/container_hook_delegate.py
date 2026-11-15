@@ -43,5 +43,6 @@ def build_prompt_handler(
     cli: object | None = None, sensitive: Callable[[str], bool] | None = None
 ) -> HandlerPromptDelegate:
     """The prompt handler (OMN-23413 AC33), built from its container the same way.
-    ``sensitive`` is the caller's sensitivity check for recent conversation."""
+    ``sensitive`` is the caller's sensitivity check for recent conversation;
+    without one, no recent conversation is sent."""
     return HandlerPromptDelegate(create_hook_delegate_container(cli), sensitive)

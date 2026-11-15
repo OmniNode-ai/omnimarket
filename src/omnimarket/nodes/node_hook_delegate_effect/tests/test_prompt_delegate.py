@@ -199,7 +199,8 @@ def test_a_failed_or_timed_out_delegation_passes_to_claude() -> None:
 def test_the_model_gets_the_rules_the_prompt_and_recent_conversation(
     tmp_path: Path,
 ) -> None:
-    """P3."""
+    """P3. The caller's check passes the conversation; without a check none is
+    sent (seen in review 2026-11-15, R3; see test_hook_review)."""
     transcript = tmp_path / "transcript.jsonl"
     rows = [
         {"type": "user", "message": {"content": "Tell me about TCP."}},
@@ -213,7 +214,12 @@ def test_the_model_gets_the_rules_the_prompt_and_recent_conversation(
     ]
     transcript.write_text("\n".join(json.dumps(r) for r in rows) + "\nnot json\n")
     cli = _Cli(_doc(_ANSWER, "r-ctx"))
-    _ask(cli, "and how is UDP different?", transcript_path=str(transcript))
+    request = ModelPromptDelegateRequest(
+        prompt="and how is UDP different?",
+        session_id="ac33",
+        transcript_path=str(transcript),
+    )
+    build_prompt_handler(cli, sensitive=lambda _: False).handle(request)
     ((argv, _),) = cli.calls
     assert "and how is UDP different?" in _task(argv)
     assert "TCP is a transport protocol." in _task(argv)
@@ -254,12 +260,40 @@ def test_a_shorter_hook_limit_wins() -> None:
         # never reaches a delegated model (read in this Mac's transcripts).
         ("[Image #1] why is this red?", {}, EnumPromptDelegateOutcome.HAS_IMAGE),
         ("what is in [Image #12]", {}, EnumPromptDelegateOutcome.HAS_IMAGE),
+        # Claude Code delivers these as prompts, but the user did not type them;
+        # they need the session's own tools (seen 2026-11-15: a peer session's
+        # message was answered by a delegated model and Claude never saw it).
+        (
+            '<cross-session-message from="uds:/tmp/x.sock">status is on</cross-session-message>',
+            {},
+            EnumPromptDelegateOutcome.NOT_FROM_USER,
+        ),
+        (
+            '<agent-message from="a1">report</agent-message>',
+            {},
+            EnumPromptDelegateOutcome.NOT_FROM_USER,
+        ),
+        (
+            "<task-notification>\n<task-id>x</task-id>",
+            {},
+            EnumPromptDelegateOutcome.NOT_FROM_USER,
+        ),
+        (
+            "[SYSTEM NOTIFICATION - NOT USER INPUT]\nA background task finished.",
+            {},
+            EnumPromptDelegateOutcome.NOT_FROM_USER,
+        ),
+        (
+            "<local-command-caveat>Caveat</local-command-caveat>",
+            {},
+            EnumPromptDelegateOutcome.NOT_FROM_USER,
+        ),
     ],
 )
 def test_some_prompts_go_to_claude_without_delegating(
     prompt: str, fields: dict[str, object], outcome: EnumPromptDelegateOutcome
 ) -> None:
-    """P4, P5."""
+    """P4, P5, P13 (not typed by the user)."""
     cli = _Cli(_doc(_ANSWER, "r-skip"))
     result = _ask(cli, prompt, **fields)
     assert result.outcome is outcome

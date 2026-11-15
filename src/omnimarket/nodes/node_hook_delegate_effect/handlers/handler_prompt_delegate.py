@@ -35,6 +35,7 @@ from omnimarket.nodes.node_hook_delegate_effect.models import (
     DECLINE_TOKEN,
     EnumHookDelegateOutcome,
     EnumPromptDelegateOutcome,
+    EnumPromptExcerpt,
     ModelHookDelegateRequest,
     ModelPromptDelegateRequest,
     ModelPromptDelegateResult,
@@ -47,6 +48,13 @@ SKIP_PREFIX = "@claude"
 #: How Claude Code writes a pasted image into the prompt text; the image itself
 #: is never in the hook's input, so a delegated model could only guess at it.
 _IMAGE = re.compile(r"\[Image #\d+\]")
+#: How Claude Code opens a prompt the user did not type (read in this Mac's
+#: transcripts 2026-11-15): peer-session messages, subagent reports, task and
+#: system notifications, and the output of a local slash command.
+_NOT_FROM_USER = re.compile(
+    r"<(cross-session-message|agent-message|task-notification|local-command-caveat|"
+    r"local-command-stdout|command-name)[\s>]|\[SYSTEM NOTIFICATION\b"
+)
 #: Recent conversation given to the delegated model.
 CONTEXT_CHARS = 3000
 #: Delegated history handed to Claude in one turn.
@@ -94,6 +102,8 @@ def skip_reason(prompt: str) -> EnumPromptDelegateOutcome | None:
         return EnumPromptDelegateOutcome.EMPTY
     if text.startswith("/"):
         return EnumPromptDelegateOutcome.SLASH_COMMAND
+    if _NOT_FROM_USER.match(text):
+        return EnumPromptDelegateOutcome.NOT_FROM_USER
     if text[: len(SKIP_PREFIX)].lower() == SKIP_PREFIX:
         return EnumPromptDelegateOutcome.SKIPPED
     if _IMAGE.search(text):
@@ -101,14 +111,14 @@ def skip_reason(prompt: str) -> EnumPromptDelegateOutcome | None:
     return None
 
 
-def transcript_excerpt(path: str, limit: int = CONTEXT_CHARS) -> str:
-    """The last user and assistant text turns of a Claude Code transcript."""
+def transcript_turns(path: str) -> list[str]:
+    """The user and assistant text turns at the end of a Claude Code transcript."""
     if not path:
-        return ""
+        return []
     try:
         lines = Path(path).read_text(errors="replace").splitlines()[-TRANSCRIPT_TAIL:]
     except OSError:
-        return ""
+        return []
     turns: list[str] = []
     for line in lines:
         try:
@@ -134,7 +144,27 @@ def transcript_excerpt(path: str, limit: int = CONTEXT_CHARS) -> str:
         text = text.strip()
         if text and not text.startswith("<"):
             turns.append(f"{kind.upper()}: {text}")
-    return "\n".join(turns)[-limit:]
+    return turns
+
+
+def cut_turns(turns: list[str], limit: int = CONTEXT_CHARS) -> tuple[str, str]:
+    """The last ``limit`` characters of ``turns``, and the text to check before sending them.
+
+    The check sees every turn the cut touches, whole, and the turn before them:
+    checked after the cut, a window starting inside "password" or one character
+    into an sk- key hid the label or prefix the check needs, and the secret was
+    sent (seen in review 2026-11-15, R1).
+    """
+    start, size = len(turns), -1
+    while start > 0 and size < limit:
+        start -= 1
+        size += len(turns[start]) + 1
+    return "\n".join(turns)[-limit:], "\n".join(turns[max(0, start - 1) :])
+
+
+def transcript_excerpt(path: str, limit: int = CONTEXT_CHARS) -> str:
+    """The last user and assistant text turns of a Claude Code transcript, unchecked."""
+    return cut_turns(transcript_turns(path), limit)[0]
 
 
 def block_output(answer: str, model: str, run_id: str) -> str:
@@ -172,6 +202,8 @@ class HandlerPromptDelegate:
         self._delegate = HandlerHookDelegate(container)
         #: The caller's sensitivity check (omniclaude's gate). Recent conversation
         #: it flags is never sent: the prompt is delegated without it (OMN-23413).
+        #: Without a check none is sent: a runner older than this argument must
+        #: not send what it cannot check (review 2026-11-15, R3).
         self._sensitive = sensitive
 
     def handle(self, request: ModelPromptDelegateRequest) -> ModelPromptDelegateResult:
@@ -180,19 +212,22 @@ class HandlerPromptDelegate:
             return self._pass(request.session_id, skipped)
         if request.sensitive:
             return self._pass(request.session_id, EnumPromptDelegateOutcome.SENSITIVE)
-        result = self._delegate.handle(self._hook_request(request))
+        hook_request, excerpt = self._hook_request(request)
+        result = self._delegate.handle(hook_request)
         if result.outcome is EnumHookDelegateOutcome.DECLINED:
             return self._pass(
                 request.session_id,
                 EnumPromptDelegateOutcome.DECLINED,
                 model=result.model,
                 run_id=result.run_id,
+                excerpt=excerpt,
             )
         if not result.answered:
             return self._pass(
                 request.session_id,
                 EnumPromptDelegateOutcome.NOT_ANSWERED,
                 detail=str(result.outcome),
+                excerpt=excerpt,
             )
         self._record(
             request.session_id,
@@ -205,15 +240,25 @@ class HandlerPromptDelegate:
             outcome=EnumPromptDelegateOutcome.ANSWERED,
             model=result.model,
             run_id=result.run_id,
+            excerpt=excerpt,
             hook_output=block_output(result.answer, result.model, result.run_id),
         )
 
+    def _excerpt(self, transcript_path: str) -> tuple[str, EnumPromptExcerpt]:
+        """The recent conversation to send, and what became of it."""
+        excerpt, checked = cut_turns(transcript_turns(transcript_path))
+        if not excerpt:
+            return "", EnumPromptExcerpt.NONE
+        if self._sensitive is None:
+            return "", EnumPromptExcerpt.WITHHELD_UNCHECKED
+        if self._sensitive(checked):
+            return "", EnumPromptExcerpt.WITHHELD_SENSITIVE
+        return excerpt, EnumPromptExcerpt.SENT
+
     def _hook_request(
         self, request: ModelPromptDelegateRequest
-    ) -> ModelHookDelegateRequest:
-        excerpt = transcript_excerpt(request.transcript_path)
-        if excerpt and self._sensitive is not None and self._sensitive(excerpt):
-            excerpt = ""
+    ) -> tuple[ModelHookDelegateRequest, EnumPromptExcerpt]:
+        excerpt, fate = self._excerpt(request.transcript_path)
         context = "\n\n".join(
             part
             for part in (excerpt, self._pending(request.session_id, CONTEXT_CHARS))
@@ -236,7 +281,7 @@ class HandlerPromptDelegate:
             criteria=PROMPT_CRITERIA,
             criteria_mode=PROMPT_CRITERIA_MODE,
             max_tokens=PROMPT_MAX_TOKENS,
-        )
+        ), fate
 
     def _pass(
         self,
@@ -246,12 +291,14 @@ class HandlerPromptDelegate:
         detail: str = "",
         model: str = "",
         run_id: str = "",
+        excerpt: EnumPromptExcerpt | None = None,
     ) -> ModelPromptDelegateResult:
         return ModelPromptDelegateResult(
             outcome=outcome,
             detail=detail,
             model=model,
             run_id=run_id,
+            excerpt=excerpt,
             hook_output=context_output(self._take_pending(session_id)),
         )
 
