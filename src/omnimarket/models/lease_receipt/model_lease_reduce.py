@@ -11,7 +11,6 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
-    computed_field,
     model_validator,
 )
 
@@ -91,25 +90,33 @@ class ModelLeaseReduceOutput(BaseModel):
         description="On a held refusal, the epoch the holder runs under.",
     )
     table: ModelLeaseTable
+    terminal_failure_cause: str | None = Field(
+        default=None,
+        description=(
+            "The refusal reason on a refused reply, so the runtime publishes the failure "
+            "terminal; derived from status and reason, None on a recorded reply."
+        ),
+    )
 
     @model_validator(mode="before")
     @classmethod
-    def _drop_derived_cause(cls, data: Any) -> Any:
-        """A dumped reply carries the derived cause; it is recomputed, never read back."""
-        if isinstance(data, dict) and "terminal_failure_cause" in data:
-            return {k: v for k, v in data.items() if k != "terminal_failure_cause"}
-        return data
+    def _derive_failure_cause(cls, data: Any) -> Any:
+        """Set the failure cause from the status and the reason, whatever the input carried.
 
-    @computed_field  # type: ignore[prop-decorator]
-    @property
-    def terminal_failure_cause(self) -> str | None:
-        """The refusal reason on a refused reply, so the runtime publishes the failure terminal.
-
-        A computed field: it is in ``model_dump`` too, so a dumped reply names its failure.
+        A refused reply names its reason, a recorded one names none, so a reply built or read
+        back from a dump can never carry a cause that disagrees with its status.
         """
-        if self.status is EnumLeaseStatus.REFUSED:
-            return self.reason.value
-        return None
+        if not isinstance(data, dict):
+            return data
+        status = data.get("status")
+        reason = data.get("reason")
+        refused = (
+            status is not None and EnumLeaseStatus(status) is EnumLeaseStatus.REFUSED
+        )
+        cause = (
+            EnumLeaseReason(reason).value if refused and reason is not None else None
+        )
+        return {**data, "terminal_failure_cause": cause}
 
 
 __all__: list[str] = [

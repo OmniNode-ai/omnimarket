@@ -52,6 +52,7 @@ PINNED: dict[type[BaseModel], set[str]] = {
         "held_by_run",
         "held_epoch",
         "table",
+        "terminal_failure_cause",
     },
     ModelLeaseTable: {
         "kind",
@@ -87,6 +88,4 @@ def test_control_an_added_field_is_red() -> None:
 
 def test_the_reply_names_its_failure_in_its_dump() -> None:
     """The derived cause is part of the reply's serialized shape (Fable finding 6)."""
-    assert set(ModelLeaseReduceOutput.model_computed_fields) == {
-        "terminal_failure_cause"
-    }
+    assert "terminal_failure_cause" in ModelLeaseReduceOutput.model_fields

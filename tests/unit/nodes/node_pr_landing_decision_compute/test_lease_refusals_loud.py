@@ -34,6 +34,9 @@ from omnimarket.models.lease_receipt.model_lease_reduce import (
     ModelLeaseReduceInput,
     ModelLeaseReduceOutput,
 )
+from omnimarket.nodes.node_lease_receipt_reducer.handlers.handler_lease_receipt_reducer import (
+    HandlerLeaseReceiptReducer,
+)
 from omnimarket.nodes.node_pr_landing_decision_compute.adapters import (
     lease_table_adapter as adapter,
 )
@@ -191,7 +194,7 @@ def test_control_the_packaged_overlay_records_the_same_result(
 
 
 # -------------------------------------------------- release and revoke are not ignored
-class RefusingReducer:
+class RefusingReducer(HandlerLeaseReceiptReducer):
     """A reducer double that refuses every command as not held, the table untouched."""
 
     def handle(self, request: ModelLeaseReduceInput) -> ModelLeaseReduceOutput:
@@ -214,7 +217,7 @@ def test_a_refused_release_or_revoke_raises_instead_of_being_ignored(
         (),
         (),
         1,
-        reducer=RefusingReducer(),  # type: ignore[arg-type]
+        reducer=RefusingReducer(),
     )
 
     with pytest.raises(adapter.LandingLeaseRefusedError) as refused:

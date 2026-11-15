@@ -29,14 +29,14 @@ from omnimarket.models.lease_receipt.model_lease_table import (
     ModelLeaseEntry,
     ModelLeaseTable,
 )
+from omnimarket.nodes.node_lease_receipt_reducer.adapters.adapter_lease_table_store_memory import (
+    InMemoryLeaseTableStore,
+)
 from omnimarket.nodes.node_lease_receipt_reducer.handlers import (
     handler_lease_receipt_reducer as reducer_module,
 )
 from omnimarket.nodes.node_lease_receipt_reducer.handlers.handler_lease_receipt_reducer import (
     HandlerLeaseReceiptReducer,
-)
-from omnimarket.nodes.node_lease_receipt_reducer.handlers.handler_lease_table_store_memory import (
-    InMemoryLeaseTableStore,
 )
 from tests.unit.nodes.node_lease_receipt_reducer.support import (
     MINUTE,

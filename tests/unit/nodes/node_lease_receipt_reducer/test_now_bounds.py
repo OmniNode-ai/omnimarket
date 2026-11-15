@@ -376,6 +376,9 @@ def test_the_reply_dump_names_its_failure_and_round_trips() -> None:
     assert refused_dump["terminal_failure_cause"] == "deadline-not-after-now"
     assert recorded_dump["terminal_failure_cause"] is None
     assert ModelLeaseReduceOutput.model_validate(refused_dump) == refused
+    # a dump whose cause disagrees with its status is corrected, never read back as written
+    forged = {**recorded_dump, "terminal_failure_cause": "held"}
+    assert ModelLeaseReduceOutput.model_validate(forged).terminal_failure_cause is None
     assert ModelLeaseReduceOutput.model_validate(recorded_dump) == recorded
 
 
@@ -395,4 +398,4 @@ def test_control_a_dump_without_the_cause_key_fails_the_reading() -> None:
 
     with pytest.raises(KeyError):
         assert dump["terminal_failure_cause"] == "deadline-not-after-now"
-    assert "terminal_failure_cause" in ModelLeaseReduceOutput.model_computed_fields
+    assert "terminal_failure_cause" in ModelLeaseReduceOutput.model_fields

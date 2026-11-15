@@ -116,7 +116,7 @@ from omnimarket.models.lease_receipt.model_lease_table import (
     ModelLeaseRetained,
     ModelLeaseTable,
 )
-from omnimarket.nodes.node_lease_receipt_reducer.handlers.handler_lease_table_store_memory import (
+from omnimarket.nodes.node_lease_receipt_reducer.adapters.adapter_lease_table_store_memory import (
     InMemoryLeaseTableStore,
 )
 from omnimarket.nodes.node_lease_receipt_reducer.overlay import load_lease_overlay
