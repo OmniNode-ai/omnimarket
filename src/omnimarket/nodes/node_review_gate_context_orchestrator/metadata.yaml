@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_review_gate_context_orchestrator
+version: "1.0.0"
+description: "One sweep of the review-verdict check: the open pull requests and the ledger's verdict rows through the pure decision node and the posting effect node."
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_review_gate_context_orchestrator: "omnimarket.nodes.node_review_gate_context_orchestrator"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: publish_event
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["orchestrator", "review-gate", "check-run", "pr-lifecycle"]
+pack: "pr_lifecycle"
+display_name: "Review Gate Context Sweep"
+node_role: "orchestrator"
+ticket: "OMN-24614"

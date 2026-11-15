@@ -1,0 +1,94 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract - Review Gate Context Orchestrator (OMN-24614)
+#
+# One sweep of the review-verdict check: read the open pull requests (the PR watcher's state),
+# read the review verdicts recorded on the rolling ledger, decide each head's check with the
+# pure compute node (node_review_gate_context_compute) and post each decision with the effect
+# node (node_review_gate_context_effect). If either source cannot be read the sweep reads
+# nothing and posts nothing: an unreadable verdict record is never read as "no verdicts" (that
+# would post red over a clean head) and never as clean.
+name: node_review_gate_context_orchestrator
+contract_name: node_review_gate_context_orchestrator
+node_name: node_review_gate_context_orchestrator
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: ORCHESTRATOR_GENERIC
+lifecycle: experimental
+
+description: >
+  Sweeps the open pull requests of the overlay's repositories: each head's review-gate context
+  check is decided with the pure compute node and posted with the effect node, idempotently. The
+  open pull requests come from the PR watcher's state, the verdicts from the ledger's STATUS rows
+  through the landing ledger facts node's own review_facts, so the check and the landing gate
+  read the ledger by one rule. A source that cannot be read leaves the sweep having read nothing
+  and posted nothing (ok False, unread naming why).
+
+handler:
+  module: omnimarket.nodes.node_review_gate_context_orchestrator.handlers.handler_review_gate_context_orchestrator
+  class: HandlerReviewGateContextOrchestrator
+  input_model: omnimarket.nodes.node_review_gate_context_orchestrator.models.model_review_gate_sweep.ModelReviewGateSweepCommand
+  output_model: omnimarket.nodes.node_review_gate_context_orchestrator.models.model_review_gate_sweep.ModelReviewGateSweepResult
+
+# Not a runtime-dispatched handler: the open pull request source, the verdict source, the pure
+# decision, the poster, the policy and the clock are constructor parameters, so the orchestrator
+# runs from its caller, in process, like the other orchestrators and effects in this tree.
+descriptor:
+  node_archetype: orchestrator
+  purity: impure
+  idempotent: true
+  timeout_ms: 600000
+
+input_model:
+  name: ModelReviewGateSweepCommand
+  module: omnimarket.nodes.node_review_gate_context_orchestrator.models.model_review_gate_sweep
+  description: >
+    One sweep: the correlation id, the repositories to sweep (empty means every repository the
+    overlay lists) and whether each decision is posted (probe sweeps post nothing).
+output_model:
+  name: ModelReviewGateSweepResult
+  module: omnimarket.nodes.node_review_gate_context_orchestrator.models.model_review_gate_sweep
+  description: >
+    The sweep's ok, the reason it read nothing (unread) when it did, and one entry per open pull
+    request with its decision and post outcome, plus the posted, unchanged and failed counts.
+
+terminal_event: onex.evt.omnimarket.review-gate-context-sweep-completed.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.review-gate-context-sweep-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.review-gate-context-sweep-completed.v1
+    failure: onex.evt.omnimarket.review-gate-context-sweep-failed.v1
+  external_trigger: true
+
+topics:
+  command: onex.cmd.omnimarket.review-gate-context-sweep-requested.v1
+  completed: onex.evt.omnimarket.review-gate-context-sweep-completed.v1
+  failed: onex.evt.omnimarket.review-gate-context-sweep-failed.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+# The runtime principal publishes the terminal events if the runtime hosts this node (it is run by its own command today; no consumer reads
+# the events yet). The rows are the declared form; the broker applies them through its own reconcile.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.review-gate-context-sweep-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.review-gate-context-sweep-completed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.review-gate-context-sweep-failed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.review-gate-context-sweep-failed.v1, operation: DESCRIBE}
+
+overlay:
+  node: node_review_gate_context_orchestrator
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+dod_evidence:
+  - tests/unit/nodes/node_review_gate_context_orchestrator/test_review_gate_context_orchestrator.py
+  - tests/unit/nodes/node_review_gate_context_orchestrator/test_review_gate_context_ledger_seam.py
+  - tests/unit/nodes/node_review_gate_context_orchestrator/test_review_gate_context_watcher_source.py
+
+metadata:
+  ticket: OMN-24614

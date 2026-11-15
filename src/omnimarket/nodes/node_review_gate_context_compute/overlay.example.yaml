@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic overlay for node_review_gate_context_compute: the declared review-gate context policy.
+policy:
+  check_name: "review-verdict / clean-head"
+  bypass_classes:
+    - name: bot_release_pull_request
+      why: "A release pull request cut by the release automation; the release is reviewed at its tag"
+      author_logins:
+        - "example-release-bot[bot]"
+      head_ref_pattern: "automation/release-.*"
+    - name: bot_pin_bump_pull_request
+      why: "A dependency pin bump cut by the release automation; the bump is reviewed at its tag"
+      author_logins:
+        - "example-release-bot[bot]"
+      head_ref_pattern: "automation/bump-.*"
+      title_pattern: "chore.*bump.*"
+  title_clean: "Review verdict CLEAN on head {head}"
+  title_bypass: "Bypass class {bypass_class}: no review verdict needed"
+  title_missing: "No review verdict recorded for head {head}"
+  title_changes_needed: "Review changes needed on head {head}"
+  title_superseded: "Review verdicts exist only for an older head than {head}"

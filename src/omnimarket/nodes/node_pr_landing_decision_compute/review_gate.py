@@ -11,9 +11,9 @@ No clock and no I/O.
 
 from __future__ import annotations
 
+from omnimarket.handlers.review_head_reading import read_head_review
 from omnimarket.models.model_landing_review import (
     EnumReviewGateVerdict,
-    EnumReviewVerdict,
     ModelReviewGateReading,
 )
 from omnimarket.nodes.node_pr_landing_decision_compute.models.enum_landing import (
@@ -46,27 +46,7 @@ def read_review_gate(
         return None
     if not p.review.new_work:
         return None
-    on_head = [r for r in p.review.verdicts if r.head_sha == p.head_sha]
-    if on_head:
-        newest = max(reversed(on_head), key=lambda r: r.at)  # ties: the later row
-        if newest.verdict is EnumReviewVerdict.CLEAN:
-            return ModelReviewGateReading(
-                verdict=EnumReviewGateVerdict.PASS,
-                detail=f"review CLEAN on the head {p.head_sha[:12]}",
-            )
-        return ModelReviewGateReading(
-            verdict=EnumReviewGateVerdict.CHANGES_NEEDED,
-            detail=f"review changes needed on the head {p.head_sha[:12]}",
-        )
-    if p.review.verdicts:
-        return ModelReviewGateReading(
-            verdict=EnumReviewGateVerdict.SUPERSEDED,
-            detail="review verdicts exist only for other heads",
-        )
-    return ModelReviewGateReading(
-        verdict=EnumReviewGateVerdict.MISSING,
-        detail="no review verdict recorded for the head",
-    )
+    return read_head_review(p.review, p.head_sha)
 
 
 __all__ = ["SKIP_FOR_REVIEW", "read_review_gate"]
