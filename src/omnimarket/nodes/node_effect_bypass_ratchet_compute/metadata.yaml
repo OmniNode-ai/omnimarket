@@ -1,0 +1,22 @@
+name: node_effect_bypass_ratchet_compute
+version: "0.1.0"
+description: "Effect-node bypass ratchet: a pure verdict over one repository's bypass count against its shrink-only baseline"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_effect_bypass_ratchet_compute: "omnimarket.nodes.node_effect_bypass_ratchet_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "ratchet", "effect-bypass", "pure"]
+pack: "pr_lifecycle"
+display_name: "Effect Bypass Ratchet"
+node_role: "compute"
