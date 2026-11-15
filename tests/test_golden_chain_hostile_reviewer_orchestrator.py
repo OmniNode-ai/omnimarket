@@ -166,7 +166,8 @@ class TestHostileReviewerOrchestratorGoldenChain:
         # extended by OMN-15152 with per-route status fields (additive, with
         # defaults, so old replayed events without these keys still parse), by
         # OMN-21189 with the target snapshot and per-route served-model provenance,
-        # and by OMN-17427 with the review-engine fallback record.
+        # by OMN-17427 with the review-engine fallback record, and by OMN-24533
+        # with the Fable review gate verdict (None where no gate overlay is installed).
         assert set(payload) == {
             "correlation_id",
             "final_phase",
@@ -183,8 +184,10 @@ class TestHostileReviewerOrchestratorGoldenChain:
             "route_provenance",
             "fallback_engine",
             "fallback_for",
+            "fable_gate",
         }
         assert payload["final_phase"] == "done"
+        assert payload["fable_gate"] is None
         assert payload["fallback_engine"] is None
         assert payload["fallback_for"] == []
         assert payload["models_succeeded"] == ["review_primary"]

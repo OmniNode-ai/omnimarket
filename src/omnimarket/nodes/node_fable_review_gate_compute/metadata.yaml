@@ -1,0 +1,34 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_fable_review_gate_compute
+version: "0.1.0"
+description: >
+  The gate decision of operator ruling 2026-11-14T23:50:35Z (OMN-24533): every Fable diff review
+  runs only on the orchestrating Mac; a review request is admitted or refused with a typed reason.
+pack: review
+node_role: compute
+display_name: Fable Review Gate Compute
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_fable_review_gate_compute: omnimarket.nodes.node_fable_review_gate_compute
+capabilities:
+  standalone: true
+  # false until node_hostile_reviewer_orchestrator calls the handler: it has no bus surface
+  # of its own, so runtime auto-wiring prepares it as SKIPPED.
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+- pydantic>=2.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- compute
+- review
+- fable
+- gate
