@@ -9,6 +9,10 @@
   reading never raises; it reads UNREAD.
 * A TRUE row reads no tick line; a FALSE or UNREAD row reads the MISSING line
   naming its ruling stamp, why it is not running and its owner's fix.
+* No verdict cell ever carries a read's raw output: the detail is one printable
+  line built without the stdout, and ``one_line`` folds the row's own cells and
+  the detail to the policy's ``max_detail_chars``, so a read's output can forge
+  no tick line and leak through none.
 """
 
 from __future__ import annotations
@@ -25,6 +29,22 @@ from omnimarket.models.model_ruling_register import (
     ModelRulingRow,
     ModelRulingVerdict,
 )
+
+
+def one_line(text: str, limit: int) -> str:
+    """The one printable line of ``text``, cut to ``limit`` characters.
+
+    Every run of whitespace or control characters becomes one space and the result is
+    stripped, so a cell that came from a host's output or an overlay's row can carry
+    no second tick line.
+    """
+    pieces: list[str] = []
+    for char in text:
+        if char.isprintable() and not char.isspace():
+            pieces.append(char)
+        elif pieces and pieces[-1] != " ":
+            pieces.append(" ")
+    return "".join(pieces).strip()[:limit]
 
 
 class HandlerRulingRegister:
@@ -69,21 +89,26 @@ class HandlerRulingRegister:
             else:
                 verdict, detail = self._judge_reading(row, reading)
 
+        limit = request.policy.max_detail_chars
+        must_be_true = one_line(row.must_be_true, limit)
+        owner = one_line(row.owner, limit)
+        fix = one_line(row.fix, limit)
+        detail = one_line(detail, limit)
         if verdict is EnumRulingVerdict.TRUE:
-            why = row.must_be_true
+            why = must_be_true
         else:
             why = (
-                f"ruling {row.ruling} not running: {row.must_be_true} "
-                f"({verdict.value}: {detail}); owner {row.owner}"
+                f"ruling {row.ruling} not running: {must_be_true} "
+                f"({verdict.value}: {detail}); owner {owner}"
             )
         return ModelRulingVerdict(
             row_id=row.row_id,
             ruling=row.ruling,
-            owner=row.owner,
+            owner=owner,
             verdict=verdict,
             detail=detail,
             why=why,
-            fix=row.fix,
+            fix=fix,
         )
 
     def _judge_reading(
@@ -95,23 +120,25 @@ class HandlerRulingRegister:
                 return EnumRulingVerdict.TRUE, "holds"
             return EnumRulingVerdict.FALSE, f"exit {reading.exit_code}"
         if expect.kind is EnumRulingExpect.STDOUT_EMPTY:
-            answer = reading.stdout.strip()
-            if answer:
-                return EnumRulingVerdict.FALSE, answer[:120]
+            stripped = reading.stdout.strip()
+            if stripped:
+                # The output itself never enters the detail: it would carry a tick
+                # line's separators and any host's bytes into stdout.
+                return (
+                    EnumRulingVerdict.FALSE,
+                    f"stdout is not empty ({len(stripped)} characters)",
+                )
             return EnumRulingVerdict.TRUE, "holds"
         if expect.kind is EnumRulingExpect.STDOUT_EQUALS:
             if reading.stdout.strip() == expect.value:
                 return EnumRulingVerdict.TRUE, "holds"
-            return EnumRulingVerdict.FALSE, f"read {reading.stdout.strip()[:60]}"
+            return EnumRulingVerdict.FALSE, "stdout is not the expected value"
         if expect.bound is None:
             return EnumRulingVerdict.UNREAD, "int_at_most names no bound"
         try:
             value = int(reading.stdout.strip())
         except ValueError:
-            return (
-                EnumRulingVerdict.UNREAD,
-                f"answer is not an integer: {reading.stdout.strip()[:60]}",
-            )
+            return EnumRulingVerdict.UNREAD, "answer is not an integer"
         if value <= expect.bound:
             return EnumRulingVerdict.TRUE, "holds"
         return EnumRulingVerdict.FALSE, f"read {value}, bound {expect.bound}"
