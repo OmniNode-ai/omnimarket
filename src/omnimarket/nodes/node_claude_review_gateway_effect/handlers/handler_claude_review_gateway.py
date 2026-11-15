@@ -1095,6 +1095,20 @@ class HandlerClaudeReviewGateway:
             clock=self._clock,
         )
 
+    def with_event_bus(
+        self, event_bus: ProtocolGatewayEventBus | None
+    ) -> HandlerClaudeReviewGateway:
+        """This handler rebuilt on the given event bus, everything else unchanged."""
+        return HandlerClaudeReviewGateway(
+            catalog=self._catalog,
+            key_values=self._key_values,
+            call=self._call,
+            endpoint_url=self._endpoint_url,
+            overlay=self._overlay,
+            event_bus=event_bus,
+            clock=self._clock,
+        )
+
     async def handle(
         self,
         request: ModelClaudeReviewGatewayRequest,

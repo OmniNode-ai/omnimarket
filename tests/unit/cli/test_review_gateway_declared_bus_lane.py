@@ -23,6 +23,7 @@ from click.testing import CliRunner
 
 from omnimarket.cli import cli_secret
 from omnimarket.delegated_test_loop import lane_bus
+from omnimarket.handlers.handler_lab_host_bus_lane import lab_host_bus_lane
 from omnimarket.nodes.node_claude_review_gateway_effect.handlers.handler_claude_review_gateway import (
     HandlerClaudeReviewGateway,
 )
@@ -187,3 +188,21 @@ def test_seam_the_real_lane_opener_still_matches_the_helper_binding() -> None:
     names = tuple(inspect.signature(lane_bus.open_lab_run_bus).parameters)
     assert names[:3] == ("bus", "lane", "kafka_bootstrap")
     assert len(names) == 4
+
+
+def test_the_shared_lane_reader_reads_the_host_row(tmp_path: Path) -> None:
+    """The shared reader returns the named row's lane, and none otherwise."""
+    table = tmp_path / "hosts.yaml"
+    table.write_text(
+        "hosts:\n"
+        "  - name: h200\n"
+        "    ledger_bus_lane: dev\n"
+        "  - name: h051\n"
+        "    ledger_bus_lane: null\n",
+        encoding="utf-8",
+    )
+    assert lab_host_bus_lane(table, "h200") == "dev"
+    assert lab_host_bus_lane(table, "h051") is None
+    assert lab_host_bus_lane(table, "h999") is None
+    assert lab_host_bus_lane(None, "h200") is None
+    assert lab_host_bus_lane(tmp_path / "no-such-table.yaml", "h200") is None

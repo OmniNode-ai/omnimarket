@@ -49,6 +49,7 @@ from omnibase_core.errors.model_onex_error import ModelOnexError
 from pydantic import SecretStr, ValidationError
 
 from omnimarket.handlers import handler_model_keys as model_keys
+from omnimarket.handlers.handler_lab_host_bus_lane import lab_host_bus_lane
 from omnimarket.handlers.models_list_ladder import ladder_option, model_json
 from omnimarket.handlers.models_only_command import MODEL_COMMANDS, listed, models_text
 from omnimarket.handlers.routing.byok_model_discovery import (
@@ -312,25 +313,8 @@ def _environment_names_broker() -> bool:
 
 
 def _lab_host_bus_lane(bound_host: str | None) -> str | None:
-    """The bound host's declared ``ledger_bus_lane`` in the lab host table (OMN-20910).
-
-    A lab host carries no KAFKA_BOOTSTRAP_SERVERS, but its lab host table row
-    names the bus lane it publishes on; the lane's broker and login come from
-    the lane declaration, never from the shell.
-    """
-    table = _lab_host_table()
-    if table is None or bound_host is None:
-        return None
-    try:
-        document = yaml.safe_load(table.read_text(encoding="utf-8"))
-    except (OSError, yaml.YAMLError):
-        return None
-    rows = document.get("hosts") if isinstance(document, dict) else None
-    for row in rows if isinstance(rows, list) else []:
-        if isinstance(row, dict) and row.get("name") == bound_host:
-            lane = row.get("ledger_bus_lane")
-            return lane.strip() if isinstance(lane, str) and lane.strip() else None
-    return None
+    """The bound host's declared ``ledger_bus_lane`` in the lab host table."""
+    return lab_host_bus_lane(_lab_host_table(), bound_host)
 
 
 async def _register_on_declared_bus[T](
@@ -1402,23 +1386,9 @@ def review_gateway(
     # bus lane it publishes on; the helper opens that lane's bus and hands the
     # handler its bus. A broker the environment names (or no lane declared)
     # reaches the callback with None, where the handler's own refusal stands.
-    async def serve_on_declared_lane(
-        event_bus: ProtocolCredentialEventBus | None,
-    ) -> None:
-        handler = HandlerClaudeReviewGateway(
-            catalog=SqliteDatabaseAdapter(store.db_path),
-            key_values=store,
-            # The one sanctioned model caller (OMN-20295); it resolves the key's
-            # value through the secret store at its own boundary.
-            call=HandlerLlmDelegationCall(),
-            endpoint_url=backend.endpoint_url,
-            event_bus=cast(ProtocolGatewayEventBus | None, event_bus),
-        )
-        await handler.handle(request)
+    async def serve(event_bus: ProtocolCredentialEventBus | None) -> None:
+        await handler.with_event_bus(
+            cast(ProtocolGatewayEventBus | None, event_bus)
+        ).handle(request)
 
-    asyncio.run(
-        _register_on_declared_bus(
-            serve_on_declared_lane,
-            lane=_lab_host_bus_lane(bound_host),
-        )
-    )
+    asyncio.run(_register_on_declared_bus(serve, lane=_lab_host_bus_lane(bound_host)))
