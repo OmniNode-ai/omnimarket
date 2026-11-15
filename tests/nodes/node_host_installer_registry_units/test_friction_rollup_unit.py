@@ -106,6 +106,7 @@ def test_a_checkout_without_the_tick_entry_file_is_refused(tmp_path: Path) -> No
         request(tmp_path, unit=UNIT, mode="install", project_path=str(branch))
     )
     assert result.status == "failure"
+    assert f"does not carry {MODULE}" in result.stderr
     # The checkout is checked before anything is loaded, so no launchctl call ran. The id and git
     # calls of the checkout check do run through the recorder first (unlike the refusals other
     # tests assert with a bare `recorder.calls == []`, which happen before even those).
