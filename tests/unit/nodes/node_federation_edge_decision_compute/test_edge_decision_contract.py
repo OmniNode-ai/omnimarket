@@ -207,6 +207,20 @@ class TestContract:
             is HandlerFederationEdgeDecision
         )
 
+    def test_the_contract_declares_both_terminal_events_and_publishes_them(
+        self,
+    ) -> None:
+        contract = yaml.safe_load(
+            (NODE_DIR / "contract.yaml").read_text(encoding="utf-8")
+        )
+        completed = "onex.evt.omnimarket.federation-edge-decision-completed.v1"
+        failed = "onex.evt.omnimarket.federation-edge-decision-failed.v1"
+        assert contract["runtime_dispatch"]["terminal_events"] == {
+            "success": completed,
+            "failure": failed,
+        }
+        assert contract["event_bus"]["publish_topics"] == [completed, failed]
+
 
 class TestHandlerShape:
     def test_the_handler_is_definition_b(self) -> None:

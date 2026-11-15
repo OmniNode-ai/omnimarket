@@ -87,3 +87,14 @@ def test_handler_source_imports_no_io_and_reads_no_clock() -> None:
     assert "utcnow" not in source
     assert "monotonic" not in source
     assert "perf_counter" not in source
+
+
+def test_contract_declares_both_terminal_events_and_publishes_them() -> None:
+    contract = yaml.safe_load((NODE_DIR / "contract.yaml").read_text())
+    completed = "onex.evt.omnimarket.federation-egress-gate-completed.v1"
+    failed = "onex.evt.omnimarket.federation-egress-gate-failed.v1"
+    assert contract["runtime_dispatch"]["terminal_events"] == {
+        "success": completed,
+        "failure": failed,
+    }
+    assert contract["event_bus"]["publish_topics"] == [completed, failed]
