@@ -16,6 +16,9 @@ from omnimarket.nodes.node_baseline_cluster_ticket_effect.handlers.cluster_signa
     legacy_lines,
     signature_line,
 )
+from omnimarket.nodes.node_baseline_cluster_ticket_effect.handlers.protocol_cluster_ticket_store import (
+    ProtocolClusterTicketStore,
+)
 from omnimarket.nodes.node_baseline_cluster_ticket_effect.models.model_baseline_cluster_ticket import (
     ModelBaselineClusterReportRequest,
 )
@@ -58,8 +61,8 @@ def request(**overrides: object) -> ModelBaselineClusterReportRequest:
     return ModelBaselineClusterReportRequest.model_validate(base)
 
 
-def handler(store: object) -> HandlerBaselineClusterTicket:
-    return HandlerBaselineClusterTicket(store)  # type: ignore[arg-type]
+def handler(store: ProtocolClusterTicketStore) -> HandlerBaselineClusterTicket:
+    return HandlerBaselineClusterTicket(store)
 
 
 def test_two_runs_of_the_same_cluster_make_one_ticket() -> None:
