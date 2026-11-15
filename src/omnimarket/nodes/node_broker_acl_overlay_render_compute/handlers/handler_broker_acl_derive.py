@@ -184,8 +184,10 @@ class HandlerBrokerAclDerive:
                         code=_CODES.CALLED_NODE_WITHOUT_TERMINAL, detail=node
                     )
                 )
-            prefix = config["derive_caller_command_prefix"]
-            outside = [topic for topic in commands if not topic.startswith(prefix)]
+            segment = config["derive_caller_command_segment"]
+            outside = [
+                topic for topic in commands if topic.split(".")[1:2] != [segment]
+            ]
             if outside:
                 findings.append(
                     ModelBrokerAclFinding(

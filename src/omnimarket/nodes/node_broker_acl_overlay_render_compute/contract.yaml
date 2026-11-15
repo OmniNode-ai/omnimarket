@@ -77,9 +77,10 @@ config:
   derive_subscribe_operations: [READ, DESCRIBE]
   derive_group_operations: [READ, DESCRIBE]
   derive_group_prefix_template: "local.omnimarket.{node}.consume.v1."
-  # A caller is granted a write only on a command topic: a node whose first subscribe topic is not under this prefix (an event
-  # topic it reacts to) refuses, so a login is never granted a write on an event topic other consumers trust.
-  derive_caller_command_prefix: "onex.cmd."
+  # A caller is granted a write only on a command topic: a node whose first subscribe topic does not carry this kind segment (the
+  # second dot-separated part of the topic name; an event topic it reacts to) refuses, so a login is never granted a write on an
+  # event topic other consumers trust.
+  derive_caller_command_segment: cmd
   scm_command_topics:
   - onex.cmd.omnimarket.github-repo-write-requested.v1
   - onex.cmd.omnimarket.github-git-credential-requested.v1
