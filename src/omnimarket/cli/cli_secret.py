@@ -1312,6 +1312,7 @@ def review_gateway(
     from omnimarket.nodes.node_claude_review_gateway_effect.handlers.handler_claude_review_gateway import (
         GATEWAY_PLAN,
         HandlerClaudeReviewGateway,
+        ProtocolGatewayEventBus,
         run_dry,
     )
     from omnimarket.nodes.node_claude_review_gateway_effect.models.model_claude_review_gateway import (
@@ -1394,4 +1395,30 @@ def review_gateway(
         f"/v1/chat/completions (host {bound_host}, model {model_option}, "
         f"{len(cloud_refused_repositories)} repositories refused cloud review)"
     )
-    asyncio.run(handler.handle(request))
+
+    # OMN-19998: the launchd unit (ai.omninode.review-gateway) passes no
+    # KAFKA_BOOTSTRAP_SERVERS and a lab host never carries one, so serving used
+    # to exit 1 in a crash loop. The bound host's lab host table row names the
+    # bus lane it publishes on; the helper opens that lane's bus and hands the
+    # handler its bus. A broker the environment names (or no lane declared)
+    # reaches the callback with None, where the handler's own refusal stands.
+    async def serve_on_declared_lane(
+        event_bus: ProtocolCredentialEventBus | None,
+    ) -> None:
+        handler = HandlerClaudeReviewGateway(
+            catalog=SqliteDatabaseAdapter(store.db_path),
+            key_values=store,
+            # The one sanctioned model caller (OMN-20295); it resolves the key's
+            # value through the secret store at its own boundary.
+            call=HandlerLlmDelegationCall(),
+            endpoint_url=backend.endpoint_url,
+            event_bus=cast(ProtocolGatewayEventBus | None, event_bus),
+        )
+        await handler.handle(request)
+
+    asyncio.run(
+        _register_on_declared_bus(
+            serve_on_declared_lane,
+            lane=_lab_host_bus_lane(bound_host),
+        )
+    )

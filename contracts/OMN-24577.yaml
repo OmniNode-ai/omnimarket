@@ -1,0 +1,59 @@
+schema_version: 1.0.0
+ticket_id: OMN-24577
+title: Review gateway serves on the host's declared bus lane
+summary: 'The review gateway command (onex models review-gateway) required KAFKA_BOOTSTRAP_SERVERS and exited 1 when the environment held none, which is every lab host and the Mac unit''s plist. It now
+  serves on the bus lane the bound host''s lab host table row declares, through the same helper the tenant-key registration uses, and keeps the old path when the environment names a broker and the old refusal
+  when neither exists. Not in this change: the unit''s settings location and the gateway policy overlay value the Mac still lacks (a separate declaration), and the Mac install.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24577-declared-bus
+  statement: With no broker in the environment the review gateway serves on the bus lane its bound host declares, keeps the environment broker path, and keeps its refusal when neither exists.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: with no broker variable set and the host''s table row naming a bus lane, `onex models review-gateway` opens that lane''s bus and hands it to the gateway handler -- falsifier: uv run
+      pytest tests/unit/cli/test_review_gateway_declared_bus_lane.py -q -k serves_on_the_host_row_lane'
+  - id: AC2
+    statement: 'AC2: a broker named in the environment keeps the old path and a host that declares no lane keeps the refusal -- falsifier: uv run pytest tests/unit/cli/test_review_gateway_declared_bus_lane.py
+      -q -k "keeps"'
+  - id: AC3
+    statement: 'AC3: integrated, read in the running runtime on the launching Mac after the install: launchctl print gui/$(id -u)/ai.omninode.review-gateway shows a pid and both ports answer -- falsifier:
+      the same print shows last exit code = 1 with no pid, or lsof -iTCP:8140 -sTCP:LISTEN prints nothing'
+evidence_requirements:
+- kind: tests
+  description: The focused tests at the pushed head; each fails against the code or declaration before this change.
+  command: uv run pytest tests/unit/cli/test_review_gateway_declared_bus_lane.py -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24577-ac1
+  description: 'AC1: with no broker variable set and the host''s table row naming a bus lane, `onex models review-gateway` opens that lane''s bus and hands it to the gateway handler'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/cli/test_review_gateway_declared_bus_lane.py -q --no-cov -p no:randomly -k serves_on_the_host_row_lane
+    cwd: .
+- id: dod-omn24577-ac2
+  description: 'AC2: a broker named in the environment keeps the old path and a host that declares no lane keeps the refusal'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/cli/test_review_gateway_declared_bus_lane.py -q --no-cov -p no:randomly -k keeps
+    cwd: .
+- id: dod-omn24577-ac3-proxy
+  description: 'AC3 hosted proxy: the focused tests run the gateway command with no broker variable and show it serving on the declared lane; the live read on the Mac (pid, ports) is run by the orchestrator
+    after the install and is not claimed by this check.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/cli/test_review_gateway_declared_bus_lane.py -q --no-cov -p no:randomly -k serves_on_the_host_row_lane
+    cwd: .
