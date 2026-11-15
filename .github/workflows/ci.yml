@@ -2238,7 +2238,10 @@ jobs:
   direct-model-call-gate:
     name: Direct Model Call Gate (OMN-20287)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Seven whole-repository scans of about two minutes each (four planted refusals, two
+    # accepts, the real check) took 13.5 to 14.7 minutes against a 15 minute limit; the
+    # push run for the OMN-24409 merge was cancelled at the limit and left CI Summary red.
+    timeout-minutes: 30
     env:
       DIRECT_MODEL_CALL_CORE: "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core@031148215620031436cba30619bbae67c0bb38ad"
     steps:
