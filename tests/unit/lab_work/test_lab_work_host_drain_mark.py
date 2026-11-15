@@ -11,13 +11,15 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import pytest
 from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 from pydantic import ValidationError
 
-from omnimarket.lab_work.bus import LabWorkHost
+from omnimarket.lab_work.bus import LabWorkHost, host_group_id
 from omnimarket.models.model_host_drain_command import (
     ModelHostDrainCommand,
     load_host_drain_topic,
@@ -109,6 +111,49 @@ async def _advertise(
         await bus.close()
     assert ad is not None
     return ad
+
+
+class _RecordingBus:
+    """The in-memory bus with the broker's group semantics, recording subscribes.
+
+    The bare in-memory bus delivers only to subscribers live at publish, so it
+    cannot show the replay a restarted serve relies on. This wrapper forwards
+    publish/subscribe, records every (topic, group_id) it is asked to join, and
+    models the broker: a group it has not seen replays the topic's retained
+    history from the earliest offset (a fresh group with
+    ``auto_offset_reset=earliest``), while a group that has already subscribed
+    resumes where its committed offset left it.
+    """
+
+    def __init__(self, bus: EventBusInmemory) -> None:
+        self._bus = bus
+        self.subscriptions: list[tuple[str, str]] = []
+
+    async def publish(
+        self, topic: str, key: bytes | None, value: bytes, headers: Any = None
+    ) -> object:
+        return await self._bus.publish(topic, key, value, headers)
+
+    async def subscribe(
+        self,
+        topic: str,
+        node_identity: Any = None,
+        on_message: Callable[[Any], Awaitable[None]] | None = None,
+        *,
+        group_id: str | None = None,
+    ) -> Callable[[], Awaitable[None]]:
+        if on_message is None or group_id is None:
+            raise AssertionError("a grouped subscribe needs on_message and group_id")
+        fresh = (topic, group_id) not in self.subscriptions
+        self.subscriptions.append((topic, group_id))
+        handle = await self._bus.subscribe(
+            topic, on_message=on_message, group_id=group_id
+        )
+        if fresh:
+            history = await self._bus.get_event_history(limit=1000, topic=topic)
+            for message in history:
+                await on_message(message)
+        return handle
 
 
 def test_golden_a_drain_command_rides_the_next_advertisement() -> None:
@@ -203,3 +248,52 @@ def test_a_mark_reads_not_draining_at_its_expiry_instant() -> None:
     assert command.until is not None
     assert command.reads_draining(command.until - timedelta(seconds=1)) is True
     assert command.reads_draining(command.until) is False
+
+
+def test_a_restarted_serve_rebuilds_the_mark_from_the_topic() -> None:
+    """The mark survives a serve restart: the next start joins a fresh drain
+    group, replays the topic, and advertises the mark again without any new
+    command -- where the one shared group committed past the only command and
+    the restarted serve advertised none."""
+
+    async def scenario() -> tuple[ModelHostCapacityAdvertisement, _RecordingBus]:
+        inner = EventBusInmemory(environment="local", group="drain-mark-test")
+        await inner.start()
+        bus = _RecordingBus(inner)
+
+        def serve() -> LabWorkHost:
+            return LabWorkHost(
+                bus,
+                HandlerLabWorkUnitEffect(HOST, _Runner()),  # type: ignore[arg-type]
+                HandlerHostCapacityAdvertiseEffect(_Reader()),
+                now=lambda: NOW,
+            )
+
+        first = serve()
+        await first.start(advertise=False)
+        try:
+            await _publish(inner, _command())
+            await asyncio.sleep(0.05)
+        finally:
+            await first.stop()
+        second = serve()
+        ad: ModelHostCapacityAdvertisement | None = None
+        try:
+            await second.start(advertise=False)
+            await asyncio.sleep(0.05)
+            ad = await second.advertise_once()
+        finally:
+            await second.stop()
+            await inner.close()
+        assert ad is not None
+        return ad, bus
+
+    ad, bus = asyncio.run(scenario())
+    assert draining_until_from_tools(ad.tools) == NOW + timedelta(hours=1)
+    drain_groups = [
+        group for topic, group in bus.subscriptions if topic == load_host_drain_topic()
+    ]
+    assert len(drain_groups) == 2
+    assert drain_groups[0] != drain_groups[1]
+    for group in drain_groups:
+        assert group.startswith(host_group_id(HOST))

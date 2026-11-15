@@ -253,10 +253,12 @@ class LabWorkHost:
             host_group_id(self._host),
             "earliest",
         )
-        # The host's one group (OMN-21764: a group per call or per start left thousands Empty on the broker; the caller test
-        # pins this set). The group commits its offset, so a serve process that restarts does not replay the drain commands it
-        # already took: the mark of a host whose serve restarts is lost until the operator drains again (named follow-up).
-        drain_group = host_group_id(self._host)
+        # Each start joins a drain group of its own and replays the topic from
+        # the earliest offset, so a serve that restarts rebuilds the mark. The
+        # group stays on the broker Empty until it expires -- one per start,
+        # never one per call -- and its name stays under the lab work consumer
+        # group prefix the host login's ACL rows cover.
+        drain_group = f"{host_group_id(self._host)}.drain-{uuid.uuid4().hex[:8]}"
         self._drain_unsubscribe = await _subscribe(
             self._bus,
             self._drain_topic,

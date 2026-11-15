@@ -27,6 +27,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ValidationError
 
+from omnimarket.delegated_test_loop.lane_bus import LabRunBusError
 from omnimarket.handlers.emission_sink import (
     InMemoryEmissionSink,
     JsonlEmissionSink,
@@ -35,6 +36,7 @@ from omnimarket.handlers.emission_sink import (
 from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
 )
+from omnimarket.handlers.overlay_store.bus_opener import open_lane_bus, workspace_root
 from omnimarket.nodes.node_host_drain_effect.adapters.bus_drain import (
     AdvertisedLaneSource,
     BusAdvertisementSource,
@@ -89,10 +91,11 @@ def _require_env(environ: Mapping[str, str], name: str) -> str:
     return value
 
 
-def open_sync_bus(overlay: ModelHostDrainOverlay) -> SyncBus:
+def open_sync_bus(
+    overlay: ModelHostDrainOverlay,
+    environ: Mapping[str, str],
+) -> SyncBus:
     """The connection of the overlay's bus block: the lane's broker, or a bus inside this process for a drill."""
-    from omnimarket.handlers.overlay_store.bus_opener import open_lane_bus
-
     settings = overlay.bus
     if settings is None:
         raise _MissingFactError("the overlay declares no bus block")
@@ -101,7 +104,8 @@ def open_sync_bus(overlay: ModelHostDrainOverlay) -> SyncBus:
             bus=settings.kind,
             lane=settings.lane,
             kafka_bootstrap=settings.kafka_bootstrap,
-            root=None,
+            # The lane declaration is found under the workspace root, as the other bus tools name it.
+            root=workspace_root(environ),
         ),
         timeout_seconds=settings.timeout_seconds,
     )
@@ -133,7 +137,7 @@ def build_store_and_sink(
         raise _MissingFactError("the bus profile declares no bus block")
     home = Path(_require_env(environ, overlay.emission.home_env))
     sink = JsonlEmissionSink(home / overlay.emission.journal_relpath)
-    bus = sync_bus if sync_bus is not None else open_sync_bus(overlay)
+    bus = sync_bus if sync_bus is not None else open_sync_bus(overlay, environ)
     source = BusAdvertisementSource(
         bus,
         window_seconds=settings.window_seconds,
@@ -189,7 +193,7 @@ def run(
     except _MissingFactError as exc:
         print(f"INDETERMINATE: {exc}", file=sys.stderr)
         return 3
-    except OSError as exc:
+    except (OSError, LabRunBusError) as exc:
         print(f"INDETERMINATE: the bus could not be opened: {exc}", file=sys.stderr)
         return 3
     if args.verb == "draining":
