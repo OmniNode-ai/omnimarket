@@ -133,6 +133,16 @@ config:
         - '(?:^|[\s"''`(=;&|])(?:rpk|kafka-topics|kafka-configs|kafka-consumer-groups)(?:\.sh)?\s'
         - '\bAIOKafkaAdminClient\b|\bKafkaAdminClient\b'
 
+broker_acl_grants:
+- principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+  grants:
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.effect-bypass-scan-requested.v1, operation: READ}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.effect-bypass-scan-requested.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.effect-bypass-scan-completed.v1, operation: WRITE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.effect-bypass-scan-completed.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.effect-bypass-scan-failed.v1, operation: WRITE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.effect-bypass-scan-failed.v1, operation: DESCRIBE}
+
 metadata:
   ticket: OMN-24432
   transport_type: inmemory
