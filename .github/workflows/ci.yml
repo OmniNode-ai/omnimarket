@@ -2320,6 +2320,54 @@ jobs:
             gate
           fi
 
+  # OMN-24432: effect-node bypass ratchet, BLOCKING (RULING 2026-11-14T11:59:02Z). Every effect on the
+  # outside world goes through its effect node over the bus; this counts the calls that skip one and
+  # refuses a rise against .onex_ratchets/effect_bypass_ceiling.yaml, and a baseline above the merge
+  # base's copy. SYNC with pre-commit hook `effect-bypass-ratchet`: same module, same baseline.
+  effect-bypass-ratchet:
+    name: Effect Bypass Ratchet (OMN-24432)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+        with:
+          fetch-depth: 0
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7
+        with:
+          version: "0.8.3"
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+      - name: Install dependencies
+        run: uv sync --locked
+      - name: Positive control (the ratchet refuses a rise and the scan counts what it should)
+        run: |
+          uv run pytest tests/unit/nodes/node_effect_bypass_scan_effect tests/unit/nodes/node_effect_bypass_ratchet_compute -q
+      - name: Refuse a new bypass and baseline growth
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          MQ_BASE: ${{ github.event.merge_group.base_sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          args=(--repository omnimarket --root . --baseline .onex_ratchets/effect_bypass_ceiling.yaml)
+          base="${PR_BASE:-${MQ_BASE:-${PUSH_BEFORE:-}}}"
+          if [ -n "$base" ] && git cat-file -e "${base}^{commit}" 2>/dev/null; then
+            base="$(git merge-base "$base" HEAD)"
+            if git cat-file -e "${base}:.onex_ratchets/effect_bypass_ceiling.yaml" 2>/dev/null; then
+              git show "${base}:.onex_ratchets/effect_bypass_ceiling.yaml" > "$RUNNER_TEMP/effect_bypass_base.yaml"
+              args+=(--base-baseline "$RUNNER_TEMP/effect_bypass_base.yaml")
+            else
+              echo "the merge base carries no baseline file; checking the tree against the baseline only"
+            fi
+          else
+            echo "no base revision on this event; checking the tree against the baseline only"
+          fi
+          uv run python -m omnimarket.nodes.node_effect_bypass_scan_effect check "${args[@]}"
+
   # OMN-16344: release-identity gate — the mechanism that keeps dev's
   # project.version permanently ahead of the last published tag, matching
   # omnibase_core (OMN-13411) and omnibase_infra (OMN-13412). omnimarket had no
