@@ -48,3 +48,13 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect/test_review_key_credit_probe_omn24562.py -q --no-cov -p no:randomly
     cwd: .
+- id: dod-omn24562-integration-proof
+  description: 'Integration proof run on a lab host at the pushed head: the gateway skip and probe tests run through lab-work. The live read on the launching Mac (a review routed through a funded key
+    while two keys are out of credit and the key-state topic refuses the publication) is in the pull request body.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24562 --kind test -- env PYTHONDONTWRITEBYTECODE=1
+      uv run --frozen pytest tests/unit/nodes/node_claude_review_gateway_effect -q --no-cov -p no:randomly
+    cwd: .
