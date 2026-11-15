@@ -43,13 +43,13 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/nodes/node_merged_running_count_effect/test_deployed_receipts.py -k old_environment -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn24548-ac3
-  description: The floor wiring test passes; the live reading on the served board is recorded in the Lab line and a comment once the Mac publisher runs this head with the overlay values installed.
+  description: The reader the floor board reads is built from the overlay (fails on the previous source, which read the two environment names); the live reading on the served board is recorded in the Lab line and a comment once the Mac publisher runs this head with the overlay values installed.
   source: manual
   binds_ac:
   - AC3
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/nodes/node_factory_floor_effect/test_merged_running_wiring.py -q --no-cov -n 0 -p no:randomly
+    check_value: uv run --frozen pytest tests/nodes/node_merged_running_count_effect/test_deployed_receipts.py::test_deployed_source_is_built_from_the_contract_and_the_overlay -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn24548-integration-proof
   description: Run the node's tests on a lab host at the pushed head. Hosted CI cannot reach the lab hosts, so only the local Done gate runs this unbound check.
