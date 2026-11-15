@@ -96,12 +96,8 @@ def render_declaration(
     return rendered
 
 
-def aggregate_declared_grants(nodes_root: Path | None = None) -> list[dict[str, str]]:
-    """Merge this node's declaration with grant blocks from every packaged node.
-
-    Malformed declarations fail closed and identify the contract to fix. Duplicate
-    rows collapse before sorting by principal, resource type, pattern, name and operation.
-    """
+def _grant_blocks(nodes_root: Path | None = None) -> list[tuple[str, object]]:
+    """This node's declaration principals and every packaged node's broker_acl_grants block."""
     root = (
         nodes_root
         if nodes_root is not None
@@ -123,9 +119,18 @@ def aggregate_declared_grants(nodes_root: Path | None = None) -> list[dict[str, 
                 blocks.append((str(path), loaded["broker_acl_grants"]))
         except (ValueError, OSError, yaml.YAMLError) as error:
             raise ValueError(f"{path}: {error}") from error
+    return blocks
+
+
+def aggregate_declared_grants(nodes_root: Path | None = None) -> list[dict[str, str]]:
+    """Merge this node's declaration with grant blocks from every packaged node.
+
+    Malformed declarations fail closed and identify the contract to fix. Duplicate
+    rows collapse before sorting by principal, resource type, pattern, name and operation.
+    """
     keys = ("principal", "resource_type", "pattern", "name", "operation")
     rows: set[tuple[str, ...]] = set()
-    for source, block in blocks:
+    for source, block in _grant_blocks(nodes_root):
         try:
             # Placeholder principals are checked again as concrete identities after rendering.
             checked = render_declaration(
@@ -140,6 +145,14 @@ def aggregate_declared_grants(nodes_root: Path | None = None) -> list[dict[str, 
         except (ValueError, TypeError, KeyError) as error:
             raise ValueError(f"{source}: {error}") from error
     return [dict(zip(keys, row, strict=True)) for row in sorted(rows)]
+
+
+def demanded_placeholders(nodes_root: Path | None = None) -> frozenset[str]:
+    """The ${NAME} names the node demands: its own declaration principals and every grant block."""
+    names: set[str] = set()
+    for _source, block in _grant_blocks(nodes_root):
+        names.update(_PLACEHOLDER.findall(yaml.safe_dump(block)))
+    return frozenset(names)
 
 
 def derived_grants(
@@ -199,17 +212,17 @@ def derived_grants(
     ], len(result.uncovered_topics)
 
 
-def role_logins(
+def fill_source(
     settings: Mapping[str, Any], environ: Mapping[str, str]
-) -> dict[str, str]:
-    """The names a principals overlay fills: its roles supply logins and its placeholder_values the non-login names."""
+) -> Mapping[str, str]:
+    """The one source for ${NAME} fills: the overlay's placeholder_fills when it is found, else the environment."""
     scope = settings.get("derive_principals_scope")
     if not scope:
-        return {}
+        return environ
     try:
         overlay = load_principals_overlay(scope, environ)
     except NodeOverlayNotFoundError:
-        return {}
+        return environ
     return overlay.placeholder_fills()
 
 
@@ -257,7 +270,8 @@ class HandlerBrokerAclReconcile:
             return self._apply_driver(request, loaded, target)
         try:
             rendered = render_declaration(
-                loaded["broker_acl_declaration"], self._environ
+                loaded["broker_acl_declaration"],
+                fill_source(settings, self._environ),
             )
         except ValueError as error:
             return ModelBrokerAclReconcileResult(
@@ -376,10 +390,7 @@ class HandlerBrokerAclReconcile:
             ]
             rendered = render_declaration(
                 declaration,
-                {
-                    **self._environ,
-                    **role_logins(loaded["broker_acl_reconcile"], self._environ),
-                },
+                fill_source(loaded["broker_acl_reconcile"], self._environ),
             )
             timeout = float(loaded["broker_acl_reconcile"]["timeout_seconds"])
             connection = driver_broker_acl.AclConnection.from_mapping(

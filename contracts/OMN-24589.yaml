@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-24589
 title: The broker permission node reads its two non-login names from the declaration file
-summary: The broker permission reconcile node (node_broker_acl_reconcile_effect) refuses to run on the lab hosts while any ${NAME} placeholder in a node contract's broker_acl_grants is unset. Nine of the eleven unset names are logins, filled by roles of the broker_acl_principals overlay (an overlay change in the overlays repository). Two are not logins held by a dev role (a consumer group package name, and a login of the stability broker). The principals overlay model gains placeholder_values for them, the node reads them with the roles' logins (placeholder_fills), and a name a role also holds, a lowercase name or an empty value is refused by name.
+summary: The broker permission reconcile node (node_broker_acl_reconcile_effect) refuses to run on the lab hosts while any ${NAME} placeholder in a node contract's broker_acl_grants is unset. Nine of the eleven unset names are logins, filled by roles of the broker_acl_principals overlay (an overlay change in the overlays repository). Two are not logins held by a dev role (a consumer group package name, and a login of the stability broker). The principals overlay model gains placeholder_values for them, the node reads them with the roles' logins (placeholder_fills), and a name a role also holds, a lowercase name, an empty or blank value, a value holding an unexpanded ${NAME} or whitespace, and a blank login on a role that fills a placeholder are each refused by name. When an overlay is found it is the one source of the fills for both the driver path and the legacy command path; the environment fills no name, so a name the overlay lacks is refused as unset.
 is_seam_ticket: true
 interface_change: true
 requirements:
@@ -11,11 +11,13 @@ requirements:
   - id: AC1
     statement: "AC1: the permission node fills a contract placeholder from the declaration file's placeholder_values when no role holds it and no environment variable is set -- falsifier: pytest tests/nodes/node_broker_acl_reconcile_effect/test_role_placeholders.py -k placeholder_value_fills -q fails on the base branch"
   - id: AC2
-    statement: "AC2: a placeholder_values name that a role also holds, a lowercase name, an empty value, and a name with no value anywhere are each refused naming the name -- falsifier: pytest tests/nodes/node_broker_acl_reconcile_effect/test_role_placeholders.py -k \"refused\" -q"
+    statement: "AC2: a placeholder_values name that a role also holds, a lowercase name, an empty or blank value, a value holding an unexpanded placeholder or whitespace, and a name with no value anywhere are each refused naming the name and the reason -- falsifier: pytest tests/nodes/node_broker_acl_reconcile_effect/test_role_placeholders.py -k \"refused\" -q"
   - id: AC3
     statement: "AC3: the dry run on a lab host from this branch with the declaration branch no longer stops at unset names and lists the rows for the capture silence watch login as to add -- falsifier: the dry run prints an unset: refusal or omits those rows"
   - id: AC4
-    statement: "AC4: integrated: the next tick of the capture silence watch unit on the h201 lab host after the add side is applied exits 0 -- falsifier: the unit's error log shows a TopicAuthorizationFailedError line after the apply"
+    statement: "AC4: integrated: the next tick of the capture silence watch unit on the h201 lab host after the add side is applied exits 2 (an alarm delivered for a silent source, which is the unit working; it exited 3 before the apply) -- falsifier: the unit's error log shows a TopicAuthorizationFailedError line after the apply, or the tick exits 3"
+  - id: AC5
+    statement: "AC5: when the declaration file is found it is the one source of the ${NAME} fills in the driver path and the legacy command path, and a name it lacks is refused as unset even when the environment sets it -- falsifier: pytest tests/nodes/node_broker_acl_reconcile_effect/test_role_placeholders.py -k \"environment_does_not_fill or ignores_the_environment\" -q fails on the base branch"
 evidence_requirements:
 - kind: tests
   description: The placeholder role and value tests, including the failing controls, and the neighbouring broker permission node tests.
@@ -53,8 +55,17 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_broker_acl_reconcile_effect/test_role_placeholders.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn24589-ac5-one-source
+  description: With the declaration file found and the environment setting a name the file lacks, apply and the legacy command path are refused naming the name and change nothing on the broker; with no file found the environment still fills (the neighbouring node tests).
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_broker_acl_reconcile_effect -q --no-cov -n 0 -p no:randomly -k "environment_does_not_fill or ignores_the_environment or legacy_command_path"
+    cwd: .
 - id: dod-omn24589-seam-placeholder-list
-  description: The seam test fails when a node contract adds, renames or drops a broker placeholder name without the list spelled in the test (and the declaration file that fills it) being updated; its two failing controls show an added and a dropped name.
+  description: The seam test compares the contracts' broker placeholder names with what the node itself demands (demanded_placeholders), so no list is spelled in the test; its two failing controls show a new name seen by both and a name in a key the node does not read seen by the scan only.
   source: manual
   binds_ac:
   - AC1

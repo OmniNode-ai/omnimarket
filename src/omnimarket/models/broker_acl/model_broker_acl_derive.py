@@ -22,6 +22,17 @@ from omnimarket.models.broker_acl.model_broker_acl_overlay import (
 _PLACEHOLDER_NAME = re.compile(r"[A-Z][A-Z0-9_]*")
 
 
+def fill_value_refusal(value: str) -> str | None:
+    """A short reason a placeholder value is refused, or None when it is usable."""
+    if not value.strip():
+        return "an empty or blank value"
+    if any(char in value for char in "${}"):
+        return "an unexpanded placeholder"
+    if any(char.isspace() for char in value):
+        return "whitespace"
+    return None
+
+
 class EnumTopicDirection(StrEnum):
     PUBLISH = "publish"
     SUBSCRIBE = "subscribe"
@@ -89,6 +100,10 @@ class ModelNodeRole(BaseModel):
             raise ValueError(
                 f"role {self.name!r} names placeholders but holds {len(self.principals)} principals"
             )
+        if self.placeholders:
+            reason = fill_value_refusal(self.principals[0])
+            if reason:
+                raise ValueError(f"role {self.name!r} principal has {reason}")
         return self
 
 
@@ -121,8 +136,9 @@ class ModelBrokerAclPrincipalsOverlay(BaseModel):
                 raise ValueError(
                     f"placeholder {name!r} does not match ^[A-Z][A-Z0-9_]*$"
                 )
-            if not value:
-                raise ValueError(f"placeholder {name!r} has an empty value")
+            reason = fill_value_refusal(value)
+            if reason:
+                raise ValueError(f"placeholder {name!r} has {reason}")
             if name in seen:
                 raise ValueError(
                     f"placeholder {name!r} is named by both {seen[name]!r} and placeholder_values"

@@ -1,16 +1,11 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""A node contract's ${ONEX_ACL_*} placeholder names equal the declared list.
+"""A node contract's ${ONEX_ACL_*} placeholder names equal what the node demands.
 
-Seam: node contracts (src/omnimarket/nodes/*/contract.yaml, the ${NAME} names in
-broker_acl_grants and broker_topics) -> node_broker_acl_reconcile_effect
-(render_declaration fills every ${NAME} from the environment, the roles and the
-placeholder_values of a principals overlay). A contract that adds, renames or drops a
-${ONEX_ACL_*} placeholder without this list (and the overlay that fills it) being
-updated fails here, naming the difference. The failing controls prove the scan
-sees a new name and a dropped name.
-Exemplar followed: test_role_placeholders.py (typed helpers, tmp_path contracts,
-failing controls).
+Seam: node contracts' ${ONEX_ACL_*} names -> node_broker_acl_reconcile_effect. The expectation comes from the
+node's own reader (demanded_placeholders), so there is no list to keep in step; the overlays repository holds the
+other side (the fills the overlay supplies).
+Exemplar followed: test_role_placeholders.py (typed helpers, tmp_path contracts, failing controls).
 """
 
 from __future__ import annotations
@@ -20,29 +15,13 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = pytest.mark.unit
-
-DECLARED_PLACEHOLDERS: frozenset[str] = frozenset(
-    {
-        "ONEX_ACL_BRANCH_DEPLOY_PRINCIPAL",
-        "ONEX_ACL_BUS_MODEL_SEAM_PRINCIPAL",
-        "ONEX_ACL_CODE_EDIT_PRINCIPAL",
-        "ONEX_ACL_CONSUMER_GROUP_REAP_PRINCIPAL",
-        "ONEX_ACL_CONSUMER_GROUP_STATE_PRINCIPAL",
-        "ONEX_ACL_DEPLOY_AGENT_KEY_CHECK_PRINCIPAL",
-        "ONEX_ACL_DESIRED_PUBLISHER_PRINCIPAL",
-        "ONEX_ACL_DEV_ROLL_CAPTURE_PRINCIPAL",
-        "ONEX_ACL_DEV_RUNTIME_EFFECTS_PRINCIPAL",
-        "ONEX_ACL_FLEET_PACKAGE",
-        "ONEX_ACL_GUARD_PRINCIPAL",
-        "ONEX_ACL_HOST_RECONCILER_PRINCIPAL",
-        "ONEX_ACL_LANE_READ_GUARD_PRINCIPAL",
-        "ONEX_ACL_LAYER_REQUEST_PRINCIPAL",
-        "ONEX_ACL_RELEASE_SIBLING_PREMISE_PRINCIPAL",
-        "ONEX_ACL_RUNTIME_PRINCIPAL",
-        "ONEX_ACL_STABILITY_REFRESH_SERVE_PRINCIPAL",
-    }
+from omnimarket.nodes.node_broker_acl_reconcile_effect.handlers.handler_broker_acl_reconcile import (
+    aggregate_declared_grants,
+    demanded_placeholders,
+    render_declaration,
 )
+
+pytestmark = pytest.mark.unit
 
 PLACEHOLDER_PATTERN = re.compile(r"\$\{(ONEX_ACL_[A-Z0-9_]+)\}")
 
@@ -55,18 +34,38 @@ def contract_placeholders(root: Path) -> set[str]:
     return found
 
 
-def test_contract_placeholders_equal_the_declared_list() -> None:
-    """The checked-out contracts' ${ONEX_ACL_*} names are exactly the declared list."""
+def test_the_scan_equals_what_the_node_demands() -> None:
+    """The checked-out contracts' ${ONEX_ACL_*} names are exactly the ONEX_ACL_ names the node demands."""
     root = Path(__file__).resolve().parents[3] / "src" / "omnimarket" / "nodes"
     found = contract_placeholders(root)
-    assert found == DECLARED_PLACEHOLDERS, (
-        f"only in the contracts: {sorted(found - DECLARED_PLACEHOLDERS)}; "
-        f"only in the declared list: {sorted(DECLARED_PLACEHOLDERS - found)}"
+    demanded = {n for n in demanded_placeholders() if n.startswith("ONEX_ACL_")}
+    assert found == demanded, (
+        f"only in the contracts: {sorted(found - demanded)}; "
+        f"only in the demanded names: {sorted(demanded - found)}"
     )
 
 
+def test_every_demanded_name_is_refused_when_unfilled() -> None:
+    """The aggregated rows carry the unexpanded ${NAME} in their principal and name cells, so rendering with no
+    fills names every demanded name; dropping one name from a full fills mapping names that one."""
+    rows = aggregate_declared_grants()
+    with pytest.raises(ValueError, match=r"^unset: ") as refused:
+        render_declaration({"rows": rows, "principals": []}, {})
+    message = str(refused.value)
+    assert message.startswith("unset: ")
+    listed = message.removeprefix("unset: ").split(", ")
+    assert listed == sorted(demanded_placeholders())
+    full = dict.fromkeys(demanded_placeholders(), "User:x")
+    for name in sorted(demanded_placeholders()):
+        fills = dict(full)
+        del fills[name]
+        with pytest.raises(ValueError, match=f"unset: .*{name}") as one:
+            render_declaration({"rows": rows, "principals": []}, fills)
+        assert name in str(one.value)
+
+
 def test_failing_control_new_placeholder_is_seen(tmp_path: Path) -> None:
-    """Failing control: a contract adding ${ONEX_ACL_NEW_THING_PRINCIPAL} is seen by name."""
+    """Failing control: a contract adding ${ONEX_ACL_NEW_THING_PRINCIPAL} is seen by the scan and demanded."""
     contract = tmp_path / "node_x" / "contract.yaml"
     contract.parent.mkdir()
     contract.write_text(
@@ -77,17 +76,17 @@ def test_failing_control_new_placeholder_is_seen(tmp_path: Path) -> None:
     )
     found = contract_placeholders(tmp_path)
     assert found == {"ONEX_ACL_NEW_THING_PRINCIPAL", "ONEX_ACL_RUNTIME_PRINCIPAL"}
-    assert found != DECLARED_PLACEHOLDERS
+    assert "ONEX_ACL_NEW_THING_PRINCIPAL" in demanded_placeholders(tmp_path)
 
 
-def test_failing_control_dropped_placeholder_is_seen(tmp_path: Path) -> None:
-    """Failing control: a lone ${ONEX_ACL_RUNTIME_PRINCIPAL} is a strict subset."""
+def test_failing_control_a_name_in_a_key_the_node_does_not_read(tmp_path: Path) -> None:
+    """Failing control: a ${ONEX_ACL_*} name in a key the node does not read is seen by the scan but not demanded."""
     contract = tmp_path / "node_y" / "contract.yaml"
     contract.parent.mkdir()
     contract.write_text(
-        "broker_acl_grants:\n  - principal: ${ONEX_ACL_RUNTIME_PRINCIPAL}\n",
+        "notes: ${ONEX_ACL_NEW_THING_PRINCIPAL}\n",
         encoding="utf-8",
     )
     found = contract_placeholders(tmp_path)
-    assert found < DECLARED_PLACEHOLDERS
-    assert found != DECLARED_PLACEHOLDERS
+    assert "ONEX_ACL_NEW_THING_PRINCIPAL" in found
+    assert "ONEX_ACL_NEW_THING_PRINCIPAL" not in demanded_placeholders(tmp_path)
