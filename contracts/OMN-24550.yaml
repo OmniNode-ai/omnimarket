@@ -54,13 +54,13 @@ dod_evidence:
       no:cacheprovider
     cwd: .
 - id: dod-omn24550-ac3
-  description: 'hosted proxy for AC3: the closer contract topics and the ticket write seam tests pass; the dev-runtime reading is taken after install and named in the pull request.'
+  description: 'hosted proxy for AC3: the real failed model of the write node read through the writer of the closer carries its cause, and the ticket write seam tests pass; the seam test fails at the merge base; the dev-runtime reading is taken after install and named in the pull request.'
   source: manual
   binds_ac:
   - AC3
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_ticket_closer_scheduled_effect/test_contract_topics.py tests/nodes/node_ticket_closer_scheduled_effect/test_seam_ticket_write.py -q -n 0 --no-cov -p no:cacheprovider
+    check_value: uv run pytest tests/nodes/node_ticket_closer_scheduled_effect/test_ticket_done_writer.py::test_seam_a_done_refusal_from_the_write_node_reads_with_its_cause tests/nodes/node_ticket_closer_scheduled_effect/test_seam_ticket_write.py -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
 - id: dod-omn24550-integration-proof
   description: the closer and ticket write tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
