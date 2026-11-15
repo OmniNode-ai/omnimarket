@@ -195,7 +195,7 @@ def test_a_stale_locked_merged_tree_is_unlocked_and_removed(
     # The tree's lane closed its claim: a terminal, so no live claim names the tree.
     ledger.write_text(
         "2099-12-31T20:00:00Z | CLAIM | lane=a | ticket=task | running\n"
-        "2099-12-31T21:00:00Z | TERMINAL | lane=a | ticket=task | done\n"
+        "2099-12-31T21:00:00Z | TERMINAL | lane=a | ticket=task | outcome=done\n"
         "2099-12-31T23:00:00Z | STATUS | lane=a | ticket=task | later\n"
     )
     result = run_with(

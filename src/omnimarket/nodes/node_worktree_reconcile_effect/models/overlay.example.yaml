@@ -19,7 +19,7 @@ hosts:
       # lock is never stale), the ledger named by ledger_path was read fresh just now (its newest row younger than
       # ledger_max_age_hours, the rolled files of the last ledger_lookback_days days read too, under ledger_max_bytes) and shows the
       # owning lane finished, and the tree is quiet past stale_lock_hours. Only then is it unlocked and judged like any tree; clean,
-      # pushed and merged work is what a removal needs. Without a ledger_path, or with an unread one, every locked tree stays.
+      # pushed and merged work is what a removal needs. Without a ledger source, or with an unread one, every tree stays: no tree, locked or not, is removed without a fresh ledger read.
       stale_lock_hours: 24
       lane_lock_reasons: ["codex lane running (OMN-20363)"]
       ledger_max_age_hours: 6
@@ -33,6 +33,33 @@ hosts:
       # A launchd definition the run user cannot read or parse: declared by the host overlay, never obtained by changing a file mode.
       unreadable_launchd_definitions: {}
     # Template only: each scheduled tick generates its own correlation UUID.
+    correlation_id: 00000000-0000-4000-8000-000000000000
+  lab-host-projection:
+    host: lab-host-projection
+    roots: [/srv/onex/worktrees]
+    ledger_source: projection
+    ledger_projection:
+      bus_lane: dev
+      timeout_seconds: 120
+      page_size: 200
+      max_pages: 500
+      required_kinds: [CLAIM, TERMINAL, RELEASE]
+      unmeasured_days_allowed: 1
+    # Used only when the projection's parity verdict shows CLAIM, TERMINAL and RELEASE complete for the lookback window;
+    # otherwise the ledger is unread and every tree is kept; never a synced copy of the file ledger.
+    execute: false
+    policy:
+      quiet_hours: 6
+      stale_hours: 72
+      stale_lock_hours: 24
+      lane_lock_reasons: ["codex lane running (OMN-20363)"]
+      ledger_max_age_hours: 6
+      ledger_lookback_days: 3
+      ledger_max_bytes: 536870912
+      allow_standalone_clone_removal: false
+      max_removals_per_run: 200
+      unreadable_environment_files: {}
+      unreadable_launchd_definitions: {}
     correlation_id: 00000000-0000-4000-8000-000000000000
 # A host whose layout differs (a Mac under launchd) is declared beside the hosts. `$OMNI_HOME` at the start of a path is the
 # installing process's registry root, so no home directory path is written here.

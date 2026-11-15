@@ -27,6 +27,13 @@ requirements:
     statement: 'AC6: an unlocked tree is removed or pinned only with the same proof a locked tree needs: the ledger read is fresh (ledger_known), and pushed or unpushed work also needs the owning lane shown finished; with the ledger unread the tree is kept with reason ledger_unread, with the owner not shown finished it is kept with reason owner_unfinished, the model cannot pin such a tree, and the revalidation just before the removal refuses it -- falsifier: uv run pytest tests/test_worktree_reconcile_unlocked_proof.py -q'
   - id: AC7
     statement: 'AC7: a ledger that cannot be read (missing, empty, frozen, too large, in the future) is reported as unread in the run-completed event (ledger_unread, and the run error ledger_unread:<reason> when the host names a ledger), never as a deferred probe error; a host that names no ledger reports not_declared; the archive lookback is never 0 and always read, so a CLAIM rolled into an archive file still keeps its tree; a failed relock after a failed removal raises RelockFailedError; the claim fold is the one `live_claims` shares with the ledger read -- falsifier: uv run pytest tests/test_worktree_reconcile_unlocked_proof.py tests/test_golden_chain_worktree_reconcile.py tests/test_worktree_reconcile_safety_probe.py tests/test_worktree_reconcile_ledger_read.py -q'
+- id: req-omn24560-finished-owner-and-source
+  statement: An owner counts as finished only when a TERMINAL ends the work on its tree (worktree removed or released, or an outcome of done, merged or handed-off with no kept worktree); a partial outcome with the worktree kept and a RELEASE of a surface lease never do. The pre-removal recheck reads the ledger once per run, not once per tree. The lab hosts read the work_ledger_rows projection through the work-ledger query node and use it only when its parity verdict shows CLAIM, TERMINAL and RELEASE complete; otherwise the ledger is unread and every tree is kept.
+  acceptance:
+  - id: AC8
+    statement: 'AC8: owner_finished is true only for a TERMINAL that ends the work on the tree; a partial TERMINAL with the worktree kept and a RELEASE of a surface lease leave it false; the recheck before a removal reads the ledger once per run for all its trees -- falsifier: uv run pytest tests/test_worktree_reconcile_finished_claims.py tests/test_worktree_reconcile_ledger_once.py -q'
+  - id: AC9
+    statement: 'AC9: a host that names ledger_source projection reads the work_ledger_rows projection through the work-ledger query node and the read counts only when the window parity shows CLAIM, TERMINAL and RELEASE complete (the newest day may be unmeasured, no earlier day may be); otherwise it is unread with the reason projection_<why> and every tree is kept; the seam against the real query node, the golden chain event test and the error chain event test pass -- falsifier: uv run pytest tests/test_worktree_reconcile_ledger_projection.py tests/test_join_worktree_ledger_source.py tests/test_work_ledger_parity_exact_kinds.py tests/test_golden_chain_worktree_reconcile.py -q'
 evidence_requirements:
 - kind: tests
   description: The node's focused tests at the pushed head; the new test file fails on the code before this change (it imports stale_lock, which did not exist).
@@ -106,4 +113,22 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/test_worktree_reconcile_schedule_launchd.py -q -k "unit_root"
+    cwd: .
+- id: dod-omn24560-ac8
+  description: 'AC8: a TERMINAL that keeps the worktree, a partial outcome and a RELEASE of a surface lease do not finish an owner; the recheck reads the ledger once per run; each rule has a failing control.'
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_worktree_reconcile_finished_claims.py tests/test_worktree_reconcile_ledger_once.py tests/test_worktree_reconcile_effect.py -q
+    cwd: .
+- id: dod-omn24560-ac9
+  description: 'AC9: the projection ledger source is used only while the parity verdict shows CLAIM, TERMINAL and RELEASE complete; the seam test runs the real query node; golden and error chain event tests pass.'
+  source: manual
+  binds_ac:
+  - AC9
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_worktree_reconcile_ledger_projection.py tests/test_join_worktree_ledger_source.py tests/test_work_ledger_parity_exact_kinds.py tests/test_golden_chain_worktree_reconcile.py -q
     cwd: .

@@ -104,6 +104,18 @@ inputs:
     type: str
     required: false
     description: Optional lane ledger path, parsed once per run.
+  ledger_source:
+    type: str
+    required: false
+    description: 'file reads ledger_path; projection reads the work_ledger_rows
+      projection through the work-ledger query node, used only when its parity
+      verdict shows the required kinds complete, otherwise the ledger is unread
+      and every tree is kept.'
+  ledger_projection:
+    type: object
+    required: false
+    description: Bus lane, timeout, page size, page cap, required kinds and
+      unmeasured days allowed for the projection source.
   execute:
     type: bool
     required: false

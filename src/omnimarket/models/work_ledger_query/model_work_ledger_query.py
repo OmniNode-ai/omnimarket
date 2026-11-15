@@ -285,6 +285,7 @@ class ModelWorkLedgerParityDay(BaseModel):
     missing: int | None = None
     extra: int | None = None
     receipt_row_id: str | None = None
+    exact_kinds: dict[str, bool] = Field(default_factory=dict)
 
 
 class ModelWorkLedgerParity(BaseModel):

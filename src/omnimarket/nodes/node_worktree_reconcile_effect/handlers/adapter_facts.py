@@ -24,7 +24,6 @@ from omnimarket.handlers.handler_ledger_claims import (
     ModelLedgerRead,
     claimed,
     owner_finished,
-    read_ledger,
 )
 from omnimarket.handlers.rules_unit_roots import UnitRoots
 from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_commands import (
@@ -36,6 +35,7 @@ from omnimarket.nodes.node_worktree_reconcile_effect.handlers.probe_classes impo
     PROBE_NEEDS_HUMAN_PREFIX,
 )
 from omnimarket.nodes.node_worktree_reconcile_effect.protocols import (
+    ProtocolLedgerReader,
     ProtocolMergedPrReader,
     ProtocolUnitRootReader,
 )
@@ -221,9 +221,14 @@ class GitWorktreeFactsProbe:
         self,
         *,
         unit_reader: ProtocolUnitRootReader,
+        ledger_reader: ProtocolLedgerReader,
         merged_pr_reader: ProtocolMergedPrReader | None = None,
     ) -> None:
         self._merged_pr_reader = merged_pr_reader
+        self._ledger_reader = ledger_reader
+        self._recheck_ledger_value: ModelLedgerRead | None = None
+        self._recheck_ledger_done = False
+        self._recheck_ledger_lock = threading.Lock()
         # What installed units name, read per run and again before each removal. A tree a unit
         # names is live; a snapshot that cannot be read is a probe error, which keeps every tree.
         self._unit_reader = unit_reader
@@ -261,11 +266,15 @@ class GitWorktreeFactsProbe:
         except Exception:
             self._units = UnitRoots()
             errors.append("unit_snapshot_failed")
-        # A shared ledger is appended to every few seconds, so a changed ledger is
-        # the normal state, not an error: claims are re-read before each removal.
-        # An unread ledger is not a deferral either (nothing resolves by waiting):
-        # its reason rides the facts as ledger_unread_reason and keeps every tree.
-        self._ledger = self._read_ledger(now)
+        # The ledger is read here at discovery, and once more at the first
+        # revalidation of the run (_recheck_ledger), never once per tree. A shared
+        # ledger is appended to every few seconds, so a changed ledger is the normal
+        # state, not an error. An unread ledger is not a deferral either (nothing
+        # resolves by waiting): its reason rides the facts as ledger_unread_reason
+        # and keeps every tree.
+        self._recheck_ledger_value = None
+        self._recheck_ledger_done = False
+        self._ledger = self._ledger_reader.read(command, now)
         excluded = tuple(Path(p).resolve() for p in command.exclude_paths)
         self._fetched = {}
         candidates: dict[Path, Path] = {}
@@ -393,25 +402,21 @@ class GitWorktreeFactsProbe:
             heads = self._merged_heads[slug]
         return None if heads is None else head in heads
 
-    def _read_ledger(self, now: datetime) -> ModelLedgerRead | None:
-        """A fresh bounded read of the named ledger; None when the host names none.
+    def _recheck_ledger(self, now: datetime) -> ModelLedgerRead | None:
+        """The ledger read once at the first revalidation of a run, then cached.
 
-        The rolled files of the last ledger_lookback_days days are always read
-        with the live file: a CLAIM that rolled into an archive file would
-        otherwise be hidden from every judgement the read vouches for.
+        The pre-removal recheck must not re-read the whole ledger per tree: the
+        first revalidation of a run reads through the reader and every later
+        revalidation returns that same read.
         """
-        assert self._command is not None
-        if not self._command.ledger_path:
-            return None
-        policy = self._command.policy
-        return read_ledger(
-            Path(self._command.ledger_path),
-            now,
-            quiet_hours=policy.quiet_hours,
-            max_age_hours=policy.ledger_max_age_hours,
-            lookback_days=policy.ledger_lookback_days,
-            max_bytes=policy.ledger_max_bytes,
-        )
+        with self._recheck_ledger_lock:
+            if not self._recheck_ledger_done:
+                assert self._command is not None
+                self._recheck_ledger_value = self._ledger_reader.read(
+                    self._command, now
+                )
+                self._recheck_ledger_done = True
+            return self._recheck_ledger_value
 
     def revalidate(
         self, facts: ModelWorktreeFacts, now: datetime
@@ -427,7 +432,7 @@ class GitWorktreeFactsProbe:
             cwds = process_cwds()
         except (OSError, subprocess.SubprocessError, RuntimeError):
             errors.append("process_revalidation_failed")
-        read = self._read_ledger(now)
+        read = self._recheck_ledger(now)
         # A unit may have been installed since discovery: ask again just before removal.
         try:
             units = self._unit_reader.read()

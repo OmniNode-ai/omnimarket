@@ -184,6 +184,10 @@ class BusProjectionNewest:
             return None
         return result.freshness.newest_row_ts
 
+    def ask(self, request: BaseModel, correlation_id: uuid.UUID) -> ModelScmTerminal:
+        """One typed bus call to the work-ledger query node; the default ``call`` of ProjectionLedgerReader."""
+        return self._call(request, correlation_id)
+
     def _bus_call(
         self, request: BaseModel, correlation_id: uuid.UUID
     ) -> ModelScmTerminal:

@@ -14,6 +14,9 @@ _TICKET_CELL = re.compile(r"(?:^|[\s|])(?:ticket|parent_ticket)=(OMN-\d+)")
 _TICKET_ID = re.compile(r"OMN-\d+")
 _CLOSING = ("TERMINAL", "RELEASE")
 _SKEW_SECONDS = 3600
+_ENDING_OUTCOMES = ("done", "merged", "handed-off")
+_WORKTREE_CELL = re.compile(r"(?:^|[\s|])worktree=([^\s|]*)")
+_OUTCOME_CELL = re.compile(r"(?:^|[\s|])outcome=([^\s|]*)")
 
 
 class ModelLedgerRead(BaseModel):
@@ -26,6 +29,7 @@ class ModelLedgerRead(BaseModel):
     live_claims: tuple[str, ...] = ()
     open_claims: tuple[str, ...] = ()
     closed_claims: tuple[str, ...] = ()
+    finished_claims: tuple[str, ...] = ()
 
 
 def claim_lane(row: str) -> str | None:
@@ -56,27 +60,59 @@ def _row(line: str, index: int) -> tuple[datetime, int, str, str, str] | None:
     lane = claim_lane(line)
     if lane is None:
         return None
-    return stamp, index, lane, cells[1], line
+    return stamp, index, lane, cells[1], line.strip()
+
+
+def ends_work(row: str) -> bool:
+    """Whether a ledger row ends the work on the tree it names.
+
+    True only for a TERMINAL row whose worktree cell is removed, pinned-removed or
+    released, or whose outcome is done, merged or handed-off with no kept worktree.
+    A kept worktree, a partial/blocked/failed outcome, a RELEASE row, or any other
+    row type is False.
+    """
+    cells = [part.strip() for part in row.strip().strip("|").split("|")]
+    if len(cells) < 3 or cells[1] != "TERMINAL":
+        return False
+    worktree_match = _WORKTREE_CELL.search(row)
+    worktree = worktree_match[1] if worktree_match else ""
+    if (
+        worktree.startswith("removed:")
+        or worktree.startswith("pinned-removed:")
+        or worktree == "released"
+        or worktree.startswith("released:")
+    ):
+        return True
+    if worktree.startswith("kept"):
+        return False
+    outcome_match = _OUTCOME_CELL.search(row)
+    outcome = outcome_match[1] if outcome_match else ""
+    return outcome in _ENDING_OUTCOMES
 
 
 def _fold(
     rows: Iterable[tuple[datetime, int, str, str, str]],
-) -> tuple[dict[str, list[str]], list[str], dict[str, datetime]]:
-    """Fold ledger rows in order into (open claims per lane, closed rows, last stamp per lane).
+) -> tuple[dict[str, list[str]], list[str], list[str], dict[str, datetime]]:
+    """Fold ledger rows in order into (open claims per lane, closed rows, finished rows, last stamp per lane).
 
     Every row refreshes the lane's heartbeat stamp; a CLAIM opens its line on the lane;
-    a TERMINAL or RELEASE closes the lane's open claims.
+    a TERMINAL or RELEASE closes the lane's open claims. A closing row extends finished
+    with the closed claims only when ends_work is True for that row.
     """
     claims: dict[str, list[str]] = {}
     closed: list[str] = []
+    finished: list[str] = []
     latest: dict[str, datetime] = {}
     for stamp, _, lane, kind, line in sorted(rows):
         latest[lane] = stamp
         if kind == "CLAIM":
             claims.setdefault(lane, []).append(line)
         elif kind in _CLOSING:
-            closed.extend(claims.pop(lane, []))
-    return claims, closed, latest
+            popped = claims.pop(lane, [])
+            closed.extend(popped)
+            if ends_work(line):
+                finished.extend(popped)
+    return claims, closed, finished, latest
 
 
 def _live(
@@ -101,7 +137,7 @@ def live_claims(text: str, now: datetime, quiet_hours: float) -> tuple[str, ...]
         for index, line in enumerate(text.splitlines())
         if (row := _row(line, index)) is not None
     ]
-    claims, _, latest = _fold(rows)
+    claims, _, _, latest = _fold(rows)
     return _live(claims, latest, now, quiet_hours)
 
 
@@ -196,12 +232,45 @@ def read_ledger(
         return _unread("clock_skew")
     if (now - newest).total_seconds() > max_age_hours * 3600:
         return _unread("frozen")
-    claims, closed, _ = _fold(rows)
+    claims, closed, finished, _ = _fold(rows)
     return ModelLedgerRead(
         fresh=True,
         live_claims=_live(claims, heartbeat, now, quiet_hours),
         open_claims=tuple(row for entries in claims.values() for row in entries),
         closed_claims=tuple(closed),
+        finished_claims=tuple(finished),
+    )
+
+
+def fold_ledger_lines(
+    lines: Iterable[str],
+    now: datetime,
+    *,
+    quiet_hours: float,
+) -> ModelLedgerRead:
+    """Parse and fold ledger lines into a ModelLedgerRead without age, skew, size or empty checks.
+
+    The caller owns those checks. Every line is parsed with _row (indexing from 1);
+    the heartbeat per lane is the newest stamp among all parsed rows; only CLAIM and
+    closing rows are kept for the fold; the result is a fresh ModelLedgerRead.
+    """
+    rows: list[tuple[datetime, int, str, str, str]] = []
+    heartbeat: dict[str, datetime] = {}
+    for index, line in enumerate(lines, start=1):
+        row = _row(line, index)
+        if row is None:
+            continue
+        stamp, _, lane, kind, _ = row
+        heartbeat[lane] = max(heartbeat.get(lane, stamp), stamp)
+        if kind == "CLAIM" or kind in _CLOSING:
+            rows.append(row)
+    claims, closed, finished, _ = _fold(rows)
+    return ModelLedgerRead(
+        fresh=True,
+        live_claims=_live(claims, heartbeat, now, quiet_hours),
+        open_claims=tuple(row for entries in claims.values() for row in entries),
+        closed_claims=tuple(closed),
+        finished_claims=tuple(finished),
     )
 
 
@@ -217,6 +286,6 @@ def owner_finished(path: Path, root: Path, read: ModelLedgerRead | None) -> bool
     return bool(
         read is not None
         and read.fresh
-        and any(claim_names_tree(path, root, row) for row in read.closed_claims)
+        and any(claim_names_tree(path, root, row) for row in read.finished_claims)
         and not any(claim_names_tree(path, root, row) for row in read.open_claims)
     )

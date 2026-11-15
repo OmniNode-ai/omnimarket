@@ -2,9 +2,18 @@
 # SPDX-License-Identifier: MIT
 """Compute to effect events to per-host projection, using injected boundaries."""
 
+from datetime import UTC, datetime
+from pathlib import Path
+
 import pytest
 
-from omnimarket.events.worktree_reconcile import ModelWorktreeReconcileRequest
+from omnimarket.events.worktree_reconcile import (
+    ModelWorktreeReconcileRequest,
+    ModelWorktreeReconcileRunResult,
+)
+from omnimarket.models.model_worktree_ledger_projection import (
+    ModelLedgerProjectionSettings,
+)
 from omnimarket.models.model_worktree_reconcile_policy import (
     ModelWorktreeReconcilePolicy,
 )
@@ -14,11 +23,33 @@ from omnimarket.nodes.node_projection_worktree_reconcile.handlers import (
 from omnimarket.nodes.node_worktree_reconcile_compute.handlers import (
     HandlerWorktreeReconcileCompute,
 )
+from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_ledger_projection import (
+    ProjectionLedgerReader,
+)
+from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_publisher import (
+    publish_topics,
+)
+from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_remover import (
+    GitWorktreeRemover,
+)
 from omnimarket.nodes.node_worktree_reconcile_effect.handlers.handler_worktree_reconcile import (
     HandlerWorktreeReconcile,
 )
 from tests.test_worktree_reconcile_compute import facts
-from tests.test_worktree_reconcile_effect import Fakes, command
+from tests.test_worktree_reconcile_effect import (
+    NO_UNITS,
+    FakeMergedPrReader,
+    Fakes,
+    GitWorktreeFactsProbe,
+    command,
+    probe_for,
+    squash_merged_then_moved_on,
+)
+from tests.test_worktree_reconcile_ledger_projection import (
+    Pages,
+    parity_days,
+    terminal_answer,
+)
 from tests.test_worktree_reconcile_projection import RecordingDB
 
 
@@ -227,5 +258,99 @@ def test_error_chain_an_unread_ledger_keeps_the_unlocked_tree_and_names_the_reas
     writer = WorktreeReconcileProjectionWriter()
     db = RecordingDB()
     monkeypatch.setattr(writer, "_db", db)
+    written = writer.handle(completed.model_dump(mode="json") | {"_topic": topic})
+    assert written["rows_upserted"] == 1
+
+
+CLOCK = datetime(2100, 1, 1, tzinfo=UTC)
+OTHER_LANE_CLAIM = (
+    "2099-12-31T20:00:00Z | CLAIM | lane=other | ticket=OMN-1 | unrelated work"
+)
+
+
+def _run_on_the_projection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, terminal_complete: bool
+) -> tuple[ModelWorktreeReconcileRunResult, Fakes, Path]:
+    """A merged, clean tree on a host whose ledger is the work_ledger_rows projection."""
+    root, path, head = squash_merged_then_moved_on(tmp_path)
+    merged = FakeMergedPrReader(frozenset({head}))
+    probe_for(merged, monkeypatch)  # patches the process and clone-refresh probes
+    answer = terminal_answer(
+        (OTHER_LANE_CLAIM,),
+        now=CLOCK,
+        days=parity_days(terminal=terminal_complete, now=CLOCK),
+    )
+    probe = GitWorktreeFactsProbe(
+        unit_reader=NO_UNITS,
+        merged_pr_reader=merged,
+        ledger_reader=ProjectionLedgerReader(call=Pages(answer)),
+    )
+    fake = Fakes(())
+    monkeypatch.setattr(fake, "now", lambda: CLOCK)
+    decided, completed = publish_topics()
+    handler = HandlerWorktreeReconcile(
+        probe=probe,
+        decider=fake,
+        pinner=fake,
+        remover=GitWorktreeRemover(),
+        clock=fake,
+        publisher=fake,
+        decided_topic=decided,
+        completed_topic=completed,
+    )
+    result = handler.handle(
+        command(
+            roots=(str(root),),
+            decider_command=None,
+            pin_command=None,
+            merged_pr_command=["reader", "{slug}"],
+            ledger_path=None,
+            ledger_source="projection",
+            ledger_projection=ModelLedgerProjectionSettings(
+                bus_lane="dev", timeout_seconds=30.0
+            ),
+        )
+    )
+    return result, fake, path
+
+
+@pytest.mark.unit
+def test_golden_chain_a_complete_projection_vouches_and_the_merged_tree_leaves(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    result, fake, path = _run_on_the_projection(
+        tmp_path, monkeypatch, terminal_complete=True
+    )
+    assert result.decided_events[0].outcome == "removed"
+    assert not path.exists()
+    assert result.completed_event.ledger_unread == ""
+    assert result.errors == ()
+    assert result.completed_event.failures == 0
+    assert result.completed_event.removed_paths == (str(path),)
+    topic, completed = fake.events[-1]
+    writer = WorktreeReconcileProjectionWriter()
+    writer._db = RecordingDB()  # type: ignore[assignment]
+    written = writer.handle(completed.model_dump(mode="json") | {"_topic": topic})
+    assert written["rows_upserted"] == 1
+
+
+@pytest.mark.unit
+def test_error_chain_an_incomplete_projection_keeps_every_tree_and_names_why(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    result, fake, path = _run_on_the_projection(
+        tmp_path, monkeypatch, terminal_complete=False
+    )
+    reason = f"projection_incomplete:TERMINAL@{parity_days(now=CLOCK)[0].day}"
+    assert result.decided_events[0].outcome == "kept"
+    assert result.decided_events[0].decision.reasons == ("ledger_unread",)
+    assert path.exists()
+    assert result.completed_event.ledger_unread == reason
+    assert result.errors == (f"ledger_unread:{reason}",)
+    assert result.completed_event.failures == 1
+    assert result.completed_event.removed_paths == ()
+    topic, completed = fake.events[-1]
+    writer = WorktreeReconcileProjectionWriter()
+    writer._db = RecordingDB()  # type: ignore[assignment]
     written = writer.handle(completed.model_dump(mode="json") | {"_topic": topic})
     assert written["rows_upserted"] == 1

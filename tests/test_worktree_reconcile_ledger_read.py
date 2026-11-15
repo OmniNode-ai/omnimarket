@@ -35,7 +35,7 @@ def test_fresh_ledger_with_claim_and_terminal_closes_the_claim(
         "\n".join(
             [
                 "2026-01-01T23:00:00Z | CLAIM | lane=L | ticket=OMN-1234 | /trees/OMN-1234/repo",
-                "2026-01-01T23:40:00Z | TERMINAL | lane=L | friction=none",
+                "2026-01-01T23:40:00Z | TERMINAL | lane=L | outcome=done | friction=none",
             ]
         ),
     )
@@ -163,7 +163,7 @@ def test_rolled_ledger_lookback_days_zero_vs_thirty(tmp_path: Path) -> None:
         "\n".join(
             [
                 "2025-12-01T10:00:00Z | CLAIM | lane=L | ticket=OMN-5555 | /trees/OMN-5555/repo",
-                "2025-12-01T12:00:00Z | TERMINAL | lane=L | friction=none",
+                "2025-12-01T12:00:00Z | TERMINAL | lane=L | outcome=done | friction=none",
             ]
         )
     )

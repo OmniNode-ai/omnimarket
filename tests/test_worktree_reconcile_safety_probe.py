@@ -64,7 +64,7 @@ def _finished_ledger(tmp_path: Path, *, hours_ago: float = 1.0) -> Path:
     ledger = tmp_path / "ledger"
     ledger.write_text(
         f"{_stamp(hours_ago)} | CLAIM | lane=a | ticket={TICKET} | worktree=omni_worktrees/OMN-777/repo\n"
-        f"{_stamp(hours_ago - 1.0)} | TERMINAL | lane=a | ticket={TICKET} | worktree=omni_worktrees/OMN-777/repo\n"
+        f"{_stamp(hours_ago - 1.0)} | TERMINAL | lane=a | ticket={TICKET} | outcome=done | worktree=omni_worktrees/OMN-777/repo\n"
         f"{_stamp(0.5)} | STATUS | lane=a | ticket={TICKET} | worktree=omni_worktrees/OMN-777/repo\n"
     )
     return ledger
@@ -212,7 +212,7 @@ def test_a_lagging_ledger_reads_unread_and_keeps_every_tree(
     # Newest row 7 hours before the 2100 clock; the policy allows 6.
     ledger.write_text(
         f"{_stamp(7.0)} | CLAIM | lane=a | ticket={TICKET} | worktree=omni_worktrees/OMN-777/repo\n"
-        f"{_stamp(7.5)} | TERMINAL | lane=a | ticket={TICKET} | worktree=omni_worktrees/OMN-777/repo\n"
+        f"{_stamp(7.5)} | TERMINAL | lane=a | ticket={TICKET} | outcome=done | worktree=omni_worktrees/OMN-777/repo\n"
     )
     result = run_with(
         probe_for(FakeMergedPrReader(), monkeypatch),

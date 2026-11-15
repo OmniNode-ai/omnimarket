@@ -30,6 +30,12 @@ from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_facts impo
 from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_launchd_units import (
     LaunchdUnitRootReader,
 )
+from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_ledger_file import (
+    FileLedgerReader,
+)
+from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_ledger_projection import (
+    ProjectionLedgerReader,
+)
 from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_publisher import (
     ContractEventPublisher,
     publish_topics,
@@ -73,6 +79,11 @@ def run_command(
     command: ModelWorktreeReconcileCommand,
 ) -> ModelWorktreeReconcileRunResult:
     decided, completed = publish_topics()
+    ledger_reader = (
+        ProjectionLedgerReader()
+        if command.ledger_source == "projection"
+        else FileLedgerReader()
+    )
     handler = create_handler_worktree_reconcile(
         probe=GitWorktreeFactsProbe(
             unit_reader=(
@@ -85,6 +96,7 @@ def run_command(
                 )
             ),
             merged_pr_reader=CommandMergedPrReader(),
+            ledger_reader=ledger_reader,
         ),
         decider=CommandWorktreeDecider(),
         pinner=CommandWorktreePinner(),

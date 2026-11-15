@@ -35,7 +35,7 @@ from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_remover im
 )
 from omnimarket.worktree_reconcile.rules import apply_model_verdicts, classify
 from tests.test_worktree_reconcile_compute import facts
-from tests.test_worktree_reconcile_effect import NO_UNITS, Fakes, command
+from tests.test_worktree_reconcile_effect import NO_UNITS, READER, Fakes, command
 
 pytestmark = pytest.mark.unit
 
@@ -312,7 +312,9 @@ def test_a_claim_in_a_rolled_file_keeps_an_unlocked_tree_at_discovery_and_at_rem
     from omnimarket.nodes.node_worktree_reconcile_effect.handlers import adapter_facts
 
     monkeypatch.setattr(adapter_facts, "process_cwds", lambda: ())
-    probe = adapter_facts.GitWorktreeFactsProbe(unit_reader=NO_UNITS)
+    probe = adapter_facts.GitWorktreeFactsProbe(
+        unit_reader=NO_UNITS, ledger_reader=READER
+    )
     root, ledger = _orphan_tree_with_ledger(
         tmp_path, newest="2026-01-09T23:30:00Z", archive=True
     )
@@ -323,7 +325,9 @@ def test_a_claim_in_a_rolled_file_keeps_an_unlocked_tree_at_discovery_and_at_rem
     assert not item.worktree_locked
     assert probe.revalidate(item, NOW).live_claim
     # CONTROL: the same ledger with no archive file names no claim on the tree.
-    probe2 = adapter_facts.GitWorktreeFactsProbe(unit_reader=NO_UNITS)
+    probe2 = adapter_facts.GitWorktreeFactsProbe(
+        unit_reader=NO_UNITS, ledger_reader=READER
+    )
     root2, ledger2 = _orphan_tree_with_ledger(
         tmp_path / "control", newest="2026-01-09T23:30:00Z", archive=False
     )
@@ -341,7 +345,9 @@ def test_a_frozen_ledger_reads_unread_and_is_no_deferred_probe_error(
     from omnimarket.nodes.node_worktree_reconcile_effect.handlers import adapter_facts
 
     monkeypatch.setattr(adapter_facts, "process_cwds", lambda: ())
-    probe = adapter_facts.GitWorktreeFactsProbe(unit_reader=NO_UNITS)
+    probe = adapter_facts.GitWorktreeFactsProbe(
+        unit_reader=NO_UNITS, ledger_reader=READER
+    )
     # Newest row 10 hours before the clock; the policy allows 6.
     root, ledger = _orphan_tree_with_ledger(
         tmp_path, newest="2026-01-09T14:00:00Z", archive=False
@@ -353,7 +359,9 @@ def test_a_frozen_ledger_reads_unread_and_is_no_deferred_probe_error(
     assert item.probe_errors == ()
     assert probe.revalidate(item, NOW).ledger_unread_reason == "frozen"
     # CONTROL: a host that names no ledger says so, in its own words.
-    none = adapter_facts.GitWorktreeFactsProbe(unit_reader=NO_UNITS)
+    none = adapter_facts.GitWorktreeFactsProbe(
+        unit_reader=NO_UNITS, ledger_reader=READER
+    )
     undeclared = none.discover(command(roots=(str(root),)), NOW)[0]
     assert undeclared.ledger_unread_reason == "not_declared"
     assert undeclared.probe_errors == ()
