@@ -49,7 +49,8 @@ DEFAULT_TIMEOUT_SECONDS: float = load_node_timeouts(
 
 # Runs on the host that holds the clone: argv is (path, ref). Prints KEY=value lines and always
 # exits 0, so a transport failure (nonzero exit) is told apart from a refusal. A path may be written
-# `$HOME/...`, `~/...` or `$OMNI_HOME/...`, expanded on that host.
+# `$HOME/...`, `~/...` or `$OMNI_HOME/...`, expanded on that host. The here/there comparison uses a
+# physical cd so a `..` after a symlinked registry root resolves where the kernel does (OMN-19998).
 HOST_SCRIPT = r"""
 p=$1; ref=$2
 case "$p" in
@@ -62,7 +63,7 @@ esac
 case "$p" in /*) ;; *) echo STATE=PATH_UNRESOLVED; exit 0 ;; esac
 [ -d "$p" ] || { echo STATE=PATH_MISSING; exit 0; }
 top=$(git -C "$p" rev-parse --show-toplevel 2>/dev/null) || { echo STATE=NOT_A_CLONE; exit 0; }
-here=$(cd "$p" && pwd -P); there=$(cd "$top" && pwd -P)
+here=$(cd -P "$p" && pwd -P); there=$(cd -P "$top" && pwd -P)
 [ "$here" = "$there" ] || { echo STATE=NOT_A_CLONE; exit 0; }
 echo BEFORE=$(git -C "$p" rev-parse HEAD 2>/dev/null)
 if ! err=$(git -C "$p" fetch --quiet origin "+refs/heads/$ref:refs/remotes/origin/$ref" 2>&1); then

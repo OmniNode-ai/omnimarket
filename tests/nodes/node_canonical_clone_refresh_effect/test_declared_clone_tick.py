@@ -261,3 +261,48 @@ def test_error_without_local_omni_home_the_process_env_is_used(
         host, ["sh", "-c", HOST_SCRIPT, "sh", "$OMNI_HOME/kb", "main"], 30
     )
     assert "STATE=PATH_MISSING" in done.stdout
+
+
+def _local_kb_host_beside_the_registry(volume: Path) -> ModelLabHostRow:
+    """A real clone at ``$OMNI_HOME/../notes`` beside the registry root, and this machine's row."""
+    clone = volume / "notes"
+    clone.mkdir(parents=True)
+    git(clone, "init", "--quiet", "-b", "main")
+    (clone / "f.txt").write_text("x\n", encoding="utf-8")
+    git(clone, "add", "f.txt")
+    git(clone, "commit", "--quiet", "-m", "x")
+    return ModelLabHostRow.model_validate(
+        {
+            "name": "h101",
+            "target": "h101.invalid",
+            "local": True,
+            "clones": [
+                {
+                    "repo": "internal/notes",
+                    "ref": "main",
+                    "path": "$OMNI_HOME/../notes",
+                },
+            ],
+        }
+    )
+
+
+def test_local_transport_reads_a_clone_beside_a_symlinked_registry_root(
+    tmp_path: Path,
+) -> None:
+    """The registry root is a symlink to an external volume: ``..`` after it must resolve where
+    the kernel does, so a clone beside the real root is read, not judged not_a_clone (OMN-19998)."""
+    volume = tmp_path / "volume"
+    (volume / "registry").mkdir(parents=True)
+    host = _local_kb_host_beside_the_registry(volume)
+    link = tmp_path / "link"
+    link.symlink_to(volume / "registry")
+    transport = TransportSubprocess(
+        local_host_name=host.name, local_omni_home=str(link)
+    )
+    done = transport.run(
+        host, ["sh", "-c", HOST_SCRIPT, "sh", "$OMNI_HOME/../notes", "main"], 30
+    )
+    assert "STATE=NOT_A_CLONE" not in done.stdout
+    assert "STATE=PATH_MISSING" not in done.stdout
+    assert "STATE=READ" in done.stdout or "STATE=FETCH_FAILED" in done.stdout
