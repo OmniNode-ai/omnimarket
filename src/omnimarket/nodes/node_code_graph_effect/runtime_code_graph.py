@@ -6,6 +6,8 @@
 ``probe``    the same build and verdict, appending nothing.
 ``check``    ``--repo R --base REF --head REF``: name the modules the head adds that no root reaches.
 ``shadow``   check every open pull request of the overlay's shadow repositories, append one row, hold nothing.
+``refresh``  the on-merge refresh: build only when a repository head moved since the last build and that
+             build is at least 15 minutes old (what the refresh timer runs; appends nothing when fresh).
 ``schedule`` install | uninstall | status | run-now, for a host in the overlay; ``--unit shadow`` is the shadow's timer.
 
 ``--fault`` on nightly, probe or shadow injects a declared fault; the row then carries ``drill=yes``.
@@ -13,13 +15,15 @@
 Exit codes: 0 the run was built and written (a NOT WORKING verdict is still 0: a reading changes
 nothing and refuses nothing), or the check found nothing; 1 the run failed (an unreadable
 repository, an append that did not land), or the check flagged a module or an allowlist entry
-past its date (the shadow verb exits 0 whatever it would refuse: it holds nothing); 3 a deployment fact is
+past its date (the shadow verb exits 0 whatever it would refuse: it holds nothing); the refresh exits
+0 fresh, deferred or refreshed and 1 when a head cannot be read or its build failed; 3 a deployment fact is
 missing (INDETERMINATE).
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 from collections.abc import Sequence
@@ -35,6 +39,7 @@ from omnimarket.handlers.rules_overlay_root_declared import (
 )
 from omnimarket.models.model_code_graph import (
     EnumGraphFault,
+    EnumRefreshOutcome,
     EnumShadowOutcome,
     ModelCodeGraphCommand,
     ModelCodeGraphResult,
@@ -56,6 +61,10 @@ from omnimarket.nodes.node_code_graph_effect.handlers.code_graph_index import (
 )
 from omnimarket.nodes.node_code_graph_effect.handlers.code_graph_lookup import (
     CodeGraphLookup,
+)
+from omnimarket.nodes.node_code_graph_effect.handlers.code_graph_refresh import (
+    BUILT_MARKER,
+    CodeGraphRefresh,
 )
 from omnimarket.nodes.node_code_graph_effect.handlers.code_graph_run import (
     CodeGraphRun,
@@ -92,6 +101,7 @@ SCHEDULE_BLOCKS = {
     "nightly": "schedule",
     "shadow": "shadow_schedule",
     "drill": "drill_schedule",
+    "refresh": "refresh_schedule",
 }
 
 
@@ -158,15 +168,85 @@ def answer_lookup(command: ModelCodeGraphLookupCommand) -> ModelCodeGraphLookupR
     return CodeGraphLookup(store, source).handle(command)
 
 
+def _stage(target: Path, text: str) -> None:
+    """Write ``text`` to ``target`` through a sibling temporary file, then replace it."""
+    staged = target.with_suffix(".tmp")
+    staged.write_text(text, encoding="utf-8")
+    staged.replace(target)
+
+
 def _keep(result: ModelCodeGraphResult) -> None:
     directory = state_directory(dict(os.environ))
     if directory is None:
         return
     directory.mkdir(parents=True, exist_ok=True)
-    target = directory / LATEST_RESULT
-    staged = target.with_suffix(".tmp")
-    staged.write_text(result.model_dump_json(indent=1), encoding="utf-8")
-    staged.replace(target)
+    _stage(directory / LATEST_RESULT, result.model_dump_json(indent=1))
+    # The built marker is what the refresh on merge reads: only a real, clean build touches it,
+    # never a failed run or a drill (a drill's rows are read by no operational reading).
+    if (
+        result.status == "completed"
+        and result.fault is EnumGraphFault.NONE
+        and result.repos
+    ):
+        _stage(
+            directory / BUILT_MARKER,
+            json.dumps(
+                {
+                    "built_at": datetime.now(UTC).isoformat(),
+                    "heads": {repo.repo: repo.head[:12] for repo in result.repos},
+                },
+                indent=1,
+            ),
+        )
+
+
+def build_refresh_handler() -> tuple[CodeGraphRefresh, str]:
+    """The refresh on merge as the overlay and the environment name it, and this host's name."""
+    overlay = load_overlay()
+    host = os.environ.get(overlay.ledger_append.host_env, "").strip()
+    if not host:
+        raise ValueError(
+            f"{overlay.ledger_append.host_env} is not set; the overlay names it as this host"
+        )
+    directory = state_directory(dict(os.environ))
+    if directory is None:
+        raise ValueError(
+            "ONEX_CODE_GRAPH_STATE_DIR is not set; the refresh reads and writes the built marker there"
+        )
+
+    def run() -> ModelCodeGraphResult:
+        handler, run_host = build_handler(write=True)
+        now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+        result = handler.handle(
+            ModelCodeGraphCommand(
+                correlation_id=f"code-graph-refresh-{run_host}-{now}",
+                write=True,
+                fault=EnumGraphFault.NONE,
+            )
+        )
+        _keep(result)
+        return result
+
+    refresh = CodeGraphRefresh(
+        overlay=overlay,
+        heads=_source(overlay),
+        state_directory=directory,
+        run=run,
+        clock=lambda: datetime.now(UTC),
+    )
+    return refresh, host
+
+
+def _refresh(_arguments: argparse.Namespace) -> int:
+    handler, _host = build_refresh_handler()
+    result = handler.handle()
+    changed = ",".join(result.changed) if result.changed else "none"
+    built_at = result.built_at.isoformat() if result.built_at else "none"
+    sys.stdout.write(
+        f"REFRESH outcome={result.outcome.value} changed={changed} "
+        f"built_at={built_at} reason={result.reason}\n"
+    )
+    return 1 if result.outcome is EnumRefreshOutcome.FAILED else 0
 
 
 def build_handler(write: bool) -> tuple[CodeGraphRun, str]:
@@ -323,7 +403,7 @@ def _schedule(arguments: Sequence[str]) -> int:
             "--unit",
             choices=sorted(SCHEDULE_BLOCKS),
             default="nightly",
-            help="the nightly graph (default), the pull request check in shadow, or the scheduled drill",
+            help="the nightly graph (default), the pull request check in shadow, the scheduled drill, or the refresh on merge",
         )
         if verb == "install":
             sub.add_argument(
@@ -393,6 +473,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             choices=[fault.value for fault in EnumGraphFault],
             default=EnumGraphFault.NONE.value,
         )
+        verbs.add_parser("refresh")
         check = verbs.add_parser("check")
         check.add_argument("--repo", required=True)
         check.add_argument("--base", required=True)
@@ -402,6 +483,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _check(args)
         if args.verb == "shadow":
             return _shadow(args)
+        if args.verb == "refresh":
+            return _refresh(args)
         return _run(args, write=args.verb == "nightly")
     except (
         NodeOverlayError,

@@ -27,6 +27,13 @@ class InMemoryRepoSource:
     ) -> None:
         self._repos = repos
 
+    def head(self, repo: str, ref: str) -> str:
+        """The stored head of ``repo`` at ``ref``; a missing one raises."""
+        refs = self._repos.get(repo)
+        if refs is None or ref not in refs:
+            raise RepoSourceError(f"no-repository:{repo}@{ref}")
+        return refs[ref][0]
+
     def snapshot(
         self, repo: str, ref: str, wanted: Callable[[str], bool]
     ) -> ModelRepoSnapshot:
@@ -84,17 +91,24 @@ class GitRepoSource:
         except (RepoSourceError, ValueError):
             return None
 
+    def head(self, repo: str, ref: str) -> str:
+        """The commit ``ref`` resolves to in the clone; no clone raises."""
+        clone = self._root / repo
+        if not (clone / ".git").exists():
+            raise RepoSourceError(f"no-clone:{repo}")
+        return (
+            self._git(clone, "rev-parse", "--verify", f"{ref}^{{commit}}")
+            .decode()
+            .strip()
+        )
+
     def snapshot(
         self, repo: str, ref: str, wanted: Callable[[str], bool]
     ) -> ModelRepoSnapshot:
         clone = self._root / repo
         if not (clone / ".git").exists():
             raise RepoSourceError(f"no-clone:{repo}")
-        head = (
-            self._git(clone, "rev-parse", "--verify", f"{ref}^{{commit}}")
-            .decode()
-            .strip()
-        )
+        head = self.head(repo, ref)
         listing = self._git(clone, "ls-tree", "-r", "-z", "--long", head)
         paths: list[str] = []
         for entry in listing.split(b"\0"):

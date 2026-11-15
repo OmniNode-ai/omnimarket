@@ -9,6 +9,7 @@ judges itself against a frozen sample with known-used controls and appends one r
 
 from __future__ import annotations
 
+from datetime import datetime
 from enum import StrEnum
 from typing import Literal
 
@@ -101,6 +102,46 @@ class ModelCodeGraphResult(BaseModel):
     row: str | None = None
     #: Why the run failed: a repository that could not be read, or an append that did not land.
     failure: str | None = None
+
+
+class EnumRefreshOutcome(StrEnum):
+    """What the refresh on merge decided: build, skip, defer, or fail."""
+
+    #: Every declared head matches the last build: nothing to rebuild, nothing appended.
+    FRESH = "fresh"
+    #: A head moved and the build ran and completed.
+    REFRESHED = "refreshed"
+    #: A head moved but the last build is younger than the minimum interval.
+    DEFERRED = "deferred"
+    #: A head could not be read, or the build failed.
+    FAILED = "failed"
+
+
+class ModelCodeGraphRefreshResult(BaseModel):
+    """The refresh on merge's decision, and the build's result when it built.
+
+    ``built_at`` is the last build's time as the state directory's marker held it when the
+    refresh decided; after a ``refreshed`` build it is the time that build ran, as the marker
+    rewritten by the build now holds it.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    outcome: EnumRefreshOutcome
+    #: When the last build was, from the marker; none when it is absent or unreadable.
+    built_at: datetime | None = None
+    #: The heads the last build built, by repository, each truncated to 12 characters.
+    built_heads: dict[str, str] = Field(default_factory=dict)
+    #: The declared repositories' heads now, each truncated to 12 characters; empty when a head
+    #: could not be read.
+    current_heads: dict[str, str] = Field(default_factory=dict)
+    #: The repositories whose head differs from the last build, in overlay order; every declared
+    #: repository when the marker or a head could not be read.
+    changed: tuple[str, ...] = ()
+    #: Why the outcome is what it is, as one cell-safe token.
+    reason: str = Field(min_length=1)
+    #: The build's result when the refresh ran it; none when it did not.
+    result: ModelCodeGraphResult | None = None
 
 
 class ModelGraphCheckResult(BaseModel):
