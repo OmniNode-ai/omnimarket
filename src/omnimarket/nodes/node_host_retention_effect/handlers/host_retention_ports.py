@@ -19,13 +19,16 @@ import sqlite3
 import stat
 import subprocess
 import time
-from collections.abc import Sequence
-from dataclasses import dataclass
+from collections.abc import Iterable, Sequence
+from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Literal, Protocol
 
+from omnimarket.handlers.ledger_row_grammar import parse_row
 from omnimarket.nodes.node_host_retention_effect.models.model_host_retention import (
     ModelDiskReading,
+    ModelLedgerLoader,
     ModelUvArchiveEntry,
 )
 from omnimarket.nodes.node_temp_retention_effect.handlers.handler_temp_retention import (
@@ -118,6 +121,21 @@ class LaneLivenessPort(Protocol):
         self, run_roots: Sequence[str], receipt_roots: Sequence[str]
     ) -> set[str] | None:  # None = unreadable
         ...
+
+
+_DATED_ROW_TYPES = frozenset({"CLAIM", "TERMINAL"})
+_LOADER_ANSWERED_EXITS = (
+    0,
+    10,
+)  # the rows loader's node answer and its counted file fallback
+
+
+class LaneClosurePort(Protocol):
+    """The newest TERMINAL of each closed lane, read from the rolling work ledger."""
+
+    def closed_lanes(self, loader: ModelLedgerLoader) -> dict[str, float] | None:
+        """lane -> epoch seconds of its newest TERMINAL, for each lane whose newest
+        TERMINAL is not older than its newest CLAIM; None when the ledger could not be read."""
 
 
 class ContainerMountPort(Protocol):
@@ -373,6 +391,62 @@ class FilesystemLaneLiveness:
         return lanes
 
 
+def fold_closed_lanes(lines: Iterable[str]) -> dict[str, float]:
+    """lane -> epoch of its newest TERMINAL, for the lanes the ledger rows show closed.
+
+    The ledger's own row grammar reads each row; only a CLAIM or TERMINAL row that names its lane in a
+    ``lane=<token>`` cell and carries a zoned stamp dates a lane. A lane is closed when it has a TERMINAL
+    and no CLAIM newer than it.
+    """
+    newest_claim: dict[str, float] = {}
+    newest_terminal: dict[str, float] = {}
+    for line in lines:
+        row = parse_row(line, types=_DATED_ROW_TYPES)
+        if row is None:
+            continue
+        lane = row.token("lane")
+        if lane is None:
+            continue
+        try:
+            stamp = datetime.fromisoformat(row.stamp.replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if stamp.tzinfo is None:
+            continue
+        newest = newest_claim if row.row_type == "CLAIM" else newest_terminal
+        newest[lane] = max(newest.get(lane, 0.0), stamp.timestamp())
+    return {
+        lane: terminal
+        for lane, terminal in sorted(newest_terminal.items())
+        if lane not in newest_claim or terminal >= newest_claim[lane]
+    }
+
+
+class LoaderLaneClosure:
+    """Run the ledger rows loader the overlay declares and fold the rows it prints.
+
+    The loader is the one sanctioned ledger reader (it reads the bus-fed projection); this adapter opens
+    no ledger file. Exit 0 (the node answered) and exit 10 (the loader's own counted file fallback
+    answered) carry rows; any other exit, a timeout or a missing binary is an unreadable ledger.
+    """
+
+    def closed_lanes(self, loader: ModelLedgerLoader) -> dict[str, float] | None:
+        argv = [
+            *loader.argv,
+            "--reader",
+            loader.reader,
+            "--window-hours",
+            str(loader.window_hours),
+        ]
+        try:
+            proc = _run(argv, timeout_s=loader.timeout_seconds)
+        except OSError:
+            return None
+        if proc.returncode not in _LOADER_ANSWERED_EXITS:
+            return None
+        return fold_closed_lanes(proc.stdout.splitlines())
+
+
 class DockerContainerMounts:
     """Every bind-mount source of every running container, read with ``docker ps`` and ``docker inspect``."""
 
@@ -482,7 +556,7 @@ class SqlitePreCommitStore:
 
 @dataclass(frozen=True)
 class HostRetentionPorts:
-    """The nine ports a handler needs, with a ``default()`` of the real adapters."""
+    """The ten ports a handler needs, with a ``default()`` of the real adapters."""
 
     runner_state: CiHostStatePort
     runner_remove: CiHostRemovePort
@@ -493,6 +567,7 @@ class HostRetentionPorts:
     unit_files: UnitFilesPort
     disk: DiskPort
     pre_commit_store: PreCommitStorePort
+    lane_closure: LaneClosurePort = field(default_factory=LoaderLaneClosure)
 
     @classmethod
     def default(cls, docker_timeout_s: float) -> HostRetentionPorts:
@@ -506,4 +581,5 @@ class HostRetentionPorts:
             unit_files=FilesystemUnitFiles(),
             disk=ShutilDisk(),
             pre_commit_store=SqlitePreCommitStore(),
+            lane_closure=LoaderLaneClosure(),
         )

@@ -5,7 +5,10 @@
 from __future__ import annotations
 
 import json
+import subprocess
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -14,20 +17,32 @@ from omnimarket.nodes.node_host_retention_effect import runtime_host_retention
 from omnimarket.nodes.node_host_retention_effect.handlers.handler_host_retention import (
     HandlerHostRetention,
 )
+from omnimarket.nodes.node_host_retention_effect.handlers.host_retention_ports import (
+    LoaderLaneClosure,
+)
 from omnimarket.nodes.node_host_retention_effect.models.model_host_retention import (
     ModelHostRetentionRequest,
 )
 from omnimarket.nodes.node_host_retention_effect.node import NodeHostRetentionEffect
 from tests.nodes.node_host_retention_effect.host_retention_fakes import (
+    DAY,
     NOW,
     FakeLanes,
     entry,
     make_ports,
     overlay_file,
+    results_class,
     scratch_class,
 )
 
 pytestmark = pytest.mark.unit
+
+
+def ledger_stamp(before_days: float) -> str:
+    """A UTC ledger stamp ``before_days`` days before NOW, as the ledger writer writes one."""
+    return datetime.fromtimestamp(NOW - before_days * DAY, tz=UTC).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
 
 
 def node_with(ports_lanes: set[str]) -> NodeHostRetentionEffect:
@@ -152,3 +167,97 @@ def test_command_line_exit_codes_and_json(
         == 0
     )
     assert not old.exists()
+
+
+def loader_prints(
+    monkeypatch: pytest.MonkeyPatch, code: int, rows: tuple[str, ...]
+) -> list[list[str]]:
+    """Stand in for the one process the real closure adapter starts: the ledger rows loader."""
+    seen: list[list[str]] = []
+
+    def fake(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        seen.append(argv)
+        return subprocess.CompletedProcess(
+            argv, code, "".join(f"{r}\n" for r in rows), ""
+        )
+
+    monkeypatch.setattr(subprocess, "run", fake)
+    return seen
+
+
+def test_golden_chain_terminal_guard_through_the_node_and_the_real_closure_adapter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen = loader_prints(
+        monkeypatch,
+        0,
+        (
+            f"{ledger_stamp(21)} | CLAIM | lane=closed-lane | ticket=OMN-22744 | worktree=none | work",
+            f"{ledger_stamp(20)} | TERMINAL | lane=closed-lane | ticket=OMN-22744 | outcome=done | work",
+        ),
+    )
+    root = tmp_path / "remote-lanes"
+    root.mkdir()
+    closed = entry(root, "closed-lane", days=10)
+    unrecorded = entry(root, "open-lane", days=10)
+    node = NodeHostRetentionEffect(
+        now=lambda: NOW, ports=make_ports(closure=LoaderLaneClosure())
+    )
+
+    result = node.handle(
+        ModelHostRetentionRequest(
+            host_name="pool-a",
+            overlay_file=overlay_file(tmp_path, age_classes=[results_class(root)]),
+        )
+    )
+
+    assert result.status == "ok"
+    assert result.errors == ()
+    assert not closed.exists()
+    assert unrecorded.exists()
+    assert [(Path(k.path).name, k.reason) for k in result.kept] == [
+        ("open-lane", "no_terminal")
+    ]
+    assert len(seen) == 1
+    assert seen[0][-4:] == ["--reader", "host-retention", "--window-hours", "720"]
+
+
+def test_error_chain_unreadable_ledger_leaves_everything_and_reports(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    loader_prints(monkeypatch, 69, ())
+    root = tmp_path / "remote-lanes"
+    root.mkdir()
+    closed = entry(root, "closed-lane", days=10)
+    unrecorded = entry(root, "open-lane", days=10)
+    overlay = overlay_file(tmp_path, age_classes=[results_class(root)])
+    node = NodeHostRetentionEffect(
+        now=lambda: NOW, ports=make_ports(closure=LoaderLaneClosure())
+    )
+
+    result = node.handle(
+        ModelHostRetentionRequest(host_name="pool-a", overlay_file=overlay)
+    )
+
+    assert result.status == "ok"
+    assert result.errors == ("receipts-a: ledger unreadable",)
+    assert result.items == ()
+    assert closed.exists()
+    assert unrecorded.exists()
+
+    monkeypatch.setattr(
+        runtime_host_retention,
+        "HandlerHostRetention",
+        lambda: HandlerHostRetention(
+            now=lambda: NOW, ports=make_ports(closure=LoaderLaneClosure())
+        ),
+    )
+
+    assert (
+        runtime_host_retention.main(
+            ["run", "--host", "pool-a", "--overlay-file", overlay]
+        )
+        == 3
+    ), "errors are not empty, so the pass is INDETERMINATE"
+    assert closed.exists()
+    assert unrecorded.exists()

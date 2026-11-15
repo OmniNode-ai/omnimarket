@@ -22,6 +22,7 @@ from omnimarket.nodes.node_host_retention_effect.models.model_host_retention imp
     ModelDiskReading,
     ModelHostRetentionRequest,
     ModelHostRetentionResult,
+    ModelLedgerLoader,
     ModelUvArchiveEntry,
 )
 from omnimarket.nodes.node_temp_retention_effect.handlers.handler_temp_retention import (
@@ -147,6 +148,18 @@ class FakeLanes:
         return self.lanes
 
 
+class FakeClosure:
+    """The lane closure port: ``closed`` maps lane -> newest TERMINAL epoch; ``None`` is an unreadable ledger."""
+
+    def __init__(self, closed: dict[str, float] | None) -> None:
+        self.closed = closed
+        self.calls: list[ModelLedgerLoader] = []
+
+    def closed_lanes(self, loader: ModelLedgerLoader) -> dict[str, float] | None:
+        self.calls.append(loader)
+        return self.closed
+
+
 class FakeMounts:
     def __init__(self, sources: set[str] | None) -> None:
         self.sources = sources
@@ -206,6 +219,7 @@ def make_ports(
     mounts: Any = None,
     units: Any = None,
     pre_commit: Any = None,
+    closure: Any = None,
 ) -> HostRetentionPorts:
     return HostRetentionPorts(
         runner_state=runner_state or FakeRunnerState(),
@@ -217,6 +231,8 @@ def make_ports(
         unit_files=units or FakeUnits([]),
         disk=FakeDisk(),
         pre_commit_store=pre_commit or FakePreCommitStore(),
+        # An explicit FakeClosure(None) (an unreadable ledger) must pass through.
+        lane_closure=closure if closure is not None else FakeClosure({}),
     )
 
 
@@ -257,6 +273,46 @@ def precommit_class(root: Path, keep_days: float = 7, **fields: Any) -> dict[str
         "index_db": str(root / "db.db"),
         "keep_days": keep_days,
         **fields,
+    }
+
+
+LOADER_MODULE = "omnimarket.nodes.node_ledger_rows_loader_effect"
+
+
+def loader_fields(**fields: Any) -> dict[str, Any]:
+    """The overlay fields of the ledger rows loader a terminal guard runs, with the contract's module."""
+    return {
+        "argv": ["python", "-m", LOADER_MODULE],
+        "reader": "host-retention",
+        "window_hours": 720,
+        "timeout_seconds": 5,
+        **fields,
+    }
+
+
+def results_class(
+    root: Path,
+    keep_days: float = 7,
+    *,
+    terminal_keep_days: float = 7,
+    lane_pattern: str = "(?P<lane>.+)",
+    name: str = "receipts-a",
+    loader: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """A lane_results age class held until its lanes go TERMINAL on the rolling work ledger.
+
+    ``root`` must be a lane_results root leaf; the loader is the contract's ledger rows loader.
+    """
+    return {
+        "name": name,
+        "kind": "lane_results",
+        "root": str(root),
+        "keep_days": keep_days,
+        "terminal": {
+            "loader": loader if loader is not None else loader_fields(),
+            "terminal_keep_days": terminal_keep_days,
+            "lane_pattern": lane_pattern,
+        },
     }
 
 

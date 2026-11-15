@@ -1,0 +1,71 @@
+schema_version: 1.0.0
+ticket_id: OMN-24543
+title: Aged lane receipts and run folders are removed only once the ledger shows the lane finished
+summary: The orchestrating Mac holds about 130 GiB of our own state with no step that ages it (lab-run runs 35 GiB, remote-lane receipts 10 GiB, more than 5,000 receipt folders older than a week). This adds a TERMINAL guard to the lane_results classes of node_host_retention_effect, so a receipt or run folder goes only when it is older than its keep window and its lane has a TERMINAL on the ledger (and no later CLAIM). The TERMINAL is read by running the ledger rows loader the overlay names, so the node opens no ledger file, and a ledger that cannot be read removes nothing. A launchd unit template runs the pass on the Mac, and the Mac's row and the reader name are overlay values.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24543-terminal-guard
+  statement: A lane_results entry is removed only when it is older than its keep window and its lane has a TERMINAL on the ledger, read through the ledger rows loader.
+  acceptance:
+  - id: AC1
+    statement: "AC1: a dry run lists every receipt or run folder older than 7 days whose lane has a ledger TERMINAL at least the declared days old, with its bytes, and removes nothing, and a real run removes exactly that list -- falsifier: uv run pytest tests/nodes/node_host_retention_effect/test_host_retention_terminal.py -k 'dry_run or execute' -q fails at the merge base"
+  - id: AC2
+    statement: "AC2: a folder whose lane has no TERMINAL, whose TERMINAL is younger than the window, whose name names no lane, or when the ledger cannot be read, is never removed -- falsifier: uv run pytest tests/nodes/node_host_retention_effect/test_host_retention_terminal.py -k kept -q fails at the merge base"
+  - id: AC3
+    statement: "AC3: the loader's own printed rows are what the retention step reads as closed lanes, the example overlay stays inside the contract bounds, and the Mac timer runs this node's command line -- falsifier: uv run pytest tests/nodes/node_host_retention_effect/test_host_retention_seams.py -k 'ledger_seam or overlay_seam or unit_seam' -q fails at the merge base"
+  - id: AC4
+    statement: "AC4: integrated: the retention unit run on the Mac lists removed bytes and the remote-lane receipt folder count falls from 12,896, read back with the time -- falsifier: the Mac run's JSON shows removed bytes above zero and a later count of the receipt folders below 12,896"
+evidence_requirements:
+- kind: tests
+  description: The node tests pass at the pushed head.
+  command: uv run pytest tests/nodes/node_host_retention_effect -q -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24543-ac1
+  description: 'AC1: the dry run and execute tests pass at the head; at the merge base the guard does not exist, so the test file cannot import it.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_retention_effect/test_host_retention_terminal.py -k 'dry_run or execute' -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn24543-ac2
+  description: 'AC2: every kept reason and the unreadable-ledger test pass at the head, each with its control that removes the entry without the guard.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_retention_effect/test_host_retention_terminal.py -k kept -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn24543-ac3
+  description: 'AC3: the loader join seam, the row grammar seam, the overlay seam and the unit seam pass at the head.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_retention_effect/test_host_retention_seams.py -k 'ledger_seam or overlay_seam or unit_seam' -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn24543-ac4
+  description: 'hosted proxy for AC4: the node tests pass here; the Mac run with removed bytes and the folder count before and after are posted as a pull request comment naming the head.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_retention_effect -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn24543-integration-proof
+  description: the node tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24543 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_host_retention_effect -q --no-cov -p no:randomly

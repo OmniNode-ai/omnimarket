@@ -40,6 +40,49 @@ class _Frozen(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
 
+class ModelLedgerLoader(_Frozen):
+    """The command that reads the rows of the rolling work ledger for the terminal guard.
+
+    ``argv`` starts the one ledger rows loader the contract names, its module given with ``-m`` as the
+    last two elements (a ``~`` or ``$OMNI_HOME`` expands where it runs); the pass appends ``--reader``
+    and ``--window-hours``. The loader reads the bus-fed projection and prints the rows of the window,
+    so the node opens no ledger file itself. ``timeout_seconds`` is the most one call may take.
+    """
+
+    argv: Annotated[tuple[HostPath, ...], Field(min_length=1)]
+    reader: str = Field(pattern=r"^[a-z][a-z0-9-]{0,63}$")
+    window_hours: int = Field(ge=1)
+    timeout_seconds: float = Field(gt=0)
+
+
+class ModelTerminalGuard(_Frozen):
+    """Hold a lane_results entry until its lane is TERMINAL on the rolling work ledger.
+
+    ``loader`` reads the ledger rows of the last ``window_hours``. ``terminal_keep_days`` is how many days
+    old the lane's newest TERMINAL must be for the entry to go; a lane whose TERMINAL falls outside the
+    loader's window is kept. ``lane_pattern`` is a full-match regular expression of an entry name with a
+    named group ``lane``; an entry the pattern does not match names no lane and is kept.
+    """
+
+    loader: ModelLedgerLoader
+    terminal_keep_days: float = Field(gt=0)
+    lane_pattern: NonEmptyStr
+
+    @model_validator(mode="after")
+    def lane_pattern_names_lane(self) -> Self:
+        try:
+            pattern = re.compile(self.lane_pattern)
+        except re.error as exc:
+            raise ValueError(
+                f"lane_pattern {self.lane_pattern!r} is not a valid regex: {exc}"
+            ) from exc
+        if "lane" not in pattern.groupindex:
+            raise ValueError(
+                f"lane_pattern {self.lane_pattern!r} must have a group named 'lane'"
+            )
+        return self
+
+
 class ModelAgeClass(_Frozen):
     """One directory whose direct entries age out after ``keep_days``.
 
@@ -53,6 +96,7 @@ class ModelAgeClass(_Frozen):
     keep_days: float = Field(gt=0)
     protected_name_patterns: tuple[NonEmptyStr, ...] = ()
     index_db: HostPath | None = None
+    terminal: ModelTerminalGuard | None = None
 
     @model_validator(mode="after")
     def patterns_compile(self) -> Self:
@@ -72,6 +116,12 @@ class ModelAgeClass(_Frozen):
                 raise ValueError("pre_commit_store requires index_db")
         elif self.index_db is not None:
             raise ValueError("index_db is only for pre_commit_store")
+        return self
+
+    @model_validator(mode="after")
+    def terminal_rule(self) -> Self:
+        if self.terminal is not None and self.kind != "lane_results":
+            raise ValueError("terminal is only for lane_results")
         return self
 
 
@@ -214,6 +264,13 @@ class ModelUvBucketBound(_Frozen):
     keep_linked: bool
 
 
+class ModelTerminalLoaderBound(_Frozen):
+    """The ledger rows loader a terminal guard may run: its module, and the longest window it answers."""
+
+    module: NonEmptyStr
+    max_window_hours: int = Field(ge=1)
+
+
 class ModelRetentionBounds(_Frozen):
     """What an overlay may not exceed, owned by the contract."""
 
@@ -233,6 +290,9 @@ class ModelRetentionBounds(_Frozen):
     ]
     allowed_container_roots: Annotated[tuple[NonEmptyStr, ...], Field(min_length=1)]
     protected_leaf_names_always: tuple[NonEmptyStr, ...] = ()
+    terminal_loader: ModelTerminalLoaderBound | None = (
+        None  # the one ledger rows loader a terminal guard may run
+    )
     uv_evictable_buckets: dict[NonEmptyStr, ModelUvBucketBound] = Field(
         default_factory=dict
     )  # bucket path relative to a uv cache -> how its whole entries are found and guarded
@@ -291,6 +351,9 @@ class ModelRetentionKept(_Frozen):
         "under_budget",
         "below_min",
         "store_locked",
+        "no_terminal",
+        "terminal_too_new",
+        "lane_unnamed",
     ]
 
 
