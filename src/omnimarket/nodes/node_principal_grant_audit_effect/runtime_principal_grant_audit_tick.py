@@ -44,6 +44,11 @@ def run_once(
         "principals": len(result.principals),
         "missing": len(result.missing_lines),
         "extra": len(result.extra_lines),
+        "principal_lines": [
+            f"principal={held.principal} expected={held.expected} live={held.live} "
+            f"missing={held.missing} extra={held.extra}"
+            for held in result.principals
+        ],
         "missing_lines": list(result.missing_lines),
         "extra_lines": list(result.extra_lines),
         "errors": errors,
@@ -72,8 +77,13 @@ def main(argv: list[str], handler: HandlerPrincipalGrantAudit | None = None) -> 
         )
     except PrincipalGrantAuditConfigurationError as exc:
         code, line = 3, {"status": "overlay_refused", "detail": str(exc)}
-    for held in (*line.get("missing_lines", ()), *line.get("extra_lines", ())):  # type: ignore[misc]
-        sys.stdout.write(str(held) + "\n")
+    held_lines = [
+        str(held)
+        for key in ("principal_lines", "missing_lines", "extra_lines")
+        for held in line.pop(key, [])  # type: ignore[attr-defined]
+    ]
+    for held in held_lines:
+        sys.stdout.write(held + "\n")
     write_tick_heartbeat(args.state_dir, code=code, line=line)
     sys.stdout.write(json.dumps(line, sort_keys=True) + "\n")
     return code

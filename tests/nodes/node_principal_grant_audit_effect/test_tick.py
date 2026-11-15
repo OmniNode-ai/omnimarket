@@ -111,8 +111,13 @@ def test_run_once_drift_prints_missing_lines(
     code = main(["--omni-home", str(tmp_path)], handler=_handler(runner))
     assert code == 1
     out = capsys.readouterr().out.splitlines()
-    assert out[0] == "MISSING m1 topic LITERAL some.topic read"
-    assert json.loads(out[-1])["status"] == "drift"
+    assert out[0] == "principal=m1 expected=3 live=2 missing=1 extra=0"
+    assert out[1] == "MISSING m1 topic LITERAL some.topic read"
+    summary = json.loads(out[-1])
+    assert summary["status"] == "drift"
+    assert "missing_lines" not in summary
+    assert "principal_lines" not in summary
+    assert "extra_lines" not in summary
 
 
 def test_heartbeat_file_holds_exit_code_and_result(
