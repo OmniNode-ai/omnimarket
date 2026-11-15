@@ -47,6 +47,16 @@ class ModelLandingLedgerRows(BaseModel):
         default=(),
         description="Rows of older ledger rolls; only their lab PASS readbacks are read.",
     )
+    review_lane_prefixes: tuple[str, ...] = Field(
+        default=("orchestrator-",),
+        min_length=1,
+        description="A review verdict row counts only when its lane starts with one of these.",
+    )
+    review_engines: tuple[str, ...] = Field(
+        default=("fable",),
+        min_length=1,
+        description="A review verdict row counts only when its review= cell names one of these, compared in lower case.",
+    )
 
     @field_validator("now")
     @classmethod
