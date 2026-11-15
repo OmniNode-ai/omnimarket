@@ -45,3 +45,11 @@ dod_evidence:
       - check_type: "command"
         check_value: "bash -o pipefail -c 'git show HEAD:src/omnimarket/nodes/node_federation_edge_decision_compute/contract.yaml | grep -q node_federation_edge_decision_compute'"
         cwd: "."
+  - id: "dod-omn24488-integration-proof"
+    description: "The pushed head is run on a lab host through the lab work node before hand-off: the gate, decision and forwarder test directories. AC4 itself (one message from a runtime's in-memory bus read on dev Redpanda, reply back) is not observed: it waits for the shared reducer's unit item kind and the operator's apply of the declared broker rows."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane fed-build-6803 --kind test -- uv run --frozen pytest tests/unit/nodes/node_federation_egress_gate_compute tests/unit/nodes/node_federation_edge_decision_compute tests/unit/nodes/node_runtime_bus_forward_effect -q --no-cov -n 0"
+        cwd: "."
