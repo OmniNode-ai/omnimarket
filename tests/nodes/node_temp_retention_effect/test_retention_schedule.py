@@ -23,6 +23,7 @@ from omnimarket.nodes.node_temp_retention_effect.handlers.handler_temp_retention
     load_bounds,
     load_overlay,
     load_schedule,
+    validate_declarations,
 )
 from omnimarket.nodes.node_temp_retention_effect.models.model_temp_retention import (
     ModelRetentionWindows,
@@ -333,3 +334,50 @@ def test_h053_row_without_tmp_is_reported() -> None:
     assert h053_tmp_problems(ModelTempRetentionOverlay.model_validate(document)) == [
         "h053 temp_roots has no /tmp"
     ]
+
+
+def h053_lock_problems(overlay: ModelTempRetentionOverlay) -> list[str]:
+    """One line per way the h053 row would remove a lock file or trust a stale read of the live processes."""
+    host = next((h for h in overlay.hosts if h.name == "h053"), None)
+    if host is None:
+        return ["no h053 row"]
+    problems = [
+        f"h053 {r.path} declares no lock_name_patterns"
+        for r in host.temp_roots
+        if not r.lock_name_patterns
+    ]
+    if host.windows.holders_max_age_seconds <= 0:
+        problems.append("h053 windows declare no holders_max_age_seconds")
+    return problems
+
+
+def test_h053_never_removes_a_lock_and_declares_how_old_its_process_read_may_be() -> (
+    None
+):
+    overlay = load_overlay(str(NODE_DIR / "overlay.yaml"))
+    assert h053_lock_problems(overlay) == []
+
+
+def test_h053_row_without_lock_patterns_is_reported() -> None:
+    document = yaml.safe_load((NODE_DIR / "overlay.yaml").read_text())
+    for host in document["hosts"]:
+        if host["name"] == "h053":
+            host["temp_roots"][1].pop("lock_name_patterns")
+            del host["windows"]["holders_max_age_seconds"]
+    assert h053_lock_problems(ModelTempRetentionOverlay.model_validate(document)) == [
+        "h053 /tmp declares no lock_name_patterns",
+        "h053 windows declare no holders_max_age_seconds",
+    ]
+
+
+def test_a_lock_pattern_that_does_not_compile_is_refused_before_anything_is_read() -> (
+    None
+):
+    document = yaml.safe_load((NODE_DIR / "overlay.yaml").read_text())
+    for host in document["hosts"]:
+        if host["name"] == "h053":
+            host["temp_roots"][1]["lock_name_patterns"] = ["(unclosed"]
+    overlay = ModelTempRetentionOverlay.model_validate(document)
+    row = next(h for h in overlay.hosts if h.name == "h053")
+    with pytest.raises(RefusalError, match="lock name pattern"):
+        validate_declarations(row, load_bounds())

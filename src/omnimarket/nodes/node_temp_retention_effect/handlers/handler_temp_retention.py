@@ -27,8 +27,9 @@ import os
 import re
 import shutil
 import stat
+import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -78,6 +79,9 @@ class ProcessReferences:
     unreadable: list[int] = field(
         default_factory=list
     )  # same-user processes that refused a read
+    locks: frozenset[tuple[int, int]] = (
+        frozenset()
+    )  # (device, inode) of kernel-locked files
 
 
 def read_process_references() -> ProcessReferences | None:
@@ -93,6 +97,7 @@ def read_process_references() -> ProcessReferences | None:
     if not (proc / "self").is_dir():
         return None
     found = ProcessReferences()
+    lock_set: set[tuple[int, int]] = set()
     me = os.getuid()
     for entry in proc.iterdir():
         if not entry.name.isdigit():
@@ -137,12 +142,31 @@ def read_process_references() -> ProcessReferences | None:
         if refused and same_user:
             found.unreadable.append(int(entry.name))
         found.blobs.append("\n".join(parts))
-    return found
+    with contextlib.suppress(OSError):
+        for line in Path("/proc/locks").read_text(encoding="utf-8").splitlines():
+            parts = line.split()
+            if len(parts) < 7:
+                continue
+            try:
+                major, minor, inode = parts[5].split(":")
+                device = os.makedev(int(major, 16), int(minor, 16))
+                lock_set.add((device, int(inode)))
+            except (ValueError, OSError):
+                continue
+    return replace(found, locks=frozenset(lock_set))
 
 
 def used_percent(path: Path) -> float:
     usage = shutil.disk_usage(path)
-    return 100.0 * usage.used / usage.total if usage.total else 0.0
+    bytes_percent = 100.0 * usage.used / usage.total if usage.total else 0.0
+    with contextlib.suppress(OSError):
+        statvfs = os.statvfs(path)
+        if statvfs.f_files:
+            inode_percent = (
+                100.0 * (statvfs.f_files - statvfs.f_ffree) / statvfs.f_files
+            )
+            return max(bytes_percent, inode_percent)
+    return bytes_percent
 
 
 def load_contract(contract_path: Path = CONTRACT_PATH) -> dict[str, Any]:
@@ -218,12 +242,13 @@ def _check_declared_path(path: str, leaf_names: tuple[str, ...], what: str) -> P
 
 def validate_declarations(
     row: ModelTempRetentionHost, bounds: ModelRetentionBounds
-) -> list[list[re.Pattern[str]]]:
+) -> list[tuple[list[re.Pattern[str]], list[re.Pattern[str]]]]:
     """Refuse every unsafe declaration of a host row before anything is read or removed.
 
-    Returns, for each temp directory in declaration order, its compiled protected-name patterns.
+    Returns, for each temp directory in declaration order, its compiled protected-name and
+    lock-name patterns.
     """
-    patterns: list[list[re.Pattern[str]]] = []
+    patterns: list[tuple[list[re.Pattern[str]], list[re.Pattern[str]]]] = []
     for declared in row.temp_roots:
         _check_declared_path(
             declared.path, bounds.temp_root_leaf_names, "temp directory"
@@ -236,7 +261,15 @@ def validate_declarations(
                 raise RefusalError(
                     f"protected name pattern {pattern!r} does not compile ({exc})"
                 ) from None
-        patterns.append(compiled)
+        lock_patterns: list[re.Pattern[str]] = []
+        for pattern in declared.lock_name_patterns:
+            try:
+                lock_patterns.append(re.compile(pattern))
+            except re.error as exc:
+                raise RefusalError(
+                    f"lock name pattern {pattern!r} does not compile ({exc})"
+                ) from None
+        patterns.append((compiled, lock_patterns))
     for ceiling in row.store_ceilings:
         _check_declared_path(
             ceiling.path, (bounds.store_leaf_names[ceiling.kind],), "package store"
@@ -248,14 +281,25 @@ def validate_declarations(
 class _Scan:
     newest: float
     special: bool
+    locked: bool = False
 
 
-def _scan(path: Path, root_device: int, stop_after: float) -> _Scan:
-    """The newest modification time anywhere under ``path`` (symlinks not followed), read until it passes
-    ``stop_after``; ``special`` when a socket, pipe, device or other filesystem is inside."""
+def _scan(
+    path: Path,
+    root_device: int,
+    stop_after: float,
+    locks: frozenset[tuple[int, int]] = frozenset(),
+    lock_patterns: tuple[re.Pattern[str], ...] = (),
+) -> _Scan:
+    """The newest of the times that apply anywhere under ``path`` (symlinks not followed), read until it
+    passes ``stop_after``; ``special`` when a socket, pipe, device or other filesystem is inside;
+    ``locked`` when any inode under it holds a kernel lock or a name matches a lock pattern."""
     info = path.lstat()
-    newest = info.st_mtime
+    newest = max(info.st_mtime, info.st_ctime)
     special = info.st_dev != root_device or _is_special(info.st_mode)
+    locked = (info.st_dev, info.st_ino) in locks or any(
+        p.fullmatch(path.name) for p in lock_patterns
+    )
     stack = [path] if stat.S_ISDIR(info.st_mode) else []
     while stack and newest < stop_after:
         directory = stack.pop()
@@ -269,14 +313,18 @@ def _scan(path: Path, root_device: int, stop_after: float) -> _Scan:
                             "inf"
                         )  # an unreadable child counts as just touched
                         continue
-                    newest = max(newest, child.st_mtime)
+                    newest = max(newest, child.st_mtime, child.st_ctime)
                     if child.st_dev != root_device or _is_special(child.st_mode):
                         special = True
+                    if (child.st_dev, child.st_ino) in locks or any(
+                        p.fullmatch(entry.name) for p in lock_patterns
+                    ):
+                        locked = True
                     if stat.S_ISDIR(child.st_mode):
                         stack.append(Path(entry.path))
         except OSError:
             newest = float("inf")
-    return _Scan(newest=newest, special=special)
+    return _Scan(newest=newest, special=special, locked=locked)
 
 
 def _is_special(mode: int) -> bool:
@@ -378,6 +426,7 @@ def _remove(path: Path, uid: int) -> None:
 def _pass_root(
     declared: ModelTempRoot,
     protected: list[re.Pattern[str]],
+    lock_patterns: list[re.Pattern[str]],
     row: ModelTempRetentionHost,
     bounds: ModelRetentionBounds,
     *,
@@ -387,6 +436,8 @@ def _pass_root(
     refs: ProcessReferences,
     used: Callable[[Path], float],
     out: dict[str, Any],
+    refresh: Callable[[], ProcessReferences | None] | None = None,
+    clock: Callable[[], float] = time.monotonic,
 ) -> None:
     root = _check_declared_path(
         declared.path, bounds.temp_root_leaf_names, "temp directory"
@@ -400,6 +451,8 @@ def _pass_root(
     cutoff = now - hours * 3600
     held = _held_names(root, refs)
     device = root.lstat().st_dev
+    locks = refs.locks
+    read_at = clock()
     for entry in sorted(root.iterdir(), key=lambda item: item.name):
         try:
             info = entry.lstat()
@@ -411,12 +464,32 @@ def _pass_root(
         if entry.name in held:
             out["busy"].append(str(entry))
             continue
-        scan = _scan(entry, device, cutoff)
-        if scan.special or scan.newest >= cutoff:
+        scan = _scan(entry, device, cutoff, locks, tuple(lock_patterns))
+        if scan.special or scan.newest >= cutoff or scan.locked:
             out["kept"] += 1
             continue
         size = tree_bytes(entry)
         if not dry_run:
+            if (
+                refresh is not None
+                and clock() - read_at >= row.windows.holders_max_age_seconds
+            ):
+                fresh = refresh()
+                if fresh is None:
+                    out["errors"].append(
+                        "process references unreadable (no /proc); nothing removed"
+                    )
+                    return
+                read_at = clock()
+                held = _held_names(root, fresh)
+                locks = fresh.locks
+                if entry.name in held:
+                    out["busy"].append(str(entry))
+                    continue
+                rescan = _scan(entry, device, cutoff, locks, tuple(lock_patterns))
+                if rescan.special or rescan.newest >= cutoff or rescan.locked:
+                    out["kept"] += 1
+                    continue
             try:
                 _remove(entry, uid)
             except OSError as exc:
@@ -495,6 +568,7 @@ def run_pass(
     references: Callable[[], ProcessReferences | None] = read_process_references,
     used_percent: Callable[[Path], float] = used_percent,
     list_cap: int = LIST_CAP,
+    clock: Callable[[], float] = time.monotonic,
 ) -> ModelRetentionPass:
     """One pass over one host's declared temp directories and stores."""
     out: dict[str, Any] = {
@@ -522,10 +596,11 @@ def run_pass(
             break
         out["unreadable"] = max(out["unreadable"], len(refs.unreadable))
         if index < len(roots):
-            declared, patterns = roots[index]
+            declared, (patterns, lock_patterns) = roots[index]
             _pass_root(
                 declared,
                 patterns,
+                lock_patterns,
                 row,
                 bounds,
                 now=now,
@@ -534,6 +609,8 @@ def run_pass(
                 refs=refs,
                 used=used_percent,
                 out=out,
+                refresh=references if not dry_run else None,
+                clock=clock,
             )
         else:
             _pass_store(
