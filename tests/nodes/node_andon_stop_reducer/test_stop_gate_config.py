@@ -39,7 +39,6 @@ FSM = load_andon_stop_contract()[0]
 SCOPE = ModelStopScope(kind="engine", key=STOPPED)
 SRC = Path(__file__).resolve().parents[3] / "src/omnimarket"
 HANDLERS = (
-    SRC / "nodes/node_idle_slot_fill_effect/handlers/handler_idle_slot_fill.py",
     SRC / "nodes/node_remote_lane_compute/handlers/handler_remote_lane_placement.py",
     SRC
     / "nodes/node_landing_worker_engine_compute/handlers/handler_landing_worker_engine.py",

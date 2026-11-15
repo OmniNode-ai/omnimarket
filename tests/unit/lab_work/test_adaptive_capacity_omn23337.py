@@ -5,19 +5,12 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from types import SimpleNamespace
-from typing import Any, cast
+from typing import Any
 
 import pytest
 
 from omnimarket.handlers.host_capacity_overlay import load_host_capacity_limits
 from omnimarket.handlers.node_overlay_reader import NodeOverlayNotFoundError
-from omnimarket.models.model_lab_fill_fire_headroom import (
-    ModelLabFillFireHeadroomRequest,
-)
-from omnimarket.nodes.node_lab_fill_plan_compute.handlers.handler_lab_fill_fire_plan import (
-    HandlerLabFillFirePlan,
-)
 from omnimarket.nodes.node_lab_work_unit_effect.handlers.handler_host_capacity_advertise_effect import (
     HandlerHostCapacityAdvertiseEffect,
 )
@@ -151,26 +144,3 @@ def test_the_local_reader_reads_total_memory_and_a_swap_rate_from_the_second_rea
     assert first.swap_in_kb_s is None, "no earlier counters, no rate"
     assert second.swap_in_kb_s is not None
     assert second.swap_in_kb_s >= 0.0
-
-
-def test_a_refused_hosts_free_slots_are_zero_in_the_lab_fill_plan() -> None:
-    seen: list[Any] = []
-
-    class _Headroom:
-        def handle(self, request: Any) -> str:
-            seen.append(request)
-            return "plan"
-
-    refused = _advertise(_reading(load1=34.5, avail=46.0), workers=8)
-    open_ = _advertise(_reading(load1=2.0, avail=80.0), workers=8)
-    open_ = open_.model_copy(update={"host_name": "h201"})
-    request = ModelLabFillFireHeadroomRequest.model_construct(
-        fire=SimpleNamespace(fire_id="f1"),
-        observed_at=NOW,
-        readings=(refused, open_),
-        max_lanes=8,
-    )
-    HandlerLabFillFirePlan(headroom=cast(Any, _Headroom())).handle(request)
-    slots = {p.name: p.runner_slots for p in seen[0].probes}
-    assert slots["h202"] == 0
-    assert slots["h201"] > 0

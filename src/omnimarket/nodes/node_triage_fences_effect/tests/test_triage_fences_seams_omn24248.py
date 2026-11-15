@@ -3,28 +3,19 @@
 """Seam tests of the fence: each fails when either side of a seam changes shape (OMN-24248).
 
 Seams: (1) the ledger rows the lane runner and the lanes write -> the fence's CLAIM and TERMINAL
-pairing; (2) the lane runner's receipt file -> the running-lane read; (3) the fence report JSON ->
-the lab fill effect node's FencesTool, which reads its ``fenced_tickets`` list. The fence runs as a
+pairing; (2) the lane runner's receipt file -> the running-lane read. The fence runs as a
 process; no topic crosses these seams.
 """
 
 from __future__ import annotations
 
 import json
-import os
-import subprocess
-import sys
 from datetime import UTC, datetime
 from pathlib import Path
-
-import yaml
 
 from omnimarket.models.triage_fences import (
     ModelTriageFencesDeriveRequest,
     ModelTriageFencesVerdict,
-)
-from omnimarket.nodes.node_lab_fill_effect.protocols.local_lab_fill_enumerate_facts import (
-    FencesTool,
 )
 from omnimarket.nodes.node_triage_fences_compute.handlers.handler_triage_fences_derive import (
     HandlerTriageFencesDerive,
@@ -134,38 +125,3 @@ def test_seam_control_a_renamed_status_key_reads_as_not_running(tmp_path: Path) 
         (),
         (),
     )
-
-
-# ---- seam 3: the fence report -> the lab fill effect node's FencesTool ------------------------
-
-
-def test_the_lab_fill_reads_the_fenced_tickets_the_node_prints(tmp_path: Path) -> None:
-    root = tmp_path / "overlay-root"
-    (root / "node_triage_fences_effect").mkdir(parents=True)
-    receipts = tmp_path / "receipts"
-    _runner_receipt(receipts, started_at="2026-11-13T14:00:00Z")
-    overlay = yaml.safe_load(EXAMPLE.read_text(encoding="utf-8"))
-    overlay["receipt_dir"] = str(receipts)
-    (root / "node_triage_fences_effect" / "overlay.yaml").write_text(
-        yaml.safe_dump(overlay), encoding="utf-8"
-    )
-    ledger = tmp_path / "LEDGER.md"
-    ledger.write_text(
-        "2026-11-13T09:00:00Z | CLAIM | lane=lane-a | ticket=OMN-90001 | actor=script:t | x\n"
-        "2026-11-13T09:00:00Z | CLAIM | lane=dead-lane | ticket=OMN-90002 | actor=script:t | x\n",
-        encoding="utf-8",
-    )
-    argv = (sys.executable, "-m", CLI, str(ledger), "--now", "2026-11-13T15:00:00Z")
-    env = {"ONEX_SKILL_OVERLAY_ROOTS": str(root)}
-    fenced = FencesTool(argv=argv, env=env)(60.0)
-    printed = subprocess.run(
-        argv,
-        capture_output=True,
-        text=True,
-        check=True,
-        env={**os.environ, **env},
-    )
-    assert fenced == tuple(json.loads(printed.stdout)["fenced_tickets"])
-    assert fenced == (
-        "OMN-90001",
-    )  # lane-a runs by its receipt; dead-lane fences nothing

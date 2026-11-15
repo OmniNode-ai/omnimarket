@@ -24,10 +24,6 @@ from omnimarket.nodes.node_floor_simple_effect.handlers.sources import (
     work_state_from_payload,
     work_state_lanes,
 )
-from omnimarket.nodes.node_lab_fill_effect.protocols import local_lab_fill_adapters
-from omnimarket.nodes.node_lab_fill_effect.protocols.local_lab_fill_adapters import (
-    LocalOwnerReader,
-)
 from omnimarket.nodes.node_work_state_projection_scheduled_effect.handlers.handler_work_state_projection_scheduled import (
     HandlerWorkStateProjectionScheduled,
 )
@@ -39,8 +35,6 @@ from tests.nodes.node_work_state_projection_scheduled_effect.support import (
 )
 
 pytestmark = pytest.mark.unit
-
-FILL_MAX_AGE_S = 1800.0
 
 
 def _contract(node: str) -> dict:
@@ -96,10 +90,7 @@ def _publish(env: dict[str, str], now: datetime) -> None:
 
 
 def test_the_three_pieces_name_one_projection_file() -> None:
-    """The writer's file is the fill's default path; the floor reads the projection the writer publishes (OMN-23391)."""
-    written = _contract("node_work_state_projection_effect")["runtime"]["output"][
-        "relpath"
-    ]
+    """The floor reads the projection the writer publishes (OMN-23391)."""
     floor_projection = _contract("node_floor_simple_effect")["runtime"]["sources"][
         "work_state_projection"
     ]
@@ -107,10 +98,8 @@ def test_the_three_pieces_name_one_projection_file() -> None:
         "publish"
     ]["topic"]
     reader = _contract("node_floor_projection_read_effect")
-    fill_default = Path(local_lab_fill_adapters.__file__).read_text(encoding="utf-8")
     assert floor_projection == "work_state"
     assert published_topic in reader["snapshot_reads"]
-    assert f'/ "{written}"' in fill_default or f'"{written}"' in fill_default
     scheduled = _contract("node_work_state_projection_scheduled_effect")["runtime"]
     assert scheduled["projection_output"]["contract"] == (
         "node_work_state_projection_effect"
@@ -119,7 +108,7 @@ def test_the_three_pieces_name_one_projection_file() -> None:
 
 
 def test_golden_a_lane_whose_claim_names_a_ticket_shows_after_one_publish_to_both_readers(
-    tmp_path, monkeypatch
+    tmp_path,
 ) -> None:
     home, env, now = _home(tmp_path, claim_cells="ticket=ZEP-7")
     _publish(env, now)
@@ -132,25 +121,10 @@ def test_golden_a_lane_whose_claim_names_a_ticket_shows_after_one_publish_to_bot
     assert isinstance(projection, ModelWorkStateResult)
     lanes = {lane.lane: lane for lane in work_state_lanes(projection)}
     assert lanes["seam-lane"].ticket == "ZEP-7"
-    monkeypatch.setenv("OMNI_HOME", str(home))
-    monkeypatch.delenv("ONEX_WORK_STATE_PATH", raising=False)
-    owners = LocalOwnerReader().work_state_owners("", FILL_MAX_AGE_S)
-    assert owners == {"ZEP-7": ["seam-lane"]}
-
-
-def test_error_the_same_ledger_without_the_ticket_cell_leaves_the_ticket_unowned(
-    tmp_path, monkeypatch
-) -> None:
-    """The failing control of the golden above: take the cell away and the fill sees no owner."""
-    home, env, now = _home(tmp_path, claim_cells="note=none")
-    _publish(env, now)
-    monkeypatch.setenv("OMNI_HOME", str(home))
-    monkeypatch.delenv("ONEX_WORK_STATE_PATH", raising=False)
-    assert LocalOwnerReader().work_state_owners("", FILL_MAX_AGE_S) == {}
 
 
 def test_error_a_projection_the_readers_cannot_validate_is_refused_not_read_as_empty(
-    tmp_path, monkeypatch
+    tmp_path,
 ) -> None:
     home, env, now = _home(tmp_path, claim_cells="ticket=ZEP-7")
     _publish(env, now)
@@ -162,7 +136,3 @@ def test_error_a_projection_the_readers_cannot_validate_is_refused_not_read_as_e
     document.pop("counts")
     target.write_text(json.dumps(document), encoding="utf-8")
     assert work_state_from_payload(document) is None
-    monkeypatch.setenv("OMNI_HOME", str(home))
-    monkeypatch.delenv("ONEX_WORK_STATE_PATH", raising=False)
-    with pytest.raises(local_lab_fill_adapters.LabFillPortError, match="not readable"):
-        LocalOwnerReader().work_state_owners("", FILL_MAX_AGE_S)

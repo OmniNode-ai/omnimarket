@@ -21,9 +21,6 @@ from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 from omnimarket.delegated_test_loop import lane_bus
 from omnimarket.delegated_test_loop.lab_run_bus import ProtocolLabRunBus
 from omnimarket.delegated_test_loop.lane_bus import BusKind, LabRunBusError
-from omnimarket.nodes.node_lab_fill_effect.protocols.local_lab_fill_adapters import (
-    BusLaneLedgerAppender as LabFillBusLaneLedgerAppender,
-)
 from omnimarket.nodes.node_pr_handoff_ledger_effect.handlers.handler_pr_handoff_ledger_effect import (
     BusLaneLedgerAppender,
 )
@@ -312,13 +309,11 @@ def test_serve_refuses_while_another_serve_holds_the_ledger_lock(
     assert "holds" in result.output
 
 
-@pytest.mark.parametrize(
-    "appender_type", [BusLaneLedgerAppender, LabFillBusLaneLedgerAppender]
-)
+@pytest.mark.parametrize("appender_type", [BusLaneLedgerAppender])
 def test_broker_attributed_cli_request_round_trips_through_host_and_local_append(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-    appender_type: type[BusLaneLedgerAppender] | type[LabFillBusLaneLedgerAppender],
+    appender_type: type[BusLaneLedgerAppender],
 ) -> None:
     ledger = tmp_path / "ledger.md"
     ledger.write_text("# Ledger\n")

@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Lab-fill reads a ticket through node_ticket_query with the key from the store (OMN-22418).
+"""A ticket is read through node_ticket_query with the key from the store (OMN-22418).
 
 The Linear key is resolved in process by node_secret_store_effect. These tests
 fail if any step of the read needs ``LINEAR_API_KEY`` (or ``LINEAR_TOKEN``) in
@@ -8,8 +8,6 @@ the environment, and pass when only the store holds it.
 """
 
 from __future__ import annotations
-
-from pathlib import Path
 
 import httpx
 import pytest
@@ -27,14 +25,6 @@ from omnimarket.models.ticket_query.model_ticket_credential_refusal import (
 )
 from omnimarket.models.ticket_query.model_ticket_facts import (
     ModelTicketFactsInput,
-)
-from omnimarket.nodes.node_lab_fill_effect.protocols import LabFillPortError
-from omnimarket.nodes.node_lab_fill_effect.protocols import (
-    local_lab_fill_adapters as adapters,
-)
-from omnimarket.nodes.node_lab_fill_effect.protocols.local_lab_fill_adapters import (
-    LocalLiveChecks,
-    NodeTicketFactsReader,
 )
 from omnimarket.nodes.node_ticket_query.handlers.handler_ticket_facts import (
     HandlerTicketFacts,
@@ -149,51 +139,6 @@ async def test_facts_for_an_unknown_ticket_is_named() -> None:
     )
     with pytest.raises(LookupError, match="OMN-7"):
         await handler.handle(ModelTicketFactsInput(identifier="OMN-7"))
-
-
-def test_lab_fill_skip_reason_reads_through_the_node_with_no_environment_key(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _no_env_key(monkeypatch)
-    monkeypatch.setattr(LocalLiveChecks, "_fences", staticmethod(lambda _ledger: set()))
-    secrets = _FakeSecretNode(EnumSecretStoreOutcome.RESOLVED, _STORE_KEY)
-    reader = NodeTicketFactsReader(
-        secret_node=secrets,
-        tracker_factory=lambda key: _FakeTracker(key, _issue_answer("started", "me")),
-    )
-    checks = LocalLiveChecks(facts=reader)
-    kwargs = {"pr": "", "operator_id": "me", "ledger_path": "/l"}
-    assert checks.skip_reason(ticket="OMN-1", kind="ticket", **kwargs) == ("", "")
-    other = {"pr": "", "operator_id": "someone-else", "ledger_path": "/l"}
-    assert checks.skip_reason(ticket="OMN-1", kind="ticket", **other)[0] == (
-        "assigned-other"
-    )
-
-
-def test_lab_fill_refuses_with_the_secret_reference_when_the_store_has_no_key(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("LINEAR_API_KEY", "env-key-that-must-not-be-used")
-    secrets = _FakeSecretNode(EnumSecretStoreOutcome.NOT_FOUND, None)
-    reader = NodeTicketFactsReader(
-        secret_node=secrets, tracker_factory=lambda key: _FakeTracker(key, {})
-    )
-    with pytest.raises(LabFillPortError, match="LINEAR_API_KEY") as raised:
-        LocalLiveChecks(facts=reader).skip_reason(
-            ticket="OMN-1",
-            kind="ticket",
-            pr="",
-            operator_id="me",
-            ledger_path="/l",
-        )
-    assert linear_secret_reference() in str(raised.value)
-
-
-def test_no_lab_fill_code_path_reads_the_key_from_the_environment() -> None:
-    source = Path(adapters.__file__).read_text(encoding="utf-8")
-    assert 'os.environ.get("LINEAR' not in source
-    assert "_graphql" not in source
-    assert "urllib.request" not in source
 
 
 @pytest.mark.asyncio

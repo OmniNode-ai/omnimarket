@@ -158,75 +158,6 @@ def test_controller_worker_brief_checks_even_its_fixed_instructions(
         )
 
 
-@pytest.mark.parametrize(
-    ("brief", "allowed", "scope", "strategy"),
-    [
-        (
-            "Cut a release to unblock the internal consumer.",
-            False,
-            "internal",
-            "unspecified",
-        ),
-        (
-            "Move to the sibling's dev tag after its integration tests pass.",
-            True,
-            "internal",
-            "git_tag",
-        ),
-        ("Publish a release for an outside customer.", True, "external", "release"),
-        ("Update the dependency.", False, "internal", "release"),
-        ("Cut a release first; then use a tag.", False, "internal", "git_tag"),
-    ],
-)
-def test_lab_fill_checks_before_writing_or_launching(
-    tmp_path: Path, brief: str, allowed: bool, scope: str, strategy: str
-) -> None:
-    from omnimarket.models.lab_fill import ModelLabFillLaunch
-    from omnimarket.nodes.node_lab_fill_effect.handlers.handler_lab_fill_launch import (
-        HandlerLabFillLaunch,
-    )
-    from omnimarket.nodes.node_lab_fill_effect.models import ModelLabFillLaunchRequest
-    from tests.nodes.node_lab_fill_effect.fakes import (
-        FakeApproved,
-        FakeBlocks,
-        FakeChecks,
-        FakeClock,
-        FakeMerged,
-        FakeRunner,
-    )
-
-    runner = FakeRunner()
-    result = HandlerLabFillLaunch(
-        merged=FakeMerged(),
-        checks=FakeChecks(),
-        approved=FakeApproved(),
-        blocks=FakeBlocks(),
-        runner=runner,
-        clock=FakeClock(),
-    ).handle(
-        ModelLabFillLaunchRequest(
-            launch=ModelLabFillLaunch(
-                lane="policy-test",
-                ticket="OMN-19998",
-                engine="codex",
-                parent="parent",
-                timeout_min=15,
-            ),
-            kind="process-fix",
-            brief=brief,
-            dependency_consumer_scope=scope,
-            dependency_strategy=strategy,
-            brief_dir=str(tmp_path / "briefs"),
-            ledger_path=str(tmp_path / "ledger"),
-        )
-    )
-    assert result.detached is allowed
-    assert bool(runner.calls) is allowed
-    assert (tmp_path / "briefs/policy-test.md").exists() is allowed
-    if not allowed:
-        assert result.skipped == "internal-release-path"
-
-
 def test_cli_uses_node_refusal_exit_code() -> None:
     import json
     import subprocess
@@ -308,7 +239,6 @@ def test_policy_is_required_in_ci_and_has_the_same_precommit_tests() -> None:
     for filename in (
         "src/omnimarket/nodes/node_internal_release_path_guard_compute/contract.yaml",
         "src/omnimarket/nodes/node_internal_release_path_guard_compute/__init__.py",
-        "src/omnimarket/nodes/node_lab_fill_effect/handlers/handler_lab_fill_launch.py",
         "src/omnimarket/nodes/node_pr_landing_decision_compute/models/model_landing_decision.py",
         "tests/nodes/node_internal_release_path_guard_compute/test_internal_release_path_guard.py",
         "tests/test_golden_chain_internal_release_path_guard_compute.py",
