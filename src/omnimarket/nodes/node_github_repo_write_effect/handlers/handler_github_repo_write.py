@@ -84,6 +84,7 @@ import asyncio
 import base64
 import binascii
 import hashlib
+import hmac
 import json
 import logging
 import os
@@ -189,8 +190,10 @@ from omnimarket.nodes.node_github_repo_write_effect.protocols import (
 from omnimarket.nodes.node_github_repo_write_effect.services.org_secret import (
     ModelOrgSecretPlan,
     OrgSecretReader,
+    OrgSecretSourceError,
     apply_org_secret,
     org_secret_plan,
+    org_secret_value_digest,
     planned_org_secret_requests,
     read_org_secret_value,
 )
@@ -352,6 +355,9 @@ class _Run:
         self.quota: ModelGithubQuotaReading | None = None
         self.variable_plan: _VariablePlan | None = None
         self.org_secret_plan: ModelOrgSecretPlan | None = None
+        # Keyed digest of the value this run sealed (never the value).
+        self.org_secret_digest: str | None = None
+        self.handler_org_secret_salt = handler.org_secret_salt
 
     def refused(
         self,
@@ -541,6 +547,10 @@ class HandlerGithubRepoWriteEffect:
     ) -> None:
         self._write_overlay = overlay
         self._org_secret_reader = org_secret_reader or read_org_secret_value
+        # Keyed digests of the values the completed org_secret_set writes sealed,
+        # by the same key as ``_done``. In process memory only; never logged.
+        self.org_secret_salt = os.urandom(32)
+        self._org_secret_digests: dict[tuple[str, str, str], str] = {}
         self._variable_source_root = variable_source_root
         self._transport = transport
         self._fence = fence_port
@@ -660,6 +670,37 @@ class HandlerGithubRepoWriteEffect:
                     "carries a refuse marker; no call made",
                 )
         return _VariablePlan(value=source_value, source_value=source_value)
+
+    async def _org_secret_rotated(
+        self, request: ModelRepoWriteRequest, key: tuple[str, str, str]
+    ) -> bool:
+        """Whether a replay of an org_secret_set must be written, not skipped.
+
+        A recorded org_secret_set is replayed only while the store still holds the
+        value it sealed: the store is read again and a keyed digest of the value is
+        compared with the one recorded. A different digest means the value was
+        rotated since, so the write goes through. A store that cannot give a value, a
+        plan the overlay no longer allows or a missing digest also falls through, so
+        the write path refuses with its own fixed text. Only the digest is compared;
+        the value is dropped here and nothing is logged.
+        """
+        if request.operation is not EnumRepoWriteOperation.ORG_SECRET_SET:
+            return False
+        recorded = self._org_secret_digests.get(key)
+        plan = self._org_secret_plan(request)
+        if recorded is None or not isinstance(plan, ModelOrgSecretPlan):
+            return True
+        try:
+            stored = await self._org_secret_reader(plan.entry.secret_ref)
+        except OrgSecretSourceError:
+            return True
+        if stored is None:
+            return True
+        current = org_secret_value_digest(
+            self.org_secret_salt, plan.entry.name, stored.get_secret_value()
+        )
+        del stored
+        return not hmac.compare_digest(current, recorded)
 
     def _org_secret_plan(
         self, request: ModelRepoWriteRequest
@@ -844,9 +885,10 @@ class HandlerGithubRepoWriteEffect:
                     f"differs in {', '.join(differing)}; the recorded write's "
                     "result is not replayed and no call is made",
                 )
-            return done.model_copy(
-                update={"correlation_id": request.correlation_id, "replayed": True}
-            )
+            if not await self._org_secret_rotated(request, key):
+                return done.model_copy(
+                    update={"correlation_id": request.correlation_id, "replayed": True}
+                )
         refused = await self._lease_refusal(request)
         if refused is not None:
             return refused
@@ -906,8 +948,13 @@ class HandlerGithubRepoWriteEffect:
             EnumRepoWriteOperation.RUNNER_GROUP_GET,
         ):
             self._done[key] = (digests, result)
+            if run.org_secret_digest is not None:
+                self._org_secret_digests[key] = run.org_secret_digest
+            else:
+                self._org_secret_digests.pop(key, None)
             while len(self._done) > _IDEMPOTENCY_RECORD_SIZE:
-                self._done.popitem(last=False)
+                evicted, _ = self._done.popitem(last=False)
+                self._org_secret_digests.pop(evicted, None)
         _log.info(
             "repo-write %s %s lane=%s -> %s",
             request.operation.value,
@@ -1467,8 +1514,17 @@ async def _org_secret_set(
     plan = run.org_secret_plan
     if plan is None:  # defensive; handle() plans every org_secret_set
         raise ValueError("org_secret_set was run without a plan")
+
+    async def read_and_digest(ref: str) -> SecretStr | None:
+        stored = await read_value(ref)
+        if stored is not None:
+            run.org_secret_digest = org_secret_value_digest(
+                run.handler_org_secret_salt, plan.entry.name, stored.get_secret_value()
+            )
+        return stored
+
     key_id = await apply_org_secret(
-        plan, send=run.send, refuse=run.refused, read_value=read_value
+        plan, send=run.send, refuse=run.refused, read_value=read_and_digest
     )
     return run.completed(secret_name=plan.entry.name, secret_key_id=key_id)
 

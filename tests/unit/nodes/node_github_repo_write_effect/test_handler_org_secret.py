@@ -21,6 +21,7 @@ of the operation:
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import logging
 from dataclasses import dataclass, field
@@ -64,6 +65,7 @@ from omnimarket.nodes.node_github_repo_write_effect.overlay import (
 from omnimarket.nodes.node_github_repo_write_effect.services.org_secret import (
     SEALED_PLACEHOLDER,
     OrgSecretSourceError,
+    org_secret_value_digest,
     read_org_secret_value,
     seal_value,
 )
@@ -87,6 +89,7 @@ _REF = {
     _NAME_PASSWORD: "example/kafka-sasl-password",
 }
 _SENTINEL = "sentinel-Zq7-lab-sasl-9f31c2d8"
+_ROTATED = "rotated-Hk4-lab-sasl-71ab03e5"
 _PUBLIC_KEY_PATH = f"/orgs/{_ORG}/actions/secrets/public-key"
 _REPO_PATH = f"/repos/{_REPO}"
 
@@ -243,6 +246,10 @@ def _decrypt(encrypted_value: str) -> str:
     )
 
 
+def _b64(value: str) -> str:
+    return base64.b64encode(value.encode()).decode("ascii")
+
+
 def _forms(sealed: str | None = None) -> list[str]:
     forms = [_SENTINEL, base64.b64encode(_SENTINEL.encode()).decode("ascii")]
     if sealed is not None:
@@ -344,9 +351,10 @@ async def test_private_visibility_reads_no_repository_and_sends_no_ids() -> None
     assert "selected_repository_ids" not in body
 
 
-async def test_a_retry_with_the_same_key_is_replayed_without_a_second_read_or_write() -> (
-    None
-):
+async def test_a_retry_with_an_unchanged_value_is_replayed_without_a_write(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.DEBUG)
     transport, store = _Transport(), _Store()
     handler = _handler(transport, store, _overlay())
     first = await handler.handle(_request())
@@ -355,8 +363,70 @@ async def test_a_retry_with_the_same_key_is_replayed_without_a_second_read_or_wr
     assert isinstance(second, ModelRepoWriteCompleted)
     assert second.replayed is True
     assert second.secret_key_id == _KEY_ID
+    # The replay re-reads the store to compare digests, but sends nothing.
     assert len(transport.puts) == 1
-    assert store.reads == [_REF[_NAME_USER]]
+    assert len(transport.sent) == 3
+    assert store.reads == [_REF[_NAME_USER]] * 2
+    _assert_value_absent(second, transport, caplog)
+
+
+async def test_a_retry_after_the_stored_value_was_rotated_writes_the_new_value(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.DEBUG)
+    transport, store = _Transport(), _Store()
+    handler = _handler(transport, store, _overlay())
+    first = await handler.handle(_request())
+    store.value = _ROTATED
+    second = await handler.handle(_request())
+    assert isinstance(first, ModelRepoWriteCompleted)
+    assert isinstance(second, ModelRepoWriteCompleted)
+    assert second.replayed is False
+    assert len(transport.puts) == 2
+    assert _decrypt(str((transport.puts[0].body or {})["encrypted_value"])) == _SENTINEL
+    assert _decrypt(str((transport.puts[1].body or {})["encrypted_value"])) == _ROTATED
+    _assert_value_absent(second, transport, caplog, extra=(_ROTATED, _b64(_ROTATED)))
+    # The rotated value is now the recorded one: the next replay is skipped.
+    third = await handler.handle(_request())
+    assert isinstance(third, ModelRepoWriteCompleted)
+    assert third.replayed is True
+    assert len(transport.puts) == 2
+
+
+async def test_a_replay_whose_store_can_no_longer_be_read_is_refused_not_skipped() -> (
+    None
+):
+    transport, store = _Transport(), _Store()
+    handler = _handler(transport, store, _overlay())
+    await handler.handle(_request())
+    store.value = None
+    second = await handler.handle(_request())
+    assert isinstance(second, ModelRepoWriteFailed)
+    assert second.reason is EnumRepoWriteRefusal.ORG_SECRET_SOURCE_UNREADABLE
+    assert len(transport.puts) == 1
+
+
+async def test_the_replay_digest_is_keyed_and_appears_in_no_result_or_log(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.DEBUG)
+    transport, store = _Transport(), _Store()
+    handler = _handler(transport, store, _overlay())
+    first = await handler.handle(_request())
+    store.value = _ROTATED
+    second = await handler.handle(_request())
+    digests = list(handler._org_secret_digests.values())
+    assert len(digests) == 1
+    bare = hashlib.sha256(_ROTATED.encode()).hexdigest()
+    assert digests[0] != bare
+    assert org_secret_value_digest(b"another-salt", _NAME_USER, _ROTATED) != digests[0]
+    for result in (first, second):
+        assert isinstance(result, ModelRepoWriteCompleted)
+        for text in (result.model_dump_json(), repr(result), caplog.text):
+            assert digests[0] not in text
+            assert bare not in text
+    for record in caplog.records:
+        assert digests[0] not in record.getMessage()
 
 
 async def test_dry_run_plans_the_calls_without_a_store_read_or_a_call(

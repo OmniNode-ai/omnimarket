@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import base64
 import binascii
+import hashlib
+import hmac
 import urllib.parse
 from collections.abc import Awaitable, Callable
 from typing import Protocol
@@ -165,6 +167,19 @@ def seal_value(public_key_b64: str, value: str) -> str:
             "the organization public key could not seal the value"
         ) from None
     return base64.b64encode(sealed).decode("ascii")
+
+
+def org_secret_value_digest(salt: bytes, name: str, value: str) -> str:
+    """A keyed digest of ``value`` for the replay record; the value never leaves it.
+
+    The idempotency record keeps this beside a completed org_secret_set so a replay can
+    tell a rotated value (digest differs, the PUT is sent) from an unchanged one (digest
+    matches, nothing is sent). The key is a per-handler random salt, so the digest is not
+    a bare hash of the value and cannot be matched offline. It is held in process memory
+    only: never logged, never put on a result, event or error, and never printed beside
+    the value.
+    """
+    return hmac.new(salt, f"{name}\0{value}".encode(), hashlib.sha256).hexdigest()
 
 
 async def read_org_secret_value(ref: str) -> SecretStr | None:

@@ -1,0 +1,61 @@
+schema_version: 1.0.0
+ticket_id: OMN-24635
+title: org_secret_set replays must not skip a rotated secret value
+summary: 'A replay of an org_secret_set was skipped by its idempotency key even when the stored secret value was rotated, so a rotation never reached GitHub. The replay record now keeps a keyed digest of the value each completed set sealed (never the value); a replay re-reads the store and skips only when the digest matches, and writes when it differs. The digest is held in process memory and is on no key, result, log record, event or error text.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24635-rotated-secret-replay
+  statement: A replay of org_secret_set is written when the stored value was rotated and skipped when it is unchanged, keyed on a digest of the value and never on the value.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a replay of an org secret set whose stored value was rotated since the first call is written to GitHub (one PUT carrying the new sealed value), and a replay with an unchanged value is skipped with no GitHub call -- falsifier: uv run pytest tests/unit/nodes/node_github_repo_write_effect/test_handler_org_secret.py -q'
+  - id: AC2
+    statement: 'AC2: the idempotency key is derived from a digest of the value and the value itself appears in no key, log record, bus event or error text, and the digest is never logged beside the value -- falsifier: uv run pytest tests/unit/nodes/node_github_repo_write_effect/test_handler_org_secret.py -q'
+  - id: AC3
+    statement: 'AC3: the existing org secret tests, the golden chain and the scm seam-shape tests still pass with the keyed digest -- falsifier: uv run pytest tests/test_golden_chain_github_repo_write_effect.py tests/unit/handlers/scm/test_scm_write_seam_shapes.py tests/unit/nodes/node_github_repo_write_effect -q'
+evidence_requirements:
+- kind: tests
+  description: The org secret tests, the golden chain, the scm seam-shape tests and the write node tests at the pushed head; the rotated-value replay test fails at the parent commit where a replay is skipped on the key alone.
+  command: env -u PYTHONPATH uv run --frozen pytest tests/unit/nodes/node_github_repo_write_effect tests/test_golden_chain_github_repo_write_effect.py tests/unit/handlers/scm/test_scm_write_seam_shapes.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24635-ac1-rotated-written-unchanged-skipped
+  description: 'The org secret handler test: after a first set, a replay with the store value rotated sends one more PUT carrying the new sealed value (decrypting it with the test key pair returns the rotated sentinel) and is not marked replayed; a replay with an unchanged value sends no GitHub call; a replay whose store can no longer be read is refused, not skipped.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_github_repo_write_effect/test_handler_org_secret.py -q --no-cov -n 0 -p no:randomly -k "retry or replay or rotated"
+    cwd: .
+- id: dod-omn24635-ac2-digest-keyed-never-logged
+  description: 'The org secret handler test: the recorded digest is a keyed digest that differs from a bare sha256 of the value and from the digest under another key, and neither the digest, the bare hash, the value, its base64 form nor any sealed form appears in a result, a repr or any log record.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_github_repo_write_effect/test_handler_org_secret.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24635-ac3-existing-chain-and-seams
+  description: The existing org secret tests, the write node's golden chain, the scm seam-shape tests and the node's own tests pass with the keyed digest.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_golden_chain_github_repo_write_effect.py tests/unit/handlers/scm/test_scm_write_seam_shapes.py tests/unit/nodes/node_github_repo_write_effect -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24635-integration-proof
+  description: 'The pushed head ran the org secret and scm seam tests on a lab host through the lab work runner and exited 0. It binds no acceptance criterion: no test here makes a real GitHub call, and the live set of the org secrets stays the orchestrator''s step after review.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24635 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_github_repo_write_effect/test_handler_org_secret.py tests/unit/handlers/scm/test_scm_write_seam_shapes.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
