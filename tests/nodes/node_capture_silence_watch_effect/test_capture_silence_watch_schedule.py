@@ -108,6 +108,7 @@ def _render(tmp_path: Path, units: dict[str, Any] | None = None) -> Any:
             unit=UNIT,
             home=str(tmp_path / "home"),
             registry_root=str(tmp_path / "omni"),
+            workspace_config_root=str(tmp_path / "workspace"),
             project_path=str(path),
             expected_revision=revision,
             path_overrides={"ONEX_SKILL_OVERLAY_ROOTS": str(tmp_path / "overlays")},

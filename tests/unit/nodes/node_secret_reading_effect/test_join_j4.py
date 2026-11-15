@@ -283,7 +283,11 @@ def test_golden_scan_reads_the_consumers_real_code_files(tmp_path: Path) -> None
     sink = InMemoryEmissionSink()
     node = HandlerSecretJoinJ4(
         reading=reading,
-        join=join_overlay(code_globs=[str(NODE_DIR / "**" / "*.py")], log_surfaces=[]),
+        join=join_overlay(
+            code_globs=[str(NODE_DIR / "**" / "*.py")],
+            log_surfaces=[],
+            max_bytes_per_surface=1048576,
+        ),
         store=store(),
         surfaces=LocalExposureSurfaces(),
         sink=sink,
@@ -474,6 +478,84 @@ def test_error_a_row_that_cannot_be_appended_fails_the_run() -> None:
     result = node.handle(ModelJoinJ4Command(correlation_id=CORRELATION, write=True))
     assert result.status == "failed"
     assert result.failure == "append-failed:refused"
+
+
+def test_error_a_refused_append_leaves_no_golden_j4_evidence() -> None:
+    ledger = InMemoryLedger()
+    ledger.append_status = "refused"
+    sink = InMemoryEmissionSink()
+    node = HandlerSecretJoinJ4(
+        reading=overlay(),
+        join=join_overlay(),
+        store=store(),
+        surfaces=surfaces(),
+        sink=sink,
+        appender=ledger,
+        consumer=OverlayKeyConsumer(),
+        log=_drop,
+        clock=ticking(),
+        host=HOST,
+    )
+    result = node.handle(ModelJoinJ4Command(correlation_id=CORRELATION, write=True))
+    assert result.status == "failed"
+    assert all(e.phase != "success" for e in sink.events)
+    join = next(j for j in fold(sink).joins if j.join == "J4")
+    assert join.golden_at is None
+
+
+def test_error_a_configured_log_surface_that_matches_nothing_is_not_a_clean_scan() -> (
+    None
+):
+    node_surfaces = surfaces()
+    del node_surfaces.texts[LOG_FILE]
+    run = Run(test_surfaces=node_surfaces)
+    assert run.result.verdict is EnumReadingVerdict.NOT_WORKING
+    assert run.result.scan is not None
+    assert LOG_FILE in run.result.scan.unreadable
+    assert j4(run.sink) != "golden"
+
+
+def test_error_a_value_that_lands_in_the_composed_row_is_never_appended() -> None:
+    """The value equals the host cell, so only the fully composed row carries it."""
+    sink = InMemoryEmissionSink()
+    ledger = InMemoryLedger()
+    host_valued = InMemorySecretProbeStore({("/shared/env", "GATE_PASSWORD"): HOST})
+    node = HandlerSecretJoinJ4(
+        reading=overlay(),
+        join=join_overlay(),
+        store=host_valued,
+        surfaces=surfaces(),
+        sink=sink,
+        appender=ledger,
+        consumer=OverlayKeyConsumer(),
+        log=_drop,
+        clock=ticking(),
+        host=HOST,
+    )
+    result = node.handle(ModelJoinJ4Command(correlation_id=CORRELATION, write=True))
+    assert result.verdict is not EnumReadingVerdict.WORKING
+    assert ledger.lines == []
+    assert result.row is None
+    assert all(e.phase != "success" for e in sink.events)
+
+
+def test_golden_a_recursive_code_glob_reaches_root_level_and_nested_modules(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "root.py").write_text("x = 1\n", encoding="utf-8")
+    (tmp_path / "a" / "b").mkdir(parents=True)
+    (tmp_path / "a" / "mid.py").write_text("x = 1\n", encoding="utf-8")
+    (tmp_path / "a" / "b" / "deep.py").write_text("x = 1\n", encoding="utf-8")
+    found = LocalExposureSurfaces().paths(str(tmp_path / "**" / "*.py"))
+    assert {Path(p).name for p in found} == {"root.py", "mid.py", "deep.py"}
+
+
+def test_error_a_surface_longer_than_the_limit_is_not_a_clean_scan() -> None:
+    long_log = "x" * 5000 + "\n"
+    run = Run(test_surfaces=surfaces(**{LOG_FILE: long_log}))
+    assert run.result.verdict is EnumReadingVerdict.NOT_WORKING
+    assert run.result.scan is not None
+    assert LOG_FILE in run.result.scan.unreadable
 
 
 def test_error_an_overlay_without_a_key_is_refused_naming_it() -> None:

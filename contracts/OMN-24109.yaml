@@ -1,0 +1,86 @@
+schema_version: 1.0.0
+ticket_id: OMN-24109
+title: The lab fill's launcher judges its own outcome from a node in the main code store, so a cut completion message no longer fails a finished run
+summary: Moves the lab-fill outcome judgement of the morning-workflows tick into omnimarket as a pure compute node (node_lab_fill_fire_outcome_compute) and an effect entry (node_lab_fill_launcher_effect), with OMN-22431's rule that a cut completion notification is not a failed fire when the fire's own written result file exists. The deletion half is a draft pull request in the frozen repository; the live fire on the Mac is pending.
+is_seam_ticket: true
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-labfill-launcher-move
+    statement: The verdict a lab-fill fire receives is computed by omnimarket, from the fire's written result file first, with every setting in an overlay.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: a cut completion message with a written, non-empty result file is judged completed and a cut message with no result file is judged degraded -- falsifier: uv run pytest tests/nodes/node_lab_fill_fire_outcome_compute -q -k cut_notification fails if either verdict flips'
+      - id: AC2
+        statement: 'AC2: every other verdict the old script gave (absent file, refused run, idle, blind, invalid file, undelivered alert, missing friction row) is returned unchanged by the new node on the same input -- falsifier: uv run pytest tests/nodes/node_lab_fill_fire_outcome_compute -q -k parity fails if any verdict differs from the recorded old one'
+      - id: AC3
+        statement: 'AC3: the node has a golden chain test and an error chain test and every setting comes from its overlay -- falsifier: uv run pytest tests/nodes/node_lab_fill_fire_outcome_compute -q -k "golden_chain or error_chain or overlay" fails when a setting is hard-coded or a chain does not complete'
+      - id: AC4
+        statement: 'AC4: integrated: one lab-fill fire on the Mac through the moved code exits 0 with its result file and a receipt naming the new entry point -- falsifier: python3 -c over fire-receipts.jsonl reading the newest lab-fill receipt after install, exits non-zero unless phase is completed, exit is 0 and result_channel is read'
+evidence_requirements:
+  - kind: tests
+    description: The compute node's tests and the launcher's tests run at the evaluated revision.
+    command: uv run pytest tests/nodes/node_lab_fill_fire_outcome_compute tests/nodes/node_lab_fill_launcher_effect -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn24109-ac1
+    description: A cut notification with a written result file is completed; the same fire with no file is degraded (the failing control).
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_lab_fill_fire_outcome_compute -q -k cut_notification
+        cwd: .
+  - id: dod-omn24109-ac2
+    description: The recorded old verdicts, one row per input, are returned unchanged.
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_lab_fill_fire_outcome_compute -q -k parity
+        cwd: .
+  - id: dod-omn24109-ac3
+    description: Golden and error chains run, the handler spells none of the policy's values, and the launcher's overlay refuses a missing key.
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_lab_fill_fire_outcome_compute tests/nodes/node_lab_fill_launcher_effect -q -k "golden_chain or error_chain or overlay or no_hard_coded"
+        cwd: .
+  - id: dod-omn24109-seams
+    description: The result file, the published latest file and the one line the tick reads each have a test that fails when either side changes shape. This is the part of AC4 that hosted CI can run; the live fire on the Mac is the unbound local_done_gate item below.
+    source: manual
+    binds_ac: [AC4]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_lab_fill_launcher_effect -q -k seam
+        cwd: .
+  - id: dod-omn24109-live-receipt
+    description: The orchestrator installs the branch on the Mac and one lab-fill fire runs through the moved code; the newest lab-fill receipt after the install must read completed, exit 0, result_channel read. Pending until that fire.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: >-
+          python3 -c 'import json, os; rows = [json.loads(l) for l in open(os.path.join(os.environ["OMNI_HOME"], ".onex_state/morning-workflows/fire-receipts.jsonl")) if l.strip()]; last = [r for r in rows if r.get("workflow") == "lab-fill" and r.get("phase") in ("completed", "degraded", "failed", "result_invalid", "timeout")][-1]; assert (last["phase"], last["exit"], last["result_channel"]) == ("completed", 0, "read"), last'
+        cwd: .
+  - id: dod-omn24109-deploy-source
+    description: The hosted runner reads the launcher entry at the evaluated repository revision and checks that it refuses with the typed line when its overlay is unreadable. This source readback does not claim a host install.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: |-
+          bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_lab_fill_launcher_effect/runtime_lab_fill_launcher.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "lab-fill-launcher: REFUSED"'
+        cwd: .
+  - id: dod-omn24109-integration-proof
+    description: The pushed head ran the compute node's and the launcher's tests on a lab host through the bus and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: >-
+          uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane labfill-move-6745 -- uv run --frozen pytest tests/nodes/node_lab_fill_fire_outcome_compute tests/nodes/node_lab_fill_launcher_effect -q
+        cwd: .

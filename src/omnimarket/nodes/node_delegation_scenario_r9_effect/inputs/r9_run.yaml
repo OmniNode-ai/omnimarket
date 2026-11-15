@@ -1,0 +1,63 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Scenario R9 inputs (OMN-24554): the committed malformed and injected requests (cases E1 to E6 and E11 of the C11 corpus, moved here from the
+# old hosted probe), each sent as a raw payload on the delegate command topic. The runtime must answer each with a failed terminal carrying
+# refusal_failure_code, marked retryable as `retryable` says, whose failure_reason names `names_field` where one is declared (E4's reason is
+# redacted by the runtime, so it names none). A case's payload is exactly what is published.
+refusal_failure_code: ONEX_CORE_345_ENVELOPE_VALIDATION_FAILED
+retryable: false
+wait_timeout_seconds: 60
+cases:
+- id: E1
+  defect: missing prompt
+  payload:
+    task_type: test
+    source: external-client
+    max_tokens: 32
+  names_field: prompt
+- id: E2
+  defect: missing payload
+  payload: {}
+  names_field: prompt
+- id: E3
+  defect: prompt is an integer
+  payload:
+    prompt: 12345
+    task_type: test
+    source: external-client
+    max_tokens: 32
+  names_field: prompt
+- id: E4
+  defect: wrong types on prompt, task_type and max_tokens
+  payload:
+    prompt:
+    - a
+    task_type: 7
+    source: external-client
+    max_tokens: many
+  names_field: null
+- id: E5
+  defect: extra field exec
+  payload:
+    prompt: 'Reply with the single word: alive.'
+    task_type: test
+    source: external-client
+    max_tokens: 32
+    exec: rm -rf /
+  names_field: exec
+- id: E6
+  defect: task_type shell_exec
+  payload:
+    prompt: 'Reply with the single word: alive.'
+    task_type: shell_exec
+    source: external-client
+    max_tokens: 32
+  names_field: task_type
+- id: E11
+  defect: empty prompt
+  payload:
+    prompt: ''
+    task_type: test
+    source: external-client
+    max_tokens: 32
+  names_field: prompt

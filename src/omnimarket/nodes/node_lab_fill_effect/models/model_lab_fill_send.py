@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from omnimarket.handlers.rules_lab_fill_closer import CLOSER_EXEMPT_KINDS
 
@@ -25,8 +25,10 @@ class ModelLabFillSendRequest(BaseModel):
 
     model_config = _FROZEN
 
-    # A ModelLabFillLaneRenderRequest (owned by node_lab_fill_plan_compute) or its dict form; the send handler validates it.
-    render: BaseModel | dict[str, Any]
+    # A ModelLabFillLaneRenderRequest (owned by node_lab_fill_plan_compute) held as its dict form; the send handler
+    # validates it. A model is dumped on the way in, and JSON text parses to the dict (a ``BaseModel | dict`` union
+    # read a JSON object as an empty BaseModel, so the render request lost its item and config).
+    render: dict[str, Any]
     brief_dir: str
     ledger_path: str
     approved_work_path: str = ""
@@ -38,3 +40,8 @@ class ModelLabFillSendRequest(BaseModel):
     fact_hosts: tuple[str, ...] = DEFAULT_FACT_HOSTS
     needs_hosts: tuple[str, ...] = ()
     host_reach: Mapping[str, tuple[str, ...]] = Field(default_factory=dict)
+
+    @field_validator("render", mode="before")
+    @classmethod
+    def _render_as_dict(cls, value: object) -> object:
+        return value.model_dump() if isinstance(value, BaseModel) else value

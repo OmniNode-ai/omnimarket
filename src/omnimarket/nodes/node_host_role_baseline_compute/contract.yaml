@@ -1,0 +1,83 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_host_role_baseline_compute
+contract_name: node_host_role_baseline_compute
+node_name: node_host_role_baseline_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  OMN-24263. Every lab host declares one role in the host table (lab-worker, gpu-model, runtime-host, operator-mac), and
+  what a host should carry is written once per role. This pure node derives one host's expected set (systemd units and
+  clones, as the ModelHostProfile the host drift check takes) from the baseline every host carries plus its role's own.
+  Two hosts of one role get the same units and clones; a host with no declared role, a role with no baseline and a role
+  clone that disagrees with a base clone at the same path are refused with a typed reason. The baselines are the node's
+  overlay in the overlays repository; nothing is defaulted in code.
+
+input_model: omnimarket.nodes.node_host_role_baseline_compute.models.model_host_role_baseline.ModelHostRoleBaselineRequest
+output_model: omnimarket.nodes.node_host_role_baseline_compute.models.model_host_role_baseline.ModelHostRoleBaselineResult
+
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: HandlerHostRoleBaseline
+        module: omnimarket.nodes.node_host_role_baseline_compute.handlers.handler_host_role_baseline
+      event_model:
+        name: ModelHostRoleBaselineRequest
+        module: omnimarket.nodes.node_host_role_baseline_compute.models.model_host_role_baseline
+
+handler:
+  module: omnimarket.nodes.node_host_role_baseline_compute.handlers.handler_host_role_baseline
+  class: HandlerHostRoleBaseline
+  input_model: omnimarket.nodes.node_host_role_baseline_compute.models.model_host_role_baseline.ModelHostRoleBaselineRequest
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+  runtime_profiles: [effects]
+
+terminal_event: onex.evt.omnimarket.host-role-baseline-derived.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.host-role-baseline-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.host-role-baseline-derived.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.host-role-baseline-requested.v1
+
+# The node starts nothing: its caller (the host check runtime) reads the answer and hands the profile to the host drift check.
+externally_consumed_topics:
+  - onex.evt.omnimarket.host-role-baseline-derived.v1
+
+# The overlay may name an optional event_bus key (OMN-24410) that `onex run-node` reads to reach this node.
+overlay:
+  node: node_host_role_baseline_compute
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.host-role-baseline-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.host-role-baseline-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-role-baseline-derived.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-role-baseline-derived.v1, operation: DESCRIBE}
+
+dod_evidence:
+  - test: tests/nodes/node_host_role_baseline_compute/test_host_role_baseline.py
+    description: "Two hosts of one role derive the same units and clones, a host of another role differs only by the role entries, and a host with no role or no baseline is refused"
+
+metadata:
+  ticket: OMN-24263
+  transport_type: kafka
+  description: "Pure compute node: a host's expected set from its declared role"
+  author: "OmniNode Platform Team"
+  created: "2026-11-13"
+  tags: ["compute", "host-declaration", "deterministic"]

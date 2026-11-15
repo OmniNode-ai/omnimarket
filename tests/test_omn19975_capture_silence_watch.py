@@ -23,6 +23,7 @@ from omnibase_core.protocols.runtime.protocol_local_runtime_bus import (
 )
 from pydantic import SecretStr
 
+from omnimarket.models.bus_binding.model_node_broker import ModelNodeBroker
 from omnimarket.models.liveness.model_automation_liveness import (
     ModelAutomationHeartbeat,
 )
@@ -648,12 +649,9 @@ def test_cli_failure_exits_three(
         ModelCaptureWatchEvaluation.model_validate_json(captured.out)
 
 
-@pytest.mark.parametrize(
-    "broker_variable", ["KAFKA_BROKERS", "KAFKA_BOOTSTRAP_SERVERS"]
-)
 @pytest.mark.asyncio
-async def test_cli_kafka_publishes_immediately_with_auth_and_namespace(
-    monkeypatch: pytest.MonkeyPatch, broker_variable: str
+async def test_cli_kafka_publishes_immediately_over_the_declared_broker_with_namespace(
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     factory = MagicMock()
     producer = factory.return_value
@@ -662,21 +660,23 @@ async def test_cli_kafka_publishes_immediately_with_auth_and_namespace(
     producer.stop = AsyncMock()
     kafka_module = ModuleType("aiokafka")
     monkeypatch.setattr(kafka_module, "AIOKafkaProducer", factory, raising=False)
-    auth_module = ModuleType("omnibase_infra.event_bus.kafka_auth")
-    auth = MagicMock(return_value={"security_protocol": "SASL_SSL"})
-    monkeypatch.setattr(
-        auth_module, "build_aiokafka_auth_kwargs_from_env", auth, raising=False
-    )
     monkeypatch.setitem(sys.modules, "aiokafka", kafka_module)
-    monkeypatch.setitem(sys.modules, "omnibase_infra.event_bus.kafka_auth", auth_module)
-    monkeypatch.delenv("KAFKA_BROKERS", raising=False)
-    monkeypatch.delenv("KAFKA_BOOTSTRAP_SERVERS", raising=False)
-    monkeypatch.setenv(broker_variable, "test-broker:9092")
+    monkeypatch.setenv("KAFKA_BROKERS", "env-broker:9092")
+    monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", "env-broker:9092")
+    monkeypatch.setattr(
+        cli,
+        "resolve_dialable_broker",
+        lambda _node: ModelNodeBroker(
+            kind="kafka",
+            lane="dev",
+            bootstrap_servers="test-broker:9092",
+            security_protocol="SASL_SSL",
+        ),
+    )
     monkeypatch.setattr(cli, "apply_topic_namespace", lambda topic: f"test.{topic}")
     topic = yaml.safe_load(CONTRACT_PATH.read_text())["terminal_event"]
     payload = b'{"test": true}'
     await cli._publish(topic, payload, dry_run=False)
-    auth.assert_called_once_with()
     factory.assert_called_once_with(
         bootstrap_servers="test-broker:9092", security_protocol="SASL_SSL"
     )
