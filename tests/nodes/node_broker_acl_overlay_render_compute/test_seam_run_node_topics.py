@@ -6,12 +6,17 @@ Seam: the sender `onex run-node` (omnibase_core.cli.cli_run_node._resolve_node_t
 event_bus.subscribe_topics[0] and reads the contract's terminal_event) <-> the caller rows HandlerBrokerAclDerive
 derives over load_topic_uses (a calls role holds WRITE+DESCRIBE on the command use and READ+DESCRIBE on the terminal
 use). The test fails when either side changes shape: a drifted sender topic or a drifted contract use stops matching,
-and a node whose contract declares no terminal_event is refused by both sides.
+a sender refusal or crash is reported instead of skipped, and a node whose contract declares no terminal_event is
+refused by both sides.
 Exemplar followed: test_derive_callers.py (fixture contracts, the same request builder).
 """
 
 from __future__ import annotations
 
+from collections import Counter
+from collections.abc import Callable
+from importlib import resources
+from importlib.metadata import entry_points
 from pathlib import Path
 
 import pytest
@@ -91,33 +96,73 @@ def _mine(result) -> set[tuple[str, str, str]]:
 
 
 def _sender_refusal(node: str) -> str | None:
-    """The sender's refusal text for node; None when it resolves or cannot be resolved for another reason."""
+    """The sender's refusal text for node (its entry point name); None when it resolves (anything else propagates)."""
     try:
         cli_run_node._resolve_node_topics(node)
     except ModelOnexError as error:
         return str(error)
-    except Exception:
-        return None
     return None
 
 
-def test_the_sender_topics_match_the_caller_rows_for_every_packaged_node() -> None:
-    """The command topic run-node sends to and the terminal it reads are the command and terminal uses the derivation reads."""
+def _entry_names() -> dict[str, str]:
+    """Contract name -> the entry point name `onex run-node` takes, for every packaged contract with an entry point.
+
+    The sender resolves the node's directory name through the onex.nodes entry points while a calls role and the
+    derivation use the contract's own name. A contract whose directory has no entry point, or whose entry point name two
+    distributions register (the sender refuses it as a duplicate), cannot be sent to at all and is left out by this
+    explicit membership test, never by swallowing a failure.
+    """
+    counts = Counter(ep.name for ep in entry_points(group="onex.nodes"))
+    registered = {name for name, count in counts.items() if count == 1}
+    root = Path(str(resources.files("omnimarket.nodes")))
+    names: dict[str, str] = {}
+    for path in sorted(root.rglob("contract.yaml")):
+        loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
+        name = loaded.get("name") if isinstance(loaded, dict) else None
+        if isinstance(name, str) and path.parent.name in registered:
+            names[name] = path.parent.name
+    return names
+
+
+def _command_and_terminal_by_node() -> dict[str, dict[str, str]]:
+    """The command use topic and the terminal use topic of every callable packaged node, keyed by entry point name."""
+    entries = _entry_names()
     by_node: dict[str, dict[str, str]] = {}
     for use in load_topic_uses():
-        row = by_node.setdefault(use.node, {})
+        if use.node not in entries:
+            continue
+        row = by_node.setdefault(entries[use.node], {})
         if use.command:
             row["command"] = use.topic
         if use.terminal:
             row["terminal"] = use.topic
+    return by_node
+
+
+def _sender_mismatches(
+    by_node: dict[str, dict[str, str]],
+    resolve: Callable[[str], tuple[Path, str, str, bool]],
+) -> tuple[int, list[str]]:
+    """Run the sender's resolver over the command and terminal uses of every node that has both.
+
+    Returns the number of nodes the sender resolved and a mismatch for every node whose topics
+    drift from its uses, that the sender refused (ModelOnexError), or whose resolution raised
+    anything else -- a resolver failure is reported, never swallowed.
+    """
     compared = 0
     mismatches: list[str] = []
     for node, row in by_node.items():
         if "command" not in row or "terminal" not in row:
             continue
         try:
-            resolved = cli_run_node._resolve_node_topics(node)
-        except Exception:
+            resolved = resolve(node)
+        except ModelOnexError as error:
+            mismatches.append(f"{node}: the sender refused the node: {error}")
+            continue
+        except Exception as error:
+            mismatches.append(
+                f"{node}: the sender resolution raised {type(error).__name__}: {error}"
+            )
             continue
         compared += 1
         if resolved[1] != row["command"] or resolved[2] != row["terminal"]:
@@ -125,6 +170,14 @@ def test_the_sender_topics_match_the_caller_rows_for_every_packaged_node() -> No
                 f"{node}: sender command {resolved[1]!r} != command use {row['command']!r}, "
                 f"sender terminal {resolved[2]!r} != terminal use {row['terminal']!r}"
             )
+    return compared, mismatches
+
+
+def test_the_sender_topics_match_the_caller_rows_for_every_packaged_node() -> None:
+    """The command topic run-node sends to and the terminal it reads are the command and terminal uses the derivation reads."""
+    compared, mismatches = _sender_mismatches(
+        _command_and_terminal_by_node(), cli_run_node._resolve_node_topics
+    )
     assert compared >= 100, (
         f"only {compared} nodes compared; an empty loop must not pass"
     )
@@ -148,27 +201,41 @@ def test_a_caller_of_a_packaged_node_holds_the_rows_on_the_sender_topics() -> No
     )
 
 
-def test_a_drifted_sender_topic_is_seen_by_the_seam_check(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Failing control: a sender command topic that drifts from the contract's command use no longer matches the caller's rows."""
-    (path, cmd, term, inject) = cli_run_node._resolve_node_topics(NODE)
-    monkeypatch.setattr(
-        cli_run_node,
-        "_resolve_node_topics",
-        lambda _name: (path, "onex.cmd.omnimarket.seam-drift.v1", term, inject),
+def test_a_drifted_sender_topic_is_seen_by_the_seam_check() -> None:
+    """Failing control: a sender command topic that drifts from the contract's command use is reported as a mismatch."""
+    real = cli_run_node._resolve_node_topics
+
+    def drifted(name: str) -> tuple[Path, str, str, bool]:
+        (path, cmd, term, inject) = real(name)
+        if name == NODE:
+            cmd = "onex.cmd.omnimarket.seam-drift.v1"
+        return (path, cmd, term, inject)
+
+    (_compared, mismatches) = _sender_mismatches(
+        _command_and_terminal_by_node(), drifted
     )
-    sender_cmd = cli_run_node._resolve_node_topics(NODE)[1]
-    assert sender_cmd != cmd
-    result = _derive(None, (NODE,), NODE)
-    derived_cmds = {
-        r.name
-        for r in result.rows
-        if r.resource_type.value == "TOPIC" and r.operation.value == "WRITE"
-    }
-    assert derived_cmds == {cmd}
-    assert sender_cmd not in derived_cmds, (
-        "the seam check must fail when the sender drifts"
+    assert any(
+        message.startswith(f"{NODE}:") and "seam-drift" in message
+        for message in mismatches
+    ), "the seam check must fail when the sender drifts"
+
+
+def test_a_sender_refusal_is_seen_by_the_seam_check() -> None:
+    """Failing control: a sender that refuses to resolve a node (ModelOnexError) is reported, not swallowed."""
+    real = cli_run_node._resolve_node_topics
+
+    def refusing(name: str) -> tuple[Path, str, str, bool]:
+        if name == NODE:
+            raise ModelOnexError(
+                f"Node '{name}' does not declare terminal_event (seam refusal control)"
+            )
+        return real(name)
+
+    (_compared, mismatches) = _sender_mismatches(
+        _command_and_terminal_by_node(), refusing
+    )
+    assert any(message.startswith(f"{NODE}:") for message in mismatches), (
+        "the seam check must fail when the sender refuses a node"
     )
 
 
@@ -182,8 +249,10 @@ def test_a_caller_of_a_node_without_a_terminal_event_is_refused_like_the_sender(
     assert _CODES.CALLED_NODE_WITHOUT_TERMINAL in {f.code for f in result.findings}
     assert result.rows == ()
     uses = load_topic_uses()
+    entries = _entry_names()
     no_terminal = sorted(
-        {u.node for u in uses if u.command} - {u.node for u in uses if u.terminal}
+        {entries[u.node] for u in uses if u.command and u.node in entries}
+        - {entries[u.node] for u in uses if u.terminal and u.node in entries}
     )
     refusals = [_sender_refusal(node) for node in no_terminal]
     messages = [message for message in refusals if message is not None]

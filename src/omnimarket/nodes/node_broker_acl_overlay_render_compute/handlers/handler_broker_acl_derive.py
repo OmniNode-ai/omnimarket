@@ -188,6 +188,12 @@ class HandlerBrokerAclDerive:
             outside = [
                 topic for topic in commands if topic.split(".")[1:2] != [segment]
             ]
+            terminal_segment = config["derive_caller_terminal_segment"]
+            terminal_outside = [
+                topic
+                for topic in terminals
+                if topic.split(".")[1:2] != [terminal_segment]
+            ]
             if outside:
                 findings.append(
                     ModelBrokerAclFinding(
@@ -195,6 +201,14 @@ class HandlerBrokerAclDerive:
                         detail=f"{node}: {', '.join(outside)}",
                     )
                 )
+            if terminal_outside:
+                findings.append(
+                    ModelBrokerAclFinding(
+                        code=_CODES.CALLED_NODE_TERMINAL_NOT_AN_EVENT_TOPIC,
+                        detail=f"{node}: {', '.join(terminal_outside)}",
+                    )
+                )
+            if outside or terminal_outside:
                 continue
             for principal in sorted(callers_of[node]):
                 for topic in commands:
