@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  ai.omninode.host-retention - the Mac's lane results retention timer (OMN-22744). Once a day it runs
+  node_host_retention_effect for this host's `lane_results` classes: the remote-lane receipt store and the
+  lab-run runs folder. An entry goes only when nothing under it changed inside its keep window AND its lane has
+  a TERMINAL on the rolling work ledger that is itself old enough; the TERMINAL is read through the ledger rows
+  loader the overlay names, never from a ledger file. Every window, path and the loader command is a value of the
+  node's overlay row for this host (overlays repository, node_host_retention_effect), never of this file.
+  Replace __HOME__, __OMNI_HOME__, __OMNIMARKET_DIR__ (a clean omnimarket checkout on dev), __OVERLAY_ROOT__ (the
+  folder of the overlays clone that holds <node>/overlay.yaml) and __HOST_NAME__ (this host's row name) before
+  loading it. StartCalendarInterval fires a missed slot on wake. Each run prints one JSON result: every entry
+  removed with its bytes, every entry kept with its reason, the totals per class and the disk before and after.
+  The node's dry run flag, added to the arguments, lists without removing.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>ai.omninode.host-retention</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-c</string>
+    <string>exec env -u PYTHONPATH uv run --frozen --project "__OMNIMARKET_DIR__" python -m omnimarket.nodes.node_host_retention_effect run --host __HOST_NAME__ --class lane_results</string>
+  </array>
+
+  <key>StartCalendarInterval</key>
+  <dict><key>Hour</key><integer>4</integer><key>Minute</key><integer>50</integer></dict>
+
+  <key>StandardOutPath</key>
+  <string>__OMNI_HOME__/.onex_state/host-retention/run.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>__OMNI_HOME__/.onex_state/host-retention/run.err.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>__HOME__/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>HOME</key>
+    <string>__HOME__</string>
+    <key>OMNI_HOME</key>
+    <string>__OMNI_HOME__</string>
+    <key>ONEX_SKILL_OVERLAY_ROOTS</key>
+    <string>__OVERLAY_ROOT__</string>
+  </dict>
+
+  <key>Nice</key>
+  <integer>10</integer>
+
+  <key>KeepAlive</key>
+  <false/>
+
+  <key>RunAtLoad</key>
+  <false/>
+</dict>
+</plist>

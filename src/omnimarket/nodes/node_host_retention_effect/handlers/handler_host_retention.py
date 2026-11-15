@@ -44,10 +44,12 @@ from omnimarket.nodes.node_host_retention_effect.models.model_host_retention imp
     ModelHostRetentionOverlay,
     ModelHostRetentionRequest,
     ModelHostRetentionResult,
+    ModelLedgerLoader,
     ModelRetentionBounds,
     ModelRetentionItem,
     ModelRunnerGroup,
     ModelRunnerMount,
+    ModelTerminalGuard,
     ModelUvBucketBound,
     ModelUvCache,
 )
@@ -132,6 +134,38 @@ def _check_declared_path(path: str, leaf_names: tuple[str, ...], what: str) -> P
     return declared
 
 
+def _terminal_refusals(
+    age: ModelAgeClass, terminal: ModelTerminalGuard, bounds: ModelRetentionBounds
+) -> list[str]:
+    """Every refusal text for the terminal guard of one age class (empty when valid)."""
+    refusals: list[str] = []
+    loader = terminal.loader
+    allowed = bounds.terminal_loader
+    if terminal.terminal_keep_days < bounds.min_keep_days:
+        refusals.append(
+            f"{age.name}: terminal_keep_days {terminal.terminal_keep_days} is below the "
+            f"contract minimum {bounds.min_keep_days}"
+        )
+    if allowed is None:
+        refusals.append(f"{age.name}: the contract allows no terminal ledger loader")
+        return refusals
+    if tuple(loader.argv[-2:]) != ("-m", allowed.module):
+        refusals.append(
+            f"{age.name}: the terminal loader command must end with -m {allowed.module}"
+        )
+    if loader.window_hours > allowed.max_window_hours:
+        refusals.append(
+            f"{age.name}: terminal loader window_hours {loader.window_hours} is above the "
+            f"contract maximum {allowed.max_window_hours}"
+        )
+    if loader.window_hours <= terminal.terminal_keep_days * 24:
+        refusals.append(
+            f"{age.name}: terminal loader window_hours {loader.window_hours} cannot hold a "
+            f"TERMINAL {terminal.terminal_keep_days} days old"
+        )
+    return refusals
+
+
 def validate_declarations(
     row: ModelHostRetention, bounds: ModelRetentionBounds
 ) -> list[str]:
@@ -149,6 +183,9 @@ def validate_declarations(
                 f"{age.name}: keep_days {age.keep_days} is below the contract minimum "
                 f"{bounds.min_keep_days}"
             )
+        terminal = age.terminal
+        if terminal is not None:
+            refusals.extend(_terminal_refusals(age, terminal, bounds))
         if (
             age.kind == "pre_commit_store"
             and age.index_db is not None
@@ -221,6 +258,24 @@ def _held_by_mount(entry: Path, sources: set[str]) -> bool:
     return any(source == text or source.startswith(text + "/") for source in sources)
 
 
+def _terminal_reason(
+    age: ModelAgeClass, entry_name: str, closed: dict[str, float] | None, now: float
+) -> str | None:
+    """Why the terminal guard keeps the entry, or None when it may go (no guard: it may go)."""
+    terminal = age.terminal
+    if terminal is None:
+        return None
+    match = re.compile(terminal.lane_pattern).fullmatch(entry_name)
+    if match is None:
+        return "lane_unnamed"
+    lane = match.group("lane")
+    if closed is None or lane not in closed:
+        return "no_terminal"
+    if closed[lane] > now - terminal.terminal_keep_days * _DAY:
+        return "terminal_too_new"
+    return None
+
+
 def _age_class(
     age: ModelAgeClass,
     bounds: ModelRetentionBounds,
@@ -233,6 +288,7 @@ def _age_class(
     mounts: set[str],
     unit_refs: ProcessReferences,
     store: PreCommitStorePort,
+    closed: dict[str, float] | None,
     out: _Pass,
 ) -> None:
     root = Path(age.root)
@@ -271,6 +327,8 @@ def _age_class(
             reason = "mounted_by_container"
         elif any(lane in entry.name for lane in live):
             reason = "live_lane"
+        elif (terminal := _terminal_reason(age, entry.name, closed, now)) is not None:
+            reason = terminal
         else:
             scan = _scan(entry, device, cutoff)
             if scan.special:
@@ -567,7 +625,21 @@ class HandlerHostRetention:
                 and units is not None
             ):
                 unreadable = len(refs.unreadable)
+                closures: dict[ModelLedgerLoader, dict[str, float] | None] = {}
                 for age in age_classes:
+                    terminal = age.terminal
+                    closed: dict[str, float] | None = None
+                    if terminal is not None:
+                        # One loader run per distinct loader; a class whose closure is None
+                        # removes and lists nothing of its class, it records the error instead.
+                        loader = terminal.loader
+                        if loader not in closures:
+                            closures[loader] = ports.lane_closure.closed_lanes(loader)
+                        closed = closures[loader]
+                        if closed is None:
+                            out.begin(age.name)
+                            out.errors.append(f"{age.name}: ledger unreadable")
+                            continue
                     _age_class(
                         age,
                         bounds,
@@ -579,6 +651,7 @@ class HandlerHostRetention:
                         mounts=mounts,
                         unit_refs=ProcessReferences(blobs=units),
                         store=ports.pre_commit_store,
+                        closed=closed,
                         out=out,
                     )
         if runs("runner_work"):
