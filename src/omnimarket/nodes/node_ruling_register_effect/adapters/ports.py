@@ -6,9 +6,10 @@ The in-memory port returns the readings a fixture world holds; a row without a f
 reads UNREAD. The command port runs each row's read through its route -- a local host's
 argv directly, a remote host's argv through the route's prefix with the host's target
 substituted and the argv shlex-joined as one final argument. A read never raises: a host
-with no target, a command that did not run, timed out or exited with a code the row does
-not accept all read UNREAD, and UNREAD is never TRUE. Nothing about a host or a target is
-in this file; the route is.
+with no target, a command that did not run, timed out, wrote output that is not UTF-8,
+was handed an argv holding a NUL or exited with a code the row does not accept all read
+UNREAD, and UNREAD is never TRUE. Nothing about a host or a target is in this file; the
+route is.
 """
 
 from __future__ import annotations
@@ -98,7 +99,13 @@ class CommandRulingReadPort:
             argv = [*prefix, shlex.join(list(row.read.argv))]
         try:
             exit_code, stdout = self._runner(argv, self._route.timeout_seconds)
-        except (OSError, subprocess.TimeoutExpired) as exc:
+        except (
+            OSError,
+            subprocess.TimeoutExpired,
+            # ``text=True`` decoding output that is not UTF-8 raises
+            # UnicodeDecodeError, and a NUL in the argv raises ValueError.
+            ValueError,
+        ) as exc:
             return self._unread(row, detail=type(exc).__name__)
         if exit_code not in row.read.ok_exit_codes:
             return self._unread(

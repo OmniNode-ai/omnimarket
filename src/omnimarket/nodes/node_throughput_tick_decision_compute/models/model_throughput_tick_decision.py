@@ -526,6 +526,14 @@ class ModelThroughputTickRequest(BaseModel):
             "(and its `checked` entry)."
         ),
     )
+    ruling_register_unread: str = Field(
+        default="",
+        description=(
+            "Why the standing-rulings register could not be read (OMN-24478); a non-empty "
+            "value prints MISSING ruling-not-running:register naming the reason, so an "
+            "unread register is never silently skipped."
+        ),
+    )
 
 
 class ModelThroughputTickResult(BaseModel):

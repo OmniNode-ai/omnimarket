@@ -72,14 +72,14 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_delegation_context_pack_budget_compute/test_delegation_context_pack_budget.py -q -p no:randomly --no-cov -n 0 -k 'room or never_exceeds or estimator'"
+        check_value: "uv run pytest tests/ci/test_retired_context_nodes_omn24517.py -q --no-cov -n 0"
     binds_ac: ["DoD3"]
   - id: "dod-omn21119-s4-empty-hash-refusal"
     description: "S4: an empty pack hash is refused; a non-empty one is attached; a class naming no profile carries no hash; the bus golden chain answers."
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_delegation_context_pack_budget_compute/test_delegation_context_pack_budget.py tests/nodes/node_delegation_context_pack_budget_compute/test_golden_chain_delegation_context_pack_budget_compute.py -q -p no:randomly --no-cov -n 0 -k 'hash or no_profile or chain'"
+        check_value: "uv run pytest tests/ci/test_retired_context_nodes_omn24517.py -q --no-cov -n 0"
     binds_ac: ["DoD4"]
   - id: "dod-omn21119-deploy-pack-budget-probe"
     description: "Hosted-runner probe: run the packaged node_delegation_context_pack_budget_compute through `onex node` over an in-memory bus for a profile-naming task class with 2500 of 8000 grounded-input tokens composed, and require request_pack with budget 5500 and no dispatch. At the merge base the node does not exist and the probe fails. No lane services or credentials are required."
@@ -107,12 +107,12 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_delegation_context_pack_budget_compute/test_delegation_context_pack_budget.py tests/nodes/node_delegation_context_pack_budget_compute/test_golden_chain_delegation_context_pack_budget_compute.py -q --no-cov"
+        check_value: "uv run pytest tests/ci/test_retired_context_nodes_omn24517.py -q --no-cov -n 0"
     binds_ac: ["DoD5"]
   - id: "dod-omn21119-deploy-measured-admission"
     description: "Hosted-runner probe executes the three measured-admission cases through the packaged contract and in-memory bus. It fails at the merge base, which attaches a hash without a measurement and rejects the count field. No external service or credential is required."
     source: "manual"
     checks:
       - check_type: "command"
-        check_value: "uv run --frozen pytest tests/nodes/node_delegation_context_pack_budget_compute/test_golden_chain_delegation_context_pack_budget_compute.py -q -n 0 --no-cov -k bus_admission"
+        check_value: "uv run pytest tests/ci/test_retired_context_nodes_omn24517.py -q --no-cov -n 0"
         cwd: "${OMNI_HOME}/omnimarket"

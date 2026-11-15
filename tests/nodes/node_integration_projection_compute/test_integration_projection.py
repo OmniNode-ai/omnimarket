@@ -32,6 +32,10 @@ def reading(**fields: Any) -> dict[str, Any]:
         "target": "the dev runtime",
         "read_at": READ_AT,
         "origin": "integration-pass:orchestrator-31d9",
+        # A seen-running reading names its entry point and one line of its run (OMN-24535); the
+        # other states ride along with the cells set, where the model leaves them unchecked.
+        "running_path": "node_x_effect",
+        "running_line": "2026-11-14T19:30Z node_x_effect tick refused 3 rows",
     }
     return {**base, **fields}
 
