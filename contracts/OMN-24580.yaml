@@ -1,0 +1,73 @@
+schema_version: 1.0.0
+ticket_id: OMN-24580
+title: Pool refill command reads each host's pool with the overlay roots it needs
+summary: The pool refill command reads each host's pool by running the pool's status over ssh, and an ssh shell carries no ONEX_SKILL_OVERLAY_ROOTS, so the pool answered "overlay unreadable on this host" (exit 3) and the refill ended verdict=error on every host. The refill overlay gains an optional overlay_roots list (paths under the registry root the remote shell finds), the remote prelude exports it as ONEX_SKILL_OVERLAY_ROOTS, and the overlay is read from the overlay roots before the frozen internal config path. The overlay itself moves to the overlays repository in its own pull request of this ticket. A second cause sat behind the first - since omnimarket#6222 the pool's status --json answers the status view (tokens is a count), not the pool's entries the refill reads, so once the roots reach the shell the refill failed on the shape. The pool's status verb gains --entries (the pool's own result, as before) and the refill asks for it and refuses a view answer with a typed refusal. Not in this change - the adopt block, the token store and any pool write.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24580-remote-roots
+  statement: The pool refill command's remote shell carries the overlay roots declared in its overlay, and refuses a root that is absolute, climbs out of the registry root or holds characters a remote shell must not receive.
+  acceptance:
+  - id: AC1
+    statement: "AC1: the pool refill command exports the overlay roots, taken from a value in its overlay, in the shell it opens on each host before it reads the pool -- falsifier: pytest tests/nodes/node_claude_pool_refill_effect/test_claude_pool_refill_overlay_roots.py -q fails on the unchanged handler (the remote script has no roots export) and passes with the change"
+  - id: AC2
+    statement: "AC2: an overlay roots value that holds characters the remote shell must not receive is refused with the existing typed refusal and nothing is run -- falsifier: the same test file, test_unsafe_overlay_roots_are_refused, fails when the check is removed"
+  - id: AC3
+    statement: "AC3: the refill overlay is read from the overlays repository and its copy under the frozen internal repository's config is deleted -- falsifier: test ! -e config/onex/overlays/node_claude_pool_refill_effect/overlay.yaml in the frozen internal repository on its main branch"
+  - id: AC4
+    statement: "AC4: integrated: on h053 the command onex-claude-pool-refill --dry-run --host h053, run from the installed revision, prints a verdict that is not error and reports tokens=9 -- falsifier: before the change the same command prints verdict=error with overlay unreadable on this host (read 2026-11-15T03:24Z, rc=1)"
+evidence_requirements:
+- kind: tests
+  description: The refill node tests at the pushed head; the new overlay_roots tests fail against the handler before this change.
+  command: uv run pytest tests/nodes/node_claude_pool_refill_effect -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24580-ac1
+  description: 'AC1 and AC2: the overlay_roots tests pass with the change; against the handler before it the prelude test and the refusal tests fail.'
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_claude_pool_refill_effect/test_claude_pool_refill_overlay_roots.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24580-ac3
+  description: 'AC3 seam: the overlay is read from the overlay roots first; the overlays repository holds the deployed file and its own test in the overlays pull request of this ticket, and the internal copy is deleted in a move-and-delete pull request.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_claude_pool_refill_effect/test_claude_pool_refill.py -q -n 0 --no-cov -p no:cacheprovider -k overlay
+    cwd: .
+- id: dod-omn24580-ac4-seam
+  description: 'AC4 seam: the pool status --entries output (the pool result) is what the refill reads; a status view answer is refused with the typed refusal.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_claude_token_pool_effect/test_status_view_seam.py tests/nodes/node_claude_pool_refill_effect/test_claude_pool_refill_overlay_roots.py -q -n 0 --no-cov -p no:cacheprovider -k 'entries or status_view'
+    cwd: .
+- id: dod-omn24580-integration-proof
+  description: 'AC4 lab proxy: the refill node tests run on a lab host at the pushed head; the dry run on h053 from the installed revision is read in the pull request comment and is not claimed by this local check'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24580 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_claude_pool_refill_effect -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn24580-ac4-hosted-proxy
+  description: 'hosted proxy for AC4: the prelude test runs the remote script text under bash with no inherited roots and reads the roots the overlay declared.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_claude_pool_refill_effect/test_claude_pool_refill_overlay_roots.py -q -n 0 --no-cov -p no:cacheprovider -k prelude
+    cwd: .
