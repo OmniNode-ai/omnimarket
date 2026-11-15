@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime
 from enum import StrEnum
 from typing import Literal
@@ -149,6 +150,35 @@ class ModelTicketCloserResult(BaseModel):
     outcomes: tuple[ModelCloserTicketOutcome, ...]
     # Why the reading was unread when candidates_read is False; empty on a read run.
     unread_reason: str = ""
+    # The one-line report of the run, present on every run including a refused or unread one.
+    status_line: str = ""
+
+
+def closer_status_line(
+    *,
+    candidates_read: bool,
+    outcomes: Sequence[ModelCloserTicketOutcome],
+    unread_reason: str,
+) -> str:
+    """The one STATUS line one closer run publishes: what it read and how every outcome counts."""
+    counts = {
+        action: sum(1 for outcome in outcomes if outcome.action is action)
+        for action in (
+            EnumCloserAction.FLIPPED_DONE,
+            EnumCloserAction.HELD,
+            EnumCloserAction.VERIFY_NOT_RUN,
+            EnumCloserAction.WRITE_REFUSED,
+        )
+    }
+    unread = unread_reason[:160] if unread_reason else "none"
+    return (
+        "STATUS ticket-closer "
+        f"candidates_read={'true' if candidates_read else 'false'} "
+        f"examined={len(outcomes)} flipped={counts[EnumCloserAction.FLIPPED_DONE]} "
+        f"held={counts[EnumCloserAction.HELD]} "
+        f"verify_not_run={counts[EnumCloserAction.VERIFY_NOT_RUN]} "
+        f"write_refused={counts[EnumCloserAction.WRITE_REFUSED]} unread={unread}"
+    )
 
 
 __all__ = [
@@ -160,4 +190,5 @@ __all__ = [
     "ModelCloserWriteReceipt",
     "ModelTicketCloserResult",
     "ModelTicketCloserScheduleOverlay",
+    "closer_status_line",
 ]
