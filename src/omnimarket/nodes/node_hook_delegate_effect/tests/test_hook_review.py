@@ -110,7 +110,9 @@ def _cut_inside(tmp_path: Path, turn: str, cut_at: str) -> Path:
 
 def _prompt(transcript: Path, session: str = "s") -> ModelPromptDelegateRequest:
     return ModelPromptDelegateRequest(
-        prompt="TCP vs UDP?", session_id=session, transcript_path=str(transcript)
+        prompt="How do TCP and UDP differ?",
+        session_id=session,
+        transcript_path=str(transcript),
     )
 
 
@@ -138,7 +140,7 @@ def test_a_cut_inside_a_secret_never_slips_past_the_check(
     assert result.outcome is EnumPromptDelegateOutcome.ANSWERED
     ((argv),) = cli.calls
     assert secret not in argv[1]
-    assert "TCP vs UDP?" in argv[1]
+    assert "How do TCP and UDP differ?" in argv[1]
     assert "excerpt=withheld_sensitive" in result.log_line
 
 
@@ -165,7 +167,7 @@ def test_without_a_check_the_conversation_is_not_sent(tmp_path: Path) -> None:
     result = build_prompt_handler(cli).handle(_prompt(transcript))
     assert result.outcome is EnumPromptDelegateOutcome.ANSWERED
     assert "SECRET-VALUE" not in cli.calls[0][1]
-    assert "TCP vs UDP?" in cli.calls[0][1]
+    assert "How do TCP and UDP differ?" in cli.calls[0][1]
     assert "excerpt=withheld_unchecked" in result.log_line
 
 
@@ -289,7 +291,7 @@ def test_a_leftover_gateway_journal_does_not_stop_delegation(
     cli = _Cli()
     assert build_handler(cli).handle(_subagent("explain TCP")).answered
     prompt = build_prompt_handler(cli, sensitive=_gate).handle(
-        ModelPromptDelegateRequest(prompt="TCP vs UDP?", session_id="s")
+        ModelPromptDelegateRequest(prompt="How do TCP and UDP differ?", session_id="s")
     )
     assert prompt.outcome is EnumPromptDelegateOutcome.ANSWERED
     assert len(cli.calls) == 2

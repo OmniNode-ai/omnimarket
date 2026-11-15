@@ -67,7 +67,9 @@ def _home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _prompt(cli: _Cli) -> EnumPromptDelegateOutcome:
-    request = ModelPromptDelegateRequest(prompt="TCP vs UDP?", session_id="s")
+    request = ModelPromptDelegateRequest(
+        prompt="How do TCP and UDP differ?", session_id="s"
+    )
     return build_prompt_handler(cli, lambda _text: False).handle(request).outcome
 
 

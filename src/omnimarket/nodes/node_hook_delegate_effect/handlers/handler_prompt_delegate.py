@@ -51,6 +51,17 @@ SKIP_PREFIX = "@claude"
 #: How Claude Code writes a pasted image into the prompt text; the image itself
 #: is never in the hook's input, so a delegated model could only guess at it.
 _IMAGE = re.compile(r"\[Image #\d+\]")
+#: Words that approve or steer the session; the guards count an exact
+#: "YES <id>" only when the session itself sees it (seen 2026-11-15: two
+#: approvals and five "continue" were answered by a delegated model).
+_CONTROL = re.compile(
+    r"(?:yes|y|no|n|ok|okay|continue|cont|go|proceed|do it|stop|wait|retry|lgtm"
+    r"|approve|approved)\b",
+    re.IGNORECASE,
+)
+#: A prompt this short leans on the conversation ("fix all", "check and do").
+_SHORT_WORDS = 3
+
 #: How Claude Code opens a prompt the user did not type (read in this Mac's
 #: transcripts 2026-11-15): peer-session messages, subagent reports, task and
 #: system notifications, and the output of a local slash command.
@@ -111,6 +122,8 @@ def skip_reason(prompt: str) -> EnumPromptDelegateOutcome | None:
         return EnumPromptDelegateOutcome.SKIPPED
     if _IMAGE.search(text):
         return EnumPromptDelegateOutcome.HAS_IMAGE
+    if _CONTROL.match(text) or len(text.split()) <= _SHORT_WORDS:
+        return EnumPromptDelegateOutcome.CONTROL
     return None
 
 

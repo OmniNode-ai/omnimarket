@@ -126,21 +126,23 @@ def test_sensitive_conversation_is_never_sent_with_the_prompt(tmp_path: Path) ->
     transcript.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
     cli = _Cli(_doc(_ANSWER, "r-sens"))
     request = ModelPromptDelegateRequest(
-        prompt="TCP vs UDP?", session_id="ac33", transcript_path=str(transcript)
+        prompt="How do TCP and UDP differ?",
+        session_id="ac33",
+        transcript_path=str(transcript),
     )
     handler = build_prompt_handler(cli, sensitive=lambda text: "SECRET" in text)
     assert handler.handle(request).outcome is EnumPromptDelegateOutcome.ANSWERED
     ((argv, _),) = cli.calls
     assert "SECRET-VALUE" not in _task(argv)
     assert "now about TCP" not in _task(argv)  # the whole excerpt is withheld
-    assert "TCP vs UDP?" in _task(argv)
+    assert "How do TCP and UDP differ?" in _task(argv)
 
 
 def test_any_prompt_is_delegated_and_its_answer_blocks_claude() -> None:
-    """P1, S1: "hi" has no delegatable intent; it is delegated anyway, and the
+    """P1, S1: a greeting has no delegatable intent; it is delegated anyway, and the
     accepted answer blocks the prompt with the answer, model and run id."""
     cli = _Cli(_doc("Hello! How can I help?", "r-hi"))
-    result = _ask(cli, "hi")
+    result = _ask(cli, "hello there, how are you today?")
     assert result.outcome is EnumPromptDelegateOutcome.ANSWERED
     out = json.loads(result.hook_output)
     assert out["decision"] == "block"
@@ -190,7 +192,7 @@ def test_prose_that_merely_mentions_the_token_is_an_answer() -> None:
 
 
 def test_a_failed_or_timed_out_delegation_passes_to_claude() -> None:
-    result = _ask(_Cli(), "TCP vs UDP?")
+    result = _ask(_Cli(), "How do TCP and UDP differ?")
     assert result.outcome is EnumPromptDelegateOutcome.NOT_ANSWERED
     assert result.detail == "timed_out"
     assert result.hook_output == ""
@@ -232,7 +234,7 @@ def test_a_prompt_brings_its_own_bar_token_cap_and_time_limit() -> None:
     """L1, L2: the prompt's own bar answered both cases on the first attempt in
     22 s and 17 s (runs 6ec07c1f, 251f59de)."""
     cli = _Cli(_doc(_ANSWER, "r-bar"))
-    _ask(cli, "TCP vs UDP?", intent="implement", timeout_seconds=240)
+    _ask(cli, "How do TCP and UDP differ?", intent="implement", timeout_seconds=240)
     ((argv, limit),) = cli.calls
     criteria = [argv[i + 1] for i, a in enumerate(argv) if a == "--criteria"]
     assert tuple(criteria) == PROMPT_CRITERIA
@@ -244,7 +246,7 @@ def test_a_prompt_brings_its_own_bar_token_cap_and_time_limit() -> None:
 
 def test_a_shorter_hook_limit_wins() -> None:
     cli = _Cli(_doc(_ANSWER, "r-limit"))
-    _ask(cli, "TCP vs UDP?", timeout_seconds=5)
+    _ask(cli, "How do TCP and UDP differ?", timeout_seconds=5)
     assert cli.calls[0][1] == 5
 
 
@@ -288,6 +290,20 @@ def test_a_shorter_hook_limit_wins() -> None:
             {},
             EnumPromptDelegateOutcome.NOT_FROM_USER,
         ),
+        # Approvals and control words steer the session and short prompts lean on
+        # it (seen 2026-11-15: "continue" and "YES C1 C2 C3 C4 C5" answered by a
+        # delegated model, so the session never saw the approval).
+        ("YES C1 C2 C3 C4 C5", {}, EnumPromptDelegateOutcome.CONTROL),
+        (
+            "yes, go ahead with the plan you described",
+            {},
+            EnumPromptDelegateOutcome.CONTROL,
+        ),
+        ("continue", {}, EnumPromptDelegateOutcome.CONTROL),
+        ("Do it now please and report back", {}, EnumPromptDelegateOutcome.CONTROL),
+        ("stop", {}, EnumPromptDelegateOutcome.CONTROL),
+        ("fix all", {}, EnumPromptDelegateOutcome.CONTROL),
+        ("check and do", {}, EnumPromptDelegateOutcome.CONTROL),
     ],
 )
 def test_some_prompts_go_to_claude_without_delegating(
@@ -310,13 +326,13 @@ def test_claude_is_told_once_what_delegation_answered_while_blocked() -> None:
     cli = _Cli(
         _doc(_ANSWER, "r-1"), _doc(DECLINE_TOKEN, "r-2"), _doc(DECLINE_TOKEN, "r-3")
     )
-    _ask(cli, "TCP vs UDP?")
+    _ask(cli, "How do TCP and UDP differ?")
     first = _ask(cli, "now edit my file")
     assert first.outcome is EnumPromptDelegateOutcome.DECLINED
     out = json.loads(first.hook_output)
     assert out["hookSpecificOutput"]["hookEventName"] == "UserPromptSubmit"
     context = out["hookSpecificOutput"]["additionalContext"]
-    assert "TCP vs UDP?" in context
+    assert "How do TCP and UDP differ?" in context
     assert _ANSWER in context
     assert "r-1" in context
     assert "decision" not in out
@@ -327,7 +343,7 @@ def test_claude_is_told_once_what_delegation_answered_while_blocked() -> None:
 
 def test_the_same_run_is_kept_once_and_sessions_do_not_mix() -> None:
     cli = _Cli(_doc(_ANSWER, "r-same"), _doc(_ANSWER, "r-same"))
-    _ask(cli, "TCP vs UDP?")
+    _ask(cli, "How do TCP and UDP differ?")
     _ask(cli, "TCP vs UDP, again?")
     context = _ask(_Cli(), "edit my file").hook_output
     assert (
@@ -341,9 +357,9 @@ def test_the_history_given_to_claude_is_bounded() -> None:
     """P7: many long delegated answers never produce unbounded context."""
     cli = _Cli(*[_doc("x" * 5000, f"r-{i}") for i in range(10)])
     for i in range(10):
-        _ask(cli, f"question {i}")
+        _ask(cli, f"what is question number {i}?")
     out = json.loads(_ask(_Cli(), "now edit my file").hook_output)
     context = out["hookSpecificOutput"]["additionalContext"]
     assert 0 < len(context) <= HISTORY_CHARS
-    assert "question 9" in context  # the newest exchange is kept
-    assert "question 0" not in context
+    assert "question number 9" in context  # the newest exchange is kept
+    assert "question number 0" not in context

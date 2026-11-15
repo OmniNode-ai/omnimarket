@@ -26,6 +26,9 @@ class EnumPromptDelegateOutcome(StrEnum):
     #: Claude Code delivered something the user did not type (another session's
     #: message, a subagent's report, a task notification); it needs the session.
     NOT_FROM_USER = "not_from_user"
+    #: An approval, a control word ("continue", "YES C1"), or a prompt of three
+    #: words or fewer: it steers or leans on the session (operator 2026-11-15).
+    CONTROL = "control"
     #: The prompt hook's switch is off (~/.onex/delegation.json).
     PAUSED = "paused"
     #: The delegation ran and gave no answer; ``detail`` names the hook outcome.
