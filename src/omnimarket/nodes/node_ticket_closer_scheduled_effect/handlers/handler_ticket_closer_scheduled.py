@@ -13,6 +13,7 @@ reported and nothing is written. Nothing here names a cadence, a path or a host.
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
@@ -43,6 +44,7 @@ from omnimarket.models.ticket_closer import (
     ModelCloserWriteReceipt,
     ModelTicketCloserResult,
     ModelTicketCloserScheduleOverlay,
+    closer_status_line,
 )
 from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.handler_dod_closeout_sweep import (
     flip_decision,
@@ -60,6 +62,7 @@ from omnimarket.nodes.node_ticket_closer_scheduled_effect.handlers.closer_protoc
 
 SCHEDULE_OVERLAY_ID = "node_ticket_closer_scheduled_effect"
 SCHEDULE_OVERLAY_FILE_ENV = "ONEX_TICKET_CLOSER_SCHEDULE_OVERLAY"
+_LOG = logging.getLogger(__name__)
 
 
 class UnreadCloserCandidates:
@@ -193,15 +196,23 @@ class HandlerTicketCloserScheduled:
                     )
             except BoundProfileRefusedError as exc:
                 self._last_run = now
-                return ModelTicketCloserResult(
+                unread_reason = f"bound profile refused: {exc}"
+                result = ModelTicketCloserResult(
                     tick_id=str(request.tick_id),
                     computed_at=now,
                     candidates_read=False,
                     examined=0,
                     flipped=0,
                     outcomes=(),
-                    unread_reason=f"bound profile refused: {exc}",
+                    unread_reason=unread_reason,
+                    status_line=closer_status_line(
+                        candidates_read=False,
+                        outcomes=(),
+                        unread_reason=unread_reason,
+                    ),
                 )
+                _LOG.info("%s", result.status_line)
+                return result
             source, verifier, writer = (
                 self._bound.source,
                 self._bound.verifier,
@@ -211,19 +222,27 @@ class HandlerTicketCloserScheduled:
         self._last_run = now
         self._refusals.recovered()
         if candidates is None:
-            return ModelTicketCloserResult(
+            unread_reason = (
+                "reading_source is unread: no candidate source is bound"
+                if schedule.reading_source is EnumCloserReadingSource.UNREAD
+                else "the candidate source could not read its contracts, merges or pull requests"
+            )
+            result = ModelTicketCloserResult(
                 tick_id=str(request.tick_id),
                 computed_at=now,
                 candidates_read=False,
                 examined=0,
                 flipped=0,
                 outcomes=(),
-                unread_reason=(
-                    "reading_source is unread: no candidate source is bound"
-                    if schedule.reading_source is EnumCloserReadingSource.UNREAD
-                    else "the candidate source could not read its contracts, merges or pull requests"
+                unread_reason=unread_reason,
+                status_line=closer_status_line(
+                    candidates_read=False,
+                    outcomes=(),
+                    unread_reason=unread_reason,
                 ),
             )
+            _LOG.info("%s", result.status_line)
+            return result
         outcomes: list[ModelCloserTicketOutcome] = []
         for candidate in candidates[: schedule.max_candidates_per_run]:
             try:
@@ -313,7 +332,7 @@ class HandlerTicketCloserScheduled:
                         unmet=tuple(decision.unmet or ()),
                     )
                 )
-        return ModelTicketCloserResult(
+        result = ModelTicketCloserResult(
             tick_id=str(request.tick_id),
             computed_at=now,
             candidates_read=True,
@@ -324,4 +343,11 @@ class HandlerTicketCloserScheduled:
                 if outcome.action is EnumCloserAction.FLIPPED_DONE
             ),
             outcomes=tuple(outcomes),
+            status_line=closer_status_line(
+                candidates_read=True,
+                outcomes=outcomes,
+                unread_reason="",
+            ),
         )
+        _LOG.info("%s", result.status_line)
+        return result
