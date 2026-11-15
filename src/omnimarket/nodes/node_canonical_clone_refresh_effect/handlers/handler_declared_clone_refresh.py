@@ -20,6 +20,7 @@ and the caller exits non-zero.
 
 from __future__ import annotations
 
+import os
 import shlex
 import subprocess
 import time
@@ -102,16 +103,22 @@ class ProtocolCloneHostTransport(Protocol):
 class TransportSubprocess:
     """The deployment transport: this machine's own shell for the local host, ssh for the others.
 
-    ``local_host_name`` is a deployment fact (the table row that names this machine)."""
+    ``local_host_name`` is a deployment fact (the table row that names this machine). A local run
+    expands ``$OMNI_HOME/`` against the registry root the tick was given (``local_omni_home``),
+    never the job's own state directory."""
 
-    def __init__(self, local_host_name: str = "") -> None:
+    def __init__(self, local_host_name: str = "", local_omni_home: str = "") -> None:
         self._local = local_host_name
+        self._local_omni_home = local_omni_home
 
     def run(
         self, host: ModelLabHostRow, argv: Sequence[str], timeout_seconds: float
     ) -> ModelTransportResult:
+        env: dict[str, str] | None = None
         if host.local or (self._local and host.name == self._local):
             command = list(argv)
+            if self._local_omni_home:
+                env = {**os.environ, "OMNI_HOME": self._local_omni_home}
         else:
             command = [
                 "ssh",
@@ -129,6 +136,7 @@ class TransportSubprocess:
                 text=True,
                 timeout=timeout_seconds,
                 check=False,
+                env=env,
             )
         except (OSError, subprocess.SubprocessError) as exc:
             raise TransportUnreachableError(f"{type(exc).__name__}: {exc}") from exc

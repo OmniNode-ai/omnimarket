@@ -1,0 +1,56 @@
+schema_version: 1.0.0
+ticket_id: OMN-24590
+title: Declared clone refresh on h101 reads the real registry root
+summary: The declared-clone-refresh unit on h101 runs with its launchd state directory as OMNI_HOME and as the tick's --omni-home, so a clone path rooted at $OMNI_HOME in the lab_hosts row resolved under the state directory and the unit refused with path_missing. The unit now declares tick_omni_home so the tick is given the registry root, and the local transport expands $OMNI_HOME against that root. Remote hosts are unchanged and no path is written into any overlay.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24590-tick-reads-registry-root
+  statement: The declared clone refresh tick on a launchd host resolves a clone path rooted at $OMNI_HOME against the registry root, not the job's state directory.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the declared-clone-refresh unit declares tick_omni_home: registry_root, so the rendered job stands in its launchd state directory while the tick''s --omni-home is the registry root -- falsifier: pytest tests/nodes/node_host_installer_registry_units/test_declared_clone_refresh_unit.py -q -k registry_root fails on dev, where the tick is given the state directory'
+  - id: AC2
+    statement: 'AC2: failing control: a local clone read expands a path rooted at $OMNI_HOME against the registry root the tick was given, and with no registry root given the process environment is used and the path is missing -- falsifier: pytest tests/nodes/node_canonical_clone_refresh_effect/test_declared_clone_tick.py -q -k local_transport or without_local_omni_home fails if the transport ignores the root or inherits it wrongly'
+  - id: AC3
+    statement: 'AC3: error chain: the existing refusal tests for a missing path and a clone that cannot fast-forward still pass unchanged -- falsifier: pytest tests/nodes/node_canonical_clone_refresh_effect/test_declared_clone_tick.py -q -k error fails if either refusal stops being reported'
+  - id: AC4
+    statement: 'AC4: integrated: after the unit is reinstalled on h101 through onex-host-install-units from this branch, the unit''s last-run file on h101 reads exit_code 0 and both declared clones up_to_date or fast_forwarded, read from that file with its time -- falsifier: the last-run file still reads refused with path_missing for the knowledge base clone'
+evidence_requirements:
+- kind: tests
+  description: The declared clone tick tests (golden, error, local transport control) and the unit render test.
+  command: uv run pytest tests/nodes/node_canonical_clone_refresh_effect/test_declared_clone_tick.py tests/nodes/node_host_installer_registry_units/test_declared_clone_refresh_unit.py -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24590-tests
+  description: 'AC1 to AC3: the unit declares tick_omni_home and the local transport expands the registry root; against dev the new tests fail.'
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_canonical_clone_refresh_effect/test_declared_clone_tick.py tests/nodes/node_host_installer_registry_units/test_declared_clone_refresh_unit.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn24590-runtime-read
+  description: 'AC4 integrated: read on h101 after the unit is reinstalled from this branch through onex-host-install-units; the last-run file of the unit is read with its time.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: command
+    check_value: cat ~/.local/state/omni/declared-clone-refresh/last-run.json
+    cwd: .
+- id: dod-omn24590-integration-proof
+  description: 'Run the focused tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. It binds no acceptance criterion: the h101 reading (AC4) is read on that host after the reinstall.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24590 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_canonical_clone_refresh_effect/test_declared_clone_tick.py tests/nodes/node_host_installer_registry_units/test_declared_clone_refresh_unit.py -q -n 0 --no-cov
+    cwd: .

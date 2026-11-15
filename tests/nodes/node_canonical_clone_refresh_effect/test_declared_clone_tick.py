@@ -19,9 +19,11 @@ import pytest
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from pydantic import ValidationError
 
-from omnimarket.models.overlay_keys import ModelLabHostsTable
+from omnimarket.models.overlay_keys import ModelLabHostRow, ModelLabHostsTable
 from omnimarket.nodes.node_canonical_clone_refresh_effect.handlers.handler_declared_clone_refresh import (
+    HOST_SCRIPT,
     HandlerDeclaredCloneRefresh,
+    TransportSubprocess,
 )
 from omnimarket.nodes.node_canonical_clone_refresh_effect.models.model_declared_clone_tick import (
     ModelDeclaredCloneTickOverlay,
@@ -207,3 +209,55 @@ def test_overlay_model_validation() -> None:
             host_name_env="TICK_HOST",
             wait_seconds=0.0,
         )
+
+
+def _local_kb_host(registry: Path) -> ModelLabHostRow:
+    """A real clone at ``$OMNI_HOME/kb`` under the registry root, and this machine's row."""
+    clone = registry / "kb"
+    clone.mkdir(parents=True)
+    git(clone, "init", "--quiet", "-b", "main")
+    (clone / "f.txt").write_text("x\n", encoding="utf-8")
+    git(clone, "add", "f.txt")
+    git(clone, "commit", "--quiet", "-m", "x")
+    return ModelLabHostRow.model_validate(
+        {
+            "name": "h101",
+            "target": "h101.invalid",
+            "local": True,
+            "clones": [
+                {"repo": "internal/kb", "ref": "main", "path": "$OMNI_HOME/kb"},
+            ],
+        }
+    )
+
+
+def test_local_transport_expands_omni_home_from_the_registry_root_not_the_process_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    registry = tmp_path / "registry"
+    host = _local_kb_host(registry)
+    monkeypatch.setenv("OMNI_HOME", str(tmp_path / "state"))
+    transport = TransportSubprocess(
+        local_host_name=host.name, local_omni_home=str(registry)
+    )
+    done = transport.run(
+        host, ["sh", "-c", HOST_SCRIPT, "sh", "$OMNI_HOME/kb", "main"], 30
+    )
+    # the clone was found through the registry root: READ or a fetch refusal, never a missing path
+    assert "STATE=PATH_MISSING" not in done.stdout
+    assert "STATE=READ" in done.stdout or "STATE=FETCH_FAILED" in done.stdout
+
+
+def test_error_without_local_omni_home_the_process_env_is_used(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Failing control: with no local_omni_home the local run inherits the process environment,
+    so a clone path written `$OMNI_HOME/...` resolves against it and misses."""
+    registry = tmp_path / "registry"
+    host = _local_kb_host(registry)
+    monkeypatch.setenv("OMNI_HOME", str(tmp_path / "state"))
+    transport = TransportSubprocess(local_host_name=host.name)
+    done = transport.run(
+        host, ["sh", "-c", HOST_SCRIPT, "sh", "$OMNI_HOME/kb", "main"], 30
+    )
+    assert "STATE=PATH_MISSING" in done.stdout
