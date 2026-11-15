@@ -1,0 +1,55 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-24488"
+title: "Federation forwarder slice 1: the edge decision, the egress gate and the overlay model"
+summary: "Two pure compute nodes and one overlay model for edge E1 of the bus federation forwarder (one CLI run's in-memory bus to its tenant's topic on the dev lane, up only, once per run): node_federation_egress_gate_compute (what may be in a record, its key and its headers; duplicate member names refused on the raw bytes before model validation; the key bound to a field of the value; nothing transformed) and node_federation_edge_decision_compute (one decision per recording: single record, topic and class, authenticated identity against the binding, route, the ACL probe's age by the caller's time, the gate, the stamps), with the edge overlay model, its load refusals and a join test of the existing forwarder. The send path, the shared receipt reducer client and the running-runtime proof are slice steps S3 and S4 and are held on the shared lease-and-receipt reducer."
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+  - "topics"
+  - "public_api"
+requirements:
+  - id: "req-omn24488-edge-decision"
+    statement: |-
+      A record leaves an in-memory runtime bus for the dev lane only after a pure decision has refused or passed it by name, with the key and value bytes unchanged.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the egress gate node refuses a value carrying one member name twice at any depth (raw bytes, escapes decoded) before model validation, and a passing record's output bytes equal its input bytes -- falsifier: pytest tests/unit/nodes/node_federation_egress_gate_compute -q --no-cov with the duplicate-member scan removed turns the wire-byte tests red"
+      - id: "AC2"
+        statement: "AC2: the edge decision node refuses each named reason of the plan (single record, topic, lane, principal, route, probe freshness, key, headers, stamps) and reads no clock -- falsifier: pytest tests/unit/nodes/node_federation_edge_decision_compute -q --no-cov with the authenticated identity replaced by the overlay name turns the identity test red"
+      - id: "AC3"
+        statement: "AC3: the edge overlay loads the golden block and refuses each missing, unknown, reply, continuous, https, tenant-class, unbounded-pattern and shared-principal case -- falsifier: pytest tests/unit/nodes/node_federation_edge_decision_compute/test_edge_overlay.py -q --no-cov with a required key made optional turns its test red"
+      - id: "AC4"
+        statement: "AC4: integrated: one message published on a runtime's in-memory bus is read on dev Redpanda and its reply returns, on dev -- falsifier: a publish on the dev runtime on h201 and a read of the dev topic by its message id; with the receipt step unavailable the run exits non-zero and nothing is on the topic"
+evidence_requirements:
+  - kind: "tests"
+    description: "The gate, the decision and the overlay tests, the forwarder's join test, and the seam test written for step S3 and skipped with its reason."
+    command: "uv run --frozen pytest tests/unit/nodes/node_federation_egress_gate_compute tests/unit/nodes/node_federation_edge_decision_compute tests/unit/nodes/node_runtime_bus_forward_effect -q --no-cov -n 0 -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn24488-gate-and-decision"
+    description: "The gate, decision and overlay tests pass at the head. The failing controls are in the tests: the duplicate-member scan replaced by a last-wins and a first-wins parse lets the raw-byte fixtures pass the model and the key binding and carry the marker; the gate replaced by a pass-all lets the customer-content records through; the resolver replaced lets a mutated route pass; the overlay name compared in place of the authenticated identity passes a wrong identity."
+    source: "manual"
+    binds_ac: ["AC1", "AC2", "AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run --frozen pytest tests/unit/nodes/node_federation_egress_gate_compute tests/unit/nodes/node_federation_edge_decision_compute -q --no-cov -n 0 -p no:randomly"
+        cwd: "."
+  - id: "dod-omn24488-integrated"
+    description: "AC4 is bound here as the exemplar contracts bind an integrated criterion; its reading in the running dev runtime waits on the shared reducer's unit item kind (the send path is step S3) and on the operator's apply of the declared broker rows; it is not observed."
+    source: "manual"
+    binds_ac: ["AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run --frozen pytest tests/unit/nodes/node_federation_edge_decision_compute/test_seam_receipt_reducer.py -q --no-cov -n 0 -p no:randomly"
+        cwd: "."
+  - id: "dod-omn24488-integration-proof"
+    description: "The pushed head is run on a lab host through the lab work node before hand-off: the gate, decision and forwarder test directories. AC4 itself (one message from a runtime's in-memory bus read on dev Redpanda, reply back) is not observed: it waits for the shared reducer's unit item kind and the operator's apply of the declared broker rows."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane fed-build-6803 --kind test -- uv run --frozen pytest tests/unit/nodes/node_federation_egress_gate_compute tests/unit/nodes/node_federation_edge_decision_compute tests/unit/nodes/node_runtime_bus_forward_effect -q --no-cov -n 0"
+        cwd: "."

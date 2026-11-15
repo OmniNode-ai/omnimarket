@@ -246,6 +246,14 @@ def _parser() -> argparse.ArgumentParser:
     status.add_argument(
         "--json", action="store_true", help="the whole result as JSON (no token)"
     )
+    status.add_argument(
+        "--entries",
+        action="store_true",
+        help=(
+            "print this host's own pool entries (labels, fingerprints, marks) as the pool "
+            "holds them, with no marks-source view; with --json the whole pool result"
+        ),
+    )
     return parser
 
 
@@ -649,7 +657,7 @@ def main(
         except (NodeOverlayError, ValidationError, ValueError, OSError) as exc:
             sys.stderr.write(f"INDETERMINATE: {type(exc).__name__}: {exc}\n")
             return EXIT_EMPTY
-    if args.verb == "status" and handler is None:
+    if args.verb == "status" and handler is None and not args.entries:
         # A caller that hands in its own pool (a test, an embedding process) asked that pool, so the plain read below answers it.
         try:
             return _status(args)
