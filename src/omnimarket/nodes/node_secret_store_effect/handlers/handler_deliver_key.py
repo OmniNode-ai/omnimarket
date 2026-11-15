@@ -31,8 +31,12 @@ quoting -- is ``value_unsafe``. An ``OSError`` while writing is
 directory opened ``O_WRONLY|O_CREAT|O_EXCL`` mode 0600, written, fsynced,
 ``os.replace``d over the target, then chmodded to the declared mode. A file
 that already holds exactly the declared line is ``unchanged`` and is not
-rewritten. A delivery whose ``home_relative_path`` is absolute or contains
-``..`` is refused when the contract is loaded.
+rewritten, but the declared mode is enforced on every run: a file left at
+any other mode is chmodded to the declared one (detail names the
+correction), and an ``OSError`` while statting or chmodding is
+``write_failed``. A delivery whose ``home_relative_path`` is absolute or
+contains ``..``, or whose ``mode`` is zero or wider than 0600, is refused
+when the contract is loaded.
 
 The machine identity is read exactly as ``handler_generate_key`` reads it: the
 machine's own ``secret_store`` block first, then, with no block, the store
@@ -47,6 +51,7 @@ import logging
 import os
 import re
 import secrets
+import stat
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
@@ -111,8 +116,8 @@ def _load_contract(
 
     Raises:
         ValueError: the contract is not a mapping, a delivery entry is
-            malformed, or its ``home_relative_path`` is absolute or contains
-            ``..``.
+            malformed, its ``home_relative_path`` is absolute or contains
+            ``..``, or its ``mode`` is zero or has any bit outside 0600.
     """
     raw = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
     if not isinstance(raw, dict):
@@ -137,11 +142,17 @@ def _load_contract(
                 f"{contract_path}: env file delivery {name!r} names a path "
                 "outside the user's home"
             )
+        mode = int(str(spec["mode"]), 8)
+        if mode == 0 or mode & ~0o600:
+            raise ValueError(
+                f"{contract_path}: env file delivery {name!r} declares a mode "
+                "wider than 0600"
+            )
         declared[str(name)] = _DeclaredDelivery(
             key_id=str(spec["key_id"]),
             home_relative_path=relative.as_posix(),
             env_name=str(spec["env_name"]),
-            mode=int(str(spec["mode"]), 8),
+            mode=mode,
         )
     return declared, generated
 
@@ -283,11 +294,27 @@ class HandlerDeliverKeyToEnvFile:
         except OSError:
             existing = None
         if existing == content.encode("utf-8"):
+            try:
+                mode_now = stat.S_IMODE(os.stat(target).st_mode)
+                if mode_now != delivery.mode:
+                    os.chmod(target, delivery.mode)
+            except OSError as exc:
+                return result(
+                    EnumDeliverKeyOutcome.WRITE_FAILED,
+                    env_name=delivery.env_name,
+                    home_relative_path=delivery.home_relative_path,
+                    detail=type(exc).__name__,
+                )
             return result(
                 EnumDeliverKeyOutcome.UNCHANGED,
                 env_name=delivery.env_name,
                 home_relative_path=delivery.home_relative_path,
                 key_length=key_length,
+                detail=(
+                    "the file mode was corrected to the declared mode"
+                    if mode_now != delivery.mode
+                    else None
+                ),
             )
         tmp = target.parent / f".{target.name}.{os.getpid()}.{secrets.token_hex(8)}.tmp"
         try:

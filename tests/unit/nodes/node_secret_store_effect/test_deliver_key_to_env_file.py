@@ -201,6 +201,109 @@ async def test_a_second_delivery_is_unchanged_and_does_not_rewrite_the_file(
     _assert_value_absent(token, second, caplog.text)
 
 
+async def test_an_unchanged_file_left_at_a_wider_mode_is_corrected_to_the_declared_mode(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.DEBUG)
+    with running_fake_store() as (address, state):
+        token = secrets.token_urlsafe(_BYTES)
+        home = _host(tmp_path, address)
+        generated = await _generator(tmp_path, home, token).handle(
+            ModelGenerateKeyRequest(name=_ID)
+        )
+        assert generated.outcome is EnumSecretStoreOutcome.CREATED
+        target = home / _RELATIVE
+        target.write_text(f"{_ENV_NAME}={token}\n", encoding="utf-8")
+        target.chmod(0o644)
+        result = await _delivery_handler(tmp_path, home).handle(
+            ModelDeliverKeyRequest(name=_ID)
+        )
+    assert result.outcome is EnumDeliverKeyOutcome.UNCHANGED
+    assert result.detail == "the file mode was corrected to the declared mode"
+    assert target.read_text(encoding="utf-8") == f"{_ENV_NAME}={token}\n"
+    assert target.stat().st_mode & 0o777 == 0o600
+    assert state.secrets[("/shared/env", _STORED_KEY)] == token
+    _assert_value_absent(token, result, caplog.text)
+
+
+async def test_an_unchanged_file_at_the_declared_mode_stays_unchanged_with_no_detail(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.DEBUG)
+    with running_fake_store() as (address, state):
+        token = secrets.token_urlsafe(_BYTES)
+        home = _host(tmp_path, address)
+        generated = await _generator(tmp_path, home, token).handle(
+            ModelGenerateKeyRequest(name=_ID)
+        )
+        assert generated.outcome is EnumSecretStoreOutcome.CREATED
+        target = home / _RELATIVE
+        target.write_text(f"{_ENV_NAME}={token}\n", encoding="utf-8")
+        target.chmod(0o600)
+        result = await _delivery_handler(tmp_path, home).handle(
+            ModelDeliverKeyRequest(name=_ID)
+        )
+    assert result.outcome is EnumDeliverKeyOutcome.UNCHANGED
+    assert result.detail is None
+    assert target.stat().st_mode & 0o777 == 0o600
+    assert state.secrets[("/shared/env", _STORED_KEY)] == token
+    _assert_value_absent(token, result, caplog.text)
+
+
+async def test_a_file_at_a_wider_mode_with_a_stale_value_is_delivered_and_ends_at_the_declared_mode(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.DEBUG)
+    with running_fake_store() as (address, state):
+        token = secrets.token_urlsafe(_BYTES)
+        home = _host(tmp_path, address)
+        generated = await _generator(tmp_path, home, token).handle(
+            ModelGenerateKeyRequest(name=_ID)
+        )
+        assert generated.outcome is EnumSecretStoreOutcome.CREATED
+        target = home / _RELATIVE
+        target.write_text(f"{_ENV_NAME}=synthetic_stale_value\n", encoding="utf-8")
+        target.chmod(0o640)
+        result = await _delivery_handler(tmp_path, home).handle(
+            ModelDeliverKeyRequest(name=_ID)
+        )
+    assert result.outcome is EnumDeliverKeyOutcome.DELIVERED
+    assert target.read_text(encoding="utf-8") == f"{_ENV_NAME}={token}\n"
+    assert target.stat().st_mode & 0o777 == 0o600
+    assert state.secrets[("/shared/env", _STORED_KEY)] == token
+    _assert_value_absent(token, result, caplog.text)
+
+
+@pytest.mark.parametrize("breaking", ["stat", "chmod"])
+async def test_a_stat_or_chmod_failure_on_an_unchanged_file_is_write_failed_naming_the_class_only(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+    breaking: str,
+) -> None:
+    caplog.set_level(logging.DEBUG)
+    value = "synthetic_stored_value_for_the_mode_enforcement_check"
+    home = tmp_path / "home"
+    target = home / _RELATIVE
+    target.parent.mkdir(parents=True)
+    target.write_text(f"{_ENV_NAME}={value}\n", encoding="utf-8")
+    target.chmod(0o644)
+
+    def refuse(*_args: object, **_kwargs: object) -> None:
+        raise PermissionError("the mode check was refused")
+
+    monkeypatch.setattr(os, breaking, refuse)
+    result = await _delivery_handler(
+        tmp_path, home, store_handler=_StubStoreHandler(value)
+    ).handle(ModelDeliverKeyRequest(name=_ID))
+    monkeypatch.undo()
+    assert result.outcome is EnumDeliverKeyOutcome.WRITE_FAILED
+    assert result.detail == "PermissionError"
+    assert target.read_text(encoding="utf-8") == f"{_ENV_NAME}={value}\n"
+    assert target.stat().st_mode & 0o777 == 0o644
+    _assert_value_absent(value, result, caplog.text)
+
+
 async def test_a_store_value_replaced_since_is_delivered_again(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -340,5 +443,20 @@ async def test_a_path_outside_the_home_is_refused_at_contract_load(
     with running_fake_store() as (address, _state):
         home = _host(tmp_path, address)
         with pytest.raises(ValueError, match="names a path outside the user's home"):
+            _delivery_handler(tmp_path, home, contract_path=copy)
+    assert not (home / _RELATIVE).exists()
+
+
+@pytest.mark.parametrize("mode", ["0644", "0660", "0777", "0000"])
+async def test_a_mode_wider_than_0600_is_refused_at_contract_load(
+    tmp_path: Path, mode: str
+) -> None:
+    def set_mode(raw: dict[str, Any]) -> None:
+        raw["env_file_deliveries"][_ID]["mode"] = mode
+
+    copy = _contract_copy(tmp_path, set_mode)
+    with running_fake_store() as (address, _state):
+        home = _host(tmp_path, address)
+        with pytest.raises(ValueError, match="mode wider than 0600"):
             _delivery_handler(tmp_path, home, contract_path=copy)
     assert not (home / _RELATIVE).exists()

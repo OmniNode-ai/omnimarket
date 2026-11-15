@@ -5,14 +5,19 @@
 * golden: with the variable ``hmac_secret_env`` names unset, the entry signs with the key the overlay's
   ``signing_key_store`` names and publishes once — the failing control drives the same input with an overlay
   without the block and gets the old missing-key refusal, so the green is the store resolution's;
-* variable set wins: a set variable signs and the fake store records no request (the falsifier is the store's
-  own record, so an implementation that asks the store anyway fails);
+* variable set, verified (OMN-24611 verify_env_key): with the check on, a variable equal to the store key signs
+  and the store is asked once for the comparison; a variable that differs from the store key — the stale SHARED
+  key a lab host keeps in its environment — is a typed refusal naming both check values with nothing published,
+  and the failing control shows the same differing variable publishing under ``verify_env_key: false``, so the
+  green is the check's;
 * error: an unreachable store, a store that raises, a store without the key and an unconfigured store each
-  refuse with the store outcome named, publish nothing, and leave the key in no result, error or log;
+  refuse with the store outcome named, publish nothing, and leave the key in no result, error or log — with the
+  variable unset (the resolution path) and with it set (the verification path) alike;
 * leak: the reading model's repr, dump and JSON carry no part of the key — the control shows a detail string
   still passes through a dump, so the absence is the key field's exclusion and not a scrubbed dump;
 * seam: the example overlay's ``signing_key_store`` validates through the overlay model, a malformed block is
-  refused, and the contract's secret_dependencies still name the variable the overlay's ``hmac_secret_env`` names;
+  refused, a block without ``verify_env_key`` (now required) or with a non-bool one is refused, and the
+  contract's secret_dependencies still name the variable the overlay's ``hmac_secret_env`` names;
   the real ``build_handler`` wires the store reader from the block (a build that forgets the wiring refuses, so the
   golden's green is not an artifact of the hermetic wiring alone).
 
@@ -111,18 +116,21 @@ def _hermetic_build(
     key_check: FakeKeyCheckReader,
     store_overlay: ModelSecretStoreOverlay | None,
     onex_home: Path,
+    node_overlay: ModelBranchDeployCommandOverlay | None = None,
 ) -> Callable[..., HandlerBranchDeployCommand]:
     """The wiring of ``__main__.build_handler`` over the fake bus and store.
 
     ``store_overlay`` None makes the store unconfigured: the handler then reads
-    ``<onex_home>/config.yaml``, which the test keeps empty.
+    ``<onex_home>/config.yaml``, which the test keeps empty. ``node_overlay``
+    None builds the example overlay; a test passes its own to vary a block the
+    example cannot carry.
     """
 
     def _build(*, environ: Mapping[str, str]) -> HandlerBranchDeployCommand:
-        node_overlay = overlay()
+        resolved_overlay = node_overlay if node_overlay is not None else overlay()
         signing_key_reader: ProtocolSigningKey | None = None
-        if node_overlay.signing_key_store is not None:
-            store = node_overlay.signing_key_store
+        if resolved_overlay.signing_key_store is not None:
+            store = resolved_overlay.signing_key_store
             signing_key_reader = SigningKeyStoreReader(
                 store.folder,
                 store.key,
@@ -132,7 +140,7 @@ def _hermetic_build(
             )
         return HandlerBranchDeployCommand(
             event_bus=bus,
-            overlay=node_overlay,
+            overlay=resolved_overlay,
             environ=environ,
             key_check_reader=key_check,
             signing_key_reader=signing_key_reader,
@@ -218,13 +226,15 @@ def test_failing_control_without_the_store_block_the_entry_refuses(
     assert fake.asked == []
 
 
-def test_variable_set_wins_and_the_store_is_never_asked(
+def test_golden_env_key_equal_to_the_store_key_publishes_and_the_store_is_asked_once(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
-    monkeypatch.setenv(SIGNING_ENV, ENV_KEY)
+    """verify_env_key true and the variable equal to the store key: the command
+    signs under that key, publishes once, and the store is asked once to check it."""
+    monkeypatch.setenv(SIGNING_ENV, STORE_KEY)
     bus = FakeBus()
     fake = FakeSecretStore(STORE_KEY)
-    check = FakeKeyCheckReader("read", key_check_value(ENV_KEY))
+    check = FakeKeyCheckReader("read", key_check_value(STORE_KEY))
     store_block = overlay().signing_key_store
     assert store_block is not None
     monkeypatch.setattr(
@@ -242,11 +252,143 @@ def test_variable_set_wins_and_the_store_is_never_asked(
     assert len(bus.published) == 1
     payload = json.loads(bus.published[0][2])
     body = {k: v for k, v in payload.items() if k != "_signature"}
+    assert payload["_signature"] == _expected_signature(body, STORE_KEY)
+    assert fake.asked == [STORE_PATH]
+    blob = out.out + out.err
+    assert STORE_KEY not in blob
+    assert ENV_KEY not in blob
+
+
+def test_failing_control_verify_env_key_false_publishes_the_stale_env_key(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    """The same differing variable with ``verify_env_key: false`` publishes signed
+    under the environment key and the store is never asked — the old silent
+    behaviour the check exists to close."""
+    monkeypatch.setenv(SIGNING_ENV, ENV_KEY)
+    bus = FakeBus()
+    fake = FakeSecretStore(STORE_KEY)
+    check = FakeKeyCheckReader("read", key_check_value(ENV_KEY))
+    store_block = overlay().signing_key_store
+    assert store_block is not None
+    unverified = store_block.model_copy(update={"verify_env_key": False})
+    node_overlay = overlay().model_copy(update={"signing_key_store": unverified})
+    monkeypatch.setattr(
+        entry,
+        "build_handler",
+        _hermetic_build(
+            bus, fake, check, store_block.secret_store, tmp_path, node_overlay
+        ),
+    )
+
+    code = entry.main(["--input", request(mode="deploy").model_dump_json()])
+
+    assert code == 0
+    out = capsys.readouterr()
+    result = json.loads(out.out)
+    assert result["status"] == "published"
+    assert len(bus.published) == 1
+    payload = json.loads(bus.published[0][2])
+    body = {k: v for k, v in payload.items() if k != "_signature"}
     assert payload["_signature"] == _expected_signature(body, ENV_KEY)
     assert fake.asked == []
-    blob = out.out + out.err
+
+
+def test_error_env_key_that_differs_from_the_store_key_refuses(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    caplog: pytest.LogCaptureFixture,
+    tmp_path: Path,
+) -> None:
+    """A stale environment key under verify_env_key true is a typed refusal:
+    nothing published, both one-way check values named in the typed fields, and
+    no key text anywhere in the result or the logs."""
+    monkeypatch.setenv(SIGNING_ENV, ENV_KEY)
+    bus = FakeBus()
+    fake = FakeSecretStore(STORE_KEY)
+    check = FakeKeyCheckReader("read", key_check_value(STORE_KEY))
+    store_block = overlay().signing_key_store
+    assert store_block is not None
+    monkeypatch.setattr(
+        entry,
+        "build_handler",
+        _hermetic_build(bus, fake, check, store_block.secret_store, tmp_path),
+    )
+
+    code = entry.main(["--input", request(mode="deploy").model_dump_json()])
+
+    assert code == 1
+    out = capsys.readouterr()
+    result = json.loads(out.out)
+    assert result["status"] == "refused"
+    assert result["detail"] == (
+        "the signing key in the environment is not the dev signing key of the "
+        f"store (signer check {key_check_value(ENV_KEY)}, store check "
+        f"{key_check_value(STORE_KEY)}); nothing was published"
+    )
+    assert out.err == f"{result['detail']}\n"
+    assert bus.published == []
+    assert fake.asked == [STORE_PATH]
+    assert check.reads == 0
+    assert result["signer_key_check"] == key_check_value(ENV_KEY)
+    assert result["agent_key_check"] == key_check_value(STORE_KEY)
+    blob = out.out + out.err + caplog.text
     assert ENV_KEY not in blob
     assert STORE_KEY not in blob
+    assert SIGNING_KEY not in blob
+
+
+@pytest.mark.parametrize(
+    ("broken", "outcome"),
+    [
+        ("raising", "failed"),
+        ("missing", "not_found"),
+    ],
+)
+def test_error_env_key_set_and_the_store_does_not_return_the_dev_key_refuses(
+    broken: str,
+    outcome: str,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    caplog: pytest.LogCaptureFixture,
+    tmp_path: Path,
+) -> None:
+    """With the variable set and the check on, a store that raises or holds no key
+    refuses with the store outcome named and nothing published."""
+    monkeypatch.setenv(SIGNING_ENV, ENV_KEY)
+    fake = (
+        FakeSecretStore(None, error=RuntimeError("exploded"))
+        if broken == "raising"
+        else FakeSecretStore(None)
+    )
+    bus = FakeBus()
+    check = FakeKeyCheckReader("read", key_check_value(STORE_KEY))
+    store_block = overlay().signing_key_store
+    assert store_block is not None
+    monkeypatch.setattr(
+        entry,
+        "build_handler",
+        _hermetic_build(bus, fake, check, store_block.secret_store, tmp_path),
+    )
+
+    code = entry.main(["--input", request(mode="deploy").model_dump_json()])
+
+    assert code == 1
+    out = capsys.readouterr()
+    result = json.loads(out.out)
+    assert result["status"] == "refused"
+    assert result["detail"] == (
+        "the signing key variable is set but the secret store did not return "
+        f"the dev key to check it against ({outcome}); nothing was published"
+    )
+    assert out.err == f"{result['detail']}\n"
+    assert bus.published == []
+    assert fake.asked == [STORE_PATH]
+    assert result["signer_key_check"] == result["agent_key_check"] == ""
+    blob = out.out + out.err + caplog.text
+    assert STORE_KEY not in blob
+    assert ENV_KEY not in blob
+    assert SIGNING_KEY not in blob
 
 
 @pytest.mark.parametrize(
@@ -368,6 +510,38 @@ def test_seam_malformed_signing_key_store_is_refused(mutation: str, value: str) 
 
     with pytest.raises(ValidationError):
         ModelBranchDeployCommandOverlay.model_validate(document)
+
+
+def test_seam_signing_key_store_without_verify_env_key_is_refused() -> None:
+    """``verify_env_key`` is required: a block without it refuses the load like
+    every other absent overlay key, so an old block cannot silently keep the
+    environment-wins behaviour."""
+    document: dict[str, Any] = yaml.safe_load(
+        (NODE_DIR / "overlay.example.yaml").read_text()
+    )
+    del document["signing_key_store"]["verify_env_key"]
+
+    with pytest.raises(ValidationError):
+        ModelBranchDeployCommandOverlay.model_validate(document)
+
+
+def test_seam_a_non_bool_verify_env_key_is_refused() -> None:
+    """StrictBool: a string (or any non-bool) refuses, so ``verify_env_key: "true"``
+    cannot pass for the check."""
+    document: dict[str, Any] = yaml.safe_load(
+        (NODE_DIR / "overlay.example.yaml").read_text()
+    )
+    document["signing_key_store"]["verify_env_key"] = "true"
+
+    with pytest.raises(ValidationError):
+        ModelBranchDeployCommandOverlay.model_validate(document)
+
+
+def test_seam_the_example_overlay_carries_verify_env_key() -> None:
+    store = overlay().signing_key_store
+
+    assert store is not None
+    assert store.verify_env_key is True
 
 
 def test_seam_contract_secret_dependencies_still_name_the_variable() -> None:

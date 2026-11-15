@@ -134,6 +134,8 @@ generated_keys:
 # value of the generated_keys entry `key_id` names as one `<env_name>=<value>` line into the file
 # `home_relative_path` names under the user's home, mode `mode`, so the dev deploy agent's unit
 # reads this file through EnvironmentFile= and no person types or sees the value.
+# The mode is enforced on every run: a target left at any other mode is chmodded back to `mode`,
+# and no `mode` wider than 0600 is accepted.
 env_file_deliveries:
   deploy_agent_dev_signing_key:
     key_id: deploy_agent_dev_signing_key

@@ -11,8 +11,10 @@ the handler does not check the signing key against the agent's key, true means i
 for the agent's key check value before every publish and refuses a command signed with another key.
 ``signing_key_store`` (OMN-24611) names where the node's own entry resolves the signing key from when the
 ``hmac_secret_env`` variable is unset in its environment: the folder and key name in the store, and the store
-addressing block. Names and addresses only, never a value; the variable set in the environment wins and the store
-is never asked.
+addressing block. Names and addresses only, never a value. When the variable is set anyway, its value is trusted
+only when the block's ``verify_env_key`` is false; when it is true the entry asks the store for the dev key and
+uses the variable's value only when its one-way check value (``omnimarket.models.model_deploy_agent_key_check.
+key_check_value``) equals the store key's check value — a mismatch is a typed refusal and nothing is published.
 """
 
 from __future__ import annotations
@@ -33,7 +35,10 @@ NODE_NAME = "node_branch_deploy_command_effect"
 class ModelSigningKeyStoreOverlay(BaseModel):
     """Where the entry resolves the deploy agent's signing key when the variable ``hmac_secret_env`` names is unset
     (OMN-24611): a folder and key name in the secret store, and the store addressing. Names and addresses only, never
-    a value; the variable set in the environment wins and the store is never asked."""
+    a value. When the variable is set anyway, its value wins only under ``verify_env_key: false``; under ``true``
+    the store is asked for the dev key and the variable's value is used only when its one-way check value
+    (``omnimarket.models.model_deploy_agent_key_check.key_check_value``) equals the store key's check value, else
+    the send refuses and nothing is published."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -43,6 +48,10 @@ class ModelSigningKeyStoreOverlay(BaseModel):
     key: str = Field(min_length=1)
     #: The store addressing block: provider, address and identity references.
     secret_store: ModelSecretStoreOverlay
+    #: Whether a value found in the environment variable is checked against the store's dev key. Required: true
+    #: checks the two one-way check values and refuses a mismatch; false keeps the old behaviour where the
+    #: variable wins and the store is never asked.
+    verify_env_key: StrictBool
 
 
 class ModelBranchDeployCommandOverlay(BaseModel):
