@@ -23,6 +23,9 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from omnimarket.nodes.node_hook_delegate_effect.handlers.handler_delegation_switches import (
+    read_switches,
+)
 from omnimarket.nodes.node_hook_delegate_effect.models import (
     EnumDelegateCliState,
     EnumHookDelegateOutcome,
@@ -114,6 +117,13 @@ class HandlerHookDelegate:
             self._save_turn(path, {_TURN: uuid.uuid4().hex})
 
     def handle(self, request: ModelHookDelegateRequest) -> ModelHookDelegateResult:
+        """The subagent hook: delegates the task unless its switch is off."""
+        if not read_switches().subagents:
+            return ModelHookDelegateResult(outcome=EnumHookDelegateOutcome.PAUSED)
+        return self.delegate(request)
+
+    def delegate(self, request: ModelHookDelegateRequest) -> ModelHookDelegateResult:
+        """Delegate one task, reusing this turn's result for an identical task."""
         path = self._turn_file(request.session_id)
         if not request.session_id or not path.is_file():
             return self._delegate(request)

@@ -31,6 +31,8 @@ class EnumHookDelegateOutcome(StrEnum):
     NO_ANSWER = "no_answer"
     #: The model replied with the request's decline token (OMN-23413 AC33).
     DECLINED = "declined"
+    #: The subagent hook's switch is off (~/.onex/delegation.json).
+    PAUSED = "paused"
 
 
 class EnumDelegateCliState(StrEnum):

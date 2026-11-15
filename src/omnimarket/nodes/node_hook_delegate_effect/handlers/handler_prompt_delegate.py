@@ -27,6 +27,9 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from omnimarket.nodes.node_hook_delegate_effect.handlers.handler_delegation_switches import (
+    read_switches,
+)
 from omnimarket.nodes.node_hook_delegate_effect.handlers.handler_hook_delegate import (
     TASK_CLASS_BY_INTENT,
     HandlerHookDelegate,
@@ -210,10 +213,12 @@ class HandlerPromptDelegate:
         skipped = skip_reason(request.prompt)
         if skipped is not None:
             return self._pass(request.session_id, skipped)
+        if not read_switches().prompts:
+            return self._pass(request.session_id, EnumPromptDelegateOutcome.PAUSED)
         if request.sensitive:
             return self._pass(request.session_id, EnumPromptDelegateOutcome.SENSITIVE)
         hook_request, excerpt = self._hook_request(request)
-        result = self._delegate.handle(hook_request)
+        result = self._delegate.delegate(hook_request)
         if result.outcome is EnumHookDelegateOutcome.DECLINED:
             return self._pass(
                 request.session_id,

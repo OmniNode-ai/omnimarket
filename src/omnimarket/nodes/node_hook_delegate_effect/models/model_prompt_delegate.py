@@ -26,6 +26,8 @@ class EnumPromptDelegateOutcome(StrEnum):
     #: Claude Code delivered something the user did not type (another session's
     #: message, a subagent's report, a task notification); it needs the session.
     NOT_FROM_USER = "not_from_user"
+    #: The prompt hook's switch is off (~/.onex/delegation.json).
+    PAUSED = "paused"
     #: The delegation ran and gave no answer; ``detail`` names the hook outcome.
     NOT_ANSWERED = "not_answered"
 

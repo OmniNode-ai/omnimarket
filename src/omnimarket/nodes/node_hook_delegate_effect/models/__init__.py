@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 """Models for node_hook_delegate_effect."""
 
+from .model_delegation_switches import ModelDelegationSwitches
 from .model_hook_delegate import (
     DECLINE_TOKEN,
     SUBAGENT_RULES,
@@ -26,6 +27,7 @@ __all__ = [
     "EnumPromptDelegateOutcome",
     "EnumPromptExcerpt",
     "ModelDelegateCliRun",
+    "ModelDelegationSwitches",
     "ModelHookDelegateRequest",
     "ModelHookDelegateResult",
     "ModelPromptDelegateRequest",
