@@ -15,6 +15,7 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from omnimarket.models.bus_binding.model_node_event_bus import ModelNodeEventBus
 from omnimarket.models.model_host_hygiene import (
     ModelHostHygieneCleanupPolicy,
     ModelHostHygieneDecisionItem,
@@ -78,7 +79,14 @@ class ModelHostHygieneLabWork(_Frozen):
 
 
 class ModelHostHygieneOrchestratorOverlay(ModelScheduleDeclaration):
-    """The orchestrator node's overlay: its cadence, backend, and all configuration."""
+    """The orchestrator node's overlay: its cadence, backend, and all configuration.
+
+    The optional ``event_bus`` key is read by the bus overlay reader behind
+    ``onex run-node`` and the orchestrator never reads it. The same overlay
+    file holds it, so this model must accept it: with ``extra="forbid"`` and
+    no such field the file the bus reader needs made every on-demand run
+    refuse.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -90,6 +98,7 @@ class ModelHostHygieneOrchestratorOverlay(ModelScheduleDeclaration):
         tuple[ModelHostHygieneCleanupDeclaration, ...], Field(min_length=1)
     ]
     hosts: Annotated[tuple[ModelHostHygieneHostRow, ...], Field(min_length=1)]
+    event_bus: ModelNodeEventBus | None = None
 
     @model_validator(mode="after")
     def _validate(self) -> ModelHostHygieneOrchestratorOverlay:

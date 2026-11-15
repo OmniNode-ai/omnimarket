@@ -18,6 +18,8 @@ from omnimarket.models.model_repo_write_io import (
     ModelRepoWriteCompleted,
     ModelRepoWriteFailed,
     ModelRepoWriteRequest,
+    ModelRepoWriteRunner,
+    ModelRepoWriteRunnerGroup,
     parse_claim_stamp,
 )
 
@@ -33,5 +35,7 @@ __all__ = [
     "ModelRepoWriteCompleted",
     "ModelRepoWriteFailed",
     "ModelRepoWriteRequest",
+    "ModelRepoWriteRunner",
+    "ModelRepoWriteRunnerGroup",
     "parse_claim_stamp",
 ]

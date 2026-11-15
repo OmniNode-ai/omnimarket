@@ -116,6 +116,7 @@ def record_lanes(record: Mapping[str, Any]) -> tuple[ModelFloorLane, ...]:
             liveness=str(item.get("liveness") or "unread"),
             owns=tuple(str(o) for o in item.get("owns") or () if o),
             parent_ticket=str(item.get("parent_ticket") or ""),
+            read_only=bool(item.get("read_only", False)),
         )
         for item in lanes
         if isinstance(item, dict) and item.get("lane")
@@ -273,6 +274,7 @@ def merge_lanes(
                     "ticket": lane.ticket or extra.ticket,
                     "pr": lane.pr or extra.pr,
                     "owns": tuple(dict.fromkeys((*lane.owns, *extra.owns))),
+                    "read_only": lane.read_only or extra.read_only,
                 }
             )
         )

@@ -543,6 +543,49 @@ def test_cause_scenario_s21_cluster_of_three_gets_one_lease_and_no_per_pr_dispat
 
 
 @pytest.mark.unit
+def test_follower_only_reds_never_form_a_cause() -> None:
+    follower_ann = "Repo evidence concluded failure; refusing to start this workflow."
+    prs = [
+        Pr(
+            n,
+            red_checks=("Repo Evidence Dependency",),
+            annotations={"Repo Evidence Dependency": follower_ann},
+        )
+        for n in (1, 2, 3)
+    ]
+    world = CauseWorld(prs)
+    decision = world.step()
+    assert cause_dispatched(decision) == []
+    assert sorted(per_pr_dispatched(decision)) == [
+        f"{REPO}#1",
+        f"{REPO}#2",
+        f"{REPO}#3",
+    ]
+
+
+@pytest.mark.unit
+def test_follower_signature_is_the_live_cause_the_controller_recorded() -> None:
+    """The seam to the controller's state: the cause key the controller held for the
+    three omnimarket PRs red only on this follower (tick of 2026-11-13T21:09:50Z)."""
+    assert (
+        key_for(
+            "Repo Evidence Dependency",
+            "Repo evidence concluded failure; refusing to start this workflow.",
+            OMNIMARKET,
+        )
+        == "cause:OmniNode-ai/omnimarket:d17cc3829668"
+    )
+
+
+@pytest.mark.unit
+def test_dod_verify_reds_with_one_message_still_form_a_cause() -> None:
+    prs = [Pr(n) for n in (1, 2, 3)]
+    world = CauseWorld(prs)
+    decision = world.step()
+    assert cause_dispatched(decision) == [key_for()]
+
+
+@pytest.mark.unit
 def test_cause_scenario_s22_fix_merges_members_rerun_and_go_green() -> None:
     fix = Pr(99, ci="pending", red_checks=(), annotations={}, process_fix=True)
     world = CauseWorld([*three(), fix])

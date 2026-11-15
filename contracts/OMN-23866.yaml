@@ -1,0 +1,134 @@
+schema_version: 1.0.0
+ticket_id: OMN-23866
+title: A pure decision step and a scheduled workflow decide what each lab host removes and raise the alarm when a host runs low on disk
+summary: 'Adds node_host_disk_decision_compute (pure: typed eviction commands and alarms from the projection rows and a policy) and node_host_disk_orchestrator (schedule and low-disk event; one typed practice-mode
+  command per decision with an idempotency key; typed results and failures collected, a command with no answer by its deadline recorded; alarms sent as slack-publish commands; each run recorded as one event).
+  AC8 (installed in the dev runtime, one observed run, the alarm seen in the alert channel) and the policy file in the overlays repository are not part of this change.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23866-host-disk-decision
+  statement: One pure decision step and one scheduled orchestrator decide what each lab host removes and alarm when a host runs low on disk.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the compute is pure: given projection rows and a policy it returns the same commands and alarms every time, reads no file, process or clock, and names each command''s reason (age past
+      keep days, class over its cap, host under its floor) -- falsifier: uv run pytest tests/nodes/node_host_disk_decision_compute/ -q'
+  - id: AC2
+    statement: 'AC2: every keep-days value, size cap, free-space floor and per-host exception comes from overlays/node_host_disk_decision_compute/overlay.yaml in the overlays repository, and the compute
+      refuses a policy that leaves a host without a floor -- falsifier: uv run pytest tests/nodes/node_host_disk_decision_compute/test_policy_overlay_only.py -q'
+  - id: AC3
+    statement: 'AC3: for an h202-shaped reading (lane package cache of 670 revisions, keep 3 days) the compute commands eviction of exactly the revisions older than the keep window that no live lane uses,
+      and keeps the newest revision of every package -- falsifier: uv run pytest tests/nodes/node_host_disk_decision_compute/test_h202_package_cache_case.py -q with the recorded reading as fixture'
+  - id: AC4
+    statement: 'AC4: the orchestrator runs on its schedule and on a low-disk event, sends one typed command per decision with an idempotency key per host, class and reading, collects each typed result or
+      typed failure, and records the run so the projection shows reading, decision, command and result for the run -- falsifier: uv run pytest tests/nodes/node_host_disk_orchestrator/ -q'
+  - id: AC5
+    statement: 'AC5: a host whose free space is under its floor raises an alarm that reaches the alert channel, tested by a host whose floor is set above its free space in a test overlay; a stale or missing
+      reading also alarms; the alarm never depends on a host''s env file -- falsifier: uv run pytest tests/chains/host_disk/test_chain_host_disk_alarm.py -q on the in-memory bus and the dev broker overlay,
+      red when the alarm command is dropped'
+  - id: AC6
+    statement: 'AC6: failing control per part: an injected break in the compute (floor ignored) and in the orchestrator (result not collected) each turn a golden test red -- falsifier: uv run pytest tests/chains/host_disk/test_chain_host_disk_controls.py
+      -q'
+  - id: AC7
+    statement: 'AC7: golden chain and error chain tests (scheduled run to recorded result; command refused, effect silent past its deadline) pass on the in-memory bus and on the real dev broker overlay
+      -- falsifier: uv run pytest tests/chains/host_disk/test_chain_host_disk_workflow.py -q with both overlays'
+  - id: AC8
+    statement: 'AC8: integrated: the orchestrator runs in the dev runtime on schedule, one run is observed reading the real projection rows for h202, deciding, and sending its commands in practice mode,
+      and the test-overlay alarm is seen in the alert channel, receipt named in the lane''s TERMINAL -- falsifier: no recorded run on the dev bus after the install time, or no alarm delivery in the alert
+      channel''s liveness projection'
+evidence_requirements:
+- kind: tests
+  description: The host disk decision, orchestrator and chain tests pass at the pushed head.
+  command: uv run --frozen pytest tests/nodes/node_host_disk_decision_compute tests/nodes/node_host_disk_orchestrator tests/chains/host_disk -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23866-ac1
+  description: 'AC1: the compute is pure: given projection rows and a policy it returns the same commands and alarms every time, reads no file, process or clock, and names each command''s reason (age past
+    keep days, class over its cap, host under its floor)'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_disk_decision_compute/ -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23866-ac2
+  description: 'AC2: every keep-days value, size cap, free-space floor and per-host exception comes from overlays/node_host_disk_decision_compute/overlay.yaml in the overlays repository, and the compute
+    refuses a policy that leaves a host without a floor'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_disk_decision_compute/test_policy_overlay_only.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23866-ac3
+  description: 'AC3: for an h202-shaped reading (lane package cache of 670 revisions, keep 3 days) the compute commands eviction of exactly the revisions older than the keep window that no live lane uses,
+    and keeps the newest revision of every package'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_disk_decision_compute/test_h202_package_cache_case.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23866-ac4
+  description: 'AC4: the orchestrator runs on its schedule and on a low-disk event, sends one typed command per decision with an idempotency key per host, class and reading, collects each typed result or
+    typed failure, and records the run so the projection shows reading, decision, command and result for the run'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_disk_orchestrator/ -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23866-ac5
+  description: 'AC5: a host whose free space is under its floor raises an alarm that reaches the alert channel, tested by a host whose floor is set above its free space in a test overlay; a stale or missing
+    reading also alarms; the alarm never depends on a host''s env file'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/chains/host_disk/test_chain_host_disk_alarm.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23866-ac6
+  description: 'AC6: failing control per part: an injected break in the compute (floor ignored) and in the orchestrator (result not collected) each turn a golden test red'
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/chains/host_disk/test_chain_host_disk_controls.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23866-ac7
+  description: 'AC7: golden chain and error chain tests (scheduled run to recorded result; command refused, effect silent past its deadline) pass on the in-memory bus and on the real dev broker overlay'
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/chains/host_disk/test_chain_host_disk_workflow.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23866-ac8
+  description: 'hosted proxy for AC8: the orchestrator''s golden and alarm chains pass here; the running dev runtime reading (one scheduled run over the real h202 projection rows in practice mode, and the
+    test-overlay alarm seen in the alert channel) is not part of this change and is posted as a pull request comment naming the head once the branch is installed.'
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/chains/host_disk/test_chain_host_disk_alarm.py tests/nodes/node_host_disk_orchestrator -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23866-integration-proof
+  description: the host disk decision, orchestrator and chain tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23866 --kind test -- env PYTHONDONTWRITEBYTECODE=1
+      uv run --frozen pytest tests/nodes/node_host_disk_decision_compute tests/nodes/node_host_disk_orchestrator tests/chains/host_disk -q --no-cov -n 0 -p no:randomly

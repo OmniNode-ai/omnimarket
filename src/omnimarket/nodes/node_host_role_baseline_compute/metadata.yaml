@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_host_role_baseline_compute
+version: 1.0.0
+description: Derives a lab host's expected set (systemd units and clones) from its declared role - the baseline every host carries plus its role's own - for the host drift check.
+pack: operator_tooling
+node_role: compute
+display_name: Host Role Baseline
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_host_role_baseline_compute: omnimarket.nodes.node_host_role_baseline_compute
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: pure
+dependencies:
+- pydantic>=2.0
+- pyyaml>=6.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- compute
+- host-declaration

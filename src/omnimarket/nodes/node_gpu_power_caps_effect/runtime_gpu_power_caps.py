@@ -3,6 +3,7 @@
 """Apply a host's GPU power caps from the command line, against the overlay's backend (OMN-24042)."""
 
 import argparse
+import asyncio
 import sys
 
 from pydantic import ValidationError
@@ -46,7 +47,9 @@ def main(argv: list[str] | None = None) -> int:
             overlay = overlay.model_copy(
                 update={"backend": EnumGpuPowerCapsBackend.SUBPROCESS}
             )
-        result = HandlerGpuPowerCaps(overlay, select_backend(overlay)).handle(request)
+        result = asyncio.run(
+            HandlerGpuPowerCaps(overlay, select_backend(overlay)).handle(request)
+        )
     except (ValidationError, NodeOverlayError) as exc:
         sys.stderr.write(f"gpu-power-caps unavailable: {type(exc).__name__}\n")
         return 4

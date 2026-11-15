@@ -199,6 +199,18 @@ class HandlerCanonicalCloneDirtyConvergeEffect:
         )
         return done.returncode, text
 
+    def read_git(self, clone: Path, *args: str) -> tuple[int, str]:
+        """One read-only git call for the observe form (OMN-24198): the exit code and the stripped output."""
+        return self._git(clone, *args)
+
+    def read_out(self, clone: Path, *args: str) -> str:
+        """The output of one read-only git call, empty when it failed (OMN-24198)."""
+        return self._out(clone, *args)
+
+    def read_local_work(self, clone: Path) -> tuple[ModelLocalWork, ...]:
+        """The local work a clone holds, read-only; raises when a git read fails (OMN-24198)."""
+        return self._local_work(clone)
+
     def _out(self, clone: Path, *args: str) -> str:
         code, out = self._git(clone, *args)
         return out if code == 0 else ""
@@ -886,8 +898,25 @@ def alarm_unrecorded(outcomes: Sequence[ModelDirtyConvergeOutcome]) -> bool:
 
 
 @click.command("dirty-converge")
-def dirty_converge_command() -> None:
+@click.option(
+    "--observe",
+    is_flag=True,
+    help="Read every clone and say what a run would do; sync, fetch and move nothing (OMN-24198).",
+)
+def dirty_converge_command(observe: bool) -> None:
     """Sync every canonical clone, then refuse and alarm each one refused past the age that holds local work."""
+    if observe:
+        # Imported here: the observe module imports this one for the handler class.
+        from omnimarket.nodes.node_canonical_clone_dirty_converge_effect.handlers.observe_clones import (
+            observe as observe_registry,
+        )
+
+        lines = observe_registry(registry_root_from(os.environ), os.environ)
+        for text in lines:
+            click.echo(text)
+        if any(text.startswith("FAILED") for text in lines):
+            sys.exit(1)
+        return
     handler = HandlerCanonicalCloneDirtyConvergeEffect(
         registry_root_from(os.environ),
         env=os.environ,

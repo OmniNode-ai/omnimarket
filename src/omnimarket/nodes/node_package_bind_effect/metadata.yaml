@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_package_bind_effect
+version: 1.0.0
+description: Binds one node package into the interpreter without running its package start-up file.
+pack: operator_tooling
+node_role: effect
+display_name: Package Bind Effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_package_bind_effect: omnimarket.nodes.node_package_bind_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+- pydantic>=2.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- landing
+- package-bind

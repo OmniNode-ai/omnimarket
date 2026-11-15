@@ -4,9 +4,14 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
+import yaml
 from pydantic import ValidationError
 
+from omnimarket.handlers.bus_binding.node_event_bus_overlay import read_node_event_bus
+from omnimarket.handlers.node_overlay_reader import load_structured_overlay
 from omnimarket.models.model_host_hygiene_orchestrator import (
     EnumHostHygieneBackend,
     ModelHostHygieneOrchestratorOverlay,
@@ -101,3 +106,49 @@ def test_bad_commit_sha() -> None:
     doc["lab_work"]["commit_sha"] = "not-a-sha"
     with pytest.raises(ValidationError, match="commit_sha"):
         ModelHostHygieneOrchestratorOverlay.model_validate(doc)
+
+
+def test_event_bus_key_is_accepted() -> None:
+    doc = _valid_overlay()
+    doc["event_bus"] = {"type": "kafka", "lane": "dev"}
+    overlay = ModelHostHygieneOrchestratorOverlay.model_validate(doc)
+    assert overlay.event_bus is not None
+    assert overlay.event_bus.type == "kafka"
+    assert overlay.event_bus.lane == "dev"
+
+
+def test_overlay_without_event_bus_leaves_it_none() -> None:
+    overlay = ModelHostHygieneOrchestratorOverlay.model_validate(_valid_overlay())
+    assert overlay.event_bus is None
+
+
+def test_event_bus_unknown_key_refused() -> None:
+    doc = _valid_overlay()
+    doc["event_bus"] = {"type": "kafka", "lane": "dev", "nonsense": 1}
+    with pytest.raises(ValidationError, match="event_bus"):
+        ModelHostHygieneOrchestratorOverlay.model_validate(doc)
+
+
+def test_shared_file_is_read_alike_by_the_model_and_the_bus_reader(
+    tmp_path: Path,
+) -> None:
+    """Seam: the overlay file the bus reader needs (event_bus beside every setting) is a valid orchestrator overlay.
+
+    The deployed overlay holds the schedule, the cleanups and the ``event_bus`` block in one file. The bus overlay reader
+    (behind ``onex run-node``) takes the block; this model takes the file. The test reads one document through both and
+    fails when either side changes shape; it fails on the model without the field with an extra-forbidden refusal.
+    """
+    node_dir = tmp_path / "node_host_hygiene_orchestrator"
+    node_dir.mkdir()
+    document = _valid_overlay()
+    document["event_bus"] = {"type": "kafka", "lane": "dev"}
+    path = node_dir / "overlay.yaml"
+    path.write_text(yaml.safe_dump(document), encoding="utf-8")
+    overlay = load_structured_overlay(
+        "node_host_hygiene_orchestrator",
+        ModelHostHygieneOrchestratorOverlay,
+        {"ONEX_SKILL_OVERLAY_ROOTS": str(tmp_path)},
+    )
+    bus = read_node_event_bus(path)
+    assert bus is not None
+    assert overlay.event_bus == bus

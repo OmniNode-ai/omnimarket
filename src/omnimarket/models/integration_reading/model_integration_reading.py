@@ -73,6 +73,15 @@ UNINTEGRATED_STATES = frozenset(
 )
 
 
+# Cells that name nothing: a running reading carrying only these has not named its run (OMN-24535).
+_RUNNING_CELL_FILLERS = frozenset({"none", "n/a", "na", "tbd", "-", "x", "unknown"})
+
+_RUNNING_CELLS_REQUIRED = (
+    "a running change names the entry point that runs it (running_path) and one line from its latest run "
+    "(running_line); an image revision, a merge or one ready answer is not a reading (OMN-24535)"
+)
+
+
 class ModelIntegrationReading(_Frozen):
     """One merged change, read against where it runs."""
 
@@ -86,6 +95,10 @@ class ModelIntegrationReading(_Frozen):
     gap_class: EnumIntegrationGapClass
     gap: str = ""
     step: str = ""
+    # The entry point that executes the change: unit, node, route or tick step.
+    running_path: str = ""
+    # One line from that entry point's latest run showing the changed behaviour.
+    running_line: str = ""
     owner: str = ""
     read_at: datetime
     # Who read it: the pass and its session or job.
@@ -107,6 +120,21 @@ class ModelIntegrationReading(_Frozen):
         if self.state in SETTLED_STATES:
             if self.gap_class is not EnumIntegrationGapClass.NONE:
                 raise ValueError(f"a {self.state.value} change has no gap class")
+            if self.state is EnumIntegrationState.RUNNING:
+                running_path = self.running_path.strip()
+                running_line = self.running_line.strip()
+                if (
+                    not running_path
+                    or len(running_path.split()) != 1
+                    or running_path.lower() in _RUNNING_CELL_FILLERS
+                ):
+                    raise ValueError(_RUNNING_CELLS_REQUIRED)
+                if (
+                    not running_line
+                    or running_line.lower() in _RUNNING_CELL_FILLERS
+                    or running_line.lower() == running_path.lower()
+                ):
+                    raise ValueError(_RUNNING_CELLS_REQUIRED)
         elif self.state is EnumIntegrationState.UNPROVEN:
             if self.gap_class is not EnumIntegrationGapClass.NEEDS_READING:
                 raise ValueError(

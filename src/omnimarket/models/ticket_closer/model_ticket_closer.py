@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime
 from enum import StrEnum
 from typing import Literal
@@ -24,6 +25,13 @@ class EnumCloserAction(StrEnum):
     WRITE_REFUSED = "write_refused"
 
 
+class EnumCloserReadingSource(StrEnum):
+    """The reading profile the schedule binds: where the closer's readings come from."""
+
+    UNREAD = "unread"
+    CONTRACT_CLONES = "contract_clones"
+
+
 class ModelTicketCloserScheduleOverlay(BaseModel):
     """The closer schedule's overlay: the cadence of the scheduled run and where its readings come from."""
 
@@ -42,9 +50,38 @@ class ModelTicketCloserScheduleOverlay(BaseModel):
         min_length=1,
         description="The ticket state the closer moves a flipped ticket into.",
     )
-    reading_source: str = Field(
-        pattern=r"^[a-z][a-z0-9_]*$",
+    reading_source: EnumCloserReadingSource = Field(
         description="The reading profile the schedule binds: unread (in-memory default) or a bound profile.",
+    )
+    home_env: str | None = Field(
+        default=None,
+        description=(
+            "The environment variable whose value is the registry root path the bound "
+            "profile's clone readings sit under; None keeps the in-memory defaults."
+        ),
+    )
+    bus_lane: str | None = Field(
+        default=None,
+        description=(
+            "The declared bus lane the closer's ticket calls publish on; None keeps the "
+            "in-memory defaults."
+        ),
+    )
+    ticket_timeout_seconds: float | None = Field(
+        default=None,
+        gt=0,
+        description=(
+            "How long one ticket bus call waits for the ticket write node's terminal "
+            "event; None keeps the in-memory defaults."
+        ),
+    )
+    scan_limit: int | None = Field(
+        default=None,
+        gt=0,
+        description=(
+            "How many contract ids one run's candidate reading scans at most; None "
+            "keeps the in-memory defaults."
+        ),
     )
 
 
@@ -111,14 +148,47 @@ class ModelTicketCloserResult(BaseModel):
     examined: int
     flipped: int
     outcomes: tuple[ModelCloserTicketOutcome, ...]
+    # Why the reading was unread when candidates_read is False; empty on a read run.
+    unread_reason: str = ""
+    # The one-line report of the run, present on every run including a refused or unread one.
+    status_line: str = ""
+
+
+def closer_status_line(
+    *,
+    candidates_read: bool,
+    outcomes: Sequence[ModelCloserTicketOutcome],
+    unread_reason: str,
+) -> str:
+    """The one STATUS line one closer run publishes: what it read and how every outcome counts."""
+    counts = {
+        action: sum(1 for outcome in outcomes if outcome.action is action)
+        for action in (
+            EnumCloserAction.FLIPPED_DONE,
+            EnumCloserAction.HELD,
+            EnumCloserAction.VERIFY_NOT_RUN,
+            EnumCloserAction.WRITE_REFUSED,
+        )
+    }
+    unread = unread_reason[:160] if unread_reason else "none"
+    return (
+        "STATUS ticket-closer "
+        f"candidates_read={'true' if candidates_read else 'false'} "
+        f"examined={len(outcomes)} flipped={counts[EnumCloserAction.FLIPPED_DONE]} "
+        f"held={counts[EnumCloserAction.HELD]} "
+        f"verify_not_run={counts[EnumCloserAction.VERIFY_NOT_RUN]} "
+        f"write_refused={counts[EnumCloserAction.WRITE_REFUSED]} unread={unread}"
+    )
 
 
 __all__ = [
     "EnumCloserAction",
+    "EnumCloserReadingSource",
     "ModelCloserCandidate",
     "ModelCloserTicketOutcome",
     "ModelCloserVerifyReading",
     "ModelCloserWriteReceipt",
     "ModelTicketCloserResult",
     "ModelTicketCloserScheduleOverlay",
+    "closer_status_line",
 ]

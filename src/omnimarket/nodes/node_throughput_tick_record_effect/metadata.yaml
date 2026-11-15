@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_throughput_tick_record_effect
+version: "1.0.0"
+description: The hourly check's record step (heartbeat, open-count history, repo-status units and events, goal-check record) into the tick's state directory
+omnibase_core_compat: ">=0.47.28,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_throughput_tick_record_effect: omnimarket.nodes.node_throughput_tick_record_effect
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  side_effect_class: filesystem
+dependencies:
+  - pydantic>=2.11.0
+authors: [OmniNode Team]
+license: MIT
+tags: [effect, throughput, tick, record]
+node_role: effect
+pack: "routing"
+display_name: "Throughput Tick Record Effect"

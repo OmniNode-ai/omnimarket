@@ -1,0 +1,79 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_bus_model_seam_check_effect
+node_type: effect
+runtime_profiles:
+- effects
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: Read every node contract, pair each producer model with each consumer model per
+  topic, load both pydantic classes and grade the seam so a field added to a bus model
+  breaks a test of every consumer that refuses it.
+input_model:
+  name: ModelBusModelSeamCheckRequest
+  module: omnimarket.nodes.node_bus_model_seam_check_effect.models.model_bus_model_seam_check_request
+output_model:
+  name: ModelBusModelSeamCheckResult
+  module: omnimarket.nodes.node_bus_model_seam_check_effect.models.model_bus_model_seam_check_result
+handler:
+  module: omnimarket.nodes.node_bus_model_seam_check_effect.handlers.handler_bus_model_seam_check
+  class: HandlerBusModelSeamCheck
+  input_model: omnimarket.nodes.node_bus_model_seam_check_effect.models.model_bus_model_seam_check_request.ModelBusModelSeamCheckRequest
+  output_model: omnimarket.nodes.node_bus_model_seam_check_effect.models.model_bus_model_seam_check_result.ModelBusModelSeamCheckResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_bus_model_seam_check_effect.handlers.handler_bus_model_seam_check:HandlerBusModelSeamCheck
+  handlers:
+  - operation: check_bus_model_seams
+    handler:
+      name: HandlerBusModelSeamCheck
+      module: omnimarket.nodes.node_bus_model_seam_check_effect.handlers.handler_bus_model_seam_check
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 120000
+  runtime_profiles:
+  - effects
+inputs:
+  repo_root:
+    type: str
+    required: true
+    description: Repository checkout to inspect.
+  package:
+    type: str
+    required: false
+    description: Package directory under src to scan.
+  policy_path:
+    type: str
+    required: false
+    description: Policy file; otherwise the seam policy beside the node package.
+outputs:
+  admitted:
+    type: bool
+  exit_code:
+    type: int
+  output_lines:
+    type: list
+metadata:
+  transport_type: inmemory
+terminal_event: onex.evt.omnimarket.bus-model-seam-check-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.bus-model-seam-check-requested.v1
+broker_acl_grants:
+- principal: "${ONEX_ACL_BUS_MODEL_SEAM_PRINCIPAL}"
+  grants:
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.bus-model-seam-check-requested.v1, operation: READ}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.bus-model-seam-check-requested.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.bus-model-seam-check-completed.v1, operation: WRITE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.bus-model-seam-check-completed.v1, operation: DESCRIBE}
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.bus-model-seam-check-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.bus-model-seam-check-completed.v1
+externally_consumed_topics:
+- onex.evt.omnimarket.bus-model-seam-check-completed.v1
