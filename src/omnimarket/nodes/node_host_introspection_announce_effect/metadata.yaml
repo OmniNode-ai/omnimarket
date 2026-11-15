@@ -18,7 +18,8 @@ capabilities:
   requires_secrets: false
   requires_docker: false
   side_effect_class: bus_publish
-dependencies: []
+dependencies:
+  - "omnibase-infra>=0.1.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ['effect', 'host-introspection', 'registry', 'OMN-19998']
