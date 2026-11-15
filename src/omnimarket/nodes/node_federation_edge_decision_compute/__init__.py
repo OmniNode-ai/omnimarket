@@ -9,6 +9,9 @@ ACL probe and the egress gate, and answers the record as it may leave the
 wire or one named refusal.
 """
 
+from omnimarket.nodes.node_federation_edge_decision_compute.handlers.handler_edge_overlay_validation import (
+    HandlerEdgeOverlayValidation,
+)
 from omnimarket.nodes.node_federation_edge_decision_compute.handlers.handler_federation_edge_decision import (
     HandlerFederationEdgeDecision,
     decide_edge,
@@ -20,6 +23,7 @@ class NodeFederationEdgeDecisionCompute(HandlerFederationEdgeDecision):
 
 
 __all__ = [
+    "HandlerEdgeOverlayValidation",
     "HandlerFederationEdgeDecision",
     "NodeFederationEdgeDecisionCompute",
     "decide_edge",
