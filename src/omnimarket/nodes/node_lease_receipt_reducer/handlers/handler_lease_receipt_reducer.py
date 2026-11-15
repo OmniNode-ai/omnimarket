@@ -287,7 +287,12 @@ def _refusal(
     held_epoch: int | None = None,
     table: ModelLeaseTable | None = None,
 ) -> ModelLeaseReduceOutput:
-    """The refused reply: the typed reason; the input table unchanged unless the held one is named."""
+    """The refused reply: the typed reason; the input table unchanged unless the held one is named.
+
+    A refused reply carries ``terminal_failure_cause`` (the reason value), which the runtime's
+    failure-terminal guard publishes on the contract's declared failure terminal; the handler
+    itself never publishes.
+    """
     return ModelLeaseReduceOutput(
         correlation_id=request.correlation_id,
         operation=request.operation,
