@@ -50,6 +50,13 @@ Rules this handler enforces:
   that cannot be read (set only; get reports ``variable_in_sync`` as None), or a
   name or value carrying a refuse marker is refused before any GitHub call, in
   either mode, and only the /actions/variables endpoints are called.
+- **Organization secrets.** org_secret_set sets one organization Actions secret from
+  the secret store. The allowed (organization, name) pairs, their visibility and the
+  store reference each value is read under are overlay values (``org_secret_sets`` in
+  ``overlay.py``); the value is never on the request, a result, an event or a log, and
+  the result records the PUT with the sealed value withheld. A name the overlay does
+  not allow is refused ``org_secret_not_allowed`` before any store read or GitHub call,
+  in either mode. The ``repo_variables`` path above is unchanged and still refuses a secret.
 - **Runners.** runner_list pages a self-hosted runner organization's registrations
   and answers with every one of them; runner_remove deletes one offline, idle
   runner by name. The organizations and runner names a lane may act on are only
@@ -178,6 +185,14 @@ from omnimarket.nodes.node_github_repo_write_effect.protocols import (
     ProtocolGithubRepoWriteTransport,
     ProtocolLeaseFence,
     ProtocolPrClaimLookup,
+)
+from omnimarket.nodes.node_github_repo_write_effect.services.org_secret import (
+    ModelOrgSecretPlan,
+    OrgSecretReader,
+    apply_org_secret,
+    org_secret_plan,
+    planned_org_secret_requests,
+    read_org_secret_value,
 )
 from omnimarket.nodes.node_github_repo_write_effect.services.pr_label import (
     add_labels_request,
@@ -336,6 +351,7 @@ class _Run:
         self.statuses: list[int] = []
         self.quota: ModelGithubQuotaReading | None = None
         self.variable_plan: _VariablePlan | None = None
+        self.org_secret_plan: ModelOrgSecretPlan | None = None
 
     def refused(
         self,
@@ -384,6 +400,8 @@ class _Run:
         runner_group: ModelRepoWriteRunnerGroup | None = None,
         runner_name: str | None = None,
         runner_removed: bool | None = None,
+        secret_name: str | None = None,
+        secret_key_id: str | None = None,
     ) -> ModelRepoWriteCompleted:
         c = self.command
         return ModelRepoWriteCompleted(
@@ -411,10 +429,16 @@ class _Run:
             runner_group=runner_group,
             runner_name=runner_name,
             runner_removed=runner_removed,
+            secret_name=secret_name,
+            secret_key_id=secret_key_id,
         )
 
     async def send(
-        self, request: ModelGithubHttpRequest, *, allow_not_found: bool = False
+        self,
+        request: ModelGithubHttpRequest,
+        *,
+        allow_not_found: bool = False,
+        recorded: ModelGithubHttpRequest | None = None,
     ) -> ModelGithubHttpResponse:
         """Send one request; raise :class:`_RefusedError` with the typed failure."""
         resource = _resource_of(request)
@@ -432,7 +456,7 @@ class _Run:
             response = await self._transport.send(request)
         except (GithubLandingTransportError, OSError) as exc:
             raise self.refused(EnumRepoWriteRefusal.TRANSPORT_ERROR, str(exc)) from None
-        self.sent.append(request)
+        self.sent.append(recorded if recorded is not None else request)
         self.statuses.append(response.status)
         try:
             reading = ModelGithubQuotaReading.from_response_headers(
@@ -513,8 +537,10 @@ class HandlerGithubRepoWriteEffect:
         quota_readings: GithubQuotaReadings | None = None,
         overlay: ModelRepoWriteOverlay | None = None,
         variable_source_root: Path | None = None,
+        org_secret_reader: OrgSecretReader | None = None,
     ) -> None:
         self._write_overlay = overlay
+        self._org_secret_reader = org_secret_reader or read_org_secret_value
         self._variable_source_root = variable_source_root
         self._transport = transport
         self._fence = fence_port
@@ -634,6 +660,28 @@ class HandlerGithubRepoWriteEffect:
                     "carries a refuse marker; no call made",
                 )
         return _VariablePlan(value=source_value, source_value=source_value)
+
+    def _org_secret_plan(
+        self, request: ModelRepoWriteRequest
+    ) -> ModelRepoWriteFailed | ModelOrgSecretPlan | None:
+        """Refuse an org_secret_set the overlay does not list, before any store read or call."""
+        if request.operation is not EnumRepoWriteOperation.ORG_SECRET_SET:
+            return None
+        name = request.secret_name or ""
+        try:
+            if self._write_overlay is None:
+                self._write_overlay = load_overlay()
+        except NodeOverlayError:
+            self._write_overlay = None
+        plan = org_secret_plan(self._write_overlay, request.repo, name)
+        if plan is not None:
+            return plan
+        return self._preflight_refusal(
+            request,
+            EnumRepoWriteRefusal.ORG_SECRET_NOT_ALLOWED,
+            f"org secret {name} of {request.repo.partition('/')[0]} is not in the "
+            "node's org_secret_sets overlay; no store read and no call made",
+        )
 
     def _runner_preflight(
         self, request: ModelRepoWriteRequest
@@ -811,6 +859,9 @@ class HandlerGithubRepoWriteEffect:
         variable_plan = self._variable_plan(request)
         if isinstance(variable_plan, ModelRepoWriteFailed):
             return variable_plan
+        secret_plan = self._org_secret_plan(request)
+        if isinstance(secret_plan, ModelRepoWriteFailed):
+            return secret_plan
         runner_refusal = self._runner_preflight(request)
         if runner_refusal is not None:
             return runner_refusal
@@ -828,7 +879,7 @@ class HandlerGithubRepoWriteEffect:
                 idempotency_key=request.idempotency_key,
                 requested_by_lane=request.requested_by_lane,
                 pr_number=request.pr_number,
-                requests=planned_requests(request),
+                requests=planned_requests(request, secret_plan),
             )
         try:
             transport = self._transport or await self._live_transport(request.repo)
@@ -838,6 +889,7 @@ class HandlerGithubRepoWriteEffect:
             )
         run = _Run(self, request, transport)
         run.variable_plan = variable_plan
+        run.org_secret_plan = secret_plan
         try:
             result: Result = await self._run(run)
         except _RefusedError as exc:
@@ -1076,6 +1128,8 @@ class HandlerGithubRepoWriteEffect:
             return await _runner_remove(run)
         if op is EnumRepoWriteOperation.RUNNER_GROUP_GET:
             return await _runner_group_get(run)
+        if op is EnumRepoWriteOperation.ORG_SECRET_SET:
+            return await _org_secret_set(run, self._org_secret_reader)
         if op is EnumRepoWriteOperation.PR_REVIEW_POST:
             return await _pr_review_post(run)
         if op is EnumRepoWriteOperation.CHECK_RUN_CREATE:
@@ -1407,6 +1461,18 @@ async def _repo_variable_set(run: _Run) -> ModelRepoWriteCompleted:
     return run.completed(variable_name=name, variable_digest=variable_digest(value))
 
 
+async def _org_secret_set(
+    run: _Run, read_value: OrgSecretReader
+) -> ModelRepoWriteCompleted:
+    plan = run.org_secret_plan
+    if plan is None:  # defensive; handle() plans every org_secret_set
+        raise ValueError("org_secret_set was run without a plan")
+    key_id = await apply_org_secret(
+        plan, send=run.send, refuse=run.refused, read_value=read_value
+    )
+    return run.completed(secret_name=plan.entry.name, secret_key_id=key_id)
+
+
 async def _repo_variable_get(run: _Run) -> ModelRepoWriteCompleted:
     c = run.command
     name = c.variable_name or ""
@@ -1605,6 +1671,7 @@ async def _workflow_dispatch(run: _Run) -> ModelRepoWriteCompleted:
 
 def planned_requests(
     request: ModelRepoWriteRequest,
+    secret_plan: ModelOrgSecretPlan | None = None,
 ) -> tuple[ModelGithubHttpRequest, ...]:
     """The requests an enforce run would send, before any answer is known.
 
@@ -1639,6 +1706,8 @@ def planned_requests(
         # runner is offline and idle; the DELETE it may send is only known
         # after that read answers.
         return (list_runners_request(split_repository(c.repo)[0], 1),)
+    if op is EnumRepoWriteOperation.ORG_SECRET_SET and secret_plan is not None:
+        return planned_org_secret_requests(secret_plan.entry)
     if op is EnumRepoWriteOperation.RUNNER_GROUP_GET:
         # The repositories read follows the group read; its first page is only
         # known to be needed once the group answers, so a plan shows the group read.

@@ -57,6 +57,7 @@ LANE_WRITES: dict[str, str] = {
     "api --method GET /orgs/{o}/actions/runners": "runner_list",
     "api --method DELETE /orgs/{o}/actions/runners/{id}": "runner_remove",
     "api --method GET /orgs/{o}/actions/runner-groups/{id}": "runner_group_get",
+    "api --method PUT /orgs/{o}/actions/secrets/{name}": "org_secret_set",
 }
 _REGISTRY_OWNER = "OmniNode-ai"
 

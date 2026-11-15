@@ -79,6 +79,22 @@ description: >
   no write (replayed) when it already holds the value. repo_variable_get returns
   the value, its sha256 digest and whether it equals the declared source. Only the
   /actions/variables endpoints are called.
+  org_secret_set sets one organization Actions secret under the node's own write
+  identity. The request names the repository (its owner part is the organization)
+  and the secret_name and carries no value: the secret must be an entry of the
+  overlay's org_secret_sets allowlist, which declares the organization, the name,
+  the visibility (selected with the repositories it names, private or all) and the
+  secret store reference the value is read under. A name not on the list, no
+  overlay or no org_secret_sets key is refused org_secret_not_allowed before any
+  store read and any GitHub call, in either mode; a store that cannot give the
+  value is refused org_secret_source_unreadable before any GitHub call. The value
+  is read from the store, sealed with a libsodium sealed box to the organization's
+  public key and sent only in the one PUT; it is on no request model, result,
+  event or log, and the result records the PUT with the sealed value withheld. The
+  repository variable path is unchanged and still refuses a secret. GitHub returns
+  no secret value, so a retry is replayed from the idempotency record alone, never
+  from a read-back. Only the /orgs/{o}/actions/secrets endpoints and the
+  repository-id read are called.
   runner_list and runner_remove act on an organization's self-hosted runners
   under the node's own write identity. The organization is the owner part of the
   request's repository, and what a lane may act on is only the overlay's
@@ -163,6 +179,9 @@ operations:
     transport: rest
   - name: repo_variable_get
     description: "Request ModelRepoWriteRequest with variable_name, result ModelRepoWriteCompleted (variable_value, variable_digest, variable_in_sync) or ModelRepoWriteFailed (variable_not_allowed, not_found); replaces gh variable get. GET /repos/{o}/{r}/actions/variables/{name} for an allowlisted name."
+    transport: rest
+  - name: org_secret_set
+    description: "Request ModelRepoWriteRequest with secret_name (no value), result ModelRepoWriteCompleted (secret_name, secret_key_id) or ModelRepoWriteFailed (org_secret_not_allowed, org_secret_source_unreadable, github_refused); replaces gh api --method PUT /orgs/{o}/actions/secrets/{name}. Sets one organization Actions secret. The secret must be an entry of the overlay's org_secret_sets allowlist, which declares its organization, name, visibility and the secret store reference its value is read under. The value is sealed with a libsodium sealed box to the organization's public key. GET /orgs/{o}/actions/secrets/public-key, GET /repos/{o}/{r} for each selected repository id, PUT /orgs/{o}/actions/secrets/{name}."
     transport: rest
   - name: runner_list
     description: "Request ModelRepoWriteRequest (the organization is the repository's owner part), result ModelRepoWriteCompleted (runners: id, name, status, busy of every registered runner) or ModelRepoWriteFailed (runner_not_allowed when no runner_removals entry names the organization); replaces gh api --method GET /orgs/{o}/actions/runners. GET /orgs/{o}/actions/runners?per_page=100&page={p} page after page, for an organization the overlay names."

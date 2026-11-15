@@ -548,6 +548,7 @@ _WRITE_ARGS: dict[str, list[str]] = {
     "runner-list": [REPO],
     "runner-remove": [REPO, "--runner", "example-runner-1"],
     "runner-group-get": [REPO, "--group-id", "7"],
+    "org-secret-set": [REPO, "--secret", "KAFKA_SASL_USERNAME"],
 }
 
 
@@ -763,6 +764,7 @@ def _contract_1_2_0_request() -> type[BaseModel]:
             "runner-list",
             "runner-remove",
             "runner-group-get",
+            "org-secret-set",
         }
     ),
 )
@@ -2232,3 +2234,31 @@ def test_node_owned_dispatch_tracking_refuses_before_publish_when_receipt_cannot
 
     assert bus.published == []
     assert not marker.exists()
+
+
+def test_org_secret_set_carries_the_secret_name_and_never_a_value(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bus = FakeBus()
+    _install(monkeypatch, bus)
+    result = _run(
+        ["org-secret-set", *_WRITE_ARGS["org-secret-set"], "--lane", "lane-x"]
+    )
+    assert result.exit_code == 0, result.output
+    payload = bus.published[0][1]["payload"]
+    assert payload["operation"] == "org_secret_set"
+    assert payload["secret_name"] == "KAFKA_SASL_USERNAME"
+    assert not {"value", "encrypted_value", "secret_value"} & set(payload)
+    assert payload["pr_number"] is None
+    sent = ModelRepoWriteRequest.model_validate(payload)
+    assert sent.operation is EnumRepoWriteOperation.ORG_SECRET_SET
+
+
+def test_org_secret_set_refuses_a_missing_secret_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bus = FakeBus()
+    _install(monkeypatch, bus)
+    missing = _run(["org-secret-set", REPO, "--lane", "lane-x"])
+    assert missing.exit_code != 0
+    assert bus.published == []
