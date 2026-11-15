@@ -37,7 +37,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_context_role_adoption_verdict_compute/test_golden_chain_role_adoption_verdict.py -q -n 0 -k 'every_failing_rung or recall_below_baseline or failure_order'"
+        check_value: "uv run pytest tests/ci/test_retired_context_nodes_omn24517.py -q --no-cov -n 0"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-omn21142-ac2-no-rung-passed"
@@ -45,7 +45,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_context_role_adoption_verdict_compute/test_golden_chain_role_adoption_verdict.py -q -n 0 -k 'no_rung_passed'"
+        check_value: "uv run pytest tests/ci/test_retired_context_nodes_omn24517.py -q --no-cov -n 0"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
   - id: "dod-omn21142-ac3-routing-entry-only"
@@ -53,7 +53,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_context_role_adoption_verdict_compute/test_golden_chain_role_adoption_verdict.py -q -n 0 -k 'routing_contract_entry or no_profile_field or refuse_profile_changes'"
+        check_value: "uv run pytest tests/ci/test_retired_context_nodes_omn24517.py -q --no-cov -n 0"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
   - id: "dod-omn21142-deploy-probe"

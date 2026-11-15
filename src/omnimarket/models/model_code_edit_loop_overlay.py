@@ -15,6 +15,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.models.bus_binding.model_node_event_bus import ModelNodeEventBus
+
 CODE_EDIT_LOOP_OVERLAY_ID = "node_delegated_code_edit_orchestrator"
 
 
@@ -23,6 +25,11 @@ class ModelCodeEditLoopOverlay(BaseModel):
 
     Three required keys; wall_budget_seconds is the one optional key, and an
     overlay that omits it leaves the request without a wall limit.
+
+    The optional ``event_bus`` key is read by the bus overlay reader behind
+    ``onex run-node`` and the loop never reads it. The same overlay file holds
+    it, so this model must accept it: with ``extra="forbid"`` and no such field
+    the file the bus reader needs made every ``onex code-edit run`` refuse.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -31,3 +38,4 @@ class ModelCodeEditLoopOverlay(BaseModel):
     check_timeout_seconds: int = Field(ge=1, le=1800)
     max_no_change_finishes: int = Field(ge=1, le=10)
     wall_budget_seconds: int | None = Field(default=None, ge=1, le=7200)
+    event_bus: ModelNodeEventBus | None = None

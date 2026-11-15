@@ -1,0 +1,70 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Ruling Register Compute (OMN-24478)
+#
+# The register of standing rulings: each row is the ruling's stamp, one sentence of what must be
+# true in the running system, a read (a command and the host it runs on) with how its answer is
+# judged, and the owner lane or ``none``. The register is the node_ruling_register_compute overlay;
+# the effect node takes each row's read and returns a reading, and this node judges the readings
+# into verdicts. A read that did not run, ran with an exit code the row does not accept, is older
+# than the policy's bound or answers in a shape its judge cannot parse is UNREAD, never TRUE.
+name: node_ruling_register_compute
+node_type: COMPUTE_GENERIC
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >
+  Judges the ruling register's readings. Pure: the register is the ruling register overlay, the
+  readings are supplied by the caller, and no I/O occurs. A row with no reading, an unread reading,
+  a reading older than the policy's bound, a reading dated after the tick or an answer a judge
+  cannot parse reads UNREAD and never TRUE; passed holds only when every row is TRUE.
+input_model:
+  name: ModelRulingRegisterRequest
+  module: omnimarket.models.model_ruling_register
+output_model:
+  name: ModelRulingRegisterResult
+  module: omnimarket.models.model_ruling_register
+handler:
+  module: omnimarket.nodes.node_ruling_register_compute.handlers.handler_ruling_register
+  class: HandlerRulingRegister
+  input_model: omnimarket.models.model_ruling_register.ModelRulingRegisterRequest
+  output_model: omnimarket.models.model_ruling_register.ModelRulingRegisterResult
+entrypoint:
+  name: NodeRulingRegisterCompute
+  module: omnimarket.nodes.node_ruling_register_compute
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_ruling_register_compute.handlers.handler_ruling_register:HandlerRulingRegister
+  handlers:
+    - operation: judge_ruling_register
+      topic: onex.cmd.omnimarket.ruling-register-requested.v1
+      handler:
+        name: HandlerRulingRegister
+        module: omnimarket.nodes.node_ruling_register_compute.handlers.handler_ruling_register
+terminal_event: onex.evt.omnimarket.ruling-register-judged.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.ruling-register-requested.v1
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.ruling-register-requested.v1]
+  publish_topics: [onex.evt.omnimarket.ruling-register-judged.v1]
+overlay:
+  node: node_ruling_register_compute
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+metadata:
+  ticket: OMN-24478
+  transport_type: inmemory
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: [main]
+  idempotent: true
+  timeout_ms: 5000
+externally_consumed_topics:
+  - onex.evt.omnimarket.ruling-register-judged.v1
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.ruling-register-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.ruling-register-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.ruling-register-judged.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.ruling-register-judged.v1, operation: DESCRIBE}
