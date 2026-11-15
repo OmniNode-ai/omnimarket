@@ -10,6 +10,8 @@ run event. A refused overlay or an unreadable alarm overlay is a failed run even
 
 from __future__ import annotations
 
+import asyncio
+import logging
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from typing import Literal
@@ -26,6 +28,7 @@ from omnimarket.handlers.node_overlay_reader import (
 )
 from omnimarket.handlers.schedule_gate import ScheduleGate
 from omnimarket.handlers.scheduled_overlay_refusal import ScheduledOverlayRefusalLatch
+from omnimarket.handlers.scheduled_run_guard import ScheduledRunGuard
 from omnimarket.models.schedule_trigger.model_schedule_trigger import (
     ModelScheduleRunEvent,
 )
@@ -41,6 +44,8 @@ from omnimarket.nodes.node_lab_alarm_scheduled_effect.models import (
 )
 
 NODE_NAME = "node_lab_alarm_scheduled_effect"
+
+logger = logging.getLogger(__name__)
 
 
 class HandlerLabAlarmScheduled:
@@ -65,6 +70,7 @@ class HandlerLabAlarmScheduled:
         self._clock = clock
         self._build_handler = build_handler
         self._refusals = ScheduledOverlayRefusalLatch(NODE_NAME)
+        self._guard = ScheduledRunGuard()
 
     def _event(
         self,
@@ -110,6 +116,54 @@ class HandlerLabAlarmScheduled:
         if outcome.failed:
             return self._event(request, "failed", outcome.detail)
         return self._event(request, "completed", outcome.detail)
+
+    async def handle_async(
+        self, request: ModelRuntimeTick
+    ) -> ModelScheduleRunEvent | None:
+        """The runtime calls this on its event loop, and handle blocks on the alarm run's network I/O.
+
+        So the run executes on a worker thread. A tick that arrives while a run is in flight logs and
+        starts no second run; once the run outlives its overlay interval the tick returns a failed run
+        event naming the age.
+        """
+        age = self._guard.try_acquire(self._clock())
+        if age is not None:
+            return self._overlapping(request, age)
+        return await asyncio.to_thread(self._run_guarded, request)
+
+    def _run_guarded(self, request: ModelRuntimeTick) -> ModelScheduleRunEvent | None:
+        try:
+            return self.handle(request)
+        finally:
+            self._guard.release()
+
+    def _overlapping(
+        self, request: ModelRuntimeTick, age: float
+    ) -> ModelScheduleRunEvent | None:
+        try:
+            interval: int | None = self._gate.declaration().run_interval_seconds
+        except NodeOverlayError:
+            interval = None
+        if interval is None or age < interval:
+            logger.warning(
+                "%s: tick skipped, the previous run has been in flight for %.1f s",
+                NODE_NAME,
+                age,
+            )
+            return None
+        logger.error(
+            "%s: the previous run has been in flight for %.1f s, "
+            "longer than its %s s interval",
+            NODE_NAME,
+            age,
+            interval,
+        )
+        return self._event(
+            request,
+            "failed",
+            f"the previous run has been in flight for {age:.0f} s, "
+            f"longer than its {interval} s interval",
+        )
 
 
 __all__: list[str] = ["HandlerLabAlarmScheduled"]

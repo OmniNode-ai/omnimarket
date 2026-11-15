@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from omnimarket.models.lab_fill import ModelLabFillPrLandFacts, ModelLabFillPrLandPlan
 from omnimarket.models.model_engine_experiment import ModelEngineExperimentRow
 from omnimarket.models.model_lab_daemon_drift import ModelLabDaemonDrift
+from omnimarket.models.model_ruling_register import ModelRulingRegisterResult
 from omnimarket.models.seam_reading import (
     ModelSeamReadingsFacts,
     ModelSeamReadingsVerdict,
@@ -515,6 +516,14 @@ class ModelThroughputTickRequest(BaseModel):
         description=(
             "The seam readings of a finalized publish window (VS-17), fed by node_seam_conservation_compute's "
             "caller; None skips the check (and its `checked` entry)."
+        ),
+    )
+    ruling_register: ModelRulingRegisterResult | None = Field(
+        default=None,
+        description=(
+            "The standing-rulings register's judgement (OMN-24478), the result of node_ruling_register_compute; "
+            "each FALSE or UNREAD row is a MISSING `ruling-not-running:<row>` line. None skips the check "
+            "(and its `checked` entry)."
         ),
     )
 

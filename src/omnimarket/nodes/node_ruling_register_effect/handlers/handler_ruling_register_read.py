@@ -1,0 +1,93 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+"""The ruling register read: ``handle(ModelRulingReadRequest) -> ModelRulingReadResult`` (OMN-24478).
+
+Reads each row of the standing-rulings register in order through the port and emits one
+event per row: ``answered`` (golden) for an OK reading, ``refused`` (error) for UNREAD.
+The port never raises and a refused read is never an answer; judging the readings into
+verdicts belongs to ``node_ruling_register_compute``. The topics are a constructor
+parameter of two strings -- the CLI passes them from the contract -- so no topic string
+is in this file.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable, Mapping
+from datetime import UTC, datetime
+from pathlib import Path
+
+import yaml
+
+from omnimarket.models.model_ruling_register import (
+    EnumReadStatus,
+    ModelRulingReading,
+    ModelRulingReadRequest,
+    ModelRulingReadResult,
+    ModelRulingRow,
+)
+from omnimarket.nodes.node_ruling_register_effect.models import (
+    ModelRulingReadEvent,
+)
+from omnimarket.nodes.node_ruling_register_effect.protocols import (
+    ProtocolRulingEventSink,
+    ProtocolRulingReadPort,
+)
+
+CONTRACT = Path(__file__).resolve().parents[1] / "contract.yaml"
+
+
+def load_topics(path: Path = CONTRACT) -> dict[str, str]:
+    """Topics by role from the node's contract."""
+    contract = yaml.safe_load(path.read_text(encoding="utf-8"))
+    return dict(contract["topics"])
+
+
+class HandlerRulingRegisterRead:
+    """``handle(ModelRulingReadRequest) -> ModelRulingReadResult``."""
+
+    def __init__(
+        self,
+        port: ProtocolRulingReadPort,
+        sink: ProtocolRulingEventSink,
+        topics: Mapping[str, str],
+        clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+    ) -> None:
+        self._port = port
+        self._sink = sink
+        self._topics = dict(topics)
+        self._clock = clock
+
+    def handle(self, request: ModelRulingReadRequest) -> ModelRulingReadResult:
+        readings = []
+        for row in request.policy.rows:
+            reading = self._port.read(row)
+            readings.append(reading)
+            self._emit(request, row, reading)
+        return ModelRulingReadResult(
+            correlation_id=request.correlation_id, readings=tuple(readings)
+        )
+
+    def _emit(
+        self,
+        request: ModelRulingReadRequest,
+        row: ModelRulingRow,
+        reading: ModelRulingReading,
+    ) -> None:
+        answered = reading.status is EnumReadStatus.OK
+        event = ModelRulingReadEvent(
+            kind="answered" if answered else "refused",
+            topic=self._topics[
+                "ruling_read_answered" if answered else "ruling_read_refused"
+            ],
+            row_id=row.row_id,
+            ruling=row.ruling,
+            status=reading.status,
+            exit_code=reading.exit_code,
+            detail=reading.detail,
+            read_at=reading.read_at,
+            correlation_id=request.correlation_id,
+        )
+        self._sink.emit(event)
+
+
+__all__ = ["HandlerRulingRegisterRead", "load_topics"]

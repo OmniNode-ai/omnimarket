@@ -112,10 +112,10 @@ def test_golden_a_local_out_host_keeps_its_heartbeat_while_a_parked_one_expects_
 def test_the_loader_reads_the_local_column(tmp_path: Path) -> None:
     path = tmp_path / "hosts.yaml"
     path.write_text(
-        "hosts:\n  - name: h202\n    local: true\n  - name: h051\n",
+        "hosts:\n  - name: h202\n    target: t202\n    local: true\n  - name: h051\n    target: t051\n",
         encoding="utf-8",
     )
-    rows = load_host_table(path)
+    rows = load_host_table({"ONEX_LAB_RUN_HOSTS": str(path)})
     assert rows is not None
     assert [(r.host, r.local) for r in rows] == [("h202", True), ("h051", False)]
 

@@ -1,0 +1,23 @@
+name: node_plan_first_slice_compute
+version: "0.1.0"
+description: "a plan in review names its first slice section"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_plan_first_slice_compute: "omnimarket.nodes.node_plan_first_slice_compute"
+capabilities:
+  standalone: true
+  # false until a caller publishes the command: the check runs in process.
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "plan-review", "pure"]
+pack: "plan_review"
+display_name: "Plan First Slice"
+node_role: "compute"

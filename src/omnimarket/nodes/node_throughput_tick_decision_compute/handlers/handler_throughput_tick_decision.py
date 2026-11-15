@@ -69,6 +69,10 @@ from omnimarket.models.model_engine_experiment import (
     NO_ENGINE,
     SUCCESS_OUTCOME,
 )
+from omnimarket.models.model_ruling_register import (
+    EnumRulingVerdict,
+    ModelRulingRegisterResult,
+)
 from omnimarket.models.seam_reading import (
     EnumSeamCrossingState,
     ModelSeamReading,
@@ -1716,6 +1720,14 @@ def _window_readings(facts: ModelSeamReadingsFacts) -> dict[str, ModelSeamReadin
     return latest
 
 
+def check_ruling_register(rep: Report, result: ModelRulingRegisterResult) -> None:
+    """Each standing ruling the register judged FALSE or UNREAD is MISSING; a TRUE row prints nothing (OMN-24478)."""
+    rep.checked.append("ruling-register")
+    for verdict in result.verdicts:
+        if verdict.verdict is not EnumRulingVerdict.TRUE:
+            rep.miss(verdict.loop, verdict.why, verdict.fix)
+
+
 def check_seam_readings(
     rep: Report, facts: ModelSeamReadingsFacts
 ) -> ModelSeamReadingsVerdict:
@@ -1823,6 +1835,8 @@ class HandlerThroughputTickDecision:
             if request.seam_readings is not None
             else None
         )
+        if request.ruling_register is not None:
+            check_ruling_register(rep, request.ruling_register)
         return ModelThroughputTickResult(
             lines=rep.lines,
             status_line=rep.status("THROUGHPUT", "STALL"),
