@@ -262,6 +262,42 @@ def test_error_chain_a_projection_that_is_not_configured_fails_the_scenario(
     assert "timed out" in result.detail
 
 
+def test_error_chain_a_refused_delegation_fails_the_scenario_at_runs_sent_with_the_refusal(
+    tmp_path: Path,
+) -> None:
+    """A delegate command whose output ended failed fails R8 at ``runs_sent`` and carries its refusal text (OMN-23822)."""
+    refusal = "[ONEX_MARKET_CUSTOMER_PROVIDER_KEY_ABSENT] no provider key is registered for this tenant"
+    fake = FakeTenantBus()
+
+    def refused(argv: Sequence[str], timeout: float) -> tuple[int, str]:
+        # The shape the deployed lane's delegate answer carries (measured 2026-11-15): the refusal text sits in the terminal payload.
+        return 1, json.dumps(
+            {
+                SETTINGS.delegate_id_key: "run-1",
+                SETTINGS.delegate_status_key: SETTINGS.delegate_failed_status,
+                "result": {"terminal_payload": {"payload": {"error_message": refusal}}},
+            }
+        )
+
+    rows: list[str] = []
+    handler = HandlerScenarioR8(
+        RUNTIME,
+        home=tmp_path,
+        environment={},
+        appender=rows.append,
+        sink=InMemoryScenarioEventSink(),
+        terminal_topic="onex.evt.omnimarket.delegation-scenario-result.v1",
+        lane_factory=lambda: BusLane(
+            SETTINGS, OVERLAY, fake.request, run_command=refused
+        ),
+        clock=lambda: NOW,
+    )
+    result = handler.handle(ModelScenarioR8RunCommand())
+    assert result.conclusion is EnumScenarioConclusion.FAILURE
+    assert "-runs_sent" in result.assertions
+    assert refusal in result.detail
+
+
 def test_error_chain_a_lane_with_no_bus_block_is_refused() -> None:
     settings = SETTINGS.model_copy(update={"bus": None})
     with pytest.raises(LaneReadError, match="no bus block"):
