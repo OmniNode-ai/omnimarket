@@ -48,8 +48,8 @@ from omnimarket.nodes.node_delegation_scenario_r8_effect.handlers import (
     adapter_r8_bus_request,
 )
 from omnimarket.nodes.node_delegation_scenario_r8_effect.handlers.adapter_r8_bus_request import (
-    _load_topics,
     build_bus_request,
+    load_node_topics,
 )
 from omnimarket.nodes.node_delegation_scenario_r8_effect.handlers.adapter_r8_lane import (
     BusLane,
@@ -324,7 +324,7 @@ def test_seam_the_topics_the_lane_reads_are_the_tenant_node_contracts_topics() -
         (SETTINGS.bus.savings_node, "savings"),
         (SETTINGS.bus.delegations_node, "delegations"),
     ):
-        topics = _load_topics(package)
+        topics = load_node_topics(package)
         assert topics.command == f"onex.cmd.omnimarket.tenant-{kind}-read-requested.v1"
         assert topics.success == f"onex.evt.omnimarket.tenant-{kind}-read-completed.v1"
         assert topics.failure == f"onex.evt.omnimarket.tenant-{kind}-read-failed.v1"
