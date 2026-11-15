@@ -9,7 +9,9 @@ compute: ``read_launchctl`` (the landing controller's launchd state and its PID'
 ``read_open_history`` and ``read_repo_status_units`` (the rows the record step keeps), and the goal
 check's readers (the goal_scope overlay, the controller's admission rows and newest receipt reasons, the
 last goal record). Every read goes through ``ProtocolTickFactsSource``; a read that fails is the error
-text the script put on its request, never a raise and never an empty fact.
+text the script put on its request, never a raise and never an empty fact. OMN-24478: it also reads the
+standing-rulings register's judgement from the overlay roots through ``ProtocolRulingRegisterSource``;
+a register that cannot be read is the reason on ``ruling_register_unread``, never a raise.
 """
 
 from __future__ import annotations
@@ -17,6 +19,7 @@ from __future__ import annotations
 import contextlib
 import json
 import math
+import os
 import re
 from collections.abc import Mapping
 from pathlib import Path
@@ -25,12 +28,16 @@ from typing import Any
 from omnimarket.models.model_throughput_goal_scope import ModelGoalScope
 from omnimarket.nodes.node_throughput_tick_facts_effect.handlers.tick_facts_ports import (
     HostTickFactsSource,
+    RulingRegisterSource,
 )
 from omnimarket.nodes.node_throughput_tick_facts_effect.models.model_throughput_tick_facts import (
     ModelGoalFacts,
     ModelThroughputTickFacts,
     ModelThroughputTickFactsRequest,
     ModelThroughputTickFactsResult,
+)
+from omnimarket.nodes.node_throughput_tick_facts_effect.protocols.protocol_ruling_register_source import (
+    ProtocolRulingRegisterSource,
 )
 from omnimarket.nodes.node_throughput_tick_facts_effect.protocols.protocol_tick_facts_source import (
     ProtocolTickFactsSource,
@@ -123,8 +130,15 @@ def _nonnegative_number(value: Any, name: str) -> float:
 class HandlerThroughputTickFacts:
     """Read what the tick needs and return it under the script's own key names."""
 
-    def __init__(self, source: ProtocolTickFactsSource | None = None) -> None:
+    def __init__(
+        self,
+        source: ProtocolTickFactsSource | None = None,
+        ruling_register: ProtocolRulingRegisterSource | None = None,
+    ) -> None:
         self._source: ProtocolTickFactsSource = source or HostTickFactsSource()
+        self._ruling_register: ProtocolRulingRegisterSource = (
+            ruling_register or RulingRegisterSource()
+        )
 
     def handle(
         self, request: ModelThroughputTickFactsRequest
@@ -140,6 +154,7 @@ class HandlerThroughputTickFacts:
             "window_minutes": request.repo_status_window_minutes,
             "open_units": self._repo_status_units(state),
         }
+        self._ruling_register_facts(request, facts)
         return ModelThroughputTickFactsResult(
             facts=ModelThroughputTickFacts(**facts),
             goal=self._goal(request, landing, state),
@@ -277,6 +292,27 @@ class HandlerThroughputTickFacts:
             if isinstance(u, dict)
             and all(isinstance(u.get(k), str) for k in ("repo", "opened_at", "verdict"))
         ]
+
+    # ---- the standing-rulings register ---------------------------------------------------------------------------------
+
+    def _ruling_register_facts(
+        self, request: ModelThroughputTickFactsRequest, facts: dict[str, Any]
+    ) -> None:
+        """The register's judgement from the overlay roots (OMN-24478); a register that
+        cannot be read is the reason it could not, never a raise and never an empty fact."""
+        roots = request.overlay_roots
+        if request.installed_roots:
+            # The goal reader's convention: the installed onex-overlays plugin's roots are
+            # searched after overlay_roots, joined onto the same os.pathsep list.
+            installed = os.pathsep.join(request.installed_roots)
+            roots = f"{roots}{os.pathsep}{installed}" if roots else installed
+        try:
+            facts["ruling_register"] = self._ruling_register.read(roots)
+        except (
+            Exception
+        ) as exc:  # the tick's unread register is a reason, never a raise
+            text = " ".join(str(exc).split())[:200]
+            facts["ruling_register_unread"] = f"{type(exc).__name__}: {text}"
 
     # ---- the goal check's facts ----------------------------------------------------------------------------------------
 
