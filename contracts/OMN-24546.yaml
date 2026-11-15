@@ -91,6 +91,24 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_host_install_orchestrator -q -p no:randomly --no-cov
     cwd: .
+- id: dod-omn24546-ac3-host-authenticated
+  description: "AC3: the host acts on a request only on an authenticated bus connection (SASL, a named principal equal to its overlay row's host_principal); the failing controls are a host with no principal and a host authenticated as another login, each refusing to start and logging it, and the serve command exiting 3 on an in-memory bus."
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_install_request_effect/test_install_request_runtime.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn24546-ac4-acl-declaration
+  description: "AC4: the broker permission declaration is derived from the overlay's allowed list, one principal per login, each writing only its own writer topic; the failing control is a widened declaration that lets another login write that topic. The seam test drives login to topic to host through those rows and reads a real SASL broker's refusal where the caller names a lane."
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_install_request_acl_compute tests/seams/test_install_request_seam.py -q -p no:randomly --no-cov
+    cwd: .
 - id: dod-omn24546-integration-proof
   description: the node tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
   source: manual

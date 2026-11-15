@@ -69,14 +69,16 @@ class HandlerInstallRequestOwed:
         by_id: dict[UUID, ModelInstallRequest] = {}
         for req in request.requests:
             by_id.setdefault(req.request_id, req)
-        cleared = self._cleared_ids(request)
-        owed = [req for req in by_id.values() if req.request_id not in cleared]
+        cleared = self._cleared(request)
+        owed = [
+            req for req in by_id.values() if (req.request_id, req.host) not in cleared
+        ]
         owed.sort(key=lambda req: (req.requested_at, req.request_id))
         lines: list[ModelInstallOwedLine] = []
         expired = 0
         for req in owed:
             past_expiry = request.now >= req.expires_at
-            suffix = self._last_result_suffix(request.results, req.request_id)
+            suffix = self._last_result_suffix(request.results, req.request_id, req.host)
             if past_expiry:
                 expired += 1
                 lines.append(
@@ -124,7 +126,7 @@ class HandlerInstallRequestOwed:
         by_id: dict[UUID, ModelInstallUnreadRequest] = {}
         for unread in request.unread_requests:
             by_id.setdefault(unread.request_id, unread)
-        cleared = self._cleared_ids(request)
+        cleared = self._cleared(request)
         return [
             ModelInstallOwedLine(
                 request_id=request_id,
@@ -132,19 +134,26 @@ class HandlerInstallRequestOwed:
                 line=f"{UNREAD_MARK} {request_id} on {unread.host}: {unread.reason}",
             )
             for request_id, unread in sorted(by_id.items())
-            if request_id not in cleared
+            if (request_id, unread.host) not in cleared
         ]
 
-    def _cleared_ids(self, request: ModelInstallOwedInput) -> set[UUID]:
-        """The ids with a verified result; the order of the records does not matter."""
+    def _cleared(self, request: ModelInstallOwedInput) -> set[tuple[UUID, str]]:
+        """The ``(request id, host)`` pairs with a verified result; the order of the records does not matter.
+
+        A result clears a request only for the host it names: a verified result for the same id on another host answers
+        another request.
+        """
         return {
-            result.request_id
+            (result.request_id, result.host)
             for result in request.results
             if result.status is EnumInstallRequestStatus.VERIFIED
         }
 
     def _last_result_suffix(
-        self, results: tuple[ModelInstallRequestResult, ...], request_id: UUID
+        self,
+        results: tuple[ModelInstallRequestResult, ...],
+        request_id: UUID,
+        host: str,
     ) -> str:
         """``; last result <status>: <reason>`` from the newest result that is not verified."""
         latest = _latest_result(
@@ -152,6 +161,7 @@ class HandlerInstallRequestOwed:
                 result
                 for result in results
                 if result.request_id == request_id
+                and result.host == host
                 and result.status is not EnumInstallRequestStatus.VERIFIED
             )
         )

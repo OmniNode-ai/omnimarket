@@ -75,6 +75,7 @@ UNIT = "real-unit"
 REPOSITORY = "Real-Org/real-repo"
 VERIFY_NAME = "real-verify"
 PUBLISHER = "real-git-lane-bot"
+HOST_LOGIN = "real-git-host-login"
 LANDING_BRANCH = "main"
 EXPECTED_LINE = "example-unit ok"
 
@@ -177,6 +178,7 @@ def _overlay(repo_path: Path, verify_program: str) -> ModelInstallRequestEffectO
                 name=HOST,
                 blocker_files=(),
                 allowed_publishers=(PUBLISHER,),
+                host_principal=HOST_LOGIN,
                 units=(
                     ModelInstallUnitRow(
                         name=UNIT,

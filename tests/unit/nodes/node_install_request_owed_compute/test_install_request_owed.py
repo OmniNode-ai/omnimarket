@@ -354,10 +354,23 @@ def test_shuffled_record_order_gives_the_identical_reading() -> None:
         assert reading.model_dump_json() == baseline.model_dump_json()
 
 
+class _OwedClearingByIdAlone(HandlerInstallRequestOwed):
+    """A copy of the real handler that keys results by request id alone (the shape before the host joined the key)."""
+
+    def _cleared(self, request: ModelInstallOwedInput) -> set[tuple[UUID, str]]:
+        return {
+            (req.request_id, req.host)
+            for req in request.requests
+            for result in request.results
+            if result.request_id == req.request_id
+            and result.status is EnumInstallRequestStatus.VERIFIED
+        }
+
+
 class _OwedWithoutVerifiedClearsRule(HandlerInstallRequestOwed):
     """A copy of the real handler with the verified-clears rule removed."""
 
-    def _cleared_ids(self, request: ModelInstallOwedInput) -> set[UUID]:
+    def _cleared(self, request: ModelInstallOwedInput) -> set[tuple[UUID, str]]:
         """Nothing clears: the rule under test is gone."""
         return set()
 
@@ -376,3 +389,39 @@ def test_without_the_verified_clears_rule_a_verified_request_stays_owed() -> Non
     )
     assert reading.owed == 1
     assert reading.expired == 0
+
+
+def _result_from(
+    host: str, request_id: UUID = REQUEST_A_ID
+) -> ModelInstallRequestResult:
+    return ModelInstallRequestResult(
+        request_id=request_id,
+        host=host,
+        unit="example-unit",
+        status=EnumInstallRequestStatus.VERIFIED,
+        at=NOW,
+        verify_line="ok",
+        reason="ok",
+    )
+
+
+@pytest.mark.unit
+def test_a_verified_result_of_another_host_under_the_same_id_clears_nothing() -> None:
+    """Results are keyed by request id AND host: a verified result another host published under this id answers
+    another request, so this host's request stays owed."""
+    owed_input = ModelInstallOwedInput(
+        requests=(_request(),), results=(_result_from("another-host"),), now=NOW
+    )
+    reading = HandlerInstallRequestOwed().handle(owed_input)
+    assert reading.owed == 1
+    assert "NOT RUNNING" in reading.lines[0].line
+
+
+@pytest.mark.unit
+def test_failing_control_keyed_by_id_alone_the_other_hosts_result_would_clear_it() -> (
+    None
+):
+    owed_input = ModelInstallOwedInput(
+        requests=(_request(),), results=(_result_from("another-host"),), now=NOW
+    )
+    assert _OwedClearingByIdAlone().handle(owed_input).owed == 0

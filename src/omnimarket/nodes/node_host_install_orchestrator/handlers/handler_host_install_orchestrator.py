@@ -120,7 +120,9 @@ class HandlerHostInstallOrchestrator:
         self._configured_overlay = overlay
         self._clock = clock if clock is not None else _utc_now
         self._contexts: OrderedDict[UUID, ModelHostInstallContext] = OrderedDict()
-        self._tree_requests: OrderedDict[UUID, ModelInstallRequest] = OrderedDict()
+        self._tree_requests: OrderedDict[tuple[UUID, str], ModelInstallRequest] = (
+            OrderedDict()
+        )
 
     @property
     def _overlay(self) -> ModelHostInstallOrchestratorOverlay:
@@ -130,7 +132,9 @@ class HandlerHostInstallOrchestrator:
 
     @property
     def known_installs(self) -> tuple[UUID, ...]:
-        return tuple(self._contexts) + tuple(self._tree_requests)
+        return tuple(self._contexts) + tuple(
+            request_id for request_id, _host in self._tree_requests
+        )
 
     async def handle(
         self, envelope: ModelEventEnvelope[Any]
@@ -181,8 +185,21 @@ class HandlerHostInstallOrchestrator:
             self._contexts.popitem(last=False)
 
     def _remember_tree_request(self, request: ModelInstallRequest) -> None:
-        self._tree_requests[request.request_id] = request
-        self._tree_requests.move_to_end(request.request_id)
+        """Remember a request under its id AND host; the first one under a key is kept.
+
+        The shared command topic is unauthenticated: a message that repeats a real request's id must neither replace the
+        real one (its result would then match nothing and be dropped) nor end it. A repeat under the same id and host is
+        ignored, and one that names another host is a different request.
+        """
+        key = (request.request_id, request.host)
+        if key in self._tree_requests:
+            logger.warning(
+                "host install orchestrator kept the first request under %s on %s; a repeat is ignored",
+                request.request_id,
+                request.host,
+            )
+            return
+        self._tree_requests[key] = request
         while len(self._tree_requests) > self._overlay.context_limit:
             self._tree_requests.popitem(last=False)
 
@@ -525,22 +542,22 @@ class HandlerHostInstallOrchestrator:
     def _on_install_result(
         self, result: ModelInstallRequestResult
     ) -> tuple[ModelHostInstallOutput, ...]:
-        request = self._tree_requests.get(result.request_id)
+        request = self._tree_requests.get((result.request_id, result.host))
         if request is None:
             logger.warning(
-                "host install orchestrator ignored an install request result for %s",
+                "host install orchestrator ignored an install request result for %s on %s",
                 result.request_id,
+                result.host,
             )
             return ()
-        if result.host != request.host or result.unit != request.unit:
+        if result.unit != request.unit:
             logger.warning(
-                "host install orchestrator ignored a result for %s that names %s on %s,"
-                " not the remembered %s on %s",
+                "host install orchestrator ignored a result for %s on %s that names %s,"
+                " not the remembered %s",
                 result.request_id,
-                result.unit,
                 result.host,
+                result.unit,
                 request.unit,
-                request.host,
             )
             return ()
         if (
@@ -554,7 +571,7 @@ class HandlerHostInstallOrchestrator:
                 result.request_id,
             )
             return ()
-        self._tree_requests.pop(result.request_id, None)
+        self._tree_requests.pop((result.request_id, result.host), None)
         return (self._tree_completed(result),)
 
     def _tree_completed(

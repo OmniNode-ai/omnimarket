@@ -10,13 +10,18 @@ the logins the host names: a request cannot widen any of the four.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
-from omnimarket.models.install_request import REPOSITORY_PATTERN, EnumInstallTarget
+from omnimarket.models.install_request import (
+    LOGIN_PATTERN,
+    REPOSITORY_PATTERN,
+    EnumInstallTarget,
+)
 
 NODE_NAME = "node_install_request_effect"
 
@@ -138,10 +143,20 @@ class ModelInstallHostRow(BaseModel):
     #: The logins that may publish an install request for this host; any other publisher's request is refused and its
     #: refusal is kept out of the result journal.
     allowed_publishers: tuple[str, ...] = Field(min_length=1)
+    #: The broker login this host's serve process must be authenticated as (SASL). The host refuses to act on any request
+    #: unless its bus connection authenticated as exactly this login, and the owed reading takes a result as this host's
+    #: only from the result topic of this login.
+    host_principal: str = Field(pattern=LOGIN_PATTERN)
     units: tuple[ModelInstallUnitRow, ...] = Field(min_length=1)
 
     @model_validator(mode="after")
     def _shape(self) -> ModelInstallHostRow:
+        for login in self.allowed_publishers:
+            if re.fullmatch(LOGIN_PATTERN, login) is None:
+                raise ValueError(
+                    f"host {self.name} allows publisher {login!r}, which is no broker login name:"
+                    " a login names its own writer topic"
+                )
         names = [unit.name for unit in self.units]
         if len(names) != len(set(names)):
             raise ValueError(f"host {self.name} declares a unit twice")

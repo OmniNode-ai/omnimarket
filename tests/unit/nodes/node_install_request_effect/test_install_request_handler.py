@@ -98,6 +98,7 @@ def _overlay(
                 name="example-host",
                 blocker_files=(blocker,),
                 allowed_publishers=(ALLOWED_PUBLISHER,),
+                host_principal="handler-host-login",
                 units=(
                     ModelInstallUnitRow(
                         name="example-unit",

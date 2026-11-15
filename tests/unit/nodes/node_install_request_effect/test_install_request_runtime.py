@@ -65,6 +65,8 @@ from omnimarket.nodes.node_install_request_effect.overlay import (
 )
 from omnimarket.nodes.node_install_request_effect.runtime_install_request import (
     InstallRequestHost,
+    InstallRequestHostUnauthenticatedError,
+    authenticated_principal,
     load_install_request_topics,
     main,
     open_install_request_bus,
@@ -83,6 +85,7 @@ NEW_COMMIT = "4c3985a451847571e2cebd06a6edf1940069946e"
 MIRROR = "/srv/example-host/mirrors/example-repo"
 REF = "omn-19998-example"
 ALLOWED_PUBLISHER = "example-lane-bot"
+HOST_LOGIN = "example-host-login"
 
 
 def _overlay(
@@ -106,6 +109,7 @@ def _overlay(
                 name="example-host",
                 blocker_files=(blocker,),
                 allowed_publishers=(ALLOWED_PUBLISHER,),
+                host_principal=HOST_LOGIN,
                 units=(
                     ModelInstallUnitRow(
                         name="example-unit",
@@ -299,7 +303,12 @@ async def test_a_published_request_is_served_and_its_result_comes_back(
         overlay = _overlay(blocker=str(tmp_path / "no-such.lock"))
         journal = InMemoryResultJournal()
         host = InstallRequestHost(
-            bus, _handler(overlay, journal), overlay, "example-host", now=lambda: NOW
+            bus,
+            _handler(overlay, journal),
+            overlay,
+            "example-host",
+            now=lambda: NOW,
+            authenticated_principal=HOST_LOGIN,
         )
         topics = load_install_request_topics()
         results: list[dict[str, object]] = []
@@ -345,6 +354,7 @@ async def test_a_request_on_the_topic_of_a_login_the_host_does_not_allow_is_neve
             overlay,
             "example-host",
             now=lambda: NOW,
+            authenticated_principal=HOST_LOGIN,
         )
         topics = load_install_request_topics()
         answers: list[dict[str, object]] = []
@@ -392,7 +402,12 @@ async def test_the_publisher_is_the_topic_login_and_never_the_envelope_producer(
         overlay = _overlay(blocker=str(tmp_path / "no-such.lock"))
         recording = _RecordingHandler(_handler(overlay, InMemoryResultJournal()))
         host = InstallRequestHost(
-            bus, recording, overlay, "example-host", now=lambda: NOW
+            bus,
+            recording,
+            overlay,
+            "example-host",
+            now=lambda: NOW,
+            authenticated_principal=HOST_LOGIN,
         )
         topics = load_install_request_topics()
         await host.start()
@@ -428,7 +443,11 @@ async def test_a_host_with_no_servable_writer_topic_refuses_to_start(
 
         bus.subscribe = refuse  # type: ignore[method-assign]
         host = InstallRequestHost(
-            bus, _handler(overlay, InMemoryResultJournal()), overlay, "example-host"
+            bus,
+            _handler(overlay, InMemoryResultJournal()),
+            overlay,
+            "example-host",
+            authenticated_principal=HOST_LOGIN,
         )
         with pytest.raises(ValueError, match="serves no writer topic"):
             await host.start()
@@ -446,7 +465,12 @@ async def test_a_bare_request_with_no_envelope_is_answered_on_the_failure_termin
         overlay = _overlay(blocker=str(tmp_path / "no-such.lock"))
         recording = _RecordingHandler(_handler(overlay, InMemoryResultJournal()))
         host = InstallRequestHost(
-            bus, recording, overlay, "example-host", now=lambda: NOW
+            bus,
+            recording,
+            overlay,
+            "example-host",
+            now=lambda: NOW,
+            authenticated_principal=HOST_LOGIN,
         )
         topics = load_install_request_topics()
         failures: list[dict[str, object]] = []
@@ -483,7 +507,11 @@ async def test_a_command_that_is_no_request_lands_on_the_failure_topic(
     ) as bus:
         overlay = _overlay(blocker=str(tmp_path / "no-such.lock"))
         host = InstallRequestHost(
-            bus, _handler(overlay, InMemoryResultJournal()), overlay, "example-host"
+            bus,
+            _handler(overlay, InMemoryResultJournal()),
+            overlay,
+            "example-host",
+            authenticated_principal=HOST_LOGIN,
         )
         topics = load_install_request_topics()
         failures: list[dict[str, object]] = []
@@ -520,7 +548,11 @@ async def test_a_held_request_answers_once_the_blocker_is_gone(
             update={"hold_retry_seconds": 1}
         )
         host = InstallRequestHost(
-            bus, _handler(overlay, InMemoryResultJournal()), overlay, "example-host"
+            bus,
+            _handler(overlay, InMemoryResultJournal()),
+            overlay,
+            "example-host",
+            authenticated_principal=HOST_LOGIN,
         )
         topics = load_install_request_topics()
         results: list[dict[str, object]] = []
@@ -605,15 +637,16 @@ async def _read_owed(
     return await task
 
 
-async def _publish_result(bus: Any, result: ModelInstallRequestResult) -> None:
-    """Publish one result on the success terminal the way the serving host does."""
+async def _publish_result(
+    bus: Any, result: ModelInstallRequestResult, principal: str = HOST_LOGIN
+) -> None:
+    """Publish one result on the result topic of ``principal``, the way the serving host does."""
     topics = load_install_request_topics()
+    topic = topics.result_topic(principal)
     await bus.publish(
-        topics.success,
+        topic,
         str(result.request_id).encode("utf-8"),
-        envelope_bytes_for(
-            topics.success, result.model_dump(mode="json"), result.request_id
-        ),
+        envelope_bytes_for(topic, result.model_dump(mode="json"), result.request_id),
     )
 
 
@@ -755,7 +788,11 @@ async def test_read_owed_lists_a_request_from_a_login_its_host_does_not_allow_as
     ) as bus:
         base = _overlay()
         second = base.hosts[0].model_copy(
-            update={"name": "second-host", "allowed_publishers": ("second-lane-bot",)}
+            update={
+                "name": "second-host",
+                "allowed_publishers": ("second-lane-bot",),
+                "host_principal": "second-host-login",
+            }
         )
         overlay = base.model_copy(update={"hosts": (*base.hosts, second)})
 
@@ -895,3 +932,218 @@ def test_the_publisher_is_the_lane_principal_on_a_declared_lane_and_the_overlay_
     monkeypatch.delenv("TEST_INSTALL_PUBLISHER_LOGIN")
     with pytest.raises(ValueError, match="TEST_INSTALL_PUBLISHER_LOGIN"):
         runtime_install_request._publisher_for(explicit, overlay)
+
+
+# ------------------------------------------------- the host acts only on an authenticated bus
+
+
+class _Transport:
+    """What the host reads of a lane transport: the protocol's SASL mark and the login."""
+
+    def __init__(self, *, is_sasl: bool, sasl_username: str | None) -> None:
+        self.is_sasl = is_sasl
+        self.sasl_username = sasl_username
+
+
+def test_a_connection_is_authenticated_only_with_sasl_and_a_named_login() -> None:
+    assert (
+        authenticated_principal(_Transport(is_sasl=True, sasl_username=HOST_LOGIN))
+        == HOST_LOGIN
+    )
+    # failing controls: each missing half reads as no login at all
+    assert authenticated_principal(None) is None
+    assert (
+        authenticated_principal(_Transport(is_sasl=False, sasl_username=HOST_LOGIN))
+        is None
+    )
+    assert authenticated_principal(_Transport(is_sasl=True, sasl_username=None)) is None
+    assert authenticated_principal(_Transport(is_sasl=True, sasl_username="")) is None
+
+
+async def test_a_host_on_an_unauthenticated_bus_refuses_to_start_and_says_so(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """No SASL, no named principal: the per-login topic names no publisher, so the host acts on no request."""
+    async with open_install_request_bus(
+        bus="inmemory", lane=None, kafka_bootstrap=None
+    ) as bus:
+        overlay = _overlay()
+        host = InstallRequestHost(
+            bus,
+            _handler(overlay, InMemoryResultJournal()),
+            overlay,
+            "example-host",
+            authenticated_principal=None,
+        )
+        with (
+            caplog.at_level("CRITICAL"),
+            pytest.raises(
+                InstallRequestHostUnauthenticatedError, match="REFUSES TO ACT"
+            ),
+        ):
+            await host.start()
+        assert "REFUSES TO ACT" in caplog.text
+        assert not bus.get_consumer_groups()
+
+
+async def test_a_host_authenticated_as_another_login_than_its_row_refuses_to_start() -> (
+    None
+):
+    async with open_install_request_bus(
+        bus="inmemory", lane=None, kafka_bootstrap=None
+    ) as bus:
+        overlay = _overlay()
+        host = InstallRequestHost(
+            bus,
+            _handler(overlay, InMemoryResultJournal()),
+            overlay,
+            "example-host",
+            authenticated_principal="example-lane-bot",
+        )
+        with pytest.raises(
+            InstallRequestHostUnauthenticatedError, match="authenticated as"
+        ):
+            await host.start()
+
+
+async def test_an_unauthenticated_host_answers_no_request_even_when_a_request_waits(
+    tmp_path: Path,
+) -> None:
+    """Failing control for the guard: the same host with a named principal answers the same request."""
+    async with open_install_request_bus(
+        bus="inmemory", lane=None, kafka_bootstrap=None
+    ) as bus:
+        overlay = _overlay(blocker=str(tmp_path / "no-such.lock"))
+        journal = InMemoryResultJournal()
+        host = InstallRequestHost(
+            bus,
+            _handler(overlay, journal),
+            overlay,
+            "example-host",
+            now=lambda: NOW,
+            authenticated_principal=None,
+        )
+        with pytest.raises(InstallRequestHostUnauthenticatedError):
+            await host.start()
+        await publish_request(
+            bus, _draft(), overlay, now=lambda: NOW, publisher=ALLOWED_PUBLISHER
+        )
+        await host.drain()
+        assert journal == {}
+        assert host.processed == 0
+
+
+def test_the_serve_command_refuses_on_a_bus_with_no_login_and_exits_3(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _overlay_root(tmp_path, monkeypatch)
+    monkeypatch.setenv("TEST_INSTALL_HOST_NAME", "example-host")
+    monkeypatch.setenv("TEST_INSTALL_JOURNAL_DIR", str(tmp_path))
+
+    code = main(["serve", "--bus", "inmemory"])
+
+    assert code == 3
+    assert "REFUSED" in capsys.readouterr().err
+
+
+# ------------------------------------------------- results keyed by the authenticated host
+
+
+async def test_the_host_publishes_each_result_on_its_own_login_topic_and_on_the_shared_terminal(
+    tmp_path: Path,
+) -> None:
+    async with open_install_request_bus(
+        bus="inmemory", lane=None, kafka_bootstrap=None
+    ) as bus:
+        overlay = _overlay(blocker=str(tmp_path / "no-such.lock"))
+        host = InstallRequestHost(
+            bus,
+            _handler(overlay, InMemoryResultJournal()),
+            overlay,
+            "example-host",
+            now=lambda: NOW,
+            authenticated_principal=HOST_LOGIN,
+        )
+        topics = load_install_request_topics()
+        own: list[dict[str, object]] = []
+        shared: list[dict[str, object]] = []
+
+        async def capture_own(message: Any) -> None:
+            own.append(json.loads(message.value))
+
+        async def capture_shared(message: Any) -> None:
+            shared.append(json.loads(message.value))
+
+        await bus.subscribe(
+            topics.result_topic(HOST_LOGIN), on_message=capture_own, group_id="own"
+        )
+        await bus.subscribe(
+            topics.success, on_message=capture_shared, group_id="shared"
+        )
+        await host.start()
+        request = await publish_request(
+            bus, _draft(), overlay, now=lambda: NOW, publisher=ALLOWED_PUBLISHER
+        )
+        await host.drain()
+
+        assert [e["correlation_id"] for e in own] == [str(request.request_id)]
+        assert [e["payload"] for e in own] == [e["payload"] for e in shared]
+        await host.stop()
+
+
+async def test_read_owed_takes_no_clearing_from_the_shared_terminal() -> None:
+    """The shared success terminal is unauthenticated: a verified result written there clears nothing."""
+    async with open_install_request_bus(
+        bus="inmemory", lane=None, kafka_bootstrap=None
+    ) as bus:
+        overlay = _overlay()
+        topics = load_install_request_topics()
+
+        async def publish() -> None:
+            request = await publish_request(
+                bus, _draft(), overlay, now=lambda: NOW, publisher=ALLOWED_PUBLISHER
+            )
+            result = _verified_result(request)
+            await bus.publish(
+                topics.success,
+                str(request.request_id).encode("utf-8"),
+                envelope_bytes_for(
+                    topics.success, result.model_dump(mode="json"), request.request_id
+                ),
+            )
+
+        reading = await _read_owed(bus, overlay, lambda: NOW, "owed-shared", publish)
+
+        assert reading.owed == 1
+        assert NOT_RUNNING_MARK in reading.lines[0].line
+
+
+async def test_read_owed_takes_no_clearing_from_another_logins_result_topic() -> None:
+    """A login that is not the host's own writes a verified result under the host's name on its own result topic: the
+    host row names another login, so the result is no answer of that host and the request stays owed."""
+    async with open_install_request_bus(
+        bus="inmemory", lane=None, kafka_bootstrap=None
+    ) as bus:
+        base = _overlay()
+        other = base.hosts[0].model_copy(
+            update={
+                "name": "other-host",
+                "allowed_publishers": ("other-lane-bot",),
+                "host_principal": "other-host-login",
+            }
+        )
+        overlay = base.model_copy(update={"hosts": (*base.hosts, other)})
+
+        async def publish() -> None:
+            request = await publish_request(
+                bus, _draft(), overlay, now=lambda: NOW, publisher=ALLOWED_PUBLISHER
+            )
+            await _publish_result(
+                bus, _verified_result(request), principal="other-host-login"
+            )
+
+        reading = await _read_owed(
+            bus, overlay, lambda: NOW, "owed-forged-host", publish
+        )
+
+        assert reading.owed == 1

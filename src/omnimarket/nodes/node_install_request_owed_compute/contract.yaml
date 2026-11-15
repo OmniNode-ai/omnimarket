@@ -2,9 +2,12 @@
 # SPDX-License-Identifier: MIT
 # ONEX Node Contract - Install requests owed COMPUTE (OMN-19998, root 5: the install request)
 #
-# Reads every install request and every result a reader holds and returns the installs still owed: the count the throughput
-# goal check reads ("installs owed to the orchestrator") and one line per request. Pure: no clock (the caller supplies now),
-# no I/O. Exemplar: node_pr_landing_decision_compute.
+# Reads every install request and every result a reader holds and returns the installs still owed: the count and one line per
+# request. Its feed is the bus: read_owed in node_install_request_effect subscribes to the writer command topic of every login
+# and the result topic of every host login and hands the records here (`python -m omnimarket.nodes.node_install_request_effect
+# owed`). A result clears a request only for the same id AND host, and only when it arrived on that host's own login topic.
+# Nothing else feeds it: the hourly throughput tick does not read it yet (a follow-up owns that tick input). Pure: no clock
+# (the caller supplies now), no I/O. Exemplar: node_pr_landing_decision_compute.
 name: node_install_request_owed_compute
 contract_name: node_install_request_owed_compute
 node_name: node_install_request_owed_compute
@@ -18,7 +21,7 @@ description: >
   A request with no verified result is owed. While it is inside its expiry its line reads `<unit> NOT RUNNING: owned by
   install request <id> ...`, so the request owns the NOT RUNNING line; past its expiry its line reads
   `INSTALL-REQUEST-EXPIRED <id> ...`, the one line the throughput tick shows. A request repeated under one id counts once.
-  A verified result clears the request whatever order the records arrive in; a failed result keeps it owed and is named in
+  A verified result clears the request of its own id and host whatever order the records arrive in (a verified result of another host under the same id clears nothing); a failed result keeps it owed and is named in
   its line.
 
 handler:

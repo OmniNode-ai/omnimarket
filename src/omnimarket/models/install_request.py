@@ -25,6 +25,8 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 REPOSITORY_PATTERN = r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
 REF_PATTERN = r"^[A-Za-z0-9_][A-Za-z0-9_./-]*$"
 UNIT_PATTERN = r"^[A-Za-z0-9_][A-Za-z0-9_.-]*$"
+#: A broker login names its own writer topic; the node contract's ``writer_topics.principal_pattern`` is the same pattern.
+LOGIN_PATTERN = r"^[a-z0-9][a-z0-9-]{0,62}$"
 
 #: The words the owed and unread lines carry; the throughput tick matches on them (the seam test pins them).
 NOT_RUNNING_MARK = "NOT RUNNING"
@@ -251,6 +253,7 @@ class ModelInstallOwedReading(BaseModel):
 
 __all__: list[str] = [
     "EXPIRED_MARK",
+    "LOGIN_PATTERN",
     "NOT_RUNNING_MARK",
     "PUBLISHER_REFUSED_REASON",
     "REF_PATTERN",

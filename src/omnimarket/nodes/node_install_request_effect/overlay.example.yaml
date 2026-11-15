@@ -21,6 +21,8 @@ hosts:
       - /tmp/example-install.lock
     # The only logins whose requests this host answers; every other publisher is refused, not journalled.
     allowed_publishers: [example-lane-bot]
+    # The broker login this host's serve process must be authenticated as; the host refuses every request otherwise.
+    host_principal: example-host-login
     units:
       - name: example-unit
         kind: unit-tree

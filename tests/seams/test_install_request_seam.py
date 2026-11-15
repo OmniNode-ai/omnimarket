@@ -44,6 +44,12 @@ from omnimarket.delegated_test_loop.lab_run_bus import (
     ProtocolLabRunBus,
     envelope_bytes_for,
 )
+from omnimarket.models.broker_acl.model_broker_acl_overlay import (
+    EnumAclOperation,
+    EnumAclResourceType,
+    ModelBrokerAclRenderRequest,
+    ModelBrokerAclScopeOverlay,
+)
 from omnimarket.models.install_request import (
     EXPIRED_MARK,
     NOT_RUNNING_MARK,
@@ -57,6 +63,17 @@ from omnimarket.models.install_request import (
     ModelInstallRequestReceived,
     ModelInstallRequestResult,
     ModelInstallUnreadRequest,
+)
+from omnimarket.nodes.node_broker_acl_overlay_render_compute.handlers.handler_broker_acl_overlay_render import (
+    HandlerBrokerAclOverlayRender,
+)
+from omnimarket.nodes.node_install_request_acl_compute.handlers.handler_install_request_acl import (
+    HandlerInstallRequestAcl,
+    permits,
+)
+from omnimarket.nodes.node_install_request_acl_compute.models.model_install_request_acl import (
+    ModelInstallAclRequest,
+    ModelInstallAclScopeCells,
 )
 from omnimarket.nodes.node_install_request_decision_compute.handlers.handler_install_request_decision import (
     HandlerInstallRequestDecision,
@@ -76,6 +93,8 @@ from omnimarket.nodes.node_install_request_effect.overlay import (
 )
 from omnimarket.nodes.node_install_request_effect.runtime_install_request import (
     InstallRequestHost,
+    bound_authenticated_principal,
+    host_group_id,
     load_install_request_topics,
     open_install_request_bus,
     publish_request,
@@ -105,6 +124,8 @@ from tests.nodes.node_unit_tree_install_effect.unit_tree_support import (
 pytestmark = pytest.mark.unit
 
 BOOTSTRAP_ENV = "INSTALL_REQUEST_PARITY_BOOTSTRAP"
+#: The name of a declared SASL lane the caller holds a login on; the broker there applies its own rows.
+SASL_LANE_ENV = "INSTALL_REQUEST_SASL_LANE"
 TIMEOUT_S = 30.0
 HOST = "h1"
 NODES = "omnimarket.nodes"
@@ -112,6 +133,7 @@ CAT = "/usr/bin/env"
 REPOSITORY = "Example-Org/example-repo"
 PUBLISHER = "example-lane-bot"
 FORGER = "example-other-login"
+HOST_LOGIN = "example-host-login"
 VERIFY_A = "tree-holds-a"
 VERIFY_NEVER = "tree-holds-nothing-true"
 
@@ -159,6 +181,7 @@ def _overlay(root: Path) -> ModelInstallRequestEffectOverlay:
             ModelInstallHostRow(
                 name=HOST,
                 allowed_publishers=(PUBLISHER,),
+                host_principal=HOST_LOGIN,
                 units=(
                     ModelInstallUnitRow(
                         name="u1",
@@ -279,6 +302,7 @@ class _Host:
             _handler(scene.root, self.journal),
             _overlay(scene.root),
             HOST,
+            authenticated_principal=HOST_LOGIN,
             topics=self.topics,
             group_id=f"seam-host-{uuid.uuid4().hex}",
         )
@@ -643,7 +667,8 @@ def test_the_effect_topics_are_the_contract_topics_and_the_host_reads_them_from_
         for g in contract["broker_acl_grants"][0]["grants"]
         if g["pattern"] == "PREFIXED"
     }
-    assert prefixed == {prefix}
+    result_prefix = topics.result_topic("x").rsplit("x", 1)[0]
+    assert prefixed == {prefix, result_prefix}
 
 
 def test_the_example_overlay_loads_through_the_overlay_model(tmp_path: Path) -> None:
@@ -704,3 +729,258 @@ def test_without_the_decision_expiry_rule_an_expired_request_would_have_been_ins
     with pytest.raises(RuntimeError, match="installer reached"):
         build(NoExpiry()).handle(expired)
     assert root_calls == [scene.first]
+
+
+# ------------------------------------------------------- login -> topic -> host (OMN-24546)
+
+SECOND = "example-second-bot"
+
+
+def _two_login_overlay(root: Path) -> ModelInstallRequestEffectOverlay:
+    """The host overlay with two allowed logins."""
+    base = _overlay(root)
+    row = base.hosts[0].model_copy(update={"allowed_publishers": (PUBLISHER, SECOND)})
+    return base.model_copy(update={"hosts": (row,)})
+
+
+def _declaration(root: Path) -> ModelBrokerAclScopeOverlay:
+    """The broker permission declaration derived from the host overlay, with two allowed logins."""
+    overlay = _two_login_overlay(root)
+    return HandlerInstallRequestAcl().handle(
+        ModelInstallAclRequest(
+            cells=ModelInstallAclScopeCells(
+                scope="broker_acls_install_request_seam",
+                ticket="OMN-24546",
+                why="the seam test's declaration",
+                operator_ssh_target="example-target",
+                operator_command="example-apply {declaration} {ssh_target}",
+                declaration_path="example/{scope}/overlay.yaml",
+                lane="dev",
+                host="example-broker",
+                compose_project="example",
+                broker_container="example-broker",
+                superuser_source_container="example-superuser",
+            ),
+            overlay=overlay,
+            topics=load_install_request_topics(),
+            group_prefix=host_group_id(""),
+        )
+    )
+
+
+class _BrokerRows:
+    """A bus as a broker holding the declared rows sees it for one login: a write the rows do not grant is refused
+    before it reaches the bus, a subscription the rows do not grant is refused too (the declaration check, where no
+    real broker applies rows)."""
+
+    def __init__(
+        self, bus: Any, declaration: ModelBrokerAclScopeOverlay, login: str
+    ) -> None:
+        self._bus = bus
+        self._declaration = declaration
+        self._login = login
+        self.written: list[str] = []
+        self.read: list[tuple[str, str]] = []
+
+    async def publish(self, topic: str, key: bytes | None, value: bytes) -> Any:
+        if not permits(
+            self._declaration,
+            self._login,
+            EnumAclResourceType.TOPIC,
+            topic,
+            EnumAclOperation.WRITE,
+        ):
+            raise PermissionError(f"{self._login} holds no WRITE row on {topic}")
+        self.written.append(topic)
+        return await self._bus.publish(topic, key, value)
+
+    async def subscribe(
+        self, topic: str, on_message: Any, group_id: str, **kwargs: Any
+    ) -> Any:
+        if not permits(
+            self._declaration,
+            self._login,
+            EnumAclResourceType.TOPIC,
+            topic,
+            EnumAclOperation.READ,
+        ) or not permits(
+            self._declaration,
+            self._login,
+            EnumAclResourceType.GROUP,
+            group_id,
+            EnumAclOperation.READ,
+        ):
+            raise PermissionError(f"{self._login} holds no READ row on {topic}")
+        self.read.append((topic, group_id))
+        return await self._bus.subscribe(
+            topic, on_message=on_message, group_id=group_id, **kwargs
+        )
+
+
+async def _login_topic_host(open_bus: Callable[[], Any], tmp_path: Path) -> None:
+    """Each login writes only its own topic; the host reads those topics under its own login and answers."""
+    scene = _scene(tmp_path)
+    declaration = _declaration(scene.root)
+    topics = load_install_request_topics()
+    async with open_bus() as bus:
+        host_bus = _BrokerRows(bus, declaration, HOST_LOGIN)
+        journal = InMemoryResultJournal()
+        host = InstallRequestHost(
+            host_bus,  # type: ignore[arg-type]
+            _handler(scene.root, journal),
+            _two_login_overlay(scene.root),
+            HOST,
+            authenticated_principal=HOST_LOGIN,
+            topics=topics,
+            group_id=f"{host_group_id('')}{uuid.uuid4().hex}",
+        )
+        results = await _capture(bus, topics.success)
+        await host.start()
+        await asyncio.sleep(1.0 if "kafka" in repr(type(bus)).lower() else 0.0)
+        # the host reads exactly the writer topic of each login its row allows, and reads nothing else
+        assert {topic for topic, _ in host_bus.read} == {
+            topics.writer_command_topic(PUBLISHER),
+            topics.writer_command_topic(SECOND),
+        }
+
+        # a login publishes through the real publisher: every topic it writes is a topic its rows grant
+        lane_bus = _BrokerRows(bus, declaration, PUBLISHER)
+        request = await publish_request(
+            lane_bus,  # type: ignore[arg-type]
+            _draft(scene.second),
+            _overlay(scene.root),
+            lambda: datetime.now(UTC),
+            PUBLISHER,
+        )
+        assert lane_bus.written == [
+            topics.writer_command_topic(PUBLISHER),
+            topics.command,
+        ]
+        await _until(
+            lambda: any(
+                r.get("correlation_id") == str(request.request_id) for r in results
+            )
+        )
+        answered = next(
+            r for r in results if r["correlation_id"] == str(request.request_id)
+        )
+        assert answered["payload"]["status"] == "verified"
+        assert host_bus.written == [
+            topics.result_topic(HOST_LOGIN),
+            topics.success,
+        ]
+
+        # the other login writes the first login's topic: the rows refuse it before it reaches the bus
+        forger = _BrokerRows(bus, declaration, SECOND)
+        forged = _request(_draft(scene.second), expires_in=timedelta(hours=2))
+        with pytest.raises(PermissionError, match="holds no WRITE row"):
+            await forger.publish(
+                topics.writer_command_topic(PUBLISHER),
+                str(forged.request_id).encode("utf-8"),
+                json.dumps({"payload": forged.model_dump(mode="json")}).encode("utf-8"),
+            )
+        assert forger.written == []
+        await host.stop()
+
+
+def test_one_login_writing_another_logins_topic_is_refused_and_the_host_reads_the_rest_in_memory(
+    tmp_path: Path,
+) -> None:
+    asyncio.run(_login_topic_host(_in_memory, tmp_path))
+
+
+@pytest.mark.kafka
+@pytest.mark.integration
+def test_one_login_writing_another_logins_topic_is_refused_and_the_host_reads_the_rest_on_the_real_broker(
+    tmp_path: Path,
+) -> None:
+    if not os.environ.get(BOOTSTRAP_ENV):
+        pytest.skip(f"Kafka not reachable: {BOOTSTRAP_ENV} names no lab broker")
+    asyncio.run(_login_topic_host(_broker, tmp_path))
+
+
+def test_the_declared_rows_pass_the_broker_permission_renderer(tmp_path: Path) -> None:
+    """The derivation and the renderer that reads every declared overlay agree on the shape."""
+    declaration = _declaration(_scene(tmp_path).root)
+    rendered = HandlerBrokerAclOverlayRender().handle(
+        ModelBrokerAclRenderRequest(scope=declaration.scope, overlay=declaration)
+    )
+    assert rendered.status == "rendered", rendered.findings
+    assert {row.principal for row in rendered.rows} == {
+        f"User:{login}" for login in (PUBLISHER, SECOND, HOST_LOGIN)
+    }
+
+
+def test_failing_control_a_declaration_with_the_wrong_topic_prefix_lets_the_forger_in(
+    tmp_path: Path,
+) -> None:
+    """Without the per-login topic rows the seam test would not notice: a declaration that grants the second login the
+    first login's topic makes the same forgery succeed, so the refusal above rests on the declared rows."""
+    declaration = _declaration(_scene(tmp_path).root)
+    topics = load_install_request_topics()
+    forged_topic = topics.writer_command_topic(PUBLISHER)
+    assert not permits(
+        declaration,
+        SECOND,
+        EnumAclResourceType.TOPIC,
+        forged_topic,
+        EnumAclOperation.WRITE,
+    )
+    widened = declaration.model_copy(
+        update={
+            "principals": tuple(
+                row.model_copy(
+                    update={
+                        "grants": (
+                            *row.grants,
+                            *(
+                                g.model_copy(update={"name": forged_topic})
+                                for g in row.grants
+                                if g.operation is EnumAclOperation.WRITE
+                                and g.name == topics.writer_command_topic(SECOND)
+                            ),
+                        )
+                    }
+                )
+                if row.principal == f"User:{SECOND}"
+                else row
+                for row in declaration.principals
+            )
+        }
+    )
+    assert permits(
+        widened, SECOND, EnumAclResourceType.TOPIC, forged_topic, EnumAclOperation.WRITE
+    )
+
+
+@pytest.mark.kafka
+@pytest.mark.integration
+def test_a_sasl_broker_names_the_login_and_refuses_it_another_logins_topic() -> None:
+    """On a declared SASL lane the connection authenticates as a named login (what the host requires), and the broker's
+    own rows refuse that login a write on a topic that is another login's writer topic."""
+    lane = os.environ.get(SASL_LANE_ENV)
+    if not lane:
+        pytest.skip(f"no SASL lane: {SASL_LANE_ENV} names none")
+    topics = load_install_request_topics()
+
+    async def attempt() -> tuple[str | None, str]:
+        async with open_install_request_bus(
+            bus="kafka",
+            lane=lane,
+            kafka_bootstrap=None,
+            workspace_root=Path(os.environ["OMNIBASE_PATH"]),
+        ) as bus:
+            login = bound_authenticated_principal()
+            other = "never-a-real-login"
+            assert login != other
+            try:
+                await asyncio.wait_for(
+                    bus.publish(topics.writer_command_topic(other), b"probe", b"{}"), 30
+                )
+            except Exception as exc:
+                return login, type(exc).__name__
+            return login, "published"
+
+    login, outcome = asyncio.run(attempt())
+    assert login, "the SASL lane named no login"
+    assert outcome == "EventTopicAuthorizationError"

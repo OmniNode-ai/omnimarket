@@ -16,7 +16,11 @@ lifecycle: experimental
 runtime_profiles: [effects]
 
 description: >
-  Executes an install request on the host that serves it, after the checks the host's own overlay row sets. A request reaches
+  Executes an install request on the host that serves it, after the checks the host's own overlay row sets. The host refuses
+  to act on any request unless its bus connection is authenticated (SASL, a named principal) as the login its overlay row
+  names as host_principal, and says so loudly at start: on an unauthenticated bus the per-login topic names no publisher.
+  It publishes each result on the result topic of that login (keyed by request id and the authenticated host) and once on the
+  shared terminal; the owed reading takes a result only from the host's own login topic. A request reaches
   the host only inside a command envelope on the writer topic of the publishing login (the publisher is that topic's login,
   attested by the broker's per-principal WRITE grant, never a cell the sender wrote), and a publisher the host row does not
   name is refused (its refusal is answered but never journalled). A request for another host is ignored. A request already answered
@@ -86,6 +90,17 @@ writer_topics:
   version: 1
   principal_pattern: "^[a-z0-9][a-z0-9-]{0,62}$"
 
+# One result topic per serving host login, built the same way: the host publishes each typed result on the topic of the login
+# it authenticated as (and once on the shared success terminal for the orchestrator and external readers). The owed reading
+# takes a result as a host's own only from that host's result topic, because the broker lets only that login write there; the
+# shared terminal stays unauthenticated as far as the reading is concerned and clears nothing.
+result_topics:
+  kind: "evt"
+  producer: "omnimarket"
+  name_prefix: "install-request-completed-from-"
+  version: 1
+  principal_pattern: "^[a-z0-9][a-z0-9-]{0,62}$"
+
 topics:
   install_requested: onex.cmd.omnimarket.install-requested.v1
   install_request_completed: onex.evt.omnimarket.install-request-completed.v1
@@ -101,6 +116,9 @@ externally_consumed_topics:
   - onex.evt.omnimarket.install-request-completed.v1
   - onex.evt.omnimarket.install-request-failed.v1
 
+# The host refuses to act on any request unless its bus connection is authenticated (SASL, a named principal) as the login its
+# overlay row names as host_principal; the per-login rows below are DERIVED from the overlay's allowed list by
+# node_install_request_acl_compute (one principal per login) and declared in the overlays repository.
 # The host process is the installer's login (the host reconciler principal, as for the host install orchestrator): it reads the
 # writer command topics (the prefixed grant below) and writes the two terminals. A lane's own login publishing is declared with
 # the lab logins in the deployment's per-principal grants, not here: each login may WRITE only
@@ -110,6 +128,8 @@ broker_acl_grants:
     grants:
       - {resource_type: TOPIC, pattern: PREFIXED, name: onex.cmd.omnimarket.install-requested-from-, operation: READ}
       - {resource_type: TOPIC, pattern: PREFIXED, name: onex.cmd.omnimarket.install-requested-from-, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: PREFIXED, name: onex.evt.omnimarket.install-request-completed-from-, operation: WRITE}
+      - {resource_type: TOPIC, pattern: PREFIXED, name: onex.evt.omnimarket.install-request-completed-from-, operation: DESCRIBE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.install-request-completed.v1, operation: WRITE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.install-request-completed.v1, operation: DESCRIBE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.install-request-failed.v1, operation: WRITE}

@@ -201,7 +201,7 @@ class _WithoutIgnore(HandlerHostInstallOrchestrator):
     def _on_install_result(
         self, result: ModelInstallRequestResult
     ) -> tuple[ModelHostInstallOutput, ...]:
-        self._tree_requests.pop(result.request_id, None)
+        self._tree_requests.pop((result.request_id, result.host), None)
         return (self._tree_completed(result),)
 
 
@@ -277,7 +277,7 @@ class _WithoutPublisherRefusalIgnore(HandlerHostInstallOrchestrator):
     def _on_install_result(
         self, result: ModelInstallRequestResult
     ) -> tuple[ModelHostInstallOutput, ...]:
-        if self._tree_requests.pop(result.request_id, None) is None:
+        if self._tree_requests.pop((result.request_id, result.host), None) is None:
             return ()
         return (self._tree_completed(result),)
 
@@ -298,3 +298,81 @@ def test_failing_control_without_the_refusal_check_a_forged_refusal_pops_the_req
     )
     assert [out.topic for out in outputs] == [TOPIC_COMPLETED]
     assert orchestrator.known_installs == ()
+
+
+def _request_on(host: str, request_id: UUID, unit: str = UNIT) -> ModelInstallRequest:
+    return tree_request(request_id=request_id).model_copy(
+        update={"host": host, "unit": unit}
+    )
+
+
+def test_a_repeat_of_the_id_naming_another_host_does_not_replace_the_real_request() -> (
+    None
+):
+    """The shared command topic is unauthenticated. A message repeating the real request's id for another host is a
+    different request: the real one stays remembered and its own result still ends it."""
+    orchestrator = HandlerHostInstallOrchestrator(orchestrator_overlay(), StepClock())
+    real = tree_request()
+    orchestrator.decide(real, real.request_id)
+    orchestrator.decide(_request_on("forged-host", real.request_id), real.request_id)
+    outputs = orchestrator.decide(
+        tree_result(
+            real.request_id,
+            EnumInstallRequestStatus.VERIFIED,
+            revision=REVISION,
+            verify_line=VERIFY_LINE,
+        ),
+        real.request_id,
+    )
+    assert [out.topic for out in outputs] == [TOPIC_COMPLETED]
+    completed = outputs[0].payload
+    assert isinstance(completed, ModelHostInstallCompleted)
+    assert completed.outcome == "installed"
+    assert completed.host == HOST
+
+
+def test_a_repeat_of_the_id_and_host_keeps_the_first_request() -> None:
+    orchestrator = HandlerHostInstallOrchestrator(orchestrator_overlay(), StepClock())
+    real = tree_request()
+    orchestrator.decide(real, real.request_id)
+    orchestrator.decide(
+        _request_on(HOST, real.request_id, unit="forged-unit"), real.request_id
+    )
+    outputs = orchestrator.decide(
+        tree_result(
+            real.request_id,
+            EnumInstallRequestStatus.VERIFIED,
+            revision=REVISION,
+            verify_line=VERIFY_LINE,
+        ),
+        real.request_id,
+    )
+    assert [out.topic for out in outputs] == [TOPIC_COMPLETED]
+
+
+class _OverwritingOrchestrator(HandlerHostInstallOrchestrator):
+    """The failing control: remembers a request by its id alone, so a repeat replaces the real one."""
+
+    def _remember_tree_request(self, request: ModelInstallRequest) -> None:
+        self._tree_requests = {  # type: ignore[assignment]
+            (request.request_id, HOST): request
+        }
+
+
+def test_failing_control_a_replacing_memory_drops_the_real_result() -> None:
+    orchestrator = _OverwritingOrchestrator(orchestrator_overlay(), StepClock())
+    real = tree_request()
+    orchestrator.decide(real, real.request_id)
+    orchestrator.decide(
+        _request_on(HOST, real.request_id, unit="forged-unit"), real.request_id
+    )
+    outputs = orchestrator.decide(
+        tree_result(
+            real.request_id,
+            EnumInstallRequestStatus.VERIFIED,
+            revision=REVISION,
+            verify_line=VERIFY_LINE,
+        ),
+        real.request_id,
+    )
+    assert outputs == ()
