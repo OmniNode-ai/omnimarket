@@ -46,6 +46,10 @@ handler_routing:
       handler:
         name: "HandlerHostFactsReadEffect"
         module: "omnimarket.nodes.node_host_introspection_announce_effect.handlers.handler_host_facts_read_effect"
+    - operation: "announce_host"
+      handler:
+        name: "HostAnnouncer"
+        module: "omnimarket.nodes.node_host_introspection_announce_effect.handlers.handler_host_announcer"
 descriptor:
   node_archetype: effect
   purity: effectful
