@@ -103,6 +103,7 @@ def test_a_pending_trip_is_retried_under_the_same_request_id(
     assert episodes.record["pending"] == {
         "kind": "trip",
         "request_id": first.alarm_request_id,
+        "row": first.alarm_row,
     }
     appender.default = "accepted"
     guard.latch = present(
@@ -110,6 +111,9 @@ def test_a_pending_trip_is_retried_under_the_same_request_id(
     )  # the guard rewrote its latch
     second = handler.handle(request_for())
     assert second.alarm_request_id == first.alarm_request_id
+    assert (
+        appender.sent[1][1] == appender.sent[0][1]
+    )  # the same bytes: the ledger keys a request id to the digest of its rows
     assert episodes.record["open"] is True
     assert "pending" not in episodes.record
 

@@ -136,7 +136,7 @@ class HandlerHostThermalHoldReport:
                 )
             )
 
-        alarm, status, request_id, alarm_row = "none", "", "", ""
+        alarm, status, request_id, alarm_row, detail = "none", "", "", "", ""
         if episode is not None and latch.state in (
             EnumGuardReadState.ABSENT,
             EnumGuardReadState.PRESENT,
@@ -145,7 +145,7 @@ class HandlerHostThermalHoldReport:
                 latch.state is EnumGuardReadState.PRESENT, bool(episode.get("open"))
             )
             if kind is not None:
-                alarm, status, request_id, alarm_row = self._alarm(
+                alarm, status, request_id, alarm_row, detail = self._alarm(
                     request, kind, latch, last, episode, errors
                 )
 
@@ -158,6 +158,7 @@ class HandlerHostThermalHoldReport:
             alarm_status=status,
             alarm_request_id=request_id,
             alarm_row=alarm_row,
+            alarm_detail=_one_line(detail)[:300],
             delivered=delivered,
             kept=kept,
             deferred=deferred,
@@ -175,7 +176,7 @@ class HandlerHostThermalHoldReport:
         last: ModelGuardRead,
         episode: dict[str, Any],
         errors: list[tuple[str, str]],
-    ) -> tuple[str, str, str, str]:
+    ) -> tuple[str, str, str, str, str]:
         now = self._clock()
         key = (
             str(latch.data["tripped_at"])
@@ -193,9 +194,13 @@ class HandlerHostThermalHoldReport:
             if kind == TRIP
             else _number(last.data, "hottest_c", _number(episode, "hottest_c"))
         )
-        row = self._alarm_row(request, kind, now, request_id, hottest, key, latch.data)
+        kept_row = str(pending.get("row", "")) if pending.get("kind") == kind else ""
+        # a retry sends the bytes of the first attempt: the ledger keys a request id to the digest of its rows
+        row = kept_row or self._alarm_row(
+            request, kind, now, request_id, hottest, key, latch.data
+        )
         if request.dry_run:
-            return kind, "dry-run", request_id, row
+            return kind, "dry-run", request_id, row, ""
         outcome = self._appender.append(row, request_id)
         record = dict(episode)
         if outcome.status in ACCEPTED:
@@ -206,7 +211,7 @@ class HandlerHostThermalHoldReport:
                     trip_key=key, hottest_c=hottest, opened_at=now.strftime(_STAMP)
                 )
         else:
-            record["pending"] = {"kind": kind, "request_id": request_id}
+            record["pending"] = {"kind": kind, "request_id": request_id, "row": row}
         try:
             self._episodes.save(record)
         except OSError as exc:
@@ -216,7 +221,7 @@ class HandlerHostThermalHoldReport:
                     _one_line(str(exc))[:200],
                 )
             )
-        return kind, outcome.status, request_id, row
+        return kind, outcome.status, request_id, row, outcome.message
 
     def _alarm_row(
         self,

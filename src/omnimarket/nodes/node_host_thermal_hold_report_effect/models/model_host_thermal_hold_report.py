@@ -58,6 +58,7 @@ class ModelHostThermalHoldReportResult:
     alarm_status: str  # accepted, duplicate, pending, refused, error, dry-run, or "" when none was decided
     alarm_request_id: str
     alarm_row: str  # the row that was (or in a dry run would be) sent, "" when none
+    alarm_detail: str  # what the append command answered besides the status (a refusal text, a receipt state), "" when none
     delivered: int
     kept: int
     deferred: int
