@@ -42,6 +42,12 @@ UNITS = {
         "module": "omnimarket.nodes.node_delegation_scenario_r8_effect.runtime_scenario_r8_tick",
         "start_interval": 21600,
     },
+    "scenario-r9-systemd": {
+        "label": "onex-delegation-scenario-r9",
+        "entry": "src/omnimarket/nodes/node_delegation_scenario_r9_effect/runtime_scenario_r9_tick.py",
+        "module": "omnimarket.nodes.node_delegation_scenario_r9_effect.runtime_scenario_r9_tick",
+        "start_interval": 3600,
+    },
 }
 
 pytestmark = pytest.mark.unit
