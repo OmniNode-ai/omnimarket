@@ -61,13 +61,20 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_delegation_scenario_r9_effect/test_seam_r8_adapter.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn24554-ac4-unit
+  description: The node contract and the host installer unit tests that make the R9 unit run hourly on the lab host; they run hosted and fail at the merge base where the node does not exist.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_scenario_r9_effect/test_contract.py tests/nodes/node_host_installer_registry_units/test_scenario_r3_r5_r8_units.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
 - id: dod-omn24554-ac4-integration-proof
   description: Hosted CI cannot reach the lab host, so only the local Done gate runs this unbound check; the running reading is the R9 unit's scheduled result on h053 and the tracker, recorded as a receipt
     comment on the ticket.
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC4
   checks:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24554 --kind test -- env PYTHONDONTWRITEBYTECODE=1
