@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-24583
 title: The runner group check names the missing field when it refuses GitHub's answer
-summary: node_github_repo_write_effect refuses a runner group answer that lacks name, allows_public_repositories or restricted_to_selected_workflows with reason github_refused and a detail that names no field, so the hourly exposure reading cannot say which field is missing. The refusal detail now names each absent or wrongly typed field and the key names the answer held (names only, never values). The refusal conditions, models, contract and overlay do not change.
+summary: node_github_repo_write_effect refuses a runner group answer that lacks name, allows_public_repositories or restricted_to_selected_workflows with reason github_refused and a detail that names no field, so the hourly exposure reading cannot say which field is missing. The refusal detail now names each absent or wrongly typed field and the key names the answer held (names only, never values). The refusal conditions, models, contract and overlay do not change. Second commit (same ticket), the key the handler and the direct reader take from GitHub's body for the workflow restriction is now restricted_to_workflows, the name GitHub's REST answer for an organization runner group carries, where both read the invented name restricted_to_selected_workflows, so a real body was always refused; the model attribute keeps its name.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -17,6 +17,15 @@ requirements:
     statement: 'AC3: error chain: a field of the wrong type is named as wrong type and a correctly typed one is not named -- falsifier: test_a_wrong_typed_field_is_named_as_wrong_type fails if the detail names a correct field or omits the wrong one'
   - id: AC4
     statement: 'AC4: integrated: after the change runs on the development runtime, onex scm runner-group-get OmniNode-ai/omnimarket --group-id 7 answers a detail that names each missing field and the keys held, read in the answer''s detail -- falsifier: the answer still reads "answered a body without name, allows_public_repositories and restricted_to_selected_workflows" with no field named'
+- id: req-omn24583-reads-githubs-key
+  statement: A runner group body carrying GitHub's own key restricted_to_workflows is read into the group model, and a body carrying only the invented key is refused naming restricted_to_workflows as absent.
+  acceptance:
+  - id: AC5
+    statement: 'AC5: a body shaped as GitHub answers (allows_public_repositories, restricted_to_workflows, selected_workflows) completes with the group model, in the handler, the bus read and the direct reader -- falsifier: pytest tests/unit/nodes/node_github_repo_write_effect/test_handler_runner_group_get.py tests/nodes/node_runner_group_exposure_effect/test_bus_group_read.py tests/nodes/node_runner_group_exposure_effect/test_exposure_probe.py tests/test_golden_chain_github_repo_write_effect.py -q fails on the previous head, where every such body is refused'
+  - id: AC6
+    statement: 'AC6: failing control: a body holding only the invented key restricted_to_selected_workflows is refused with restricted_to_workflows named absent -- falsifier: test_the_invented_key_name_is_not_read_so_a_body_holding_only_it_is_refused fails if the invented key is read again'
+  - id: AC7
+    statement: 'AC7: integrated: after the change runs on the development runtime, onex scm runner-group-get OmniNode-ai/omnimarket --group-id 7 completes with the group (name, allows_public_repositories, restricted_to_workflows read as the model attribute, selected_workflows, repositories) and the hourly exposure reading unit on h053 ends with a reading, not group-read-refused -- falsifier: the answer is still refused with github_refused'
 evidence_requirements:
 - kind: tests
   description: The runner group read tests of the write node, including the missing-field refusal, the no-value control and the wrong-type error chain.
@@ -42,6 +51,25 @@ dod_evidence:
   source: manual
   binds_ac:
   - AC4
+  checks:
+  - check_type: command
+    check_value: onex scm runner-group-get OmniNode-ai/omnimarket --group-id 7 --bus-lane dev --lane <lane>
+    cwd: .
+- id: dod-omn24583-reads-key
+  description: 'AC5 and AC6: a body with GitHub''s own key completes in the handler, the bus read, the direct reader and the golden chain; the invented key alone is refused naming the real key absent; against the previous head the fixtures with the real key are all refused.'
+  source: manual
+  binds_ac:
+  - AC5
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_github_repo_write_effect/test_handler_runner_group_get.py tests/nodes/node_runner_group_exposure_effect/test_bus_group_read.py tests/nodes/node_runner_group_exposure_effect/test_exposure_probe.py tests/test_golden_chain_github_repo_write_effect.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn24583-runtime-read-completes
+  description: 'AC7 integrated: read in the dev runtime after the rebuild with the change, by onex scm runner-group-get for group 7; not read at the pushed head.'
+  source: manual
+  binds_ac:
+  - AC7
   checks:
   - check_type: command
     check_value: onex scm runner-group-get OmniNode-ai/omnimarket --group-id 7 --bus-lane dev --lane <lane>

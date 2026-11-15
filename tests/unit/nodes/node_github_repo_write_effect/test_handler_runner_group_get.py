@@ -83,7 +83,7 @@ def _group_body(**over: object) -> dict[str, Any]:
         "id": _GROUP,
         "name": "example-group",
         "allows_public_repositories": False,
-        "restricted_to_selected_workflows": True,
+        "restricted_to_workflows": True,
         "selected_workflows": [_WORKFLOW],
         **over,
     }
@@ -244,7 +244,7 @@ async def test_a_body_without_the_exposure_fields_is_refused_not_defaulted() -> 
     assert isinstance(result, ModelRepoWriteFailed), result
     assert result.reason is EnumRepoWriteRefusal.GITHUB_REFUSED
     assert "allows_public_repositories (absent)" in result.detail
-    assert "restricted_to_selected_workflows (absent)" in result.detail
+    assert "restricted_to_workflows (absent)" in result.detail
     assert "id, name" in result.detail
     assert "name (absent)" not in result.detail
 
@@ -270,7 +270,7 @@ async def test_a_wrong_typed_field_is_named_as_wrong_type() -> None:
         "id": _GROUP,
         "name": "example-group",
         "allows_public_repositories": "false",
-        "restricted_to_selected_workflows": True,
+        "restricted_to_workflows": True,
     }
     fake = _Fake([(_GROUP_REQUEST, _ok(body)), (_PAGE_1, _ok(_repos(0)))])
     result = await _handler(
@@ -279,7 +279,29 @@ async def test_a_wrong_typed_field_is_named_as_wrong_type() -> None:
     assert isinstance(result, ModelRepoWriteFailed), result
     assert result.reason is EnumRepoWriteRefusal.GITHUB_REFUSED
     assert "allows_public_repositories (wrong type)" in result.detail
-    assert "restricted_to_selected_workflows (" not in result.detail
+    assert "restricted_to_workflows (" not in result.detail
+
+
+async def test_the_invented_key_name_is_not_read_so_a_body_holding_only_it_is_refused() -> (
+    None
+):
+    body = {
+        "id": _GROUP,
+        "name": "example-group",
+        "allows_public_repositories": False,
+        "restricted_to_selected_workflows": True,
+    }
+    fake = _Fake([(_GROUP_REQUEST, _ok(body)), (_PAGE_1, _ok(_repos(0)))])
+    result = await _handler(
+        fake, _overlay(ModelRunnerGroupEntry(organization=_ORG, group_id=_GROUP))
+    ).handle(_request())
+    assert isinstance(result, ModelRepoWriteFailed), result
+    assert result.reason is EnumRepoWriteRefusal.GITHUB_REFUSED
+    assert "restricted_to_workflows (absent)" in result.detail
+    assert result.detail.endswith(
+        "it held the keys allows_public_repositories, id, name, "
+        "restricted_to_selected_workflows"
+    )
 
 
 async def test_dry_run_plans_only_the_group_read() -> None:

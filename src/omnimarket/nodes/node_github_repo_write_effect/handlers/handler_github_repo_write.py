@@ -1467,15 +1467,17 @@ def _exposure_field_faults(meta: dict[str, object]) -> list[str]:
     """Each exposure field the group body is missing or holds with a wrong type.
 
     ``name`` must be a string and ``allows_public_repositories`` and
-    ``restricted_to_selected_workflows`` booleans; the model needs all three to
-    tell an exposed group from an unexposed one, so each faulty field is named
-    in the refusal instead of filled with a default.
+    ``restricted_to_workflows`` booleans; the model needs all three to tell an
+    exposed group from an unexposed one, so each faulty field is named in the
+    refusal instead of filled with a default. The model attribute keeps its
+    name ``restricted_to_selected_workflows``; the checked key is the one
+    GitHub's REST answer for an organization runner group carries.
     """
     faults: list[str] = []
     for field, kind in (
         ("name", str),
         ("allows_public_repositories", bool),
-        ("restricted_to_selected_workflows", bool),
+        ("restricted_to_workflows", bool),
     ):
         if field not in meta:
             faults.append(f"{field} (absent)")
@@ -1516,7 +1518,7 @@ async def _runner_group_get(run: _Run) -> ModelRepoWriteCompleted:
         page += 1
     name = meta.get("name")
     allows_public = meta.get("allows_public_repositories")
-    restricted = meta.get("restricted_to_selected_workflows")
+    restricted = meta.get("restricted_to_workflows")
     selected = meta.get("selected_workflows")
     if (
         not isinstance(name, str)
