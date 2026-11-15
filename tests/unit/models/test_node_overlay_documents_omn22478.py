@@ -19,6 +19,7 @@ from omnimarket.models.node_overlays.model_node_overlays import (
     ModelIntegrationSweepOverlay,
     ModelLabDiskHygieneOverlay,
     ModelLabSliPackOverlay,
+    ModelPrincipalGrantAuditOverlay,
     ModelPytestHostGuardOverlay,
     ModelRouteCheckOverlay,
     ModelRuntimeHostOverlay,
@@ -72,6 +73,20 @@ DOCUMENTS: list[tuple[str, type[BaseModel], dict[str, object]]] = [
         "node_lab_disk_hygiene_effect",
         ModelLabDiskHygieneOverlay,
         {"census_path": "repo/census.yaml"},
+    ),
+    (
+        "node_principal_grant_audit_effect",
+        ModelPrincipalGrantAuditOverlay,
+        {
+            "infra_checkout": "repo",
+            "script": "scripts/audit.py",
+            "grants_file": "grants.yaml",
+            "issuer_container": "container-a",
+            "overlay_mount_target": "/overlay/doc.yaml",
+            "ledger_file": "ledger.jsonl",
+            "role": "machine",
+            "timeout_seconds": 300,
+        },
     ),
     (
         "node_pr_duplicate_guard_compute",

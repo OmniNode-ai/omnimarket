@@ -1,0 +1,38 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_principal_grant_audit_effect
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: effect
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: >
+  Machine principal grant audit (OMN-21622): runs the omnibase_infra audit script
+  from a registry-module tick, parses its output into a typed result and returns the
+  script's exit code. No logic of the script is reimplemented; every path, name,
+  timeout and role comes from the deployment overlay.
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+  - operation: run_principal_grant_audit
+    handler:
+      name: HandlerPrincipalGrantAudit
+      module: omnimarket.nodes.node_principal_grant_audit_effect.handlers.handler_principal_grant_audit
+    input_model: omnimarket.nodes.node_principal_grant_audit_effect.models.model_principal_grant_audit_request.ModelPrincipalGrantAuditRequest
+    output_model: omnimarket.nodes.node_principal_grant_audit_effect.models.model_principal_grant_audit_result.ModelPrincipalGrantAuditResult
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  side_effects: []
+  # Reads broker ACLs through the issuer container read-only; creates or deletes no ACL.
+metadata:
+  ticket: OMN-19998
+  origin_tickets:
+  - OMN-21622
+  transport_type: in_process
+lifecycle: experimental

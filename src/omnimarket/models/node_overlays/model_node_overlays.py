@@ -58,6 +58,19 @@ class ModelLabDiskHygieneOverlay(_ModelOverlayDocument):
     census_path: NonBlank
 
 
+class ModelPrincipalGrantAuditOverlay(_ModelOverlayDocument):
+    """``node_principal_grant_audit_effect``: the audit script, grants file, issuer container and role the machine principal grant audit runs (OMN-21622)"""
+
+    infra_checkout: NonBlank
+    script: NonBlank
+    grants_file: NonBlank
+    issuer_container: NonBlank
+    overlay_mount_target: NonBlank
+    ledger_file: NonBlank
+    role: NonBlank
+    timeout_seconds: Annotated[int, Field(gt=0, strict=True)]
+
+
 class ModelDuplicateGuardGeneratedPathsOverlay(_ModelOverlayDocument):
     """``node_pr_duplicate_guard_compute``: per repository, the paths every pull request of a kind regenerates."""
 
@@ -109,6 +122,7 @@ __all__ = [
     "ModelIntegrationSweepOverlay",
     "ModelLabDiskHygieneOverlay",
     "ModelLabSliPackOverlay",
+    "ModelPrincipalGrantAuditOverlay",
     "ModelPytestHostGuardOverlay",
     "ModelRouteCheckOverlay",
     "ModelRuntimeHostOverlay",
