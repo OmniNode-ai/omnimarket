@@ -19,7 +19,8 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
+from datetime import UTC, datetime
 from pathlib import Path
 
 from omnimarket.models.model_work_ledger_reader import (
@@ -59,6 +60,7 @@ def main(
     *,
     environ: Mapping[str, str] | None = None,
     point_read: ProtocolLedgerPointRead | None = None,
+    clock: Callable[[], datetime] = lambda: datetime.now(UTC),
 ) -> int:
     parser = argparse.ArgumentParser(prog="node_plan_owner_check_effect")
     parser.add_argument(
@@ -76,15 +78,20 @@ def main(
         if point_read is not None
         else build_point_read(reader_overlay.route, env),
         InMemoryEventSink(),
+        clock=clock,
     )
     answer = reader.handle(
-        ModelReaderRequest(reader=overlay.reader, query=EnumReaderQuery.OPEN_CLAIMS)
+        ModelReaderRequest(
+            reader=overlay.reader,
+            query=EnumReaderQuery.OPEN_CLAIMS,
+            window_hours=overlay.claims_window_hours,
+        )
     )
     journal = env.get(overlay.journal_env, "").strip()
     sink: ProtocolPlanOwnerEventSink = (
         JournalPlanOwnerSink(Path(journal)) if journal else InMemoryPlanOwnerSink()
     )
-    handler = HandlerPlanOwnerCheck(overlay, sink)
+    handler = HandlerPlanOwnerCheck(overlay, sink, clock=clock)
     findings = (
         tuple(args.finding)
         if args.finding

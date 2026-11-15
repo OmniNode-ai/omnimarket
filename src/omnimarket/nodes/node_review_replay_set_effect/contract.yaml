@@ -17,7 +17,11 @@ description: >
   Diffs come from the canonical clones' landing-branch history with git, never
   from GitHub. The manifest carries every diff's SHA-256, and its canonical-JSON
   SHA-256 is the manifest hash; the set is written once under that hash and a
-  second freeze finds it intact or refuses.
+  second freeze finds it intact or refuses. The recall bar (minimum recall) and the
+  labels (which frozen items carry a defect) are frozen beside the set, once and before
+  any roster is scored, under a hash that names the set; scoring reads the frozen bar and
+  set from the store, refuses when either is missing or changed, and a roster whose recall
+  over the labelled defective items is below the bar does not pass.
 
 input_model: omnimarket.nodes.node_review_replay_set_effect.models.model_review_replay_set.ModelReviewReplaySetRequest
 
@@ -41,6 +45,18 @@ handler_routing:
         module: omnimarket.nodes.node_review_replay_set_effect.handlers.handler_review_replay_set
       handler_module: omnimarket.nodes.node_review_replay_set_effect.handlers.handler_review_replay_set
       event_model: omnimarket.nodes.node_review_replay_set_effect.models.model_review_replay_set.ModelReviewReplaySetRequest
+    - operation: review_replay_set.freeze_recall_bar
+      handler:
+        name: HandlerReviewReplayFreezeBar
+        module: omnimarket.nodes.node_review_replay_set_effect.handlers.handler_review_replay_recall
+      handler_module: omnimarket.nodes.node_review_replay_set_effect.handlers.handler_review_replay_recall
+      event_model: omnimarket.nodes.node_review_replay_set_effect.models.model_review_replay_recall.ModelFreezeRecallBarRequest
+    - operation: review_replay_set.score_recall
+      handler:
+        name: HandlerReviewReplayRecall
+        module: omnimarket.nodes.node_review_replay_set_effect.handlers.handler_review_replay_recall
+      handler_module: omnimarket.nodes.node_review_replay_set_effect.handlers.handler_review_replay_recall
+      event_model: omnimarket.nodes.node_review_replay_set_effect.models.model_review_replay_recall.ModelReviewReplayRecallRequest
 
 descriptor:
   node_archetype: effect
@@ -79,6 +95,10 @@ host_requirements:
   never_in: [ci-runner]
 
 dod_evidence:
+  PYTEST_RECALL:
+    description: "recall over the replay set is computed against a frozen bar and a roster below it fails; the bar and set hashes are frozen before the first run"
+    command: "uv run pytest src/omnimarket/nodes/node_review_replay_set_effect -q"
+    pass_criteria: "recall_bar tests and frozen_hash tests pass"
   PYTEST:
     description: "the replay set freezes a stratified set under a stable manifest hash and refuses a tampered one"
     command: "uv run pytest tests/unit/nodes/node_review_replay_set_effect -q"

@@ -28,8 +28,8 @@ handler:
   class: HandlerStabilityLaneRefresh
   input_model: omnimarket.nodes.node_stability_lane_refresh_effect.models.model_stability_lane_refresh.ModelStabilityRefreshCommand
 
-# HandlerStabilityLaneRefresh takes the overlay, pin source, applied-set store, runner, tag check and health
-# probe as constructor parameters, so the node runs through its own CLI, not handler_routing.
+# HandlerStabilityLaneRefresh takes the overlay, pin source, applied-set store, runner, tag check, disk
+# reading and health probe as constructor parameters, so the node runs through its own CLI, not handler_routing.
 
 descriptor:
   node_archetype: effect

@@ -56,6 +56,14 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_lane_container_budget_compute/test_lane_container_budget.py -q --no-cov --tb=line -k closing_check"
         cwd: "."
+  - id: "dod-omn24182-ac2-closing-check-over-budget"
+    description: "AC2 names a lane that runs more application containers than its budget: budget 2 against 3 running returns the lane. It fails at the merge base, where the closing check returned an empty tuple because slack is floored at zero."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lane_container_budget_compute/test_lane_container_budget.py -q --no-cov --tb=line -k closing_check_names_a_lane_running_more_than_its_budget"
+        cwd: "."
   - id: "dod-omn24182-ac3-chains"
     description: "AC3 runs the golden chain, the over-budget and unreadable-host error chains and the two seam tests with the floor on the in-memory bus."
     source: "manual"

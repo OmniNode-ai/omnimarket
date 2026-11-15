@@ -10,6 +10,7 @@ MISSING. The journal receives one JSON line per finding and stderr carries the P
 from __future__ import annotations
 
 import json
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
@@ -19,11 +20,12 @@ from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_query_r
     WorkLedgerReadError,
 )
 from tests.unit.nodes.node_work_ledger_query_effect.state_fixtures import (
+    NOW,
     FakeStateReader,
     claim_entity,
 )
-from tests.unit.nodes.node_work_ledger_reader_effect.test_reader_chain_events import (
-    QueryNodePointRead,
+from tests.unit.nodes.node_work_ledger_reader_effect.test_reader_open_claims_window import (
+    StampedQueryNodePointRead,
 )
 
 pytestmark = pytest.mark.unit
@@ -42,14 +44,16 @@ events: {journal_env: ONEX_LEDGER_READER_JOURNAL}
 
 OWNER_OVERLAY = """\
 reader: cutover-owner
+# The window must cover every rule's live_window_minutes.
+claims_window_hours: 24
 journal_env: ONEX_PLAN_OWNER_CHECK_JOURNAL
 rules:
   - finding: cutover-plan-owner
-    # The handler clock cannot be pinned through main, so the window spans from the
-    # fixtures' 2026-11-02 claim to now and the claim reads live.
+    # main's clock is pinned to the fixtures' NOW (2026-11-02T03:00Z); the fixture claim's newest
+    # row is 30 minutes older, inside this window.
     lane_prefixes: [lane-]
     tickets: [OMN-19609]
-    live_window_minutes: 100000000
+    live_window_minutes: 600
     why: no live lane CLAIM names the cutover plan
     fix: start a ledger cutover lane
     unknown_fix: read the open-claims answer and fix the read it names
@@ -69,7 +73,12 @@ def env(tmp_path: Path) -> dict[str, str]:
 def run(
     tmp_path: Path, state: FakeStateReader, capsys: pytest.CaptureFixture[str]
 ) -> tuple[int, str, str]:
-    code = main([], environ=env(tmp_path), point_read=QueryNodePointRead(state))
+    code = main(
+        [],
+        environ=env(tmp_path),
+        point_read=StampedQueryNodePointRead(state),
+        clock=lambda: NOW,
+    )
     out = capsys.readouterr()
     return code, out.out, out.err
 
@@ -104,3 +113,14 @@ def test_a_database_fault_exits_2_unknown(
     assert code == 2
     assert out.startswith("UNKNOWN cutover-plan-owner | node-read-failed:")
     assert "PLAN-OWNER" in err
+
+
+def test_the_overlay_claims_window_reaches_the_point_read(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    read = StampedQueryNodePointRead(FakeStateReader((claim_entity(),)))
+    code = main([], environ=env(tmp_path), point_read=read, clock=lambda: NOW)
+    assert code == 0
+    [query] = read.requests
+    assert query.query == "open-claims"
+    assert query.claims_since == NOW - timedelta(hours=24)

@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_host_table_compute
+version: 1.0.0
+description: Turn the lab host table (ModelLabHostsTable) into the row set every reader uses, one row per
+  host in table order, the names of the admitted hosts and the excluded rows, each exclusion with its stated
+  reason. The node is pure, the caller reads the table and passes it in; a table that excludes a host without
+  a stated reason, or names one host twice, is refused.
+pack: distributed_validation
+node_role: compute
+display_name: Host Table Compute
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_host_table_compute: omnimarket.nodes.node_host_table_compute
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies: []
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- compute
+- host-table-compute
+- OMN-22251
