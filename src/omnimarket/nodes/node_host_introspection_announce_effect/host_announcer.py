@@ -51,7 +51,7 @@ from omnimarket.nodes.node_lab_work_unit_effect.protocols.local_host_reader impo
 
 logger = logging.getLogger(__name__)
 
-CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
+CONTRACT_PATH = Path(__file__).resolve().parent / "contract.yaml"
 
 #: What leaves a reading unreadable: the announcement is not made and the failure is published instead.
 UNREADABLE = (

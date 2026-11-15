@@ -33,11 +33,11 @@ from omnimarket.handlers.overlay_store.bus_opener import open_lane_bus, workspac
 from omnimarket.nodes.node_host_introspection_announce_effect.adapters.local_host_facts_reader import (
     LocalHostFactsReader,
 )
-from omnimarket.nodes.node_host_introspection_announce_effect.handlers.handler_host_announcer import (
-    HostAnnouncer,
-)
 from omnimarket.nodes.node_host_introspection_announce_effect.handlers.handler_host_introspection_gather import (
     HandlerHostIntrospectionGather,
+)
+from omnimarket.nodes.node_host_introspection_announce_effect.host_announcer import (
+    HostAnnouncer,
 )
 
 EXIT_FAILED = 1
