@@ -4323,6 +4323,21 @@ jobs:
           uv run python -m omnimarket.nodes.node_overlay_main_load_check_effect \
             --overlays-root "$OVERLAYS_CHECKOUT/$OVERLAYS_DOCUMENTS_DIR" \
             --pins-file "$OVERLAYS_CHECKOUT/$OVERLAYS_PINS_FILE"
+      # OMN-24537: the overlay-before-code gate. A node contract declares the overlay rows it depends on
+      # (metadata.declared_dependencies); omnibase_core's depends-on validator refuses the node when a declared row is
+      # not in the overlays checkout above, the revision echoed in the assert step. The weekly coding test trigger without
+      # its overlay row raised NodeOverlayNotFoundError on every runtime tick; the planted-break tests run first so a check
+      # that cannot refuse is red here. The layout names are this step's own settings, never code.
+      - name: The depends-on overlay check turns red on its planted breaks (OMN-24537)
+        run: uv run pytest tests/unit/nodes/node_depends_on_overlay_check_effect tests/test_seam_depends_on_overlay.py -q --no-cov -p no:cacheprovider
+      - name: Every declared overlay dependency is present in the overlays checkout (OMN-24537)
+        run: |
+          uv run python -m omnimarket.nodes.node_depends_on_overlay_check_effect \
+            --nodes-root src/omnimarket/nodes \
+            --overlays-root "$OVERLAYS_CHECKOUT/$OVERLAYS_DOCUMENTS_DIR" \
+            --contract-file contract.yaml \
+            --overlay-file overlay.yaml \
+            --overlay-kind overlay_key
 
   # OMN-19998: public-repository runner placement (RULING 2026-10-16T07:07:09Z,
   # "Ci runners should be for private repos only"). omnibase_core's check refuses

@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_depends_on_overlay_check_effect
+version: 1.0.0
+description: Refuses a node whose declared dependency on an overlay row is absent from the overlays repository.
+pack: operator_tooling
+node_role: effect
+display_name: Depends-On Overlay Check Effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_depends_on_overlay_check_effect: omnimarket.nodes.node_depends_on_overlay_check_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: filesystem_read
+dependencies:
+- pydantic>=2.0
+- pyyaml>=6.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- depends-on

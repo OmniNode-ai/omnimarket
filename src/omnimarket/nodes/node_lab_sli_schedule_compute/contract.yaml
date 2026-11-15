@@ -99,3 +99,6 @@ broker_acl_grants:
 metadata:
   ticket: OMN-19998
   transport_type: kafka
+  declared_dependencies:
+    - kind: overlay_key
+      name: node_lab_sli_schedule_compute

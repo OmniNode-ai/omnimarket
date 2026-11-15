@@ -102,3 +102,6 @@ broker_acl_grants:
 metadata:
   ticket: OMN-24138
   transport_type: kafka
+  declared_dependencies:
+    - kind: overlay_key
+      name: node_ticket_closer_scheduled_effect

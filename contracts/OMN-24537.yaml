@@ -1,0 +1,61 @@
+schema_version: 1.0.0
+ticket_id: OMN-24537
+title: A node can declare the overlay rows it depends on, and the node library's build refuses it when a declared row is absent from the overlays repository
+summary: The first consumer of omnibase_core's depends-on validator. A node contract declares the overlay rows it depends on under metadata.declared_dependencies; the new node node_depends_on_overlay_check_effect supplies the overlay facts (every overlay document, and each top-level key of it, found in the overlays checkout) and the core validator refuses a node whose declared row is absent. The ci job Overlay Main Load runs it against the overlays checkout it already makes. The weekly coding test trigger without its overlay row is the recorded failing control. The two scheduled nodes whose rows exist today declare theirs. The lab fill generator and the host installer are named as the other two consumers, not built.
+is_seam_ticket: true
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn24537-overlay-before-code
+    statement: A node that declares an overlay dependency is refused in ci when the row is absent from the overlays repository.
+    acceptance:
+      - id: AC2
+        statement: "AC2: the node library's build refuses the weekly coding test schedule node when its overlay row is not in the overlays repository and passes when it is -- falsifier: pytest tests/unit/nodes/node_depends_on_overlay_check_effect -k eval_tracking in omnimarket fails without the overlay row fixture"
+      - id: AC3
+        statement: "AC3: the contract-to-overlay seam and the ticket-to-prerequisite seam each have a test that fails when either side changes shape, run on the in-memory bus and on the real broker -- falsifier: pytest tests/test_seam_depends_on_overlay.py fails when the declared kind name or the overlay layout changes"
+      - id: AC4
+        statement: "AC4: integrated: on the development system the count of NodeOverlayNotFoundError lines per day reads 0 after the change runs there -- falsifier: the same count read from the runtime log on 2026-11-19 is above 0"
+evidence_requirements:
+  - kind: tests
+    description: The depends-on overlay check node's golden, failing control and error chain tests and the seam tests.
+    command: uv run pytest tests/unit/nodes/node_depends_on_overlay_check_effect tests/test_seam_depends_on_overlay.py -q --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn24537-ac2-eval-tracking-refused
+    description: The real weekly coding test schedule contract, declaring its overlay row, is refused with no row in the overlays root and passes with the row.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_depends_on_overlay_check_effect -q --no-cov -p no:cacheprovider -k eval_tracking
+        cwd: .
+    binds_ac:
+      - AC2
+  - id: dod-omn24537-ac3-seams
+    description: The contract-to-overlay seam (kind name, declaration key, overlay file layout against the runtime reader, ci flags) and the ticket-to-prerequisite seam (a ticket kind is refused where this consumer supplies no facts for it).
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/test_seam_depends_on_overlay.py -q --no-cov -p no:cacheprovider
+        cwd: .
+    binds_ac:
+      - AC3
+  - id: dod-omn24537-ac4-hosted-proxy
+    description: Hosted proxy for the integrated criterion, whose reading is the dev runtime log count on 2026-11-19; here the gate refuses the scheduled node whose overlay row is absent, the source of the per-day error lines.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_depends_on_overlay_check_effect -q --no-cov -p no:cacheprovider -k eval_tracking
+        cwd: .
+    binds_ac:
+      - AC4
+  - id: dod-omn24537-integration-proof-ac4
+    description: 'AC4: the dev runtime on h201 holds no NodeOverlayNotFoundError line over the last day; run on h201 after the dev rebuild from the branch, read again on 2026-11-19.'
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --host h201 --lane dod-ac4-24537 --kind test -- bash -c 'test "$(docker logs --since 24h omninode-runtime 2>&1 | grep -c NodeOverlayNotFoundError)" = 0'
+        cwd: .

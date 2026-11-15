@@ -1,0 +1,66 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Depends-On Overlay Check Effect (OMN-24537)
+#
+# Refuses a node whose declared dependency on an overlay row is absent from the overlays repository: the overlay-before-code gate.
+name: node_depends_on_overlay_check_effect
+contract_name: node_depends_on_overlay_check_effect
+node_name: node_depends_on_overlay_check_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Reads every node contract's declared dependencies and refuses a node whose declared overlay row is absent from the overlays repository (omnibase_core's depends-on validator judges; this node supplies the overlay facts).
+
+handler:
+  module: omnimarket.nodes.node_depends_on_overlay_check_effect.handlers.handler_depends_on_overlay_check
+  class: HandlerDependsOnOverlayCheck
+  input_model: omnimarket.nodes.node_depends_on_overlay_check_effect.models.model_depends_on_overlay_check.ModelDependsOnOverlayCheckCommand
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: []
+  timeout_ms: 300000
+
+input_model:
+  name: ModelDependsOnOverlayCheckCommand
+  module: omnimarket.nodes.node_depends_on_overlay_check_effect.models.model_depends_on_overlay_check
+  description: The nodes root, the overlays root and the layout names to check.
+output_model:
+  name: ModelDependsOnOverlayCheckResult
+  module: omnimarket.nodes.node_depends_on_overlay_check_effect.models.model_depends_on_overlay_check
+  description: What was judged and what was refused.
+
+terminal_event: onex.evt.omnimarket.depends-on-overlay-check-completed.v1
+
+runtime_dispatch:
+  external_trigger: true
+
+topics:
+  depends_on_overlay_check_requested: onex.cmd.omnimarket.depends-on-overlay-check-requested.v1
+  depends_on_overlay_check_completed: onex.evt.omnimarket.depends-on-overlay-check-completed.v1
+  depends_on_overlay_check_failed: onex.evt.omnimarket.depends-on-overlay-check-failed.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.depends-on-overlay-check-completed.v1
+  - onex.evt.omnimarket.depends-on-overlay-check-failed.v1
+
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.depends-on-overlay-check-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.depends-on-overlay-check-completed.v1, operation: DESCRIBE}
+
+metadata:
+  ticket: OMN-24537
+  transport_type: inmemory
