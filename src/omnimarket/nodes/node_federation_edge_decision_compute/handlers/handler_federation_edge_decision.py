@@ -52,6 +52,14 @@ from omnibase_infra.nodes.node_bus_forwarder_effect.services.service_gateway_top
     resolve_tenant_from_wire_topic,
 )
 
+from omnimarket.models.federation_egress.enum_egress_gate import (
+    EnumEgressOutcome,
+)
+from omnimarket.models.federation_egress.model_egress_gate import (
+    ModelEgressGateRequest,
+    ModelEgressTopicPolicy,
+    ModelWireHeader,
+)
 from omnimarket.nodes.node_federation_edge_decision_compute.models.enum_edge_decision import (
     EnumEdgeRefusal,
 )
@@ -62,14 +70,6 @@ from omnimarket.nodes.node_federation_edge_decision_compute.models.model_edge_de
 )
 from omnimarket.nodes.node_federation_egress_gate_compute.handlers.handler_federation_egress_gate import (
     gate_egress,
-)
-from omnimarket.nodes.node_federation_egress_gate_compute.models.enum_egress_gate import (
-    EnumEgressOutcome,
-)
-from omnimarket.nodes.node_federation_egress_gate_compute.models.model_egress_gate import (
-    ModelEgressGateRequest,
-    ModelEgressTopicPolicy,
-    ModelWireHeader,
 )
 
 # The hops stamp of a record an edge carries: slice 1 is the first and only
@@ -103,6 +103,7 @@ def _refuse(
         topic=topic,
         key_digest=key_digest,
         message_id=message_id,
+        terminal_failure_cause=reason,
     )
 
 

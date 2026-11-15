@@ -35,6 +35,15 @@ from typing import Any
 import pytest
 import yaml
 
+from omnimarket.models.federation_egress.enum_egress_gate import (
+    EnumEgressOutcome,
+)
+from omnimarket.models.federation_egress.model_egress_gate import (
+    ModelEgressField,
+    ModelEgressGateRequest,
+    ModelEgressGateResult,
+    ModelWireHeader,
+)
 from omnimarket.nodes.node_federation_edge_decision_compute.handlers import (
     handler_federation_edge_decision as edge_module,
 )
@@ -55,15 +64,6 @@ from omnimarket.nodes.node_federation_edge_decision_compute.models.model_edge_de
 )
 from omnimarket.nodes.node_federation_edge_decision_compute.models.model_edge_overlay import (
     ModelEdgeOverlayFile,
-)
-from omnimarket.nodes.node_federation_egress_gate_compute.models.enum_egress_gate import (
-    EnumEgressOutcome,
-)
-from omnimarket.nodes.node_federation_egress_gate_compute.models.model_egress_gate import (
-    ModelEgressField,
-    ModelEgressGateRequest,
-    ModelEgressGateResult,
-    ModelWireHeader,
 )
 
 pytestmark = pytest.mark.unit

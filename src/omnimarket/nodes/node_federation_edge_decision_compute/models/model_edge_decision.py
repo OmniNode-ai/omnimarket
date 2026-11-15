@@ -23,18 +23,18 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from omnimarket.models.federation_egress.enum_egress_gate import (
+    EnumEgressOutcome,
+)
+from omnimarket.models.federation_egress.model_egress_gate import (
+    ModelEgressField,
+    ModelWireHeader,
+)
 from omnimarket.nodes.node_federation_edge_decision_compute.models.enum_edge_decision import (
     EnumEdgeRefusal,
 )
 from omnimarket.nodes.node_federation_edge_decision_compute.models.model_edge_overlay import (
     ModelEdgeOverlayFile,
-)
-from omnimarket.nodes.node_federation_egress_gate_compute.models.enum_egress_gate import (
-    EnumEgressOutcome,
-)
-from omnimarket.nodes.node_federation_egress_gate_compute.models.model_egress_gate import (
-    ModelEgressField,
-    ModelWireHeader,
 )
 
 
@@ -180,6 +180,7 @@ class ModelEdgeDecision(BaseModel):
     topic: str | None = None
     key_digest: str | None = None
     message_id: str | None = None
+    terminal_failure_cause: EnumEdgeRefusal | None = None
 
     @model_validator(mode="after")
     def _reason_agrees_with_outcome(self) -> ModelEdgeDecision:
@@ -193,6 +194,8 @@ class ModelEdgeDecision(BaseModel):
                 raise ValueError("a refuse decision names one refusal reason")
             if self.record_out is not None:
                 raise ValueError("a refuse decision carries no record_out")
+        if self.terminal_failure_cause not in (None, self.reason):
+            raise ValueError("the failure cause is the refusal reason or absent")
         return self
 
 

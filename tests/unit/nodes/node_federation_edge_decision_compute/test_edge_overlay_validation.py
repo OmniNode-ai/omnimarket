@@ -21,6 +21,9 @@ from pathlib import Path
 import pytest
 import yaml
 
+from omnimarket.models.federation_egress.model_egress_gate import (
+    ModelEgressField,
+)
 from omnimarket.nodes.node_federation_edge_decision_compute.handlers.handler_edge_overlay_validation import (
     HandlerEdgeOverlayValidation,
     validate_edge_overlay,
@@ -38,9 +41,6 @@ from omnimarket.nodes.node_federation_edge_decision_compute.models.model_edge_ov
 )
 from omnimarket.nodes.node_federation_edge_decision_compute.models.model_edge_overlay_validation import (
     ModelOverlayValidationRequest,
-)
-from omnimarket.nodes.node_federation_egress_gate_compute.models.model_egress_gate import (
-    ModelEgressField,
 )
 
 pytestmark = pytest.mark.unit

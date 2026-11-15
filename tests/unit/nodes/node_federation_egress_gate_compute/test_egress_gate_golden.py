@@ -17,18 +17,18 @@ import uuid
 
 import pytest
 
-from omnimarket.nodes.node_federation_egress_gate_compute.handlers.handler_federation_egress_gate import (
-    HandlerFederationEgressGate,
-)
-from omnimarket.nodes.node_federation_egress_gate_compute.models.enum_egress_gate import (
+from omnimarket.models.federation_egress.enum_egress_gate import (
     EnumEgressOutcome,
 )
-from omnimarket.nodes.node_federation_egress_gate_compute.models.model_egress_gate import (
+from omnimarket.models.federation_egress.model_egress_gate import (
     ModelEgressField,
     ModelEgressGateRequest,
     ModelEgressTopicPolicy,
     ModelHeaderRule,
     ModelWireHeader,
+)
+from omnimarket.nodes.node_federation_egress_gate_compute.handlers.handler_federation_egress_gate import (
+    HandlerFederationEgressGate,
 )
 
 pytestmark = pytest.mark.unit

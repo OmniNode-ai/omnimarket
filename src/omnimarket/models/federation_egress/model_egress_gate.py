@@ -21,7 +21,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from omnimarket.nodes.node_federation_egress_gate_compute.models.enum_egress_gate import (
+from omnimarket.models.federation_egress.enum_egress_gate import (
     EnumEgressOutcome,
     EnumEgressRefusal,
 )
@@ -280,6 +280,7 @@ class ModelEgressGateResult(BaseModel):
     key_digest: str | None = None
     value_size: int = Field(..., ge=0)
     message_id: str | None = None
+    terminal_failure_cause: EnumEgressRefusal | None = None
 
     @model_validator(mode="after")
     def _reason_agrees_with_outcome(self) -> ModelEgressGateResult:
@@ -287,6 +288,8 @@ class ModelEgressGateResult(BaseModel):
             raise ValueError("a pass result carries no refusal reason")
         if self.outcome is EnumEgressOutcome.REFUSE and self.reason is None:
             raise ValueError("a refuse result names one refusal reason")
+        if self.terminal_failure_cause not in (None, self.reason):
+            raise ValueError("the failure cause is the refusal reason or absent")
         return self
 
 

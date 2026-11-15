@@ -2,11 +2,11 @@
 # SPDX-License-Identifier: MIT
 """Typed models of the federation egress gate compute."""
 
-from omnimarket.nodes.node_federation_egress_gate_compute.models.enum_egress_gate import (
+from omnimarket.models.federation_egress.enum_egress_gate import (
     EnumEgressOutcome,
     EnumEgressRefusal,
 )
-from omnimarket.nodes.node_federation_egress_gate_compute.models.model_egress_gate import (
+from omnimarket.models.federation_egress.model_egress_gate import (
     PATTERN_MAX_LENGTH,
     ModelEgressField,
     ModelEgressGateRequest,

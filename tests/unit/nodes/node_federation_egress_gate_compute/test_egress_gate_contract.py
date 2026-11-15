@@ -12,6 +12,10 @@ from pathlib import Path
 import pytest
 import yaml
 
+from omnimarket.models.federation_egress.model_egress_gate import (
+    ModelEgressGateRequest,
+    ModelEgressGateResult,
+)
 from omnimarket.nodes.node_federation_egress_gate_compute import (
     NodeFederationEgressGateCompute,
 )
@@ -20,10 +24,6 @@ from omnimarket.nodes.node_federation_egress_gate_compute.handlers import (
 )
 from omnimarket.nodes.node_federation_egress_gate_compute.handlers.handler_federation_egress_gate import (
     HandlerFederationEgressGate,
-)
-from omnimarket.nodes.node_federation_egress_gate_compute.models.model_egress_gate import (
-    ModelEgressGateRequest,
-    ModelEgressGateResult,
 )
 
 pytestmark = pytest.mark.unit

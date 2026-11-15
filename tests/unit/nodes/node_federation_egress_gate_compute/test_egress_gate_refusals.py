@@ -17,21 +17,21 @@ from typing import Any
 
 import pytest
 
-from omnimarket.nodes.node_federation_egress_gate_compute.handlers.handler_federation_egress_gate import (
-    HandlerFederationEgressGate,
-    parse_value_refusing_duplicates,
-)
-from omnimarket.nodes.node_federation_egress_gate_compute.models.enum_egress_gate import (
+from omnimarket.models.federation_egress.enum_egress_gate import (
     EnumEgressOutcome,
     EnumEgressRefusal,
 )
-from omnimarket.nodes.node_federation_egress_gate_compute.models.model_egress_gate import (
+from omnimarket.models.federation_egress.model_egress_gate import (
     ModelEgressField,
     ModelEgressGateRequest,
     ModelEgressGateResult,
     ModelEgressTopicPolicy,
     ModelHeaderRule,
     ModelWireHeader,
+)
+from omnimarket.nodes.node_federation_egress_gate_compute.handlers.handler_federation_egress_gate import (
+    HandlerFederationEgressGate,
+    parse_value_refusing_duplicates,
 )
 
 pytestmark = pytest.mark.unit

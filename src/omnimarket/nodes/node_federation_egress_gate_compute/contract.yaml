@@ -57,16 +57,16 @@ description: >
   result or any log.
 input_model:
   name: "ModelEgressGateRequest"
-  module: "omnimarket.nodes.node_federation_egress_gate_compute.models.model_egress_gate"
+  module: "omnimarket.models.federation_egress.model_egress_gate"
   description: "One record as base64 with its wire headers, and the topic's egress policy."
 output_model:
   name: "ModelEgressGateResult"
-  module: "omnimarket.nodes.node_federation_egress_gate_compute.models.model_egress_gate"
+  module: "omnimarket.models.federation_egress.model_egress_gate"
   description: "Pass or refuse with one named reason, the key's sha256 digest and the value size."
 handler:
   module: "omnimarket.nodes.node_federation_egress_gate_compute.handlers.handler_federation_egress_gate"
   class: "HandlerFederationEgressGate"
-  input_model: "omnimarket.nodes.node_federation_egress_gate_compute.models.model_egress_gate.ModelEgressGateRequest"
+  input_model: "omnimarket.models.federation_egress.model_egress_gate.ModelEgressGateRequest"
 handler_routing:
   routing_strategy: "operation_match"
   default_handler: "omnimarket.nodes.node_federation_egress_gate_compute.handlers.handler_federation_egress_gate:HandlerFederationEgressGate"
@@ -78,6 +78,7 @@ handler_routing:
 # The gate command, sent by the federation forwarder before it publishes the
 # record onto the other bus; the two terminals are
 # runtime_dispatch.terminal_events.
+terminal_event: "onex.evt.omnimarket.federation-egress-gate-completed.v1"
 runtime_dispatch:
   command_topic: "onex.cmd.omnimarket.federation-egress-gate-requested.v1"
   terminal_events:

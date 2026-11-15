@@ -21,7 +21,7 @@ from omnibase_infra.nodes.node_bus_forwarder_effect.services.service_gateway_top
 )
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from omnimarket.nodes.node_federation_egress_gate_compute.models.model_egress_gate import (
+from omnimarket.models.federation_egress.model_egress_gate import (
     ModelHeaderRule,
     assert_bounded_anchored_pattern,
 )
