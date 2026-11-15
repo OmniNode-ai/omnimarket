@@ -47,7 +47,7 @@ OLD_HEAD = "f7402aa63d1b74b082b174badbe07ac91dcddf36"
 NOW = datetime(2026, 11, 15, 13, 0, 0, tzinfo=UTC)
 
 POLICY = ModelReviewGateContextPolicy(
-    check_name="review-verdict / clean-head",
+    check_name="fable-review-gate",
     bypass_classes=(
         ModelReviewBypassClass(
             name="bot_release_pull_request",

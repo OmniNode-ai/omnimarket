@@ -24,20 +24,19 @@ class EnumReviewContextPostOutcome(StrEnum):
     FAILED_READBACK = "failed_readback"
 
 
-class ModelHeadCheckRun(BaseModel):
-    """One check run on a head."""
+class ModelHeadStatus(BaseModel):
+    """One commit status on a head: its id, context and state."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    check_run_id: int
-    name: str
+    status_id: int
+    context: str
     head_sha: str = Field(pattern=r"^[0-9a-f]{40}$")
-    status: str
-    conclusion: str | None
+    state: str
 
 
 class ModelReviewContextPostCommand(BaseModel):
-    """The command to post a review context check run."""
+    """The command to post a review-gate commit status."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -57,6 +56,6 @@ class ModelReviewContextPostResult(BaseModel):
     head_sha: str
     check_name: str
     state: EnumReviewContextState
-    check_run_id: int | None
+    status_id: int | None
     calls: int = Field(ge=0)
     detail: str

@@ -138,6 +138,18 @@ SCM_VERBS: Final[tuple[ModelScmVerb, ...]] = (
         replaces="gh api --method POST /repos/{o}/{r}/check-runs",
     ),
     ModelScmVerb(
+        verb="commit-status-create",
+        node=_W,
+        operation="commit_status_create",
+        replaces="gh api --method POST /repos/{o}/{r}/statuses/{sha}",
+    ),
+    ModelScmVerb(
+        verb="required-context-apply",
+        node=_W,
+        operation="required_context_apply",
+        replaces="gh api --method PATCH /repos/{o}/{r}/branches/{b}/protection/required_status_checks",
+    ),
+    ModelScmVerb(
         verb="pr-label",
         node=_W,
         operation="pr_label",

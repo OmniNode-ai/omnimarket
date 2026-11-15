@@ -4,14 +4,14 @@
 
 from omnimarket.nodes.node_review_gate_context_effect.models.model_review_context_post import (
     EnumReviewContextPostOutcome,
-    ModelHeadCheckRun,
+    ModelHeadStatus,
     ModelReviewContextPostCommand,
     ModelReviewContextPostResult,
 )
 
 __all__ = [
     "EnumReviewContextPostOutcome",
-    "ModelHeadCheckRun",
+    "ModelHeadStatus",
     "ModelReviewContextPostCommand",
     "ModelReviewContextPostResult",
 ]

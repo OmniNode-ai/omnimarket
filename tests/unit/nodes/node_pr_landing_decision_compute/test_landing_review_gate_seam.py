@@ -275,7 +275,7 @@ def test_the_prs_review_field_accepts_exactly_the_derived_review() -> None:
         )
 
 
-def test_the_review_skip_reasons_are_exactly_the_four_named_readings() -> None:
+def test_the_review_skip_reasons_are_exactly_the_named_readings() -> None:
     assert {
         reason.value
         for reason in EnumLandingLandSkipReason
@@ -285,6 +285,10 @@ def test_the_review_skip_reasons_are_exactly_the_four_named_readings() -> None:
         "review_changes_needed",
         "review_superseded",
         "review_unread",
+        "review_status_missing",
+        "review_status_failing",
+        "review_status_other_head",
+        "review_status_unread",
     }
 
 

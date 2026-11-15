@@ -25,8 +25,8 @@ from omnimarket.nodes.node_review_gate_context_compute.handlers.handler_review_g
 from omnimarket.nodes.node_review_gate_context_compute.overlay import (
     ModelReviewGateContextOverlay,
 )
-from omnimarket.nodes.node_review_gate_context_effect.adapters.inmemory_head_check_runs import (
-    InMemoryHeadCheckRuns,
+from omnimarket.nodes.node_review_gate_context_effect.adapters.inmemory_head_statuses import (
+    InMemoryHeadStatuses,
 )
 from omnimarket.nodes.node_review_gate_context_effect.handlers.handler_review_gate_context_effect import (
     HandlerReviewGateContextEffect,
@@ -99,12 +99,12 @@ class Rig:
         open_prs: ProtocolOpenPullRequestSource,
         verdicts: ProtocolReviewVerdictSource,
         *,
-        runs: InMemoryHeadCheckRuns | None = None,
+        runs: InMemoryHeadStatuses | None = None,
         orchestrator_class: type[
             HandlerReviewGateContextOrchestrator
         ] = HandlerReviewGateContextOrchestrator,
     ) -> None:
-        self.runs = runs or InMemoryHeadCheckRuns()
+        self.runs = runs or InMemoryHeadStatuses()
         self.sink = InMemoryEmissionSink()
         effect = HandlerReviewGateContextEffect(
             reader=self.runs,

@@ -14,6 +14,8 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.models.model_review_status import ModelReviewStatusRow
+
 SHA_PATTERN = r"^[0-9a-f]{40}$"
 
 
@@ -53,6 +55,14 @@ class ModelLandingReviewFacts(BaseModel):
 
     new_work: bool
     verdicts: tuple[ModelLandingReviewVerdictRow, ...] = ()
+    statuses: tuple[ModelReviewStatusRow, ...] | None = Field(
+        default=None,
+        description=(
+            "The commit statuses read for the PR (the current head's and any earlier head's). A new-work PR "
+            "merges only with a success fable-review-gate status on its exact head; a status on an older head "
+            "does not count. None: the statuses were not read."
+        ),
+    )
 
 
 class ModelReviewGateReading(BaseModel):

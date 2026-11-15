@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 # Synthetic overlay for node_review_gate_context_compute: the declared review-gate context policy.
 policy:
-  check_name: "review-verdict / clean-head"
+  check_name: "fable-review-gate"
   bypass_classes:
     - name: bot_release_pull_request
       why: "A release pull request cut by the release automation; the release is reviewed at its tag"

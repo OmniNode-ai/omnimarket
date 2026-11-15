@@ -18,7 +18,7 @@ capabilities:
 dependencies: []
 authors: ["OmniNode Platform Team"]
 license: "MIT"
-tags: ["orchestrator", "review-gate", "check-run", "pr-lifecycle"]
+tags: ["orchestrator", "review-gate", "commit-status", "pr-lifecycle"]
 pack: "pr_lifecycle"
 display_name: "Review Gate Context Sweep"
 node_role: "orchestrator"

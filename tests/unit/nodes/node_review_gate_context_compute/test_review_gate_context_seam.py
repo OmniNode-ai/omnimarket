@@ -1,10 +1,10 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The seams of the review verdict check (OMN-24614): the decision, the GitHub write node, and the branch protection audit.
+"""The seams of the review verdict commit status (OMN-24614): the decision, the GitHub write node, and the branch protection audit.
 
 Each seam fails when either side changes shape. (1) The decision's check name, state, title and summary reach the write node
 as the exact request the write node plans to send to GitHub (the plan is the write node's own, dry-run, and is the same on
-the in-memory bus and on the real broker: ``onex scm check-run-create --dry-run``). (2) The name the decision carries is the
+the in-memory bus and on the real broker: ``onex scm commit-status-create --dry-run``). (2) The name the decision carries is the
 name the branch protection audit asks a repository's landing branch to require, so a rename on one side is red on the other.
 (3) The command, completion and failure topics the three nodes declare are distinct, well formed and named for their node.
 Three injected breaks each change one thing the seam depends on and the reading goes red.
@@ -36,11 +36,14 @@ from omnimarket.nodes.node_review_gate_context_compute.handlers.handler_review_g
 from omnimarket.nodes.node_review_gate_context_compute.overlay import (
     ModelReviewGateContextOverlay,
 )
-from omnimarket.nodes.node_review_gate_context_effect.adapters.write_node_check_run_poster import (
-    WriteNodeCheckRunPoster,
+from omnimarket.nodes.node_review_gate_context_effect.adapters.write_node_commit_status_poster import (
+    WriteNodeCommitStatusPoster,
 )
 from omnimarket.nodes.node_review_gate_context_effect.overlay import (
     ModelReviewContextBusRoute,
+)
+from omnimarket.nodes.node_review_gate_context_effect.protocols.protocol_head_statuses import (
+    ReviewContextPortError,
 )
 from tests.nodes.node_branch_protection_audit_effect.audit_fixtures import (
     GQL_RULES,
@@ -91,7 +94,7 @@ def _write_request(
 
     def call(request: ModelRepoWriteRequest) -> tuple[bool, dict[str, Any]]:
         seen.append(request)
-        return False, {"check_run_id": 5}
+        return False, {"commit_status_id": 5}
 
     route = ModelReviewContextBusRoute(
         backend="bus",
@@ -101,14 +104,14 @@ def _write_request(
         requested_by_lane="review-gate-context",
     )
     decision = _decision()
-    WriteNodeCheckRunPoster(route, call).post(
+    WriteNodeCommitStatusPoster(route, call).post(
         correlation_id=correlation_id,
         repository=decision.repository,
         head_sha=decision.head_sha,
-        check_name=name_override or decision.check_name,
-        conclusion=decision.state.value,
-        title=decision.title,
-        summary=decision.summary,
+        context=name_override or decision.check_name,
+        state=decision.state.value,
+        target_url=f"https://github.com/{decision.repository}/pull/{decision.pr_number}",
+        description=decision.title,
     )
     return seen[0]
 
@@ -116,13 +119,13 @@ def _write_request(
 def test_the_decision_reaches_the_write_node_as_the_exact_github_request() -> None:
     decision = _decision()
     (http,) = planned_requests(_write_request())
-    assert (http.method, http.path) == ("POST", f"/repos/{REPO}/check-runs")
+    assert (http.method, http.path) == ("POST", f"/repos/{REPO}/statuses/{HEAD}")
     body = http.body
-    assert body["name"] == decision.check_name == "review-verdict / clean-head"
-    assert body["head_sha"] == HEAD
-    assert body["status"] == "completed"
-    assert body["conclusion"] == "failure"
-    assert body["output"] == {"title": decision.title, "summary": decision.summary}
+    assert body is not None
+    assert body["context"] == decision.check_name == "fable-review-gate"
+    assert body["state"] == "failure"
+    assert body["target_url"] == f"https://github.com/{REPO}/pull/7"
+    assert body["description"] == decision.title
 
 
 def test_the_request_is_a_valid_write_node_command_for_the_sweeps_non_uuid_correlation() -> (
@@ -131,7 +134,7 @@ def test_the_request_is_a_valid_write_node_command_for_the_sweeps_non_uuid_corre
     # The sweep names each post "<sweep id>:<owner/repo>#<number>": the write node's correlation id is a UUID.
     sweep_id = "sweep-0001:example-org/example-repo#7"
     request = _write_request(correlation_id=sweep_id)
-    assert request.operation.value == "check_run_create"
+    assert request.operation.value == "commit_status_create"
     assert isinstance(request.correlation_id, UUID)
     assert (
         _write_request(correlation_id=sweep_id).correlation_id == request.correlation_id
@@ -139,9 +142,9 @@ def test_the_request_is_a_valid_write_node_command_for_the_sweeps_non_uuid_corre
     assert request.idempotency_key.startswith("review-ctx-7265930bafc6-failure-")
 
 
-def test_break_a_renamed_check_is_not_the_name_the_decision_carries() -> None:
-    (http,) = planned_requests(_write_request(name_override="review-verdict / renamed"))
-    assert http.body["name"] != _decision().check_name
+def test_break_a_renamed_context_is_refused_not_posted() -> None:
+    with pytest.raises(ReviewContextPortError, match="refused before any call"):
+        _write_request(name_override="review-verdict / renamed")
 
 
 def _protection(contexts: list[str]) -> dict[str, object]:

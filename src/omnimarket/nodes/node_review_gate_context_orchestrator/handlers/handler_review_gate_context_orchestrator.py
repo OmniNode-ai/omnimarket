@@ -90,7 +90,7 @@ class HandlerReviewGateContextOrchestrator:
                     ),
                 )
             )
-        # A check run belongs to a commit, not to a pull request: two pull requests of one repository
+        # A commit status belongs to a commit, not to a pull request: two pull requests of one repository
         # that share a head share the check. The check that is posted for such a head is the failure of
         # any of them, never a success one of them earned.
         owner_of_head: dict[tuple[str, str], ModelReviewGateContextDecision] = {}

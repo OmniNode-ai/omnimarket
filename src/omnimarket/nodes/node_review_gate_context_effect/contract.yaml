@@ -3,9 +3,10 @@
 #
 # ONEX Node Contract - Review Gate Context Effect (OMN-24614)
 #
-# Posts one pull request head's "review verdict" check run on GitHub through the GitHub write node (never GitHub
-# directly), idempotently, and reads it back through the gateway node's commit_check_runs read, both over the bus.
-# The head's runs of another name or on another head never count; a completed run already holding the decision's
+# Posts one pull request head's review verdict as the fable-review-gate commit status on GitHub through the GitHub
+# write node's commit_status_create (never GitHub directly, and never a check run: the node's token cannot create
+# one), idempotently, and reads it back through the gateway node's commit_statuses read, both over the bus.
+# The head's statuses of another context or on another head never count; a status already holding the decision's
 # state is unchanged, and nothing is posted for it. The route, the emission journal and the identity come from the
 # overlay; this contract holds no setting.
 name: node_review_gate_context_effect
@@ -18,9 +19,10 @@ lifecycle: experimental
 runtime_profiles: [effects]
 
 description: >
-  Posts a pull request head's review verdict check run on GitHub through the GitHub write node, idempotently, and
-  reads it back: a completed run on the exact head already holding the decision's state is unchanged and nothing is
-  posted for it; a run of another name or on another head never counts. Every call is one chain on the floor's
+  Posts a pull request head's review verdict as the fable-review-gate commit status on GitHub through the GitHub
+  write node, idempotently, and reads it back: a status on the exact head already holding the decision's state is
+  unchanged and nothing is posted for it; a status of another context or on another head never counts. No check run
+  is created. Every call is one chain on the floor's
   emission contract: a start, then a success or a typed failure.
 
 handler:
@@ -46,7 +48,7 @@ input_model:
 output_model:
   name: ModelReviewContextPostResult
   module: omnimarket.nodes.node_review_gate_context_effect.models.model_review_context_post
-  description: The outcome, the head, the posted run's id when one was posted, the port calls made and the detail.
+  description: The outcome, the head, the posted status's id when one was posted, the port calls made and the detail.
 
 terminal_event: onex.evt.omnimarket.review-gate-context-post-completed.v1
 

@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The seam from the verdict record to the check (OMN-24614): ledger STATUS rows in, the posted check run out.
+"""The seam from the verdict record to the check (OMN-24614): ledger STATUS rows in, the posted commit status out.
 
 The rows are the ones the landing ledger facts node reads for the landing decision's own review gate, so one record feeds
 both gates. A clean verdict row from an accepted reviewer lane for the exact head reads success; the same row from a lane
@@ -107,7 +107,7 @@ def test_a_clean_row_from_an_accepted_reviewer_for_the_head_reads_success() -> N
     rig, result = _sweep(_Rows((_row(),)))
     assert result.entries[0].state.value == "success"
     assert result.entries[0].reason.value == "clean_on_head"
-    assert rig.runs.posted[0]["conclusion"] == "success"
+    assert rig.runs.posted[0]["state"] == "success"
 
 
 @pytest.mark.parametrize(
@@ -126,7 +126,7 @@ def test_a_row_that_does_not_count_for_the_head_reads_failure(
     rig, result = _sweep(_Rows((row,)))
     assert result.entries[0].state.value == "failure"
     assert result.entries[0].reason.value == reason
-    assert rig.runs.posted[0]["conclusion"] == "failure"
+    assert rig.runs.posted[0]["state"] == "failure"
 
 
 def test_an_unreadable_ledger_posts_nothing() -> None:

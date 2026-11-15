@@ -20,11 +20,11 @@ from omnimarket.models.model_github_gateway_io import ModelGithubGatewayRequest
 from omnimarket.models.model_repo_write_io import ModelRepoWriteRequest
 from omnimarket.nodes.node_lab_check_run_effect.overlay import ModelEmissionSettings
 from omnimarket.nodes.node_review_gate_context_effect.models.model_review_context_post import (
-    ModelHeadCheckRun,
+    ModelHeadStatus,
 )
-from omnimarket.nodes.node_review_gate_context_effect.protocols.protocol_head_check_runs import (
-    ProtocolHeadCheckRunPoster,
-    ProtocolHeadCheckRunReader,
+from omnimarket.nodes.node_review_gate_context_effect.protocols.protocol_head_statuses import (
+    ProtocolHeadStatusPoster,
+    ProtocolHeadStatusReader,
 )
 
 NODE_NAME = "node_review_gate_context_effect"
@@ -43,12 +43,12 @@ class ModelReviewContextBusRoute(BaseModel):
 
 
 class ModelReviewContextInMemoryRoute(BaseModel):
-    """The in-memory route: the runs already on the head."""
+    """The in-memory route: the statuses already on the head."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     backend: Literal["inmemory"]
-    fixture: tuple[ModelHeadCheckRun, ...] = ()
+    fixture: tuple[ModelHeadStatus, ...] = ()
 
 
 #: The backend key picks the model; no code compares it with a literal.
@@ -71,25 +71,25 @@ def load_overlay(environ: Mapping[str, str] | None = None) -> ModelReviewContext
 
 def build_ports(
     overlay: ModelReviewContextOverlay, environ: Mapping[str, str]
-) -> tuple[ProtocolHeadCheckRunReader, ProtocolHeadCheckRunPoster]:
+) -> tuple[ProtocolHeadStatusReader, ProtocolHeadStatusPoster]:
     """Returns the reader and poster for the overlay's route."""
-    from omnimarket.nodes.node_review_gate_context_effect.adapters.inmemory_head_check_runs import (
-        InMemoryHeadCheckRuns,
+    from omnimarket.nodes.node_review_gate_context_effect.adapters.inmemory_head_statuses import (
+        InMemoryHeadStatuses,
     )
 
     if isinstance(overlay.route, ModelReviewContextInMemoryRoute):
-        adapter = InMemoryHeadCheckRuns(overlay.route.fixture)
+        adapter = InMemoryHeadStatuses(overlay.route.fixture)
         return adapter, adapter
 
     from omnimarket.models.scm import EnumScmNode
     from omnimarket.nodes.node_review_gate_context_effect.adapters.bus_scm_call import (
         bus_scm_call,
     )
-    from omnimarket.nodes.node_review_gate_context_effect.adapters.gateway_check_run_reader import (
-        GatewayCheckRunReader,
+    from omnimarket.nodes.node_review_gate_context_effect.adapters.gateway_commit_status_reader import (
+        GatewayCommitStatusReader,
     )
-    from omnimarket.nodes.node_review_gate_context_effect.adapters.write_node_check_run_poster import (
-        WriteNodeCheckRunPoster,
+    from omnimarket.nodes.node_review_gate_context_effect.adapters.write_node_commit_status_poster import (
+        WriteNodeCommitStatusPoster,
     )
 
     route = overlay.route
@@ -116,8 +116,8 @@ def build_ports(
             correlation_id=request.correlation_id,
         )
 
-    poster = WriteNodeCheckRunPoster(route, poster_call)
-    reader = GatewayCheckRunReader(route, reader_call)
+    poster = WriteNodeCommitStatusPoster(route, poster_call)
+    reader = GatewayCommitStatusReader(route, reader_call)
     return reader, poster
 
 

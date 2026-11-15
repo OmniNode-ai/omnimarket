@@ -38,5 +38,5 @@ def test_contract_yaml_loads_and_names_handler_and_models() -> None:
 def test_overlay_example_validates() -> None:
     data = yaml.safe_load((NODE_DIR / "overlay.example.yaml").read_text())
     overlay = ModelReviewGateContextOverlay.model_validate(data)
-    assert overlay.policy.check_name == "review-verdict / clean-head"
+    assert overlay.policy.check_name == "fable-review-gate"
     assert len(overlay.policy.bypass_classes) == 2

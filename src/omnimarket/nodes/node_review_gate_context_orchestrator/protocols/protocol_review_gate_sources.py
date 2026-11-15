@@ -39,10 +39,10 @@ class ProtocolReviewVerdictSource(Protocol):
 
 
 class ProtocolContextPoster(Protocol):
-    """Posts one head's review-gate context check run."""
+    """Posts one head's review-gate context commit status."""
 
     def handle(
         self, command: ModelReviewContextPostCommand
     ) -> ModelReviewContextPostResult:
-        """Posts the decision's check run on the exact head, idempotently."""
+        """Posts the decision's commit status on the exact head, idempotently."""
         ...

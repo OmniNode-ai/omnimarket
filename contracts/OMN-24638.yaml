@@ -1,0 +1,154 @@
+schema_version: "1.0.0"
+ticket_id: OMN-24638
+title: "Review gate posts a commit status (not a check run) and the lander requires it"
+summary: >-
+  The review gate cannot post its result as a check run: the GitHub write node authenticates with a
+  token, and GitHub answers 403 to a token that creates a check run. A token can post a commit status.
+  This adds a commit_status_create operation to node_github_repo_write_effect (POST
+  /repos/{o}/{r}/statuses/{sha}; context fable-review-gate only; state success or failure only; the
+  verdict link; a full sha), a commit_statuses read to the gateway node, and switches the review gate
+  effect to post and read back that status and no check run. pr-handoff's decision and the landing
+  decision each refuse or hold a new-work PR whose head has no success fable-review-gate status, naming
+  missing, failing or on another head (a status on an older head does not count). No tool applied
+  required contexts, so the write node gets a required_context_apply operation served only for the
+  (repository, branch, context) triples its overlay allowlists; this change applies nothing to any
+  repository. Not in this change: the runtime reader that feeds the decisions their statuses, and the
+  install on the running runtime (AC6).
+is_seam_ticket: true
+interface_change: true
+interfaces_touched: []
+requirements:
+  - id: req-omn24638-review-gate-commit-status
+    statement: "The review gate's verdict reaches GitHub as a commit status a token can post, and the lander and pr-handoff refuse a new-work head without a success one."
+    acceptance:
+      - id: AC1
+        statement: "AC1: node_github_repo_write_effect has a commit-status operation that posts to the statuses endpoint for an owner, repo and sha with context fable-review-gate and state success or failure carrying the verdict link, and refuses any other state or an empty sha -- falsifier: uv run pytest tests -q -k commit_status fails before the change and passes after"
+      - id: AC2
+        statement: "AC2: the review gate posts the fable-review-gate commit status and posts no check run, so a gate run with a token-only write node ends posted instead of 403 -- falsifier: uv run pytest tests -q -k review_gate_status fails on the check-run code and passes after"
+      - id: AC3
+        statement: "AC3: pr-handoff's handoff_row refuses a new-work PR whose head has no success status for fable-review-gate, naming the missing or failing status, and admits one with a success status for that exact head -- falsifier: uv run pytest tests -q -k handoff_review_status fails before the change and passes after"
+      - id: AC4
+        statement: "AC4: the landing controller's decision holds a new-work PR whose head lacks a success fable-review-gate status, and a status on an older head does not count -- falsifier: uv run pytest tests -q -k landing_review_status fails before the change and passes after"
+      - id: AC5
+        statement: "AC5: the fable-review-gate context is declared as required per repository the declared way, and if no tool applies required contexts the write node gets an apply-required-context operation behind an allowlist that refuses a repository or context outside it -- falsifier: uv run pytest tests -q -k required_context_allowlist fails before the change and passes after"
+      - id: AC6
+        statement: "AC6: the standing check runs where it runs: the gate posts a real status on omnimarket#6298 and overlays#572 heads and the decision reads it from the running Mac install -- falsifier: onex scm pr-view OmniNode-ai/omnimarket#6298 --source bus lists a fable-review-gate status for the head, and a decision for a new-work head with no success status shows a hold, not a merge"
+evidence_requirements:
+  - kind: tests
+    description: "The commit status, review gate status, handoff, landing and required context allowlist tests."
+    command: "env -u PYTHONPATH uv run --frozen pytest tests/unit/nodes/node_github_repo_write_effect tests/nodes/node_github_repo_gateway_effect tests/unit/nodes/node_review_gate_context_effect tests/unit/nodes/node_pr_handoff_decision_compute tests/unit/nodes/node_pr_landing_decision_compute tests/chains/pr_handoff -q --no-cov -n 0 -p no:randomly"
+  - kind: manual
+    description: "Deploy validation command for the caller-contract deploy gate: the committed write node source read at the checkout commit. It starts nothing and touches no running lane."
+    command: "deploy: gh api contents of services/commit_status.py at HEAD"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn24638-ac1-commit-status-operation
+    description: >-
+      The write node's commit_status_create posts POST /repos/{o}/{r}/statuses/{sha} on a recorded transport
+      for state success and failure, replays on the same key, plans the same request in dry run, and the
+      request model refuses any other state, any other context, an empty or short sha, a link that is not
+      https and a missing field. The gateway reads the statuses of a head. The tests fail at the merge
+      base, which has no commit_status_create.
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_github_repo_write_effect tests/nodes/node_github_repo_gateway_effect -q --no-cov -n 0 -p no:randomly -k commit_status
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn24638-ac2-review-gate-posts-status
+    description: >-
+      The review gate's poster builds a commit_status_create request and never a check_run_create one; over a
+      write node that answers 403 to every check run and accepts a commit status, a gate run for a success
+      and for a failure decision ends posted, reads back its own status id, and a repeat is unchanged. The
+      poster refuses another context, another state, an empty sha and a link that is not a link before any
+      call. The tests fail on the check run code.
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_review_gate_context_effect tests/unit/nodes/node_review_gate_context_compute tests/unit/nodes/node_review_gate_context_orchestrator tests/nodes/node_review_gate_context_effect -q --no-cov -n 0 -p no:randomly
+        cwd: ${OMNI_HOME}/omnimarket
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_review_gate_context_effect -q --no-cov -n 0 -p no:randomly -k review_gate_status
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn24638-ac3-handoff-review-status
+    description: >-
+      pr-handoff's decision refuses a new-work PR whose live head has no fable-review-gate status as
+      review_status_missing, one whose newest status is not success as review_status_failing, and one whose
+      only success is on an older head as review_status_other_head; it admits a success status on the exact
+      head, a PR that is not new work, and a request that carries no status facts. Each of the three
+      refusals is also driven through the orchestrator's chain.
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_pr_handoff_decision_compute tests/chains/pr_handoff -q --no-cov -n 0 -p no:randomly -k handoff_review_status
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn24638-ac4-landing-review-status
+    description: >-
+      The landing decision holds a new-work head with no fable-review-gate status as review_status_missing,
+      one whose newest status is not success as review_status_failing, one whose only success is on an older
+      head as review_status_other_head and, when the policy expects the read, one whose statuses were not
+      read as review_status_unread; a success status on the head merges it, and the ledger verdict gate is
+      still asked first. Seeded fleets name every new reason.
+    source: manual
+    binds_ac: [AC4]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute -q --no-cov -n 0 -p no:randomly -k "landing_review_status or generated_fleets"
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn24638-ac5-required-context-allowlist
+    description: >-
+      No declared tool applied required status-check contexts, so the write node's required_context_apply
+      is served only for a (repository, branch, context) the overlay's required_contexts names. A
+      repository, a branch or a context outside the list, and an overlay that declares none, are refused
+      required_context_not_allowed with no call made, in dry run too; the allowed triple adds the context
+      keeping the checks already required and replays when it is already required. Nothing here applies a
+      context to any repository: the transport is a fake.
+    source: manual
+    binds_ac: [AC5]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_github_repo_write_effect -q --no-cov -n 0 -p no:randomly -k required_context_allowlist
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn24638-deploy-write-node-surface
+    description: >-
+      Read the committed commit status request builder at the checkout commit through the GitHub contents
+      API. Fail when the statuses endpoint or the review gate context is absent. Runs on hosted runners
+      without a container daemon or access to a private runtime.
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: command
+        check_value: |
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_github_repo_write_effect/services/commit_status.py?ref=$(git rev-parse HEAD)" --jq .content |
+            base64 -d > commit_status.src &&
+          grep -F '/statuses/{sha}' commit_status.src > /dev/null &&
+          grep -F 'def commit_status_request' commit_status.src > /dev/null
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn24638-ac6-hosted-hold-path
+    description: >-
+      The hosted-runnable reading of AC6: over the decision node's own facts a new-work head with no success
+      fable-review-gate status is held with a named reason and not merged, and the same head with a success
+      status on it merges. The live reading on the running install follows in the integration proof.
+    source: manual
+    binds_ac: [AC6]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_review_status.py -q --no-cov -n 0 -p no:randomly
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn24638-ac6-integration-proof
+    description: >-
+      Hosted CI cannot reach the lab bus or GitHub, so only the local Done gate runs this unbound check. The
+      reading is the PR watcher's and the gateway's record of the fable-review-gate status on the head of
+      omnimarket#6298, read from the running install after the gate has posted, and a landing decision for
+      a new-work head with no success status that shows a hold.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: env PYTHONDONTWRITEBYTECODE=1 onex scm commit-statuses OmniNode-ai/omnimarket --head-sha "$(git rev-parse HEAD)"
+        cwd: .

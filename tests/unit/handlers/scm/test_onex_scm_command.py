@@ -287,6 +287,20 @@ _GATEWAY_RESULTS: dict[str, Callable[[ModelGithubGatewayRequest], dict[str, Any]
         "repo": r.repo,
         "truncated": False,
     },
+    "commit_statuses": lambda r: {
+        "operation": "commit_statuses",
+        "repo": r.repo,
+        "head_sha": r.head_sha,
+        "truncated": False,
+        "statuses": [
+            {
+                "id": 3,
+                "context": "fable-review-gate",
+                "state": "success",
+                "target_url": "https://example.invalid/verdict",
+            }
+        ],
+    },
     "commit_check_runs": lambda r: {
         "operation": "commit_check_runs",
         "repo": r.repo,
@@ -490,6 +504,7 @@ _READ_ARGS: dict[str, list[str]] = {
         "--check-name",
         "repo-evidence / dod-verify",
     ],
+    "commit-statuses": [REPO, "--head-sha", "a" * 40],
     "pr-merged": [f"{REPO}#77"],
     "pr-threads": [f"{REPO}#77"],
     "code-scanning-alerts": [f"{REPO}#77"],
@@ -541,6 +556,22 @@ _WRITE_ARGS: dict[str, list[str]] = {
         "Lab check",
         "--output-summary",
         "Passed.",
+    ],
+    "commit-status-create": [
+        REPO,
+        "--sha",
+        HEAD,
+        "--state",
+        "success",
+        "--target-url",
+        "https://example.invalid/verdict",
+    ],
+    "required-context-apply": [
+        REPO,
+        "--branch",
+        "dev",
+        "--required-context",
+        "fable-review-gate",
     ],
     "pr-label": [f"{REPO}#77", "--add", "ci:ready", "--head-sha", HEAD],
     "variable-set": [REPO, "--variable", "LAB_VAR_ONE"],
@@ -675,7 +706,7 @@ def test_run_view_returns_step_timestamps_without_an_additional_read(
     transport.assert_drained()
     assert transport.sent == [get(path)]
     declared = sorted(contract_operations(EnumScmNode.GATEWAY))
-    assert len(declared) == 20
+    assert len(declared) == 21
     assert declared == sorted(
         spec.operation for spec in SCM_VERBS if spec.node is EnumScmNode.GATEWAY
     )
@@ -754,6 +785,8 @@ def _contract_1_2_0_request() -> type[BaseModel]:
         set(_WRITE_ARGS)
         - {
             "check-run-create",
+            "commit-status-create",
+            "required-context-apply",
             "pr-thread-reply",
             "pr-thread-resolve",
             "pr-review-post",

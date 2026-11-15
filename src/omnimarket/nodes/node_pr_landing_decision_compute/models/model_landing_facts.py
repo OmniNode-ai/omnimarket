@@ -571,6 +571,14 @@ class ModelLandingPolicy(BaseModel):
             "held as review_unread (it is never merged unread)."
         ),
     )
+    review_status_read_expected: bool = Field(
+        default=False,
+        description=(
+            "The controller reads the fable-review-gate commit statuses for every new-work PR, so a new-work PR "
+            "whose review fact carries none (statuses None) is held as review_status_unread (it is never merged "
+            "unread)."
+        ),
+    )
     lab_check_wait_seconds: int = Field(
         default=900,
         ge=1,

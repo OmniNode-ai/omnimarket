@@ -25,7 +25,7 @@ from omnimarket.models.scm import EnumScmNode
 from omnimarket.nodes.node_review_gate_context_effect.overlay import (
     ModelReviewContextBusRoute,
 )
-from omnimarket.nodes.node_review_gate_context_effect.protocols.protocol_head_check_runs import (
+from omnimarket.nodes.node_review_gate_context_effect.protocols.protocol_head_statuses import (
     ReviewContextPortError,
 )
 

@@ -12,8 +12,8 @@ from __future__ import annotations
 
 import pytest
 
-from omnimarket.nodes.node_review_gate_context_effect.adapters.inmemory_head_check_runs import (
-    InMemoryHeadCheckRuns,
+from omnimarket.nodes.node_review_gate_context_effect.adapters.inmemory_head_statuses import (
+    InMemoryHeadStatuses,
 )
 from omnimarket.nodes.node_review_gate_context_effect.models.model_review_context_post import (
     EnumReviewContextPostOutcome,
@@ -43,24 +43,24 @@ def test_golden_chain_post_on_the_exact_head() -> None:
     ("runs", "outcome", "code"),
     [
         (
-            InMemoryHeadCheckRuns(fail_reads=True),
+            InMemoryHeadStatuses(fail_reads=True),
             EnumReviewContextPostOutcome.FAILED_READ,
             "review_context_read_failed",
         ),
         (
-            InMemoryHeadCheckRuns(fail_posts=True),
+            InMemoryHeadStatuses(fail_posts=True),
             EnumReviewContextPostOutcome.FAILED_POST,
             "review_context_post_failed",
         ),
         (
-            InMemoryHeadCheckRuns(drop_posts=True),
+            InMemoryHeadStatuses(drop_posts=True),
             EnumReviewContextPostOutcome.FAILED_READBACK,
             "review_context_readback_mismatch",
         ),
     ],
 )
 def test_error_chain_closes_with_one_typed_failure(
-    runs: InMemoryHeadCheckRuns,
+    runs: InMemoryHeadStatuses,
     outcome: EnumReviewContextPostOutcome,
     code: str,
 ) -> None:

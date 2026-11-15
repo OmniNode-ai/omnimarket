@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 name: node_review_gate_context_effect
 version: "1.0.0"
-description: "Posts a pull request head's review verdict check run on GitHub through the GitHub write node, idempotently, and reads it back."
+description: "Posts a pull request head's review verdict commit status (fable-review-gate) on GitHub through the GitHub write node, idempotently, and reads it back."
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 capabilities:
   standalone: true
@@ -13,7 +13,7 @@ capabilities:
 dependencies:
   - "omnibase_core>=0.39.0"
   - "pyyaml>=6.0"
-tags: [effect, github, check-run, review-gate]
+tags: [effect, github, commit-status, review-gate]
 pack: "data"
 display_name: "Effect: Review Gate Context"
 node_role: "effect"

@@ -28,6 +28,11 @@ SCM_GATEWAY_VERBS: Final[tuple[ModelScmVerb, ...]] = tuple(
                 "gh api repos/<o>/<r>/commits/<sha>/check-runs",
             ),
             (
+                "commit-statuses",
+                "commit_statuses",
+                "the REST read GET /repos/<o>/<r>/commits/<sha>/statuses",
+            ),
+            (
                 "pr-merged",
                 "merged_pr",
                 "gh pr view --json state,mergedAt,mergeCommit,headRefOid",

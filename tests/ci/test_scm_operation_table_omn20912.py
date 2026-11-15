@@ -48,6 +48,8 @@ LANE_WRITES: dict[str, str] = {
     "pr comment": "pr_comment",
     "workflow run": "workflow_dispatch",
     "api --method POST /repos/{o}/{r}/check-runs": "check_run_create",
+    "api --method POST /repos/{o}/{r}/statuses/{sha}": "commit_status_create",
+    "api --method PATCH /repos/{o}/{r}/branches/{b}/protection/required_status_checks": "required_context_apply",
     "api --method POST /repos/{o}/{r}/pulls/{n}/comments/{id}/replies": "pr_thread_reply",
     "api graphql resolveReviewThread": "pr_thread_resolve",
     "api --method POST /repos/{o}/{r}/pulls/{n}/reviews": "pr_review_post",
