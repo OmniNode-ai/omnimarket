@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.events.enum_plan_first_slice_verdict import EnumPlanFirstSliceVerdict
+from omnimarket.enums.enum_plan_first_slice_verdict import EnumPlanFirstSliceVerdict
 
 
 class ModelPlanFirstSliceSettings(BaseModel):

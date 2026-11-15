@@ -1,6 +1,6 @@
 """Shared verdict enum for the plan first-slice check.
 
-Lives in the shared events package so the first-slice and review-ladder nodes
+Lives in the shared enums package so the first-slice and review-ladder nodes
 both use it without importing each other's model packages.
 """
 
