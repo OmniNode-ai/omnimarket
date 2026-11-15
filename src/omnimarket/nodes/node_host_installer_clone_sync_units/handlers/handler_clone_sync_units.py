@@ -54,6 +54,15 @@ def run_command(argv: Sequence[str]) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess(list(argv), 127, "", str(exc))
 
 
+def tail(log: Path, count: int) -> str:
+    """The last ``count`` lines of ``log``, or ``(absent)`` when it cannot be read."""
+    try:
+        lines = log.read_text(encoding="utf-8").splitlines(keepends=True)
+    except OSError:
+        return "(absent)\n"
+    return "".join(lines[-count:])
+
+
 def load_units() -> dict[str, dict[str, Any]]:
     declared = yaml.safe_load((NODE_DIR / "contract.yaml").read_text(encoding="utf-8"))
     return dict(declared["units"])
@@ -148,6 +157,18 @@ class HandlerCloneSyncUnits:
         self._command = runner
 
     def handle(self, request: ModelCloneSyncUnitsRequest) -> ModelCloneSyncUnitsResult:
+        try:
+            return self._handle(request)
+        except OSError as exc:
+            return ModelCloneSyncUnitsResult(
+                unit=request.unit,
+                mode=request.mode,
+                status="failure",
+                exit_code=1,
+                stderr=f"{exc}\n",
+            )
+
+    def _handle(self, request: ModelCloneSyncUnitsRequest) -> ModelCloneSyncUnitsResult:
         unit = load_units()[request.unit]
         home, root = Path(request.home), Path(request.registry_root)
         state = root / str(unit["state_directory"])
@@ -188,15 +209,24 @@ class HandlerCloneSyncUnits:
                     f"{'NOT LOADED' if loaded.returncode else 'LOADED'} {label}\n"
                 )
                 for line in loaded.stdout.splitlines():
-                    if re.match(r"^\s+(runs|last exit code|state) ", line):
+                    if re.match(r"^\s+(runs|last exit code|state|pid) ", line):
                         out.append(line + "\n")
+                for log in (
+                    state / f"{LOG_STEM}.out.log",
+                    state / f"{LOG_STEM}.err.log",
+                ):
+                    out.append(f"--- {log}\n{tail(log, 5)}")
                 return result(1 if loaded.returncode else 0)
             active = self._command(["systemctl", "--user", "is-active", timer_name])
             out.append(
                 f"{'LOADED' if active.returncode == 0 else 'NOT LOADED'} {timer_name}\n"
             )
+            timers = self._command(
+                ["systemctl", "--user", "list-timers", timer_name, "--no-pager"]
+            )
+            out.append(timers.stdout)
             journal = self._command(
-                ["journalctl", "--user", "-u", service_name, "-n", "5", "--no-pager"]
+                ["journalctl", "--user", "-u", service_name, "-n", "20", "--no-pager"]
             )
             out.append(
                 f"--- journalctl --user -u {service_name}\n{journal.stdout or '(absent)\n'}"
@@ -228,6 +258,19 @@ class HandlerCloneSyncUnits:
                 else self._command(["systemctl", "--user", "start", service_name])
             )
             out.append(started.stdout)
+            if not launchd:
+                journal = self._command(
+                    [
+                        "journalctl",
+                        "--user",
+                        "-u",
+                        service_name,
+                        "-n",
+                        "5",
+                        "--no-pager",
+                    ]
+                )
+                out.append(f"--- journalctl --user -u {service_name}\n{journal.stdout}")
             return result(started.returncode, stderr=started.stderr)
 
         engine = root / str(unit["engine"])
@@ -284,5 +327,20 @@ class HandlerCloneSyncUnits:
             done = self._command(argv)
             if done.returncode:
                 return result(done.returncode, changed=True, stderr=done.stderr)
+        listed = self._command(
+            ["systemctl", "--user", "list-timers", timer_name, "--no-pager"]
+        )
+        out.append(listed.stdout)
+        if listed.returncode:
+            return result(
+                listed.returncode or 1,
+                changed=True,
+                stderr=f"{timer_name} is not listed by list-timers after the install:\n{listed.stderr}",
+            )
+        self._command(["systemctl", "--user", "start", service_name])
+        journal = self._command(
+            ["journalctl", "--user", "-u", service_name, "-n", "5", "--no-pager"]
+        )
+        out.append(f"--- journalctl --user -u {service_name}\n{journal.stdout}")
         out.append(f"installed {timer_name}: {unit['schedule']['description']}\n")
         return result(changed=True)

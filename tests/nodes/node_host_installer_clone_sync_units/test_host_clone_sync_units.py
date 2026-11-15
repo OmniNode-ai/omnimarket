@@ -184,7 +184,7 @@ def test_a_systemd_status_reads_the_journal(tmp_path: Path) -> None:
         "-u",
         "onex-canonical-clone-sync.service",
         "-n",
-        "5",
+        "20",
         "--no-pager",
     ] in runner.calls
 
@@ -195,3 +195,109 @@ def test_both_declared_units_name_the_overlay_root() -> None:
             unit["environment"]["ONEX_SKILL_OVERLAY_ROOTS"]
             == "{registry_root}/overlays/overlays"
         ), name
+
+
+def test_a_systemd_install_is_checked_with_list_timers(tmp_path: Path) -> None:
+    listing = Recorder()
+    ok = HandlerCloneSyncUnits(listing).handle(
+        _request(tmp_path, "canonical-clone-sync-systemd", "install")
+    )
+    assert ok.exit_code == 0, ok.stderr
+    assert [
+        "systemctl",
+        "--user",
+        "list-timers",
+        "onex-canonical-clone-sync.timer",
+        "--no-pager",
+    ] in listing.calls
+    assert ["systemctl", "--user", "start", "onex-canonical-clone-sync.service"] in (
+        listing.calls
+    )
+
+
+def test_a_systemd_install_fails_when_list_timers_does_not_list_the_timer(
+    tmp_path: Path,
+) -> None:
+    def no_timer(argv: Sequence[str]) -> subprocess.CompletedProcess[str]:
+        code = 1 if "list-timers" in argv else 0
+        return subprocess.CompletedProcess(list(argv), code, "", "no timers" * code)
+
+    result = HandlerCloneSyncUnits(no_timer).handle(
+        _request(tmp_path, "canonical-clone-sync-systemd", "install")
+    )
+    assert result.exit_code == 1
+    assert result.status == "failure"
+    assert "list-timers" in result.stderr
+
+
+def test_a_systemd_status_lists_the_timer(tmp_path: Path) -> None:
+    runner = Recorder(
+        {
+            "systemctl --user": subprocess.CompletedProcess(
+                [], 0, "NEXT onex-canonical-clone-sync.timer\n", ""
+            )
+        }
+    )
+    result = HandlerCloneSyncUnits(runner).handle(
+        _request(tmp_path, "canonical-clone-sync-systemd", "status")
+    )
+    assert [
+        "systemctl",
+        "--user",
+        "list-timers",
+        "onex-canonical-clone-sync.timer",
+        "--no-pager",
+    ] in runner.calls
+    assert "NEXT onex-canonical-clone-sync.timer" in result.stdout
+
+
+def test_a_systemd_run_now_reads_the_journal_back(tmp_path: Path) -> None:
+    runner = Recorder()
+    HandlerCloneSyncUnits(runner).handle(
+        _request(tmp_path, "canonical-clone-sync-systemd", "run-now")
+    )
+    assert [
+        "journalctl",
+        "--user",
+        "-u",
+        "onex-canonical-clone-sync.service",
+        "-n",
+        "5",
+        "--no-pager",
+    ] in runner.calls
+
+
+def test_a_launchd_status_reads_the_pid_and_the_log_tails(tmp_path: Path) -> None:
+    request = _request(tmp_path, "canonical-clone-sync", "status")
+    state = Path(request.registry_root) / str(
+        load_units()["canonical-clone-sync"]["state_directory"]
+    )
+    state.mkdir(parents=True)
+    (state / "canonical-clone-sync.err.log").write_text(
+        "REFUSED clone alarm=sent\n", encoding="utf-8"
+    )
+    runner = Recorder(
+        {
+            "launchctl print": subprocess.CompletedProcess(
+                [], 0, "    pid = 4242\n    state = running\n    noise = 1\n", ""
+            )
+        }
+    )
+    result = HandlerCloneSyncUnits(runner).handle(request)
+    assert "pid = 4242" in result.stdout
+    assert "noise" not in result.stdout
+    assert "REFUSED clone alarm=sent" in result.stdout
+    assert "(absent)" in result.stdout  # the out log was never written
+
+
+def test_an_os_error_while_writing_the_units_is_a_typed_failure_not_a_raise(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "home").mkdir()
+    (tmp_path / "home/.config").write_text("a file where a directory belongs")
+    result = HandlerCloneSyncUnits(Recorder()).handle(
+        _request(tmp_path, "canonical-clone-sync-systemd", "install")
+    )
+    assert result.status == "failure"
+    assert result.exit_code == 1
+    assert result.stderr.strip()
