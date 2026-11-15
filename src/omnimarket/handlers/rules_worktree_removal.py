@@ -13,6 +13,9 @@ from omnimarket.models.model_worktree_reconcile_policy import (
 )
 
 MERGED_REASONS = frozenset({"content_merged", "pr_merged_head"})
+# Junk a dead tree leaves behind: pruning is gated by the overlay's
+# prune_dead_worktrees knob itself, not by the merged-only hold.
+PRUNE_REASONS = frozenset({"dead_worktree"})
 REMOVING = (Decision.REMOVE, Decision.PIN_AND_REMOVE)
 
 
@@ -20,7 +23,11 @@ def hold_unmerged(
     decision: Decision, reason: str, policy: ModelWorktreeReconcilePolicy
 ) -> tuple[Decision, str]:
     """A merged-only host removes only merged work; every other removal is held at keep."""
-    if policy.merged_only and decision in REMOVING and reason not in MERGED_REASONS:
+    if (
+        policy.merged_only
+        and decision in REMOVING
+        and reason not in MERGED_REASONS | PRUNE_REASONS
+    ):
         return Decision.KEEP, f"merged_only:{reason}"
     return decision, reason
 

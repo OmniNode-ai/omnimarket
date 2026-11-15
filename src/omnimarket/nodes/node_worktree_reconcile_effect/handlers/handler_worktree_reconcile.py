@@ -37,6 +37,7 @@ from omnimarket.worktree_reconcile.rules import (
     apply_model_verdicts,
     live_reason,
     reconcile,
+    stale_lock,
 )
 
 # Repositories acted on at once. Trees of one repository stay serial (they share
@@ -167,7 +168,7 @@ class HandlerWorktreeReconcile:
             freed_bytes=sum(
                 e.facts.size_bytes or 0
                 for e in events
-                if e.outcome in ("removed", "pinned_and_removed")
+                if e.outcome in ("removed", "pinned_and_removed", "pruned")
             ),
             needs_human_paths=tuple(
                 e.facts.path
@@ -177,6 +178,27 @@ class HandlerWorktreeReconcile:
             deferred=sum(probe_class(e.facts) == "deferred" for e in events),
             deferred_paths=tuple(
                 e.facts.path for e in events if probe_class(e.facts) == "deferred"
+            ),
+            # Every removal is named, in decision order, so a receipt says what
+            # left the disk and how: pruned dead trees and stale-locked trees
+            # that had to be unlocked first.
+            removed_paths=tuple(
+                e.facts.path
+                for e in events
+                if e.outcome in ("removed", "pinned_and_removed", "pruned")
+            ),
+            pruned=sum(e.outcome == "pruned" for e in events),
+            pruned_paths=tuple(e.facts.path for e in events if e.outcome == "pruned"),
+            unlocked_paths=tuple(
+                e.facts.path
+                for e in events
+                if e.outcome in ("removed", "pinned_and_removed", "pruned")
+                and e.facts.worktree_locked
+            ),
+            live_locked_paths=tuple(
+                e.facts.path
+                for e in events
+                if e.facts.worktree_locked and not stale_lock(e.facts, command.policy)
             ),
         )
         self._publisher.publish(self._completed_topic, completed)
@@ -193,7 +215,13 @@ class HandlerWorktreeReconcile:
         row: ModelWorktreeDecisionRecord,
     ) -> ModelWorktreeReconcileDecidedEvent:
         outcome: Literal[
-            "dry_run", "removed", "pinned_and_removed", "kept", "needs_human", "failed"
+            "dry_run",
+            "removed",
+            "pruned",
+            "pinned_and_removed",
+            "kept",
+            "needs_human",
+            "failed",
         ] = "kept"
         error = None
         if row.decision == Decision.NEEDS_HUMAN:
@@ -245,6 +273,8 @@ class HandlerWorktreeReconcile:
                                 outcome = (
                                     "pinned_and_removed"
                                     if row.decision == Decision.PIN_AND_REMOVE
+                                    else "pruned"
+                                    if fresh.gitdir_missing
                                     else "removed"
                                 )
                 except Exception as exc:
@@ -269,6 +299,15 @@ class HandlerWorktreeReconcile:
     ) -> bool:
         if not new.facts_complete or new.dirty or live_reason(new, command.policy):
             return False
+        if old.gitdir_missing:
+            # Git cannot read a dead tree, so there is no HEAD or branch to
+            # re-identify: the safe answer is that the re-probe still finds the
+            # same gitdir gone, with nothing live holding the tree.
+            return (
+                new.facts_complete
+                and new.gitdir_missing
+                and not live_reason(new, command.policy)
+            )
         if (old.path, old.root, old.kind, old.head_sha, old.branch) != (
             new.path,
             new.root,

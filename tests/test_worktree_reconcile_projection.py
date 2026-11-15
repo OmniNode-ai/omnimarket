@@ -52,6 +52,31 @@ def test_fold_keeps_the_host_row_columns_when_a_run_defers_trees() -> None:
     assert "deferred" not in row.model_dump()
 
 
+def test_fold_leaves_the_removal_lists_off_the_host_row() -> None:
+    """The run-completed event names every removal; the host table keeps its columns."""
+    row = HandlerProjectionWorktreeReconcile().handle(
+        ModelWorktreeReconcileProjectionRequest(
+            event=event(
+                removed_paths=("trees/task/a", "trees/task/b"),
+                pruned=1,
+                pruned_paths=("trees/task/a",),
+                unlocked_paths=("trees/task/b",),
+                live_locked_paths=("trees/task/c",),
+            )
+        )
+    )
+    assert (row.scanned, row.removed, row.failures) == (5, 2, 0)
+    dumped = row.model_dump()
+    for name in (
+        "removed_paths",
+        "pruned",
+        "pruned_paths",
+        "unlocked_paths",
+        "live_locked_paths",
+    ):
+        assert name not in dumped
+
+
 def test_fold_is_idempotent_and_latest_wins() -> None:
     fold = HandlerProjectionWorktreeReconcile()
     latest = event()

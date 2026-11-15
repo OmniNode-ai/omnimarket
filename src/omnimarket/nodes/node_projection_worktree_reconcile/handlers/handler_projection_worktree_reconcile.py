@@ -21,8 +21,21 @@ class HandlerProjectionWorktreeReconcile:
                 event.correlation_id.int,
             ):
                 return current
-        # The deferred count and paths ride the event (OMN-22799); the host table keeps the
-        # columns it has, so the fold leaves them off the row.
+        # The deferred count and paths ride the event (OMN-22799), and so do the
+        # removed, pruned, unlocked and live locked path lists (OMN-22799's dead
+        # and stale locks); the host table keeps the columns it has, so the fold
+        # leaves them off the row.
         return ModelWorktreeReconcileHostRow.model_validate(
-            event.model_dump(exclude={"started_at", "deferred", "deferred_paths"})
+            event.model_dump(
+                exclude={
+                    "started_at",
+                    "deferred",
+                    "deferred_paths",
+                    "removed_paths",
+                    "pruned",
+                    "pruned_paths",
+                    "unlocked_paths",
+                    "live_locked_paths",
+                }
+            )
         )

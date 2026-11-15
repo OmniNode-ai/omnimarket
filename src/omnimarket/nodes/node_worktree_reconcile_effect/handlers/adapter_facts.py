@@ -190,6 +190,27 @@ def repo_slug(url: str) -> str | None:
     )
 
 
+def _dead_gitdir(path: Path) -> bool:
+    """Whether a linked worktree's .git file names a gitdir that no longer exists.
+
+    Git writes the tree's .git file as ``gitdir: <path>``; the path is relative
+    to the tree when the tree sits near its clone. When the named gitdir is
+    gone, no git command can read the tree: it is dead work left on the disk.
+    """
+    try:
+        text = (path / ".git").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    lines = text.splitlines()
+    if not lines or not lines[0].startswith("gitdir: "):
+        return False
+    named = lines[0][len("gitdir: ") :].strip()
+    if not named:
+        return False
+    gitdir = Path(named)
+    return not (gitdir if gitdir.is_absolute() else path / gitdir).exists()
+
+
 class GitWorktreeFactsProbe:
     def __init__(
         self,
@@ -446,6 +467,7 @@ class GitWorktreeFactsProbe:
                 cwd == path or cwd.is_relative_to(path) for cwd in self._cwds
             ),
             live_claim=claimed(path, root, self._claims),
+            ledger_known=bool(self._command.ledger_path),
             live_unit=self._units.naming(str(path)),
             probe_errors=self._errors,
         )
@@ -463,9 +485,13 @@ class GitWorktreeFactsProbe:
             names: list[str] = []
             size = 0
             newest = 0.0
+            # A linked worktree whose gitdir is gone is dead: git cannot read
+            # it, so before any git command it is walked like an orphan
+            # directory (a nested repository inside still goes to a person).
+            dead = kind == Kind.LINKED_WORKTREE and _dead_gitdir(path)
             walk = (
                 ()
-                if kind == Kind.LINKED_WORKTREE
+                if kind == Kind.LINKED_WORKTREE and not dead
                 else os.walk(path, followlinks=False, onerror=_raise_walk_error)
             )
             for base, dirs, files in walk:
@@ -492,6 +518,18 @@ class GitWorktreeFactsProbe:
                     if ".git" not in Path(relative).parts and not is_junk(relative):
                         names.append(relative)
                         newest = max(newest, stat.st_mtime)
+            if dead:
+                return facts.model_copy(
+                    update={
+                        "gitdir_missing": True,
+                        "size_bytes": size,
+                        "file_names": tuple(sorted(names)),
+                        "last_activity_age_hours": (
+                            now.timestamp() - (newest or path.stat().st_mtime)
+                        )
+                        / 3600,
+                    }
+                )
             if kind == Kind.ORPHAN_DIR:
                 empty = not any(path.iterdir())
                 return facts.model_copy(
@@ -618,10 +656,11 @@ class GitWorktreeFactsProbe:
                     break
             # This tree's own locks only. A lock elsewhere in the shared common dir
             # belongs to a sibling worktree and says nothing about this one.
-            locked = any(
-                (gitdir / marker).exists()
-                for marker in ("index.lock", "HEAD.lock", "locked")
-            )
+            lock_marker = gitdir / "locked"
+            worktree_locked = lock_marker.is_file()
+            ref_locked = (gitdir / "index.lock").exists() or (
+                gitdir / "HEAD.lock"
+            ).exists()
             merged = False
             # Merged means merged into this repository's own default branch. A
             # clone may also carry remotes of other repositories (unrelated
@@ -703,7 +742,14 @@ class GitWorktreeFactsProbe:
                     "untracked_nonjunk_count": nonjunk,
                     "unpushed_stash_count": stash_count,
                     "in_progress_operation": operation,
-                    "git_locked": locked,
+                    "git_locked": worktree_locked or ref_locked,
+                    "worktree_locked": worktree_locked,
+                    "worktree_lock_reason": (
+                        lock_marker.read_text(encoding="utf-8", errors="replace")[:200]
+                        if worktree_locked
+                        else ""
+                    ),
+                    "ref_locked": ref_locked,
                     "head_on_remote": on_remote(head),
                     "content_merged": merged,
                     "commits_not_on_remote": int(

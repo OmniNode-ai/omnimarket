@@ -53,6 +53,7 @@ runtime_dispatch:
 # handler under a host-local lock and writes latest.json after event publication.
 schedule:
   unit_name: onex-worktree-reconcile
+  launchd_label: ai.omninode.worktree-reconcile
   interval_seconds: 1800
   on_boot_seconds: 120
   timeout_seconds: 3600
@@ -140,7 +141,11 @@ outputs:
     description: Per-path facts, final decision and outcome.
   completed_event:
     type: object
-    description: Run counts, freed bytes and paths requiring a human.
+    description: Run counts, freed bytes and paths requiring a human, and every
+      removal named in decision order (removed_paths), split out by how the tree
+      left the disk (pruned_paths for dead trees, unlocked_paths for stale-locked
+      trees unlocked before their removal) plus the live locked trees the run
+      kept (live_locked_paths).
   errors:
     type: list[str]
     description: Run-level discovery or decider failures.

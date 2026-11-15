@@ -10,6 +10,13 @@ class ModelWorktreeReconcilePolicy(BaseModel):
 
     quiet_hours: float = Field(default=6.0, ge=0, allow_inf_nan=False)
     stale_hours: float = Field(default=72.0, ge=0, allow_inf_nan=False)
+    # A worktree lock with no live lane, process, unit or ref lock and no
+    # activity for this many hours is stale: the lane that left it is gone, so
+    # the tree is unlocked and judged by the normal rules.
+    stale_lock_hours: float = Field(default=24.0, ge=0, allow_inf_nan=False)
+    # True: a dead worktree (its .git file names a gitdir that no longer
+    # exists) is pruned to the trash; False: a person decides.
+    prune_dead_worktrees: bool = False
     allow_standalone_clone_removal: bool = True
     max_removals_per_run: int = Field(default=200, ge=0)
     # A standalone clone whose origin owner is not listed is always kept (a
