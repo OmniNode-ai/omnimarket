@@ -75,6 +75,10 @@ handler_routing:
       handler:
         name: "HandlerFederationEdgeDecision"
         module: "omnimarket.nodes.node_federation_edge_decision_compute.handlers.handler_federation_edge_decision"
+    - operation: "validate_edge_overlay"
+      handler:
+        name: "HandlerEdgeOverlayValidation"
+        module: "omnimarket.nodes.node_federation_edge_decision_compute.handlers.handler_edge_overlay_validation"
 # The edge decision command, sent by the federation forwarder for the one
 # event it selected from a runtime's recording; the two terminals are
 # runtime_dispatch.terminal_events.

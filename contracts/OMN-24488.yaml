@@ -42,8 +42,8 @@ dod_evidence:
     source: "manual"
     binds_ac: ["AC4"]
     checks:
-      - check_type: "command"
-        check_value: "bash -o pipefail -c 'git show HEAD:src/omnimarket/nodes/node_federation_edge_decision_compute/contract.yaml | grep -q node_federation_edge_decision_compute'"
+      - check_type: "test_passes"
+        check_value: "uv run --frozen pytest tests/unit/nodes/node_federation_edge_decision_compute/test_seam_receipt_reducer.py -q --no-cov -n 0 -p no:randomly"
         cwd: "."
   - id: "dod-omn24488-integration-proof"
     description: "The pushed head is run on a lab host through the lab work node before hand-off: the gate, decision and forwarder test directories. AC4 itself (one message from a runtime's in-memory bus read on dev Redpanda, reply back) is not observed: it waits for the shared reducer's unit item kind and the operator's apply of the declared broker rows."
