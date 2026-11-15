@@ -2,15 +2,14 @@
 # SPDX-License-Identifier: MIT
 """The lab-fill fallback host skips a draining host, read live like the limited markers (OMN-24489).
 
-The drain state is read at every fallback through the injected callable, so a host the drain verb
-is draining is never pinned. A drain read that fails offers no host, exactly as an unreadable
-limited marker does today: a fallback never lands on a draining host by guess.
+The request's ``draining_hosts`` names the hosts whose capacity advertisements carry a live drain
+mark, so a host the drain verb is draining is never pinned. A fallback never lands on a draining
+host by guess.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from pathlib import Path
 
 import pytest
 
@@ -50,65 +49,43 @@ class RaisingPlacement:
 
 
 def test_fallback_skips_the_draining_host_and_lands_on_the_next_ranked() -> None:
-    handler = HandlerLabFillFallbackHost(
-        FakePlacement(limited=LIMITED),
-        draining_hosts=lambda: ("a",),
-    )
+    handler = HandlerLabFillFallbackHost(FakePlacement(limited=LIMITED))
     assert (
-        handler.handle(ModelLabFillFallbackHostRequest(ranked_hosts=RANKED)).host == "c"
+        handler.handle(
+            ModelLabFillFallbackHostRequest(ranked_hosts=RANKED, draining_hosts=("a",))
+        ).host
+        == "c"
     )
 
 
 def test_fallback_lands_on_the_first_ranked_host_when_nothing_is_draining() -> None:
-    handler = HandlerLabFillFallbackHost(
-        FakePlacement(limited=LIMITED),
-        draining_hosts=lambda: (),
-    )
+    handler = HandlerLabFillFallbackHost(FakePlacement(limited=LIMITED))
     assert (
         handler.handle(ModelLabFillFallbackHostRequest(ranked_hosts=RANKED)).host == "a"
     )
 
 
-def test_fallback_offers_no_host_when_the_drain_state_cannot_be_read() -> None:
-    def broken() -> tuple[str, ...]:
-        raise OSError("the drain store is unreadable")
-
-    handler = HandlerLabFillFallbackHost(
-        FakePlacement(limited=LIMITED),
-        draining_hosts=broken,
-    )
-    assert (
-        handler.handle(ModelLabFillFallbackHostRequest(ranked_hosts=RANKED)).host == ""
-    )
-
-
 def test_fallback_offers_no_host_when_the_limited_markers_cannot_be_read() -> None:
     # Existing behaviour kept: an unreadable marker read offered no host before the drain read joined.
-    handler = HandlerLabFillFallbackHost(RaisingPlacement(), draining_hosts=lambda: ())
+    handler = HandlerLabFillFallbackHost(RaisingPlacement())
     assert (
         handler.handle(ModelLabFillFallbackHostRequest(ranked_hosts=RANKED)).host == ""
     )
 
 
-def test_control_without_the_injected_callable_the_drain_state_is_not_seen(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    # The default drain read looks under ONEX_SKILL_OVERLAY_ROOTS: an empty root holds no
-    # drain overlay, so no drain verb is deployed and no host can be draining.
-    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path))
-    draining: tuple[str, ...] = ("a",)
+def test_control_without_the_field_the_drain_state_is_not_seen() -> None:
+    # The request's ``draining_hosts`` is what changes the answer: the same ranked hosts now skip 'a'.
     without = HandlerLabFillFallbackHost(FakePlacement(limited=LIMITED))
     # 'a' is offered even though this test itself says a is draining: nothing told the
-    # handler, because the default reads a state with no host draining.
+    # handler, because the request names no draining host.
     assert (
         without.handle(ModelLabFillFallbackHostRequest(ranked_hosts=RANKED)).host == "a"
     )
-    # The injected callable is what changes the answer: the same ranked hosts now skip 'a'.
-    injected = HandlerLabFillFallbackHost(
-        FakePlacement(limited=LIMITED),
-        draining_hosts=lambda: draining,
-    )
+    # The request's field is what changes the answer: the same ranked hosts now skip 'a'.
+    injected = HandlerLabFillFallbackHost(FakePlacement(limited=LIMITED))
     assert (
-        injected.handle(ModelLabFillFallbackHostRequest(ranked_hosts=RANKED)).host
+        injected.handle(
+            ModelLabFillFallbackHostRequest(ranked_hosts=RANKED, draining_hosts=("a",))
+        ).host
         == "c"
     )

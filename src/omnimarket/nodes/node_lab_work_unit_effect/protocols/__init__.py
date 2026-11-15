@@ -7,6 +7,12 @@ from omnimarket.nodes.node_lab_work_unit_effect.protocols.local_host_reader impo
     HostReading,
     LocalHostReader,
     ProtocolHostReader,
+    draining_until_from_tools,
+    running_lanes_from_tools,
+)
+from omnimarket.nodes.node_lab_work_unit_effect.protocols.local_lane_reader import (
+    LocalLaneReader,
+    load_lane_reader,
 )
 from omnimarket.nodes.node_lab_work_unit_effect.protocols.local_shell_work_runner import (
     LocalShellLabWorkExecutor,
@@ -21,9 +27,13 @@ __all__ = [
     "HostCapacityUnreadableError",
     "HostReading",
     "LocalHostReader",
+    "LocalLaneReader",
     "LocalShellLabWorkExecutor",
     "ProtocolHostReader",
     "ProtocolLabWorkRunner",
     "ProtocolUngroupedLabRunBus",
+    "draining_until_from_tools",
+    "load_lane_reader",
     "require_ungrouped",
+    "running_lanes_from_tools",
 ]

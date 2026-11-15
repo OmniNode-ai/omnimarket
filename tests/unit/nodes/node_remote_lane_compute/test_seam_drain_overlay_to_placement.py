@@ -1,94 +1,175 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The drain verb's stored mark reaches the remote-lane placement node by the overlay alone (OMN-24489).
+"""The drain mark reaches the remote-lane placement node by the advertisement alone (OMN-24489).
 
-The runner places by running ``onex node node_remote_lane_compute``, which builds the handler with no arguments. This
-seam test builds it the same way: the drain overlay is found under ONEX_SKILL_OVERLAY_ROOTS, the mark is the verb's own
-(set through the verb's runtime entry on the jsonl profile), and the default handler refuses the marked host. It fails
-when either side changes shape: the overlay keys the placement reads, the store's record, or the request key.
+A pool host advertises its drain mark on its capacity advertisement as the ``draining-until:``
+pseudo-tool; the pool snapshot turns that mark into the reading's ``lane_admission_refusal``, and the
+placement node refuses a reading that carries it. This seam builds advertisements with and without the
+mark, runs ``build_pool_snapshot`` to make the readings, feeds them to ``HandlerRemoteLanePlacement``,
+and asserts the marked host is refused with a reason containing ``draining`` while the other host
+places; an expired mark places again. It fails when either side changes shape: the advertisement's
+``tools`` key, the snapshot's refusal, or the placement's reading key.
 """
 
 from __future__ import annotations
 
-from pathlib import Path
+from datetime import UTC, datetime
 
 import pytest
-import yaml
 
+from omnimarket.models.model_host_capacity_advertisement import (
+    ModelHostCapacityAdvertisement,
+)
+from omnimarket.models.overlay_keys import ModelLabHostRow
 from omnimarket.models.remote_lane_placement import (
     EnumRemoteLaneOutcome,
     ModelRemoteLaneHostReading,
     ModelRemoteLanePlacementRequest,
 )
-from omnimarket.nodes.node_host_drain_effect.overlay import EXAMPLE_OVERLAY
-from omnimarket.nodes.node_host_drain_effect.runtime_host_drain import main
+from omnimarket.nodes.node_lane_host_pool_snapshot_effect.handlers.handler_pool_snapshot import (
+    build_pool_snapshot,
+    default_overlay,
+)
+from omnimarket.nodes.node_lane_host_pool_snapshot_effect.models import (
+    ModelHostAccounts,
+)
 from omnimarket.nodes.node_remote_lane_compute.handlers.handler_remote_lane_placement import (
     HandlerRemoteLanePlacement,
 )
 
-HOME_ENV = "EXAMPLE_FLOOR_HOME"
+T0 = datetime(2026, 11, 11, 3, 0, tzinfo=UTC)
 
 
-def _reading(name: str, rank_free: float) -> ModelRemoteLaneHostReading:
-    return ModelRemoteLaneHostReading.model_validate(
-        {
-            "name": name,
-            "engines": ("claude_sonnet",),
-            "lane_slots": 2,
-            "lane_cap": 4,
-            "rank_free": rank_free,
-        }
+def _ad(
+    host: str,
+    *,
+    tools: tuple[str, ...] = (),
+    load1: float = 1.0,
+    advertised_at: datetime = T0,
+) -> ModelHostCapacityAdvertisement:
+    return ModelHostCapacityAdvertisement(
+        host_name=host,
+        cores=8,
+        load1=load1,
+        mem_available_bytes=32 * 2**30,
+        advertised_at=advertised_at,
+        cadence_seconds=15,
+        max_units=4,
+        capacity_refusal="",
+        tools=tools,
     )
 
 
-def _request() -> ModelRemoteLanePlacementRequest:
+def _row(name: str) -> ModelLabHostRow:
+    return ModelLabHostRow(
+        name=name,
+        target=name,
+        available=True,
+        unavailable_reason=None,
+        cap=None,
+        local=False,
+        contributor=False,
+        lane_ready=False,
+        codex=False,
+        fallback_targets=(),
+    )
+
+
+def _readings(
+    ads: tuple[ModelHostCapacityAdvertisement, ...],
+    read_at: datetime,
+) -> tuple[ModelRemoteLaneHostReading, ...]:
+    snapshot, _ = build_pool_snapshot(
+        rows=(_row("example-host-a"), _row("example-host-b")),
+        ads=ads,
+        lanes={},
+        accounts=(
+            ModelHostAccounts(
+                host="example-host-a",
+                usable=("acct-a",),
+                limited=(),
+                unread_reason=None,
+            ),
+            ModelHostAccounts(
+                host="example-host-b",
+                usable=("acct-a",),
+                limited=(),
+                unread_reason=None,
+            ),
+        ),
+        overlay=default_overlay(),
+        read_at=read_at,
+    )
+    return tuple(
+        ModelRemoteLaneHostReading.model_validate(
+            {
+                "name": r.name,
+                "engines": r.engines,
+                "lane_slots": r.lane_slots,
+                "lane_cap": r.lane_cap,
+                "rank_free": r.rank_free if r.rank_free is not None else 0.0,
+                "lane_admission_refusal": r.lane_admission_refusal,
+            }
+        )
+        for r in snapshot.readings
+    )
+
+
+def _request(
+    readings: tuple[ModelRemoteLaneHostReading, ...],
+) -> ModelRemoteLanePlacementRequest:
+    # The snapshot's reading carries no engines: the placement reader's own reading does, so the seam
+    # supplies the lane's engine to keep the host eligible for the lane it is being placed on.
     return ModelRemoteLanePlacementRequest(
         engine="claude_sonnet",
-        readings=(_reading("example-host-a", 5.0), _reading("example-host-b", 1.0)),
+        readings=tuple(
+            r.model_copy(update={"engines": ("claude_sonnet",)}) for r in readings
+        ),
     )
 
 
-@pytest.fixture
-def deployed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """A drain overlay on the jsonl profile under an overlay root, its lane receipts in a temp directory."""
-    raw = yaml.safe_load(EXAMPLE_OVERLAY.read_text(encoding="utf-8"))
-    raw["profile"] = "jsonl"
-    raw["lanes"] = {"receipts_dir": str(tmp_path / "lanes"), "timeout_seconds": 5}
-    raw["emission"]["home_env"] = HOME_ENV
-    root = tmp_path / "overlays" / "node_host_drain_effect"
-    root.mkdir(parents=True)
-    (root / "overlay.yaml").write_text(yaml.safe_dump(raw), encoding="utf-8")
-    (tmp_path / "lanes").mkdir()
-    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path / "overlays"))
-    monkeypatch.setenv(HOME_ENV, str(tmp_path / "home"))
-    return tmp_path
+@pytest.mark.unit
+def test_a_live_drain_mark_is_refused_by_the_placement_and_the_other_places() -> None:
+    # No mark: the freest host takes the lane.
+    clean = _readings((_ad("example-host-a", load1=0.5), _ad("example-host-b")), T0)
+    assert HandlerRemoteLanePlacement().handle(_request(clean)).host == "example-host-a"
 
-
-def test_a_mark_set_by_the_verb_is_refused_by_the_default_handler_until_it_expires(
-    deployed: Path,
-) -> None:
-    before = HandlerRemoteLanePlacement().handle(_request())
-    assert before.host == "example-host-a"  # no mark: the freest host takes the lane
-
-    assert main(["drain", "--host", "example-host-a", "--ttl-seconds", "3600"]) == 0
-    marked = HandlerRemoteLanePlacement().handle(_request())
-    assert marked.outcome == EnumRemoteLaneOutcome.ADMITTED
-    assert marked.host == "example-host-b"
-    assert {v.host: v.reason for v in marked.verdicts}["example-host-a"].startswith(
-        "draining"
+    # A live mark: the snapshot turns it into a refusal and the placement refuses the marked host.
+    # The advertisement is fresh (read at T0) so the snapshot does not refuse it as stale.
+    marked = _readings(
+        (
+            _ad(
+                "example-host-a",
+                load1=0.5,
+                tools=("draining-until:2026-11-11T04:00:00Z",),
+            ),
+            _ad("example-host-b"),
+        ),
+        T0,
     )
+    result = HandlerRemoteLanePlacement().handle(_request(marked))
+    assert result.outcome == EnumRemoteLaneOutcome.ADMITTED
+    assert result.host == "example-host-b"
+    reasons = {v.host: v.reason for v in result.verdicts}
+    assert "draining" in reasons["example-host-a"]
 
-    assert main(["undrain", "--host", "example-host-a"]) == 0
-    assert HandlerRemoteLanePlacement().handle(_request()).host == "example-host-a"
 
-
-def test_an_unreadable_drain_store_refuses_the_placement_never_reads_as_no_host_draining(
-    deployed: Path,
-) -> None:
-    # The jsonl store path is a directory: reading it raises, and the placement is refused.
-    store_path = deployed / "home" / ".onex_state" / "host-drain" / "state.jsonl"
-    store_path.mkdir(parents=True)
-    result = HandlerRemoteLanePlacement().handle(_request())
-    assert result.host is None
-    assert result.refusal is not None
-    assert result.refusal.startswith("drain-state-unreadable")
+@pytest.mark.unit
+def test_an_expired_drain_mark_places_again() -> None:
+    # The mark expired before the read: the snapshot gives no drain refusal and the host places.
+    # The advertisement is fresh (read at T0) so the snapshot does not refuse it as stale; only the
+    # drain mark is past its expiry, which is what this control isolates.
+    expired = _readings(
+        (
+            _ad(
+                "example-host-a",
+                load1=0.5,
+                tools=("draining-until:2026-11-11T02:00:00Z",),
+            ),
+            _ad("example-host-b"),
+        ),
+        T0,
+    )
+    assert (
+        HandlerRemoteLanePlacement().handle(_request(expired)).host == "example-host-a"
+    )

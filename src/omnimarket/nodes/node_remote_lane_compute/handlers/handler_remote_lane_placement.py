@@ -58,14 +58,12 @@ admin port, and placement ranked it by free capacity alone.
 
 Draining hosts (OMN-24489): a host the drain verb stopped placement on takes no lane for either
 engine until it is undrained, on every rung of the ladder; its verdict reads ``draining``. The
-handler reads the drain state itself at every placement (as the lab placement judge does) and a
-request's own ``draining_hosts`` are added to it; a drain state that cannot be read refuses the
-placement, it never reads as no host draining.
+drain mark rides the host's capacity advertisement; the pool snapshot reads it there and the reading's
+admission refusal names it (``admission: draining ...``), and a request's own ``draining_hosts`` are
+refused the same way. No second reader and no machine-local drain state stands behind the verdict.
 """
 
 from __future__ import annotations
-
-from collections.abc import Callable
 
 from omnibase_core.models.contracts.subcontracts.model_fsm_subcontract import (
     ModelFSMSubcontract,
@@ -442,36 +440,13 @@ class HandlerRemoteLanePlacement:
         self,
         engines: ModelEngineLadder | None = None,
         stop_fsm: ModelFSMSubcontract | None = None,
-        draining_hosts: Callable[[], tuple[str, ...]] | None = None,
     ) -> None:
         self._engines = load_engine_ladder() if engines is None else engines
         self._stop_fsm = stop_fsm
-        self._draining_hosts = draining_hosts or self._drain_node_hosts
-
-    def _drain_node_hosts(self) -> tuple[str, ...]:
-        from omnimarket.nodes.node_host_drain_effect.runtime_host_drain import (
-            read_draining_hosts,
-        )
-
-        return read_draining_hosts()
 
     def handle(
         self, request: ModelRemoteLanePlacementRequest
     ) -> ModelRemoteLanePlacementResult:
-        try:
-            draining = set(request.draining_hosts) | set(self._draining_hosts())
-        except (OSError, ValueError) as exc:
-            # A drain state that cannot be read is not an empty one: the placement is refused,
-            # never placed as if no host were draining (OMN-24489).
-            return ModelRemoteLanePlacementResult(
-                host=None,
-                engine=request.engine,
-                refusal=f"drain-state-unreadable: {type(exc).__name__}: {exc}",
-            )
-        if draining != set(request.draining_hosts):
-            request = request.model_copy(
-                update={"draining_hosts": tuple(sorted(draining))}
-            )
         ladder = request.ladder
         if ladder is None:
             return self._place(request)

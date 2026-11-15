@@ -3,12 +3,11 @@
 # Synthetic values. The deployment's overlay lives at <root>/node_host_drain_effect/overlay.yaml
 # under a root named in ONEX_SKILL_OVERLAY_ROOTS. No key has a default.
 profile: in_memory
-jsonl_state_relpath: .onex_state/host-drain/state.jsonl
 drain:
   piece: 2
   chain_node: "node_host_drain_effect:drain"
   hosts: [example-host-a, example-host-b]
-  lane_count_scope: counted from this machine's lane receipts
+  lane_count_scope: read from the host's own capacity advertisements
   default_ttl_seconds: 14400
   max_ttl_seconds: 172800
   codes:
@@ -47,21 +46,10 @@ runner_stop:
     stop_failed: runner_stop_failed
     admission_not_closed: admission_not_closed
   injected_fault: Use a stop command that exits 0 and leaves the runner running, so the readback finds it up
-lanes:
-  count_command: [example-lane-count, "{host}"]
-  timeout_seconds: 30
-# The reads of the host itself: each prints one integer count of its kind on {host}. Synthetic stand-in
-# commands that exist nowhere: a deployment overlay names the host's real count commands, and an
-# unreadable read is never a measured zero.
+# What the host's advertisement does not say is read by an argv, {host} replaced, that prints one integer: the busy model servers.
+# The host's own lanes and units are not declared here: the host advertises them on the bus. Synthetic stand-in command that
+# exists nowhere: a deployment overlay names the real command, and an unreadable read is never a measured zero.
 host_reads:
-  - name: lanes
-    kind: lanes
-    command: [example-host-read, "{host}", lanes]
-    timeout_seconds: 30
-  - name: units
-    kind: units
-    command: [example-host-read, "{host}", units]
-    timeout_seconds: 30
   - name: model_servers
     kind: model_servers
     command: [example-host-read, "{host}", model_servers]

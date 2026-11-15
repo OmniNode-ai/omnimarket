@@ -2,30 +2,29 @@
 # SPDX-License-Identifier: MIT
 """The status line of the drain verb (OMN-24489): SAFE is a reading of the host itself.
 
-SAFE to power down needs every host read (the host's lanes, units and model servers) and this machine's runner receipts
-to read 0, twice, on a drain mark that outlives the process. A count above 0, a read that failed, a host with no host
-read declared and a mark held in memory are each NOT SAFE. Each test below fails on a handler that counts only the
-runner receipts.
+SAFE to power down needs the host's lanes, units and model servers to read 0, twice, on a drain mark that
+outlives the process. A count above 0, a read that failed, a host with no host read declared and a mark held in
+memory are each NOT SAFE. Lanes and units come from the host's own advertisement (two advertisements in the
+window, each carrying a lanes read); a host that advertised once, or that never read its lanes, or that is silent
+is NOT SAFE. A HELD host reads HELD, not failed and not SAFE.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 from typing import Any
 
-import pytest
-
 from omnimarket.handlers.emission_sink import InMemoryEmissionSink
+from omnimarket.nodes.node_host_drain_effect.adapters.bus_drain import (
+    AdvertisedLaneSource,
+)
 from omnimarket.nodes.node_host_drain_effect.adapters.fakes import (
     FixedHostRead,
-    FixedLaneSource,
+    LoopbackBus,
+    make_bus_store,
 )
-from omnimarket.nodes.node_host_drain_effect.adapters.stores import (
-    InMemoryDrainStore,
-    JsonlDrainStore,
-)
+from omnimarket.nodes.node_host_drain_effect.adapters.stores import InMemoryDrainStore
 from omnimarket.nodes.node_host_drain_effect.handlers.handler_host_drain import (
     HandlerHostDrain,
 )
@@ -45,47 +44,38 @@ NOW = datetime(2026, 11, 7, 15, 0, tzinfo=UTC)
 HOST = "example-host-b"
 
 
-class _UnreadableLanes:
-    """A lane source whose count cannot be read: an unknown count is never safe."""
-
-    def running(self, host_name: str) -> int:
-        raise OSError("the lane count command failed")
-
-
-class _Appearing:
-    """A host read that shows nothing on its first pass and one busy thing on the second: a lane that started between."""
-
-    def __init__(self, kind: EnumHostReadKind) -> None:
-        self.name = f"appearing-{kind.value}"
-        self.kind = kind
-        self.calls = 0
-
-    def read(self, host_name: str) -> int:
-        self.calls += 1
-        return 0 if self.calls == 1 else 1
-
-
 def _reads(
     *,
-    lanes: int = 0,
-    units: int = 0,
     model_servers: int = 0,
     unreadable: frozenset[str] = frozenset(),
 ) -> list[ProtocolHostRead]:
-    counts = {
-        EnumHostReadKind.LANES: lanes,
-        EnumHostReadKind.UNITS: units,
-        EnumHostReadKind.MODEL_SERVERS: model_servers,
-    }
     return [
         FixedHostRead(
-            kind.value,
-            kind,
-            {HOST: count, "example-host-a": count},
+            EnumHostReadKind.MODEL_SERVERS.value,
+            EnumHostReadKind.MODEL_SERVERS,
+            {HOST: model_servers, "example-host-a": model_servers},
             unreadable=unreadable,
         )
-        for kind, count in counts.items()
     ]
+
+
+def _bus(
+    *,
+    lanes: dict[str, int | None] | None = None,
+    units: dict[str, int] | None = None,
+    silent: bool = False,
+    per_host: int = 2,
+    held: dict[str, str] | None = None,
+) -> LoopbackBus:
+    return LoopbackBus(
+        [HOST],
+        clock=lambda: NOW,
+        lanes=lanes if lanes is not None else {HOST: 0},
+        units=units if units is not None else {HOST: 0},
+        silent=frozenset([HOST]) if silent else frozenset(),
+        advertisements_per_host=per_host,
+        held=held if held is not None else {},
+    )
 
 
 def _handler(
@@ -102,13 +92,9 @@ def _handler(
         lanes=lanes,
         sink=sink,
         clock=clock,
-        backend="in_memory",
+        backend="real",
         host_reads=host_reads,
     )
-
-
-def _durable(tmp_path: Path) -> JsonlDrainStore:
-    return JsonlDrainStore(tmp_path / "drain.jsonl", clock=lambda: NOW)
 
 
 def _drain(handler: HandlerHostDrain, host: str = HOST) -> Any:
@@ -122,83 +108,96 @@ def _until(overlay: ModelHostDrainOverlay) -> str:
 
 
 def test_every_read_zero_on_a_durable_mark_is_safe(
-    overlay: ModelHostDrainOverlay,
-    lanes: FixedLaneSource,
-    sink: InMemoryEmissionSink,
-    tmp_path: Path,
+    overlay: ModelHostDrainOverlay, sink: InMemoryEmissionSink
 ) -> None:
-    result = _drain(_handler(overlay, _durable(tmp_path), lanes, sink, _reads()))
+    bus = _bus()
+    result = _drain(
+        _handler(
+            overlay,
+            make_bus_store(bus, clock=lambda: NOW),
+            AdvertisedLaneSource(bus),
+            sink,
+            _reads(),
+        )
+    )
     assert result.outcome is EnumDrainOutcome.DRAINING
     assert result.safe is True
     assert result.drained is True
     assert result.status_line == (
         f"{HOST} draining until {_until(overlay)}: 0 lane(s) running "
-        f"({overlay.drain.lane_count_scope}); host read lanes=0 units=0 model_servers=0: SAFE to power down"
+        f"({overlay.drain.lane_count_scope}); host read model_servers=0: SAFE to power down"
     )
 
 
-@pytest.mark.parametrize(
-    "busy", ["lanes", "units", "model_servers"], ids=lambda kind: f"host-{kind}"
-)
-def test_a_busy_host_is_not_safe_whatever_the_receipts_say(
-    overlay: ModelHostDrainOverlay,
-    lanes: FixedLaneSource,
-    sink: InMemoryEmissionSink,
-    tmp_path: Path,
-    busy: str,
+def test_a_busy_host_is_not_safe(
+    overlay: ModelHostDrainOverlay, sink: InMemoryEmissionSink
 ) -> None:
-    """The runner receipts read 0 (this machine launched nothing there) while the host itself shows work."""
+    """The host's own advertisement shows work, so the host is not safe to power down."""
+    bus = _bus(units={HOST: 3})
     result = _drain(
-        _handler(overlay, _durable(tmp_path), lanes, sink, _reads(**{busy: 3}))
+        _handler(
+            overlay,
+            make_bus_store(bus, clock=lambda: NOW),
+            AdvertisedLaneSource(bus),
+            sink,
+            _reads(),
+        )
     )
-    assert result.lanes_running == 0
     assert result.safe is False
     assert result.drained is False
-    assert f"{busy}=3" in result.status_line
     assert result.status_line.endswith(": NOT SAFE to power down")
 
 
 def test_an_unreadable_host_read_is_never_safe(
-    overlay: ModelHostDrainOverlay,
-    lanes: FixedLaneSource,
-    sink: InMemoryEmissionSink,
-    tmp_path: Path,
+    overlay: ModelHostDrainOverlay, sink: InMemoryEmissionSink
 ) -> None:
+    bus = _bus()
     result = _drain(
         _handler(
             overlay,
-            _durable(tmp_path),
-            lanes,
+            make_bus_store(bus, clock=lambda: NOW),
+            AdvertisedLaneSource(bus),
             sink,
             _reads(unreadable=frozenset({HOST})),
         )
     )
     assert result.safe is False
     assert all(read.count is None for read in result.host_reads)
-    assert "lanes=unreadable" in result.status_line
+    assert "model_servers=unreadable" in result.status_line
     assert result.status_line.endswith(": NOT SAFE to power down")
 
 
 def test_a_host_with_no_host_read_declared_is_not_safe(
-    overlay: ModelHostDrainOverlay,
-    lanes: FixedLaneSource,
-    sink: InMemoryEmissionSink,
-    tmp_path: Path,
+    overlay: ModelHostDrainOverlay, sink: InMemoryEmissionSink
 ) -> None:
-    result = _drain(_handler(overlay, _durable(tmp_path), lanes, sink, ()))
+    bus = _bus()
+    result = _drain(
+        _handler(
+            overlay,
+            make_bus_store(bus, clock=lambda: NOW),
+            AdvertisedLaneSource(bus),
+            sink,
+            (),
+        )
+    )
     assert result.safe is False
     assert "host read none declared" in result.status_line
     assert "the host itself was not read" in result.detail
 
 
 def test_a_mark_held_in_memory_is_not_safe(
-    overlay: ModelHostDrainOverlay,
-    lanes: FixedLaneSource,
-    sink: InMemoryEmissionSink,
+    overlay: ModelHostDrainOverlay, sink: InMemoryEmissionSink
 ) -> None:
     """The in_memory profile's mark dies with the process: a SAFE line on it would outlive its own evidence."""
+    bus = _bus()
     result = _drain(
-        _handler(overlay, InMemoryDrainStore(clock=lambda: NOW), lanes, sink, _reads())
+        _handler(
+            overlay,
+            InMemoryDrainStore(clock=lambda: NOW),
+            AdvertisedLaneSource(bus),
+            sink,
+            _reads(),
+        )
     )
     assert result.draining is True
     assert result.safe is False
@@ -206,122 +205,76 @@ def test_a_mark_held_in_memory_is_not_safe(
     assert "held in memory only" in result.detail
 
 
-def test_an_unreadable_receipt_count_is_never_safe(
-    overlay: ModelHostDrainOverlay, sink: InMemoryEmissionSink, tmp_path: Path
+def test_a_host_that_advertised_only_once_is_not_safe(
+    overlay: ModelHostDrainOverlay, sink: InMemoryEmissionSink
 ) -> None:
-    result = _drain(
-        _handler(overlay, _durable(tmp_path), _UnreadableLanes(), sink, _reads())
-    )
-    assert result.lanes_running is None
-    assert result.safe is False
-    assert result.status_line == (
-        f"{HOST} draining until {_until(overlay)}: lane count unreadable; "
-        "host read lanes=0 units=0 model_servers=0: NOT SAFE to power down"
-    )
-
-
-def test_a_lane_that_starts_between_the_two_passes_is_not_safe(
-    overlay: ModelHostDrainOverlay,
-    lanes: FixedLaneSource,
-    sink: InMemoryEmissionSink,
-    tmp_path: Path,
-) -> None:
-    """One zero is a moment; SAFE needs the host to read 0 on two passes around the mark read."""
+    """The lane source needs two advertisements in the window; one is not a measured zero."""
+    bus = _bus(per_host=1)
     result = _drain(
         _handler(
             overlay,
-            _durable(tmp_path),
-            lanes,
+            make_bus_store(bus, clock=lambda: NOW),
+            AdvertisedLaneSource(bus),
             sink,
-            [_Appearing(EnumHostReadKind.UNITS)],
+            _reads(),
         )
     )
     assert result.safe is False
-    assert result.host_reads[0].count == 1
+    assert result.status_line.endswith(": NOT SAFE to power down")
 
 
-def test_a_mark_that_expires_during_the_status_prints_one_consistent_line(
-    overlay: ModelHostDrainOverlay,
-    lanes: FixedLaneSource,
-    sink: InMemoryEmissionSink,
-    tmp_path: Path,
+def test_a_host_that_never_read_its_lanes_is_not_safe(
+    overlay: ModelHostDrainOverlay, sink: InMemoryEmissionSink
 ) -> None:
-    """The store's own clock steps past the mark's end between two reads; the line must not say 'until unknown'."""
-    steps = {"n": 0}
-
-    def stepping() -> datetime:
-        steps["n"] += 1
-        return NOW if steps["n"] <= 2 else NOW + timedelta(days=30)
-
-    store = JsonlDrainStore(tmp_path / "drain.jsonl", clock=stepping)
-    handler = _handler(overlay, store, lanes, sink, _reads())
-    _drain(handler)
-    result = handler.handle(
-        ModelHostDrainRequest(op=EnumDrainOp.STATUS, host_name=HOST)
+    """A lanes read of None is an unknown count, never a measured zero."""
+    bus = _bus(lanes={HOST: None})
+    result = _drain(
+        _handler(
+            overlay,
+            make_bus_store(bus, clock=lambda: NOW),
+            AdvertisedLaneSource(bus),
+            sink,
+            _reads(),
+        )
     )
-    assert result.draining is True
-    assert "until unknown" not in result.status_line
-    assert f"until {_until(overlay)}" in result.status_line
-
-
-def test_the_mark_ends_when_the_clock_passes_it(
-    overlay: ModelHostDrainOverlay,
-    lanes: FixedLaneSource,
-    sink: InMemoryEmissionSink,
-    tmp_path: Path,
-) -> None:
-    now = {"t": NOW}
-    handler = _handler(
-        overlay,
-        _durable(tmp_path),
-        lanes,
-        sink,
-        _reads(),
-        clock=lambda: now["t"],
-    )
-    _drain(handler)
-    now["t"] = NOW + timedelta(seconds=overlay.drain.default_ttl_seconds)
-    result = handler.handle(
-        ModelHostDrainRequest(op=EnumDrainOp.STATUS, host_name=HOST)
-    )
-    assert result.draining is False
     assert result.safe is False
-    assert result.until is None
-    assert result.status_line.startswith(f"{HOST} not draining:")
+    assert result.status_line.endswith(": NOT SAFE to power down")
 
 
-def test_a_not_draining_host_says_so_with_its_counts(
-    overlay: ModelHostDrainOverlay,
-    lanes: FixedLaneSource,
-    sink: InMemoryEmissionSink,
-    tmp_path: Path,
+def test_a_silent_host_is_not_safe(
+    overlay: ModelHostDrainOverlay, sink: InMemoryEmissionSink
 ) -> None:
-    handler = _handler(overlay, _durable(tmp_path), lanes, sink, _reads())
-    status = handler.handle(
-        ModelHostDrainRequest(op=EnumDrainOp.STATUS, host_name="example-host-a")
+    """A host that advertised nothing has no mark and no count to read: the drain fails on its readback, never safe."""
+    bus = _bus(silent=True)
+    result = _drain(
+        _handler(
+            overlay,
+            make_bus_store(bus, clock=lambda: NOW),
+            AdvertisedLaneSource(bus),
+            sink,
+            _reads(),
+        )
     )
-    assert status.draining is False
-    assert status.until is None
-    assert status.safe is False
-    assert status.status_line == (
-        f"example-host-a not draining: 2 lane(s) running ({overlay.drain.lane_count_scope}); "
-        "host read lanes=0 units=0 model_servers=0"
-    )
-    cleared = handler.handle(
-        ModelHostDrainRequest(op=EnumDrainOp.UNDRAIN, host_name="example-host-a")
-    )
-    assert cleared.status_line == status.status_line
+    assert result.safe is False
+    assert result.outcome is EnumDrainOutcome.FAILED
+    assert result.failure_code == overlay.drain.codes.readback_failed
 
 
-def test_a_not_draining_host_with_an_unreadable_count_says_so(
-    overlay: ModelHostDrainOverlay, sink: InMemoryEmissionSink, tmp_path: Path
+def test_a_held_host_reads_held_not_failed_not_safe(
+    overlay: ModelHostDrainOverlay, sink: InMemoryEmissionSink
 ) -> None:
-    result = _handler(
-        overlay, _durable(tmp_path), _UnreadableLanes(), sink, _reads()
-    ).handle(ModelHostDrainRequest(op=EnumDrainOp.STATUS, host_name="example-host-a"))
-    assert result.draining is False
-    assert result.lanes_running is None
-    assert result.status_line == (
-        "example-host-a not draining: lane count unreadable; "
-        "host read lanes=0 units=0 model_servers=0"
+    """A host whose advertisement carries a capacity_refusal reads HELD, not failed and not SAFE."""
+    bus = _bus(held={HOST: "capacity guard: at max units"})
+    result = _drain(
+        _handler(
+            overlay,
+            make_bus_store(bus, clock=lambda: NOW),
+            AdvertisedLaneSource(bus),
+            sink,
+            _reads(),
+        )
     )
+    assert result.safe is False
+    assert "HELD" in result.status_line
+    assert "capacity guard: at max units" in result.status_line
+    assert result.status_line.endswith(": NOT SAFE to power down")

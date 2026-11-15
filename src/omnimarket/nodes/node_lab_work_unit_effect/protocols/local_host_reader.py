@@ -19,8 +19,9 @@ import re
 import shutil
 import subprocess
 import time
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol
 
@@ -47,6 +48,15 @@ CPU_TEMP_TOOL_PREFIX = "cpu-temp-c:"
 #: a volume is past its high-water mark, which sits above the admission floor, so pool placement refuses new units there
 #: before the floor does. A host below the page mark advertises none. It rides ``tools`` for the same reason the lane guard does.
 DISK_WATERMARK_PAGE_TOOL = "disk-watermark:page"
+#: A pseudo-tool ``draining-until:<UTC ISO-8601 with trailing Z, seconds precision>`` carrying the moment a host's drain mark expires (OMN-24489).
+#: Present only while a mark is in force; a host with no mark advertises none. It rides ``tools`` for the same reason the lane guard does: a caller on an older
+#: omnimarket still parses the advertisement instead of dropping the host.
+DRAINING_UNTIL_TOOL_PREFIX = "draining-until:"
+#: One pseudo-tool ``lane-running:<lane name>`` per lane running on the host (OMN-24489). The lanes ride ``tools`` for the same reason the lane guard does.
+LANE_RUNNING_TOOL_PREFIX = "lane-running:"
+#: The single pseudo-tool ``lanes-read:ok`` a host advertises only when its lane read succeeded (OMN-24489). Its absence means the lanes were NOT read
+#: (never a measured zero), so a caller on an older omnimarket still parses the advertisement instead of dropping the host.
+LANES_READ_TOOL = "lanes-read:ok"
 _HWMON_ROOT = Path("/sys/class/hwmon")
 _CPU_CHIPS = ("k10temp", "coretemp")
 _CPU_LABELS = ("Tctl", "Package id")
@@ -69,6 +79,58 @@ def cpu_temp_from_tools(tools: Iterable[str]) -> float | None:
 def disk_watermark_paged(tools: Iterable[str]) -> bool:
     """Whether an advertisement carries the ``disk-watermark:page`` pseudo-tool."""
     return DISK_WATERMARK_PAGE_TOOL in tools
+
+
+def draining_until_from_tools(tools: Iterable[str]) -> datetime | None:
+    """The drain mark an advertisement's ``draining-until:`` pseudo-tool carries, or None when it carries none or the value is unparsable."""
+    for tool in tools:
+        if tool.startswith(DRAINING_UNTIL_TOOL_PREFIX):
+            try:
+                stamp = datetime.fromisoformat(
+                    tool[len(DRAINING_UNTIL_TOOL_PREFIX) :].replace("Z", "+00:00")
+                )
+            except ValueError:
+                return None
+            return (
+                stamp.replace(tzinfo=UTC)
+                if stamp.tzinfo is None
+                else stamp.astimezone(UTC)
+            )
+    return None
+
+
+def running_lanes_from_tools(tools: Iterable[str]) -> tuple[str, ...] | None:
+    """The lanes an advertisement's ``lane-running:`` pseudo-tools carry, or None when it carries no ``lanes-read:ok`` (the lanes were not read)."""
+    if LANES_READ_TOOL not in tools:
+        return None
+    return tuple(
+        sorted(
+            tool[len(LANE_RUNNING_TOOL_PREFIX) :]
+            for tool in tools
+            if tool.startswith(LANE_RUNNING_TOOL_PREFIX)
+        )
+    )
+
+
+def tools_for_drain_and_lanes(
+    draining_until: datetime | None, lanes: Sequence[str] | None
+) -> list[str]:
+    """The pseudo-tools to add for a drain mark and the lanes a host is running (OMN-24489)."""
+    tools: list[str] = []
+    if draining_until is not None:
+        stamp = (
+            draining_until
+            if draining_until.tzinfo is not None
+            else draining_until.replace(tzinfo=UTC)
+        )
+        stamp = stamp.astimezone(UTC).replace(microsecond=0)
+        tools.append(
+            f"{DRAINING_UNTIL_TOOL_PREFIX}{stamp.strftime('%Y-%m-%dT%H:%M:%SZ')}"
+        )
+    if lanes is not None:
+        tools.append(LANES_READ_TOOL)
+        tools.extend(f"{LANE_RUNNING_TOOL_PREFIX}{lane}" for lane in lanes)
+    return tools
 
 
 def linux_cpu_temp_c(hwmon_root: Path = _HWMON_ROOT) -> float | None:
@@ -323,6 +385,9 @@ __all__ = [
     "ProtocolHostReader",
     "cpu_temp_from_tools",
     "disk_watermark_paged",
+    "draining_until_from_tools",
     "installed_lane_guards",
     "linux_cpu_temp_c",
+    "running_lanes_from_tools",
+    "tools_for_drain_and_lanes",
 ]

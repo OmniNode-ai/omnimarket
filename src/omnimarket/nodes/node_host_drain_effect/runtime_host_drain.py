@@ -34,21 +34,24 @@ from omnimarket.handlers.emission_sink import (
 )
 from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
-    NodeOverlayNotFoundError,
+)
+from omnimarket.nodes.node_host_drain_effect.adapters.bus_drain import (
+    AdvertisedLaneSource,
+    BusAdvertisementSource,
+    BusDrainCommandPublisher,
+    SyncBus,
 )
 from omnimarket.nodes.node_host_drain_effect.adapters.host_reads import (
     CommandHostRead,
 )
 from omnimarket.nodes.node_host_drain_effect.adapters.runner_ports import (
-    CommandLaneSource,
     CommandWorkerProbe,
     CommandWorkerStopper,
     ProcWorkerProbe,
-    ReceiptLaneSource,
 )
 from omnimarket.nodes.node_host_drain_effect.adapters.stores import (
+    BusDrainStore,
     InMemoryDrainStore,
-    JsonlDrainStore,
 )
 from omnimarket.nodes.node_host_drain_effect.handlers.handler_host_drain import (
     HandlerHostDrain,
@@ -86,49 +89,65 @@ def _require_env(environ: Mapping[str, str], name: str) -> str:
     return value
 
 
+def open_sync_bus(overlay: ModelHostDrainOverlay) -> SyncBus:
+    """The connection of the overlay's bus block: the lane's broker, or a bus inside this process for a drill."""
+    from omnimarket.handlers.overlay_store.bus_opener import open_lane_bus
+
+    settings = overlay.bus
+    if settings is None:
+        raise _MissingFactError("the overlay declares no bus block")
+    return SyncBus(
+        lambda: open_lane_bus(
+            bus=settings.kind,
+            lane=settings.lane,
+            kafka_bootstrap=settings.kafka_bootstrap,
+            root=None,
+        ),
+        timeout_seconds=settings.timeout_seconds,
+    )
+
+
 def build_store_and_sink(
     overlay: ModelHostDrainOverlay,
     environ: Mapping[str, str],
     *,
     clock: Callable[[], datetime] | None = None,
-) -> tuple[ProtocolDrainStore, ProtocolEmissionSink, Literal["in_memory", "real"]]:
-    """The store and the chain-event sink of the overlay's profile, and the backend label the chains carry.
+    sync_bus: SyncBus | None = None,
+) -> tuple[
+    ProtocolDrainStore,
+    ProtocolEmissionSink,
+    Literal["in_memory", "real"],
+    BusAdvertisementSource | None,
+]:
+    """The store and the chain-event sink of the overlay's profile, the backend label the chains carry, and the
+    advertisement source the bus profile reads the hosts from (None for in_memory).
 
-    The store reads the clock the caller gives (the same one the handler is built with), else the wall clock.
+    The store reads the clock the caller gives (the same one the handler is built with), else the wall clock. The bus profile
+    opens the bus unless the caller hands one in.
     """
     now = clock or (lambda: datetime.now(UTC))
     if overlay.profile == "in_memory":
-        return InMemoryDrainStore(clock=now), InMemoryEmissionSink(), "in_memory"
+        return InMemoryDrainStore(clock=now), InMemoryEmissionSink(), "in_memory", None
+    settings = overlay.bus
+    if settings is None:
+        raise _MissingFactError("the bus profile declares no bus block")
     home = Path(_require_env(environ, overlay.emission.home_env))
     sink = JsonlEmissionSink(home / overlay.emission.journal_relpath)
-    return (
-        JsonlDrainStore(home / overlay.jsonl_state_relpath, clock=now),
-        sink,
-        "real",
+    bus = sync_bus if sync_bus is not None else open_sync_bus(overlay)
+    source = BusAdvertisementSource(
+        bus,
+        window_seconds=settings.window_seconds,
+        cache_seconds=settings.cache_seconds,
     )
+    store = BusDrainStore(BusDrainCommandPublisher(bus, source), source, clock=now)
+    return store, sink, "real", source
 
 
-def draining_hosts_of(
-    overlay: ModelHostDrainOverlay, environ: Mapping[str, str]
-) -> tuple[str, ...]:
-    """The hosts the overlay's drain store reads as draining. A store that cannot be read raises."""
-    store, _sink, _backend = build_store_and_sink(overlay, environ)
-    return store.draining_hosts()
+class _NoLanes:
+    """The in_memory profile has no host to read: an unreadable count, never a measured zero."""
 
-
-def read_draining_hosts(environ: Mapping[str, str] | None = None) -> tuple[str, ...]:
-    """The draining hosts for a placement caller (``LabWorkCaller(draining_hosts=...)``).
-
-    No drain overlay selected means no drain verb is deployed, so no host can be draining: the answer is empty. A
-    broken overlay, a missing deployment fact or an unreadable store raises, so a placement never reads an unreadable
-    drain state as an empty one.
-    """
-    env = os.environ if environ is None else environ
-    try:
-        overlay = load_overlay(env)
-    except NodeOverlayNotFoundError:
-        return ()
-    return draining_hosts_of(overlay, env)
+    def running(self, host_name: str) -> int:
+        raise ValueError(f"the in_memory profile reads no host ({host_name})")
 
 
 def _print(model: BaseModel) -> None:
@@ -140,6 +159,7 @@ def run(
     *,
     overlay: ModelHostDrainOverlay,
     environ: Mapping[str, str],
+    sync_bus: SyncBus | None = None,
 ) -> int:
     parser = argparse.ArgumentParser(prog="node_host_drain_effect")
     sub = parser.add_subparsers(dest="verb", required=True)
@@ -163,9 +183,14 @@ def run(
         return datetime.now(UTC)
 
     try:
-        store, sink, backend = build_store_and_sink(overlay, environ, clock=clock)
+        store, sink, backend, source = build_store_and_sink(
+            overlay, environ, clock=clock, sync_bus=sync_bus
+        )
     except _MissingFactError as exc:
         print(f"INDETERMINATE: {exc}", file=sys.stderr)
+        return 3
+    except OSError as exc:
+        print(f"INDETERMINATE: the bus could not be opened: {exc}", file=sys.stderr)
         return 3
     if args.verb == "draining":
         for host in store.draining_hosts():
@@ -195,12 +220,8 @@ def run(
         )
         _print(stopped)
         return 0 if stopped.outcome is EnumRunnerStopOutcome.STOPPED else 1
-    # The lane count is read from the runner's receipts or one argv, whichever the lanes block names.
-    lanes = (
-        ReceiptLaneSource(Path(overlay.lanes.receipts_dir).expanduser())
-        if overlay.lanes.receipts_dir is not None
-        else CommandLaneSource(overlay.lanes)
-    )
+    # The host's lanes and units are read from its own capacity advertisements, the same ones every launcher reads.
+    lanes = AdvertisedLaneSource(source) if source is not None else _NoLanes()
     host_reads = tuple(CommandHostRead(r) for r in overlay.host_reads)
     drain = HandlerHostDrain(
         overlay.drain,

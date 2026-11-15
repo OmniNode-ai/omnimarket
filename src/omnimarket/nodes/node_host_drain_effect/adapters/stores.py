@@ -1,26 +1,34 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Drain stores: in memory (the default) and a durable JSON-lines file.
+"""Drain stores: in memory (the default) and on the bus (the real profile).
 
-Every store keeps the latest record per host. A record that does not parse is skipped and counted, never fixed.
 A drain mark is time-bounded: a draining record whose ``until`` is at or behind the store's clock reads as not
-draining, in ``is_draining``, in ``draining_hosts`` and in ``until_of``. A record whose ``until`` does not parse is
-skipped and counted, never read as draining forever.
+draining, in ``is_draining``, in ``draining_hosts`` and in ``until_of``.
 
-There is no broker-backed store here: the injected event bus has no read-from-the-start snapshot of a topic, and a raw
-Kafka client in a node bypasses it (the imperative contract guard refuses one). A drain state shared across hosts
-belongs to a bus projection, a node of its own.
+The bus store keeps no state of its own and writes no file. A write is a drain command on the bus, taken by the addressed
+host's serve process, which advertises the mark on every capacity advertisement; a read is the host's newest advertisement.
+Every launcher and the lab fill read the same advertisement, so the mark is the fleet's and not one machine's. A host that
+advertised nothing in the window has an unread mark: the read raises OSError, never an empty answer.
 """
 
 from __future__ import annotations
 
-import json
 from collections.abc import Callable
 from datetime import UTC, datetime
-from pathlib import Path
 
+from omnimarket.models.model_host_drain_command import ModelHostDrainCommand
+from omnimarket.nodes.node_host_drain_effect.adapters.bus_drain import (
+    host_advertisements,
+)
 from omnimarket.nodes.node_host_drain_effect.models.model_host_drain import (
     ModelDrainMark,
+)
+from omnimarket.nodes.node_host_drain_effect.protocols import (
+    ProtocolAdvertisementSource,
+    ProtocolDrainCommandPublisher,
+)
+from omnimarket.nodes.node_lab_work_unit_effect.protocols.local_host_reader import (
+    draining_until_from_tools,
 )
 
 #: A record per host: whether it reads draining and when its mark expires (None: no expiry).
@@ -91,75 +99,22 @@ class InMemoryDrainStore:
         )
 
 
-def _record(
-    host_name: str, draining: bool, reason: str, at: datetime, until: datetime | None
-) -> dict[str, object]:
-    return {
-        "host": host_name,
-        "draining": draining,
-        "reason": reason,
-        "at": at.isoformat(),
-        "until": None if until is None else until.isoformat(),
-    }
+class BusDrainStore:
+    """The drain state on the bus: a write is a drain command, a read is the host's newest capacity advertisement."""
 
-
-def _until_of(parsed: dict[str, object]) -> datetime | None:
-    """The record's until; None when it names none. ValueError on one that does not parse."""
-    value = parsed.get("until")
-    if value is None:
-        return None
-    if not isinstance(value, str):
-        raise ValueError("until must be an ISO datetime or null")
-    return _as_utc(datetime.fromisoformat(value))
-
-
-def _state_of(line: str) -> tuple[str, Record] | None:
-    """The (host, record) a line holds, or None when the line does not parse."""
-    try:
-        parsed = json.loads(line)
-    except ValueError:
-        return None
-    if not isinstance(parsed, dict):
-        return None
-    host = parsed.get("host")
-    flag = parsed.get("draining")
-    if not isinstance(host, str) or not isinstance(flag, bool):
-        return None
-    try:
-        until = _until_of(parsed)
-    except (TypeError, ValueError):
-        return None
-    return host, (flag, until)
-
-
-class JsonlDrainStore:
-    """Append-only file of drain records; the state is the fold of the file, so a restart keeps it."""
-
-    #: A mark here is a line in a file that outlives the process.
+    #: The mark is held by the host's serve process and carried on its advertisements: it outlives the verb's process.
     durable = True
 
-    def __init__(self, path: Path, *, clock: Callable[[], datetime] = _now) -> None:
-        self._path = path
+    def __init__(
+        self,
+        publisher: ProtocolDrainCommandPublisher,
+        advertisements: ProtocolAdvertisementSource,
+        *,
+        clock: Callable[[], datetime] = _now,
+    ) -> None:
+        self._publisher = publisher
+        self._advertisements = advertisements
         self._clock = clock
-        self.skipped_lines = 0
-
-    def _read(self) -> dict[str, Record]:
-        try:
-            text = self._path.read_text(encoding="utf-8")
-        except FileNotFoundError:
-            return {}
-        state: dict[str, Record] = {}
-        self.skipped_lines = 0
-        for line in text.splitlines():
-            if not line.strip():
-                continue
-            state_of = _state_of(line)
-            if state_of is None:
-                self.skipped_lines += 1
-                continue
-            host, record = state_of
-            state[host] = record
-        return state
 
     def set_draining(
         self,
@@ -170,34 +125,45 @@ class JsonlDrainStore:
         at: datetime,
         until: datetime | None = None,
     ) -> None:
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        with self._path.open("a", encoding="utf-8") as handle:
-            handle.write(
-                json.dumps(_record(host_name, draining, reason, at, until)) + "\n"
+        self._publisher.publish(
+            ModelHostDrainCommand(
+                host_name=host_name,
+                draining=draining,
+                until=until if draining else None,
+                reason=reason,
+                issued_at=_as_utc(at),
             )
+        )
+        self._advertisements.invalidate()
+
+    def mark_of(self, host_name: str) -> ModelDrainMark | None:
+        """The mark the host's newest advertisement carries (not draining when it carries none)."""
+        ads = host_advertisements(self._advertisements, host_name)
+        if not ads:
+            raise OSError(
+                f"{host_name} advertised nothing in the window: its drain mark is unread"
+            )
+        until = draining_until_from_tools(ads[-1].tools)
+        return ModelDrainMark(draining=until is not None, until=until)
 
     def is_draining(self, host_name: str) -> bool:
-        return _reads_draining(self._read().get(host_name), self._clock())
+        mark = self.mark_of(host_name)
+        return mark is not None and mark.reads_draining(self._clock())
+
+    def until_of(self, host_name: str) -> datetime | None:
+        mark = self.mark_of(host_name)
+        if mark is None or not mark.reads_draining(self._clock()):
+            return None
+        return mark.until
 
     def draining_hosts(self) -> tuple[str, ...]:
         now = self._clock()
-        state = self._read()
-        return tuple(
-            sorted(h for h, record in state.items() if _reads_draining(record, now))
-        )
-
-    def until_of(self, host_name: str) -> datetime | None:
-        """The mark's until while the host reads draining, else None."""
-        record = self._read().get(host_name)
-        if record is None or not _reads_draining(record, self._clock()):
-            return None
-        return record[1]
-
-    def mark_of(self, host_name: str) -> ModelDrainMark | None:
-        """The host's record as held, whether or not it is past its until."""
-        record = self._read().get(host_name)
-        return (
-            None
-            if record is None
-            else ModelDrainMark(draining=record[0], until=record[1])
-        )
+        newest: dict[str, tuple[str, ...]] = {}
+        for ad in self._advertisements.advertisements():
+            newest[ad.host_name] = tuple(ad.tools)
+        hosts = []
+        for host, tools in newest.items():
+            until = draining_until_from_tools(tools)
+            if until is not None and now < until:
+                hosts.append(host)
+        return tuple(sorted(hosts))

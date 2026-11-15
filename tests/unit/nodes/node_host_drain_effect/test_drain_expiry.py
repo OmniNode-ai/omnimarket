@@ -4,18 +4,23 @@
 
 from __future__ import annotations
 
-import json
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 
 import pytest
 
 from omnimarket.handlers.emission_sink import InMemoryEmissionSink
-from omnimarket.nodes.node_host_drain_effect.adapters.fakes import FixedLaneSource
+from omnimarket.nodes.node_host_drain_effect.adapters.bus_drain import (
+    AdvertisedLaneSource,
+)
+from omnimarket.nodes.node_host_drain_effect.adapters.fakes import (
+    FixedHostRead,
+    FixedLaneSource,
+    LoopbackBus,
+    make_bus_store,
+)
 from omnimarket.nodes.node_host_drain_effect.adapters.stores import (
     InMemoryDrainStore,
-    JsonlDrainStore,
 )
 from omnimarket.nodes.node_host_drain_effect.handlers.handler_host_drain import (
     HandlerHostDrain,
@@ -23,6 +28,7 @@ from omnimarket.nodes.node_host_drain_effect.handlers.handler_host_drain import 
 from omnimarket.nodes.node_host_drain_effect.models.model_host_drain import (
     EnumDrainOp,
     EnumDrainOutcome,
+    EnumHostReadKind,
     ModelHostDrainRequest,
 )
 from omnimarket.nodes.node_host_drain_effect.overlay import ModelHostDrainOverlay
@@ -94,15 +100,40 @@ def test_the_in_memory_store_reads_the_mark_expired_at_its_ttl(
     _assert_reads_draining_until_the_ttl(read_at, HOST)
 
 
-def test_the_jsonl_store_reads_the_mark_expired_at_its_ttl(
-    overlay: ModelHostDrainOverlay, sink: InMemoryEmissionSink, tmp_path: Path
+def test_the_bus_store_reads_the_mark_expired_at_its_ttl(
+    overlay: ModelHostDrainOverlay, sink: InMemoryEmissionSink
 ) -> None:
-    path = tmp_path / "drain.jsonl"
+    """A durable store backed by the bus: the mark rides the host's advertisements."""
     clock = _Clock(NOW)
-    _drained(overlay, JsonlDrainStore(path, clock=clock), clock, sink)
+    bus = LoopbackBus(
+        hosts=[HOST, "example-host-b"],
+        clock=clock,
+        lanes={HOST: 1, "example-host-b": 0},
+    )
+    store = make_bus_store(bus, clock=clock)
+    handler = HandlerHostDrain(
+        overlay.drain,
+        store=store,
+        lanes=AdvertisedLaneSource(bus),
+        sink=sink,
+        clock=clock,
+        backend="real",
+        host_reads=[FixedHostRead(kind.value, kind, {}) for kind in EnumHostReadKind],
+    )
+    result = handler.handle(
+        ModelHostDrainRequest(
+            op=EnumDrainOp.DRAIN, host_name=HOST, ttl_seconds=TTL_SECONDS
+        )
+    )
+    assert result.outcome is EnumDrainOutcome.DRAINING
+    # The bus store needs two advertisements per host in the window to read the mark.
+    bus.advertise()
 
     def read_at(seconds: int) -> ProtocolDrainStore:
-        return JsonlDrainStore(path, clock=lambda: NOW + timedelta(seconds=seconds))
+        clock.now = NOW + timedelta(seconds=seconds)
+        bus.advertise()
+        bus.advertise()
+        return store
 
     _assert_reads_draining_until_the_ttl(read_at, HOST)
 
@@ -184,35 +215,4 @@ def test_the_failing_control_a_store_that_ignores_expiry_fails_the_golden(
         _assert_reads_draining_until_the_ttl(read_at, HOST)
 
 
-def test_a_jsonl_record_with_an_until_that_does_not_parse_is_skipped(
-    overlay: ModelHostDrainOverlay, tmp_path: Path
-) -> None:
-    """A bad until is counted and ignored, never read as draining forever."""
-    path = tmp_path / "drain.jsonl"
-    store = JsonlDrainStore(path, clock=lambda: NOW)
-    store.set_draining(
-        HOST,
-        True,
-        reason="rack move",
-        at=NOW,
-        until=NOW + timedelta(seconds=TTL_SECONDS),
-    )
-    with path.open("a", encoding="utf-8") as handle:
-        handle.write(
-            json.dumps(
-                {
-                    "host": HOST,
-                    "draining": True,
-                    "reason": "bad stamp",
-                    "at": NOW.isoformat(),
-                    "until": "not-a-time",
-                }
-            )
-            + "\n"
-        )
-    # Past the good mark's ttl: only the bad record could keep the host reading draining.
-    reader = JsonlDrainStore(
-        path, clock=lambda: NOW + timedelta(seconds=TTL_SECONDS + 1)
-    )
-    assert reader.is_draining(HOST) is False
-    assert reader.skipped_lines == 1
+# The JSON-lines file store is gone: a bad until record can no longer be written to a file.

@@ -4,7 +4,6 @@
 
 from __future__ import annotations
 
-import json
 import subprocess
 from collections.abc import Callable, Mapping
 from pathlib import Path
@@ -13,7 +12,6 @@ from omnimarket.nodes.node_host_drain_effect.models.model_host_drain import (
     EnumRunnerActivity,
 )
 from omnimarket.nodes.node_host_drain_effect.overlay import (
-    ModelLaneCountSettings,
     ModelRunnerStopSettings,
 )
 
@@ -158,107 +156,3 @@ class CommandWorkerStopper:
         except (OSError, subprocess.TimeoutExpired):
             return False
         return done.returncode == 0
-
-
-class CommandLaneSource:
-    """Counts the lanes on a host with the overlay's argv, which prints one integer."""
-
-    def __init__(
-        self, settings: ModelLaneCountSettings, *, run: CommandRun = subprocess.run
-    ) -> None:
-        self._settings = settings
-        self._run = run
-
-    def running(self, host_name: str) -> int:
-        if self._settings.count_command is None:
-            raise ValueError("the lanes block declares no count_command")
-        argv = [
-            part.replace("{host}", host_name) for part in self._settings.count_command
-        ]
-        done = self._run(
-            argv,
-            capture_output=True,
-            text=True,
-            timeout=self._settings.timeout_seconds,
-            check=True,
-        )
-        return int(done.stdout.strip())
-
-
-class ReceiptLaneSource:
-    """Counts a host's running lanes from the remote-lane runner's own receipts.
-
-    Reads ``<directory>/<lane>/*.json``. A file is a lane receipt only when it parses to a dict carrying the key
-    ``run_id``; a dict without ``run_id`` is not a lane receipt and is ignored. A receipt that cannot be read raises
-    OSError and one that does not parse as JSON raises ValueError, each naming the file path: an unreadable count is
-    never a measured zero. A lane receipt counts when it is not final and it names the host, read from ``host`` or,
-    failing that, from ``prerequisites.host``; a non-final receipt that names no host raises ValueError so the count
-    reads unreadable. Status and the launcher ``pid`` no longer matter: a non-final receipt counts whatever its
-    status and even when its launcher pid is dead. A submitted-job record (``*.job.json``) names no host: it is
-    ignored when the receipt of its run beside it is final, and otherwise reads the count unreadable.
-    """
-
-    def __init__(self, directory: Path) -> None:
-        self._directory = directory
-
-    @staticmethod
-    def _host_of(data: Mapping[str, object]) -> str | None:
-        """The host a receipt names: ``host`` when a non-empty string, else ``prerequisites.host`` when it is."""
-        host = data.get("host")
-        if isinstance(host, str) and host:
-            return host
-        prerequisites = data.get("prerequisites")
-        if isinstance(prerequisites, Mapping):
-            nested = prerequisites.get("host")
-            if isinstance(nested, str) and nested:
-                return nested
-        return None
-
-    @staticmethod
-    def _require_final_receipt(job: Path, data: Mapping[str, object]) -> None:
-        """Raise ValueError unless the submitted job's run has a final receipt beside it."""
-        final_receipt = job.with_name(f"{data['run_id']}.json")
-        try:
-            finished = json.loads(final_receipt.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            finished = None
-        if not isinstance(finished, dict) or finished.get("final") is not True:
-            raise ValueError(
-                f"lane job {job} has no final receipt: it may be running on any host"
-            )
-
-    def running(self, host_name: str) -> int:
-        # The listing itself is the read: a missing or unreadable directory raises, it never reads as zero.
-        lane_dirs = [entry for entry in self._directory.iterdir() if entry.is_dir()]
-        count = 0
-        for lane_dir in lane_dirs:
-            for receipt in lane_dir.glob("*.json"):
-                try:
-                    text = receipt.read_text(encoding="utf-8")
-                except OSError as exc:
-                    # A receipt that cannot be read holds no evidence of a lane: the count reads unreadable.
-                    raise OSError(f"cannot read lane receipt: {receipt}") from exc
-                try:
-                    data = json.loads(text)
-                except ValueError as exc:
-                    raise ValueError(
-                        f"lane receipt does not parse as JSON: {receipt}"
-                    ) from exc
-                if not isinstance(data, dict) or "run_id" not in data:
-                    # A file that is not a lane receipt holds no evidence of a lane: it is ignored.
-                    continue
-                if receipt.name.endswith(".job.json"):
-                    # A submitted-job record names no host. It is a finished lane when its run's receipt in the same
-                    # directory is final; otherwise the lane may be running on any host: the count reads unreadable.
-                    self._require_final_receipt(receipt, data)
-                    continue
-                if data.get("final") is True:
-                    # A final receipt is done; it never counts, whatever its host.
-                    continue
-                host = self._host_of(data)
-                if host is None:
-                    # A non-final receipt that names no host cannot be attributed: read it as unreadable.
-                    raise ValueError(f"lane receipt names no host: {receipt}")
-                if host == host_name:
-                    count += 1
-        return count

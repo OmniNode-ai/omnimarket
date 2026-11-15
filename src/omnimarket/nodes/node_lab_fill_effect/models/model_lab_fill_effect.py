@@ -180,6 +180,8 @@ class ModelLabFillFallbackHostRequest(BaseModel):
     model_config = _FROZEN
 
     ranked_hosts: tuple[str, ...]
+    #: The hosts whose capacity advertisements carry a live drain mark (``draining-until:``): never offered.
+    draining_hosts: tuple[str, ...] = ()
 
 
 class ModelLabFillFallbackHostResult(BaseModel):

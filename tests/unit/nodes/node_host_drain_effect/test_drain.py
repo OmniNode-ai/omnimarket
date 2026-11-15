@@ -5,19 +5,22 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from pathlib import Path
 
 import pytest
 
 from omnimarket.handlers.emission_sink import InMemoryEmissionSink
+from omnimarket.nodes.node_host_drain_effect.adapters.bus_drain import (
+    AdvertisedLaneSource,
+)
 from omnimarket.nodes.node_host_drain_effect.adapters.fakes import (
     DroppingDrainStore,
     FixedHostRead,
     FixedLaneSource,
+    LoopbackBus,
+    make_bus_store,
 )
 from omnimarket.nodes.node_host_drain_effect.adapters.stores import (
     InMemoryDrainStore,
-    JsonlDrainStore,
 )
 from omnimarket.nodes.node_host_drain_effect.handlers.handler_host_drain import (
     HandlerHostDrain,
@@ -100,22 +103,29 @@ def test_drained_reads_true_once_the_last_lane_finishes(
     overlay: ModelHostDrainOverlay,
     lanes: FixedLaneSource,
     sink: InMemoryEmissionSink,
-    tmp_path: Path,
 ) -> None:
+    bus = LoopbackBus(
+        hosts=["example-host-a", "example-host-b"],
+        clock=lambda: NOW,
+        lanes={"example-host-a": 2, "example-host-b": 0},
+    )
+    store = make_bus_store(bus, clock=lambda: NOW)
     handler = HandlerHostDrain(
         overlay.drain,
-        store=JsonlDrainStore(tmp_path / "drain.jsonl", clock=lambda: NOW),
-        lanes=lanes,
+        store=store,
+        lanes=AdvertisedLaneSource(bus),
         sink=sink,
         clock=lambda: NOW,
-        backend="in_memory",
-        host_reads=[FixedHostRead(kind.value, kind, {}) for kind in EnumHostReadKind],
+        backend="real",
+        host_reads=[FixedHostRead("model_servers", EnumHostReadKind.MODEL_SERVERS, {})],
     )
-    drained = handler.handle(
+    handler.handle(
         ModelHostDrainRequest(op=EnumDrainOp.DRAIN, host_name="example-host-a")
     )
-    assert drained.drained is False
-    lanes.counts["example-host-a"] = 0
+    bus.lanes["example-host-a"] = 0
+    # Two advertisements per host in the window: the second one carries the updated lane count.
+    bus.advertise()
+    bus.advertise()
     status = handler.handle(
         ModelHostDrainRequest(op=EnumDrainOp.STATUS, host_name="example-host-a")
     )
@@ -178,16 +188,7 @@ def test_injected_break_a_store_that_drops_the_write_fails_the_drain_by_readback
     )
 
 
-def test_jsonl_store_keeps_the_drain_across_a_restart(tmp_path: object) -> None:
-    from pathlib import Path
-
-    path = Path(str(tmp_path)) / "drain.jsonl"
-    first = JsonlDrainStore(path)
-    first.set_draining("example-host-a", True, reason="rack move", at=NOW)
-    second = JsonlDrainStore(path)
-    assert second.is_draining("example-host-a") is True
-    second.set_draining("example-host-a", False, reason="back", at=NOW)
-    assert JsonlDrainStore(path).is_draining("example-host-a") is False
+# The JSON-lines file store is gone: drain state now rides the bus's capacity advertisements.
 
 
 @pytest.mark.parametrize("op", [EnumDrainOp.DRAIN, EnumDrainOp.UNDRAIN])

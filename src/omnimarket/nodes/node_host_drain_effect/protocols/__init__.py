@@ -5,8 +5,12 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
+from omnimarket.models.model_host_capacity_advertisement import (
+    ModelHostCapacityAdvertisement,
+)
+from omnimarket.models.model_host_drain_command import ModelHostDrainCommand
 from omnimarket.nodes.node_host_drain_effect.models.model_host_drain import (
     EnumHostReadKind,
     EnumRunnerActivity,
@@ -51,9 +55,41 @@ class ProtocolDrainStore(Protocol):
 
 
 class ProtocolLaneSource(Protocol):
-    """How many lanes run on a host now."""
+    """How many lanes and units run on a host now. ``running`` raises OSError or ValueError when the host cannot be read."""
 
     def running(self, host_name: str) -> int: ...
+
+
+@runtime_checkable
+class ProtocolLaneNames(Protocol):
+    """The names of the lanes a host runs, so a status line names what keeps the host busy."""
+
+    def names(self, host_name: str) -> tuple[str, ...]: ...
+
+
+@runtime_checkable
+class ProtocolHostHold(Protocol):
+    """Why a host's own guard holds it (heat, memory, swap, slots): empty when it is not held."""
+
+    def held_reason(self, host_name: str) -> str: ...
+
+
+class ProtocolAdvertisementSource(Protocol):
+    """The capacity advertisements every pool host publishes on the bus: the drain mark and the host's running units
+    and lanes are read from them and from nowhere else. ``advertisements`` answers one listening window, oldest first,
+    and raises OSError when the bus cannot be read."""
+
+    def advertisements(self) -> tuple[ModelHostCapacityAdvertisement, ...]: ...
+
+    def invalidate(self) -> None:
+        """Forget what was read: the next call listens again (a write just changed what the hosts advertise)."""
+        ...
+
+
+class ProtocolDrainCommandPublisher(Protocol):
+    """Sends a drain command to the bus, where the addressed host takes it."""
+
+    def publish(self, command: ModelHostDrainCommand) -> None: ...
 
 
 class ProtocolHostRead(Protocol):
@@ -86,8 +122,12 @@ class ProtocolRunnerStopper(Protocol):
 
 
 __all__ = [
+    "ProtocolAdvertisementSource",
+    "ProtocolDrainCommandPublisher",
     "ProtocolDrainStore",
+    "ProtocolHostHold",
     "ProtocolHostRead",
+    "ProtocolLaneNames",
     "ProtocolLaneSource",
     "ProtocolRunnerProbe",
     "ProtocolRunnerStopper",

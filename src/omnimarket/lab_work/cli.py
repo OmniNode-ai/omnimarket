@@ -176,6 +176,7 @@ def serve_command(
     )
     from omnimarket.nodes.node_lab_work_unit_effect.protocols import (
         LocalShellLabWorkExecutor,
+        load_lane_reader,
     )
 
     work = HandlerLabWorkUnitEffect(
@@ -204,6 +205,7 @@ def serve_command(
                 max_units=max_units,
                 rank_penalty=rank_penalty,
                 max_command_age_seconds=max_command_age,
+                lane_reader=load_lane_reader().read,
             )
             await host.start()
             try:

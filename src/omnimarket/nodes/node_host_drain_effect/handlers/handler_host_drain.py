@@ -5,9 +5,10 @@
 ``drain`` sets the host draining in the drain store and reads it back; the mark is time-bounded, so the host reads
 not draining again once its ttl is past (OMN-24489); ``check_start`` refuses a new lane for a draining host; running
 lanes are left to finish; ``undrain`` returns the host. Every result carries a status line that says whether the host
-is safe to power down, and SAFE is a reading of the host itself: the overlay's host reads (its lanes, its units, its
-model servers) and this machine's runner receipts all read 0, twice, on a mark that outlives the process. Anything
-unread, any count above 0, a mark that dies with the process or a host with no host read declared is NOT SAFE.
+is safe to power down, and SAFE is a reading of the host itself: the host's own capacity advertisements (its units and
+the lanes it names) and every host read the overlay declares (its model servers) all read 0, twice, on a mark the bus
+carries. Anything unread, any count above 0, a mark that dies with the process or a host with no host read declared is
+NOT SAFE. A host held by its own guard (heat, memory, swap) reads HELD, which is neither a failure nor SAFE.
 Every command is one chain under one correlation id: a start, then a success or a typed failure.
 """
 
@@ -32,7 +33,9 @@ from omnimarket.nodes.node_host_drain_effect.models.model_host_drain import (
 from omnimarket.nodes.node_host_drain_effect.overlay import ModelDrainSettings
 from omnimarket.nodes.node_host_drain_effect.protocols import (
     ProtocolDrainStore,
+    ProtocolHostHold,
     ProtocolHostRead,
+    ProtocolLaneNames,
     ProtocolLaneSource,
 )
 
@@ -196,8 +199,10 @@ class HandlerHostDrain:
         draining = mark is not None and mark.reads_draining(now)
         until = mark.until if draining and mark is not None else None
         reading = first.merged(self._read_host(host))
-        reasons = self._not_safe_reasons(draining, reading)
+        held = self._held_reason(host)
+        reasons = self._not_safe_reasons(draining, reading, held)
         safe = draining and not reasons
+        lane_names = self._lane_names(host)
         outcome = {
             EnumDrainOp.DRAIN: EnumDrainOutcome.DRAINING,
             EnumDrainOp.UNDRAIN: EnumDrainOutcome.CLEARED,
@@ -218,11 +223,22 @@ class HandlerHostDrain:
             lanes_running=reading.receipts,
             drained=safe,
             safe=safe,
+            lane_names=lane_names,
+            held_reason=held,
             host_reads=reading.reads,
             until=until,
-            status_line=self._status_line(host, draining, until, reading, reasons),
+            status_line=self._status_line(
+                host, draining, until, reading, reasons, lane_names, held
+            ),
             detail="; ".join(
-                part for part in (reading.receipts_detail, *reasons) if part
+                part
+                for part in (
+                    reading.receipts_detail,
+                    f"lanes: {', '.join(lane_names)}" if lane_names else "",
+                    f"held by its own guard: {held}" if held else "",
+                    *reasons,
+                )
+                if part
             ),
         )
 
@@ -246,7 +262,9 @@ class HandlerHostDrain:
             receipts=receipts, receipts_detail=receipts_detail, reads=tuple(reads)
         )
 
-    def _not_safe_reasons(self, draining: bool, reading: _Reading) -> tuple[str, ...]:
+    def _not_safe_reasons(
+        self, draining: bool, reading: _Reading, held: str = ""
+    ) -> tuple[str, ...]:
         """Why the host is not safe to power down; empty when it is. Everything unread or non-zero is a reason."""
         reasons: list[str] = []
         if not draining:
@@ -255,18 +273,42 @@ class HandlerHostDrain:
             reasons.append(
                 "the drain mark is held in memory only and is gone when this process ends"
             )
+        if held:
+            reasons.append(
+                f"the host is held by its own guard ({held}): its state is not trusted"
+            )
         if not self._host_reads:
             reasons.append("no host read is declared: the host itself was not read")
         if reading.receipts is None:
-            reasons.append("the runner receipts could not be read")
+            reasons.append(
+                f"the host's lanes and units could not be read ({reading.receipts_detail or 'unreadable'})"
+            )
         elif reading.receipts > 0:
-            reasons.append(f"{reading.receipts} lane receipt(s) not final")
+            reasons.append(f"{reading.receipts} lane(s) or unit(s) running on the host")
         for read in reading.reads:
             if read.count is None:
                 reasons.append(f"the host read {read.name} could not be read")
             elif read.count > 0:
                 reasons.append(f"the host read {read.name} counts {read.count}")
         return tuple(reasons)
+
+    def _lane_names(self, host: str) -> tuple[str, ...]:
+        """The lanes the host's advertisements name; empty when the source names none or cannot be read."""
+        if not isinstance(self._lanes, ProtocolLaneNames):
+            return ()
+        try:
+            return self._lanes.names(host)
+        except (OSError, ValueError, subprocess.SubprocessError):
+            return ()
+
+    def _held_reason(self, host: str) -> str:
+        """Why the host's own guard holds it; empty when it is not held or the hold cannot be read."""
+        if not isinstance(self._lanes, ProtocolHostHold):
+            return ""
+        try:
+            return self._lanes.held_reason(host)
+        except (OSError, ValueError, subprocess.SubprocessError):
+            return ""
 
     def _read_mark(self, host: str) -> tuple[bool, ModelDrainMark | None]:
         """Whether the store could be read, and the host's raw record (None: the host has none)."""
@@ -289,17 +331,23 @@ class HandlerHostDrain:
         until: datetime | None,
         reading: _Reading,
         reasons: tuple[str, ...],
+        lane_names: tuple[str, ...] = (),
+        held: str = "",
     ) -> str:
         """Whether the host is safe to power down, in one line. Anything unread is never safe."""
         counts = (
-            f"{_lanes_text(reading.receipts, self._settings.lane_count_scope)}; "
+            f"{_lanes_text(reading.receipts, self._settings.lane_count_scope)}"
+            f"{' [' + ', '.join(lane_names) + ']' if lane_names else ''}; "
             f"{_reads_text(reading.reads)}"
         )
         if not draining:
+            if held:
+                return f"{host} HELD by its own guard ({held}): {counts}: NOT SAFE to power down"
             return f"{host} not draining: {counts}"
         when = "no expiry" if until is None else _format_until(until)
         safety = "NOT SAFE" if reasons else "SAFE"
-        return f"{host} draining until {when}: {counts}: {safety} to power down"
+        hold = f" (also HELD by its own guard: {held})" if held else ""
+        return f"{host} draining until {when}{hold}: {counts}: {safety} to power down"
 
     def _check_start(
         self, chain: ChainEmitter, host: str, cid: str
@@ -340,7 +388,7 @@ class HandlerHostDrain:
         try:
             return self._lanes.running(host), ""
         except (OSError, ValueError, subprocess.SubprocessError) as exc:
-            return None, f"lane count unreadable: {type(exc).__name__}"
+            return None, f"lane count unreadable: {type(exc).__name__}: {exc}"
 
     @staticmethod
     def _failed(

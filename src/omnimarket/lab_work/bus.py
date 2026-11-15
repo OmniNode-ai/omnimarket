@@ -46,6 +46,10 @@ from omnimarket.delegated_test_loop.lab_run_bus import (
     ProtocolLabRunBus,
     event_type_for,
 )
+from omnimarket.models.model_host_drain_command import (
+    ModelHostDrainCommand,
+    load_host_drain_topic,
+)
 from omnimarket.models.model_lab_work_held_unit import ModelLabWorkHeldUnit
 from omnimarket.nodes.node_lab_placement_compute import handlers, models
 from omnimarket.nodes.node_lab_work_unit_effect.handlers import HostAdvertiser
@@ -189,6 +193,8 @@ class LabWorkHost:
         progress_seconds: float = DEFAULT_PROGRESS_SECONDS,
         check_seconds: float = _WATCH_SECONDS,
         clock: Callable[[], float] = time.monotonic,
+        drain_topic: str | None = None,
+        lane_reader: Callable[[], list[str] | None] | None = None,
     ) -> None:
         self._bus = bus
         self._work = work_handler
@@ -209,6 +215,12 @@ class LabWorkHost:
         self._beat_task: asyncio.Task[None] | None = None
         self._held: dict[int, ModelLabWorkHeldUnit] = {}
         self._unsubscribe: Callable[[], Awaitable[None]] | None = None
+        self._drain_unsubscribe: Callable[[], Awaitable[None]] | None = None
+        self._drain: ModelHostDrainCommand | None = None
+        self._drain_topic = (
+            drain_topic if drain_topic is not None else load_host_drain_topic()
+        )
+        self._lane_reader = lane_reader
         self.running = 0
         self.processed = 0
         self.advertised = 0
@@ -241,12 +253,26 @@ class LabWorkHost:
             host_group_id(self._host),
             "earliest",
         )
+        # The host's one group (OMN-21764: a group per call or per start left thousands Empty on the broker; the caller test
+        # pins this set). The group commits its offset, so a serve process that restarts does not replay the drain commands it
+        # already took: the mark of a host whose serve restarts is lost until the operator drains again (named follow-up).
+        drain_group = host_group_id(self._host)
+        self._drain_unsubscribe = await _subscribe(
+            self._bus,
+            self._drain_topic,
+            self._on_drain,
+            drain_group,
+            "earliest",
+        )
         logger.info("lab-work host %s serving %s", self._host, self._topics.command)
 
     async def stop(self) -> None:
         if self._unsubscribe is not None:
             await self._unsubscribe()
             self._unsubscribe = None
+        if self._drain_unsubscribe is not None:
+            await self._drain_unsubscribe()
+            self._drain_unsubscribe = None
         for task in self._tasks:
             task.cancel()
         for task in self._tasks:
@@ -260,6 +286,9 @@ class LabWorkHost:
     async def advertise_once(self) -> ModelHostCapacityAdvertisement | None:
         """Read and publish one advertisement; an unreadable reading publishes
         nothing and is logged."""
+        running_lanes: list[str] | None = None
+        if self._lane_reader is not None:
+            running_lanes = await asyncio.to_thread(self._lane_reader)
         request = ModelHostCapacityProbeRequest(
             host_name=self._host,
             cadence_seconds=self._topics.cadence_seconds,
@@ -267,6 +296,8 @@ class LabWorkHost:
             running_units=self.running,
             max_units=self._max_units,
             rank_penalty=self._rank_penalty,
+            draining_until=self.draining_until(),
+            running_lanes=running_lanes,
         )
         try:
             ad = await asyncio.to_thread(self._advertise.handle, request)
@@ -336,6 +367,32 @@ class LabWorkHost:
         if self.advertiser.silent() and not self.stuck.is_set():
             self.stuck_unit = "<capacity advertiser>"
             self.stuck.set()  # serve leaves non-zero on it; the log line names the silence
+
+    async def _on_drain(self, message: ProtocolBusMessage) -> None:
+        try:
+            raw = json.loads(message.value)
+        except (json.JSONDecodeError, TypeError):
+            logger.warning(
+                "lab-work drain: unreadable command on %s", self._drain_topic
+            )
+            return
+        payload = raw.get("payload", raw) if isinstance(raw, dict) else raw
+        try:
+            command = ModelHostDrainCommand.model_validate(payload)
+        except ValidationError:
+            logger.warning("lab-work drain: invalid command on %s", self._drain_topic)
+            return
+        if command.host_name != self._host:
+            return
+        if self._drain is None or command.issued_at > self._drain.issued_at:
+            self._drain = command
+
+    def draining_until(self) -> datetime | None:
+        if self._drain is None:
+            return None
+        if self._drain.reads_draining(self._now()):
+            return self._drain.until
+        return None
 
     async def _enqueue(self, message: ProtocolBusMessage) -> None:
         self._queue.put_nowait(message)

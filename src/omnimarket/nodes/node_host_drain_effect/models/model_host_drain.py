@@ -33,10 +33,8 @@ class EnumDrainOutcome(StrEnum):
 
 
 class EnumHostReadKind(StrEnum):
-    """What a host's own reading covers: its running lanes, its units and its model servers."""
+    """What a host read the overlay declares covers. The host's lanes and units are on its advertisement, not here."""
 
-    LANES = "lanes"
-    UNITS = "units"
     MODEL_SERVERS = "model_servers"
 
 
@@ -103,8 +101,13 @@ class ModelHostDrainResult(_Frozen):
     #: None when the count could not be read: an unknown count is never a measured zero.
     lanes_running: int | None = Field(default=0, ge=0)
     drained: bool = False
-    #: True only when the host itself was read and showed nothing running: every host read (lanes, units, model
-    #: servers) and the runner's receipts read 0 twice, on a durable drain mark. Anything unread is False.
+    #: The lanes the host's advertisements name as running, so a status names what keeps the host busy.
+    lane_names: tuple[str, ...] = ()
+    #: Why the host's own guard holds it (heat, memory, swap, slots); empty when it is not held. A held host is HELD, never
+    #: a failure and never SAFE for that reason.
+    held_reason: str = ""
+    #: True only when the host itself was read and showed nothing running: its advertisements (units and lanes) and every
+    #: declared host read read 0, twice, on a drain mark the bus carries. Anything unread is False.
     safe: bool = False
     #: The host reads of this status, in the overlay's order; empty when none is declared.
     host_reads: tuple[ModelHostReadResult, ...] = ()

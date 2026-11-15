@@ -284,6 +284,33 @@ class RemoteLaneStartOrchestrator:
             self._drain_read_error = str(exc)
             return None
 
+    def _recheck_draining(
+        self, request: ModelRemoteLaneStartRequest
+    ) -> tuple[str, ...] | None:
+        """The drain state just before the engine starts: the caller's reader, else a fresh pool read.
+
+        The pool snapshot is built from the hosts' capacity advertisements, which carry each host's drain mark, so a fresh
+        read shows a host that started draining after the placement. ``None`` when the pool cannot be read.
+        """
+        if self._draining_hosts is not None:
+            return self._read_draining()
+        try:
+            snapshot = self._pool.read_pool(
+                ModelLaneHostPoolRequest(
+                    engine=f"{request.engine}_{request.model}",
+                    pinned_host=request.pinned_host,
+                    lane=request.lane,
+                )
+            )
+        except (LaneHostPoolUnreadableError, OSError, ValueError) as exc:
+            self._drain_read_error = str(exc)
+            return None
+        return tuple(
+            r.name
+            for r in snapshot.readings
+            if (r.lane_admission_refusal or "").startswith("draining")
+        )
+
     def _stamp(self) -> str:
         return self._clock().astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -780,7 +807,7 @@ class RemoteLaneStartOrchestrator:
         # CLAIM row was written and the engine steps ran, so the state is re-read before the engine
         # starts, and the start ends as a provisioning failure does when the placed host is draining
         # or the state cannot be read (OMN-24489).
-        draining = self._read_draining()
+        draining = self._recheck_draining(request)
         if draining is None or host_ref.name in draining:
             outcome_word = (
                 "drain-state-unreadable" if draining is None else "host-draining"

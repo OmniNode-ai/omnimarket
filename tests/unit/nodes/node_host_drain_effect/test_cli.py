@@ -1,61 +1,42 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The command line of node_host_drain_effect on the jsonl profile: the drain survives between two commands (OMN-22905)."""
+"""The command line of node_host_drain_effect (OMN-22905). The drain across two commands is proved on the bus in test_seam_verb_to_host_advertisement."""
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
-import pytest
-
 from omnimarket.nodes.node_host_drain_effect import runtime_host_drain as cli
+from omnimarket.nodes.node_host_drain_effect.adapters.fakes import FixedLaneSource
 from omnimarket.nodes.node_host_drain_effect.overlay import ModelHostDrainOverlay
 
 
-def _jsonl(
+def _in_memory(
     overlay: ModelHostDrainOverlay, home: Path
-) -> tuple[ModelHostDrainOverlay, dict[str, str]]:
-    # Lane counts and host reads come from commands the test points at /bin/echo-like python; only the
-    # profile changes here.
+) -> tuple[ModelHostDrainOverlay, dict[str, str], FixedLaneSource]:
+    # Lane counts come from a fixed advertisement; only the profile changes here.
     document = overlay.model_dump(mode="json")
-    document["profile"] = "jsonl"
-    document["lanes"]["count_command"] = ["python3", "-c", "print(0)", "{host}"]
+    document["profile"] = "in_memory"
     for read in document["host_reads"]:
         read["command"] = ["python3", "-c", "print(0)", "{host}", read["kind"]]
     return (
         ModelHostDrainOverlay.model_validate(document),
         {overlay.emission.home_env: str(home)},
+        FixedLaneSource({"example-host-a": 2, "example-host-b": 0}),
     )
-
-
-def test_cli_drain_then_check_start_refuses_across_two_commands(
-    overlay: ModelHostDrainOverlay, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    loaded, environ = _jsonl(overlay, tmp_path)
-    assert (
-        cli.run(["drain", "--host", "example-host-a"], overlay=loaded, environ=environ)
-        == 0
-    )
-    drained = json.loads(capsys.readouterr().out)
-    assert drained["draining"] is True
-    assert drained["drained"] is True
-    assert (
-        cli.run(
-            ["check-start", "--host", "example-host-a"], overlay=loaded, environ=environ
-        )
-        == 1
-    )
-    refused = json.loads(capsys.readouterr().out)
-    assert refused["outcome"] == "start_refused"
-    assert cli.run(["draining"], overlay=loaded, environ=environ) == 0
-    assert capsys.readouterr().out.split() == ["example-host-a"]
-    journal = (tmp_path / loaded.emission.journal_relpath).read_text(encoding="utf-8")
-    assert '"phase":"failure"' in journal.replace(" ", "")
 
 
 def test_cli_without_the_emission_home_is_indeterminate(
     overlay: ModelHostDrainOverlay,
 ) -> None:
-    loaded, _ = _jsonl(overlay, Path("/unused"))
+    # The bus profile writes its chain journal under the emission home: a missing home is a missing deployment fact, not a bus read.
+    document = overlay.model_dump(mode="json")
+    document["profile"] = "bus"
+    document["bus"] = {
+        "kind": "inmemory",
+        "window_seconds": 1,
+        "cache_seconds": 0,
+        "timeout_seconds": 5,
+    }
+    loaded = ModelHostDrainOverlay.model_validate(document)
     assert cli.run(["draining"], overlay=loaded, environ={}) == 3

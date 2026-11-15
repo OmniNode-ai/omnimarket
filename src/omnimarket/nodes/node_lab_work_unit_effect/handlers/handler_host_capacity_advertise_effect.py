@@ -58,6 +58,7 @@ from omnimarket.nodes.node_lab_work_unit_effect.protocols.local_host_reader impo
     HostReading,
     LocalHostReader,
     ProtocolHostReader,
+    tools_for_drain_and_lanes,
 )
 
 
@@ -100,6 +101,9 @@ class HandlerHostCapacityAdvertiseEffect:
         tools = set(reading.tools)
         if self._watermark(request.host_name) == "page":
             tools.add(DISK_WATERMARK_PAGE_TOOL)
+        tools.update(
+            tools_for_drain_and_lanes(request.draining_until, request.running_lanes)
+        )
         max_units, record, refusal = self._slot_cap(request, reading)
         return ModelHostCapacityAdvertisement(
             host_name=request.host_name,

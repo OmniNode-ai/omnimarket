@@ -4,8 +4,8 @@
 
 Found at ``<root>/node_host_drain_effect/overlay.yaml`` under a root named in ``ONEX_SKILL_OVERLAY_ROOTS``. The package
 ships ``overlay.example.yaml`` with synthetic values. Nothing here has a default: an absent key refuses the load and
-names it. ``profile`` picks the backend: ``in_memory`` (the default a test and a first run use), ``jsonl`` (a durable
-file on one host).
+names it. ``profile`` picks the backend: ``in_memory`` (the default a test and a first run use), ``bus`` (the drain mark
+and the host's running lanes and units ride the capacity advertisements on the bus: no file, no machine-local state).
 """
 
 from __future__ import annotations
@@ -130,33 +130,40 @@ class ModelRunnerStopSettings(_Frozen):
         return self
 
 
-class ModelLaneCountSettings(_Frozen):
-    """How the drain counts a host's running lanes: the runner's receipts or one argv.
+class ModelDrainBusSettings(_Frozen):
+    """How the verb reaches the bus the hosts advertise on (the profile ``bus``)."""
 
-    ``receipts_dir`` names the remote-lane runner's receipt directory (``<dir>/<lane>/<receipt>.json``);
-    ``count_command`` is an argv that prints the count for ``{host}`` as one integer. Exactly one of the two is
-    declared.
-    """
-
-    #: argv that prints the count of lanes running on {host} as one integer. No shell.
-    count_command: tuple[str, ...] | None = None
-    #: The remote-lane runner's receipt directory; the runtime expands "~". Set this or count_command.
-    receipts_dir: str | None = None
-    #: How long the count command may run; the receipts read needs no timeout.
-    timeout_seconds: int = Field(ge=1)
+    #: kafka: the lane's broker; inmemory: a bus inside this process (a drill).
+    kind: Literal["kafka", "inmemory"]
+    #: The bus lane (the lab's dev lane, a CI lane); named for kafka, absent for inmemory.
+    lane: str | None = None
+    #: The broker stated directly instead of a lane; absent when the lane names it.
+    kafka_bootstrap: str | None = None
+    #: How long one listening window lasts, in seconds: it must span two advertisement cadences, because SAFE reads each host
+    #: twice.
+    window_seconds: float = Field(gt=0)
+    #: How long a window read stays valid for the next read of the same command, in seconds.
+    cache_seconds: float = Field(ge=0)
+    #: How long a bus call may take before the verb reads the bus as unreachable, in seconds.
+    timeout_seconds: float = Field(gt=0)
 
     @model_validator(mode="after")
-    def _exactly_one_lane_source(self) -> ModelLaneCountSettings:
-        if (self.count_command is None) == (self.receipts_dir is None):
-            raise ValueError(
-                "exactly one of count_command and receipts_dir is required"
-            )
+    def _kafka_names_a_broker(self) -> ModelDrainBusSettings:
+        if self.kind == "kafka" and (self.lane is None) == (
+            self.kafka_bootstrap is None
+        ):
+            raise ValueError("kafka names exactly one of lane and kafka_bootstrap")
+        if self.kind == "inmemory" and (
+            self.lane is not None or self.kafka_bootstrap is not None
+        ):
+            raise ValueError("the in-memory bus names no lane and no broker")
         return self
 
 
 class ModelHostReadSettings(_Frozen):
-    """SAFE to power down is a reading of the host itself, so the overlay must declare a host read for its lanes,
-    its units and its model servers.
+    """What the host's advertisement does not say is read by an argv the overlay declares: its busy model servers.
+
+    The host's lanes and units are not read here: the host advertises them (see the bus profile).
 
     ``command`` is an argv that prints the count of ``kind`` busy on ``{host}`` as one integer. No shell.
     """
@@ -181,16 +188,23 @@ class ModelEmissionSettings(_Frozen):
 
 
 class ModelHostDrainOverlay(_Frozen):
-    profile: Literal["in_memory", "jsonl"]
-    #: The jsonl profile's state file, relative to the emission home.
-    jsonl_state_relpath: str = Field(min_length=1)
+    profile: Literal["in_memory", "bus"]
+    #: The bus profile's connection; required for it, absent for in_memory.
+    bus: ModelDrainBusSettings | None = None
     drain: ModelDrainSettings
     #: Absent: this deployment declares no runner stop; the drain verb alone is deployed and ``runner-stop`` is refused.
     runner_stop: ModelRunnerStopSettings | None = None
-    lanes: ModelLaneCountSettings
-    #: The reads of the host itself; every kind exactly once, names unique: a SAFE reading is a reading of the host.
+    #: The reads of the host itself beyond its advertisement; every kind exactly once, names unique.
     host_reads: tuple[ModelHostReadSettings, ...] = Field(min_length=1)
     emission: ModelEmissionSettings
+
+    @model_validator(mode="after")
+    def _bus_profile_names_its_bus(self) -> ModelHostDrainOverlay:
+        if self.profile == "bus" and self.bus is None:
+            raise ValueError("the bus profile declares no bus block")
+        if self.profile == "in_memory" and self.bus is not None:
+            raise ValueError("the in_memory profile declares a bus block")
+        return self
 
     @model_validator(mode="after")
     def _runner_hosts_are_drainable(self) -> ModelHostDrainOverlay:
