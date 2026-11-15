@@ -303,3 +303,33 @@ def test_main_run_for_an_undeclared_host_is_indeterminate(
     _runs, overlay = write_overlay(tmp_path)
     assert node_main.main(["run", "--host", "pool-z", "--overlay", str(overlay)]) == 3
     assert "not in the node_temp_retention_effect overlay" in capsys.readouterr().err
+
+
+def h053_tmp_problems(overlay: ModelTempRetentionOverlay) -> list[str]:
+    """One line per way the h053 row fails to age out the root disk's /tmp like h051's row does."""
+    host = next((h for h in overlay.hosts if h.name == "h053"), None)
+    if host is None:
+        return ["no h053 row"]
+    roots = {r.path: list(r.protected_name_patterns) for r in host.temp_roots}
+    if "/tmp" not in roots:
+        return ["h053 temp_roots has no /tmp"]
+    if roots["/tmp"] != ["claude-[0-9]+"]:
+        return [
+            f"h053 /tmp protects {roots['/tmp']}, expected the lane working directory pattern"
+        ]
+    return []
+
+
+def test_h053_ages_out_its_root_disk_tmp() -> None:
+    overlay = load_overlay(str(NODE_DIR / "overlay.yaml"))
+    assert h053_tmp_problems(overlay) == []
+
+
+def test_h053_row_without_tmp_is_reported() -> None:
+    document = yaml.safe_load((NODE_DIR / "overlay.yaml").read_text())
+    for host in document["hosts"]:
+        if host["name"] == "h053":
+            host["temp_roots"] = [r for r in host["temp_roots"] if r["path"] != "/tmp"]
+    assert h053_tmp_problems(ModelTempRetentionOverlay.model_validate(document)) == [
+        "h053 temp_roots has no /tmp"
+    ]

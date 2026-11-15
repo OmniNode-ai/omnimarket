@@ -215,48 +215,52 @@ def test_handler_does_no_io() -> None:
 
 @pytest.mark.unit
 def test_facts_equal_the_live_controllers_on_the_same_rows() -> None:
-    assert _facts() == {
-        "rows_read": 18,
-        "fixer_hold": ["omnibase_core", "omnimarket"],
-        "fixer_hold_released_prs": [],
-        "cause_owners": [
-            {
-                "lane": "cause-a",
-                "repo": "OmniNode-ai/omnimarket",
-                "check": None,
-                "cause": KEY,
+    assert (
+        _facts()
+        == {
+            "rows_read": 18,
+            "fixer_hold": ["omnibase_core", "omnimarket"],
+            "fixer_hold_released_prs": [],
+            "cause_owners": [
+                {
+                    "lane": "cause-a",
+                    "repo": "OmniNode-ai/omnimarket",
+                    "check": None,
+                    "cause": KEY,
+                },
+                {
+                    "lane": "cause-b",
+                    "repo": "OmniNode-ai/omnibase_infra",
+                    "check": "CI Summary",
+                    "cause": None,
+                },
+                {
+                    "lane": "cause-c",
+                    "repo": "OmniNode-ai/omnimarket",
+                    "check": "Coverage Gate",
+                    "cause": None,
+                },
+                {
+                    "lane": "cause-old",
+                    "repo": "OmniNode-ai/omnimarket",
+                    "check": "Old Check",
+                    "cause": None,
+                },
+            ],
+            "cause_owners_skipped": [],
+            "cause_releases": [{"cause": KEY, "at": "2026-10-09T09:43:00Z"}],
+            "cause_fixes": [
+                {"pr": "omnibase_infra#4700", "lane": "cause-a", "cause": KEY},
+                {"pr": "omnimarket#3600", "lane": "cause-a", "cause": KEY},
+            ],
+            "lab_passes": {
+                "omnibase_infra#4700": ["fedcba9876543210"],
+                "omnimarket#3600": ["0123456789ab"],
             },
-            {
-                "lane": "cause-b",
-                "repo": "OmniNode-ai/omnibase_infra",
-                "check": "CI Summary",
-                "cause": None,
-            },
-            {
-                "lane": "cause-c",
-                "repo": "OmniNode-ai/omnimarket",
-                "check": "Coverage Gate",
-                "cause": None,
-            },
-            {
-                "lane": "cause-old",
-                "repo": "OmniNode-ai/omnimarket",
-                "check": "Old Check",
-                "cause": None,
-            },
-        ],
-        "cause_owners_skipped": [],
-        "cause_releases": [{"cause": KEY, "at": "2026-10-09T09:43:00Z"}],
-        "cause_fixes": [
-            {"pr": "omnibase_infra#4700", "lane": "cause-a", "cause": KEY},
-            {"pr": "omnimarket#3600", "lane": "cause-a", "cause": KEY},
-        ],
-        "lab_passes": {
-            "omnibase_infra#4700": ["fedcba9876543210"],
-            "omnimarket#3600": ["0123456789ab"],
-        },
-        "drain_lane": "repo-drains-84a",
-    }
+            "review": {},  # the rows hold no new-work mark and no verdict: no PR has an entry
+            "drain_lane": "repo-drains-84a",
+        }
+    )
 
 
 QUOTED_CLAIM = (
