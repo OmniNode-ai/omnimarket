@@ -36,7 +36,6 @@ PARITY_DEBT: tuple[str, ...] = (
     "node_consumer_flow_stall_alert_effect",
     "node_content_ingestion_effect",
     "node_context_artifact_resolver_compute",
-    "node_context_experiment_compute",
     "node_context_pack_builder_compute",
     "node_context_roi_compute",
     "node_contract_reducer",

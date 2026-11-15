@@ -4,9 +4,11 @@
 
 A standing ruling the register judged FALSE or UNREAD prints one MISSING `ruling-not-running:<row>`
 line through the tick's report and lands in `missing`; a TRUE row prints nothing; the absent field
-leaves the check out of `checked`. The seam test runs the real compute handler and holds the tick's
-lines to `result.lines()` of its result, so the compute line shape and the tick line shape cannot
-drift apart.
+leaves the check out of `checked`. A register the facts read could not read is the reason on
+`ruling_register_unread`: one MISSING `ruling-not-running:register` line, never a silent skip. The
+seam tests run the real compute handler (and, end to end, the real facts handler) and hold the
+tick's lines to `result.lines()` of its result, so the compute line shape and the tick line shape
+cannot drift apart.
 """
 
 from __future__ import annotations
@@ -37,6 +39,15 @@ from omnimarket.nodes.node_throughput_tick_decision_compute.models.model_through
     ModelThroughputTickRequest,
     ModelThroughputTickResult,
 )
+from omnimarket.nodes.node_throughput_tick_facts_effect.handlers.handler_throughput_tick_facts import (
+    HandlerThroughputTickFacts,
+)
+from omnimarket.nodes.node_throughput_tick_facts_effect.handlers.tick_facts_ports import (
+    ScriptedTickFactsSource,
+)
+from omnimarket.nodes.node_throughput_tick_facts_effect.models.model_throughput_tick_facts import (
+    ModelThroughputTickFactsRequest,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -60,7 +71,13 @@ def row(
         row_id=row_id,
         ruling=ruling,
         must_be_true=f"the {row_id} ruling holds on host-a",
-        read=ModelRulingRead(host="host-a", argv=("echo", row_id), expect=expect),
+        read=ModelRulingRead(
+            host="host-a",
+            argv=("echo", row_id),
+            # exit_zero names the nonzero code that reads FALSE.
+            ok_exit_codes=(0, 1) if expect.kind is EnumRulingExpect.EXIT_ZERO else (0,),
+            expect=expect,
+        ),
         owner=owner,
         fix=fix,
     )
@@ -215,3 +232,95 @@ def test_ruling_failing_control_an_unread_row_is_never_silent() -> None:
     assert lines[0].startswith(f"MISSING {LOOP_PREFIX}:{only.row_id} | "), lines[0]
     assert ruling_missing(result) == [f"{LOOP_PREFIX}:{only.row_id}"]
     assert result.exit_code == 1
+
+
+def test_ruling_register_unread_prints_one_flattened_register_line() -> None:
+    result = run(
+        ruling_register_unread=(
+            "NodeOverlayError: no node_ruling_register_compute overlay\n"
+            "under ONEX_SKILL_OVERLAY_ROOTS=unset"
+        )
+    )
+    (line,) = ruling_lines(result)
+    assert line == (
+        f"MISSING {LOOP_PREFIX}:register | the standing-rulings register could not be "
+        "read: NodeOverlayError: no node_ruling_register_compute overlay under "
+        "ONEX_SKILL_OVERLAY_ROOTS=unset | FIX: supply the node_ruling_register_compute "
+        "overlay on this host's overlay roots"
+    )
+    assert ruling_missing(result) == [f"{LOOP_PREFIX}:register"]
+    assert result.checked.count("ruling-register") == 1
+    assert result.exit_code == 1
+
+
+def test_ruling_register_a_result_beats_the_unread_reason() -> None:
+    alpha, beta, gamma = rows()
+    result = run(
+        ruling_register=register(
+            (alpha, beta, gamma),
+            (reading(alpha.row_id), reading(beta.row_id, stdout="5")),
+        ),
+        ruling_register_unread="a stale reason from an earlier read",
+    )
+    assert result.checked.count("ruling-register") == 1
+    assert ruling_missing(result) == [
+        f"{LOOP_PREFIX}:{beta.row_id}",
+        f"{LOOP_PREFIX}:{gamma.row_id}",
+    ]
+
+
+# ---- the facts effect -> tick decision seam (OMN-24478) -------------------------------------------
+
+
+class _StaticRegisterSource:
+    """The facts handler's register port, answered from one fixed result."""
+
+    def __init__(self, result: ModelRulingRegisterResult) -> None:
+        self._result = result
+
+    def read(self, overlay_roots: str) -> ModelRulingRegisterResult:
+        return self._result
+
+
+def tick_facts(judged: ModelRulingRegisterResult) -> dict[str, Any]:
+    """The facts the facts effect reads, dumped the way the runtime builds the tick
+    request: ``model_dump(exclude_unset=True)`` of its facts model."""
+    return (
+        HandlerThroughputTickFacts(
+            ScriptedTickFactsSource(), ruling_register=_StaticRegisterSource(judged)
+        )
+        .handle(
+            ModelThroughputTickFactsRequest(
+                now=NOW, landing_state_dir="/l", state_dir="/s", open_basis="b"
+            )
+        )
+        .facts.model_dump(exclude_unset=True)
+    )
+
+
+def judged_with_one_false_and_one_unread_row() -> ModelRulingRegisterResult:
+    alpha, beta, gamma = rows()
+    return register(
+        (alpha, beta, gamma), (reading(alpha.row_id), reading(beta.row_id, stdout="5"))
+    )
+
+
+def test_seam_the_facts_effects_register_prints_the_rows_missing_lines() -> None:
+    judged = judged_with_one_false_and_one_unread_row()
+    result = run(**tick_facts(judged))
+    assert ruling_lines(result) == list(judged.lines())
+    assert ruling_missing(result) == [
+        f"{LOOP_PREFIX}:row-beta",
+        f"{LOOP_PREFIX}:row-gamma",
+    ]
+    assert "ruling-register" in result.checked
+
+
+def test_seam_failing_control_no_register_fact_prints_nothing() -> None:
+    """The failing control: with the register fact removed (the state before OMN-24478),
+    the same facts print no ruling line and the check stays out of `checked`."""
+    facts = tick_facts(judged_with_one_false_and_one_unread_row())
+    facts.pop("ruling_register")
+    result = run(**facts)
+    assert ruling_lines(result) == []
+    assert "ruling-register" not in result.checked

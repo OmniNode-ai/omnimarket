@@ -3424,7 +3424,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_context_compaction_receipts_fold_compute/test_handler_context_compaction_receipts_fold.py -q --no-cov -k 'dominates or mismatch or conflict or model_outputs'"
+        check_value: "uv run pytest tests/ci/test_retired_context_nodes_omn24517.py -q --no-cov -n 0"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC130"]
   - id: "dod-omn-17427-contract-only-retirement-batch-4"
@@ -3776,7 +3776,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_context_compaction_receipts_fold_compute/test_handler_context_compaction_receipts_fold.py -q --no-cov -k 'permutations or later_boundary'"
+        check_value: "uv run pytest tests/ci/test_retired_context_nodes_omn24517.py -q --no-cov -n 0"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC131"]
   - id: "dod-omn17427-compaction-receipts-fold-deploy-probe"
@@ -3784,7 +3784,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "command"
-        check_value: "uv run pytest tests/nodes/node_context_compaction_receipts_fold_compute/test_handler_context_compaction_receipts_fold.py -q --no-cov -k contract_metadata_and_entry_point"
+        check_value: "uv run pytest tests/ci/test_retired_context_nodes_omn24517.py -q --no-cov -n 0"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn17427-ac93-onex-models-lists-the-catalogue"
     description: "onex models offers every catalogue provider with a routable plan, lists GLM on a fresh profile, and adds and tests a GLM key through the catalogue's default plan row, with plan detection and the pinned delegation faked. The test file is absent at the merge base, and with it laid over the merge base six of its ten tests fail."
