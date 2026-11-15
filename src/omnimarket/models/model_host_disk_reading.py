@@ -13,7 +13,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 NonEmptyStr = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 DiskClassName = Literal[
@@ -80,6 +80,22 @@ class ModelHostDiskVolume(_Frozen):
     total_bytes: int = Field(ge=0)
     free_bytes: int = Field(ge=0)
     used_bytes: int = Field(ge=0)
+    #: File slots (inodes) on the volume. None where the filesystem reports no
+    #: file-node count (f_files 0); otherwise both are set, never one alone.
+    total_inodes: int | None = Field(default=None, ge=1)
+    used_inodes: int | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def _inodes_pair(self) -> ModelHostDiskVolume:
+        if (self.total_inodes is None) != (self.used_inodes is None):
+            raise ValueError("total_inodes and used_inodes must be set together")
+        if (
+            self.total_inodes is not None
+            and self.used_inodes is not None
+            and self.used_inodes > self.total_inodes
+        ):
+            raise ValueError("used_inodes exceeds total_inodes")
+        return self
 
 
 class ModelHostDiskRead(_Frozen):

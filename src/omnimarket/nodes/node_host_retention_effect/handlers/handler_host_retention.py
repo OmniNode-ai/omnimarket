@@ -401,6 +401,7 @@ def _uv_cache(
     dry_run: bool,
     buckets: dict[str, ModelUvBucketBound],
     refs: ProcessReferences | None,
+    read_refs: Callable[[], ProcessReferences | None],
     ports: HostRetentionPorts,
     out: _Pass,
 ) -> None:
@@ -438,6 +439,7 @@ def _uv_cache(
             dry_run=True,
             buckets=buckets,
             refs=refs,
+            read_refs=read_refs,
             ports=ports,
             out=out,
         )
@@ -462,6 +464,7 @@ def _uv_cache(
         dry_run=False,
         buckets=buckets,
         refs=refs,
+        read_refs=read_refs,
         ports=ports,
         out=out,
     )
@@ -538,7 +541,8 @@ class HandlerHostRetention:
         unreadable = 0
         age_classes = [age for age in row.age_classes if runs(age.kind)]
         # The uv cache cap pass guards its evictions with the same process references the age
-        # classes read, so it is read once for both (and not at all when neither needs it).
+        # classes read, so it is read once for both (and not at all when neither needs it); the
+        # cap pass reads it again through the same callable right before each removal.
         wants_uv_cap = runs("uv_cache") and any(
             cache.cap is not None for cache in row.uv_caches
         )
@@ -598,6 +602,7 @@ class HandlerHostRetention:
                     dry_run=request.dry_run,
                     buckets=bounds.uv_evictable_buckets,
                     refs=refs,
+                    read_refs=self.references,
                     ports=ports,
                     out=out,
                 )

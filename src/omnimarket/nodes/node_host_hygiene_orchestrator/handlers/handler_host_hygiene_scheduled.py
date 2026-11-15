@@ -157,6 +157,7 @@ class HandlerHostHygieneScheduled:
                     ModelHostHygieneCleanupPolicy(
                         cleanup_id=c.cleanup_id,
                         min_used_fraction=c.min_used_fraction,
+                        min_used_inode_fraction=c.min_used_inode_fraction,
                         min_interval_seconds=c.min_interval_seconds,
                         when_unread=c.when_unread,
                     )

@@ -48,6 +48,13 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_host_retention_effect/test_host_retention_uv_cap.py -q --no-cov -n 0 -p no:randomly -k "three_buckets"
     cwd: .
+- id: dod-omn24613-fix-round-marker-refs-inodes
+  description: The fix round after the review of this change. The marker file of a git checkout goes with the checkout and before it; the process references are read again before each removal; the contract timeout agrees with the one hour pass; the host hygiene schedule starts a cleanup on used file slots as well as used bytes. The tests fail on the revision before the fix round.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_retention_effect tests/unit/nodes/node_host_hygiene_decision_compute tests/unit/nodes/node_host_hygiene_orchestrator tests/chains/host_hygiene tests/nodes/node_lab_disk_watermark_effect -q --no-cov -n 0 -p no:randomly
+    cwd: .
 - id: dod-omn24613-ac3-h053-journal
   description: The unit on h053 logged a uv_cache pass naming git-v1/checkouts in the last two hours.
   source: manual

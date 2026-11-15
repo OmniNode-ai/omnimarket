@@ -69,3 +69,31 @@ def test_trap_the_pure_fold_alone_writes_no_rows() -> None:
     db = StandInDatabase()
     HandlerProjectionHostDisk().handle(reading())
     assert db.classes == {}
+
+
+def test_seam_a_reading_whose_volume_carries_inode_counts_applies_like_one_without() -> (
+    None
+):
+    """The watermark node's volume now carries file-slot counts (OMN-24613); the projection folds the same rows from either shape.
+
+    The seam is the reading model shared by the producer (a lab host at its pinned commit) and this consumer (the dev runtime): a
+    payload without the inode keys, as an older producer sends it, parses, and one with them applies the same rows. Failing
+    control: ``test_error_chain_a_reading_with_an_unknown_field_is_malformed`` shows what a consumer older than the producer does,
+    which is why the runtime is rebuilt before a host moves to a commit that sends the counts.
+    """
+    data = json.loads(reading(correlation_id="inodes-1").model_dump_json())
+    old_shape = json.loads(json.dumps(data))
+    for volume in old_shape["volumes"]:
+        volume.pop("total_inodes")
+        volume.pop("used_inodes")
+    for volume in data["volumes"]:
+        volume["total_inodes"] = 36421632
+        volume["used_inodes"] = 32725171
+    writer = HostDiskProjectionWriter()
+    old_applied = writer.applied(_apply(writer, StandInDatabase(), old_shape))
+    new_applied = writer.applied(_apply(writer, StandInDatabase(), data))
+    assert (old_applied.rows_upserted, old_applied.rows_refused) == (
+        new_applied.rows_upserted,
+        new_applied.rows_refused,
+    )
+    assert new_applied.rows_upserted == len(ALL_CLASSES) + 1

@@ -208,10 +208,16 @@ class ModelUvBucketBound(_Frozen):
     ``depth`` is how many levels under the folder a whole entry sits. ``keep_linked`` keeps an entry in which any file has
     more than one hard link: in ``archive-v0`` that is a virtual environment sharing the unpacked wheel, but a git checkout is
     hard-linked to uv's own git database (never to a virtual environment), so there the link says nothing and is not a guard.
+    ``marker_suffix`` is the suffix of the zero-byte marker file uv writes beside each entry of the bucket (uv 0.13 writes a
+    ``<revision>.ok`` beside every git checkout): a marker belongs to its checkout, so the scan skips one whose checkout
+    folder is present and a removal unlinks the marker before the folder.
     """
 
     depth: int = Field(ge=1, le=3)
     keep_linked: bool
+    marker_suffix: str | None = Field(
+        default=None, min_length=1, pattern=r"^[A-Za-z0-9._-]+$"
+    )
 
 
 class ModelRetentionBounds(_Frozen):

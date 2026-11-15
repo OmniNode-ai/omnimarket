@@ -10,6 +10,7 @@ the contract's topics. The overlay is the node's in-memory profile, found throug
 from __future__ import annotations
 
 import asyncio
+import copy
 import datetime as dt
 import json
 import uuid
@@ -80,7 +81,9 @@ def _wire(event: object, event_type: str) -> bytes:
     return json.dumps(envelope.model_dump(mode="json")).encode("utf-8")
 
 
-def _read(used: int) -> bytes:
+def _read(
+    used: int, total_inodes: int | None = None, used_inodes: int | None = None
+) -> bytes:
     return _wire(
         ModelHostDiskRead(
             correlation_id="c1",
@@ -88,7 +91,12 @@ def _read(used: int) -> bytes:
             read_at=NOW - dt.timedelta(seconds=30),
             volumes=(
                 ModelHostDiskVolume(
-                    path=VOLUME, total_bytes=100, free_bytes=100 - used, used_bytes=used
+                    path=VOLUME,
+                    total_bytes=100,
+                    free_bytes=100 - used,
+                    used_bytes=used,
+                    total_inodes=total_inodes,
+                    used_inodes=used_inodes,
                 ),
             ),
             classes=(
@@ -218,3 +226,59 @@ async def test_error_chain_a_failing_cleanup_fails_the_run_and_the_schedule_even
     assert run["outcome"] == "failed"
     assert {u["outcome"] for u in run["units"]} == {"failed"}
     assert [e["outcome"] for e in seen[SCHEDULE_TOPIC]] == ["failed"]
+
+
+def _overlay_with_inode_policy(min_used_inode_fraction: float | None) -> dict[str, Any]:
+    """The fixture's overlay with a uv_cache cleanup added, declaring the inode threshold or not."""
+    overlay = copy.deepcopy(OVERLAY)
+    uv: dict[str, Any] = {
+        "cleanup_id": "uv_cache",
+        "min_used_fraction": 0.8,
+        "min_interval_seconds": 21600,
+        "when_unread": "skip",
+        "timeout_seconds": 1800,
+        "kind": "other",
+        "argv": ["uv", "cache", "clean"],
+    }
+    if min_used_inode_fraction is not None:
+        uv["min_used_inode_fraction"] = min_used_inode_fraction
+    overlay["cleanups"].append(uv)
+    overlay["hosts"][0]["cleanup_ids"] = [
+        *overlay["hosts"][0]["cleanup_ids"],
+        "uv_cache",
+    ]
+    return overlay
+
+
+@pytest.mark.parametrize(
+    ("min_used_inode_fraction", "expected_units"),
+    [(0.7, ("uv_cache",)), (None, ())],
+    ids=["inode-policy-declares-it", "failing-control-value-absent"],
+)
+async def test_inode_pressure_on_the_wire_dispatches_the_uv_cleanup(
+    tmp_path: Path,
+    min_used_inode_fraction: float | None,
+    expected_units: tuple[str, ...],
+) -> None:
+    """Inodes 90 of 100 with bytes 50 of 100 dispatch the uv cleanup when the overlay declares 0.7.
+
+    Failing control: the same reading with ``min_used_inode_fraction`` absent
+    dispatches nothing — every cleanup stays below_threshold on the bytes.
+    """
+    (tmp_path / "overlays" / NODE / "overlay.yaml").write_text(
+        yaml.safe_dump(_overlay_with_inode_policy(min_used_inode_fraction))
+    )
+    seen = await _drive(
+        (READ_TOPIC, _read(50, total_inodes=100, used_inodes=90)),
+        (TICK_TOPIC, _tick()),
+    )
+
+    run = seen[RUN_TOPIC][0]
+    units = {u["cleanup_id"] for u in run["units"]}
+    reasons = {d["cleanup_id"]: d["reason"] for d in run["decided"]}
+    assert units == set(expected_units)
+    if expected_units:
+        assert run["outcome"] == "completed"
+        assert reasons["uv_cache"] == "inode_pressure"
+    else:
+        assert reasons["uv_cache"] == "below_threshold"

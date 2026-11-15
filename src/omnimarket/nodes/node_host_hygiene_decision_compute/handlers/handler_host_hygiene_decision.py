@@ -27,6 +27,9 @@ def decide_host_hygiene(
     for host_facts in request.hosts:
         reading = host_facts.reading
         used_fraction = reading.used_fraction if reading is not None else None
+        used_inode_fraction = (
+            reading.used_inode_fraction if reading is not None else None
+        )
         age = (
             int((request.now - reading.read_at).total_seconds())
             if reading is not None
@@ -46,6 +49,7 @@ def decide_host_hygiene(
                 policy,
                 fresh=fresh,
                 used_fraction=used_fraction,
+                used_inode_fraction=used_inode_fraction,
                 since_dispatch=(
                     (request.now - last_dispatch[cleanup_id]).total_seconds()
                     if cleanup_id in last_dispatch
@@ -70,6 +74,7 @@ def _decide_one(
     *,
     fresh: bool,
     used_fraction: float | None,
+    used_inode_fraction: float | None,
     since_dispatch: float | None,
 ) -> tuple[bool, EnumHostHygieneReason]:
     if since_dispatch is not None and since_dispatch < policy.min_interval_seconds:
@@ -77,6 +82,12 @@ def _decide_one(
     if fresh and used_fraction is not None:
         if used_fraction >= policy.min_used_fraction:
             return True, EnumHostHygieneReason.DISK_PRESSURE
+        if (
+            policy.min_used_inode_fraction is not None
+            and used_inode_fraction is not None
+            and used_inode_fraction >= policy.min_used_inode_fraction
+        ):
+            return True, EnumHostHygieneReason.INODE_PRESSURE
         return False, EnumHostHygieneReason.BELOW_THRESHOLD
     if policy.when_unread == EnumHostHygieneUnreadPolicy.DISPATCH:
         return True, EnumHostHygieneReason.UNREAD_RUN_ANYWAY

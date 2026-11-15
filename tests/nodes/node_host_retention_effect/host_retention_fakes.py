@@ -86,8 +86,8 @@ class FakeUv:
 
 class FakeUvArchive:
     """The uv archive port. ``entries`` is a list (the ``archive-v0`` bucket) or a dict bucket -> list; the port records each scan
-    (bucket folder, depth) and each removed ``bucket/name``, can fail a scan (all, or the buckets named in ``fail_buckets``) or a
-    remove, and really deletes the folder when given a cache ``root``."""
+    (bucket folder, depth) and each removed ``bucket/name`` with its marker suffix (``removed_markers``), can fail a scan (all,
+    or the buckets named in ``fail_buckets``) or a remove, and really deletes the folder when given a cache ``root``."""
 
     def __init__(
         self,
@@ -109,6 +109,7 @@ class FakeUvArchive:
         self.root = root
         self.scans: list[tuple[str, int]] = []
         self.removed: list[str] = []
+        self.removed_markers: list[str | None] = []
 
     def _bucket(self, bucket_dir: str) -> str:
         for bucket in self.entries:
@@ -117,7 +118,11 @@ class FakeUvArchive:
         return ""
 
     def scan(
-        self, bucket_dir: str, depth: int, timeout_s: float
+        self,
+        bucket_dir: str,
+        depth: int,
+        timeout_s: float,
+        marker_suffix: str | None = None,
     ) -> list[ModelUvArchiveEntry]:
         self.scans.append((bucket_dir, depth))
         bucket = self._bucket(bucket_dir)
@@ -129,10 +134,13 @@ class FakeUvArchive:
             raise OSError("scan refused")
         return list(self.entries.get(bucket, []))
 
-    def remove(self, bucket_dir: str, name: str) -> None:
+    def remove(
+        self, bucket_dir: str, name: str, marker_suffix: str | None = None
+    ) -> None:
         if self.fail_remove:
             raise OSError("remove refused")
         self.removed.append(f"{self._bucket(bucket_dir)}/{name}")
+        self.removed_markers.append(marker_suffix)
         if self.root is not None:
             shutil.rmtree(self.root / name, ignore_errors=True)
 
