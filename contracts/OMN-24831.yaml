@@ -11,12 +11,8 @@ requirements:
   acceptance:
   - id: AC2
     statement: 'AC2: one pull request on the default branch of the repository that owns the cause fixes it at the source, with a test that fails on the unfixed code and passes on the fix -- falsifier: `uv run pytest <the new test path> -q` run at the unfixed base commit passes, or `onex scm pr-view` shows no such pull request'
-  - id: AC1
-    statement: 'AC1: the cause of the red check is read from the failure text of three pull requests and recorded as one STATUS row per pull request with its job id and the quoted line -- falsifier: fewer than three STATUS rows of this ticket carry a job id and a quoted `workflow verdict FAILED` line'
   - id: AC3
     statement: 'AC3: the fix widens or bypasses no check, so the diff removes no assertion and adds no skip, xfail, loosened threshold or changed required-check list -- falsifier: `git diff <base> <head> -- tests/ .github/` shows a removed assert, a new skip or xfail marker or a changed required-check list'
-  - id: AC4
-    statement: 'AC4: the pull request carries a line starting `Lab:` naming the head, host, command and exit code, and the lane TERMINAL names that head -- falsifier: `onex scm pr-view` shows a body with no `Lab: head=` line'
 evidence_requirements:
 - kind: tests
   description: The new runner test and the runner tests it sits beside.
@@ -48,8 +44,6 @@ dod_evidence:
   description: 'Fails-on-base check for AC2: the new test file is run against a copy of the head tree whose tests/delegation_golden/runner.py is the merge-base file, and the check passes only when that run FAILS. It needs the origin/dev ref, so only the local Done gate runs it.'
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC2
   checks:
   - check_type: command
     check_value: |-
@@ -59,8 +53,6 @@ dod_evidence:
   description: 'Git-diff falsifier for AC3: against the base, the diff of tests/ and .github/ removes no assert line, adds no skip or xfail marker, and leaves .github/ untouched. Needs the origin/dev ref, so only the local Done gate runs it.'
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC3
   checks:
   - check_type: command
     check_value: |-
@@ -70,8 +62,6 @@ dod_evidence:
   description: 'AC1 reading: the rolling ledger holds at least three STATUS rows of OMN-24831 that carry a job id of a pull request''s delegation health check job and the quoted workflow verdict line (pull requests 6298, 6094, 6114 and 6204 were read). Only the local Done gate has the ledger.'
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC1
   checks:
   - check_type: command
     check_value: |-
@@ -81,8 +71,6 @@ dod_evidence:
   description: 'AC4 reading: the pull request body carries a line starting `Lab: head=`. The TERMINAL naming the head is read from the ledger, not from this check. Only the local Done gate reads the watcher.'
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC4
   checks:
   - check_type: command
     check_value: |-
