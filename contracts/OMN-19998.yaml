@@ -269,7 +269,7 @@ requirements:
     acceptance:
       - id: "AC134"
         statement: "AC134: the running-reference guard finds no install, checkout or import of the retired package under .github/workflows, benchmarks, scripts, src or tests -- falsifier: the guard test
-          (tests/unit/test_no_*_running_references.py) fails at the head, or still passes with a reference planted in a file outside the two it read before"
+          (tests/unit/test_no_omnibase_compat_running_references.py) fails at the head, or still passes with a reference planted in a file outside the two it read before"
 evidence_requirements:
   - kind: tests
     description: Recorded gate subject spellings and named causes run through the production ledger parser and contract handler.
@@ -1004,7 +1004,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "bash -c 'uv run --frozen pytest tests/unit/test_no_*_running_references.py -q --no-cov -n 0 -p no:randomly'"
+        check_value: "uv run --frozen pytest tests/unit/test_no_omnibase_compat_running_references.py -q --no-cov -n 0 -p no:randomly"
         cwd: "."
     binds_ac: ["AC133"]
   - id: "dod-omn19998-compat-install-guard"
@@ -1012,6 +1012,6 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "bash -c 'uv run --frozen pytest tests/unit/test_no_*_running_references.py -q --no-cov -n 0 -p no:randomly'"
+        check_value: "uv run --frozen pytest tests/unit/test_no_omnibase_compat_running_references.py -q --no-cov -n 0 -p no:randomly"
         cwd: "."
     binds_ac: ["AC134"]
