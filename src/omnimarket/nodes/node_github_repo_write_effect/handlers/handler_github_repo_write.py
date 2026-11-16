@@ -1495,8 +1495,18 @@ async def _runner_group_get(run: _Run) -> ModelRepoWriteCompleted:
         page += 1
     name = meta.get("name")
     allows_public = meta.get("allows_public_repositories")
-    restricted = meta.get("restricted_to_selected_workflows")
+    # GitHub names the workflow restriction ``restricted_to_workflows``.
+    restricted = meta.get("restricted_to_workflows")
     selected = meta.get("selected_workflows")
+    missing = [
+        field
+        for field, ok in (
+            ("name", isinstance(name, str)),
+            ("allows_public_repositories", isinstance(allows_public, bool)),
+            ("restricted_to_workflows", isinstance(restricted, bool)),
+        )
+        if not ok
+    ]
     if (
         not isinstance(name, str)
         or not isinstance(allows_public, bool)
@@ -1505,7 +1515,7 @@ async def _runner_group_get(run: _Run) -> ModelRepoWriteCompleted:
         raise run.refused(
             EnumRepoWriteRefusal.GITHUB_REFUSED,
             f"runner group {group_id} on {organization} answered a body without "
-            "name, allows_public_repositories and restricted_to_selected_workflows",
+            f"{', '.join(missing)}",
         )
     return run.completed(
         runner_group=ModelRepoWriteRunnerGroup(
