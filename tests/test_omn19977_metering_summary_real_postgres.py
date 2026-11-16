@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -43,7 +44,6 @@ _MIGRATIONS = tuple(
         "0002_metering_summary_savings_per_measured_run.sql",
         "0003_metering_summary_compression_and_cache_hit.sql",
         "0004_metering_summary_savings_pct.sql",
-        "0005_metering_summary_runs_failed.sql",
     )
 )
 _SCHEMA = "omn19977_metering_summary_write_path_test"
@@ -278,10 +278,10 @@ async def test_omn20008_the_writer_stores_the_savings_share_of_the_baseline() ->
 
 
 @pytest.mark.integration
-async def test_omn24615_the_writer_stores_runs_failed_and_books_no_saving_for_them() -> (
+async def test_omn24615_the_writer_counts_failed_runs_and_books_no_saving_for_them() -> (
     None
 ):
-    """OMN-24615 AC1: a refused run is counted in runs_failed and saves nothing.
+    """OMN-24615 AC1: a refused run is counted, in summary_json, and saves nothing.
 
     One run succeeded and one ended quality_gate_refused, each with 1000 tokens
     in and 0.1 spent at a baseline of 1 per 1k in: the stored saving is the
@@ -323,7 +323,7 @@ async def test_omn24615_the_writer_stores_runs_failed_and_books_no_saving_for_th
             records=records,
         )
         query = (
-            f"SELECT savings_usd, spend_usd, runs_measured, runs_failed "
+            f"SELECT savings_usd, spend_usd, runs_measured, summary_json "
             f"FROM {_SCHEMA}.metering_summary WHERE window_kind = 'all'"
         )
         await writer._project(request)
@@ -331,7 +331,7 @@ async def test_omn24615_the_writer_stores_runs_failed_and_books_no_saving_for_th
         assert Decimal(stored["savings_usd"]) == Decimal("0.9")
         assert Decimal(stored["spend_usd"]) == Decimal("0.2")
         assert stored["runs_measured"] == 2
-        assert stored["runs_failed"] == 1
+        assert json.loads(stored["summary_json"])["runs_failed"] == 1
 
         await writer._project(request)
         assert dict(await conn.fetchrow(query)) == stored

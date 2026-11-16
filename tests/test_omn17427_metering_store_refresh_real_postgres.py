@@ -47,7 +47,6 @@ _MIGRATIONS = tuple(
         "0002_metering_summary_savings_per_measured_run.sql",
         "0003_metering_summary_compression_and_cache_hit.sql",
         "0004_metering_summary_savings_pct.sql",
-        "0005_metering_summary_runs_failed.sql",
     )
 )
 _SCHEMA = "omn17427_metering_store_refresh_test"

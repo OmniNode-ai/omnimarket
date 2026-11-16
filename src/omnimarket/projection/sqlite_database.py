@@ -402,7 +402,6 @@ CREATE TABLE IF NOT EXISTS metering_summary (
     runs_measured INTEGER NOT NULL,
     runs_unknown_tokens INTEGER NOT NULL,
     runs_unknown_spend INTEGER NOT NULL,
-    runs_failed INTEGER,
     tokens_in BIGINT NOT NULL,
     tokens_out BIGINT NOT NULL,
     spend_usd TEXT,

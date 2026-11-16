@@ -30,9 +30,6 @@ class ModelMeteringSummaryRow(BaseModel):
     runs_measured: int
     runs_unknown_tokens: int
     runs_unknown_spend: int
-    # OMN-24615 AC1: runs that ended with a failure cause, counted as measured
-    # with zero savings; null on a row written before the column existed.
-    runs_failed: int | None = None
     tokens_in: int
     tokens_out: int
     spend_usd: str | None

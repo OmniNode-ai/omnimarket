@@ -17,6 +17,7 @@ Failure modes, each with a test below:
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -83,7 +84,7 @@ def test_metering_unknown_usage_saves_only_the_measured_run(tmp_path: Path) -> N
     assert Decimal(alone.savings_usd) > 0
     assert row.savings_usd == alone.savings_usd
     assert row.runs_total == 5
-    assert row.runs_failed == 1
+    assert json.loads(row.summary_json)["runs_failed"] == 1
     assert row.runs_unknown_tokens == 3
 
 

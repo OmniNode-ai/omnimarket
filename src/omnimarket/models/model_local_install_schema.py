@@ -172,9 +172,6 @@ METERING_SUMMARY_SAVINGS_PCT_STEP = "omn20008_metering_summary_savings_pct_colum
 METERING_SUMMARY_SAVINGS_PER_RUN_STEP = (
     "omn21361_metering_summary_savings_per_measured_run_column"
 )
-# OMN-24615 AC1: metering_summary's count of runs that ended with a failure
-# cause, the counterpart of migration 0005. Its own step for the same reason.
-METERING_SUMMARY_RUNS_FAILED_STEP = "omn24615_metering_summary_runs_failed_column"
 # Each step adds its columns once per store, nullable with no default, so a row
 # written before them reads null. The columns are read again under the step's
 # write lock, so a fresh store, whose table already has them, and two first
@@ -196,11 +193,6 @@ METERING_SUMMARY_COLUMN_STEPS: tuple[
         METERING_SUMMARY_SAVINGS_PER_RUN_STEP,
         (("savings_per_measured_run_usd", "TEXT"),),
         "added the metering-summary savings per measured run column",
-    ),
-    (
-        METERING_SUMMARY_RUNS_FAILED_STEP,
-        (("runs_failed", "INTEGER"),),
-        "added the metering-summary failed runs column",
     ),
 )
 
