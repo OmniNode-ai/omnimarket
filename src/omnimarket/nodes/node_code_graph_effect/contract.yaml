@@ -144,8 +144,13 @@ shadow_schedule:
 
 # The on-merge refresh: a short-cadence tick that reads the declared repositories' heads, compares
 # them with the heads of the last build (the state directory's code-graph-built.json marker), and
-# runs the nightly build only when a head moved and that build is at least 15 minutes old, so a
-# burst of merges builds once. A tick with nothing to do appends nothing and touches no marker.
+# runs the nightly build only when a head moved and neither the last build nor the last attempt is
+# less than 15 minutes old, so a burst of merges builds once and a failing build is not rerun every
+# tick. A tick with nothing to do appends nothing and touches no marker. The marker, the attempt
+# record and the one build lock of the state directory live in handlers/code_graph_state.py: the
+# marker is written only for a build whose ledger row is written or already-written, the result
+# reads it back after the build, and the nightly unit takes the same lock, so the refresh and the
+# nightly (both fire at 06:40 UTC) never build at once.
 refresh_schedule:
   verb: refresh
   unit_name: onex-code-graph-refresh

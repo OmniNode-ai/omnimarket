@@ -4,16 +4,17 @@
 
 The nightly build runs once a day, so a merge can wait that long to reach the graph. The refresh
 reads the heads of the last build from the state directory's ``code-graph-built.json``, reads each
-declared repository's head now, and runs the writing build only when some head moved and the last
-build is at least :data:`REFRESH_MIN_INTERVAL` old, so a burst of merges builds once instead of
-once per tick. Unchanged heads are ``fresh`` and append nothing; a too-young build is ``deferred``;
-a head that cannot be read, or a build that fails, is ``failed`` - the refresh is never fresh when
-it cannot prove the heads unchanged.
+declared repository's head now, and runs the writing build only when some head moved and neither the
+last build nor the last attempt is less than :data:`REFRESH_MIN_INTERVAL` old, so a burst of merges
+builds once instead of once per tick and a failing build is not rerun every tick. Unchanged heads are
+``fresh`` and append nothing; a too-young build or attempt, or a build another run holds the state
+directory's lock for, is ``deferred``; a head that cannot be read, a build that fails, or a build
+that leaves no rewritten marker is ``failed`` - the refresh is never fresh when it cannot prove the
+heads unchanged.
 """
 
 from __future__ import annotations
 
-import json
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -22,6 +23,13 @@ from omnimarket.models.model_code_graph import (
     EnumRefreshOutcome,
     ModelCodeGraphRefreshResult,
     ModelCodeGraphResult,
+)
+from omnimarket.nodes.node_code_graph_effect.handlers.code_graph_state import (
+    BUILT_MARKER,
+    build_lock,
+    read_attempt,
+    read_marker,
+    record_attempt,
 )
 from omnimarket.nodes.node_code_graph_effect.overlay import ModelCodeGraphOverlay
 from omnimarket.nodes.node_code_graph_effect.protocols import (
@@ -32,10 +40,10 @@ from omnimarket.nodes.node_reading_compute.handlers.handler_reading_compute impo
     reason_token,
 )
 
-#: A build younger than this defers the refresh, so a burst of merges builds once.
+#: A build or attempt younger than this defers the refresh, so a burst of merges builds once.
 REFRESH_MIN_INTERVAL = timedelta(minutes=15)
-#: What the writing build leaves in the state directory; the refresh reads it instead of rebuilding.
-BUILT_MARKER = "code-graph-built.json"
+
+__all__ = ["BUILT_MARKER", "REFRESH_MIN_INTERVAL", "CodeGraphRefresh"]
 
 
 class CodeGraphRefresh:
@@ -58,21 +66,23 @@ class CodeGraphRefresh:
         self._clock = clock
         self._min_interval = min_interval
 
-    def _built(self) -> tuple[datetime | None, dict[str, str]]:
-        """The last build's time and heads from the marker; none when it is absent or unreadable."""
-        try:
-            document = json.loads(
-                (self._state_directory / BUILT_MARKER).read_text(encoding="utf-8")
-            )
-            built_at = datetime.fromisoformat(str(document["built_at"]))
-            heads = {str(name): str(value) for name, value in document["heads"].items()}
-        except (OSError, ValueError, KeyError, TypeError, AttributeError):
-            return None, {}
-        return built_at.astimezone(UTC), heads
-
     def handle(self) -> ModelCodeGraphRefreshResult:
-        """Fresh when no head moved, deferred while the last build is young, else build."""
-        built_at, built_heads = self._built()
+        """Deferred while another build holds the lock, fresh when no head moved, else build."""
+        with build_lock(self._state_directory) as held:
+            if not held:
+                built_at, built_heads = read_marker(self._state_directory)
+                return ModelCodeGraphRefreshResult(
+                    outcome=EnumRefreshOutcome.DEFERRED,
+                    built_at=built_at,
+                    built_heads=built_heads,
+                    attempted_at=read_attempt(self._state_directory),
+                    reason="build-lock-held",
+                )
+            return self._decide()
+
+    def _decide(self) -> ModelCodeGraphRefreshResult:
+        built_at, built_heads = read_marker(self._state_directory)
+        attempted_at = read_attempt(self._state_directory)
         try:
             current_heads = {
                 repo.name: self._heads.head(repo.name, repo.ref)[:12]
@@ -83,6 +93,7 @@ class CodeGraphRefresh:
                 outcome=EnumRefreshOutcome.FAILED,
                 built_at=built_at,
                 built_heads=built_heads,
+                attempted_at=attempted_at,
                 changed=tuple(repo.name for repo in self._overlay.repos),
                 reason=f"heads-unreadable:{reason_token(str(exc))}",
             )
@@ -96,34 +107,60 @@ class CodeGraphRefresh:
                 outcome=EnumRefreshOutcome.FRESH,
                 built_at=built_at,
                 built_heads=built_heads,
+                attempted_at=attempted_at,
                 current_heads=current_heads,
                 reason="heads-unchanged",
             )
         now = self._clock().astimezone(UTC)
-        if built_at is not None and built_at > now - self._min_interval:
+        recent = now - self._min_interval
+        if built_at is not None and built_at > recent:
+            reason = "built-too-recently"
+        elif attempted_at is not None and attempted_at > recent:
+            reason = "attempted-too-recently"
+        else:
+            reason = ""
+        if reason:
             return ModelCodeGraphRefreshResult(
                 outcome=EnumRefreshOutcome.DEFERRED,
                 built_at=built_at,
                 built_heads=built_heads,
+                attempted_at=attempted_at,
                 current_heads=current_heads,
                 changed=changed,
-                reason="built-too-recently",
+                reason=reason,
             )
+        # The attempt is recorded before the build, so a build that fails or dies leaves it behind.
+        record_attempt(self._state_directory, now)
         result = self._run()
         if result.status != "completed":
             return ModelCodeGraphRefreshResult(
                 outcome=EnumRefreshOutcome.FAILED,
                 built_at=built_at,
                 built_heads=built_heads,
+                attempted_at=now,
                 current_heads=current_heads,
                 changed=changed,
                 reason=result.failure or "run-failed",
                 result=result,
             )
+        # The marker is what the build left, not what this decision assumed: read it back.
+        marker_at, marker_heads = read_marker(self._state_directory)
+        if marker_at is None or (marker_at, marker_heads) == (built_at, built_heads):
+            return ModelCodeGraphRefreshResult(
+                outcome=EnumRefreshOutcome.FAILED,
+                built_at=built_at,
+                built_heads=built_heads,
+                attempted_at=now,
+                current_heads=current_heads,
+                changed=changed,
+                reason="marker-not-rewritten",
+                result=result,
+            )
         return ModelCodeGraphRefreshResult(
             outcome=EnumRefreshOutcome.REFRESHED,
-            built_at=now,
-            built_heads=dict(current_heads),
+            built_at=marker_at,
+            built_heads=marker_heads,
+            attempted_at=now,
             current_heads=current_heads,
             changed=changed,
             reason="heads-moved",

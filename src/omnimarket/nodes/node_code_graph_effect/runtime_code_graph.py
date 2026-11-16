@@ -6,8 +6,10 @@
 ``probe``    the same build and verdict, appending nothing.
 ``check``    ``--repo R --base REF --head REF``: name the modules the head adds that no root reaches.
 ``shadow``   check every open pull request of the overlay's shadow repositories, append one row, hold nothing.
-``refresh``  the on-merge refresh: build only when a repository head moved since the last build and that
-             build is at least 15 minutes old (what the refresh timer runs; appends nothing when fresh).
+``refresh``  the on-merge refresh: build only when a repository head moved since the last build and
+             neither that build nor the last attempt is less than 15 minutes old (what the refresh timer
+             runs; appends nothing when fresh). It and a writing nightly share one build lock in the state
+             directory: the second run defers.
 ``schedule`` install | uninstall | status | run-now, for a host in the overlay; ``--unit shadow`` is the shadow's timer.
 
 ``--fault`` on nightly, probe or shadow injects a declared fault; the row then carries ``drill=yes``.
@@ -16,14 +18,13 @@ Exit codes: 0 the run was built and written (a NOT WORKING verdict is still 0: a
 nothing and refuses nothing), or the check found nothing; 1 the run failed (an unreadable
 repository, an append that did not land), or the check flagged a module or an allowlist entry
 past its date (the shadow verb exits 0 whatever it would refuse: it holds nothing); the refresh exits
-0 fresh, deferred or refreshed and 1 when a head cannot be read or its build failed; 3 a deployment fact is
+0 fresh, deferred or refreshed and 1 when a head cannot be read, its build failed or left no rewritten marker; 3 a deployment fact is
 missing (INDETERMINATE).
 """
 
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import sys
 from collections.abc import Sequence
@@ -63,11 +64,15 @@ from omnimarket.nodes.node_code_graph_effect.handlers.code_graph_lookup import (
     CodeGraphLookup,
 )
 from omnimarket.nodes.node_code_graph_effect.handlers.code_graph_refresh import (
-    BUILT_MARKER,
     CodeGraphRefresh,
 )
 from omnimarket.nodes.node_code_graph_effect.handlers.code_graph_run import (
     CodeGraphRun,
+)
+from omnimarket.nodes.node_code_graph_effect.handlers.code_graph_state import (
+    build_lock,
+    stage,
+    write_marker,
 )
 from omnimarket.nodes.node_code_graph_effect.handlers.graph_compute import (
     GraphRules,
@@ -168,36 +173,15 @@ def answer_lookup(command: ModelCodeGraphLookupCommand) -> ModelCodeGraphLookupR
     return CodeGraphLookup(store, source).handle(command)
 
 
-def _stage(target: Path, text: str) -> None:
-    """Write ``text`` to ``target`` through a sibling temporary file, then replace it."""
-    staged = target.with_suffix(".tmp")
-    staged.write_text(text, encoding="utf-8")
-    staged.replace(target)
-
-
 def _keep(result: ModelCodeGraphResult) -> None:
     directory = state_directory(dict(os.environ))
     if directory is None:
         return
     directory.mkdir(parents=True, exist_ok=True)
-    _stage(directory / LATEST_RESULT, result.model_dump_json(indent=1))
-    # The built marker is what the refresh on merge reads: only a real, clean build touches it,
-    # never a failed run or a drill (a drill's rows are read by no operational reading).
-    if (
-        result.status == "completed"
-        and result.fault is EnumGraphFault.NONE
-        and result.repos
-    ):
-        _stage(
-            directory / BUILT_MARKER,
-            json.dumps(
-                {
-                    "built_at": datetime.now(UTC).isoformat(),
-                    "heads": {repo.repo: repo.head[:12] for repo in result.repos},
-                },
-                indent=1,
-            ),
-        )
+    stage(directory / LATEST_RESULT, result.model_dump_json(indent=1))
+    # The built marker is what the refresh on merge reads: only a build whose row the ledger holds
+    # touches it, never a probe, a failed run or a drill (see handlers/code_graph_state.py).
+    write_marker(directory, result, datetime.now(UTC))
 
 
 def build_refresh_handler() -> tuple[CodeGraphRefresh, str]:
@@ -242,9 +226,15 @@ def _refresh(_arguments: argparse.Namespace) -> int:
     result = handler.handle()
     changed = ",".join(result.changed) if result.changed else "none"
     built_at = result.built_at.isoformat() if result.built_at else "none"
+    built_heads = (
+        ",".join(f"{name}@{head}" for name, head in result.built_heads.items())
+        or "none"
+    )
+    attempted_at = result.attempted_at.isoformat() if result.attempted_at else "none"
     sys.stdout.write(
         f"REFRESH outcome={result.outcome.value} changed={changed} "
-        f"built_at={built_at} reason={result.reason}\n"
+        f"built_at={built_at} built_heads={built_heads} attempted_at={attempted_at} "
+        f"reason={result.reason}\n"
     )
     return 1 if result.outcome is EnumRefreshOutcome.FAILED else 0
 
@@ -269,7 +259,23 @@ def build_handler(write: bool) -> tuple[CodeGraphRun, str]:
     return handler, host
 
 
+#: How long a writing run waits for another writing build of the state directory before it defers.
+BUILD_LOCK_WAIT = timedelta(minutes=15)
+
+
 def _run(arguments: argparse.Namespace, write: bool) -> int:
+    # A writing run (nightly or a drill) shares the state directory and its staged files with the
+    # refresh, so it takes the one build lock; a probe appends nothing and holds no lock.
+    with build_lock(
+        state_directory(dict(os.environ)) if write else None, wait=BUILD_LOCK_WAIT
+    ) as held:
+        if not held:
+            sys.stdout.write("RUN status=deferred reason=build-lock-held\n")
+            return 0
+        return _build_and_report(arguments, write)
+
+
+def _build_and_report(arguments: argparse.Namespace, write: bool) -> int:
     handler, host = build_handler(write)
     now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     result = handler.handle(

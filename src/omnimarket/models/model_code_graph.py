@@ -111,18 +111,20 @@ class EnumRefreshOutcome(StrEnum):
     FRESH = "fresh"
     #: A head moved and the build ran and completed.
     REFRESHED = "refreshed"
-    #: A head moved but the last build is younger than the minimum interval.
+    #: A head moved but the last build or attempt is younger than the minimum interval, or another
+    #: build holds the state directory's lock.
     DEFERRED = "deferred"
-    #: A head could not be read, or the build failed.
+    #: A head could not be read, the build failed, or it left no rewritten marker.
     FAILED = "failed"
 
 
 class ModelCodeGraphRefreshResult(BaseModel):
     """The refresh on merge's decision, and the build's result when it built.
 
-    ``built_at`` is the last build's time as the state directory's marker held it when the
-    refresh decided; after a ``refreshed`` build it is the time that build ran, as the marker
-    rewritten by the build now holds it.
+    ``built_at`` and ``built_heads`` are the last build's time and heads as the state directory's
+    marker holds them. After a ``refreshed`` build they are read back from the marker that build
+    rewrote, never taken from the refresh's own decision time or heads (the build re-snapshots the
+    heads, so they can differ); a build that left the marker unrewritten is ``failed``.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -130,6 +132,9 @@ class ModelCodeGraphRefreshResult(BaseModel):
     outcome: EnumRefreshOutcome
     #: When the last build was, from the marker; none when it is absent or unreadable.
     built_at: datetime | None = None
+    #: When the refresh last started a build, from its attempt record; none when it never did. A
+    #: failed build moves this and not ``built_at``, so the next ticks defer on it.
+    attempted_at: datetime | None = None
     #: The heads the last build built, by repository, each truncated to 12 characters.
     built_heads: dict[str, str] = Field(default_factory=dict)
     #: The declared repositories' heads now, each truncated to 12 characters; empty when a head
