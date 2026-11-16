@@ -1005,8 +1005,8 @@ dod_evidence:
     description: "No omnibase.compat hit remains on the paths this change edits."
     source: "manual"
     checks:
-      - check_type: "command"
-        check_value: "! git grep -n -i 'omnibase.compat' -- .github/workflows/ci.yml benchmarks/delegation_ladder/scorers.py src/omnimarket/handlers/vendor_compat.py"
+      - check_type: "test_passes"
+        check_value: "uv run --frozen pytest tests/unit/test_no_omnibase_compat_running_references.py -q --no-cov -n 0 -p no:randomly"
         cwd: "."
     binds_ac: ["AC133"]
   - id: "dod-omn19998-compat-install-guard"
