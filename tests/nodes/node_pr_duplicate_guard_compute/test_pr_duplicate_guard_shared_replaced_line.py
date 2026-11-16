@@ -155,7 +155,7 @@ def test_duplicate_guard_shared_removals_of_many_lines_with_different_added_line
 def test_duplicate_guard_shared_line_among_distinct_lines_under_one_ticket_stays_clear() -> (
     None
 ):
-    """Through parse_diff: one shared replaced line among thirty distinct lines each is 1 of 61, below the 0.1 bar."""
+    """Through parse_diff: one shared replaced line among thirty distinct lines each is 1 of 123 changed lines, below the 0.1 bar."""
     mine = replacement(
         removed=("retry_limit: 3", *(f"batch_window_{n:02d}: {n}" for n in range(30))),
         added=("retry_limit: 5", *(f"batch_size_{n:02d}: {n}" for n in range(30))),
