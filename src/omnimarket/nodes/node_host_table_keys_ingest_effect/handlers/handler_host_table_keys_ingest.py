@@ -9,6 +9,7 @@ writes nothing, so the key already stored stays.
 
 from __future__ import annotations
 
+import logging
 import os
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -33,6 +34,8 @@ from omnimarket.nodes.node_host_table_compute.handlers.handler_host_table import
 from .store_host_keys import ProtocolHostKeyStore, StoreHostKeysValkey
 
 OVERLAY_ID = "node_host_table_keys_ingest_effect"
+
+_log = logging.getLogger(__name__)
 
 
 class HostTableKeysRefusedError(ValueError):
@@ -92,3 +95,13 @@ class HandlerHostTableKeysIngest:
             table=result,
         )
         store.set(key, document.model_dump_json())
+        # One line per write, after the store accepted it, so the line is evidence of a write and an ignored
+        # record leaves none. The dev runtime log read greps for the "<overlay id> wrote key=" prefix.
+        _log.info(
+            "%s wrote key=%s digest=%s hosts=%d admitted=%d",
+            OVERLAY_ID,
+            key,
+            request.digest,
+            len(result.rows),
+            len(result.admitted),
+        )
