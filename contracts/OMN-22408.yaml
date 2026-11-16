@@ -37,7 +37,7 @@ dod_evidence:
     check_value: uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_dispatch_lost_later_terminal.py -q --no-cov -n 0 -p no:randomly -k dispatch_lost_later_terminal
     cwd: .
 - id: dod-omn22408-ac2-still-missing
-  description: A no-host receipt with no later run of its lineage, a later receipt that never ran, and an earlier terminal receipt all still print the MISSING line.
+  description: A no-host receipt with no later run of its lineage, a later receipt that never ran, and an earlier terminal receipt all still print the MISSING line; one case runs a cleared lineage and a lost lineage in the same tick, so the selection fails on origin/dev where the cleared lineage still prints.
   source: manual
   binds_ac:
   - AC2
@@ -46,13 +46,13 @@ dod_evidence:
     check_value: uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_dispatch_lost_later_terminal.py -q --no-cov -n 0 -p no:randomly -k dispatch_lost_still_missing
     cwd: .
 - id: dod-omn22408-ac3-lineage-suite
-  description: The existing lineage tests still pass beside the new ones.
+  description: The existing lineage tests still pass beside the new ones; the later-terminal tests run in the same selection and fail on origin/dev.
   source: manual
   binds_ac:
   - AC3
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_dispatch_lineage.py -q --no-cov -n 0 -p no:randomly
+    check_value: uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_dispatch_lineage.py tests/nodes/node_throughput_tick_decision_compute/test_dispatch_lost_later_terminal.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn22408-ac3-integration-proof
   description: Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. The pushed head ran the dispatch tests on a lab host through the lab work runner and exited 0. The running

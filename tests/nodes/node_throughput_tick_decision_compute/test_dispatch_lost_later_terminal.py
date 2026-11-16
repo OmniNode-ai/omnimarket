@@ -106,6 +106,31 @@ def test_dispatch_lost_still_missing_without_later_run() -> None:
     assert lines[0].startswith("MISSING dispatch:pinwire-spi-1745 |")
 
 
+def test_dispatch_lost_still_missing_only_without_later_terminal_run() -> None:
+    """One tick, two lanes: only the lane with no later run of its lineage prints."""
+    cleared = receipt(
+        "cf-22213-1102c",
+        run_id="rlane-cf-22213-1102c-53317c",
+        started_at="2026-11-03T02:22:15Z",
+        status="no-host",
+    )
+    cleared_again = receipt(
+        "cf-22213-1102c",
+        run_id="rlane-cf-22213-1102c-31a85e",
+        started_at="2026-11-03T02:24:46Z",
+        status="cloud-no-pr",
+    )
+    lost = receipt(
+        "pinwire-spi-1745",
+        run_id="rlane-pinwire-spi-1745-96bda2",
+        started_at="2026-11-03T02:30:00Z",
+        status="no-host",
+    )
+    lines = dispatch_lines([cleared, cleared_again, lost], now="2026-11-03T03:00:00Z")
+    assert len(lines) == 1
+    assert lines[0].startswith("MISSING dispatch:pinwire-spi-1745 |")
+
+
 @pytest.mark.parametrize("status", ["failed", "no-host", "placing", "host-limited"])
 def test_dispatch_lost_still_missing_when_later_never_ran(status: str) -> None:
     lost = receipt(

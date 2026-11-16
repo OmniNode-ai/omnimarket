@@ -1,0 +1,31 @@
+schema_version: 1.0.0
+ticket_id: OMN-24823
+title: Unblock omnimarket pull request 6255 (repo-evidence / dod-verify must-fail control)
+summary: The Must-fail control at the merge base of repo-evidence / dod-verify refused OMN-22408 because the checks bound to its AC2 and AC3 also passed at the merge base (always-pass). Repo Evidence Dependency, Coverage Sweep Gate and CI Summary were red only behind it. The OMN-22408 contract now binds AC2 and AC3 to selections that include a test that fails on the merge base, and one test runs a cleared lineage and a lost lineage in the same tick.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24823-ac2-ac3-fail-at-merge-base
+  statement: Each check bound to a criterion of OMN-22408 fails at the merge base and passes at the pull request head.
+  acceptance:
+  - id: AC4
+    statement: 'AC4: the new discriminating test is red against the merge base handler and green at the head -- falsifier: uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_dispatch_lost_later_terminal.py -q --no-cov -n 0 -p no:randomly -k dispatch_lost_still_missing_only fails with the merge base handler and passes at the head'
+evidence_requirements:
+- kind: tests
+  description: The dispatch later-terminal tests including the discriminating case.
+  command: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_throughput_tick_decision_compute/test_dispatch_lost_later_terminal.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24823-ac4-discriminating-test
+  description: The discriminating test passes at the head; with the merge base handler it fails (2 lines printed where 1 is expected).
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_throughput_tick_decision_compute/test_dispatch_lost_later_terminal.py -q --no-cov -n 0 -p no:randomly -k dispatch_lost_still_missing_only
+    cwd: .
