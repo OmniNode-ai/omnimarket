@@ -44,7 +44,7 @@ class TestRefusedRunSavingOnRealPostgres:
         """F1, F2, F3."""
         async with _provisioned_runner() as (runner, admin_conn, _schema):
             written: dict[str, str] = {}
-            priced = {"model_used": "gpt-4o-mini"}
+            priced = {"model_used": "gpt-4o-mini", "cumulative_attempt_cost": 0.001}
             for label, extra in (
                 ("passed", priced),
                 (
