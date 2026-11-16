@@ -5,8 +5,10 @@
 from __future__ import annotations
 
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
+import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.enums.enum_eval_lane import EnumEvalLane
@@ -18,10 +20,20 @@ from omnimarket.nodes.node_projection_eval_results.models.model_eval_rows import
     ModelEvalTraceRow,
 )
 
-TOPIC_CODE_TRY = "onex.evt.omnimarket.context-roi-run-completed.v1"  # onex-topic-allow: asserted against the contract
-TOPIC_JUDGED = "onex.evt.omnimarket.delegation-acceptance-judged.v1"  # onex-topic-allow: asserted against the contract
-TOPIC_RUN_CLOSED = "onex.evt.omnimarket.code-eval-run-closed.v1"  # onex-topic-allow: asserted against the contract
-TOPIC_TRACE = "onex.evt.omnimarket.eval-item-traced.v1"  # onex-topic-allow: asserted against the contract
+_CONTRACT_PATH = Path(__file__).resolve().parent.parent / "contract.yaml"
+
+
+def _contract_topic(event_name: str) -> str:
+    """The one topic the node's contract subscribes to for ``event_name``; the contract owns the topic strings."""
+    topics = yaml.safe_load(_CONTRACT_PATH.read_text())["event_bus"]["subscribe_topics"]
+    (topic,) = (t for t in topics if t.split(".")[-2] == event_name)
+    return str(topic)
+
+
+TOPIC_CODE_TRY = _contract_topic("context-roi-run-completed")
+TOPIC_JUDGED = _contract_topic("delegation-acceptance-judged")
+TOPIC_RUN_CLOSED = _contract_topic("code-eval-run-closed")
+TOPIC_TRACE = _contract_topic("eval-item-traced")
 TOPIC_TICK = "onex.intent.platform.runtime-tick.v1"  # onex-topic-allow: asserted against the contract
 TOPIC_SNAPSHOT = "onex.snapshot.projection.eval-results.v1"  # onex-topic-allow: projection snapshot topic
 

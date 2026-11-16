@@ -81,7 +81,8 @@ async def test_only_tracking_runs_reach_the_snapshot_and_a_void_run_shows_its_st
         r.run_id == _OTHER and r.run_state is EnumEvalRunState.CLOSED
         for r in store.rates
     )
-    _, snapshot = published[-1]
+    topic, snapshot = published[-1]
+    assert topic == "onex.snapshot.projection.eval-results.v1"
     runs = {r["run_id"]: r for r in snapshot["models"][0]["runs"]}
     assert set(runs) == {_TRACKED, _VOID}
     assert runs[_TRACKED]["state"] == "closed"
