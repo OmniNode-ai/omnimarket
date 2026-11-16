@@ -10,6 +10,8 @@ and a host that sets nothing reads the row of its own short name from
 
 from __future__ import annotations
 
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -144,11 +146,42 @@ def test_both_nodes_config_models_read_the_same_row(
 @pytest.mark.unit
 def test_arch_graph_bolt_handler_imports_the_one_short_host_name_helper() -> None:
     from omnimarket.handlers import arch_graph_bolt_host_overlay as mod
-    from omnimarket.handlers.projection_read_binding_host_overlay import (
-        local_host_short_name,
+    from omnimarket.handlers import node_overlay_reader
+    from omnimarket.handlers import (
+        projection_read_binding_host_overlay as projection_mod,
     )
 
-    assert mod.local_host_short_name is local_host_short_name
+    # the helper lives in the overlay reader; both handlers import that one function
+    assert node_overlay_reader.local_host_short_name.__module__ == (
+        "omnimarket.handlers.node_overlay_reader"
+    )
+    assert mod.local_host_short_name is node_overlay_reader.local_host_short_name
+    assert (
+        projection_mod.local_host_short_name
+        is node_overlay_reader.local_host_short_name
+    )
+
+
+@pytest.mark.unit
+def test_arch_graph_bolt_handler_does_not_re_export_the_helper() -> None:
+    from omnimarket.handlers import arch_graph_bolt_host_overlay as mod
+
+    assert "local_host_short_name" not in mod.__all__
+
+
+@pytest.mark.unit
+def test_arch_graph_bolt_handler_import_does_not_load_the_projection_runner() -> None:
+    code = (
+        "import sys; import omnimarket.handlers.arch_graph_bolt_host_overlay; "
+        "import omnimarket.nodes.node_architecture_graph_query_effect.models; "
+        "import omnimarket.nodes.node_architecture_graph_populate_effect.models; "
+        "bad = [m for m in ('omnimarket.projection.runner', 'aiokafka') if m in sys.modules]; "
+        "sys.exit(1 if bad else 0)"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, check=False
+    )
+    assert result.returncode == 0, result.stderr
 
 
 @pytest.mark.unit
@@ -156,7 +189,7 @@ def test_arch_graph_bolt_dotted_gethostname_resolves_the_short_name_row(
     overlay_root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(
-        "omnimarket.handlers.projection_read_binding_host_overlay.socket.gethostname",
+        "omnimarket.handlers.node_overlay_reader.socket.gethostname",
         lambda: "lab-host-b.example.test",
     )
     assert resolve_arch_graph_bolt_uri() == _URI

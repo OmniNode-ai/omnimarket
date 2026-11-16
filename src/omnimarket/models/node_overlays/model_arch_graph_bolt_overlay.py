@@ -7,7 +7,7 @@ read the overlay file ``<overlay root>/arch_graph_bolt/overlay.yaml`` when
 ``ARCH_GRAPH_BOLT_URI`` is unset: the file declares one ``bolt_uri`` and a ``hosts`` list,
 and a host whose short name is in the list gets that address. This model is what the
 overlay home validates the document through, so it imports pydantic alone. It checks the
-shape of the document and that the address is a Bolt URI with a host; which hosts appear
+shape of the document and that the address is a Bolt URI with a host (no user or password, no empty port, query or fragment delimiter) and that each host entry is a short name; which hosts appear
 and where the service runs is the operator's choice, so no host name and no address lives
 here.
 """
@@ -46,8 +46,16 @@ def _bolt_scheme(value: str) -> str:
         raise ValueError(f"must be a Bolt URI starting with one of {_BOLT_SCHEMES}")
     if not parts.hostname:
         raise ValueError("must name a host after the scheme")
-    if parts.path not in ("", "/") or parts.query or parts.fragment:
-        raise ValueError("must be a bare host and optional port, no path or query")
+    if "@" in parts.netloc or parts.username is not None or parts.password is not None:
+        raise ValueError(
+            "must not carry a user or password; a credential never lives here"
+        )
+    if parts.netloc.endswith(":"):
+        raise ValueError("must not end in a ':' with no port after it")
+    if "?" in value or "#" in value:
+        raise ValueError("must not carry a '?' or '#' delimiter, even an empty one")
+    if parts.path not in ("", "/"):
+        raise ValueError("must be a bare host and optional port, no path")
     if port is not None and port == 0:
         raise ValueError("port must be nonzero")
     return value
@@ -69,6 +77,11 @@ class ModelArchGraphBoltOverlay(BaseModel):
     def _unique_host_names(self) -> ModelArchGraphBoltOverlay:
         seen: set[str] = set()
         for host in self.hosts:
+            if "." in host:
+                raise ValueError(
+                    f"host entry {host!r} must be a short name without a dot; "
+                    "the resolver matches the short host name, so a dotted entry is never reached"
+                )
             key = host.casefold()
             if key in seen:
                 raise ValueError(

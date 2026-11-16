@@ -44,6 +44,17 @@ def test_arch_graph_bolt_uri_with_a_host_is_accepted(uri: str) -> None:
         "bolt://x:notaport",
         "http://x:7687",
         "bolt://",
+        # a credential never lives in a committed overlay
+        "bolt://user:pw@x:7687",
+        "bolt://user@x:7687",
+        "bolt://:pw@x:7687",
+        "bolt://@x:7687",
+        # an empty port, query or fragment delimiter is trailing text, not a bare host
+        "bolt://x:",
+        "bolt://x:7687?",
+        "bolt://x?",
+        "bolt://x#",
+        "bolt://x:7687#",
     ],
 )
 def test_arch_graph_bolt_uri_without_a_host_or_with_trailing_text_is_refused(
@@ -53,3 +64,28 @@ def test_arch_graph_bolt_uri_without_a_host_or_with_trailing_text_is_refused(
         ModelArchGraphBoltOverlay(
             schema_version="arch_graph_bolt.v1", bolt_uri=uri, hosts=("h",)
         )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "host",
+    ["lab-host-b.example.test", "lab-host-b.", ".lab-host-b", "lab.host"],
+)
+def test_arch_graph_bolt_dotted_host_entry_is_refused(host: str) -> None:
+    # the resolver matches the short name, so a dotted entry could never be reached
+    with pytest.raises(ValidationError):
+        ModelArchGraphBoltOverlay(
+            schema_version="arch_graph_bolt.v1",
+            bolt_uri="bolt://graph.example.test:7687",
+            hosts=(host,),
+        )
+
+
+@pytest.mark.unit
+def test_arch_graph_bolt_short_host_entries_are_accepted() -> None:
+    model = ModelArchGraphBoltOverlay(
+        schema_version="arch_graph_bolt.v1",
+        bolt_uri="bolt://graph.example.test:7687",
+        hosts=("lab-host-a", "Operator-Mac"),
+    )
+    assert model.hosts == ("lab-host-a", "Operator-Mac")

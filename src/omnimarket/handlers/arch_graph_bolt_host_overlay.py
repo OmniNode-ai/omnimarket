@@ -23,8 +23,6 @@ from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
     find_node_overlay,
     load_structured_overlay,
-)
-from omnimarket.handlers.projection_read_binding_host_overlay import (
     local_host_short_name,
 )
 from omnimarket.models.node_overlays.model_arch_graph_bolt_overlay import (
@@ -70,6 +68,5 @@ def resolve_arch_graph_bolt_uri(host: str | None = None) -> str:
 
 __all__ = [
     "ARCH_GRAPH_BOLT_OVERLAY_ID",
-    "local_host_short_name",
     "resolve_arch_graph_bolt_uri",
 ]
