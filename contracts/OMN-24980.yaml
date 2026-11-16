@@ -1,47 +1,87 @@
 schema_version: 1.0.0
 ticket_id: OMN-24980
-title: onex delegate with a one-line summarise task ends with a terminal from a local model, and the endpoints that serve no model are restored or corrected
-summary: A summarise prompt above 8192 tokens was dropped from the local tier because the packaged ladder declared max_context_tokens 8192 on local-heavy-reasoning (and 65536 on local-coder) while the endpoint behind both serves 131072, so a hosted model answered it. The packaged ceilings are the served window, and what a prompt may be before a local rung is offered stays the code budget overlay's input_ceilings. This pull request also adds a delegation-health finding, local_share_zero, that is DEGRADED when no delegated run in a 360 minute window was answered by a local backend while a declared local endpoint answered (the window and the minimum run count are contract values). This pull request carries the routing criterion (AC1); the overlay host test of AC3 is in the overlays repository and the other criteria are read on the lab (see the unbound items).
+title: onex delegate with a one-line summarise task ends with a terminal from a local model, and the endpoints that
+  serve no model are restored or corrected
+summary: 'This draft corrects the packaged input budget and tests the public routing reducer; it does not establish
+  the missing-terminal cause. Both local rungs reserve 65536 output tokens from the served 131072-token window,
+  independently of optional overlay ceilings. The unfinished local-share alarm is split out; its reader and scheduled
+  check remain open. AC1: OPEN. The missing-terminal run has no recovered historical consumer registration, lag
+  or handler-error evidence; no owner re-scope is claimed. AC2: OPEN. The endpoint on port 8001 has no declared
+  serving unit in the prior lane evidence. AC3: OPEN. Overlay endpoint host validation is outside this repository.
+  Dev runtime read on 2026-11-16: DELEGATION_ROUTING_TIERS_PATH=/app/config/delegation/routing_tiers.yaml; the pinned
+  file and the installed packaged ladder both have sha256 22269ddea166de0f3c10a435967a81b71764e0711d32bbc7a00d3b46f63f14e9,
+  with local-coder=65536 and local-heavy-reasoning=8192. Current authenticated broker read: the delegate consumer
+  group is Stable with one member and lag 2 on partition 0; the member host matches a dev runtime container address.
+  The historical log window 19:45Z to 19:56Z retains zero rows, so handler errors and lag for the missing run cannot
+  be reconstructed from it. Thus the mounted ladder must be updated through its owner before the deployed proof
+  can validate this change. The earlier hosted answer belongs to a deployed-lane run. The in-process base answer
+  local-omnipc2-chat is a local spread peer and does not reproduce that hosted answer.'
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
 - id: req-omn24980-local-route
-  statement: A summarise delegation on the dev runtime is answered by a local model, including a prompt above 8192 tokens.
+  statement: A summarise delegation on the dev runtime is answered by a local model, including a prompt above 8192
+    tokens.
   acceptance:
   - id: AC1
-    statement: 'AC1: the cause of the missing terminal is named from the bus (consumer of the delegate command topic, its registration in the dev runtime, consumer group lag, handler errors) and fixed at its source with a test built from the recorded failure that fails on the base commit and passes on the fix -- falsifier: uv run pytest on the named test file in the owning repository fails against the base commit'
+    statement: 'AC1: the cause of the missing terminal is named from the bus (consumer of the delegate command topic,
+      its registration in the dev runtime, consumer group lag, handler errors) and fixed at its source with a test
+      built from the recorded failure that fails on the base commit and passes on the fix -- falsifier: uv run pytest
+      on the named test file in the owning repository fails against the base commit'
 evidence_requirements:
 - kind: tests
-  description: The focused routing test of the local rung ceilings.
-  command: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_delegation_routing_reducer/test_local_rung_context_ceiling_omn24980.py -q --no-cov -n 0 -p no:randomly
+  description: Public routing, receipt-proof falsifiers and existing delegation-health compatibility.
+  command: uv run pytest tests/nodes/node_delegation_routing_reducer/test_local_rung_context_ceiling_omn24980.py
+    tests/nodes/node_delegation_routing_reducer/test_contract_proof_omn24980.py tests/nodes/node_delegation_health_compute/test_local_share_zero_omn24980.py
+    -q --no-cov -n 0 -p no:randomly
 emergency_bypass:
   enabled: false
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
-- id: dod-omn24980-ac1-local-ceiling-test
-  description: The recorded 44290-character summarise prompt is offered to the local rung and both local rungs declare the served window; the test fails on the base commit.
+- id: dod-omn24980-local-ceiling-test
+  description: The public reducer walks the full packaged ladder, retains the output reserve for every local use_for
+    class with and without an overlay, and tests escalation, research and reasoning through the large-window rungs.
+    This is a routing correction, not missing-terminal-cause evidence.
   source: manual
-  binds_ac:
-  - AC1
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_delegation_routing_reducer/test_local_rung_context_ceiling_omn24980.py -q --no-cov -n 0 -p no:randomly
+    check_value: uv run pytest tests/nodes/node_delegation_routing_reducer/test_local_rung_context_ceiling_omn24980.py
+      -q --no-cov -n 0 -p no:randomly
     cwd: .
-- id: dod-omn24980-local-share-zero-test
-  description: The delegation-health node judges DEGRADED when no delegated run was answered locally over the contract's window while a local endpoint is up, and not judged otherwise.
+- id: dod-omn24980-health-scope-test
+  description: The unpopulated local-share feature is split out; existing rule payloads load, ordinary callers gain
+    no local-share warning, and the remaining pinned smoke command is rendered.
   source: manual
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_delegation_health_compute/test_local_share_zero_omn24980.py -q --no-cov -n 0 -p no:randomly
+    check_value: uv run pytest tests/nodes/node_delegation_health_compute/test_local_share_zero_omn24980.py -q --no-cov
+      -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24980-receipt-proof-test
+  description: The deployed proof accepts an answering local attempt and refuses an in-process run, another lane,
+    a failed terminal and a skipped local candidate.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_routing_reducer/test_contract_proof_omn24980.py -q --no-cov
+      -n 0 -p no:randomly
     cwd: .
 - id: dod-omn24980-integration-proof
-  description: Hosted CI cannot reach a lab host, so only the local Done gate runs this unbound check. It runs the branch ladder on a lab host through onex lab-work, delegates a summarise prompt of about 15000 tokens in-process against the live first lab model host, and fails unless the receipt of the run names the rung local-heavy-reasoning (read on 2026-11-16, the branch ladder answers it there and the base ladder answers it on local-omnipc2-chat).
+  description: OPEN until the dev mounted ladder is durably updated. Uses the dev bus and runtime; validates the
+    accepted attempt and answering backend in the typed terminal receipt. A local peer mentioned as a candidate
+    cannot satisfy this check. No packaged-file override or in-process fallback is used.
   source: manual
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: >-
-      onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24980 --kind test -- sh -c 'S=/tmp/onex-state-24980; rm -rf "$S"; DELEGATION_ROUTING_TIERS_PATH="$PWD/src/omnimarket/configs/routing_tiers.yaml" "$OMNI_HOME/omnibase_infra/scripts/onex" delegate "Summarize in one line: $(yes "lane host overlay endpoint model context window delegation route terminal receipt queue." | head -n 900)" --task-type summarization --bus inmemory --locus in-process --state-root "$S" >/dev/null && grep -rq "backend_id.: .local-heavy-reasoning" "$S/runs"'
+    check_value: 'R=$(mktemp "$OMNI_HOME/.onex_state/route-proof-24980.XXXXXX"); "$OMNI_HOME/omnibase_infra/scripts/onex"
+      delegate "$(python3 -c ''print("Summarize in one line: " + "x" * 44290)'')" --task-type summarization --ticket
+      OMN-24980 --caller-lane route-proof-24980 --bus kafka --lane dev --locus deployed-lane --state-root "$OMNI_HOME/.onex_state"
+      --json > "$R" && python3 -c ''import json,sys; r=json.load(open(sys.argv[1])); assert (r["bus"],r["lane"],r["locus"],r["status"])
+      == ("kafka","dev","deployed-lane","success"); t=r["receipt"]["result"]["terminal_payload"]["payload"]; assert
+      t["status"] == "completed"; a=[a for a in t["attempts"] if a["acceptance_decision"] == "accept" and a["quality_gate_passed"]];
+      assert len(a) == 1; assert a[0]["backend_id"] == r["backend_id"] == "local-heavy-reasoning"; assert a[0]["tier"]
+      == r["routing_tier"] == "local"; print("PASS: deployed dev terminal accepted local-heavy-reasoning")'' "$R"'
     cwd: .

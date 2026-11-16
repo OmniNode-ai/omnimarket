@@ -62,11 +62,9 @@ tiers:
       # header comment) — a mismatch here would strand routing.
       - id: Qwen3.8-27B
         backend_id: local-coder
-        # OMN-24980: the served window of the first lab model host's vLLM endpoint (GET /v1/models max_model_len
-        # 131072, read 2026-11-16), not a smaller cutoff. What a prompt may be before this rung
-        # is offered it is the code budget overlay's input_ceilings (served window less the
-        # output reserve), which routing reads on every call.
-        max_context_tokens: 131072
+        # Input budget: served window 131072 minus the backend's 65536 output
+        # reserve. Keep this bound even when no input-ceiling overlay is loaded.
+        max_context_tokens: 65536
         # OMN-13599 (SUPERSEDED by OMN-16442 for `test`): local-coder was the
         # CODE backend only; `test` and `research` were removed here so the
         # code-only fast_path_threshold did not bleed local-coder into task
@@ -131,11 +129,10 @@ tiers:
       # across both rungs.
       - id: Qwen3.8-27B
         backend_id: local-heavy-reasoning
-        # OMN-24980: the same served window as local-coder (the same endpoint). It was 8192, so
-        # a summarise prompt above 8192 tokens was dropped from this tier and answered by a
-        # hosted model (recorded run 8a9b604a-d4b4-43b6-8231-f0fc61b8074f); the size this rung
-        # is offered per class is the code budget overlay's input_ceilings.
-        max_context_tokens: 131072
+        # The recorded 11072-token summarization prompt fits this input budget.
+        # Reserve 65536 output tokens from the served 131072-token window.
+        # Overlay ceilings may narrow individual classes further.
+        max_context_tokens: 65536
         use_for:
           - research
           - reasoning
@@ -153,7 +150,7 @@ tiers:
           # taxonomy, so serving escalation's declared ``reasoning`` capability
           # is not a new claim. escalation's other declared capability,
           # ``context_window_large``, stays mechanically honoured rather than
-          # asserted: ``max_context_tokens`` (131072 here) excludes this model
+          # asserted: ``max_context_tokens`` (65536 here) excludes this model
           # from selection for any prompt that does not fit, which escalates to
           # the large-window rungs below / the ceiling instead.
           - escalation
