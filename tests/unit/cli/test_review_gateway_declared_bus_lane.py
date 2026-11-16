@@ -23,9 +23,11 @@ from click.testing import CliRunner
 
 from omnimarket.cli import cli_secret
 from omnimarket.delegated_test_loop import lane_bus
-from omnimarket.handlers.handler_lab_host_bus_lane import lab_host_bus_lane
 from omnimarket.nodes.node_claude_review_gateway_effect.handlers.handler_claude_review_gateway import (
     HandlerClaudeReviewGateway,
+)
+from omnimarket.nodes.node_claude_review_gateway_effect.handlers.handler_lab_host_bus_lane import (
+    lab_host_bus_lane,
 )
 
 pytestmark = pytest.mark.unit

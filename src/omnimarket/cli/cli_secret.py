@@ -48,9 +48,9 @@ import yaml
 from omnibase_core.errors.model_onex_error import ModelOnexError
 from pydantic import SecretStr, ValidationError
 
+import omnimarket.nodes.node_claude_review_gateway_effect.handlers.handler_lab_host_bus_lane as bus_lane_reader
+import omnimarket.nodes.node_claude_review_gateway_effect.handlers.handler_review_key_credit_probe as key_probe
 from omnimarket.handlers import handler_model_keys as model_keys
-from omnimarket.handlers.handler_lab_host_bus_lane import lab_host_bus_lane
-from omnimarket.handlers.handler_review_key_credit_probe import review_key_probe_command
 from omnimarket.handlers.models_list_ladder import ladder_option, model_json
 from omnimarket.handlers.models_only_command import MODEL_COMMANDS, listed, models_text
 from omnimarket.handlers.routing.byok_model_discovery import (
@@ -315,7 +315,7 @@ def _environment_names_broker() -> bool:
 
 def _lab_host_bus_lane(bound_host: str | None) -> str | None:
     """The bound host's declared ``ledger_bus_lane`` in the lab host table."""
-    return lab_host_bus_lane(_lab_host_table(), bound_host)
+    return bus_lane_reader.lab_host_bus_lane(_lab_host_table(), bound_host)
 
 
 async def _register_on_declared_bus[T](
@@ -1229,7 +1229,7 @@ _REVIEW_GATEWAY_DRY_RUN_PAYLOAD: dict[str, object] = {
 
 
 models_group.add_command(
-    review_key_probe_command(
+    key_probe.review_key_probe_command(
         resolve_host=lambda host: _resolve_bound_host(host),
         key_store=lambda: _tenant_key_store(),
     ),
