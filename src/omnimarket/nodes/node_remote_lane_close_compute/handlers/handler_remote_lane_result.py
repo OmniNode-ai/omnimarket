@@ -26,6 +26,12 @@ from omnimarket.models.remote_lane_close import (
 )
 from omnimarket.nodes.node_remote_lane_close_compute.overlay import load_needs_policy
 
+from .exemplar_graph_cell import (
+    FINISHING_OUTCOMES,
+    NO_CELL_PROBLEM,
+    code_lane,
+    exemplar_graph_cells,
+)
 from .first_turn_context import first_turn_context
 from .lane_needs import lane_needs, report_text
 from .receipt_usage import receipt_usage
@@ -218,6 +224,11 @@ class HandlerRemoteLaneResult:
             outcome = REJECTED_OUTCOME
         else:
             outcome = declared
+        findings: tuple[str, ...] = ()
+        if outcome in FINISHING_OUTCOMES and code_lane(request.brief):
+            carried, findings = exemplar_graph_cells(message)
+            if not carried:  # OMN-24686: a code lane copies an exemplar and queries the graph, and says so
+                outcome, problem = "partial", NO_CELL_PROBLEM
         usage = receipt_usage(
             request.engine, request.engine_output, request.brief, request.wall_seconds
         )
@@ -239,6 +250,7 @@ class HandlerRemoteLaneResult:
             outcome=outcome,
             problem=problem,
             declared_outcome=declared,
+            findings=findings,
             delegation=parse_delegation_line(message),
             waiting_on_background=waiting_on_background(message),
             usage=usage,
