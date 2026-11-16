@@ -87,6 +87,10 @@ async def test_canonical_terminal_stores_its_attempts_count() -> None:
 async def test_unreported_terminal_and_pre_migration_row_read_null() -> None:
     payload = _wire(_quota_terminal())
     cid = str(payload["correlation_id"])
+    # The orchestrator's own terminal reports its total calls (99 escalations
+    # plus the last call), so the producer that reports no count is modelled by
+    # a terminal whose payload omits the key.
+    assert payload.pop("attempts_count") == 100
     async with _provisioned_runner() as (runner, admin_conn, _schema):
         assert await runner.project_event(
             runner._topic_delegation_failed,
