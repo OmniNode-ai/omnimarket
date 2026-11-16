@@ -1,0 +1,144 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# The workflow catalog the tests serve: the dev overlay's entries for two servable types and one fenced type.
+# The topics live here, not in test code; test_workflow_wire_envelope.py checks them against the consumer nodes' contracts.
+workflows:
+- workflow_type: delegate-skill
+  contract_id: node_delegate_skill_orchestrator:1.2.0
+  command_topic: onex.cmd.omnimarket.delegate-skill.v1
+  event_type: omnimarket.delegate-skill
+  enabled: true
+  payload_schema:
+    type: object
+    required:
+    - prompt
+    - task_type
+    - source
+    additionalProperties: false
+    properties:
+      prompt:
+        type: string
+        minLength: 1
+        maxLength: 32768
+      task_type:
+        type: string
+        description: 'Delegation task class. Declared as a bare string on purpose: the class universe
+          is registry-owned (see the block above), and this gateway does not re-declare it. Note that
+          the length bounds are absent too, and that is the same decision rather than an omission - the
+          OMN-15651 discovery scanner treats ANY constraint on a task-taxonomy key as a task-class declaration
+          to reconcile, so a minLength/maxLength pair here would re-enrol this locator as a seventh copy
+          of the universe while constraining nothing anyone cares about. The consumer''s closed Literal
+          is the real bound.'
+      source:
+        type: string
+        pattern: ^(claude-code|codex|external-client)$
+      max_tokens:
+        type: integer
+        minimum: 1
+  wire:
+    payload_keys:
+    - prompt
+    - task_type
+    - source
+    - max_tokens
+    stamp_emitted_at: false
+    stamp_context_pack: false
+    canonical_tenant_id: true
+    stamp_tenant_principal: false
+- workflow_type: delegation-inference
+  contract_id: node_delegation_orchestrator:0.6.0
+  command_topic: onex.cmd.omnibase-infra.delegation-request.v1
+  event_type: omnibase-infra.delegation-request
+  enabled: true
+  payload_schema:
+    type: object
+    required:
+    - prompt
+    - task_type
+    additionalProperties: false
+    properties:
+      prompt:
+        type: string
+        minLength: 1
+        maxLength: 65536
+      task_type:
+        type: string
+        pattern: ^(test|document|research|code_generation|refactor|reasoning|complex_reasoning|planning|review|summarization)$
+      max_tokens:
+        type: integer
+        minimum: 1
+      context_pack:
+        type: string
+        maxLength: 65536
+  wire:
+    payload_keys:
+    - prompt
+    - task_type
+    - max_tokens
+    stamp_emitted_at: true
+    stamp_context_pack: true
+    canonical_tenant_id: true
+    stamp_tenant_principal: false
+- workflow_type: push-validation
+  contract_id: node_push_validation_effect:1.1.0
+  command_topic: onex.cmd.omnimarket.push-validation-requested.v1
+  event_type: omnimarket.push-validation-requested
+  enabled: false
+  payload_schema:
+    type: object
+    required:
+    - repo
+    - branch
+    - expected_head_sha
+    - requester
+    additionalProperties: false
+    properties:
+      repo:
+        type: string
+        pattern: ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$
+        maxLength: 140
+      branch:
+        type: string
+        minLength: 1
+        maxLength: 255
+      expected_head_sha:
+        type: string
+        pattern: ^[0-9a-f]{40}$
+      requester:
+        type: string
+        minLength: 1
+        maxLength: 128
+      mode:
+        type: string
+        pattern: ^(validate_and_push|validate_only)$
+      source_identity:
+        type: object
+        additionalProperties: false
+        required:
+        - identity_type
+        - expected_head_sha
+        properties:
+          identity_type:
+            type: string
+            pattern: ^(commit|tree|commit\+patch)$
+          expected_head_sha:
+            type: string
+            pattern: ^[0-9a-f]{40}$
+          tree_hash:
+            type: string
+            pattern: ^[0-9a-f]{64}$
+          patch_hash:
+            type: string
+            pattern: ^[0-9a-f]{64}$
+  wire:
+    payload_keys:
+    - repo
+    - branch
+    - expected_head_sha
+    - requester
+    - mode
+    - source_identity
+    stamp_emitted_at: true
+    stamp_context_pack: false
+    canonical_tenant_id: false
+    stamp_tenant_principal: true
