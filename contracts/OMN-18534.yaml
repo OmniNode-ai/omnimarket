@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-18534
 title: 'W7-2: Turn count is recorded per delegation as a first-class metric'
-summary: 'Migration 0069 adds a nullable turn_count column to delegation_events. Both terminal writers store the terminal''s attempts_count in it: the total inference calls including escalated rungs, retries and compliance repairs, 0 for a delegation that failed before any turn. The node contract exposes the column, the terminal owns it, and a sparse later terminal keeps a recorded count. The omnibase_infra vendored copy of 0068 lands first in its own pull request.'
+summary: 'Migration 0069 adds a nullable turn_count column to delegation_events. Both terminal writers store the terminal''s attempts_count in it: the total inference calls including escalated rungs, retries and compliance repairs, 0 for a delegation that failed before any turn. The node contract exposes the column, the terminal owns it, and a sparse later terminal keeps a recorded count. The omnibase_infra vendored copy is numbered 0069, byte-identical to this migration, and is on the omnibase_infra dev tip; it must be applied before this code deploys, because a reported count puts turn_count in the INSERT.'
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -27,13 +27,13 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn18534-typed-column-ac1
-  description: Migration 0069 adds the nullable integer turn_count column idempotently with a rollback and is the only migration that adds it; the terminal writes it as a stored column, and the local sqlite store declares it before any terminal is projected.
+  description: Migration 0069 adds the nullable integer turn_count column idempotently with a rollback and is the only migration that adds it; the terminal writes it as a stored column, and the local sqlite store declares it INTEGER, nullable, with no default, before any terminal is projected; a store created before the column gains it on connect.
   source: manual
   binds_ac:
   - AC1
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/unit/delegation/test_terminal_turn_count_omn18534.py -q --no-cov -p no:randomly -k "only_migration_0069 or declares_a_nullable_integer_column or different_counts"
+    check_value: uv run --frozen pytest tests/unit/delegation/test_terminal_turn_count_omn18534.py -q --no-cov -p no:randomly -k "only_migration_0069 or fresh_sqlite_store or gains_it_on_connect or different_counts or stated_count"
     cwd: .
 - id: dod-omn18534-escalated-path-ac2
   description: A single-turn and an escalated delegation store different counts; the escalated record carries the total calls (3) and not the escalation count (1), on the delegate-skill and the canonical terminal.
@@ -45,13 +45,13 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/unit/delegation/test_terminal_turn_count_omn18534.py -q --no-cov -p no:randomly -k "different_counts or pre_escalation or canonical_escalated or canonical_terminal_stores"
     cwd: .
 - id: dod-omn18534-zero-not-absent-ac3
-  description: A delegation refused before dispatch stores turn_count 0, not NULL, and a sparse later terminal does not erase a recorded zero; a malformed count is stored as NULL and never coerced to zero.
+  description: A delegation refused before dispatch stores turn_count 0, not NULL, and a sparse later terminal does not erase a recorded zero; a refused-before-dispatch or not-routed run whose terminal omitted the count is stamped 0; a malformed canonical count is stored as NULL and never coerced to zero, and a malformed delegate-skill count is refused outright.
   source: manual
   binds_ac:
   - AC3
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/unit/delegation/test_terminal_turn_count_omn18534.py -q --no-cov -p no:randomly -k "before_any_turn or sparse_later or rejects_non_integer or reported_no_count"
+    check_value: uv run --frozen pytest tests/unit/delegation/test_terminal_turn_count_omn18534.py -q --no-cov -p no:randomly -k "before_any_turn or sparse_later or rejects_non_integer or reported_no_count or stamped_zero or producer_refusal or no_count_and_no_history or malformed_count or later_terminal or read_node"
     cwd: .
 - id: dod-omn18534-projection-ac4
   description: The node contract's projection columns list turn_count, the terminal owns the column, and the async runner binds it into the INSERT and keeps a recorded zero.

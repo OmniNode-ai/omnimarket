@@ -1089,7 +1089,7 @@ class HandlerProjectionDelegation:
             event.queue_wait_ms,
             event.execution_duration_ms,
         )
-        _stamp_terminal_turn_count(row, event.attempts_count)
+        _stamp_skill_terminal_turn_count(row, event)
         # OMN-19448: the trace id the terminal copied from its command (OMN-19437).
         if event.trace_id is not None:
             row["trace_id"] = str(event.trace_id)
@@ -2148,6 +2148,11 @@ def _preserve_run_attribution(
         row["delegated_to"] = stored_target
 
 
+_REFUSED_BEFORE_DISPATCH_VALUE = (
+    EnumDelegationTerminalFailureCause.REFUSED_BEFORE_DISPATCH.value
+)
+
+
 def _stamp_not_routed(row: dict[str, object]) -> None:
     """Name a failed run that carried no try as not routed, with the reason (OMN-19448).
 
@@ -2161,11 +2166,19 @@ def _stamp_not_routed(row: dict[str, object]) -> None:
     """
     if row.get("terminal_ok") is not False:
         return
-    if not _is_unnamed_model(row.get("model_name")) or not _is_blank(
-        row.get("routed_model")
-    ):
-        return
     cause = row.get("terminal_failure_cause")
+    not_routed = _is_unnamed_model(row.get("model_name")) and _is_blank(
+        row.get("routed_model")
+    )
+    # OMN-18534: a run refused before dispatch, or one that carried no try,
+    # made no inference call, so an unreported count is a zero, not an unknown.
+    # A count this terminal or an earlier one reported is kept as it is.
+    if row.get("turn_count") is None and (
+        not_routed or cause == _REFUSED_BEFORE_DISPATCH_VALUE
+    ):
+        row["turn_count"] = 0
+    if not not_routed:
+        return
     reason = str(cause) if not _is_blank(cause) else "no routing decision recorded"
     row["model_name"] = f"{NOT_ROUTED} ({reason})"
     if _is_blank(row.get("delegated_to")) or (
@@ -2310,6 +2323,20 @@ def _stamp_terminal_turn_count(row: dict[str, object], turn_count: int | None) -
     """Name the terminal's total inference calls; a reported zero is stored (0069)."""
     if turn_count is not None:
         row["turn_count"] = turn_count
+
+
+def _stamp_skill_terminal_turn_count(
+    row: dict[str, object], event: ModelDelegateSkillTerminalProjection
+) -> None:
+    """Store the delegate-skill terminal's count only when the payload carried one.
+
+    The skill terminal model defaults an omitted count to 1, which would be a
+    fabricated count on the row; the field is read as reported only when it was
+    set, whether by the producer or by the model's own derivation from the
+    attempt list. A terminal that sent neither leaves the column untouched.
+    """
+    if "attempts_count" in event.model_fields_set:
+        _stamp_terminal_turn_count(row, event.attempts_count)
 
 
 def _blank_to_none(value: object) -> str | None:

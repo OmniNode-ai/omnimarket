@@ -96,11 +96,11 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_del
     _stamp_declared_failure_cause,
     _stamp_not_routed,
     _stamp_routing_tier,
+    _stamp_skill_terminal_turn_count,
     _stamp_terminal_dispositions,
     _stamp_terminal_stop_reason,
     _stamp_terminal_timing_and_requested_model,
     _stamp_terminal_trace_and_routing,
-    _stamp_terminal_turn_count,
     _stamp_unmeasured_latency,
     _unpriced_cost_as_null,
     compute_generation_proof_fields,
@@ -2030,7 +2030,7 @@ class DelegationProjectionRunner(CoalescingProjectionBase):
             event.queue_wait_ms,
             event.execution_duration_ms,
         )
-        _stamp_terminal_turn_count(row, event.attempts_count)
+        _stamp_skill_terminal_turn_count(row, event)
         # OMN-19448: the trace id the terminal copied from its command (OMN-19437).
         if event.trace_id is not None:
             row["trace_id"] = str(event.trace_id)
