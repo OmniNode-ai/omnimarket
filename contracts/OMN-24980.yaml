@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-24980
 title: onex delegate with a one-line summarise task ends with a terminal from a local model, and the endpoints that serve no model are restored or corrected
-summary: A summarise prompt above 8192 tokens was dropped from the local tier because the packaged ladder declared max_context_tokens 8192 on local-heavy-reasoning (and 65536 on local-coder) while the endpoint behind both serves 131072, so a hosted model answered it. The packaged ceilings are the served window, and what a prompt may be before a local rung is offered stays the code budget overlay's input_ceilings. This pull request carries the routing criterion (AC1); the overlay host test of AC3 is in the overlays repository and the other criteria are read on the lab (see the unbound items).
+summary: A summarise prompt above 8192 tokens was dropped from the local tier because the packaged ladder declared max_context_tokens 8192 on local-heavy-reasoning (and 65536 on local-coder) while the endpoint behind both serves 131072, so a hosted model answered it. The packaged ceilings are the served window, and what a prompt may be before a local rung is offered stays the code budget overlay's input_ceilings. This pull request also adds a delegation-health finding, local_share_zero, that is DEGRADED when no delegated run in a 360 minute window was answered by a local backend while a declared local endpoint answered (the window and the minimum run count are contract values). This pull request carries the routing criterion (AC1); the overlay host test of AC3 is in the overlays repository and the other criteria are read on the lab (see the unbound items).
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -28,6 +28,13 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_delegation_routing_reducer/test_local_rung_context_ceiling_omn24980.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24980-local-share-zero-test
+  description: The delegation-health node judges DEGRADED when no delegated run was answered locally over the contract's window while a local endpoint is up, and not judged otherwise.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_health_compute/test_local_share_zero_omn24980.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn24980-integration-proof
   description: Hosted CI cannot reach a lab host, so only the local Done gate runs this unbound check. It runs the branch ladder on a lab host through onex lab-work, delegates a summarise prompt of about 15000 tokens in-process against the live first lab model host, and fails unless the receipt of the run names the rung local-heavy-reasoning (read on 2026-11-16, the branch ladder answers it there and the base ladder answers it on local-omnipc2-chat).

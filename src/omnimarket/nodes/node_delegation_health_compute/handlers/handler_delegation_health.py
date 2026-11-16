@@ -75,6 +75,7 @@ class HandlerDelegationHealth:
             *self._harness(by_backend),
             *self._timeouts(request, not_judged),
             *self._expected(request, by_backend, not_judged),
+            *self._local_share(request, not_judged),
         ]
         evidence = [
             *self._pin_only_lines(request, by_backend),
@@ -262,6 +263,42 @@ class HandlerDelegationHealth:
                 )
             )
         return out
+
+    def _local_share(
+        self, request: ModelDelegationHealthRequest, not_judged: list[str]
+    ) -> list[ModelDelegationHealthFinding]:
+        """DELEGATED runs answered by no local model while a declared local endpoint is up (OMN-24980)."""
+        rules = self._rules
+        share = request.local_share
+        if share is None:
+            not_judged.append("local share: the caller read no local share counts")
+            return []
+        if share.window_minutes < rules.local_share_window_minutes:
+            not_judged.append(
+                f"local share: read over {share.window_minutes}m, below the "
+                f"{rules.local_share_window_minutes}m window"
+            )
+            return []
+        if not share.local_endpoints_up:
+            not_judged.append("local share: no declared local endpoint answered")
+            return []
+        if share.delegated_runs < rules.local_share_min_runs:
+            not_judged.append(
+                f"local share: {share.delegated_runs} delegated runs in "
+                f"{share.window_minutes}m is below the minimum of {rules.local_share_min_runs}"
+            )
+            return []
+        if share.local_runs > 0:
+            return []
+        return [
+            self._finding(
+                EnumDelegationHealthFindingKind.LOCAL_SHARE_ZERO,
+                f"local share is 0: {share.delegated_runs} delegated runs in "
+                f"{share.window_minutes}m, none answered by a local backend, while "
+                f"{len(share.local_endpoints_up)} declared local endpoint(s) answered "
+                f"({', '.join(share.local_endpoints_up)})",
+            )
+        ]
 
     def _rung_events(
         self,

@@ -4,7 +4,7 @@
 
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class EnumDelegationHealthVerdict(StrEnum):
@@ -24,6 +24,7 @@ class EnumDelegationHealthFindingKind(StrEnum):
     HARNESS_RUNG = "harness_rung"
     TIMEOUTS_DOMINATE = "timeouts_dominate"
     EXPECTED_RUNG_SILENT = "expected_rung_silent"
+    LOCAL_SHARE_ZERO = "local_share_zero"
 
 
 class EnumExpectedRungRule(StrEnum):
@@ -86,6 +87,25 @@ class ModelOutcomeCounts(_Frozen):
     causes: tuple[ModelCauseCount, ...] = ()
 
 
+class ModelLocalShareCounts(_Frozen):
+    """Delegated runs over the local share window and how many a local backend answered (OMN-24980).
+
+    ``local_endpoints_up`` names the local endpoints the routing overlay declares that answered a
+    model-list call when the caller read; the share is judged only while it is non-empty.
+    """
+
+    window_minutes: int = Field(gt=0)
+    delegated_runs: int = Field(ge=0)
+    local_runs: int = Field(ge=0)
+    local_endpoints_up: tuple[str, ...] = ()
+
+    @model_validator(mode="after")
+    def _local_within_delegated(self) -> "ModelLocalShareCounts":
+        if self.local_runs > self.delegated_runs:
+            raise ValueError("local_runs must not exceed delegated_runs")
+        return self
+
+
 class ModelDelegationHealthRequest(_Frozen):
     """Counts read by the caller. Reads stay with the caller; this node judges them."""
 
@@ -100,6 +120,7 @@ class ModelDelegationHealthRequest(_Frozen):
     unresolved_tiers: tuple[str, ...] = ()
     outcomes: ModelOutcomeCounts | None = None
     lanes_running: int = Field(default=0, ge=0)
+    local_share: ModelLocalShareCounts | None = None
 
     @field_validator("correlation_id")
     @classmethod
@@ -135,6 +156,8 @@ class ModelDelegationHealthRules(_Frozen):
     timeout_failure_cause: str = Field(min_length=1)
     timeout_share_percent: int = Field(ge=0, le=100)
     timeout_min_events: int = Field(ge=1)
+    local_share_window_minutes: int = Field(gt=0)
+    local_share_min_runs: int = Field(ge=1)
     expected_rung_rule: EnumExpectedRungRule
     exit_codes: dict[EnumDelegationHealthVerdict, int]
     smoke_command: str = Field(min_length=1)
