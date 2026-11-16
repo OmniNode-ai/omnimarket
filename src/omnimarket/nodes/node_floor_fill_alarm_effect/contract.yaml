@@ -1,0 +1,62 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_floor_fill_alarm_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: effect
+description: >
+  The floor fill's scheduled alarm check (OMN-24873). One check reads the fill's runs (its stored answers, kept as a
+  run history), the lanes it started with the CLAIM time of each from the ledger, and the free slots from a pool read of
+  its own, asks node_floor_fill_alarm_compute for the alarms, and writes one STATUS row per alarm to the ledger through
+  the declared append command. An unread pool is an alarm, not a zero; a source that cannot be read fails the check
+  and writes no row. A row whose alarm key was written inside the repeat window is not written again.
+handler:
+  module: omnimarket.nodes.node_floor_fill_alarm_effect.handlers.handler_floor_fill_alarm_check
+  class: HandlerFloorFillAlarmCheck
+  input_model: omnimarket.nodes.node_floor_fill_alarm_effect.models.model_floor_fill_alarm_check.ModelFloorFillAlarmCheckRequest
+  output_model: omnimarket.nodes.node_floor_fill_alarm_effect.models.model_floor_fill_alarm_check.ModelFloorFillAlarmCheckResult
+input_model:
+  name: ModelFloorFillAlarmCheckRequest
+  module: omnimarket.nodes.node_floor_fill_alarm_effect.models.model_floor_fill_alarm_check
+  description: The time of the check, the lane and ticket of the alarm rows, and the rule's bounds.
+output_model:
+  name: ModelFloorFillAlarmCheckResult
+  module: omnimarket.nodes.node_floor_fill_alarm_effect.models.model_floor_fill_alarm_check
+  description: The alarms found, the rows written, the repeats left out and the pool read.
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: check
+      topic: onex.cmd.omnimarket.floor-fill-alarm-requested.v1
+      handler:
+        name: HandlerFloorFillAlarmCheck
+        module: omnimarket.nodes.node_floor_fill_alarm_effect.handlers.handler_floor_fill_alarm_check
+terminal_event: onex.evt.omnimarket.floor-fill-alarm-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.floor-fill-alarm-requested.v1
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: false
+  timeout_ms: 120000
+  runtime_profiles:
+    - effects
+  side_effects:
+    - appends one STATUS row per alarm to the rolling ledger through the declared append command
+    - appends the fill's run history to its own run log file
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.floor-fill-alarm-requested.v1]
+  publish_topics: [onex.evt.omnimarket.floor-fill-alarm-completed.v1]
+externally_consumed_topics:
+- onex.evt.omnimarket.floor-fill-alarm-completed.v1
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.floor-fill-alarm-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.floor-fill-alarm-completed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.floor-fill-alarm-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.floor-fill-alarm-requested.v1, operation: DESCRIBE}
+metadata:
+  ticket: OMN-24873
+  transport_type: inmemory
+lifecycle: experimental

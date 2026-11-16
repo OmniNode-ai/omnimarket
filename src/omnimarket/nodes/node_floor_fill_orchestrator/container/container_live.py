@@ -78,10 +78,10 @@ def snapshot_floor_pool(
     """The pool seam on the lane host pool snapshot: the lane slots of every host it admits, refused when stale."""
     return SnapshotFloorPool(
         StampedSnapshotFileLaneHostPool(
-            Path(settings.pool_snapshot_path),
-            settings.pool_record_suffix,
-            settings.pool_snapshot_max_age_seconds,
-            clock,
+            path=Path(settings.pool_snapshot_path),
+            record_suffix=settings.pool_record_suffix,
+            max_age_seconds=settings.pool_snapshot_max_age_seconds,
+            clock=clock,
         ),
         settings.pool_engine,
     )
@@ -95,6 +95,7 @@ def build_live_handler_factory(
     fetch_text: Callable[[str, float], str] = fetch_url_text,
     read_file: Callable[[str], str] = read_text_file,
     pool: ProtocolFloorPool | None = None,
+    pool_clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     tickets: ProtocolFloorTickets | None = None,
     brake: Callable[[], bool] | None = None,
     stop: Callable[[str], str | None] | None = None,
@@ -102,7 +103,7 @@ def build_live_handler_factory(
     """The factory ``run_entry`` takes: given the validated config it wires the live seams.
 
     ``store`` is for tests; without one the table-backed store is built from the settings and ``dsn``.
-    ``pool`` is for tests; without one the pool snapshot named by the settings is read.
+    ``pool`` is for tests; without one the pool snapshot named by the settings is read, its age taken from ``pool_clock``.
     ``tickets``, ``brake`` and ``stop`` are bound by injection; a missing one (left ``None``)
     refuses by name, so the pass answers ``UNKNOWN <source>-unread:unbound:<seam>`` and starts nothing.
     """
@@ -137,7 +138,9 @@ def build_live_handler_factory(
                 brake=brake,
                 stop=stop,
             ),
-            pool=pool if pool is not None else snapshot_floor_pool(settings),
+            pool=pool
+            if pool is not None
+            else snapshot_floor_pool(settings, pool_clock),
             ledger=LedgerRowsFloorLedger(FileWorkLedgerStore(settings.ledger_path)),
             tickets=tickets if tickets is not None else UnboundFloorTickets(),
             runner=process,

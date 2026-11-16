@@ -2,14 +2,17 @@
 # SPDX-License-Identifier: MIT
 """The alarm rule of the floor fill (OMN-24873), pure: no I/O, the time comes from the request.
 
-IDLE: the last ``idle_runs`` runs by time all saw more than ``slot_threshold`` free slots and all sent 0 lanes; the row
-names the latest run's cause. UNCLAIMED: a started lane with no CLAIM read more than ``claim_deadline_minutes`` after
+IDLE: the last ``idle_runs`` runs by time all sent 0 lanes, none of them saw ``slot_threshold`` or fewer free slots, and the
+independent pool read of the check shows more than ``slot_threshold`` free slots; the row names the latest run's cause. A run
+that answered ``UNKNOWN pool-unread:*`` saw no slots (None), so only the pool read can raise IDLE for it. POOL_UNREAD: the
+pool read failed; an unread pool is an alarm of its own, never a count of zero. UNCLAIMED: a started lane with no CLAIM read more than ``claim_deadline_minutes`` after
 its start, or whose CLAIM arrived later than that; a CLAIM at the deadline or sooner is on time. NOT_RUNNING (only when
 ``max_run_age_minutes`` is set): no run observed in that many minutes before the check, which the IDLE rule cannot see.
 """
 
 from __future__ import annotations
 
+import math
 from datetime import timedelta
 
 from omnimarket.nodes.node_floor_fill_alarm_compute.models import (
@@ -31,6 +34,9 @@ class HandlerFloorFillAlarm:
         stale = self._not_running(request)
         if stale is not None:
             alarms.append(stale)
+        unread = self._pool_unread(request)
+        if unread is not None:
+            alarms.append(unread)
         idle = self._idle(request)
         if idle is not None:
             alarms.append(idle)
@@ -61,6 +67,22 @@ class HandlerFloorFillAlarm:
             subject="floor-fill",
             cause=cause,
             row_text=f"floor fill is not running: {cause}",
+            dedupe_key=f"{EnumFloorFillAlarmKind.NOT_RUNNING.value}:floor-fill",
+        )
+
+    @staticmethod
+    def _pool_unread(
+        request: ModelFloorFillAlarmRequest,
+    ) -> ModelFloorFillAlarmRow | None:
+        if request.pool.free_slots is not None:
+            return None
+        cause = f"pool read failed: {request.pool.unread_cause}"
+        return ModelFloorFillAlarmRow(
+            kind=EnumFloorFillAlarmKind.POOL_UNREAD,
+            subject="floor-fill",
+            cause=cause,
+            row_text=f"floor fill cannot tell its free slots: {cause}",
+            dedupe_key=f"{EnumFloorFillAlarmKind.POOL_UNREAD.value}:floor-fill",
         )
 
     @staticmethod
@@ -70,21 +92,28 @@ class HandlerFloorFillAlarm:
         ]
         if len(runs) < request.idle_runs:
             return None
+        pool_free = request.pool.free_slots
+        if pool_free is None or pool_free <= request.slot_threshold:
+            return None
         if not all(
-            run.free_slots > request.slot_threshold and run.lanes_sent == 0
+            run.lanes_sent == 0
+            and (run.free_slots is None or run.free_slots > request.slot_threshold)
             for run in runs
         ):
             return None
         cause = runs[-1].cause or NO_CAUSE
-        free = ",".join(str(run.free_slots) for run in runs)
+        free = ",".join(
+            "unread" if run.free_slots is None else str(run.free_slots) for run in runs
+        )
         return ModelFloorFillAlarmRow(
             kind=EnumFloorFillAlarmKind.IDLE,
             subject="floor-fill",
             cause=cause,
             row_text=(
                 f"floor fill sent 0 lanes for {request.idle_runs} runs in a row while free Claude slots stayed "
-                f"above {request.slot_threshold} (free {free}): cause {cause}"
+                f"above {request.slot_threshold} (pool read {pool_free}; runs saw {free}): cause {cause}"
             ),
+            dedupe_key=f"{EnumFloorFillAlarmKind.IDLE.value}:floor-fill:{cause}",
         )
 
     @staticmethod
@@ -95,18 +124,19 @@ class HandlerFloorFillAlarm:
         if lane.claim_at is None:
             if request.now <= deadline:
                 return None
-            minutes = int((request.now - lane.sent_at).total_seconds() // 60)
+            minutes = math.ceil((request.now - lane.sent_at).total_seconds() / 60)
             cause = f"no CLAIM key={lane.key} {minutes} minutes after the start"
         else:
             if lane.claim_at <= deadline:
                 return None
-            minutes = int((lane.claim_at - lane.sent_at).total_seconds() // 60)
+            minutes = math.ceil((lane.claim_at - lane.sent_at).total_seconds() / 60)
             cause = f"CLAIM key={lane.key} arrived {minutes} minutes after the start"
         return ModelFloorFillAlarmRow(
             kind=EnumFloorFillAlarmKind.UNCLAIMED,
             subject=lane.lane,
             cause=cause,
             row_text=f"lane {lane.lane} {cause}",
+            dedupe_key=f"{EnumFloorFillAlarmKind.UNCLAIMED.value}:{lane.lane}:{lane.key}",
         )
 
 

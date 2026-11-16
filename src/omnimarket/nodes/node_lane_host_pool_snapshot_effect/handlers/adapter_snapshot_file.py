@@ -38,6 +38,9 @@ from omnimarket.nodes.node_remote_lane_start_orchestrator.handlers.adapter_host_
     SnapshotFileLaneHostPool,
 )
 
+# The refusal the snapshot writer gives a host whose account (token pool) read failed; its slots are 0 but unknown.
+UNREAD_REFUSAL_PREFIX = "accounts-unread"
+
 
 class FileSnapshotStore:
     """Write the snapshot and record to disk atomically; read the record back."""
@@ -128,15 +131,27 @@ class SnapshotFloorPool:
         self._engine = engine
 
     def free_slots(self) -> int:
+        """The lane slots of every host that admits lanes for the engine; a failed host read is refused, never counted
+        as zero: the snapshot writes such a host as zero slots with an ``accounts-unread`` refusal."""
         try:
             snapshot = self._pool.read_pool(
                 ModelLaneHostPoolRequest(engine=self._engine)
             )
         except (PoolSnapshotSourceError, OSError, ValueError) as exc:
             raise FloorFillUnreadableError(f"pool-snapshot:{exc}") from exc
+        unread = [
+            f"{reading.name}: {reading.lane_admission_refusal}"
+            for reading in snapshot.readings
+            if (reading.lane_admission_refusal or "").startswith(UNREAD_REFUSAL_PREFIX)
+        ]
+        if unread:
+            raise FloorFillUnreadableError(f"pool-snapshot:{'; '.join(unread)}")
         total = 0
         for reading in snapshot.readings:
-            if reading.lane_admission_refusal is None:
+            if (
+                reading.lane_admission_refusal is None
+                and self._engine in reading.engines
+            ):
                 total += reading.lane_slots
         return total
 
