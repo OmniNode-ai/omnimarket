@@ -720,8 +720,13 @@ def evaluate_row(case: ModelCorpusCase, row: dict[str, Any]) -> list[str]:
         and exp.terminal is not None
         and exp.terminal != terminal
     ):
+        terminal_observation = (
+            "terminal_ok is NULL in the row read"
+            if "terminal_ok" in row
+            else "terminal_ok is absent from the row read"
+        )
         failures.append(
-            f"no terminal outcome: terminal_ok is NULL in the row read "
+            f"no terminal outcome: {terminal_observation} "
             f"(delegated_to={row.get('delegated_to')!r}, "
             f"model_name={row.get('model_name')!r}, "
             f"tokens={int(row.get('tokens_input') or 0)}/"

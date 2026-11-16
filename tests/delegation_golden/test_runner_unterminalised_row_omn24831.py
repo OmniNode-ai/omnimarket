@@ -30,6 +30,9 @@ NULL, not the reduced terminal being ``unknown`` alone.
 
 from __future__ import annotations
 
+import ast
+import json
+import os
 import re
 import subprocess
 import sys
@@ -523,7 +526,11 @@ def _check_values(contract: str) -> list[str]:
 
 def _lab_checks(contract: str) -> list[str]:
     """The checks that match the Lab comment's line for the pinned head."""
-    return [v for v in _check_values(contract) if "Lab: head=$h" in v]
+    return [
+        v
+        for v in _check_values(contract)
+        if "Lab: head=$h" in v or "_check_live_lab_evidence" in v
+    ]
 
 
 @pytest.fixture(scope="module")
@@ -603,7 +610,7 @@ class TestLabChecksPinTheHeadAndTheCommand:
     ) -> None:
         checks = _lab_checks(contract)
         for value in checks:
-            for needle in ("head_sha", "command=", "exit=0", "contexts=", "pr-checks"):
+            for needle in ("_check_live_lab_evidence",):
                 assert needle in value, (needle, value)
 
     def test_the_lab_comment_checks_exist(self) -> None:
@@ -621,7 +628,7 @@ _BASE_PIN = "6efbe3ee5027f6efb67d0b81a1421f0dda32b4e5"
 class TestContractTextAnswersTheReview:
     """What the contracts say about the base, the review heads and the diff checks."""
 
-    def test_the_fails_on_base_checks_pin_the_base_and_require_the_nine_ids(
+    def test_the_fails_on_base_checks_pin_the_base_and_require_expected_ids(
         self,
     ) -> None:
         pinned = [
@@ -634,7 +641,11 @@ class TestContractTextAnswersTheReview:
         for contract, value in pinned:
             assert f"b={_BASE_PIN}" in value, contract
             assert "I(1|10|3|5|6|7|8|9)" in value, contract
-            assert "(^| )9 failed" in value, contract
+            assert "(^| )10 failed" in value, contract
+            assert (
+                "TestAbsentTerminalOk::test_an_absent_key_is_reported_as_absent"
+                in value
+            ), contract
             assert "origin/dev" not in value, contract
 
     def test_the_nightly_ticket_contract_keeps_its_ac2_unmet(self) -> None:
@@ -686,7 +697,33 @@ _UNCONDITIONAL_SKIP = re.compile(rf"\bmark\.{_SK}\b(?!if)|\bpytest\.{_SK}\s*\(")
 
 
 def _skip_vectors(text: str) -> list[str]:
-    return [p.pattern for p in (_IMPORT_OR_SKIP, _UNCONDITIONAL_SKIP) if p.search(text)]
+    """Read executable syntax, including imported pytest aliases, never prose."""
+    tree = ast.parse(text)
+    aliases = {"pytest": "pytest", "mark": "pytest.mark"}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == "pytest":
+                    aliases[alias.asname or alias.name] = "pytest"
+        elif isinstance(node, ast.ImportFrom) and node.module == "pytest":
+            for alias in node.names:
+                aliases[alias.asname or alias.name] = "pytest." + alias.name
+
+    def dotted(node: ast.AST) -> str:
+        if isinstance(node, ast.Name):
+            return aliases.get(node.id, node.id)
+        if isinstance(node, ast.Attribute):
+            return dotted(node.value) + "." + node.attr
+        return ""
+
+    forbidden = {"pytest.importor" + _SK, "pytest.mark." + _SK, "pytest." + _SK}
+    return sorted(
+        {
+            f"{node.lineno}:{dotted(node)}"
+            for node in ast.walk(tree)
+            if isinstance(node, (ast.Name, ast.Attribute)) and dotted(node) in forbidden
+        }
+    )
 
 
 @pytest.mark.unit
@@ -694,18 +731,18 @@ class TestNoSkipVectorInTheDelegationGoldenTests:
     """No test here may skip itself away: neither a module skip nor a bare marker.
 
     The live gate of the Layer-2 file uses the conditional form and is not an
-    unconditional skip. Run on the files of the suite, not on this one, whose own
-    pattern text is the control below.
+    unconditional skip. Parse every Python file recursively, including this one.
+    String fixtures and comments are not executable skip syntax.
     """
 
     def test_no_file_in_the_suite_carries_one(self) -> None:
-        here = Path(__file__).resolve()
         offenders = {
-            path.name: _skip_vectors(path.read_text(encoding="utf-8"))
-            for path in sorted(
-                (_REPO_ROOT / "tests" / "delegation_golden").glob("*.py")
+            path.relative_to(_REPO_ROOT).as_posix(): _skip_vectors(
+                path.read_text(encoding="utf-8")
             )
-            if path.resolve() != here
+            for path in sorted(
+                (_REPO_ROOT / "tests" / "delegation_golden").rglob("*.py")
+            )
         }
         assert {k: v for k, v in offenders.items() if v} == {}
 
@@ -720,6 +757,8 @@ class TestNoSkipVectorInTheDelegationGoldenTests:
         ids=["module-level", "bare-marker", "mark-alias", "call"],
     )
     def test_the_scan_flags_each_vector(self, line: str) -> None:
+        if line.startswith("@"):
+            line += "\ndef test_example(): pass\n"
         assert _skip_vectors(line), line
 
     @pytest.mark.parametrize(
@@ -730,4 +769,743 @@ class TestNoSkipVectorInTheDelegationGoldenTests:
     def test_the_scan_leaves_a_conditional_gate_and_other_markers(
         self, line: str
     ) -> None:
+        if line.startswith("@"):
+            line += "\ndef test_example(): pass\n"
         assert _skip_vectors(line) == []
+
+
+@pytest.mark.unit
+class TestReviewContractCommands:
+    def test_ac2_check_uses_the_unbound_item_id(self) -> None:
+        path = _REPO_ROOT / "contracts/OMN-24925.yaml"
+        data = yaml.safe_load(path.read_text())
+        entry = next(
+            e
+            for e in data["dod_evidence"]
+            if e["id"] == "dod-omn24925-ac2-findings-1-2"
+        )
+        checks = [
+            c["check_value"]
+            for c in entry["checks"]
+            if "contracts/OMN-24831.yaml" in c["check_value"]
+        ]
+        assert checks
+        for command in checks:
+            result = subprocess.run(
+                command, shell=True, cwd=_REPO_ROOT, capture_output=True, text=True
+            )
+            assert result.returncode == 0, result.stdout + result.stderr
+            assert "dod-omn24831-ac2-fix-at-the-source" in command
+        assert "bound to a local Done gate check" not in entry["description"]
+
+    def test_identity_guard_reads_all_four_surfaces(self) -> None:
+        checks = _check_values("contracts/OMN-24986.yaml")
+        assert any("_check_live_pr_identity" in value for value in checks)
+
+    @pytest.mark.parametrize("contract", _CONTRACTS)
+    def test_every_contract_has_a_nonvacuous_lab_check(self, contract: str) -> None:
+        checks = _lab_checks(contract)
+        assert checks, contract
+        assert all("_check_live_lab_evidence" in value for value in checks), contract
+
+    def test_packet_check_requires_the_full_packet(self) -> None:
+        checks = _check_values("contracts/OMN-24986.yaml")
+        assert any("_check_live_review_packet" in value for value in checks)
+
+    def test_diff_and_archive_checks_use_the_watcher_head(self) -> None:
+        for contract in _CONTRACTS:
+            for value in _check_values(contract):
+                if "git archive" in value or "git diff" in value:
+                    assert "head_sha" in value, (contract, value)
+                    assert not re.search(r"\b(?:archive|merge-base) HEAD\b", value), (
+                        value
+                    )
+                    assert "git archive HEAD" not in value
+
+    def test_consumer_bindings_name_the_consumer_test_ids(self) -> None:
+        for contract, item_id in (
+            ("contracts/OMN-24851.yaml", "dod-omn24851-ac4-consumers"),
+            ("contracts/OMN-24925.yaml", "dod-omn24925-ac7-findings-9-10"),
+        ):
+            data = yaml.safe_load((_REPO_ROOT / contract).read_text())
+            entry = next(e for e in data["dod_evidence"] if e["id"] == item_id)
+            assert any(
+                "::TestNoConsumerClassifiesFailuresByText::" in c["check_value"]
+                for c in entry["checks"]
+            )
+
+
+@pytest.mark.unit
+class TestReviewSkipScan:
+    @pytest.mark.parametrize(
+        "relative",
+        ["nested/test_added.py", "test_runner_unterminalised_row_omn24831.py"],
+    )
+    @pytest.mark.parametrize(
+        "expression", ["pytest.importor" + _SK + "('missing')", "@pytest.mark." + _SK]
+    )
+    def test_recursive_scan_includes_itself(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        relative: str,
+        expression: str,
+    ) -> None:
+        suite = tmp_path / "tests/delegation_golden"
+        path = suite / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        source = "import pytest\n" + expression + "\n"
+        if expression.startswith("@"):
+            source += "def test_added(): pass\n"
+        path.write_text(source)
+        monkeypatch.setattr(sys.modules[__name__], "_REPO_ROOT", tmp_path)
+        monkeypatch.setattr(
+            sys.modules[__name__],
+            "__file__",
+            str(suite / "test_runner_unterminalised_row_omn24831.py"),
+        )
+        with pytest.raises(AssertionError):
+            TestNoSkipVectorInTheDelegationGoldenTests().test_no_file_in_the_suite_carries_one()
+
+    def test_ast_ignores_strings_and_comments(self) -> None:
+        source = (
+            '"""pytest.importor'
+            + _SK
+            + " and @pytest.mark."
+            + _SK
+            + ' are documentation."""\n# pytest.'
+            + _SK
+            + "()\n"
+        )
+        assert _skip_vectors(source) == []
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            "import pytest as pt\npt.importor" + _SK + "('x')\n",
+            "from pytest import importor" + _SK + " as load\nload('x')\n",
+            "from pytest import mark as m\n@m.skip\ndef test_x(): pass\n",
+        ],
+    )
+    def test_ast_finds_import_aliases(self, source: str) -> None:
+        assert _skip_vectors(source)
+
+
+@pytest.mark.unit
+class TestAbsentTerminalOk:
+    def test_an_absent_key_is_reported_as_absent(self) -> None:
+        row = _unterminalised_row()
+        del row["terminal_ok"]
+        failures = runner_module.evaluate_row(load_corpus().by_id("I9"), row)
+        assert len(failures) == 1
+        assert "terminal_ok is absent from the row read" in failures[0]
+        assert "NULL" not in failures[0]
+
+
+_SUITE_COMMAND = (
+    'uv run pytest tests/delegation_golden -m "not e2e" -q -p no:cacheprovider'
+)
+_ORIGINAL_TICKET = re.compile(r"(?i)(?<![a-z0-9])omn[-_]24831(?![0-9])")
+
+
+def _identity_offenders(facts: dict[str, Any], subjects: list[str]) -> list[str]:
+    surfaces = {name: facts[name] for name in ("title", "body", "head_ref")}
+    surfaces.update({f"commit[{i}]": subject for i, subject in enumerate(subjects)})
+    return [
+        name for name, value in surfaces.items() if _ORIGINAL_TICKET.search(str(value))
+    ]
+
+
+def _watcher_record() -> dict[str, Any]:
+    script = (
+        Path(os.environ["OMNI_PLUGIN_ROOT"])
+        / "skills/merge-drain/scripts/pr_state_local.py"
+    )
+    out = subprocess.run(
+        [sys.executable, str(script), "--pr", "OmniNode-ai/omnimarket#6326", "--json"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    record: dict[str, Any] = json.loads(out[out.index("{") :])
+    assert re.fullmatch(r"[0-9a-f]{40}", record["facts"]["head_sha"])
+    return record
+
+
+def _check_live_pr_identity() -> None:
+    facts = _watcher_record()["facts"]
+    assert re.fullmatch(r"[A-Za-z0-9_.-]+", facts["base"])
+    out = subprocess.run(
+        ["git", "log", "--format=%s", f"origin/{facts['base']}..{facts['head_sha']}"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    subjects = out.splitlines()
+    assert subjects, "no PR commits read"
+    assert not _identity_offenders(facts, subjects), (
+        "original ticket referenced by "
+        + ", ".join(_identity_offenders(facts, subjects))
+    )
+
+
+def _validate_lab_evidence(
+    comment: str, head: str, checks: dict[str, Any], required: list[str]
+) -> None:
+    """Use the SCM runs shape; required contexts come from settings, not pr-checks."""
+    assert re.fullmatch(r"[0-9a-f]{40}", head)
+    assert checks["head_sha"] == head
+    assert required
+    assert all(isinstance(name, str) and name for name in required)
+    for key in ("red", "pending", "cancelled"):
+        assert key in checks, key
+        assert isinstance(checks[key], list), key
+        assert checks[key] == [], key
+    assert isinstance(checks.get("runs"), list)
+    assert checks["runs"]
+    for name in required:
+        runs = [run for run in checks["runs"] if run[0] == name]
+        assert runs, name
+        assert all(run[1:3] == ["completed", "success"] for run in runs), name
+    assert isinstance(checks.get("detail"), list)
+    job_ids: set[str] = set()
+    for name in required:
+        detail = [row for row in checks["detail"] if row[0] == name]
+        assert detail, name
+        assert all(str(row[1]).isdigit() for row in detail), name
+        job_ids.update(str(row[1]) for row in detail)
+    status_jobs = re.findall(
+        r"(?m)^.*\| STATUS \|.*job_ids=([0-9]+(?:,[0-9]+)*)(?=\s|\||$)", comment
+    )
+    assert any(job_ids <= set(value.split(",")) for value in status_jobs), (
+        "STATUS does not name the required contexts' job ids"
+    )
+    contexts = json.dumps(sorted(required), separators=(",", ":"))
+    lines = [
+        line for line in comment.splitlines() if line.startswith(f"Lab: head={head} ")
+    ]
+    expected = f"command={_SUITE_COMMAND} exit=0 contexts={contexts}"
+    assert any(re.search(re.escape(expected) + r"(?:\s|$)", line) for line in lines), (
+        "missing exact suite command, exit or required contexts"
+    )
+
+
+def _review_packet() -> dict[str, Any]:
+    """Local Done keeps the existing live comment source; lanes cannot run it."""
+    head = _watcher_record()["facts"]["head_sha"]
+    out = subprocess.run(
+        [
+            "gh",
+            "pr",
+            "view",
+            "6326",
+            "--repo",
+            "OmniNode-ai/omnimarket",
+            "--json",
+            "comments",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    comments = json.loads(out)["comments"]
+
+    def source_body(number: str) -> str:
+        matching = [
+            c["body"]
+            for c in comments
+            if str(c.get("url", "")).endswith("#issuecomment-" + number)
+        ]
+        assert len(matching) == 1, "source comment unread: " + number
+        return str(matching[0])
+
+    source = source_body("6922291635")
+    headings = list(re.finditer(r"(?m)^\s*(?:\*\*)?([0-9]+)[.)](?:\*\*)?\s+", source))
+    assert [int(match[1]) for match in headings] == list(range(1, 11)), (
+        "source findings unread"
+    )
+    findings = [
+        source[
+            match.end() : headings[i + 1].start()
+            if i + 1 < len(headings)
+            else len(source)
+        ].strip()
+        for i, match in enumerate(headings)
+    ]
+    candidates = [c for c in comments if c["body"].startswith(f"Lab: head={head} ")]
+    assert candidates, "no posted Lab comment for live head"
+    comment = candidates[-1]
+    return {
+        "head_sha": head,
+        "comment": comment["body"],
+        "comment_id": comment["id"],
+        "findings_6922291635": findings,
+        "prior_lab_comment_6929592004": source_body("6929592004"),
+    }
+
+
+def _check_live_lab_evidence() -> None:
+    packet = _review_packet()
+    record = _watcher_record()
+    assert record["facts"]["head_sha"] == packet["head_sha"]
+    assert isinstance(record.get("ci"), dict)
+    assert record["ci"].get("sha") == packet["head_sha"], "CI belongs to another head"
+    result = subprocess.run(
+        ["onex", "scm", "pr-checks", "OmniNode-ai/omnimarket#6326"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    checks = json.loads(result.stdout)["result"]
+    script = (
+        Path(os.environ["OMNI_PLUGIN_ROOT"])
+        / "skills/merge-drain/scripts/pr_state_local.py"
+    )
+    settings = subprocess.run(
+        [sys.executable, str(script), "--settings", "omnimarket:dev"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    assert "unread" not in settings
+    required = sorted(
+        {
+            name
+            for match in re.finditer(
+                r"\b(?:rule_)?contexts=(.*?) (?:required_reviews|rule_strict)=",
+                settings,
+            )
+            for name in match[1].split(",")
+            if name != "-"
+        }
+    )
+    _validate_lab_evidence(packet["comment"], packet["head_sha"], checks, required)
+
+
+def _validate_review_packet(packet: dict[str, Any]) -> None:
+    comment = packet["comment"]
+    assert comment.startswith(f"Lab: head={packet['head_sha']} ")
+    assert "6922291635" in comment
+    assert "pr-checks" in comment
+    prior_lab = packet["prior_lab_comment_6929592004"]
+    assert prior_lab
+    assert prior_lab in comment, "prior Lab comment missing"
+    for phase in ("RED", "GREEN"):
+        assert re.search(rf"(?m)^{phase}:.*tests/[\w/.-]+\.py::\S+", comment), phase
+    assert re.search(
+        r"(?m)^.*\| STATUS \|.*job_ids=[0-9]+(?:,[0-9]+)*(?=\s|\||$)", comment
+    ), "STATUS with job ids"
+    quotes = packet["findings_6922291635"]
+    assert isinstance(quotes, list)
+    assert len(quotes) == 10
+    for number, text in enumerate(quotes, 1):
+        assert isinstance(text, str), number
+        assert len(text.strip()) >= 10, number
+        quoted = "\n".join("> " + line for line in f"{number}. {text}".splitlines())
+        assert quoted in comment, number
+
+
+def _check_live_review_packet() -> None:
+    packet = _review_packet()
+    _check_live_lab_evidence()
+    _validate_review_packet(packet)
+
+
+@pytest.mark.unit
+class TestIdentityGuardRejectsEverySurface:
+    @pytest.mark.parametrize("surface", ["title", "body", "head_ref", "commit"])
+    def test_original_ticket_is_rejected(self, surface: str) -> None:
+        facts = {"title": "diagnostic", "body": "diagnostic", "head_ref": "diagnostic"}
+        subjects = ["diagnostic"]
+        if surface == "commit":
+            subjects.append("OMN-24831: diagnostic")
+        else:
+            facts[surface] += " omn-24831-diagnostic"
+        assert _identity_offenders(facts, subjects)
+
+    def test_unrelated_identity_is_accepted(self) -> None:
+        assert (
+            _identity_offenders(
+                {
+                    "title": "OMN-25078",
+                    "body": "Closes OMN-25078",
+                    "head_ref": "diagnostic",
+                },
+                ["OMN-25078: diagnostic"],
+            )
+            == []
+        )
+
+
+def _complete_packet() -> tuple[dict[str, Any], dict[str, Any], list[str]]:
+    """Synthetic evidence fixture, never represented as historical PR evidence."""
+    head = "a" * 40
+    required = ["CI Summary"]
+    checks: dict[str, Any] = {
+        "head_sha": head,
+        "red": [],
+        "pending": [],
+        "cancelled": [],
+        "runs": [["CI Summary", "completed", "success", "timestamp"]],
+        "detail": [["CI Summary", "123", "timestamp"]],
+    }
+    quotes = [f"Synthetic review finding number {i}" for i in range(1, 11)]
+    comment = (
+        f'Lab: head={head} command={_SUITE_COMMAND} exit=0 contexts=["CI Summary"]\n'
+    )
+    comment += (
+        "RED: tests/example.py::test_guard\nGREEN: tests/example.py::test_guard\n"
+    )
+    comment += (
+        "timestamp | STATUS | lane=fixture | job_ids=123,456 | pr-checks 6922291635\n"
+    )
+    comment += "\n".join(f"> {i}. {text}" for i, text in enumerate(quotes, 1))
+    prior_lab = "Synthetic previous Lab comment 6929592004"
+    comment += "\n" + prior_lab
+    return (
+        {
+            "head_sha": head,
+            "comment": comment,
+            "findings_6922291635": quotes,
+            "prior_lab_comment_6929592004": prior_lab,
+        },
+        checks,
+        required,
+    )
+
+
+@pytest.mark.unit
+class TestLabEvidenceRejectsEmptyOrUnrelatedProof:
+    def test_complete_synthetic_proof_passes(self) -> None:
+        packet, checks, required = _complete_packet()
+        _validate_lab_evidence(packet["comment"], packet["head_sha"], checks, required)
+        _validate_review_packet(packet)
+
+    @pytest.mark.parametrize(
+        "mutation",
+        [
+            "missing-red",
+            "null-red",
+            "missing-pending",
+            "missing-cancelled",
+            "empty-required",
+            "empty-runs",
+            "missing-context",
+            "failed-context",
+            "pending-context",
+            "wrong-head",
+            "wrong-command",
+            "empty-contexts",
+            "missing-detail",
+            "empty-detail",
+            "unread-job-id",
+            "wrong-status-jobs",
+            "missing-status",
+        ],
+    )
+    def test_incomplete_lab_proof_fails(self, mutation: str) -> None:
+        packet, checks, required = _complete_packet()
+        if mutation.startswith("missing-") and mutation not in (
+            "missing-context",
+            "missing-status",
+        ):
+            del checks[mutation.removeprefix("missing-")]
+        elif mutation == "null-red":
+            checks["red"] = None
+        elif mutation == "empty-required":
+            required.clear()
+        elif mutation == "empty-runs":
+            checks["runs"] = []
+        elif mutation == "missing-context":
+            checks["runs"][0][0] = "some other check"
+        elif mutation == "failed-context":
+            checks["runs"][0][2] = "failure"
+        elif mutation == "pending-context":
+            checks["runs"][0][1] = "in_progress"
+        elif mutation == "wrong-head":
+            checks["head_sha"] = "b" * 40
+        elif mutation == "empty-detail":
+            checks["detail"] = []
+        elif mutation == "unread-job-id":
+            checks["detail"][0][1] = "unread"
+        elif mutation == "wrong-status-jobs":
+            packet["comment"] = packet["comment"].replace(
+                "job_ids=123,456", "job_ids=7"
+            )
+        elif mutation == "missing-status":
+            packet["comment"] = packet["comment"].replace("| STATUS |", "| fixture |")
+        elif mutation == "wrong-command":
+            packet["comment"] = packet["comment"].replace(_SUITE_COMMAND, "true")
+        else:
+            packet["comment"] = packet["comment"].replace(
+                'contexts=["CI Summary"]', "contexts="
+            )
+        with pytest.raises(AssertionError):
+            _validate_lab_evidence(
+                packet["comment"], packet["head_sha"], checks, required
+            )
+
+    @pytest.mark.parametrize(
+        "missing",
+        [
+            "job_ids=123,456",
+            "> 1. Synthetic review finding number 1",
+            "> 10. Synthetic review finding number 10",
+            "RED: tests/example.py::test_guard",
+            "GREEN: tests/example.py::test_guard",
+        ],
+    )
+    def test_incomplete_review_packet_fails(self, missing: str) -> None:
+        packet, _, _ = _complete_packet()
+        packet["comment"] = packet["comment"].replace(missing, "")
+        with pytest.raises(AssertionError):
+            _validate_review_packet(packet)
+
+
+@pytest.mark.unit
+class TestUnboundLocalItemBlocksDone:
+    def test_failing_unbound_item_fails_and_the_passing_control_runs(
+        self, tmp_path: Path
+    ) -> None:
+        from omnimarket.nodes.node_dod_verify.handlers.handler_dod_verify import (
+            HandlerDodVerify,
+        )
+        from omnimarket.nodes.node_dod_verify.models.model_dod_verify_start_command import (
+            ModelDodVerifyStartCommand,
+        )
+        from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
+            EnumDodVerifyStatus,
+            ModelDodVerifyState,
+        )
+
+        marker = tmp_path / "source-fix-observed"
+        contract = tmp_path / "contract.yaml"
+        item = {
+            "id": "dod-source-fix-unbound-control",
+            "description": "An unbound local item must execute and retain its failing verdict.",
+            "execution_scope": "local_done_gate",
+            "checks": [{"check_type": "command", "check_value": f"test -f {marker}"}],
+        }
+        assert "binds_ac" not in item
+        contract.write_text(
+            yaml.safe_dump(
+                {
+                    "schema_version": "1.0.0",
+                    "ticket_id": "OMN-25078",
+                    "dod_evidence": [item],
+                }
+            )
+        )
+        command = ModelDodVerifyStartCommand(
+            ticket_id="OMN-25078",
+            contract_path=str(contract),
+            execution_audience="local_done_gate",
+        )
+        failed = HandlerDodVerify().handle(command)
+        assert isinstance(failed, ModelDodVerifyState)
+        assert failed.status is EnumDodVerifyStatus.FAILED
+        assert failed.failed_count == 1
+        marker.write_text("the command now has its required file")
+        passed = HandlerDodVerify().handle(command)
+        assert isinstance(passed, ModelDodVerifyState)
+        assert passed.status is EnumDodVerifyStatus.VERIFIED
+        assert passed.verified_count == 1
+
+    def test_hosted_command_checks_execute_the_corrected_grep(
+        self, tmp_path: Path
+    ) -> None:
+        from omnimarket.nodes.node_dod_verify.handlers.handler_dod_verify import (
+            HandlerDodVerify,
+        )
+        from omnimarket.nodes.node_dod_verify.models.model_dod_verify_start_command import (
+            ModelDodVerifyStartCommand,
+        )
+        from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
+            EnumDodVerifyStatus,
+            ModelDodVerifyState,
+        )
+
+        contract = tmp_path / "contract.yaml"
+        command_text = f"grep -nF dod-omn24831-ac2-fix-at-the-source {_REPO_ROOT / 'contracts/OMN-24831.yaml'}"
+        contract.write_text(
+            yaml.safe_dump(
+                {
+                    "schema_version": "1.0.0",
+                    "ticket_id": "OMN-25078",
+                    "dod_evidence": [
+                        {
+                            "id": "dod-hosted-command-control",
+                            "checks": [
+                                {"check_type": "command", "check_value": command_text}
+                            ],
+                        }
+                    ],
+                }
+            )
+        )
+        state = HandlerDodVerify().handle(
+            ModelDodVerifyStartCommand(
+                ticket_id="OMN-25078",
+                contract_path=str(contract),
+                execution_audience="hosted",
+            )
+        )
+        assert isinstance(state, ModelDodVerifyState)
+        assert state.status is EnumDodVerifyStatus.VERIFIED
+        assert state.verified_count == 1
+
+
+@pytest.mark.unit
+class TestLiveEvidenceAdapter:
+    def test_settings_names_with_spaces_are_matched_to_scm_runs(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        packet, checks, _ = _complete_packet()
+        checks["runs"].append(
+            ["Architecture Check", "completed", "success", "timestamp"]
+        )
+        checks["detail"].append(["Architecture Check", "456", "timestamp"])
+        packet["comment"] = packet["comment"].replace(
+            'contexts=["CI Summary"]', 'contexts=["Architecture Check","CI Summary"]'
+        )
+        monkeypatch.setattr(sys.modules[__name__], "_review_packet", lambda: packet)
+        monkeypatch.setattr(
+            sys.modules[__name__],
+            "_watcher_record",
+            lambda: {
+                "facts": {"head_sha": packet["head_sha"]},
+                "ci": {"sha": packet["head_sha"]},
+            },
+        )
+        monkeypatch.setenv("OMNI_PLUGIN_ROOT", str(_REPO_ROOT))
+        calls: list[list[str]] = []
+
+        def read(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            calls.append(args)
+            if args[:3] == ["onex", "scm", "pr-checks"]:
+                return subprocess.CompletedProcess(
+                    args, 0, json.dumps({"result": checks}), ""
+                )
+            assert "--settings" in args
+            return subprocess.CompletedProcess(
+                args,
+                0,
+                "omnimarket:dev protection=read contexts=CI Summary required_reviews=0 rules=required rule_contexts=Architecture Check rule_strict=False read_at=timestamp",
+                "",
+            )
+
+        monkeypatch.setattr(subprocess, "run", read)
+        _check_live_lab_evidence()
+        assert len(calls) == 2
+
+    def test_hosted_contract_commands_exit_zero(self) -> None:
+        executed: list[str] = []
+        for relative in _CONTRACTS:
+            data = yaml.safe_load((_REPO_ROOT / relative).read_text())
+            for entry in data["dod_evidence"]:
+                if entry.get("execution_scope") == "local_done_gate":
+                    continue
+                for check in entry["checks"]:
+                    if check["check_type"] != "command":
+                        continue
+                    result = subprocess.run(
+                        check["check_value"],
+                        shell=True,
+                        cwd=_REPO_ROOT,
+                        capture_output=True,
+                        text=True,
+                    )
+                    assert result.returncode == 0, (
+                        relative,
+                        entry["id"],
+                        result.stdout,
+                        result.stderr,
+                    )
+                    executed.append(entry["id"])
+        assert len(executed) >= 5, executed
+
+
+@pytest.mark.unit
+class TestPinnedDiffSurvivesMerge:
+    def test_diff_checks_pin_the_original_base_as_well_as_the_head(self) -> None:
+        found = 0
+        for relative in _CONTRACTS:
+            for value in _check_values(relative):
+                if "git diff" in value:
+                    found += 1
+                    assert f"b={_BASE_PIN}" in value, relative
+                    assert 'git merge-base "$h" "$b"' in value, relative
+        assert found >= 2
+
+
+@pytest.mark.unit
+class TestReviewPacketSource:
+    def test_source_quotes_are_read_from_the_historical_comment(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        packet, _, _ = _complete_packet()
+        comments = [
+            {
+                "id": "source",
+                "url": "#issuecomment-6922291635",
+                "body": "\n".join(
+                    f"**{i}.** {text}"
+                    for i, text in enumerate(packet["findings_6922291635"], 1)
+                ),
+            },
+            {
+                "id": "previous-lab",
+                "url": "#issuecomment-6929592004",
+                "body": packet["prior_lab_comment_6929592004"],
+            },
+            {"id": "current-lab", "url": "#issuecomment-7", "body": packet["comment"]},
+        ]
+        monkeypatch.setattr(
+            sys.modules[__name__],
+            "_watcher_record",
+            lambda: {"facts": {"head_sha": packet["head_sha"]}},
+        )
+        calls: list[list[str]] = []
+
+        def read(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            calls.append(args)
+            return subprocess.CompletedProcess(
+                args, 0, json.dumps({"comments": comments}), ""
+            )
+
+        monkeypatch.setattr(subprocess, "run", read)
+        actual = _review_packet()
+        assert actual["findings_6922291635"] == packet["findings_6922291635"]
+        assert actual["comment_id"] == "current-lab"
+        _validate_review_packet(actual)
+        assert len(calls) == 1
+        comments.pop(0)
+        with pytest.raises(AssertionError, match="source comment unread"):
+            _review_packet()
+
+    def test_ci_for_another_head_cannot_supply_the_lab_proof(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        packet, _, _ = _complete_packet()
+        monkeypatch.setattr(sys.modules[__name__], "_review_packet", lambda: packet)
+        monkeypatch.setattr(
+            sys.modules[__name__],
+            "_watcher_record",
+            lambda: {
+                "facts": {"head_sha": packet["head_sha"]},
+                "ci": {"sha": "b" * 40},
+            },
+        )
+        with pytest.raises(AssertionError, match="CI belongs to another head"):
+            _check_live_lab_evidence()
+
+
+@pytest.mark.unit
+class TestContractShellSyntax:
+    def test_all_six_contracts_have_valid_shell_commands(self) -> None:
+        for relative in (*_CONTRACTS, "contracts/OMN-25078.yaml"):
+            for value in _check_values(relative):
+                result = subprocess.run(
+                    ["bash", "-n", "-c", value], capture_output=True, text=True
+                )
+                assert result.returncode == 0, (relative, result.stderr)

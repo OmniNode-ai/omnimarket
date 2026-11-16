@@ -31,12 +31,12 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn24986-ac1-lab-comment-and-checks
-  description: 'The pull request head is read from the watcher state, and a comment line starting `Lab: head=` carries that full sha, a `command=` and `exit=0` and a `contexts=` field; `onex scm pr-checks` reads the same head with no red and no pending context. A lane cannot read comments, so only the local Done gate runs it.'
+  description: "The existing live PR-comment read is retained under the local Done gate only; lanes cannot run it. A posted Lab comment for the live watcher head must name the exact suite command, exit 0 and a nonempty required-context list from settings. Every required name must have completed success in pr-checks result.runs, and red, pending and cancelled must be present empty lists. Missing source comments or unreadable CI fails closed."
   source: manual
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: 'bash -c ''h="$(python3 "$OMNI_PLUGIN_ROOT/skills/merge-drain/scripts/pr_state_local.py" --pr OmniNode-ai/omnimarket#6326 --json | sed -n "/^{/,\$p" | jq -r .facts.head_sha)"; [ "${#h}" = 40 ] && gh pr view 6326 -R OmniNode-ai/omnimarket --json comments --jq ".comments[].body" | grep -E "^Lab: head=$h .*command=.* exit=0 .*contexts=" | grep -q . && onex scm pr-checks OmniNode-ai/omnimarket#6326 | jq -e --arg h "$h" ".result.head_sha == \$h and (.result.red | length) == 0 and (.result.pending | length) == 0"'''
+    check_value: "uv run python -c \"from tests.delegation_golden.test_runner_unterminalised_row_omn24831 import _check_live_lab_evidence; _check_live_lab_evidence()\""
     cwd: .
 - id: dod-omn24986-ac2-contract-keeps-ac2-unmet
   description: contracts/OMN-24831.yaml keeps an item for its AC2 that is local, unbound and fails until a merged pull request of the repository that owns the cause names that ticket, so the ticket's Done gate cannot pass on this diagnostic change; the pull request title and body (read by the local item below) close no such ticket. A hosted test reads the item, and the delegation golden suite passes.
@@ -54,12 +54,12 @@ dod_evidence:
     check_value: uv run pytest tests/delegation_golden -q --no-cov -n 0 -p no:randomly -p no:cacheprovider -m "not e2e"
     cwd: .
 - id: dod-omn24986-ac2-title-and-body
-  description: The live title and body of the pull request, read from the watcher state, name no OMN-24831 (no closing link). Only the local Done gate reads the watcher.
+  description: "The live title, body, head branch name and every commit subject read from the pinned watcher head must reference no original nightly ticket. A published subject and the existing branch currently prevent this check passing; neither is rewritten here. Only the local Done gate runs it."
   source: manual
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: bash -c 'python3 "$OMNI_PLUGIN_ROOT/skills/merge-drain/scripts/pr_state_local.py" --pr OmniNode-ai/omnimarket#6326 --json | sed -n "/^{/,\$p" | jq -e "(.facts.title | test(\"OMN-24831\") | not) and (.facts.body | test(\"OMN-24831\") | not) and (.facts.title | test(\"OMN-24986\"))"'
+    check_value: "uv run python -c \"from tests.delegation_golden.test_runner_unterminalised_row_omn24831 import _check_live_pr_identity; _check_live_pr_identity()\""
     cwd: .
 - id: dod-omn24986-ac3-no-k-expression
   description: No pytest check of the four other contracts selects tests with a -k expression (the scan below also covers this contract), and every node id the contracts name is one pytest collects, so a missing id exits 4.
@@ -83,12 +83,12 @@ dod_evidence:
     check_value: uv run pytest tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestNoConsumerClassifiesFailuresByText::test_no_consumer_matches_the_failure_text tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestNoConsumerClassifiesFailuresByText::test_the_scan_reads_the_layer2_test_file_and_every_workflow tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestNoConsumerClassifiesFailuresByText::test_the_scan_flags_a_consumer_that_matches_the_old_line[layer2-exact-line] tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestNoConsumerClassifiesFailuresByText::test_the_scan_flags_a_consumer_that_matches_the_old_line[layer2-case-and-spacing] tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestNoConsumerClassifiesFailuresByText::test_the_scan_flags_a_consumer_that_matches_the_old_line[workflow-tokens-line] tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestNoConsumerClassifiesFailuresByText::test_the_scan_flags_a_consumer_that_matches_the_old_line[workflow-got-unknown] tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestNoConsumerClassifiesFailuresByText::test_the_scan_flags_a_consumer_that_matches_the_old_line[handler-no-terminal-outcome] tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestNoConsumerClassifiesFailuresByText::test_the_scan_is_quiet_on_a_tree_without_a_match -q --no-cov -n 0 -p no:randomly -p no:cacheprovider
     cwd: .
 - id: dod-omn24986-ac5-evidence-comment
-  description: 'One pull request comment carries, at the live head read from the watcher state, the `Lab: head=` line, the RED and GREEN test ids, the pr-checks states and the quoted findings of comment 6922291635. A lane cannot read comments, so only the local Done gate runs it. It is bound to no criterion: a repository contract binds only criteria a hosted check proves.'
+  description: "The local Done gate retains the live PR-comment source. It requires a posted Lab comment at the watcher head, the exact suite and successful required contexts, RED and GREEN test ids, a STATUS row with numeric job_ids, the previous Lab comment 6929592004 and all ten findings from source comment 6922291635 quoted in full. Missing source comments, quotes or unreadable CI fails closed; lanes cannot run this read."
   source: manual
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: 'bash -c ''h="$(python3 "$OMNI_PLUGIN_ROOT/skills/merge-drain/scripts/pr_state_local.py" --pr OmniNode-ai/omnimarket#6326 --json | sed -n "/^{/,\$p" | jq -r .facts.head_sha)"; [ "${#h}" = 40 ] && gh pr view 6326 -R OmniNode-ai/omnimarket --json comments | jq -e --arg h "$h" ".comments[] | select(.body | test(\"(^|\\n)Lab: head=\" + \$h + \" \") and test(\"6922291635\") and test(\"RED\") and test(\"GREEN\") and test(\"pr-checks\"))"'''
+    check_value: "uv run python -c \"from tests.delegation_golden.test_runner_unterminalised_row_omn24831 import _check_live_review_packet; _check_live_review_packet()\""
     cwd: .
 - id: dod-omn24986-ac5-timeout-early-return
   description: The early return of the budget-timeout branch of evaluate_row and I10's result on a failed row and on a timeout row, pinned by tests (the early return is runner.py lines 697 and 698).

@@ -37,31 +37,28 @@ dod_evidence:
     check_value: uv run pytest tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestAnUnterminalisedRowIsNamedAsSuch::test_the_case_still_fails[I1] tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestAnUnterminalisedRowIsNamedAsSuch::test_the_case_still_fails[I10] tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestAnUnterminalisedRowIsNamedAsSuch::test_the_case_still_fails[I3] tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestAnUnterminalisedRowIsNamedAsSuch::test_the_case_still_fails[I5] tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestAnUnterminalisedRowIsNamedAsSuch::test_the_case_still_fails[I6] tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestAnUnterminalisedRowIsNamedAsSuch::test_the_case_still_fails[I7] tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestAnUnterminalisedRowIsNamedAsSuch::test_the_case_still_fails[I8] tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestAnUnterminalisedRowIsNamedAsSuch::test_the_case_still_fails[I9] tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestATerminalisedRowIsStillJudged::test_a_completed_row_with_telemetry_passes tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestATerminalisedRowIsStillJudged::test_a_completed_row_with_zero_tokens_yields_the_tokens_line tests/delegation_golden/test_runner_unterminalised_row_omn24831.py::TestATerminalisedRowIsStillJudged::test_a_wrong_terminal_is_still_a_behavioural_miss -q --no-cov -n 0 -p no:randomly -p no:cacheprovider
     cwd: .
 - id: dod-omn24831-diag-fails-on-base
-  description: 'The new test file is run against a copy of the head tree whose tests/delegation_golden/runner.py is the file at the pinned base 6efbe3ee5027. The check passes only when that run exits with exactly nine failures: the eight test_one_failure_names_the_null_terminal_ok ids (I1, I10, I3, I5, I6, I7, I8, I9) and test_it_does_not_report_telemetry_misses_it_cannot_judge. A bare failing run does not pass it. It needs the pinned base object in the clone, so only the local Done gate runs it.'
+  description: "The complete new test file runs against an archive of the watcher-pinned PR head with runner.py replaced by the immutable base 6efbe3ee5027. The control requires ten failures: the eight null-terminal ids, the telemetry id and the new absent-key id. Any other failure count or missing named failure fails the check. Only the local Done gate has the source objects."
   source: manual
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: |-
-      bash -c 'b=6efbe3ee5027f6efb67d0b81a1421f0dda32b4e5; t=tests/delegation_golden/test_runner_unterminalised_row_omn24831.py; d="$(mktemp -d)" && git archive HEAD | tar -x -C "$d" && git show "$b:tests/delegation_golden/runner.py" > "$d/tests/delegation_golden/runner.py" && cd "$d" && out="$(env -u PYTHONPATH uv run --frozen pytest $t -q --no-cov -n 0 -p no:randomly -p no:cacheprovider 2>&1)"; printf "%s\n" "$out" | tail -3; [ "$(printf "%s\n" "$out" | grep -cE "^FAILED .*test_one_failure_names_the_null_terminal_ok\[I(1|10|3|5|6|7|8|9)\]")" = 8 ] && printf "%s\n" "$out" | grep -q "^FAILED .*test_it_does_not_report_telemetry_misses_it_cannot_judge" && printf "%s\n" "$out" | grep -qE "(^| )9 failed"'
+    check_value: "bash -c 'set -eo pipefail; h=\"$(python3 \"$OMNI_PLUGIN_ROOT/skills/merge-drain/scripts/pr_state_local.py\" --pr OmniNode-ai/omnimarket#6326 --json | sed -n \"/^{/,\\$p\" | jq -er .facts.head_sha)\"; [[ \"$h\" =~ ^[0-9a-f]{40}$ ]]; b=6efbe3ee5027f6efb67d0b81a1421f0dda32b4e5; t=tests/delegation_golden/test_runner_unterminalised_row_omn24831.py; d=\"$(mktemp -d)\"; trap '\"'\"'rm -rf \"$d\"'\"'\"' EXIT; git archive \"$h\" | tar -x -C \"$d\"; git show \"$b:tests/delegation_golden/runner.py\" > \"$d/tests/delegation_golden/runner.py\"; cd \"$d\"; rc=0; out=\"$(env -u PYTHONPATH uv run --frozen pytest \"$t\" -q --no-cov -n 0 -p no:randomly -p no:cacheprovider 2>&1)\" || rc=$?; printf \"%s\\n\" \"$out\" | tail -3; test \"$rc\" = 1; test \"$(printf \"%s\\n\" \"$out\" | grep -cE \"^FAILED .*test_one_failure_names_the_null_terminal_ok\\[I(1|10|3|5|6|7|8|9)\\]\")\" = 8; printf \"%s\\n\" \"$out\" | grep -q \"^FAILED .*test_it_does_not_report_telemetry_misses_it_cannot_judge\"; printf \"%s\\n\" \"$out\" | grep -q \"^FAILED .*TestAbsentTerminalOk::test_an_absent_key_is_reported_as_absent\"; printf \"%s\\n\" \"$out\" | grep -qE \"(^| )10 failed\"'"
     cwd: .
 - id: dod-omn24831-ac3-git-diff
-  description: 'Git-diff falsifier: against the merge base with the landing branch, the diff of tests/ and .github/ removes no assert line, adds no skip, importorskip or xfail marker (a decorator, an alias such as mark.skip, a call or a marks= argument) and leaves .github/ untouched. Needs the landing-branch ref, so only the local Done gate runs it.'
+  description: "The diff reads the watcher-pinned PR head and immutable original base 6efbe3ee5027, so a post-merge checkout cannot turn the comparison into an empty diff. origin/HEAD is read only to verify the landing ref exists. The diff removes no assertion, adds no skip vector or xfail and leaves workflows untouched. Only the local Done gate has the refs."
   source: manual
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: |-
-      bash -c 'mb="$(git merge-base HEAD origin/HEAD)" && git diff --quiet "$mb" -- .github/ && [ "$(git diff "$mb" -- tests/ .github/ | grep -cE "^-[^-].*[[:space:]]assert[[:space:]]")" = 0 ] && [ "$(git diff "$mb" -- tests/ .github/ | grep -cE "^\+.*(importorskip|mark\.(skip|skipif|xfail)|pytest\.(skip|skipif|xfail))")" = 0 ]'
+    check_value: "bash -c 'set -eo pipefail; h=\"$(python3 \"$OMNI_PLUGIN_ROOT/skills/merge-drain/scripts/pr_state_local.py\" --pr OmniNode-ai/omnimarket#6326 --json | sed -n \"/^{/,\\$p\" | jq -er .facts.head_sha)\"; [[ \"$h\" =~ ^[0-9a-f]{40}$ ]]; b=6efbe3ee5027f6efb67d0b81a1421f0dda32b4e5; base_ref=\"$(git symbolic-ref refs/remotes/origin/HEAD)\"; test -n \"$base_ref\"; mb=\"$(git merge-base \"$h\" \"$b\")\" && git diff --quiet \"$mb\" \"$h\" -- .github/ && [ \"$(git diff \"$mb\" \"$h\" -- tests/ .github/ | grep -cE \"^-[^-].*[[:space:]]assert[[:space:]]\")\" = 0 ] && [ \"$(git diff \"$mb\" \"$h\" -- tests/ .github/ | grep -cE \"^\\+.*(importorskip|mark\\.(skip|skipif|xfail)|pytest\\.(skip|skipif|xfail))\")\" = 0 ]'"
     cwd: .
 - id: dod-omn24831-ac4-lab-line
-  description: 'AC4 reading: the pull request BODY (the body field of the watcher state, not the whole record) carries a line that starts with `Lab:`. The comment that names the live head is read by the omn-24851 check. Only the local Done gate reads the watcher.'
+  description: "AC4 reading: the pull request BODY (the body field of the watcher state, not the whole record) carries a line that starts with `Lab:`. The comment that names the live head is read by the omn-24851 check. Only the local Done gate reads the watcher."
   source: manual
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: |-
-      bash -c 'python3 "$OMNI_PLUGIN_ROOT/skills/merge-drain/scripts/pr_state_local.py" --pr OmniNode-ai/omnimarket#6326 --json | sed -n "/^{/,\$p" | jq -r ".facts.body" | grep -q "^Lab:"'
+    check_value: "bash -c 'python3 \"$OMNI_PLUGIN_ROOT/skills/merge-drain/scripts/pr_state_local.py\" --pr OmniNode-ai/omnimarket#6326 --json | sed -n \"/^{/,\\$p\" | jq -r \".facts.body\" | grep -q \"^Lab:\"'"
     cwd: .
 - id: dod-omn24831-ac2-fix-at-the-source
   description: 'AC2 is UNMET by this change. The check passes only when the watcher state lists a MERGED pull request of the repository that owns the cause (omnibase_infra) naming this ticket, so it fails until that fix lands. It needs the watcher state, so only the local Done gate runs it.'
@@ -71,4 +68,13 @@ dod_evidence:
   - check_type: command
     check_value: |-
       bash -c 'python3 "$OMNI_PLUGIN_ROOT/skills/merge-drain/scripts/pr_state_local.py" --find OMN-24831 | grep -E "^omnibase_infra#[0-9]+ state=MERGED"'
+    cwd: .
+
+- id: dod-omn24831-local-lab-evidence
+  description: The existing live PR-comment read is retained under the local Done gate only; lanes cannot run it. A posted Lab comment for the live watcher head must name the exact suite command, exit 0 and a nonempty required-context list from settings. Every required name must have completed success in pr-checks result.runs, and red, pending and cancelled must be present empty lists. Missing source comments or unreadable CI fails closed.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: uv run python -c "from tests.delegation_golden.test_runner_unterminalised_row_omn24831 import _check_live_lab_evidence; _check_live_lab_evidence()"
     cwd: .
