@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from omnibase_core.enums.enum_context_factor import EnumContextFactor
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -53,4 +55,23 @@ class ModelContextTierSpec(BaseModel):
         return self
 
 
-__all__ = ["LANE_BRIEF_TIER_FACTORS", "ModelContextTierSpec"]
+def check_tier_specs_in_order(specs: Sequence[ModelContextTierSpec]) -> None:
+    """Refuse tier specs that do not name each lane-brief tier once, in pack order (the order the pack is built in)."""
+    named = [spec.tier for spec in specs]
+    missing = [t.value for t in EnumLaneBriefTier if t not in named]
+    if missing or len(set(named)) != len(named):
+        raise ValueError(
+            f"tier_specs must name each lane-brief tier exactly once; missing: {missing}"
+        )
+    if named != list(EnumLaneBriefTier):
+        raise ValueError(
+            "tier_specs are out of order; the pack order is "
+            + ", ".join(t.value for t in EnumLaneBriefTier)
+        )
+
+
+__all__ = [
+    "LANE_BRIEF_TIER_FACTORS",
+    "ModelContextTierSpec",
+    "check_tier_specs_in_order",
+]

@@ -14,6 +14,7 @@ not a candidate, or an excerpt the file never held, falls back like a failed cal
 from __future__ import annotations
 
 import hashlib
+import re
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
@@ -82,23 +83,35 @@ def load_lane_brief_risks(path: Path | None = None) -> tuple[ModelLaneBriefRisk,
         ) from exc
     if empty := [r.risk_class for r in risks if not r.source.strip()]:
         raise LaneBriefContextRefusedError(f"risks {empty} cite no source")
-    if path is None and (
-        gone := _REQUIRED_RISK_CLASSES - {r.risk_class for r in risks}
-    ):
+    if gone := _REQUIRED_RISK_CLASSES - {r.risk_class for r in risks}:
         raise LaneBriefContextRefusedError(f"risks tier lacks classes {sorted(gone)}")
     return risks
+
+
+_SUPPORTED_ESTIMATION = "heuristic_chars"
 
 
 def _tokens(text: str) -> int:
     return max(1, (len(text) + 3) // 4)  # heuristic_chars, the profile default
 
 
+def _names(row: str, needle: str) -> bool:
+    """Whether the row names the id or path on token boundaries: OMN-1 is not OMN-12, src/a.py is not tests/src/a.pyi."""
+    return re.search(rf"(?<![\w./-]){re.escape(needle)}(?![\w-]|\.\w)", row) is not None
+
+
 def _lane_history(request: ModelLaneBriefContextRequest) -> str:
     needles = (request.ticket, *request.files_to_touch)
-    rows = [row for row in request.ledger_rows if any(n in row for n in needles)]
+    rows = [r for r in request.ledger_rows if any(_names(r, n) for n in needles)]
     return (
         "\n".join(rows) if rows else "no ledger row names the ticket or a file to touch"
     )
+
+
+def _fit(text: str, budget: int, what: str) -> str:
+    if (tokens := _tokens(text)) > budget:
+        raise ValueError(f"{what} needs {tokens} tokens, over its budget {budget}")
+    return text
 
 
 class HandlerLaneBriefContextPack:
@@ -107,12 +120,14 @@ class HandlerLaneBriefContextPack:
     def __init__(
         self,
         *,
-        rungs: Sequence[ProtocolLaneBriefRung],
-        readers: Mapping[EnumLaneBriefTier, ProtocolLaneBriefTierReader],
+        rungs: Sequence[ProtocolLaneBriefRung] = (),
+        readers: Mapping[EnumLaneBriefTier, ProtocolLaneBriefTierReader] | None = None,
         profiles_dir: Path | None = None,
     ) -> None:
+        # The runtime builds the contract-routed handler with no arguments: no rung or reader is bound,
+        # and handle() refuses, typed, before any model is called. A composition root or a test binds them.
         self._rungs = tuple(rungs)
-        self._readers = dict(readers)
+        self._readers = dict(readers or {})
         self._resolver = HandlerContextProfileResolver(profiles_dir)
 
     def handle(
@@ -129,6 +144,11 @@ class HandlerLaneBriefContextPack:
                 f"profile {request.profile_name!r}: {'; '.join(resolved.errors)}"
             )
         profile = resolved.profile
+        if profile.token_estimation_method != _SUPPORTED_ESTIMATION:
+            raise LaneBriefContextRefusedError(
+                f"profile {request.profile_name!r}: token_estimation_method "
+                f"{profile.token_estimation_method!r} is not supported, only {_SUPPORTED_ESTIMATION}"
+            )
         if not profile.tier_specs:
             raise LaneBriefContextRefusedError(
                 f"profile {request.profile_name!r} declares no tier_specs"
@@ -143,9 +163,11 @@ class HandlerLaneBriefContextPack:
         for spec in profile.tier_specs:
             rungs: tuple[ModelLaneBriefRungAttempt, ...] = ()
             if spec.mode is EnumLaneBriefTierMode.MODEL_SELECTED:
-                text, rungs = self._select_exemplar(request)
+                text, rungs = self._select_exemplar(request, spec.token_budget)
             else:
                 text = self._read(spec.tier, request)
+            if not text.strip():
+                text = f"no {spec.tier.value} content for this brief"
             tokens = _tokens(text)
             if tokens > spec.token_budget:
                 raise LaneBriefContextRefusedError(
@@ -198,14 +220,18 @@ class HandlerLaneBriefContextPack:
         return reader.read(request)
 
     def _select_exemplar(
-        self, request: ModelLaneBriefContextRequest
+        self, request: ModelLaneBriefContextRequest, budget: int
     ) -> tuple[str, tuple[ModelLaneBriefRungAttempt, ...]]:
+        if not request.exemplar_candidates:
+            raise LaneBriefContextRefusedError(
+                "tier exemplar: exemplar_candidates is empty; no rung is called"
+            )
         by_path = {c.path: c.text for c in request.exemplar_candidates}
         attempts: list[ModelLaneBriefRungAttempt] = []
         for rung in self._rungs:
             try:
                 choice = rung.select(request, request.exemplar_candidates)
-                self._check_choice(choice, by_path)
+                self._check_choice(choice, by_path, budget)
             except (LaneBriefRungError, ValueError) as exc:
                 attempts.append(
                     ModelLaneBriefRungAttempt(
@@ -226,12 +252,13 @@ class HandlerLaneBriefContextPack:
 
     @staticmethod
     def _check_choice(
-        choice: ModelLaneBriefExemplarChoice, by_path: Mapping[str, str]
+        choice: ModelLaneBriefExemplarChoice, by_path: Mapping[str, str], budget: int
     ) -> None:
         if choice.path not in by_path:
             raise ValueError(f"chose {choice.path!r}, which is not a candidate")
         if choice.excerpt not in by_path[choice.path]:
             raise ValueError(f"excerpt is not verbatim from {choice.path!r}")
+        _fit(f"{choice.path}\n{choice.excerpt}", budget, f"excerpt of {choice.path!r}")
 
 
 __all__ = [

@@ -10,11 +10,13 @@ from omnibase_core.enums.enum_context_factor import EnumContextFactor
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.enums.enum_context_binding_kind import EnumContextBindingKind
-from omnimarket.enums.enum_lane_brief_tier import EnumLaneBriefTier
 from omnimarket.models.context_pack.model_context_task_kind_rule import (
     ModelContextTaskKindRule,
 )
-from omnimarket.models.context_pack.model_context_tier_spec import ModelContextTierSpec
+from omnimarket.models.context_pack.model_context_tier_spec import (
+    ModelContextTierSpec,
+    check_tier_specs_in_order,
+)
 
 #: Factors of plan section 4.2 rows 1 to 5: bytes depend only on the pinned commit.
 STABLE_TIER_FACTORS: frozenset[EnumContextFactor] = frozenset(
@@ -80,12 +82,7 @@ class ModelContextProfile(BaseModel):
     def _validate_tier_specs(self) -> ModelContextProfile:
         if not self.tier_specs:
             return self
-        named = [spec.tier for spec in self.tier_specs]
-        missing = [t.value for t in EnumLaneBriefTier if t not in named]
-        if missing or len(set(named)) != len(named):
-            raise ValueError(
-                f"tier_specs must name each lane-brief tier exactly once; missing: {missing}"
-            )
+        check_tier_specs_in_order(self.tier_specs)
         if not {spec.factor for spec in self.tier_specs} <= set(self.required_factors):
             raise ValueError("every tier_specs factor must be in required_factors")
         total = sum(spec.token_budget for spec in self.tier_specs)

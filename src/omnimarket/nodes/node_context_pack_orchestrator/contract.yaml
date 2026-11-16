@@ -60,6 +60,18 @@ handler_routing:
       event_model:
         name: ModelContextPackCommand
         module: omnimarket.models.context_pack_orchestrator
+    # The lane-brief context pack (capability context.pack.lane_brief): the node's one command topic carries
+    # it too, told apart from a generic pack request by payload type, and its own handler builds it. The
+    # runtime constructs that handler with no arguments. No rung or reader is bound yet, so until a composition root
+    # binds them a request is refused, typed, before any model is called.
+    - operation: context.pack.lane_brief
+      message_category: command
+      handler:
+        name: HandlerLaneBriefContextPack
+        module: omnimarket.nodes.node_context_pack_orchestrator.handlers.handler_lane_brief_context_pack
+      event_model:
+        name: ModelLaneBriefContextRequest
+        module: omnimarket.models.context_pack_orchestrator.model_lane_brief_context
 
 descriptor:
   node_archetype: orchestrator

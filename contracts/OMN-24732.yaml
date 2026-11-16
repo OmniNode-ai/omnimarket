@@ -1,0 +1,78 @@
+schema_version: 1.0.0
+ticket_id: OMN-24732
+title: Pull request 6318 routes the lane brief context handler through the node, matches lane history on token boundaries and refuses a misordered or over-budget pack before a rung call, and every blocking review finding is fixed or argued
+summary: The four blocking review findings on the lane_brief_context change are fixed on the same branch - the handler is routed from the node contract, lane history matches on token boundaries, out-of-order tier_specs are refused in profile validation, and an over-budget exemplar excerpt falls back with a recorded reason.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- public_api
+- events
+requirements:
+- id: req-omn24732-review-findings
+  statement: Each blocking review finding on the lane_brief_context pull request has a test that fails at head e0daa515bf9a and passes at the new head.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the handler is routed from the node contract through the node command path with a test, or the capability line is dropped and the wiring ticket is named in contracts/OMN-24688.yaml and the PR body -- falsifier: uv run pytest tests/nodes/node_context_pack_orchestrator -q -k lane_brief_context_routing in omnimarket, red at head e0daa515bf9a and green at the new head'
+  - id: AC2
+    statement: 'AC2: lane history matches ticket ids and paths on token boundaries and an empty path in files_to_touch is refused, with one test each for OMN-1 against OMN-12, src/a.py against tests/src/a.pyi, and the empty path -- falsifier: uv run pytest tests/nodes/node_context_pack_orchestrator/test_lane_brief_context_profile.py -q -k lane_history_boundary, red at head e0daa515bf9a and green at the new head'
+  - id: AC3
+    statement: 'AC3: out-of-order tier_specs are refused in profile validation with a typed refusal and no rung call, with a test for a reversed profile -- falsifier: uv run pytest tests/nodes/node_context_pack_orchestrator -q -k tier_specs_order, red at head e0daa515bf9a and green at the new head'
+  - id: AC4
+    statement: 'AC4: an over-budget exemplar excerpt makes the rung fall back with a recorded reason and an empty exemplar candidate list is refused before any rung call, with one test for each -- falsifier: uv run pytest tests/nodes/node_context_pack_orchestrator -q -k exemplar_budget, red at head e0daa515bf9a and green at the new head'
+  - id: AC5
+    statement: 'AC5: the pull request comment on every finding states fixed or argued with evidence, the last comment names the new head, the required suites pass on the lab and a whole-suite run that times out is run in parts with the parts named -- falsifier: uv run pytest tests/nodes/node_context_pack_orchestrator tests/pack -q on the lab at the new head and onex scm pr-view OmniNode-ai/omnimarket#6318 to read the comments'
+evidence_requirements:
+- kind: tests
+  description: The node, pack and resolver suites pass at the pushed head.
+  command: uv run --frozen pytest tests/nodes/node_context_pack_orchestrator tests/pack tests/nodes/node_context_profile_resolver_effect -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24732-ac1
+  description: The contract routes HandlerLaneBriefContextPack by its own command topic, and the command path builds the pack or refuses it typed before any rung call.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_context_pack_orchestrator -q --no-cov -n 0 -p no:randomly -k lane_brief_context_routing
+    cwd: .
+- id: dod-omn24732-ac2
+  description: Lane history matches ids and paths on token boundaries and an empty path is refused.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_context_pack_orchestrator/test_lane_brief_context_profile.py -q --no-cov -n 0 -p no:randomly -k lane_history_boundary
+    cwd: .
+- id: dod-omn24732-ac3
+  description: A reversed tier_specs profile is refused in validation and the handler refuses it typed with no rung call.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_context_pack_orchestrator -q --no-cov -n 0 -p no:randomly -k tier_specs_order
+    cwd: .
+- id: dod-omn24732-ac4
+  description: An over-budget exemplar excerpt falls back with a recorded reason and an empty candidate list is refused before any rung call.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_context_pack_orchestrator -q --no-cov -n 0 -p no:randomly -k exemplar_budget
+    cwd: .
+- id: dod-omn24732-ac5
+  description: The node, pack and resolver suites pass on a lab host at the pushed head.
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24732 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_context_pack_orchestrator tests/pack -q --no-cov -n 0 -p no:randomly
+    cwd: .

@@ -7,7 +7,7 @@ from __future__ import annotations
 import hashlib
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from omnimarket.enums.enum_lane_brief_tier import (
     EnumLaneBriefRung,
@@ -56,6 +56,13 @@ class ModelLaneBriefContextRequest(BaseModel):
     review_comments: tuple[ModelLaneBriefReviewComment, ...] = ()
     exemplar_candidates: tuple[ModelLaneBriefExemplarCandidate, ...] = ()
     ledger_rows: tuple[str, ...] = ()
+
+    @field_validator("files_to_touch")
+    @classmethod
+    def _no_blank_path(cls, paths: tuple[str, ...]) -> tuple[str, ...]:
+        if any(not p.strip() for p in paths):
+            raise ValueError("files_to_touch names a blank path; every path is a file")
+        return paths
 
 
 class ModelLaneBriefRungAttempt(BaseModel):

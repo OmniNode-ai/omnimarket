@@ -5,8 +5,10 @@
 from __future__ import annotations
 
 import hashlib
+import importlib
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -359,3 +361,225 @@ def test_lane_brief_context_fallback_every_rung_failing_refuses_the_pack() -> No
 def test_lane_brief_context_fallback_rungs_out_of_order_are_refused() -> None:
     with pytest.raises(LaneBriefContextRefusedError, match="local, glm, sonnet"):
         _handler(list(reversed(_rungs()))).handle(_request())
+
+
+# --- OMN-24732: review findings on the first head --------------------------------------------------
+
+_CONTRACT_PATH = SRC / "nodes" / "node_context_pack_orchestrator" / "contract.yaml"
+_LANE_BRIEF_CAPABILITY = "context.pack.lane_brief"
+
+
+def _lane_brief_route() -> tuple[dict[str, Any], dict[str, Any]]:
+    contract = yaml.safe_load(_CONTRACT_PATH.read_text(encoding="utf-8"))
+    routes = [
+        entry
+        for entry in contract["handler_routing"]["handlers"]
+        if entry["event_model"]["name"] == ModelLaneBriefContextRequest.__name__
+    ]
+    assert len(routes) == 1, "the lane-brief request has no handler_routing entry"
+    return contract, routes[0]
+
+
+def _resolve(module: str, name: str) -> Any:
+    return getattr(importlib.import_module(module), name)
+
+
+def test_lane_brief_context_routing_contract_routes_the_capability_to_the_handler() -> (
+    None
+):
+    contract, route = _lane_brief_route()
+    assert _LANE_BRIEF_CAPABILITY in [c["name"] for c in contract["capabilities"]]
+    assert route["handler"]["name"] == HandlerLaneBriefContextPack.__name__
+    assert route["handler"]["module"] == HandlerLaneBriefContextPack.__module__
+    assert route["event_model"]["module"] == ModelLaneBriefContextRequest.__module__
+    # no topic of its own (a new topic needs a broker grant): the node's one command topic carries it,
+    # and the runtime tells the two commands apart by payload type
+    assert "topic" not in route
+    assert contract["handler_routing"]["routing_strategy"] == "payload_type_match"
+    assert contract["event_bus"]["subscribe_topics"] == [
+        contract["runtime_dispatch"]["command_topic"]
+    ]
+    assert route["message_category"] == "command"
+
+
+def test_lane_brief_context_routing_command_path_builds_the_pack() -> None:
+    """The way the runtime does it: read the route, build the handler, validate the payload, handle it."""
+    _, route = _lane_brief_route()
+    event_model = _resolve(route["event_model"]["module"], route["event_model"]["name"])
+    handler_cls = _resolve(route["handler"]["module"], route["handler"]["name"])
+    payload = _request().model_dump(mode="json")
+    command = event_model.model_validate(payload)
+    # the runtime builds the contract-named handler with no arguments: it refuses, typed, until bound
+    with pytest.raises(LaneBriefContextRefusedError, match="local, glm, sonnet"):
+        handler_cls().handle(command)
+    # the same class, bound the way a test or a composition root binds it, builds the pack
+    bound = handler_cls(
+        rungs=_rungs(),
+        readers={
+            EnumLaneBriefTier.GRAPH_ANSWERS: _Reader("importers: b.py"),
+            EnumLaneBriefTier.TESTS_AND_CI: _Reader("ci: validate-plugin"),
+        },
+    )
+    built = bound.handle(command)
+    assert built.final_pack_hash == hashlib.sha256(built.body.encode()).hexdigest()
+
+
+def test_lane_brief_context_routing_no_arg_handler_binds_no_rung_and_calls_no_model() -> (
+    None
+):
+    handler = HandlerLaneBriefContextPack()
+    with pytest.raises(LaneBriefContextRefusedError, match="local, glm, sonnet"):
+        handler.handle(_request())
+
+
+def _history_of(**changes: object) -> str:
+    built = _handler().handle(_request(**changes))
+    body = built.body
+    return body.split("## lane_history\n", 1)[1].split("\n\n## risks", 1)[0]
+
+
+def test_lane_history_boundary_ticket_id_is_not_a_prefix_of_another_ticket() -> None:
+    history = _history_of(
+        ticket="OMN-1",
+        files_to_touch=("src/a.py",),
+        ledger_rows=(
+            "2026-11-16T01:00:00Z | CLAIM | lane=a | ticket=OMN-1 | wanted",
+            "2026-11-16T01:01:00Z | CLAIM | lane=b | ticket=OMN-12 | not wanted",
+            "2026-11-16T01:02:00Z | CLAIM | lane=c | parent=OMN-1, ticket=OMN-9 | wanted too",
+        ),
+    )
+    assert "| wanted" in history
+    assert "wanted too" in history
+    assert "not wanted" not in history
+
+
+def test_lane_history_boundary_path_is_not_the_tail_of_a_longer_path() -> None:
+    history = _history_of(
+        ticket="OMN-1",
+        files_to_touch=("src/a.py",),
+        ledger_rows=(
+            "2026-11-16T01:00:00Z | STATUS | lane=a | touched src/a.py | wanted",
+            "2026-11-16T01:01:00Z | STATUS | lane=b | touched tests/src/a.pyi | not wanted",
+            "2026-11-16T01:02:00Z | STATUS | lane=c | touched src/a.py.bak | not wanted either",
+            "2026-11-16T01:03:00Z | STATUS | lane=d | touched (src/a.py), done | wanted too",
+        ),
+    )
+    assert "| wanted" in history
+    assert "wanted too" in history
+    assert "not wanted" not in history
+
+
+@pytest.mark.parametrize("empty", ["", "   "])
+def test_lane_history_boundary_an_empty_path_in_files_to_touch_is_refused(
+    empty: str,
+) -> None:
+    with pytest.raises(ValidationError, match="files_to_touch"):
+        _request(files_to_touch=("src/a.py", empty))
+
+
+def _over_budget_excerpt() -> ModelLaneBriefExemplarCandidate:
+    return ModelLaneBriefExemplarCandidate(
+        path="src/big.py", text="def shape():\n" + "    pass\n" * 6000
+    )
+
+
+def test_exemplar_budget_over_budget_excerpt_makes_the_rung_fall_back_with_a_reason() -> (
+    None
+):
+    big = _over_budget_excerpt()
+    rungs = _rungs(
+        local=_Rung(EnumLaneBriefRung.LOCAL, path=big.path, excerpt=big.text)
+    )
+    built = _handler(rungs).handle(
+        _request(
+            exemplar_candidates=(
+                big,
+                ModelLaneBriefExemplarCandidate(
+                    path="src/a.py", text="x = 1\ndef shape():\n    return x\n"
+                ),
+            )
+        )
+    )
+    exemplar = next(t for t in built.tiers if t.tier is EnumLaneBriefTier.EXEMPLAR)
+    assert [(a.rung, a.outcome) for a in exemplar.rungs] == [
+        (EnumLaneBriefRung.LOCAL, "fell_back"),
+        (EnumLaneBriefRung.GLM, "selected"),
+    ]
+    assert "budget" in (exemplar.rungs[0].reason or "")
+    assert exemplar.token_estimate <= exemplar.token_budget
+    assert [r.calls for r in rungs] == [1, 1, 0]
+
+
+def test_exemplar_budget_every_rung_over_budget_refuses_the_pack() -> None:
+    big = _over_budget_excerpt()
+    rungs = [_Rung(r.name, path=big.path, excerpt=big.text) for r in _rungs()]
+    with pytest.raises(LaneBriefContextRefusedError, match="exemplar"):
+        _handler(rungs).handle(_request(exemplar_candidates=(big,)))
+    assert [r.calls for r in rungs] == [1, 1, 1]
+
+
+def test_exemplar_budget_empty_candidate_list_is_refused_before_any_rung_call() -> None:
+    rungs = _rungs()
+    with pytest.raises(LaneBriefContextRefusedError, match="exemplar_candidates"):
+        _handler(rungs).handle(_request(exemplar_candidates=()))
+    assert [r.calls for r in rungs] == [0, 0, 0]
+
+
+def _reversed_profile_data() -> dict[str, object]:
+    data = _profile_data()
+    specs = data["tier_specs"]
+    assert isinstance(specs, list)
+    data["tier_specs"] = list(reversed(specs))
+    return data
+
+
+def test_tier_specs_order_reversed_profile_is_refused_by_validation() -> None:
+    with pytest.raises(ValidationError, match="order"):
+        ModelContextProfile.model_validate(_reversed_profile_data())
+
+
+def test_tier_specs_order_reversed_profile_is_refused_typed_with_no_rung_call(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "lane_brief_context.yaml").write_text(
+        yaml.safe_dump(_reversed_profile_data())
+    )
+    rungs = _rungs()
+    result = HandlerContextProfileResolver(tmp_path).handle(
+        ModelContextProfileResolveRequest(profile_name="lane_brief_context")
+    )
+    assert result.status is not EnumContextProfileResolveStatus.OK
+    with pytest.raises(LaneBriefContextRefusedError, match="order"):
+        _handler(rungs, profiles_dir=tmp_path).handle(_request())
+    assert [r.calls for r in rungs] == [0, 0, 0]
+
+
+def test_lane_brief_context_tiers_an_empty_tier_is_an_explicit_empty_line() -> None:
+    built = _handler().handle(_request(review_comments=(), files_to_touch=()))
+    for tier in ("review_findings", "files_to_touch"):
+        section = built.body.split(f"## {tier}\n", 1)[1].split("\n\n## ", 1)[0]
+        assert section.strip(), f"{tier} is blank"
+    assert _handler().handle(_request()).final_pack_hash != built.final_pack_hash
+
+
+def test_lane_brief_context_tiers_an_unsupported_token_estimation_method_is_refused(
+    tmp_path: Path,
+) -> None:
+    data = _profile_data()
+    data["token_estimation_method"] = "tiktoken_exact"
+    (tmp_path / "lane_brief_context.yaml").write_text(yaml.safe_dump(data))
+    with pytest.raises(LaneBriefContextRefusedError, match="token_estimation_method"):
+        _handler(profiles_dir=tmp_path).handle(_request())
+
+
+def test_lane_brief_context_tiers_required_risk_classes_are_checked_for_a_path(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "risks.yaml"
+    path.write_text(
+        yaml.safe_dump(
+            {"risks": [{"risk_class": "suite-timeout", "rule": "x", "source": "s"}]}
+        )
+    )
+    with pytest.raises(LaneBriefContextRefusedError, match="lacks classes"):
+        load_lane_brief_risks(path)
