@@ -31,6 +31,7 @@ from omnimarket.nodes.node_projection_dod_verdict.handlers.handler_dod_verdict_r
     DodVerdictProjectionWriter,
 )
 from omnimarket.nodes.node_projection_dod_verdict.models import ModelDodVerdictWire
+from omnimarket.projection.handler_shim import RUNTIME_INJECTED_KEYS
 from tests.test_omn18900_dod_verdict_projection import (
     _payload,
     _RecordingDb,
@@ -174,3 +175,106 @@ def test_a_real_verdict_fails_the_failure_terminal_model() -> None:
     """
     with pytest.raises(ValidationError):
         ModelBoundaryFailureTerminal.model_validate(_payload())
+
+
+# --------------------------------------------------------------------------
+# The notice arrives with the runtime's injected keys
+# --------------------------------------------------------------------------
+
+
+def test_a_failure_notice_delivered_with_the_runtimes_injected_keys_declines() -> None:
+    """The runtime delivers the notice with its injected keys still on it.
+
+    The production seam hands the payload over carrying ``_db``,
+    ``_event_type``, ``_envelope_id`` and ``_tenant_id``; the writer must
+    strip them before the ``extra="forbid"`` notice read so the notice still
+    declines instead of dead-lettering.
+    """
+    delivered = {
+        **_failure_notice(),
+        "_db": None,
+        "_event_type": "dod_verify_completed",
+        "_envelope_id": str(uuid4()),
+        "_tenant_id": "820272f9-4aaf-5add-a2df-0af942852ab2",
+    }
+    report, db = _write(delivered)  # no exception
+    assert report["rows_upserted"] == 0
+    assert report[ROWS_REFUSED_KEY] == 1
+    assert report["dod_verdict_rows"] == []
+    assert db.calls == []
+
+
+def test_a_notice_with_injected_keys_and_one_producer_extra_key_still_raises() -> None:
+    """Stripping the injected keys cannot swallow a producer's own extra key.
+
+    A field a producer put on the wire is not a runtime-injected key, so the
+    ``extra="forbid"`` notice read still fails and the payload raises.
+    """
+    delivered = {
+        **_failure_notice(),
+        "_db": None,
+        "_event_type": "dod_verify_completed",
+        "_envelope_id": str(uuid4()),
+        "_tenant_id": "820272f9-4aaf-5add-a2df-0af942852ab2",
+        "unexpected_field": 1,
+    }
+    with pytest.raises(ValidationError):
+        _write(delivered)
+
+
+def test_a_real_verdict_with_injected_keys_still_writes_one_row() -> None:
+    """A verdict delivered with the runtime's injected keys still writes its row.
+
+    The strip must not disturb the verdict path: a real verdict that arrives
+    carrying the injected keys still folds and persists exactly one row.
+    """
+    delivered = {
+        **_payload(),
+        "_db": None,
+        "_event_type": "dod_verify_completed",
+        "_envelope_id": str(uuid4()),
+        "_tenant_id": "820272f9-4aaf-5add-a2df-0af942852ab2",
+    }
+    report, db = _write(delivered)
+    assert report["rows_upserted"] == 1
+    assert report[ROWS_REFUSED_KEY] == 0
+    assert len(db.calls) == 1
+
+
+# --------------------------------------------------------------------------
+# The seam with the runtime: every key it injects, one at a time
+# --------------------------------------------------------------------------
+
+_SAMPLE_INJECTED_VALUES: dict[str, Any] = {
+    "_db": None,
+    "_event_type": "dod_verify_completed",
+    "_topic": "onex.evt.omnimarket.dod-verify-completed.v1",
+    "_envelope_id": "2c0c6f3e-5d4c-4f6e-9a39-0d0a5a1f8e11",
+    "_envelope_timestamp": "2026-11-13T18:49:30+00:00",
+    "_tenant_id": "820272f9-4aaf-5add-a2df-0af942852ab2",
+    "_partition": 0,
+    "_offset": 7,
+}
+
+
+def test_the_sample_values_name_every_key_the_runtime_injects() -> None:
+    """The seam list is the runtime-side declaration, not a copy that can drift.
+
+    A key added to ``RUNTIME_INJECTED_KEYS`` with no sample here fails this test
+    first, so the per-key decline below cannot silently skip it.
+    """
+    assert set(_SAMPLE_INJECTED_VALUES) == set(RUNTIME_INJECTED_KEYS)
+
+
+@pytest.mark.parametrize("key", sorted(RUNTIME_INJECTED_KEYS))
+def test_a_failure_notice_declines_with_each_runtime_injected_key(key: str) -> None:
+    """Whichever injected key the runtime leaves on the notice, it still declines.
+
+    The seam under test is the writer's side of the runtime's injection: one
+    key from the runtime's own declared set at a time, so a key the writer does
+    not strip names itself in the failure.
+    """
+    report, db = _write({**_failure_notice(), key: _SAMPLE_INJECTED_VALUES[key]})
+    assert report[ROWS_REFUSED_KEY] == 1
+    assert report["rows_upserted"] == 0
+    assert db.calls == []

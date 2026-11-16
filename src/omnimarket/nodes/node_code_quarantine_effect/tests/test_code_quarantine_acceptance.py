@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The acceptance reads of OMN-23144 (AC1 to AC3), each on the in-memory rig and on the real files and git rig."""
+"""The acceptance reads of OMN-23144 (AC1 to AC3) and OMN-23149 (stage 4, AC1 and AC2), each on the in-memory rig and on the real files and git rig."""
 
 from __future__ import annotations
 
@@ -9,17 +9,22 @@ import pytest
 from omnimarket.nodes.node_code_quarantine_effect.models import (
     EnumFailedGate,
     EnumQuarantineOutcome,
+    ModelRarePathCheck,
 )
 from omnimarket.nodes.node_code_quarantine_effect.tests.support import (
     ENTITY,
     ENTITY_PATHS,
     KEPT,
+    SKILL,
+    SKILL_PATHS,
     START,
     TEST_PATHS,
     Rig,
     check_request,
     quarantine_request,
     remove_request,
+    stage_four_module_request,
+    stage_four_skill_request,
 )
 
 pytestmark = pytest.mark.unit
@@ -115,3 +120,72 @@ def test_removal_needs_tag_and_catalog(rig: Rig) -> None:
     assert accepted.removed_entities == (ENTITY,)
     assert not any(rig.exists(path) for path in (*ENTITY_PATHS, *TEST_PATHS))
     assert [r["entity"] for r in rig.catalog()] == [ENTITY]
+
+
+def test_stage_4_tests_go_with_module(rig: Rig) -> None:
+    """OMN-23149 AC1: a module referenced only by tests leaves with those tests, never the tests alone."""
+    everything = (*ENTITY_PATHS, *TEST_PATHS)
+    # The tests alone are refused, and so is a module whose referencing tests stay behind.
+    alone = rig.handler.handle(
+        stage_four_module_request("s4a", entity_paths=TEST_PATHS)
+    )
+    assert alone.outcome is EnumQuarantineOutcome.REFUSED_TESTS_NOT_WITH_MODULE
+    left = rig.handler.handle(stage_four_module_request("s4b", test_paths=()))
+    assert left.outcome is EnumQuarantineOutcome.REFUSED_TESTS_NOT_WITH_MODULE
+    unread = rig.handler.handle(stage_four_module_request("s4c", test_references=()))
+    assert unread.outcome is EnumQuarantineOutcome.REFUSED_TESTS_NOT_WITH_MODULE
+    for refused in (alone, left, unread):
+        assert refused.excluded_paths == ()
+        assert refused.clock_started_at is None
+        assert not refused.changed
+    assert all(rig.exists(path) for path in everything)
+    # The module and its tests together are quarantined, and removed together once the clock has run.
+    started = rig.handler.handle(stage_four_module_request("s4d"))
+    assert started.outcome is EnumQuarantineOutcome.QUARANTINED
+    assert set(started.excluded_paths) == set(everything)
+    rig.clock.advance(days=7)
+    removed = rig.handler.handle(remove_request(rig, "s4d"))
+    assert removed.outcome is EnumQuarantineOutcome.REMOVED
+    assert not any(rig.exists(path) for path in everything)
+    assert rig.exists(KEPT)
+
+
+def test_stage_4_skill_rare_path(rig: Rig) -> None:
+    """OMN-23149 AC2: a skill never seen goes only after a rare-path check names no drill that uses it."""
+    missing = rig.handler.handle(
+        stage_four_skill_request("s4e").model_copy(update={"rare_path": None})
+    )
+    assert missing.outcome is EnumQuarantineOutcome.REFUSED_RARE_PATH
+    unread = rig.handler.handle(
+        stage_four_skill_request(
+            "s4f",
+            rare_path=ModelRarePathCheck(
+                evidence_ref="reports/rare-path/skills.md", drills_checked=()
+            ),
+        )
+    )
+    assert unread.outcome is EnumQuarantineOutcome.REFUSED_RARE_PATH
+    used = rig.handler.handle(
+        stage_four_skill_request(
+            "s4g",
+            rare_path=ModelRarePathCheck(
+                evidence_ref="reports/rare-path/skills.md",
+                drills_checked=("drill-failover", "drill-restore"),
+                drills_using=("drill-restore",),
+            ),
+        )
+    )
+    assert used.outcome is EnumQuarantineOutcome.REFUSED_RARE_PATH
+    assert "drill-restore" in used.detail
+    for refused in (missing, unread, used):
+        assert refused.excluded_paths == ()
+        assert not refused.changed
+    assert all(rig.exists(path) for path in SKILL_PATHS)
+    # With a check that read the drills and found none using the skill, it is quarantined, then removed.
+    started = rig.handler.handle(stage_four_skill_request("s4h"))
+    assert started.outcome is EnumQuarantineOutcome.QUARANTINED
+    assert set(started.excluded_paths) == set(SKILL_PATHS)
+    rig.clock.advance(days=7)
+    removed = rig.handler.handle(remove_request(rig, "s4h", entity=SKILL))
+    assert removed.outcome is EnumQuarantineOutcome.REMOVED
+    assert not any(rig.exists(path) for path in SKILL_PATHS)

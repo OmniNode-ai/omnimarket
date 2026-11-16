@@ -1,0 +1,66 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Start Path Census Compute (OMN-22940)
+#
+# The start-path census and refusal drill (rebuild plan sections 7.1, 11 and W28). Every path that starts an agent,
+# session or provisioning call is listed live with the binding that calls start admission, or dead; a start on an
+# unlisted path fails the census. The drill plants a bypassing start on a path and reads the admission answer: the path
+# refuses it only when its enforcement is enforce. A request tagged drill never suppresses an operational failure.
+name: node_start_path_census_compute
+node_type: COMPUTE_GENERIC
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >
+  Reads the start-path census against the starts seen and the drills planted. Pure: the path list is the
+  start_path_census overlay, the enforcement of each path is the start_admission policy, and no I/O occurs.
+input_model:
+  name: ModelStartPathCensusRequest
+  module: omnimarket.nodes.node_start_path_census_compute.models.model_start_path_census
+output_model:
+  name: ModelStartPathCensusResult
+  module: omnimarket.nodes.node_start_path_census_compute.models.model_start_path_census
+handler:
+  module: omnimarket.nodes.node_start_path_census_compute.handlers.handler_start_path_census
+  class: HandlerStartPathCensus
+  input_model: omnimarket.nodes.node_start_path_census_compute.models.model_start_path_census.ModelStartPathCensusRequest
+  output_model: omnimarket.nodes.node_start_path_census_compute.models.model_start_path_census.ModelStartPathCensusResult
+entrypoint:
+  name: NodeStartPathCensusCompute
+  module: omnimarket.nodes.node_start_path_census_compute
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_start_path_census_compute.handlers.handler_start_path_census:HandlerStartPathCensus
+  handlers:
+    - operation: read_start_path_census
+      topic: onex.cmd.omnimarket.start-path-census-requested.v1
+      handler:
+        name: HandlerStartPathCensus
+        module: omnimarket.nodes.node_start_path_census_compute.handlers.handler_start_path_census
+terminal_event: onex.evt.omnimarket.start-path-census-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.start-path-census-requested.v1
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.start-path-census-requested.v1]
+  publish_topics: [onex.evt.omnimarket.start-path-census-completed.v1]
+overlay:
+  node: start_path_census
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+metadata:
+  ticket: OMN-22940
+  transport_type: inmemory
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: [main]
+  idempotent: true
+  timeout_ms: 5000
+externally_consumed_topics:
+  - onex.evt.omnimarket.start-path-census-completed.v1
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.start-path-census-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.start-path-census-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.start-path-census-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.start-path-census-completed.v1, operation: DESCRIBE}

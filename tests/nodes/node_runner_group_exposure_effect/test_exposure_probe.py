@@ -226,6 +226,7 @@ def _probe(
             "org": "example-org",
             "group_id": 7,
             "group_labels": ["example-private-group"],
+            "group_read": None,
             "token_env": TOKEN_ENV,
             "token_mint": None,
             "org_read_permission": "example_org_permission_read",

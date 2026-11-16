@@ -37,6 +37,7 @@ from tests.nodes.node_merged_running_count_effect.test_effect_merged_running_cou
     NOW,
     WATCHER,
     _config,
+    hosts_result,
 )
 
 INFRA_SHA = "1baf2f7d7f13a0089d155ddf61b71b7bc1d3ab1c"
@@ -90,7 +91,6 @@ def _run(
     tmp_path.mkdir(parents=True, exist_ok=True)
     (tmp_path / "state.json").write_text(json.dumps(WATCHER))
     (tmp_path / "ledger.md").write_text(ledger + "\n")
-    (tmp_path / "hosts.yaml").write_text(yaml.safe_dump(HOST_TABLE))
     placement_file = tmp_path / "hosts.json"
     if placement is not None:
         placement_file.write_text(json.dumps(placement))
@@ -105,7 +105,7 @@ def _run(
         watcher_state=tmp_path / "state.json",
         ledger=tmp_path / "ledger.md",
         labels=LABELS,
-        hosts_table=tmp_path / "hosts.yaml",
+        hosts=lambda: hosts_result(HOST_TABLE),
         placement_read=placement_file,
         now=NOW,
         lab_pass=lab_pass,
@@ -224,15 +224,13 @@ def test_idle_slots_fall_back_to_the_table_cap_with_the_cause_when_no_advertisem
 def test_idle_host_with_no_cap_and_no_advertisement_reads_unread_not_zero(
     tmp_path: Path,
 ) -> None:
-    table = {"hosts": [{"name": "h900"}]}
-    (tmp_path / "hosts.yaml").write_text(yaml.safe_dump(table))
     (tmp_path / "state.json").write_text(json.dumps(WATCHER))
     (tmp_path / "ledger.md").write_text(LEDGER + "\n")
     sources = SourceLocalFiles(
         watcher_state=tmp_path / "state.json",
         ledger=tmp_path / "ledger.md",
         labels=LABELS,
-        hosts_table=tmp_path / "hosts.yaml",
+        hosts=lambda: hosts_result({"hosts": [{"name": "h900"}]}),
         placement_read=tmp_path / "none.json",
         now=NOW,
     )
@@ -241,15 +239,33 @@ def test_idle_host_with_no_cap_and_no_advertisement_reads_unread_not_zero(
     assert host.cause == "no placement advertisement read and no cap in the host table"
 
 
-def test_deployed_source_is_built_from_the_contract_and_the_environment() -> None:
-    declared = yaml.safe_load(
-        (
-            Path(__file__).resolve().parents[3]
-            / "src/omnimarket/nodes/node_merged_running_count_effect/contract.yaml"
-        ).read_text()
-    )["runtime"]["lab_pass"]
-    env = {declared["url_env"]: "http://lab.invalid/p", declared["lane_env"]: "lane-a"}
-    source, cause = build_lab_pass_source(declared, env, _serves(INFRA_SHA, "PASS"))
+def _lab_pass_declared() -> dict[str, Any]:
+    contract = (
+        Path(__file__).resolve().parents[3]
+        / "src/omnimarket/nodes/node_merged_running_count_effect/contract.yaml"
+    )
+    return yaml.safe_load(contract.read_text())["runtime"]["lab_pass"]
+
+
+def _overlay_root(tmp_path: Path, url: str, lane: str = "lane-a") -> Path:
+    root = tmp_path / "overlays"
+    (root / "lab_pass_receipts").mkdir(parents=True)
+    (root / "lab_pass_receipts" / "overlay.yaml").write_text(
+        f"receipts_url: {url}\nlane: {lane}\n"
+    )
+    return root
+
+
+def test_deployed_source_is_built_from_the_contract_and_the_overlay(
+    tmp_path: Path,
+) -> None:
+    declared = _lab_pass_declared()
+    root = _overlay_root(tmp_path, "http://lab.invalid/p")
+    source, cause = build_lab_pass_source(
+        declared,
+        {"ONEX_SKILL_OVERLAY_ROOTS": str(root)},
+        _serves(INFRA_SHA, "PASS"),
+    )
     assert source is not None
     assert cause == ""
     read = source.read()
@@ -257,8 +273,32 @@ def test_deployed_source_is_built_from_the_contract_and_the_environment() -> Non
         ("omnibase_infra", "deployed", "lane-a lab-pass receipt"),
         ("omnimarket", "deployed", "lane-a lab-pass receipt"),
     }
-    unset, why = build_lab_pass_source(
-        declared, {declared["url_env"]: "http://lab.invalid/p"}
+
+
+def test_deployed_source_without_its_overlay_names_the_overlay(
+    tmp_path: Path,
+) -> None:
+    source, cause = build_lab_pass_source(
+        _lab_pass_declared(), {"ONEX_SKILL_OVERLAY_ROOTS": str(tmp_path)}
     )
-    assert unset is None
-    assert declared["lane_env"] in why
+    assert source is None
+    assert "lab_pass_receipts" in cause
+
+
+def test_deployed_source_refuses_a_non_http_address(tmp_path: Path) -> None:
+    root = _overlay_root(tmp_path, "ftp://x")
+    source, cause = build_lab_pass_source(
+        _lab_pass_declared(), {"ONEX_SKILL_OVERLAY_ROOTS": str(root)}
+    )
+    assert source is None
+    assert cause != ""
+
+
+def test_the_old_environment_names_are_not_read() -> None:
+    env = {
+        "ONEX_LAB_PASS_RECEIPTS_URL": "http://lab.invalid/p",
+        "ONEX_LAB_PASS_LANE": "lane-a",
+    }
+    source, cause = build_lab_pass_source(_lab_pass_declared(), env)
+    assert source is None
+    assert cause != ""

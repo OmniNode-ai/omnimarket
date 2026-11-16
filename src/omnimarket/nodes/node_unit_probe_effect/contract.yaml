@@ -1,0 +1,53 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_unit_probe_effect
+lifecycle: experimental
+node_type: EFFECT_GENERIC
+runtime_profiles: []
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: 1.0.0
+description: Read whether a host unit is loaded and when it last ran. A launchd unit
+  is read through launchctl and its log files, a systemd timer through systemctl, and
+  on a host with no systemctl through one ssh systemctl show per remote lab-pool host.
+  A tick that runs on a pool host is judged from that host's timer and service.
+input_model:
+  name: ModelUnitProbeRequest
+  module: omnimarket.nodes.node_unit_probe_effect.models.model_unit_probe
+output_model:
+  name: ModelUnitProbeResult
+  module: omnimarket.nodes.node_unit_probe_effect.models.model_unit_probe
+handler:
+  module: omnimarket.nodes.node_unit_probe_effect.handlers.handler_unit_probe
+  class: HandlerUnitProbe
+  input_model: omnimarket.nodes.node_unit_probe_effect.models.model_unit_probe.ModelUnitProbeRequest
+  output_model: omnimarket.nodes.node_unit_probe_effect.models.model_unit_probe.ModelUnitProbeResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_unit_probe_effect.handlers.handler_unit_probe:HandlerUnitProbe
+  handlers:
+  - operation: handle
+    handler:
+      name: HandlerUnitProbe
+      module: omnimarket.nodes.node_unit_probe_effect.handlers.handler_unit_probe
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct Python invocation by the hourly check and the ruling audit.
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 30000
+metadata:
+  transport_type: local
+  created: '2026-11-14'
+  tags:
+  - effect
+  - unit-probe
+  related_tickets:
+  - OMN-23733

@@ -6,6 +6,13 @@ The fold replaces the omnibase_infra skill lifecycle consumer's parsing and
 field filter. A row carries the columns that consumer wrote for the same event,
 and an event missing a field that consumer required writes nothing.
 
+The hook that emits the start record keys an invocation by Claude's own
+``tool_use_id`` (an opaque ``toolu_`` string) and keys correlation by the session
+id, while the table's ``run_id`` and ``correlation_id`` columns are UUIDs. A UUID
+is stored as sent; any other non-empty text becomes the UUID derived from it, so a
+started and a completed record that share a tool use id still share a run id and a
+replay reaches the same row. A value that is not text writes nothing.
+
 Row identity is the table's primary key, ``event_id``. A producer that sent
 one keeps it. A producer that sent none (an old-schema event) gets a key
 derived from the event's own content, so redelivering that event reaches the
@@ -81,6 +88,16 @@ def _uuid(value: object) -> UUID | None:
     return None
 
 
+def _opaque_id(value: object) -> UUID | None:
+    """The UUID of an identifier: as sent when it is one, else derived from its text."""
+    parsed = _uuid(value)
+    if parsed is not None:
+        return parsed
+    if isinstance(value, str) and value:
+        return uuid5(_KEY_NAMESPACE, f"opaque-id|{value}")
+    return None
+
+
 def _text(value: object) -> str | None:
     return value if isinstance(value, str) and value else None
 
@@ -122,8 +139,8 @@ class HandlerProjectionSkillLifecycle:
         if missing:
             return _skip(f"missing required fields: {', '.join(missing)}")
 
-        run_id = _uuid(payload["run_id"])
-        correlation_id = _uuid(payload["correlation_id"])
+        run_id = _opaque_id(payload["run_id"])
+        correlation_id = _opaque_id(payload["correlation_id"])
         skill_name = _text(payload["skill_name"])
         repo_id = _text(payload["repo_id"])
         emitted_at = _timestamp(payload["emitted_at"])

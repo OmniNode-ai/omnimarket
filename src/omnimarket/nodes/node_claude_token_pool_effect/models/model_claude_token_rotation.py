@@ -14,6 +14,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from omnimarket.models.bus_binding.model_node_event_bus import ModelNodeEventBus
 from omnimarket.models.model_claude_pool_limit_recheck import (
     ModelLimitRecheckPolicy,
 )
@@ -22,6 +23,9 @@ from omnimarket.models.model_claude_pool_revoke_recheck import (
 )
 from omnimarket.models.model_claude_pool_revoke_staleness import (
     ModelRevokeStalenessPolicy,
+)
+from omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_pool_mark_event import (
+    ModelPoolMarkEventsSettings,
 )
 
 
@@ -260,9 +264,21 @@ class ModelRotationOverlay(BaseModel):
     #: present => on the marks-source host the tick probes a revoked label every ``policy.interval_seconds``
     #: with the probe the limit recheck declares, so ``limit_recheck`` must be set when this is.
     revoke_recheck: ModelRevokeRecheckSettings | None = None
+    #: The bus ``onex run-node`` reaches this node on (OMN-24328). Absent => the node declares no bus and a run-node
+    #: call is refused at broker resolution; present => the same typed block every other node overlay carries.
+    #: The tick itself never reads it.
+    event_bus: ModelNodeEventBus | None = None
+    #: Where every change of a token mark is published (OMN-19998): the topic and the environment variable that names who ran
+    #: the command. Absent => no mark event is published (the pool answers ``mark_events_state=not_configured``); present =>
+    #: ``event_bus`` must name the bus the events go to.
+    mark_events: ModelPoolMarkEventsSettings | None = None
 
     @model_validator(mode="after")
     def _shape(self) -> ModelRotationOverlay:
+        if self.mark_events is not None and self.event_bus is None:
+            raise ValueError(
+                "mark_events is declared but event_bus is not: the events need a bus to be published on"
+            )
         names = [host.name for host in self.hosts]
         if len(set(names)) != len(names):
             raise ValueError("overlay hosts name a host twice")

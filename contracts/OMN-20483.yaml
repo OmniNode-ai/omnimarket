@@ -35,18 +35,18 @@ requirements:
     acceptance:
       - id: "AC1"
         statement: |-
-          AC1: each receipt action carries untruncated arguments and written_sha256, and a resumed v2 receipt restores them -- falsifier: env -u PYTHONPATH uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_receipt_action_arguments.py -q
+          AC1: each receipt action carries untruncated arguments and written_sha256, and a resumed v2 receipt restores them -- falsifier: uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_receipt_action_arguments.py -q
   - id: "req-replay-rebuilds-worktree"
     statement: |-
       A v2 receipt must replay into a fresh directory with the same file digests, and refuse a v1 receipt or a forged digest.
     acceptance:
       - id: "AC2"
         statement: |-
-          AC2: replay_worktree reproduces the live per-file sha256 after each turn, raises ReplayMismatchError on a forged digest and ReplayRefusedError on a v1 receipt -- falsifier: env -u PYTHONPATH uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_replay.py -q
+          AC2: replay_worktree reproduces the live per-file sha256 after each turn, raises ReplayMismatchError on a forged digest and ReplayRefusedError on a v1 receipt -- falsifier: uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_replay.py -q
 evidence_requirements:
   - kind: "tests"
     description: "The receipt-arguments and replay tests pass."
-    command: "env -u PYTHONPATH uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_receipt_action_arguments.py tests/nodes/node_delegated_code_edit_orchestrator/test_replay.py -q"
+    command: "uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_receipt_action_arguments.py tests/nodes/node_delegated_code_edit_orchestrator/test_replay.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -101,10 +101,10 @@ dod_evidence:
         check_value: "uv run pytest tests/nodes/node_delegated_code_edit_orchestrator/test_replay.py::test_a_v1_receipt_is_refused_with_its_reason tests/nodes/node_delegated_code_edit_orchestrator/test_receipt_action_arguments.py::test_resume_of_a_v1_receipt_still_works tests/nodes/node_delegated_code_edit_orchestrator/test_handler_delegated_code_edit_orchestrator.py -k \"v1 or resume\" -q --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn20483-integration-proof"
-    description: "The node_ci_checkout_effect tests run on a lab host at the pushed head, covering the runtime change this pull request carries; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
+    description: "Run the ticket's tests on a lab host at the pushed head. Hosted CI cannot reach the lab hosts, so only the local Done gate runs this unbound check."
     source: "manual"
     execution_scope: "local_done_gate"
     checks:
       - check_type: "command"
-        check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-20483 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_ci_checkout_effect -q --no-cov'
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-omn20483 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_delegated_code_edit_orchestrator -q --no-cov -n 0 -p no:randomly"
         cwd: "."

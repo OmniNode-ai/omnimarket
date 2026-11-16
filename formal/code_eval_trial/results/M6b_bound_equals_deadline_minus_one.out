@@ -1,20 +1,20 @@
 TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
-Running breadth-first search Model-Checking with fp 104 and seed -1023686247942016790 with 4 workers on 4 cores with 1820MB heap and 64MB offheap memory [pid: 3467256] (Linux 6.8.0-147-generic amd64, Eclipse Adoptium 17.0.21 x86_64, MSBDiskFPSet, DiskStateQueue).
+Running breadth-first search Model-Checking with fp 16 and seed 2001049855742580268 with 2 workers on 4 cores with 1820MB heap and 64MB offheap memory [pid: 368027] (Linux 7.0.0-31-generic amd64, Ubuntu 21.0.13.0.3 x86_64, MSBDiskFPSet, DiskStateQueue).
 Parsing file CodeEvalTrial.tla
-Parsing file Naturals.tla
-Parsing file FiniteSets.tla
-Parsing file TLC.tla
-Parsing file Sequences.tla
+Parsing file /tmp/Naturals.tla
+Parsing file /tmp/FiniteSets.tla
+Parsing file /tmp/TLC.tla
+Parsing file /tmp/Sequences.tla
 Semantic processing of module Naturals
 Semantic processing of module Sequences
 Semantic processing of module FiniteSets
 Semantic processing of module TLC
 Semantic processing of module CodeEvalTrial
-Starting... (2026-11-11 12:59:37)
+Starting... (2026-11-14 02:27:57)
 Warning: The set Tasks has been defined to be a symmetry set but contains less than two elements.
 (Use the -nowarning option to disable this warning.)
 Computing initial states...
-Finished computing initial states: 1 distinct state generated at 2026-11-11 12:59:37.
+Finished computing initial states: 1 distinct state generated at 2026-11-14 02:27:57.
 Error: Action property NudgeExpiresBeforeAbandon is violated.
 Error: The behavior up to this point is:
 State 1: <Initial predicate>
@@ -24,6 +24,7 @@ State 1: <Initial predicate>
 /\ abandoned = FALSE
 /\ slot = (<<t1, m1>> :> "none" @@ <<t1, m2>> :> "none")
 /\ lastLate = FALSE
+/\ void = FALSE
 /\ tryAge = (<<t1, m1>> :> 0 @@ <<t1, m2>> :> 0)
 /\ hostsUp = TRUE
 /\ closeCount = 0
@@ -35,13 +36,14 @@ State 1: <Initial predicate>
 /\ since = 0
 /\ scoreAge = 0
 
-State 2: <SendControl line 146, col 3 to line 151, col 93 of module CodeEvalTrial>
+State 2: <SendControl line 153, col 3 to line 158, col 99 of module CodeEvalTrial>
 /\ ord = (<<t1, m1>> :> 1 @@ <<t1, m2>> :> 1)
 /\ ctrl = (t1 :> "inflight")
 /\ np = (<<t1, m1>> :> 0 @@ <<t1, m2>> :> 0)
 /\ abandoned = FALSE
 /\ slot = (<<t1, m1>> :> "none" @@ <<t1, m2>> :> "none")
 /\ lastLate = FALSE
+/\ void = FALSE
 /\ tryAge = (<<t1, m1>> :> 0 @@ <<t1, m2>> :> 0)
 /\ hostsUp = TRUE
 /\ closeCount = 0
@@ -53,13 +55,14 @@ State 2: <SendControl line 146, col 3 to line 151, col 93 of module CodeEvalTria
 /\ since = 0
 /\ scoreAge = 0
 
-State 3: <DeliverScore line 188, col 3 to line 203, col 114 of module CodeEvalTrial>
+State 3: <DeliverScore line 195, col 3 to line 210, col 120 of module CodeEvalTrial>
 /\ ord = (<<t1, m1>> :> 1 @@ <<t1, m2>> :> 1)
 /\ ctrl = (t1 :> "held")
 /\ np = (<<t1, m1>> :> 0 @@ <<t1, m2>> :> 0)
 /\ abandoned = FALSE
 /\ slot = (<<t1, m1>> :> "pending" @@ <<t1, m2>> :> "pending")
 /\ lastLate = FALSE
+/\ void = FALSE
 /\ tryAge = (<<t1, m1>> :> 0 @@ <<t1, m2>> :> 0)
 /\ hostsUp = TRUE
 /\ closeCount = 0
@@ -71,13 +74,14 @@ State 3: <DeliverScore line 188, col 3 to line 203, col 114 of module CodeEvalTr
 /\ since = 0
 /\ scoreAge = 0
 
-State 4: <Place line 162, col 3 to line 168, col 104 of module CodeEvalTrial>
+State 4: <Place line 169, col 3 to line 175, col 110 of module CodeEvalTrial>
 /\ ord = (<<t1, m1>> :> 1 @@ <<t1, m2>> :> 1)
 /\ ctrl = (t1 :> "held")
 /\ np = (<<t1, m1>> :> 1 @@ <<t1, m2>> :> 0)
 /\ abandoned = FALSE
 /\ slot = (<<t1, m1>> :> "try" @@ <<t1, m2>> :> "pending")
 /\ lastLate = FALSE
+/\ void = FALSE
 /\ tryAge = (<<t1, m1>> :> 0 @@ <<t1, m2>> :> 0)
 /\ hostsUp = TRUE
 /\ closeCount = 0
@@ -89,13 +93,14 @@ State 4: <Place line 162, col 3 to line 168, col 104 of module CodeEvalTrial>
 /\ since = 0
 /\ scoreAge = 0
 
-State 5: <Place line 162, col 3 to line 168, col 104 of module CodeEvalTrial>
+State 5: <Place line 169, col 3 to line 175, col 110 of module CodeEvalTrial>
 /\ ord = (<<t1, m1>> :> 1 @@ <<t1, m2>> :> 1)
 /\ ctrl = (t1 :> "held")
 /\ np = (<<t1, m1>> :> 1 @@ <<t1, m2>> :> 1)
 /\ abandoned = FALSE
 /\ slot = (<<t1, m1>> :> "try" @@ <<t1, m2>> :> "try")
 /\ lastLate = FALSE
+/\ void = FALSE
 /\ tryAge = (<<t1, m1>> :> 0 @@ <<t1, m2>> :> 0)
 /\ hostsUp = TRUE
 /\ closeCount = 0
@@ -107,13 +112,14 @@ State 5: <Place line 162, col 3 to line 168, col 104 of module CodeEvalTrial>
 /\ since = 0
 /\ scoreAge = 0
 
-State 6: <Tick line 245, col 3 to line 251, col 35 of module CodeEvalTrial>
+State 6: <Tick line 259, col 3 to line 265, col 35 of module CodeEvalTrial>
 /\ ord = (<<t1, m1>> :> 1 @@ <<t1, m2>> :> 1)
 /\ ctrl = (t1 :> "held")
 /\ np = (<<t1, m1>> :> 1 @@ <<t1, m2>> :> 1)
 /\ abandoned = FALSE
 /\ slot = (<<t1, m1>> :> "try" @@ <<t1, m2>> :> "try")
 /\ lastLate = FALSE
+/\ void = FALSE
 /\ tryAge = (<<t1, m1>> :> 1 @@ <<t1, m2>> :> 1)
 /\ hostsUp = TRUE
 /\ closeCount = 0
@@ -125,13 +131,14 @@ State 6: <Tick line 245, col 3 to line 251, col 35 of module CodeEvalTrial>
 /\ since = 1
 /\ scoreAge = 0
 
-State 7: <Tick line 245, col 3 to line 251, col 35 of module CodeEvalTrial>
+State 7: <Tick line 259, col 3 to line 265, col 35 of module CodeEvalTrial>
 /\ ord = (<<t1, m1>> :> 1 @@ <<t1, m2>> :> 1)
 /\ ctrl = (t1 :> "held")
 /\ np = (<<t1, m1>> :> 1 @@ <<t1, m2>> :> 1)
 /\ abandoned = FALSE
 /\ slot = (<<t1, m1>> :> "try" @@ <<t1, m2>> :> "try")
 /\ lastLate = FALSE
+/\ void = FALSE
 /\ tryAge = (<<t1, m1>> :> 2 @@ <<t1, m2>> :> 2)
 /\ hostsUp = TRUE
 /\ closeCount = 0
@@ -143,13 +150,14 @@ State 7: <Tick line 245, col 3 to line 251, col 35 of module CodeEvalTrial>
 /\ since = 2
 /\ scoreAge = 0
 
-State 8: <Abandon line 232, col 3 to line 235, col 91 of module CodeEvalTrial>
+State 8: <Abandon line 240, col 3 to line 243, col 91 of module CodeEvalTrial>
 /\ ord = (<<t1, m1>> :> 1 @@ <<t1, m2>> :> 1)
 /\ ctrl = (t1 :> "held")
 /\ np = (<<t1, m1>> :> 1 @@ <<t1, m2>> :> 1)
 /\ abandoned = TRUE
 /\ slot = (<<t1, m1>> :> "try" @@ <<t1, m2>> :> "try")
 /\ lastLate = FALSE
+/\ void = FALSE
 /\ tryAge = (<<t1, m1>> :> 2 @@ <<t1, m2>> :> 2)
 /\ hostsUp = TRUE
 /\ closeCount = 1
@@ -161,7 +169,7 @@ State 8: <Abandon line 232, col 3 to line 235, col 91 of module CodeEvalTrial>
 /\ since = 0
 /\ scoreAge = 0
 
-4649 states generated, 234 distinct states found, 104 states left on queue.
+6087 states generated, 286 distinct states found, 116 states left on queue.
 The depth of the complete state graph search is 8.
-The average outdegree of the complete state graph is 2 (minimum is 0, the maximum 8 and the 95th percentile is 5).
-Finished in 00s at (2026-11-11 12:59:37)
+The average outdegree of the complete state graph is 2 (minimum is 0, the maximum 7 and the 95th percentile is 5).
+Finished in 01s at (2026-11-14 02:27:57)

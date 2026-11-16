@@ -4,9 +4,11 @@
 
 The receipt is written by the lab-pass emitter as an Actions artifact and as the event node_projection_lab_lane_health
 folds onto the lane's row (``receipt_sha``, ``receipt_result``). The projection API serves that row; this reader asks
-it and names a PASS receipt of the declared lane as evidence for the declared runtime-served repositories. A FAIL
-receipt, another lane's receipt or a row with no sha is no evidence. A projection that cannot be read is
-unread, which the caller reports as unread and not as no evidence.
+it and names a PASS receipt of the declared lane as evidence for the declared runtime-served repositories. The
+address the projection is served at and the lane whose receipt counts are deployment facts, so they are the
+overlay's (``lab_pass_receipts``), not this code's and not the environment's. A FAIL receipt, another lane's
+receipt or a row with no sha is no evidence. A projection that cannot be read is unread, which the caller
+reports as unread and not as no evidence.
 """
 
 from __future__ import annotations
@@ -19,14 +21,21 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.handlers.node_overlay_reader import (
+    NodeOverlayError,
+    load_structured_overlay,
+)
 from omnimarket.models.model_merged_running_count import (
     ModelMrcEvidence,
     ModelMrcEvidenceRead,
 )
+from omnimarket.nodes.node_merged_running_count_effect.models.model_lab_pass_receipts_overlay import (
+    ModelLabPassReceiptsOverlay,
+)
 
 
 class ModelLabPassLabels(BaseModel):
-    """The lane, repositories, evidence labels and result word of the receipt: the lane id is the environment's."""
+    """The lane, repositories, evidence labels and result word of the receipt: the lane id is the overlay's."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -43,21 +52,21 @@ def build_lab_pass_source(
     environ: Mapping[str, str],
     fetch: Callable[[str], str] | None = None,
 ) -> tuple[SourceLabPassReceipts | None, str]:
-    """The reader from the effect contract's ``lab_pass`` block and the environment, or None and why it cannot be built."""
-    url = environ.get(declared["url_env"], "").strip()
-    lane = environ.get(declared["lane_env"], "").strip()
-    missing = [
-        name
-        for name, value in ((declared["url_env"], url), (declared["lane_env"], lane))
-        if not value
-    ]
-    if missing:
-        return None, f"{', '.join(missing)} not set"
+    """The reader from the effect contract's ``lab_pass`` block and the overlay it names, or None and why it cannot be built."""
+    try:
+        overlay = load_structured_overlay(
+            declared["overlay_id"],
+            ModelLabPassReceiptsOverlay,
+            environ,
+            file_env=declared["overlay_file_env"],
+        )
+    except NodeOverlayError as exc:
+        return None, str(exc)[:200]
     labels = dict(declared["labels"])
-    labels["source"] = labels.pop("source_template").format(lane=lane)
+    labels["source"] = labels.pop("source_template").format(lane=overlay.lane)
     return SourceLabPassReceipts(
-        url=url,
-        labels=ModelLabPassLabels.model_validate({**labels, "lane": lane}),
+        url=overlay.receipts_url,
+        labels=ModelLabPassLabels.model_validate({**labels, "lane": overlay.lane}),
         fetch=fetch,
     ), ""
 

@@ -22,6 +22,7 @@ class EnumStabilityRefreshOutcome(StrEnum):
     REFUSED_PIN_DIFFERS = "refused-pin-differs"
     REFUSED_NOT_RELEASE_TAG = "refused-not-release-tag"
     REFUSED_PIN_UNREADABLE = "refused-pin-unreadable"
+    REFUSED_LOW_DISK = "refused-low-disk"
 
 
 class ModelReleasePinSet(BaseModel):

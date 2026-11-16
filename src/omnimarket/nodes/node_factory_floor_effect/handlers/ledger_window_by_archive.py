@@ -1,12 +1,14 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The factory floor's ledger window, read one split archive at a time through the source read cache (OMN-19998).
+"""The factory floor's ledger window, read split archive by split archive through the source read cache (OMN-19998).
 
 Measured on a lab host with the real ledger: the window read took 16.6 s of a 27 s record step, 12.7 s of it the reader scanning every split
 archive and 3.9 s parsing. An archive never changes once rolled, so its parsed rows are kept under its size and modification time and read
 again only when either changes; the live ledger, the only file that moves between cycles, is read every cycle. The rows returned equal the
 combined ``--archives`` read of the same files: the archives are read from the first day of the window, the rows before the window's exact
-start are dropped, and the per-lane reduction runs once over the union.
+start are dropped, and the per-lane reduction runs once over the union. The cache-missing archives are read at most ``read_workers`` at a
+time (one at a time when the overlay names no count) and each is kept for ``cache_ttl_seconds`` (the source read cache's own backstop when
+the overlay names none).
 """
 
 from __future__ import annotations
@@ -116,12 +118,15 @@ def read_ledger_rows_by_archive(
     cache: CachedSourceReader,
     run: ArchiveReaderRunner,
 ) -> tuple[ModelFloorLedgerRow, ...]:
-    """The window's rows: each in-window archive through the cache, the live ledger every time, reduced once."""
+    """The window's rows: the in-window archives through the cache (the cache-missing ones at most ``archive.read_workers`` at a time), the live ledger every time, reduced once."""
     since_exact = now.astimezone(UTC) - timedelta(days=window_days)
     since_day = since_exact.replace(hour=0, minute=0, second=0, microsecond=0)
     since_day_stamp = since_day.strftime(STAMP)
     date_pattern = re.compile(archive.archive_date_pattern)
     merged: list[ModelFloorLedgerRow] = []
+    reads: list[
+        tuple[ModelSourceCacheKey, Callable[[], tuple[ModelFloorLedgerRow, ...]]]
+    ] = []
     for path in sorted(
         (live_path.parent / archive.archive_subdir).glob(archive.archive_glob)
     ):
@@ -135,22 +140,30 @@ def read_ledger_rows_by_archive(
                 run(_query(path, since_day_stamp, cut_chars), timeout_seconds)
             )
 
-        rows, _outcome = cache.read(
-            ModelSourceCacheKey(
-                source_id=f"ledger-archive:{path.name}",
-                params_digest=ModelSourceCacheKey.digest(
-                    {
-                        "since_day": since_day_stamp,
-                        "cut_chars": cut_chars,
-                        "rows_format": ROWS_FORMAT,
-                    }
+        reads.append(
+            (
+                ModelSourceCacheKey(
+                    source_id=f"ledger-archive:{path.name}",
+                    params_digest=ModelSourceCacheKey.digest(
+                        {
+                            "since_day": since_day_stamp,
+                            "cut_chars": cut_chars,
+                            "rows_format": ROWS_FORMAT,
+                        }
+                    ),
+                    revision=f"{info.st_size}-{info.st_mtime_ns}",
                 ),
-                revision=f"{info.st_size}-{info.st_mtime_ns}",
-            ),
-            read_archive,
-            encode_rows,
-            decode_rows,
+                read_archive,
+            )
         )
+    batches = cache.read_many(
+        reads,
+        encode_rows,
+        decode_rows,
+        max_workers=archive.read_workers or 1,
+        ttl_seconds=archive.cache_ttl_seconds,
+    )
+    for rows in batches:
         merged.extend(row for row in rows if row.ts >= since_exact)
     merged.extend(
         parse_ledger_rows(

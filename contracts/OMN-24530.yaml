@@ -1,0 +1,68 @@
+schema_version: 1.0.0
+ticket_id: OMN-24530
+title: Join J2 failed line names the lab machine's own reason
+summary: The join J2 step sends a canary job to each pooled lab host and judges the receipt. When a host answered with infra_error and its own reason in the receipt detail, the judge wrote only "status infra_error, exit None, nonce not seen" and dropped the reason. Measured on the real broker on 2026-11-15 against h202 from origin/dev, 3 of 4 hosts golden; the h202 receipt detail read "worktree add failed ... Permission denied" because its run folder had no write bit (mode 555 since 2026-11-14 22:00 UTC), and on other runs placement refused it as hot (82.5 C over its 80 C bar). The judge now ends the failure text with the receipt detail when there is one; a receipt with no detail reads as before.
+is_seam_ticket: true
+interface_change: false
+requirements:
+- id: req-omn24530-receipt-detail-in-failure
+  statement: The J2 failure text of a host that answered the canary with a failed receipt ends with that receipt's own detail, folded to one line, so the floor names the cause; a receipt with no detail keeps the text it had.
+  acceptance:
+  - id: AC1
+    statement: "AC1: a lab machine that answers the join J2 test job with its own reason has that reason at the end of the failure text, and a job with no reason reads as before -- falsifier: uv run --frozen pytest tests/unit/nodes/node_host_reading_effect/test_join_j2_receipt_detail_omn24036.py -q --no-cov fails on the dev line and passes on the branch"
+  - id: AC2
+    statement: "AC2: the join J2 run on the real broker names the machine's reason in its failed line -- falsifier: python -m omnimarket.nodes.node_host_reading_effect.runtime_host_reading join-j2 --bus kafka --bus-lane {bus_lane} --deadline-seconds 60 prints the h202 failed line with only 'nonce not seen' from the dev line and with 'Permission denied' from the branch while that machine's run folder has no write bit"
+  - id: AC3
+    statement: "AC3: integrated: the Mac factory-floor-publish cycle shows join_j2 ok in publish-status.json after the run folder on h202 is writable and its temperature is under its hold bar -- falsifier: the join_j2 entry of the published publish-status.json reads failed"
+evidence_requirements:
+- kind: tests
+  description: The receipt detail golden and error tests with their failing control, and the neighbouring J2 join tests.
+  command: env -u PYTHONPATH uv run --frozen pytest tests/unit/nodes/node_host_reading_effect/test_join_j2.py tests/unit/nodes/node_host_reading_effect/test_join_j2_receipt_detail_omn24036.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24530-ac1-receipt-detail
+  description: The J2 failure text carries the receipt detail for a failed receipt and is unchanged for a receipt with none; the failing control runs the new test against the join_j2.py of origin/dev and reads red.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_host_reading_effect/test_join_j2_receipt_detail_omn24036.py tests/unit/nodes/node_host_reading_effect/test_join_j2.py -q --no-cov
+    cwd: .
+- id: dod-omn24530-ac2-real-broker
+  description: Hosted CI cannot reach the lab broker, so only the local Done gate runs this unbound check. The join J2 run on the real broker from the branch is read from the lab comment on the pull request (host, head, command, the h202 failed line).
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env -u PYTHONPATH uv run --frozen python -m omnimarket.nodes.node_host_reading_effect.runtime_host_reading join-j2 --bus kafka --bus-lane {bus_lane} --deadline-seconds 60
+    cwd: .
+- id: dod-omn24530-ac3-integration-proof
+  description: The running reading is the next Mac factory-floor-publish cycle; it cannot pass until the run folder on h202 is writable and its temperature is under 80 C. The pushed head runs its tests on a lab host through the lab work runner; the running reading (the join_j2 entry of the Mac's published publish-status.json) is read from the lab comment on the pull request.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-omn24530 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_host_reading_effect/test_join_j2_receipt_detail_omn24036.py -q --no-cov
+    cwd: .
+- id: dod-omn24530-ac2-hosted-receipt-path
+  description: The hosted half of AC2. The receipt detail of a failed host answer, built through the real host handler and caller on the in-memory bus, reaches the J2 result and the report line; the control runs it against join_j2.py of the merge base and reads red.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_host_reading_effect/test_join_j2_receipt_detail_omn24036.py -k error -q --no-cov
+    cwd: .
+- id: dod-omn24530-ac3-hosted-golden-and-error
+  description: The hosted half of AC3. The failure text names the host's own reason for a failed receipt and keeps the text for a receipt with none, which is what the Mac publish cycle reads once the h202 run folder is writable; the control reads red at the merge base.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_host_reading_effect/test_join_j2_receipt_detail_omn24036.py -q --no-cov
+    cwd: .

@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. The deployment's overlay lives at <root>/node_lane_inbox_wait_effect/overlay.yaml
+# under a root named in ONEX_SKILL_OVERLAY_ROOTS. No key has a default. The runtime backend reads the
+# lane's inbox through the reader module in a subprocess and sleeps for real; the in-memory backend
+# reads scripted answers on a fake clock, so a wait runs in no real time.
+backend: inmemory
+poll_interval_seconds: 30
+max_wait_seconds: 3600
+binding_types: [MSG, HOLD]
+all_target: all
+stop_cell: action
+stop_value: stop
+skip_hold_cells: [surface]
+max_listed: 20
+reader:
+  interpreter_env: ONEX_LANE_INBOX_READER_INTERPRETER
+  reader_module: omnibase_infra.readers.lane_inbox
+  reader_name: inbox
+  window_hours: 12
+  timeout_seconds: 60
+  ok_exits: [0]
+  unreadable_label: inbox-unreadable

@@ -1,0 +1,104 @@
+schema_version: 1.0.0
+ticket_id: OMN-24198
+title: A scheduled convergence orchestrator runs clone sync on the three lab machines from the shared workflow system
+summary: 'New omnimarket node node_convergence_orchestrator: on a runtime tick it sends one convergence command per declared host (h051, h053, h201 in the deployment overlay) as a lab work unit and publishes one run event holding one typed result per host, plus one schedule run event. The overlay mode decides the command: observe runs the new read-only --observe form of the dirty-converge command and changes nothing, act runs the existing dirty-converge tick. A clone the host cannot converge is a typed refusal naming the clone and the reason and the run ends failed. Every host, mode, command, repository, commit and cadence is in the overlay. Not in this change: the deployment overlay, the real-broker run of the lab-work join, the dev runtime reading, and the retirement of the three host timers.'
+is_seam_ticket: true
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24198-convergence-orchestrator
+  statement: A scheduled orchestrator in the runtime sends one convergence command per lab host over the lab-work service and publishes one typed result per host; in observe mode it changes no clone.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: given a runtime tick and an overlay naming three hosts, the scheduled entry sends one convergence command per host and ends with one typed result per host -- falsifier: the focused test for the scheduled entry fails on origin/dev without the change (no convergence orchestrator exists) and passes with it'
+  - id: AC2
+    statement: 'AC2: a clean clone and a dirty clone each return their typed result -- falsifier: the golden chain test asserts both results and fails when the dirty clone result is returned for the clean one'
+  - id: AC3
+    statement: 'AC3: a clone the node cannot converge returns a typed refusal naming the clone and the reason, and the run terminal is failed, not completed -- falsifier: the error chain test with an injected conflicting clone asserts the refusal fields and the failed terminal'
+  - id: AC4
+    statement: 'AC4: in observe mode the run changes nothing, and the act overlay value changes the clone -- falsifier: with the observe value the injected clones are byte-identical after the run, and with the act value the parked clone is not'
+  - id: AC5
+    statement: 'AC5: the seam with the lab-work topics fails when either side changes shape, run on the in-memory bus (the real-broker run is the integrated check on the lab) -- falsifier: renaming a lab-work topic in the orchestrator contract turns the seam test red'
+  - id: AC6
+    statement: 'AC6: the one C row of this slice that was not yet a node step (the observe form of the clone sync) has its own broken-input test before it is scheduled -- falsifier: a child with no readable repository does not read as clean'
+  - id: AC7
+    statement: 'AC7: integrated: in the running dev runtime the schedule-run record for the convergence job holds a completed or failed run for the three hosts under 10 minutes old, and the three host timers are then absent -- falsifier: no schedule-run event for the job on the dev bus in the last 10 minutes'
+evidence_requirements:
+- kind: tests
+  description: The node's focused tests pass at the pushed head.
+  command: env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_convergence_orchestrator tests/chains/convergence -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24198-ac1
+  description: 'AC1: a due tick sends one convergence command per host and ends with one typed result per host'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_convergence_orchestrator/test_scheduled_run.py -q --no-cov -n 0 -p no:randomly -k "one_command_per_host"
+    cwd: .
+- id: dod-omn24198-ac2
+  description: 'AC2: a clean clone and a dirty clone each return their typed result'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_convergence_orchestrator/test_scheduled_run.py tests/chains/convergence -q --no-cov -n 0 -p no:randomly -k "clean_and_a_dirty or golden_chain"
+    cwd: .
+- id: dod-omn24198-ac3
+  description: 'AC3: a clone the host cannot converge is a typed refusal naming the clone and the reason, and the run ends failed'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_convergence_orchestrator/test_scheduled_run.py tests/chains/convergence -q --no-cov -n 0 -p no:randomly -k "cannot_converge"
+    cwd: .
+- id: dod-omn24198-ac4
+  description: 'AC4: observe leaves every clone byte-identical and act changes the parked clone'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_convergence_orchestrator/test_mode_changes_clone.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24198-ac5
+  description: 'hosted proxy for AC5: the seam tests and the in-memory join with real lab-work hosts pass here; the real-broker run of the join is posted as a pull request comment naming the head.'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_convergence_orchestrator/test_contract_seams.py tests/unit/nodes/node_convergence_orchestrator/test_lab_work_join.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24198-ac6
+  description: 'AC6: the observe form and the result parser each have a broken-input test'
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_convergence_orchestrator/test_mode_changes_clone.py tests/unit/nodes/node_convergence_orchestrator/test_parse_host_output.py -q --no-cov -n 0 -p no:randomly -k "broken_input"
+    cwd: .
+- id: dod-omn24198-ac7
+  description: 'hosted proxy for AC7: the node suites pass here; the running-runtime reading of the schedule-run record is pending the deployment overlay and is posted as a pull request comment naming the head.'
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_convergence_orchestrator tests/chains/convergence -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24198-integration-proof
+  description: the focused tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24198 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_convergence_orchestrator tests/chains/convergence -q --no-cov -n 0 -p no:randomly

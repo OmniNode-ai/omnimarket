@@ -1,0 +1,14 @@
+# Experiment log (OMN-23328). Append only. An arm_run entry must carry pack_commit, the full
+# commit that merged this fixture pack; the falsifier of AC1 is that pack_commit predates the
+# arm run's own start time.
+schema_version: 1
+ticket: OMN-23328
+entries:
+  - kind: pack_frozen
+    at: "2026-11-14T08:25:36Z"
+    note: >
+      Eight questions, the corpus commits, the gate and the empty 32-row results table written
+      before either arm ran. Gold facts come from reading the corpus sources, and every anchor was
+      found with git show at the corpus commit by a one-off check recorded in the pull request. No arm has run.
+    arm_runs_started: false
+    gortex_tool_list: not_yet_frozen

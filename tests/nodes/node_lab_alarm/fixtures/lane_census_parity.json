@@ -1,0 +1,622 @@
+{
+ "_note": "Expected values computed by running the old copies (omnibase_infra scripts/lane_census_event.py validate_event and _alert_key, scripts/lane_census_plan.py FINDING_KIND_SEVERITY) at origin/dev 2a1bd13b5c3e623b74f6eb286dec448246ca39cb on 2026-11-14.",
+ "keys": {
+  "detail_ignored": {
+   "alert_key": "lane-census-drift:host-1:ab8efb1aae005295",
+   "findings": [
+    {
+     "container": "a",
+     "detail": "other words",
+     "kind": "container_absent",
+     "lane": "dev",
+     "severity": "critical"
+    },
+    {
+     "container": "b",
+     "detail": "d",
+     "kind": "oneshot_failed",
+     "lane": "dev",
+     "severity": "critical"
+    }
+   ]
+  },
+  "empty": {
+   "alert_key": "lane-census-drift:host-1:e3b0c44298fc1c14",
+   "findings": []
+  },
+  "one": {
+   "alert_key": "lane-census-drift:host-1:2b5d362ae53c78f2",
+   "findings": [
+    {
+     "container": "runtime",
+     "detail": "d",
+     "kind": "container_unhealthy",
+     "lane": "dev",
+     "severity": "critical"
+    }
+   ]
+  },
+  "two_ab": {
+   "alert_key": "lane-census-drift:host-1:ab8efb1aae005295",
+   "findings": [
+    {
+     "container": "a",
+     "detail": "d",
+     "kind": "container_absent",
+     "lane": "dev",
+     "severity": "critical"
+    },
+    {
+     "container": "b",
+     "detail": "d",
+     "kind": "oneshot_failed",
+     "lane": "dev",
+     "severity": "critical"
+    }
+   ]
+  },
+  "two_ba": {
+   "alert_key": "lane-census-drift:host-1:ab8efb1aae005295",
+   "findings": [
+    {
+     "container": "b",
+     "detail": "d",
+     "kind": "oneshot_failed",
+     "lane": "dev",
+     "severity": "critical"
+    },
+    {
+     "container": "a",
+     "detail": "d",
+     "kind": "container_absent",
+     "lane": "dev",
+     "severity": "critical"
+    }
+   ]
+  }
+ },
+ "severity": {
+  "broker_config_mismatch": "critical",
+  "config_hash_mismatch": "critical",
+  "container_absent": "critical",
+  "container_restart_loop": "critical",
+  "container_unhealthy": "critical",
+  "desired_state_unreadable": "critical",
+  "image_tag_mismatch": "warning",
+  "lane_on_undeclared_host": "critical",
+  "network_detached": "critical",
+  "oneshot_failed": "critical",
+  "oneshot_stuck": "warning",
+  "package_version_mismatch": "critical",
+  "profile_gated_present": "warning",
+  "replicas_zero": "critical",
+  "revision_mismatch": "critical",
+  "runner_count_mismatch": "warning",
+  "runner_offline": "warning",
+  "runner_workdir_mismatch": "critical",
+  "undeclared_container": "warning",
+  "unexpected_container": "warning"
+ },
+ "validate": {
+  "drift_count_bool": {
+   "errors": [
+    "key 'drift_count' has type bool, expected <class 'int'>",
+    "drift_count True != 2 findings"
+   ],
+   "event": {
+    "alert_key": "lane-census-drift:host-1:a49dcce0bb78df14",
+    "drift_count": true,
+    "emitted_at": "2026-11-14T04:00:00+00:00",
+    "event_type": "lane-census-drift",
+    "findings": [
+     {
+      "container": "runtime",
+      "detail": "d",
+      "kind": "container_unhealthy",
+      "lane": "dev",
+      "severity": "critical"
+     },
+     {
+      "container": "broker",
+      "detail": "d",
+      "kind": "container_absent",
+      "lane": "dev",
+      "severity": "critical"
+     }
+    ],
+    "host": "host-1",
+    "host_id": null,
+    "lanes_checked": [
+     "dev"
+    ],
+    "lanes_not_applicable": [],
+    "lanes_skipped_optional_down": [],
+    "schema_version": "1.1.0",
+    "severity": "critical",
+    "ticket_body": "b",
+    "ticket_title": "t",
+    "topic": "onex.evt.infra.lane-census-drift.v1"
+   }
+  },
+  "drift_count_mismatch": {
+   "errors": [
+    "drift_count 5 != 2 findings"
+   ],
+   "event": {
+    "alert_key": "lane-census-drift:host-1:a49dcce0bb78df14",
+    "drift_count": 5,
+    "emitted_at": "2026-11-14T04:00:00+00:00",
+    "event_type": "lane-census-drift",
+    "findings": [
+     {
+      "container": "runtime",
+      "detail": "d",
+      "kind": "container_unhealthy",
+      "lane": "dev",
+      "severity": "critical"
+     },
+     {
+      "container": "broker",
+      "detail": "d",
+      "kind": "container_absent",
+      "lane": "dev",
+      "severity": "critical"
+     }
+    ],
+    "host": "host-1",
+    "host_id": null,
+    "lanes_checked": [
+     "dev"
+    ],
+    "lanes_not_applicable": [],
+    "lanes_skipped_optional_down": [],
+    "schema_version": "1.1.0",
+    "severity": "critical",
+    "ticket_body": "b",
+    "ticket_title": "t",
+    "topic": "onex.evt.infra.lane-census-drift.v1"
+   }
+  },
+  "drift_count_wrong_type": {
+   "errors": [
+    "key 'drift_count' has type str, expected <class 'int'>",
+    "drift_count '2' != 2 findings"
+   ],
+   "event": {
+    "alert_key": "lane-census-drift:host-1:a49dcce0bb78df14",
+    "drift_count": "2",
+    "emitted_at": "2026-11-14T04:00:00+00:00",
+    "event_type": "lane-census-drift",
+    "findings": [
+     {
+      "container": "runtime",
+      "detail": "d",
+      "kind": "container_unhealthy",
+      "lane": "dev",
+      "severity": "critical"
+     },
+     {
+      "container": "broker",
+      "detail": "d",
+      "kind": "container_absent",
+      "lane": "dev",
+      "severity": "critical"
+     }
+    ],
+    "host": "host-1",
+    "host_id": null,
+    "lanes_checked": [
+     "dev"
+    ],
+    "lanes_not_applicable": [],
+    "lanes_skipped_optional_down": [],
+    "schema_version": "1.1.0",
+    "severity": "critical",
+    "ticket_body": "b",
+    "ticket_title": "t",
+    "topic": "onex.evt.infra.lane-census-drift.v1"
+   }
+  },
+  "extra_key": {
+   "errors": [
+    "keys outside the contract: ['surprise']"
+   ],
+   "event": {
+    "alert_key": "lane-census-drift:host-1:a49dcce0bb78df14",
+    "drift_count": 2,
+    "emitted_at": "2026-11-14T04:00:00+00:00",
+    "event_type": "lane-census-drift",
+    "findings": [
+     {
+      "container": "runtime",
+      "detail": "d",
+      "kind": "container_unhealthy",
+      "lane": "dev",
+      "severity": "critical"
+     },
+     {
+      "container": "broker",
+      "detail": "d",
+      "kind": "container_absent",
+      "lane": "dev",
+      "severity": "critical"
+     }
+    ],
+    "host": "host-1",
+    "host_id": null,
+    "lanes_checked": [
+     "dev"
+    ],
+    "lanes_not_applicable": [],
+    "lanes_skipped_optional_down": [],
+    "schema_version": "1.1.0",
+    "severity": "critical",
+    "surprise": 1,
+    "ticket_body": "b",
+    "ticket_title": "t",
+    "topic": "onex.evt.infra.lane-census-drift.v1"
+   }
+  },
+  "finding_field_not_string": {
+   "errors": [
+    "findings[0].container is not a string"
+   ],
+   "event": {
+    "alert_key": "lane-census-drift:host-1:a49dcce0bb78df14",
+    "drift_count": 2,
+    "emitted_at": "2026-11-14T04:00:00+00:00",
+    "event_type": "lane-census-drift",
+    "findings": [
+     {
+      "container": 7,
+      "detail": "d",
+      "kind": "container_unhealthy",
+      "lane": "dev",
+      "severity": "critical"
+     },
+     {
+      "container": "broker",
+      "detail": "d",
+      "kind": "container_absent",
+      "lane": "dev",
+      "severity": "critical"
+     }
+    ],
+    "host": "host-1",
+    "host_id": null,
+    "lanes_checked": [
+     "dev"
+    ],
+    "lanes_not_applicable": [],
+    "lanes_skipped_optional_down": [],
+    "schema_version": "1.1.0",
+    "severity": "critical",
+    "ticket_body": "b",
+    "ticket_title": "t",
+    "topic": "onex.evt.infra.lane-census-drift.v1"
+   }
+  },
+  "finding_not_object": {
+   "errors": [
+    "findings[1] is not an object"
+   ],
+   "event": {
+    "alert_key": "lane-census-drift:host-1:a49dcce0bb78df14",
+    "drift_count": 2,
+    "emitted_at": "2026-11-14T04:00:00+00:00",
+    "event_type": "lane-census-drift",
+    "findings": [
+     {
+      "container": "runtime",
+      "detail": "d",
+      "kind": "container_unhealthy",
+      "lane": "dev",
+      "severity": "critical"
+     },
+     "not-a-dict"
+    ],
+    "host": "host-1",
+    "host_id": null,
+    "lanes_checked": [
+     "dev"
+    ],
+    "lanes_not_applicable": [],
+    "lanes_skipped_optional_down": [],
+    "schema_version": "1.1.0",
+    "severity": "critical",
+    "ticket_body": "b",
+    "ticket_title": "t",
+    "topic": "onex.evt.infra.lane-census-drift.v1"
+   }
+  },
+  "findings_not_list": {
+   "errors": [
+    "key 'findings' has type str, expected <class 'list'>"
+   ],
+   "event": {
+    "alert_key": "lane-census-drift:host-1:a49dcce0bb78df14",
+    "drift_count": 2,
+    "emitted_at": "2026-11-14T04:00:00+00:00",
+    "event_type": "lane-census-drift",
+    "findings": "nope",
+    "host": "host-1",
+    "host_id": null,
+    "lanes_checked": [
+     "dev"
+    ],
+    "lanes_not_applicable": [],
+    "lanes_skipped_optional_down": [],
+    "schema_version": "1.1.0",
+    "severity": "critical",
+    "ticket_body": "b",
+    "ticket_title": "t",
+    "topic": "onex.evt.infra.lane-census-drift.v1"
+   }
+  },
+  "host_id_wrong_type": {
+   "errors": [
+    "key 'host_id' has type int, expected (<class 'str'>, <class 'NoneType'>)"
+   ],
+   "event": {
+    "alert_key": "lane-census-drift:host-1:a49dcce0bb78df14",
+    "drift_count": 2,
+    "emitted_at": "2026-11-14T04:00:00+00:00",
+    "event_type": "lane-census-drift",
+    "findings": [
+     {
+      "container": "runtime",
+      "detail": "d",
+      "kind": "container_unhealthy",
+      "lane": "dev",
+      "severity": "critical"
+     },
+     {
+      "container": "broker",
+      "detail": "d",
+      "kind": "container_absent",
+      "lane": "dev",
+      "severity": "critical"
+     }
+    ],
+    "host": "host-1",
+    "host_id": 3,
+    "lanes_checked": [
+     "dev"
+    ],
+    "lanes_not_applicable": [],
+    "lanes_skipped_optional_down": [],
+    "schema_version": "1.1.0",
+    "severity": "critical",
+    "ticket_body": "b",
+    "ticket_title": "t",
+    "topic": "onex.evt.infra.lane-census-drift.v1"
+   }
+  },
+  "missing_host": {
+   "errors": [
+    "missing key 'host'"
+   ],
+   "event": {
+    "alert_key": "lane-census-drift:host-1:a49dcce0bb78df14",
+    "drift_count": 2,
+    "emitted_at": "2026-11-14T04:00:00+00:00",
+    "event_type": "lane-census-drift",
+    "findings": [
+     {
+      "container": "runtime",
+      "detail": "d",
+      "kind": "container_unhealthy",
+      "lane": "dev",
+      "severity": "critical"
+     },
+     {
+      "container": "broker",
+      "detail": "d",
+      "kind": "container_absent",
+      "lane": "dev",
+      "severity": "critical"
+     }
+    ],
+    "host_id": null,
+    "lanes_checked": [
+     "dev"
+    ],
+    "lanes_not_applicable": [],
+    "lanes_skipped_optional_down": [],
+    "schema_version": "1.1.0",
+    "severity": "critical",
+    "ticket_body": "b",
+    "ticket_title": "t",
+    "topic": "onex.evt.infra.lane-census-drift.v1"
+   }
+  },
+  "old_version_ok": {
+   "errors": [],
+   "event": {
+    "alert_key": "lane-census-drift:host-1:863acbc17eeaafc0",
+    "drift_count": 1,
+    "emitted_at": "2026-11-14T04:00:00+00:00",
+    "event_type": "lane-census-drift",
+    "findings": [
+     {
+      "container": "x",
+      "detail": "d",
+      "kind": "container_absent",
+      "lane": "dev",
+      "severity": "critical"
+     }
+    ],
+    "host": "host-1",
+    "host_id": null,
+    "lanes_checked": [
+     "dev"
+    ],
+    "lanes_not_applicable": [],
+    "lanes_skipped_optional_down": [],
+    "schema_version": "1.0.0",
+    "severity": "critical",
+    "ticket_body": "b",
+    "ticket_title": "t",
+    "topic": "onex.evt.infra.lane-census-drift.v1"
+   }
+  },
+  "unknown_kind": {
+   "errors": [
+    "findings[0].kind 'made_up' is not a declared kind"
+   ],
+   "event": {
+    "alert_key": "lane-census-drift:host-1:a49dcce0bb78df14",
+    "drift_count": 2,
+    "emitted_at": "2026-11-14T04:00:00+00:00",
+    "event_type": "lane-census-drift",
+    "findings": [
+     {
+      "container": "runtime",
+      "detail": "d",
+      "kind": "made_up",
+      "lane": "dev",
+      "severity": "critical"
+     },
+     {
+      "container": "broker",
+      "detail": "d",
+      "kind": "container_absent",
+      "lane": "dev",
+      "severity": "critical"
+     }
+    ],
+    "host": "host-1",
+    "host_id": null,
+    "lanes_checked": [
+     "dev"
+    ],
+    "lanes_not_applicable": [],
+    "lanes_skipped_optional_down": [],
+    "schema_version": "1.1.0",
+    "severity": "critical",
+    "ticket_body": "b",
+    "ticket_title": "t",
+    "topic": "onex.evt.infra.lane-census-drift.v1"
+   }
+  },
+  "unsupported_version": {
+   "errors": [
+    "schema_version '2.0.0' is not one of ['1.0.0', '1.1.0']"
+   ],
+   "event": {
+    "alert_key": "lane-census-drift:host-1:a49dcce0bb78df14",
+    "drift_count": 2,
+    "emitted_at": "2026-11-14T04:00:00+00:00",
+    "event_type": "lane-census-drift",
+    "findings": [
+     {
+      "container": "runtime",
+      "detail": "d",
+      "kind": "container_unhealthy",
+      "lane": "dev",
+      "severity": "critical"
+     },
+     {
+      "container": "broker",
+      "detail": "d",
+      "kind": "container_absent",
+      "lane": "dev",
+      "severity": "critical"
+     }
+    ],
+    "host": "host-1",
+    "host_id": null,
+    "lanes_checked": [
+     "dev"
+    ],
+    "lanes_not_applicable": [],
+    "lanes_skipped_optional_down": [],
+    "schema_version": "2.0.0",
+    "severity": "critical",
+    "ticket_body": "b",
+    "ticket_title": "t",
+    "topic": "onex.evt.infra.lane-census-drift.v1"
+   }
+  },
+  "valid": {
+   "errors": [],
+   "event": {
+    "alert_key": "lane-census-drift:host-1:a49dcce0bb78df14",
+    "drift_count": 2,
+    "emitted_at": "2026-11-14T04:00:00+00:00",
+    "event_type": "lane-census-drift",
+    "findings": [
+     {
+      "container": "runtime",
+      "detail": "d",
+      "kind": "container_unhealthy",
+      "lane": "dev",
+      "severity": "critical"
+     },
+     {
+      "container": "broker",
+      "detail": "d",
+      "kind": "container_absent",
+      "lane": "dev",
+      "severity": "critical"
+     }
+    ],
+    "host": "host-1",
+    "host_id": null,
+    "lanes_checked": [
+     "dev"
+    ],
+    "lanes_not_applicable": [],
+    "lanes_skipped_optional_down": [],
+    "schema_version": "1.1.0",
+    "severity": "critical",
+    "ticket_body": "b",
+    "ticket_title": "t",
+    "topic": "onex.evt.infra.lane-census-drift.v1"
+   }
+  },
+  "wrong_severity": {
+   "errors": [
+    "findings[0] kind 'container_unhealthy' has severity 'warning', declared 'critical'"
+   ],
+   "event": {
+    "alert_key": "lane-census-drift:host-1:a49dcce0bb78df14",
+    "drift_count": 2,
+    "emitted_at": "2026-11-14T04:00:00+00:00",
+    "event_type": "lane-census-drift",
+    "findings": [
+     {
+      "container": "runtime",
+      "detail": "d",
+      "kind": "container_unhealthy",
+      "lane": "dev",
+      "severity": "warning"
+     },
+     {
+      "container": "broker",
+      "detail": "d",
+      "kind": "container_absent",
+      "lane": "dev",
+      "severity": "critical"
+     }
+    ],
+    "host": "host-1",
+    "host_id": null,
+    "lanes_checked": [
+     "dev"
+    ],
+    "lanes_not_applicable": [],
+    "lanes_skipped_optional_down": [],
+    "schema_version": "1.1.0",
+    "severity": "critical",
+    "ticket_body": "b",
+    "ticket_title": "t",
+    "topic": "onex.evt.infra.lane-census-drift.v1"
+   }
+  }
+ },
+ "versions": [
+  "1.0.0",
+  "1.1.0"
+ ]
+}
