@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-24831
 title: 'Shared red delegation-health-check / Delegation Health Check: omnimarket dev''s newest delegation-regression-nightly run reads failed, so the check is red on every runtime pull request'
-summary: 'The nightly''s Layer-2 runner scored eight cases against rows that never received a terminal outcome as several behavioural misses ("got ''unknown''", "tokens: expected positive"). It now names the one fact, that the row has no terminal outcome, without loosening any case. This change is a diagnostic: it does not make the lane terminalise delegations, so AC2 (the fix at the source, in the repository that owns the cause) is UNMET by it and stays listed here as unmet, so that the Done gate of this ticket cannot pass on this change alone. The pull request that carries this contract does not close this ticket.'
+summary: 'The nightly''s Layer-2 runner scored eight cases against rows that never received a terminal outcome as several behavioural misses ("got ''unknown''", "tokens: expected positive"). It now names the one fact, that the row has no terminal outcome, without loosening any case. This change is a diagnostic: it does not make the lane terminalise delegations, so AC2 (the fix at the source, in the repository that owns the cause) is UNMET by it. A repository contract may bind only criteria that a hosted check proves, so AC2 is not an acceptance entry here; its local Done gate item below is unbound and fails until the fix lands, so that the Done gate of this ticket cannot pass on this change alone. The pull request that carries this contract does not close this ticket.'
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -9,8 +9,6 @@ requirements:
 - id: req-omn24831-nightly-names-its-cause
   statement: The delegation regression nightly states why a case failed on a row with no terminal outcome, and still fails that case.
   acceptance:
-  - id: AC2
-    statement: 'AC2: one pull request on the default branch of the repository that owns the cause fixes it at the source, with a test that fails on the unfixed code and passes on the fix -- falsifier: `uv run pytest <the new test path> -q` run at the unfixed base commit passes, or `onex scm pr-view` shows no such pull request'
   - id: AC3
     statement: 'AC3: the fix widens or bypasses no check, so the diff removes no assertion and adds no skip, xfail, loosened threshold or changed required-check list -- falsifier: `git diff <base> <head> -- tests/ .github/` shows a removed assert, a new skip or xfail marker or a changed required-check list'
 evidence_requirements:
@@ -68,8 +66,6 @@ dod_evidence:
 - id: dod-omn24831-ac2-fix-at-the-source
   description: 'AC2 is UNMET by this change. The check passes only when the watcher state lists a MERGED pull request of the repository that owns the cause (omnibase_infra) naming this ticket, so it fails until that fix lands. It needs the watcher state, so only the local Done gate runs it.'
   source: manual
-  binds_ac:
-  - AC2
   execution_scope: local_done_gate
   checks:
   - check_type: command

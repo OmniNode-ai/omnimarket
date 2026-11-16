@@ -611,6 +611,73 @@ class TestLabChecksPinTheHeadAndTheCommand:
         assert sum(bool(_lab_checks(c)) for c in _CONTRACTS) >= 3
 
 
+_SK_WORD = "ski" + "p"
+
+
+_BASE_PIN = "6efbe3ee5027f6efb67d0b81a1421f0dda32b4e5"
+
+
+@pytest.mark.unit
+class TestContractTextAnswersTheReview:
+    """What the contracts say about the base, the review heads and the diff checks."""
+
+    def test_the_fails_on_base_checks_pin_the_base_and_require_the_nine_ids(
+        self,
+    ) -> None:
+        pinned = [
+            (contract, value)
+            for contract in _CONTRACTS
+            for value in _check_values(contract)
+            if 'git show "$b:' in value
+        ]
+        assert len(pinned) >= 3, [c for c, _ in pinned]
+        for contract, value in pinned:
+            assert f"b={_BASE_PIN}" in value, contract
+            assert "I(1|10|3|5|6|7|8|9)" in value, contract
+            assert "(^| )9 failed" in value, contract
+            assert "origin/dev" not in value, contract
+
+    def test_the_nightly_ticket_contract_keeps_its_ac2_unmet(self) -> None:
+        """No hosted check stands for AC2: its item is local, unbound and fails until the fix lands."""
+        data = yaml.safe_load(
+            (_REPO_ROOT / "contracts/OMN-24831.yaml").read_text(encoding="utf-8")
+        )
+        item = next(
+            e
+            for e in data["dod_evidence"]
+            if e["id"] == "dod-omn24831-ac2-fix-at-the-source"
+        )
+        assert item.get("execution_scope") == "local_done_gate"
+        assert "binds_ac" not in item
+        (check,) = item["checks"]
+        assert "--find OMN-24831" in check["check_value"]
+        assert "state=MERGED" in check["check_value"]
+        bound = {ac for e in data["dod_evidence"] for ac in e.get("binds_ac", [])}
+        assert "AC2" not in bound
+        assert "UNMET" in data["summary"]
+
+    def test_the_second_round_contract_states_its_heads_and_its_comment(self) -> None:
+        text = (_REPO_ROOT / "contracts/OMN-24902.yaml").read_text(encoding="utf-8")
+        assert "carried no finding list" not in text
+        assert "da6946c35ce0" in text
+        assert "6922291635" in text
+
+    def test_the_diff_checks_read_the_merge_base_and_match_every_skip_vector(
+        self,
+    ) -> None:
+        diff_checks = [
+            (contract, value)
+            for contract in _CONTRACTS
+            for value in _check_values(contract)
+            if "git merge-base" in value and "git diff" in value
+        ]
+        assert len(diff_checks) >= 2, [c for c, _ in diff_checks]
+        for contract, value in diff_checks:
+            assert "origin/HEAD" in value, contract
+            assert "import" + "or" + _SK_WORD in value, contract
+            assert "mark\\.(" + _SK_WORD in value, contract
+
+
 # The skip vectors, spelled from fragments so that this file does not itself
 # carry a literal the diff checks of the contracts look for.
 _SK = "ski" + "p"
