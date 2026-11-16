@@ -16,7 +16,7 @@ requirements:
   - id: AC3
     statement: 'AC3: the reuse is bounded by age or stored principal, or a test shows the append handler still sees the id after the ledger rolls and the refused folder is not pruned -- falsifier: `uv run pytest tests/ -q -k "outbox and bound"` in omnimarket exits non-zero at the new head'
   - id: AC4
-    statement: 'AC4: contracts/OMN-24827.yaml AC1 reads each bound selection exits non-zero at the base with the falsifier exits zero and one -k, and contracts/OMN-24250.yaml says AC2 is a preservation criterion -- falsifier: `uv run pytest tests/ -q -k "contract and OMN_24827"` in omnimarket exits non-zero at the new head, or the two contract files differ from the findings text'
+    statement: 'AC4: contracts/OMN-24827.yaml AC1 reads each bound selection exits non-zero at the base with the falsifier exits zero and one -k, and contracts/OMN-24250.yaml says AC2 is a preservation criterion -- falsifier: `uv run pytest tests/ -q -k "contract and (OMN_24827 or OMN_24250 or OMN_24875 or OMN_24921)"` in omnimarket exits non-zero at the new head, or the two contract files differ from the findings text'
   - id: AC5
     statement: 'AC5: the PR carries a comment starting `Lab: head=<new head>` with the suite run on the lab (parts named if split), the required checks read success at the new head, and the TERMINAL names the head -- falsifier: `onex scm pr-checks OmniNode-ai/omnimarket#6052` lists a required context that is not success at the new head'
 evidence_requirements:
@@ -56,23 +56,23 @@ dod_evidence:
     check_value: uv run pytest tests/handlers/bus_binding -q --no-cov -p no:cacheprovider -k "outbox and (bound or window or refused_at)"
     cwd: .
 - id: dod-omn24875-ac4
-  description: 'AC4: the bound-tests contract reads each bound selection exits non-zero at the merge base, with the falsifier exits zero and one -k, and the reuse contract says its AC2 is a preservation criterion; tests read both files, and one test drives the loaded outbox module (a clash refusal is not sent twice), so it fails with the merge-base outbox module loaded, which sends every replay. The selection names all three contract tickets.'
+  description: 'AC4: the bound-tests contract reads each bound selection exits non-zero at the merge base, with the falsifier exits zero and one -k, and the reuse contract says its AC2 is a preservation criterion; tests read both files, and one test drives the loaded outbox module (a clash refusal is not sent twice), so it fails with the merge-base outbox module loaded, which sends every replay. The selection names all four contract tickets.'
   source: manual
   binds_ac:
   - AC4
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/handlers/bus_binding -q --no-cov -p no:cacheprovider -k "contract and (OMN_24827 or OMN_24250 or OMN_24875)"
+    check_value: uv run pytest tests/handlers/bus_binding -q --no-cov -p no:cacheprovider -k "contract and (OMN_24827 or OMN_24250 or OMN_24875 or OMN_24921)"
     cwd: .
 - id: dod-omn24875-ac5
-  description: 'AC5, the required checks half: this check is bound to AC5 and can fail. onex scm pr-checks itself exits 0 whatever the head''s state (read at 7c5d0b219491, where four required contexts were red), so the command reads its JSON and exits 1 while any context is red or pending, and 0 only when none is. The watcher is not reachable from hosted CI, so only the local Done gate runs it; the Lab comment half of AC5 is read from the PR comments, not by this check.'
+  description: 'AC5, the required checks half: this check is bound to AC5 and can fail. onex scm pr-checks itself exits 0 whatever the head''s state (read at 7c5d0b219491, where four required contexts were red), so the command reads its JSON and exits 0 only when head_sha equals git rev-parse HEAD, class is green and no context is red or pending; a stale head, empty output or any other class exits 1. The watcher is not reachable from hosted CI, so only the local Done gate runs it; the Lab comment half of AC5 is read from the PR comments, not by this check.'
   source: manual
   execution_scope: local_done_gate
   binds_ac:
   - AC5
   checks:
   - check_type: command
-    check_value: sh -c 'onex scm pr-checks OmniNode-ai/omnimarket#6052 | python3 -c "import json,sys; r=[json.loads(l) for l in sys.stdin if l.startswith(chr(123))][-1][\"result\"]; print(r[\"head_sha\"], r[\"class\"], r[\"red\"], r[\"pending\"]); sys.exit(1 if r[\"red\"] or r[\"pending\"] else 0)"'
+    check_value: sh -c 'onex scm pr-checks OmniNode-ai/omnimarket#6052 | python3 -c "import json,subprocess,sys; L=[json.loads(l) for l in sys.stdin if l.startswith(chr(123))]; r=L[-1][\"result\"] if L else {}; h=subprocess.run([\"git\",\"rev-parse\",\"HEAD\"],capture_output=True,text=True).stdout.strip(); print(r.get(\"head_sha\"),h,r.get(\"class\"),r.get(\"red\"),r.get(\"pending\")); sys.exit(0 if h and r.get(\"head_sha\")==h and r.get(\"class\")==\"green\" and not r.get(\"red\") and not r.get(\"pending\") else 1)"'
     cwd: .
 - id: dod-omn24875-integration-proof
   description: the outbox reuse tests and the neighbouring outbox suites run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check

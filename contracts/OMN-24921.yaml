@@ -20,7 +20,7 @@ requirements:
   - id: AC5
     statement: 'AC5: a corrupt refused file holding a list, null or broken JSON is left out through select.replay_outbox with report_refused_to_writers surviving it, and a PR comment lists the other callers of outbox.drain and the readers of DrainResult.refused found by a src/ grep -- falsifier: `uv run pytest tests/ -q -k "outbox and corrupt and replay"` in omnimarket exits non-zero at 7c5d0b219491 or selects zero tests'
   - id: AC6
-    statement: 'AC6: each non-blocking finding 6 to 9 of the review is fixed or argued in a PR comment, among them a future or unparsable or naive refused_at treated as expired with a test, the test names in [OMN-24875](https://linear.app/omninode/issue/OMN-24875).yaml lines 32 and 47 spelled out, and the durations split between config/test_file_durations.json and the .d shard settled -- falsifier: `uv run pytest tests/ -q -k "outbox and refused_at"` in omnimarket exits non-zero at 7c5d0b219491 or selects zero tests'
+    statement: 'AC6: each non-blocking finding 6 to 9 of the review is fixed or argued in a PR comment, among them a future, unparsable or non-string refused_at treated as expired and a naive refused_at read as UTC and reused while inside the window, each with a test, the test names in [OMN-24875](https://linear.app/omninode/issue/OMN-24875).yaml lines 32 and 47 spelled out, and the durations split between config/test_file_durations.json and the .d shard settled -- falsifier: `uv run pytest tests/ -q -k "outbox and refused_at"` in omnimarket exits non-zero at 7c5d0b219491 or selects zero tests'
 evidence_requirements:
 - kind: tests
   description: The outbox reuse and contract-text tests pass at the pushed head; the window, refused-at and contract-text tests fail with the merge-base outbox module loaded.
@@ -31,14 +31,14 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn24921-ac1
-  description: 'AC1: the red and pending required contexts at the head are read from the PR watcher (the check exits 1 while any is red or pending); the failing job log lines, the dev read, the lab run and the tests/ diff are in the PR comments. The watcher is not reachable from hosted CI, so only the local Done gate runs it.'
+  description: 'AC1: the red and pending required contexts at the head are read from the PR watcher (the check exits 0 only when head_sha equals git rev-parse HEAD, class is green and none is red or pending); the failing job log lines, the dev read, the lab run and the tests/ diff are in the PR comments. The watcher is not reachable from hosted CI, so only the local Done gate runs it.'
   source: manual
   execution_scope: local_done_gate
   binds_ac:
   - AC1
   checks:
   - check_type: command
-    check_value: sh -c 'onex scm pr-checks OmniNode-ai/omnimarket#6052 | python3 -c "import json,sys; r=[json.loads(l) for l in sys.stdin if l.startswith(chr(123))][-1][\"result\"]; sys.exit(1 if r[\"red\"] or r[\"pending\"] else 0)"'
+    check_value: sh -c 'onex scm pr-checks OmniNode-ai/omnimarket#6052 | python3 -c "import json,subprocess,sys; L=[json.loads(l) for l in sys.stdin if l.startswith(chr(123))]; r=L[-1][\"result\"] if L else {}; h=subprocess.run([\"git\",\"rev-parse\",\"HEAD\"],capture_output=True,text=True).stdout.strip(); print(r.get(\"head_sha\"),h,r.get(\"class\"),r.get(\"red\"),r.get(\"pending\")); sys.exit(0 if h and r.get(\"head_sha\")==h and r.get(\"class\")==\"green\" and not r.get(\"red\") and not r.get(\"pending\") else 1)"'
     cwd: .
 - id: dod-omn24921-ac2
   description: 'AC2: past the window with the id still in the ledger the replay is sent twice and one refused file is left, its refused_at refreshed and its reported_at kept, and report_refused_to_writers returns 0; the OMN-24250 summary and AC1 evidence say what holds in and past the window.'
@@ -50,16 +50,16 @@ dod_evidence:
     check_value: uv run pytest tests/handlers/bus_binding -q --no-cov -p no:cacheprovider -k "outbox and refused and window"
     cwd: .
 - id: dod-omn24921-ac3
-  description: 'AC3: the selection names all three contract tickets and includes a test that drives the loaded outbox module, which fails with the merge-base outbox module loaded.'
+  description: 'AC3: the selection names all four contract tickets and includes a test that drives the loaded outbox module, which fails with the merge-base outbox module loaded.'
   source: manual
   binds_ac:
   - AC3
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/handlers/bus_binding -q --no-cov -p no:cacheprovider -k "contract and (OMN_24827 or OMN_24250 or OMN_24875)"
+    check_value: uv run pytest tests/handlers/bus_binding -q --no-cov -p no:cacheprovider -k "contract and (OMN_24827 or OMN_24250 or OMN_24875 or OMN_24921)"
     cwd: .
 - id: dod-omn24921-ac4
-  description: 'AC4: the check bound to AC5 of the OMN-24875 contract exits 1 on a red or pending context and 0 on none, shown with a stand-in onex; onex scm pr-checks itself exits 0 on a red head.'
+  description: 'AC4: the check bound to AC5 of the OMN-24875 contract exits 0 only on the current head with class green and no red or pending context, and 1 on a red or pending context, a stale head, a class other than green or empty output, shown with a stand-in onex over both copies of the check; onex scm pr-checks itself exits 0 on a red head.'
   source: manual
   binds_ac:
   - AC4
@@ -68,7 +68,7 @@ dod_evidence:
     check_value: uv run pytest tests/handlers/bus_binding -q --no-cov -p no:cacheprovider -k "contract and OMN_24875 and ac5"
     cwd: .
 - id: dod-omn24921-ac5
-  description: 'AC5: seven corrupt refused-file shapes replayed through select.replay_outbox leave the drain and the reporter standing; the callers of outbox.drain and readers of DrainResult.refused are listed in the PR comment.'
+  description: 'AC5: seven corrupt refused-file shapes replayed through select.replay_outbox leave the drain and the reporter standing. recovery.py _refusal_evidence is the only reporter change of the review fix, so at 7c5d0b219491 only the two object shapes whose refusal is not an object (the last two of the replay test) can be red; the five shapes that are not a JSON object were already left out and are the controls. The callers of outbox.drain and readers of DrainResult.refused are listed in the PR comment.'
   source: manual
   binds_ac:
   - AC5

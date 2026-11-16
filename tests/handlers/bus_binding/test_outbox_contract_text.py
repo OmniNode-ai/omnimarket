@@ -20,6 +20,7 @@ from uuid import UUID
 
 import pytest
 import yaml
+from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
 
 from omnimarket.handlers.bus_binding import outbox
 from omnimarket.models.work_ledger_append import (
@@ -107,7 +108,7 @@ def test_contract_omn_24875_ac4_selection_covers_every_contract_test() -> None:
         for name in globals()
         if name.startswith("test_contract_omn_")
     }
-    assert tickets == {"24827", "24250", "24875"}
+    assert tickets == {"24827", "24250", "24875", "24921"}
     for ticket in tickets:
         assert f"omn_{ticket}" in selection.group(1).lower()
 
@@ -171,42 +172,169 @@ async def test_contract_omn_24875_ac4_outbox_under_test_reuses_a_clash_refusal(
     assert result.refused == 1
 
 
-@pytest.mark.parametrize(
-    ("state", "expected_exit"),
-    [
-        (
-            '{"result": {"head_sha": "abc", "class": "red", "red": ["CI Summary"], "pending": []}}',
-            1,
-        ),
-        (
-            '{"result": {"head_sha": "abc", "class": "pending", "red": [], "pending": ["Lint"]}}',
-            1,
-        ),
-        (
-            '{"result": {"head_sha": "abc", "class": "green", "red": [], "pending": []}}',
-            0,
-        ),
-    ],
-)
-def test_contract_omn_24875_ac5_check_exits_non_zero_on_a_red_context(
-    tmp_path: Path, state: str, expected_exit: int
-) -> None:
-    """The check bound to AC5 can fail: it exits 1 on a red or pending context and 0 on none.
+STALE = "0" * 40
 
-    ``onex scm pr-checks`` exits 0 on a red head, so the bound command reads its JSON. A stand-in ``onex`` on
-    the path prints a red, a pending and a green state to show both outcomes.
-    """
-    fake = tmp_path / "bin" / "onex"
-    fake.parent.mkdir()
-    fake.write_text(f"#!/bin/sh\ncat <<'EOF'\n{state}\nEOF\n", encoding="utf-8")
-    fake.chmod(0o755)
-    command = _dod_check(_load("OMN-24875.yaml"), "dod-omn24875-ac5")
-    done = subprocess.run(
-        command,
-        shell=True,
+# (name, onex output with HEAD as {head}, expected exit)
+PR_CHECKS_CASES = [
+    (
+        "green-current-head",
+        '{{"result": {{"head_sha": "{head}", "class": "green", "red": [], "pending": []}}}}',
+        0,
+    ),
+    (
+        "green-current-head-then-a-text-line",
+        '{{"result": {{"head_sha": "{head}", "class": "green", "red": [], "pending": []}}}}\nbus-binding lane=dev binding=durable',
+        0,
+    ),
+    (
+        "green-stale-head",
+        '{{"result": {{"head_sha": "'
+        + STALE
+        + '", "class": "green", "red": [], "pending": []}}}}',
+        1,
+    ),
+    (
+        "green-no-head-sha",
+        '{{"result": {{"class": "green", "red": [], "pending": []}}}}',
+        1,
+    ),
+    (
+        "red",
+        '{{"result": {{"head_sha": "{head}", "class": "red", "red": ["CI Summary"], "pending": []}}}}',
+        1,
+    ),
+    (
+        "pending",
+        '{{"result": {{"head_sha": "{head}", "class": "pending", "red": [], "pending": ["Lint"]}}}}',
+        1,
+    ),
+    (
+        "class-not-green-no-red-no-pending",
+        '{{"result": {{"head_sha": "{head}", "class": "blocked", "red": [], "pending": []}}}}',
+        1,
+    ),
+    (
+        "class-missing",
+        '{{"result": {{"head_sha": "{head}", "red": [], "pending": []}}}}',
+        1,
+    ),
+    (
+        "green-class-with-a-red-context",
+        '{{"result": {{"head_sha": "{head}", "class": "green", "red": ["X"], "pending": []}}}}',
+        1,
+    ),
+    ("empty-output", "", 1),
+    ("text-only-no-json", "bus-binding lane=dev binding=durable", 1),
+    ("broken-json", '{{"result": ', 1),
+]
+# The two copies of the check: AC5 of the OMN-24875 contract and AC1 of the OMN-24921 contract.
+PR_CHECKS_COPIES = [
+    ("OMN-24875.yaml", "dod-omn24875-ac5"),
+    ("OMN-24921.yaml", "dod-omn24921-ac1"),
+]
+
+
+def _run_pr_checks_check(
+    tmp_path: Path, contract: str, item_id: str, output: str
+) -> subprocess.CompletedProcess[str]:
+    """Run a contract's pr-checks command with a stand-in ``onex`` in a repository whose HEAD is known."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    git_env = {
+        **scrub_git_location_env(os.environ),
+        "GIT_AUTHOR_NAME": "t",
+        "GIT_AUTHOR_EMAIL": "t@example.invalid",
+        "GIT_COMMITTER_NAME": "t",
+        "GIT_COMMITTER_EMAIL": "t@example.invalid",
+        "GIT_CONFIG_GLOBAL": os.devnull,
+        "GIT_CONFIG_SYSTEM": os.devnull,
+    }
+    for argv in (
+        ["git", "init", "-q"],
+        ["git", "commit", "-q", "--allow-empty", "-m", "head"],
+    ):
+        subprocess.run(argv, cwd=repo, env=git_env, check=True, capture_output=True)
+    head = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        env=scrub_git_location_env(git_env),
+        check=True,
         capture_output=True,
         text=True,
-        env={**os.environ, "PATH": f"{fake.parent}:{os.environ['PATH']}"},
+    ).stdout.strip()
+    fake = tmp_path / "bin" / "onex"
+    fake.parent.mkdir()
+    body = output.replace("{{", "{").replace("}}", "}").replace("{head}", head)
+    fake.write_text(f"#!/bin/sh\ncat <<'EOF'\n{body}\nEOF\n", encoding="utf-8")
+    fake.chmod(0o755)
+    return subprocess.run(
+        _dod_check(_load(contract), item_id),
+        shell=True,
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        env={
+            **scrub_git_location_env(os.environ),
+            "PATH": f"{fake.parent}:{os.environ['PATH']}",
+        },
         check=False,
     )
-    assert done.returncode == expected_exit, done.stderr
+
+
+@pytest.mark.parametrize(
+    ("case", "output", "expected_exit"),
+    PR_CHECKS_CASES,
+    ids=[case[0] for case in PR_CHECKS_CASES],
+)
+def test_contract_omn_24875_ac5_pr_checks_check_exits_zero_only_on_the_current_green_head(
+    tmp_path: Path, case: str, output: str, expected_exit: int
+) -> None:
+    """The check bound to AC5 of OMN-24875 exits 0 only on head_sha == git rev-parse HEAD with class green.
+
+    ``onex scm pr-checks`` exits 0 on a red head, so the bound command reads its JSON. A stand-in ``onex``
+    prints each state: a read of an older head, an empty read and a class that is not green all exit 1.
+    """
+    done = _run_pr_checks_check(tmp_path, *PR_CHECKS_COPIES[0], output)
+    assert done.returncode == expected_exit, (case, done.stdout, done.stderr)
+
+
+@pytest.mark.parametrize(
+    ("case", "output", "expected_exit"),
+    PR_CHECKS_CASES,
+    ids=[case[0] for case in PR_CHECKS_CASES],
+)
+def test_contract_omn_24921_ac1_pr_checks_check_exits_zero_only_on_the_current_green_head(
+    tmp_path: Path, case: str, output: str, expected_exit: int
+) -> None:
+    """The copy of the check bound to AC1 of OMN-24921 reads the head and the class the same way."""
+    done = _run_pr_checks_check(tmp_path, *PR_CHECKS_COPIES[1], output)
+    assert done.returncode == expected_exit, (case, done.stdout, done.stderr)
+
+
+def test_contract_pr_checks_check_copies_are_one_command() -> None:
+    """Both copies carry the same command, so a fix to one cannot leave the other reading an older head."""
+    commands = {
+        _dod_check(_load(contract), item_id) for contract, item_id in PR_CHECKS_COPIES
+    }
+    assert len(commands) == 1
+
+
+def test_contract_omn_24875_ac4_falsifier_selects_the_outbox_driving_test() -> None:
+    """The AC4 falsifier selects the test that drives the loaded outbox module, not only the text tests."""
+    selection = SELECTION.search(_ac(_load("OMN-24875.yaml"), "AC4"))
+    assert selection is not None
+    assert "omn_24875" in selection.group(1).lower()
+    names = [n for n in globals() if n.startswith("test_contract_omn_24875_ac4_outbox")]
+    assert names
+
+
+def test_contract_omn_24250_ac1_states_the_six_hour_window() -> None:
+    statement = _ac(_load("OMN-24250.yaml"), "AC1")
+    assert "within six hours" in statement
+    assert f"{int(outbox.REUSE_WINDOW.total_seconds() // 3600)}" == "6"
+
+
+def test_contract_omn_24921_ac6_says_a_naive_refused_at_is_read_as_utc() -> None:
+    statement = _ac(_load("OMN-24921.yaml"), "AC6")
+    assert "naive refused_at read as UTC and reused" in statement
+    assert "naive refused_at treated as expired" not in statement

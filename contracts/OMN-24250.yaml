@@ -10,7 +10,7 @@ requirements:
   statement: A replay of a refused outbox request whose stored refusal is a request-id clash is answered from the stored refusal; every other refusal and every changed payload is still sent.
   acceptance:
   - id: AC1
-    statement: 'AC1: a replay of a refused outbox request whose stored refusal is a request-id clash and whose rows are unchanged is answered from the stored refusal, with no send to the ledger host and no second file in refused/ -- falsifier: uv run pytest tests/handlers/bus_binding/test_outbox_refused_receipt_reuse.py -q -k reuses_stored'
+    statement: 'AC1: a replay, within six hours of the refusal being stored, of a refused outbox request whose stored refusal is a request-id clash and whose rows are unchanged is answered from the stored refusal, with no send to the ledger host and no second file in refused/ (past six hours the replay is sent once more and refreshes the one file) -- falsifier: uv run pytest tests/handlers/bus_binding/test_outbox_refused_receipt_reuse.py -q -k reuses_stored'
   - id: AC2
     statement: 'AC2: a refused request whose stored refusal is not a request-id clash, or whose rows changed, is still sent to the ledger host -- falsifier: uv run pytest tests/handlers/bus_binding/test_outbox_refused_receipt_reuse.py -q -k still_sent'
   - id: AC3

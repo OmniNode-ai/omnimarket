@@ -33,7 +33,8 @@ import logging
 import os
 import re
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -217,6 +218,28 @@ def _refresh_stored_clash(
     return True
 
 
+@contextmanager
+def try_hold_drain_lock(state_dir: Path) -> Iterator[bool]:
+    """Hold the outbox drain lock for the block and yield True, or yield False when a drain holds it.
+
+    The refused files are rewritten by the drain (a repeat clash refreshes its file) and by the reporter
+    (``reported_at``), each reading the file and replacing the whole body. Both take this lock, so one never
+    overwrites the other's stamp between its read and its replace. Never blocks: a caller that is refused
+    leaves the file for its next pass.
+    """
+    directory = outbox_dir(state_dir)
+    if not directory.is_dir():
+        yield False
+        return
+    with (directory / DRAIN_LOCK_NAME).open("a+", encoding="utf-8") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            yield False
+            return
+        yield True
+
+
 async def drain(state_dir: Path, send: Sender, *, limit: int = 50) -> DrainResult:
     """Replay queued requests oldest first, each under its own request id."""
     directory = outbox_dir(state_dir)
@@ -233,7 +256,10 @@ async def drain(state_dir: Path, send: Sender, *, limit: int = 50) -> DrainResul
         stopped: str | None = None
         for path, request in pending(state_dir)[:limit]:
             if stored_refusal(state_dir, request) is not None:
-                logger.info(
+                # WARNING, not INFO: the append CLI that runs the replay configures no logging (only the serve
+                # command does), so Python's last-resort handler shows WARNING and above and an INFO reuse
+                # would drop the writer's replay without a word.
+                logger.warning(
                     "outbox reuse: request %s answered from its stored clash refusal, not sent",
                     request.request_id,
                 )
