@@ -21,4 +21,14 @@ ledger:
   timeout_seconds: 60
   evidence_limit: 600
   dedupe_window_minutes: 360
+# A condition routed to an owner: when its episode ENTERS the alarm state the delivery posts one push
+# notice under the route's category and appends one MSG row addressed to the route's lane, once per
+# episode under the ledger's dedupe window. Synthetic values.
+owner_routes:
+  example_condition:
+    lane: example-owner-lane
+    ticket: OMN-2
+    push_category: lab-alarm-owner
+    push_template: ":rotating_light: lab alarm {condition} needs an owner - *{subject}*\n{detail}\nevidence: {evidence}"
+    text_template: "owner request: lab alarm {condition} on {subject}: {detail}; evidence: {evidence}"
 state_path: .onex_state/lab-alarm/delivery-state.json

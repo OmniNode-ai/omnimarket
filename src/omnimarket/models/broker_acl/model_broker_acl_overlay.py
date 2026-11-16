@@ -48,6 +48,9 @@ class EnumBrokerAclFindingCode(StrEnum):
     NODE_WITHOUT_CONTRACT = "node_without_contract"
     NODE_PRINCIPAL_CONFLICT = "node_principal_conflict"
     NODE_WITHOUT_PRINCIPAL = "node_without_principal"
+    CALLED_NODE_WITHOUT_TERMINAL = "called_node_without_terminal"
+    CALLED_NODE_WITHOUT_COMMAND = "called_node_without_command"
+    CALLED_NODE_COMMAND_NOT_A_COMMAND_TOPIC = "called_node_command_not_a_command_topic"
     TOPIC_OPERATION_WITHOUT_ROW = "topic_operation_without_row"
 
 

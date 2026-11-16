@@ -1,0 +1,3555 @@
+{
+ "source": "throughput_tick.py read_launchctl, read_controller_files, read_watcher_and_floors, read_open_history, read_repo_status_units and the goal check's readers (load_goal_scope, read_admissions, read_tick_pr_reasons, read_goal_record), run over 20 ticks against real files and scripted launchctl and ps programs",
+ "ticks": [
+  {
+   "spec": {
+    "i": 0,
+    "launchctl": {
+     "mode": "loaded",
+     "pid": 21280,
+     "ps": "ok",
+     "etime": "2-03:04:05",
+     "stdout": "{\n\t\"LimitLoadToSessionType\" = \"Aqua\";\n\t\"Label\" = \"ai.omninode.landing-controller\";\n\t\"PID\" = 21280;\n};\n"
+    },
+    "ticks": "normal",
+    "heartbeat": false,
+    "state_json": "bad",
+    "watcher": "ok",
+    "floors": "noper",
+    "history": "foreign-basis",
+    "units": "ok",
+    "overlay": "ok",
+    "goal_record": true,
+    "admissions": "ok"
+   },
+   "files": {
+    "floors.json": "{\"default_per_hour\": 1}",
+    "landing/admissions.jsonl": "{\"kind\": \"admission\", \"event\": \"admitted\", \"pr\": \"omniclaude#7\", \"admitted\": true}\n{\"kind\": \"admission\", \"event\": \"admitted\", \"pr\": \"omnimarket#21\", \"admitted\": true}\ngarbage\n",
+    "landing/state.json": "{",
+    "landing/ticks.jsonl": "{\"at\": \"t0\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 0}\n{\"at\": \"t1\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 1}\n{\"at\": \"t2\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 2}\n{\"at\": \"t3\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 3}\n{\"at\": \"t4\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 4}\n{partial",
+    "roots/goal_scope/overlay.yaml": "# goal scope fixture\noverlay_version: 1\nticket: OMN-19998\nruling: RULING fixture goal\nin_scope_repos:\n- omnipilot\nin_scope_prs:\n- omnimarket#1\n- omnimarket#2\nprerequisite_prs:\n- omnibase_infra#10\npaused_prs:\n- omnimarket#20\nrepo_work_kinds:\n- dev-red\nprerequisite_kinds:\n- lab-repair\n",
+    "state/goal-check.json": "{\"at\": \"2026-11-10T00:17:00Z\", \"digest\": {\"flipped\": [], \"open_fell\": null, \"rate_ok\": false, \"unowned\": [], \"waiting\": [\"omniclaude#7\", \"omniclaude#8\", \"omnimarket#1\", \"omnimarket#10\", \"omnimarket#11\", \"omnimarket#2\", \"omnimarket#4\", \"omnimarket#5\", \"omnimarket#6\", \"omnimarket#8\", \"omnimarket#9\", \"omnipilot#4\"]}, \"drafted_seen\": [\"omnimarket#20\", \"omnimarket#21\", \"omnimarket#22\", \"omnimarket#25\", \"omnipaused#30\"], \"merges\": 3, \"open_history\": [[\"2026-11-10T00:17:00Z\", 14]]}",
+    "state/throughput-tick.open-history.json": "{\"history\": [{\"at\": \"2026-11-01T00:00:00Z\", \"open\": 101, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-02T00:00:00Z\", \"open\": 102, \"basis\": \"old\"}, {\"at\": \"2026-11-03T00:00:00Z\", \"open\": 103, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-04T00:00:00Z\", \"open\": 104, \"basis\": \"old\"}, {\"at\": \"2026-11-05T00:00:00Z\", \"open\": 105, \"basis\": \"open-nondraft-in-scope-v1\"}]}",
+    "state/throughput-tick.repo-status.json": "{\"open_units\": [{\"repo\": \"omnimarket\", \"opened_at\": \"2026-11-10T00:00:00Z\", \"verdict\": \"waiting_on_ci\"}, {\"repo\": 3}, {\"repo\": \"omnipilot\", \"opened_at\": \"x\", \"verdict\": \"y\", \"extra\": 1}]}",
+    "watcher/state.json": "{\"prs\": {\"omnimarket#1\": {\"facts\": {\"author\": \"alice\", \"state\": \"OPEN\"}}, \"omnimarket#2\": {\"facts\": {\"author\": \"\", \"state\": \"OPEN\"}}, \"omnimarket#3\": {\"facts\": {\"author\": \"\", \"state\": \"OPEN\"}}, \"omnimarket#4\": {\"facts\": {\"author\": \"alice\", \"state\": \"OPEN\"}}}, \"last_tick\": \"2026-11-10T00:17:00Z\"}"
+   },
+   "dirs": [
+    "bin",
+    "landing",
+    "roots",
+    "roots/goal_scope",
+    "state",
+    "watcher"
+   ],
+   "request": {
+    "now": "2026-11-10T00:17:00Z",
+    "watcher_given": true,
+    "floors_given": true,
+    "open_basis": "open-nondraft-in-scope-v1"
+   },
+   "expected": {
+    "facts": {
+     "launchctl": "loaded",
+     "launchctl_stdout": "{\n\t\"LimitLoadToSessionType\" = \"Aqua\";\n\t\"Label\" = \"ai.omninode.landing-controller\";\n\t\"PID\" = 21280;\n};\n",
+     "pid_etime": "2-03:04:05",
+     "ticks": [
+      {
+       "at": "t4",
+       "pr_reasons": {
+        "omnimarket#1": "queued"
+       },
+       "merged": 4
+      },
+      {
+       "at": "t3",
+       "pr_reasons": {
+        "omnimarket#1": "queued"
+       },
+       "merged": 3
+      }
+     ],
+     "watcher_path": "{ROOT}/watcher/state.json",
+     "watcher_state": {
+      "prs": {
+       "omnimarket#1": {
+        "facts": {
+         "author": "alice",
+         "state": "OPEN"
+        }
+       },
+       "omnimarket#2": {
+        "facts": {
+         "author": "",
+         "state": "OPEN"
+        }
+       },
+       "omnimarket#3": {
+        "facts": {
+         "author": "",
+         "state": "OPEN"
+        }
+       },
+       "omnimarket#4": {
+        "facts": {
+         "author": "alice",
+         "state": "OPEN"
+        }
+       }
+      },
+      "last_tick": "2026-11-10T00:17:00Z"
+     },
+     "floors_error": "cannot read floors {ROOT}/floors.json: floors must be an object with a per_repo object",
+     "open_history": [
+      {
+       "at": "2026-11-01T00:00:00Z",
+       "open": 101
+      },
+      {
+       "at": "2026-11-03T00:00:00Z",
+       "open": 103
+      },
+      {
+       "at": "2026-11-05T00:00:00Z",
+       "open": 105
+      }
+     ],
+     "repo_status": {
+      "window_minutes": 60,
+      "open_units": [
+       {
+        "repo": "omnimarket",
+        "opened_at": "2026-11-10T00:00:00Z",
+        "verdict": "waiting_on_ci"
+       },
+       {
+        "repo": "omnipilot",
+        "opened_at": "x",
+        "verdict": "y"
+       }
+      ]
+     }
+    },
+    "goal": {
+     "scope": {
+      "ruling": "RULING fixture goal",
+      "repos": [
+       "omnipilot"
+      ],
+      "prs": [
+       "omnimarket#1",
+       "omnimarket#2"
+      ],
+      "prerequisites": [
+       "omnibase_infra#10"
+      ],
+      "paused": [
+       "omnimarket#20"
+      ],
+      "repo_work_kinds": [
+       "dev-red"
+      ],
+      "prerequisite_kinds": [
+       "lab-repair"
+      ]
+     },
+     "scope_unread": "",
+     "previous": {
+      "at": "2026-11-10T00:17:00Z",
+      "digest": {
+       "flipped": [],
+       "open_fell": null,
+       "rate_ok": false,
+       "unowned": [],
+       "waiting": [
+        "omniclaude#7",
+        "omniclaude#8",
+        "omnimarket#1",
+        "omnimarket#10",
+        "omnimarket#11",
+        "omnimarket#2",
+        "omnimarket#4",
+        "omnimarket#5",
+        "omnimarket#6",
+        "omnimarket#8",
+        "omnimarket#9",
+        "omnipilot#4"
+       ]
+      },
+      "drafted_seen": [
+       "omnimarket#20",
+       "omnimarket#21",
+       "omnimarket#22",
+       "omnimarket#25",
+       "omnipaused#30"
+      ],
+      "merges": 3,
+      "open_history": [
+       [
+        "2026-11-10T00:17:00Z",
+        14
+       ]
+      ]
+     },
+     "admissions": {
+      "omniclaude#7": {
+       "kind": "admission",
+       "event": "admitted",
+       "pr": "omniclaude#7",
+       "admitted": true
+      },
+      "omnimarket#21": {
+       "kind": "admission",
+       "event": "admitted",
+       "pr": "omnimarket#21",
+       "admitted": true
+      }
+     },
+     "admissions_unread": "",
+     "pr_reasons": {
+      "omnimarket#1": "queued"
+     },
+     "pr_reasons_unread": ""
+    }
+   }
+  },
+  {
+   "spec": {
+    "i": 1,
+    "launchctl": {
+     "mode": "missing",
+     "pid": 40133,
+     "ps": "ok",
+     "etime": "01:02:03"
+    },
+    "ticks": "normal",
+    "heartbeat": true,
+    "state_json": "absent",
+    "watcher": "ok",
+    "floors": "bad",
+    "history": "foreign-basis",
+    "units": "ok",
+    "overlay": "ok",
+    "goal_record": true,
+    "admissions": "absent"
+   },
+   "files": {
+    "floors.json": "not json",
+    "landing/heartbeat": "2026-11-10T00:00:00Z pid=1\n",
+    "landing/ticks.jsonl": "{\"at\": \"t0\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 0}\n{\"at\": \"t1\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 1}\n{\"at\": \"t2\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 2}\n{\"at\": \"t3\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 3}\n{\"at\": \"t4\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 4}\n{partial",
+    "roots/goal_scope/overlay.yaml": "# goal scope fixture\noverlay_version: 1\nticket: OMN-19998\nruling: RULING fixture goal\nin_scope_repos:\n- omnipilot\nin_scope_prs:\n- omnimarket#1\n- omnimarket#2\nprerequisite_prs:\n- omnibase_infra#10\npaused_prs:\n- omnimarket#20\nrepo_work_kinds:\n- dev-red\nprerequisite_kinds:\n- lab-repair\n",
+    "state/goal-check.json": "{\"at\": \"2026-11-10T01:17:00Z\", \"digest\": {\"flipped\": [\"omnimarket#21\"], \"open_fell\": null, \"rate_ok\": false, \"unowned\": [\"repo-status:omnimarket\"], \"waiting\": [\"omniclaude#7\", \"omniclaude#8\", \"omnimarket#1\", \"omnimarket#10\", \"omnimarket#11\", \"omnimarket#2\", \"omnimarket#4\", \"omnimarket#5\", \"omnimarket#6\", \"omnimarket#8\", \"omnimarket#9\", \"omnipilot#3\", \"omnipilot#4\"]}, \"drafted_seen\": [\"omnibase_infra#40\", \"omnimarket#21\", \"omnimarket#22\", \"omnimarket#23\", \"omnimarket#24\", \"omnimarket#25\", \"omnipaused#30\"], \"merges\": 0, \"open_history\": [[\"2026-11-10T00:17:00Z\", 14], [\"2026-11-10T01:17:00Z\", 14]]}",
+    "state/throughput-tick.open-history.json": "{\"history\": [{\"at\": \"2026-11-01T00:00:00Z\", \"open\": 101, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-02T00:00:00Z\", \"open\": 102, \"basis\": \"old\"}, {\"at\": \"2026-11-03T00:00:00Z\", \"open\": 103, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-04T00:00:00Z\", \"open\": 104, \"basis\": \"old\"}, {\"at\": \"2026-11-05T00:00:00Z\", \"open\": 105, \"basis\": \"open-nondraft-in-scope-v1\"}]}",
+    "state/throughput-tick.repo-status.json": "{\"open_units\": [{\"repo\": \"omnimarket\", \"opened_at\": \"2026-11-10T00:00:00Z\", \"verdict\": \"waiting_on_ci\"}, {\"repo\": 3}, {\"repo\": \"omnipilot\", \"opened_at\": \"x\", \"verdict\": \"y\", \"extra\": 1}]}",
+    "watcher/state.json": "{\"prs\": {\"omnimarket#1\": {\"facts\": {\"author\": \"alice\", \"state\": \"OPEN\"}}, \"omnimarket#2\": {\"facts\": {\"author\": \"alice\", \"state\": \"OPEN\"}}, \"omnimarket#3\": {\"facts\": {\"author\": \"alice\", \"state\": \"OPEN\"}}, \"omnimarket#4\": {\"facts\": {\"author\": \"\", \"state\": \"OPEN\"}}}, \"last_tick\": \"2026-11-10T01:17:00Z\"}"
+   },
+   "dirs": [
+    "bin",
+    "landing",
+    "roots",
+    "roots/goal_scope",
+    "state",
+    "watcher"
+   ],
+   "request": {
+    "now": "2026-11-10T01:17:00Z",
+    "watcher_given": true,
+    "floors_given": true,
+    "open_basis": "open-nondraft-in-scope-v1"
+   },
+   "expected": {
+    "facts": {
+     "launchctl": "unavailable",
+     "launchctl_error": "[Errno 2] No such file or directory: '{ROOT}/bin/launchctl'",
+     "ticks": [
+      {
+       "at": "t4",
+       "pr_reasons": {
+        "omnimarket#1": "queued"
+       },
+       "merged": 4
+      },
+      {
+       "at": "t3",
+       "pr_reasons": {
+        "omnimarket#1": "queued"
+       },
+       "merged": 3
+      }
+     ],
+     "heartbeat_text": "2026-11-10T00:00:00Z pid=1\n",
+     "watcher_path": "{ROOT}/watcher/state.json",
+     "watcher_state": {
+      "prs": {
+       "omnimarket#1": {
+        "facts": {
+         "author": "alice",
+         "state": "OPEN"
+        }
+       },
+       "omnimarket#2": {
+        "facts": {
+         "author": "alice",
+         "state": "OPEN"
+        }
+       },
+       "omnimarket#3": {
+        "facts": {
+         "author": "alice",
+         "state": "OPEN"
+        }
+       },
+       "omnimarket#4": {
+        "facts": {
+         "author": "",
+         "state": "OPEN"
+        }
+       }
+      },
+      "last_tick": "2026-11-10T01:17:00Z"
+     },
+     "floors_error": "cannot read floors {ROOT}/floors.json: Expecting value: line 1 column 1 (char 0)",
+     "open_history": [
+      {
+       "at": "2026-11-01T00:00:00Z",
+       "open": 101
+      },
+      {
+       "at": "2026-11-03T00:00:00Z",
+       "open": 103
+      },
+      {
+       "at": "2026-11-05T00:00:00Z",
+       "open": 105
+      }
+     ],
+     "repo_status": {
+      "window_minutes": 60,
+      "open_units": [
+       {
+        "repo": "omnimarket",
+        "opened_at": "2026-11-10T00:00:00Z",
+        "verdict": "waiting_on_ci"
+       },
+       {
+        "repo": "omnipilot",
+        "opened_at": "x",
+        "verdict": "y"
+       }
+      ]
+     }
+    },
+    "goal": {
+     "scope": {
+      "ruling": "RULING fixture goal",
+      "repos": [
+       "omnipilot"
+      ],
+      "prs": [
+       "omnimarket#1",
+       "omnimarket#2"
+      ],
+      "prerequisites": [
+       "omnibase_infra#10"
+      ],
+      "paused": [
+       "omnimarket#20"
+      ],
+      "repo_work_kinds": [
+       "dev-red"
+      ],
+      "prerequisite_kinds": [
+       "lab-repair"
+      ]
+     },
+     "scope_unread": "",
+     "previous": {
+      "at": "2026-11-10T01:17:00Z",
+      "digest": {
+       "flipped": [
+        "omnimarket#21"
+       ],
+       "open_fell": null,
+       "rate_ok": false,
+       "unowned": [
+        "repo-status:omnimarket"
+       ],
+       "waiting": [
+        "omniclaude#7",
+        "omniclaude#8",
+        "omnimarket#1",
+        "omnimarket#10",
+        "omnimarket#11",
+        "omnimarket#2",
+        "omnimarket#4",
+        "omnimarket#5",
+        "omnimarket#6",
+        "omnimarket#8",
+        "omnimarket#9",
+        "omnipilot#3",
+        "omnipilot#4"
+       ]
+      },
+      "drafted_seen": [
+       "omnibase_infra#40",
+       "omnimarket#21",
+       "omnimarket#22",
+       "omnimarket#23",
+       "omnimarket#24",
+       "omnimarket#25",
+       "omnipaused#30"
+      ],
+      "merges": 0,
+      "open_history": [
+       [
+        "2026-11-10T00:17:00Z",
+        14
+       ],
+       [
+        "2026-11-10T01:17:00Z",
+        14
+       ]
+      ]
+     },
+     "admissions": {},
+     "admissions_unread": "",
+     "pr_reasons": {
+      "omnimarket#1": "queued"
+     },
+     "pr_reasons_unread": ""
+    }
+   }
+  },
+  {
+   "spec": {
+    "i": 2,
+    "launchctl": {
+     "mode": "loaded",
+     "pid": 90097,
+     "ps": "ok",
+     "etime": " 14:59 ",
+     "stdout": "{\n\t\"LimitLoadToSessionType\" = \"Aqua\";\n\t\"Label\" = \"ai.omninode.landing-controller\";\n\t\"PID\" = 90097;\n};\n"
+    },
+    "ticks": "normal",
+    "heartbeat": true,
+    "state_json": "bad",
+    "watcher": "none",
+    "floors": "noper",
+    "history": "absent",
+    "units": "bad",
+    "overlay": "ok",
+    "goal_record": true,
+    "admissions": "absent"
+   },
+   "files": {
+    "floors.json": "{\"default_per_hour\": 1}",
+    "landing/heartbeat": "2026-11-10T00:00:00Z pid=1\n",
+    "landing/state.json": "{",
+    "landing/ticks.jsonl": "{\"at\": \"t0\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 0}\n{\"at\": \"t1\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 1}\n{\"at\": \"t2\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 2}\n{\"at\": \"t3\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 3}\n{\"at\": \"t4\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 4}\n{partial",
+    "roots/goal_scope/overlay.yaml": "# goal scope fixture\noverlay_version: 1\nticket: OMN-19998\nruling: RULING fixture goal\nin_scope_repos:\n- omnipilot\nin_scope_prs:\n- omnimarket#1\n- omnimarket#2\nprerequisite_prs:\n- omnibase_infra#10\npaused_prs:\n- omnimarket#20\nrepo_work_kinds:\n- dev-red\nprerequisite_kinds:\n- lab-repair\n",
+    "state/goal-check.json": "{\"at\": \"2026-11-10T02:00:00Z\", \"digest\": {\"flipped\": [\"omnimarket#21\", \"omnimarket#22\", \"omnimarket#24\"], \"open_fell\": null, \"rate_ok\": false, \"unowned\": [], \"waiting\": [\"omniclaude#7\", \"omnimarket#1\", \"omnimarket#10\", \"omnimarket#11\", \"omnimarket#2\", \"omnimarket#4\", \"omnimarket#5\", \"omnimarket#6\", \"omnimarket#8\", \"omnimarket#9\", \"omnipilot#3\", \"omnipilot#4\"]}, \"drafted_seen\": [\"omnibase_infra#40\", \"omnimarket#21\", \"omnimarket#22\", \"omnimarket#23\", \"omnimarket#24\", \"omnimarket#25\", \"omnipaused#30\"], \"merges\": 0, \"open_history\": [[\"2026-11-10T00:17:00Z\", 14], [\"2026-11-10T01:17:00Z\", 14], [\"2026-11-10T02:00:00Z\", 13]]}",
+    "state/throughput-tick.repo-status.json": "{\"open_units\": \"no\"}"
+   },
+   "dirs": [
+    "bin",
+    "landing",
+    "roots",
+    "roots/goal_scope",
+    "state"
+   ],
+   "request": {
+    "now": "2026-11-10T02:00:00Z",
+    "watcher_given": false,
+    "floors_given": true,
+    "open_basis": "open-nondraft-in-scope-v1"
+   },
+   "expected": {
+    "facts": {
+     "launchctl": "loaded",
+     "launchctl_stdout": "{\n\t\"LimitLoadToSessionType\" = \"Aqua\";\n\t\"Label\" = \"ai.omninode.landing-controller\";\n\t\"PID\" = 90097;\n};\n",
+     "pid_etime": "14:59",
+     "ticks": [
+      {
+       "at": "t4",
+       "pr_reasons": {
+        "omnimarket#1": "queued"
+       },
+       "merged": 4
+      },
+      {
+       "at": "t3",
+       "pr_reasons": {
+        "omnimarket#1": "queued"
+       },
+       "merged": 3
+      }
+     ],
+     "heartbeat_text": "2026-11-10T00:00:00Z pid=1\n",
+     "floors_error": "cannot read floors {ROOT}/floors.json: floors must be an object with a per_repo object",
+     "open_history": [],
+     "repo_status": {
+      "window_minutes": 60,
+      "open_units": []
+     }
+    },
+    "goal": {
+     "scope": {
+      "ruling": "RULING fixture goal",
+      "repos": [
+       "omnipilot"
+      ],
+      "prs": [
+       "omnimarket#1",
+       "omnimarket#2"
+      ],
+      "prerequisites": [
+       "omnibase_infra#10"
+      ],
+      "paused": [
+       "omnimarket#20"
+      ],
+      "repo_work_kinds": [
+       "dev-red"
+      ],
+      "prerequisite_kinds": [
+       "lab-repair"
+      ]
+     },
+     "scope_unread": "",
+     "previous": {
+      "at": "2026-11-10T02:00:00Z",
+      "digest": {
+       "flipped": [
+        "omnimarket#21",
+        "omnimarket#22",
+        "omnimarket#24"
+       ],
+       "open_fell": null,
+       "rate_ok": false,
+       "unowned": [],
+       "waiting": [
+        "omniclaude#7",
+        "omnimarket#1",
+        "omnimarket#10",
+        "omnimarket#11",
+        "omnimarket#2",
+        "omnimarket#4",
+        "omnimarket#5",
+        "omnimarket#6",
+        "omnimarket#8",
+        "omnimarket#9",
+        "omnipilot#3",
+        "omnipilot#4"
+       ]
+      },
+      "drafted_seen": [
+       "omnibase_infra#40",
+       "omnimarket#21",
+       "omnimarket#22",
+       "omnimarket#23",
+       "omnimarket#24",
+       "omnimarket#25",
+       "omnipaused#30"
+      ],
+      "merges": 0,
+      "open_history": [
+       [
+        "2026-11-10T00:17:00Z",
+        14
+       ],
+       [
+        "2026-11-10T01:17:00Z",
+        14
+       ],
+       [
+        "2026-11-10T02:00:00Z",
+        13
+       ]
+      ]
+     },
+     "admissions": {},
+     "admissions_unread": "",
+     "pr_reasons": {
+      "omnimarket#1": "queued"
+     },
+     "pr_reasons_unread": ""
+    }
+   }
+  },
+  {
+   "spec": {
+    "i": 3,
+    "launchctl": {
+     "mode": "loaded",
+     "pid": 8337,
+     "ps": "fail",
+     "etime": "01:02:03",
+     "stdout": "{\n\t\"LimitLoadToSessionType\" = \"Aqua\";\n\t\"Label\" = \"ai.omninode.landing-controller\";\n\t\"PID\" = 8337;\n};\n"
+    },
+    "ticks": "normal",
+    "heartbeat": true,
+    "state_json": "bad",
+    "watcher": "bad",
+    "floors": "ok",
+    "history": "absent",
+    "units": "ok",
+    "overlay": "absent",
+    "goal_record": true,
+    "admissions": "dir"
+   },
+   "files": {
+    "floors.json": "{\"default_per_hour\": 1, \"per_repo\": {\"omnimarket\": 4, \"omnipilot\": 2.5}}",
+    "landing/heartbeat": "2026-11-10T00:00:00Z pid=1\n",
+    "landing/state.json": "{",
+    "landing/ticks.jsonl": "{\"at\": \"t0\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 0}\n{\"at\": \"t1\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 1}\n{\"at\": \"t2\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 2}\n{\"at\": \"t3\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 3}\n{\"at\": \"t4\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 4}\n{partial",
+    "state/goal-check.json": "{\"at\": \"2026-11-09T00:00:00Z\", \"merges\": 1}",
+    "state/throughput-tick.repo-status.json": "{\"open_units\": [{\"repo\": \"omnimarket\", \"opened_at\": \"2026-11-10T00:00:00Z\", \"verdict\": \"waiting_on_ci\"}, {\"repo\": 3}, {\"repo\": \"omnipilot\", \"opened_at\": \"x\", \"verdict\": \"y\", \"extra\": 1}]}",
+    "watcher/state.json": "{\"prs\": "
+   },
+   "dirs": [
+    "bin",
+    "landing",
+    "landing/admissions.jsonl",
+    "roots",
+    "state",
+    "watcher"
+   ],
+   "request": {
+    "now": "2026-11-10T03:17:00Z",
+    "watcher_given": true,
+    "floors_given": true,
+    "open_basis": "open-nondraft-in-scope-v1"
+   },
+   "expected": {
+    "facts": {
+     "launchctl": "loaded",
+     "launchctl_stdout": "{\n\t\"LimitLoadToSessionType\" = \"Aqua\";\n\t\"Label\" = \"ai.omninode.landing-controller\";\n\t\"PID\" = 8337;\n};\n",
+     "pid_etime": null,
+     "ticks": [
+      {
+       "at": "t4",
+       "pr_reasons": {
+        "omnimarket#1": "queued"
+       },
+       "merged": 4
+      },
+      {
+       "at": "t3",
+       "pr_reasons": {
+        "omnimarket#1": "queued"
+       },
+       "merged": 3
+      }
+     ],
+     "heartbeat_text": "2026-11-10T00:00:00Z pid=1\n",
+     "watcher_path": "{ROOT}/watcher/state.json",
+     "watcher_read_error": "Expecting value: line 1 column 9 (char 8)",
+     "floors_per_repo": {
+      "omnimarket": 4.0,
+      "omnipilot": 2.5
+     },
+     "land_like_operator": [],
+     "open_history": [],
+     "repo_status": {
+      "window_minutes": 60,
+      "open_units": [
+       {
+        "repo": "omnimarket",
+        "opened_at": "2026-11-10T00:00:00Z",
+        "verdict": "waiting_on_ci"
+       },
+       {
+        "repo": "omnipilot",
+        "opened_at": "x",
+        "verdict": "y"
+       }
+      ]
+     }
+    },
+    "goal": {
+     "scope": null,
+     "scope_unread": "no goal_scope/overlay.yaml under ONEX_SKILL_OVERLAY_ROOTS={ROOT}/roots or the installed onex-overlays plugin",
+     "previous": {
+      "at": "2026-11-09T00:00:00Z",
+      "merges": 1
+     },
+     "admissions": {},
+     "admissions_unread": "{ROOT}/landing/admissions.jsonl unreadable: [Errno 21] Is a directory: '{ROOT}/landing/admissions.jsonl'",
+     "pr_reasons": {
+      "omnimarket#1": "queued"
+     },
+     "pr_reasons_unread": ""
+    }
+   }
+  },
+  {
+   "spec": {
+    "i": 4,
+    "launchctl": {
+     "mode": "not_loaded",
+     "pid": 67014,
+     "ps": "ok",
+     "etime": "05:12",
+     "stdout": "{\n\t\"LimitLoadToSessionType\" = \"Aqua\";\n\t\"Label\" = \"ai.omninode.landing-controller\";\n\t\"PID\" = 67014;\n};\n"
+    },
+    "ticks": "garbage",
+    "heartbeat": false,
+    "state_json": "ok",
+    "watcher": "ok",
+    "floors": "ok",
+    "history": "bad",
+    "units": "bad",
+    "overlay": "absent",
+    "goal_record": true,
+    "admissions": "ok"
+   },
+   "files": {
+    "floors.json": "{\"default_per_hour\": 1, \"per_repo\": {\"omnimarket\": 4, \"omnipilot\": 2.5}}",
+    "landing/admissions.jsonl": "{\"kind\": \"admission\", \"event\": \"admitted\", \"pr\": \"omniclaude#7\", \"admitted\": true}\n{\"kind\": \"admission\", \"event\": \"admitted\", \"pr\": \"omnimarket#21\", \"admitted\": true}\ngarbage\n",
+    "landing/state.json": "{\"controller\": {\"merged\": 3}}",
+    "landing/ticks.jsonl": "not json\n[1,2]\n",
+    "state/goal-check.json": "{\"at\": \"2026-11-10T04:00:00Z\", \"digest\": {\"flipped\": [\"omnibase_infra#40\", \"omnimarket#22\", \"omnimarket#24\", \"omnimarket#25\", \"omnipaused#30\"], \"open_fell\": null, \"rate_ok\": false, \"unowned\": [\"repo-status:omnimarket\", \"stuck-owner:omnibase_infra@main\"], \"waiting\": [\"omnibase_infra#11\", \"omnimarket#1\", \"omnimarket#11\", \"omnimarket#2\", \"omnimarket#4\", \"omnimarket#5\", \"omnimarket#6\", \"omnimarket#8\", \"omnimarket#9\", \"omnipilot#3\"]}, \"drafted_seen\": [\"omnibase_infra#40\", \"omnimarket#21\", \"omnimarket#22\", \"omnimarket#24\", \"omnimarket#25\", \"omnipaused#30\"], \"merges\": 0, \"open_history\": [[\"2026-11-10T00:17:00Z\", 14], [\"2026-11-10T01:17:00Z\", 14], [\"2026-11-10T02:00:00Z\", 13], [\"2026-11-10T04:00:00Z\", 10]]}",
+    "state/throughput-tick.open-history.json": "[]",
+    "state/throughput-tick.repo-status.json": "{\"open_units\": \"no\"}",
+    "watcher/state.json": "{\"prs\": {\"omnimarket#1\": {\"facts\": {\"author\": \"bot[bot]\", \"state\": \"OPEN\"}}, \"omnimarket#2\": {\"facts\": {\"author\": \"\", \"state\": \"OPEN\"}}, \"omnimarket#3\": {\"facts\": {\"author\": \"bot[bot]\", \"state\": \"OPEN\"}}, \"omnimarket#4\": {\"facts\": {\"author\": \"carol\", \"state\": \"OPEN\"}}}, \"last_tick\": \"2026-11-10T04:00:00Z\"}"
+   },
+   "dirs": [
+    "bin",
+    "landing",
+    "roots",
+    "state",
+    "watcher"
+   ],
+   "request": {
+    "now": "2026-11-10T04:00:00Z",
+    "watcher_given": true,
+    "floors_given": true,
+    "open_basis": "open-nondraft-in-scope-v1"
+   },
+   "expected": {
+    "facts": {
+     "launchctl": "not_loaded",
+     "ticks": [],
+     "state_json": {
+      "controller": {
+       "merged": 3
+      }
+     },
+     "watcher_path": "{ROOT}/watcher/state.json",
+     "watcher_state": {
+      "prs": {
+       "omnimarket#1": {
+        "facts": {
+         "author": "bot[bot]",
+         "state": "OPEN"
+        }
+       },
+       "omnimarket#2": {
+        "facts": {
+         "author": "",
+         "state": "OPEN"
+        }
+       },
+       "omnimarket#3": {
+        "facts": {
+         "author": "bot[bot]",
+         "state": "OPEN"
+        }
+       },
+       "omnimarket#4": {
+        "facts": {
+         "author": "carol",
+         "state": "OPEN"
+        }
+       }
+      },
+      "last_tick": "2026-11-10T04:00:00Z"
+     },
+     "floors_per_repo": {
+      "omnimarket": 4.0,
+      "omnipilot": 2.5
+     },
+     "land_like_operator": [
+      "bot[bot]",
+      "carol"
+     ],
+     "open_history": [],
+     "repo_status": {
+      "window_minutes": 60,
+      "open_units": []
+     }
+    },
+    "goal": {
+     "scope": null,
+     "scope_unread": "no goal_scope/overlay.yaml under ONEX_SKILL_OVERLAY_ROOTS={ROOT}/roots or the installed onex-overlays plugin",
+     "previous": {
+      "at": "2026-11-10T04:00:00Z",
+      "digest": {
+       "flipped": [
+        "omnibase_infra#40",
+        "omnimarket#22",
+        "omnimarket#24",
+        "omnimarket#25",
+        "omnipaused#30"
+       ],
+       "open_fell": null,
+       "rate_ok": false,
+       "unowned": [
+        "repo-status:omnimarket",
+        "stuck-owner:omnibase_infra@main"
+       ],
+       "waiting": [
+        "omnibase_infra#11",
+        "omnimarket#1",
+        "omnimarket#11",
+        "omnimarket#2",
+        "omnimarket#4",
+        "omnimarket#5",
+        "omnimarket#6",
+        "omnimarket#8",
+        "omnimarket#9",
+        "omnipilot#3"
+       ]
+      },
+      "drafted_seen": [
+       "omnibase_infra#40",
+       "omnimarket#21",
+       "omnimarket#22",
+       "omnimarket#24",
+       "omnimarket#25",
+       "omnipaused#30"
+      ],
+      "merges": 0,
+      "open_history": [
+       [
+        "2026-11-10T00:17:00Z",
+        14
+       ],
+       [
+        "2026-11-10T01:17:00Z",
+        14
+       ],
+       [
+        "2026-11-10T02:00:00Z",
+        13
+       ],
+       [
+        "2026-11-10T04:00:00Z",
+        10
+       ]
+      ]
+     },
+     "admissions": {
+      "omniclaude#7": {
+       "kind": "admission",
+       "event": "admitted",
+       "pr": "omniclaude#7",
+       "admitted": true
+      },
+      "omnimarket#21": {
+       "kind": "admission",
+       "event": "admitted",
+       "pr": "omnimarket#21",
+       "admitted": true
+      }
+     },
+     "admissions_unread": "",
+     "pr_reasons": null,
+     "pr_reasons_unread": "ticks.jsonl: no complete receipt in it"
+    }
+   }
+  },
+  {
+   "spec": {
+    "i": 5,
+    "launchctl": {
+     "mode": "loaded",
+     "pid": 60111,
+     "ps": "ok",
+     "etime": "2-03:04:05",
+     "stdout": "{\n\t\"LimitLoadToSessionType\" = \"Aqua\";\n\t\"Label\" = \"ai.omninode.landing-controller\";\n\t\"PID\" = 60111;\n};\n"
+    },
+    "ticks": "normal",
+    "heartbeat": true,
+    "state_json": "ok",
+    "watcher": "ok",
+    "floors": "negative",
+    "history": "ok",
+    "units": "absent",
+    "overlay": "absent",
+    "goal_record": true,
+    "admissions": "ok"
+   },
+   "files": {
+    "floors.json": "{\"default_per_hour\": 1, \"per_repo\": {\"omnimarket\": -1}}",
+    "landing/admissions.jsonl": "{\"kind\": \"admission\", \"event\": \"admitted\", \"pr\": \"omniclaude#7\", \"admitted\": false}\n{\"kind\": \"admission\", \"event\": \"admitted\", \"pr\": \"omnimarket#21\", \"admitted\": true}\ngarbage\n",
+    "landing/heartbeat": "2026-11-10T00:00:00Z pid=1\n",
+    "landing/state.json": "{\"controller\": {\"merged\": 3}}",
+    "landing/ticks.jsonl": "{\"at\": \"t0\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 0}\n{\"at\": \"t1\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 1}\n{\"at\": \"t2\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 2}\n{\"at\": \"t3\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 3}\n{\"at\": \"t4\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 4}\n{partial",
+    "state/goal-check.json": "{\"at\": \"2026-11-09T00:00:00Z\", \"merges\": 1}",
+    "state/throughput-tick.open-history.json": "{\"history\": [{\"at\": \"2026-11-01T00:00:00Z\", \"open\": 101, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-02T00:00:00Z\", \"open\": 102, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-03T00:00:00Z\", \"open\": 103, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-04T00:00:00Z\", \"open\": 104, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-05T00:00:00Z\", \"open\": 105, \"basis\": \"open-nondraft-in-scope-v1\"}]}",
+    "watcher/state.json": "{\"prs\": {\"omnimarket#1\": {\"facts\": {\"author\": \"alice\", \"state\": \"OPEN\"}}, \"omnimarket#2\": {\"facts\": {\"author\": \"bot[bot]\", \"state\": \"OPEN\"}}, \"omnimarket#3\": {\"facts\": {\"author\": \"carol\", \"state\": \"OPEN\"}}, \"omnimarket#4\": {\"facts\": {\"author\": \"\", \"state\": \"OPEN\"}}}, \"last_tick\": \"2026-11-10T05:05:00Z\"}"
+   },
+   "dirs": [
+    "bin",
+    "landing",
+    "roots",
+    "state",
+    "watcher"
+   ],
+   "request": {
+    "now": "2026-11-10T05:05:00Z",
+    "watcher_given": true,
+    "floors_given": true,
+    "open_basis": "open-nondraft-in-scope-v1"
+   },
+   "expected": {
+    "facts": {
+     "launchctl": "loaded",
+     "launchctl_stdout": "{\n\t\"LimitLoadToSessionType\" = \"Aqua\";\n\t\"Label\" = \"ai.omninode.landing-controller\";\n\t\"PID\" = 60111;\n};\n",
+     "pid_etime": "2-03:04:05",
+     "ticks": [
+      {
+       "at": "t4",
+       "pr_reasons": {
+        "omnimarket#1": "queued"
+       },
+       "merged": 4
+      },
+      {
+       "at": "t3",
+       "pr_reasons": {
+        "omnimarket#1": "queued"
+       },
+       "merged": 3
+      }
+     ],
+     "heartbeat_text": "2026-11-10T00:00:00Z pid=1\n",
+     "state_json": {
+      "controller": {
+       "merged": 3
+      }
+     },
+     "watcher_path": "{ROOT}/watcher/state.json",
+     "watcher_state": {
+      "prs": {
+       "omnimarket#1": {
+        "facts": {
+         "author": "alice",
+         "state": "OPEN"
+        }
+       },
+       "omnimarket#2": {
+        "facts": {
+         "author": "bot[bot]",
+         "state": "OPEN"
+        }
+       },
+       "omnimarket#3": {
+        "facts": {
+         "author": "carol",
+         "state": "OPEN"
+        }
+       },
+       "omnimarket#4": {
+        "facts": {
+         "author": "",
+         "state": "OPEN"
+        }
+       }
+      },
+      "last_tick": "2026-11-10T05:05:00Z"
+     },
+     "floors_error": "cannot read floors {ROOT}/floors.json: per_repo.omnimarket must be a nonnegative finite number",
+     "open_history": [
+      {
+       "at": "2026-11-01T00:00:00Z",
+       "open": 101
+      },
+      {
+       "at": "2026-11-02T00:00:00Z",
+       "open": 102
+      },
+      {
+       "at": "2026-11-03T00:00:00Z",
+       "open": 103
+      },
+      {
+       "at": "2026-11-04T00:00:00Z",
+       "open": 104
+      },
+      {
+       "at": "2026-11-05T00:00:00Z",
+       "open": 105
+      }
+     ],
+     "repo_status": {
+      "window_minutes": 60,
+      "open_units": []
+     }
+    },
+    "goal": {
+     "scope": null,
+     "scope_unread": "no goal_scope/overlay.yaml under ONEX_SKILL_OVERLAY_ROOTS={ROOT}/roots or the installed onex-overlays plugin",
+     "previous": {
+      "at": "2026-11-09T00:00:00Z",
+      "merges": 1
+     },
+     "admissions": {
+      "omniclaude#7": {
+       "kind": "admission",
+       "event": "admitted",
+       "pr": "omniclaude#7",
+       "admitted": false
+      },
+      "omnimarket#21": {
+       "kind": "admission",
+       "event": "admitted",
+       "pr": "omnimarket#21",
+       "admitted": true
+      }
+     },
+     "admissions_unread": "",
+     "pr_reasons": {
+      "omnimarket#1": "queued"
+     },
+     "pr_reasons_unread": ""
+    }
+   }
+  },
+  {
+   "spec": {
+    "i": 6,
+    "launchctl": {
+     "mode": "loaded",
+     "pid": 28473,
+     "ps": "ok",
+     "etime": " 14:59 ",
+     "stdout": "{\n\t\"LimitLoadToSessionType\" = \"Aqua\";\n\t\"Label\" = \"ai.omninode.landing-controller\";\n\t\"PID\" = 28473;\n};\n"
+    },
+    "ticks": "normal",
+    "heartbeat": true,
+    "state_json": "ok",
+    "watcher": "none",
+    "floors": "missing",
+    "history": "ok",
+    "units": "ok",
+    "overlay": "malformed",
+    "goal_record": true,
+    "admissions": "ok"
+   },
+   "files": {
+    "landing/admissions.jsonl": "{\"kind\": \"admission\", \"event\": \"admitted\", \"pr\": \"omniclaude#7\", \"admitted\": true}\n{\"kind\": \"admission\", \"event\": \"admitted\", \"pr\": \"omnimarket#21\", \"admitted\": false}\ngarbage\n",
+    "landing/heartbeat": "2026-11-10T00:00:00Z pid=1\n",
+    "landing/state.json": "{\"controller\": {\"merged\": 3}}",
+    "landing/ticks.jsonl": "{\"at\": \"t0\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 0}\n{\"at\": \"t1\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 1}\n{\"at\": \"t2\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 2}\n{\"at\": \"t3\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 3}\n{\"at\": \"t4\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 4}\n{partial",
+    "roots/goal_scope/overlay.yaml": "# goal scope fixture\noverlay_version: 1\nticket: OMN-19998\nruling: RULING fixture goal\nin_scope_repos:\n- omnipilot\nin_scope_prs:\n- omnimarket#1\n- omnimarket#2\nprerequisite_prs:\n- omnibase_infra#10\npaused_prs:\n- omnimarket#20\nrepo_work_kinds:\n- dev-red\nprerequisite_kinds:\n- lab-repair\nthis is not yaml\n",
+    "state/goal-check.json": "{\"at\": \"2026-11-10T06:17:00Z\", \"digest\": {\"flipped\": [\"omnimarket#21\", \"omnimarket#24\"], \"open_fell\": true, \"rate_ok\": false, \"unowned\": [\"repo-status:omnimarket\"], \"waiting\": [\"omnibase_infra#11\", \"omniclaude#7\", \"omniclaude#8\", \"omnimarket#1\", \"omnimarket#11\", \"omnimarket#4\", \"omnimarket#5\", \"omnimarket#6\", \"omnimarket#8\", \"omnimarket#9\", \"omnipilot#3\"]}, \"drafted_seen\": [\"omnimarket#21\", \"omnimarket#22\", \"omnimarket#24\", \"omnipaused#30\"], \"merges\": 0, \"open_history\": [[\"2026-11-10T00:17:00Z\", 14], [\"2026-11-10T01:17:00Z\", 14], [\"2026-11-10T02:00:00Z\", 13], [\"2026-11-10T04:00:00Z\", 10], [\"2026-11-10T06:17:00Z\", 11]]}",
+    "state/throughput-tick.open-history.json": "{\"history\": [{\"at\": \"2026-11-01T00:00:00Z\", \"open\": 101, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-02T00:00:00Z\", \"open\": 102, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-03T00:00:00Z\", \"open\": 103, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-04T00:00:00Z\", \"open\": 104, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-05T00:00:00Z\", \"open\": 105, \"basis\": \"open-nondraft-in-scope-v1\"}]}",
+    "state/throughput-tick.repo-status.json": "{\"open_units\": [{\"repo\": \"omnimarket\", \"opened_at\": \"2026-11-10T00:00:00Z\", \"verdict\": \"waiting_on_ci\"}, {\"repo\": 3}, {\"repo\": \"omnipilot\", \"opened_at\": \"x\", \"verdict\": \"y\", \"extra\": 1}]}"
+   },
+   "dirs": [
+    "bin",
+    "landing",
+    "roots",
+    "roots/goal_scope",
+    "state"
+   ],
+   "request": {
+    "now": "2026-11-10T06:17:00Z",
+    "watcher_given": false,
+    "floors_given": true,
+    "open_basis": "open-nondraft-in-scope-v1"
+   },
+   "expected": {
+    "facts": {
+     "launchctl": "loaded",
+     "launchctl_stdout": "{\n\t\"LimitLoadToSessionType\" = \"Aqua\";\n\t\"Label\" = \"ai.omninode.landing-controller\";\n\t\"PID\" = 28473;\n};\n",
+     "pid_etime": "14:59",
+     "ticks": [
+      {
+       "at": "t4",
+       "pr_reasons": {
+        "omnimarket#1": "queued"
+       },
+       "merged": 4
+      },
+      {
+       "at": "t3",
+       "pr_reasons": {
+        "omnimarket#1": "queued"
+       },
+       "merged": 3
+      }
+     ],
+     "heartbeat_text": "2026-11-10T00:00:00Z pid=1\n",
+     "state_json": {
+      "controller": {
+       "merged": 3
+      }
+     },
+     "floors_error": "cannot read floors {ROOT}/floors.json: [Errno 2] No such file or directory: '{ROOT}/floors.json'",
+     "open_history": [
+      {
+       "at": "2026-11-01T00:00:00Z",
+       "open": 101
+      },
+      {
+       "at": "2026-11-02T00:00:00Z",
+       "open": 102
+      },
+      {
+       "at": "2026-11-03T00:00:00Z",
+       "open": 103
+      },
+      {
+       "at": "2026-11-04T00:00:00Z",
+       "open": 104
+      },
+      {
+       "at": "2026-11-05T00:00:00Z",
+       "open": 105
+      }
+     ],
+     "repo_status": {
+      "window_minutes": 60,
+      "open_units": [
+       {
+        "repo": "omnimarket",
+        "opened_at": "2026-11-10T00:00:00Z",
+        "verdict": "waiting_on_ci"
+       },
+       {
+        "repo": "omnipilot",
+        "opened_at": "x",
+        "verdict": "y"
+       }
+      ]
+     }
+    },
+    "goal": {
+     "scope": null,
+     "scope_unread": "{ROOT}/roots/goal_scope/overlay.yaml is unreadable: line 18 is neither `key: value` nor a `- item`: this is not yaml",
+     "previous": {
+      "at": "2026-11-10T06:17:00Z",
+      "digest": {
+       "flipped": [
+        "omnimarket#21",
+        "omnimarket#24"
+       ],
+       "open_fell": true,
+       "rate_ok": false,
+       "unowned": [
+        "repo-status:omnimarket"
+       ],
+       "waiting": [
+        "omnibase_infra#11",
+        "omniclaude#7",
+        "omniclaude#8",
+        "omnimarket#1",
+        "omnimarket#11",
+        "omnimarket#4",
+        "omnimarket#5",
+        "omnimarket#6",
+        "omnimarket#8",
+        "omnimarket#9",
+        "omnipilot#3"
+       ]
+      },
+      "drafted_seen": [
+       "omnimarket#21",
+       "omnimarket#22",
+       "omnimarket#24",
+       "omnipaused#30"
+      ],
+      "merges": 0,
+      "open_history": [
+       [
+        "2026-11-10T00:17:00Z",
+        14
+       ],
+       [
+        "2026-11-10T01:17:00Z",
+        14
+       ],
+       [
+        "2026-11-10T02:00:00Z",
+        13
+       ],
+       [
+        "2026-11-10T04:00:00Z",
+        10
+       ],
+       [
+        "2026-11-10T06:17:00Z",
+        11
+       ]
+      ]
+     },
+     "admissions": {
+      "omniclaude#7": {
+       "kind": "admission",
+       "event": "admitted",
+       "pr": "omniclaude#7",
+       "admitted": true
+      },
+      "omnimarket#21": {
+       "kind": "admission",
+       "event": "admitted",
+       "pr": "omnimarket#21",
+       "admitted": false
+      }
+     },
+     "admissions_unread": "",
+     "pr_reasons": {
+      "omnimarket#1": "queued"
+     },
+     "pr_reasons_unread": ""
+    }
+   }
+  },
+  {
+   "spec": {
+    "i": 7,
+    "launchctl": {
+     "mode": "not_loaded",
+     "pid": 61596,
+     "ps": "ok",
+     "etime": "2-03:04:05",
+     "stdout": "{\n\t\"LimitLoadToSessionType\" = \"Aqua\";\n\t\"Label\" = \"ai.omninode.landing-controller\";\n\t\"PID\" = 61596;\n};\n"
+    },
+    "ticks": "normal",
+    "heartbeat": true,
+    "state_json": "bad",
+    "watcher": "none",
+    "floors": "negative",
+    "history": "foreign-basis",
+    "units": "absent",
+    "overlay": "ok",
+    "goal_record": true,
+    "admissions": "dir"
+   },
+   "files": {
+    "floors.json": "{\"default_per_hour\": 1, \"per_repo\": {\"omnimarket\": -1}}",
+    "landing/heartbeat": "2026-11-10T00:00:00Z pid=1\n",
+    "landing/state.json": "{",
+    "landing/ticks.jsonl": "{\"at\": \"t0\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 0}\n{\"at\": \"t1\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 1}\n{\"at\": \"t2\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 2}\n{\"at\": \"t3\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 3}\n{\"at\": \"t4\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 4}\n{partial",
+    "roots/goal_scope/overlay.yaml": "# goal scope fixture\noverlay_version: 1\nticket: OMN-19998\nruling: RULING fixture goal\nin_scope_repos:\n- omnipilot\nin_scope_prs:\n- omnimarket#1\n- omnimarket#2\nprerequisite_prs:\n- omnibase_infra#10\npaused_prs:\n- omnimarket#20\nrepo_work_kinds:\n- dev-red\nprerequisite_kinds:\n- lab-repair\n",
+    "state/goal-check.json": "{\"at\": \"2026-11-10T07:00:00Z\", \"digest\": {\"flipped\": [], \"open_fell\": true, \"rate_ok\": true, \"unowned\": [], \"waiting\": [\"omnibase_infra#11\", \"omnimarket#1\", \"omnimarket#11\", \"omnimarket#4\", \"omnimarket#5\", \"omnimarket#6\", \"omnimarket#9\", \"omnipilot#3\"]}, \"drafted_seen\": [\"omnimarket#21\", \"omnimarket#22\", \"omnimarket#24\", \"omnipaused#30\"], \"merges\": 1, \"open_history\": [[\"2026-11-10T00:17:00Z\", 14], [\"2026-11-10T01:17:00Z\", 14], [\"2026-11-10T02:00:00Z\", 13], [\"2026-11-10T04:00:00Z\", 10], [\"2026-11-10T06:17:00Z\", 11], [\"2026-11-10T07:00:00Z\", 8]]}",
+    "state/throughput-tick.open-history.json": "{\"history\": [{\"at\": \"2026-11-01T00:00:00Z\", \"open\": 101, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-02T00:00:00Z\", \"open\": 102, \"basis\": \"old\"}, {\"at\": \"2026-11-03T00:00:00Z\", \"open\": 103, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-04T00:00:00Z\", \"open\": 104, \"basis\": \"old\"}, {\"at\": \"2026-11-05T00:00:00Z\", \"open\": 105, \"basis\": \"open-nondraft-in-scope-v1\"}]}"
+   },
+   "dirs": [
+    "bin",
+    "landing",
+    "landing/admissions.jsonl",
+    "roots",
+    "roots/goal_scope",
+    "state"
+   ],
+   "request": {
+    "now": "2026-11-10T07:00:00Z",
+    "watcher_given": false,
+    "floors_given": true,
+    "open_basis": "open-nondraft-in-scope-v1"
+   },
+   "expected": {
+    "facts": {
+     "launchctl": "not_loaded",
+     "ticks": [
+      {
+       "at": "t4",
+       "pr_reasons": {
+        "omnimarket#1": "queued"
+       },
+       "merged": 4
+      },
+      {
+       "at": "t3",
+       "pr_reasons": {
+        "omnimarket#1": "queued"
+       },
+       "merged": 3
+      }
+     ],
+     "heartbeat_text": "2026-11-10T00:00:00Z pid=1\n",
+     "floors_error": "cannot read floors {ROOT}/floors.json: per_repo.omnimarket must be a nonnegative finite number",
+     "open_history": [
+      {
+       "at": "2026-11-01T00:00:00Z",
+       "open": 101
+      },
+      {
+       "at": "2026-11-03T00:00:00Z",
+       "open": 103
+      },
+      {
+       "at": "2026-11-05T00:00:00Z",
+       "open": 105
+      }
+     ],
+     "repo_status": {
+      "window_minutes": 60,
+      "open_units": []
+     }
+    },
+    "goal": {
+     "scope": {
+      "ruling": "RULING fixture goal",
+      "repos": [
+       "omnipilot"
+      ],
+      "prs": [
+       "omnimarket#1",
+       "omnimarket#2"
+      ],
+      "prerequisites": [
+       "omnibase_infra#10"
+      ],
+      "paused": [
+       "omnimarket#20"
+      ],
+      "repo_work_kinds": [
+       "dev-red"
+      ],
+      "prerequisite_kinds": [
+       "lab-repair"
+      ]
+     },
+     "scope_unread": "",
+     "previous": {
+      "at": "2026-11-10T07:00:00Z",
+      "digest": {
+       "flipped": [],
+       "open_fell": true,
+       "rate_ok": true,
+       "unowned": [],
+       "waiting": [
+        "omnibase_infra#11",
+        "omnimarket#1",
+        "omnimarket#11",
+        "omnimarket#4",
+        "omnimarket#5",
+        "omnimarket#6",
+        "omnimarket#9",
+        "omnipilot#3"
+       ]
+      },
+      "drafted_seen": [
+       "omnimarket#21",
+       "omnimarket#22",
+       "omnimarket#24",
+       "omnipaused#30"
+      ],
+      "merges": 1,
+      "open_history": [
+       [
+        "2026-11-10T00:17:00Z",
+        14
+       ],
+       [
+        "2026-11-10T01:17:00Z",
+        14
+       ],
+       [
+        "2026-11-10T02:00:00Z",
+        13
+       ],
+       [
+        "2026-11-10T04:00:00Z",
+        10
+       ],
+       [
+        "2026-11-10T06:17:00Z",
+        11
+       ],
+       [
+        "2026-11-10T07:00:00Z",
+        8
+       ]
+      ]
+     },
+     "admissions": {},
+     "admissions_unread": "{ROOT}/landing/admissions.jsonl unreadable: [Errno 21] Is a directory: '{ROOT}/landing/admissions.jsonl'",
+     "pr_reasons": {
+      "omnimarket#1": "queued"
+     },
+     "pr_reasons_unread": ""
+    }
+   }
+  },
+  {
+   "spec": {
+    "i": 8,
+    "launchctl": {
+     "mode": "missing",
+     "pid": 97180,
+     "ps": "ok",
+     "etime": " 14:59 "
+    },
+    "ticks": "normal",
+    "heartbeat": false,
+    "state_json": "absent",
+    "watcher": "bad",
+    "floors": "ok",
+    "history": "ok",
+    "units": "bad",
+    "overlay": "unknown-key",
+    "goal_record": false,
+    "admissions": "dir"
+   },
+   "files": {
+    "floors.json": "{\"default_per_hour\": 1, \"per_repo\": {\"omnimarket\": 4, \"omnipilot\": 2.5}}",
+    "landing/ticks.jsonl": "{\"at\": \"t0\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 0}\n{\"at\": \"t1\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 1}\n{\"at\": \"t2\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 2}\n{\"at\": \"t3\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 3}\n{\"at\": \"t4\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 4}\n{partial",
+    "roots/goal_scope/overlay.yaml": "# goal scope fixture\noverlay_version: 1\nticket: OMN-19998\nruling: x\nbogus: 1\nin_scope_repos:\n- omnipilot\nin_scope_prs:\n- omnimarket#1\n- omnimarket#2\nprerequisite_prs:\n- omnibase_infra#10\npaused_prs:\n- omnimarket#20\nrepo_work_kinds:\n- dev-red\nprerequisite_kinds:\n- lab-repair\n",
+    "state/throughput-tick.open-history.json": "{\"history\": [{\"at\": \"2026-11-01T00:00:00Z\", \"open\": 101, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-02T00:00:00Z\", \"open\": 102, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-03T00:00:00Z\", \"open\": 103, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-04T00:00:00Z\", \"open\": 104, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-05T00:00:00Z\", \"open\": 105, \"basis\": \"open-nondraft-in-scope-v1\"}]}",
+    "state/throughput-tick.repo-status.json": "{\"open_units\": \"no\"}",
+    "watcher/state.json": "{\"prs\": "
+   },
+   "dirs": [
+    "bin",
+    "landing",
+    "landing/admissions.jsonl",
+    "roots",
+    "roots/goal_scope",
+    "state",
+    "watcher"
+   ],
+   "request": {
+    "now": "2026-11-10T08:00:00Z",
+    "watcher_given": true,
+    "floors_given": true,
+    "open_basis": "open-nondraft-in-scope-v1"
+   },
+   "expected": {
+    "facts": {
+     "launchctl": "unavailable",
+     "launchctl_error": "[Errno 2] No such file or directory: '{ROOT}/bin/launchctl'",
+     "ticks": [
+      {
+       "at": "t4",
+       "pr_reasons": {
+        "omnimarket#1": "queued"
+       },
+       "merged": 4
+      },
+      {
+       "at": "t3",
+       "pr_reasons": {
+        "omnimarket#1": "queued"
+       },
+       "merged": 3
+      }
+     ],
+     "watcher_path": "{ROOT}/watcher/state.json",
+     "watcher_read_error": "Expecting value: line 1 column 9 (char 8)",
+     "floors_per_repo": {
+      "omnimarket": 4.0,
+      "omnipilot": 2.5
+     },
+     "land_like_operator": [],
+     "open_history": [
+      {
+       "at": "2026-11-01T00:00:00Z",
+       "open": 101
+      },
+      {
+       "at": "2026-11-02T00:00:00Z",
+       "open": 102
+      },
+      {
+       "at": "2026-11-03T00:00:00Z",
+       "open": 103
+      },
+      {
+       "at": "2026-11-04T00:00:00Z",
+       "open": 104
+      },
+      {
+       "at": "2026-11-05T00:00:00Z",
+       "open": 105
+      }
+     ],
+     "repo_status": {
+      "window_minutes": 60,
+      "open_units": []
+     }
+    },
+    "goal": {
+     "scope": null,
+     "scope_unread": "{ROOT}/roots/goal_scope/overlay.yaml carries unknown bogus",
+     "previous": null,
+     "admissions": {},
+     "admissions_unread": "{ROOT}/landing/admissions.jsonl unreadable: [Errno 21] Is a directory: '{ROOT}/landing/admissions.jsonl'",
+     "pr_reasons": {
+      "omnimarket#1": "queued"
+     },
+     "pr_reasons_unread": ""
+    }
+   }
+  },
+  {
+   "spec": {
+    "i": 9,
+    "launchctl": {
+     "mode": "loaded",
+     "pid": 59651,
+     "ps": "missing",
+     "etime": "01:02:03",
+     "stdout": "{\n\t\"LimitLoadToSessionType\" = \"Aqua\";\n\t\"Label\" = \"ai.omninode.landing-controller\";\n\t\"PID\" = 59651;\n};\n"
+    },
+    "ticks": "garbage",
+    "heartbeat": true,
+    "state_json": "ok",
+    "watcher": "ok",
+    "floors": "ok",
+    "history": "foreign-basis",
+    "units": "ok",
+    "overlay": "ok",
+    "goal_record": true,
+    "admissions": "dir"
+   },
+   "files": {
+    "floors.json": "{\"default_per_hour\": 1, \"per_repo\": {\"omnimarket\": 4, \"omnipilot\": 2.5}}",
+    "landing/heartbeat": "2026-11-10T00:00:00Z pid=1\n",
+    "landing/state.json": "{\"controller\": {\"merged\": 3}}",
+    "landing/ticks.jsonl": "not json\n[1,2]\n",
+    "roots/goal_scope/overlay.yaml": "# goal scope fixture\noverlay_version: 1\nticket: OMN-19998\nruling: RULING fixture goal\nin_scope_repos:\n- omnipilot\nin_scope_prs:\n- omnimarket#1\n- omnimarket#2\nprerequisite_prs:\n- omnibase_infra#10\npaused_prs:\n- omnimarket#20\nrepo_work_kinds:\n- dev-red\nprerequisite_kinds:\n- lab-repair\n",
+    "state/goal-check.json": "{\"at\": \"2026-11-10T09:17:00Z\", \"digest\": {\"flipped\": [\"omnimarket#24\"], \"open_fell\": true, \"rate_ok\": true, \"unowned\": [], \"waiting\": [\"omnibase_infra#11\", \"omniclaude#8\", \"omnimarket#1\", \"omnimarket#11\", \"omnimarket#4\", \"omnimarket#5\", \"omnimarket#6\", \"omnipilot#3\"]}, \"drafted_seen\": [\"omnimarket#21\", \"omnimarket#24\", \"omnipaused#30\"], \"merges\": 0, \"open_history\": [[\"2026-11-10T00:17:00Z\", 14], [\"2026-11-10T01:17:00Z\", 14], [\"2026-11-10T02:00:00Z\", 13], [\"2026-11-10T04:00:00Z\", 10], [\"2026-11-10T06:17:00Z\", 11], [\"2026-11-10T07:00:00Z\", 8], [\"2026-11-10T08:00:00Z\", 8], [\"2026-11-10T09:17:00Z\", 8]]}",
+    "state/throughput-tick.open-history.json": "{\"history\": [{\"at\": \"2026-11-01T00:00:00Z\", \"open\": 101, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-02T00:00:00Z\", \"open\": 102, \"basis\": \"old\"}, {\"at\": \"2026-11-03T00:00:00Z\", \"open\": 103, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-04T00:00:00Z\", \"open\": 104, \"basis\": \"old\"}, {\"at\": \"2026-11-05T00:00:00Z\", \"open\": 105, \"basis\": \"open-nondraft-in-scope-v1\"}]}",
+    "state/throughput-tick.repo-status.json": "{\"open_units\": [{\"repo\": \"omnimarket\", \"opened_at\": \"2026-11-10T00:00:00Z\", \"verdict\": \"waiting_on_ci\"}, {\"repo\": 3}, {\"repo\": \"omnipilot\", \"opened_at\": \"x\", \"verdict\": \"y\", \"extra\": 1}]}",
+    "watcher/state.json": "{\"prs\": {\"omnimarket#1\": {\"facts\": {\"author\": \"\", \"state\": \"OPEN\"}}, \"omnimarket#2\": {\"facts\": {\"author\": \"carol\", \"state\": \"OPEN\"}}, \"omnimarket#3\": {\"facts\": {\"author\": \"\", \"state\": \"OPEN\"}}, \"omnimarket#4\": {\"facts\": {\"author\": \"\", \"state\": \"OPEN\"}}}, \"last_tick\": \"2026-11-10T09:17:00Z\"}"
+   },
+   "dirs": [
+    "bin",
+    "landing",
+    "landing/admissions.jsonl",
+    "roots",
+    "roots/goal_scope",
+    "state",
+    "watcher"
+   ],
+   "request": {
+    "now": "2026-11-10T09:17:00Z",
+    "watcher_given": true,
+    "floors_given": true,
+    "open_basis": "open-nondraft-in-scope-v1"
+   },
+   "expected": {
+    "facts": {
+     "launchctl": "loaded",
+     "launchctl_stdout": "{\n\t\"LimitLoadToSessionType\" = \"Aqua\";\n\t\"Label\" = \"ai.omninode.landing-controller\";\n\t\"PID\" = 59651;\n};\n",
+     "ticks": [],
+     "heartbeat_text": "2026-11-10T00:00:00Z pid=1\n",
+     "state_json": {
+      "controller": {
+       "merged": 3
+      }
+     },
+     "watcher_path": "{ROOT}/watcher/state.json",
+     "watcher_state": {
+      "prs": {
+       "omnimarket#1": {
+        "facts": {
+         "author": "",
+         "state": "OPEN"
+        }
+       },
+       "omnimarket#2": {
+        "facts": {
+         "author": "carol",
+         "state": "OPEN"
+        }
+       },
+       "omnimarket#3": {
+        "facts": {
+         "author": "",
+         "state": "OPEN"
+        }
+       },
+       "omnimarket#4": {
+        "facts": {
+         "author": "",
+         "state": "OPEN"
+        }
+       }
+      },
+      "last_tick": "2026-11-10T09:17:00Z"
+     },
+     "floors_per_repo": {
+      "omnimarket": 4.0,
+      "omnipilot": 2.5
+     },
+     "land_like_operator": [
+      "carol"
+     ],
+     "open_history": [
+      {
+       "at": "2026-11-01T00:00:00Z",
+       "open": 101
+      },
+      {
+       "at": "2026-11-03T00:00:00Z",
+       "open": 103
+      },
+      {
+       "at": "2026-11-05T00:00:00Z",
+       "open": 105
+      }
+     ],
+     "repo_status": {
+      "window_minutes": 60,
+      "open_units": [
+       {
+        "repo": "omnimarket",
+        "opened_at": "2026-11-10T00:00:00Z",
+        "verdict": "waiting_on_ci"
+       },
+       {
+        "repo": "omnipilot",
+        "opened_at": "x",
+        "verdict": "y"
+       }
+      ]
+     }
+    },
+    "goal": {
+     "scope": {
+      "ruling": "RULING fixture goal",
+      "repos": [
+       "omnipilot"
+      ],
+      "prs": [
+       "omnimarket#1",
+       "omnimarket#2"
+      ],
+      "prerequisites": [
+       "omnibase_infra#10"
+      ],
+      "paused": [
+       "omnimarket#20"
+      ],
+      "repo_work_kinds": [
+       "dev-red"
+      ],
+      "prerequisite_kinds": [
+       "lab-repair"
+      ]
+     },
+     "scope_unread": "",
+     "previous": {
+      "at": "2026-11-10T09:17:00Z",
+      "digest": {
+       "flipped": [
+        "omnimarket#24"
+       ],
+       "open_fell": true,
+       "rate_ok": true,
+       "unowned": [],
+       "waiting": [
+        "omnibase_infra#11",
+        "omniclaude#8",
+        "omnimarket#1",
+        "omnimarket#11",
+        "omnimarket#4",
+        "omnimarket#5",
+        "omnimarket#6",
+        "omnipilot#3"
+       ]
+      },
+      "drafted_seen": [
+       "omnimarket#21",
+       "omnimarket#24",
+       "omnipaused#30"
+      ],
+      "merges": 0,
+      "open_history": [
+       [
+        "2026-11-10T00:17:00Z",
+        14
+       ],
+       [
+        "2026-11-10T01:17:00Z",
+        14
+       ],
+       [
+        "2026-11-10T02:00:00Z",
+        13
+       ],
+       [
+        "2026-11-10T04:00:00Z",
+        10
+       ],
+       [
+        "2026-11-10T06:17:00Z",
+        11
+       ],
+       [
+        "2026-11-10T07:00:00Z",
+        8
+       ],
+       [
+        "2026-11-10T08:00:00Z",
+        8
+       ],
+       [
+        "2026-11-10T09:17:00Z",
+        8
+       ]
+      ]
+     },
+     "admissions": {},
+     "admissions_unread": "{ROOT}/landing/admissions.jsonl unreadable: [Errno 21] Is a directory: '{ROOT}/landing/admissions.jsonl'",
+     "pr_reasons": null,
+     "pr_reasons_unread": "ticks.jsonl: no complete receipt in it"
+    }
+   }
+  },
+  {
+   "spec": {
+    "i": 10,
+    "launchctl": {
+     "mode": "not_loaded",
+     "pid": 59432,
+     "ps": "ok",
+     "etime": " 14:59 ",
+     "stdout": "{\n\t\"LimitLoadToSessionType\" = \"Aqua\";\n\t\"Label\" = \"ai.omninode.landing-controller\";\n\t\"PID\" = 59432;\n};\n"
+    },
+    "ticks": "normal",
+    "heartbeat": true,
+    "state_json": "absent",
+    "watcher": "none",
+    "floors": "noper",
+    "history": "absent",
+    "units": "bad",
+    "overlay": "ok",
+    "goal_record": false,
+    "admissions": "ok"
+   },
+   "files": {
+    "floors.json": "{\"default_per_hour\": 1}",
+    "landing/admissions.jsonl": "{\"kind\": \"admission\", \"event\": \"admitted\", \"pr\": \"omniclaude#7\", \"admitted\": false}\n{\"kind\": \"admission\", \"event\": \"admitted\", \"pr\": \"omnimarket#21\", \"admitted\": true}\ngarbage\n",
+    "landing/heartbeat": "2026-11-10T00:00:00Z pid=1\n",
+    "landing/ticks.jsonl": "{\"at\": \"t0\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 0}\n{\"at\": \"t1\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 1}\n{\"at\": \"t2\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 2}\n{\"at\": \"t3\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 3}\n{\"at\": \"t4\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 4}\n{partial",
+    "roots/goal_scope/overlay.yaml": "# goal scope fixture\noverlay_version: 1\nticket: OMN-19998\nruling: RULING fixture goal\nin_scope_repos:\n- omnipilot\nin_scope_prs:\n- omnimarket#1\n- omnimarket#2\nprerequisite_prs:\n- omnibase_infra#10\npaused_prs:\n- omnimarket#20\nrepo_work_kinds:\n- dev-red\nprerequisite_kinds:\n- lab-repair\n",
+    "state/throughput-tick.repo-status.json": "{\"open_units\": \"no\"}"
+   },
+   "dirs": [
+    "bin",
+    "landing",
+    "roots",
+    "roots/goal_scope",
+    "state"
+   ],
+   "request": {
+    "now": "2026-11-10T10:17:00Z",
+    "watcher_given": false,
+    "floors_given": true,
+    "open_basis": "open-nondraft-in-scope-v1"
+   },
+   "expected": {
+    "facts": {
+     "launchctl": "not_loaded",
+     "ticks": [
+      {
+       "at": "t4",
+       "pr_reasons": {
+        "omnimarket#1": "queued"
+       },
+       "merged": 4
+      },
+      {
+       "at": "t3",
+       "pr_reasons": {
+        "omnimarket#1": "queued"
+       },
+       "merged": 3
+      }
+     ],
+     "heartbeat_text": "2026-11-10T00:00:00Z pid=1\n",
+     "floors_error": "cannot read floors {ROOT}/floors.json: floors must be an object with a per_repo object",
+     "open_history": [],
+     "repo_status": {
+      "window_minutes": 60,
+      "open_units": []
+     }
+    },
+    "goal": {
+     "scope": {
+      "ruling": "RULING fixture goal",
+      "repos": [
+       "omnipilot"
+      ],
+      "prs": [
+       "omnimarket#1",
+       "omnimarket#2"
+      ],
+      "prerequisites": [
+       "omnibase_infra#10"
+      ],
+      "paused": [
+       "omnimarket#20"
+      ],
+      "repo_work_kinds": [
+       "dev-red"
+      ],
+      "prerequisite_kinds": [
+       "lab-repair"
+      ]
+     },
+     "scope_unread": "",
+     "previous": null,
+     "admissions": {
+      "omniclaude#7": {
+       "kind": "admission",
+       "event": "admitted",
+       "pr": "omniclaude#7",
+       "admitted": false
+      },
+      "omnimarket#21": {
+       "kind": "admission",
+       "event": "admitted",
+       "pr": "omnimarket#21",
+       "admitted": true
+      }
+     },
+     "admissions_unread": "",
+     "pr_reasons": {
+      "omnimarket#1": "queued"
+     },
+     "pr_reasons_unread": ""
+    }
+   }
+  },
+  {
+   "spec": {
+    "i": 11,
+    "launchctl": {
+     "mode": "not_loaded",
+     "pid": 94650,
+     "ps": "ok",
+     "etime": "2-03:04:05",
+     "stdout": "{\n\t\"LimitLoadToSessionType\" = \"Aqua\";\n\t\"Label\" = \"ai.omninode.landing-controller\";\n\t\"PID\" = 94650;\n};\n"
+    },
+    "ticks": "normal",
+    "heartbeat": true,
+    "state_json": "absent",
+    "watcher": "bad",
+    "floors": "ok",
+    "history": "ok",
+    "units": "absent",
+    "overlay": "ok",
+    "goal_record": false,
+    "admissions": "absent"
+   },
+   "files": {
+    "floors.json": "{\"default_per_hour\": 1, \"per_repo\": {\"omnimarket\": 4, \"omnipilot\": 2.5}}",
+    "landing/heartbeat": "2026-11-10T00:00:00Z pid=1\n",
+    "landing/ticks.jsonl": "{\"at\": \"t0\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 0}\n{\"at\": \"t1\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 1}\n{\"at\": \"t2\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 2}\n{\"at\": \"t3\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 3}\n{\"at\": \"t4\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 4}\n{partial",
+    "roots/goal_scope/overlay.yaml": "# goal scope fixture\noverlay_version: 1\nticket: OMN-19998\nruling: RULING fixture goal\nin_scope_repos:\n- omnipilot\nin_scope_prs:\n- omnimarket#1\n- omnimarket#2\nprerequisite_prs:\n- omnibase_infra#10\npaused_prs:\n- omnimarket#20\nrepo_work_kinds:\n- dev-red\nprerequisite_kinds:\n- lab-repair\n",
+    "state/throughput-tick.open-history.json": "{\"history\": [{\"at\": \"2026-11-01T00:00:00Z\", \"open\": 101, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-02T00:00:00Z\", \"open\": 102, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-03T00:00:00Z\", \"open\": 103, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-04T00:00:00Z\", \"open\": 104, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-05T00:00:00Z\", \"open\": 105, \"basis\": \"open-nondraft-in-scope-v1\"}]}",
+    "watcher/state.json": "{\"prs\": "
+   },
+   "dirs": [
+    "bin",
+    "landing",
+    "roots",
+    "roots/goal_scope",
+    "state",
+    "watcher"
+   ],
+   "request": {
+    "now": "2026-11-10T11:05:00Z",
+    "watcher_given": true,
+    "floors_given": true,
+    "open_basis": "open-nondraft-in-scope-v1"
+   },
+   "expected": {
+    "facts": {
+     "launchctl": "not_loaded",
+     "ticks": [
+      {
+       "at": "t4",
+       "pr_reasons": {
+        "omnimarket#1": "queued"
+       },
+       "merged": 4
+      },
+      {
+       "at": "t3",
+       "pr_reasons": {
+        "omnimarket#1": "queued"
+       },
+       "merged": 3
+      }
+     ],
+     "heartbeat_text": "2026-11-10T00:00:00Z pid=1\n",
+     "watcher_path": "{ROOT}/watcher/state.json",
+     "watcher_read_error": "Expecting value: line 1 column 9 (char 8)",
+     "floors_per_repo": {
+      "omnimarket": 4.0,
+      "omnipilot": 2.5
+     },
+     "land_like_operator": [],
+     "open_history": [
+      {
+       "at": "2026-11-01T00:00:00Z",
+       "open": 101
+      },
+      {
+       "at": "2026-11-02T00:00:00Z",
+       "open": 102
+      },
+      {
+       "at": "2026-11-03T00:00:00Z",
+       "open": 103
+      },
+      {
+       "at": "2026-11-04T00:00:00Z",
+       "open": 104
+      },
+      {
+       "at": "2026-11-05T00:00:00Z",
+       "open": 105
+      }
+     ],
+     "repo_status": {
+      "window_minutes": 60,
+      "open_units": []
+     }
+    },
+    "goal": {
+     "scope": {
+      "ruling": "RULING fixture goal",
+      "repos": [
+       "omnipilot"
+      ],
+      "prs": [
+       "omnimarket#1",
+       "omnimarket#2"
+      ],
+      "prerequisites": [
+       "omnibase_infra#10"
+      ],
+      "paused": [
+       "omnimarket#20"
+      ],
+      "repo_work_kinds": [
+       "dev-red"
+      ],
+      "prerequisite_kinds": [
+       "lab-repair"
+      ]
+     },
+     "scope_unread": "",
+     "previous": null,
+     "admissions": {},
+     "admissions_unread": "",
+     "pr_reasons": {
+      "omnimarket#1": "queued"
+     },
+     "pr_reasons_unread": ""
+    }
+   }
+  },
+  {
+   "spec": {
+    "i": 12,
+    "launchctl": {
+     "mode": "not_loaded",
+     "pid": 4973,
+     "ps": "ok",
+     "etime": " 14:59 ",
+     "stdout": "{\n\t\"LimitLoadToSessionType\" = \"Aqua\";\n\t\"Label\" = \"ai.omninode.landing-controller\";\n\t\"PID\" = 4973;\n};\n"
+    },
+    "ticks": "normal",
+    "heartbeat": true,
+    "state_json": "ok",
+    "watcher": "missing",
+    "floors": "ok",
+    "history": "foreign-basis",
+    "units": "ok",
+    "overlay": "ok",
+    "goal_record": true,
+    "admissions": "dir"
+   },
+   "files": {
+    "floors.json": "{\"default_per_hour\": 1, \"per_repo\": {\"omnimarket\": 4, \"omnipilot\": 2.5}}",
+    "landing/heartbeat": "2026-11-10T00:00:00Z pid=1\n",
+    "landing/state.json": "{\"controller\": {\"merged\": 3}}",
+    "landing/ticks.jsonl": "{\"at\": \"t0\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 0}\n{\"at\": \"t1\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 1}\n{\"at\": \"t2\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 2}\n{\"at\": \"t3\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 3}\n{\"at\": \"t4\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 4}\n{partial",
+    "roots/goal_scope/overlay.yaml": "# goal scope fixture\noverlay_version: 1\nticket: OMN-19998\nruling: RULING fixture goal\nin_scope_repos:\n- omnipilot\nin_scope_prs:\n- omnimarket#1\n- omnimarket#2\nprerequisite_prs:\n- omnibase_infra#10\npaused_prs:\n- omnimarket#20\nrepo_work_kinds:\n- dev-red\nprerequisite_kinds:\n- lab-repair\n",
+    "state/goal-check.json": "{\"at\": \"2026-11-10T12:17:00Z\", \"digest\": {\"flipped\": [\"omnimarket#24\"], \"open_fell\": false, \"rate_ok\": false, \"unowned\": [\"repo-status:omnipilot\"], \"waiting\": [\"omnibase_infra#11\", \"omnimarket#1\", \"omnimarket#10\", \"omnimarket#11\", \"omnimarket#12\", \"omnimarket#2\", \"omnimarket#3\", \"omnimarket#4\", \"omnimarket#5\", \"omnimarket#6\", \"omnimarket#7\", \"omnimarket#8\", \"omnimarket#9\", \"omnipilot#3\", \"omnipilot#4\"]}, \"drafted_seen\": [\"omnimarket#24\", \"omnipaused#30\"], \"merges\": 0, \"open_history\": [[\"2026-11-10T00:17:00Z\", 14], [\"2026-11-10T01:17:00Z\", 14], [\"2026-11-10T02:00:00Z\", 13], [\"2026-11-10T04:00:00Z\", 10], [\"2026-11-10T06:17:00Z\", 11], [\"2026-11-10T07:00:00Z\", 8], [\"2026-11-10T08:00:00Z\", 8], [\"2026-11-10T09:17:00Z\", 8], [\"2026-11-10T10:17:00Z\", 6], [\"2026-11-10T11:05:00Z\", 16], [\"2026-11-10T12:17:00Z\", 15]]}",
+    "state/throughput-tick.open-history.json": "{\"history\": [{\"at\": \"2026-11-01T00:00:00Z\", \"open\": 101, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-02T00:00:00Z\", \"open\": 102, \"basis\": \"old\"}, {\"at\": \"2026-11-03T00:00:00Z\", \"open\": 103, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-04T00:00:00Z\", \"open\": 104, \"basis\": \"old\"}, {\"at\": \"2026-11-05T00:00:00Z\", \"open\": 105, \"basis\": \"open-nondraft-in-scope-v1\"}]}",
+    "state/throughput-tick.repo-status.json": "{\"open_units\": [{\"repo\": \"omnimarket\", \"opened_at\": \"2026-11-10T00:00:00Z\", \"verdict\": \"waiting_on_ci\"}, {\"repo\": 3}, {\"repo\": \"omnipilot\", \"opened_at\": \"x\", \"verdict\": \"y\", \"extra\": 1}]}"
+   },
+   "dirs": [
+    "bin",
+    "landing",
+    "landing/admissions.jsonl",
+    "roots",
+    "roots/goal_scope",
+    "state"
+   ],
+   "request": {
+    "now": "2026-11-10T12:17:00Z",
+    "watcher_given": true,
+    "floors_given": true,
+    "open_basis": "open-nondraft-in-scope-v1"
+   },
+   "expected": {
+    "facts": {
+     "launchctl": "not_loaded",
+     "ticks": [
+      {
+       "at": "t4",
+       "pr_reasons": {
+        "omnimarket#1": "queued"
+       },
+       "merged": 4
+      },
+      {
+       "at": "t3",
+       "pr_reasons": {
+        "omnimarket#1": "queued"
+       },
+       "merged": 3
+      }
+     ],
+     "heartbeat_text": "2026-11-10T00:00:00Z pid=1\n",
+     "state_json": {
+      "controller": {
+       "merged": 3
+      }
+     },
+     "watcher_path": "{ROOT}/watcher/state.json",
+     "watcher_read_error": "[Errno 2] No such file or directory: '{ROOT}/watcher/state.json'",
+     "floors_per_repo": {
+      "omnimarket": 4.0,
+      "omnipilot": 2.5
+     },
+     "land_like_operator": [],
+     "open_history": [
+      {
+       "at": "2026-11-01T00:00:00Z",
+       "open": 101
+      },
+      {
+       "at": "2026-11-03T00:00:00Z",
+       "open": 103
+      },
+      {
+       "at": "2026-11-05T00:00:00Z",
+       "open": 105
+      }
+     ],
+     "repo_status": {
+      "window_minutes": 60,
+      "open_units": [
+       {
+        "repo": "omnimarket",
+        "opened_at": "2026-11-10T00:00:00Z",
+        "verdict": "waiting_on_ci"
+       },
+       {
+        "repo": "omnipilot",
+        "opened_at": "x",
+        "verdict": "y"
+       }
+      ]
+     }
+    },
+    "goal": {
+     "scope": {
+      "ruling": "RULING fixture goal",
+      "repos": [
+       "omnipilot"
+      ],
+      "prs": [
+       "omnimarket#1",
+       "omnimarket#2"
+      ],
+      "prerequisites": [
+       "omnibase_infra#10"
+      ],
+      "paused": [
+       "omnimarket#20"
+      ],
+      "repo_work_kinds": [
+       "dev-red"
+      ],
+      "prerequisite_kinds": [
+       "lab-repair"
+      ]
+     },
+     "scope_unread": "",
+     "previous": {
+      "at": "2026-11-10T12:17:00Z",
+      "digest": {
+       "flipped": [
+        "omnimarket#24"
+       ],
+       "open_fell": false,
+       "rate_ok": false,
+       "unowned": [
+        "repo-status:omnipilot"
+       ],
+       "waiting": [
+        "omnibase_infra#11",
+        "omnimarket#1",
+        "omnimarket#10",
+        "omnimarket#11",
+        "omnimarket#12",
+        "omnimarket#2",
+        "omnimarket#3",
+        "omnimarket#4",
+        "omnimarket#5",
+        "omnimarket#6",
+        "omnimarket#7",
+        "omnimarket#8",
+        "omnimarket#9",
+        "omnipilot#3",
+        "omnipilot#4"
+       ]
+      },
+      "drafted_seen": [
+       "omnimarket#24",
+       "omnipaused#30"
+      ],
+      "merges": 0,
+      "open_history": [
+       [
+        "2026-11-10T00:17:00Z",
+        14
+       ],
+       [
+        "2026-11-10T01:17:00Z",
+        14
+       ],
+       [
+        "2026-11-10T02:00:00Z",
+        13
+       ],
+       [
+        "2026-11-10T04:00:00Z",
+        10
+       ],
+       [
+        "2026-11-10T06:17:00Z",
+        11
+       ],
+       [
+        "2026-11-10T07:00:00Z",
+        8
+       ],
+       [
+        "2026-11-10T08:00:00Z",
+        8
+       ],
+       [
+        "2026-11-10T09:17:00Z",
+        8
+       ],
+       [
+        "2026-11-10T10:17:00Z",
+        6
+       ],
+       [
+        "2026-11-10T11:05:00Z",
+        16
+       ],
+       [
+        "2026-11-10T12:17:00Z",
+        15
+       ]
+      ]
+     },
+     "admissions": {},
+     "admissions_unread": "{ROOT}/landing/admissions.jsonl unreadable: [Errno 21] Is a directory: '{ROOT}/landing/admissions.jsonl'",
+     "pr_reasons": {
+      "omnimarket#1": "queued"
+     },
+     "pr_reasons_unread": ""
+    }
+   }
+  },
+  {
+   "spec": {
+    "i": 13,
+    "launchctl": {
+     "mode": "not_loaded",
+     "pid": 93943,
+     "ps": "ok",
+     "etime": " 14:59 ",
+     "stdout": "{\n\t\"LimitLoadToSessionType\" = \"Aqua\";\n\t\"Label\" = \"ai.omninode.landing-controller\";\n\t\"PID\" = 93943;\n};\n"
+    },
+    "ticks": "missing",
+    "heartbeat": false,
+    "state_json": "absent",
+    "watcher": "ok",
+    "floors": "negative",
+    "history": "ok",
+    "units": "ok",
+    "overlay": "unknown-key",
+    "goal_record": true,
+    "admissions": "dir"
+   },
+   "files": {
+    "floors.json": "{\"default_per_hour\": 1, \"per_repo\": {\"omnimarket\": -1}}",
+    "roots/goal_scope/overlay.yaml": "# goal scope fixture\noverlay_version: 1\nticket: OMN-19998\nruling: x\nbogus: 1\nin_scope_repos:\n- omnipilot\nin_scope_prs:\n- omnimarket#1\n- omnimarket#2\nprerequisite_prs:\n- omnibase_infra#10\npaused_prs:\n- omnimarket#20\nrepo_work_kinds:\n- dev-red\nprerequisite_kinds:\n- lab-repair\n",
+    "state/goal-check.json": "{\"at\": \"2026-11-10T13:17:00Z\", \"digest\": {\"flipped\": [\"omnimarket#24\", \"omnipaused#30\"], \"open_fell\": false, \"rate_ok\": false, \"unowned\": [], \"waiting\": [\"omnibase_infra#11\", \"omnimarket#1\", \"omnimarket#11\", \"omnimarket#12\", \"omnimarket#2\", \"omnimarket#3\", \"omnimarket#4\", \"omnimarket#5\", \"omnimarket#6\", \"omnimarket#7\", \"omnimarket#8\", \"omnimarket#9\", \"omnipilot#3\", \"omnipilot#4\"]}, \"drafted_seen\": [\"omnimarket#24\", \"omnipaused#30\"], \"merges\": 0, \"open_history\": [[\"2026-11-10T00:17:00Z\", 14], [\"2026-11-10T01:17:00Z\", 14], [\"2026-11-10T02:00:00Z\", 13], [\"2026-11-10T04:00:00Z\", 10], [\"2026-11-10T06:17:00Z\", 11], [\"2026-11-10T07:00:00Z\", 8], [\"2026-11-10T08:00:00Z\", 8], [\"2026-11-10T09:17:00Z\", 8], [\"2026-11-10T10:17:00Z\", 6], [\"2026-11-10T11:05:00Z\", 16], [\"2026-11-10T12:17:00Z\", 15], [\"2026-11-10T13:17:00Z\", 14]]}",
+    "state/throughput-tick.open-history.json": "{\"history\": [{\"at\": \"2026-11-01T00:00:00Z\", \"open\": 101, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-02T00:00:00Z\", \"open\": 102, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-03T00:00:00Z\", \"open\": 103, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-04T00:00:00Z\", \"open\": 104, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-05T00:00:00Z\", \"open\": 105, \"basis\": \"open-nondraft-in-scope-v1\"}]}",
+    "state/throughput-tick.repo-status.json": "{\"open_units\": [{\"repo\": \"omnimarket\", \"opened_at\": \"2026-11-10T00:00:00Z\", \"verdict\": \"waiting_on_ci\"}, {\"repo\": 3}, {\"repo\": \"omnipilot\", \"opened_at\": \"x\", \"verdict\": \"y\", \"extra\": 1}]}",
+    "watcher/state.json": "{\"prs\": {\"omnimarket#1\": {\"facts\": {\"author\": \"alice\", \"state\": \"OPEN\"}}, \"omnimarket#2\": {\"facts\": {\"author\": \"alice\", \"state\": \"OPEN\"}}, \"omnimarket#3\": {\"facts\": {\"author\": \"alice\", \"state\": \"OPEN\"}}, \"omnimarket#4\": {\"facts\": {\"author\": \"alice\", \"state\": \"OPEN\"}}}, \"last_tick\": \"2026-11-10T13:17:00Z\"}"
+   },
+   "dirs": [
+    "bin",
+    "landing",
+    "landing/admissions.jsonl",
+    "roots",
+    "roots/goal_scope",
+    "state",
+    "watcher"
+   ],
+   "request": {
+    "now": "2026-11-10T13:17:00Z",
+    "watcher_given": true,
+    "floors_given": true,
+    "open_basis": "open-nondraft-in-scope-v1"
+   },
+   "expected": {
+    "facts": {
+     "launchctl": "not_loaded",
+     "ticks": [],
+     "ticks_error": "[Errno 2] No such file or directory: '{ROOT}/landing/ticks.jsonl'",
+     "watcher_path": "{ROOT}/watcher/state.json",
+     "watcher_state": {
+      "prs": {
+       "omnimarket#1": {
+        "facts": {
+         "author": "alice",
+         "state": "OPEN"
+        }
+       },
+       "omnimarket#2": {
+        "facts": {
+         "author": "alice",
+         "state": "OPEN"
+        }
+       },
+       "omnimarket#3": {
+        "facts": {
+         "author": "alice",
+         "state": "OPEN"
+        }
+       },
+       "omnimarket#4": {
+        "facts": {
+         "author": "alice",
+         "state": "OPEN"
+        }
+       }
+      },
+      "last_tick": "2026-11-10T13:17:00Z"
+     },
+     "floors_error": "cannot read floors {ROOT}/floors.json: per_repo.omnimarket must be a nonnegative finite number",
+     "open_history": [
+      {
+       "at": "2026-11-01T00:00:00Z",
+       "open": 101
+      },
+      {
+       "at": "2026-11-02T00:00:00Z",
+       "open": 102
+      },
+      {
+       "at": "2026-11-03T00:00:00Z",
+       "open": 103
+      },
+      {
+       "at": "2026-11-04T00:00:00Z",
+       "open": 104
+      },
+      {
+       "at": "2026-11-05T00:00:00Z",
+       "open": 105
+      }
+     ],
+     "repo_status": {
+      "window_minutes": 60,
+      "open_units": [
+       {
+        "repo": "omnimarket",
+        "opened_at": "2026-11-10T00:00:00Z",
+        "verdict": "waiting_on_ci"
+       },
+       {
+        "repo": "omnipilot",
+        "opened_at": "x",
+        "verdict": "y"
+       }
+      ]
+     }
+    },
+    "goal": {
+     "scope": null,
+     "scope_unread": "{ROOT}/roots/goal_scope/overlay.yaml carries unknown bogus",
+     "previous": {
+      "at": "2026-11-10T13:17:00Z",
+      "digest": {
+       "flipped": [
+        "omnimarket#24",
+        "omnipaused#30"
+       ],
+       "open_fell": false,
+       "rate_ok": false,
+       "unowned": [],
+       "waiting": [
+        "omnibase_infra#11",
+        "omnimarket#1",
+        "omnimarket#11",
+        "omnimarket#12",
+        "omnimarket#2",
+        "omnimarket#3",
+        "omnimarket#4",
+        "omnimarket#5",
+        "omnimarket#6",
+        "omnimarket#7",
+        "omnimarket#8",
+        "omnimarket#9",
+        "omnipilot#3",
+        "omnipilot#4"
+       ]
+      },
+      "drafted_seen": [
+       "omnimarket#24",
+       "omnipaused#30"
+      ],
+      "merges": 0,
+      "open_history": [
+       [
+        "2026-11-10T00:17:00Z",
+        14
+       ],
+       [
+        "2026-11-10T01:17:00Z",
+        14
+       ],
+       [
+        "2026-11-10T02:00:00Z",
+        13
+       ],
+       [
+        "2026-11-10T04:00:00Z",
+        10
+       ],
+       [
+        "2026-11-10T06:17:00Z",
+        11
+       ],
+       [
+        "2026-11-10T07:00:00Z",
+        8
+       ],
+       [
+        "2026-11-10T08:00:00Z",
+        8
+       ],
+       [
+        "2026-11-10T09:17:00Z",
+        8
+       ],
+       [
+        "2026-11-10T10:17:00Z",
+        6
+       ],
+       [
+        "2026-11-10T11:05:00Z",
+        16
+       ],
+       [
+        "2026-11-10T12:17:00Z",
+        15
+       ],
+       [
+        "2026-11-10T13:17:00Z",
+        14
+       ]
+      ]
+     },
+     "admissions": {},
+     "admissions_unread": "{ROOT}/landing/admissions.jsonl unreadable: [Errno 21] Is a directory: '{ROOT}/landing/admissions.jsonl'",
+     "pr_reasons": null,
+     "pr_reasons_unread": "{ROOT}/landing/ticks.jsonl: No such file or directory"
+    }
+   }
+  },
+  {
+   "spec": {
+    "i": 14,
+    "launchctl": {
+     "mode": "not_loaded",
+     "pid": 69036,
+     "ps": "ok",
+     "etime": "01:02:03",
+     "stdout": "{\n\t\"LimitLoadToSessionType\" = \"Aqua\";\n\t\"Label\" = \"ai.omninode.landing-controller\";\n\t\"PID\" = 69036;\n};\n"
+    },
+    "ticks": "normal",
+    "heartbeat": true,
+    "state_json": "bad",
+    "watcher": "ok",
+    "floors": "negative",
+    "history": "bad",
+    "units": "bad",
+    "overlay": "malformed",
+    "goal_record": true,
+    "admissions": "dir"
+   },
+   "files": {
+    "floors.json": "{\"default_per_hour\": 1, \"per_repo\": {\"omnimarket\": -1}}",
+    "landing/heartbeat": "2026-11-10T00:00:00Z pid=1\n",
+    "landing/state.json": "{",
+    "landing/ticks.jsonl": "{\"at\": \"t0\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 0}\n{\"at\": \"t1\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 1}\n{\"at\": \"t2\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 2}\n{\"at\": \"t3\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 3}\n{\"at\": \"t4\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 4}\n{partial",
+    "roots/goal_scope/overlay.yaml": "# goal scope fixture\noverlay_version: 1\nticket: OMN-19998\nruling: RULING fixture goal\nin_scope_repos:\n- omnipilot\nin_scope_prs:\n- omnimarket#1\n- omnimarket#2\nprerequisite_prs:\n- omnibase_infra#10\npaused_prs:\n- omnimarket#20\nrepo_work_kinds:\n- dev-red\nprerequisite_kinds:\n- lab-repair\nthis is not yaml\n",
+    "state/goal-check.json": "{\"at\": \"2026-11-10T14:00:00Z\", \"digest\": {\"flipped\": [\"omnimarket#24\", \"omnipaused#30\"], \"open_fell\": false, \"rate_ok\": false, \"unowned\": [], \"waiting\": [\"omnibase_infra#11\", \"omniclaude#8\", \"omnimarket#1\", \"omnimarket#11\", \"omnimarket#12\", \"omnimarket#3\", \"omnimarket#4\", \"omnimarket#5\", \"omnimarket#6\", \"omnimarket#7\", \"omnimarket#8\", \"omnimarket#9\", \"omnipilot#3\", \"omnipilot#4\"]}, \"drafted_seen\": [\"omnimarket#24\", \"omnipaused#30\"], \"merges\": 0, \"open_history\": [[\"2026-11-10T00:17:00Z\", 14], [\"2026-11-10T01:17:00Z\", 14], [\"2026-11-10T02:00:00Z\", 13], [\"2026-11-10T04:00:00Z\", 10], [\"2026-11-10T06:17:00Z\", 11], [\"2026-11-10T07:00:00Z\", 8], [\"2026-11-10T08:00:00Z\", 8], [\"2026-11-10T09:17:00Z\", 8], [\"2026-11-10T10:17:00Z\", 6], [\"2026-11-10T11:05:00Z\", 16], [\"2026-11-10T12:17:00Z\", 15], [\"2026-11-10T13:17:00Z\", 14], [\"2026-11-10T14:00:00Z\", 14]]}",
+    "state/throughput-tick.open-history.json": "[]",
+    "state/throughput-tick.repo-status.json": "{\"open_units\": \"no\"}",
+    "watcher/state.json": "{\"prs\": {\"omnimarket#1\": {\"facts\": {\"author\": \"\", \"state\": \"OPEN\"}}, \"omnimarket#2\": {\"facts\": {\"author\": \"\", \"state\": \"OPEN\"}}, \"omnimarket#3\": {\"facts\": {\"author\": \"\", \"state\": \"OPEN\"}}, \"omnimarket#4\": {\"facts\": {\"author\": \"\", \"state\": \"OPEN\"}}}, \"last_tick\": \"2026-11-10T14:00:00Z\"}"
+   },
+   "dirs": [
+    "bin",
+    "landing",
+    "landing/admissions.jsonl",
+    "roots",
+    "roots/goal_scope",
+    "state",
+    "watcher"
+   ],
+   "request": {
+    "now": "2026-11-10T14:00:00Z",
+    "watcher_given": true,
+    "floors_given": true,
+    "open_basis": "open-nondraft-in-scope-v1"
+   },
+   "expected": {
+    "facts": {
+     "launchctl": "not_loaded",
+     "ticks": [
+      {
+       "at": "t4",
+       "pr_reasons": {
+        "omnimarket#1": "queued"
+       },
+       "merged": 4
+      },
+      {
+       "at": "t3",
+       "pr_reasons": {
+        "omnimarket#1": "queued"
+       },
+       "merged": 3
+      }
+     ],
+     "heartbeat_text": "2026-11-10T00:00:00Z pid=1\n",
+     "watcher_path": "{ROOT}/watcher/state.json",
+     "watcher_state": {
+      "prs": {
+       "omnimarket#1": {
+        "facts": {
+         "author": "",
+         "state": "OPEN"
+        }
+       },
+       "omnimarket#2": {
+        "facts": {
+         "author": "",
+         "state": "OPEN"
+        }
+       },
+       "omnimarket#3": {
+        "facts": {
+         "author": "",
+         "state": "OPEN"
+        }
+       },
+       "omnimarket#4": {
+        "facts": {
+         "author": "",
+         "state": "OPEN"
+        }
+       }
+      },
+      "last_tick": "2026-11-10T14:00:00Z"
+     },
+     "floors_error": "cannot read floors {ROOT}/floors.json: per_repo.omnimarket must be a nonnegative finite number",
+     "open_history": [],
+     "repo_status": {
+      "window_minutes": 60,
+      "open_units": []
+     }
+    },
+    "goal": {
+     "scope": null,
+     "scope_unread": "{ROOT}/roots/goal_scope/overlay.yaml is unreadable: line 18 is neither `key: value` nor a `- item`: this is not yaml",
+     "previous": {
+      "at": "2026-11-10T14:00:00Z",
+      "digest": {
+       "flipped": [
+        "omnimarket#24",
+        "omnipaused#30"
+       ],
+       "open_fell": false,
+       "rate_ok": false,
+       "unowned": [],
+       "waiting": [
+        "omnibase_infra#11",
+        "omniclaude#8",
+        "omnimarket#1",
+        "omnimarket#11",
+        "omnimarket#12",
+        "omnimarket#3",
+        "omnimarket#4",
+        "omnimarket#5",
+        "omnimarket#6",
+        "omnimarket#7",
+        "omnimarket#8",
+        "omnimarket#9",
+        "omnipilot#3",
+        "omnipilot#4"
+       ]
+      },
+      "drafted_seen": [
+       "omnimarket#24",
+       "omnipaused#30"
+      ],
+      "merges": 0,
+      "open_history": [
+       [
+        "2026-11-10T00:17:00Z",
+        14
+       ],
+       [
+        "2026-11-10T01:17:00Z",
+        14
+       ],
+       [
+        "2026-11-10T02:00:00Z",
+        13
+       ],
+       [
+        "2026-11-10T04:00:00Z",
+        10
+       ],
+       [
+        "2026-11-10T06:17:00Z",
+        11
+       ],
+       [
+        "2026-11-10T07:00:00Z",
+        8
+       ],
+       [
+        "2026-11-10T08:00:00Z",
+        8
+       ],
+       [
+        "2026-11-10T09:17:00Z",
+        8
+       ],
+       [
+        "2026-11-10T10:17:00Z",
+        6
+       ],
+       [
+        "2026-11-10T11:05:00Z",
+        16
+       ],
+       [
+        "2026-11-10T12:17:00Z",
+        15
+       ],
+       [
+        "2026-11-10T13:17:00Z",
+        14
+       ],
+       [
+        "2026-11-10T14:00:00Z",
+        14
+       ]
+      ]
+     },
+     "admissions": {},
+     "admissions_unread": "{ROOT}/landing/admissions.jsonl unreadable: [Errno 21] Is a directory: '{ROOT}/landing/admissions.jsonl'",
+     "pr_reasons": {
+      "omnimarket#1": "queued"
+     },
+     "pr_reasons_unread": ""
+    }
+   }
+  },
+  {
+   "spec": {
+    "i": 15,
+    "launchctl": {
+     "mode": "loaded",
+     "pid": 44486,
+     "ps": "fail",
+     "etime": "01:02:03",
+     "stdout": "{\n\t\"Label\" = \"x\";\n};\n"
+    },
+    "ticks": "missing",
+    "heartbeat": true,
+    "state_json": "absent",
+    "watcher": "ok",
+    "floors": "missing",
+    "history": "foreign-basis",
+    "units": "bad",
+    "overlay": "ok",
+    "goal_record": true,
+    "admissions": "absent"
+   },
+   "files": {
+    "landing/heartbeat": "2026-11-10T00:00:00Z pid=1\n",
+    "roots/goal_scope/overlay.yaml": "# goal scope fixture\noverlay_version: 1\nticket: OMN-19998\nruling: RULING fixture goal\nin_scope_repos:\n- omnipilot\nin_scope_prs:\n- omnimarket#1\n- omnimarket#2\nprerequisite_prs:\n- omnibase_infra#10\npaused_prs:\n- omnimarket#20\nrepo_work_kinds:\n- dev-red\nprerequisite_kinds:\n- lab-repair\n",
+    "state/goal-check.json": "{\"at\": \"2026-11-10T15:17:00Z\", \"digest\": {\"flipped\": [\"omnimarket#24\"], \"open_fell\": false, \"rate_ok\": false, \"unowned\": [], \"waiting\": [\"omnibase_infra#11\", \"omniclaude#8\", \"omnimarket#1\", \"omnimarket#11\", \"omnimarket#12\", \"omnimarket#3\", \"omnimarket#4\", \"omnimarket#6\", \"omnimarket#7\", \"omnimarket#8\", \"omnipilot#3\", \"omnipilot#4\"]}, \"drafted_seen\": [\"omnimarket#24\", \"omnipaused#30\"], \"merges\": 2, \"open_history\": [[\"2026-11-10T00:17:00Z\", 14], [\"2026-11-10T01:17:00Z\", 14], [\"2026-11-10T02:00:00Z\", 13], [\"2026-11-10T04:00:00Z\", 10], [\"2026-11-10T06:17:00Z\", 11], [\"2026-11-10T07:00:00Z\", 8], [\"2026-11-10T08:00:00Z\", 8], [\"2026-11-10T09:17:00Z\", 8], [\"2026-11-10T10:17:00Z\", 6], [\"2026-11-10T11:05:00Z\", 16], [\"2026-11-10T12:17:00Z\", 15], [\"2026-11-10T13:17:00Z\", 14], [\"2026-11-10T14:00:00Z\", 14], [\"2026-11-10T15:17:00Z\", 12]]}",
+    "state/throughput-tick.open-history.json": "{\"history\": [{\"at\": \"2026-11-01T00:00:00Z\", \"open\": 101, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-02T00:00:00Z\", \"open\": 102, \"basis\": \"old\"}, {\"at\": \"2026-11-03T00:00:00Z\", \"open\": 103, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-04T00:00:00Z\", \"open\": 104, \"basis\": \"old\"}, {\"at\": \"2026-11-05T00:00:00Z\", \"open\": 105, \"basis\": \"open-nondraft-in-scope-v1\"}]}",
+    "state/throughput-tick.repo-status.json": "{\"open_units\": \"no\"}",
+    "watcher/state.json": "{\"prs\": {\"omnimarket#1\": {\"facts\": {\"author\": \"alice\", \"state\": \"OPEN\"}}, \"omnimarket#2\": {\"facts\": {\"author\": \"alice\", \"state\": \"OPEN\"}}, \"omnimarket#3\": {\"facts\": {\"author\": \"alice\", \"state\": \"OPEN\"}}, \"omnimarket#4\": {\"facts\": {\"author\": \"alice\", \"state\": \"OPEN\"}}}, \"last_tick\": \"2026-11-10T15:17:00Z\"}"
+   },
+   "dirs": [
+    "bin",
+    "landing",
+    "roots",
+    "roots/goal_scope",
+    "state",
+    "watcher"
+   ],
+   "request": {
+    "now": "2026-11-10T15:17:00Z",
+    "watcher_given": true,
+    "floors_given": true,
+    "open_basis": "open-nondraft-in-scope-v1"
+   },
+   "expected": {
+    "facts": {
+     "launchctl": "loaded",
+     "launchctl_stdout": "{\n\t\"Label\" = \"x\";\n};\n",
+     "ticks": [],
+     "ticks_error": "[Errno 2] No such file or directory: '{ROOT}/landing/ticks.jsonl'",
+     "heartbeat_text": "2026-11-10T00:00:00Z pid=1\n",
+     "watcher_path": "{ROOT}/watcher/state.json",
+     "watcher_state": {
+      "prs": {
+       "omnimarket#1": {
+        "facts": {
+         "author": "alice",
+         "state": "OPEN"
+        }
+       },
+       "omnimarket#2": {
+        "facts": {
+         "author": "alice",
+         "state": "OPEN"
+        }
+       },
+       "omnimarket#3": {
+        "facts": {
+         "author": "alice",
+         "state": "OPEN"
+        }
+       },
+       "omnimarket#4": {
+        "facts": {
+         "author": "alice",
+         "state": "OPEN"
+        }
+       }
+      },
+      "last_tick": "2026-11-10T15:17:00Z"
+     },
+     "floors_error": "cannot read floors {ROOT}/floors.json: [Errno 2] No such file or directory: '{ROOT}/floors.json'",
+     "open_history": [
+      {
+       "at": "2026-11-01T00:00:00Z",
+       "open": 101
+      },
+      {
+       "at": "2026-11-03T00:00:00Z",
+       "open": 103
+      },
+      {
+       "at": "2026-11-05T00:00:00Z",
+       "open": 105
+      }
+     ],
+     "repo_status": {
+      "window_minutes": 60,
+      "open_units": []
+     }
+    },
+    "goal": {
+     "scope": {
+      "ruling": "RULING fixture goal",
+      "repos": [
+       "omnipilot"
+      ],
+      "prs": [
+       "omnimarket#1",
+       "omnimarket#2"
+      ],
+      "prerequisites": [
+       "omnibase_infra#10"
+      ],
+      "paused": [
+       "omnimarket#20"
+      ],
+      "repo_work_kinds": [
+       "dev-red"
+      ],
+      "prerequisite_kinds": [
+       "lab-repair"
+      ]
+     },
+     "scope_unread": "",
+     "previous": {
+      "at": "2026-11-10T15:17:00Z",
+      "digest": {
+       "flipped": [
+        "omnimarket#24"
+       ],
+       "open_fell": false,
+       "rate_ok": false,
+       "unowned": [],
+       "waiting": [
+        "omnibase_infra#11",
+        "omniclaude#8",
+        "omnimarket#1",
+        "omnimarket#11",
+        "omnimarket#12",
+        "omnimarket#3",
+        "omnimarket#4",
+        "omnimarket#6",
+        "omnimarket#7",
+        "omnimarket#8",
+        "omnipilot#3",
+        "omnipilot#4"
+       ]
+      },
+      "drafted_seen": [
+       "omnimarket#24",
+       "omnipaused#30"
+      ],
+      "merges": 2,
+      "open_history": [
+       [
+        "2026-11-10T00:17:00Z",
+        14
+       ],
+       [
+        "2026-11-10T01:17:00Z",
+        14
+       ],
+       [
+        "2026-11-10T02:00:00Z",
+        13
+       ],
+       [
+        "2026-11-10T04:00:00Z",
+        10
+       ],
+       [
+        "2026-11-10T06:17:00Z",
+        11
+       ],
+       [
+        "2026-11-10T07:00:00Z",
+        8
+       ],
+       [
+        "2026-11-10T08:00:00Z",
+        8
+       ],
+       [
+        "2026-11-10T09:17:00Z",
+        8
+       ],
+       [
+        "2026-11-10T10:17:00Z",
+        6
+       ],
+       [
+        "2026-11-10T11:05:00Z",
+        16
+       ],
+       [
+        "2026-11-10T12:17:00Z",
+        15
+       ],
+       [
+        "2026-11-10T13:17:00Z",
+        14
+       ],
+       [
+        "2026-11-10T14:00:00Z",
+        14
+       ],
+       [
+        "2026-11-10T15:17:00Z",
+        12
+       ]
+      ]
+     },
+     "admissions": {},
+     "admissions_unread": "",
+     "pr_reasons": null,
+     "pr_reasons_unread": "{ROOT}/landing/ticks.jsonl: No such file or directory"
+    }
+   }
+  },
+  {
+   "spec": {
+    "i": 16,
+    "launchctl": {
+     "mode": "not_loaded",
+     "pid": 61024,
+     "ps": "ok",
+     "etime": "2-03:04:05",
+     "stdout": "{\n\t\"LimitLoadToSessionType\" = \"Aqua\";\n\t\"Label\" = \"ai.omninode.landing-controller\";\n\t\"PID\" = 61024;\n};\n"
+    },
+    "ticks": "garbage",
+    "heartbeat": true,
+    "state_json": "absent",
+    "watcher": "none",
+    "floors": "negative",
+    "history": "absent",
+    "units": "absent",
+    "overlay": "absent",
+    "goal_record": true,
+    "admissions": "ok"
+   },
+   "files": {
+    "floors.json": "{\"default_per_hour\": 1, \"per_repo\": {\"omnimarket\": -1}}",
+    "landing/admissions.jsonl": "{\"kind\": \"admission\", \"event\": \"admitted\", \"pr\": \"omniclaude#7\", \"admitted\": false}\n{\"kind\": \"admission\", \"event\": \"admitted\", \"pr\": \"omnimarket#21\", \"admitted\": false}\ngarbage\n",
+    "landing/heartbeat": "2026-11-10T00:00:00Z pid=1\n",
+    "landing/ticks.jsonl": "not json\n[1,2]\n",
+    "state/goal-check.json": "{\"at\": \"2026-11-10T16:00:00Z\", \"digest\": {\"flipped\": [], \"open_fell\": false, \"rate_ok\": false, \"unowned\": [\"stuck-owner:omnibase_infra@main\"], \"waiting\": [\"omnibase_infra#11\", \"omnimarket#1\", \"omnimarket#11\", \"omnimarket#12\", \"omnimarket#3\", \"omnimarket#4\", \"omnimarket#6\", \"omnimarket#7\", \"omnimarket#8\", \"omnipilot#3\", \"omnipilot#4\"]}, \"drafted_seen\": [\"omnimarket#24\", \"omnipaused#30\"], \"merges\": 1, \"open_history\": [[\"2026-11-10T00:17:00Z\", 14], [\"2026-11-10T01:17:00Z\", 14], [\"2026-11-10T02:00:00Z\", 13], [\"2026-11-10T04:00:00Z\", 10], [\"2026-11-10T06:17:00Z\", 11], [\"2026-11-10T07:00:00Z\", 8], [\"2026-11-10T08:00:00Z\", 8], [\"2026-11-10T09:17:00Z\", 8], [\"2026-11-10T10:17:00Z\", 6], [\"2026-11-10T11:05:00Z\", 16], [\"2026-11-10T12:17:00Z\", 15], [\"2026-11-10T13:17:00Z\", 14], [\"2026-11-10T14:00:00Z\", 14], [\"2026-11-10T15:17:00Z\", 12], [\"2026-11-10T16:00:00Z\", 11]]}"
+   },
+   "dirs": [
+    "bin",
+    "landing",
+    "roots",
+    "state"
+   ],
+   "request": {
+    "now": "2026-11-10T16:00:00Z",
+    "watcher_given": false,
+    "floors_given": true,
+    "open_basis": "open-nondraft-in-scope-v1"
+   },
+   "expected": {
+    "facts": {
+     "launchctl": "not_loaded",
+     "ticks": [],
+     "heartbeat_text": "2026-11-10T00:00:00Z pid=1\n",
+     "floors_error": "cannot read floors {ROOT}/floors.json: per_repo.omnimarket must be a nonnegative finite number",
+     "open_history": [],
+     "repo_status": {
+      "window_minutes": 60,
+      "open_units": []
+     }
+    },
+    "goal": {
+     "scope": null,
+     "scope_unread": "no goal_scope/overlay.yaml under ONEX_SKILL_OVERLAY_ROOTS={ROOT}/roots or the installed onex-overlays plugin",
+     "previous": {
+      "at": "2026-11-10T16:00:00Z",
+      "digest": {
+       "flipped": [],
+       "open_fell": false,
+       "rate_ok": false,
+       "unowned": [
+        "stuck-owner:omnibase_infra@main"
+       ],
+       "waiting": [
+        "omnibase_infra#11",
+        "omnimarket#1",
+        "omnimarket#11",
+        "omnimarket#12",
+        "omnimarket#3",
+        "omnimarket#4",
+        "omnimarket#6",
+        "omnimarket#7",
+        "omnimarket#8",
+        "omnipilot#3",
+        "omnipilot#4"
+       ]
+      },
+      "drafted_seen": [
+       "omnimarket#24",
+       "omnipaused#30"
+      ],
+      "merges": 1,
+      "open_history": [
+       [
+        "2026-11-10T00:17:00Z",
+        14
+       ],
+       [
+        "2026-11-10T01:17:00Z",
+        14
+       ],
+       [
+        "2026-11-10T02:00:00Z",
+        13
+       ],
+       [
+        "2026-11-10T04:00:00Z",
+        10
+       ],
+       [
+        "2026-11-10T06:17:00Z",
+        11
+       ],
+       [
+        "2026-11-10T07:00:00Z",
+        8
+       ],
+       [
+        "2026-11-10T08:00:00Z",
+        8
+       ],
+       [
+        "2026-11-10T09:17:00Z",
+        8
+       ],
+       [
+        "2026-11-10T10:17:00Z",
+        6
+       ],
+       [
+        "2026-11-10T11:05:00Z",
+        16
+       ],
+       [
+        "2026-11-10T12:17:00Z",
+        15
+       ],
+       [
+        "2026-11-10T13:17:00Z",
+        14
+       ],
+       [
+        "2026-11-10T14:00:00Z",
+        14
+       ],
+       [
+        "2026-11-10T15:17:00Z",
+        12
+       ],
+       [
+        "2026-11-10T16:00:00Z",
+        11
+       ]
+      ]
+     },
+     "admissions": {
+      "omniclaude#7": {
+       "kind": "admission",
+       "event": "admitted",
+       "pr": "omniclaude#7",
+       "admitted": false
+      },
+      "omnimarket#21": {
+       "kind": "admission",
+       "event": "admitted",
+       "pr": "omnimarket#21",
+       "admitted": false
+      }
+     },
+     "admissions_unread": "",
+     "pr_reasons": null,
+     "pr_reasons_unread": "ticks.jsonl: no complete receipt in it"
+    }
+   }
+  },
+  {
+   "spec": {
+    "i": 17,
+    "launchctl": {
+     "mode": "missing",
+     "pid": 89297,
+     "ps": "ok",
+     "etime": " 14:59 "
+    },
+    "ticks": "missing",
+    "heartbeat": true,
+    "state_json": "absent",
+    "watcher": "bad",
+    "floors": "ok",
+    "history": "ok",
+    "units": "absent",
+    "overlay": "unknown-key",
+    "goal_record": false,
+    "admissions": "ok"
+   },
+   "files": {
+    "floors.json": "{\"default_per_hour\": 1, \"per_repo\": {\"omnimarket\": 4, \"omnipilot\": 2.5}}",
+    "landing/admissions.jsonl": "{\"kind\": \"admission\", \"event\": \"admitted\", \"pr\": \"omniclaude#7\", \"admitted\": false}\n{\"kind\": \"admission\", \"event\": \"admitted\", \"pr\": \"omnimarket#21\", \"admitted\": true}\ngarbage\n",
+    "landing/heartbeat": "2026-11-10T00:00:00Z pid=1\n",
+    "roots/goal_scope/overlay.yaml": "# goal scope fixture\noverlay_version: 1\nticket: OMN-19998\nruling: x\nbogus: 1\nin_scope_repos:\n- omnipilot\nin_scope_prs:\n- omnimarket#1\n- omnimarket#2\nprerequisite_prs:\n- omnibase_infra#10\npaused_prs:\n- omnimarket#20\nrepo_work_kinds:\n- dev-red\nprerequisite_kinds:\n- lab-repair\n",
+    "state/throughput-tick.open-history.json": "{\"history\": [{\"at\": \"2026-11-01T00:00:00Z\", \"open\": 101, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-02T00:00:00Z\", \"open\": 102, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-03T00:00:00Z\", \"open\": 103, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-04T00:00:00Z\", \"open\": 104, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-05T00:00:00Z\", \"open\": 105, \"basis\": \"open-nondraft-in-scope-v1\"}]}",
+    "watcher/state.json": "{\"prs\": "
+   },
+   "dirs": [
+    "bin",
+    "landing",
+    "roots",
+    "roots/goal_scope",
+    "state",
+    "watcher"
+   ],
+   "request": {
+    "now": "2026-11-10T17:00:00Z",
+    "watcher_given": true,
+    "floors_given": true,
+    "open_basis": "open-nondraft-in-scope-v1"
+   },
+   "expected": {
+    "facts": {
+     "launchctl": "unavailable",
+     "launchctl_error": "[Errno 2] No such file or directory: '{ROOT}/bin/launchctl'",
+     "ticks": [],
+     "ticks_error": "[Errno 2] No such file or directory: '{ROOT}/landing/ticks.jsonl'",
+     "heartbeat_text": "2026-11-10T00:00:00Z pid=1\n",
+     "watcher_path": "{ROOT}/watcher/state.json",
+     "watcher_read_error": "Expecting value: line 1 column 9 (char 8)",
+     "floors_per_repo": {
+      "omnimarket": 4.0,
+      "omnipilot": 2.5
+     },
+     "land_like_operator": [],
+     "open_history": [
+      {
+       "at": "2026-11-01T00:00:00Z",
+       "open": 101
+      },
+      {
+       "at": "2026-11-02T00:00:00Z",
+       "open": 102
+      },
+      {
+       "at": "2026-11-03T00:00:00Z",
+       "open": 103
+      },
+      {
+       "at": "2026-11-04T00:00:00Z",
+       "open": 104
+      },
+      {
+       "at": "2026-11-05T00:00:00Z",
+       "open": 105
+      }
+     ],
+     "repo_status": {
+      "window_minutes": 60,
+      "open_units": []
+     }
+    },
+    "goal": {
+     "scope": null,
+     "scope_unread": "{ROOT}/roots/goal_scope/overlay.yaml carries unknown bogus",
+     "previous": null,
+     "admissions": {
+      "omniclaude#7": {
+       "kind": "admission",
+       "event": "admitted",
+       "pr": "omniclaude#7",
+       "admitted": false
+      },
+      "omnimarket#21": {
+       "kind": "admission",
+       "event": "admitted",
+       "pr": "omnimarket#21",
+       "admitted": true
+      }
+     },
+     "admissions_unread": "",
+     "pr_reasons": null,
+     "pr_reasons_unread": "{ROOT}/landing/ticks.jsonl: No such file or directory"
+    }
+   }
+  },
+  {
+   "spec": {
+    "i": 18,
+    "launchctl": {
+     "mode": "loaded",
+     "pid": 28388,
+     "ps": "ok",
+     "etime": "2-03:04:05",
+     "stdout": "{\n\t\"LimitLoadToSessionType\" = \"Aqua\";\n\t\"Label\" = \"ai.omninode.landing-controller\";\n\t\"PID\" = 28388;\n};\n"
+    },
+    "ticks": "normal",
+    "heartbeat": true,
+    "state_json": "bad",
+    "watcher": "bad",
+    "floors": "ok",
+    "history": "bad",
+    "units": "absent",
+    "overlay": "ok",
+    "goal_record": true,
+    "admissions": "ok"
+   },
+   "files": {
+    "floors.json": "{\"default_per_hour\": 1, \"per_repo\": {\"omnimarket\": 4, \"omnipilot\": 2.5}}",
+    "landing/admissions.jsonl": "{\"kind\": \"admission\", \"event\": \"admitted\", \"pr\": \"omniclaude#7\", \"admitted\": false}\n{\"kind\": \"admission\", \"event\": \"admitted\", \"pr\": \"omnimarket#21\", \"admitted\": true}\ngarbage\n",
+    "landing/heartbeat": "2026-11-10T00:00:00Z pid=1\n",
+    "landing/state.json": "{",
+    "landing/ticks.jsonl": "{\"at\": \"t0\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 0}\n{\"at\": \"t1\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 1}\n{\"at\": \"t2\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 2}\n{\"at\": \"t3\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 3}\n{\"at\": \"t4\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 4}\n{partial",
+    "roots/goal_scope/overlay.yaml": "# goal scope fixture\noverlay_version: 1\nticket: OMN-19998\nruling: RULING fixture goal\nin_scope_repos:\n- omnipilot\nin_scope_prs:\n- omnimarket#1\n- omnimarket#2\nprerequisite_prs:\n- omnibase_infra#10\npaused_prs:\n- omnimarket#20\nrepo_work_kinds:\n- dev-red\nprerequisite_kinds:\n- lab-repair\n",
+    "state/goal-check.json": "{\"at\": \"2026-11-10T18:05:00Z\", \"digest\": {\"flipped\": [], \"open_fell\": true, \"rate_ok\": true, \"unowned\": [\"repo-status:omnipilot\"], \"waiting\": [\"omnibase_infra#11\", \"omnimarket#1\", \"omnimarket#11\", \"omnimarket#12\", \"omnimarket#3\", \"omnimarket#4\", \"omnimarket#8\", \"omnipilot#3\", \"omnipilot#4\"]}, \"drafted_seen\": [\"omnimarket#24\", \"omnipaused#30\"], \"merges\": 1, \"open_history\": [[\"2026-11-10T00:17:00Z\", 14], [\"2026-11-10T01:17:00Z\", 14], [\"2026-11-10T02:00:00Z\", 13], [\"2026-11-10T04:00:00Z\", 10], [\"2026-11-10T06:17:00Z\", 11], [\"2026-11-10T07:00:00Z\", 8], [\"2026-11-10T08:00:00Z\", 8], [\"2026-11-10T09:17:00Z\", 8], [\"2026-11-10T10:17:00Z\", 6], [\"2026-11-10T11:05:00Z\", 16], [\"2026-11-10T12:17:00Z\", 15], [\"2026-11-10T13:17:00Z\", 14], [\"2026-11-10T14:00:00Z\", 14], [\"2026-11-10T15:17:00Z\", 12], [\"2026-11-10T16:00:00Z\", 11], [\"2026-11-10T17:00:00Z\", 12], [\"2026-11-10T18:05:00Z\", 9]]}",
+    "state/throughput-tick.open-history.json": "[]",
+    "watcher/state.json": "{\"prs\": "
+   },
+   "dirs": [
+    "bin",
+    "landing",
+    "roots",
+    "roots/goal_scope",
+    "state",
+    "watcher"
+   ],
+   "request": {
+    "now": "2026-11-10T18:05:00Z",
+    "watcher_given": true,
+    "floors_given": true,
+    "open_basis": "open-nondraft-in-scope-v1"
+   },
+   "expected": {
+    "facts": {
+     "launchctl": "loaded",
+     "launchctl_stdout": "{\n\t\"LimitLoadToSessionType\" = \"Aqua\";\n\t\"Label\" = \"ai.omninode.landing-controller\";\n\t\"PID\" = 28388;\n};\n",
+     "pid_etime": "2-03:04:05",
+     "ticks": [
+      {
+       "at": "t4",
+       "pr_reasons": {
+        "omnimarket#1": "queued"
+       },
+       "merged": 4
+      },
+      {
+       "at": "t3",
+       "pr_reasons": {
+        "omnimarket#1": "queued"
+       },
+       "merged": 3
+      }
+     ],
+     "heartbeat_text": "2026-11-10T00:00:00Z pid=1\n",
+     "watcher_path": "{ROOT}/watcher/state.json",
+     "watcher_read_error": "Expecting value: line 1 column 9 (char 8)",
+     "floors_per_repo": {
+      "omnimarket": 4.0,
+      "omnipilot": 2.5
+     },
+     "land_like_operator": [],
+     "open_history": [],
+     "repo_status": {
+      "window_minutes": 60,
+      "open_units": []
+     }
+    },
+    "goal": {
+     "scope": {
+      "ruling": "RULING fixture goal",
+      "repos": [
+       "omnipilot"
+      ],
+      "prs": [
+       "omnimarket#1",
+       "omnimarket#2"
+      ],
+      "prerequisites": [
+       "omnibase_infra#10"
+      ],
+      "paused": [
+       "omnimarket#20"
+      ],
+      "repo_work_kinds": [
+       "dev-red"
+      ],
+      "prerequisite_kinds": [
+       "lab-repair"
+      ]
+     },
+     "scope_unread": "",
+     "previous": {
+      "at": "2026-11-10T18:05:00Z",
+      "digest": {
+       "flipped": [],
+       "open_fell": true,
+       "rate_ok": true,
+       "unowned": [
+        "repo-status:omnipilot"
+       ],
+       "waiting": [
+        "omnibase_infra#11",
+        "omnimarket#1",
+        "omnimarket#11",
+        "omnimarket#12",
+        "omnimarket#3",
+        "omnimarket#4",
+        "omnimarket#8",
+        "omnipilot#3",
+        "omnipilot#4"
+       ]
+      },
+      "drafted_seen": [
+       "omnimarket#24",
+       "omnipaused#30"
+      ],
+      "merges": 1,
+      "open_history": [
+       [
+        "2026-11-10T00:17:00Z",
+        14
+       ],
+       [
+        "2026-11-10T01:17:00Z",
+        14
+       ],
+       [
+        "2026-11-10T02:00:00Z",
+        13
+       ],
+       [
+        "2026-11-10T04:00:00Z",
+        10
+       ],
+       [
+        "2026-11-10T06:17:00Z",
+        11
+       ],
+       [
+        "2026-11-10T07:00:00Z",
+        8
+       ],
+       [
+        "2026-11-10T08:00:00Z",
+        8
+       ],
+       [
+        "2026-11-10T09:17:00Z",
+        8
+       ],
+       [
+        "2026-11-10T10:17:00Z",
+        6
+       ],
+       [
+        "2026-11-10T11:05:00Z",
+        16
+       ],
+       [
+        "2026-11-10T12:17:00Z",
+        15
+       ],
+       [
+        "2026-11-10T13:17:00Z",
+        14
+       ],
+       [
+        "2026-11-10T14:00:00Z",
+        14
+       ],
+       [
+        "2026-11-10T15:17:00Z",
+        12
+       ],
+       [
+        "2026-11-10T16:00:00Z",
+        11
+       ],
+       [
+        "2026-11-10T17:00:00Z",
+        12
+       ],
+       [
+        "2026-11-10T18:05:00Z",
+        9
+       ]
+      ]
+     },
+     "admissions": {
+      "omniclaude#7": {
+       "kind": "admission",
+       "event": "admitted",
+       "pr": "omniclaude#7",
+       "admitted": false
+      },
+      "omnimarket#21": {
+       "kind": "admission",
+       "event": "admitted",
+       "pr": "omnimarket#21",
+       "admitted": true
+      }
+     },
+     "admissions_unread": "",
+     "pr_reasons": {
+      "omnimarket#1": "queued"
+     },
+     "pr_reasons_unread": ""
+    }
+   }
+  },
+  {
+   "spec": {
+    "i": 19,
+    "launchctl": {
+     "mode": "loaded",
+     "pid": 34100,
+     "ps": "fail",
+     "etime": "01:02:03",
+     "stdout": "{\n\t\"Label\" = \"x\";\n};\n"
+    },
+    "ticks": "normal",
+    "heartbeat": true,
+    "state_json": "bad",
+    "watcher": "ok",
+    "floors": "negative",
+    "history": "foreign-basis",
+    "units": "bad",
+    "overlay": "ok",
+    "goal_record": true,
+    "admissions": "dir"
+   },
+   "files": {
+    "floors.json": "{\"default_per_hour\": 1, \"per_repo\": {\"omnimarket\": -1}}",
+    "landing/heartbeat": "2026-11-10T00:00:00Z pid=1\n",
+    "landing/state.json": "{",
+    "landing/ticks.jsonl": "{\"at\": \"t0\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 0}\n{\"at\": \"t1\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 1}\n{\"at\": \"t2\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 2}\n{\"at\": \"t3\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 3}\n{\"at\": \"t4\", \"pr_reasons\": {\"omnimarket#1\": \"queued\"}, \"merged\": 4}\n{partial",
+    "roots/goal_scope/overlay.yaml": "# goal scope fixture\noverlay_version: 1\nticket: OMN-19998\nruling: RULING fixture goal\nin_scope_repos:\n- omnipilot\nin_scope_prs:\n- omnimarket#1\n- omnimarket#2\nprerequisite_prs:\n- omnibase_infra#10\npaused_prs:\n- omnimarket#20\nrepo_work_kinds:\n- dev-red\nprerequisite_kinds:\n- lab-repair\n",
+    "state/goal-check.json": "{\"at\": \"2026-11-10T19:05:00Z\", \"digest\": {\"flipped\": [], \"open_fell\": true, \"rate_ok\": true, \"unowned\": [], \"waiting\": [\"omnibase_infra#11\", \"omnimarket#1\", \"omnimarket#11\", \"omnimarket#12\", \"omnimarket#3\", \"omnimarket#4\", \"omnimarket#8\", \"omnipilot#3\", \"omnipilot#4\"]}, \"drafted_seen\": [\"omnimarket#24\", \"omnipaused#30\"], \"merges\": 0, \"open_history\": [[\"2026-11-10T00:17:00Z\", 14], [\"2026-11-10T01:17:00Z\", 14], [\"2026-11-10T02:00:00Z\", 13], [\"2026-11-10T04:00:00Z\", 10], [\"2026-11-10T06:17:00Z\", 11], [\"2026-11-10T07:00:00Z\", 8], [\"2026-11-10T08:00:00Z\", 8], [\"2026-11-10T09:17:00Z\", 8], [\"2026-11-10T10:17:00Z\", 6], [\"2026-11-10T11:05:00Z\", 16], [\"2026-11-10T12:17:00Z\", 15], [\"2026-11-10T13:17:00Z\", 14], [\"2026-11-10T14:00:00Z\", 14], [\"2026-11-10T15:17:00Z\", 12], [\"2026-11-10T16:00:00Z\", 11], [\"2026-11-10T17:00:00Z\", 12], [\"2026-11-10T18:05:00Z\", 9], [\"2026-11-10T19:05:00Z\", 9]]}",
+    "state/throughput-tick.open-history.json": "{\"history\": [{\"at\": \"2026-11-01T00:00:00Z\", \"open\": 101, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-02T00:00:00Z\", \"open\": 102, \"basis\": \"old\"}, {\"at\": \"2026-11-03T00:00:00Z\", \"open\": 103, \"basis\": \"open-nondraft-in-scope-v1\"}, {\"at\": \"2026-11-04T00:00:00Z\", \"open\": 104, \"basis\": \"old\"}, {\"at\": \"2026-11-05T00:00:00Z\", \"open\": 105, \"basis\": \"open-nondraft-in-scope-v1\"}]}",
+    "state/throughput-tick.repo-status.json": "{\"open_units\": \"no\"}",
+    "watcher/state.json": "{\"prs\": {\"omnimarket#1\": {\"facts\": {\"author\": \"bot[bot]\", \"state\": \"OPEN\"}}, \"omnimarket#2\": {\"facts\": {\"author\": \"bot[bot]\", \"state\": \"OPEN\"}}, \"omnimarket#3\": {\"facts\": {\"author\": \"alice\", \"state\": \"OPEN\"}}, \"omnimarket#4\": {\"facts\": {\"author\": \"\", \"state\": \"OPEN\"}}}, \"last_tick\": \"2026-11-10T19:05:00Z\"}"
+   },
+   "dirs": [
+    "bin",
+    "landing",
+    "landing/admissions.jsonl",
+    "roots",
+    "roots/goal_scope",
+    "state",
+    "watcher"
+   ],
+   "request": {
+    "now": "2026-11-10T19:05:00Z",
+    "watcher_given": true,
+    "floors_given": true,
+    "open_basis": "open-nondraft-in-scope-v1"
+   },
+   "expected": {
+    "facts": {
+     "launchctl": "loaded",
+     "launchctl_stdout": "{\n\t\"Label\" = \"x\";\n};\n",
+     "ticks": [
+      {
+       "at": "t4",
+       "pr_reasons": {
+        "omnimarket#1": "queued"
+       },
+       "merged": 4
+      },
+      {
+       "at": "t3",
+       "pr_reasons": {
+        "omnimarket#1": "queued"
+       },
+       "merged": 3
+      }
+     ],
+     "heartbeat_text": "2026-11-10T00:00:00Z pid=1\n",
+     "watcher_path": "{ROOT}/watcher/state.json",
+     "watcher_state": {
+      "prs": {
+       "omnimarket#1": {
+        "facts": {
+         "author": "bot[bot]",
+         "state": "OPEN"
+        }
+       },
+       "omnimarket#2": {
+        "facts": {
+         "author": "bot[bot]",
+         "state": "OPEN"
+        }
+       },
+       "omnimarket#3": {
+        "facts": {
+         "author": "alice",
+         "state": "OPEN"
+        }
+       },
+       "omnimarket#4": {
+        "facts": {
+         "author": "",
+         "state": "OPEN"
+        }
+       }
+      },
+      "last_tick": "2026-11-10T19:05:00Z"
+     },
+     "floors_error": "cannot read floors {ROOT}/floors.json: per_repo.omnimarket must be a nonnegative finite number",
+     "open_history": [
+      {
+       "at": "2026-11-01T00:00:00Z",
+       "open": 101
+      },
+      {
+       "at": "2026-11-03T00:00:00Z",
+       "open": 103
+      },
+      {
+       "at": "2026-11-05T00:00:00Z",
+       "open": 105
+      }
+     ],
+     "repo_status": {
+      "window_minutes": 60,
+      "open_units": []
+     }
+    },
+    "goal": {
+     "scope": {
+      "ruling": "RULING fixture goal",
+      "repos": [
+       "omnipilot"
+      ],
+      "prs": [
+       "omnimarket#1",
+       "omnimarket#2"
+      ],
+      "prerequisites": [
+       "omnibase_infra#10"
+      ],
+      "paused": [
+       "omnimarket#20"
+      ],
+      "repo_work_kinds": [
+       "dev-red"
+      ],
+      "prerequisite_kinds": [
+       "lab-repair"
+      ]
+     },
+     "scope_unread": "",
+     "previous": {
+      "at": "2026-11-10T19:05:00Z",
+      "digest": {
+       "flipped": [],
+       "open_fell": true,
+       "rate_ok": true,
+       "unowned": [],
+       "waiting": [
+        "omnibase_infra#11",
+        "omnimarket#1",
+        "omnimarket#11",
+        "omnimarket#12",
+        "omnimarket#3",
+        "omnimarket#4",
+        "omnimarket#8",
+        "omnipilot#3",
+        "omnipilot#4"
+       ]
+      },
+      "drafted_seen": [
+       "omnimarket#24",
+       "omnipaused#30"
+      ],
+      "merges": 0,
+      "open_history": [
+       [
+        "2026-11-10T00:17:00Z",
+        14
+       ],
+       [
+        "2026-11-10T01:17:00Z",
+        14
+       ],
+       [
+        "2026-11-10T02:00:00Z",
+        13
+       ],
+       [
+        "2026-11-10T04:00:00Z",
+        10
+       ],
+       [
+        "2026-11-10T06:17:00Z",
+        11
+       ],
+       [
+        "2026-11-10T07:00:00Z",
+        8
+       ],
+       [
+        "2026-11-10T08:00:00Z",
+        8
+       ],
+       [
+        "2026-11-10T09:17:00Z",
+        8
+       ],
+       [
+        "2026-11-10T10:17:00Z",
+        6
+       ],
+       [
+        "2026-11-10T11:05:00Z",
+        16
+       ],
+       [
+        "2026-11-10T12:17:00Z",
+        15
+       ],
+       [
+        "2026-11-10T13:17:00Z",
+        14
+       ],
+       [
+        "2026-11-10T14:00:00Z",
+        14
+       ],
+       [
+        "2026-11-10T15:17:00Z",
+        12
+       ],
+       [
+        "2026-11-10T16:00:00Z",
+        11
+       ],
+       [
+        "2026-11-10T17:00:00Z",
+        12
+       ],
+       [
+        "2026-11-10T18:05:00Z",
+        9
+       ],
+       [
+        "2026-11-10T19:05:00Z",
+        9
+       ]
+      ]
+     },
+     "admissions": {},
+     "admissions_unread": "{ROOT}/landing/admissions.jsonl unreadable: [Errno 21] Is a directory: '{ROOT}/landing/admissions.jsonl'",
+     "pr_reasons": {
+      "omnimarket#1": "queued"
+     },
+     "pr_reasons_unread": ""
+    }
+   }
+  }
+ ]
+}

@@ -19,8 +19,9 @@ host or every host the private overlay declares, one run:
    served host whose pool holds the same token, so no other host spends a probe finding it again;
 4. returns one summary line per host for the caller's ledger row.
 
-Every host, path, key name, the model and the answer patterns come from the overlay at
-``$ONEX_WORKSPACE_CONFIG_ROOT/config/onex/overlays/node_claude_pool_refill_effect/overlay.yaml``. A token value only travels through a
+Every host, path, key name, the model and the answer patterns come from the overlay found under the overlay roots
+(``ONEX_SKILL_OVERLAY_ROOTS``) first, and under ``$ONEX_WORKSPACE_CONFIG_ROOT/config/onex/overlays/node_claude_pool_refill_effect/overlay.yaml``
+otherwise. A token value only travels through a
 pipe between two remote sessions, or sits in a shell variable on the host whose pool it is; this process
 never reads one, and every excerpt it returns is redacted. The command line is ``runtime_claude_pool_refill``.
 """
@@ -37,6 +38,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from pydantic import ValidationError
 
 from omnimarket.handlers.node_overlay_reader import find_node_overlay
 from omnimarket.models.delegation.model_claude_credential_probe import (
@@ -54,10 +56,14 @@ from omnimarket.nodes.node_claude_pool_refill_effect.models.model_claude_pool_re
     ModelClaudePoolRefillRequest,
     ModelClaudePoolRefillResult,
 )
+from omnimarket.nodes.node_claude_pool_refill_effect.models.model_claude_pool_refill_overlay import (
+    ModelClaudePoolRefillOverlay,
+)
 from omnimarket.nodes.node_claude_pool_store_adopt_compute.handlers.handler_store_adopt import (
     HandlerStoreAdopt,
 )
 
+NODE_NAME = "node_claude_pool_refill_effect"
 OVERLAY_REL = Path("config/onex/overlays/node_claude_pool_refill_effect/overlay.yaml")
 POOL_MODULE = "omnimarket.nodes.node_claude_token_pool_effect"
 PROBE_MODULE = "omnimarket.nodes.node_llm_delegation_call_effect.runtime_claude_probe"
@@ -106,6 +112,7 @@ class Overlay:
     #: The overlay's ``adopt.key_prefix`` (OMN-23895): present => a label held on a host and outside the store may be
     #: adopted into it; absent => ``--adopt`` is refused as not configured.
     adopt_prefix: str | None = None
+    overlay_roots: list[str] = field(default_factory=list)
 
 
 def _need(mapping: dict[str, Any], key: str, where: str) -> Any:
@@ -118,6 +125,19 @@ def _safe(value: str, pattern: re.Pattern[str], what: str) -> str:
     if not pattern.match(value):
         raise ClaudePoolRefillRefusedError(
             f"{what} {value!r} holds characters this script will not put in a remote shell"
+        )
+    return value
+
+
+def _safe_overlay_root(value: str) -> str:
+    _safe(value, _SAFE_PATH, "overlay root")
+    if value.startswith("/") or value.startswith("~"):
+        raise ClaudePoolRefillRefusedError(
+            f"overlay root {value!r} must be relative to the registry root"
+        )
+    if ".." in value.split("/"):
+        raise ClaudePoolRefillRefusedError(
+            f"overlay root {value!r} must not contain a .. path part"
         )
     return value
 
@@ -140,6 +160,13 @@ def load_overlay(path: Path) -> Overlay:
     raw = yaml.safe_load(path.read_text(encoding="utf-8"))
     if not isinstance(raw, dict):
         raise ClaudePoolRefillRefusedError(f"{path} has no mapping at its root")
+    try:
+        ModelClaudePoolRefillOverlay.model_validate(raw)
+    except ValidationError as err:
+        loc = ".".join(str(p) for p in err.errors()[0]["loc"])
+        raise ClaudePoolRefillRefusedError(
+            f"{path} fails the overlay model at {loc}"
+        ) from err
     where = str(path)
     store = _need(raw, "store", where)
     # The lab host table is the file ONEX_LAB_RUN_HOSTS names, else the lab_hosts overlay of the overlay roots; the
@@ -233,6 +260,9 @@ def load_overlay(path: Path) -> Overlay:
             if isinstance(raw.get("adopt"), dict)
             else None
         ),
+        overlay_roots=[
+            _safe_overlay_root(str(r)) for r in raw.get("overlay_roots") or []
+        ],
     )
 
 
@@ -242,11 +272,14 @@ def load_overlay(path: Path) -> Overlay:
 def _prelude(ov: Overlay) -> str:
     roots = " ".join(f'"{r}"' for r in ov.venv_roots)
     path = ":".join(ov.path_prepend)
-    return (f'export PATH="{path}:$PATH"\n' if path else "") + (
-        f'P=""; for r in {roots}; do if [ -x "$r/.onex-dispatch-venv/bin/python" ]; then '
-        'P="$r/.onex-dispatch-venv/bin/python"; break; fi; done\n'
+    text = (f'export PATH="{path}:$PATH"\n' if path else "") + (
+        f'P=""; R=""; for r in {roots}; do if [ -x "$r/.onex-dispatch-venv/bin/python" ]; then '
+        'P="$r/.onex-dispatch-venv/bin/python"; R="$r"; break; fi; done\n'
         '[ -n "$P" ] || { echo "NO-VENV"; exit 69; }\n'
     )
+    if ov.overlay_roots:
+        text += f'export ONEX_SKILL_OVERLAY_ROOTS="{":".join(f"$R/{r}" for r in ov.overlay_roots)}"\n'
+    return text
 
 
 def _cmd(host: Host, script: str) -> list[str]:
@@ -270,14 +303,19 @@ def _run(
 
 
 def host_pool(ov: Overlay, host: Host) -> dict[str, dict[str, Any]]:
-    script = _prelude(ov) + f'cd /tmp; "$P" -m {POOL_MODULE} status --json\n'
+    script = _prelude(ov) + f'cd /tmp; "$P" -m {POOL_MODULE} status --json --entries\n'
     done = _run(host, script, timeout=60)
     if done.returncode != 0:
         raise ClaudePoolRefillRefusedError(
             f"{host.name}: pool status failed rc={done.returncode}: {_REDACT.sub('<redacted>', done.stdout + done.stderr)[-200:]}"
         )
     body = json.loads(done.stdout)
-    return {t["label"]: t for t in body["tokens"]}
+    tokens = body["tokens"]
+    if not isinstance(tokens, list):
+        raise ClaudePoolRefillRefusedError(
+            f"{host.name}: the pool status carries no token entries (it answered the status view, so that host runs a pool without the status --entries flag)"
+        )
+    return {t["label"]: t for t in tokens}
 
 
 _READER_PY = r"""
@@ -759,6 +797,9 @@ def refill(
 def overlay_path(config_path: str | None) -> Path:
     if config_path:
         return Path(config_path)
+    found = find_node_overlay(NODE_NAME)
+    if found is not None:
+        return Path(found)
     root = os.environ.get("ONEX_WORKSPACE_CONFIG_ROOT", "")
     return Path(root) / OVERLAY_REL if root else OVERLAY_REL
 

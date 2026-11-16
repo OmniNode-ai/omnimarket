@@ -379,3 +379,52 @@ def test_registered_node_declares_the_completion_topic() -> None:
     assert contract["metadata"]["transport_type"] == "local"
     metadata = yaml.safe_load(contract_path.with_name("metadata.yaml").read_text())
     assert metadata["entry_points"]["onex.nodes"][entry.name] == entry.value
+
+
+def test_publish_cli_imports_no_handlers_package() -> None:
+    """CI runs publish from the node's own files; importing the CLI must not pull in omnimarket.handlers."""
+    import sys
+
+    src = Path(cli.__file__).resolve().parents[3]
+    probe = (
+        f"import sys; sys.path.insert(0, {str(src)!r}); "
+        "import omnimarket.nodes.node_landing_tlc_receipt_effect.runtime_landing_tlc_receipt_cli; "
+        "bad = sorted(m for m in sys.modules if m.startswith('omnimarket.handlers')); "
+        "print(bad); sys.exit(1 if bad else 0)"
+    )
+    done = subprocess.run(
+        [sys.executable, "-I", "-c", probe],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert done.returncode == 0, done.stdout + done.stderr
+
+
+def test_sync_reads_the_state_directory_default_only_for_sync(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The state directory default is resolved when sync runs, never while parsing publish."""
+    import omnimarket.handlers.runtime_paths as runtime_paths
+
+    calls: list[str] = []
+
+    def spy(key: str, env: str) -> str:
+        calls.append(key)
+        return str(tmp_path / "state")
+
+    monkeypatch.setattr(runtime_paths, "runtime_dir", spy)
+    gate = tmp_path / "gate.py"
+    gate.write_text(STUB_GATE, encoding="utf-8")
+    cli.main(
+        [
+            "sync",
+            "--gate-script",
+            str(gate),
+            "--repo",
+            REPO,
+            "--state-dir",
+            str(tmp_path),
+        ]
+    )
+    assert calls == [], "an explicit --state-dir never reads the default"

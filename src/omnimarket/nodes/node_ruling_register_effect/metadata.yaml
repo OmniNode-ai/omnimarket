@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: ruling_register_effect
+version: "1.0.0"
+description: "Reads each standing ruling's read; a read that did not run, timed out or exited with an unaccepted code is UNREAD, never TRUE."
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_ruling_register_effect: omnimarket.nodes.node_ruling_register_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pyyaml>=6.0"
+  - "pydantic>=2.0"
+tags: [effect, ruling, register]
+pack: "data"
+display_name: "Effect: Ruling Register"
+node_role: "effect"
+license: "MIT"

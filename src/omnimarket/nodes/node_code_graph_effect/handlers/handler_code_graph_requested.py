@@ -15,7 +15,12 @@ from omnimarket.models.model_code_graph import (
     ModelShadowCommand,
     ModelShadowResult,
 )
+from omnimarket.models.model_code_graph_lookup import (
+    ModelCodeGraphLookupCommand,
+    ModelCodeGraphLookupResult,
+)
 from omnimarket.nodes.node_code_graph_effect.runtime_code_graph import (
+    answer_lookup,
     build_handler,
     build_shadow_handler,
 )
@@ -35,3 +40,12 @@ class HandlerCodeGraphShadowRequested:
     def handle(self, command: ModelShadowCommand) -> ModelShadowResult:
         handler, _ = build_shadow_handler(command.write)
         return handler.handle(command)
+
+
+class HandlerCodeGraphLookupRequested:
+    """Answer a lookup command from the versions the overlay's lookup block keeps."""
+
+    def handle(
+        self, command: ModelCodeGraphLookupCommand
+    ) -> ModelCodeGraphLookupResult:
+        return answer_lookup(command)

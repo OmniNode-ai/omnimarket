@@ -71,9 +71,7 @@ class RecordingRunner:
     def __init__(self) -> None:
         self.commands: list[str] = []
 
-    def run(
-        self, command: str, cwd: Path, timeout_s: float, tail_chars: int
-    ) -> RunOutcome:
+    def run(self, command: str, cwd: Path, timeout_s: float) -> RunOutcome:
         self.commands.append(command)
         return RunOutcome(1 if command != "true" else 0, False, 0.0, "")
 

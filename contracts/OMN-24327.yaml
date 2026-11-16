@@ -1,0 +1,60 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-24327"
+title: "The landing system stops grouping pull requests on a check that only repeats another check"
+summary: "The landing decision node's policy default cluster_excluded_checks gains Repo Evidence Dependency, a check that only mirrors each pull request's own repo-evidence / dod-verify verdict and always carries one message. Three pull requests red on it were clustered into one fake shared cause (the controller's cause d17cc3829668: 555 workers on record, the eight its export lists answering cause_not_shared or external_blocker); with the check excluded each goes to its own per-PR worker, while three reds on repo-evidence / dod-verify itself still cluster."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn24327-follower-not-clustered"
+    statement: |-
+      A check that only repeats another check's verdict is never used to group pull requests into a shared cause.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: three open pull requests that are red only on the check named \"Repo Evidence Dependency\", with the same message, are each sent to their own fix worker and no shared cause is dispatched for them -- falsifier: pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes.py -k follower_only -q --no-cov"
+      - id: "AC2"
+        statement: "AC2: three pull requests red on the check \"repo-evidence / dod-verify\" with one message still form one shared cause, so the exclusion covers only the follower check -- falsifier: pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes.py -k dod_verify_reds_with_one_message -q --no-cov"
+      - id: "AC3"
+        statement: "AC3: the whole cause scenario file still passes (90 tests before this change, 92 after) -- falsifier: pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes.py -q --no-cov"
+      - id: "AC4"
+        statement: "AC4: integrated: after the controller's pinned decision node moves to a revision that holds this change, the landing controller's state on its host holds no shared cause whose only red check is \"Repo Evidence Dependency\" -- falsifier: read the causes list in the controller state file on its host and find one"
+evidence_requirements:
+  - kind: "tests"
+    description: "The cause scenario file of the landing decision node, including the follower control and the seam test to the controller's recorded cause key."
+    command: "uv run --frozen pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes.py -q --no-cov -n 0 -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn24327-follower-control"
+    description: "The follower control tests pass at the head; at the merge base the tests do not exist, so the same command selects nothing and fails (the failing control). With only the source file of origin/dev put back, test_follower_only_reds_never_form_a_cause fails because a cause is dispatched. AC4 is bound here as the exemplar contracts bind an integrated criterion; its runtime reading is taken on the controller's host after the pin moves and is not yet observed."
+    source: "manual"
+    binds_ac: ["AC1", "AC2", "AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run --frozen pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes.py -k \"follower_only or dod_verify_reds_with_one_message\" -q --no-cov -n 0 -p no:randomly"
+        cwd: "."
+  - id: "dod-omn24327-cause-file"
+    description: "The whole cause scenario file passes at the head, so the existing cluster-of-three, not-shared, parking and permutation scenarios are unchanged."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run --frozen pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes.py -q --no-cov -n 0 -p no:randomly"
+        cwd: "."
+  - id: "dod-omn24327-deploy-follower-default"
+    description: "Deploy probe the hosted runner can run: the policy model at the checked-out commit on GitHub lists Repo Evidence Dependency in its follower default; the name is absent at the merge base, so the probe fails there. AC4 is read on the controller's host after the pin moves."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "bash -o pipefail -c 'gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_pr_landing_decision_compute/models/model_landing_facts.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F \"Repo Evidence Dependency\" > /dev/null'"
+        cwd: "."
+  - id: "dod-omn24327-integration-proof"
+    description: "AC4 is read on the controller's host after the controller's pin of the decision node moves to a revision with this change; the pushed head is first run on a lab host and named in the pull request."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane cause-base-6802 --kind test -- uv run --frozen pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_decision_causes.py -q --no-cov"
+        cwd: "."

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
@@ -28,6 +29,7 @@ from omnimarket.handlers.overlay_keys import resolve_lab_hosts_table
 from omnimarket.models.model_host_capacity_advertisement import (
     ModelHostCapacityAdvertisement,
 )
+from omnimarket.models.model_point_query import ModelPointQuery
 from omnimarket.models.model_reading import ModelLedgerEvidenceRow
 from omnimarket.models.overlay_keys import ModelLabHostRow
 from omnimarket.nodes.node_lane_host_pool_snapshot_effect.handlers.snapshot_errors import (
@@ -43,6 +45,9 @@ from omnimarket.nodes.node_lane_host_pool_snapshot_effect.models.model_pool_snap
 from omnimarket.nodes.node_reading_writer_effect.protocols import (
     ModelLedgerQuery,
     ProtocolLedgerRowSource,
+)
+from omnimarket.nodes.node_work_ledger_reader_effect.protocols import (
+    ProtocolLedgerPointRead,
 )
 
 
@@ -197,6 +202,51 @@ class LedgerRunningLanesSource:
             counted.add(lane)
             counts[host] = counts.get(host, 0) + 1
         return counts
+
+
+_OPEN_CLAIM_LINE = re.compile(r"^OPEN-CLAIM lane=(?P<lane>\S+) .*\bhost=(?P<host>\S+)")
+
+
+class LedgerOpenClaimsLanesSource:
+    """Open lane counts per host from the ledger node's open-claims answer, one point query read through the bus read command.
+
+    The node answers the open set from its state table with the claim's host cell, so the question is one small call and not the
+    TERMINAL, RELEASE and CLAIM rows of the whole lookback (about two thousand rows, over the node's answer bound and past the read
+    time limit on 2026-11-14). A lane counts once; a claim with no host names no host. The answer's next cursor is followed to the end.
+    """
+
+    name = "ledger-open-claims"
+
+    def __init__(self, read: ProtocolLedgerPointRead, lookback_hours: float) -> None:
+        self._read = read
+        self._lookback = timedelta(hours=lookback_hours)
+
+    def running_lanes(self, now: datetime) -> dict[str, int]:
+        since = now - self._lookback
+        counts: dict[str, int] = {}
+        counted: set[str] = set()
+        cursor: str | None = None
+        while True:
+            answer = self._read.read(
+                ModelPointQuery(query="open-claims", claims_since=since, cursor=cursor)
+            )
+            if answer.error is not None:
+                raise PoolSnapshotSourceError(
+                    f"ledger open claims unread: {answer.error}"
+                )
+            for line in answer.lines:
+                found = _OPEN_CLAIM_LINE.match(line)
+                if found is None or found["host"] == "none" or found["lane"] in counted:
+                    continue
+                counted.add(found["lane"])
+                counts[found["host"]] = counts.get(found["host"], 0) + 1
+            if answer.next_cursor is None:
+                return counts
+            if answer.next_cursor == cursor:
+                raise PoolSnapshotSourceError(
+                    "ledger open claims unread: the next cursor did not advance"
+                )
+            cursor = answer.next_cursor
 
 
 class TokenPoolCommandAccountsSource:

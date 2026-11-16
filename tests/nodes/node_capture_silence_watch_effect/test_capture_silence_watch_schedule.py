@@ -36,6 +36,8 @@ ROOT = Path(__file__).resolve().parents[3]
 NODE_DIR = ROOT / "src" / "omnimarket" / "nodes" / NODE
 HANDLER = "omnimarket.nodes.node_host_installer_registry_units.handlers.handler_registry_units"
 LINUX_PYTHON = "/usr/bin/python3.12"
+DB_URL = "postgresql://omninode_runtime@127.0.0.1:5436/omnidash_analytics"
+PASSWORD_REF = "secret://onex/shared/env/OMNINODE_RUNTIME_PASSWORD"
 
 
 def _git(argv: list[str]) -> subprocess.CompletedProcess[str]:
@@ -106,8 +108,12 @@ def _render(tmp_path: Path, units: dict[str, Any] | None = None) -> Any:
             unit=UNIT,
             home=str(tmp_path / "home"),
             registry_root=str(tmp_path / "omni"),
+            workspace_config_root=str(tmp_path / "workspace"),
             project_path=str(path),
             expected_revision=revision,
+            path_overrides={"ONEX_SKILL_OVERLAY_ROOTS": str(tmp_path / "overlays")},
+            capture_watch_db_url=DB_URL,
+            capture_watch_db_password_ref=PASSWORD_REF,
         )
     )
 
@@ -154,6 +160,12 @@ def test_the_rendered_unit_runs_the_tick_module_and_names_no_tmp_path(
         f"EnvironmentFile=-{home}/.config/onex/capture-silence-watch.env"
         in result.rendered
     )
+    # OMN-24325: the unit persists the database address (no password) and the password's reference, and the overlay roots the
+    # node reads its secret store block from; it holds no password.
+    assert f"OMNINODE_INTERNAL_DB_URL={DB_URL}" in result.rendered
+    assert f"ONEX_CAPTURE_WATCH_DB_PASSWORD_REF={PASSWORD_REF}" in result.rendered
+    assert f"ONEX_SKILL_OVERLAY_ROOTS={tmp_path / 'overlays'}" in result.rendered
+    assert "hunter2" not in result.rendered
     # The unit runs the tick module from the registry project, not the /tmp copy of the source it ran from before.
     assert "/tmp/capture-silence-watch" not in result.rendered
     assert f'"--project" "{tmp_path / "branch"}"' in exec_line

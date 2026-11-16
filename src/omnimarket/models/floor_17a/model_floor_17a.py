@@ -18,6 +18,11 @@ from omnimarket.models.floor_17a.model_delegation_idle import (
     ModelDelegationIdleOverlay,
     ModelDelegationTicketIn,
 )
+from omnimarket.models.floor_17a.model_floor_handoff_refusals import (
+    ModelHandoffRefusalsIn,
+    ModelHandoffRefusalsOverlay,
+    ModelHandoffRefusalsSection,
+)
 from omnimarket.models.floor_17a.model_floor_integration import (
     ModelFloorIntegrationIn,
     ModelFloorIntegrationOverlay,
@@ -126,6 +131,20 @@ class ModelPieceChains(_Frozen):
     nodes: tuple[str, ...] = Field(min_length=1)
 
 
+class ModelJoinChains(_Frozen):
+    """The nodes whose chains one join reads on each of its two sides (OMN-23083).
+
+    A piece can host several pipelines, and a join reads only its own. The host pool snapshot (piece 2) fails on its own
+    schedule and nothing in piece 3 answers it, so J2, reading every piece 2 chain, named each such failure
+    ``downstream_missing_typed_failure``. A join listed here reads only the chains of ``from_nodes`` on its from piece and
+    ``to_nodes`` on its to piece; the piece's own receipt, and every join not listed, keep every chain.
+    """
+
+    join: str = Field(pattern=r"^J(\d{1,2}|-cycle)$")
+    from_nodes: tuple[str, ...] = Field(min_length=1)
+    to_nodes: tuple[str, ...] = Field(min_length=1)
+
+
 class ModelJoinEnd(_Frozen):
     """The node at which a join ends, when no node downstream of its piece can emit a typed outcome for it.
 
@@ -153,6 +172,8 @@ class ModelFloorReceiptInput(_Frozen):
     judged_to_pieces: tuple[int, ...] | None = None
     # For each piece listed, the nodes whose chains a join judges. A piece not listed is judged on every chain it emitted.
     declared_chains: tuple[ModelPieceChains, ...] = ()
+    # For each join listed, the nodes whose chains it reads on its two pieces (OMN-23083). A join not listed reads the piece-level view.
+    join_chains: tuple[ModelJoinChains, ...] = ()
     # For each join listed, the node of its from piece at which it ends. A join not listed ends at its to piece.
     join_ends: tuple[ModelJoinEnd, ...] = ()
     # The chain origins that are real work (OMN-23862), the readiness overlay's ``real_origins``. A join's ``real_golden_at``
@@ -442,6 +463,8 @@ class ModelFloorLane(_Frozen):
     # The ticket the lane's own ticket was minted under (the CLAIM's parent_ticket= cell): a lane on a child ticket is
     # on the work of a cause whose declared owner is that parent.
     parent_ticket: str = ""
+    # The lane's CLAIM declares ``worktree=none`` or ``mode=read-only``: it can change nothing, so it is on no row (OMN-23225).
+    read_only: bool = False
 
 
 class ModelFloorCauseIn(_Frozen):
@@ -728,6 +751,9 @@ class ModelFloorSimple(_Frozen):
     # Merged work that is not running, from the integration projection (OMN-23899); ``None`` is a record written before the
     # section existed.
     integration: ModelFloorIntegrationSection | None = None
+    # Handed-off pull requests the landing controller defers or keeps out, and the deferrals no parent was told of (OMN-23242);
+    # ``None`` is a record written before the section existed.
+    handoff_refusals: ModelHandoffRefusalsSection | None = None
 
 
 class ModelGoRule(_Frozen):
@@ -997,6 +1023,10 @@ class ModelFloorSimpleOverlay(_Frozen):
     worklist: ModelWorklistOverlay | None = None
     # The integration section's words (OMN-23899); ``None`` declares none and the floor draws the section not configured.
     integration: ModelFloorIntegrationOverlay | None = None
+    # What counts as a handed-off pull request refused by the controller (OMN-23242); the defaults are the ticket's own words.
+    handoff_refusals: ModelHandoffRefusalsOverlay = Field(
+        default_factory=ModelHandoffRefusalsOverlay
+    )
 
     @model_validator(mode="after")
     def _eighteen(self) -> ModelFloorSimpleOverlay:
@@ -1073,6 +1103,8 @@ class ModelFloorSimpleInput(_Frozen):
     delegation_tickets: tuple[ModelDelegationTicketIn, ...] | None = None
     # The integration projection as this cycle read it (OMN-23899); ``None`` is a cycle that did not read it.
     integration: ModelFloorIntegrationIn | None = None
+    # The controller's refusals of handed-off pull requests as this cycle read them (OMN-23242); ``None`` is a cycle that did not.
+    handoff_refusals: ModelHandoffRefusalsIn | None = None
 
 
 # --- the alarm ---------------------------------------------------------------------------------------------------------

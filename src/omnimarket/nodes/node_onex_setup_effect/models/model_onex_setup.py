@@ -43,6 +43,12 @@ class ModelOnexSetupRequest(BaseModel):
         description="The provider key, read hidden or from stdin. Never logged, "
         "never in a result, never in a subprocess argument.",
     )
+    key_handoff: str | None = Field(
+        default=None,
+        repr=False,
+        description="Token naming a key the CLI parked in this process (park_key). The key "
+        "itself never travels on the command, because the runtime records every command.",
+    )
     unattended: bool = Field(
         default=False,
         description="True when no prompt may run: every choice must be named up front.",

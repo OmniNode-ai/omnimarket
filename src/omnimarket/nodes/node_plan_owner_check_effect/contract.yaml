@@ -1,0 +1,75 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Plan Owner Check Effect (OMN-24445)
+#
+# The hourly throughput tick's question, "does a live lane CLAIM name this plan?", decided
+# from the answer of node_work_ledger_reader_effect (the bus-fed projection) for OPEN_CLAIMS.
+# OWNED when a live claim names the plan, MISSING only when the node answered fresh and none
+# does, UNKNOWN when the read failed or its answer cannot be read.
+name: node_plan_owner_check_effect
+contract_name: node_plan_owner_check_effect
+node_name: node_plan_owner_check_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Decides OWNED, MISSING or UNKNOWN for one plan finding from the open-claims lines of the
+  bus-fed work ledger query node, read through node_work_ledger_reader_effect. A claim names
+  the plan when its lane starts with one of the rule's lane prefixes or its ticket is one of
+  the rule's tickets, and its newest row is within the rule's live window; OWNED answers even
+  when the node's answer is stale. MISSING is returned only when the node answered fresh and
+  no live claim names the plan. A read that failed, a stale answer with no owner, or an
+  unparseable claim line is UNKNOWN, never MISSING. Every verdict emits a golden (OWNED,
+  MISSING) or error (UNKNOWN) event.
+
+handler:
+  module: omnimarket.nodes.node_plan_owner_check_effect.handlers.handler_plan_owner_check
+  class: HandlerPlanOwnerCheck
+  input_model: omnimarket.models.plan_owner_check.ModelPlanOwnerRequest
+
+# HandlerPlanOwnerCheck takes the overlay, the event sink and the clock as constructor
+# parameters, so a reader runs it through its own CLI, not handler_routing.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [event-journal]
+  timeout_ms: 30000
+
+input_model:
+  name: ModelPlanOwnerRequest
+  module: omnimarket.models.plan_owner_check
+  description: The finding to decide and the reader's open-claims answer.
+output_model:
+  name: ModelPlanOwnerVerdict
+  module: omnimarket.models.plan_owner_check
+  description: OWNED, MISSING or UNKNOWN, the owning lanes, the rule's why and fix and the event.
+
+runtime_dispatch:
+  external_trigger: true
+
+# The topics by role; the handler reads these and holds no topic string.
+topics:
+  plan_owner_answered: onex.evt.omnimarket.plan-owner-check-answered.v1
+  plan_owner_refused: onex.evt.omnimarket.plan-owner-check-refused.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.plan-owner-check-answered.v1
+  - onex.evt.omnimarket.plan-owner-check-refused.v1
+
+overlay:
+  node: node_plan_owner_check_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+metadata:
+  ticket: OMN-24445
+  transport_type: inmemory

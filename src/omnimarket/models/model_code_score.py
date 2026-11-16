@@ -39,9 +39,16 @@ class ModelCodeScoreOverlay(BaseModel):
     scratch_root: str = Field(min_length=1)
     repo_roots: dict[str, str] = Field(min_length=1)
     protected_paths: dict[str, tuple[str, ...]]
-    output_tail_chars: int = Field(ge=0)
     # The bus `onex run-node` reads to reach this node (OMN-24265)
     event_bus: ModelNodeEventBus | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _drop_retired_output_tail_chars(cls, data: object) -> object:
+        """The score keeps each check's whole output (OMN-24173): an overlay still naming the old cut loads, and the cut is gone."""
+        if isinstance(data, dict) and "output_tail_chars" in data:
+            return {k: v for k, v in data.items() if k != "output_tail_chars"}
+        return data
 
 
 class ModelCodeScoreContractRef(BaseModel):
@@ -121,7 +128,8 @@ class ModelCodeScoreCheckResult(BaseModel):
     command: str
     outcome: EnumCodeScoreCheckOutcome
     exit_code: int | None = None
-    output_tail: str = ""
+    #: The check's whole output, never cut: the trace keeps it (OMN-24173).
+    output: str = ""
 
 
 class ModelCodeScoreVerdict(BaseModel):

@@ -11,7 +11,7 @@ node_type: effect
 contract_version: {major: 1, minor: 0, patch: 0}
 node_version: {major: 1, minor: 0, patch: 0}
 description: Validates one overlay of the overlay home by the model the home names for it and publishes one version on the bus.
-output_model: omnimarket.models.overlay_store.ModelOverlayStoreLoadResult
+output_model: omnimarket.models.overlay_store.ModelOverlayStoreRecord
 handler:
   module: omnimarket.nodes.node_overlay_store_load_effect.handlers.handler_overlay_store_load
   class: HandlerOverlayStoreLoad
