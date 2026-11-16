@@ -21,15 +21,15 @@ requirements:
     statement: 'AC5: the PR carries a comment starting `Lab: head=<new head>` with the suite run on the lab (parts named if split), the required checks read success at the new head, and the TERMINAL names the head -- falsifier: `onex scm pr-checks OmniNode-ai/omnimarket#6052` lists a required context that is not success at the new head'
 evidence_requirements:
 - kind: tests
-  description: The corrupt-file, reuse, bound and contract-text tests pass at the pushed head; the corrupt-file, log, age-bound and contract-text tests fail at c91b6efced5e.
-  command: uv run pytest tests/handlers/bus_binding -q --no-cov -k "outbox and (corrupt or reuse or bound) or contract and omn_2482"
+  description: The corrupt-file, reuse, bound, window, refused-at and contract-text tests pass at the pushed head; the log, age-bound, window and contract-text tests, and four of the five corrupt-file shapes, fail at c91b6efced5e.
+  command: uv run pytest tests/handlers/bus_binding/test_outbox_refused_receipt_reuse.py tests/handlers/bus_binding/test_outbox_contract_text.py -q --no-cov
 emergency_bypass:
   enabled: false
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn24875-ac1
-  description: 'AC1: five corrupt refused-file shapes (a list, null, a string, a number, broken JSON) leave the request out of the lookup, the request is sent and the drain returns; the tests raise AttributeError at c91b6efced5e.'
+  description: 'AC1: five corrupt refused-file shapes (a list, null, a string, a number, broken JSON) leave the request out of the lookup, the request is sent and the drain returns, and a replay through select.replay_outbox survives them and the reporter that reads refused/ (with two object shapes whose refusal is not an object). At c91b6efced5e the list, null, string and number shapes raise AttributeError; broken JSON raises ValueError there, which the lookup caught, so that shape is green at c91b6efced5e and is the positive control.'
   source: manual
   binds_ac:
   - AC1
@@ -44,35 +44,35 @@ dod_evidence:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/handlers/bus_binding -q --no-cov -p no:cacheprovider -k "outbox and reuse"
+    check_value: uv run pytest -q --no-cov -p no:cacheprovider tests/handlers/bus_binding/test_outbox_refused_receipt_reuse.py::test_outbox_reuse_logs_one_line_per_reuse tests/handlers/bus_binding/test_outbox_refused_receipt_reuse.py::test_outbox_reuse_through_the_wired_caller_raises_no_occurrence
     cwd: .
 - id: dod-omn24875-ac3
-  description: 'AC3: a stored clash refusal is reused for six hours after it was written (its refused_at cell, else the queue stamp in its file name); past that the replay is sent, and after the ledger rolls the append handler, which reads only the live ledger file, accepts it. The refused folder is not pruned by any code, so age is the only bound.'
+  description: 'AC3: a stored clash refusal is reused for six hours after it was written (its refused_at cell, else the queue stamp in its file name); past that the replay is sent, and after the ledger rolls the append handler, which reads only the live ledger file, accepts it. A stamp that is unparsable, not a string or after the clock reads as expired. A clash refused again past the window over the same rows is written into the file that already holds it, so a stuck id leaves one refused file and one report and costs one send per window. The refused folder is not pruned by any code, so age is the only bound.'
   source: manual
   binds_ac:
   - AC3
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/handlers/bus_binding -q --no-cov -p no:cacheprovider -k "outbox and bound"
+    check_value: uv run pytest tests/handlers/bus_binding -q --no-cov -p no:cacheprovider -k "outbox and (bound or window or refused_at)"
     cwd: .
 - id: dod-omn24875-ac4
-  description: 'AC4: the bound-tests contract reads each bound selection exits non-zero at the merge base, with the falsifier exits zero and one -k, and the reuse contract says its AC2 is a preservation criterion; a test reads both files.'
+  description: 'AC4: the bound-tests contract reads each bound selection exits non-zero at the merge base, with the falsifier exits zero and one -k, and the reuse contract says its AC2 is a preservation criterion; tests read both files, and one test drives the loaded outbox module (a clash refusal is not sent twice), so it fails with the merge-base outbox module loaded, which sends every replay. The selection names all three contract tickets.'
   source: manual
   binds_ac:
   - AC4
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/handlers/bus_binding -q --no-cov -p no:cacheprovider -k "contract and OMN_24827"
+    check_value: uv run pytest tests/handlers/bus_binding -q --no-cov -p no:cacheprovider -k "contract and (OMN_24827 or OMN_24250 or OMN_24875)"
     cwd: .
 - id: dod-omn24875-ac5
-  description: the required checks at the pushed head and the Lab comment are read from the PR watcher; hosted CI cannot read the lab comment, so only the local Done gate runs this unbound check
+  description: 'AC5, the required checks half: this check is bound to AC5 and can fail. onex scm pr-checks itself exits 0 whatever the head''s state (read at 7c5d0b219491, where four required contexts were red), so the command reads its JSON and exits 1 while any context is red or pending, and 0 only when none is. The watcher is not reachable from hosted CI, so only the local Done gate runs it; the Lab comment half of AC5 is read from the PR comments, not by this check.'
   source: manual
   execution_scope: local_done_gate
   binds_ac:
   - AC5
   checks:
   - check_type: command
-    check_value: onex scm pr-checks OmniNode-ai/omnimarket#6052
+    check_value: sh -c 'onex scm pr-checks OmniNode-ai/omnimarket#6052 | python3 -c "import json,sys; r=[json.loads(l) for l in sys.stdin if l.startswith(chr(123))][-1][\"result\"]; print(r[\"head_sha\"], r[\"class\"], r[\"red\"], r[\"pending\"]); sys.exit(1 if r[\"red\"] or r[\"pending\"] else 0)"'
     cwd: .
 - id: dod-omn24875-integration-proof
   description: the outbox reuse tests and the neighbouring outbox suites run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check

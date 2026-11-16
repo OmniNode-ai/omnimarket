@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-24250
 title: A replay of an outbox request already refused for a request-id clash answers with the stored refusal
-summary: The bus binding outbox moved a refused request to refused/ and the writer's lane was told once, but a writer that sent the same rows again under the same request id was queued, sent to the ledger host, refused again, kept as a second file and reported as a new case, so the bus-binding-outbox-refused class kept gaining occurrences with nothing new to learn. The outbox drain now answers a request whose id and rows match a stored request-id clash refusal from that stored receipt, sends nothing, and writes no second file. A refusal for any other cause and corrected rows under the same id are still sent.
+summary: The bus binding outbox moved a refused request to refused/ and the writer's lane was told once, but a writer that sent the same rows again under the same request id was queued, sent to the ledger host, refused again, kept as a second file and reported as a new case, so the bus-binding-outbox-refused class kept gaining occurrences with nothing new to learn. The outbox drain now answers a request whose id and rows match a stored request-id clash refusal from that stored receipt and sends nothing, for six hours after the refusal was stored. Past that, because the append handler reads only the live ledger file, the replay is sent once more; a clash refused again over the same rows is written into the file that already holds it (its refused_at refreshed), so a stuck id never leaves a second refused file or a second report. A refusal for any other cause and corrected rows under the same id are still sent.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -27,7 +27,7 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn24250-ac1
-  description: 'AC1: a clash refusal is stored by the first drain; the same request queued again is counted refused with the sender called once, one file in refused/, and one open exception row after two reports.'
+  description: 'AC1: a clash refusal is stored by the first drain; the same request queued again within the reuse window is counted refused with the sender called once, one file in refused/, and one open exception row after two reports. Past the window the sender is called again and the repeat clash refreshes the one file (the window tests of the same module).'
   source: manual
   binds_ac:
   - AC1

@@ -213,7 +213,8 @@ def record_replay(
 
 def _refusal_evidence(body: dict[str, Any]) -> str:
     """What the writer needs to see: the host's words, the exit code, the host, and which rows were lost."""
-    refusal = body.get("refusal") or {}
+    raw = body.get("refusal")
+    refusal: dict[str, Any] = raw if isinstance(raw, dict) else {}
     message = " ".join(str(refusal.get("message", "")).split())[:300] or "unreadable"
     kinds: list[str] = []
     stamps: list[str] = []

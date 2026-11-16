@@ -15,8 +15,10 @@ replay with the same words, so a replay of the same rows under that id is answer
 never sent: it adds no second file to ``refused/`` and no second report for the writer (OMN-24250). Each reuse
 is logged. The reuse is bounded by age (``REUSE_WINDOW``): the append handler reads only the live ledger file,
 so once the ledger rolls the other rows to an archive the id is unknown to it, and a replay it would now
-accept must be sent. A refusal for any other cause, and corrected rows under the same id, are still sent,
-because their cause can have gone.
+accept must be sent. A clash refused again over the same rows past the window is written into the file that
+already holds it (its ``refused_at`` refreshed), so a stuck id costs one send per window and still leaves one
+refused file and one report. A refusal for any other cause, and corrected rows under the same id, are still
+sent, because their cause can have gone.
 
 A retry of a row whose first attempt got no answer (queued, or timed out) reuses that attempt's request id
 and rows, so the serve answers ``duplicate`` instead of appending or acknowledging the row a second time.
@@ -122,9 +124,14 @@ def pending_count(state_dir: Path) -> int:
 
 
 def _refused_at(path: Path, body: dict[str, object]) -> datetime | None:
-    """When the refusal was stored: its ``refused_at`` cell, else the queue stamp in the file name."""
-    stamp = body.get("refused_at")
-    if isinstance(stamp, str):
+    """When the refusal was stored: its ``refused_at`` cell, else the queue stamp in the file name.
+
+    A ``refused_at`` cell that is present but not an ISO stamp reads as unknown (None), never as the queue stamp.
+    """
+    if "refused_at" in body:
+        stamp = body["refused_at"]
+        if not isinstance(stamp, str):
+            return None
         try:
             moment = datetime.fromisoformat(stamp)
         except ValueError:
@@ -134,6 +141,33 @@ def _refused_at(path: Path, body: dict[str, object]) -> datetime | None:
         return datetime.fromtimestamp(int(path.stem.split("_", 1)[0]) / 1e9, tz=UTC)
     except (ValueError, IndexError, OverflowError, OSError):
         return None
+
+
+def _stored_clash_files(
+    state_dir: Path, request: ModelWorkLedgerAppendRequest
+) -> list[tuple[Path, dict[str, object], ModelWorkLedgerAppendReceipt]]:
+    """The refused files of this request id that hold these rows and a request-id clash refusal, oldest first.
+
+    A file that cannot be read, holds no JSON object or no valid refusal, or whose refusal is any other cause
+    is left out.
+    """
+    directory = outbox_dir(state_dir) / REFUSED_DIRNAME
+    found: list[tuple[Path, dict[str, object], ModelWorkLedgerAppendReceipt]] = []
+    if not directory.is_dir():
+        return found
+    for path in sorted(directory.glob(f"*_{request.request_id}.json")):
+        try:
+            body = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(body, dict) or body.get("rows") != request.rows:
+                continue
+            stored = ModelWorkLedgerAppendReceipt.model_validate(body["refusal"])
+        except (OSError, ValueError, KeyError, TypeError):
+            continue
+        if stored.status is EnumWorkLedgerAppendStatus.REFUSED and (
+            CLASH_MARK in stored.message
+        ):
+            found.append((path, body, stored))
+    return found
 
 
 def stored_refusal(
@@ -146,28 +180,41 @@ def stored_refusal(
 
     Only a request-id clash is final while the ledger holds the other rows; any other refusal (a guard whose
     cause may be gone) is not reused. A refusal older than ``REUSE_WINDOW`` is not reused either: the ledger
-    can have rolled the other rows away since. A file that cannot be read, or holds no JSON object, is left out.
+    can have rolled the other rows away since. A stamp that is unknown or after ``now`` reads as expired. A
+    file that cannot be read, or holds no JSON object, is left out.
     """
-    directory = outbox_dir(state_dir) / REFUSED_DIRNAME
-    if not directory.is_dir():
-        return None
     moment = now if now is not None else datetime.now(UTC)
-    for path in sorted(directory.glob(f"*_{request.request_id}.json")):
-        try:
-            body = json.loads(path.read_text(encoding="utf-8"))
-            if not isinstance(body, dict) or body.get("rows") != request.rows:
-                continue
-            stored = ModelWorkLedgerAppendReceipt.model_validate(body["refusal"])
-        except (OSError, ValueError, KeyError, TypeError):
-            continue
+    for path, body, stored in _stored_clash_files(state_dir, request):
         stored_at = _refused_at(path, body)
-        if stored_at is None or moment - stored_at > REUSE_WINDOW:
+        if stored_at is None or stored_at > moment or moment - stored_at > REUSE_WINDOW:
             continue
-        if stored.status is EnumWorkLedgerAppendStatus.REFUSED and (
-            CLASH_MARK in stored.message
-        ):
-            return stored
+        return stored
     return None
+
+
+def _refresh_stored_clash(
+    state_dir: Path,
+    request: ModelWorkLedgerAppendRequest,
+    receipt: ModelWorkLedgerAppendReceipt,
+) -> bool:
+    """Write a repeated clash refusal over the same rows into the file that already holds it.
+
+    The id is still refused for the same rows, so the answer is the stored one again: the receipt and
+    ``refused_at`` are refreshed in that file (its ``reported_at`` stays), the reuse window restarts, and no
+    second file is written. Returns False when there is no such file, or the new refusal is not a clash.
+    """
+    if CLASH_MARK not in receipt.message:
+        return False
+    stored = _stored_clash_files(state_dir, request)
+    if not stored:
+        return False
+    path, body, _receipt = stored[-1]
+    body["refusal"] = receipt.model_dump(mode="json")
+    body["refused_at"] = datetime.now(UTC).isoformat()
+    tmp = path.with_name(f".{path.name}.tmp")
+    tmp.write_text(json.dumps(body, sort_keys=True), "utf-8")
+    tmp.replace(path)
+    return True
 
 
 async def drain(state_dir: Path, send: Sender, *, limit: int = 50) -> DrainResult:
@@ -204,14 +251,15 @@ async def drain(state_dir: Path, send: Sender, *, limit: int = 50) -> DrainResul
             elif receipt.status is EnumWorkLedgerAppendStatus.DUPLICATE:
                 duplicates += 1
             elif receipt.status is EnumWorkLedgerAppendStatus.REFUSED:
-                target = directory / REFUSED_DIRNAME
-                target.mkdir(exist_ok=True)
-                body = json.loads(path.read_text(encoding="utf-8"))
-                body["refusal"] = receipt.model_dump(mode="json")
-                body["refused_at"] = datetime.now(UTC).isoformat()
-                (target / path.name).write_text(
-                    json.dumps(body, sort_keys=True), "utf-8"
-                )
+                if not _refresh_stored_clash(state_dir, request, receipt):
+                    target = directory / REFUSED_DIRNAME
+                    target.mkdir(exist_ok=True)
+                    body = json.loads(path.read_text(encoding="utf-8"))
+                    body["refusal"] = receipt.model_dump(mode="json")
+                    body["refused_at"] = datetime.now(UTC).isoformat()
+                    (target / path.name).write_text(
+                        json.dumps(body, sort_keys=True), "utf-8"
+                    )
                 refused += 1
             else:
                 stopped = (

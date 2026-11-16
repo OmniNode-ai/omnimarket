@@ -541,3 +541,222 @@ async def test_outbox_reuse_through_the_wired_caller_raises_no_occurrence(
     assert len(calls) == 1
     assert len(emitted) == 1
     assert len(_open_refused_rows(state)) == 1
+
+
+def _age_refused_file(state_dir: Path, *, age: timedelta) -> Path:
+    """Stamp the one refused file as written ``age`` ago, the way a roll-aged refusal reads."""
+    (path,) = _refused_files(state_dir)
+    body = json.loads(path.read_text(encoding="utf-8"))
+    body["refused_at"] = (datetime.now(UTC) - age).isoformat()
+    path.write_text(json.dumps(body, sort_keys=True), encoding="utf-8")
+    return path
+
+
+async def test_outbox_refused_window_repeat_clash_refreshes_the_one_file(
+    tmp_path: Path, handler: HandlerWorkLedgerAppendEffect, ledger: _FakeLedger
+) -> None:
+    """Past the window, with the id still in the ledger, the replay is sent again and leaves one refused file.
+
+    The clash is refused again over the same rows, so the stored file's ``refused_at`` is refreshed in place:
+    no second file is written, the writer is not told a second time, and the reuse window restarts.
+    """
+    handler.handle(_request("the row that landed first"), writer_principal=WRITER)
+    queued = _request("a different row under the same request id")
+    outbox.queue_request(tmp_path, queued)
+    send, calls = _counting_sender(handler)
+    await outbox.drain(tmp_path, send)
+    assert recovery.report_refused_to_writers(tmp_path, datetime.now(UTC)) == 1
+
+    aged = _age_refused_file(tmp_path, age=outbox.REUSE_WINDOW + timedelta(minutes=1))
+    aged_at = datetime.fromisoformat(str(_refused_body(tmp_path)["refused_at"]))
+    outbox.queue_request(tmp_path, queued)
+    result = await outbox.drain(tmp_path, send)
+
+    assert len(calls) == 2
+    assert result.refused == 1
+    assert _refused_files(tmp_path) == [aged]
+    body = _refused_body(tmp_path)
+    assert datetime.fromisoformat(str(body["refused_at"])) > aged_at
+    assert body["reported_at"]
+    assert recovery.report_refused_to_writers(tmp_path, datetime.now(UTC)) == 0
+    assert len(_open_refused_rows(tmp_path)) == 1
+
+    outbox.queue_request(tmp_path, queued)
+    await outbox.drain(tmp_path, send)
+    assert len(calls) == 2
+
+
+async def test_outbox_refused_window_pre_change_file_is_refreshed_not_duplicated(
+    tmp_path: Path, handler: HandlerWorkLedgerAppendEffect, ledger: _FakeLedger
+) -> None:
+    """A refused file from before the change has no ``refused_at``; its queue stamp is old, so the replay is
+    sent once, and the refusal that comes back is written into that file, not into a second one."""
+    handler.handle(_request("the row that landed first"), writer_principal=WRITER)
+    queued = _request("a different row under the same request id")
+    outbox.queue_request(tmp_path, queued)
+    send, calls = _counting_sender(handler)
+    await outbox.drain(tmp_path, send)
+    assert recovery.report_refused_to_writers(tmp_path, datetime.now(UTC)) == 1
+
+    (path,) = _refused_files(tmp_path)
+    body = json.loads(path.read_text(encoding="utf-8"))
+    del body["refused_at"]
+    old = path.with_name(f"00000000000000000001_{queued.request_id}.json")
+    path.unlink()
+    old.write_text(json.dumps(body, sort_keys=True), encoding="utf-8")
+
+    outbox.queue_request(tmp_path, queued)
+    await outbox.drain(tmp_path, send)
+    assert len(calls) == 2
+    assert _refused_files(tmp_path) == [old]
+    assert _refused_body(tmp_path)["refused_at"]
+    assert recovery.report_refused_to_writers(tmp_path, datetime.now(UTC)) == 0
+    assert len(_open_refused_rows(tmp_path)) == 1
+
+
+async def test_outbox_refused_window_changed_rows_still_write_their_own_file(
+    tmp_path: Path, handler: HandlerWorkLedgerAppendEffect, ledger: _FakeLedger
+) -> None:
+    """Only a repeat over the same rows is refreshed in place; other rows under the id are a new refusal."""
+    handler.handle(_request("the row that landed first"), writer_principal=WRITER)
+    outbox.queue_request(
+        tmp_path, _request("a different row under the same request id")
+    )
+    send, _calls = _counting_sender(handler)
+    await outbox.drain(tmp_path, send)
+
+    outbox.queue_request(
+        tmp_path, _request("yet another row under the same request id")
+    )
+    await outbox.drain(tmp_path, send)
+    assert len(_refused_files(tmp_path)) == 2
+
+
+async def _stored_with_refused_at(
+    tmp_path: Path,
+    handler: HandlerWorkLedgerAppendEffect,
+    stamp: object,
+) -> tuple[ModelWorkLedgerAppendRequest, Path]:
+    handler.handle(_request("the row that landed first"), writer_principal=WRITER)
+    queued = _request("a different row under the same request id")
+    outbox.queue_request(tmp_path, queued)
+    send, _calls = _counting_sender(handler)
+    await outbox.drain(tmp_path, send)
+    (path,) = _refused_files(tmp_path)
+    body = json.loads(path.read_text(encoding="utf-8"))
+    body["refused_at"] = stamp
+    path.write_text(json.dumps(body, sort_keys=True), encoding="utf-8")
+    return queued, path
+
+
+async def test_outbox_refused_at_in_the_future_is_expired(
+    tmp_path: Path, handler: HandlerWorkLedgerAppendEffect, ledger: _FakeLedger
+) -> None:
+    """A stamp after the clock reads as expired, not as fresh for the whole window and then some."""
+    future = (datetime.now(UTC) + timedelta(days=2)).isoformat()
+    queued, _path = await _stored_with_refused_at(tmp_path, handler, future)
+    assert outbox.stored_refusal(tmp_path, queued) is None
+
+    send, calls = _counting_sender(handler)
+    outbox.queue_request(tmp_path, queued)
+    await outbox.drain(tmp_path, send)
+    assert len(calls) == 1
+    assert len(_refused_files(tmp_path)) == 1
+    assert datetime.fromisoformat(str(_refused_body(tmp_path)["refused_at"])) <= (
+        datetime.now(UTC)
+    )
+
+
+@pytest.mark.parametrize("stamp", ["not a date", "", None, 7, ["x"]])
+async def test_outbox_refused_at_unparsable_is_expired(
+    tmp_path: Path,
+    handler: HandlerWorkLedgerAppendEffect,
+    ledger: _FakeLedger,
+    stamp: object,
+) -> None:
+    """A stamp that is present but unusable is expired; it does not fall back to a fresh queue stamp."""
+    queued, _path = await _stored_with_refused_at(tmp_path, handler, stamp)
+    assert outbox.stored_refusal(tmp_path, queued) is None
+
+
+async def test_outbox_refused_at_naive_is_read_as_utc(
+    tmp_path: Path, handler: HandlerWorkLedgerAppendEffect, ledger: _FakeLedger
+) -> None:
+    """A stamp with no zone is a UTC stamp: a recent one is reused, one past the window is not."""
+    recent = datetime.now(UTC).replace(tzinfo=None).isoformat()
+    queued, path = await _stored_with_refused_at(tmp_path, handler, recent)
+    assert outbox.stored_refusal(tmp_path, queued) is not None
+
+    body = json.loads(path.read_text(encoding="utf-8"))
+    body["refused_at"] = (
+        (datetime.now(UTC) - outbox.REUSE_WINDOW - timedelta(minutes=1))
+        .replace(tzinfo=None)
+        .isoformat()
+    )
+    path.write_text(json.dumps(body, sort_keys=True), encoding="utf-8")
+    assert outbox.stored_refusal(tmp_path, queued) is None
+
+
+async def _replay_through_select(
+    workspace: Path, state: Path, send: outbox.Sender
+) -> outbox.DrainResult:
+    switch = _Switch()
+    switch.up = True
+    async with select.open_bound_bus(
+        bus="kafka",
+        lane=LANE,
+        kafka_bootstrap=None,
+        workspace_root=workspace,
+        state_dir=state,
+        open_bus=switch,
+        announce=lambda _: None,
+        pending_outbox=lambda: outbox.pending_count(state),
+    ) as bound:
+        return await select.replay_outbox(bound, state, send)
+
+
+@pytest.mark.parametrize(
+    ("corrupt", "reported"),
+    [
+        ("[]", 0),
+        ("null", 0),
+        ('"text"', 0),
+        ("7", 0),
+        ("{not json", 0),
+        ('{"refusal": "text", "rows": "a row"}', 1),
+        ('{"refusal": ["x"], "rows": ["a row"], "requested_by_lane": 3}', 1),
+    ],
+)
+async def test_outbox_corrupt_refused_file_replay_through_select_survives(
+    workspace: Path,
+    tmp_path: Path,
+    handler: HandlerWorkLedgerAppendEffect,
+    ledger: _FakeLedger,
+    corrupt: str,
+    reported: int,
+) -> None:
+    """select.replay_outbox, the caller the CLI runs, survives a corrupt file in refused/ and leaves its text alone.
+
+    The replay drains (the lookup leaves the file out) and then reports from the files in refused/
+    (report_refused_to_writers), so both readers meet the file. A file that is not a JSON object is skipped by
+    the report; an object whose refusal is not an object is reported with unreadable evidence, not raised on.
+    """
+    state = tmp_path / "state"
+    queued = _request("a row whose refused file is corrupt")
+    outbox.queue_request(state, queued)
+    refused = outbox.outbox_dir(state) / outbox.REFUSED_DIRNAME
+    refused.mkdir()
+    bad = refused / f"00000000000000000001_{queued.request_id}.json"
+    bad.write_text(corrupt, encoding="utf-8")
+    send, calls = _counting_sender(handler)
+
+    result = await _replay_through_select(workspace, state, send)
+
+    assert len(calls) == 1
+    assert (result.replayed, result.stopped) == (1, None)
+    assert len(_open_refused_rows(state)) == reported
+    if not reported:
+        assert bad.read_text(encoding="utf-8") == corrupt
+    else:
+        assert "unreadable" in str(_open_refused_rows(state)[0]["evidence"])
+    assert recovery.report_refused_to_writers(state, datetime.now(UTC)) == 0

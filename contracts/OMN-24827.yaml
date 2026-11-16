@@ -7,7 +7,7 @@ interface_change: false
 interfaces_touched: []
 requirements:
 - id: req-omn24827-bound-tests-fail-at-base
-  statement: The bound tests of the outbox reuse contract fail at the merge base and pass at the pushed head.
+  statement: The bound tests of the outbox reuse contract that name the new lookup or the reuse fail at the merge base and pass at the pushed head; the still-sent preservation tests pass at both.
   acceptance:
   - id: AC1
     statement: 'AC1: each bound selection of the outbox reuse contract exits non-zero against the merge-base outbox module and zero at the pushed head -- falsifier: uv run pytest tests/handlers/bus_binding/test_outbox_refused_receipt_reuse.py -q --no-cov -k "stored_refusal_lookup or no_new_report" exits zero with the merge-base outbox module loaded'
