@@ -36,7 +36,7 @@ dod_evidence:
     check_value: uv run pytest tests/handlers/bus_binding/test_outbox_refused_receipt_reuse.py -q --no-cov -p no:cacheprovider -k reuses_stored
     cwd: .
 - id: dod-omn24250-ac2
-  description: 'AC2: a guard refusal is sent again on the next drain, corrected rows under a refused id are sent again, and the stored-refusal lookup reuses only a clash refusal over the same rows (the lookup test fails at the merge base, which has no such lookup).'
+  description: 'AC2 is a preservation criterion: a guard refusal is sent again on the next drain, corrected rows under a refused id are sent again, and the stored-refusal lookup reuses only a clash refusal over the same rows. The two behavioural still-sent tests also pass at the merge base, which sent every replay, and can fail at the head; only the stored-refusal lookup test fails at the merge base, because it has no such lookup.'
   source: manual
   binds_ac:
   - AC2

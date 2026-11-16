@@ -12,8 +12,11 @@ leaves the file for the next one. One drain at a time (an fcntl lock).
 
 A request id the ledger host refused as a clash (the id already belongs to other rows) is refused again on every
 replay with the same words, so a replay of the same rows under that id is answered from the stored refusal and
-never sent: it adds no second file to ``refused/`` and no second report for the writer (OMN-24250). A refusal
-for any other cause, and corrected rows under the same id, are still sent, because their cause can have gone.
+never sent: it adds no second file to ``refused/`` and no second report for the writer (OMN-24250). Each reuse
+is logged. The reuse is bounded by age (``REUSE_WINDOW``): the append handler reads only the live ledger file,
+so once the ledger rolls the other rows to an archive the id is unknown to it, and a replay it would now
+accept must be sent. A refusal for any other cause, and corrected rows under the same id, are still sent,
+because their cause can have gone.
 
 A retry of a row whose first attempt got no answer (queued, or timed out) reuses that attempt's request id
 and rows, so the serve answers ``duplicate`` instead of appending or acknowledging the row a second time.
@@ -24,12 +27,13 @@ from __future__ import annotations
 import fcntl
 import hashlib
 import json
+import logging
 import os
 import re
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID
 
@@ -40,6 +44,8 @@ from omnimarket.models.work_ledger_append import (
     ModelWorkLedgerAppendRequest,
 )
 
+logger = logging.getLogger(__name__)
+
 OUTBOX_DIRNAME = "work-ledger-outbox"
 REFUSED_DIRNAME = "refused"
 DRAIN_LOCK_NAME = ".drain.lock"
@@ -49,6 +55,9 @@ ATTEMPTS_DIRNAME = "attempts"
 CLASH_MARK = "already belongs to different rows or principal"
 # A retry follows its first attempt within minutes; past this the same words are a new row.
 RETRY_WINDOW = timedelta(minutes=30)
+# A stored clash refusal is reused for this long after it was written. The append handler reads only the live
+# ledger file, so after a roll to archive it no longer sees the id; past the window the replay is sent again.
+REUSE_WINDOW = timedelta(hours=6)
 _REQ_CELL = re.compile(r" \| req=[0-9a-fA-F-]{36}(?= \||$)")
 _ROW_STAMP = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", re.MULTILINE)
 
@@ -112,24 +121,47 @@ def pending_count(state_dir: Path) -> int:
     return len(pending(state_dir))
 
 
+def _refused_at(path: Path, body: dict[str, object]) -> datetime | None:
+    """When the refusal was stored: its ``refused_at`` cell, else the queue stamp in the file name."""
+    stamp = body.get("refused_at")
+    if isinstance(stamp, str):
+        try:
+            moment = datetime.fromisoformat(stamp)
+        except ValueError:
+            return None
+        return moment if moment.tzinfo else moment.replace(tzinfo=UTC)
+    try:
+        return datetime.fromtimestamp(int(path.stem.split("_", 1)[0]) / 1e9, tz=UTC)
+    except (ValueError, IndexError, OverflowError, OSError):
+        return None
+
+
 def stored_refusal(
-    state_dir: Path, request: ModelWorkLedgerAppendRequest
+    state_dir: Path,
+    request: ModelWorkLedgerAppendRequest,
+    *,
+    now: datetime | None = None,
 ) -> ModelWorkLedgerAppendReceipt | None:
     """The clash refusal already kept for this request id and these rows, else None.
 
     Only a request-id clash is final while the ledger holds the other rows; any other refusal (a guard whose
-    cause may be gone) is not reused. A file that cannot be read is left out.
+    cause may be gone) is not reused. A refusal older than ``REUSE_WINDOW`` is not reused either: the ledger
+    can have rolled the other rows away since. A file that cannot be read, or holds no JSON object, is left out.
     """
     directory = outbox_dir(state_dir) / REFUSED_DIRNAME
     if not directory.is_dir():
         return None
+    moment = now if now is not None else datetime.now(UTC)
     for path in sorted(directory.glob(f"*_{request.request_id}.json")):
         try:
             body = json.loads(path.read_text(encoding="utf-8"))
-            if body.get("rows") != request.rows:
+            if not isinstance(body, dict) or body.get("rows") != request.rows:
                 continue
             stored = ModelWorkLedgerAppendReceipt.model_validate(body["refusal"])
         except (OSError, ValueError, KeyError, TypeError):
+            continue
+        stored_at = _refused_at(path, body)
+        if stored_at is None or moment - stored_at > REUSE_WINDOW:
             continue
         if stored.status is EnumWorkLedgerAppendStatus.REFUSED and (
             CLASH_MARK in stored.message
@@ -154,6 +186,10 @@ async def drain(state_dir: Path, send: Sender, *, limit: int = 50) -> DrainResul
         stopped: str | None = None
         for path, request in pending(state_dir)[:limit]:
             if stored_refusal(state_dir, request) is not None:
+                logger.info(
+                    "outbox reuse: request %s answered from its stored clash refusal, not sent",
+                    request.request_id,
+                )
                 refused += 1
                 settle(state_dir, request.request_id)
                 path.unlink(missing_ok=True)
@@ -172,6 +208,7 @@ async def drain(state_dir: Path, send: Sender, *, limit: int = 50) -> DrainResul
                 target.mkdir(exist_ok=True)
                 body = json.loads(path.read_text(encoding="utf-8"))
                 body["refusal"] = receipt.model_dump(mode="json")
+                body["refused_at"] = datetime.now(UTC).isoformat()
                 (target / path.name).write_text(
                     json.dumps(body, sort_keys=True), "utf-8"
                 )

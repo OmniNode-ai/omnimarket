@@ -10,7 +10,7 @@ requirements:
   statement: The bound tests of the outbox reuse contract fail at the merge base and pass at the pushed head.
   acceptance:
   - id: AC1
-    statement: 'AC1: every bound test of the outbox reuse contract fails against the merge-base outbox module and passes at the pushed head -- falsifier: uv run pytest tests/handlers/bus_binding/test_outbox_refused_receipt_reuse.py -q -k "still_sent or no_new_report" exits non-zero with the merge-base outbox module loaded'
+    statement: 'AC1: each bound selection of the outbox reuse contract exits non-zero against the merge-base outbox module and zero at the pushed head -- falsifier: uv run pytest tests/handlers/bus_binding/test_outbox_refused_receipt_reuse.py -q --no-cov -k "stored_refusal_lookup or no_new_report" exits zero with the merge-base outbox module loaded'
 evidence_requirements:
 - kind: tests
   description: The two new outbox tests pass at the pushed head and fail with the merge-base outbox module loaded.
