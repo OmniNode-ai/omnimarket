@@ -73,7 +73,7 @@ def test_run_duration_definition_is_served(tmp_path: Path) -> None:
     """R1."""
     assert _served_run_duration(tmp_path) == {
         "column": "execution_ms",
-        "label": "Run time",
+        "label": "Duration",
         "definition": RUN_DURATION_DEFINITION,
     }
 

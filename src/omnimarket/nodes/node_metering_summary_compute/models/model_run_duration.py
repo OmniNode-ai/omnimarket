@@ -4,7 +4,7 @@
 
 The audit found the Runs table and the run detail's Duration showing latency_ms (the provider call) while the
 detail's Execution tile showed execution_ms (the whole run). The backend names one: execution_ms, the time the
-handler spent on the run from pickup to its terminal event. A page reads the column, label and definition from the
+handler spent on the run from pickup to its terminal event, labelled Duration. A page reads the column, label and definition from the
 metering summary and shows that column wherever it shows a run's duration; latency_ms stays the model call time.
 """
 
@@ -15,7 +15,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict
 
 RUN_DURATION_COLUMN: Literal["execution_ms"] = "execution_ms"
-RUN_DURATION_LABEL = "Run time"
+RUN_DURATION_LABEL = "Duration"
 RUN_DURATION_DEFINITION = (
     "Milliseconds the handler spent on the run, from pickup to its terminal event. "
     "Absent means not measured."
