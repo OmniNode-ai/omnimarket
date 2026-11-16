@@ -10,6 +10,10 @@ the baseline and writes no row. Only a key's display name is ever written, never
 reference, its value or a provider message. A run in which no key gave a reading (no key bound,
 or every call failed for a reason that says nothing about a key) is a failed run, never a quiet one.
 Rows go through the ledger command the host units already carry (``ONEX_LEDGER_COMMAND``).
+
+The probe's token budget and prompt are declared in the node contract's ``config.probe`` and
+read from it (OMN-24727); the per-key read is the gateway's bus-free ``ReviewKeyProbe``, so no
+gateway and no event bus is built here.
 """
 
 from __future__ import annotations
@@ -18,34 +22,48 @@ import asyncio
 import json
 import os
 import shlex
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal, cast
+from typing import Any, Literal, cast
 
 import click
 from pydantic import ValidationError
 
+from omnimarket.handlers.handler_packaged_contract_loader import (
+    load_packaged_contract_section,
+)
 from omnimarket.inference.local_byok_credential_adapter import LocalByokCredentialStore
 from omnimarket.nodes.node_friction_rollup_tick_effect.protocols.protocol_ledger_appender import (
     ProtocolLedgerAppender,
     SubprocessLedgerAppender,
 )
+from omnimarket.nodes.node_review_key_credit_probe_effect.models.model_review_key_credit_probe import (
+    ModelReviewKeyCreditProbeRequest,
+    ModelReviewKeyCreditProbeResult,
+    ModelReviewKeyProbeConfig,
+)
 
-PROBE_PAYLOAD: dict[str, object] = {
-    "messages": [{"role": "user", "content": "Reply with the single word OK."}],
-    "max_tokens": 1,
-}
+_NODE_NAME = "node_review_key_credit_probe_effect"
 _STATE_FILE = "key-states.json"
 LEDGER_COMMAND_VARIABLE = "ONEX_LEDGER_COMMAND"
 _APPEND_TIMEOUT_SECONDS = 60
 
 
-class _ProbeDiscardBus:
-    """A bus that drops key-state events: the probe writes its own alarm rows."""
+def load_probe_config() -> ModelReviewKeyProbeConfig:
+    """The probe's request as the node contract declares it (``config.probe``)."""
+    config = load_packaged_contract_section(_NODE_NAME, "config")
+    if not isinstance(config, Mapping):
+        raise ValueError(f"{_NODE_NAME}: contract config must be a mapping")
+    return ModelReviewKeyProbeConfig.model_validate(config["probe"])
 
-    async def publish(self, topic: str, key: bytes | None, value: bytes) -> object:
-        return None
+
+def probe_payload(config: ModelReviewKeyProbeConfig) -> dict[str, Any]:
+    """The chat payload one probe call carries, its token budget taken from the config."""
+    return {
+        "messages": [{"role": "user", "content": config.prompt}],
+        "max_tokens": config.max_tokens,
+    }
 
 
 def _safe(text: str) -> str:
@@ -161,6 +179,67 @@ def record(
     return changed
 
 
+class HandlerReviewKeyCreditProbe:
+    """Probe each review key bound to the host, then ledger the keys whose state flipped."""
+
+    def __init__(
+        self,
+        *,
+        catalog: Any,
+        key_values: Any,
+        call: Any,
+        endpoint_url: str,
+        config: ModelReviewKeyProbeConfig,
+        appender: ProtocolLedgerAppender | None = None,
+        clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+    ) -> None:
+        self._catalog = catalog
+        self._key_values = key_values
+        self._call = call
+        self._endpoint_url = endpoint_url
+        self._config = config
+        self._appender = appender
+        self._clock = clock
+
+    async def handle(
+        self, request: ModelReviewKeyCreditProbeRequest
+    ) -> ModelReviewKeyCreditProbeResult:
+        from omnimarket.nodes.node_claude_review_gateway_effect.handlers.handler_claude_review_gateway import (
+            ReviewKeyProbe,
+        )
+        from omnimarket.nodes.node_claude_review_gateway_effect.models.model_claude_review_gateway import (
+            ModelClaudeReviewGatewayRequest,
+        )
+
+        probe = ReviewKeyProbe(
+            ModelClaudeReviewGatewayRequest(
+                host=request.host,
+                tenant_id=request.tenant_id,
+                model=request.model,
+                cloud_refused_repositories=("none",),
+                thinking_mode=request.thinking_mode,
+            ),
+            catalog=self._catalog,
+            key_values=self._key_values,
+            call=self._call,
+            endpoint_url=self._endpoint_url,
+            clock=self._clock,
+        )
+        states = await probe.probe_keys(probe_payload(self._config))
+        changed = record(
+            states,
+            state_dir=request.state_dir,
+            ledger=request.ledger,
+            host=request.host,
+            model=request.model,
+            appender=self._appender,
+            clock=self._clock,
+        )
+        return ModelReviewKeyCreditProbeResult(
+            states=tuple(states), flips_written=len(changed)
+        )
+
+
 def review_key_probe_command(
     *,
     resolve_host: Callable[[str | None], str | None],
@@ -169,7 +248,7 @@ def review_key_probe_command(
     """The ``models review-gateway-key-probe`` command, the body of the standing probe (OMN-24658).
 
     The CLI owns how this machine's lab host row and credential store are found and passes
-    them in; the gateway, the provider backend and the ledger writer are imported on call.
+    them in; the provider backend, the call effect and the ledger writer are imported on call.
     """
 
     @click.command("review-gateway-key-probe")
@@ -212,11 +291,6 @@ def review_key_probe_command(
         )
         from omnimarket.nodes.node_claude_review_gateway_effect.handlers.handler_claude_review_gateway import (
             GATEWAY_PLAN,
-            ClaudeReviewGateway,
-        )
-        from omnimarket.nodes.node_claude_review_gateway_effect.models.model_claude_review_gateway import (
-            ModelClaudeReviewGatewayRequest,
-            ModelReviewGatewayOverlay,
         )
         from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_llm_delegation_call import (
             HandlerLlmDelegationCall,
@@ -233,38 +307,35 @@ def review_key_probe_command(
             )
         store = key_store()
         try:
-            gateway = ClaudeReviewGateway(
-                ModelClaudeReviewGatewayRequest(
-                    host=bound_host,
-                    tenant_id=tenant,
-                    model=model_option,
-                    cloud_refused_repositories=("none",),
-                    thinking_mode=cast(Literal["disabled", "adaptive"], thinking_mode),
-                ),
+            handler = HandlerReviewKeyCreditProbe(
                 catalog=SqliteDatabaseAdapter(store.db_path),
                 key_values=store,
                 call=HandlerLlmDelegationCall(),
                 endpoint_url=backend.endpoint_url,
-                overlay=ModelReviewGatewayOverlay(key_set_aside_ttl_seconds=1),
-                event_bus=_ProbeDiscardBus(),
+                config=load_probe_config(),
+            )
+            result = asyncio.run(
+                handler.handle(
+                    ModelReviewKeyCreditProbeRequest(
+                        host=bound_host,
+                        tenant_id=tenant,
+                        model=model_option,
+                        thinking_mode=cast(
+                            Literal["disabled", "adaptive"], thinking_mode
+                        ),
+                        state_dir=state_dir,
+                        ledger=ledger,
+                    )
+                )
             )
         except (ValidationError, ValueError) as exc:
             raise click.ClickException(
                 f"review-gateway-key-probe refused: {exc}"
             ) from None
-        states = asyncio.run(gateway.probe_keys(PROBE_PAYLOAD))
-        for name, state in states:
-            click.echo(f"review-key-probe: {name} {state}")
-        try:
-            changed = record(
-                states,
-                state_dir=state_dir,
-                ledger=ledger,
-                host=bound_host,
-                model=model_option,
-            )
         except RuntimeError as exc:
             raise click.ClickException(str(exc)) from None
-        click.echo(f"review-key-probe: {len(changed)} flip(s) written")
+        for name, state in result.states:
+            click.echo(f"review-key-probe: {name} {state}")
+        click.echo(f"review-key-probe: {result.flips_written} flip(s) written")
 
     return probe
