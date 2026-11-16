@@ -44,12 +44,19 @@ dod_evidence:
       - check_type: command
         check_value: uv lock --check
         cwd: .
+  - id: dod-omn24911-ac2-floor-held
+    description: AC2. The floor the hold comment argues about is the one the floors test pins. The published omnibase-infra pin the comment cites is read by dod-omn24911-ac2-published-infra-pin, which is scoped local_done_gate and so cannot carry binds_ac.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly -k floors_agree
+        cwd: .
   - id: dod-omn24911-ac2-published-infra-pin
     description: AC2. The newest published omnibase-infra pins an omnibase-spi release the 0.23.15 floor excludes, read from the package index.
     source: manual
     execution_scope: local_done_gate
-    binds_ac:
-      - AC2
     checks:
       - check_type: command
         check_value: curl -fsS https://pypi.org/pypi/omnibase-infra/json | python3 -I -c 'import json,sys; r=json.load(sys.stdin)["info"]["requires_dist"]; assert any(x.startswith("omnibase-spi==") for x in r), r; print([x for x in r if "omnibase-spi" in x])'
@@ -60,6 +67,9 @@ dod_evidence:
     binds_ac:
       - AC3
     checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly -k floors_agree
+        cwd: .
       - check_type: command
         check_value: git merge-base --is-ancestor origin/dev HEAD && grep -q 'git merge-base --is-ancestor origin/dev HEAD' contracts/OMN-24829.yaml
         cwd: .
@@ -78,6 +88,9 @@ dod_evidence:
     binds_ac:
       - AC5
     checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
       - check_type: command
         check_value: test -z "$(grep -n -E 'lock names 0.23.14|moves the omnibase-spi dev merge tag|re-pinned' contracts/OMN-23518.yaml)"
         cwd: .
@@ -87,6 +100,9 @@ dod_evidence:
     binds_ac:
       - AC6
     checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly -k floors_agree
+        cwd: .
       - check_type: command
         check_value: grep -q 'dod-omn24829-ac3-shared-status-rows' contracts/OMN-24829.yaml && test -z "$(grep -n 'floors_agree' contracts/OMN-24829.yaml)"
         cwd: .
