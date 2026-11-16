@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import importlib
 import json
 from datetime import UTC, datetime, timedelta
 from enum import Enum
@@ -28,7 +29,24 @@ from omnimarket.nodes.node_host_installer_registry_units.handlers.handler_regist
     HandlerRegistryUnits,
     load_units,
 )
+from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
+    stamp_request_cell,
+)
 from omnimarket.nodes.node_reading_writer_effect.protocols import ModelAppendOutcome
+from omnimarket.nodes.node_runtime_sweep.__main__ import _probe_entry_point
+from omnimarket.nodes.node_work_ledger_append_effect import (
+    EnumWorkLedgerAppendStatus,
+    HandlerWorkLedgerAppendEffect,
+    ModelWorkLedgerAppendRequest,
+)
+from omnimarket.nodes.node_work_ledger_append_effect.adapters import (
+    InMemoryBusLedgerStore,
+)
+from omnimarket.nodes.node_work_ledger_append_effect.handlers import LedgerFlipFence
+from omnimarket.nodes.node_work_ledger_append_effect.protocols import (
+    LocalLedgerFile,
+    ModelAppendCommandResult,
+)
 from tests.nodes.node_host_installer_registry_units.test_registry_units import request
 
 _NOW = datetime(2026, 11, 16, 15, 0, tzinfo=UTC)
@@ -360,3 +378,105 @@ def test_the_rendered_unit_state_dir_receives_the_ticks_declared_evidence_file(
     )
     assert code in (0, 1)
     assert (home / unit["evidence_file"]).is_file()
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("scenario", "unit_key"),
+    [("R8", "scenario-r8-systemd"), ("R9", "scenario-r9-systemd")],
+)
+def test_each_max_age_is_the_start_interval_of_the_scenarios_unit_plus_a_quarter(
+    scenario: str, unit_key: str
+) -> None:
+    # The contract says "R8 21600 + 5400, R9 3600 + 900"; nothing tied those numbers to the units' start_interval until now.
+    unit = load_units()[unit_key]
+    watch = {w.scenario: w for w in load_alarm_settings().scenarios}[scenario]
+    interval = unit["schedule"]["start_interval"]
+    assert watch.max_age_seconds == interval + interval // 4
+    assert watch.unit == unit["label"]
+    assert watch.evidence_file == unit["evidence_file"]
+    # Literal pins of the two intervals, so a change to either side is a change to this line too.
+    assert interval == {"R8": 21600, "R9": 3600}[scenario]
+    assert watch.max_age_seconds == {"R8": 27000, "R9": 4500}[scenario]
+
+
+class _FileRunner:
+    """The file judge's append: writes the rows it is handed to the ledger file."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+
+    def append(self, rows: str) -> ModelAppendCommandResult:
+        with self.path.open("a", encoding="utf-8") as stream:
+            stream.write(rows + "\n")
+        return ModelAppendCommandResult(exit_code=0)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("mode", ["file", "bus"])
+def test_the_ledger_takes_the_backdated_stamp_of_an_alarm_row(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mode: str
+) -> None:
+    # An alarm row is stamped with the start of its 6-hour bucket, so it is older than the ledger's newest row by up to
+    # six hours. The real append handler, over a ledger that already holds a newer row, must still accept it.
+    _record(tmp_path, "r8", "failure", "2026-11-16T14:48:29+00:00", monkeypatch)
+    captured = _Appender()
+    _handler(captured).handle(ModelScenarioAlarmRequest(home=tmp_path, host="h053"))
+    row, request_id = captured.calls[0]
+    stamp = datetime.strptime(row.split(" | ")[0], "%Y-%m-%dT%H:%M:%SZ").replace(
+        tzinfo=UTC
+    )
+    assert _NOW - stamp > timedelta(hours=2)
+
+    ledger = tmp_path / "ledger.md"
+    ledger.write_text(
+        f"{_NOW:%Y-%m-%dT%H:%M:%SZ} | STATUS | lane=newer | principal=alarm-principal | ticket=OMN-24874 | "
+        "actor=claude:sonnet:remote-lane | model=sonnet | a row newer than the backdated alarm\n",
+        encoding="utf-8",
+    )
+    store = InMemoryBusLedgerStore()
+    handler = HandlerWorkLedgerAppendEffect(
+        _FileRunner(ledger),
+        LocalLedgerFile(ledger),
+        "ledger",
+        writer_principals=("alarm-principal",),
+        operator_principal="operator",
+        fence=LedgerFlipFence(),
+        bus_store=store,
+    )
+    if mode == "bus":
+        assert handler.flip_to_bus(drain_timeout_s=5).flipped is True
+    receipt = handler.handle(
+        ModelWorkLedgerAppendRequest(
+            request_id=UUID(request_id),
+            rows=stamp_request_cell(row, request_id),
+            requested_by_lane="delegation-scenario-alarm",
+            requesting_host="h053",
+            requested_at=_NOW,
+        ),
+        writer_principal="alarm-principal",
+    )
+    assert receipt.status is EnumWorkLedgerAppendStatus.ACCEPTED, receipt.message
+    landed = ledger.read_text(encoding="utf-8") + store.text()
+    assert "alarm=delegation-scenario-r8-failed" in landed
+
+
+@pytest.mark.unit
+def test_discovery_never_builds_the_alarm_handler_without_arguments() -> None:
+    # The runtime's wiring builds ``handler_cls()`` for a handler a contract lists under ``handler_routing``
+    # (omnibase_infra util_wiring); this handler needs its settings, appender and clock, so such a build would raise.
+    contract = yaml.safe_load(CONTRACT_PATH.read_text(encoding="utf-8"))
+    assert "handler_routing" not in contract
+    assert "event_bus" not in contract
+    assert not contract.get("subscribe_topics")
+    assert contract["descriptor"]["runtime_profiles"] == ["effects"]
+    with pytest.raises(TypeError):
+        HandlerDelegationScenarioAlarm()  # type: ignore[call-arg]
+    # The repository's own discovery (the runtime sweep's entry point probe) imports the class and never calls it.
+    module = importlib.import_module(
+        "omnimarket.nodes.node_delegation_scenario_alarm_effect"
+    )
+    probe = _probe_entry_point(
+        "node_delegation_scenario_alarm_effect", module.__name__, _REPO / "src"
+    )
+    assert probe.ok, probe.reason

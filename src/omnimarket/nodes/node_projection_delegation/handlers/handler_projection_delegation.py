@@ -53,9 +53,7 @@ from omnimarket.handlers.handler_modelled_terminal_savings import (
     apply_modelled_terminal_savings,
 )
 from omnimarket.handlers.routing.byok_provider_backends import (
-    byok_backend_provider,
-    byok_model_price_per_1m,
-    resolve_byok_backend_by_id,
+    byok_declared_price_per_1m,
 )
 from omnimarket.models.delegation.quality_bar_evidence import (
     extract_quality_bar_evidence,
@@ -371,6 +369,9 @@ class ModelProjectionTaskDelegatedEvent(BaseModel):
     answering_backend: str | None = Field(default=None)
     # OMN-20162: the backend and host of the attempt that answered.
     backend_id: str | None = Field(default=None)
+    # OMN-24874: the endpoint the terminal's answer came from (the canonical terminal's ``endpoint_url``). A real overlay
+    # terminal carries no ``backend_id`` (the canonical result has no such field); this is what prices a zero-cost one.
+    endpoint_url: str | None = Field(default=None)
     host: str | None = Field(default=None)
     # OMN-19448: the deciding terminal's stop reason and output truncation.
     finish_reason: str | None = Field(default=None)
@@ -1760,6 +1761,7 @@ def _canonical_result_to_task_delegated_payload(
         # OMN-20162: the accepting attempt's backend and host, when the
         # terminal names them; blank stays NULL, never an empty backend.
         "backend_id": _blank_to_none(payload.get("backend_id")),
+        "endpoint_url": _blank_to_none(payload.get("endpoint_url")),
         "host": _blank_to_none(payload.get("host")),
         "finish_reason": finish_reason,
         "truncated": truncated,
@@ -1863,21 +1865,16 @@ def _tenant_overlay_cost_usd(event: ModelProjectionTaskDelegatedEvent) -> float:
 
     OMN-24874: a terminal that priced the run carries it in ``cost_usd`` and that is
     kept. A terminal that arrives with ``cost_usd`` 0 (an older runtime, another
-    producer) is priced from the catalogue's declared per-1M price for the model on
-    the BYOK backend the run named, at the served tokens. A backend that is not a
-    catalogue BYOK backend, and a model the catalogue does not price, give 0.0.
+    producer) is priced from the catalogue's declared per-1M price for the endpoint
+    the terminal names and its model, at the served tokens: the same lookup the
+    workflow terminal uses. The key is what a real terminal carries, its
+    ``endpoint_url`` and ``model_used``: the canonical result has no ``backend_id``.
+    An endpoint that is not a catalogue BYOK endpoint (a house rung), and a model
+    the catalogue does not price, give 0.0.
     """
     if event.cost_usd > 0.0:
         return event.cost_usd
-    backend_id = event.backend_id
-    if not backend_id or byok_backend_provider(backend_id) is None:
-        return 0.0
-    backend = resolve_byok_backend_by_id(backend_id)
-    if backend is None:
-        return 0.0
-    declared = byok_model_price_per_1m(
-        backend_id, backend.endpoint_url, event.model_name
-    )
+    declared = byok_declared_price_per_1m(event.endpoint_url, event.model_name)
     if declared is None:
         return 0.0
     price_in, price_out = declared
@@ -1971,7 +1968,10 @@ def _measure_actual_cost(
                         - Decimal(str(tenant_overlay_cost_usd))
                     )
                 ),
-                headroom_consumed_usd=event.budget_headroom_consumed_usd,
+                # Own-key spend never draws down the platform's ceiling headroom: a
+                # ``metered`` tier type draws none (pricing.py), the workflow terminal
+                # carries none, and a headroom a producer stamped on this run is not kept.
+                headroom_consumed_usd=0.0,
                 cost_tier_type="metered",
                 cost_tier_name=event.cost_tier_name,
                 cost_measurement_source="metered",

@@ -55,18 +55,36 @@ from omnimarket.routing.tenant_overlay_resolver import TENANT_OVERLAY_TIER_NAME
 
 _GENERAL_ENDPOINT = "https://api.z.ai/api/paas/v4/chat/completions"
 _MODEL = "glm-5.3-flash"
+# Pinned literals (review finding 5), not copied from the decision at run time:
+#  * _PROBE_ENDPOINT is the endpoint_url of the probe tenant's overlay row, the catalogue's default GLM plan (the
+#    ``glm`` row of byok_provider_backends.v1.yaml); the test below pins the same string on the decision it builds.
+#  * _R8_MODEL_USED is the model_used of the R8 organic terminal: the probe tenant's newest 20 delegation rows read
+#    from h053 on 2026-11-16T15:26:39Z (ledger STATUS 2026-11-16T15:58:52Z) were all glm-5.3-flash.
+_PROBE_ENDPOINT = "https://api.z.ai/api/paas/v4/chat/completions"
+_R8_MODEL_USED = "glm-5.3-flash"
 _PROMPT_TOKENS = 300
 _COMPLETION_TOKENS = 200
 
 
+# Pinned literal (review finding 6): 300 prompt and 200 completion tokens of glm-5.3-flash on the general endpoint,
+# at the catalogue's declared per-1M prices. Not recomputed through the code's own price lookup.
+_PINNED_DECLARED_COST_USD = 0.000145
+
+
 def _declared_cost() -> float:
+    return _PINNED_DECLARED_COST_USD
+
+
+@pytest.mark.unit
+def test_the_pinned_cost_literal_is_the_catalogue_price_of_the_pinned_tokens() -> None:
+    # The one place the literal is tied to the catalogue: a catalogue price change turns this red, and the pin is then re-read.
     price = byok_declared_price_per_1m(_GENERAL_ENDPOINT, _MODEL)
     assert price is not None, "the catalogue must declare the model's price"
     price_in, price_out = price
-    return float(
+    assert float(
         (Decimal(_PROMPT_TOKENS) * price_in + Decimal(_COMPLETION_TOKENS) * price_out)
         / Decimal(1_000_000)
-    )
+    ) == pytest.approx(_PINNED_DECLARED_COST_USD)
 
 
 @pytest.mark.unit
@@ -166,7 +184,6 @@ def test_projection_still_floors_an_unpriced_unmodelled_tier_to_zero() -> None:
     assert measured.cost_measurement_source == "no_cost_model"
 
 
-_BYOK_BACKEND_ID = "byok-glm-general"
 _UNMODELLED_TIER = "a_tier_the_registry_never_declared"
 
 
@@ -178,9 +195,9 @@ def _overlay_decision() -> object:
         tenant_id="readiness-probe",
         task_type="summarization",
         backend_id=backend.backend_id,
-        endpoint_url=backend.endpoint_url,
-        model_name=_MODEL,
-        models=(_MODEL,),
+        endpoint_url=_PROBE_ENDPOINT,
+        model_name=_R8_MODEL_USED,
+        models=(_R8_MODEL_USED,),
         provider=backend.provider,
         secret_ref="tenant-credential-ref",
     )
@@ -206,7 +223,9 @@ def test_the_probe_tenant_route_endpoint_resolves_a_declared_price() -> None:
     # The probe tenant's route is minted from the catalogue's default GLM plan; its endpoint must resolve a price.
     decision = _overlay_decision()
     assert decision.tier_name == TENANT_OVERLAY_TIER_NAME  # type: ignore[attr-defined]
-    assert byok_declared_price_per_1m(decision.endpoint_url, _MODEL) is not None  # type: ignore[attr-defined]
+    assert decision.endpoint_url == _PROBE_ENDPOINT  # type: ignore[attr-defined]
+    assert decision.selected_model == _R8_MODEL_USED  # type: ignore[attr-defined]
+    assert byok_declared_price_per_1m(_PROBE_ENDPOINT, _R8_MODEL_USED) is not None
 
 
 def _terminal_inputs(
@@ -262,8 +281,8 @@ def test_the_terminal_builder_prices_a_real_tenant_overlay_decision() -> None:
     events = HandlerDelegationWorkflow()._emit_terminal(
         _terminal_inputs(
             tier_name=decision.tier_name,  # type: ignore[attr-defined]
-            endpoint_url=decision.endpoint_url,  # type: ignore[attr-defined]
-            model=decision.selected_model,  # type: ignore[attr-defined]
+            endpoint_url=_PROBE_ENDPOINT,
+            model=_R8_MODEL_USED,
         )
     )
     canonical = next(e for e in events if isinstance(e, ModelDelegationResult))
@@ -295,6 +314,7 @@ def _projection_event(
     source: str,
     model: str = _MODEL,
     backend_id: str | None = None,
+    headroom: float = 0.0,
 ) -> ModelProjectionTaskDelegatedEvent:
     return ModelProjectionTaskDelegatedEvent(
         correlation_id=str(uuid4()),
@@ -312,6 +332,7 @@ def _projection_event(
             prompt_tokens=_PROMPT_TOKENS, completion_tokens=_COMPLETION_TOKENS
         ),
         backend_id=backend_id,
+        budget_headroom_consumed_usd=headroom,
     )
 
 
@@ -341,46 +362,109 @@ def test_a_positive_cost_tenant_overlay_event_marked_no_cost_model_is_stored_met
     assert measured.cost_usd == pytest.approx(priced)
     assert measured.cost_measurement_source == "metered"
     assert measured.cost_tier_type == "metered"
-    # Own-key cost never draws down the platform's ceiling headroom (review finding 10).
+
+
+@pytest.mark.unit
+def test_headroom_on_the_event_of_a_tenant_overlay_run_is_not_stored() -> None:
+    # Own-key cost never draws down the platform's ceiling headroom. The event carries headroom above 0, so a
+    # pass-through of it (handler_projection_delegation.py, the overlay branch) turns this red; with the default 0.0
+    # on the event the same assertion could never fail (review finding 2).
+    priced = _declared_cost()
+    event = _projection_event(
+        tier=TENANT_OVERLAY_TIER_NAME,
+        cost=priced,
+        source="no_cost_model",
+        headroom=2.5,
+    )
+    assert event.budget_headroom_consumed_usd == 2.5
+    measured = _measure_actual_cost(event)
+    assert measured.cost_usd == pytest.approx(priced)
     assert measured.headroom_consumed_usd == 0.0
 
 
 @pytest.mark.unit
-def test_a_zero_cost_tenant_overlay_terminal_is_priced_from_the_declared_price_cost_usd_zero() -> (
-    None
-):
-    # omnimarket#6331's case: a terminal from an older runtime or another producer arrives with cost_usd 0 on a BYOK backend.
-    measured = _measure_actual_cost(
-        _projection_event(
-            tier=TENANT_OVERLAY_TIER_NAME,
-            cost=0.0,
-            source="no_cost_model",
-            backend_id=_BYOK_BACKEND_ID,
+def test_headroom_on_the_emit_terminal_result_of_an_overlay_run_is_not_stored() -> None:
+    # The workflow draws no headroom for a metered tier type: pricing.py books ``metered`` cash with no headroom,
+    # handler_delegation_workflow.py never names headroom, and the canonical terminal has no headroom field. So the
+    # converted terminal carries none, and a producer that stamps one anyway is not believed on an overlay run.
+    decision = _overlay_decision()
+    events = HandlerDelegationWorkflow()._emit_terminal(
+        _terminal_inputs(
+            tier_name=decision.tier_name,  # type: ignore[attr-defined]
+            endpoint_url=_PROBE_ENDPOINT,
+            model=_R8_MODEL_USED,
         )
     )
+    canonical = next(e for e in events if isinstance(e, ModelDelegationResult))
+    assert "budget_headroom_consumed_usd" not in type(canonical).model_fields
+    converted = _canonical_result_to_task_delegated_payload(
+        canonical.model_dump(mode="json")
+    )
+    assert converted.get("budget_headroom_consumed_usd") in (None, 0, 0.0)
+    stamped = ModelProjectionTaskDelegatedEvent(
+        **{**converted, "budget_headroom_consumed_usd": 1.75}
+    )
+    measured = _measure_actual_cost(stamped)
     assert measured.cost_usd == pytest.approx(_declared_cost())
-    assert measured.cost_measurement_source == "metered"
+    assert measured.headroom_consumed_usd == 0.0
+
+
+def _zero_cost_terminal_event(
+    *, endpoint_url: str, model: str
+) -> ModelProjectionTaskDelegatedEvent:
+    """The projection event of a terminal that priced nothing, built through the decision's terminal and the converter.
+
+    omnimarket#6331's case: a terminal from an older runtime or another producer arrives with its cost 0. The terminal is
+    the real ``_emit_terminal`` result of an overlay decision, its cost fields zeroed the way that producer left them,
+    and it reaches the projection only through ``_canonical_result_to_task_delegated_payload`` (review finding 1).
+    """
+    decision = _overlay_decision()
+    events = HandlerDelegationWorkflow()._emit_terminal(
+        _terminal_inputs(
+            tier_name=decision.tier_name,  # type: ignore[attr-defined]
+            endpoint_url=endpoint_url,
+            model=model,
+        )
+    )
+    canonical = next(e for e in events if isinstance(e, ModelDelegationResult))
+    payload = canonical.model_dump(mode="json")
+    payload["cumulative_attempt_cost"] = 0.0
+    payload["final_attempt_cost"] = 0.0
+    return ModelProjectionTaskDelegatedEvent(
+        **_canonical_result_to_task_delegated_payload(payload)
+    )
 
 
 @pytest.mark.unit
-def test_a_zero_cost_terminal_on_a_house_backend_or_undeclared_model_stays_unpriced() -> (
+def test_a_zero_cost_overlay_terminal_from_the_decision_is_priced_through_the_converter() -> (
+    None
+):
+    event = _zero_cost_terminal_event(
+        endpoint_url=_PROBE_ENDPOINT, model=_R8_MODEL_USED
+    )
+    # What a real terminal carries: the canonical result has no backend_id, so the event's is empty; the endpoint is not.
+    assert event.backend_id is None
+    assert event.endpoint_url == _PROBE_ENDPOINT
+    assert event.cost_usd == 0.0
+    measured = _measure_actual_cost(event)
+    assert measured.cost_usd == pytest.approx(_PINNED_DECLARED_COST_USD)
+    assert measured.cost_measurement_source == "metered"
+    assert measured.cost_tier_type == "metered"
+
+
+@pytest.mark.unit
+def test_a_zero_cost_terminal_on_a_house_endpoint_or_undeclared_model_stays_unpriced() -> (
     None
 ):
     house = _measure_actual_cost(
-        _projection_event(
-            tier=TENANT_OVERLAY_TIER_NAME,
-            cost=0.0,
-            source="no_cost_model",
-            backend_id="a-house-rung",
+        _zero_cost_terminal_event(
+            endpoint_url="http://house-rung.invalid:8000/v1/chat/completions",
+            model=_R8_MODEL_USED,
         )
     )
     undeclared = _measure_actual_cost(
-        _projection_event(
-            tier=TENANT_OVERLAY_TIER_NAME,
-            cost=0.0,
-            source="no_cost_model",
-            model="glm-undeclared-model",
-            backend_id=_BYOK_BACKEND_ID,
+        _zero_cost_terminal_event(
+            endpoint_url=_PROBE_ENDPOINT, model="glm-undeclared-model"
         )
     )
     for measured in (house, undeclared):

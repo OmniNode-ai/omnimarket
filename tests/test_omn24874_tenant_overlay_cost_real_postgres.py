@@ -36,7 +36,7 @@ async def _complete(
     *,
     cost: float,
     model: str | None = None,
-    backend_id: str | None = None,
+    endpoint_url: str | None = None,
 ) -> str:
     cid = str(uuid4())
     payload = _real_delegation_completed_payload(correlation_id=cid, tenant_id=_TENANT)
@@ -45,8 +45,8 @@ async def _complete(
     payload["cost_tier_name"] = _TIER
     if model is not None:
         payload["model_used"] = model
-    if backend_id is not None:
-        payload["backend_id"] = backend_id
+    if endpoint_url is not None:
+        payload["endpoint_url"] = endpoint_url
     assert await runner.project_event(
         runner._topic_delegation_completed,
         payload,
@@ -78,13 +78,17 @@ async def test_an_unpriced_tenant_overlay_run_is_still_stored_as_null() -> None:
 
 
 @pytest.mark.integration
-async def test_a_zero_cost_terminal_on_a_byok_backend_is_priced_and_stored_metered() -> (
+async def test_a_zero_cost_terminal_on_a_byok_endpoint_is_priced_and_stored_metered() -> (
     None
 ):
-    # omnimarket#6331's case, on Postgres: the terminal arrives with cost 0 and names the catalogue BYOK backend.
+    # omnimarket#6331's case, on Postgres: the terminal arrives with cost 0 and names the catalogue BYOK endpoint (a real
+    # terminal carries its endpoint_url, never a backend_id).
     async with _provisioned_runner() as (runner, admin_conn, _schema):
         cid = await _complete(
-            runner, cost=0.0, model="glm-5.3-flash", backend_id="byok-glm-general"
+            runner,
+            cost=0.0,
+            model="glm-5.3-flash",
+            endpoint_url="https://api.z.ai/api/paas/v4/chat/completions",
         )
         row = await admin_conn.fetchrow(_SELECT, cid)
         assert row is not None

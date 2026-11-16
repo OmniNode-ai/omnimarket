@@ -1,0 +1,127 @@
+schema_version: 1.0.0
+ticket_id: OMN-24978
+title: 'Review findings 1 to 9 on omnimarket PR 6335 at head 32e9b16c909d are fixed or argued: zero-cost pricing runs through the real converter, the headroom assertion can fail, and the contract checks pin head, host and lab command'
+summary: Fixes for the review of omnimarket#6335 at head 32e9b16c909d. The projection prices a zero-cost overlay terminal from the endpoint and model the terminal carries (the canonical terminal has no backend_id), the overlay branch stores no headroom, the tests pin the probe endpoint, model and cost as literals, the OMN-24874 contract's AC5 check names the 12-character head and its live readings pin host and age, AC7 of the OMN-24918 contract is the lab-work command of the real-Postgres file, and the alarm node tests tie max ages to the units' start_interval, a backdated row to the ledger, and discovery to the handler's arguments.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24978-ac1
+  statement: the zero-cost pricing is driven from an overlay decision's own terminal through the converter that builds the task-delegated payload, so the backend_id on the event is the one a real terminal carries, with a test
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the zero-cost pricing is driven from an overlay decision''s own terminal through the converter that builds the task-delegated payload, so the backend_id on the event is the one a real terminal carries, with a test -- falsifier: `uv run --frozen pytest tests/unit/delegation/test_omn24874_tenant_overlay_terminal_cost.py -q` passes with the backend_id keying in handler_projection_delegation.py changed to match nothing'
+- id: req-omn24978-ac2
+  statement: the headroom assertion sets budget_headroom_consumed_usd above 0 on the event and on the _emit_terminal result, and the workflow's headroom draw for a metered tier type is read and stated, with a test
+  acceptance:
+  - id: AC2
+    statement: 'AC2: the headroom assertion sets budget_headroom_consumed_usd above 0 on the event and on the \_emit_terminal result, and the workflow''s headroom draw for a metered tier type is read and stated, with a test -- falsifier: `uv run --frozen pytest tests/unit/delegation -k headroom -q` passes with the headroom pass-through in handler_projection_delegation.py removed'
+- id: req-omn24978-ac3
+  statement: the contract check for the AC5 item greps the 12-character head, and the AC3 item reads the running dev-merge tag on h053 and on the dev runtime with the host and age pinned, or is unbound, with a test
+  acceptance:
+  - id: AC3
+    statement: 'AC3: the contract check for the AC5 item greps the 12-character head, and the AC3 item reads the running dev-merge tag on h053 and on the dev runtime with the host and age pinned, or is unbound, with a test -- falsifier: `uv run --frozen pytest tests -k "omn24874 and contract" -q` passes with the head grep removed from the AC5 check'
+- id: req-omn24978-ac4
+  statement: the AC7 item of contracts/OMN-24918.yaml is bound to the lab-work command that runs the real-Postgres file, or is unbound, so it cannot pass when the Postgres run fails or skips, with a test
+  acceptance:
+  - id: AC4
+    statement: 'AC4: the AC7 item of contracts/[OMN-24918](https://linear.app/omninode/issue/OMN-24918).yaml is bound to the lab-work command that runs the real-Postgres file, or is unbound, so it cannot pass when the Postgres run fails or skips, with a test -- falsifier: `uv run --frozen pytest tests -k "omn24918 and contract" -q` passes with the binding set back to the text-match test'
+- id: req-omn24978-ac5
+  statement: the probe endpoint and the R8 terminal model_used in the test are literals read from the overlay row on h053 and an R8 terminal there, and the expected cost is a pinned literal, with a test
+  acceptance:
+  - id: AC5
+    statement: 'AC5: the probe endpoint and the R8 terminal model_used in the test are literals read from the overlay row on h053 and an R8 terminal there, and the expected cost is a pinned literal, with a test -- falsifier: `uv run --frozen pytest tests/unit/delegation/test_omn24874_tenant_overlay_terminal_cost.py -q` passes with a pinned literal changed'
+- id: req-omn24978-ac6
+  statement: a test ties the alarm contract's max ages to the R8 and R9 start_interval, the ledger takes the out-of-order stamp of a backdated row, discovery never builds the alarm handler without arguments, and organic_run_has_values means cost above 0 on a real R8 writer row
+  acceptance:
+  - id: AC6
+    statement: 'AC6: a test ties the alarm contract''s max ages to the R8 and R9 start_interval, the ledger takes the out-of-order stamp of a backdated row, discovery never builds the alarm handler without arguments, and organic_run_has_values means cost above 0 on a real R8 writer row -- falsifier: `uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect -q` passes with a max age in contract.yaml changed'
+- id: req-omn24978-ac7
+  statement: 'a PR comment starting `Lab: head=<full new head sha>` names the sha, the command and exit 0, and every required check-run of omnimarket#6335 reads success at the new head'
+  acceptance:
+  - id: AC7
+    statement: 'AC7: a PR comment starting `Lab: head=<full new head sha>` names the sha, the command and exit 0, and every required check-run of omnimarket#6335 reads success at the new head -- falsifier: `onex scm pr-checks OmniNode-ai/omnimarket#6335` lists a required context that is not success at the new head, or the Lab comment lacks the full sha, the command or exit 0'
+evidence_requirements:
+- kind: tests
+  description: The tenant overlay pricing tests, the contract check tests, the alarm node tests and the real-Postgres file through the lab-work command.
+  command: env -u PYTHONPATH uv run --frozen pytest tests/unit/delegation/test_omn24874_tenant_overlay_terminal_cost.py tests/test_omn24874_contract_checks.py tests/test_omn24918_contract_checks.py tests/nodes/node_delegation_scenario_alarm_effect -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24978-ac1
+  description: A zero-cost overlay terminal built by _emit_terminal from the overlay decision reaches the projection through _canonical_result_to_task_delegated_payload, carries its endpoint_url (no backend_id), and is priced from the declared price; a house endpoint and an undeclared model stay unpriced.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_omn24874_tenant_overlay_terminal_cost.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24978-ac2
+  description: The projection event and the _emit_terminal result carry headroom above 0 and the overlay branch stores 0.0; the workflow draws none for a metered tier type (pricing.py, the workflow handler and the terminal model name no headroom).
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation -k headroom -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24978-ac3
+  description: The AC5 check of contracts/OMN-24874.yaml greps the 12-character head (behavioural test over a temp repo), and the AC3 check reads the R8 unit's installed revision on the pinned host with a dev-merge tag and an age; the live readings pin host and age.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_omn24874_contract_checks.py -k "omn24874 and contract" -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24978-ac4
+  description: AC7 of contracts/OMN-24918.yaml is the verbatim lab-work command of the real-Postgres item of contracts/OMN-24874.yaml, which fails on a skip or a failed run, and no longer the text-match pytest.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_omn24918_contract_checks.py -k "omn24918 and contract" -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24978-ac5
+  description: The probe endpoint, the R8 model_used and the expected cost are literals in the test; a test ties the cost literal to the catalogue price.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_omn24874_tenant_overlay_terminal_cost.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24978-ac6
+  description: The alarm node tests tie each max age to the start_interval of its unit plus a quarter, take a backdated alarm row through the real append handler (file and bus mode), show discovery never builds the handler without arguments, and the contract-check test reads organic_run_has_values as cost above 0 on a row the real R8 handler and journal sink wrote.
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect -q --no-cov -n 0 -p no:randomly
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_omn24874_contract_checks.py -k real_writer_row -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24978-ac7
+  description: 'The lane''s STATUS row on the ledger names the full head of the pushed change, the lab-work command and exit=0 (the Lab: head= comment and the check-runs at that head are read from the pull request with onex scm pr-checks). Local Done gate only: it reads the ledger and a sha.'
+  source: manual
+  binds_ac:
+  - AC7
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: sh -c 'python3 "${OMNI_PLUGIN_ROOT:?}/skills/lane-brief/scripts/lane_brief.py" grep "lane=fix6335-2005" | grep -F "$(git rev-parse HEAD)" | grep -F "exit=0" | grep -q STATUS'
+    cwd: .
+- id: dod-omn24978-integration-proof
+  description: The focused tests of this change (the overlay terminal cost tests, the contract check tests, the alarm node tests) run on a lab host at the pushed head through the lab work runner; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. The real-Postgres file runs through the lab-work command of dod-omn24874-real-postgres in contracts/OMN-24874.yaml.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24978 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/delegation/test_omn24874_tenant_overlay_terminal_cost.py tests/test_omn24874_contract_checks.py tests/test_omn24918_contract_checks.py tests/nodes/node_delegation_scenario_alarm_effect -q --no-cov -n 0 -p no:randomly
+    cwd: .
