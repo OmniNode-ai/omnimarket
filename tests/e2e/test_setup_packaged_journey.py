@@ -253,6 +253,22 @@ def test_built_package_setup_delegation_dashboard_journey(
             if self.path != "/v1/chat/completions" or body.get("model") != model:
                 self.send_error(400)
                 return
+            # The readiness probe asks for hello; the normal task needs an
+            # answer to its own question rather than that probe response.
+            answer = "hello"
+            if any(
+                message.get("role") == "user"
+                and "named connections" in str(message.get("content", "")).lower()
+                for message in body.get("messages", [])
+            ):
+                answer = (
+                    "### ANSWER\nNamed connections bind each endpoint to its own credential "
+                    "and selected models. A key is resolved only for its configured "
+                    "server. Separate identities prevent one endpoint from "
+                    "overwriting another server's configuration. The default "
+                    "selection chooses the exact named route while retaining "
+                    "unrelated registrations."
+                )
             self.respond(
                 {
                     "id": "fixture-completion",
@@ -261,7 +277,10 @@ def test_built_package_setup_delegation_dashboard_journey(
                     "choices": [
                         {
                             "index": 0,
-                            "message": {"role": "assistant", "content": "hello"},
+                            "message": {
+                                "role": "assistant",
+                                "content": answer,
+                            },
                             "finish_reason": "stop",
                         }
                     ],
@@ -315,6 +334,8 @@ def test_built_package_setup_delegation_dashboard_journey(
         assert bundle["manifest_present"]
         assert "/site-packages/" in bundle["marketplace"]
         evidence["claude_local_bundle"] = bundle
+        restricted = invoke("models", "only", "local")
+        assert restricted.returncode == 0, restricted.stdout + restricted.stderr
         discovered = invoke("models", "discover", "--url", endpoint, "--json")
         assert discovered.returncode == 0, discovered.stderr
         assert json.loads(discovered.stdout)["models"] == [model]
@@ -344,6 +365,25 @@ def test_built_package_setup_delegation_dashboard_journey(
         observations = {item["step"]: item for item in journal["observations"]}
         assert observations["models"]["status"] == "success"
         assert observations["dashboard"]["status"] == "success"
+        delegated = invoke(
+            "delegate",
+            "Explain why named connections keep model endpoints independent.",
+            "--bus",
+            "inmemory",
+            "--locus",
+            "in-process",
+            "--criteria",
+            "response_non_empty",
+            "--criteria",
+            "concise",
+            "--criteria",
+            "final_artifact_only",
+            "--criteria-mode",
+            "replace-task-class",
+            "--json",
+        )
+        assert delegated.returncode == 0, delegated.stdout + delegated.stderr
+        terminal = json.loads(delegated.stdout)
         receipt_paths = list((tmp_path / "state" / "runs").glob("*/receipt.json"))
         assert receipt_paths, "Setup produced no canonical delegation receipt"
         receipts = [json.loads(path.read_text()) for path in receipt_paths]
@@ -351,7 +391,7 @@ def test_built_package_setup_delegation_dashboard_journey(
             receipt for receipt in receipts if receipt.get("status") == "success"
         ]
         assert accepted, receipts
-        receipt = accepted[-1]
+        receipt = next(row for row in accepted if row["run_id"] == terminal["run_id"])
         result = receipt["receipt"]["result"]
         assert result["model_name"] == model
         assert receipt["endpoint"].startswith(endpoint)

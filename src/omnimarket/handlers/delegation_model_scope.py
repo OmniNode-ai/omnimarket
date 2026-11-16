@@ -93,7 +93,9 @@ def is_local_model(
     if is_local_url_backend(backend.backend_id):
         return True
     keyless = backend.secret_ref is None and backend.api_key_env is None
-    return keyless and is_local_rung(backend.backend_id)
+    # Named connections carry their tier from the resolved endpoint but have
+    # no static ladder entry. Keep credential-bearing connections excluded.
+    return keyless and (backend.tier == "local" or is_local_rung(backend.backend_id))
 
 
 def is_free_model(

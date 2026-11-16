@@ -24,6 +24,7 @@ import pytest
 from click.testing import CliRunner
 
 from omnimarket.cli.cli_secret import models_group, secret_group
+from omnimarket.handlers.delegation_model_scope import ModelScopeRule
 from omnimarket.handlers.routing import byok_model_discovery
 from omnimarket.handlers.routing.delegation_backend_resolution import (
     ModelResolvedDelegationBackend,
@@ -343,3 +344,42 @@ def test_model_scope_rule_unset_local_first_unchanged(
     result = _dispatch(monkeypatch, tmp_path, effect)
     assert effect.calls == [_LOCAL]
     assert result["attempts"][0]["backend_id"] == "local-url"
+
+
+@pytest.mark.parametrize("rule", ["local", "free"])
+@pytest.mark.parametrize(
+    ("tier", "secret_ref", "api_key_env", "allowed"),
+    [
+        ("local", None, None, True),
+        ("cheap_cloud", None, None, False),
+        ("unknown", None, None, False),
+        ("local", "customer.connection.key", None, False),
+        ("local", None, "CUSTOMER_CONNECTION_KEY", False),
+    ],
+)
+def test_model_scope_respects_resolved_named_connection_tier(
+    rule: ModelScopeRule,
+    tier: str,
+    secret_ref: str | None,
+    api_key_env: str | None,
+    allowed: bool,
+) -> None:
+    """A keyless local connection remains local without a static ladder entry.
+
+    Unknown/cloud routes and credential-bearing routes must not become local
+    merely because their backend IDs use the named-connection namespace.
+    """
+    from omnimarket.handlers.delegation_model_scope import model_scope_skip_reason
+
+    backend = ModelResolvedDelegationBackend(
+        backend_id="connection-customer-unknown-model",
+        model_id="customer-unknown-model",
+        endpoint_ref="http://127.0.0.1:1/v1/chat/completions",
+        tier=tier,
+        max_tokens=128,
+        timeout_ms=1000,
+        secret_ref=secret_ref,
+        api_key_env=api_key_env,
+    )
+    reason = model_scope_skip_reason(backend, rule, is_local_rung=lambda _: False)
+    assert (reason is None) is allowed
