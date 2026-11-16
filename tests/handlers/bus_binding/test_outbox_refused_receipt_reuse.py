@@ -265,3 +265,61 @@ async def test_seam_clash_travels_the_in_memory_bus_and_is_reused(
     assert stored is not None
     assert outbox.CLASH_MARK in stored.message
     assert len(_refused_files(tmp_path)) == 1
+
+
+async def test_stored_refusal_lookup_leaves_still_sent_cases_unreused(
+    tmp_path: Path, handler: HandlerWorkLedgerAppendEffect, ledger: _FakeLedger
+) -> None:
+    """Only a clash refusal over the same rows is reused; a guard refusal and changed rows are still sent."""
+    handler.handle(_request("the row that landed first"), writer_principal=WRITER)
+    queued = _request("a different row under the same request id")
+    outbox.queue_request(tmp_path, queued)
+    send, _calls = _counting_sender(handler)
+    await outbox.drain(tmp_path, send)
+
+    assert outbox.stored_refusal(tmp_path, queued) is not None
+    assert (
+        outbox.stored_refusal(
+            tmp_path, _request("the corrected row under the same request id")
+        )
+        is None
+    )
+
+    guard_dir = tmp_path / "guard"
+    guard_request = _request("a row the guard refused", request_id=UUID(int=7))
+    outbox.queue_request(guard_dir, guard_request)
+
+    async def guard_send(
+        request: ModelWorkLedgerAppendRequest,
+    ) -> ModelWorkLedgerAppendReceipt:
+        return ModelWorkLedgerAppendReceipt(
+            request_id=request.request_id,
+            status=EnumWorkLedgerAppendStatus.REFUSED,
+            exit_code=65,
+            message="ledger_lock: OMN-18274 friction guard rejected append",
+            ledger_lines=[],
+            ledger_host="h-test",
+            duration_ms=3,
+        )
+
+    await outbox.drain(guard_dir, guard_send)
+    assert len(_refused_files(guard_dir)) == 1
+    assert outbox.stored_refusal(guard_dir, guard_request) is None
+
+
+async def test_replay_of_clash_refusal_adds_no_new_report_for_the_writer(
+    tmp_path: Path, handler: HandlerWorkLedgerAppendEffect, ledger: _FakeLedger
+) -> None:
+    """After a clash refusal was reported once, replaying it adds nothing new to report."""
+    handler.handle(_request("the row that landed first"), writer_principal=WRITER)
+    queued = _request("a different row under the same request id")
+    outbox.queue_request(tmp_path, queued)
+    send, _calls = _counting_sender(handler)
+    await outbox.drain(tmp_path, send)
+    assert recovery.report_refused_to_writers(tmp_path, datetime.now(UTC)) == 1
+
+    for _ in range(3):
+        outbox.queue_request(tmp_path, queued)
+        await outbox.drain(tmp_path, send)
+        assert recovery.report_refused_to_writers(tmp_path, datetime.now(UTC)) == 0
+    assert len(_open_refused_rows(tmp_path)) == 1

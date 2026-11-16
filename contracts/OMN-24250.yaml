@@ -36,7 +36,7 @@ dod_evidence:
     check_value: uv run pytest tests/handlers/bus_binding/test_outbox_refused_receipt_reuse.py -q --no-cov -p no:cacheprovider -k reuses_stored
     cwd: .
 - id: dod-omn24250-ac2
-  description: 'AC2: a guard refusal is sent again on the next drain, and corrected rows under a refused id are sent again.'
+  description: 'AC2: a guard refusal is sent again on the next drain, corrected rows under a refused id are sent again, and the stored-refusal lookup reuses only a clash refusal over the same rows (the lookup test fails at the merge base, which has no such lookup).'
   source: manual
   binds_ac:
   - AC2
@@ -54,13 +54,13 @@ dod_evidence:
     check_value: uv run pytest tests/handlers/bus_binding/test_outbox_refused_receipt_reuse.py -q --no-cov -p no:cacheprovider -k seam
     cwd: .
 - id: dod-omn24250-ac4
-  description: 'hosted proxy for AC4: the neighbouring bus-binding outbox suites still pass; the queue-status read one hour after the roll is named in the pull request comment that starts Lab and in the lane TERMINAL.'
+  description: 'hosted proxy for AC4: a replay of a reported clash refusal adds nothing new to report for the writer (the replay test fails at the merge base, where the replay is sent again and kept as a second file), and the neighbouring bus-binding outbox suites still pass; the queue-status read one hour after the roll is named in the pull request comment that starts Lab and in the lane TERMINAL.'
   source: manual
   binds_ac:
   - AC4
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_bus_binding_reducer/test_outbox_request_id_clash.py tests/handlers/bus_binding/test_bus_binding_outbox_refused_wired.py tests/handlers/bus_binding/test_bus_binding_outbox_refused_guard.py -q --no-cov -p no:cacheprovider
+    check_value: uv run pytest tests/handlers/bus_binding/test_outbox_refused_receipt_reuse.py::test_replay_of_clash_refusal_adds_no_new_report_for_the_writer tests/nodes/node_bus_binding_reducer/test_outbox_request_id_clash.py tests/handlers/bus_binding/test_bus_binding_outbox_refused_wired.py tests/handlers/bus_binding/test_bus_binding_outbox_refused_guard.py -q --no-cov -p no:cacheprovider
     cwd: .
 - id: dod-omn24250-integration-proof
   description: the outbox reuse tests and the neighbouring outbox suites run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
