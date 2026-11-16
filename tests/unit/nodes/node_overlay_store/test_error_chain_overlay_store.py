@@ -5,9 +5,7 @@
 from __future__ import annotations
 
 import asyncio
-import faulthandler
 import json
-from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -54,20 +52,6 @@ from tests.unit.nodes.node_overlay_store.support import (
 )
 
 pytestmark = pytest.mark.unit
-
-
-@pytest.fixture(autouse=True)
-def _tick_deadline_does_not_outlive_its_test() -> Iterator[None]:
-    """The tick arms a process-exiting deadline; a test that runs it in-process must disarm it.
-
-    ``tick_main`` calls ``faulthandler.dump_traceback_later(..., exit=True)`` and never
-    cancels it, because in production the process ends with the tick. Run in the pytest
-    process, that timer outlives the test and kills the whole run 120 s later, silently,
-    on whichever test is executing then (a shard that held this file died with exit 1 and
-    no summary). The deadline itself is still pinned by the arming test below.
-    """
-    yield
-    faulthandler.cancel_dump_traceback_later()
 
 
 def _loader(
@@ -376,12 +360,12 @@ def test_a_tick_arms_the_contracts_deadline_before_it_touches_the_bus(
 ) -> None:
     for key, value in _tick_overlay(tmp_path).items():
         monkeypatch.setenv(key, value)
-    armed: list[tuple[float, bool]] = []
+    armed: list[float] = []
     monkeypatch.setattr(
-        tick_module.faulthandler,
-        "dump_traceback_later",
-        lambda seconds, exit: armed.append((seconds, exit)),
+        tick_module,
+        "arm_watchdog",
+        lambda seconds, _terminate: armed.append(seconds) or (lambda: None),
     )
     tick_main(["--omni-home", str(tmp_path), "--state-dir", str(tmp_path / "run")])
-    assert armed == [(120.0, True)]
+    assert armed == [120.0]
     assert tick_module.tick_deadline_s() == 120.0

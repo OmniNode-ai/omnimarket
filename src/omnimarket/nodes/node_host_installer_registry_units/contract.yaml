@@ -246,6 +246,10 @@ units:
     # The same volume bars launchd from the working directory: uv ended up in getcwd for good (measured on h101, sample of the
     # stalled process). The job runs from, and passes the tick as its omni home, a directory under the home.
     launchd_root: .local/state/omni/overlay-store-refresh
+    # A run that outlives this many seconds is ended with its process group and exits 124 (run_timeout_s, OMN-22881). It
+    # sits above the tick's own 120 s deadline (the node contract's timeout_ms) and under the 300 s interval, so a tick whose
+    # watchdog failed to end it cannot hold the next one back.
+    run_timeout_s: 240
   # OMN-23557: one tick refreshes the clone this host's lab_hosts row declares for the knowledge base, which the registry-root
   # scan cannot list. The overlay of node_canonical_clone_refresh_effect holds every value this unit does not declare.
   declared-clone-refresh:

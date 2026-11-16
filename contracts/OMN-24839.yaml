@@ -1,0 +1,79 @@
+schema_version: 1.0.0
+ticket_id: OMN-24839
+title: The overlay store refresh tick ends at its deadline because its watchdog always exits the process, and the unit declares a hard run timeout
+summary: 'The overlay store refresh tick no longer arms the interpreter''s traceback timer with exit=True. A tick on the Mac hung four hours in that timer''s dump and launchd started no further run. The tick now arms a watchdog thread that ends the process with os._exit at the contract deadline whatever the tick or its stderr is doing, and the overlay-store-refresh unit declares run_timeout_s (240) in the host installer contract, above the 120 s node deadline and under the 300 s interval. The other node ticks that arm the same timer are listed on the ledger and not changed; the producer of the stale overlay readings is named on the ledger and not changed.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-overlay-tick-watchdog
+  statement: A tick whose work blocks past the deadline exits within the deadline plus a few seconds, and the tick no longer arms the interpreter's traceback timer with exit=True.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a tick whose work blocks past the deadline exits within the deadline plus a few seconds, red at base and green at head -- falsifier: `uv run pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_watchdog.py -q -p no:cacheprovider` fails at the base commit and passes at the head'
+  - id: AC2
+    statement: 'AC2: the tick no longer arms faulthandler.dump_traceback_later with exit=True and ends through a watchdog thread calling os._exit or through SIGALRM -- falsifier: `uv run pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_watchdog.py -q -p no:cacheprovider -k no_faulthandler_exit` fails on a tree that still arms it'
+- id: req-overlay-unit-run-timeout
+  statement: The overlay store refresh unit declares a hard run timeout in run_timeout_s, above the node deadline.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: the overlay store refresh unit declares a hard run timeout in the field the other units declare it, such as run_timeout_s in the unit contract or the host installer contract -- falsifier: `uv run pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_workspace_root.py tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_watchdog.py -q -p no:cacheprovider -k run_timeout` fails when the field is absent'
+- id: req-overlay-tick-ledger-rows
+  statement: The other ticks that arm the same timer and the producer of the stale readings are named on the ledger and left unchanged.
+  acceptance:
+  - id: AC4
+    statement: 'AC4: the other node ticks that arm faulthandler with exit=True are listed in a STATUS row on the rolling ledger and left unchanged, and the producer behind the 260000 s stale overlay readings is named in a STATUS row -- falsifier: `grep -F ''faulthandler'' "$ONEX_LEDGER_PATH"` returns no STATUS row from the lane that cites each tick file'
+evidence_requirements:
+- kind: tests
+  description: The watchdog tests at the pushed head, and the disarm test of the tick entrypoints.
+  command: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_watchdog.py tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_workspace_root.py tests/unit/workflows/test_tick_entrypoints_disarm_deadline.py tests/unit/nodes/node_overlay_store -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-overlay-tick-watchdog-ac1
+  description: A child process runs the real tick with its work blocked and its stderr a full pipe nobody reads; it exits 124 inside the deadline plus the grace. At base the same child never exits (control).
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_watchdog.py -q --no-cov -n 0 -p no:randomly -p no:cacheprovider
+    cwd: .
+- id: dod-overlay-tick-watchdog-ac2
+  description: The tick source calls no dump_traceback_later with a truthy exit; a source that does is caught (positive control).
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_watchdog.py -q --no-cov -n 0 -p no:randomly -p no:cacheprovider -k no_faulthandler_exit
+    cwd: .
+- id: dod-overlay-unit-run-timeout-ac3
+  description: The unit declares run_timeout_s above the tick deadline and under its interval, and the rendered job runs under the run-limit wrapper with that limit.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_workspace_root.py tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_watchdog.py -q --no-cov -n 0 -p no:randomly -p no:cacheprovider -k run_timeout
+    cwd: .
+- id: dod-overlay-tick-ledger-rows-ac4
+  description: The lane's STATUS rows list the other ticks by file path and name the producer of the stale readings; the lane changed none of them.
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: command
+    check_value: grep -c 'runtime_c32_probe_tick.py' "$ONEX_LEDGER_PATH"
+    cwd: .
+- id: dod-overlay-tick-integration-proof
+  description: The pushed head ran the watchdog, run-timeout and tick-disarm tests on a lab host through the lab work runner and exited 0. The lab host, sha and exit code are in the pull request's Lab line.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-overlay-tick --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_watchdog.py tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_workspace_root.py tests/unit/workflows/test_tick_entrypoints_disarm_deadline.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
