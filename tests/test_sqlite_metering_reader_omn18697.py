@@ -67,8 +67,9 @@ def db(tmp_path: Path) -> Path:
         (
             "fresh-real",
             (_NOW - timedelta(hours=2)).timestamp(),
-            "Qwen3.8-27B",
-            "Qwen3.8-27B",
+            # OMN-24615 AC3: a priced paid model, so the recorded cost is spend.
+            "gpt-4o-mini",
+            "gpt-4o-mini",
             "classify",
             200,
             100,

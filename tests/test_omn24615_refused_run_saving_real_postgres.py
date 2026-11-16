@@ -12,9 +12,14 @@ enforces how the derived Decimal binds. Runs against the INTEGRATION_POSTGRES_*
 database, in a disposable schema with the live migrations (the OMN-15909
 provisioning), and skips when that database is not configured.
 
+AC3 on the same path: a run on a model the pricing manifest does not price,
+costed at the routing tier's flat rate, stores no modelled saving at all and is
+classed unknown_spend. The passed and refused runs use a priced model.
+
 Failure modes, each with a test below:
   F1  a refused terminal stores a positive modelled saving
   F2  the fix stores no saving at all for a run that passed (a vacuous zero)
+  F3  an unpriced model's tier-rate cost is stored as a measured saving
 """
 
 from __future__ import annotations
@@ -36,18 +41,21 @@ class TestRefusedRunSavingOnRealPostgres:
     async def test_a_refused_terminal_stores_zero_and_a_passed_one_a_saving(
         self,
     ) -> None:
-        """F1, F2."""
+        """F1, F2, F3."""
         async with _provisioned_runner() as (runner, admin_conn, _schema):
             written: dict[str, str] = {}
+            priced = {"model_used": "gpt-4o-mini"}
             for label, extra in (
-                ("passed", {}),
+                ("passed", priced),
                 (
                     "refused",
                     {
+                        **priced,
                         "quality_passed": False,
                         "terminal_failure_cause": "quality_gate_refused",
                     },
                 ),
+                ("tier-rate", {"model_used": "nvidia/nemotron-3-ultra-550b-a55b:free"}),
             ):
                 correlation_id = str(uuid4())
                 data = {
@@ -65,7 +73,8 @@ class TestRefusedRunSavingOnRealPostgres:
 
             rows = {
                 label: await admin_conn.fetchrow(
-                    "SELECT modelled_savings_usd, terminal_failure_cause"
+                    "SELECT modelled_savings_usd, savings_measurement,"
+                    " terminal_failure_cause"
                     " FROM delegation_events WHERE correlation_id = $1",
                     correlation_id,
                 )
@@ -77,3 +86,6 @@ class TestRefusedRunSavingOnRealPostgres:
             assert rows["passed"]["modelled_savings_usd"] is not None
             assert Decimal(str(rows["passed"]["modelled_savings_usd"])) > Decimal("0")
             assert Decimal(str(rows["refused"]["modelled_savings_usd"])) == Decimal("0")
+            assert rows["tier-rate"] is not None
+            assert rows["tier-rate"]["modelled_savings_usd"] is None
+            assert rows["tier-rate"]["savings_measurement"] == "unknown_spend"

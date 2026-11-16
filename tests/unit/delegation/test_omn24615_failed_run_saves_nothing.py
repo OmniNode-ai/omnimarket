@@ -49,7 +49,7 @@ def _row(cause: str | None) -> dict[str, object]:
         "correlation_id": str(uuid.uuid4()),
         "created_at": "2026-10-22T12:00:00+00:00",
         "delegated_to": "openai",
-        "model_name": "gpt-5-nano",
+        "model_name": "gpt-4o-mini",
         "task_type": "code_generation",
         "tokens_input": 180,
         "tokens_output": 60,

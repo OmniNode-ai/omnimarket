@@ -15,6 +15,7 @@ from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
+from omnimarket.models.priced_spend import priced_spend
 from omnimarket.nodes.node_metering_summary_compute.models.model_metering_summary import (
     ModelMeteringRecord,
 )
@@ -141,7 +142,8 @@ def metering_record_from_row(row: Mapping[str, Any]) -> ModelMeteringRecord | No
         task_type=str(row["task_type"] or ""),
         tokens_in=None if unrecorded_tokens else tokens_in,
         tokens_out=None if unrecorded_tokens else tokens_out,
-        spend_usd=_to_decimal(row["cost_usd"]),
+        # OMN-24615 AC3: spend only from a named price source.
+        spend_usd=priced_spend(row),
         recorded_savings_usd=_to_decimal(row["cost_savings_usd"]),
         returned_to_caller=row.get(METERING_CAUSE_COLUMN) == RETURNED_TO_CALLER,
         # OMN-24615 AC1: any stored failure cause, so a refused run saves nothing.
