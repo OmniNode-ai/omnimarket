@@ -13,6 +13,8 @@ requirements:
     statement: 'AC1: the contract of the pull request binds no criterion to a local_done_gate item -- falsifier: uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -k test_no_repo_contract_binds_a_local_done_gate_item'
   - id: AC2
     statement: 'AC2: every acceptance criterion of every contract in the repository is bound to a test or check the hosted gate can run -- falsifier: uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q -k test_every_repo_contract_binds_every_criterion'
+  - id: AC3
+    statement: 'AC3: the routing source inventory lists the overlay read of node_dod_verify, so the inventory agrees with the tree -- falsifier: uv run pytest tests/test_routing_sources_omn20601.py -q -k test_routing_sources_inventory_matches_the_tree'
 evidence_requirements:
 - kind: tests
   description: The contract-binding tests pass at the pushed head.
@@ -39,6 +41,15 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/ci/test_repo_evidence_caller_workflow.py -q --no-cov -n 0 -p no:randomly -k test_every_repo_contract_binds_every_criterion
+    cwd: .
+- id: dod-omn24826-ac3
+  description: 'AC3: the routing source inventory agrees with the tree'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_routing_sources_omn20601.py -q --no-cov -n 0 -p no:randomly -k test_routing_sources_inventory_matches_the_tree
     cwd: .
 - id: dod-omn24826-integration-proof
   description: 'The two contract-binding tests of the repository, run from the pushed head on a lab host, pass. Hosted CI cannot reach the lab, so only the local Done gate runs this check; it binds no criterion, and the hosted check runs the criterion items above.'

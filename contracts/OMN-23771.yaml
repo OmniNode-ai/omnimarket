@@ -113,3 +113,10 @@ dod_evidence:
   - check_type: test_passes
     check_value: env DEPLOY_SURFACE=node_dod_verify uv run --frozen pytest tests/unit/nodes/node_dod_verify/test_omn_23771_standard_ticket_contract.py -q --no-cov -n 0 -p no:randomly -k "cli_accepts_full_contract_path or contract_not_synced"
     cwd: .
+- id: dod-omn23771-deploy-probe
+  description: 'Deploy probe: the node_dod_verify contract of the evaluated checkout revision, read over the network from the published source, declares the full_contract_path input. The probe exits nonzero when the revision does not declare it, so it fails at the merge base. It reads the published source, not a running deployment.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: curl --fail --silent --show-error --location --max-time 30 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_dod_verify/contract.yaml" | grep -c 'full_contract_path'
+    cwd: .
