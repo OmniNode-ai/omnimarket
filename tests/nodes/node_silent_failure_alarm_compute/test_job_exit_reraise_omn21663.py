@@ -230,3 +230,138 @@ def test_job_exit_reraise_limit_refuses_a_negative_value(bad: int) -> None:
             readable=True,
             reraise_after_minutes=bad,
         )
+
+
+def test_job_exit_no_false_alarm_for_on_time_interval_runs_after_a_healed_episode() -> (
+    None
+):
+    """A declared interval makes the missed-interval path reachable, and a healed episode must leave no residue."""
+    start = _recorded_start()
+    failing = _replay([0, 31, 300])
+    previous = failing[-1].streaks
+    assert previous[0].episode is not None
+    runs = 3
+    now = start + timedelta(minutes=310)
+    healed = HandlerJobExitAlarm().handle(
+        ModelJobExitAlarmRequest(
+            now=now,
+            readable=True,
+            readings=(
+                ModelJobExitReading(
+                    label=LABEL, runs=runs + 1, last_exit=0, interval_s=600
+                ),
+            ),
+            previous=previous,
+            push_after_minutes=30,
+            reraise_after_minutes=60,
+            cooldown_minutes=100000,
+        )
+    )
+    assert healed.closed
+    previous = healed.streaks
+    runs += 1
+    for step in range(1, 60):
+        runs += 1
+        result = HandlerJobExitAlarm().handle(
+            ModelJobExitAlarmRequest(
+                now=now + timedelta(minutes=10 * step),
+                readable=True,
+                readings=(
+                    ModelJobExitReading(
+                        label=LABEL, runs=runs, last_exit=0, interval_s=600
+                    ),
+                ),
+                previous=previous,
+                push_after_minutes=30,
+                reraise_after_minutes=60,
+                cooldown_minutes=100000,
+            )
+        )
+        previous = result.streaks
+        assert result.state == "OK"
+        assert not result.opened
+        assert not result.push
+        assert not result.reraised
+        assert not result.alert_text
+        assert previous[0].raised_at is None
+        assert previous[0].raise_count == 0
+
+
+def test_job_exit_reraise_waits_for_the_push_when_the_limit_is_below_the_push_delay() -> (
+    None
+):
+    """A limit under the push delay must not mark an episode pushed with no push sent."""
+    results = _replay([0, 15, 20, 31], reraise_after_minutes=10)
+    assert [len(r.reraised) for r in results] == [0, 0, 0, 0]
+    assert [len(r.push) for r in results] == [0, 0, 0, 1]
+    assert results[1].streaks[0].pushed is False
+    assert results[3].streaks[0].pushed is True
+
+
+def test_job_exit_reraise_raises_at_most_one_cap_of_old_episodes_per_tick() -> None:
+    start = _recorded_start()
+    labels = [f"ai.omninode.legacy-{n}" for n in range(8)]
+    previous = tuple(
+        ModelJobExitStreak.model_validate(
+            {
+                "label": label,
+                "runs": 2,
+                "last_exit": 2,
+                "streak": 2,
+                "episode": f"ep-20261108T1853Z-legacy-{n}",
+                "opened_at": "2026-11-08T18:53:31Z",
+                "pushed": True,
+                "cause": "failed-exit",
+                "last_run_at": "2026-11-08T18:53:31Z",
+            }
+        )
+        for n, label in enumerate(labels)
+    )
+
+    def tick(
+        offset: int, state: tuple[ModelJobExitStreak, ...]
+    ) -> ModelJobExitAlarmResult:
+        return HandlerJobExitAlarm().handle(
+            ModelJobExitAlarmRequest(
+                now=start + timedelta(minutes=offset),
+                readable=True,
+                readings=tuple(
+                    ModelJobExitReading(label=label, runs=3, last_exit=2)
+                    for label in labels
+                ),
+                previous=state,
+                push_after_minutes=30,
+                reraise_after_minutes=LIMIT_MINUTES,
+                cooldown_minutes=100000,
+                max_opened=3,
+            )
+        )
+
+    first = tick(1000, previous)
+    assert len(first.reraised) == 3
+    second = tick(1001, first.streaks)
+    assert len(second.reraised) == 3
+    third = tick(1002, second.streaks)
+    assert len(third.reraised) == 2
+    assert (
+        len({r.label for r in (*first.reraised, *second.reraised, *third.reraised)})
+        == 8
+    )
+
+
+def test_job_exit_reraise_never_invents_a_cause_for_an_episode_that_has_none() -> None:
+    old = ModelJobExitStreak.model_validate(
+        {
+            "label": LABEL,
+            "runs": 2,
+            "last_exit": 2,
+            "streak": 2,
+            "episode": "ep-20261108T1853Z-lab-alarm-broker-lag",
+            "opened_at": "2026-11-08T18:53:31Z",
+            "pushed": True,
+            "last_run_at": "2026-11-08T18:53:31Z",
+        }
+    )
+    result = _tick(_recorded_start() + timedelta(minutes=1000), 3, 2, (old,))
+    assert not result.reraised
+    assert not any("STILL OPEN" in text for text in result.alert_text)

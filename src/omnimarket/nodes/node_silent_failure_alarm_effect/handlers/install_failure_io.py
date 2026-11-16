@@ -35,11 +35,12 @@ def _stamp(value: object) -> datetime | None:
 def read_failures(
     path: Path,
 ) -> tuple[tuple[ModelInstallFailureRow, ...], bool, tuple[str, ...]]:
-    """The rows, whether the file could be read, and one warning per skipped line. A missing file is no rows."""
+    """The rows, whether the file could be read, and one warning per skipped line. A missing file is no rows, with a warning."""
     try:
         text = path.read_text(encoding="utf-8")
     except FileNotFoundError:
-        return (), True, ()
+        # A file that is not there reads as no failures, and says so: a mistyped path must not look like a clean host.
+        return (), True, (f"install-failures file {path} does not exist",)
     except (OSError, UnicodeError) as exc:
         return (), False, (one_line(exc, "install-failures file unreadable"),)
     rows: list[ModelInstallFailureRow] = []

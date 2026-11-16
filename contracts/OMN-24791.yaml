@@ -34,20 +34,26 @@ dod_evidence:
     check_value: uv run pytest tests/unit/nodes/node_bus_model_seam_check_effect/test_bus_model_seam_check.py tests/test_no_cross_node_reach_in.py tests/nodes/test_dep_health_contract_topology.py -q -n 0 --no-cov -p no:randomly
     cwd: .
 - id: dod-omn24791-ac2
-  description: 'AC2 hosted proxy: the pull request touches no check or ratchet file, and the install-failure and disk growth tests of the pull request still pass; the Lab: comment naming the head is posted on the pull request.'
+  description: 'AC2 hosted proxy: the diff against the base touches no check, ratchet, baseline or allowlist file (the first check fails when it does), and the tests of the review fixes pass; the Lab: comment naming the head is posted on the pull request.'
   source: manual
   binds_ac:
   - AC2
   checks:
+  - check_type: command
+    check_value: bash -o pipefail -c '! git diff --name-only origin/dev...HEAD | grep -E "^(\.onex_ratchets/|\.github/|scripts/ci/)|baseline|allowlist"'
+    cwd: .
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_silent_failure_alarm_compute/test_install_failure_reraise_omn21663.py tests/nodes/node_silent_failure_alarm_effect/test_install_failure_reraise_omn21663.py tests/nodes/node_lab_disk_watermark_effect/test_disk_growth_rate_omn21663.py -q -n 0 --no-cov -p no:randomly
+    check_value: uv run pytest tests/nodes/node_silent_failure_alarm_compute tests/nodes/node_silent_failure_alarm_effect/test_install_failure_reraise_omn21663.py tests/nodes/node_silent_failure_alarm_effect/test_job_exit_reraise_omn21663.py tests/nodes/node_silent_failure_alarm_effect/test_install_failure_options_omn21663.py tests/nodes/node_lab_disk_watermark_effect/test_disk_growth_rate_omn21663.py -q -n 0 --no-cov -p no:randomly
     cwd: .
 - id: dod-omn24791-ac3
-  description: 'AC3 hosted proxy: the causes were inside the pull request or inherited from the base and are fixed on the branch, so no shared-cause row is written; AC1 is the branch the criterion takes.'
+  description: 'AC3 hosted proxy: no shared cause was found, so nothing is patched around; the check fails when the diff against the base edits a ratchet, baseline or allowlist file, and AC1 is the branch the criterion takes.'
   source: manual
   binds_ac:
   - AC3
   checks:
+  - check_type: command
+    check_value: bash -o pipefail -c '! git diff --name-only origin/dev...HEAD | grep -E "^\.onex_ratchets/|baseline|allowlist"'
+    cwd: .
   - check_type: test_passes
     check_value: uv run pytest tests/test_no_cross_node_reach_in.py -q -n 0 --no-cov -p no:randomly
     cwd: .

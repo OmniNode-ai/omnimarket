@@ -183,4 +183,10 @@ class ModelSilentFailureAlarmOptions(BaseModel):
             raise ValueError(
                 "OMNI_HOME or ONEX_SILENT_FAILURE_ALARM_CONFIG is required"
             )
-        return cls(registry_root=Path(root))
+        return cls(
+            registry_root=Path(root),
+            install_failures_file=Path(
+                os.environ.get("ONEX_INSTALL_FAILURES_FILE")
+                or _state_home() / "omni/landing/install-failures.jsonl"
+            ),
+        )

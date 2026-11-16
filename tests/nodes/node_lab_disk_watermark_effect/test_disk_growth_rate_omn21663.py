@@ -21,6 +21,7 @@ from omnimarket.nodes.node_lab_disk_watermark_effect.handlers.handler_lab_disk_w
     Usage,
 )
 from omnimarket.nodes.node_lab_disk_watermark_effect.models.model_lab_disk_watermark import (
+    ModelLabDiskWatermarkReading,
     ModelLabDiskWatermarkRequest,
     ModelWatermarkHost,
 )
@@ -76,8 +77,9 @@ def test_disk_growth_rate_pages_when_the_floor_is_near_at_the_measured_rate(
     assert volume.free_gb_per_hour == pytest.approx(5.0)
     assert volume.hours_to_floor == pytest.approx(7.0)
     saved = json.loads((tmp_path / "state/pool-a.json").read_text())
-    assert saved["growth_paged"] is True
     assert saved["level"] == "ok"
+    assert "growth" not in saved
+    assert "growth_paged" not in saved
 
 
 def test_disk_growth_rate_does_not_page_when_the_floor_is_far(tmp_path: Path) -> None:
@@ -157,3 +159,53 @@ def test_disk_growth_rate_run_exits_at_the_page_code_and_names_the_rate(
     assert "PAGE-GROWTH pool-a" in err
     assert "5.0 GB an hour" in err
     assert "7.0 hours" in err
+
+
+def test_disk_growth_rate_the_written_file_validates_as_the_contract_model(
+    tmp_path: Path,
+) -> None:
+    """The reading file is the contract's own model: a reader validating it with extra=forbid must not fail."""
+    _read(tmp_path, FIRST, 50, GROWTH)
+    reading = _read(tmp_path, FIRST + timedelta(hours=2), 40, GROWTH)
+    assert reading.growth_paged is True
+    saved = json.loads((tmp_path / "state/pool-a.json").read_text())
+    parsed = ModelLabDiskWatermarkReading.model_validate(saved)
+    assert parsed.level == "ok"
+    assert parsed.read_at == (FIRST + timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def test_disk_growth_rate_short_ticks_over_a_long_fall_still_make_a_rate(
+    tmp_path: Path,
+) -> None:
+    """Ticks every 5 minutes against a 30 minute minimum span: the previous tick is always too young, so the
+    baseline must be an older reading, and a steady fall of 6 GB an hour must page once 30 minutes have passed."""
+    readings = []
+    for tick in range(0, 13):
+        free_gb = 60 - tick / 2
+        readings.append(
+            _read(tmp_path, FIRST + timedelta(minutes=5 * tick), int(free_gb), GROWTH)
+        )
+    assert readings[0].growth == ()
+    assert readings[5].growth == ()
+    assert readings[6].growth
+    assert readings[12].growth
+    last = readings[12]
+    assert last.growth[0].free_gb_per_hour == pytest.approx(6.0, abs=0.7)
+    assert last.growth[0].span_minutes >= 30
+    assert last.growth_paged is True
+
+
+def test_disk_growth_rate_a_dry_run_keeps_no_history(tmp_path: Path) -> None:
+    handler = HandlerLabDiskWatermark(
+        usage=lambda _path: Usage(100 * GIB, 50 * GIB, 50 * GIB),
+        now=lambda: FIRST,
+        home=tmp_path,
+    )
+    handler.handle(
+        ModelLabDiskWatermarkRequest(
+            host_name="pool-a",
+            overlay_file=str(_overlay(tmp_path, GROWTH)),
+            dry_run=True,
+        )
+    )
+    assert not (tmp_path / "state").exists()

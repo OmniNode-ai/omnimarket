@@ -10,7 +10,7 @@ import shutil
 import tempfile
 import uuid
 from collections.abc import Callable, Mapping
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import NamedTuple
 
@@ -36,6 +36,9 @@ from omnimarket.nodes.node_lab_disk_watermark_effect.handlers.host_disk_classes 
     volume_for,
 )
 from omnimarket.nodes.node_lab_disk_watermark_effect.handlers.host_disk_growth import (
+    HISTORY_LIMIT,
+    dump_history,
+    load_history,
     volume_growth,
 )
 from omnimarket.nodes.node_lab_disk_watermark_effect.handlers.host_disk_ports import (
@@ -243,7 +246,9 @@ class HandlerLabDiskWatermark:
         growth: tuple[ModelVolumeGrowth, ...] = ()
         growth_paged = False
         if row.growth is not None:
-            growth, growth_paged = self._growth(row, row.growth, reading_file, usages)
+            growth, growth_paged = self._growth(
+                row, row.growth, reading_file, usages, not request.dry_run
+            )
         reading = ModelLabDiskWatermarkGrowthReading(
             host_name=row.name,
             read_at=self.now().strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -391,39 +396,50 @@ class HandlerLabDiskWatermark:
         settings: ModelWatermarkGrowth,
         reading_file: Path,
         usages: list[tuple[str, Usage]],
+        persist: bool,
     ) -> tuple[tuple[ModelVolumeGrowth, ...], bool]:
-        """The growth of each volume against the host's admission floor, read from the previous reading file.
+        """The growth of each volume against the host's admission floor, read from a baseline at least min-span old.
 
-        A missing or unparseable file means no growth (an empty tuple). A volume present in both readings gets a
-        ``ModelVolumeGrowth``; ``growth_paged`` is True when any volume reaches the floor within the declared horizon.
+        The reading file is overwritten on every tick, so the previous tick is often younger than the declared minimum
+        span and would never make a rate. The history file beside it keeps the newest reading that is at least that old
+        (and every newer one), so a short unit interval still measures a long fall (OMN-21663). A missing or damaged
+        history means no growth yet. ``growth_paged`` is True when any volume reaches the floor within the horizon.
         """
-        try:
-            previous = json.loads(reading_file.read_text(encoding="utf-8"))
-            previous_read_at = datetime.strptime(
-                previous["read_at"], "%Y-%m-%dT%H:%M:%SZ"
-            ).replace(tzinfo=UTC)
-            previous_volumes = {
-                volume["path"]: int(volume["free_bytes"])
-                for volume in previous["volumes"]
-            }
-        except (OSError, ValueError, KeyError, TypeError):
-            return (), False
+        now = self.now()
+        history_file = reading_file.with_name(
+            f"{reading_file.name}.growth-history.json"
+        )
+        entries = load_history(history_file)
+        current = (now, {path: usage.free for path, usage in usages})
+        old_enough = [
+            entry
+            for entry in entries
+            if now - entry[0] >= timedelta(minutes=settings.min_span_minutes)
+        ]
         floor_bytes = row.admission_floor_gb * 1024**3
         growth: list[ModelVolumeGrowth] = []
-        for path, usage in usages:
-            if path not in previous_volumes:
-                continue
-            result = volume_growth(
-                previous_read_at,
-                previous_volumes[path],
-                self.now(),
-                usage.free,
-                floor_bytes,
-                settings.min_span_minutes,
+        if old_enough:
+            baseline = max(old_enough, key=lambda entry: entry[0])
+            for path, usage in usages:
+                if path not in baseline[1]:
+                    continue
+                result = volume_growth(
+                    baseline[0],
+                    baseline[1][path],
+                    now,
+                    usage.free,
+                    floor_bytes,
+                    settings.min_span_minutes,
+                )
+                if result is not None:
+                    growth.append(result.model_copy(update={"path": path}))
+            kept = [entry for entry in entries if entry[0] >= baseline[0]]
+        else:
+            kept = [entry for entry in entries if entry[0] <= now]
+        if persist:
+            self._write_text(
+                history_file, dump_history([*kept, current][-HISTORY_LIMIT:])
             )
-            if result is None:
-                continue
-            growth.append(result.model_copy(update={"path": path}))
         growth_paged = any(
             item.hours_to_floor is not None
             and item.hours_to_floor <= settings.page_hours_to_floor
@@ -432,14 +448,19 @@ class HandlerLabDiskWatermark:
         return tuple(growth), growth_paged
 
     def _write(self, target: Path, reading: ModelLabDiskWatermarkReading) -> None:
+        # The growth fields are the run's result and never part of the file: the file is the contract's own model.
+        text = json.dumps(
+            reading.model_dump(exclude={"host_disk", "growth", "growth_paged"}),
+            indent=2,
+        )
+        self._write_text(target, text + "\n")
+
+    def _write_text(self, target: Path, text: str) -> None:
         target.parent.mkdir(parents=True, exist_ok=True)
         descriptor, name = tempfile.mkstemp(dir=target.parent, prefix=".reading-")
         try:
             with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-                handle.write(
-                    json.dumps(reading.model_dump(exclude={"host_disk"}), indent=2)
-                    + "\n"
-                )
+                handle.write(text)
             os.replace(name, target)
         except BaseException:
             Path(name).unlink(missing_ok=True)

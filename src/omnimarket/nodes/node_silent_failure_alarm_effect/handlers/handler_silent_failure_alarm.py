@@ -713,13 +713,17 @@ class HandlerSilentFailureAlarm:
             if installs.verdict == "RAISE":
                 alarms.append(INSTALL_FAILURE)
             if request.apply:
+                all_delivered = True
                 for alert in installs.alert_text:
                     delivered, detail, _ = self._deliver("install_failure_alarm", alert)
                     if not delivered:
+                        all_delivered = False
                         warnings.append(
                             f"silent_failure_alarm: install-failure alert not delivered: {detail}"
                         )
-                if installs.verdict != "UNREADABLE":
+                # A raise is remembered only once the channel took it: a raise written after a failed delivery
+                # would hold the alert back for the whole reraise bound, or forever when the bound is 0.
+                if installs.verdict != "UNREADABLE" and all_delivered:
                     problem = write_state(
                         options.install_failure_state_file, installs.state
                     )

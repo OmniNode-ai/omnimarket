@@ -233,9 +233,15 @@ class HandlerJobExitAlarm:
                 current = current.model_copy(
                     update={"pushed": True, "raised_at": request.now, "raise_count": 1}
                 )
+            # A raise again follows a first raise: an episode the push has not reached yet (and no CLAIM cites) waits
+            # for the push, so a limit below the push delay never marks it pushed unsent. At most one open-episode
+            # cap's worth are raised per tick, so a backlog of old open episodes cannot flood one tick.
             if (
                 current.episode is not None
                 and current.opened_at is not None
+                and current.cause is not None
+                and (current.pushed or current.episode in request.cited_episodes)
+                and len(reraised) < request.max_opened
                 and request.reraise_after_minutes > 0
                 and (
                     request.now
@@ -272,7 +278,7 @@ class HandlerJobExitAlarm:
                     ModelJobExitReraise(
                         episode=current.episode,
                         label=label,
-                        cause=current.cause or "failed-exit",
+                        cause=current.cause,
                         age_minutes=age,
                         raise_count=count,
                     )
