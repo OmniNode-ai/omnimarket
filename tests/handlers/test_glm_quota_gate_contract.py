@@ -47,5 +47,5 @@ def test_every_criterion_is_bound_by_a_dod_evidence_entry_with_a_check() -> None
 
 def test_the_summary_names_every_code_that_holds() -> None:
     summary = _contract()["summary"]
-    for code in ("1308", "1310", *(str(c) for c in range(1316, 1322))):
-        assert code in summary, f"the summary does not name code {code}"
+    for code in ("1308", "1310", "1316 to 1321"):
+        assert code in summary, f"the summary does not name {code}"
