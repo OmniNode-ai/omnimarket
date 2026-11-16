@@ -365,6 +365,21 @@ def test_built_package_setup_delegation_dashboard_journey(
         observations = {item["step"]: item for item in journal["observations"]}
         assert observations["models"]["status"] == "success"
         assert observations["dashboard"]["status"] == "success"
+        tui_status = _run(
+            [
+                str(cli.parent / "python"),
+                "-c",
+                "import asyncio; from omnimarket.nodes.node_onex_setup_effect.cli_tui import load_status; "
+                "print(asyncio.run(load_status()).model_dump_json())",
+            ],
+            environment,
+            workspace,
+        )
+        assert tui_status.returncode == 0, tui_status.stderr
+        evidence["tui_status"] = json.loads(tui_status.stdout)
+        assert evidence["tui_status"]["models"] == 1, (
+            "The TUI footer lost the named model setup just configured"
+        )
         delegated = invoke(
             "delegate",
             "Explain why named connections keep model endpoints independent.",

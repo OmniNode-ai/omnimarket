@@ -69,6 +69,12 @@ from omnimarket.handlers.routing.byok_model_listing import (
 )
 from omnimarket.models.model_catalog_entry import Deployment, ModelCatalogEntry
 from omnimarket.models.model_local_server_details import ModelLocalServerDetails
+from omnimarket.nodes.node_model_setup_effect.models.model_endpoint_connection import (
+    ModelEndpointConnectionResult,
+)
+from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_result import (
+    ModelModelStatus,
+)
 from omnimarket.nodes.node_onex_setup_effect.cli_model_table import (
     ModelTable,
     entry_key,
@@ -358,34 +364,49 @@ def _failure_reason(document: dict[str, object]) -> str | None:
 async def load_status() -> ModelTuiStatus:
     """Default model and delegation state, read through the CLI's own JSON output."""
     runner = HandlerOnexCommand()
-    model: str | None = None
-    first_url: str | None = None
-    count = 0
     lines: list[str] = []
-    await runner.stream(("models", "list", "--json"), lines.append)
-    for row in _json_rows("\n".join(lines)):
-        if not row.get("set_up"):
-            continue
-        # A model two servers run counts once per server, as the tables show it.
-        on_servers = row.get("local_models")
-        items = (
-            on_servers
-            if isinstance(on_servers, list) and on_servers
-            else row.get("models")
+    connected: list[str] = []
+    listed_code, connected_code = await asyncio.gather(
+        runner.stream(("models", "list", "--json"), lines.append),
+        runner.stream(("models", "connections", "--json"), connected.append),
+    )
+    if listed_code != 0:
+        raise RuntimeError("models list could not be read")
+    if connected_code != 0:
+        raise RuntimeError("models connections could not be read")
+    try:
+        rows = [
+            ModelModelStatus.model_validate_json(line).model_dump(mode="json")
+            for line in lines
+            if line.strip()
+        ]
+    except ValueError as error:
+        raise RuntimeError("models list returned invalid model status") from error
+    try:
+        connections = ModelEndpointConnectionResult.model_validate_json(
+            "\n".join(connected)
         )
-        count += len(items) if isinstance(items, list) else 0
-        # Only a chosen first model is "first"; otherwise Auto picks per task.
-        if row.get("tried_first") and row.get("first_model"):
-            model = str(row["first_model"])
-            first_url = str(row["first_url"]) if row.get("first_url") else None
+    except ValueError as error:
+        raise RuntimeError(
+            "models connections returned invalid configuration"
+        ) from error
+    if connections.status != "ready":
+        raise RuntimeError("models connections could not be read")
+    # The footer counts the same selection as the tables. Supplemental model
+    # metadata is unnecessary for this count and must not trigger a network read.
+    selection = selected_models(
+        rows,
+        [row.model_dump(mode="json") for row in connections.connections],
+        EMPTY_INDEX,
+    )
     hook: list[str] = []
     # The hook read asks Claude Code (about 3 s, 7 s measured 2026-11-15).
     code = await runner.stream(tui_design().delegation.claude_check, hook.append)
     delegation, hooks, problem = _delegation_read(code, "\n".join(hook))
     return ModelTuiStatus(
-        model=model,
-        first_url=first_url,
-        models=count,
+        model=selection.first[1] if selection.first else None,
+        first_url=selection.first_url,
+        models=len(selection.entries),
         delegation=delegation,
         hooks=hooks,
         problem=problem,
