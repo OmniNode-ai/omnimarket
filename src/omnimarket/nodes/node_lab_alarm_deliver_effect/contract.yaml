@@ -78,6 +78,19 @@ overlay:
   node: node_lab_alarm_deliver_effect
   roots_env: ONEX_SKILL_OVERLAY_ROOTS
 
+# The two references the alert-channel library reads on the host that runs the delivery: the same names
+# node_slack_publish_effect and node_consumer_flow_stall_alert_effect declare. The values are never here: the
+# library takes them from the unit's environment, then from the operator env file the unit's overlay names
+# (node_lab_alarm host environment OMNIBASE_OPERATOR_ENV_FILE). A host with neither gets a typed failed channel
+# receipt from the run, never a silent skip, so a reference is not required to load the node.
+secrets:
+  SLACK_BOT_TOKEN:
+    description: "Slack bot token (xoxb-...) the alert-channel library posts chat.postMessage with."
+    required: false
+  SLACK_CHANNEL_ID:
+    description: "Slack channel id of the alerts channel the alarm is posted to."
+    required: false
+
 metadata:
   ticket: OMN-23906
   transport_type: inmemory

@@ -59,7 +59,6 @@ src/omnimarket/nodes/node_compliance_sweep/__main__.py
 src/omnimarket/nodes/node_consumer_flow_prune_effect/__main__.py
 src/omnimarket/nodes/node_context_compaction_orchestrator/handlers/handler_compaction_pack_build.py
 src/omnimarket/nodes/node_context_compaction_orchestrator/handlers/handler_session_barrier_wait.py
-src/omnimarket/nodes/node_context_compaction_receipts_fold_compute/handlers/handler_context_current_context_fold.py
 src/omnimarket/nodes/node_context_pack_orchestrator/handlers/handler_context_pack_orchestrator.py
 src/omnimarket/nodes/node_contract_sweep/__main__.py
 src/omnimarket/nodes/node_contractor_integration_note_effect/cli.py
@@ -215,7 +214,6 @@ src/omnimarket/nodes/node_retention_cleanup/__main__.py
 src/omnimarket/nodes/node_retention_cleanup/handlers/handler_file_retention.py
 src/omnimarket/nodes/node_retired_model_reference_check_effect/__main__.py
 src/omnimarket/nodes/node_review_finding_veto_effect/__main__.py
-src/omnimarket/nodes/node_review_replay_set_effect/__main__.py
 src/omnimarket/nodes/node_review_response_parser_compute/handlers/handler_compact_strict_parse.py
 src/omnimarket/nodes/node_reviewer_eval_effect/__main__.py
 src/omnimarket/nodes/node_routing_complexity_compute/handlers/handler_complexity_scoring.py

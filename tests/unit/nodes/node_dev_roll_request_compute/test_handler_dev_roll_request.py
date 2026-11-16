@@ -11,19 +11,21 @@ from pathlib import Path
 import pytest
 
 from omnimarket.handlers.node_overlay_reader import NodeOverlayNotFoundError
+from omnimarket.models.dev_roll import (
+    EnumDevRollAction,
+    EnumDevRollEventRefusal,
+    EnumDevRollHealth,
+    EnumDevRollHoldReason,
+    ModelDevRollDecided,
+    ModelDevRollRecord,
+)
 from omnimarket.nodes.node_dev_roll_request_compute.handlers import (
     HandlerDevRollRequest,
     decide_dev_roll,
 )
 from omnimarket.nodes.node_dev_roll_request_compute.models import (
-    EnumDevRollAction,
-    EnumDevRollEventRefusal,
-    EnumDevRollHealth,
-    EnumDevRollHoldReason,
     EnumDevRollRefusalReason,
-    ModelDevRollDecided,
     ModelDevRollPolicy,
-    ModelDevRollRecord,
     ModelDevRollRefused,
 )
 from omnimarket.nodes.node_dev_roll_request_compute.overlay import load_dev_roll_policy

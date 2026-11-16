@@ -15,12 +15,15 @@ import pytest
 import yaml
 from pydantic import BaseModel
 
+import omnimarket.nodes.node_entry_point_registration_compute as registration
+from omnimarket.nodes.node_entry_point_registration_compute import reviewed_list
 from scripts.audit.market_node_runtime_dogfood import (
     _NODES_DIR,
     _PYPROJECT,
     _local_invocation_check,
     build_report,
 )
+from scripts.validate_node_drift import validate_node
 
 FOCUS_NODES = {
     "node_contract_reducer",
@@ -51,96 +54,12 @@ NATIVE_NON_ADDRESSABLE_NODES = {
 
 EVENT_ROUTED_NODES = {"node_e2e_orchestrator"}
 
+# The reviewed list of nodes that may have no onex.nodes entry point is the contract
+# config of node_entry_point_registration_compute, the source node-drift-gate reads too
+# (OMN-24354): each entry carries the reason it has no entry point.
 EXPECTED_MISSING_ENTRY_POINTS = {
-    "node_auto_merge_effect",
-    "node_merge_sweep_auto_merge_arm_effect",
-    "node_merge_sweep_triage_orchestrator",
-    # OMN-17982 validates a supplied historical V4 profile offline.  It is
-    # discoverable inventory metadata, but deliberately has no addressable
-    # runtime entry point, bus route, or live side-effect capability.
-    "node_rsd_v4_static_profile_validate_compute",
-    # OMN-17982 V5 is deliberately offline-only: its pure validator has no
-    # command/terminal route, event bus, runtime, or effect capability.
-    "node_rsd_v5_oci_safe_config_validate_compute",
-    # The V4 artifact-evidence verifier is likewise an offline inventory
-    # surface only: supplied signed claims are validated without collection,
-    # build, delivery, replay, runtime, or live-effect authority.
-    "node_rsd_v4_artifact_evidence_validate_compute",
-    # The V5 worker-evidence closure validator is likewise inventory-only.
-    "node_rsd_v5_artifact_evidence_validate_compute",
-    # B1 keeps its historical-map comparison private to offline evidence
-    # verification; the inventory surface has no live route or entry point.
-    "node_rsd_b1_projection_binding_validate_compute",
-    # B2 only revalidates supplied signed evidence; it has no live route.
-    "node_rsd_target_delivery_artifact_manifest_v2_validate_compute",
-    # OMN-19399: the worktree-reconcile effect reads the host's own filesystem,
-    # so a host timer runs it from the command line; it publishes events but
-    # subscribes to no topic and has no onex.nodes entry point.
-    "node_worktree_reconcile_effect",
-    # OMN-24121: the PR lifecycle triage compute is called in process by the
-    # PR lifecycle orchestrator since its inventory subscription was removed, and
-    # the seam field diff compute and its check effect run from the merge check's
-    # own command line; none subscribes to a command topic with a terminal event,
-    # so none has an onex.nodes entry point.
-    "node_pr_lifecycle_triage_compute",
-    "node_seam_field_diff_check_effect",
-    "node_seam_field_diff_compute",
-    # OMN-19998: the lab daemon sync effect installs on the host's own
-    # filesystem, so a host timer runs it with python -m; it publishes events
-    # but subscribes to no topic and has no onex.nodes entry point.
-    "node_lab_daemon_sync_effect",
-    # OMN-20712: hosted from the operator tooling repository, whose copy is
-    # still registered; called in process by its host scheduler, so it subscribes
-    # to no topic and has no onex.nodes entry point until the registration
-    # hand-over (nodes-to-market plan step B).
-    # OMN-20712: hosted from the operator tooling repository, whose copy is
-    # still registered; called in process by its host scheduler, so it subscribes
-    # to no topic and has no onex.nodes entry point until the registration
-    # hand-over (nodes-to-market plan step B).
-    "node_lab_disk_hygiene_effect",
-    # OMN-23297: the lane context ledger dedupe links files on the host's own
-    # filesystem, so the lab daemon sync's host tick runs it with python -m; it
-    # publishes events but subscribes to no topic and has no onex.nodes entry point.
-    "node_lane_ctx_ledger_dedupe_effect",
-    # OMN-19970: the dev seed runs from `onex seed` against the store or broker
-    # it names; it publishes fixture terminals but subscribes to no topic and
-    # has no onex.nodes entry point.
-    "node_dev_seed_effect",
-    # OMN-19985: the local secret store runs from `onex secret set` / `onex
-    # secret delete`; it returns credential events for the CLI shim to fold and
-    # subscribes to no topic, so it has no onex.nodes entry point.
-    "node_local_secret_store_effect",
-    # OMN-20926: the captured secret resolver is called in-process by a
-    # consumer that holds a captured record, with a store built from the
-    # consumer's own identity; it returns the value as a SecretStr, publishes
-    # nothing and subscribes to no topic, so it has no onex.nodes entry point.
-    "node_captured_secret_resolve_effect",
-    # OMN-20817: the model setup effect runs from `onex models`; it returns its
-    # status and test results to the CLI shim and subscribes to no topic, so it
-    # has no onex.nodes entry point.
-    "node_model_setup_effect",
-    # OMN-19988: the local alert compute is called in process by the local
-    # environment projection on every report it stores; it subscribes to no
-    # topic and publishes none, so it has no onex.nodes entry point.
-    "node_local_alert_compute",
-    # OMN-19991: the local alert transition compute is called in process by the
-    # local environment writer around each write it makes; it subscribes to no
-    # topic, so it has no onex.nodes entry point.
-    "node_local_alert_transition_compute",
-    # OMN-17427: the lab secret-store override edits an ephemeral render copy on
-    # the caller's own filesystem, so the lab apply script runs it in process
-    # from its console script; it subscribes to no topic and has no onex.nodes
-    # entry point.
-    "node_lab_secret_store_override_effect",
-    # OMN-17427: the legacy worktree audit reads the host's own worktrees, so
-    # its console script runs it from the command line; it subscribes to no
-    # topic and has no onex.nodes entry point.
-    "node_legacy_worktree_audit_effect",
-    # OMN-23606: the factory floor unresolved rows effect runs as a step of the
-    # floor publisher through its own `python -m` module, about every six hours;
-    # it publishes nothing and subscribes to no topic, so it has no onex.nodes
-    # entry point.
-    "node_factory_floor_unresolved_effect",
+    entry.node
+    for entry in reviewed_list.load_registration_config().reviewed_unregistered_nodes
 }
 
 # Node directories that hold migrations and no contract.yaml yet. Each entry
@@ -223,6 +142,68 @@ def _inventory_violations(inventory: _Inventory) -> list[str]:
         elif name not in {node, node.removeprefix("node_")}:
             violations.append(f"{node}: contract.yaml names {name!r}")
     return violations
+
+
+@pytest.mark.parametrize("listed", [False, True])
+@pytest.mark.parametrize("lifecycle", ["", "experimental", "deprecated"])
+def test_gate_and_inventory_agree_on_every_entry_point_case(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    lifecycle: str,
+    listed: bool,
+) -> None:
+    """node-drift-gate and the inventory test judge a node with no entry point alike.
+
+    Control: before the gate read the reviewed list, an unlisted experimental or
+    deprecated node passed the gate while the inventory test flagged it, so a pull
+    request that added one went green at the gate and red at this test.
+    """
+    node_dir = tmp_path / "node_case"
+    node_dir.mkdir()
+    lifecycle_line = f"lifecycle: {lifecycle}\n" if lifecycle else ""
+    (node_dir / "contract.yaml").write_text(
+        f"name: node_case\nnode_type: effect\n{lifecycle_line}"
+        "handler:\n"
+        "  module: omnimarket.nodes.node_case.handlers.handler_case\n"
+        "  class: HandlerCase\n"
+    )
+    names = {"node_case"} if listed else set[str]()
+    config = {
+        "reviewed_unregistered_nodes": [
+            {"node": name, "reason": "test reason"} for name in sorted(names)
+        ]
+    }
+    monkeypatch.setattr(
+        reviewed_list, "load_packaged_contract_section", lambda _node, _section: config
+    )
+    registration.registration_handler.cache_clear()
+    try:
+        gate_result = validate_node(node_dir, entry_points=set(), strict=True)
+    finally:
+        registration.registration_handler.cache_clear()
+    gate_flags = any(
+        f.check == "pyproject_entry" and f.level == "FAIL" for f in gate_result.findings
+    )
+
+    monkeypatch.setattr(
+        "tests.test_market_node_runtime_dogfood.EXPECTED_MISSING_ENTRY_POINTS", names
+    )
+    inventory = _Inventory(
+        node_dirs=frozenset({"node_case"}),
+        entry_points={},
+        contract_names={"node_case": "node_case"},
+    )
+    inventory_flags = any(
+        "no onex.nodes entry point" in violation
+        for violation in _inventory_violations(inventory)
+    )
+
+    assert gate_flags == inventory_flags
+    assert gate_flags is (not listed)
+
+
+def test_real_gate_and_inventory_read_one_list() -> None:
+    assert _inventory_violations(_real_inventory()) == []
 
 
 def _with_stray_dir(inv: _Inventory) -> _Inventory:

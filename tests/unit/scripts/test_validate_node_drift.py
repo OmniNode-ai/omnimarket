@@ -13,10 +13,14 @@ from __future__ import annotations
 import importlib.util
 import json
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 from types import ModuleType
 
 import pytest
+
+import omnimarket.nodes.node_entry_point_registration_compute as registration
+from omnimarket.nodes.node_entry_point_registration_compute import reviewed_list
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SCRIPT_PATH = REPO_ROOT / "scripts" / "validate_node_drift.py"
@@ -283,33 +287,89 @@ def test_orphan_node_check_allows_experimental_contract(
     assert not any(finding.check == "node_liveness" for finding in result.findings)
 
 
-@pytest.mark.unit
-def test_pyproject_entry_check_allows_deprecated_lifecycle(
-    drift_module: object,
-    tmp_path: Path,
-) -> None:
-    """A node explicitly marked lifecycle: deprecated (OMN-14151) is exempt from
-    the pyproject_entry FAIL even in --strict mode — this is how a hard-gated
-    legacy node's entry_points can be removed without tripping the gate."""
-    node_dir = tmp_path / "node_legacy_arm"
+def _write_node(parent: Path, name: str, lifecycle: str) -> Path:
+    node_dir = parent / name
     node_dir.mkdir()
+    lifecycle_line = f"lifecycle: {lifecycle}\n" if lifecycle else ""
     (node_dir / "contract.yaml").write_text(
-        "name: node_legacy_arm\n"
-        "node_type: effect\n"
-        "lifecycle: deprecated\n"
+        f"name: {name}\nnode_type: effect\n{lifecycle_line}"
         "handler:\n"
-        "  module: omnimarket.nodes.node_legacy_arm.handlers.handler_legacy_arm\n"
-        "  class: HandlerLegacyArm\n"
+        f"  module: omnimarket.nodes.{name}.handlers.handler_case\n"
+        "  class: HandlerCase\n"
     )
+    return node_dir
 
-    result = drift_module.validate_node(  # type: ignore[attr-defined]
-        node_dir,
-        entry_points=set(),  # no pyproject entry — this node was deregistered
-        strict=True,
+
+def _reviewed(monkeypatch: pytest.MonkeyPatch, names: set[str]) -> None:
+    """Make the reviewed list the given names, through the node's own contract read."""
+    config = {
+        "reviewed_unregistered_nodes": [
+            {"node": name, "reason": "test reason"} for name in sorted(names)
+        ]
+    }
+    monkeypatch.setattr(
+        reviewed_list, "load_packaged_contract_section", lambda _node, _section: config
     )
+    registration.registration_handler.cache_clear()
+
+
+@pytest.fixture(autouse=True)
+def _fresh_registration_handler() -> Iterator[None]:
+    registration.registration_handler.cache_clear()
+    yield
+    registration.registration_handler.cache_clear()
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("lifecycle", ["", "experimental", "deprecated"])
+def test_exemption_unlisted_node_without_entry_point_fails_whatever_its_lifecycle(
+    drift_module: ModuleType,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    lifecycle: str,
+) -> None:
+    """OMN-24354: a lifecycle of experimental or deprecated no longer excuses a node with
+    no onex.nodes entry point; only the reviewed list does."""
+    _reviewed(monkeypatch, set())
+    node_dir = _write_node(tmp_path, "node_case", lifecycle)
+
+    result = drift_module.validate_node(node_dir, entry_points=set(), strict=True)
+
+    assert result.passed is False
+    assert any(finding.check == "pyproject_entry" for finding in result.findings)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("lifecycle", ["", "experimental", "deprecated"])
+def test_exemption_listed_node_without_entry_point_passes_whatever_its_lifecycle(
+    drift_module: ModuleType,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    lifecycle: str,
+) -> None:
+    _reviewed(monkeypatch, {"node_case"})
+    node_dir = _write_node(tmp_path, "node_case", lifecycle)
+
+    result = drift_module.validate_node(node_dir, entry_points=set(), strict=True)
 
     assert result.passed is True
     assert not any(finding.check == "pyproject_entry" for finding in result.findings)
+
+
+@pytest.mark.unit
+def test_exemption_list_is_read_from_the_node_contract_by_gate_and_inventory(
+    drift_module: ModuleType,
+) -> None:
+    """The gate's answer for every real directory is the handler's answer from the
+    contract list: no directory the list names is left to a second source."""
+    handler = registration.HandlerEntryPointRegistration()
+    entry_points = drift_module._load_entry_points(REPO_ROOT / "pyproject.toml")
+    node_dirs = frozenset(
+        item.name
+        for item in (REPO_ROOT / "src/omnimarket/nodes").iterdir()
+        if item.is_dir()
+    )
+    assert handler.stale_entries(node_dirs, frozenset(entry_points)) == ()
 
 
 @pytest.mark.unit

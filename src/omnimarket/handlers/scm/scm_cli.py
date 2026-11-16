@@ -20,12 +20,16 @@ A lane does GitHub work through this command and no ``gh`` verb:
   run-view, job-log, run-download, release-list) publish the gateway's typed request.
 - **PR authoring writes** (pr-create, pr-edit, pr-ready, pr-close, pr-comment,
   pr-thread-reply, pr-thread-resolve, pr-review-post, pr-label, workflow-run,
-  check-run-create, variable-set, variable-get) publish node_github_repo_write_effect's typed
+  check-run-create, variable-set, variable-get, runner-list, runner-remove,
+  runner-group-get)
+  publish node_github_repo_write_effect's typed
   request. Its guards apply: quota floor, expected head, idempotency, and the claim pr-close
   needs. pr-edit, pr-ready, pr-close, pr-review-post and pr-label take the expected head from the
   watcher state when ``--head-sha`` is not given. pr-close reads the claim the
   caller took from the caller's own claim registry and carries it on the
-  command: the effect runs elsewhere and cannot read that directory.
+  command: the effect runs elsewhere and cannot read that directory. The
+  runner verbs name the organization as the repo argument's owner part, and
+  the effect serves only the overlay's runner_removals entries.
 - **merge, arm, rerun, update-branch** have no node operation and are refused,
   naming the landing controller that does them.
 
@@ -150,6 +154,17 @@ def _target(text: str, *, pr: bool) -> tuple[str, int | None]:
         )
     if not pr and match["number"] is not None:
         raise click.UsageError(f"target {text!r} names a PR; give {_REPO_TARGET_HELP}")
+    number = match["number"]
+    return match["repo"], int(number) if number is not None else None
+
+
+def _target_optional_pr(text: str) -> tuple[str, int | None]:
+    """A repo target with or without a PR number (``OWNER/REPO`` or ``OWNER/REPO#N``)."""
+    match = _TARGET.match(text)
+    if match is None:
+        raise click.UsageError(
+            f"target {text!r} is not {_REPO_TARGET_HELP} or {_PR_TARGET_HELP}"
+        )
     number = match["number"]
     return match["repo"], int(number) if number is not None else None
 
@@ -492,6 +507,9 @@ def verbs_command() -> None:
 
 # ------------------------------------------------------------------- reads
 
+# Reads that take a pull request or a branch: the target may or may not name a PR.
+_PR_OR_REPO_READS: Final[frozenset[str]] = frozenset({"code_scanning_alerts"})
+
 _PR_SCOPED_READS: Final[frozenset[str]] = frozenset(
     {
         "pr_text",
@@ -524,7 +542,9 @@ def _read_command(spec: ModelScmVerb) -> click.Command:
     @click.option("--job-id", type=int, default=None, help="job-log.")
     @click.option("--artifact-id", type=int, default=None, help="run-download.")
     @click.option(
-        "--branch", default=None, help="run-list, branch-protection, pr-heads."
+        "--branch",
+        default=None,
+        help="run-list, branch-protection, pr-heads, code-scanning-alerts.",
     )
     @click.option(
         "--head-sha",
@@ -577,7 +597,11 @@ def _read_command(spec: ModelScmVerb) -> click.Command:
         dispatch_receipt: Path | None,
         **fields: object,
     ) -> None:
-        repo, number = _target(target, pr=pr_scoped)
+        repo, number = (
+            _target_optional_pr(target)
+            if spec.operation in _PR_OR_REPO_READS
+            else _target(target, pr=pr_scoped)
+        )
         bus_opts = {
             name: fields.pop(name)
             for name in ("omnibase_path", "bus", "bus_lane", "kafka_bootstrap")
@@ -773,6 +797,9 @@ _WRITE_OPTIONS: Final[dict[str, tuple[str, ...]]] = {
     "pr_label": ("add_label", "remove_label"),
     "repo_variable_set": ("variable",),
     "repo_variable_get": ("variable",),
+    "runner_list": (),
+    "runner_remove": ("runner",),
+    "runner_group_get": ("runner_group",),
     "pr_review_post": ("body", "body_file"),
     "workflow_dispatch": ("workflow", "ref", "input"),
     "check_run_create": (
@@ -790,6 +817,9 @@ _REPO_SCOPED_WRITES: Final[frozenset[str]] = frozenset(
         "check_run_create",
         "repo_variable_set",
         "repo_variable_get",
+        "runner_list",
+        "runner_remove",
+        "runner_group_get",
     }
 )
 _HEAD_FROM_WATCHER: Final[frozenset[str]] = frozenset(
@@ -880,6 +910,23 @@ _OPTION_DECORATORS: Final[
         help="The repository variable's name. It must be in the write node's "
         "overlay allowlist; its value comes from the overlay's declared source, "
         "never from this command line.",
+    ),
+    "runner": click.option(
+        "--runner",
+        "runner_name",
+        required=True,
+        help="The runner's registered name. The pair of the repository's "
+        "organization and this name must be in the write node's overlay "
+        "runner_removals, and the runner must be offline and idle before it "
+        "is deleted.",
+    ),
+    "runner_group": click.option(
+        "--group-id",
+        "runner_group_id",
+        required=True,
+        type=click.IntRange(min=1),
+        help="The runner group's id. The pair of the repository's organization "
+        "and this id must be in the write node's overlay runner_group_reads.",
     ),
     "add_label": click.option(
         "--add", "add_labels", multiple=True, help="A label to add (repeatable)."

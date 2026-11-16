@@ -1,0 +1,68 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - One-off Register Compute (OMN-19998)
+#
+# The register of one-offs: every automatic process that computes data outside the runtime, with what it is, where it runs, its
+# replacement node or plan, its owner and its state. The register is the node_oneoff_register_compute overlay; it is read against the
+# automation_liveness overlay's process list and against the nodes that exist, so a process nobody registered, a row naming a
+# process that is not declared and a replacement node that does not exist each fail the reading by name.
+name: node_oneoff_register_compute
+node_type: COMPUTE_GENERIC
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >
+  Reads the one-off register against the liveness processes and the nodes that exist. Pure: the register is the oneoff_register
+  overlay, the process list is the automation_liveness overlay, the node list is supplied by the caller, and no I/O occurs.
+  An unregistered in-scope process, an unknown process or a missing replacement node fails the reading; unplanned and
+  bypass readings are reported and never fail it.
+input_model:
+  name: ModelOneOffRegisterRequest
+  module: omnimarket.nodes.node_oneoff_register_compute.models.model_oneoff_register
+output_model:
+  name: ModelOneOffRegisterResult
+  module: omnimarket.nodes.node_oneoff_register_compute.models.model_oneoff_register
+handler:
+  module: omnimarket.nodes.node_oneoff_register_compute.handlers.handler_oneoff_register
+  class: HandlerOneOffRegister
+  input_model: omnimarket.nodes.node_oneoff_register_compute.models.model_oneoff_register.ModelOneOffRegisterRequest
+  output_model: omnimarket.nodes.node_oneoff_register_compute.models.model_oneoff_register.ModelOneOffRegisterResult
+entrypoint:
+  name: NodeOneOffRegisterCompute
+  module: omnimarket.nodes.node_oneoff_register_compute
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_oneoff_register_compute.handlers.handler_oneoff_register:HandlerOneOffRegister
+  handlers:
+    - operation: read_oneoff_register
+      topic: onex.cmd.omnimarket.oneoff-register-requested.v1
+      handler:
+        name: HandlerOneOffRegister
+        module: omnimarket.nodes.node_oneoff_register_compute.handlers.handler_oneoff_register
+terminal_event: onex.evt.omnimarket.oneoff-register-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.oneoff-register-requested.v1
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.oneoff-register-requested.v1]
+  publish_topics: [onex.evt.omnimarket.oneoff-register-completed.v1]
+overlay:
+  node: node_oneoff_register_compute
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+metadata:
+  ticket: OMN-19998
+  transport_type: inmemory
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: [main]
+  idempotent: true
+  timeout_ms: 5000
+externally_consumed_topics:
+  - onex.evt.omnimarket.oneoff-register-completed.v1
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.oneoff-register-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.oneoff-register-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.oneoff-register-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.oneoff-register-completed.v1, operation: DESCRIBE}

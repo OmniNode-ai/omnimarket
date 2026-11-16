@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lane_inbox_wait_effect
+version: 1.0.0
+description: Waits out one budget polling a lane's inbox, ending early on a binding MSG or HOLD to the lane or on a stop order.
+pack: operator_tooling
+node_role: effect
+display_name: Lane Inbox Wait
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_lane_inbox_wait_effect: omnimarket.nodes.node_lane_inbox_wait_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read
+dependencies:
+- pydantic>=2.0
+- pyyaml>=6.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- inbox
+- wait

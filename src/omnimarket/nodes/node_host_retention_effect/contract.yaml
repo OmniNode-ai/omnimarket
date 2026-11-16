@@ -7,7 +7,7 @@ name: node_host_retention_effect
 node_type: EFFECT_GENERIC
 version: 1.0.0
 lifecycle: experimental
-contract_version: {major: 1, minor: 1, patch: 0}
+contract_version: {major: 1, minor: 2, patch: 0}
 node_version: "1.0.0"
 runtime_profiles: []
 description: >-
@@ -18,7 +18,7 @@ description: >-
   keep_days, and it holds no socket, pipe or other filesystem. RUNNER WORK: a CI runner container's mounted work and cache folders
   are evicted, largest declared entry first, down to keep_gib, only while `docker top` shows no Runner.Worker in the runner's
   container (re-read before every removal; an unreadable state refuses the runner) and only through `docker exec` in that
-  container as the runner's own user. UV CACHE: `uv cache prune` and nothing else, only once the cache holds min_gib.
+  container as the runner's own user. UV CACHE: `uv cache prune` once the cache holds min_gib, and, when a cap is declared, evict whole entries (unpacked wheels, git dependency checkouts) of the declared buckets oldest-first until the cache is at or under cap_gib, keeping entries that are hardlinked into a virtual environment, changed within keep_days, held by a live process, or not a plain folder.
   PRE-COMMIT STORE: a hook repository folder of the pre-commit cache is removed when nothing under it changed inside
   keep_days and no live process names it, together with its row in the store's index under the store's lock. A dry run reads everything and removes
   nothing: it lists each entry it would remove with its bytes and the totals per class. Never a docker volume, never a secret path,
@@ -90,6 +90,15 @@ retention_bounds:
   # A runner mount's container root is relative to the runner user's home and must sit under one of these.
   allowed_container_roots: [actions-runner/_work, tmp, .npm, .cache]
   protected_leaf_names_always: [_actions, _temp, _PipelineMapping, .git, memory]
+  # The folders of a uv cache a cap may evict whole entries from. `depth` is how far under the folder an entry sits:
+  # `archive-v0/<id>` is an unpacked wheel; `git-v0/checkouts/<repository>/<revision>` is one checkout of a git dependency
+  # (uv makes a new one for every revision it installs and never removes an old one; it rebuilds a missing one from its git
+  # database). `keep_linked` keeps an entry in which a file has more than one hard link: a virtual environment shares the
+  # unpacked wheel that way, so an archive entry so linked is in use; a git checkout is hard-linked to uv's own git database,
+  # never to a virtual environment, so the link there guards nothing. A cap naming any other folder is refused.
+  uv_evictable_buckets:
+    archive-v0: {depth: 1, keep_linked: true}
+    git-v0/checkouts: {depth: 2, keep_linked: false}
 metadata:
   transport_type: inmemory
   execution_locus: host-local

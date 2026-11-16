@@ -31,11 +31,25 @@ repos:
         files: ^(src/omnimarket/nodes/node_github_webhook_ingress_effect/.*|tests/nodes/node_github_webhook_ingress_effect/test_http_.*\.py)$
         pass_filenames: false
         stages: [pre-commit]
+      - id: workflow-contract-catalog-http
+        name: Workflow contract catalog runtime HTTP route
+        entry: uv run --frozen pytest tests/nodes/node_workflow_contract_catalog_effect -q --no-cov
+        language: system
+        files: ^(src/omnimarket/nodes/node_workflow_contract_catalog_effect/.*|tests/nodes/node_workflow_contract_catalog_effect/.*\.py)$
+        pass_filenames: false
+        stages: [pre-commit]
       - id: catalog-http-mounts
         name: Catalog runtime HTTP mounts (plans, usage privileges)
         entry: uv run --frozen pytest tests/nodes/node_plan_list tests/nodes/node_usage_privileges -q --no-cov
         language: system
         files: ^(src/omnimarket/nodes/node_(plan_list|usage_privileges)/.*|src/omnimarket/models/model_catalog_postgres_pool\.py|tests/nodes/node_(plan_list|usage_privileges)/.*)$
+        pass_filenames: false
+        stages: [pre-commit]
+      - id: workflow-gateway-http
+        name: Workflow gateway runtime HTTP mount (submit, status, receipt, contracts)
+        entry: uv run --frozen pytest tests/nodes/node_workflow_gateway_effect -q --no-cov
+        language: system
+        files: ^(src/omnimarket/nodes/node_workflow_gateway_effect/.*|tests/nodes/node_workflow_gateway_effect/.*)$
         pass_filenames: false
         stages: [pre-commit]
       - id: envelope-example-route-nodes
@@ -49,6 +63,14 @@ repos:
       - id: morning-phase-tools-guard
         name: Morning phase tools guard and wiring
         entry: env -u PYTHONPATH uv run --frozen pytest tests/test_morning_phase_tools_wiring.py tests/nodes/node_morning_ground_state_orchestrator/test_morning_phase_tools_guard.py -q
+        language: system
+        always_run: true
+        pass_filenames: false
+        stages: [manual]
+      # The same guard runs in the required CI lint job, on every PR.
+      - id: node-entry-point-registration
+        name: Node directory has its onex.nodes entry point
+        entry: env -u PYTHONPATH uv run --frozen pytest tests/test_market_node_runtime_dogfood.py -k "inventory_fails_on_a_missing_or_extra_node and _without_entry_point" -q -n 0 --no-cov -p no:randomly
         language: system
         always_run: true
         pass_filenames: false
@@ -765,7 +787,7 @@ repos:
         name: Added test files are in the durations record (OMN-23560)
         language: system
         entry: env -u PYTHONPATH uv run --frozen python -m omnimarket.nodes.node_test_duration_record_check_effect.runtime_test_duration_record_check --staged
-        files: ^(tests/.*\.py|config/test_file_durations\.json|src/omnimarket/nodes/node_test_duration_record_check_effect/.*)$
+        files: ^(tests/.*\.py|config/test_file_durations\.(json|d/.*)|src/omnimarket/nodes/node_test_duration_record_check_effect/.*)$
         pass_filenames: false
         stages: [pre-commit]
 
@@ -810,6 +832,32 @@ repos:
         files: ^(src/omnimarket/nodes/.*/(contract\.yaml|handlers/.*\.py)|src/omnimarket/validators/projection_writer_contract\.py)$
         pass_filenames: false
         stages: [pre-commit]
+
+      # OMN-23995: a merged change must not break a running consumer. Pairs every bus model a
+      # node contract publishes with each model another node's route reads from the same topic
+      # and refuses a field the consumer refuses (or a required field the producer lacks).
+      # The strict models in seam_policy.yaml take no pin; other refusing pairs are pinned debt
+      # that only shrinks. CI twin: the "Bus Model Seam Gate (OMN-23995)" job in ci.yml, a
+      # strict CI Summary row.
+      - id: bus-model-seam-check
+        name: Bus models and the consumers that read them stay compatible (OMN-23995)
+        language: system
+        entry: env -u PYTHONPATH uv run --frozen python -m omnimarket.nodes.node_bus_model_seam_check_effect
+        files: ^src/omnimarket/(nodes/.*/contract\.yaml|nodes/node_bus_model_seam_check_effect/.*|models/.*\.py|events/.*\.py)$
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # OMN-24432: effect-node bypass ratchet (RULING 2026-11-14T11:59:02Z). Counts the outside-world calls
+      # (gh, GitHub API, git remotes, Slack, Linear, ssh to lab hosts, docker and kafka admin) that skip their
+      # effect node and refuses a rise against .onex_ratchets/effect_bypass_ceiling.yaml. Shrink-only baseline;
+      # CI twin: ci.yml job 'effect-bypass-ratchet', which also holds the merge base's copy.
+      - id: effect-bypass-ratchet
+        name: No new bypass of an effect node (OMN-24432)
+        language: system
+        entry: env -u PYTHONPATH uv run --frozen python -m omnimarket.nodes.node_effect_bypass_scan_effect check --repository omnimarket --root . --baseline .onex_ratchets/effect_bypass_ceiling.yaml
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
 
       # OMN-18013: a burned-down baseline may not come back, and a baseline still held
       # open for another lane may not grow past that lane's rows. Pure filesystem

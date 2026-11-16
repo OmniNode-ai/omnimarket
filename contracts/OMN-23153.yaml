@@ -1,0 +1,61 @@
+schema_version: 1.0.0
+ticket_id: OMN-23153
+title: One exact UTC daily receipt compares the ledger table with the accepted-row topic only, and a row planted in the projection alone turns it red
+summary: The work-ledger projection node gains a pure daily receipt. For a UTC day it lists the table rows and the accepted-row topic rows, reports missing, extra and mismatched, reads red on one row planted in the projection alone, carries the verb comparison, and takes its fixed cutoff and 10 minute close from the node contract.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23153-daily-receipt
+  statement: The daily receipt compares the ledger table with the accepted-row topic only, exactly, over one UTC day closed at a fixed time plus 10 minutes, and carries the verb comparison.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the receipt for a UTC day lists the table rows and the accepted-row topic rows and reports missing, extra and mismatched as 0 on equal data -- falsifier: uv run pytest src/omnimarket/nodes/node_projection_work_ledger -q -k daily_receipt_exact'
+  - id: AC2
+    statement: 'AC2: one row planted in the projection alone makes the receipt report one extra and read red -- falsifier: uv run pytest src/omnimarket/nodes/node_projection_work_ledger -q -k daily_receipt_planted_projection_row'
+  - id: AC3
+    statement: 'AC3: the receipt carries the verb comparison for the day and it runs at a fixed time with a 10 minute close -- falsifier: uv run pytest src/omnimarket/nodes/node_projection_work_ledger -q -k daily_receipt_verb_comparison'
+evidence_requirements:
+- kind: tests
+  description: The daily receipt tests of node_projection_work_ledger
+  command: uv run --frozen pytest src/omnimarket/nodes/node_projection_work_ledger/tests/test_daily_receipt.py -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23153-ac1-exact
+  description: Equal table and topic rows report missing, extra and mismatched as 0 and list both sides.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_projection_work_ledger -q --no-cov -p no:randomly -k daily_receipt_exact
+    cwd: .
+- id: dod-omn23153-ac2-planted
+  description: One row planted in the projection alone reads one extra and red; the same data without the plant reads green.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_projection_work_ledger -q --no-cov -p no:randomly -k daily_receipt_planted_projection_row
+    cwd: .
+- id: dod-omn23153-ac3-verbs-and-close
+  description: The receipt carries the per-verb comparison, and the contract's cutoff of 00:00 UTC plus 10 minutes decides when a day is closed.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_projection_work_ledger -q --no-cov -p no:randomly -k daily_receipt_verb_comparison
+    cwd: .
+- id: dod-omn23153-integration-proof-lab
+  description: Runs the daily receipt tests at the pushed head on a lab host through the lab work runner. Hosted CI cannot reach the lab runner, so only the local Done gate runs this unbound item.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23153 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest src/omnimarket/nodes/node_projection_work_ledger/tests/test_daily_receipt.py -q --no-cov -p no:randomly'
+    cwd: .

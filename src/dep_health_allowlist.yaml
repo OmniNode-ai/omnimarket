@@ -12,18 +12,4 @@
 #       allowlisting of broken wiring.
 #
 # Review this list quarterly. Remove entries when the subscriber is wired.
-allowlist:
-  # --- diagnostic.daemon-health (cross-cutting diagnostic topic) ---
-  # Published by: node_emit_daemon (omnimarket) — synthetic health probe round-trip
-  # Intended consumer: observability / monitoring layer (external to omnimarket)
-  # Status: topic uses non-standard service name 'diagnostic' (not a repo name).
-  #   Topic naming lint rejects it; cannot be added to contract.yaml publish_topics
-  #   without breaking the lint. The topic is declared in topics.yaml registry and
-  #   used in model_daemon_health_event.py. Allowlisted here to suppress both
-  #   UNDECLARED_TOPIC and MISSING_TOPIC_EDGE findings (OMN-11061).
-  # Expires: 2026-11-15 — rename to onex.evt.omniclaude.daemon-health.v1 or similar
-  - topic: "onex.evt.diagnostic.daemon-health.v1"
-    reason: "Non-standard service name 'diagnostic'; topic naming lint rejects it — cannot be in contract.yaml without a lint violation. Rename planned."
-    owner_repo: omnimarket
-    planned_subscriber: observability_platform
-    expires_at: "2026-11-15"
+allowlist: []

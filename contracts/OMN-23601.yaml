@@ -45,7 +45,7 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/nodes/node_join_j16_effect/test_join_j16_floor_seam.py -q --no-cov -n 0 -p no:randomly -k control
     cwd: .
 - id: dod-omn23601-ac3-parity
-  description: The in-process and in-memory bus legs of the parity test pass at the pushed head; the broker leg runs when JOIN_J16_PARITY_BOOTSTRAP names a lab broker.
+  description: The in-process and in-memory bus legs of the parity test pass at the pushed head; the broker leg runs when JOIN_J16_PARITY_BOOTSTRAP names a lab broker, or JOIN_J16_PARITY_LANE names a lane whose declaration gives the broker and its security.
   source: manual
   binds_ac:
   - AC3

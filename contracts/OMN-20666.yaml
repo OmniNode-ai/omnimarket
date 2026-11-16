@@ -6,6 +6,13 @@ summary: "A reused projection read connection keeps an empty app.tenant_id after
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
+context:
+  ac_binding_provenance:
+    "dod-omn20666-ac1-accepted-20261114t0745z":
+      - label: "AC1"
+        criterion_hash: "6724ca6a84420bce1e13e4f4b4f06f287a4bc3568a07d382424043546d06cd3b"
+        proposed_by: "lane=dod-closeout-bind-2026-11-14T0745Z-c1"
+        accepted_by: "lane=dod-closeout-accept-2026-11-14T0745Z-c1"
 requirements:
   - id: "req-readiness-probe-survives-connection-reuse"
     statement: "A zero-row readiness probe on a connection that already served a scoped transaction does not raise InvalidTextRepresentationError and does not leave a tenant context behind. The criterion below is labeled AC1 so the binding item can claim it through binds_ac."
@@ -27,5 +34,13 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/projection/test_readiness_reused_tenant_context.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20666-ac1-accepted-20261114t0745z"
+    description: "AC1: the readiness probe on a reused connection after a scoped transaction reports the acceptance-eval relation ready and leaves no app.tenant_id behind. Fails with projection_database_unavailable when the product change of omnimarket#3492 is reverted."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/projection/test_readiness_reused_tenant_context.py::test_readiness_rechecks_the_relation_on_a_reused_connection -q"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]

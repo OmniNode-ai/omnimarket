@@ -23,8 +23,16 @@ from pydantic import ValidationError
 import omnimarket.nodes.node_dod_closeout_sweep_compute as node_package
 from omnimarket.models.dod_closeout_sweep import (
     EnumCloserHealth,
+    ModelAcceptanceState,
     ModelDodCloseoutDecisionRequest,
     ModelDodCloseoutDecisionResult,
+)
+from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_completion_rules import (
+    cell,
+    reason_class,
+)
+from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_ticket_rules import (
+    decide_ticket,
 )
 from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.handler_dod_closeout_sweep import (
     HandlerDodCloseoutSweep,
@@ -364,3 +372,166 @@ async def test_error_chain_over_the_bus_fails_without_a_completion(
     )
     assert await refused.run_async() is EnumWorkflowResult.FAILED
     assert refused.handler_result is None
+
+
+# --- unmet reasons count by class, not by their prose (OMN-19998) -----------------
+
+
+def _drift_run() -> dict[str, Any]:
+    """Three open tickets: six unique no-check rows and the one drift line every run shares."""
+    return summary(
+        open=[
+            {
+                "id": f"OMN-{n}",
+                "unmet": [
+                    {
+                        "reason": f"no check authored: binder offered nothing for AC{n}.1"
+                    },
+                    {
+                        "reason": f"no check authored: binder offered nothing for AC{n}.2"
+                    },
+                    {"reason": "verify_status=skipped error=CRITERIA_DRIFT"},
+                ],
+            }
+            for n in (1, 2, 3)
+        ]
+    )
+
+
+def test_the_top_reason_is_the_largest_class_not_the_one_line_every_ticket_shares() -> (
+    None
+):
+    assert complete([], _drift_run()).top_deferral_reason == "no-check-authored"
+
+
+def test_held_reason_counts_are_by_class() -> None:
+    result = complete([], _drift_run())
+    assert result.zero_flip_reading is not None
+    assert result.zero_flip_reading.reason_counts == {
+        "candidate-budget": 57,
+        "no-check-authored": 6,
+        "dod-verify:CRITERIA_DRIFT": 3,
+    }
+
+
+@pytest.mark.parametrize(
+    ("reason", "expected"),
+    [
+        ("binding refused (no-cwd)", "binding-refused:no-cwd"),
+        ("no check authored: the binder found no honest check", "no-check-authored"),
+        (
+            "binding rejected by the acceptor: no reason given",
+            "binding-rejected-by-acceptor",
+        ),
+        (
+            "binding was not accepted by a lane other than its author",
+            "binding-self-accepted",
+        ),
+        (
+            "dod_verify did not verify the bound check (no verdict for this criterion)",
+            "bound-check-not-verified",
+        ),
+        (
+            "dod_verify did not run (VERIFY_COULD_NOT_RUN), so the bound check has no"
+            " verdict",
+            "verify-not-run",
+        ),
+        (
+            "no contract: no contracts/<id>.yaml on a default branch, so dod_verify had"
+            " nothing to run",
+            "no-contract",
+        ),
+        ("waiting on PR state to move", "waiting-on-condition"),
+        (
+            "verify_status=failed error=EVIDENCE_CHECK_FAILED",
+            "dod-verify:EVIDENCE_CHECK_FAILED",
+        ),
+        ("verify_status=not_run", "dod-verify:not_run"),
+        (
+            "  verify_status=skipped error=CRITERIA_DRIFT  ",
+            "dod-verify:CRITERIA_DRIFT",
+        ),
+        ("unexplained | prose", "unexplained / prose"),
+    ],
+)
+def test_reason_class_counts_each_rule_by_its_class(reason: str, expected: str) -> None:
+    assert reason_class(reason) == expected
+
+
+def test_every_reason_decide_ticket_writes_has_a_class() -> None:
+    """The seam between the rule that writes the reasons and the rule that counts them:
+    every reason decide_ticket writes for these gaps classes into a token. The
+    refused-binding branch keeps its own rule and is covered above."""
+    independent = {
+        "proposed": True,
+        "accepted": True,
+        "proposed_by": "binder-lane",
+        "accepted_by": "acceptor-lane",
+    }
+    verified = {
+        "status": "verified",
+        "evidence_id": "ev-1",
+        "binds_ac": ["AC1"],
+        "draft_binds_ac": [],
+    }
+    cases: list[tuple[dict[str, Any], dict[str, Any]]] = [
+        # no check authored (proposed False).
+        (
+            {"label": "AC1", "proposed": False},
+            {"verify_status": "verified", "checks": []},
+        ),
+        # binding rejected by the acceptor (proposed, refused "", accepted False).
+        (
+            {"label": "AC1", "proposed": True, "reason": "no reason given"},
+            {"verify_status": "verified", "checks": []},
+        ),
+        # binding was not accepted by a lane other than its author (self-accepted).
+        (
+            {"label": "AC1", **independent, "accepted_by": "binder-lane"},
+            {"verify_status": "verified", "checks": []},
+        ),
+        # dod_verify did not verify the bound check (accepted elsewhere, no checks).
+        (
+            {"label": "AC1", **independent},
+            {"verify_status": "skipped", "checks": []},
+        ),
+        # dod_verify did not run (VERIFY_COULD_NOT_RUN).
+        (
+            {"label": "AC1", **independent},
+            {
+                "verify_status": "not_run",
+                "error_code": "VERIFY_COULD_NOT_RUN",
+                "error_detail": "the verify command could not run",
+                "checks": [],
+            },
+        ),
+        # no contract (the error detail starts "contract unresolved").
+        (
+            {"label": "AC1", **independent},
+            {
+                "verify_status": "not_run",
+                "error_code": "VERIFY_NOT_REACHED",
+                "error_detail": "contract unresolved: no contracts/<id>.yaml on dev",
+                "checks": [],
+            },
+        ),
+        # the trailing verify line every unverified run shares.
+        (
+            {"label": "AC1", **independent},
+            {
+                "verify_status": "skipped",
+                "error_code": "CRITERIA_DRIFT",
+                "checks": [verified],
+            },
+        ),
+    ]
+    for state, dod_verify in cases:
+        _, unmet = decide_ticket(
+            acs=[ModelAcceptanceState(**state)],
+            dod_verify=dod_verify,
+            criteria_note="",
+            criteria_amendment="",
+        )
+        assert unmet
+        for criterion in unmet:
+            assert reason_class(criterion.reason) != cell(criterion.reason)

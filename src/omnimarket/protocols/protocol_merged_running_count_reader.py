@@ -5,7 +5,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 from omnimarket.models.model_merged_running_count import (
@@ -18,7 +17,8 @@ class ProtocolMergedRunningCountReader(Protocol):
     """Read the count as of ``now``; raise when a source the count needs cannot be read."""
 
     def read(
-        self, now: datetime, *, hosts_table: Path | None = None
+        self,
+        now: datetime,
     ) -> ModelMergedRunningCountResult:
         """Use the caller's resolved host table when supplied, else the reader's configuration."""
         ...

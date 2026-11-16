@@ -1,0 +1,85 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Host install file EFFECT (OMN-23957)
+#
+# The three file steps of a host unit install, over the installed unit files of one unit: snapshot (copy what is
+# installed to a backup and name its digest), read (return the installed text and digest), restore (put the backup
+# back, or remove the files if none existed). Every bound comes from the node overlay.
+---
+name: node_host_install_file_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Host unit install file effect. Runs the three file steps of a host unit install over the installed unit files of one
+  unit. Snapshot copies each existing path to a backup directory under the correlation id, writes a manifest recording
+  which paths existed, and names the digest of the concatenated existing text. Read returns the concatenated text and
+  its digest without writing. Restore reads the manifest, copies each backed-up path back atomically, removes each path
+  that did not exist before the install, and names the digest of what is now installed. A missing manifest, a path that is not absolute
+  path (refused by the request model), a text larger than the overlay bound, or an unreadable file is a refusal or a typed failure result.
+
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - event_model:
+        name: ModelHostInstallFileRequest
+        module: omnimarket.nodes.node_host_install_file_effect.models.model_host_install_file
+      handler:
+        name: HandlerHostInstallFile
+        module: omnimarket.nodes.node_host_install_file_effect.handlers.handler_host_install_file
+
+handler:
+  module: omnimarket.nodes.node_host_install_file_effect.handlers.handler_host_install_file
+  class: HandlerHostInstallFile
+  input_model: omnimarket.nodes.node_host_install_file_effect.models.model_host_install_file.ModelHostInstallFileRequest
+
+input_model:
+  name: ModelHostInstallFileRequest
+  module: omnimarket.nodes.node_host_install_file_effect.models.model_host_install_file
+  description: "The host, unit, mode, and the ordered file paths of the unit."
+output_model:
+  name: ModelHostInstallFileResult
+  module: omnimarket.nodes.node_host_install_file_effect.models.model_host_install_file
+  description: "The step result: status, presence, text, digest, backup directory, and detail."
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: false
+  timeout_ms: 60000
+  runtime_profiles: [effects]
+  side_effects: [filesystem]
+
+terminal_event: onex.evt.omnimarket.host-install-file-completed.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.host-install-file-requested.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.host-install-file-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.host-install-file-completed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.host-install-file-completed.v1
+
+broker_acl_grants:
+  - principal: "${ONEX_ACL_HOST_RECONCILER_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.host-install-file-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.host-install-file-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-install-file-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-install-file-completed.v1, operation: DESCRIBE}
+
+dependencies:
+  packages:
+    - "omnibase_core>=0.39.0"
+
+metadata:
+  transport_type: kafka
+  description: "Host install file effect"
+  author: "OmniNode Platform Team"
+  related_tickets:
+    - "OMN-23957"

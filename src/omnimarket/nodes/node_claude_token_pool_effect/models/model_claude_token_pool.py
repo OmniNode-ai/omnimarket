@@ -23,6 +23,9 @@ from omnimarket.models.model_claude_pool_revoke_recheck import (
 from omnimarket.models.model_claude_pool_revoke_staleness import (
     ModelClearRevokeCommand,
 )
+from omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_pool_mark_event import (
+    ModelPoolMarkEvent,
+)
 from omnimarket.nodes.node_claude_token_pool_effect.models.model_claude_token_rotation import (
     ModelRotationMark,
 )
@@ -105,6 +108,9 @@ class ModelClaudeTokenPoolRequest(BaseModel):
         "export",
     ]
     label: str | None = None
+    #: Who asked for the operation (the lane or principal), carried on the mark event the operation leaves; unset, the
+    #: handler's default actor names it.
+    actor: str | None = Field(default=None, min_length=1)
     #: ``mark_revoked``: why the login is out. A challenge is out of rotation like a revoke until the
     #: pool tick re-tests the label and clears the mark when it answers.
     cause: Literal["revoked", "challenged"] = "revoked"
@@ -216,6 +222,13 @@ class ModelClaudeTokenPoolResult(BaseModel):
     all_limited: bool = False
     next_reset: str | None = None
     status_line: str
+    #: The mark events the operation left (one per changed mark), how many reached the bus and how the publication stands:
+    #: ``published``, ``failed`` (the marks stand; ``mark_events_error`` names the refusal) or ``not_configured`` (the host's
+    #: overlay declares no mark events). ``None`` when the operation changed no mark.
+    mark_events: tuple[ModelPoolMarkEvent, ...] = ()
+    mark_events_published: int = 0
+    mark_events_state: Literal["published", "failed", "not_configured"] | None = None
+    mark_events_error: str | None = None
     #: ``resolve``: set when a usable token exists and the start was refused all the same.
     refusal: ModelClaudeTokenPoolRefusal | None = None
     #: ``resolve``: the chosen label was in ``drain_labels`` and nothing else was usable.
