@@ -390,6 +390,8 @@ def test_a_tick_arms_the_contracts_deadline_before_it_touches_the_bus(
         lambda seconds, terminate: armed.append((seconds, terminate)) or (lambda: None),
     )
     tick_main(["--omni-home", str(tmp_path), "--state-dir", str(tmp_path / "run")])
-    # The terminator is the module's own: a tick that armed a no-op one would pass on the deadline alone.
+    # The autouse fixture has replaced ``terminate_process`` with a recorder, so this compares the module attribute with
+    # itself: it pins that ``main`` passes the attribute it finds, not that the attribute ends the process. The exit
+    # itself is pinned by the child-process test (returncode 124) in test_overlay_store_refresh_watchdog.py.
     assert armed == [(120.0, tick_module.terminate_process)]
     assert tick_module.tick_deadline_s() == 120.0

@@ -37,7 +37,6 @@ from tests.nodes.node_host_installer_registry_units.test_overlay_store_refresh_w
     brew_python,  # noqa: F401  (the autouse fixture the render below needs)
     render,
 )
-from tests.unit.workflows.test_tick_entrypoints_disarm_deadline import _OVERLAY_ENV
 
 pytestmark = pytest.mark.unit
 
@@ -86,13 +85,15 @@ CHILD = textwrap.dedent(
     class Handler:
         async def refresh_all(self):
             # Printed from inside the tick's own work, so "ready" means the tick reached the call that blocks.
-            sys.stdout.write("ready\\n")
+            # ``started`` is read just before ``main`` arms the watchdog, so the deadline cannot pass before it.
+            sys.stdout.write(f"ready {{started!r}}\\n")
             sys.stdout.flush()
             time.sleep(600)
 
     tick.tick_deadline_s = lambda: {deadline}
     tick.load_structured_overlay = lambda *args: object()
     tick.build_handler = lambda *args: Handler()
+    started = time.monotonic()
     tick.main(["--omni-home", sys.argv[1], "--state-dir", sys.argv[1]])
     """
 )
@@ -110,18 +111,25 @@ def test_a_tick_whose_work_blocks_past_the_deadline_exits_within_the_deadline_pl
     try:
         assert process.stdout is not None
         # Positive control: the tick got as far as its blocked work, so the exit below is the watchdog's.
-        assert process.stdout.readline() == "ready\n"
-        started = time.monotonic()
+        ready, _, clock = process.stdout.readline().partition(" ")
+        assert ready == "ready"
+        # ``time.monotonic`` is one clock for every process on the host, so the child's reading is comparable here.
+        started = float(clock)
         try:
             process.wait(timeout=DEADLINE_S + GRACE_S)
         except subprocess.TimeoutExpired:
             pytest.fail(
-                f"the tick was still running {time.monotonic() - started:.1f}s after its work blocked; "
+                f"the tick was still running {time.monotonic() - started:.1f}s after it started; "
                 f"its deadline is {DEADLINE_S}s"
             )
         elapsed = time.monotonic() - started
         assert process.returncode == runtime_overlay_store_tick.EXIT_DEADLINE
-        assert elapsed >= DEADLINE_S - 0.5, "the tick ended before its deadline"
+        # The stderr pipe is full, so the report blocks and the watchdog spends its whole grace before it ends the
+        # process: the earliest honest exit is the deadline plus the grace, and a watchdog that fired early misses it.
+        earliest = DEADLINE_S + runtime_overlay_store_tick.REPORT_GRACE_S - 0.05
+        assert elapsed >= earliest, (
+            "the tick ended before its deadline and its report grace"
+        )
     finally:
         process.kill()
         process.wait()
@@ -249,8 +257,6 @@ def test_the_tick_leaves_no_watchdog_running_when_main_returns(
 
     The loader is stubbed to refuse, so ``main`` returns at once whatever the host's overlay sources hold, and the
     deadline is long: a watchdog that was not disarmed is still alive when the thread is joined."""
-    for name in _OVERLAY_ENV:
-        monkeypatch.delenv(name, raising=False)
 
     def refuse(*_: object) -> None:
         raise NodeOverlayError("no overlay in this test")
@@ -299,7 +305,6 @@ def test_a_disarmed_watchdog_never_ends_the_process() -> None:
     disarm()
     thread.join(GRACE_S)
     assert not thread.is_alive()
-    time.sleep(0.4)
     assert exited == []
 
 
@@ -310,17 +315,33 @@ class RefusedStart(threading.Thread):
         raise RuntimeError("can't start new thread")
 
 
-class ThreadsFor:
-    """Stands in for the tick's ``threading`` module: the watchdog thread is real, the report thread cannot start."""
+class Interrupt(
+    BaseException
+):  # not an Exception, like KeyboardInterrupt or SystemExit
+    """An error that ``contextlib.suppress(Exception)`` does not catch."""
 
-    Event = threading.Event
-    get_ident = staticmethod(threading.get_ident)
 
-    @staticmethod
-    def Thread(*args: Any, **kwargs: Any) -> threading.Thread:  # noqa: N802  (the class it replaces)
-        if kwargs.get("name") == runtime_overlay_store_tick.WATCHDOG_THREAD:
-            return threading.Thread(*args, **kwargs)
-        return RefusedStart(*args, **kwargs)
+class InterruptedStart(threading.Thread):
+    """A thread whose ``start`` raises a ``BaseException`` that is not an ``Exception``."""
+
+    def start(self) -> None:
+        raise Interrupt("interrupted while starting the report thread")
+
+
+def threads_for(report_thread: type[threading.Thread]) -> type:
+    """Stands in for the tick's ``threading`` module: the watchdog thread is real, the report thread is ``report_thread``."""
+
+    class ThreadsFor:
+        Event = threading.Event
+        get_ident = staticmethod(threading.get_ident)
+
+        @staticmethod
+        def Thread(*args: Any, **kwargs: Any) -> threading.Thread:  # noqa: N802  (the class it replaces)
+            if kwargs.get("name") == runtime_overlay_store_tick.WATCHDOG_THREAD:
+                return threading.Thread(*args, **kwargs)
+            return report_thread(*args, **kwargs)
+
+    return ThreadsFor
 
 
 def refuse_report(*_: object) -> None:
@@ -337,17 +358,45 @@ def refuse_report(*_: object) -> None:
 def test_the_watchdog_ends_the_process_even_when_its_report_fails(
     monkeypatch: pytest.MonkeyPatch, report_raises: bool, thread_start_raises: bool
 ) -> None:
-    """The report is a courtesy: whatever it does, the process ends. At base a failed ``Thread.start`` left it alive."""
+    """The report is a courtesy: whatever it does, the process ends.
+
+    Each of these failures is an ``Exception`` that the report's ``suppress`` swallows on its own, so none of them
+    needs the ``finally``; the next test is the one that does."""
     if report_raises:
         monkeypatch.setattr(runtime_overlay_store_tick, "_report_stuck", refuse_report)
     if thread_start_raises:
-        monkeypatch.setattr(runtime_overlay_store_tick, "threading", ThreadsFor)
+        monkeypatch.setattr(
+            runtime_overlay_store_tick, "threading", threads_for(RefusedStart)
+        )
     exited: list[int] = []
     disarm, thread = arm(0.1, exited.append)
     try:
         thread.join(GRACE_S)
     finally:
         disarm()
+    assert exited == [runtime_overlay_store_tick.EXIT_DEADLINE]
+
+
+# The watchdog thread dies with the ``Interrupt`` after it has ended the process, and its error reaches the thread
+# excepthook by design.
+@pytest.mark.filterwarnings("ignore::pytest.PytestUnhandledThreadExceptionWarning")
+def test_the_watchdog_ends_the_process_when_the_report_thread_start_raises_a_base_exception(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Only the ``finally`` ends the process here: ``suppress(Exception)`` does not catch a ``BaseException``.
+
+    Without the ``finally`` the ``Interrupt`` leaves the watchdog thread before it reaches ``terminate`` and
+    ``exited`` stays empty."""
+    monkeypatch.setattr(
+        runtime_overlay_store_tick, "threading", threads_for(InterruptedStart)
+    )
+    exited: list[int] = []
+    disarm, thread = arm(0.1, exited.append)
+    try:
+        thread.join(GRACE_S)
+    finally:
+        disarm()
+    assert not thread.is_alive()
     assert exited == [runtime_overlay_store_tick.EXIT_DEADLINE]
 
 
@@ -513,3 +562,39 @@ def test_the_tree_check_fails_when_another_file_arms_dump_traceback_later(
     extra.parent.mkdir()
     extra.write_text("faulthandler.dump_traceback_later(1, exit=True)\n")
     assert run() != 0
+
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+#: The files the ledger rows cite and the tree check excludes, as the contract's tree check spells them.
+OTHER_TICK_PATHS = {
+    "src/omnimarket/nodes/node_c32_auth_boundary_probe_effect/runtime_c32_probe_tick.py",
+    "src/omnimarket/nodes/node_canonical_clone_refresh_effect/runtime_declared_clone_tick.py",
+    "src/omnimarket/nodes/node_job_log_filler_effect/runtime_job_log_filler_tick.py",
+    "src/omnimarket/nodes/node_overlay_store_load_effect/runtime_overlay_store_load_tick.py",
+}
+
+
+def test_the_real_tree_has_exactly_the_four_other_ticks_arming_dump_traceback_later() -> (
+    None
+):
+    """The contract's own tree command, run from the repo root on the real ``src`` tree, not on a scratch copy.
+
+    The listing is asserted whole, so a fifth file arming the timer fails here even where the contract's command
+    would be narrowed; the contract command must pass on the same tree."""
+    _, tree_checks = contract_checks()
+    (command,) = [c for c in tree_checks if "grep -rl" in c]
+    listing = subprocess.run(
+        ["grep", "-rl", "--include=*.py", "dump_traceback_later", "src/"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    # grep exits 1 for no match and 2 for an error; neither is a listing.
+    assert listing.returncode == 0, listing.stderr
+    assert set(listing.stdout.split()) == OTHER_TICK_PATHS
+    # The files are real (positive control: the listing is not of an empty or moved tree).
+    assert all((REPO_ROOT / path).is_file() for path in OTHER_TICK_PATHS)
+    assert (
+        subprocess.run(command, shell=True, cwd=REPO_ROOT, check=False).returncode == 0
+    )

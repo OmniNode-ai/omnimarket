@@ -48,7 +48,7 @@ dod_evidence:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_watchdog.py -q --no-cov -n 0 -p no:randomly -p no:cacheprovider -k no_faulthandler_exit
+    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_watchdog.py -q --no-cov -n 0 -p no:randomly -p no:cacheprovider -k "faulthandler or detector"
     cwd: .
 - id: dod-overlay-unit-run-timeout-ac3
   description: The unit declares run_timeout_s above the tick deadline and under its interval, and the rendered job runs under the run-limit wrapper with that limit.
@@ -86,6 +86,15 @@ dod_evidence:
     cwd: .
   - check_type: command
     check_value: test -z "$(git diff --name-only origin/dev...HEAD -- src/omnimarket/nodes/node_c32_auth_boundary_probe_effect/runtime_c32_probe_tick.py src/omnimarket/nodes/node_canonical_clone_refresh_effect/runtime_declared_clone_tick.py src/omnimarket/nodes/node_job_log_filler_effect/runtime_job_log_filler_tick.py src/omnimarket/nodes/node_overlay_store_load_effect/runtime_overlay_store_load_tick.py)"
+    cwd: .
+- id: dod-overlay-tick-real-tree-ac4
+  description: The contract's tree command runs from the repo root on the real src tree and the listing of files arming dump_traceback_later is exactly the four other ticks; a fifth file arming it fails the test.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_watchdog.py -q --no-cov -n 0 -p no:randomly -p no:cacheprovider -k real_tree
     cwd: .
 - id: dod-overlay-tick-integration-proof
   description: The pushed head ran the watchdog, run-timeout and tick-disarm tests on a lab host through the lab work runner and exited 0. The lab host, sha and exit code are in the pull request's Lab line.

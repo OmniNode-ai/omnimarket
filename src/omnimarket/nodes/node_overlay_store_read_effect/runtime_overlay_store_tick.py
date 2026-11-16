@@ -61,7 +61,7 @@ def _report_stuck(deadline_s: float, stuck: int | None) -> None:
     frames = sys._current_frames()  # noqa: SLF001  (the only way to name another thread's stack)
     where = "".join(traceback.format_stack(frames[stuck])) if stuck in frames else ""
     sys.stderr.write(
-        f"{NODE}: tick passed its {deadline_s:g} s deadline; ending it\n{where}"
+        f"{NODE}: tick passed its {deadline_s:g} s deadline; ending the process unless the tick returns first\n{where}"
     )
     sys.stderr.flush()
 
@@ -78,8 +78,10 @@ def arm_watchdog(
     cannot be started or fails does not stop the exit either. A tick that returns while the report is still running
     disarms the watchdog, and the watchdog then leaves the process alone.
 
-    The limit: a Python thread needs the GIL. A call into C code that holds the GIL for good stops this watchdog too,
-    and then only the unit's ``run_timeout_s`` ends the run."""
+    Two limits. A Python thread needs the GIL: a call into C code that holds the GIL for good stops this watchdog too,
+    and then only the unit's ``run_timeout_s`` ends the run. And ``main`` disarms in its ``finally``, so a hang after
+    ``main`` returns (interpreter teardown, an ``atexit`` handler, a non-daemon thread) is not this watchdog's to end:
+    it is bounded by ``run_timeout_s`` alone."""
     disarmed = threading.Event()
     stuck = threading.get_ident()
 
@@ -197,7 +199,8 @@ def main(argv: list[str] | None = None) -> int:
     # A consumer caught mid-join when its broker goes away can retry its coordinator forever, and a unit
     # manager starts no second tick while one runs: measured on a lab host, 18 minutes and counting.
     disarm = arm_watchdog(tick_deadline_s(), terminate_process)
-    # A tick run in-process must not leave the process-ending watchdog armed.
+    # A tick run in-process must not leave the process-ending watchdog armed. The disarm in the ``finally`` below also
+    # ends the watchdog's cover: a hang after ``main`` returns is bounded only by the unit's ``run_timeout_s``.
     try:
         try:
             overlay = load_structured_overlay(NODE, ModelOverlayStoreReadOverlay, env)
