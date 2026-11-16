@@ -1680,7 +1680,7 @@ units:
     launchd_root: .local/state/omni/claude-pool-rotation-tick
   # The review key credit probe (OMN-24656): the Mac reads each review key bound to it with one token and ledgers a credit flip
   # (onex models review-gateway-key-probe, node_claude_review_gateway_effect). Shaped like claude-pool-rotation-tick. The tenant, the
-  # model and the host row are the node's overlay in the deployment overlays; this unit holds none of them and no credential.
+  # model and the host row are the review_key_credit_probe overlay in the deployment overlays; this unit holds none of them and no credential.
   review-key-credit-probe:
     platform: launchd
     kind: registry_module_tick

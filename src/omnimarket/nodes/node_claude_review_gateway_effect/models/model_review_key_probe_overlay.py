@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class ModelReviewKeyProbeOverlay(BaseModel):
-    """The node's overlay document (``node_claude_review_gateway_effect/overlay.yaml`` under an overlay root).
+    """The node's overlay document (``review_key_credit_probe/overlay.yaml`` under an overlay root; not the gateway node's overlay).
 
     The scheduled unit holds none of these settings. ``host`` names this machine's lab host table row and, when
     absent, the probe command resolves it itself.

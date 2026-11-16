@@ -1,0 +1,76 @@
+schema_version: 1.0.0
+ticket_id: OMN-24681
+title: 'omnimarket#6312: the key-credit probe''s schedule unit runs a command its base has, shows a failing probe''s reason, and tests its declared exits'
+summary: The review of the key-credit probe's schedule unit returned seven findings. This change makes the unit's tests assert that the command it schedules exists with the options the tick passes (the unit lands after the change that adds the command), passes the probe's stdout and stderr through to the tick's streams, tests the tick's declared exits and wiring, gives the probe its own overlay id, refuses a bare run without a state directory, prints the overlay error message and resolves onex beside the running interpreter.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24681-schedule-unit-review
+  statement: The key-credit probe's schedule unit runs a command its base has, shows a failing probe's reason, and has tests for its declared exits and wiring.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a test reads the `models` group''s `review-gateway-key-probe` command and asserts it has `--tenant`, `--model`, `--host`, `--state-dir` and a `--ledger` bound to ONEX_LEDGER_PATH, and the unit lands after or stacked on omnimarket#6285 -- falsifier: uv run pytest on the new command-exists test fails at a base without the command and passes with it'
+  - id: AC2
+    statement: 'AC2: a failing probe''s stdout and stderr reach the tick''s own streams, the summary keeps only the flip-count line, and a red run''s reason is asserted on stderr -- falsifier: uv run pytest on the new red-run stderr test fails before the change and passes after'
+  - id: AC3
+    statement: 'AC3: one test each covers TimeoutExpired giving 124 with a heartbeat, OSError giving 1, an invalid overlay giving 3 with nothing run, an overlay without host passing no --host, key state going to the state-dir keys directory, the probe timeout staying under run_timeout_s, and ONEX_LEDGER_PATH present in the rendered plist -- falsifier: uv run pytest on the seven new schedule tests fails with the matching line removed and passes with it restored'
+  - id: AC4
+    statement: 'AC4: the probe has its own overlay id so an event_bus or contract section in the node''s overlay no longer makes every tick exit 3, a bare run without --state-dir refuses the pass, the overlay error message is printed, and onex resolves beside sys.executable -- falsifier: uv run pytest on the four new tests fails before the change and passes after'
+  - id: AC5
+    statement: 'AC5: the schedule suites the pull request requires run on the lab at the pushed head and pass, with any whole-suite timeout split into named parts -- falsifier: onex lab-run uv run pytest tests/unit/nodes/node_claude_review_gateway_effect exits 0 at the pull request head'
+evidence_requirements:
+- kind: tests
+  description: The schedule test file at the pushed head.
+  command: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect/test_review_key_credit_probe_schedule_omn24656.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24681-ac1
+  description: 'AC1: the focused tests of the schedule test file that cover it, at the pushed head.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect/test_review_key_credit_probe_schedule_omn24656.py -q --no-cov -n 0 -p no:randomly -k test_the_scheduled_probe_command_exists
+    cwd: .
+- id: dod-omn24681-ac2
+  description: 'AC2: the focused tests of the schedule test file that cover it, at the pushed head.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect/test_review_key_credit_probe_schedule_omn24656.py -q --no-cov -n 0 -p no:randomly -k test_a_failing_probes_reason_reaches_the_tick_stderr
+    cwd: .
+- id: dod-omn24681-ac3
+  description: 'AC3: the focused tests of the schedule test file that cover it, at the pushed head.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect/test_review_key_credit_probe_schedule_omn24656.py -q --no-cov -n 0 -p no:randomly -k 'timed_out or cannot_start or invalid_overlay or without_a_host or keys_directory or under_the_units_run_timeout or rendered_unit'
+    cwd: .
+- id: dod-omn24681-ac4
+  description: 'AC4: the focused tests of the schedule test file that cover it, at the pushed head.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect/test_review_key_credit_probe_schedule_omn24656.py -q --no-cov -n 0 -p no:randomly -k 'own_overlay_id or bare_run or beside_the_running_interpreter or invalid_overlay'
+    cwd: .
+- id: dod-omn24681-ac5
+  description: 'AC5: the node''s unit tests run on a lab host at the pushed head through lab-work.'
+  source: manual
+  binds_ac:
+  - AC5
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24681 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_claude_review_gateway_effect -q --no-cov -n 0 -p no:randomly
+    cwd: .

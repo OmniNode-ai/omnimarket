@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -40,6 +41,8 @@ pytestmark = pytest.mark.unit
 UNIT = "review-key-credit-probe"
 LABEL = "ai.omninode.review-key-credit-probe"
 NODE = "node_claude_review_gateway_effect"
+# The probe reads its own overlay id, never the gateway's (whose overlay carries other sections).
+PROBE_OVERLAY_ID = "review_key_credit_probe"
 HANDLER = "omnimarket.nodes.node_host_installer_registry_units.handlers.handler_registry_units"
 BREW_PYTHON = "/opt/homebrew/bin/python3.13"
 ROOT = Path(__file__).resolve().parents[4]
@@ -54,6 +57,14 @@ def brew_python(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "shutil.which", lambda name: "/usr/bin/uv" if name == "uv" else None
     )
+
+
+def _ledger_variable() -> str:
+    """The environment variable the unit sets from the installing request's ledger path."""
+    unit = load_units()[UNIT]
+    (variable,) = unit["environment_inputs"]
+    assert unit["required_environment_inputs"] == [variable]
+    return str(variable)
 
 
 # --- the schedule is declared -----------------------------------------------------------------
@@ -119,45 +130,106 @@ def test_the_rendered_unit_runs_the_tick_module_on_the_declared_interval(
     assert f"<string>{unit['module']}</string>" in result.rendered
     assert f"<integer>{unit['schedule']['start_interval']}</integer>" in result.rendered
     assert "ONEX_SKILL_OVERLAY_ROOTS" in result.rendered
+    assert _ledger_variable() in result.rendered
+    assert str(tmp_path / "ledger.md") in result.rendered
+
+
+# --- the command the unit schedules -----------------------------------------------------------
+
+
+def test_the_scheduled_probe_command_exists_with_the_options_the_tick_passes() -> None:
+    from omnimarket.cli.cli_secret import models_group
+
+    assert "review-gateway-key-probe" in models_group.commands, (
+        "the models group has no review-gateway-key-probe command at this base; "
+        "this unit lands after the change that adds it"
+    )
+    command = models_group.commands["review-gateway-key-probe"]
+    options = {
+        option: param
+        for param in command.params
+        for option in getattr(param, "opts", [])
+    }
+    for flag in ("--tenant", "--model", "--host", "--state-dir", "--ledger"):
+        assert flag in options, flag
+    # The ledger option reads the variable the unit's environment names for the installing request's ledger.
+    assert options["--ledger"].envvar == _ledger_variable()
 
 
 # --- one tick ---------------------------------------------------------------------------------
 
 
-def _overlay_root(tmp_path: Path, document: dict[str, str]) -> Path:
-    home = tmp_path / "overlays" / NODE
+def _overlay_root(
+    tmp_path: Path, document: dict[str, str], overlay_id: str = PROBE_OVERLAY_ID
+) -> Path:
+    home = tmp_path / "overlays" / overlay_id
     home.mkdir(parents=True)
     (home / "overlay.yaml").write_text(yaml.safe_dump(document), encoding="utf-8")
     return tmp_path / "overlays"
 
 
 class _Runner:
-    def __init__(self, code: int = 0) -> None:
+    def __init__(
+        self,
+        code: int = 0,
+        stdout: str = "review-key-probe: 0 flip(s) written\n",
+        stderr: str = "",
+    ) -> None:
         self.argv: list[str] = []
         self.code = code
+        self.stdout = stdout
+        self.stderr = stderr
 
     def __call__(
         self, argv: list[str], timeout: int
     ) -> subprocess.CompletedProcess[str]:
         self.argv = argv
-        return subprocess.CompletedProcess(
-            argv, self.code, "review-key-probe: 0 flip(s) written\n", ""
-        )
+        return subprocess.CompletedProcess(argv, self.code, self.stdout, self.stderr)
+
+
+class _Raises:
+    def __init__(self, error: BaseException) -> None:
+        self.error = error
+        self.called = False
+
+    def __call__(
+        self, argv: list[str], timeout: int
+    ) -> subprocess.CompletedProcess[str]:
+        self.called = True
+        raise self.error
+
+
+def _configured(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    document: dict[str, str] | None = None,
+) -> Path:
+    root = _overlay_root(
+        tmp_path,
+        document or {"tenant_id": "tenant-1", "model": "model-1", "host": "host-1"},
+    )
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(root))
+    return tmp_path / "state"
+
+
+def _heartbeat(state: Path) -> dict[str, object]:
+    return json.loads((state / "last-run.json").read_text(encoding="utf-8"))  # type: ignore[no-any-return]
+
+
+def _value_after(argv: list[str], flag: str) -> str:
+    return argv[argv.index(flag) + 1]
 
 
 def test_a_tick_runs_the_probe_command_with_the_overlay_and_writes_its_heartbeat(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    root = _overlay_root(
-        tmp_path, {"tenant_id": "tenant-1", "model": "model-1", "host": "host-1"}
-    )
-    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(root))
-    runner, state = _Runner(), tmp_path / "state"
+    state = _configured(tmp_path, monkeypatch)
+    runner = _Runner()
     assert (
         tick.main(["--omni-home", str(tmp_path), "--state-dir", str(state)], run=runner)
         == 0
     )
-    assert runner.argv[:3] == ["onex", "models", "review-gateway-key-probe"]
+    assert runner.argv[1:3] == ["models", "review-gateway-key-probe"]
     for pair in (
         ["--tenant", "tenant-1"],
         ["--model", "model-1"],
@@ -167,27 +239,68 @@ def test_a_tick_runs_the_probe_command_with_the_overlay_and_writes_its_heartbeat
             runner.argv[i : i + 2] == pair for i in range(len(runner.argv) - 1)
         ), pair
     assert "--ledger" not in runner.argv
-    evidence = json.loads((state / "last-run.json").read_text(encoding="utf-8"))
+    evidence = _heartbeat(state)
     assert evidence["exit_code"] == 0
+    assert evidence["result"] == {
+        "probe_exit": 0,
+        "summary": "review-key-probe: 0 flip(s) written",
+    }
     assert "tenant-1" not in json.dumps(evidence)
 
 
 def test_a_tick_whose_probe_fails_exits_nonzero_and_records_it(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    root = _overlay_root(tmp_path, {"tenant_id": "tenant-1", "model": "model-1"})
-    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(root))
-    state = tmp_path / "state"
+    state = _configured(
+        tmp_path, monkeypatch, {"tenant_id": "tenant-1", "model": "model-1"}
+    )
     assert (
         tick.main(
             ["--omni-home", str(tmp_path), "--state-dir", str(state)], run=_Runner(1)
         )
         == 1
     )
-    assert (
-        json.loads((state / "last-run.json").read_text(encoding="utf-8"))["exit_code"]
-        == 1
+    assert _heartbeat(state)["exit_code"] == 1
+
+
+def test_a_failing_probes_reason_reaches_the_tick_stderr(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    state = _configured(tmp_path, monkeypatch)
+    runner = _Runner(
+        code=1,
+        stdout="review-key-probe: key-a no_credit\n",
+        stderr="Error: review-gateway-key-probe refused: the ledger is unwritable\n",
     )
+    assert tick.main(["--state-dir", str(state)], run=runner) == 1
+    seen = capsys.readouterr()
+    assert "the ledger is unwritable" in seen.err
+    assert "review-key-probe: key-a no_credit" in seen.out
+    # The summary is the flip-count line only; a key's name and state are not in it.
+    assert _heartbeat(state)["result"] == {"probe_exit": 1, "summary": ""}
+
+
+def test_a_timed_out_probe_exits_124_and_writes_a_heartbeat(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = _configured(tmp_path, monkeypatch)
+    runner = _Raises(subprocess.TimeoutExpired(["onex"], tick.PROBE_TIMEOUT_SECONDS))
+    assert tick.main(["--state-dir", str(state)], run=runner) == 124
+    evidence = _heartbeat(state)
+    assert evidence["exit_code"] == 124
+    assert evidence["result"] == {"timed_out_after_s": tick.PROBE_TIMEOUT_SECONDS}
+
+
+def test_a_probe_that_cannot_start_exits_1_and_says_why(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    state = _configured(tmp_path, monkeypatch)
+    runner = _Raises(FileNotFoundError("onex is not installed"))
+    assert tick.main(["--state-dir", str(state)], run=runner) == 1
+    evidence = _heartbeat(state)
+    assert evidence["exit_code"] == 1
+    assert evidence["result"] == {"probe_did_not_run": "FileNotFoundError"}
+    assert "onex is not installed" in capsys.readouterr().err
 
 
 def test_a_tick_with_no_overlay_runs_nothing_and_says_so(
@@ -200,8 +313,85 @@ def test_a_tick_with_no_overlay_runs_nothing_and_says_so(
         == 3
     )
     assert runner.argv == []
-    evidence = json.loads((state / "last-run.json").read_text(encoding="utf-8"))
-    assert evidence["exit_code"] == 3
+    assert _heartbeat(state)["exit_code"] == 3
+
+
+def test_a_tick_with_an_invalid_overlay_exits_3_runs_nothing_and_names_the_field(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    state = _configured(tmp_path, monkeypatch, {"tenant_id": "tenant-1"})
+    runner = _Runner()
+    assert tick.main(["--state-dir", str(state)], run=runner) == 3
+    assert runner.argv == []
+    assert _heartbeat(state)["exit_code"] == 3
+    err = capsys.readouterr().err
+    # The message names the file's source and the invalid field, never a value.
+    assert "model" in err
+    assert "tenant-1" not in err
+
+
+def test_an_overlay_without_a_host_passes_no_host_flag(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = _configured(
+        tmp_path, monkeypatch, {"tenant_id": "tenant-1", "model": "model-1"}
+    )
+    runner = _Runner()
+    assert tick.main(["--state-dir", str(state)], run=runner) == 0
+    assert "--host" not in runner.argv
+
+
+def test_key_state_goes_to_the_keys_directory_of_the_state_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = _configured(tmp_path, monkeypatch)
+    runner = _Runner()
+    assert tick.main(["--state-dir", str(state)], run=runner) == 0
+    assert _value_after(runner.argv, "--state-dir") == str(state / "keys")
+
+
+def test_the_probe_timeout_stays_under_the_units_run_timeout() -> None:
+    assert 0 < tick.PROBE_TIMEOUT_SECONDS < load_units()[UNIT]["run_timeout_s"]
+
+
+def test_the_probe_has_its_own_overlay_id_so_the_gateways_sections_do_not_break_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = _configured(tmp_path, monkeypatch)
+    gateway_overlay = tmp_path / "overlays" / NODE
+    gateway_overlay.mkdir(parents=True)
+    (gateway_overlay / "overlay.yaml").write_text(
+        yaml.safe_dump(
+            {"event_bus": {"bootstrap": "bus:1"}, "contract": {"key": "value"}}
+        ),
+        encoding="utf-8",
+    )
+    runner = _Runner()
+    assert tick.main(["--state-dir", str(state)], run=runner) == 0
+    assert _value_after(runner.argv, "--tenant") == "tenant-1"
+
+
+def test_a_bare_run_without_a_state_dir_refuses_the_pass(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _configured(tmp_path, monkeypatch)
+    monkeypatch.chdir(tmp_path)
+    runner = _Runner()
+    assert tick.main([], run=runner) == 2
+    assert runner.argv == []
+    assert "--state-dir" in capsys.readouterr().err
+    assert not (tmp_path / "keys").exists()
+
+
+def test_the_probe_command_resolves_beside_the_running_interpreter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = _configured(tmp_path, monkeypatch)
+    runner = _Runner()
+    assert tick.main(["--state-dir", str(state)], run=runner) == 0
+    assert runner.argv[0] == str(Path(sys.executable).with_name("onex"))
 
 
 def test_the_probe_argument_does_a_pass_of_nothing(tmp_path: Path) -> None:
