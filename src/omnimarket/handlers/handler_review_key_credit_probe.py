@@ -14,13 +14,19 @@ Rows go through the ledger command the host units already carry (``ONEX_LEDGER_C
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import shlex
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Literal, cast
 
+import click
+from pydantic import ValidationError
+
+from omnimarket.inference.local_byok_credential_adapter import LocalByokCredentialStore
 from omnimarket.nodes.node_friction_rollup_tick_effect.protocols.protocol_ledger_appender import (
     ProtocolLedgerAppender,
     SubprocessLedgerAppender,
@@ -146,3 +152,112 @@ def record(
             kept[name] = state
     write_states(state_dir, kept)
     return changed
+
+
+def review_key_probe_command(
+    *,
+    resolve_host: Callable[[str | None], str | None],
+    key_store: Callable[[], LocalByokCredentialStore],
+) -> click.Command:
+    """The ``models review-gateway-key-probe`` command, the body of the standing probe (OMN-24658).
+
+    The CLI owns how this machine's lab host row and credential store are found and passes
+    them in; the gateway, the provider backend and the ledger writer are imported on call.
+    """
+
+    @click.command("review-gateway-key-probe")
+    @click.option("--tenant", required=True, help="The tenant whose keys are probed.")
+    @click.option(
+        "--model", "model_option", required=True, help="The Claude model probed."
+    )
+    @click.option(
+        "--thinking-mode",
+        type=click.Choice(["disabled", "adaptive"]),
+        default="disabled",
+        show_default=True,
+        help="Native thinking protocol the gateway's host overlay declares for this model.",
+    )
+    @click.option("--host", default=None, help="This machine's lab host table row.")
+    @click.option(
+        "--state-dir",
+        type=click.Path(file_okay=False, path_type=Path),
+        required=True,
+        help="Where the last state of each key is kept.",
+    )
+    @click.option(
+        "--ledger",
+        type=click.Path(dir_okay=False, path_type=Path),
+        envvar="ONEX_LEDGER_PATH",
+        required=True,
+        help="The ledger a key's credit flip is appended to.",
+    )
+    def probe(
+        tenant: str,
+        model_option: str,
+        thinking_mode: str,
+        host: str | None,
+        state_dir: Path,
+        ledger: Path,
+    ) -> None:
+        """Probe each review key bound to this host with one token; ledger a credit flip."""
+        from omnimarket.handlers.routing.byok_provider_backends import (
+            resolve_byok_provider_backend,
+        )
+        from omnimarket.nodes.node_claude_review_gateway_effect.handlers.handler_claude_review_gateway import (
+            GATEWAY_PLAN,
+            ClaudeReviewGateway,
+        )
+        from omnimarket.nodes.node_claude_review_gateway_effect.models.model_claude_review_gateway import (
+            ModelClaudeReviewGatewayRequest,
+            ModelReviewGatewayOverlay,
+        )
+        from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_llm_delegation_call import (
+            HandlerLlmDelegationCall,
+        )
+        from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
+
+        bound_host = resolve_host(host)
+        if bound_host is None:
+            raise click.ClickException("the probe needs this machine's lab host row.")
+        backend = resolve_byok_provider_backend("anthropic", GATEWAY_PLAN)
+        if backend is None:
+            raise click.ClickException(
+                "the provider catalogue offers no anthropic api_native backend."
+            )
+        store = key_store()
+        try:
+            gateway = ClaudeReviewGateway(
+                ModelClaudeReviewGatewayRequest(
+                    host=bound_host,
+                    tenant_id=tenant,
+                    model=model_option,
+                    cloud_refused_repositories=("none",),
+                    thinking_mode=cast(Literal["disabled", "adaptive"], thinking_mode),
+                ),
+                catalog=SqliteDatabaseAdapter(store.db_path),
+                key_values=store,
+                call=HandlerLlmDelegationCall(),
+                endpoint_url=backend.endpoint_url,
+                overlay=ModelReviewGatewayOverlay(key_set_aside_ttl_seconds=1),
+                event_bus=None,
+            )
+        except (ValidationError, ValueError) as exc:
+            raise click.ClickException(
+                f"review-gateway-key-probe refused: {exc}"
+            ) from None
+        states = asyncio.run(gateway.probe_keys(PROBE_PAYLOAD))
+        for name, state in states:
+            click.echo(f"review-key-probe: {name} {state}")
+        try:
+            changed = record(
+                states,
+                state_dir=state_dir,
+                ledger=ledger,
+                host=bound_host,
+                model=model_option,
+            )
+        except RuntimeError as exc:
+            raise click.ClickException(str(exc)) from None
+        click.echo(f"review-key-probe: {len(changed)} flip(s) written")
+
+    return probe

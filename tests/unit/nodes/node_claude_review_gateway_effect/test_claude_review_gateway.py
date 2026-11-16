@@ -1368,6 +1368,74 @@ def test_handler_loads_required_ttl_from_overlay_without_a_default(
     assert handler.gateway(request).set_aside_records == ()
 
 
+def _overlay_handler() -> Any:
+    from omnimarket.nodes.node_claude_review_gateway_effect.handlers.handler_claude_review_gateway import (
+        HandlerClaudeReviewGateway,
+    )
+
+    return HandlerClaudeReviewGateway(
+        catalog=FakeCatalog([]),
+        key_values=FakeValues([]),
+        call=FakeCall([]),
+        endpoint_url=_URL,
+        event_bus=FakeEventBus(),
+    )
+
+
+def _overlay_request() -> ModelClaudeReviewGatewayRequest:
+    return ModelClaudeReviewGatewayRequest(
+        host=_HOST,
+        tenant_id=_TENANT,
+        model=_MODEL,
+        cloud_refused_repositories=_REFUSED,
+    )
+
+
+def test_one_policy_file_holding_the_privacy_list_and_the_ttl_loads_through_the_overlay_variable(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The host's one policy file also carries the list ``--privacy-overlay`` reads (OMN-24658)."""
+    policy = tmp_path / "policy.yaml"
+    policy.write_text(
+        "cloud_review_refused_repositories:\n  - private-repo\n"
+        "key_set_aside_ttl_seconds: 23\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ONEX_REVIEW_GATEWAY_OVERLAY", str(policy))
+    monkeypatch.delenv("ONEX_SKILL_OVERLAY_ROOTS", raising=False)
+    gateway = _overlay_handler().gateway(_overlay_request())
+    assert gateway.set_aside_records == ()
+    assert gateway._overlay.key_set_aside_ttl_seconds == 23
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "key_set_aside_ttl_second: 23",
+        "key_set_aside_ttl: 23",
+        "key_set_aside_ttl_seconds: not-a-number",
+        "key_set_aside_ttl_seconds: 0",
+    ],
+)
+def test_a_misspelled_or_invalid_ttl_key_in_a_policy_file_still_refuses(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    line: str,
+) -> None:
+    from omnimarket.handlers.node_overlay_reader import NodeOverlayError
+
+    policy = tmp_path / "policy.yaml"
+    policy.write_text(
+        f"cloud_review_refused_repositories:\n  - private-repo\n{line}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ONEX_REVIEW_GATEWAY_OVERLAY", str(policy))
+    monkeypatch.delenv("ONEX_SKILL_OVERLAY_ROOTS", raising=False)
+    with pytest.raises(NodeOverlayError):
+        _overlay_handler().gateway(_overlay_request())
+
+
 async def test_live_handler_owns_the_bus_lifecycle_and_signed_route(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

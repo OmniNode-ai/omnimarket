@@ -78,6 +78,8 @@ import re
 import time
 import uuid
 from collections.abc import Callable, Mapping, Sequence
+from contextvars import ContextVar
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Literal, Protocol
 
@@ -612,6 +614,23 @@ def _error(
     return status, {"error": body}
 
 
+@dataclass
+class _PublishBudget:
+    """What one request may still spend waiting on the key-state topic (OMN-24658).
+
+    ``deadline`` is a monotonic instant: ``wait_seconds`` after the request began. After a
+    flush fails in the request, no later flush in the same request tries the bus again.
+    """
+
+    deadline: float
+    failed: bool = False
+
+
+_REQUEST_BUDGET: ContextVar[_PublishBudget | None] = ContextVar(
+    "review_gateway_request_budget", default=None
+)
+
+
 def _contract_mapping(section: object) -> Mapping[str, object]:
     if not isinstance(section, Mapping):
         raise ValueError(f"{_NODE_NAME}: contract config must be a mapping")
@@ -723,6 +742,7 @@ class ClaudeReviewGateway:
         # cannot grow the queue past the number of bound keys (OMN-24658).
         self._pending_events: dict[str, ModelReviewGatewayKeyEvent] = {}
         self._dropped_events = 0
+        self._in_flight: tuple[str, ModelReviewGatewayKeyEvent] | None = None
         self._publish_failing = False
         self._publish_idle_after = 0.0
         self._publish_policy = (
@@ -792,20 +812,28 @@ class ClaudeReviewGateway:
             occurred_at=self._clock(),
             retry_after_seconds=self._overlay.key_set_aside_ttl_seconds,
         )
-        if self._pending_events.pop(record.key_ref, None) is not None:
+        replaced = self._pending_events.pop(record.key_ref, None)
+        if replaced is not None and not self._is_in_flight(replaced):
+            # A replaced event whose publication is in flight is still published, so it is
+            # not a drop (an in-flight publication that then fails is counted in the flush).
             self._dropped_events += 1
         self._pending_events[record.key_ref] = event
         if transition == "retry":
             self._retry_announced[record.key_ref] = record.set_aside_at
         await self._flush_key_events()
 
+    def _is_in_flight(self, event: ModelReviewGatewayKeyEvent) -> bool:
+        return self._in_flight is not None and self._in_flight[1] is event
+
     async def _flush_key_events(self) -> None:
         """Replay held events oldest first; a refused or unreachable topic defers them.
 
         A failed publication never fails the call (OMN-24658, chain of responders, RULING
-        2026-11-03T20:42:53Z). The request never waits on the bus past the declared
-        ``wait_seconds``; after a wait that ran out no request waits again for
-        ``backoff_seconds``, and a request that finds another flush running skips it.
+        2026-11-03T20:42:53Z). One request waits on the bus at most the declared
+        ``wait_seconds`` in all (one deadline per request, however many events it emits), and
+        once a flush failed in the request no later flush in it tries the bus again; after a
+        wait that ran out no request waits again for ``backoff_seconds``, and a request that
+        finds another flush running skips it.
         """
         if self._event_bus is None:
             raise RuntimeError("review gateway: key-state event bus is required")
@@ -816,11 +844,18 @@ class ClaudeReviewGateway:
         ):
             return
         policy = self._publish_policy
+        budget = _REQUEST_BUDGET.get()
+        if budget is None:
+            budget = _PublishBudget(time.monotonic() + policy.wait_seconds)
+        remaining = budget.deadline - time.monotonic()
+        if budget.failed or remaining <= 0:
+            return
         async with self._publish_lock:
             try:
-                async with asyncio.timeout(policy.wait_seconds):
+                async with asyncio.timeout(remaining):
                     while self._pending_events:
                         key_ref, event = next(iter(self._pending_events.items()))
+                        self._in_flight = (key_ref, event)
                         await self._event_bus.publish(
                             topic=self._topics[
                                 0 if event.transition == "set_aside" else 1
@@ -828,9 +863,19 @@ class ClaudeReviewGateway:
                             key=event.key_ref.encode(),
                             value=event.model_dump_json().encode(),
                         )
+                        self._in_flight = None
                         if self._pending_events.get(key_ref) is event:
                             del self._pending_events[key_ref]
             except (ModelOnexError, OSError) as failure:
+                budget.failed = True
+                if (
+                    self._in_flight is not None
+                    and self._pending_events.get(self._in_flight[0])
+                    is not self._in_flight[1]
+                ):
+                    # Replaced while in flight and then not published: now it is a drop.
+                    self._dropped_events += 1
+                self._in_flight = None
                 if isinstance(failure, TimeoutError):
                     self._publish_idle_after = time.monotonic() + policy.backoff_seconds
                 if not self._publish_failing:
@@ -997,6 +1042,9 @@ class ClaudeReviewGateway:
 
     async def complete(self, payload: Mapping[str, Any]) -> tuple[int, dict[str, Any]]:
         """Serve one chat completion on this host's first key that can, else 503."""
+        token = _REQUEST_BUDGET.set(
+            _PublishBudget(time.monotonic() + self._publish_policy.wait_seconds)
+        )
         try:
             return await self._complete(payload)
         except (ModelOnexError, OSError):
@@ -1007,6 +1055,8 @@ class ClaudeReviewGateway:
                 "gateway_dependency_unavailable",
                 "a required dependency is unavailable",
             )
+        finally:
+            _REQUEST_BUDGET.reset(token)
 
     async def _complete(self, payload: Mapping[str, Any]) -> tuple[int, dict[str, Any]]:
         refusal = self._repository_refusal(payload)

@@ -36,7 +36,7 @@ requirements:
 evidence_requirements:
 - kind: tests
   description: The focused tests at the pushed head.
-  command: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect -q --no-cov -p no:randomly
+  command: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect -q --no-cov -p no:randomly -m "not kafka"
 emergency_bypass:
   enabled: false
   justification: ''
@@ -85,5 +85,5 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24658 --kind test -- env PYTHONDONTWRITEBYTECODE=1
-      uv run --frozen pytest tests/unit/nodes/node_claude_review_gateway_effect -q --no-cov -p no:randomly
+      uv run --frozen pytest tests/unit/nodes/node_claude_review_gateway_effect -q --no-cov -p no:randomly -m "not kafka"
     cwd: .

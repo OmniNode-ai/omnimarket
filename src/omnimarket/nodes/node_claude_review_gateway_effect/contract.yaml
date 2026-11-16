@@ -91,8 +91,11 @@ config:
     max_breakpoints: 4
   # OMN-24658: the key-state events a refused or unreachable topic defers are held one per key
   # (the newest state wins, older ones are counted as dropped). A request waits at most
-  # wait_seconds for the bus; after a wait that ran out, no request waits on the bus again for
+  # wait_seconds for the bus, in all (one deadline per request, however many events it
+  # emits); after a wait that ran out, no request waits on the bus again for
   # backoff_seconds. The queue depth and drop count are on the gateway's key-events route.
+  # Limit: held events publish only on the next review request (there is no timed flush), so
+  # after a refused topic recovers they wait for the next review request to be served.
   key_event_publish:
     wait_seconds: 2.0
     backoff_seconds: 30.0

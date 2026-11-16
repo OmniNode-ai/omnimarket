@@ -295,9 +295,12 @@ class _ProbeWorld:
         monkeypatch.setenv("ONEX_LAB_RUN_HOSTS", str(table))
         monkeypatch.setattr(cli_secret, "_tenant_key_store", lambda: self.store)
         self.outcomes: list[Any] = []
+        self.requests: list[Any] = []
         outcomes = self.outcomes
+        requests = self.requests
 
-        def _call(_self: object, _request: object) -> Any:
+        def _call(_self: object, request: object) -> Any:
+            requests.append(request)
             return outcomes.pop(0)
 
         monkeypatch.setattr(
@@ -394,3 +397,31 @@ def test_the_command_refuses_to_run_without_the_ledger_command(
     result = world.run()
     assert result.exit_code != 0
     assert LEDGER_COMMAND_VARIABLE in result.output
+
+
+def test_the_command_passes_the_thinking_mode_to_every_probe_request(
+    world: _ProbeWorld,
+) -> None:
+    world.outcomes[:] = [_ok(), _ok()]
+    adaptive = world.run("--thinking-mode", "adaptive")
+    assert adaptive.exit_code == 0, adaptive.output
+    assert len(world.requests) == 2
+    assert all(
+        request.provider_request_options["thinking"] == {"type": "adaptive"}
+        for request in world.requests
+    )
+    world.requests.clear()
+    world.outcomes[:] = [_ok(), _ok()]
+    default = world.run()
+    assert default.exit_code == 0, default.output
+    assert all(
+        "thinking" not in request.provider_request_options for request in world.requests
+    )
+
+
+def test_the_command_refuses_a_thinking_mode_the_gateway_does_not_know(
+    world: _ProbeWorld,
+) -> None:
+    result = world.run("--thinking-mode", "always")
+    assert result.exit_code != 0
+    assert not world.requests

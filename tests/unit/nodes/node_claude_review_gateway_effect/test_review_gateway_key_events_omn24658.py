@@ -13,8 +13,10 @@ import json
 import logging
 import time
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
+import yaml
 from fastapi.testclient import TestClient
 
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
@@ -27,6 +29,7 @@ from omnimarket.nodes.node_claude_review_gateway_effect.models.model_claude_revi
     ModelClaudeReviewGatewayRequest,
     ModelReviewGatewayKeyEventPolicy,
     ModelReviewGatewayOverlay,
+    ModelReviewGatewaySetAside,
 )
 from tests.unit.nodes.node_claude_review_gateway_effect.test_claude_review_gateway import (
     _HOST,
@@ -76,6 +79,34 @@ class SilentBus(FakeEventBus):
     async def publish(self, topic: str, key: bytes | None, value: bytes) -> None:
         self.attempts += 1
         await asyncio.sleep(3600)
+
+
+class LateRefusingBus(FakeEventBus):
+    """A broker that answers slowly and then refuses: each attempt costs ``delay`` seconds."""
+
+    def __init__(self, delay: float) -> None:
+        super().__init__()
+        self.delay = delay
+        self.attempts = 0
+
+    async def publish(self, topic: str, key: bytes | None, value: bytes) -> None:
+        self.attempts += 1
+        await asyncio.sleep(self.delay)
+        raise OSError("topic authorization failed")
+
+
+class GatedBus(FakeEventBus):
+    """Holds every publication open until the test releases it."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.started = asyncio.Event()
+        self.release = asyncio.Event()
+
+    async def publish(self, topic: str, key: bytes | None, value: bytes) -> None:
+        self.started.set()
+        await self.release.wait()
+        await super().publish(topic, key, value)
 
 
 def _build(
@@ -204,8 +235,86 @@ async def test_concurrent_reviews_do_not_queue_behind_a_publication_in_flight() 
     assert bus.attempts == 1
 
 
+async def test_a_bus_that_refuses_late_holds_a_request_no_longer_than_the_declared_wait() -> (
+    None
+):
+    wait = 0.2
+    bus = LateRefusingBus(delay=0.15)
+    clock = [_NOW]
+    call = FakeCall([_fail(_BILLING) for _ in range(3 + 3)])
+    policy = ModelReviewGatewayKeyEventPolicy(wait_seconds=wait, backoff_seconds=60.0)
+    gateway = _build(["key-a", "key-b", "key-c"], call, bus, clock, policy)
+    started = time.monotonic()
+    assert (await gateway.complete(_PAYLOAD))[0] == 503
+    first = time.monotonic() - started
+    # Three set-aside events, each refused after 0.15 s: one deadline for the request, not
+    # one per event (measured at the reviewed head: 0.45 s over 3 attempts).
+    assert first < wait + 0.05
+    assert bus.attempts == 1
+    # The expiry cycle: a retry and a set-aside per key, still one wait for the request.
+    clock[0] += timedelta(seconds=_TTL)
+    started = time.monotonic()
+    assert (await gateway.complete(_PAYLOAD))[0] == 503
+    cycle = time.monotonic() - started
+    assert cycle < wait + 0.05
+    assert bus.attempts == 2
+    assert _counts(gateway)["held"] == 3
+
+
+async def test_an_event_replaced_while_its_publication_is_in_flight_is_not_counted_dropped() -> (
+    None
+):
+    bus = GatedBus()
+    policy = ModelReviewGatewayKeyEventPolicy(wait_seconds=5.0, backoff_seconds=60.0)
+    gateway = _build(["key-a"], FakeCall([]), bus, [_NOW], policy)
+    ref = str(_row("key-a")["api_key_ref"])
+    first = ModelReviewGatewaySetAside(key_ref=ref, cause=_BILLING, set_aside_at=_NOW)
+    newer = ModelReviewGatewaySetAside(
+        key_ref=ref, cause=_BILLING, set_aside_at=_NOW + timedelta(seconds=1)
+    )
+    sender = asyncio.create_task(gateway._emit_key_event("set_aside", first))
+    await asyncio.wait_for(bus.started.wait(), timeout=2)
+    # The first event is on the wire when a newer state of the same key replaces it.
+    await gateway._emit_key_event("set_aside", newer)
+    bus.release.set()
+    await sender
+    assert len(bus.events) == 2  # both were published
+    assert _counts(gateway) == {"held": 0, "dropped": 0}
+
+
+async def test_a_held_event_replaced_before_it_is_sent_is_still_counted_dropped() -> (
+    None
+):
+    bus = RefusingBus()
+    gateway = _build(["key-a"], FakeCall([]), bus, [_NOW])
+    ref = str(_row("key-a")["api_key_ref"])
+    for second in (0, 1):
+        record = ModelReviewGatewaySetAside(
+            key_ref=ref, cause=_BILLING, set_aside_at=_NOW + timedelta(seconds=second)
+        )
+        await gateway._emit_key_event("set_aside", record)
+    assert _counts(gateway) == {"held": 1, "dropped": 1}
+
+
+_CONTRACT = (
+    Path(__file__).resolve().parents[4]
+    / "src/omnimarket/nodes/node_claude_review_gateway_effect/contract.yaml"
+)
+
+
 def test_the_declared_wait_and_backoff_come_from_the_node_contract() -> None:
+    declared = yaml.safe_load(_CONTRACT.read_text(encoding="utf-8"))["config"][
+        "key_event_publish"
+    ]
+    assert declared == {"wait_seconds": 2.0, "backoff_seconds": 30.0}
     gateway = _build(["key-a"], FakeCall([]), RefusingBus(), [_NOW])
-    policy = gateway._publish_policy
-    assert policy.wait_seconds > 0
-    assert policy.backoff_seconds >= policy.wait_seconds
+    assert gateway._publish_policy == ModelReviewGatewayKeyEventPolicy(
+        wait_seconds=2.0, backoff_seconds=30.0
+    )
+
+
+def test_the_contract_states_that_held_events_wait_for_the_next_review_request() -> (
+    None
+):
+    text = " ".join(_CONTRACT.read_text(encoding="utf-8").split())
+    assert "held events publish only on the next review request" in text
