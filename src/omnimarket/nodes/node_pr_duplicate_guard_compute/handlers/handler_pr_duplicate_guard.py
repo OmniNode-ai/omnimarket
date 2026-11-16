@@ -9,7 +9,7 @@ when any of these holds, naming the pull request to take over:
 
 - ``branch``: a pull request is already open from this branch;
 - ``lines``: overlapping existing lines or the same added file, and the same change: added lines or removed
-  lines (a declared shared catalog line both replace does not count as shared) at least
+  lines together (a declared shared catalog line both replace does not count) at least
   ``config.intent.min_same_change_similarity`` alike, or at least ``min_same_ticket_similarity`` alike under a
   shared ticket (a shared ticket alone, with changed lines that share almost nothing, is one ticket over many pull
   requests); proximity with different intent supplies only a note;
@@ -311,24 +311,33 @@ def _similarity(
 ) -> float | None:
     """Share of the changed-line digests two diffs have in common on ``paths``; None when either side has none.
 
-    Added lines and removed lines are each compared when both sides have any, and the higher share decides: two
-    diffs that replace one declared shared catalog line (a rendered catalog's fingerprint, excluded from
-    ``removed_digest``) with different content are not one change, but two diffs that delete the same lines are,
-    whatever each adds. A side with neither (a pure deletion of catalog lines) is compared on all its lines.
+    One share over the added and the removed lines together, less the declared shared catalog lines (a rendered
+    catalog's fingerprint is rewritten by every pull request that touches the catalog, so a diff's removal of it
+    says nothing about the change). A lone shared replaced line weighs what it weighs among the rest and is never
+    scored as a share of its own: two diffs that replace one line with different content are not one change, and
+    two diffs that delete the same many lines are, whatever each adds. When either side has no such line (a pure deletion of
+    catalog lines) both are compared on all their changed lines.
     """
-    scores: list[float] = []
-    for field in ("added_digest", "removed_digest"):
-        mine = {d for f in new.files if f.path in paths for d in getattr(f, field)}
-        theirs = {d for f in other.files if f.path in paths for d in getattr(f, field)}
-        if mine and theirs:
-            scores.append(len(mine & theirs) / len(mine | theirs))
-    if scores:
-        return max(scores)
-    mine = {d for f in new.files if f.path in paths for d in f.digest}
-    theirs = {d for f in other.files if f.path in paths for d in f.digest}
+    fields = ("added_digest", "removed_digest")
+    mine, theirs = _changed(new, paths, fields), _changed(other, paths, fields)
+    if not (mine and theirs):
+        mine, theirs = (
+            _changed(new, paths, ("digest",)),
+            _changed(other, paths, ("digest",)),
+        )
     if not (mine and theirs):
         return None
     return len(mine & theirs) / len(mine | theirs)
+
+
+def _changed(touch: ModelPrTouch, paths: set[str], fields: tuple[str, ...]) -> set[str]:
+    return {
+        d
+        for f in touch.files
+        if f.path in paths
+        for field in fields
+        for d in getattr(f, field)
+    }
 
 
 def _same_intent(shared_ticket: bool, similarity: float | None) -> bool:

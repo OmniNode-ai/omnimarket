@@ -1,13 +1,13 @@
 schema_version: 1.0.0
 ticket_id: OMN-24632
 title: 'PR duplicate guard: shared removals stay duplicates; only distinct added content clears'
-summary: The PR duplicate guard compares removed lines as well as added lines. Two pull requests that delete the same lines stay duplicates whatever each adds, while a declared shared catalog fingerprint line that both replace does not count as shared, so the eval-grants case still clears.
+summary: The PR duplicate guard scores one share over the added and the removed lines together, less the declared shared catalog fingerprint lines. Two pull requests that delete the same many lines stay duplicates whatever each adds, while a catalog fingerprint line that both replace does not count, so the eval-grants case still clears.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
 - id: req-omn24632-shared-removals
-  statement: The guard reads shared removed lines as a shared change, except the declared shared catalog lines.
+  statement: The guard reads shared removed lines as part of one share with the added lines, except the declared shared catalog lines.
   acceptance:
   - id: AC1
     statement: 'AC1: two pull requests that delete the same 20 lines and add different lines are refused as duplicates -- falsifier: uv run pytest tests -k "duplicate_guard and shared_removals" -q'
