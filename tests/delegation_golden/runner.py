@@ -697,25 +697,34 @@ def evaluate_row(case: ModelCorpusCase, row: dict[str, Any]) -> list[str]:
             failures.append(f"terminal: expected {exp.terminal!r}, got {terminal!r}")
         return failures
 
-    # OMN-24831: a row with no outer outcome after its settle window is a
-    # statement about the lane, not about the ladder. Scheduled run 43826372809
-    # (job 133161076598) scored eight cases ``expected 'completed', got
-    # 'unknown'`` plus ``tokens: expected positive, got input=0 output=0``:
-    # several behavioural-looking misses for ONE fact, that no terminal was ever
-    # written for a row the platform had started. The case still fails (the
-    # terminal it expects was not observed); it fails once, under its own name.
-    # Only a case that declares a terminal is short-circuited, so no pass/fail
-    # verdict changes -- only what the reader is told.
-    if terminal == "unknown" and exp.terminal is not None:
+    # OMN-24831: a row whose outer outcome (``terminal_ok``) is NULL in the row
+    # read is named as that, once, instead of as several behavioural-looking
+    # misses. Scheduled run 43826372809 (job 133161076598) read back a row for
+    # every one of its ten cases, each with ``terminal_ok`` NULL and tokens 0/0
+    # (model populated on eight of them), and scored the eight non-xfail ones
+    # ``expected 'completed', got 'unknown'`` plus ``tokens: expected positive``.
+    # The gate is ``terminal_ok is None`` AND the reduced terminal being unknown,
+    # not the reduced terminal alone: ``row_terminal`` also returns "unknown" for
+    # an explicit ``terminal_state``/``status`` of "unknown" on a row that carries
+    # ``terminal_ok``, and that row is judged by the old lines. The case still
+    # FAILS (it carries a terminal expectation that was not observed); only a
+    # case that declares a terminal is short-circuited, so no pass/fail verdict
+    # changes -- only the text. ``evaluate_row`` cannot know whether a settle
+    # window elapsed, so the message states only what the row read holds.
+    if (
+        terminal == "unknown"
+        and row.get("terminal_ok") is None
+        and exp.terminal is not None
+    ):
         failures.append(
-            f"no terminal outcome: the row was projected "
+            f"no terminal outcome: terminal_ok is NULL in the row read "
             f"(delegated_to={row.get('delegated_to')!r}, "
-            f"model_name={row.get('model_name')!r}) but terminal_ok is still NULL "
-            f"after the settle window, so the delegation did not terminalise or "
-            f"its terminal event was not projected on lane {_LANE}; expected "
-            f"terminal {exp.terminal!r}. This is a lane/platform fact, not a "
-            "behavioural expectation miss: read the lane's delegate-skill "
-            "consumer and projection, not the ladder."
+            f"model_name={row.get('model_name')!r}, "
+            f"tokens={int(row.get('tokens_input') or 0)}/"
+            f"{int(row.get('tokens_output') or 0)}); expected terminal "
+            f"{exp.terminal!r} was not observed on lane {_LANE}. The row has no "
+            "outer outcome to judge, so the other expectations are not scored; "
+            "read the lane's delegate-skill consumer and projection."
         )
         return failures
 
