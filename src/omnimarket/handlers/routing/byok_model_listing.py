@@ -42,6 +42,7 @@ class ModelByokListedModel(BaseModel):
     id: str
     name: str
     context_tokens: int | None = None
+    max_output_tokens: int | None = None
     input_usd_per_million: float | None = None
     output_usd_per_million: float | None = None
 
@@ -109,6 +110,9 @@ def _listed(entry: dict[str, Any]) -> ModelByokListedModel | None:
             entry.get("context_length")
             or top.get("context_length")
             or entry.get("inputTokenLimit")
+        ),
+        max_output_tokens=_positive_int(
+            entry.get("outputTokenLimit") or top.get("max_completion_tokens")
         ),
         input_usd_per_million=_per_million(pricing.get("prompt")),
         output_usd_per_million=_per_million(pricing.get("completion")),

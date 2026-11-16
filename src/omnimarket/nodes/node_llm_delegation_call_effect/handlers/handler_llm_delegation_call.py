@@ -50,6 +50,7 @@ from omnimarket.events.provider_quota import (
     ModelProviderQuotaObserved,
 )
 from omnimarket.handlers import openai_compatible_endpoint as endpoints
+from omnimarket.handlers.model_catalog import catalog_config, runtime_catalog_entry
 from omnimarket.handlers.routing.byok_model_discovery import (
     describe_discovery_refusal,
     discover_byok_model_sync,
@@ -104,6 +105,7 @@ from omnimarket.models.delegation.local_credential_refusal import (
     EnumLocalCredentialRefusalReason,
     ModelLocalCredentialRefusal,
 )
+from omnimarket.models.model_catalog_entry import ModelCatalogEntry
 from omnimarket.nodes.contract_topics import (
     contract_publish_topics,
     contract_subscribe_topics,
@@ -327,6 +329,21 @@ def _extract_usage(response_json: dict[str, Any]) -> tuple[int, int]:
     return tokens_in, tokens_out
 
 
+def _token_usage_source(
+    response_json: dict[str, Any], *, native: bool = False
+) -> EnumUsageSource:
+    """Provider counts are measured independently of whether a price is known."""
+    usage = response_json.get("usage")
+    fields = (
+        ("input_tokens", "output_tokens")
+        if native
+        else ("prompt_tokens", "completion_tokens")
+    )
+    if isinstance(usage, dict) and all(usage.get(key) is not None for key in fields):
+        return EnumUsageSource.MEASURED
+    return EnumUsageSource.UNKNOWN
+
+
 def _provider_reported_cost(response_json: dict[str, Any]) -> Decimal | None:
     """The cost the provider reported in its own usage accounting, or ``None``.
 
@@ -351,6 +368,7 @@ def _compute_cost(
     model_tier: str = "unknown",
     endpoint_url: str | None = None,
     provider: str | None = None,
+    model_entry: ModelCatalogEntry | None = None,
 ) -> tuple[Decimal, Decimal, Decimal, EnumCostBasis]:
     """Return (actual_cost, opus_equivalent_cost, savings, cost_basis).
 
@@ -374,8 +392,16 @@ def _compute_cost(
     missing or the tier is not declared.
     """
     if byok_backend_provider(provider) is not None:
-        model_price = byok_model_price_per_1m(provider, endpoint_url, model_id)
-        if model_price is None:
+        model_price = (
+            (model_entry.input_usd_per_million, model_entry.output_usd_per_million)
+            if model_entry is not None
+            and model_entry.input_usd_per_million is not None
+            and model_entry.output_usd_per_million is not None
+            else None
+        )
+        if model_entry is None:
+            model_price = byok_model_price_per_1m(provider, endpoint_url, model_id)
+        if model_price is None and model_entry is None:
             # OMN-23751: an eval arm on the registered key keeps the arm's model
             # and is booked at the arm's declared price.
             model_price = load_delegation_routing_overlay().eval_arm_price_per_1m(
@@ -989,6 +1015,7 @@ class HandlerLlmDelegationCall:
                 payload["response_format"] = request.response_format
 
         secret_source: EnumSecretSource | None = None
+        model_entry: ModelCatalogEntry | None = None
         request_left_at: float | None = None
         try:
             # OMN-13861: resolve the backend's API key from ``secret_ref`` and merge
@@ -999,6 +1026,21 @@ class HandlerLlmDelegationCall:
             # ref that cannot be resolved fails closed (raises → caught below as a
             # transport failure), never a silent unauthenticated call.
             outbound_headers, secret_source = self._resolve_outbound_headers(request)
+            provider = byok_backend_provider(request.provider)
+            if provider is not None and provider in catalog_config()["provider_ids"]:
+                api_key, _ = resolve_api_key_with_source_loop_safe(
+                    request.secret_ref, env_var_fallback=request.api_key_env
+                )
+                model_entry = runtime_catalog_entry(provider, request.model_id, api_key)
+                if model_entry.max_output_tokens is not None:
+                    token_field = (
+                        "max_tokens"
+                        if native
+                        else token_limit_field_for_endpoint(endpoint_url)
+                    )
+                    payload[token_field] = min(
+                        request.max_tokens, model_entry.max_output_tokens
+                    )
 
             # OMN-16419: fail-closed model-attribution guard. A live GET
             # /v1/models reconciliation runs BEFORE the chat-completion POST —
@@ -1341,6 +1383,7 @@ class HandlerLlmDelegationCall:
                 response_json,
                 latency_ms=latency_ms,
                 secret_source=secret_source,
+                model_entry=model_entry,
                 event_publisher=event_publisher,
             )
 
@@ -1381,6 +1424,7 @@ class HandlerLlmDelegationCall:
             model_tier=request.model_tier,
             endpoint_url=endpoint_url,
             provider=request.provider,
+            model_entry=model_entry,
         )
 
         result = ModelLlmDelegationCallResult(
@@ -1405,7 +1449,7 @@ class HandlerLlmDelegationCall:
             actual_cost_usd=actual_cost,
             opus_equivalent_cost_usd=opus_cost,
             savings_usd=savings,
-            usage_source=_cost_usage_source(cost_basis),
+            usage_source=_token_usage_source(response_json),
             cost_basis=cost_basis,
             provider_reported_cost_usd=_provider_reported_cost(response_json),
             quality_gate_passed=True,
@@ -1436,6 +1480,7 @@ class HandlerLlmDelegationCall:
         latency_ms: int,
         secret_source: EnumSecretSource | None,
         event_publisher: Any,
+        model_entry: ModelCatalogEntry | None = None,
     ) -> ModelLlmDelegationCallResult:
         """Turn one native Messages reply into the typed result (OMN-20910).
 
@@ -1467,6 +1512,7 @@ class HandlerLlmDelegationCall:
             model_tier=request.model_tier,
             endpoint_url=endpoint_url,
             provider=request.provider,
+            model_entry=model_entry,
         )
         cache_read, cache_write_5m, cache_write_1h = cache_usage_figures(
             response_json.get("usage") or {}
@@ -1489,7 +1535,7 @@ class HandlerLlmDelegationCall:
             actual_cost_usd=actual_cost,
             opus_equivalent_cost_usd=opus_cost,
             savings_usd=savings,
-            usage_source=_cost_usage_source(cost_basis),
+            usage_source=_token_usage_source(response_json, native=True),
             cost_basis=cost_basis,
             quality_gate_passed=True,
             endpoint_healthy=True,
@@ -1548,7 +1594,7 @@ class HandlerLlmDelegationCall:
             opus_equivalent_cost_usd=result.opus_equivalent_cost_usd,
             savings_usd=result.savings_usd,
             provider_reported_cost_usd=result.provider_reported_cost_usd,
-            usage_source=result.usage_source,
+            usage_source=result.cost_usage_source,
             cost_basis=result.cost_basis,
             pricing_manifest_version=request.pricing_manifest_version,
             pricing_manifest_hash=request.pricing_manifest_hash,

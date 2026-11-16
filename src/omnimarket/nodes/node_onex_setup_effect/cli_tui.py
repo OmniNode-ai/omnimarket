@@ -59,6 +59,7 @@ from omnimarket.handlers.model_catalog import (
     ModelsDevIndex,
     catalog_config,
     catalog_entry,
+    listed_catalog_entry,
     load_models_dev,
     stored_entries,
 )
@@ -627,17 +628,7 @@ def _listed_entry(
     provider: str, model: ModelByokListedModel, index: ModelsDevIndex
 ) -> ModelCatalogEntry:
     """A hosted provider's model: the provider's own context and price first."""
-    return catalog_entry(
-        provider,
-        model.id,
-        deployment="cloud",
-        index=index,
-        provider_label=_label(provider),
-        name=model.name if model.name != model.id else None,
-        context_tokens=model.context_tokens,
-        input_usd_per_million=model.input_usd_per_million,
-        output_usd_per_million=model.output_usd_per_million,
-    )
+    return listed_catalog_entry(provider, model, index, provider_label=_label(provider))
 
 
 def _server_entry(

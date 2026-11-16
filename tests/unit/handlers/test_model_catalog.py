@@ -107,6 +107,44 @@ def test_models_dev_supplies_what_the_provider_did_not_state() -> None:
     assert entry.capabilities["Cache"] == "yes"
 
 
+@pytest.mark.parametrize("provider_output", [32_000, 48_000])
+def test_provider_output_limit_reaches_the_combined_entry(provider_output: int) -> None:
+    """AC34: provider output limits must win over supplemental metadata."""
+    from omnimarket.handlers.routing.byok_model_listing import list_byok_models
+    from omnimarket.nodes.node_onex_setup_effect.cli_tui import _listed_entry
+
+    listing = list_byok_models(
+        "openrouter",
+        "synthetic-key",
+        get=lambda **_: {
+            "data": [
+                {
+                    "id": "vendor/big",
+                    "context_length": 200_000,
+                    "top_provider": {"max_completion_tokens": provider_output},
+                }
+            ]
+        },
+    )
+    entry = _listed_entry("openrouter", listing.models[0], _index())
+    assert entry.context_tokens == 200_000
+    assert entry.max_output_tokens == provider_output
+
+
+def test_provider_partial_price_fills_only_missing_side_from_models_dev() -> None:
+    """AC34: a provider's input quote must not hide supplemental output pricing."""
+    entry = catalog_entry(
+        "openrouter",
+        "vendor/big",
+        deployment="cloud",
+        index=_index(),
+        provider_label="OpenRouter",
+        input_usd_per_million=3,
+    )
+    assert entry.input_usd_per_million == Decimal(3)
+    assert entry.output_usd_per_million == Decimal(25)
+
+
 def test_nothing_stated_stays_unknown_never_free_or_no() -> None:
     """C2."""
     from omnimarket.nodes.node_onex_setup_effect.cli_model_table import price_text

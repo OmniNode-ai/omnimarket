@@ -1037,7 +1037,7 @@ def _local_rung_attempt(
         "quality_gate_passed": False,
         "quality_score": None,
         "cost_usd": float(result.actual_cost_usd),
-        "usage_source": result.usage_source.value,
+        "usage_source": result.cost_usage_source.value,
         "failure_class": failure_class.value if failure_class is not None else None,
         "provider_id": _attempt_provider_id(backend.endpoint_ref),
         "host": endpoint_host(backend.endpoint_ref),
@@ -3338,7 +3338,7 @@ class LocalDelegationDispatchPort:
                         # the time spent before the bound ended it).
                         "duration_ms": transport_result.latency_ms,
                         # OMN-20717: whether this rung's cost was measured.
-                        "usage_source": transport_result.usage_source.value,
+                        "usage_source": transport_result.cost_usage_source.value,
                         "failure_class": (
                             transport_failure_class.value
                             if transport_failure_class is not None
@@ -3809,7 +3809,7 @@ class LocalDelegationDispatchPort:
                     # OMN-22224: the call's measured time.
                     "duration_ms": result.latency_ms,
                     # OMN-20717: whether this rung's cost was measured.
-                    "usage_source": result.usage_source.value,
+                    "usage_source": result.cost_usage_source.value,
                     # OMN-20154: the provider answered; a rung the gate did not
                     # accept is a quality-gate failure, typed as one.
                     "provider_id": _attempt_provider_id(backend.endpoint_ref),
@@ -6087,6 +6087,14 @@ class LocalDelegationDispatchPort:
                 "total_tokens": result.tokens_in + result.tokens_out,
                 "latency_ms": result.latency_ms,
                 "cost_usd": float(cost_usd),
+                "cost_measured": (
+                    any(
+                        u.usage_source is EnumUsageSource.MEASURED
+                        for u in attempt_usage
+                    )
+                    if attempt_usage
+                    else result.cost_usage_source is EnumUsageSource.MEASURED
+                ),
                 "cost_savings_usd": (
                     baseline_savings.savings_usd
                     if baseline_savings is not None
@@ -6235,7 +6243,8 @@ class LocalDelegationDispatchPort:
                     completion_tokens=result.tokens_out,
                     total_tokens=result.tokens_in + result.tokens_out,
                     estimated_cost_usd=float(cost_usd),
-                    # OMN-21260: an unpriced customer model is not a measured $0.
+                    # Token telemetry; unknown pricing remains separate in the
+                    # terminal's cost_measured and cost usage rollup below.
                     usage_source=result.usage_source,
                     # The per-call dedup key folds session_id and the tokens
                     # only, so a session-less run keys on its own correlation
@@ -6629,7 +6638,7 @@ class _AttemptUsage:
             tokens_in=result.tokens_in,
             tokens_out=result.tokens_out,
             cost_usd=result.actual_cost_usd,
-            usage_source=result.usage_source,
+            usage_source=result.cost_usage_source,
             answered=result.success,
         )
 

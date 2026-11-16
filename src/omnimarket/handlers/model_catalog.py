@@ -25,8 +25,13 @@ from typing import Any, NamedTuple
 
 import httpx
 import yaml
+from pydantic import SecretStr
 
 from omnimarket.config.service_endpoints import service_endpoint_url
+from omnimarket.handlers.routing.byok_model_listing import (
+    ModelByokListedModel,
+    list_byok_models,
+)
 from omnimarket.models.model_catalog_entry import (
     CapabilityState,
     Deployment,
@@ -228,6 +233,7 @@ def catalog_entry(
     provider_label: str,
     name: str | None = None,
     context_tokens: int | None = None,
+    max_output_tokens: int | None = None,
     input_usd_per_million: Any = None,
     output_usd_per_million: Any = None,
     status: ModelStatus = "listed",
@@ -258,10 +264,15 @@ def catalog_entry(
     price_out = _decimal(output_usd_per_million)
     if price_in is not None or price_out is not None:
         sources["price"] = provider_label
-    elif deployment == "cloud":
-        price_in, price_out = _decimal(cost.get("input")), _decimal(cost.get("output"))
-        if price_in is not None or price_out is not None:
-            sources["price"] = "models.dev"
+    if deployment == "cloud":
+        fallback_in = _decimal(cost.get("input")) if price_in is None else None
+        fallback_out = _decimal(cost.get("output")) if price_out is None else None
+        if fallback_in is not None or fallback_out is not None:
+            sources["price"] = (
+                f"{provider_label} + models.dev" if "price" in sources else "models.dev"
+            )
+        price_in = price_in if price_in is not None else fallback_in
+        price_out = price_out if price_out is not None else fallback_out
     merged = _capabilities(metadata)
     if metadata is not None:
         sources["capabilities"] = "models.dev"
@@ -280,7 +291,8 @@ def catalog_entry(
         ),
         deployment=deployment,
         context_tokens=context,
-        max_output_tokens=_positive(limit.get("output")),
+        max_output_tokens=_positive(max_output_tokens)
+        or _positive(limit.get("output")),
         input_usd_per_million=price_in,
         output_usd_per_million=price_out,
         cache_read_usd_per_million=_decimal(cost.get("cache_read")),
@@ -292,6 +304,58 @@ def catalog_entry(
         sources=sources,
         metadata_fetched_at=index.fetched_at if metadata is not None else None,
         metadata_stale=index.stale and metadata is not None,
+    )
+
+
+def listed_catalog_entry(
+    provider: str,
+    model: ModelByokListedModel,
+    index: ModelsDevIndex,
+    *,
+    provider_label: str,
+) -> ModelCatalogEntry:
+    """Merge a provider-listed model once for both the table and the call."""
+    return catalog_entry(
+        provider,
+        model.id,
+        deployment="cloud",
+        index=index,
+        provider_label=provider_label,
+        name=model.name if model.name != model.id else None,
+        context_tokens=model.context_tokens,
+        max_output_tokens=model.max_output_tokens,
+        input_usd_per_million=model.input_usd_per_million,
+        output_usd_per_million=model.output_usd_per_million,
+    )
+
+
+def runtime_catalog_entry(
+    provider: str,
+    model_id: str,
+    api_key: SecretStr | None,
+) -> ModelCatalogEntry:
+    """Read provider facts for this key and the same supplemental cache as the UI."""
+    try:
+        index = pricing_models_dev_index()
+    except Exception:  # Supplemental metadata cannot prevent a provider call.
+        index = EMPTY_INDEX
+    # A failed refresh may be shown as stale in the explorer, but must not price
+    # a new call with metadata older than the configured maximum age.
+    if index.stale:
+        index = EMPTY_INDEX
+    if api_key is not None:
+        listing = list_byok_models(provider, api_key)
+        for model in listing.models:
+            if model.id == model_id:
+                return listed_catalog_entry(
+                    provider, model, index, provider_label=provider
+                )
+    return catalog_entry(
+        provider,
+        model_id,
+        deployment="cloud",
+        index=index,
+        provider_label=provider,
     )
 
 

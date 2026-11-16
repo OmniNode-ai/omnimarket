@@ -213,6 +213,184 @@ class TestHandlerLlmDelegationCall:
         _health_cache.clear()
 
     @pytest.mark.unit
+    def test_unmapped_provider_retains_its_existing_pricing_contract(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """AC34 conversion must leave providers outside the explorer mapping intact."""
+        _patch_post(
+            monkeypatch, json_body=_make_api_response(tokens_in=1000, tokens_out=500)
+        )
+        with patch(f"{_HANDLER_MODULE}._is_endpoint_healthy", return_value=True):
+            result = HandlerLlmDelegationCall()(
+                _make_request(
+                    provider="byok-glm-general",
+                    model_id="glm-5.3-flash",
+                    endpoint_ref="https://api.z.ai/api/paas/v4/chat/completions",
+                )
+            )
+        assert result.success
+        assert result.actual_cost_usd == Decimal("0.0004")
+        assert result.cost_basis is EnumCostBasis.CLOUD_API_COST
+
+    @pytest.mark.unit
+    def test_unreadable_supplemental_cache_does_not_prevent_inference(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Supplemental metadata is optional; a read failure leaves price unknown."""
+        from omnimarket.handlers import model_catalog
+
+        def unreadable():
+            raise OSError("synthetic unreadable metadata cache")
+
+        monkeypatch.setattr(model_catalog, "pricing_models_dev_index", unreadable)
+        captured = _patch_post(monkeypatch, json_body=_make_api_response())
+        with patch(f"{_HANDLER_MODULE}._is_endpoint_healthy", return_value=True):
+            result = HandlerLlmDelegationCall()(
+                _make_request(
+                    provider="byok-openrouter",
+                    model_id="unpriced-model",
+                )
+            )
+        assert result.success
+        assert captured["payload"]["model"] == "unpriced-model"
+        assert result.cost_basis is EnumCostBasis.UNKNOWN
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize(
+        ("output_limit", "input_price", "output_price", "expected_cost"),
+        [(32_000, 3, 25, "28"), (48_000, 4, 30, "34")],
+    )
+    def test_live_combined_model_entry_controls_call_limit_and_price(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        output_limit: int,
+        input_price: int,
+        output_price: int,
+        expected_cost: str,
+    ) -> None:
+        """AC34: provider and supplemental changes reach table and actual call."""
+        from pydantic import SecretStr
+
+        from omnimarket.handlers import model_catalog
+        from omnimarket.handlers.routing import byok_model_discovery
+        from omnimarket.handlers.routing.byok_model_listing import list_byok_models
+        from omnimarket.nodes.node_onex_setup_effect.cli_tui import _listed_entry
+
+        document = {
+            "data": [
+                {
+                    "id": "vendor/big",
+                    "context_length": 200_000,
+                    "top_provider": {"max_completion_tokens": output_limit},
+                    "pricing": {"prompt": str(Decimal(input_price) / 1_000_000)},
+                }
+            ]
+        }
+        index = model_catalog.ModelsDevIndex(
+            models={
+                ("openrouter", "vendor/big"): {
+                    "limit": {"context": 1_000_000, "output": 64_000},
+                    "cost": {"input": 99, "output": output_price},
+                }
+            },
+            fetched_at="2026-11-16T15:00:00+00:00",
+            stale=False,
+            error=None,
+        )
+        monkeypatch.setattr(
+            byok_model_discovery, "get_models_json", lambda **_: document
+        )
+        monkeypatch.setattr(model_catalog, "pricing_models_dev_index", lambda: index)
+        monkeypatch.setattr(
+            f"{_HANDLER_MODULE}.resolve_api_key_with_source_loop_safe",
+            lambda *_a, **_k: (
+                SecretStr("synthetic-key"),
+                EnumSecretSource.LOCAL_STORE,
+            ),
+        )
+        table_entry = _listed_entry(
+            "openrouter",
+            list_byok_models("openrouter", "synthetic-key").models[0],
+            index,
+        )
+        captured = _patch_post(
+            monkeypatch,
+            json_body=_make_api_response(tokens_in=1_000_000, tokens_out=1_000_000),
+        )
+        with patch(f"{_HANDLER_MODULE}._is_endpoint_healthy", return_value=True):
+            result = HandlerLlmDelegationCall()(
+                _make_request(
+                    provider="byok-openrouter",
+                    model_id="vendor/big",
+                    endpoint_ref="https://openrouter.ai/api/v1/chat/completions",
+                    max_tokens=1_000_000,
+                )
+            )
+        assert result.success
+        assert (
+            captured["payload"]["max_tokens"]
+            == table_entry.max_output_tokens
+            == output_limit
+        )
+        assert table_entry.input_usd_per_million == Decimal(input_price)
+        assert table_entry.output_usd_per_million == Decimal(output_price)
+        assert result.actual_cost_usd == Decimal(expected_cost)
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("tokens", [(1482, 6056), (0, 0), None])
+    def test_unpriced_response_keeps_token_provenance_separate_from_cost(
+        self, monkeypatch: pytest.MonkeyPatch, tokens: tuple[int, int] | None
+    ) -> None:
+        """AC36: unknown price must not erase reported usage or become free."""
+        response = _make_api_response()
+        if tokens is None:
+            response.pop("usage")
+        else:
+            response["usage"] = {
+                "prompt_tokens": tokens[0],
+                "completion_tokens": tokens[1],
+            }
+        _patch_post(monkeypatch, json_body=response)
+        request = _make_request(provider="byok-reflection", model_id="unpriced-model")
+        handler = HandlerLlmDelegationCall()
+        with patch(f"{_HANDLER_MODULE}._is_endpoint_healthy", return_value=True):
+            result = handler(request)
+        assert result.success
+        assert (result.tokens_in, result.tokens_out) == (tokens or (0, 0))
+        assert result.usage_source is (
+            EnumUsageSource.MEASURED if tokens is not None else EnumUsageSource.UNKNOWN
+        )
+        assert result.cost_basis is EnumCostBasis.UNKNOWN
+        assert result.savings_usd == 0
+        # The existing completed-event contract uses this field for cost.
+        event = handler._build_completed_event(request, result)
+        assert event.usage_source is EnumUsageSource.UNKNOWN
+        assert event.cost_basis is EnumCostBasis.UNKNOWN
+
+    @pytest.mark.unit
+    def test_native_unpriced_response_retains_measured_token_usage(self) -> None:
+        """AC36 must also hold for the Messages response path."""
+        handler = HandlerLlmDelegationCall()
+        request = _make_request(provider="byok-reflection", model_id="unpriced-model")
+        result = handler._finish_native_call(
+            request,
+            "https://provider.example/v1/messages",
+            {
+                "model": "unpriced-model",
+                "content": [{"type": "text", "text": "ok"}],
+                "stop_reason": "end_turn",
+                "usage": {"input_tokens": 12, "output_tokens": 7},
+            },
+            latency_ms=7,
+            secret_source=None,
+            event_publisher=None,
+        )
+        assert result.success
+        assert (result.tokens_in, result.tokens_out) == (12, 7)
+        assert result.usage_source is EnumUsageSource.MEASURED
+        assert result.cost_basis is EnumCostBasis.UNKNOWN
+
+    @pytest.mark.unit
     @pytest.mark.parametrize("terminator", ["</think>", None])
     @pytest.mark.parametrize(
         "answer",
