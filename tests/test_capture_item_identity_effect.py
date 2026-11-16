@@ -11,7 +11,11 @@ from __future__ import annotations
 import ast
 import importlib.util
 import multiprocessing
+import multiprocessing.pool as multiprocessing_pool
+import os
+import subprocess
 import sys
+import threading
 import uuid
 from pathlib import Path
 from types import ModuleType
@@ -216,11 +220,36 @@ def test_discriminator_is_the_tool_use_id_or_the_text_digest() -> None:
     assert ident.item_discriminator("SessionStart", {"prompt": "hi"}) == ""
 
 
-def _issue(args: tuple[str, str, int]) -> list[int]:
-    directory, stream, count = args
-    return [
+#: Spawn workers import this module and start staggered, so a writer can only be
+#: known to run beside the others if it waits for them. The barrier wait is the
+#: proof; both bounds sit under the 300 s per-test limit the CI split runs with.
+_WRITER_BARRIER_WAIT_S = 120.0
+_WRITER_RESULT_WAIT_S = 180.0
+_TEST_TIMEOUT_S = 240
+
+#: Set in each spawn worker by ``_init_writer``; the parent never holds a barrier here.
+_writer_barrier: Any = None
+
+
+def _init_writer(barrier: Any) -> None:
+    global _writer_barrier
+    _writer_barrier = barrier
+
+
+def _issue(args: tuple[str, str, int, float]) -> tuple[int, str, list[int]]:
+    """One writer: wait for every other writer, then issue ``count`` sequence numbers.
+
+    Returns the worker's pid and the start method its interpreter was created with,
+    so the test can read, from the workers themselves, that they ran side by side
+    and were started fresh. A pool with fewer workers than barrier parties breaks
+    the barrier after ``barrier_wait_s`` and the job raises.
+    """
+    directory, stream, count, barrier_wait_s = args
+    _writer_barrier.wait(timeout=barrier_wait_s)
+    seqs = [
         ident.next_producer_seq(Path(directory), SESSION, stream) for _ in range(count)
     ]
+    return os.getpid(), multiprocessing.get_start_method(), seqs
 
 
 def _writer_context() -> multiprocessing.context.BaseContext:
@@ -228,44 +257,113 @@ def _writer_context() -> multiprocessing.context.BaseContext:
     return multiprocessing.get_context("spawn")
 
 
+def _start_writer_pool(workers: int, parties: int) -> multiprocessing_pool.Pool:
+    """The one place a writers pool is built, always from ``_writer_context()``."""
+    ctx = _writer_context()
+    barrier = ctx.Barrier(parties)
+    return ctx.Pool(workers, initializer=_init_writer, initargs=(barrier,))
+
+
+def _run_writers(
+    workers: int, parties: int, jobs: list[tuple[str, str, int, float]]
+) -> list[tuple[int, str, list[int]]]:
+    pool = _start_writer_pool(workers, parties)
+    try:
+        return pool.map_async(_issue, jobs, chunksize=1).get(
+            timeout=_WRITER_RESULT_WAIT_S
+        )
+    finally:
+        pool.terminate()
+        pool.join()
+
+
+@pytest.mark.timeout(_TEST_TIMEOUT_S)
 def test_eight_concurrent_writers_issue_1000_gap_free_sequence_numbers(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # A loaded runner must not turn this into a lock-timeout test.
     monkeypatch.setenv("ONEX_HOOK_LOCK_WAIT_S", "60")
-    jobs = [(str(tmp_path), ident.STREAM_CONTENT, 125)] * 8
-    pool = _writer_context().Pool(8)
-    try:
-        issued = [
-            n for batch in pool.map_async(_issue, jobs).get(timeout=180) for n in batch
-        ]
-    finally:
-        pool.terminate()
-        pool.join()
+    jobs = [(str(tmp_path), ident.STREAM_CONTENT, 125, _WRITER_BARRIER_WAIT_S)] * 8
+    results = _run_writers(8, 8, jobs)
+    # Eight distinct workers each held a job at the barrier together, so the
+    # writes below came from eight processes and not one worker draining the queue.
+    assert len({pid for pid, _, _ in results}) == 8
+    # The workers themselves report how they were started.
+    assert {method for _, method, _ in results} == {"spawn"}
+    issued = [n for _, _, seqs in results for n in seqs]
     assert sorted(issued) == list(range(1, 1001))
     assert ident.high_water(tmp_path, SESSION, ident.STREAM_CONTENT) == 1000
     assert ident.high_water(tmp_path, SESSION, ident.STREAM_LINEAGE) == 0
 
 
+@pytest.mark.timeout(_TEST_TIMEOUT_S)
+def test_serial_writers_cannot_satisfy_the_concurrency_barrier(tmp_path: Path) -> None:
+    """One worker for eight writers breaks the barrier; the gap-free check alone passes."""
+    jobs = [(str(tmp_path), ident.STREAM_CONTENT, 5, 3.0)] * 8
+    with pytest.raises(threading.BrokenBarrierError):
+        _run_writers(1, 8, jobs)
+
+
 _PARENT_STATE = {"marked": False}
 
 
-def _child_sees_parent_mark(_: None) -> bool:
-    return _PARENT_STATE["marked"]
+def _child_sees_parent_mark(_: None) -> tuple[bool, str]:
+    return _PARENT_STATE["marked"], multiprocessing.get_start_method()
 
 
+@pytest.mark.timeout(_TEST_TIMEOUT_S)
 def test_writer_pool_workers_start_fresh_not_forked() -> None:
     _PARENT_STATE["marked"] = True
     try:
-        pool = _writer_context().Pool(1)
+        pool = _start_writer_pool(1, 1)
         try:
-            saw = pool.map_async(_child_sees_parent_mark, [None]).get(timeout=180)
+            saw = pool.map_async(_child_sees_parent_mark, [None]).get(
+                timeout=_WRITER_RESULT_WAIT_S
+            )
         finally:
             pool.terminate()
             pool.join()
     finally:
         _PARENT_STATE["marked"] = False
-    assert saw == [False]
+    assert saw == [(False, "spawn")]
+
+
+_FORK_VARIANT = """
+import multiprocessing
+import tests.test_capture_item_identity_effect as mod
+
+mod._writer_context = lambda: multiprocessing.get_context("fork")
+try:
+    mod.test_writer_pool_workers_start_fresh_not_forked()
+except AssertionError as error:
+    print("fork variant failed as required:", error)
+    raise SystemExit(0)
+raise SystemExit("the fresh-worker test passed with a fork context")
+"""
+
+
+@pytest.mark.timeout(_TEST_TIMEOUT_S)
+def test_fresh_worker_test_fails_when_the_writer_context_is_fork() -> None:
+    """Red-then-green control: run the fresh-worker test with ``_writer_context`` forked.
+
+    A fresh single-threaded interpreter does the forking, so this test does not
+    fork the multithreaded pytest process it guards.
+    """
+    root = Path(__file__).resolve().parents[1]
+    env = {
+        **os.environ,
+        "PYTHONPATH": os.pathsep.join([str(root / "src"), str(root)]),
+    }
+    done = subprocess.run(
+        [sys.executable, "-c", _FORK_VARIANT],
+        cwd=root,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=_WRITER_RESULT_WAIT_S,
+        check=False,
+    )
+    assert done.returncode == 0, done.stdout + done.stderr
 
 
 def test_barrier_states_the_high_water_and_the_lineage_capture_flag() -> None:
