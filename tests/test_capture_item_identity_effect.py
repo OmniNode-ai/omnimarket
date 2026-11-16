@@ -225,6 +225,12 @@ def test_discriminator_is_the_tool_use_id_or_the_text_digest() -> None:
 #: proof; both bounds sit under the 300 s per-test limit the CI split runs with.
 _WRITER_BARRIER_WAIT_S = 120.0
 _WRITER_RESULT_WAIT_S = 180.0
+#: ``Pool.terminate()`` and ``Pool.join()`` take no timeout, so a worker that
+#: ignores SIGTERM would hold the pytest process until the per-test thread timeout
+#: ends it with ``os._exit``, which loses the split's coverage data. The cleanup
+#: runs under this bound, and the result and cleanup waits together stay under
+#: ``_TEST_TIMEOUT_S``.
+_POOL_CLEANUP_WAIT_S = 20.0
 _TEST_TIMEOUT_S = 240
 #: A subprocess that runs one pool wait gets longer than that wait, so a hung
 #: child fails inside the subprocess (a non-zero exit with its traceback) and
@@ -278,6 +284,25 @@ def _start_writer_pool(workers: int, parties: int) -> multiprocessing_pool.Pool:
     return ctx.Pool(workers, initializer=_init_writer, initargs=(barrier,))
 
 
+def _close_pool(pool: Any, wait_s: float = _POOL_CLEANUP_WAIT_S) -> None:
+    """Terminate and join ``pool``, giving up with ``TimeoutError`` after ``wait_s``.
+
+    The two calls run in a daemon thread because neither takes a timeout; a worker
+    that never exits then fails this test inside its own bound and does not leave
+    the pytest process to the per-test thread timeout.
+    """
+
+    def close() -> None:
+        pool.terminate()
+        pool.join()
+
+    thread = threading.Thread(target=close, daemon=True)
+    thread.start()
+    thread.join(wait_s)
+    if thread.is_alive():
+        raise TimeoutError(f"the writers pool did not shut down within {wait_s} s")
+
+
 def _run_pool(workers: int, parties: int, func: Any, jobs: list[Any]) -> list[Any]:
     """Run ``jobs`` on a writers pool with the parent mark set while workers start."""
     _PARENT_STATE["marked"] = True
@@ -288,8 +313,7 @@ def _run_pool(workers: int, parties: int, func: Any, jobs: list[Any]) -> list[An
                 timeout=_WRITER_RESULT_WAIT_S
             )
         finally:
-            pool.terminate()
-            pool.join()
+            _close_pool(pool)
     finally:
         _PARENT_STATE["marked"] = False
 
@@ -338,15 +362,125 @@ def test_writer_pool_workers_start_fresh_not_forked() -> None:
     assert saw == [(False, "spawn")]
 
 
-def _mark_of_the_eight_writer_test() -> set[str]:
-    fn = test_eight_concurrent_writers_issue_1000_gap_free_sequence_numbers
-    marks = [*getattr(fn, "pytestmark", []), *[pytestmark]]
+#: Mark names and calls that let a test pass, or end its run, without proving anything.
+_SKIPPING_MARKS = frozenset({"skip", "skipif", "xfail"})
+_SKIPPING_CALLS = frozenset({"skip", "xfail", "importorskip"})
+_EIGHT_WRITER_TEST = (
+    "test_eight_concurrent_writers_issue_1000_gap_free_sequence_numbers"
+)
+
+
+def _as_list(marks: Any) -> list[Any]:
+    """A ``pytestmark`` value is one mark or a list of marks; read both as a list."""
+    return list(marks) if isinstance(marks, (list, tuple)) else [marks]
+
+
+def _mark_names(fn: Any, module_marks: Any) -> set[str]:
+    marks = [*_as_list(getattr(fn, "pytestmark", [])), *_as_list(module_marks)]
     return {mark.name for mark in marks}
+
+
+def _item_mark_names(item: Any) -> set[str]:
+    return {mark.name for mark in item.iter_markers()}
+
+
+def _skipping_lines(source: str) -> list[str]:
+    """Every ``pytest.skip``/``xfail``/``importorskip`` call and ``mark.skip*``/``xfail`` use."""
+    found: list[str] = []
+    for node in ast.walk(ast.parse(source)):
+        if not isinstance(node, ast.Attribute):
+            continue
+        base = node.value
+        is_call_name = node.attr in _SKIPPING_CALLS
+        is_mark_name = node.attr in _SKIPPING_MARKS
+        if is_call_name and isinstance(base, ast.Name) and base.id == "pytest":
+            found.append(f"line {node.lineno}: pytest.{node.attr}")
+        elif is_mark_name and isinstance(base, ast.Attribute) and base.attr == "mark":
+            found.append(f"line {node.lineno}: pytest.mark.{node.attr}")
+    return found
 
 
 def test_the_eight_writer_test_carries_no_skip_or_xfail_marker() -> None:
     """A marker on the writers test would let it pass without proving anything."""
-    assert not _mark_of_the_eight_writer_test() & {"skip", "skipif", "xfail"}
+    fn = test_eight_concurrent_writers_issue_1000_gap_free_sequence_numbers
+    assert not _mark_names(fn, pytestmark) & _SKIPPING_MARKS
+
+
+def test_the_mark_reader_accepts_a_module_mark_that_is_a_list() -> None:
+    """``pytestmark`` may be one mark or a list; a list must not raise or hide a skip."""
+    fn = test_eight_concurrent_writers_issue_1000_gap_free_sequence_numbers
+    assert _mark_names(fn, [pytest.mark.unit]) == {"unit", "timeout"}
+    for name in sorted(_SKIPPING_MARKS):
+        skipping = getattr(pytest.mark, name)
+        assert name in _mark_names(fn, [pytest.mark.unit, skipping])
+        assert name in _mark_names(fn, skipping)
+
+
+def test_the_test_file_calls_no_skip_xfail_or_importorskip() -> None:
+    """A ``pytest.skip()`` call would let the run pass with the proof not run."""
+    assert _skipping_lines(Path(__file__).read_text()) == []
+
+
+def test_the_skip_reader_finds_each_way_to_skip() -> None:
+    """Positive control for the check above: each form is found when it is present."""
+    source = (
+        "import pytest\n"
+        "pytest.skip('x')\n"
+        "pytest.xfail('x')\n"
+        "pytest.importorskip('x')\n"
+        "@pytest.mark.skip\n"
+        "@pytest.mark.skipif(True, reason='x')\n"
+        "@pytest.mark.xfail\n"
+        "def test_a(): pass\n"
+    )
+    assert len(_skipping_lines(source)) == 6
+    assert (
+        _skipping_lines("import pytest\n@pytest.mark.unit\ndef test_a(): pass\n") == []
+    )
+
+
+def test_the_collected_eight_writer_item_carries_no_marker_added_by_conftest(
+    request: pytest.FixtureRequest,
+) -> None:
+    """A marker a conftest adds at collection is on the item, not on the function."""
+    items = [i for i in request.session.items if i.name == _EIGHT_WRITER_TEST]
+    for item in items:
+        names = _item_mark_names(item)
+        assert not names & _SKIPPING_MARKS, f"{item.nodeid} carries {names}"
+
+
+class _StubItem:
+    name = _EIGHT_WRITER_TEST
+
+    def __init__(self, *names: str) -> None:
+        self._marks = [getattr(pytest.mark, name) for name in names]
+
+    def iter_markers(self) -> list[Any]:
+        return [mark.mark for mark in self._marks]
+
+
+def test_the_item_marker_reader_sees_a_skip_a_conftest_would_add() -> None:
+    """Positive control: the marker names read from an item include an added skip."""
+    assert _item_mark_names(_StubItem("unit", "skip")) >= {"skip"}
+    assert not _item_mark_names(_StubItem("unit")) & _SKIPPING_MARKS
+
+
+def test_a_pool_that_does_not_shut_down_fails_inside_its_bound() -> None:
+    """``terminate``/``join`` that never return end in ``TimeoutError``, not a hang."""
+    release = threading.Event()
+
+    class Stuck:
+        def terminate(self) -> None:
+            release.wait()
+
+        def join(self) -> None:
+            release.wait()
+
+    try:
+        with pytest.raises(TimeoutError):
+            _close_pool(Stuck(), wait_s=0.2)
+    finally:
+        release.set()
 
 
 #: Each variant runs in a fresh single-threaded interpreter that forks, so the

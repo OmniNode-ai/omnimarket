@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-24844
 title: The eight-writer sequence number test starts its workers fresh, proves they run together and bounds its waits
-summary: tests/test_capture_item_identity_effect.py ran its eight concurrent writers in a fork-context multiprocessing Pool inside a multi-threaded pytest process (CPython warns this may deadlock in the child), with an unbounded pool.map and a terminate-join on exit. A hung run of this test is a hypothesis for a cancelled test split, not a measured cause - it did not reproduce, so no cancelled run is linked here (10 of 10 lab runs and 48 loaded local runs of the fork version passed). The test now starts its workers through the spawn context, makes the eight writers wait for each other on a barrier, reads the worker pids and start methods from the workers, waits on the result with a timeout and always terminates the pool, under a per-test timeout. The gap-free 1000 sequence number assertion is unchanged. Not in this change - the handler under test, the sequence number logic, and any other test. The acceptance criteria below are restated, not the Linear text of OMN-24844 word for word - Linear AC1 (a lab run at the unfixed head hangs past a bound) is falsified by this change's own data, because the unfixed head passed 10 of 10 lab runs and 48 loaded local runs. Whether the ticket owner amends or waives that criterion is an open owner decision, to be recorded on OMN-24844 or OMN-24562; this contract cites that record once it exists and does not stand in for it.
+summary: tests/test_capture_item_identity_effect.py ran its eight concurrent writers in a fork-context multiprocessing Pool inside a multi-threaded pytest process (CPython warns this may deadlock in the child), with an unbounded pool.map and a terminate-join on exit. A hung run of this test is a hypothesis for a cancelled test split, not a measured cause - it did not reproduce, so no cancelled run is linked here (10 of 10 lab runs and 48 loaded local runs of the fork version passed). The test now starts its workers through the spawn context, makes the eight writers wait for each other on a barrier, reads the worker pids and start methods from the workers, waits on the result with a timeout and always terminates the pool, under a per-test timeout. The gap-free 1000 sequence number assertion is unchanged. Not in this change - the handler under test, the sequence number logic, and any other test. The acceptance criteria below are restated, not the Linear text of OMN-24844 word for word - Linear AC1 (a lab run at the unfixed head hangs past a bound) is falsified by this change's own data, because the unfixed head passed 10 of 10 lab runs and 48 loaded local runs. The owner's amend or waiver of that criterion, and of Linear AC3 (which asks for lab runs and run data cited by path, both of which live in the pull request Lab comments), is still open and is not made here, and the exact amended text of both is proposed in the pull request comment whose first line begins Owner-decision request and names OMN-24844, and the owner's record on OMN-24844 or OMN-24562 replaces this citation when it exists. Known gap - the writers pool cleanup (terminate and join, neither of which takes a timeout) now runs in a daemon thread under a 20 s bound and fails the test with TimeoutError, with the 180 s result wait and that bound together under the 240 s per-test timeout; a `--timeout-method=thread` expiry, if it were reached, would still end the whole pytest process with os._exit and lose that shard's coverage data.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -23,16 +23,17 @@ requirements:
     statement: "AC4: one pull request on omnimarket's default branch carries a comment starting Lab: head= with the full head sha -- falsifier: the pull request lists no such comment"
 evidence_requirements:
 - kind: tests
-  description: The capture item identity test file at the pushed head, run on a lab host with the flags the CI test split uses (coverage on, 300 s thread timeout, no xdist).
-  command: uv run pytest tests/test_capture_item_identity_effect.py -v --tb=short -m "not kafka" --cov=src --cov-report= --timeout=300 --timeout-method=thread -p no:cacheprovider
+  description: The capture item identity test file at the pushed head, run on a lab host with the flags the CI test split uses (coverage on, 300 s thread timeout, no xdist, default import mode, as the split runs it), plus --refuse-skips and strict xfail, which the whole-suite split cannot carry (it holds 275 baselined skipped test ids in config/skip_count_baseline.yaml); a new skip in this file is refused there by the skip-count ratchet and in this file by its own tests.
+  command: uv run pytest tests/test_capture_item_identity_effect.py -v --tb=short -m "not kafka" --cov=src --cov-report= --timeout=300 --timeout-method=thread -p no:cacheprovider --refuse-skips -o xfail_strict=true
 emergency_bypass:
   enabled: false
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn24844-ac1-prior-fork
-  description: 'AC1: at the previous head (the pull request base) the writers test builds a fork-context Pool of eight; this check fails if it does not.'
+  description: 'AC1: at the previous head (the pull request base) the writers test builds a fork-context Pool of eight; this check fails if it does not. Read at the local Done gate, because git show needs the base commit, which a shallow hosted checkout does not hold.'
   source: manual
+  execution_scope: local_done_gate
   binds_ac:
   - AC1
   checks:
