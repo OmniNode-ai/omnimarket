@@ -21,11 +21,11 @@ import asyncio
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, override
+from typing import Any, cast, override
 from uuid import UUID
 
 import pytest
-from pydantic import JsonValue, ValidationError
+from pydantic import ConfigDict, JsonValue, ValidationError, create_model
 
 from omnimarket.github_landing.model_github_http_exchange import (
     ModelGithubHttpRequest,
@@ -35,6 +35,7 @@ from omnimarket.models.model_reading import EnumReadingVerdict
 from omnimarket.models.model_repo_write_io import (
     EnumRepoWriteMode,
     EnumRepoWriteOperation,
+    ModelRepoWriteCompleted,
     ModelRepoWriteFailed,
     ModelRepoWriteRequest,
 )
@@ -54,6 +55,9 @@ from omnimarket.nodes.node_github_repo_write_effect.overlay import (
 from omnimarket.nodes.node_github_repo_write_effect.services.runner_registration import (
     get_runner_group_request,
     list_runner_group_repositories_request,
+)
+from omnimarket.nodes.node_runner_group_exposure_effect.adapters import (
+    write_node_group_reader as reader_module,
 )
 from omnimarket.nodes.node_runner_group_exposure_effect.adapters.write_node_group_reader import (
     GroupReadError,
@@ -475,6 +479,105 @@ def test_error_chain_an_older_write_node_shape_reads_group_read_refused_or_unrea
         _answers(True, {"error": "ENVELOPE_VALIDATION_FAILED"}),
     )
     assert refused.reading.read_failure is EnumExposureReadFailure.GROUP_READ_REFUSED
+
+
+# A payload and a reader that disagree on the flag's name: the write node and the h053 unit tree are
+# deployed one after the other, so each pairing of old and new meets for a while.
+_RETIRED_FLAG = "restricted_to_selected" + "_workflows"
+
+
+def _new_payload() -> dict[str, JsonValue]:
+    """The terminal payload the merged write node's real handler publishes for a group read."""
+    request = ModelRepoWriteRequest(
+        correlation_id=UUID(int=1),
+        operation=EnumRepoWriteOperation.RUNNER_GROUP_GET,
+        repo=REPO,
+        idempotency_key="runner-group-7-example",
+        requested_by_lane="example-exposure-reader",
+        runner_group_id=GROUP,
+        dry_run=False,
+    )
+    failed, payload = _Node().call()(request)
+    assert not failed
+    return payload
+
+
+def _old_shape_completed() -> type[ModelRepoWriteCompleted]:
+    """ModelRepoWriteCompleted as it was before the rename: its runner group names the retired flag."""
+    fields: dict[str, Any] = {
+        "id": (int, ...),
+        "name": (str, ...),
+        "allows_public_repositories": (bool, ...),
+        _RETIRED_FLAG: (bool, ...),
+        "selected_workflows": (tuple[str, ...], ...),
+        "repositories": (tuple[str, ...], ...),
+    }
+    old_group: Any = create_model(
+        "ModelOldRunnerGroup",
+        __config__=ConfigDict(frozen=True, extra="forbid"),
+        **fields,
+    )
+    old_completed: Any = create_model(
+        "ModelOldCompleted",
+        __base__=ModelRepoWriteCompleted,
+        runner_group=(old_group | None, None),
+    )
+    return cast(type[ModelRepoWriteCompleted], old_completed)
+
+
+def test_error_chain_an_old_reader_meeting_the_new_payload_reads_unreadable_and_does_not_crash(
+    server: _PathServer, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The deploy-order claim of the change: an old reader on the new payload reads UNREADABLE."""
+    new_payload = _new_payload()
+    group = new_payload["runner_group"]
+    assert isinstance(group, dict)
+    assert "restricted_to_workflows" in group
+    assert _RETIRED_FLAG not in group
+    # positive control: the reader as merged reads this very payload as facts
+    facts = WriteNodeGroupReader(ROUTE, _answers(False, new_payload)).read(
+        org=ORG, group_id=GROUP, correlation_id=UUID(int=2)
+    )
+    assert facts.restricted_to_workflows is True
+    # the old reader: the same reader class with the model it validated the payload against before;
+    # positive control: that model accepts the payload of the old write node
+    assert _old_shape_completed().model_validate(_old_payload()).runner_group
+    monkeypatch.setattr(
+        reader_module, "ModelRepoWriteCompleted", _old_shape_completed()
+    )
+    with pytest.raises(GroupReadError) as refused:
+        WriteNodeGroupReader(ROUTE, _answers(False, new_payload)).read(
+            org=ORG, group_id=GROUP, correlation_id=UUID(int=3)
+        )
+    assert refused.value.failure is EnumExposureReadFailure.UNREADABLE
+    # and in the unit: the whole reading is UNKNOWN with that reason, no exception reaches the caller
+    result, _ = _unknown_with(
+        server, tmp_path, monkeypatch, _answers(False, new_payload)
+    )
+    assert result.reading.read_failure is EnumExposureReadFailure.UNREADABLE
+
+
+def _old_payload() -> dict[str, JsonValue]:
+    """The same answer as the retired write node shaped it: the flag under its retired name."""
+    payload = dict(_new_payload())
+    group = payload["runner_group"]
+    assert isinstance(group, dict)
+    old_group = {k: v for k, v in group.items() if k != "restricted_to_workflows"}
+    old_group[_RETIRED_FLAG] = group["restricted_to_workflows"]
+    payload["runner_group"] = old_group
+    return payload
+
+
+def test_error_chain_a_new_reader_meeting_the_old_payload_reads_unreadable(
+    server: _PathServer, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The other pairing: the old payload carries the retired flag, which the new model refuses."""
+    # positive control: the old-shape model accepts that payload, so only the pairing is wrong
+    assert _old_shape_completed().model_validate(_old_payload()).runner_group
+    result, _ = _unknown_with(
+        server, tmp_path, monkeypatch, _answers(False, _old_payload())
+    )
+    assert result.reading.read_failure is EnumExposureReadFailure.UNREADABLE
 
 
 def test_error_chain_a_completed_answer_without_the_group_reads_unreadable(

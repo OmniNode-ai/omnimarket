@@ -245,9 +245,9 @@ async def test_a_body_without_the_exposure_fields_is_refused_not_defaulted() -> 
     assert result.reason is EnumRepoWriteRefusal.GITHUB_REFUSED
 
 
-# The retired flag name, spelled in two parts so that a repository-wide search for the name stays
-# empty: any other hit is a reader or a fixture the rename missed.
-_RETIRED_FLAG = "restricted_to_selected_workflows"
+# The retired flag name, built from two literals joined by an explicit plus so that a search of src/
+# and tests/ for the whole name stays empty: any other hit is a reader or a fixture the rename missed.
+_RETIRED_FLAG = "restricted_to_selected" + "_workflows"
 
 
 async def test_a_body_carrying_only_the_old_flag_name_is_refused() -> None:

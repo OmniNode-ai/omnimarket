@@ -923,6 +923,22 @@ def test_runner_group_get_carries_the_group_id_and_nothing_else(
     assert sent.operation is EnumRepoWriteOperation.RUNNER_GROUP_GET
 
 
+def test_runner_group_get_prints_the_compact_outcome_line_the_done_gate_greps(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The contract's integration check greps the CLI's last line for the compact outcome."""
+    bus = FakeBus()
+    _install(monkeypatch, bus)
+    result = _run(
+        ["runner-group-get", *_WRITE_ARGS["runner-group-get"], "--lane", "lane-x"]
+    )
+    assert result.exit_code == 0, result.output
+    line = result.stdout.strip().splitlines()[-1]
+    assert '"outcome":"completed"' in line
+    # the spaced form json.dumps writes by default is what a compact grep would miss
+    assert '"outcome": "completed"' not in line
+
+
 def test_runner_group_get_refuses_a_missing_group_id(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

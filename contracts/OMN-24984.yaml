@@ -1,0 +1,115 @@
+schema_version: 1.0.0
+ticket_id: OMN-24984
+title: Review findings 1 to 6 on omnimarket PR 6332 at head 2ff0e2c57bc8 are fixed or argued
+summary: >-
+  The third review of the runner group flag change found one blocking item (the retired flag name is one
+  literal in both test files, so the grep of src/ and tests/ for it hits), third-time missing evidence,
+  and four non-blocking items. The name is built with an explicit plus in both test files; the
+  falsifier of the check fires on any hit and is run by a hosted test; the refusal tests of the direct
+  source assert the error type and the message and each probe has its own server and overlay root; a
+  test shows an old reader meeting the new payload (and a new reader meeting the old payload) reads
+  UNREADABLE; the checks of the review ticket that could not fail are replaced by checks that can; and
+  the running-reading check of the change filters STATUS rows, checks the row grammar and matches the
+  sha that pr-merge-commit returns for the squash merge, proven by a hosted test that runs it against
+  ledgers it writes. The evidence (the Lab comment, the red runs, the duplicate decision, the answers
+  on KeyError, ValueError, detail and eleven versus five) is in pull request comments at the new head.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24984-review-findings
+  statement: Every blocking finding of the third review is fixed with a red then green test, or argued with evidence in a pull request comment, and the new head is commented with its lab proof.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: no file under src/ or tests/ names the retired flag, the name is built with an explicit plus in both test files, and the AC2 falsifier of contracts/OMN-24963.yaml fires on any hit -- falsifier: grep -rn restricted_to_selected_workflows src/ tests/ prints a line at the new head, or the probe test and the handler test fail'
+  - id: AC2
+    statement: 'AC2: PR comments at the new head carry Lab: head=<full sha> with the command, exit 0 and green required check-runs, the red run with the except clause narrowed, the omnimarket#6329 duplicate decision, and the answers on KeyError, ValueError, detail and the eleven-versus-five failing tests -- falsifier: onex scm pr-view OmniNode-ai/omnimarket#6332 shows no comment with the full new sha, or onex scm pr-checks OmniNode-ai/omnimarket#6332 lists a required context that is not success'
+  - id: AC3
+    statement: 'AC3: the null-flag and refusal tests assert the refusal message, each probe has its own server and tmp_path or _probe is shown to leave no state, and the source check at github_group_source.py:296 is unit-tested -- falsifier: the probe test file passes with the check at github_group_source.py:296 deleted'
+  - id: AC4
+    statement: 'AC4: a test shows an old reader meeting the new payload reads UNREADABLE without crashing the unit, and a grep of other repos, the CLI output and JSON and MD fixtures for ModelRepoWriteRunnerGroup is recorded in a PR comment -- falsifier: the tests of the exposure node have no test of the old reader on the new payload'
+  - id: AC5
+    statement: 'AC5: the checks at contracts/OMN-24963.yaml:76, :89 and :99 can fail on this PR, AC6 is bound to a recorded output line of onex scm runner-group-get or a CLI test, and AC4 is stated to have no check -- falsifier: a check of contracts/OMN-24963.yaml still reads the contract''s own text or a file the PR adds'
+  - id: AC6
+    statement: 'AC6: the check at contracts/OMN-24871.yaml:87 filters for STATUS rows, the ledger row grammar is checked (space-delimited, same-zone ordered timestamp, src=runner-group-exposure, host=h053, verdict=), and installed=h053: matches the sha pr-merge-commit returns -- falsifier: the running-reading check of contracts/OMN-24871.yaml has no STATUS filter or no sha match'
+evidence_requirements:
+- kind: tests
+  description: The tests of the runner group read, the CLI output test, and the two hosted tests that run the contract checks.
+  command: env -u PYTHONPATH uv run --frozen pytest tests/unit/nodes/node_github_repo_write_effect/test_handler_runner_group_get.py tests/nodes/node_runner_group_exposure_effect/test_bus_group_read.py tests/nodes/node_runner_group_exposure_effect/test_exposure_probe.py tests/test_golden_chain_github_repo_write_effect.py tests/ci/test_retired_runner_group_flag_check.py tests/ci/test_runner_group_running_reading_check.py tests/unit/handlers/scm/test_onex_scm_command.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24984-ac1-retired-name
+  description: 'AC1: no file under src/ or tests/ names the retired flag, the name is built with an explicit plus in both test files, both test files pass, and the check of the review ticket fails on a planted hit in any kind of file, whether or not the contract of the change declares the interface change.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: command
+    check_value: |-
+      test -z "$(grep -rnI 'restricted_to_selected''_workflows' src/ tests/)" && grep -q '^_RETIRED_FLAG = "restricted_to_selected" + "_workflows"$' tests/nodes/node_runner_group_exposure_effect/test_exposure_probe.py && grep -q '^_RETIRED_FLAG = "restricted_to_selected" + "_workflows"$' tests/unit/nodes/node_github_repo_write_effect/test_handler_runner_group_get.py
+    cwd: .
+  - check_type: test_passes
+    check_value: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_runner_group_exposure_effect/test_exposure_probe.py tests/unit/nodes/node_github_repo_write_effect/test_handler_runner_group_get.py tests/ci/test_retired_runner_group_flag_check.py -q --no-cov -n 0 -p no:randomly -p no:cacheprovider
+    cwd: .
+- id: dod-omn24984-ac2-evidence-comments
+  description: 'Criterion AC2 (the comments at the new head) has no hosted check: no hosted or local command lists the comments of a pull request. This local Done gate check reads what the watcher shows of the pull request: that the head of the pull request is the head of the checkout, which fails when the Lab comment names an older head than the one pushed. The comments and the check-runs themselves are read in the pull request.'
+  source: manual
+  binds_ac:
+  - AC2
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: |-
+      H=$(git rev-parse HEAD) && onex scm pr-view OmniNode-ai/omnimarket#6332 | python3 -c 'import json, sys; sys.exit(0 if json.load(sys.stdin)["result"]["head_sha"] == sys.argv[1] else 1)' "$H"
+    cwd: .
+- id: dod-omn24984-ac3-refusal-messages
+  description: 'AC3: the probe test file passes at the head; its source-level tests assert the error type and the message of the check at github_group_source.py:296 (with that check deleted four of them fail while every probe-level test still passes, read in the Lab comment), and the control and the refusal probe run on separate servers and overlay roots.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_runner_group_exposure_effect/test_exposure_probe.py -q --no-cov -n 0 -p no:randomly -p no:cacheprovider
+    cwd: .
+- id: dod-omn24984-ac4-old-reader
+  description: 'AC4: an old reader meeting the new payload and a new reader meeting the old payload each read UNREADABLE with no exception reaching the caller, with positive controls. The grep of other repositories, the CLI output and the JSON and MD fixtures is recorded in a pull request comment.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_runner_group_exposure_effect/test_bus_group_read.py -q --no-cov -n 0 -p no:randomly -p no:cacheprovider -k "old_reader or old_payload"
+    cwd: .
+- id: dod-omn24984-ac5-checks-can-fail
+  description: 'AC5: no check of the contract of the review ticket tests for a file the pull request adds or greps a contract for its own text, AC6 of that contract is bound to a CLI test and to the hosted test of the running-reading check, and AC4 of that contract is stated to have no command check (a disposition).'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: command
+    check_value: |-
+      python3 -c 'import sys, yaml; d = yaml.safe_load(open("contracts/OMN-24963.yaml")); bad = [e["id"] for e in d["dod_evidence"] for c in e["checks"] if c["check_type"] == "command" and ("test -f" in c["check_value"] or "contracts/OMN-24963.yaml" in c["check_value"] or "outcome" in c["check_value"] and "grep" in c["check_value"] and "contracts/OMN-24871.yaml" in c["check_value"])]; ac4 = [c["check_type"] for e in d["dod_evidence"] if e["id"] == "dod-omn24963-ac4-duplicate" for c in e["checks"]]; sys.exit(1 if bad or ac4 != ["disposition"] else 0)'
+    cwd: .
+  - check_type: test_passes
+    check_value: env -u PYTHONPATH uv run --frozen pytest tests/ci/test_runner_group_running_reading_check.py tests/unit/handlers/scm/test_onex_scm_command.py::test_runner_group_get_prints_the_compact_outcome_line_the_done_gate_greps -q --no-cov -n 0 -p no:randomly -p no:cacheprovider
+    cwd: .
+- id: dod-omn24984-ac6-running-reading-check
+  description: 'AC6: the running-reading check of the contract of the change is run by a hosted test against ledgers it writes; it fails on a row that is not a STATUS row, an install of another sha than the one pr-merge-commit returns, a reading before the install, a refused reading and a timestamp of another form.'
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: env -u PYTHONPATH uv run --frozen pytest tests/ci/test_runner_group_running_reading_check.py -q --no-cov -n 0 -p no:randomly -p no:cacheprovider
+    cwd: .
+- id: dod-omn24984-integration-proof
+  description: Hosted CI cannot reach a lab host. Only the local Done gate runs this unbound check; it runs the suites of the runner group read and the two hosted contract-check tests on a lab host at the pushed head through the lab work node, and the lab run of the same suites is read in the pull request comment that starts with Lab and names the head.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24984 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_github_repo_write_effect/test_handler_runner_group_get.py tests/nodes/node_runner_group_exposure_effect tests/test_golden_chain_github_repo_write_effect.py tests/ci/test_retired_runner_group_flag_check.py tests/ci/test_runner_group_running_reading_check.py -q --no-cov -p no:randomly
+    cwd: .
