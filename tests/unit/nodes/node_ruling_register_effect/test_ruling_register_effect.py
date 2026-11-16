@@ -406,6 +406,53 @@ def test_the_command_route_runs_local_argv_directly_and_remote_argv_through_the_
     assert len(remote) == 5
 
 
+def test_a_row_on_the_local_host_name_runs_locally_and_the_same_row_without_it_goes_over_ssh() -> (
+    None
+):
+    ran: list[list[str]] = []
+
+    def recording_runner(argv: list[str], timeout_seconds: int) -> tuple[int, str]:
+        ran.append(argv)
+        return 0, ""
+
+    request = ModelRulingReadRequest(
+        correlation_id="read-1",
+        policy=policy(row("row-self", host="host-a", argv=("uptime", "quiet"))),
+    )
+    named, _ = handler(
+        CommandRulingReadPort(
+            route(),
+            runner=recording_runner,
+            clock=lambda: NOW,
+            local_host_name="host-a",
+        )
+    )
+    named.handle(request)
+    unnamed, _ = handler(
+        CommandRulingReadPort(route(), runner=recording_runner, clock=lambda: NOW)
+    )
+    unnamed.handle(request)
+    local, remote = ran
+    assert local == ["uptime", "quiet"]
+    assert remote[:4] == ["ssh", "-o", "BatchMode=yes", "192.0.2.10"]
+
+
+def test_the_register_reads_the_hosts_own_rows_locally_under_the_lab_work_local_host_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    own_row = cli_row("row-self", "pass", {"kind": "exit_zero"})
+    own_row["read"]["host"] = "host-a"  # type: ignore[index]
+    env = cli_env(tmp_path, monkeypatch, [own_row])
+    # host-a has no target in the route: without its own name the row cannot be reached and reads UNREAD
+    assert main([], environ=env, clock=lambda: NOW) == 1
+    assert "no target for host host-a" in capsys.readouterr().out
+    assert (
+        main([], environ={**env, "LAB_WORK_HOST_NAME": "host-a"}, clock=lambda: NOW)
+        == 0
+    )
+    assert capsys.readouterr().out == ""
+
+
 @pytest.mark.parametrize(
     "prefix",
     [

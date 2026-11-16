@@ -73,21 +73,28 @@ class InMemoryRulingReadPort:
 
 class CommandRulingReadPort:
     """Each row's read through its route: a local host's argv directly, a remote host's
-    argv through the route's prefix with the host's target substituted."""
+    argv through the route's prefix with the host's target substituted.
+
+    A host named in the route's ``local_hosts``, or equal to ``local_host_name`` (the name
+    of the host the port runs on), is local: a host never reads itself over ssh."""
 
     def __init__(
         self,
         route: ModelRulingRoute,
         runner: Runner = run_argv,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        local_host_name: str = "",
     ) -> None:
         self._route = route
         self._runner = runner
         self._clock = clock
+        self._local_host_name = local_host_name
 
     def read(self, row: ModelRulingRow) -> ModelRulingReading:
         host = row.read.host
-        if host in self._route.local_hosts:
+        if host in self._route.local_hosts or (
+            self._local_host_name and host == self._local_host_name
+        ):
             argv = list(row.read.argv)
         elif (target := self._route.host_targets.get(host)) is None:
             return self._unread(row, detail=f"no target for host {host}")

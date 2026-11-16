@@ -80,7 +80,13 @@ def read_register(
         # injects a port that holds the readings.
         read_port = InMemoryRulingReadPort({}, clock=clock)
     else:
-        read_port = CommandRulingReadPort(route, clock=clock)
+        # The host the register runs on reads its own rows locally (LAB_WORK_HOST_NAME, the
+        # name every host unit declares), not over ssh to itself.
+        read_port = CommandRulingReadPort(
+            route,
+            clock=clock,
+            local_host_name=environ.get("LAB_WORK_HOST_NAME", "").strip(),
+        )
     journal = environ.get(route.journal_env, "").strip()
     sink = JournalRulingSink(Path(journal)) if journal else InMemoryRulingSink()
     correlation_id = uuid.uuid4().hex

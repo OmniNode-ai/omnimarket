@@ -288,6 +288,51 @@ units:
     # that root, never against this job's own state directory (OMN-19998).
     launchd_root: .local/state/omni/declared-clone-refresh
     tick_omni_home: registry_root
+  # The standing-rulings register reading (node_ruling_register_effect, OMN-24944): every 3600 s and at load on a Linux lab
+  # host it reads each row of the register and records the reading in last-run.json, whose age is the unit's heartbeat. The
+  # rows read over ssh, the ledger bus and the repository clones, which only a pool host holds (the dev runtime container
+  # holds none of them). The rows that read the ledger need OMNIBASE_PATH and ONEX_WORKSPACE_CONFIG_ROOT (the lane
+  # declaration table the bus is found from) and the PR watcher's state file; LAB_WORK_HOST_NAME names the host, so a row
+  # whose read host is this host reads locally instead of over ssh to itself. The install names the host with
+  # --set LAB_WORK_HOST_NAME=<host>, as the store units do.
+  ruling-register-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-ruling-register
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 3600
+      run_timeout_s: 600
+      run_at_load: true
+      description: every 3600 s and at load
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_ruling_register_effect.runtime_ruling_register_tick
+    entry_file: src/omnimarket/nodes/node_ruling_register_effect/runtime_ruling_register_tick.py
+    probe_argv: ["--probe"]
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+      - LAB_WORK_HOST_NAME
+    # OMN-23323: an overlay root is never a worktree; the installer refuses one, in a default or an override.
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}"
+      LAB_WORK_HOST_NAME: "{host_name}"
+      OMNIBASE_PATH: "{registry_root}"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+      ONEX_PR_WATCHER_STATE: "{home}/.local/state/onex/pr-watcher-readonly/state.json"
+      ONEX_RULING_REGISTER_JOURNAL: "{registry_root}/.onex_state/ruling-register/journal.jsonl"
+    evidence_file: .local/state/omni/ruling-register/last-run.json
+    state_directory: .onex_state/ruling-register
   # The same reader on a Linux pool host (OMN-22878): a systemd user service and timer, so every lab host keeps the
   # host-list projection the lab tools, serve units and host drift read (RULING 2026-11-07T15:59:02Z).
   overlay-store-refresh-systemd:
