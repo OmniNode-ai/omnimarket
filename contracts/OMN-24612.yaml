@@ -11,11 +11,11 @@ requirements:
   statement: Every answer topic the repo-state node declares as a terminal event is in the set boot provisioning creates for the loaded contracts.
   acceptance:
   - id: AC1
-    statement: "AC1: both repo-state answer topics are created by boot provisioning from the loaded contracts -- falsifier: uv run pytest tests/nodes/node_repo_state_query_effect/test_repo_state_answer_topics_provisioned.py -q fails against the base installer contract and passes with the change"
+    statement: 'AC1: both repo-state answer topics are created by boot provisioning from the loaded contracts -- falsifier: uv run pytest tests/nodes/node_repo_state_query_effect/test_repo_state_answer_topics_provisioned.py -q fails against the base installer contract and passes with the change'
   - id: AC2
-    statement: "AC2: the broker permission coverage gate reads covered for the two added topic uses -- falsifier: uv run python -m omnimarket.nodes.node_broker_acl_reconcile_effect.runtime_broker_acl_coverage_gate --base-ref origin/dev exits 1 without the grants block and 0 with it"
+    statement: 'AC2: the broker permission coverage gate reads covered for the two added topic uses -- falsifier: uv run python -m omnimarket.nodes.node_broker_acl_reconcile_effect.runtime_broker_acl_coverage_gate --base-ref origin/dev exits 1 without the grants block and 0 with it'
   - id: AC3
-    statement: "AC3: integrated: after the dev runtime rebuilds from the merge, repo-state query --host h053 and --host h201 each return an ok answer on the dev bus -- falsifier: on the dev lane, read back the output of repo-state query --host h053 and --host h201 from a lab host; today each prints \"Topic onex.evt.omnimarket.repo-state-query-completed.v1 not found in cluster metadata\" and times out after 30 s"
+    statement: 'AC3: integrated: after the dev runtime rebuilds from the merge, repo-state query --host h053 and --host h201 each return an ok answer on the dev bus -- falsifier: on the dev lane, read back the output of repo-state query --host h053 and --host h201 from a lab host; today each prints "Topic onex.evt.omnimarket.repo-state-query-completed.v1 not found in cluster metadata" and times out after 30 s'
 evidence_requirements:
 - kind: tests
   description: The answer topic provisioning tests pass at the pushed head.
@@ -35,7 +35,7 @@ dod_evidence:
     check_value: uv run pytest tests/nodes/node_repo_state_query_effect/test_repo_state_answer_topics_provisioned.py -q -p no:randomly --no-cov
     cwd: .
 - id: dod-omn24612-ac2
-  description: 'AC2: the broker permission coverage gate covers the two added topic uses at the head, and refuses the installer contract with its grants block removed. The tests run the gate handler over the real installer contract and over copies with the block, or one of its WRITE and DESCRIBE rows, removed; the gate command itself runs in the next entry.'
+  description: 'AC2: tests invoke the coverage command over every real node contract and the pinned pre-change git base. Controls remove the installer grants, remove WRITE or DESCRIBE, or replace WRITE with CREATE; they require command exit 1 and two uncovered uses.'
   source: manual
   binds_ac:
   - AC2
@@ -44,33 +44,31 @@ dod_evidence:
     check_value: uv run pytest tests/nodes/node_repo_state_query_effect/test_repo_state_answer_topics_provisioned.py -q -p no:randomly --no-cov -k gate
     cwd: .
 - id: dod-omn24612-ac2-gate-command
-  description: 'AC2: the gate command named in the falsifier of AC2 exits 0 at the head; it reads the base branch revision, so only the local Done gate runs it.'
+  description: 'AC2: compare with the immutable pre-change base even after merge, and require covered with exactly two added uses and zero uncovered uses. A zero-use result does not satisfy this check.'
   source: manual
   execution_scope: local_done_gate
   binds_ac:
   - AC2
   checks:
   - check_type: command
-    check_value: uv run python -m omnimarket.nodes.node_broker_acl_reconcile_effect.runtime_broker_acl_coverage_gate --base-ref origin/dev
+    check_value: 'sh -c ''output=$(uv run python -m omnimarket.nodes.node_broker_acl_reconcile_effect.runtime_broker_acl_coverage_gate --base-ref f611a64d22e0); code=$?; printf "%s\n" "$output"; test "$code" -eq 0 && printf "%s\n" "$output" | grep -Fx ''"''"''broker permission coverage: covered; 2 topic uses added since f611a64d22e0, 0 with no declared grant''"''"'''''
     cwd: .
 - id: dod-omn24612-ac3
   description: 'hosted proxy for AC3, which does not close it: the provisioning tests that stand in for the broker pass here. AC3 stays open until the readings of the next entry are posted as a pull request comment naming the head.'
   source: manual
-  binds_ac:
-  - AC3
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_repo_state_query_effect/test_repo_state_answer_topics_provisioned.py -q -p no:randomly --no-cov
     cwd: .
 - id: dod-omn24612-ac3-dev-bus
-  description: 'AC3: after the dev runtime rebuilds from the merge, repo-state query for h053 and for h201 each exit 0 on the dev bus (today each times out after 30 s on the missing answer topic). Run at the local Done gate on a lab host; hosted CI has no dev bus.'
+  description: 'AC3: each dev-profile client must exit zero and emit a JSON answer whose ok field is true. AC3 stays open until both host readings and broker readings are recorded at the current head.'
   source: manual
   execution_scope: local_done_gate
   binds_ac:
   - AC3
   checks:
   - check_type: command
-    check_value: sh -c 'onex="${OMNI_HOME:?set OMNI_HOME}/omnibase_infra/scripts/onex"; "$onex" repo-state query --host h053 --repo OmniNode-ai/omnimarket --want refs && "$onex" repo-state query --host h201 --repo OmniNode-ai/omnimarket --want refs'
+    check_value: sh -c 'onex="${OMNI_HOME:?set OMNI_HOME}/omnibase_infra/scripts/onex"; answer=$("$onex" repo-state query --host h053 --repo OmniNode-ai/omnimarket --want refs --profile dev) && printf "%s\n" "$answer" && printf "%s\n" "$answer" | uv run python -c '"'"'import json,sys; assert json.load(sys.stdin)["ok"] is True'"'"' && answer=$("$onex" repo-state query --host h201 --repo OmniNode-ai/omnimarket --want refs --profile dev) && printf "%s\n" "$answer" && printf "%s\n" "$answer" | uv run python -c '"'"'import json,sys; assert json.load(sys.stdin)["ok"] is True'"'"''
     cwd: .
 - id: dod-omn24612-integration-proof
   description: the provisioning tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check

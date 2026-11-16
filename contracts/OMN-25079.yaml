@@ -1,0 +1,85 @@
+schema_version: 1.0.0
+ticket_id: OMN-25079
+title: Answer the second review of repo-state answer topic provisioning
+summary: Pin the coverage base and assert two covered uses, exercise the real coverage command across every node contract, reject CREATE replacing WRITE, and keep live dev-bus and current-head PR evidence at the local Done gate. The orchestrator-owned removal follow-up and unread broker evidence stay open.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn25079-review-findings
+  statement: Every review finding is fixed or argued with explicit evidence and remaining gaps.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: finding 1 is answered: the AC2 gate command in contracts/OMN-24612.yaml pins `--base-ref f611a64d22e0` and its check asserts the output reports 2 new uses covered, so it exits non-zero with the grants block at C:79-85 deleted -- falsifier: `uv run python -m omnimarket.nodes.node_broker_acl_reconcile_effect.runtime_broker_acl_coverage_gate --base-ref f611a64d22e0` exits 0 with the grants block deleted from the installer contract'
+  - id: AC2
+    statement: 'AC2: findings 2 and 3 are answered: the hosted proxy entry of AC3 no longer carries `binds_ac: AC3`, a local-gate check asserts the answer status of the client and not exit 0 alone, and F carries a check that reads the PR comment holding readings 3(a) to 3(c) -- falsifier: `grep -n ''binds_ac: AC3'' contracts/OMN-24612.yaml` lists the hosted proxy entry, or `onex scm pr-view OmniNode-ai/omnimarket#6293` lists no comment carrying readings 3(a) to 3(c)'
+  - id: AC3
+    statement: 'AC3: finding 5 is answered: the gate tests build their request through the command''s own code (TOPIC rows from `aggregate_declared_grants` only) or the PR comment attaches the command exiting 1 with C:79-85 removed, and the comment states whether another contract under src/omnimarket/nodes grants these topics and whether the gate accepts the unexpanded `${ONEX_ACL_RUNTIME_PRINCIPAL}` -- falsifier: `uv run pytest tests/nodes/node_repo_state_query_effect/test_repo_state_answer_topics_provisioned.py -q -p no:cacheprovider` passes with the grants block deleted from the installer contract'
+  - id: AC4
+    statement: 'AC4: finding 4 is answered: omnimarket#6293 is marked ready, every required check-run reads success at the new head, a `Lab: head=<full new head sha>` PR comment is posted, and F carries a check that reads that comment -- falsifier: `onex scm pr-checks OmniNode-ai/omnimarket#6293` lists a required context that is not success at the new head, or no PR comment matches `Lab: head=` with the full sha, the command and exit 0'
+  - id: AC5
+    statement: 'AC5: findings 6 to 11 are answered: C:77 names the ACL row or scope that holds the CREATE right, F:58 and F:61 grep the `"$onex" repo-state query --host h053` check line, F:21 states the real test count and the base-contract run is attached, T has a case replacing WRITE with CREATE, the C:77-78 follow-up cites a ticket id, and the grep for a public entry point is attached -- falsifier: `uv run pytest tests/nodes/node_repo_state_query_effect/test_repo_state_answer_topics_provisioned.py -q -p no:cacheprovider` collects no test that replaces WRITE with CREATE, or `grep -n ''OMN-'' src/omnimarket/nodes/node_host_installer_registry_units/contract.yaml` lists no ticket id on the C:77-78 follow-up'
+evidence_requirements:
+- kind: tests
+  description: The focused provisioning and real-command regression tests pass.
+  command: uv run pytest tests/nodes/node_repo_state_query_effect/test_repo_state_answer_topics_provisioned.py -q -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25079-ac1
+  description: 'AC1: executable evidence for the second review; live evidence remains local and fails when absent.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: command
+    check_value: 'sh -c ''output=$(uv run python -m omnimarket.nodes.node_broker_acl_reconcile_effect.runtime_broker_acl_coverage_gate --base-ref f611a64d22e0); code=$?; printf "%s\n" "$output"; test "$code" -eq 0 && printf "%s\n" "$output" | grep -Fx ''"''"''broker permission coverage: covered; 2 topic uses added since f611a64d22e0, 0 with no declared grant''"''"'''''
+    cwd: .
+  execution_scope: local_done_gate
+- id: dod-omn25079-ac2
+  description: 'AC2: executable evidence for the second review; live evidence remains local and fails when absent.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: command
+    check_value: 'sh -c ''comment=$(onex scm pr-view OmniNode-ai/omnimarket#6293 --source bus) && printf "%s\n" "$comment" | uv run python -c ''"''"''import json,sys; r=json.load(sys.stdin)["result"]; assert r["head_sha"]==sys.argv[1]; assert not r.get("truncated",False); assert any(not c.get("body_truncated",False) and c["body"].startswith("Lab: head="+r["head_sha"]+"\n") and all(any(line==marker or line.startswith(marker+" ") for line in c["body"].splitlines()) for marker in ("3(a): ok", "3(b): ok", "3(c): ok")) for c in r["comments"])''"''"'' "$(git rev-parse HEAD)"'''
+    cwd: .
+  execution_scope: local_done_gate
+- id: dod-omn25079-ac3
+  description: 'AC3: executable evidence for the second review; live evidence remains local and fails when absent.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_repo_state_query_effect/test_repo_state_answer_topics_provisioned.py -q -p no:randomly --no-cov -k gate
+    cwd: .
+- id: dod-omn25079-ac4
+  description: 'AC4: executable evidence for the second review; live evidence remains local and fails when absent.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: command
+    check_value: sh -c 'checks=$(onex scm pr-checks OmniNode-ai/omnimarket#6293 --source bus) && printf "%s\n" "$checks" | uv run python -c '"'"'import json,sys; r=json.load(sys.stdin)["result"]; assert r["overall"]=="green"; assert r["total"]>0; assert r["passed"]==r["total"]; assert r["failed"]==r["pending"]==0; assert not r["failing_contexts"]'"'"''
+    cwd: .
+  - check_type: command
+    check_value: 'sh -c ''comment=$(onex scm pr-view OmniNode-ai/omnimarket#6293 --source bus) && printf "%s\n" "$comment" | uv run python -c ''"''"''import json,sys; r=json.load(sys.stdin)["result"]; assert r["head_sha"]==sys.argv[1]; assert r["is_draft"] is False; assert not r.get("truncated",False); assert any(not c.get("body_truncated",False) and c["body"].startswith("Lab: head="+r["head_sha"]+"\n") and "command=" in c["body"] and "exit=0" in c["body"] and "required-suite-lab: passed" in c["body"].splitlines() for c in r["comments"])''"''"'' "$(git rev-parse HEAD)"'''
+    cwd: .
+  execution_scope: local_done_gate
+- id: dod-omn25079-ac5
+  description: 'AC5: the CREATE replacement control must pass and the removal follow-up must carry the orchestrator-provided ticket. This check stays red until that id is supplied; the lane has no mint authority.'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_repo_state_query_effect/test_repo_state_answer_topics_provisioned.py -q -p no:randomly --no-cov -k create_in_place
+    cwd: .
+  - check_type: command
+    check_value: grep -nE 'Follow-up:.*OMN-[0-9]+' src/omnimarket/nodes/node_host_installer_registry_units/contract.yaml
+    cwd: .
+  execution_scope: local_done_gate

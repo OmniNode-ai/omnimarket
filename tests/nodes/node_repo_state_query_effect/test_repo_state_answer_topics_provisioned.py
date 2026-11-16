@@ -13,34 +13,23 @@ command topics; the control test is the one that fails the whole fix if the repo
 contract ever provisions its own answers alone.
 """
 
+import os
 import shutil
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
 import pytest
 import yaml
+from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
 from omnibase_infra.runtime.auto_wiring.discovery import discover_contracts_from_paths
 
-# omnibase_infra exports no public entry point for the boot provision set (grep of its auto_wiring package and
-# tools: only handler_wiring._contract_provision_topics builds it), so this is the one private import; a rename
-# upstream fails at collection, which is the signal to move this test to the public name.
+# The wired-contract boot set includes subscribe, publish, DLQ and projection topics.
+# The public boot_topic_provisioning.contract_publish_topics returns only publish
+# topics, so it cannot replace this seam. No public full-set entry point is exported;
+# an upstream rename fails collection and signals migration to a public equivalent.
 from omnibase_infra.runtime.auto_wiring.handler_wiring import _contract_provision_topics
-
-from omnimarket.models.broker_acl import (
-    EnumAclResourceType,
-    ModelBrokerAclCoverageRequest,
-    ModelBrokerAclCoverageResult,
-    ModelBrokerAclRow,
-)
-from omnimarket.nodes.node_broker_acl_overlay_render_compute.handlers.handler_broker_acl_coverage_gate import (
-    HandlerBrokerAclCoverageGate,
-)
-from omnimarket.nodes.node_broker_acl_reconcile_effect.handlers.contract_topics import (
-    load_topic_uses,
-)
-from omnimarket.nodes.node_broker_acl_reconcile_effect.handlers.handler_broker_acl_reconcile import (
-    aggregate_declared_grants,
-)
 
 pytestmark = pytest.mark.unit
 
@@ -131,68 +120,83 @@ def _answer_topics() -> set[str]:
 
 def _gate_over_installer_contract(
     tmp_path: Path, *, drop_grants: Any = None
-) -> ModelBrokerAclCoverageResult:
-    """Run the broker permission coverage gate over a copy of the installer contract (OMN-24005).
+) -> subprocess.CompletedProcess[str]:
+    """Exercise the command's real discovery, grant aggregation and pinned git base.
 
-    The base is the same contract without the two answer topics, which is the base branch the change
-    added them to; `drop_grants` receives the grants block and returns the block to keep (None keeps it).
+    Copy every node contract, so another node's answer grants cannot mask removal
+    from the installer. Only the installer grants are changed by the controls.
+    The git pointer preserves the real pre-change base without synthesizing uses.
     """
-    nodes_root = tmp_path / "nodes"
-    node_dir = nodes_root / HOST_INSTALLER_DIR.name
-    node_dir.mkdir(parents=True)
-    contract = _contract(HOST_INSTALLER_DIR)
-    if drop_grants is None:
-        shutil.copy(HOST_INSTALLER_DIR / "contract.yaml", node_dir / "contract.yaml")
-    else:
+    repo_root = NODES.parents[2]
+    nodes_root = tmp_path / "src" / "omnimarket" / "nodes"
+    for source in NODES.rglob("contract.yaml"):
+        destination = nodes_root / source.relative_to(NODES)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(source, destination)
+    git_path = repo_root / ".git"
+    git_dir = subprocess.run(
+        ["git", "rev-parse", "--absolute-git-dir"],
+        cwd=repo_root,
+        env=scrub_git_location_env(os.environ),
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    assert git_path.exists(), "the command's pinned base needs the repository history"
+    (tmp_path / ".git").write_text(f"gitdir: {git_dir}\n", encoding="utf-8")
+    contract_path = nodes_root / HOST_INSTALLER_DIR.name / "contract.yaml"
+    if drop_grants is not None:
+        contract = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
         kept = drop_grants(contract.pop("broker_acl_grants", []))
         if kept is not None:
             contract["broker_acl_grants"] = kept
-        (node_dir / "contract.yaml").write_text(
-            yaml.safe_dump(contract), encoding="utf-8"
-        )
-    uses = load_topic_uses(nodes_root)
-    answers = _answer_topics()
-    base_uses = tuple(use for use in uses if use.topic not in answers)
-    assert len(uses) - len(base_uses) == len(answers), "both answers are publish uses"
-    rows = tuple(
-        ModelBrokerAclRow(**row)
-        for row in aggregate_declared_grants(nodes_root)
-        if row["resource_type"] == EnumAclResourceType.TOPIC.value
-    )
-    return HandlerBrokerAclCoverageGate().handle(
-        ModelBrokerAclCoverageRequest(
-            topic_uses=uses, base_topic_uses=base_uses, declared_rows=rows
-        )
+        contract_path.write_text(yaml.safe_dump(contract), encoding="utf-8")
+    # Invoke the public command: it constructs the request, filters TOPIC rows,
+    # reads the pinned base and maps covered/refused to exit 0/1 itself.
+    return subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "omnimarket.nodes.node_broker_acl_reconcile_effect.runtime_broker_acl_coverage_gate",
+            "--base-ref",
+            "f611a64d22e0",
+            "--repo-root",
+            str(tmp_path),
+        ],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=120,
     )
 
 
 def test_the_gate_covers_the_two_added_answer_uses(tmp_path: Path) -> None:
-    result = _gate_over_installer_contract(tmp_path)
+    command = _gate_over_installer_contract(tmp_path)
 
-    assert (result.status, result.new_uses, result.uncovered_new_uses) == (
-        "covered",
-        2,
-        0,
+    assert command.returncode == 0, command.stdout + command.stderr
+    assert command.stdout.strip() == (
+        "broker permission coverage: covered; 2 topic uses added since "
+        "f611a64d22e0, 0 with no declared grant"
     )
 
 
 def test_the_gate_refuses_the_installer_contract_without_its_grants_block(
     tmp_path: Path,
 ) -> None:
-    result = _gate_over_installer_contract(tmp_path, drop_grants=lambda _block: None)
+    command = _gate_over_installer_contract(tmp_path, drop_grants=lambda _block: None)
 
-    assert result.status == "refused"
-    assert {finding.detail.split(": ")[1] for finding in result.findings} == (
-        _answer_topics()
-    )
+    assert command.returncode == 1, command.stdout + command.stderr
+    for topic in _answer_topics():
+        assert topic in command.stdout
+    assert "refused; 2 topic uses added" in command.stdout
+    assert "2 with no declared grant" in command.stdout
 
 
 @pytest.mark.parametrize("operation", ["WRITE", "DESCRIBE"])
 def test_the_gate_accepts_nothing_narrower_than_write_and_describe_for_a_publish_entry(
     tmp_path: Path, operation: str
 ) -> None:
-    # A publish_topics entry needs both rows (the render contract's derive_publish_operations), so the runtime's
-    # WRITE row cannot be narrowed to CREATE or dropped without the gate refusing the entry.
     def without(block: list[dict[str, Any]]) -> list[dict[str, Any]]:
         return [
             {
@@ -204,7 +208,30 @@ def test_the_gate_accepts_nothing_narrower_than_write_and_describe_for_a_publish
             for principal in block
         ]
 
-    result = _gate_over_installer_contract(tmp_path, drop_grants=without)
+    command = _gate_over_installer_contract(tmp_path, drop_grants=without)
 
-    assert result.status == "refused"
-    assert result.uncovered_new_uses == 2
+    assert command.returncode == 1, command.stdout + command.stderr
+    assert "refused; 2 topic uses added" in command.stdout
+    assert "2 with no declared grant" in command.stdout
+
+
+def test_the_gate_refuses_create_in_place_of_write(tmp_path: Path) -> None:
+    def create_instead(block: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return [
+            {
+                **principal,
+                "grants": [
+                    {**grant, "operation": "CREATE"}
+                    if grant["operation"] == "WRITE"
+                    else grant
+                    for grant in principal["grants"]
+                ],
+            }
+            for principal in block
+        ]
+
+    command = _gate_over_installer_contract(tmp_path, drop_grants=create_instead)
+
+    assert command.returncode == 1, command.stdout + command.stderr
+    assert "refused; 2 topic uses added" in command.stdout
+    assert "2 with no declared grant" in command.stdout

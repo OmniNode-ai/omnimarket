@@ -74,8 +74,11 @@ externally_consumed_topics:
 # The gate derives WRITE and DESCRIBE for every publish_topics entry (the render contract's derive_publish_operations) and accepts nothing
 # narrower, so a runtime that only provisions these topics still carries the WRITE row here; the answers themselves are written by the lab
 # host logins, whose rows sit in the overlays repository's scope broker_acls_repo_state_serve (declared there, applied by the operator).
-# The runtime's CREATE right is not a row of this block: the topic provisioner holds it for the runtime principal. Follow-up: once the
-# repo-state contract declares its own event_bus publish topics, remove the two answer rows from this contract and this block.
+# CREATE authorization is declared in omnibase_infra/docker/docker-compose.dev-lane.yml, service redpanda-sasl-enable:
+# its broker superusers setting includes DEV_KAFKA_SASL_USERNAME, the runtime login selected by the overlays scope
+# broker_acl_principals role dev_runtime_main. This names the declared source; live application needs broker readback.
+# Follow-up: once the repo-state contract declares its own event_bus publish topics, remove the two answer rows from
+# this contract and this block. The orchestrator owns filing that follow-up; its ticket id is pending.
 broker_acl_grants:
   - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
     grants:
