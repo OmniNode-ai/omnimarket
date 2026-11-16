@@ -30,10 +30,14 @@ NULL, not the reduced terminal being ``unknown`` alone.
 
 from __future__ import annotations
 
+import re
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 
 from tests.delegation_golden import runner as runner_module
 from tests.delegation_golden.corpus_loader import ModelCorpusCase, load_corpus
@@ -151,14 +155,23 @@ class TestTheGateIsTerminalOkNull:
         """``expected.terminal`` None on a NULL ``terminal_ok`` row is not named.
 
         U1 declares no terminal, so the ``exp.terminal is not None`` guard leaves
-        it out of the new branch. Its exact failure list is empty: it asserts
-        nothing about the row. An absence check alone would also pass if U1
-        returned before the new branch, so the list is pinned, and the I9 case
-        below pins a list that is NOT empty.
+        it out of the new branch, and it asserts nothing else: its own list is
+        empty. An empty list cannot tell the guard from an early return placed
+        before it, so a copy of U1 is given one expectation that only the old
+        path can judge (``quality_gate: passes``). That copy must reach the old
+        quality-gate line, and only it: an early return before the new branch
+        yields an empty list here, and a missing guard yields ``no terminal
+        outcome`` (not asserted here: that is the I9 copy below).
         """
         case = load_corpus().by_id("U1")
         assert case.expected.terminal is None
-        assert runner_module.evaluate_row(case, _unterminalised_row()) == []
+        row = _unterminalised_row()
+        assert runner_module.evaluate_row(case, row) == []
+        judged = _with_expected(case, quality_gate="passes")
+        assert judged.expected.terminal is None
+        assert runner_module.evaluate_row(judged, row) == [
+            "quality_gate: expected passes, got quality_gate_passed=None"
+        ]
 
     def test_an_undeclared_terminal_is_judged_by_the_old_lines_exactly(self) -> None:
         """I9 with its terminal undeclared reaches the old token line, and only it.
@@ -177,10 +190,15 @@ class TestTheGateIsTerminalOkNull:
         ]
 
 
+def _with_expected(case: ModelCorpusCase, **updates: Any) -> ModelCorpusCase:
+    """A copy of ``case`` whose ``expected`` block has ``updates`` applied, unvalidated."""
+    expected = case.expected.model_copy(update=updates)
+    return case.model_copy(update={"expected": expected})
+
+
 def _declaring_terminal(case: ModelCorpusCase, terminal: str | None) -> ModelCorpusCase:
     """A copy of ``case`` whose expected terminal is ``terminal``, unvalidated."""
-    expected = case.expected.model_copy(update={"terminal": terminal})
-    return case.model_copy(update={"expected": expected})
+    return _with_expected(case, terminal=terminal)
 
 
 @pytest.mark.unit
@@ -277,53 +295,372 @@ class TestATerminalisedRowIsStillJudged:
 
 
 @pytest.mark.unit
-class TestNoConsumerClassifiesFailuresByText:
-    """The consumers of the failure text are read, and none matches on it.
+class TestATimeoutRowReturnsEarlyAndOnlyATimeoutRow:
+    """The early return of the budget-timeout branch, and I10 on each row shape.
 
-    The needles are the lines the old runner printed and the Layer-2 consumers
-    could have keyed on, plus the two this change introduces. The consumers are
-    the delegation-health-check caller workflow, the nightly workflow and the
-    OMN-18349 placement and budget tests that read it, and the delegation health
-    compute handlers. The health check itself lives in omnibase_infra and reads
-    a workflow verdict, not failure lines.
+    The timeout branch returns before the unterminalised-row branch. I10 (the
+    corpus's deterministic must-fail case, terminal ``failed``) is green on a row
+    that terminalised ``failed``, red with TWO lines on a budget-timeout row
+    (the early return); on an unterminalised row it is red with ONE line, which
+    ``test_one_failure_names_the_null_terminal_ok[I10]`` pins.
     """
 
-    _NEEDLES = (
-        "terminal: expected",
-        "tokens: expected positive",
-        "got 'unknown'",
-        "no terminal outcome",
-        "terminal_ok is NULL",
+    @staticmethod
+    def _timeout_row() -> dict[str, Any]:
+        row = _unterminalised_row()
+        row["terminal_ok"] = False
+        row["quality_gate_passed"] = False
+        row["quality_gate_detail"] = (
+            "delegation exceeded the handler execution budget of 240s and was cancelled"
+        )
+        return row
+
+    @staticmethod
+    def _failed_row() -> dict[str, Any]:
+        row = _completed_row()
+        row["terminal_ok"] = False
+        row["quality_gate_passed"] = False
+        return row
+
+    def test_i10_is_green_on_a_row_that_terminalised_failed(self) -> None:
+        case = load_corpus().by_id("I10")
+        assert runner_module.row_terminal(self._failed_row()) == "failed"
+        assert runner_module.evaluate_row(case, self._failed_row()) == []
+
+    def test_a_timeout_row_returns_before_the_unterminalised_branch(self) -> None:
+        case = load_corpus().by_id("I10")
+        row = self._timeout_row()
+        assert row["terminal_ok"] is False
+        assert runner_module.row_terminal(row) == "timeout"
+        failures = runner_module.evaluate_row(case, row)
+        assert len(failures) == 2, failures
+        assert failures[0].startswith("delegation timeout: "), failures
+        assert failures[1] == "terminal: expected 'failed', got 'timeout'", failures
+        assert not any("no terminal outcome" in f for f in failures), failures
+
+
+# The lines the old runner printed and the Layer-2 consumers could have keyed
+# on, plus the two this change introduces, as patterns: a consumer that splits
+# the line, changes its case or adds a space still matches.
+_FAILURE_LINE_PATTERNS = (
+    re.compile(r"terminal:\s*expected", re.IGNORECASE),
+    re.compile(r"tokens:\s*expected\s+positive", re.IGNORECASE),
+    re.compile(r"got\s+['\"]unknown['\"]", re.IGNORECASE),
+    re.compile(r"no\s+terminal\s+outcome", re.IGNORECASE),
+    re.compile(r"terminal_ok\s+is\s+NULL", re.IGNORECASE),
+)
+
+# Consumers read by path. ``test_layer2_live_runner.py`` sits beside the runner
+# and builds scoreboards from its output; the OMN-18349 placement and budget
+# tests read the nightly's result; the health compute handler reads delegation
+# events. Every workflow is scanned too, so a new one cannot key on the text
+# unseen. The omnibase_infra health check reads a workflow verdict, not failure
+# lines, and is not in this repository.
+_CONSUMER_FILES = (
+    "tests/delegation_golden/test_layer2_live_runner.py",
+    "tests/test_delegation_nightly_placement.py",
+    "tests/test_delegation_nightly_budget.py",
+    "src/omnimarket/nodes/node_delegation_health_compute/handlers/handler_delegation_health.py",
+)
+
+
+def _matched_failure_lines(text: str) -> list[str]:
+    return [p.pattern for p in _FAILURE_LINE_PATTERNS if p.search(text)]
+
+
+def _consumer_paths(root: Path) -> list[str]:
+    workflows = sorted(
+        path.relative_to(root).as_posix()
+        for pattern in ("*.yml", "*.yaml")
+        for path in (root / ".github" / "workflows").glob(pattern)
     )
+    return [*_CONSUMER_FILES, *workflows]
 
-    _CONSUMERS = (
-        ".github/workflows/delegation-health-check.yml",
-        ".github/workflows/delegation-regression-nightly.yml",
-        "tests/test_delegation_nightly_placement.py",
-        "tests/test_delegation_nightly_budget.py",
-        "src/omnimarket/nodes/node_delegation_health_compute/handlers/handler_delegation_health.py",
-    )
 
-    @classmethod
-    def _matched(cls, text: str) -> list[str]:
-        return [needle for needle in cls._NEEDLES if needle in text]
+def _scan_consumers(root: Path) -> dict[str, list[str]]:
+    """Map each consumer under ``root`` that matches a failure line to its matches."""
+    found: dict[str, list[str]] = {}
+    for relative in _consumer_paths(root):
+        matched = _matched_failure_lines((root / relative).read_text(encoding="utf-8"))
+        if matched:
+            found[relative] = matched
+    return found
 
-    @pytest.mark.parametrize("relative", _CONSUMERS)
-    def test_consumer_does_not_match_on_the_failure_text(self, relative: str) -> None:
-        text = (_REPO_ROOT / relative).read_text(encoding="utf-8")
-        assert self._matched(text) == [], f"{relative} matches on failure text"
+
+def _consumer_tree(root: Path, planted: dict[str, str]) -> Path:
+    """A tree holding every consumer file (empty) plus the ``planted`` contents."""
+    for relative in _CONSUMER_FILES:
+        (root / relative).parent.mkdir(parents=True, exist_ok=True)
+        (root / relative).write_text("", encoding="utf-8")
+    (root / ".github" / "workflows").mkdir(parents=True, exist_ok=True)
+    for relative, text in planted.items():
+        (root / relative).parent.mkdir(parents=True, exist_ok=True)
+        (root / relative).write_text(text, encoding="utf-8")
+    return root
+
+
+@pytest.mark.unit
+class TestNoConsumerClassifiesFailuresByText:
+    """The consumers of the failure text are read, and none matches on it."""
+
+    def test_no_consumer_matches_the_failure_text(self) -> None:
+        assert _scan_consumers(_REPO_ROOT) == {}
+
+    def test_the_scan_reads_the_layer2_test_file_and_every_workflow(self) -> None:
+        paths = _consumer_paths(_REPO_ROOT)
+        assert "tests/delegation_golden/test_layer2_live_runner.py" in paths
+        on_disk = sorted(
+            path.relative_to(_REPO_ROOT).as_posix()
+            for pattern in ("*.yml", "*.yaml")
+            for path in (_REPO_ROOT / ".github" / "workflows").glob(pattern)
+        )
+        assert on_disk, "no workflow found: the glob reads nothing"
+        assert set(on_disk) <= set(paths)
+        for relative in paths:
+            assert (_REPO_ROOT / relative).is_file(), relative
 
     @pytest.mark.parametrize(
-        "needle", ["terminal: expected", "tokens: expected positive"]
+        ("relative", "line"),
+        [
+            pytest.param(
+                "tests/delegation_golden/test_layer2_live_runner.py",
+                'failures=["terminal: expected completed"]',
+                id="layer2-exact-line",
+            ),
+            pytest.param(
+                "tests/delegation_golden/test_layer2_live_runner.py",
+                'failures=["TERMINAL:   expected completed"]',
+                id="layer2-case-and-spacing",
+            ),
+            pytest.param(
+                ".github/workflows/some-new-workflow.yml",
+                "run: grep -q 'tokens: expected positive' nightly.log",
+                id="workflow-tokens-line",
+            ),
+            pytest.param(
+                ".github/workflows/some-new-workflow.yml",
+                "run: grep -q \"got 'unknown'\" nightly.log",
+                id="workflow-got-unknown",
+            ),
+            pytest.param(
+                "src/omnimarket/nodes/node_delegation_health_compute/handlers/handler_delegation_health.py",
+                'if "no terminal outcome" in line: retry()',
+                id="handler-no-terminal-outcome",
+            ),
+        ],
     )
     def test_the_scan_flags_a_consumer_that_matches_the_old_line(
-        self, needle: str
+        self, tmp_path: Path, relative: str, line: str
     ) -> None:
-        """Positive control: a consumer carrying the old line is reported."""
-        assert self._matched(f"if grep -q '{needle}' log; then retry; fi") == [needle]
+        """Positive control, read from a real file: the exact match, not an ``in``."""
+        root = _consumer_tree(tmp_path, {relative: line + "\n"})
+        found = _scan_consumers(root)
+        assert list(found) == [relative], found
+        assert len(found[relative]) == 1, found
 
-    def test_the_verdict_is_the_failure_list_not_its_text(self) -> None:
-        """A case passes iff ``evaluate_row`` returns no failure; the wording is free."""
+    def test_the_scan_is_quiet_on_a_tree_without_a_match(self, tmp_path: Path) -> None:
+        root = _consumer_tree(
+            tmp_path, {".github/workflows/ok.yml": "run: echo nothing here\n"}
+        )
+        assert _scan_consumers(root) == {}
+
+
+@pytest.mark.unit
+class TestTheVerdictIsTheFailureListNotItsText:
+    """A case passes iff ``evaluate_row`` returns no failure; the wording is free."""
+
+    def test_the_result_carries_the_list_and_a_verdict_derived_from_it(self) -> None:
         case = load_corpus().by_id("I9")
-        assert runner_module.evaluate_row(case, _unterminalised_row()) != []
-        assert runner_module.evaluate_row(case, _completed_row()) == []
+        for row, expect_pass in (
+            (_unterminalised_row(), False),
+            (_completed_row(), True),
+        ):
+            result = runner_module._result_from_row(case, "c-1", row)
+            assert result.failures == runner_module.evaluate_row(case, row)
+            assert result.passed is expect_pass
+            assert result.passed is (result.failures == [])
+
+    @pytest.mark.parametrize(
+        ("failures", "expect_pass"),
+        [([], True), (["anything at all"], False), (["no terminal outcome"], False)],
+    )
+    def test_the_verdict_follows_the_list_whatever_it_says(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        failures: list[str],
+        expect_pass: bool,
+    ) -> None:
+        """Drive ``_result_from_row`` with a stub list: only emptiness decides."""
+        case = load_corpus().by_id("I9")
+        monkeypatch.setattr(runner_module, "evaluate_row", lambda _c, _r: failures)
+        result = runner_module._result_from_row(case, "c-2", _completed_row())
+        assert result.failures == failures
+        assert result.passed is expect_pass
+
+
+# --- Contract checks: explicit node ids, a pinned PR head, no skip vectors ----
+
+_CONTRACTS = (
+    "contracts/OMN-24831.yaml",
+    "contracts/OMN-24851.yaml",
+    "contracts/OMN-24902.yaml",
+    "contracts/OMN-24925.yaml",
+    "contracts/OMN-24986.yaml",
+)
+
+_K_SELECTOR = re.compile(r"pytest\b[^\n]*\s-k\s")
+_NODE_ID = re.compile(r"tests/[\w/.-]+\.py::[^\s'\"]+")
+
+
+def _check_values(contract: str) -> list[str]:
+    """Every check command and evidence-requirement command of one contract."""
+    data = yaml.safe_load((_REPO_ROOT / contract).read_text(encoding="utf-8"))
+    values = [str(req.get("command", "")) for req in data["evidence_requirements"]]
+    for entry in data["dod_evidence"]:
+        values.extend(str(check["check_value"]) for check in entry["checks"])
+    return [value for value in values if value]
+
+
+def _lab_checks(contract: str) -> list[str]:
+    """The checks that match the Lab comment's line for the pinned head."""
+    return [v for v in _check_values(contract) if "Lab: head=$h" in v]
+
+
+@pytest.fixture(scope="module")
+def collected_ids() -> set[str]:
+    """Every node id of the delegation golden suite, from pytest's own collector."""
+    out = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "tests/delegation_golden",
+            "--collect-only",
+            "-q",
+            "--no-cov",
+            "-n",
+            "0",
+            "-p",
+            "no:randomly",
+            "-p",
+            "no:cacheprovider",
+            "-m",
+            "not e2e",
+        ],
+        cwd=_REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    return {line for line in out.splitlines() if "::" in line}
+
+
+@pytest.mark.unit
+class TestContractChecksNameExplicitNodeIds:
+    """A check that names tests names each one, so a missing id exits 4 (usage)."""
+
+    def test_the_k_selector_pattern_matches_an_expression_and_not_a_node_id(
+        self,
+    ) -> None:
+        """Positive control for the pattern the scan below relies on."""
+        assert _K_SELECTOR.search('uv run pytest t.py -q -k "A or B"')
+        assert _K_SELECTOR.search("uv run pytest t.py -k A")
+        assert not _K_SELECTOR.search("uv run pytest t.py::TestA::test_a[I1] -q")
+
+    @pytest.mark.parametrize("contract", _CONTRACTS)
+    def test_no_check_selects_tests_with_a_k_expression(self, contract: str) -> None:
+        offenders = [v for v in _check_values(contract) if _K_SELECTOR.search(v)]
+        assert offenders == []
+
+    @pytest.mark.parametrize("contract", _CONTRACTS)
+    def test_every_named_node_id_exists(
+        self, contract: str, collected_ids: set[str]
+    ) -> None:
+        named = {nid for v in _check_values(contract) for nid in _NODE_ID.findall(v)}
+        assert named - collected_ids == set()
+
+    def test_the_contracts_name_node_ids_at_all(self) -> None:
+        """Control: the scan above is not vacuous."""
+        named = {
+            nid
+            for contract in _CONTRACTS
+            for v in _check_values(contract)
+            for nid in _NODE_ID.findall(v)
+        }
+        assert len(named) >= 20, sorted(named)
+
+
+@pytest.mark.unit
+class TestLabChecksPinTheHeadAndTheCommand:
+    @pytest.mark.parametrize("contract", _CONTRACTS)
+    def test_no_check_takes_the_head_from_a_local_checkout(self, contract: str) -> None:
+        offenders = [v for v in _check_values(contract) if "rev-parse HEAD" in v]
+        assert offenders == []
+
+    @pytest.mark.parametrize("contract", _CONTRACTS)
+    def test_a_lab_comment_check_matches_head_command_exit_and_contexts(
+        self, contract: str
+    ) -> None:
+        checks = _lab_checks(contract)
+        for value in checks:
+            for needle in ("head_sha", "command=", "exit=0", "contexts=", "pr-checks"):
+                assert needle in value, (needle, value)
+
+    def test_the_lab_comment_checks_exist(self) -> None:
+        """Control: at least the three contracts that read the comment are scanned."""
+        assert sum(bool(_lab_checks(c)) for c in _CONTRACTS) >= 3
+
+
+# The skip vectors, spelled from fragments so that this file does not itself
+# carry a literal the diff checks of the contracts look for.
+_SK = "ski" + "p"
+_IMPORT_OR_SKIP = re.compile("import" + "or" + _SK)
+_UNCONDITIONAL_SKIP = re.compile(rf"\bmark\.{_SK}\b(?!if)|\bpytest\.{_SK}\s*\(")
+
+
+def _skip_vectors(text: str) -> list[str]:
+    return [p.pattern for p in (_IMPORT_OR_SKIP, _UNCONDITIONAL_SKIP) if p.search(text)]
+
+
+@pytest.mark.unit
+class TestNoSkipVectorInTheDelegationGoldenTests:
+    """No test here may skip itself away: neither a module skip nor a bare marker.
+
+    The live gate of the Layer-2 file uses the conditional form and is not an
+    unconditional skip. Run on the files of the suite, not on this one, whose own
+    pattern text is the control below.
+    """
+
+    def test_no_file_in_the_suite_carries_one(self) -> None:
+        here = Path(__file__).resolve()
+        offenders = {
+            path.name: _skip_vectors(path.read_text(encoding="utf-8"))
+            for path in sorted(
+                (_REPO_ROOT / "tests" / "delegation_golden").glob("*.py")
+            )
+            if path.resolve() != here
+        }
+        assert {k: v for k, v in offenders.items() if v} == {}
+
+    @pytest.mark.parametrize(
+        "line",
+        [
+            "mod = pytest." + "import" + "or" + _SK + "('x')",
+            "@pytest.mark." + _SK,
+            "@mark." + _SK + "(reason='x')",
+            "pytest." + _SK + "('no bus')",
+        ],
+        ids=["module-level", "bare-marker", "mark-alias", "call"],
+    )
+    def test_the_scan_flags_each_vector(self, line: str) -> None:
+        assert _skip_vectors(line), line
+
+    @pytest.mark.parametrize(
+        "line",
+        ["@pytest.mark." + _SK + "if(not LIVE, reason='x')", "@pytest.mark.unit"],
+        ids=["conditional-gate", "other-marker"],
+    )
+    def test_the_scan_leaves_a_conditional_gate_and_other_markers(
+        self, line: str
+    ) -> None:
+        assert _skip_vectors(line) == []
