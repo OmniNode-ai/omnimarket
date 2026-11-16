@@ -40,14 +40,14 @@ dod_evidence:
       - AC2
     checks:
       - check_type: command
-        check_value: test -z "$(git diff --name-only origin/dev...HEAD -- .github .onex_ratchets scripts/ci)"
+        check_value: test -z "$(git diff --name-only origin/dev...HEAD -- .github .onex_ratchets scripts/ci)" && test "$(grep -c 'omnibase-spi>=0.23.15,<0.24.0' pyproject.toml)" = 2
         cwd: .
   - id: dod-omn24829-ac3-no-shared-cause
-    description: AC3. The cause sat inside the pull request, so no shared-cause patch exists; the branch carries dev's pin block unchanged.
+    description: AC3. The cause sat inside the pull request, so no shared-cause patch exists; the pyproject floors agree on 0.23.15, a test that fails at the merge base (floor 0.23.3).
     source: manual
     binds_ac:
       - AC3
     checks:
-      - check_type: command
-        check_value: git diff --quiet origin/dev HEAD -- uv.lock
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly -k floors_agree
         cwd: .
