@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-24850
 title: 'Review findings 1 to 5 on omnimarket PR 6324 are fixed or argued: the watchdog always ends the process, honors a disarm during its grace, and the contract check covers each tick file'
-summary: The overlay store tick's watchdog ends the process in a finally after its report, so a report that fails or cannot start a thread no longer leaves the process alive, and it re-checks the disarm after the 1 s grace so a tick that returned during the grace is not ended with 124. The watchdog test clears the whole overlay environment tuple and stubs the loader, asserts main's return, joins threads in place of fixed sleeps, and prints ready from inside the blocked handler. The contract check of OMN-24839 reads each of the four other tick files and the stale-readings producer row on the fixer lane's STATUS rows. The non-blocking review findings are fixed or argued in a PR comment.
+summary: The overlay store tick's watchdog ends the process in a finally after its report, so a report that fails or cannot start a thread no longer leaves the process alive, and it re-checks the disarm after the 1 s grace so a tick that returned during the grace is not ended with 124. The watchdog test stubs the loader to refuse in place of clearing the overlay environment, asserts main's return, joins threads in place of fixed sleeps, and prints ready from inside the blocked handler. The contract check of OMN-24839 reads each of the four other tick files and the stale-readings producer row on the fixer lane's STATUS rows. The non-blocking review findings are fixed or argued in a PR comment.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -40,7 +40,7 @@ dod_evidence:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_watchdog.py -q --no-cov -n 0 -p no:randomly -p no:cacheprovider -k report_fails
+    check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_watchdog.py -q --no-cov -n 0 -p no:randomly -p no:cacheprovider -k "report_fails or base_exception"
     cwd: .
 - id: dod-omn24850-disarm-during-grace-ac3
   description: A tick that returns while the report is blocked disarms the watchdog and the watchdog does not end the process; at head 08f369c2490a it ended it with 124 (red).
@@ -52,7 +52,7 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_watchdog.py -q --no-cov -n 0 -p no:randomly -p no:cacheprovider -k report_grace
     cwd: .
 - id: dod-omn24850-test-isolation-ac4
-  description: The in-process test clears the whole overlay environment tuple, stubs the loader, asserts main's return and joins the watchdog thread.
+  description: The in-process test stubs the loader to refuse (so the host's overlay sources are never read), asserts main's return and joins the watchdog thread.
   source: manual
   binds_ac:
   - AC4

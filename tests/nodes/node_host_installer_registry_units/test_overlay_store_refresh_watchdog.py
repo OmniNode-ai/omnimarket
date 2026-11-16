@@ -3,9 +3,9 @@
 """OMN-24839: the overlay store refresh tick ends at its deadline, and its unit declares a hard run timeout.
 
 Measured on the operator's Mac on 2026-11-16: one tick started at 08:54Z and never exited. Its
-``faulthandler.dump_traceback_later(deadline, exit=True)`` deadline fired mid-tick, then the faulthandler thread spun
-in the traceback dump for four hours and the process never ended. launchd starts no second run of a StartInterval job
-while one is alive, so overlay refresh was frozen. A watchdog that dumps before it exits depends on the dump finishing;
+``faulthandler.dump_traceback_later(deadline, exit=True)`` deadline fired mid-tick, then the faulthandler thread stayed
+in the traceback dump for four hours and the process never ended. launchd starts no second run of a StartInterval
+job while one is alive, so overlay refresh was frozen. A watchdog that dumps before it exits depends on the dump finishing;
 the tick's watchdog now exits without depending on anything, and the unit declares ``run_timeout_s`` so the host
 installer's wrapper ends a run that outlives the tick's own deadline.
 """
@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import ast
 import re
+import select
 import subprocess
 import sys
 import textwrap
@@ -53,14 +54,29 @@ OTHER_TICK_FILES = (
     "runtime_job_log_filler_tick.py",
     "runtime_overlay_store_load_tick.py",
 )
-PRODUCER_TEXT = (
-    "producer of the stale overlay readings (read only) node_overlay_store_load_effect"
+#: The text of the lane's two rows as the real ledger holds them, shortened after the sentence the checks read.
+TICKS_TEXT = (
+    "other node ticks that arm the faulthandler exit watchdog (dump_traceback_later with exit=True), read at base via "
+    "git grep over src, changed in none of them by this lane: {files}"
 )
+PRODUCER_TEXT = (
+    "producer of the stale overlay readings (read only, changed nothing): the reading age is now minus the snapshot "
+    "stamp's loaded_at, and loaded_at is set by node_overlay_store_load_effect (run by the overlay-store-load-systemd "
+    "unit, module runtime_overlay_store_load_tick)."
+)
+TICK_PATHS_BY_FILE = {
+    "runtime_c32_probe_tick.py": "src/omnimarket/nodes/node_c32_auth_boundary_probe_effect/runtime_c32_probe_tick.py",
+    "runtime_declared_clone_tick.py": "src/omnimarket/nodes/node_canonical_clone_refresh_effect/runtime_declared_clone_tick.py",
+    "runtime_job_log_filler_tick.py": "src/omnimarket/nodes/node_job_log_filler_effect/runtime_job_log_filler_tick.py",
+    "runtime_overlay_store_load_tick.py": "src/omnimarket/nodes/node_overlay_store_load_effect/runtime_overlay_store_load_tick.py",
+}
 
 #: How long the blocked tick is given, in the child process.
 DEADLINE_S = 2.0
 #: What a process that ends at its deadline may add: interpreter teardown, a scheduler hiccup, the report grace.
 GRACE_S = 5.0
+#: How long a child is given to reach its blocked work and print ``ready``; a child that hangs before it fails the test.
+READY_S = 30.0
 
 # The child process runs the real ``main`` with its work blocked and its stderr a pipe nobody reads, already full:
 # the case a watchdog that writes before it exits cannot survive. ``main`` is not stubbed beyond the deadline and
@@ -99,6 +115,53 @@ CHILD = textwrap.dedent(
 )
 
 
+def read_first_line(process: subprocess.Popen[str], timeout_s: float) -> str:
+    """The first line the child prints, or a test failure when it prints none within ``timeout_s``.
+
+    ``readline`` alone has no timeout, so a child that hangs before it prints ``ready`` would hang the test."""
+    assert process.stdout is not None
+    readable, _, _ = select.select([process.stdout], [], [], timeout_s)
+    if not readable:
+        pytest.fail(f"the child never printed a line within {timeout_s:g}s")
+    return process.stdout.readline()
+
+
+def test_a_child_that_hangs_before_ready_fails_the_read_in_place_of_hanging_the_test() -> (
+    None
+):
+    """The child never prints ``ready``: the read of its first line gives up at its bound and fails the test."""
+    child = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(600)"],
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        started = time.monotonic()
+        with pytest.raises(pytest.fail.Exception, match="never printed"):
+            read_first_line(child, 0.5)
+        assert time.monotonic() - started < GRACE_S
+    finally:
+        child.kill()
+        child.wait()
+        if child.stdout is not None:
+            child.stdout.close()
+
+
+def test_a_child_that_prints_before_the_bound_gives_its_line() -> None:
+    """Positive control for the bound: a child that answers is read, so the failure above is the missing line."""
+    child = subprocess.Popen(
+        [sys.executable, "-c", "print('ready 1.5', flush=True)"],
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        assert read_first_line(child, READY_S) == "ready 1.5\n"
+    finally:
+        child.wait()
+        if child.stdout is not None:
+            child.stdout.close()
+
+
 def test_a_tick_whose_work_blocks_past_the_deadline_exits_within_the_deadline_plus_a_few_seconds(
     tmp_path: Path,
 ) -> None:
@@ -111,7 +174,7 @@ def test_a_tick_whose_work_blocks_past_the_deadline_exits_within_the_deadline_pl
     try:
         assert process.stdout is not None
         # Positive control: the tick got as far as its blocked work, so the exit below is the watchdog's.
-        ready, _, clock = process.stdout.readline().partition(" ")
+        ready, _, clock = read_first_line(process, READY_S).partition(" ")
         assert ready == "ready"
         # ``time.monotonic`` is one clock for every process on the host, so the child's reading is comparable here.
         started = float(clock)
@@ -445,8 +508,13 @@ def test_the_rendered_overlay_store_refresh_job_runs_under_the_run_timeout_wrapp
     assert arguments[3] == str(load_units()[READER]["run_timeout_s"])
 
 
-def ledger_row(kind: str, lane: str, text: str) -> str:
-    return f"2026-11-16T13:20:01Z | {kind} | lane={lane} | ticket=OMN-24839 | {text}"
+def ledger_row(kind: str, lane: str, text: str, request: int = 1) -> str:
+    """A row in the cells the ledger writes (see ``REAL_ROW_SHAPE``), with the placeholders a fixture needs."""
+    return (
+        f"2026-11-16T13:20:0{request}Z | {kind} | lane={lane} | principal=fixture-principal | ticket=OMN-24839 "
+        f"| actor=claude:sonnet:{lane} | model=claude-sonnet-5-5 | via=relay:h202 "
+        f"| req=00000000-0000-4000-8000-00000000000{request} | via=bus:h200 | {text}"
+    )
 
 
 def good_ledger(
@@ -454,9 +522,10 @@ def good_ledger(
     kind: str = "STATUS",
     lane: str = LANE,
 ) -> list[str]:
+    files = ", ".join(TICK_PATHS_BY_FILE[name] for name in tick_files)
     return [
-        ledger_row(kind, lane, "other ticks: " + ", ".join(tick_files)),
-        ledger_row(kind, lane, PRODUCER_TEXT),
+        ledger_row(kind, lane, TICKS_TEXT.format(files=files), 1),
+        ledger_row(kind, lane, PRODUCER_TEXT, 2),
     ]
 
 
@@ -489,6 +558,23 @@ def ledger_check_results(tmp_path: Path, rows: list[str]) -> list[bool]:
             == 0
         )
     return results
+
+
+#: The cells the ledger writes on a lane's STATUS row, in order (read from the lane's rows of 2026-11-16 on the real
+#: ledger): the time, the type, the lane, the principal, the ticket, the executor, the model, the relay, the request
+#: id, the bus, then the text. A fixture of any other shape is a format the ledger does not write.
+REAL_ROW_SHAPE = re.compile(
+    r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ \| STATUS \| lane=[\w-]+ \| principal=[\w-]+ \| ticket=OMN-\d+ "
+    r"\| actor=\S+ \| model=\S+ \| via=relay:\w+ \| req=[0-9a-f-]{36} \| via=bus:\w+ \| \S.*$"
+)
+
+
+def test_the_fixture_rows_are_in_the_shape_the_real_ledger_writes() -> None:
+    """The ledger tests below run the contract's greps on these rows, so the rows must be a row the ledger writes."""
+    rows = good_ledger()
+    assert len(rows) == 2
+    for row in rows:
+        assert REAL_ROW_SHAPE.match(row), row
 
 
 def test_the_ledger_check_has_one_command_per_tick_file_and_one_for_the_producer() -> (
@@ -562,6 +648,21 @@ def test_the_tree_check_fails_when_another_file_arms_dump_traceback_later(
     extra.parent.mkdir()
     extra.write_text("faulthandler.dump_traceback_later(1, exit=True)\n")
     assert run() != 0
+
+
+def test_the_tree_check_fails_where_there_is_no_src_tree(tmp_path: Path) -> None:
+    """An absent ``src`` makes the listing empty, which must not read as "no other file arms the timer"."""
+    _, tree_checks = contract_checks()
+    (command,) = [c for c in tree_checks if "grep -rl" in c]
+    result = subprocess.run(
+        command,
+        shell=True,
+        cwd=tmp_path,
+        env={"PATH": "/usr/bin:/bin"},
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode != 0
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]

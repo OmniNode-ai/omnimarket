@@ -82,7 +82,7 @@ dod_evidence:
     check_value: grep -E '\| STATUS \| lane=ovwatch-1420 \|.*producer of the stale overlay readings.*node_overlay_store_load_effect' "$ONEX_LEDGER_PATH"
     cwd: .
   - check_type: command
-    check_value: test -z "$(grep -rl --include='*.py' dump_traceback_later src/ | grep -v -e node_c32_auth_boundary_probe_effect/runtime_c32_probe_tick.py -e node_canonical_clone_refresh_effect/runtime_declared_clone_tick.py -e node_job_log_filler_effect/runtime_job_log_filler_tick.py -e node_overlay_store_load_effect/runtime_overlay_store_load_tick.py)"
+    check_value: test -d src && test -z "$(grep -rl --include='*.py' dump_traceback_later src/ | grep -v -e node_c32_auth_boundary_probe_effect/runtime_c32_probe_tick.py -e node_canonical_clone_refresh_effect/runtime_declared_clone_tick.py -e node_job_log_filler_effect/runtime_job_log_filler_tick.py -e node_overlay_store_load_effect/runtime_overlay_store_load_tick.py)"
     cwd: .
   - check_type: command
     check_value: test -z "$(git diff --name-only origin/dev...HEAD -- src/omnimarket/nodes/node_c32_auth_boundary_probe_effect/runtime_c32_probe_tick.py src/omnimarket/nodes/node_canonical_clone_refresh_effect/runtime_declared_clone_tick.py src/omnimarket/nodes/node_job_log_filler_effect/runtime_job_log_filler_tick.py src/omnimarket/nodes/node_overlay_store_load_effect/runtime_overlay_store_load_tick.py)"

@@ -1,0 +1,87 @@
+schema_version: 1.0.0
+ticket_id: OMN-24920
+title: Review findings 1 to 8 on omnimarket PR 6324 are fixed or argued - the Lab comment and required CI are at the new head, the ledger rows are real, and the watchdog check selects the BaseException test
+summary: The ledger tests of the watchdog test file build their rows in the cells the real ledger writes and a shape test fails on any other format. The contract check bound to the watchdog criterion of contracts/OMN-24850.yaml selects the BaseException test with -k "report_fails or base_exception". The tree command of contracts/OMN-24839.yaml starts with test -d src, so a missing src tree fails it. The watchdog test reads the child's first line under a bound, so a child that hangs before ready fails the test. The tick's docstring names the blocked-stderr limit. The remaining non-blocking findings are argued in the PR comment.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24920-blocking
+  statement: The Lab comment and required CI sit at the new head, and the ledger half of the OMN-24839 contract is proven on real rows.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a PR comment starting `Lab: head=<full new head sha>` names the sha, a command that includes test_overlay_store_refresh_workspace_root.py and exit 0, and every required check-run of omnimarket#6324 reads success at the new head -- falsifier: `onex scm pr-checks OmniNode-ai/omnimarket#6324` lists a required context that is not success at the new head, or the Lab comment lacks the full sha, the workspace_root test file or exit 0'
+  - id: AC2
+    statement: 'AC2: the PR body or a PR comment pastes real `| STATUS | lane=ovwatch-1420 |` ledger rows citing all four tick files and the literal producer phrase, with the five contract greps exiting 0 on the real ONEX_LEDGER_PATH, and the watchdog ledger tests use the real row format -- falsifier: `uv run pytest tests/nodes/node_host_installer_registry_units -q -p no:cacheprovider` passes with a ledger row format the real ledger does not write'
+- id: req-omn24920-non-blocking
+  statement: The AC check of the watchdog selects the BaseException test, and the non-blocking findings are fixed or argued.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: the check bound to the watchdog AC in contracts/OMN-24850.yaml selects the BaseException test with `-k "report_fails or base_exception"` and fails when the finally is removed -- falsifier: `uv run pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_watchdog.py -q -p no:cacheprovider -k "report_fails or base_exception"` passes with the finally removed from the watchdog'
+  - id: AC4
+    statement: 'AC4: non-blocking findings 4 to 8 are fixed or argued in a PR comment: the stderr-blocked limit in the tick docstring, a bounded readline in the watchdog test, the test -d src prefix and the --include=*.py argument on the AC3 tree command, the base-red note and the contract read at run time -- falsifier: `uv run pytest tests/nodes/node_host_installer_registry_units -q -p no:cacheprovider -k "overlay_store_refresh or error_chain_overlay_store"` passes with the readline unbounded and a child that hangs before ready'
+evidence_requirements:
+- kind: tests
+  description: The watchdog tests, the run-timeout tests and the tick disarm and error chain tests at the pushed head.
+  command: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_watchdog.py tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_workspace_root.py tests/unit/workflows/test_tick_entrypoints_disarm_deadline.py tests/unit/nodes/node_overlay_store -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24920-lab-proof-ac1
+  description: The pushed head ran the watchdog, workspace root, tick disarm and overlay store suites on a lab host through the lab work runner and exited 0; host, sha, command and exit code are in the Lab comment of the pull request, and the required checks are read with onex scm pr-checks.
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane fix6324-1722 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_watchdog.py tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_workspace_root.py tests/unit/workflows/test_tick_entrypoints_disarm_deadline.py tests/unit/nodes/node_overlay_store -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24920-real-ledger-rows-ac2
+  description: The five greps of the OMN-24839 ledger check exit 0 on the real ledger, whose rows of lane ovwatch-1420 cite the four tick files and the producer phrase (the rows are pasted in the Lab comment); the watchdog ledger tests build their rows in the cells the real ledger writes and fail on a row of any other shape.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_watchdog.py -q --no-cov -n 0 -p no:randomly -p no:cacheprovider -k "ledger"
+    cwd: .
+- id: dod-omn24920-real-ledger-greps-ac2
+  description: The producer phrase of the OMN-24839 ledger check is on a real STATUS row of lane ovwatch-1420 on the real ledger (read on the done gate's host, where the ledger is).
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: command
+    check_value: grep -E '\| STATUS \| lane=ovwatch-1420 \|.*producer of the stale overlay readings.*node_overlay_store_load_effect' "$ONEX_LEDGER_PATH"
+    cwd: .
+- id: dod-omn24920-base-exception-check-ac3
+  description: The check bound to the watchdog criterion of OMN-24850 selects the BaseException test and fails with the finally removed from the tick (red at head d6e5838b18d6 for the selection, since -k report_fails ran three cases that pass without the finally).
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_watchdog.py -q --no-cov -n 0 -p no:randomly -p no:cacheprovider -k "report_fails or base_exception"
+    cwd: .
+  - check_type: command
+    check_value: grep -F 'report_fails or base_exception' contracts/OMN-24850.yaml
+    cwd: .
+- id: dod-omn24920-non-blocking-ac4
+  description: The tick docstring names the blocked-stderr limit, the first line of the child is read under a bound with a test where the child hangs before ready, and the tree command of OMN-24839 starts with test -d src with a test where src is absent; the rest is argued in the PR comment.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units tests/unit/nodes/node_overlay_store -q --no-cov -n 0 -p no:randomly -p no:cacheprovider -k "overlay_store_refresh or error_chain_overlay_store"
+    cwd: .
+  - check_type: command
+    check_value: grep -F "test -d src && test -z" contracts/OMN-24839.yaml
+    cwd: .
+  - check_type: command
+    check_value: grep -F "holding" src/omnimarket/nodes/node_overlay_store_read_effect/runtime_overlay_store_tick.py
+    cwd: .

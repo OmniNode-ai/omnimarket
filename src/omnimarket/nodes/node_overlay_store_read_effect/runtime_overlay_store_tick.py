@@ -78,10 +78,12 @@ def arm_watchdog(
     cannot be started or fails does not stop the exit either. A tick that returns while the report is still running
     disarms the watchdog, and the watchdog then leaves the process alone.
 
-    Two limits. A Python thread needs the GIL: a call into C code that holds the GIL for good stops this watchdog too,
-    and then only the unit's ``run_timeout_s`` ends the run. And ``main`` disarms in its ``finally``, so a hang after
-    ``main`` returns (interpreter teardown, an ``atexit`` handler, a non-daemon thread) is not this watchdog's to end:
-    it is bounded by ``run_timeout_s`` alone."""
+    Three limits. A Python thread needs the GIL: a call into C code that holds the GIL for good stops this watchdog too,
+    and then only the unit's ``run_timeout_s`` ends the run. ``main`` disarms in its ``finally``, so a hang after
+    ``main`` returns (interpreter teardown, an ``atexit`` handler, a non-daemon thread) is not this watchdog's to end.
+    And a tick that returns during the report grace while stderr is blocked leaves the daemon report thread holding
+    stderr's buffer lock, so the interpreter's own flush of stderr at exit can hang on it. Each of these is bounded by
+    ``run_timeout_s`` alone."""
     disarmed = threading.Event()
     stuck = threading.get_ident()
 
