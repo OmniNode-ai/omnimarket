@@ -24,39 +24,38 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-
-temporalio = pytest.importorskip("temporalio")
-
-from temporalio.api.enums.v1 import EventType  # noqa: E402
-from temporalio.client import (  # noqa: E402
+from temporalio.api.enums.v1 import EventType
+from temporalio.client import (
     Client,
+    ScheduleActionExecutionStartWorkflow,
+    ScheduleActionStartWorkflow,
     ScheduleHandle,
     ScheduleOverlapPolicy,
     WorkflowHandle,
 )
-from temporalio.testing import WorkflowEnvironment  # noqa: E402
-from temporalio.worker import Worker  # noqa: E402
+from temporalio.testing import WorkflowEnvironment
+from temporalio.worker import Worker
 
-from omnimarket.nodes.node_floor_fill_temporal_workflow.handlers import (  # noqa: E402
+from omnimarket.nodes.node_floor_fill_temporal_workflow.handlers import (
     HandlerFloorFillAlarmRule,
 )
-from omnimarket.nodes.node_floor_fill_temporal_workflow.handlers import (  # noqa: E402
+from omnimarket.nodes.node_floor_fill_temporal_workflow.handlers import (
     temporal_floor_fill as wf_module,
 )
-from omnimarket.nodes.node_floor_fill_temporal_workflow.handlers.temporal_floor_fill import (  # noqa: E402
+from omnimarket.nodes.node_floor_fill_temporal_workflow.handlers.temporal_floor_fill import (
     ACTIVITY_NAME,
     WORKFLOW_NAME,
     FloorFillScheduleWorkflow,
     FloorFillStepActivity,
 )
-from omnimarket.nodes.node_floor_fill_temporal_workflow.models import (  # noqa: E402
+from omnimarket.nodes.node_floor_fill_temporal_workflow.models import (
     ModelFloorFillAlarmRequest,
     ModelFloorFillAlarmRule,
     ModelFloorFillPoolAnswer,
     ModelFloorFillRunAnswer,
     ModelFloorFillRunResult,
 )
-from omnimarket.nodes.node_floor_fill_temporal_workflow.runtime_floor_fill_temporal import (  # noqa: E402
+from omnimarket.nodes.node_floor_fill_temporal_workflow.runtime_floor_fill_temporal import (
     build_plan,
     build_schedule,
     contract_config,
@@ -169,7 +168,9 @@ def test_schedule_overlap_skip_spec_every_five_minutes() -> None:
     schedule = build_schedule(cfg, cfg["task_queue"])
     assert [i.every for i in schedule.spec.intervals] == [timedelta(minutes=5)]
     assert schedule.policy.overlap is ScheduleOverlapPolicy.SKIP
-    assert schedule.action.workflow == WORKFLOW_NAME  # type: ignore[union-attr]
+    action = schedule.action
+    assert isinstance(action, ScheduleActionStartWorkflow)
+    assert action.workflow == WORKFLOW_NAME
     assert cfg["every_seconds"] == 300
     assert cfg["overlap"] == "skip"
 
@@ -225,7 +226,8 @@ async def _scheduled_run(
             break
         await asyncio.sleep(0.1)
     recent = (await handle.describe()).info.recent_actions[-1].action
-    return await _result(client.get_workflow_handle(recent.workflow_id))  # type: ignore[union-attr]
+    assert isinstance(recent, ScheduleActionExecutionStartWorkflow)
+    return await _result(client.get_workflow_handle(recent.workflow_id))
 
 
 # ---- AC4: the alarms --------------------------------------------------------------------------------------------
