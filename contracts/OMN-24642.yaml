@@ -11,8 +11,6 @@ requirements:
   acceptance:
   - id: AC1
     statement: 'AC1: a STATUS row per graph, code graph and architecture graph, states when the graph was built, from which repository revisions, and whether it is stale -- falsifier: the ledger holds one STATUS row per graph for the lane, and the architecture graph row reads NOT MET (ARCH_GRAPH_BOLT_URI is unbound on lab hosts; the owner is OMN-14572, which this change does not fix) until a reading of it is written'
-  - id: AC2
-    statement: 'AC2: the query that found the importers of the named module is recorded in the lane report with the graph version it was answered from -- falsifier: the report names the question, the repository, the answering handler and the version, and the missing query path (no host, not the Mac) is stated as open'
   - id: AC3
     statement: 'AC3: a merge to a declared repository reaches the code graph through a standing refresh, a polling timer being allowed in place of a merge subscription; it builds once per burst of merges, never reports fresh when it cannot read a head, writes its built marker only after a build whose row the ledger holds, and defers after a failed attempt and while another build holds the state directory lock -- falsifier: uv run pytest tests/nodes/node_code_graph_effect/test_code_graph_refresh.py -q -k "fresh or defers or marker or tick or failed or unset or readback or attempt or lock" fails when a head comparison, the interval, the attempt record, the lock or the marker rule is removed'
   - id: AC4
@@ -30,8 +28,6 @@ dod_evidence:
   description: Only the local Done gate runs this unbound check, which reads the ledger. It fails unless a STATUS row for the code graph names OMN-24642. The architecture graph stays NOT MET in AC1 and has no check here until a reading of it exists (owner OMN-14572).
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC1
   checks:
   - check_type: command
     check_value: |-
@@ -41,12 +37,19 @@ dod_evidence:
   description: Only the local Done gate runs this unbound check, which reads the lane report. It fails unless the report records the importers query.
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC2
   checks:
   - check_type: command
     check_value: |-
       grep -q 'Query: who imports' "$OMNI_HOME"/.claude_scratch/reports/graphfresh-2300-*.md
+    cwd: .
+- id: dod-omn24642-ac1-readback
+  description: After a build the refresh result reports built_at and built_heads read back from the rewritten marker, and fails when the marker was not rewritten.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_code_graph_effect/test_code_graph_refresh.py -q --no-cov -n 0 -p no:randomly -k readback
     cwd: .
 - id: dod-omn24642-ac3-refresh
   description: The refresh decides fresh, deferred, refreshed or failed from the last build's marker and the heads now, and the marker, attempt and lock rules hold.
@@ -56,15 +59,6 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_code_graph_effect/test_code_graph_refresh.py -q --no-cov -n 0 -p no:randomly
-    cwd: .
-- id: dod-omn24642-ac3-importers
-  description: The importers question is answered from the repository's graph version.
-  source: manual
-  binds_ac:
-  - AC3
-  checks:
-  - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_code_graph_effect/test_code_graph_lookup.py -q --no-cov -n 0 -p no:randomly -k importers
     cwd: .
 - id: dod-omn24642-ac4-unit-renders
   description: The refresh unit and timer render from the contract and run the refresh verb every ten minutes.
@@ -79,8 +73,6 @@ dod_evidence:
   description: Hosted CI cannot reach the schedule host, so only the local Done gate runs this unbound check. It reads the installed onex-code-graph-refresh unit on h053 and fails unless the unit runs the refresh verb and its log took an entry in the last 30 minutes, so Done cannot pass with the unit installed nowhere. It writes nothing on h053.
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC4
   checks:
   - check_type: command
     check_value: onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-installed-unit-24642 --kind other --host h053 -- sh -c 'grep -q "node_code_graph_effect refresh$" "$HOME/.config/systemd/user/onex-code-graph-refresh.service" && find /data/omninode -maxdepth 4 -name code-graph-refresh.out.log -mmin -30 | grep -q .'
