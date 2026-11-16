@@ -918,17 +918,20 @@ provider_quota_policy:
           scope: provider
           fallback_cooldown_seconds: 1800
           alert: false
-        # 1316/1317: a plan window is spent; the reset instant is stated inline.
+        # 1316/1317: a plan window is spent; the reset instant is stated inline, in
+        # Beijing time like 1310 (UTC+8), so each of these rules declares the offset.
         - code: "1316"
           disposition: disable_until_reset
           scope: provider
           reset_from: message_reset_timestamp
+          reset_utc_offset_minutes: 480
           fallback_cooldown_seconds: 3600
           alert: false
         - code: "1317"
           disposition: disable_until_reset
           scope: provider
           reset_from: message_reset_timestamp
+          reset_utc_offset_minutes: 480
           fallback_cooldown_seconds: 3600
           alert: false
         # 1318-1321: monthly spend-cap periods; treated as a spent window.
@@ -936,24 +939,28 @@ provider_quota_policy:
           disposition: disable_until_reset
           scope: provider
           reset_from: message_reset_timestamp
+          reset_utc_offset_minutes: 480
           fallback_cooldown_seconds: 3600
           alert: false
         - code: "1319"
           disposition: disable_until_reset
           scope: provider
           reset_from: message_reset_timestamp
+          reset_utc_offset_minutes: 480
           fallback_cooldown_seconds: 3600
           alert: false
         - code: "1320"
           disposition: disable_until_reset
           scope: provider
           reset_from: message_reset_timestamp
+          reset_utc_offset_minutes: 480
           fallback_cooldown_seconds: 3600
           alert: false
         - code: "1321"
           disposition: disable_until_reset
           scope: provider
           reset_from: message_reset_timestamp
+          reset_utc_offset_minutes: 480
           fallback_cooldown_seconds: 3600
           alert: false
     # OMN-20154: z.ai's GENERAL API is a second product on the same host as the

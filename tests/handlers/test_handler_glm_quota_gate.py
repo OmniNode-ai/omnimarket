@@ -288,3 +288,41 @@ def test_an_unreadable_policy_fails_open(
     )
     assert main(["note", str(tmp_path), RECORDED], now=CALL_ENDED) == 0
     assert json.loads(capsys.readouterr().out)["held"] is False
+
+
+RECORDED_1316 = (
+    "claude-glm exited rc=1: API Error: Request rejected (429) · [1316][Plan window spent. "
+    "Your limit will reset at 2026-11-15 01:38:18][2026111421065430b8c2c98d0a4d56]"
+)
+
+
+@pytest.mark.parametrize("code", ["1316", "1317", "1318", "1319", "1320", "1321"])
+def test_codes_1316_to_1321_hold_until_the_beijing_time_reset(code: str) -> None:
+    text = RECORDED_1316.replace("[1316]", f"[{code}]")
+    noted = ask("note", CALL_ENDED, text)
+    assert noted.held is True
+    assert noted.code == code
+    assert (
+        noted.until == RESET
+    )  # 17:38:18Z, not the same digits read as UTC (01:38:18Z the next day)
+
+
+def test_a_rate_limit_refusal_followed_by_a_plan_limit_refusal_holds_on_the_plan_limit() -> (
+    None
+):
+    text = f"{RATE_LIMIT}\n{RECORDED}"
+    rule = plan_limit_rule(text)
+    assert rule is not None
+    assert rule.code == "1310"
+    noted = ask("note", CALL_ENDED, text)
+    assert noted.held is True
+    assert noted.code == "1310"
+    assert noted.until == RESET
+
+
+def test_the_first_refusal_that_names_a_hold_rule_is_the_one_taken() -> None:
+    both = f"{RECORDED_1308}\n{RECORDED}"
+    noted = ask("note", CALL_ENDED, both)
+    assert noted.code == "1308"
+    assert noted.until == RESET_1308
+    assert plan_limit_rule(f"{RATE_LIMIT}\n{RATE_LIMIT}") is None

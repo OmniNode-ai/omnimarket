@@ -6,10 +6,18 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, StrictBool, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializerFunctionWrapHandler,
+    StrictBool,
+    model_serializer,
+    model_validator,
+)
 
 from omnimarket.enums.enum_deployment_fact_kind import EnumDeploymentFactKind
 from omnimarket.models.delegation.model_deployment_fact_marker import deployment_fact
@@ -516,6 +524,22 @@ class ModelQuotaCodeRule(BaseModel):
             "request hit the pay-as-you-go surface (OMN-6790)."
         ),
     )
+
+    @model_serializer(mode="wrap")
+    def _dump_in_the_base_shape_unless_an_offset_is_declared(
+        self, handler: SerializerFunctionWrapHandler
+    ) -> dict[str, Any]:
+        """Omit ``reset_utc_offset_minutes`` while it is the default 0.
+
+        A consumer that still reads quota rules in the base shape (the schema pinned by
+        ``tests/fixtures/delegation/quota_rule_legacy_schema.json``, which forbids extra keys) is handed every rule
+        that states UTC, or no stamp at all, exactly as before; only a rule that declares a non-zero offset (the zai
+        stamps, Beijing time) carries the key.
+        """
+        data: dict[str, Any] = handler(self)
+        if self.reset_utc_offset_minutes == 0:
+            data.pop("reset_utc_offset_minutes", None)
+        return data
 
 
 class ModelQuotaProviderRule(BaseModel):

@@ -80,3 +80,40 @@ def test_the_zai_rule_declares_beijing_time_and_the_bifrost_path_holds_until_the
             if r.code == code
         )
         assert rule.reset_utc_offset_minutes == 480
+
+
+def test_every_zai_rule_that_reads_its_reset_from_the_message_declares_beijing_time() -> (
+    None
+):
+    """Codes 1316 to 1321 held the same Beijing-time stamp eight hours too long while they declared no offset."""
+    stamped = [
+        (p.provider_id, r.code)
+        for p in load_provider_quota_policy().providers
+        if p.provider_id.startswith("zai")
+        for r in p.codes
+        if r.reset_from == "message_reset_timestamp"
+        and r.reset_utc_offset_minutes != 480
+    ]
+    assert stamped == []
+    declared = {
+        r.code
+        for p in load_provider_quota_policy().providers
+        if p.provider_id.startswith("zai")
+        for r in p.codes
+        if r.reset_from == "message_reset_timestamp"
+    }
+    assert declared == {"1310", "1308"} | {str(c) for c in range(1316, 1322)}
+
+
+def test_the_bifrost_path_reads_a_1316_stamp_as_beijing_time() -> None:
+    body = {
+        "error": {
+            "code": "1316",
+            "message": "Plan window spent. Your limit will reset at 2026-11-15 01:38:18",
+        }
+    }
+    verdict = classify_quota_response(
+        status_code=429, endpoint_url=ZAI_URL, body=body, now=CALL_ENDED
+    )
+    assert verdict is not None
+    assert verdict.disabled_until == RESET_UTC

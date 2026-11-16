@@ -11,7 +11,7 @@ reset.
 
 Which codes hold GLM out, what a stated reset is read as, and the cooldown for a notice that states none are the zai
 rules of ``provider_quota_policy`` (``load_provider_quota_policy``), not constants here: a rule whose disposition is
-``disable_until_reset`` (codes 1310 and 1308) holds. The reset stamp is read by ``HandlerProviderQuotaReset`` with the
+``disable_until_reset`` (codes 1310, 1308 and 1316 to 1321) holds. The reset stamp is read by ``HandlerProviderQuotaReset`` with the
 rule's declared ``reset_utc_offset_minutes`` (Beijing time, 480) and the gate uses the instant as returned.
 
 This handler is pure: it takes the clock, the text and the hold already on record, and answers. The command line the
@@ -52,20 +52,22 @@ def _stamp(at: datetime) -> str:
 
 
 def plan_limit_rule(error_text: str) -> ModelQuotaCodeRule | None:
-    """The declared zai ``disable_until_reset`` rule the refusal in ``error_text`` names, or None."""
-    match = _REFUSAL.search(error_text or "")
-    if match is None:
+    """The declared zai ``disable_until_reset`` rule the first refusal in ``error_text`` that names one matches, or None.
+
+    Every ``(429) [code]`` refusal in the text is read in order, so a rate-limit refusal (1302) that precedes a plan-limit
+    refusal (1310) does not hide it.
+    """
+    codes = _REFUSAL.findall(error_text or "")
+    if not codes:
         return None
-    for provider in load_provider_quota_policy().providers:
-        if provider.provider_id != PROVIDER_ID:
-            continue
-        for rule in provider.codes:
-            if (
-                rule.code == match.group(1)
-                and rule.disposition is EnumQuotaDisposition.DISABLE_UNTIL_RESET
-            ):
-                return rule
-    return None
+    holding = {
+        rule.code: rule
+        for provider in load_provider_quota_policy().providers
+        if provider.provider_id == PROVIDER_ID
+        for rule in provider.codes
+        if rule.disposition is EnumQuotaDisposition.DISABLE_UNTIL_RESET
+    }
+    return next((holding[c] for c in codes if c in holding), None)
 
 
 def exhausted_until(

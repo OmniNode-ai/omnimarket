@@ -9,8 +9,12 @@ requirements:
 - id: req-omn24651-glm-quota-gate
   statement: A GLM call refused for an exhausted plan limit holds GLM out until the stated reset, read as Beijing time, and a rate limit holds nothing.
   acceptance:
+  - id: AC1
+    statement: "AC1: each rung of the lane delegation ladder has its first failing cause recorded per host, with the row timestamp -- met at: the per-host first failing causes are in the report frx-delegroute-0005-2026-11-16T0100Z under the scratch reports directory, and the lane's TERMINAL row of 2026-11-16T01:00:28Z names it -- falsifier: uv run pytest tests/handlers/test_glm_quota_gate_contract.py -q --no-cov fails because the report or the terminal row it names as the place AC1 is met is not named in this contract"
   - id: AC2
     statement: "AC2: the mechanism the five whys reach is fixed in its owning repository and a test built from the recorded failure text fails on the broken code and passes on the fix -- falsifier: uv run pytest tests/handlers/test_handler_provider_quota_reset_beijing_time.py fails on the base parser, which reads the recorded Beijing-time stamp as UTC"
+  - id: AC3
+    statement: "AC3: a draft pull request carries a Lab comment at the proof head and the lane's TERMINAL carries the delegation line -- met at: the pull request omnimarket#6311 is a draft and carries a comment that starts `Lab: head=<sha>` at the final head the writer lane pushed, and that lane's TERMINAL row carries its delegation cell (delegated=<n> runs=<ids>) -- falsifier: uv run pytest tests/handlers/test_glm_quota_gate_contract.py -q --no-cov fails because this contract does not name where AC3 is met"
 evidence_requirements:
 - kind: tests
   description: The quota gate, Beijing-time reset and node binding tests at the pushed head.
@@ -37,3 +41,19 @@ dod_evidence:
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24651 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/handlers/test_handler_glm_quota_gate.py tests/handlers/test_handler_provider_quota_reset_beijing_time.py -q --no-cov
   binds_ac:
   - AC2
+- id: dod-omn24651-ac1
+  description: "AC1: the contract names the report and the TERMINAL row of 2026-11-16T01:00:28Z where each rung's first failing cause per host is recorded"
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/handlers/test_glm_quota_gate_contract.py -q --no-cov -p no:cacheprovider
+  binds_ac:
+  - AC1
+- id: dod-omn24651-ac3
+  description: "AC3: the contract names the draft pull request's Lab comment at the final head and the TERMINAL delegation line as the place AC3 is met"
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/handlers/test_glm_quota_gate_contract.py -q --no-cov -p no:cacheprovider
+  binds_ac:
+  - AC3
