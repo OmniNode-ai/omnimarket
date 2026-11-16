@@ -26,7 +26,7 @@ pytestmark = pytest.mark.e2e
 
 
 @pytest.mark.parametrize(
-    "refusal", [None, "profile", "missing_manifest", "missing_config"]
+    "refusal", [None, "profile", "missing_manifest", "missing_config", "older"]
 )
 def test_cli_on_off_owns_both_registrations_and_preserves_settings(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, refusal: str | None
@@ -132,7 +132,7 @@ def test_cli_on_off_owns_both_registrations_and_preserves_settings(
     assert {"UserPromptSubmit", "PreToolUse"} <= expected_events
     assert invoke("on")["status"] == "on"
     assert json.loads(settings.read_text()) == once
-    if refusal is not None:
+    if refusal not in (None, "older"):
         moved = None
         if refusal == "profile":
             monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "other-profile"))
@@ -168,23 +168,49 @@ def test_cli_on_off_owns_both_registrations_and_preserves_settings(
         assert invoke("on", expected_exit=1)["status"] == "not_ready"
         assert json.loads(settings.read_text()) == changed
         settings.write_text(json.dumps(once))
+    if refusal == "older":
+        # An owned pre-amendment bundle has no context registration. OFF must
+        # upgrade that safe installation before removing its delegation hooks.
+        from omnimarket.nodes.node_onex_setup_effect.setup_legacy_hooks import (
+            record_installed_hooks,
+        )
+
+        for path in (settings, home / ".omninode/delegation/hooks-delegation.json"):
+            older = json.loads(path.read_text())
+            for group in older["hooks"]["UserPromptSubmit"]:
+                group["hooks"] = [
+                    h
+                    for h in group["hooks"]
+                    if "user_prompt_delegation_history.sh" not in h.get("command", "")
+                ]
+            older["hooks"]["UserPromptSubmit"] = [
+                g for g in older["hooks"]["UserPromptSubmit"] if g["hooks"]
+            ]
+            path.write_text(json.dumps(older))
+        record_installed_hooks(config)
     assert invoke("off")["status"] == "off"
     after = json.loads(settings.read_text())
-    assert owned(after) == {}
+    remaining_owned = owned(after)
+    assert set(remaining_owned) == {"UserPromptSubmit"}
+    assert len(remaining_owned["UserPromptSubmit"]) == 1
+    assert (
+        "user_prompt_delegation_history.sh"
+        in remaining_owned["UserPromptSubmit"][0]["command"]
+    )
     assert {k: v for k, v in after.items() if k != "hooks"} == {
         k: v for k, v in original.items() if k != "hooks"
     }
     assert (
         original["hooks"]["UserPromptSubmit"][0] in after["hooks"]["UserPromptSubmit"]
     )
-    # Only the user's own hook remains.
+    # The user hook and the context-only hook remain.
     retained = [
         hook
         for groups in after["hooks"].values()
         for group in groups
         for hook in group["hooks"]
     ]
-    assert len(retained) == 1  # the user's own hook
+    assert len(retained) == 2
     assert invoke("off")["status"] == "off"
     assert json.loads(settings.read_text()) == after
     assert invoke("on")["status"] == "on"
@@ -204,6 +230,7 @@ def test_cli_on_off_owns_both_registrations_and_preserves_settings(
             {
                 "on_idempotent": True,
                 "off_unregisters_both_boundaries": True,
+                "off_retains_context_only": True,
                 "off_idempotent": True,
                 "reinstall_preserved": True,
                 "unrelated_settings_preserved": True,

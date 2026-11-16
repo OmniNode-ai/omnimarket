@@ -57,6 +57,7 @@ class _Claude:
         self.developer = False
         self.replace: dict[str, bool] = {}
         self.removed: list[str] = []
+        self.preserve_history: list[bool] = []
         self.remove_error = False
 
     def make(self, *, name: str, replace: bool = False) -> object:
@@ -76,7 +77,10 @@ class _Claude:
             def developer_registered(self) -> bool:
                 return outer.developer
 
-            def remove_delegation_hooks(self) -> None:
+            def remove_delegation_hooks(
+                self, *, preserve_history: bool = False
+            ) -> None:
+                outer.preserve_history.append(preserve_history)
                 outer.removed.append(name)
                 if outer.remove_error:
                     raise ValueError("fixture-sensitive-removal-error")
@@ -187,6 +191,7 @@ def test_off_turns_the_switch_off(
     assert switched == [("off",)]
     assert claude.removed == ["claude-hooks"]
     assert document["status"] == "off"
+    assert claude.preserve_history == [True]
 
 
 def test_off_disables_before_reporting_refused_owned_hook_removal(

@@ -274,8 +274,20 @@ class _FailingRead:
             for line in self._status_lines:
                 emit(line)
             return self._code
-        for line in _selected_rows(connection=False)[("models", "list")].splitlines():
-            emit(line)
+        if argv[:2] == ("models", "connections"):
+            emit(json.dumps({"status": "ready", "connections": []}))
+            return 0
+        # This case exercises a failed delegation status read, after a valid
+        # models-list response. The explorer fixture also has non-wire rows.
+        emit(
+            json.dumps(
+                {
+                    "provider": "openrouter",
+                    "set_up": True,
+                    "models": ["qwen/qwen3.8-27b"],
+                }
+            )
+        )
         return 0
 
 

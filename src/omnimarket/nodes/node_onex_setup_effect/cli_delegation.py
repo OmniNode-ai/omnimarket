@@ -295,7 +295,9 @@ def off_command(json_output: bool) -> None:
         switch_failed = _switch_failed(False)
     plan = _plan()
     try:
-        HandlerSetupClaude(name="claude-hooks").remove_delegation_hooks()
+        HandlerSetupClaude(name="claude-hooks").remove_delegation_hooks(
+            preserve_history=True
+        )
     except Exception:
         refused = ModelSetupObservation(
             step="claude-hooks",

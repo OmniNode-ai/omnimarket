@@ -322,6 +322,11 @@ class HandlerPromptDelegate:
             max_tokens=PROMPT_MAX_TOKENS,
         ), fate
 
+    @classmethod
+    def drain_history(cls, session_id: str) -> str:
+        """Deliver accepted exchanges without classifying or delegating a prompt."""
+        return context_output(cls._take_pending(session_id))
+
     def _pass(
         self,
         session_id: str,

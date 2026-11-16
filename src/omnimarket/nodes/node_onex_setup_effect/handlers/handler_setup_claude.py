@@ -385,8 +385,8 @@ class HandlerSetupClaude:
             )
         return Path(value)
 
-    def remove_delegation_hooks(self) -> None:
-        """Remove the legacy owner's registrations, preserving edited user state."""
+    def remove_delegation_hooks(self, *, preserve_history: bool = False) -> None:
+        """Remove owned delegation; OFF retains pending context, uninstall does not."""
         root = Path.home() / ".omninode" / "delegation"
         config = root / "hooks-delegation.json"
         settings = self._claude / "settings.json"
@@ -417,9 +417,32 @@ class HandlerSetupClaude:
             raise ValueError(
                 "Installed delegation files or settings changed; preserve them before removal"
             )
+        if preserve_history and state.evidence.get("installed") == "older":
+            # A recorded, unchanged old bundle may have no context hook yet.
+            # Upgrade through its owner before removing delegation registrations.
+            self._run(
+                (
+                    "/bin/bash",
+                    str(installer),
+                    "--apply",
+                    "--skip-pip",
+                    "--python",
+                    sys.executable,
+                )
+            )
+            if observe_legacy_hooks(installer, self._claude).status != "success":
+                raise ValueError("Delegation hook upgrade could not be verified")
         self._run(
-            ("/bin/bash", str(installer), "--uninstall", "--python", sys.executable)
+            (
+                "/bin/bash",
+                str(installer),
+                "--pause" if preserve_history else "--uninstall",
+                "--python",
+                sys.executable,
+            )
         )
+        if preserve_history:
+            record_installed_hooks(self._claude)
 
     def remove_hooks(self) -> None:
         """Dispose through the delegation hooks' owner, preserving edited user state."""
