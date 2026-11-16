@@ -23,7 +23,7 @@ from omnimarket.inference.local_byok_credential_adapter import LocalByokCredenti
 from omnimarket.nodes.node_claude_review_gateway_effect.handlers.handler_claude_review_gateway import (
     ClaudeReviewGateway,
 )
-from omnimarket.nodes.node_claude_review_gateway_effect.handlers.handler_review_key_credit_probe import (
+from omnimarket.nodes.node_claude_review_gateway_effect.handlers.review_key_credit_probe import (
     LEDGER_COMMAND_VARIABLE,
     PROBE_PAYLOAD,
     NoReadingError,

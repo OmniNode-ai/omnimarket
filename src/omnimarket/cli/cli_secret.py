@@ -48,8 +48,8 @@ import yaml
 from omnibase_core.errors.model_onex_error import ModelOnexError
 from pydantic import SecretStr, ValidationError
 
-import omnimarket.nodes.node_claude_review_gateway_effect.handlers.handler_lab_host_bus_lane as bus_lane_reader
-import omnimarket.nodes.node_claude_review_gateway_effect.handlers.handler_review_key_credit_probe as key_probe
+import omnimarket.nodes.node_claude_review_gateway_effect.handlers.lab_host_bus_lane as bus_lane_reader
+import omnimarket.nodes.node_claude_review_gateway_effect.handlers.review_key_credit_probe as key_probe
 from omnimarket.handlers import handler_model_keys as model_keys
 from omnimarket.handlers.models_list_ladder import ladder_option, model_json
 from omnimarket.handlers.models_only_command import MODEL_COMMANDS, listed, models_text
