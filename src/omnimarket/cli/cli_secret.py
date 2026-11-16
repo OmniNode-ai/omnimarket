@@ -1228,12 +1228,10 @@ _REVIEW_GATEWAY_DRY_RUN_PAYLOAD: dict[str, object] = {
 }
 
 
-models_group.add_command(
-    key_probe.review_key_probe_command(
-        resolve_host=lambda host: _resolve_bound_host(host),
-        key_store=lambda: _tenant_key_store(),
-    ),
-    "review-gateway-key-probe",
+key_probe.attach_review_key_probe_command(
+    models_group,
+    resolve_host=lambda host: _resolve_bound_host(host),
+    key_store=lambda: _tenant_key_store(),
 )
 
 

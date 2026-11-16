@@ -339,3 +339,16 @@ def review_key_probe_command(
         click.echo(f"review-key-probe: {result.flips_written} flip(s) written")
 
     return probe
+
+
+def attach_review_key_probe_command(
+    group: click.Group,
+    *,
+    resolve_host: Callable[[str | None], str | None],
+    key_store: Callable[[], LocalByokCredentialStore],
+) -> None:
+    """Register ``review-gateway-key-probe`` on ``group``; the CLI module owns no hand wiring."""
+    group.add_command(
+        review_key_probe_command(resolve_host=resolve_host, key_store=key_store),
+        "review-gateway-key-probe",
+    )
