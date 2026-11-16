@@ -1,0 +1,100 @@
+schema_version: 1.0.0
+ticket_id: OMN-24873
+title: The floor fill node starts lanes on free lab slots in the declared order, and a scheduled alarm node names the cause when it does not
+summary: 'Measured on 2026-11-16: the floor fill runs on no host (no onex-floor-fill-tick unit), the runtime-scheduled path runs only the in-memory profile, and the live profile bound its pool seam to UnboundFloorPool,
+  so a live tick answered UNKNOWN pool-unread:unbound:pool. This change binds the live pool seam to the lane host pool snapshot file (floor_fill_live pool_snapshot_* keys) and adds node_floor_fill_alarm_compute,
+  the alarm rule. The tickets, brake and stop-signal seams, the three-tier placement order and the scheduled alarm effect are not in this change.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24873-fill-sends
+  statement: The floor fill reads the free slots it fills from the pool snapshot, and an alarm rule names the cause when free slots stay idle or a started lane does not CLAIM.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the exact reason the floor fill sends nothing or too little over the last 24 hours is named in a ticket comment with its evidence (host, timer and unit, each run''s free slots seen,
+      candidates, lanes sent and refusals, from logs, ledger rows and receipts) -- falsifier: a reader re-runs the comment''s named read commands on the named host and gets the same per-run counts'
+  - id: AC2
+    statement: 'AC2: a recorded floor holding free Claude slots, a merged change read NOT RUNNING in the lowest layer, a red-check PR with no owner, a conflicted PR with no owner and a backlog ticket makes
+      the floor fill send lanes in that order, one writer per change key, and no check is widened -- falsifier: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests -k fill_order
+      fails at the base and passes at the head'
+  - id: AC3
+    statement: 'AC3: the same tick on the recorded floor that held the measured cause sends at least one lane where it sent none before -- falsifier: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests
+      -k measured_cause_sends fails at the base and passes at the head'
+  - id: AC4
+    statement: 'AC4: a scheduled alarm node writes an alarm row naming the cause when free Claude slots stay above 5 while the floor fill sent 0 lanes for 2 runs in a row, and when a sent lane has no CLAIM
+      within 10 minutes; it writes none when slots are 5 or fewer, when any of the 2 runs sent a lane, or when the CLAIM arrived at 10 minutes or sooner -- falsifier: uv run --frozen pytest src/omnimarket/nodes
+      -k floor_fill_alarm fails at the base and passes at the head'
+  - id: AC5
+    statement: 'AC5: integrated: the branch is installed through the declared installer on the host the timer runs, two consecutive floor fill runs that send lanes are read, their CLAIM rows are read, the
+      alarm check''s run is read, and a STATUS row carries installed=<host>:<revision> observed=<runs, lanes sent> -- falsifier: readback of the timer''s stored answers, the ledger rows keyed floor:<line_id>:<task_id>
+      and the alarm node''s run line on that host'
+  - id: AC6
+    statement: 'AC6: each draft pull request body carries a Lab: line and the lane does not hand it off -- falsifier: onex scm pr-view of each pull request shows a body line starting Lab: head= and the
+      ledger holds no handoff row for it'
+evidence_requirements:
+- kind: tests
+  description: The measured-cause tick tests, the live binding tests and the floor fill alarm tests.
+  command: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_measured_cause_sends.py src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_live_binding.py
+    src/omnimarket/nodes/node_floor_fill_alarm_compute/tests -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24873-ac1-cause-comment
+  description: The cause comment on the ticket (comment a3691fd6-32c8-45c1-b271-46c8e322fbee) with the host, the timer and unit, the runs and the read commands; read back from Linear by the local Done gate.
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: command
+    check_value: onex ticket read OMN-24873 --lane dod-omn24873 | grep -q 'onex-floor-fill-tick'
+- id: dod-omn24873-ac2-fill-order
+  description: 'The three-tier placement order. Not implemented in this change: the falsifier selects no test here and fails until the order lands.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests -k fill_order -q
+    cwd: .
+- id: dod-omn24873-ac3-measured-cause-sends
+  description: A live tick on the recorded floor with free slots in the pool snapshot starts two lanes; at the base the live settings refuse the pool keys and the pool was unbound.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests -k measured_cause_sends -q
+    cwd: .
+- id: dod-omn24873-ac4-floor-fill-alarm
+  description: 'The alarm rule: two idle runs above five free slots, a missing or late CLAIM, and the quiet cases. The rule is a compute node; its scheduled effect is not in this change.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes -k floor_fill_alarm -q
+    cwd: .
+- id: dod-omn24873-ac5-integration-proof
+  description: Hosted CI cannot reach a lab host, so only the local Done gate runs this unbound check. It reads the fill host (h051, reached as hp-gen8) at the sha on a lab host and fails while no onex-floor-fill-tick
+    timer is installed there; the two sending runs and their CLAIM rows are read beside it.
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: command
+    check_value: onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24873 --kind test -- sh -c 'ssh hp-gen8 "systemctl --user list-timers --all" |
+      grep -q onex-floor-fill-tick'
+- id: dod-omn24873-ac6-lab-line
+  description: 'The draft pull request body carries a Lab: line and no handoff row exists for it; read by the local Done gate.'
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: command
+    check_value: onex scm pr-view OmniNode-ai/omnimarket --head omn-24873-floor-fill-live-pool-alarm | grep -q '^Lab:'
