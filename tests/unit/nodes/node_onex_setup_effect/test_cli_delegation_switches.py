@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pytest
 
-from omnimarket.nodes.node_hook_delegate_effect.handlers.handler_delegation_switches import (
+from omnimarket.nodes.node_hook_delegate_effect.handlers.handler_hook_delegate import (
     read_switches,
     write_switches,
 )

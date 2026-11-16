@@ -62,7 +62,7 @@ protocol_dependencies:
   required: true
   implementations:
   - handler:
-      name: AdapterDelegateCli
+      name: HandlerDelegateCli
       module: omnimarket.nodes.node_hook_delegate_effect.adapters.adapter_delegate_cli
 descriptor:
   node_archetype: effect

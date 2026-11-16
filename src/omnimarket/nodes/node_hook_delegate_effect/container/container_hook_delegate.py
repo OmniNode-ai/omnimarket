@@ -10,7 +10,7 @@ from omnibase_core.container import ModelONEXContainer
 from omnibase_core.utils.util_run_coro_sync import run_coro_sync
 
 from omnimarket.nodes.node_hook_delegate_effect.adapters.adapter_delegate_cli import (
-    AdapterDelegateCli,
+    HandlerDelegateCli,
 )
 from omnimarket.nodes.node_hook_delegate_effect.handlers.handler_hook_delegate import (
     CLI_PROTOCOL,
@@ -28,7 +28,7 @@ def create_hook_delegate_container(
     container = ModelONEXContainer()
     run_coro_sync(
         container.service_registry.register_instance(
-            interface=CLI_PROTOCOL, instance=cli or AdapterDelegateCli()
+            interface=CLI_PROTOCOL, instance=cli or HandlerDelegateCli()
         )
     )
     return container
