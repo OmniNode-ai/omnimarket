@@ -118,7 +118,9 @@ def _write_request(
 
 def test_the_decision_reaches_the_write_node_as_the_exact_github_request() -> None:
     decision = _decision()
-    (http,) = planned_requests(_write_request())
+    planned = planned_requests(_write_request())
+    assert len(planned) == 1
+    http = planned[0]
     assert (http.method, http.path) == ("POST", f"/repos/{REPO}/statuses/{HEAD}")
     body = http.body
     assert body is not None
