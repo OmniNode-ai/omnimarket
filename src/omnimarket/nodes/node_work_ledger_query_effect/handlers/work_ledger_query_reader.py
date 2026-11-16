@@ -466,13 +466,16 @@ class PostgresWorkLedgerQueryReader:
 
         Unsequenced/untimed legacy rows remain visible so the caller cannot
         mistake a partial historical backfill for complete retained history.
+        A projection-assigned (provisional) sequence is not the judge's: such a
+        row is returned unsequenced, whatever number it holds (OMN-24634).
         """
         rows = self._query(
-            "SELECT row_id, row_ts, row_type, row_lane, raw_row, source, projected_at, ledger_seq, ingested_at "
+            "SELECT row_id, row_ts, row_type, row_lane, raw_row, source, projected_at, ledger_seq, ingested_at, "
+            "ledger_seq_provisional "
             "FROM {relation} WHERE ledger_id = %s "
-            "AND (ledger_seq BETWEEN %s AND %s OR ledger_seq IS NULL) "
+            "AND (ledger_seq BETWEEN %s AND %s OR ledger_seq IS NULL OR ledger_seq_provisional) "
             "AND (ingested_at < %s OR ingested_at IS NULL) "
-            "ORDER BY ledger_seq NULLS LAST, row_id",
+            "ORDER BY ledger_seq_provisional, ledger_seq NULLS LAST, row_id",
             (ledger_id, first_seq, last_seq, until),
         )
         return tuple(
@@ -485,10 +488,21 @@ class PostgresWorkLedgerQueryReader:
                 raw_row=raw_row,
                 source=source,
                 projected_at=projected_at,
-                ledger_seq=ledger_seq,
+                ledger_seq=None if provisional else ledger_seq,
                 ingested_at=ingested_at,
             )
-            for row_id, row_ts, row_type, row_lane, raw_row, source, projected_at, ledger_seq, ingested_at in rows
+            for (
+                row_id,
+                row_ts,
+                row_type,
+                row_lane,
+                raw_row,
+                source,
+                projected_at,
+                ledger_seq,
+                ingested_at,
+                provisional,
+            ) in rows
         )
 
     def read_parity_receipts(

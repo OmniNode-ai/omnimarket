@@ -78,7 +78,7 @@ def test_error_chain_an_untracked_row_type_writes_no_latest_entry() -> None:
     result = _writer(db).handle(
         {"raw_row": FRICTION, "_topic": EnumLedgerRowType.FRICTION.topic}
     )
-    assert result == {"rows_upserted": 1}
+    assert result["rows_upserted"] == 1
     assert _latest(db) == []
 
 

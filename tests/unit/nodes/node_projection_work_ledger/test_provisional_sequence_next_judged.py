@@ -97,13 +97,25 @@ class _Connection:
             ):
                 existing["ledger_seq"] = seq
                 existing["provisional"] = provisional
-        elif head.startswith("UPDATE omninode_internal.work_ledger_rows") and (
-            "SET ledger_seq = $2" in sql
-        ):
-            row_id, seq = args[0], args[1]
-            if self._holder(seq, row_id) is not None:
-                raise _UniqueViolationError(f"ledger_seq {seq} is held")
-            self.rows[row_id]["ledger_seq"] = seq
+
+    async def fetch(self, sql: str, *args: Any) -> list[dict[str, Any]]:
+        """The writer's one move statement: the provisional rows at or above a number, in order, above the tip."""
+        assert "row_number() OVER (ORDER BY ledger_seq)" in sql
+        _ledger_id, from_seq = args
+        moving = sorted(
+            (
+                r
+                for r in self.rows.values()
+                if r["provisional"] and r["ledger_seq"] >= from_seq
+            ),
+            key=lambda r: r["ledger_seq"],
+        )
+        top = max(
+            (r["ledger_seq"] for r in self.rows.values() if r["ledger_seq"]), default=0
+        )
+        for rank, row in enumerate(moving, 1):
+            row["ledger_seq"] = top + rank
+        return [{"row_id": row["row_id"]} for row in moving]
 
 
 class _Pool:
@@ -205,4 +217,67 @@ async def test_a_redelivered_unsequenced_row_keeps_its_sequence_and_takes_no_sec
     await _project(writer, _claim(1), None)
     await _project(writer, _claim(1), None)
     assert _seqs(connection) == {_claim(1): 1}
+    assert connection.conflicts == {}
+
+
+def _order(connection: _Connection, *claims: int) -> list[int]:
+    """The claims' numbers, sorted by the sequence they hold now."""
+    held = _seqs(connection)
+    return sorted(claims, key=lambda n: held[_claim(n)])
+
+
+@pytest.mark.asyncio
+async def test_provisional_rows_keep_their_arrival_order_across_three_judge_rows() -> (
+    None
+):
+    """Review of omnimarket#6306, finding 3: rows a, b read b,a then a,b then b,a over judge rows 4, 5, 6."""
+    writer, connection = _writer()
+    for n in (1, 2, 3):
+        await _project(writer, _claim(n), n)  # the judge's rows 1-3
+    await _project(writer, _claim(7), None)  # provisional a: 4
+    await _project(writer, _claim(8), None)  # provisional b: 5
+    assert _order(connection, 7, 8) == [7, 8]
+    for judge_row, number in ((4, 4), (5, 5), (6, 6)):
+        await _project(writer, _claim(judge_row), number)
+        assert _order(connection, 7, 8) == [7, 8], f"order lost after judge {number}"
+    assert connection.conflicts == {}
+    seqs = _seqs(connection)
+    assert [seqs[_claim(n)] for n in (1, 2, 3, 4, 5, 6)] == [1, 2, 3, 4, 5, 6]
+    assert seqs[_claim(7)] < seqs[_claim(8)]
+    assert (
+        min(seqs[_claim(7)], seqs[_claim(8)]) > 6
+    )  # the judge's numbers all stand below them
+
+
+@pytest.mark.asyncio
+async def test_provisional_rows_below_the_stated_number_keep_theirs() -> None:
+    writer, connection = _writer()
+    await _project(writer, _claim(1), None)  # provisional 1
+    await _project(writer, _claim(2), None)  # provisional 2
+    await _project(
+        writer, _claim(3), 2
+    )  # judge states 2: only the provisional at or above 2 moves
+    seqs = _seqs(connection)
+    assert seqs[_claim(1)] == 1
+    assert seqs[_claim(3)] == 2
+    assert seqs[_claim(2)] == 3
+    assert writer.provisional_rows_moved == 1
+
+
+@pytest.mark.asyncio
+async def test_provisional_rows_moved_counts_each_row_moved() -> None:
+    writer, connection = _writer()
+    await _project(writer, _claim(1), 1)
+    await _project(writer, _claim(2), None)  # provisional 2
+    await _project(writer, _claim(3), None)  # provisional 3
+    assert writer.provisional_rows_moved == 0
+    await _project(
+        writer, _claim(4), 2
+    )  # judge states 2: both provisional rows are at or above it
+    assert writer.provisional_rows_moved == 2
+    await _project(
+        writer, _claim(5), 3
+    )  # judge states 3: nothing provisional holds 3 any more
+    assert writer.provisional_rows_moved == 2
+    assert writer.sequence_counters["provisional_rows_moved"] == 2
     assert connection.conflicts == {}

@@ -131,7 +131,7 @@ def test_a_claim_message_writes_the_log_row_and_opens_the_entity() -> None:
     result = _writer(db).handle(
         {"raw_row": CLAIM, "_topic": EnumLedgerRowType.CLAIM.topic}
     )
-    assert result == {"rows_upserted": 2}
+    assert result["rows_upserted"] == 2
     assert (db.connected, db.closed) == (1, 1)
     sqls = [s for s, _ in db.statements]
     assert "work_ledger_rows" in sqls[0]

@@ -68,7 +68,7 @@ def test_a_live_unsequenced_row_is_sequenced_and_lands_with_a_ledger_seq() -> No
     db = _FakeDb()
     writer = _writer(db)
     result = writer.handle(_live_row())
-    assert result == {"rows_upserted": 2}
+    assert result["rows_upserted"] == 2
     row_sql, row_args = db.statements[0]
     assert "work_ledger_rows" in row_sql
     assert (
@@ -139,30 +139,92 @@ def test_unsequenced_dead_letter_a_source_with_no_declared_order_is_refused_and_
     ) == (1, 0, 1)
 
 
-def test_unsequenced_dead_letter_count_equals_rows_in_for_a_mixed_batch() -> None:
-    db = _FakeDb()
-    writer = _writer(db)
+def _stateful_holds(monkeypatch: pytest.MonkeyPatch) -> dict[str, int]:
+    """A fake ledger that remembers the sequence each row was given, as the real table does."""
+    from tests.unit.nodes.node_projection_work_ledger import (
+        test_work_ledger_writer as w,
+    )
+
+    held: dict[str, int] = {}
+
+    async def fetchval(self: Any, sql: str, *args: Any) -> Any:
+        if "COALESCE(MAX(ledger_seq)" in sql:
+            return len(held) + 1
+        if "SELECT ledger_seq FROM" in sql:
+            return held.get(args[0])
+        return None
+
+    monkeypatch.setattr(w._FakeConnection, "fetchval", fetchval)
+    return held
+
+
+def _remember(held: dict[str, int], writer: Any, raw: str) -> None:
+    """Record, as the table would, the number the last delivery of ``raw`` gave it."""
+    from omnimarket.handlers.work_ledger_fold import fold_row
+    from omnimarket.models.model_work_ledger_fold_request import (
+        ModelWorkLedgerFoldRequest,
+    )
+
+    row_id = fold_row(
+        ModelWorkLedgerFoldRequest(raw_row=raw, source="onex-ledger")
+    ).row.row_id
+    held.setdefault(row_id, len(held) + 1)
+
+
+def test_redelivery_counts_a_newly_assigned_number_once_and_the_redeliveries_apart(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Review of omnimarket#6306, finding 4: three deliveries of one row counted three sequenced."""
+    held = _stateful_holds(monkeypatch)
+    writer = _writer(_FakeDb())
     for _ in range(3):
-        writer.handle(_live_row())
+        result = writer.handle(_live_row())
+        _remember(held, writer, CLAIM)
+    assert (
+        writer.unsequenced_live_rows_in,
+        writer.unsequenced_live_rows_sequenced,
+        writer.unsequenced_live_rows_redelivered,
+        writer.unsequenced_live_rows_dead_lettered,
+    ) == (3, 1, 2, 0)
+    # The counts ride beside rows_upserted in the result the runtime reads.
+    assert result["rows_upserted"] == 2
+    assert result["unsequenced_live_rows_in"] == 3
+    assert result["unsequenced_live_rows_sequenced"] == 1
+    assert result["unsequenced_live_rows_redelivered"] == 2
+    assert result["unsequenced_live_rows_dead_lettered"] == 0
+    assert result["provisional_rows_moved"] == 0
+
+
+def test_redelivery_mixed_batch_settles_every_delivery_as_one_outcome(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two distinct rows, one redelivered, two refused: 5 in, and in is the sum of three outcomes read apart."""
+    held = _stateful_holds(monkeypatch)
+    other = CLAIM.replace("OMN-1", "OMN-2")
+    writer = _writer(_FakeDb())
+    for raw in (CLAIM, other, CLAIM):
+        writer.handle(_live_row(raw_row=raw))
+        _remember(held, writer, raw)
     _unassigned(writer)
-    refused = 0
     for _ in range(2):
         with pytest.raises(UnsequencedLiveRowError):
             writer.handle(_live_row())
-        refused += 1
     assert writer.unsequenced_live_rows_in == 5
+    assert writer.unsequenced_live_rows_sequenced == 2
+    assert writer.unsequenced_live_rows_redelivered == 1
+    assert writer.unsequenced_live_rows_dead_lettered == 2
     assert (
         writer.unsequenced_live_rows_sequenced
+        + writer.unsequenced_live_rows_redelivered
         + writer.unsequenced_live_rows_dead_lettered
         == writer.unsequenced_live_rows_in
     )
-    assert writer.unsequenced_live_rows_dead_lettered == refused == 2
 
 
-def test_a_failed_write_leaves_no_sequenced_count_behind(
+def test_a_failed_write_is_counted_in_and_settles_as_no_outcome(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The counts are taken after the commit, so rows in == sequenced + dead-lettered holds across a failure."""
+    """A database failure leaves no outcome count, so ``in`` above the outcomes is an unfinished delivery."""
     db = _FakeDb()
 
     async def boom(sql: str, *args: Any) -> None:
@@ -172,8 +234,42 @@ def test_a_failed_write_leaves_no_sequenced_count_behind(
     writer = _writer(db)
     with pytest.raises(RuntimeError, match="database refused"):
         writer.handle(_live_row())
+    assert writer.unsequenced_live_rows_in == 1
     assert writer.unsequenced_live_rows_sequenced == 0
-    assert writer.unsequenced_live_rows_in == 0
+    assert writer.unsequenced_live_rows_redelivered == 0
+    assert writer.unsequenced_live_rows_dead_lettered == 0
+
+
+def test_assigned_sources_outside_required_sources_are_rejected() -> None:
+    """Review of omnimarket#6306, finding 5: a source the projection would sequence must be one that needs it."""
+    with pytest.raises(ValidationError, match="not in sequence_required_sources"):
+        ModelWorkLedgerProjectionConfig.model_validate(
+            {
+                "ledger_id": "rolling-work-ledger",
+                "sequence_required_sources": ["onex-ledger"],
+                "sequence_assigned_sources": ["onex-ledger", "ledger-emit"],
+                "latest_row_types": ["CLAIM"],
+            }
+        )
+    accepted = ModelWorkLedgerProjectionConfig.model_validate(
+        {
+            "ledger_id": "rolling-work-ledger",
+            "sequence_required_sources": ["onex-ledger"],
+            "sequence_assigned_sources": ["onex-ledger"],
+            "latest_row_types": ["CLAIM"],
+        }
+    )
+    assert accepted.sequence_assigned_sources == ("onex-ledger",)
+
+
+def test_assigned_sources_in_the_shipped_contract_are_a_subset_of_the_required_sources() -> (
+    None
+):
+    contract = yaml.safe_load((_NODE / "contract.yaml").read_text())["work_ledger"]
+    assert set(contract["sequence_assigned_sources"]) <= set(
+        contract["sequence_required_sources"]
+    )
+    ModelWorkLedgerProjectionConfig.model_validate(contract)
 
 
 def test_a_live_source_row_with_a_ledger_seq_is_projected() -> None:
@@ -186,7 +282,7 @@ def test_a_live_source_row_with_a_ledger_seq_is_projected() -> None:
             "ledger_seq": 17,
         }
     )
-    assert result == {"rows_upserted": 2}
+    assert result["rows_upserted"] == 2
 
 
 def test_the_backfill_source_is_not_listed_and_projects_unsequenced() -> None:
@@ -199,7 +295,7 @@ def test_the_backfill_source_is_not_listed_and_projects_unsequenced() -> None:
             "ledger_seq": None,
         }
     )
-    assert result == {"rows_upserted": 2}
+    assert result["rows_upserted"] == 2
 
 
 def test_an_unlisted_source_is_projected_even_without_a_seq() -> None:
@@ -214,7 +310,7 @@ def test_an_unlisted_source_is_projected_even_without_a_seq() -> None:
             "ledger_seq": None,
         }
     )
-    assert result == {"rows_upserted": 2}
+    assert result["rows_upserted"] == 2
 
 
 def test_the_contract_declares_the_required_sources_and_the_config_requires_the_field() -> (
@@ -288,13 +384,13 @@ def test_seam_the_live_dual_write_envelope_without_a_seq_is_sequenced_and_with_o
     sequenced = _writer(sequenced_db).handle(
         {**_live_envelope_without_seq(), "_topic": topic}
     )
-    assert sequenced == {"rows_upserted": 2}
+    assert sequenced["rows_upserted"] == 2
     assert sequenced_db.statements[0][1][9] == 1
     taken_db = _FakeDb()
     taken = _writer(taken_db).handle(
         {**_live_envelope_without_seq(), "ledger_seq": 9, "_topic": topic}
     )
-    assert taken == {"rows_upserted": 2}
+    assert taken["rows_upserted"] == 2
     assert taken_db.statements[0][1][9] == 9
     assert taken_db.statements[0][1][10] is False
 
@@ -321,4 +417,4 @@ def test_seam_the_emit_node_default_source_is_not_a_refused_source() -> None:
             "_topic": EnumLedgerRowType.CLAIM.topic,
         }
     )
-    assert result == {"rows_upserted": 2}
+    assert result["rows_upserted"] == 2

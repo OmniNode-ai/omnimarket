@@ -22,6 +22,7 @@ from omnimarket.handlers.work_ledger_seq_gap import (
 )
 from omnimarket.models.model_work_ledger_seq_gap_report import (
     MAX_RANGES,
+    ModelSeqRange,
     WorkLedgerSeqFacts,
 )
 from omnimarket.nodes.node_work_ledger_seq_gap_effect import (
@@ -409,3 +410,50 @@ def test_postgres_errors_are_redacted(
     assert "test-dsn" not in str(error.value)
     assert "postgresql://" not in str(error.value)
     assert error.value.__cause__ is None
+
+
+def test_postgres_facts_provisional_rows_are_read_as_unsequenced(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Review of omnimarket#6306, finding 2: a projection-assigned number is not a present judge sequence."""
+    from omnimarket.projection import postgres_read_database
+
+    cursor = _Cursor((1, [], [], 0, 3, 1, 1, 3, None, None))
+    monkeypatch.setenv("WORK_LEDGER_GAP_TEST_DSN", "test-dsn")
+    monkeypatch.setattr(
+        postgres_read_database, "connect_read_only", lambda _dsn: _Connection(cursor)
+    )
+    PostgresWorkLedgerSeqReader("WORK_LEDGER_GAP_TEST_DSN").read_gap_facts(
+        ledger_id="rolling-work-ledger", from_seq=1, since=None, until=None
+    )
+    # The window read counts a provisional row as one with no sequence, so it can neither bound the
+    # examined range nor fill a gap; the examined rows exclude it.
+    assert (
+        "CASE WHEN ledger_seq_provisional THEN NULL ELSE ledger_seq END" in cursor.sql
+    )
+    assert "AND NOT ledger_seq_provisional" in cursor.sql
+
+
+def test_provisional_row_at_a_lost_judge_number_reads_as_a_gap_and_not_exact() -> None:
+    """Judge rows 1-3 and 5 with judge 4 lost: the provisional row at 4 is without a sequence, so 4 is missing."""
+    report = report_from_seqs(
+        [1, 2, 3, 5], ledger_id="rolling-work-ledger", rows_without_seq=1
+    )
+    assert report.missing_ranges == (ModelSeqRange(first=4, last=4),)
+    assert report.rows_without_seq == 1
+    assert report.exact is False
+
+
+def test_provisional_row_at_the_tail_is_not_exact_against_the_expected_maximum() -> (
+    None
+):
+    """Judge rows 1-3, judge 4 lost, provisional 4: the file's maximum is 4 and the judge's present maximum is 3."""
+    report = report_from_seqs(
+        [1, 2, 3],
+        ledger_id="rolling-work-ledger",
+        rows_without_seq=1,
+        expected_max_seq=4,
+    )
+    assert report.max_seq == 3
+    assert report.tail_missing == 1
+    assert report.exact is False

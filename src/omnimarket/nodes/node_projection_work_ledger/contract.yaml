@@ -115,15 +115,20 @@ published_events:
 
 work_ledger:
   ledger_id: rolling-work-ledger
-  # onex-ledger is the live dual-write source: a row of a listed source with no
-  # ledger_seq is a write to a ledger file that is not the canonical one, and is
-  # refused to the poison dead-letter topic. The backfill source ledger-emit is
-  # not listed.
+  # onex-ledger is the live dual-write source: a row of a listed source arrives with its ledger_seq from the
+  # judge. A listed row that arrives with none is a write to a ledger file that is not the canonical one. The
+  # projection gives it a provisional ledger_seq when the source is also in sequence_assigned_sources (below);
+  # it is refused to the poison dead-letter topic only when the source is listed here and NOT named there,
+  # which the shipped contract never does (the refusal is unreachable under it). The backfill source
+  # ledger-emit is not listed.
   sequence_required_sources: [onex-ledger]
   # OMN-24634: a listed source named here gets a PROVISIONAL ledger_seq from the projection (tip+1 under the
-  # ledger advisory lock, in arrival order on the ledger's single-partition topic). The judge owns the
-  # sequence: when it states that number on a row it accepts, the projection moves its own row and the
-  # judge's number stands. A listed source not named here is refused to the poison dead-letter topic.
+  # ledger advisory lock, so a new row sorts after every row already held). Every source named here must also be
+  # in sequence_required_sources (the config model refuses it otherwise). The judge owns the sequence: when it
+  # states a number a provisional row holds, the judge's number stands and the projection moves its own rows:
+  # the provisional rows at or above that number go, in their current order, above the tip, so provisional rows
+  # keep their relative order to one another. A provisional row is read as unsequenced by every reader (the
+  # unjudged-row reading, the gap check, the history completeness read and the parity split).
   sequence_assigned_sources: [onex-ledger]
   # OMN-23606: the row types work_ledger_latest keeps the newest row of, per lane and per ticket. A board or lane
   # placement reads that table (the work ledger query node's latest-state query) instead of paging raw rows.

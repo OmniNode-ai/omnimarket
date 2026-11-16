@@ -173,12 +173,16 @@ class PostgresWorkLedgerSeqReader:
         Counts with a seq cover the examined range, including rows outside the
         timestamp window. Unsequenced counts and newest_row_ts cover the window.
         Inclusive timestamp bounds match the existing ledger read boundary.
+        A projection-assigned (provisional) sequence is not the judge's: such a row counts
+        as unsequenced and never as a present sequence (OMN-24634).
         """
         if from_seq < 1 or (since is None) != (until is None):
             raise ValueError("invalid sequence range or unpaired window bounds")
         sql = f"""
             WITH window_rows AS (
-                SELECT ledger_seq, row_ts FROM {self._relation}
+                SELECT CASE WHEN ledger_seq_provisional THEN NULL ELSE ledger_seq END
+                           AS ledger_seq, row_ts
+                FROM {self._relation}
                 WHERE ledger_id = %(ledger_id)s
                   AND (%(since)s::timestamptz IS NULL OR row_ts >= %(since)s)
                   AND (%(until)s::timestamptz IS NULL OR row_ts <= %(until)s)
@@ -193,6 +197,7 @@ class PostgresWorkLedgerSeqReader:
             ), examined AS (
                 SELECT ledger_seq, row_ts FROM {self._relation}, bounds
                 WHERE ledger_id = %(ledger_id)s AND ledger_seq BETWEEN lo AND hi
+                  AND NOT ledger_seq_provisional
             ), present AS (
                 SELECT ledger_seq, count(*) AS n, max(row_ts) AS row_ts
                 FROM examined GROUP BY ledger_seq
