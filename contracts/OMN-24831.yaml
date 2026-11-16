@@ -1,0 +1,42 @@
+schema_version: 1.0.0
+ticket_id: OMN-24831
+title: 'Shared red delegation-health-check / Delegation Health Check: omnimarket dev''s newest delegation-regression-nightly run reads failed, so the check is red on every runtime pull request'
+summary: 'The nightly''s Layer-2 runner scored eight cases against rows that never received a terminal outcome as several behavioural misses ("got ''unknown''", "tokens: expected positive"). It now names the one fact, that the row has no terminal outcome, without loosening any case. AC1 (the cause named from three pull requests'' failure text) and AC4 (the Lab line in the pull request body) are read from the ledger and the pull request body, not from hosted CI.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24831-nightly-names-its-cause
+  statement: The delegation regression nightly states why a case failed on a row with no terminal outcome, and still fails that case.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: one pull request on the default branch of the repository that owns the cause fixes it at the source, with a test that fails on the unfixed code and passes on the fix -- falsifier: `uv run pytest <the new test path> -q` run at the unfixed base commit passes, or `onex scm pr-view` shows no such pull request'
+  - id: AC3
+    statement: 'AC3: the fix widens or bypasses no check, so the diff removes no assertion and adds no skip, xfail, loosened threshold or changed required-check list -- falsifier: `git diff <base> <head> -- tests/ .github/` shows a removed assert, a new skip or xfail marker or a changed required-check list'
+evidence_requirements:
+- kind: tests
+  description: The new runner test and the runner tests it sits beside.
+  command: env -u PYTHONPATH uv run --frozen pytest tests/delegation_golden/test_runner_unterminalised_row_omn24831.py tests/delegation_golden/test_runner_terminal_ok_omn13543.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24831-ac2-names-the-unterminalised-row
+  description: A row with terminal_ok NULL scores one failure naming the missing terminal outcome instead of a wrong-terminal line and a token line. The test fails at the merge base, where evaluate_row still reports "got 'unknown'".
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/delegation_golden/test_runner_unterminalised_row_omn24831.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24831-ac3-case-still-fails
+  description: Hosted proxy for AC3. The same test file asserts that cases I9 and I10 still fail on an unterminalised row, that a completed row is still judged on its behaviour, and that a wrong terminal keeps its old text. No assertion, skip, xfail or threshold changes.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/delegation_golden/test_runner_unterminalised_row_omn24831.py -q --no-cov -n 0 -p no:randomly -k "the_case_still_fails or still_judged or still_a_behavioural_miss"
+    cwd: .

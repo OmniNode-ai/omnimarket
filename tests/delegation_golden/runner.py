@@ -697,6 +697,28 @@ def evaluate_row(case: ModelCorpusCase, row: dict[str, Any]) -> list[str]:
             failures.append(f"terminal: expected {exp.terminal!r}, got {terminal!r}")
         return failures
 
+    # OMN-24831: a row with no outer outcome after its settle window is a
+    # statement about the lane, not about the ladder. Scheduled run 43826372809
+    # (job 133161076598) scored eight cases ``expected 'completed', got
+    # 'unknown'`` plus ``tokens: expected positive, got input=0 output=0``:
+    # several behavioural-looking misses for ONE fact, that no terminal was ever
+    # written for a row the platform had started. The case still fails (the
+    # terminal it expects was not observed); it fails once, under its own name.
+    # Only a case that declares a terminal is short-circuited, so no pass/fail
+    # verdict changes -- only what the reader is told.
+    if terminal == "unknown" and exp.terminal is not None:
+        failures.append(
+            f"no terminal outcome: the row was projected "
+            f"(delegated_to={row.get('delegated_to')!r}, "
+            f"model_name={row.get('model_name')!r}) but terminal_ok is still NULL "
+            f"after the settle window, so the delegation did not terminalise or "
+            f"its terminal event was not projected on lane {_LANE}; expected "
+            f"terminal {exp.terminal!r}. This is a lane/platform fact, not a "
+            "behavioural expectation miss: read the lane's delegate-skill "
+            "consumer and projection, not the ladder."
+        )
+        return failures
+
     delegated_to = row.get("delegated_to")
     model_name = row.get("model_name")
     tokens_in = int(row.get("tokens_input") or 0)
