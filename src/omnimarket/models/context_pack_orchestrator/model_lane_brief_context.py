@@ -42,6 +42,15 @@ class ModelLaneBriefExemplarChoice(BaseModel):
     path: str = Field(min_length=1)
     excerpt: str = Field(min_length=1)
 
+    @field_validator("excerpt")
+    @classmethod
+    def _excerpt_is_not_blank(cls, excerpt: str) -> str:
+        if not excerpt.strip():
+            raise ValueError(
+                "excerpt is blank; a choice carries text cut from the file"
+            )
+        return excerpt
+
 
 class ModelLaneBriefContextRequest(BaseModel):
     """What the lane will do and the facts the deterministic tiers are read from."""
@@ -52,6 +61,8 @@ class ModelLaneBriefContextRequest(BaseModel):
     lane: str = Field(min_length=1)
     task: str = Field(min_length=1)
     profile_name: str = Field(default="lane_brief_context", min_length=1)
+    # The repository the paths are in: a ledger row may name a path as ``<repository>/src/a.py``.
+    repository: str = Field(default="omnimarket", min_length=1)
     files_to_touch: tuple[str, ...] = ()
     review_comments: tuple[ModelLaneBriefReviewComment, ...] = ()
     exemplar_candidates: tuple[ModelLaneBriefExemplarCandidate, ...] = ()
@@ -63,6 +74,18 @@ class ModelLaneBriefContextRequest(BaseModel):
         if any(not p.strip() for p in paths):
             raise ValueError("files_to_touch names a blank path; every path is a file")
         return paths
+
+    @field_validator("exemplar_candidates")
+    @classmethod
+    def _no_duplicate_candidate_path(
+        cls, candidates: tuple[ModelLaneBriefExemplarCandidate, ...]
+    ) -> tuple[ModelLaneBriefExemplarCandidate, ...]:
+        paths = [c.path for c in candidates]
+        if repeated := sorted({p for p in paths if paths.count(p) > 1}):
+            raise ValueError(
+                f"exemplar_candidates names a path twice: {repeated}; one path is one candidate"
+            )
+        return candidates
 
 
 class ModelLaneBriefRungAttempt(BaseModel):

@@ -583,3 +583,132 @@ def test_lane_brief_context_tiers_required_risk_classes_are_checked_for_a_path(
     )
     with pytest.raises(LaneBriefContextRefusedError, match="lacks classes"):
         load_lane_brief_risks(path)
+
+
+# --- OMN-24768: review findings on the second head ---------------------------------------------------
+
+
+class _RaisingRung(_Rung):
+    """A rung whose transport raises (not a ``LaneBriefRungError``) instead of choosing."""
+
+    def __init__(self, name: EnumLaneBriefRung, error: Exception) -> None:
+        super().__init__(name)
+        self._error = error
+
+    def select(
+        self,
+        request: ModelLaneBriefContextRequest,
+        candidates: Sequence[ModelLaneBriefExemplarCandidate],
+    ) -> ModelLaneBriefExemplarChoice:
+        self.calls += 1
+        raise self._error
+
+
+@pytest.mark.parametrize(
+    "error", [TimeoutError("lab rung timed out"), ConnectionError("reset")]
+)
+def test_rung_timeout_falls_back_with_a_recorded_reason(error: Exception) -> None:
+    rungs = _rungs(local=_RaisingRung(EnumLaneBriefRung.LOCAL, error))
+    built = _handler(rungs).handle(_request())
+    exemplar = next(t for t in built.tiers if t.tier is EnumLaneBriefTier.EXEMPLAR)
+    assert [(a.rung, a.outcome) for a in exemplar.rungs] == [
+        (EnumLaneBriefRung.LOCAL, "fell_back"),
+        (EnumLaneBriefRung.GLM, "selected"),
+    ]
+    assert type(error).__name__ in (exemplar.rungs[0].reason or "")
+    assert rungs[1].calls == 1
+
+
+def test_rung_timeout_on_every_rung_refuses_the_pack_typed_not_untyped() -> None:
+    rungs = [_RaisingRung(r.name, TimeoutError()) for r in _rungs()]
+    with pytest.raises(LaneBriefContextRefusedError, match="every rung fell back"):
+        _handler(rungs).handle(_request())
+    assert [r.calls for r in rungs] == [1, 1, 1]
+
+
+def test_duplicate_candidate_path_is_refused_by_the_request_model() -> None:
+    twice = (
+        ModelLaneBriefExemplarCandidate(path="src/a.py", text="x = 1\n"),
+        ModelLaneBriefExemplarCandidate(path="src/a.py", text="y = 2\n"),
+    )
+    with pytest.raises(ValidationError, match=r"exemplar_candidates.*src/a\.py"):
+        _request(exemplar_candidates=twice)
+
+
+@pytest.mark.parametrize("blank", [" ", "\n\t "])
+def test_blank_excerpt_is_refused_by_the_choice_model(blank: str) -> None:
+    with pytest.raises(ValidationError, match="excerpt"):
+        ModelLaneBriefExemplarChoice(path="src/a.py", excerpt=blank)
+
+
+def test_lane_history_boundary_repository_prefixed_and_dot_slash_paths_count() -> None:
+    history = _history_of(
+        ticket="OMN-9",
+        files_to_touch=("src/a.py",),
+        ledger_rows=(
+            "2026-11-16T01:00:00Z | STATUS | lane=a | touched omnimarket/src/a.py | wanted prefixed",
+            "2026-11-16T01:01:00Z | STATUS | lane=b | touched ./src/a.py | wanted dot-slash",
+            "2026-11-16T01:02:00Z | STATUS | lane=c | touched other/src/a.py | not wanted",
+            "2026-11-16T01:03:00Z | STATUS | lane=d | touched tests/src/a.py | not wanted either",
+        ),
+    )
+    assert "wanted prefixed" in history
+    assert "wanted dot-slash" in history
+    assert "not wanted" not in history
+
+
+def test_lane_history_boundary_a_prefixed_needle_matches_the_bare_path_row() -> None:
+    history = _history_of(
+        ticket="OMN-9",
+        files_to_touch=("./src/a.py",),
+        ledger_rows=(
+            "2026-11-16T01:00:00Z | STATUS | lane=a | touched src/a.py | hit",
+        ),
+    )
+    assert "| hit" in history
+
+
+def test_lane_history_boundary_ticket_named_by_its_contract_file_counts() -> None:
+    history = _history_of(
+        ticket="OMN-1",
+        files_to_touch=("src/a.py",),
+        ledger_rows=(
+            "2026-11-16T01:00:00Z | STATUS | lane=a | wrote contracts/OMN-1.yaml | wanted",
+            "2026-11-16T01:01:00Z | STATUS | lane=b | wrote contracts/OMN-12.yaml | not wanted",
+        ),
+    )
+    assert "| wanted" in history
+    assert "not wanted" not in history
+
+
+def _routes_accepting(payload: dict[str, Any]) -> list[str]:
+    contract, _ = _lane_brief_route()
+    accepting: list[str] = []
+    for entry in contract["handler_routing"]["handlers"]:
+        model = _resolve(entry["event_model"]["module"], entry["event_model"]["name"])
+        try:
+            model.model_validate(payload)
+        except ValidationError:
+            continue
+        accepting.append(entry["event_model"]["name"])
+    return accepting
+
+
+def test_route_exclusion_each_payload_validates_against_exactly_one_route_event_model() -> (
+    None
+):
+    lane_brief = _request().model_dump(mode="json")
+    generic = {
+        "request": {"profile_name": "compaction_orchestrator", "session_id": "s-1"},
+        "access": {"tenant_id": "tenant-a"},
+    }
+    assert _routes_accepting(lane_brief) == [ModelLaneBriefContextRequest.__name__]
+    assert _routes_accepting(generic) == ["ModelContextPackCommand"]
+
+
+def test_routing_reply_goes_to_the_nodes_declared_terminal_topics() -> None:
+    contract, _ = _lane_brief_route()
+    terminal = contract["runtime_dispatch"]["terminal_events"]
+    assert terminal["success"] in contract["externally_consumed_topics"]
+    assert terminal["failure"] in contract["externally_consumed_topics"]
+    assert contract["runtime_dispatch"]["command_topic"] not in terminal.values()

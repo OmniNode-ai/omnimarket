@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-24688
 title: A code lane brief carries a context pack built from a lane-brief context profile and approved by the orchestrator
-summary: node_context_pack_orchestrator gains the lane_brief_context profile (seven budgeted tiers) and a handler that builds the pack with final_pack_hash, reads six tiers by code and records every rung the model-selected exemplar tier tried.
+summary: node_context_pack_orchestrator gains the lane_brief_context profile (seven budgeted tiers) and a handler that builds the pack with final_pack_hash, reads six tiers by code and records every rung the model-selected exemplar tier tried. The rung and reader binding has no ticket yet; until one binds them, the routed capability refuses every bus request, typed, before any model is called.
 is_seam_ticket: false
 interface_change: true
 interfaces_touched:

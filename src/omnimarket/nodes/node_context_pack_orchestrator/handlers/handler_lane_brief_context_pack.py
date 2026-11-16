@@ -59,7 +59,11 @@ class LaneBriefContextRefusedError(ValueError):
 
 
 class LaneBriefRungError(Exception):
-    """A rung could not choose (a timeout, an unreadable answer); the chain falls back to the next."""
+    """A rung could not choose (a timeout, an unreadable answer); the chain falls back to the next.
+
+    A rung that lets a transport error (``OSError``: ``TimeoutError``, ``ConnectionError``) escape is
+    treated the same way.
+    """
 
 
 class ModelLaneBriefRisk(BaseModel):
@@ -95,14 +99,32 @@ def _tokens(text: str) -> int:
     return max(1, (len(text) + 3) // 4)  # heuristic_chars, the profile default
 
 
-def _names(row: str, needle: str) -> bool:
-    """Whether the row names the id or path on token boundaries: OMN-1 is not OMN-12, src/a.py is not tests/src/a.pyi."""
-    return re.search(rf"(?<![\w./-]){re.escape(needle)}(?![\w-]|\.\w)", row) is not None
+def _names_ticket(row: str, ticket: str) -> bool:
+    """Whether the row names the ticket id on id boundaries: OMN-1 is not OMN-12, and is in contracts/OMN-1.yaml."""
+    return re.search(rf"(?<![\w-]){re.escape(ticket)}(?![\w-])", row) is not None
+
+
+def _names_path(row: str, path: str, repository: str) -> bool:
+    """Whether the row names the path, bare, as ``./<path>`` or as ``<repository>/<path>``.
+
+    Any other directory in front makes it another file (tests/src/a.py is not src/a.py), and a longer
+    tail does too (src/a.py is not src/a.pyi or src/a.py.bak).
+    """
+    bare = path.removeprefix("./").removeprefix(f"{repository}/")
+    prefix = rf"(?:\./|{re.escape(repository)}/)?"
+    return (
+        re.search(rf"(?<![\w./-]){prefix}{re.escape(bare)}(?![\w-]|\.\w)", row)
+        is not None
+    )
 
 
 def _lane_history(request: ModelLaneBriefContextRequest) -> str:
-    needles = (request.ticket, *request.files_to_touch)
-    rows = [r for r in request.ledger_rows if any(_names(r, n) for n in needles)]
+    rows = [
+        r
+        for r in request.ledger_rows
+        if _names_ticket(r, request.ticket)
+        or any(_names_path(r, f, request.repository) for f in request.files_to_touch)
+    ]
     return (
         "\n".join(rows) if rows else "no ledger row names the ticket or a file to touch"
     )
@@ -232,12 +254,16 @@ class HandlerLaneBriefContextPack:
             try:
                 choice = rung.select(request, request.exemplar_candidates)
                 self._check_choice(choice, by_path, budget)
-            except (LaneBriefRungError, ValueError) as exc:
+            except (LaneBriefRungError, ValueError, OSError) as exc:
+                # OSError is the transport family (TimeoutError, ConnectionError): a rung that
+                # does not wrap its own transport failure still falls back, never aborts the pack.
                 attempts.append(
                     ModelLaneBriefRungAttempt(
                         rung=rung.name,
                         outcome="fell_back",
-                        reason=str(exc) or type(exc).__name__,
+                        reason=f"{type(exc).__name__}: {exc}".rstrip(": ")
+                        if isinstance(exc, OSError)
+                        else str(exc) or type(exc).__name__,
                     )
                 )
                 continue

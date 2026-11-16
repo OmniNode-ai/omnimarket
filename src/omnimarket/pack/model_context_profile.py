@@ -15,8 +15,9 @@ from omnimarket.models.context_pack.model_context_task_kind_rule import (
 )
 from omnimarket.models.context_pack.model_context_tier_spec import (
     ModelContextTierSpec,
-    check_tier_specs_in_order,
+    check_profile_tier_specs,
 )
+from omnimarket.models.context_pack.model_context_window import check_context_window
 
 #: Factors of plan section 4.2 rows 1 to 5: bytes depend only on the pinned commit.
 STABLE_TIER_FACTORS: frozenset[EnumContextFactor] = frozenset(
@@ -80,16 +81,7 @@ class ModelContextProfile(BaseModel):
 
     @model_validator(mode="after")
     def _validate_tier_specs(self) -> ModelContextProfile:
-        if not self.tier_specs:
-            return self
-        check_tier_specs_in_order(self.tier_specs)
-        if not {spec.factor for spec in self.tier_specs} <= set(self.required_factors):
-            raise ValueError("every tier_specs factor must be in required_factors")
-        total = sum(spec.token_budget for spec in self.tier_specs)
-        if total > self.token_budget:
-            raise ValueError(
-                f"tier_specs budgets sum to {total}, above token_budget {self.token_budget}"
-            )
+        check_profile_tier_specs(self)
         return self
 
     @model_validator(mode="after")
@@ -177,26 +169,7 @@ class ModelContextProfile(BaseModel):
 
     @model_validator(mode="after")
     def _validate_window(self) -> ModelContextProfile:
-        window = (
-            self.context_window_tokens,
-            self.reserved_output_tokens,
-            self.reserved_system_tokens,
-        )
-        if all(value is None for value in window):
-            return self
-        if any(value is None for value in window):
-            raise ValueError(
-                "context_window_tokens, reserved_output_tokens and "
-                "reserved_system_tokens are declared together: a window is its "
-                "declared size minus its reserved output and system shares"
-            )
-        effective = self.effective_window_tokens()
-        if effective is None or effective < self.token_budget:
-            raise ValueError(
-                f"effective window {effective} (context_window_tokens minus the "
-                f"reserved output and system shares) is below token_budget "
-                f"{self.token_budget}"
-            )
+        check_context_window(self)
         return self
 
     def effective_window_tokens(self) -> int | None:

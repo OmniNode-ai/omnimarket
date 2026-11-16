@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-24732
 title: Pull request 6318 routes the lane brief context handler through the node, matches lane history on token boundaries and refuses a misordered or over-budget pack before a rung call, and every blocking review finding is fixed or argued
-summary: The four blocking review findings on the lane_brief_context change are fixed on the same branch - the handler is routed from the node contract, lane history matches on token boundaries, out-of-order tier_specs are refused in profile validation, and an over-budget exemplar excerpt falls back with a recorded reason.
+summary: The four blocking review findings on the lane_brief_context change are fixed on the same branch - the handler is routed from the node contract, lane history matches on token boundaries, out-of-order tier_specs are refused in profile validation, and an over-budget exemplar excerpt falls back with a recorded reason. The rung and reader binding has no ticket yet; the reply of the routed capability goes to the node's success and failure terminal topics.
 is_seam_ticket: false
 interface_change: true
 interfaces_touched:
@@ -31,7 +31,7 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn24732-ac1
-  description: The contract routes HandlerLaneBriefContextPack by its own command topic, and the command path builds the pack or refuses it typed before any rung call.
+  description: The contract routes HandlerLaneBriefContextPack on the node's one command topic, told apart from the generic pack command by payload type, and the command path builds the pack or refuses it typed before any rung call.
   source: manual
   binds_ac:
   - AC1

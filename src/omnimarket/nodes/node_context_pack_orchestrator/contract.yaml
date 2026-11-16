@@ -62,8 +62,12 @@ handler_routing:
         module: omnimarket.models.context_pack_orchestrator
     # The lane-brief context pack (capability context.pack.lane_brief): the node's one command topic carries
     # it too, told apart from a generic pack request by payload type, and its own handler builds it. The
-    # runtime constructs that handler with no arguments. No rung or reader is bound yet, so until a composition root
-    # binds them a request is refused, typed, before any model is called.
+    # runtime constructs that handler with no arguments. No rung or reader is bound yet, so until a composition
+    # root binds them a request is refused, typed, before any model is called.
+    # Reply: the lane-brief pack has no topic of its own (a new topic needs a broker grant). It is answered on
+    # this node's terminal topics, correlated by the command's id: a built ModelLaneBriefContextPack on
+    # runtime_dispatch.terminal_events.success and a typed refusal on .failure. A consumer of those topics
+    # tells a lane-brief reply from a generic ModelContextPackBuilt by its payload type.
     - operation: context.pack.lane_brief
       message_category: command
       handler:
