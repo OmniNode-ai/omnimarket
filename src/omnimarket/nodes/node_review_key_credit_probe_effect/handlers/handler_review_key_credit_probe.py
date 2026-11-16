@@ -204,11 +204,11 @@ class HandlerReviewKeyCreditProbe:
     async def handle(
         self, request: ModelReviewKeyCreditProbeRequest
     ) -> ModelReviewKeyCreditProbeResult:
+        from omnimarket.models.model_claude_review_gateway_request import (
+            ModelClaudeReviewGatewayRequest,
+        )
         from omnimarket.nodes.node_claude_review_gateway_effect.handlers.handler_claude_review_gateway import (
             ReviewKeyProbe,
-        )
-        from omnimarket.nodes.node_claude_review_gateway_effect.models.model_claude_review_gateway import (
-            ModelClaudeReviewGatewayRequest,
         )
 
         probe = ReviewKeyProbe(

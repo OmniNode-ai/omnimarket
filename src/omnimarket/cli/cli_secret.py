@@ -1303,14 +1303,14 @@ def review_gateway(
     dry_run: bool,
 ) -> None:
     """Serve a Hostile Review voter endpoint on this host's Claude keys (OMN-21014)."""
+    from omnimarket.models.model_claude_review_gateway_request import (
+        ModelClaudeReviewGatewayRequest,
+    )
     from omnimarket.nodes.node_claude_review_gateway_effect.handlers.handler_claude_review_gateway import (
         GATEWAY_PLAN,
         HandlerClaudeReviewGateway,
         ProtocolGatewayEventBus,
         run_dry,
-    )
-    from omnimarket.nodes.node_claude_review_gateway_effect.models.model_claude_review_gateway import (
-        ModelClaudeReviewGatewayRequest,
     )
 
     try:
