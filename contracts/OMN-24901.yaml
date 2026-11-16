@@ -1,0 +1,116 @@
+schema_version: 1.0.0
+ticket_id: OMN-24901
+title: Temporal workflow 1 proves each merged change runs where it belongs
+summary: 'node_prove_running_workflow: a Temporal workflow, id <repo>#<n>@<sha>, whose every step is one activity running a node command: read install status, install through the declared installer when
+  needed, durable wait and read running up to a declared limit and deadline, then a ledger STATUS row or an alarm row through the ledger CLI; a starter starts one workflow per NOT RUNNING line of an integration
+  pass batch.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24901-prove-running
+  statement: Each merged change is proven running where it belongs by one durable workflow whose every step is one of our nodes, ending in a STATUS row or an alarm row.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the workflow id is repo#n@sha, so a second start for the same change is refused or joins the first and the install and read steps run once -- falsifier: `uv run pytest -m unit <workflow
+      test file> -k duplicate_start` against Temporal''s test server'
+  - id: AC2
+    statement: 'AC2: every step is an activity that calls one of our nodes through onex run-node or the node''s declared CLI, and the workflow body holds no inline logic -- falsifier: `uv run pytest -m
+      unit <workflow test file> -k activities_call_nodes` fails when an activity is replaced by inline code'
+  - id: AC3
+    statement: 'AC3: a worker restart during the durable wait does not run the install or read step a second time -- falsifier: `uv run pytest -m unit <workflow test file> -k worker_restart_mid_wait` against
+      Temporal''s test server, counting step keys'
+  - id: AC4
+    statement: 'AC4: a change that never runs ends in an alarm row naming the change and the last reading after the declared deadline, and a change that runs ends in a STATUS row kv pr=<repo>#<n> installed=<host>:<revision>
+      observed=<what ran> read_at=<UTC> written through the ledger node -- falsifier: `uv run pytest -m unit <workflow test file> -k "never_runs or proves_running"`'
+  - id: AC5
+    statement: 'AC5: a starter feeds the workflow the integration ledger''s bottom-layer NOT RUNNING lines, one start per line -- falsifier: `uv run pytest -m unit <starter test file> -k not_running_lines`'
+  - id: AC6
+    statement: 'AC6: workflow 1 ran on h051 for three real NOT RUNNING lines and each line''s outcome (STATUS row or alarm row) is on the ledger -- falsifier: grep of the ledger for the three pr= cells
+      with their read_at values'
+  - id: AC7
+    statement: 'AC7: the draft pull request body carries a Lab: line and the lane handed off nothing -- falsifier: `onex scm pr-view <repo>#<n>` body read for the Lab: line'
+evidence_requirements:
+- kind: tests
+  description: The workflow and starter tests against Temporal's time-skipping test server.
+  command: uv run pytest -m unit tests/nodes/node_prove_running_workflow -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24901-ac1
+  description: the workflow id is repo#n@sha, so a second start for the same change is refused or joins the first and the install and read steps run once
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest -m unit tests/nodes/node_prove_running_workflow/test_prove_running_workflow.py -q --no-cov -p no:randomly -k 'duplicate_start'
+    cwd: .
+- id: dod-omn24901-ac2
+  description: every step is an activity that calls one of our nodes through onex run-node or the node's declared CLI, and the workflow body holds no inline logic
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest -m unit tests/nodes/node_prove_running_workflow/test_prove_running_workflow.py -q --no-cov -p no:randomly -k 'activities_call_nodes'
+    cwd: .
+- id: dod-omn24901-ac3
+  description: a worker restart during the durable wait does not run the install or read step a second time
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest -m unit tests/nodes/node_prove_running_workflow/test_prove_running_workflow.py -q --no-cov -p no:randomly -k 'worker_restart_mid_wait'
+    cwd: .
+- id: dod-omn24901-ac4
+  description: a change that never runs ends in an alarm row naming the change and the last reading after the declared deadline, and a change that runs ends in a STATUS row kv pr=<repo>#<n> installed=<host>:<revision>
+    observed=<what ran> read_at=<UTC> written through the ledger node
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest -m unit tests/nodes/node_prove_running_workflow/test_prove_running_workflow.py -q --no-cov -p no:randomly -k 'never_runs or proves_running'
+    cwd: .
+- id: dod-omn24901-ac5
+  description: a starter feeds the workflow the integration ledger's bottom-layer NOT RUNNING lines, one start per line
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest -m unit tests/nodes/node_prove_running_workflow/test_prove_running_starter.py -q --no-cov -p no:randomly -k 'not_running_lines'
+    cwd: .
+- id: dod-omn24901-ac6-row-shape
+  description: 'The row a live run writes for each line: a STATUS row pr= installed= observed= read_at= or an alarm row naming the change and its last reading, appended through the ledger CLI. The live
+    h051 rows are the unbound local Done gate check below.'
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest -m unit tests/nodes/node_prove_running_workflow/test_prove_running_workflow.py -q --no-cov -p no:randomly -k 'never_runs or proves_running'
+    cwd: .
+- id: dod-omn24901-integration-proof
+  description: 'Hosted CI cannot reach the h051 Temporal server, so only the local Done gate runs this unbound check: on a lab host at the sha, workflow 1 is started for up to three NOT RUNNING lines of
+    an integration pass batch against the live Temporal server and waited on; each ends in a STATUS row or an alarm row on the ledger.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24901 --kind test -- sh -c 'uv run --frozen python -m omnimarket.nodes.node_prove_running_workflow
+      start --target-host "$ONEX_TEMPORAL_TARGET" --batch "$PROVE_RUNNING_BATCH" --limit 3 --wait'
+    cwd: .
+- id: dod-omn24901-ac7-lab-line
+  description: 'The draft pull request body carries a Lab: line.'
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: command
+    check_value: 'gh pr view omn-24901-prove-running-workflow --repo OmniNode-ai/omnimarket --json body --jq .body | grep -Eq ''^Lab: '''
+    cwd: .

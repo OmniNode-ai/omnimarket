@@ -1,0 +1,105 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_prove_running_workflow
+lifecycle: experimental
+node_type: ORCHESTRATOR_GENERIC
+runtime_profiles: []
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Workflow 1, prove-running, on the Temporal server the stage A pilot proved. One workflow per merged change, id
+  <repo>#<n>@<sha>, so a change is never proven twice. Its steps are one activity that runs a node command each:
+  read the change's install status (node_merged_change_reading_effect), install it through the target's declared
+  installer when it is not installed, wait with a durable timer and read it running (the same reading node),
+  retrying up to the declared limit before the declared deadline, then write a ledger STATUS row
+  pr=<repo>#<n> installed=<host>:<revision> observed=<what ran> read_at=<UTC> or an alarm row naming the change and
+  the last reading, through the ledger CLI. The workflow body orders the steps and owns the timer, the limit and the
+  deadline; it holds no other logic. The starter starts one workflow per NOT RUNNING line of an integration pass.
+input_model:
+  name: ModelProveRunningStartRequest
+  module: omnimarket.nodes.node_prove_running_workflow.models.model_prove_running
+  description: One integration pass's readings and how many NOT RUNNING lines to start.
+output_model:
+  name: ModelProveRunningStartBatch
+  module: omnimarket.nodes.node_prove_running_workflow.models.model_prove_running
+  description: One change to prove per NOT RUNNING line, oldest merge first, and the lines skipped with the reason.
+handler:
+  module: omnimarket.nodes.node_prove_running_workflow.handlers.handler_prove_running_starter
+  class: HandlerProveRunningStarter
+  input_model: omnimarket.nodes.node_prove_running_workflow.models.model_prove_running.ModelProveRunningStartRequest
+  output_model: omnimarket.nodes.node_prove_running_workflow.models.model_prove_running.ModelProveRunningStartBatch
+dependencies:
+  - name: omnimarket.nodes.node_merged_change_reading_effect
+    dependency_type: internal
+    description: "the read steps call its declared CLI and read its typed result (omnimarket.models.model_merged_change_reading)."
+    required: true
+  - name: omnimarket.models.integration_reading
+    dependency_type: internal
+    description: "the starter reads the integration pass's typed batch; no text parser of its own."
+    required: true
+  - name: temporalio
+    dependency_type: library
+    description: "the workflow, the activity, the worker and the starter (the optional extra temporal)."
+    required: true
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_prove_running_workflow.handlers.handler_prove_running_starter:HandlerProveRunningStarter
+  handlers:
+    - operation: handle
+      handler:
+        name: HandlerProveRunningStarter
+        module: omnimarket.nodes.node_prove_running_workflow.handlers.handler_prove_running_starter
+    - operation: build_row
+      handler:
+        name: HandlerProveRunningRows
+        module: omnimarket.nodes.node_prove_running_workflow.handlers.handler_prove_running_rows
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: >-
+    python -m omnimarket.nodes.node_prove_running_workflow worker --target-host <host:port> runs the worker;
+    python -m omnimarket.nodes.node_prove_running_workflow start --target-host <host:port> --batch <batch.json> starts
+    one workflow per NOT RUNNING line. The server is the Temporal server a host install brings up; this node never
+    starts it.
+descriptor:
+  node_archetype: orchestrator
+  purity: effectful
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 600000
+metadata:
+  transport_type: local
+  description: Prove each merged change runs where it belongs, one durable workflow per change.
+  author: OmniNode Team
+  created: '2026-11-16'
+# The declared settings of workflow 1. Every step argv names a node command; {python} is the worker's interpreter.
+prove_running:
+  task_queue: onex-prove-running
+  lane: prove-running
+  ticket: OMN-24901
+  wait_seconds: 300
+  max_readings: 6
+  deadline_seconds: 3600
+  step_timeout_seconds: 600
+  step_max_attempts: 3
+  read_timeout_seconds: 300
+  verdict_running: SEEN_RUNNING
+  steps:
+    read_status: ["{python}", "-m", "omnimarket.nodes.node_prove_running_workflow", "read"]
+    install: ["{python}", "-m", "omnimarket.nodes.node_prove_running_workflow", "install"]
+    read_running: ["{python}", "-m", "omnimarket.nodes.node_prove_running_workflow", "read"]
+    write_status: ["{python}", "-m", "omnimarket.nodes.node_prove_running_workflow", "write-row", "--outcome", "proved"]
+    write_alarm: ["{python}", "-m", "omnimarket.nodes.node_prove_running_workflow", "write-row", "--outcome", "alarm"]
+  # The declared installer per target. The dev runtime rebuilds itself from the merge (the deploy agent), so its
+  # install step runs nothing and the readings that follow are the proof. A target with no entry uses default,
+  # which installs nothing and says so; the alarm row then names the change and its last reading.
+  installers:
+    dev-runtime:
+      name: dev-runtime-self-rebuild
+      detail: the dev runtime rebuilds itself from the merge; nothing to run here
+      argv: []
+    default:
+      name: none-declared
+      detail: no installer is declared for this target
+      argv: []
