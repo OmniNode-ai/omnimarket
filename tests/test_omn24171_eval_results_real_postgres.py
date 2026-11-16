@@ -31,12 +31,24 @@ from omnimarket.nodes.node_projection_eval_results.handlers.eval_results_store i
 from omnimarket.nodes.node_projection_eval_results.handlers.handler_eval_results_writer import (
     EvalResultsProjectionWriter,
 )
+from omnimarket.nodes.node_projection_eval_results.models.model_eval_projection_io import (
+    TOPIC_CODE_TRY,
+    TOPIC_RUN_CLOSED,
+)
 from omnimarket.nodes.node_projection_eval_results.models.model_eval_rows import (
     ModelEvalItemRow,
 )
 from omnimarket.projection.runner import MessageMeta
 from tests.helpers.isolated_schema_sql import for_isolated_schema
-from tests.nodes.node_projection_eval_results.support import TENANT, at, overlay
+from tests.nodes.node_projection_eval_results.support import (
+    MODEL,
+    TENANT,
+    at,
+    close_event,
+    code_event,
+    overlay,
+    try_row,
+)
 from tests.nodes.node_projection_eval_results.test_item_storage import _record
 from tests.test_golden_chain_projection_eval_results import _fixture
 
@@ -231,3 +243,65 @@ async def test_the_sql_ordering_guard_leaves_the_same_row_in_either_order() -> N
                 stored["outcome_digest"] == max(a.outcome_digest, b.outcome_digest)
             )
         assert winners == [True, True]
+
+
+@pytest.mark.integration
+async def test_a_late_older_close_changes_no_stored_run_or_rate_row_in_either_order() -> (
+    None
+):
+    """A close older than the stored one is rejected by the SQL guard, and now its recount is too."""
+    run = "00000000-0000-0000-0000-0000000000e1"
+    sequences = (("t1", MODEL, "S"), ("t2", MODEL, "S"))
+    newer = close_event(run, sequences, closed_at=at(30))
+    older = close_event(
+        run,
+        sequences[:1],
+        void_reason="registration_mismatch",
+        series="other",
+        closed_at=at(10),
+    )
+    stored: list[list[str]] = []
+    for closes in ((newer,), (newer, older), (older, newer)):
+        async with _migrated_schema() as (db, _admin):
+            writer = EvalResultsProjectionWriter(
+                overlay=overlay(), clock=lambda: at(100)
+            )
+            cast(Any, writer)._db = db
+
+            async def publish(_topic: str, _value: bytes) -> None:
+                return None
+
+            writer._publish_fn = publish
+            deliveries = [
+                (
+                    "code",
+                    code_event(
+                        run,
+                        try_row(run, "t1", verdict="pass"),
+                        try_row(run, "t2", verdict="pass"),
+                    ),
+                ),
+                *(("close", close) for close in closes),
+            ]
+            for minute, (kind, payload) in enumerate(deliveries, start=1):
+                topic = TOPIC_CODE_TRY if kind == "code" else TOPIC_RUN_CLOSED
+                await writer._project(
+                    topic,
+                    {
+                        **payload,
+                        "_envelope_timestamp": at(minute).isoformat(),
+                        "_tenant_id": TENANT,
+                    },
+                    MessageMeta(partition=0, offset=0, fallback_id="", topic=topic),
+                )
+            closes_held = await db.execute(
+                "SELECT run_id, closed_at, series, void_reason "
+                "FROM public.eval_run_closes ORDER BY run_id",
+                tenant=TENANT,
+            )
+            stored.append(
+                [json.dumps(dict(r), default=str, sort_keys=True) for r in closes_held]
+                + await _digest(db)
+            )
+    assert stored[0] == stored[1] == stored[2]
+    assert any('"run_state": "closed"' in row for row in stored[0])

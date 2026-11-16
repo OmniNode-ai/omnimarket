@@ -42,6 +42,23 @@ def closed_runs(model: ModelEvalSnapshotModel) -> list[ModelEvalSnapshotRun]:
     return sorted(runs, key=lambda r: (r.last_scored_at, r.run_id))
 
 
+def latest_run(model: ModelEvalSnapshotModel) -> ModelEvalSnapshotRun | None:
+    """The run Chart 3 and the headline read: the newest closed run, one context arm and replicate.
+
+    The snapshot holds one run per context arm and replicate of a run id, so the last of the
+    sorted runs is an arbitrary arm. The newest run id is chosen by test time, and within it the
+    arm that sorts first and then its lowest replicate, whatever order the snapshot lists them in.
+    """
+    runs = closed_runs(model)
+    if not runs:
+        return None
+    newest = runs[-1].run_id
+    return min(
+        (r for r in runs if r.run_id == newest),
+        key=lambda r: (r.context_arm, r.replicate),
+    )
+
+
 def _changes(
     before: ModelEvalSnapshotRun, after: ModelEvalSnapshotRun
 ) -> list[tuple[EnumEvalBoardMarkerKind, str]]:
@@ -70,11 +87,16 @@ def build_series(
     for run in closed_runs(model):
         if overall_rate(run) is None:
             continue
-        if previous is None or previous.task_sample_digest != run.task_sample_digest:
+        new_sample = (
+            previous is None or previous.task_sample_digest != run.task_sample_digest
+        )
+        if new_sample:
             segments.append([])
             kind, text = EnumEvalBoardMarkerKind.TASK_SET, LABEL_TASK_SET
             markers.append([(0, kind, text)] if previous is not None else [])
-        else:
+        if previous is not None:
+            # A change of model version, prompt or settings, or scorer is marked at the run
+            # that carries it, also when that run opens a new task sample (index 0).
             index = len(segments[-1])
             markers[-1].extend(
                 (index, kind, text) for kind, text in _changes(previous, run)
@@ -125,5 +147,6 @@ __all__ = [
     "NOTE_HOSTED",
     "build_series",
     "closed_runs",
+    "latest_run",
     "overall_rate",
 ]

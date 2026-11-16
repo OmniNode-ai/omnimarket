@@ -254,7 +254,7 @@
           "text": "passed 41 of 52 tasks (79%, likely 66 to 88%)",
           "too_few": false
         },
-        "week": "2026-W44"
+        "week": "2026-10-26"
       },
       {
         "model_label": "Local coding model (Qwen)",
@@ -267,7 +267,7 @@
           "text": "passed 4 of 9 tasks, too few tasks to read",
           "too_few": true
         },
-        "week": "2026-W45"
+        "week": "2026-11-02"
       }
     ],
     "title": "How did the models do on the work they were actually sent?"

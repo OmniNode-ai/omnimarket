@@ -16,7 +16,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -41,6 +42,7 @@ from omnimarket.nodes.node_projection_eval_results.models.model_eval_projection_
     TOPIC_SNAPSHOT,
     TOPIC_TICK,
     ModelEvalProjectionRequest,
+    ModelEvalReadPlan,
 )
 from omnimarket.nodes.node_projection_eval_results.models.model_eval_rows import (
     EnumEvalRefusal,
@@ -70,6 +72,7 @@ _DLQ_REFUSALS = frozenset(
         EnumEvalRefusal.INVALID_ITEM,
         EnumEvalRefusal.TRACE_DIGEST_MISMATCH,
         EnumEvalRefusal.UNMAPPED_TIER,
+        EnumEvalRefusal.UNMAPPED_PROVIDER,
     }
 )
 _TENANT_TABLE = "eval_item_scores"
@@ -105,6 +108,7 @@ class EvalResultsProjectionWriter(BaseProjectionRunner):
         self._clock = clock or (lambda: datetime.now(UTC))
         self._store_factory = store_factory
         self._last_published_at: datetime | None = None
+        self._run_locks: dict[tuple[str, str], tuple[asyncio.Lock, int]] = {}
 
     @property
     def subscribe_topics(self) -> list[str]:
@@ -175,22 +179,23 @@ class EvalResultsProjectionWriter(BaseProjectionRunner):
         observed_at = _instant(data.get(INJECTED_ENVELOPE_TIMESTAMP_KEY))
         plan = self._fold.read_plan(topic, payload, tenant)
         store = self._store_factory(self.db)
-        items, record, parts = await store.load(plan)
-        result = self._fold.handle(
-            ModelEvalProjectionRequest(
-                topic=topic,
-                payload=payload,
-                observed_at=observed_at,
-                tenant_id=tenant,
-                lane=EnumEvalLane(overlay.lane),
-                host=overlay.host,
-                install_revision=overlay.install_revision,
-                standing_items=items,
-                standing_run=record,
-                standing_parts=parts,
+        async with self._one_at_a_time(plan):
+            items, record, parts = await store.load(plan)
+            result = self._fold.handle(
+                ModelEvalProjectionRequest(
+                    topic=topic,
+                    payload=payload,
+                    observed_at=observed_at,
+                    tenant_id=tenant,
+                    lane=EnumEvalLane(overlay.lane),
+                    host=overlay.host,
+                    install_revision=overlay.install_revision,
+                    standing_items=items,
+                    standing_run=record,
+                    standing_parts=parts,
+                )
             )
-        )
-        counts = await store.apply(plan, result)
+            counts = await store.apply(plan, result)
         routed = 0
         for refusal in result.refused:
             if refusal.reason in _DLQ_REFUSALS:
@@ -217,6 +222,30 @@ class EvalResultsProjectionWriter(BaseProjectionRunner):
                 store, tenant, published_at=self._clock()
             )
         return outcome
+
+    @asynccontextmanager
+    async def _one_at_a_time(self, plan: ModelEvalReadPlan) -> AsyncIterator[None]:
+        """Hold one run's read, fold and write apart from any other delivery of the same run here.
+
+        A rate is recounted from the rows read before the write, so two deliveries of one run that
+        overlap would each recount without the other's item and the second write would drop it.
+        This serialises deliveries inside this process; it does not span runtime replicas.
+        """
+        if not plan.run_id:
+            yield
+            return
+        key = (plan.tenant_id, plan.run_id)
+        lock, waiting = self._run_locks.get(key, (asyncio.Lock(), 0))
+        self._run_locks[key] = (lock, waiting + 1)
+        try:
+            async with lock:
+                yield
+        finally:
+            lock, waiting = self._run_locks[key]
+            if waiting <= 1:
+                del self._run_locks[key]
+            else:
+                self._run_locks[key] = (lock, waiting - 1)
 
     async def _tick(self, data: dict[str, Any]) -> dict[str, Any]:
         """Republish the snapshot at the tick's time once per publish interval; reads no other clock."""

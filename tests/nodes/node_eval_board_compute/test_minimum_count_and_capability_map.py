@@ -30,12 +30,17 @@ from omnimarket.models.delegation_capability_map.model_capability_serving_assign
 from omnimarket.models.delegation_capability_map.model_capability_verdict_row import (
     ModelCapabilityVerdictRow,
 )
+from omnimarket.models.ranges import EnumRangeVerdict
 from omnimarket.nodes.node_eval_board_compute.handlers import HandlerEvalBoard
+from omnimarket.nodes.node_eval_board_compute.models.model_eval_board_record import (
+    EnumEvalBoardVerdict,
+)
 from omnimarket.nodes.node_projection_delegation_capability_map.handlers import (
     HandlerDelegationCapabilityMap,
 )
 from tests.nodes.node_eval_board_compute.support import (
     FIRST_TEST,
+    HOSTED_ID,
     LOCAL_ID,
     live_week,
     model,
@@ -148,7 +153,7 @@ def test_nine_tasks_read_too_few_on_a_size_cell_and_a_live_row() -> None:
             model(
                 LOCAL_ID,
                 (run("r1", FIRST_TEST, rows=rates((9, 5), (9, 9))),),
-                (live_week("2026-W45", 9, 4),),
+                (live_week("live-2026-W45", 9, 4),),
             )
         )
     )
@@ -210,3 +215,34 @@ def test_the_short_band_line_comes_from_the_snapshot(target: int, text: str) -> 
     assert record.chart3.rows[0].short_band_notes == (
         f"not enough large tasks yet ({text})",
     )
+
+
+@pytest.mark.parametrize("model_id", [LOCAL_ID, HOSTED_ID])
+def test_every_overlay_model_reads_the_capability_maps_verdict_per_size(
+    model_id: str,
+) -> None:
+    """Each model the overlay names gets a size row whose verdicts are the capability map's fold of its rows."""
+    counts = {"S": (100, 99), "M": (100, 90), "L": (100, 80)}
+    record = HandlerEvalBoard().handle(
+        request(
+            model(
+                model_id,
+                (
+                    run(
+                        "r1",
+                        FIRST_TEST,
+                        rows=rates(counts["S"], counts["M"], counts["L"]),
+                    ),
+                ),
+            )
+        )
+    )
+    (row,) = record.chart3.rows
+    assert [c.verdict.value for c in row.cells if c.verdict is not None] == [
+        _capability_verdicts(counts)[band] for band in "SML"
+    ]
+
+
+def test_every_overlay_model_verdict_is_one_the_board_can_name() -> None:
+    """A verdict the range line gains must be named by the board before it can reach a size cell."""
+    assert {v.name for v in EnumRangeVerdict} == {v.name for v in EnumEvalBoardVerdict}

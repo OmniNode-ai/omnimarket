@@ -62,15 +62,66 @@ def test_two_task_samples_give_two_lines_and_the_new_task_set_marker() -> None:
     )
 
 
-def test_a_task_sample_change_with_a_revision_change_is_only_the_task_set_marker() -> (
-    None
-):
+def _markers_of_new_line(*changes: dict[str, str]) -> list[tuple[int, str]]:
+    """The markers on the second line when its first run changes a task sample and `changes`."""
     chart = _board(
         run("r1", FIRST_TEST),
-        run("r2", FIRST_TEST + WEEK, sample="sample-b", revision="rev-2"),
+        run("r2", FIRST_TEST + WEEK, sample="sample-b", **changes[0]),
     )
-    assert [m.kind for s in chart.series for m in s.markers] == [
-        EnumEvalBoardMarkerKind.TASK_SET
+    assert len(chart.series) == 2
+    assert chart.series[0].markers == ()
+    return [(m.point_index, m.label) for m in chart.series[1].markers]
+
+
+def test_board_chart1_a_new_task_sample_alone_is_only_the_task_set_marker() -> None:
+    assert _markers_of_new_line({}) == [(0, "new set of test tasks")]
+
+
+def test_board_chart1_a_model_version_change_at_a_new_task_sample_is_marked_at_index_0() -> (
+    None
+):
+    assert _markers_of_new_line({"revision": "rev-2"}) == [
+        (0, "new set of test tasks"),
+        (0, "new model version"),
+    ]
+
+
+def test_board_chart1_a_prompt_or_settings_change_at_a_new_task_sample_is_marked_at_index_0() -> (
+    None
+):
+    assert _markers_of_new_line({"prompt": "prompt-2"}) == [
+        (0, "new set of test tasks"),
+        (0, "new prompt or settings"),
+    ]
+    assert _markers_of_new_line({"settings": "settings-2"}) == [
+        (0, "new set of test tasks"),
+        (0, "new prompt or settings"),
+    ]
+
+
+def test_board_chart1_a_scorer_change_at_a_new_task_sample_is_marked_at_index_0() -> (
+    None
+):
+    assert _markers_of_new_line({"scorer": "scorer-2"}) == [
+        (0, "new set of test tasks"),
+        (0, "new way of checking"),
+    ]
+
+
+def test_board_chart1_all_changes_together_at_a_new_task_sample_are_each_marked_at_index_0() -> (
+    None
+):
+    assert _markers_of_new_line(
+        {
+            "revision": "rev-2",
+            "prompt": "prompt-2",
+            "scorer": "scorer-2",
+        }
+    ) == [
+        (0, "new set of test tasks"),
+        (0, "new model version"),
+        (0, "new prompt or settings"),
+        (0, "new way of checking"),
     ]
 
 

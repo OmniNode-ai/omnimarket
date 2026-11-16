@@ -4,7 +4,8 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+import re
+from datetime import UTC, date, datetime
 
 from omnimarket.nodes.node_eval_board_compute.models.model_eval_board_overlay import (
     ID_SHAPED,
@@ -60,9 +61,32 @@ def rate_of(
 
 
 def plain(text: str) -> str:
-    """``text`` as words: underscores read as spaces and any id-shaped token dropped."""
-    words = [w for w in text.replace("_", " ").split() if not ID_SHAPED.search(w)]
-    return " ".join(words)
+    """``text`` as words: any id-shaped token dropped, then underscores read as spaces.
+
+    The id-shaped tokens are matched first: ``node_`` is one of them, and it is gone once the
+    underscores are spaces.
+    """
+    words = [w for w in text.split() if not ID_SHAPED.search(w)]
+    return " ".join(words).replace("_", " ")
+
+
+_LIVE_WEEK = re.compile(r"^(?:live-)?(\d{4})-W(\d{2})$")
+
+
+def week_date(week: ModelEvalSnapshotLiveWeek) -> str:
+    """The Monday of a live week as a date, ``2026-11-09``; never the live run id (``live-2026-W46``).
+
+    A week that is not an ISO week reads as the day its work was first scored.
+    """
+    match = _LIVE_WEEK.match(week.week)
+    if match is not None:
+        try:
+            return date.fromisocalendar(
+                int(match.group(1)), int(match.group(2)), 1
+            ).isoformat()
+        except ValueError:
+            pass
+    return day(week.first_scored_at)
 
 
 def day(moment: datetime) -> str:
@@ -89,4 +113,5 @@ __all__ = [
     "percent_of",
     "plain",
     "rate_of",
+    "week_date",
 ]

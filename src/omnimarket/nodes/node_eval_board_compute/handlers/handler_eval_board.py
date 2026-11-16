@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from omnimarket.nodes.node_eval_board_compute.handlers.board_chart1 import (
     build_series,
-    closed_runs,
+    latest_run,
     overall_rate,
 )
 from omnimarket.nodes.node_eval_board_compute.handlers.board_sizes import size_row
@@ -21,6 +21,7 @@ from omnimarket.nodes.node_eval_board_compute.handlers.board_text import (
     minute,
     plain,
     rate_of,
+    week_date,
 )
 from omnimarket.nodes.node_eval_board_compute.models.model_eval_board_overlay import (
     GLOSSARY_TERMS,
@@ -95,8 +96,7 @@ class HandlerEvalBoard:
         void_notes: list[str] = []
         for label, model in shown:
             series.extend(build_series(label, model, overlay.min_n_point))
-            runs = closed_runs(model)
-            latest = runs[-1] if runs else None
+            latest = latest_run(model)
             if latest is not None:
                 rows.append(
                     size_row(label, latest, overlay.size_line, overlay.min_n_point)
@@ -130,7 +130,7 @@ class HandlerEvalBoard:
             live_rows.extend(
                 ModelEvalBoardLiveRow(
                     model_label=label,
-                    week=week.week,
+                    week=week_date(week),
                     rate=rate_of(week, overlay.min_n_point),
                 )
                 for week in sorted(model.live_weeks, key=lambda w: w.week)

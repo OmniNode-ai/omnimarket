@@ -95,6 +95,7 @@ def try_row(
         "prompt_template_version": "prompt-v1",
         "scorer_version": "scorer-v1",
         "context_factor_subset": "off",
+        "provider": "local",
     }
     return ModelAttemptReductionRow(**(fields | extra)).model_dump(mode="json")
 

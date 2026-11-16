@@ -39,7 +39,7 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/nodes/node_eval_board_compute/test_points_and_sizes.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn24174-ac2
-  description: 'AC2: two model revisions give one line and a marker, and two task sample digests give two lines and the new set of test tasks marker'
+  description: 'AC2: two model revisions give one line and a marker, two task sample digests give two lines and the new set of test tasks marker, and a model version, prompt or settings, or scorer change at a new task sample is marked at index 0, alone and all together; the -k board_chart1 check selects those tests and fails with the change skip at a new task sample restored'
   source: manual
   binds_ac:
   - AC2
@@ -47,8 +47,11 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_eval_board_compute/test_markers.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_eval_board_compute/test_markers.py -k board_chart1 -q --no-cov -n 0 -p no:randomly
+    cwd: .
 - id: dod-omn24174-ac3
-  description: 'AC3: each size cell verdict equals the capability map fold verdict on the same rows (the fixtures between them read met, missed and refused), and nine tasks on a size cell and a live work row read too few tasks to read with no percentage'
+  description: 'AC3: each size cell verdict equals the capability map fold verdict on the same rows (the fixtures between them read met, missed and refused), and nine tasks on a size cell, a live work row and a Chart 1 point read too few tasks to read with no percentage; every overlay model is compared with the capability map fold (the -k every_overlay_model check selects tests in this file), and every range verdict has a board verdict of the same name'
   source: manual
   binds_ac:
   - AC3
@@ -56,8 +59,11 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_eval_board_compute/test_minimum_count_and_capability_map.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_eval_board_compute/test_minimum_count_and_capability_map.py -k every_overlay_model -q --no-cov -n 0 -p no:randomly
+    cwd: .
 - id: dod-omn24174-ac4
-  description: 'AC4: the record matches its golden file, carries no id-shaped token, has no 90 percent line on Chart 1 and at most one sentence above and below each chart'
+  description: 'AC4: the record matches its golden file, carries no id-shaped token, has no 90 percent line on Chart 1 and at most one sentence above and below each chart; a live week (live-2026-W46) reaches the record as its Monday date and the id scan includes the live run id shape; Chart 3 and the headline read one named context arm and replicate'
   source: manual
   binds_ac:
   - AC4
@@ -65,14 +71,20 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_eval_board_compute/test_golden_record.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_eval_board_compute/test_latest_run_choice.py tests/nodes/node_eval_board_compute/test_board_text.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
 - id: dod-omn24174-ac5
-  description: 'hosted proxy for AC5: a recorded snapshot gives a Chart 1 series for each overlay model with a closed run and none for a model with only a void run or outside the overlay; the reading of the live dev snapshot beside the record built from it is not made by this change, because the projection''s dev snapshot is not published yet'
+  description: 'hosted proxy for AC5: a recorded snapshot gives a Chart 1 series for each overlay model with a closed run and none for a model with only a void run or outside the overlay; the live dev snapshot read beside the record built from it is not made by this change: the producer model on the base branch (ModelCodeEvalRunClosed) carries neither series nor task_sample_digest, so a close as the dev producer emits it never reaches the snapshot as a tracking run; the close-field tests fail on any close that lacks either field, so a read of the snapshot for runs cannot pass vacuously on one'
   source: manual
   binds_ac:
   - AC5
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_eval_board_compute/test_golden_record.py -q --no-cov -n 0 -p no:randomly -k every_overlay_model
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_projection_eval_results/test_eval_results_close_fields.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn24174-integration-proof
   description: the eval board compute tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check

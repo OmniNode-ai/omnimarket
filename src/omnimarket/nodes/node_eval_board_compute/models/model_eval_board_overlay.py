@@ -21,10 +21,11 @@ ID_SHAPED = re.compile(
     r"\bOMN-\d+\b"
     r"|\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b"
     r"|\b[0-9a-fA-F]{12,}\b"
+    r"|\blive-\d{4}-W\d{2}\b"
     r"|\bnode_[A-Za-z0-9_]+"
     r"|\bonex\.[A-Za-z0-9_.\-]+"
 )
-"""An id-shaped token: a ticket id, a uuid, a hex digest of 12 or more characters, ``node_`` or ``onex.``."""
+"""An id-shaped token: a ticket id, a uuid, a hex digest of 12 or more characters, a live week run id, ``node_`` or ``onex.``."""
 
 GLOSSARY_TERMS: tuple[str, ...] = ("task", "pass", "size", "likely range")
 """The four words the tab defines, in the order it prints them."""

@@ -81,6 +81,8 @@ def run(
     prompt: str = "prompt-1",
     scorer: str = "scorer-1",
     engine: str = "local",
+    context_arm: str = "",
+    replicate: int = 0,
     void_reason: str = "",
     band_usable: dict[str, int] | None = None,
     band_target: dict[str, int] | None = None,
@@ -95,6 +97,8 @@ def run(
         generation_settings_hash=settings,
         prompt_template_version=prompt,
         scorer_version=scorer,
+        context_arm=context_arm,
+        replicate=replicate,
         first_scored_at=at,
         last_scored_at=at,
         void_reason=void_reason,
@@ -188,7 +192,7 @@ def golden_request() -> ModelEvalBoardRequest:
                 band_target={"S": 89, "M": 89, "L": 89},
             ),
         ),
-        (live_week("2026-W44", 52, 41), live_week("2026-W45", 9, 4)),
+        (live_week("live-2026-W44", 52, 41), live_week("live-2026-W45", 9, 4)),
     )
     hosted = model(
         HOSTED_ID,

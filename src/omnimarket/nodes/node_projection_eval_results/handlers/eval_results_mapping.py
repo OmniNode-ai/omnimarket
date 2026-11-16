@@ -52,7 +52,10 @@ LIVE_TASK_SET_ID = "live"
 JUDGED_EVAL_TASK_SET_ID = "judged_eval"
 LIVE_RUN_PREFIX = "live-"
 
+#: The providers a code try row names. A provider outside this table is refused, never labelled as
+#: another engine: a hosted model stored as local would lose the hosted note on Chart 1.
 _PROVIDER_ENGINE = {
+    "local": EnumEvalEngine.LOCAL,
     "glm": EnumEvalEngine.GLM,
     "codex": EnumEvalEngine.CODEX,
     "claude": EnumEvalEngine.CLAUDE,
@@ -141,6 +144,16 @@ def code_try_items(
         passed: bool | None = (
             None if unscorable else row.check_verdict is EnumCodeScoreVerdict.PASS
         )
+        engine = _PROVIDER_ENGINE.get(row.provider)
+        if engine is None:
+            refused.append(
+                ModelEvalRefusedPart(
+                    reason=EnumEvalRefusal.UNMAPPED_PROVIDER,
+                    subject=subject,
+                    detail=row.provider,
+                )
+            )
+            continue
         try:
             item = ModelEvalItemScored.model_validate(
                 {
@@ -154,7 +167,7 @@ def code_try_items(
                     "task_id": row.task_id,
                     "task_type": "code",
                     "size_band": row.size_band,
-                    "engine": _PROVIDER_ENGINE.get(row.provider, EnumEvalEngine.LOCAL),
+                    "engine": engine,
                     "model_id": row.model_id,
                     "model_revision": row.model_revision,
                     "generation_settings_hash": row.generation_settings_hash,

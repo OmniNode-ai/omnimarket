@@ -23,6 +23,7 @@ from tests.nodes.node_eval_board_compute.support import (
     HOSTED_ID,
     LOCAL_ID,
     golden_request,
+    live_week,
     model,
     overlay,
     request,
@@ -35,7 +36,7 @@ GOLDEN = Path(__file__).parent / "golden" / "model_tests_record.json"
 # Written apart from the overlay's own pattern, so a loosened pattern cannot pass its own test.
 ID_TOKEN = re.compile(
     r"OMN-\d+|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
-    r"|[0-9a-fA-F]{12,}|node_|onex\.|qwen-local|hosted-coder-5|sample-[ab]|rev-\d|settings-\d|prompt-\d|scorer-\d"
+    r"|[0-9a-fA-F]{12,}|live-\d{4}-W\d{2}|node_|onex\.|qwen-local|hosted-coder-5|sample-[ab]|rev-\d|settings-\d|prompt-\d|scorer-\d"
 )
 
 
@@ -193,3 +194,34 @@ def test_a_snapshot_with_no_closed_run_has_a_plain_headline_and_empty_charts() -
         record.footer.last_tested[0].text
         == "Local coding model (Qwen) has no finished test yet."
     )
+
+
+def test_a_live_week_reaches_the_record_as_its_monday_never_as_the_live_run_id() -> (
+    None
+):
+    record = HandlerEvalBoard().handle(
+        request(
+            model(
+                LOCAL_ID,
+                (run("r1", FIRST_TEST),),
+                (live_week("live-2026-W46", 20, 15),),
+            )
+        )
+    )
+    (row,) = record.live_work.rows
+    assert row.week == "2026-11-09"
+    assert ID_TOKEN.search(json.dumps(record.model_dump(mode="json"))) is None
+
+
+def test_a_week_that_is_not_an_iso_week_reads_as_the_day_it_was_first_scored() -> None:
+    record = HandlerEvalBoard().handle(
+        request(
+            model(LOCAL_ID, (run("r1", FIRST_TEST),), (live_week("live-week", 20, 15),))
+        )
+    )
+    assert record.live_work.rows[0].week == "2026-11-02"
+
+
+def test_the_overlay_refuses_a_live_run_id_in_a_label() -> None:
+    with pytest.raises(ValueError, match="id-shaped"):
+        overlay(display_names={LOCAL_ID: "Model live-2026-W46"})

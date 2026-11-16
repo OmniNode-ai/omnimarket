@@ -165,16 +165,25 @@ class HandlerProjectionEvalResults:
             return ModelEvalProjectionResult(
                 refused=(refusal,) if refusal is not None else ()
             )
+        # The store replaces a stored close only for a later ``closed_at`` (UPSERT_RUN), so the fold
+        # keeps that same winner and recounts from it: a late older close writes no run record and
+        # leaves the stored rates as they stand, whatever order the two closes arrive in.
+        standing = request.standing_run
+        winner = (
+            record
+            if standing is None or standing.closed_at < record.closed_at
+            else standing
+        )
         scope = tuple(
-            item for item in request.standing_items if item.run_id == record.run_id
+            item for item in request.standing_items if item.run_id == winner.run_id
         )
         return ModelEvalProjectionResult(
-            run_record=record,
+            run_record=record if winner is record else None,
             rates=recount_rates(
-                tenant_id=record.tenant_id,
-                run_id=record.run_id,
+                tenant_id=winner.tenant_id,
+                run_id=winner.run_id,
                 items=scope,
-                record=record,
+                record=winner,
             ),
         )
 

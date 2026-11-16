@@ -50,6 +50,7 @@ class EnumEvalRefusal(StrEnum):
     UNSCORED = "unscored"
     NOT_A_TASK = "not_a_task"
     UNMAPPED_TIER = "unmapped_tier"
+    UNMAPPED_PROVIDER = "unmapped_provider"
     INVALID_ITEM = "invalid_item"
     TRACE_DIGEST_MISMATCH = "trace_digest_mismatch"
     INVALID_EVENT = "invalid_event"
