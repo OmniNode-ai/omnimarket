@@ -1512,7 +1512,7 @@ async def _runner_group_get(run: _Run) -> ModelRepoWriteCompleted:
             id=group_id,
             name=name,
             allows_public_repositories=allows_public,
-            restricted_to_selected_workflows=restricted,
+            restricted_to_workflows=restricted,
             selected_workflows=tuple(
                 str(w) for w in (selected if isinstance(selected, list) else ())
             ),

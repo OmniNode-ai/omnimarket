@@ -583,7 +583,7 @@ class ModelRepoWriteRunnerGroup(BaseModel):
     id: int
     name: str
     allows_public_repositories: bool
-    restricted_to_selected_workflows: bool
+    restricted_to_workflows: bool
     selected_workflows: tuple[str, ...]
     repositories: tuple[str, ...]
 

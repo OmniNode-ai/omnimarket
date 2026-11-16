@@ -853,7 +853,7 @@ async def test_a_runner_group_get_is_published_as_completed() -> None:
     assert completed.runner_group.id == 7
     assert completed.runner_group.name == "example-group"
     assert completed.runner_group.allows_public_repositories is False
-    assert completed.runner_group.restricted_to_selected_workflows is True
+    assert completed.runner_group.restricted_to_workflows is True
     assert completed.runner_group.selected_workflows == (
         "example-org/example-repo/.github/workflows/build.yml@refs/heads/main",
     )

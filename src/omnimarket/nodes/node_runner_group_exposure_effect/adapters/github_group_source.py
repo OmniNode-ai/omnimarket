@@ -286,10 +286,17 @@ class GithubGroupSource:
         listing = self._get(f"{base}/repositories", denied_is_org=True)
         try:
             repositories = tuple(str(r["full_name"]) for r in listing["repositories"])
+            # A flag that is absent (KeyError) or not a real bool is refused, never read as
+            # False: a half-read group must not read as an unexposed one. The except clause
+            # below turns either into an UNREADABLE reading.
+            allows_public = meta["allows_public_repositories"]
+            restricted = meta["restricted_to_workflows"]
+            if not isinstance(allows_public, bool) or not isinstance(restricted, bool):
+                raise ValueError("a runner group flag is not a bool")
             facts = ModelRunnerGroupFacts(
                 group_id=self._s.group_id,
-                allows_public_repositories=bool(meta["allows_public_repositories"]),
-                restricted_to_workflows=bool(meta["restricted_to_workflows"]),
+                allows_public_repositories=allows_public,
+                restricted_to_workflows=restricted,
                 selected_workflows=tuple(
                     str(w) for w in meta.get("selected_workflows") or ()
                 ),

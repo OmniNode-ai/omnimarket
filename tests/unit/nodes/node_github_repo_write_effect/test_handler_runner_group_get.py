@@ -171,7 +171,7 @@ async def test_a_named_group_is_read_with_its_repositories() -> None:
     assert group is not None
     assert (group.id, group.name) == (_GROUP, "example-group")
     assert group.allows_public_repositories is False
-    assert group.restricted_to_selected_workflows is True
+    assert group.restricted_to_workflows is True
     assert group.selected_workflows == (_WORKFLOW,)
     assert group.repositories == (f"{_ORG}/example-repo-0", f"{_ORG}/example-repo-1")
     assert fake.sent == [_GROUP_REQUEST, _PAGE_1]
@@ -252,8 +252,24 @@ async def test_a_body_carrying_only_the_old_flag_name_is_refused() -> None:
         "name": "example-group",
         "allows_public_repositories": False,
         "restricted_to_selected_workflows": True,
+        "selected_workflows": [_WORKFLOW],
     }
     fake = _Fake([(_GROUP_REQUEST, _ok(body)), (_PAGE_1, _ok(_repos(0)))])
+    result = await _handler(
+        fake, _overlay(ModelRunnerGroupEntry(organization=_ORG, group_id=_GROUP))
+    ).handle(_request())
+    assert isinstance(result, ModelRepoWriteFailed), result
+    assert result.reason is EnumRepoWriteRefusal.GITHUB_REFUSED
+    assert "restricted_to_workflows" in result.detail
+
+
+async def test_a_null_restriction_flag_is_refused_not_read_as_false() -> None:
+    fake = _Fake(
+        [
+            (_GROUP_REQUEST, _ok(_group_body(restricted_to_workflows=None))),
+            (_PAGE_1, _ok(_repos(0))),
+        ]
+    )
     result = await _handler(
         fake, _overlay(ModelRunnerGroupEntry(organization=_ORG, group_id=_GROUP))
     ).handle(_request())

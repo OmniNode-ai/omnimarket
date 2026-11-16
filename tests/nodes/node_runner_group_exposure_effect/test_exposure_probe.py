@@ -78,6 +78,8 @@ class Scenario:
     listing_status: int = 200
     read_age_seconds: int = 60
     read_failure: str | None = None
+    group_body: dict[str, object] | None = None
+    """When set, the organization endpoint serves this body verbatim for the group."""
 
 
 def _workflow_text(triggers: list[str]) -> str:
@@ -114,6 +116,8 @@ class _Handler(BaseHTTPRequestHandler):
         if path == "/orgs/example-org/actions/runner-groups/7":
             if s.group_status != 200:
                 return self._send(s.group_status, {"message": "refused"})
+            if s.group_body is not None:
+                return self._send(200, s.group_body)
             return self._send(
                 200,
                 {
@@ -331,6 +335,42 @@ def test_error_chain_a_broken_workflow_listing_reads_unreadable(
     server: _Server, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     scenario = Scenario(listing_status=500)
+    result = _run(_probe("github", scenario, server, tmp_path, monkeypatch))
+    _assert_unknown(result, EnumExposureReadFailure.UNREADABLE)
+
+
+def _group_body_with(**over: object) -> dict[str, object]:
+    body: dict[str, object] = {
+        "allows_public_repositories": False,
+        "restricted_to_workflows": True,
+        "selected_workflows": [IDENTITY],
+    }
+    body.update(over)
+    return body
+
+
+def test_error_chain_a_body_with_only_the_old_flag_name_reads_unreadable(
+    server: _Server, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """GitHub names the flag restricted_to_workflows; the old key alone is refused."""
+    body = _group_body_with()
+    del body["restricted_to_workflows"]
+    body["restricted_to_selected_workflows"] = True
+    scenario = Scenario(group_body=body)
+    result = _run(_probe("github", scenario, server, tmp_path, monkeypatch))
+    _assert_unknown(result, EnumExposureReadFailure.UNREADABLE)
+    # the positive control: the same server with the real key reads WORKING
+    clean = _run(_probe("github", Scenario(), server, tmp_path, monkeypatch))
+    assert clean.reading.verdict is EnumReadingVerdict.WORKING
+
+
+@pytest.mark.parametrize(
+    "flag", ["restricted_to_workflows", "allows_public_repositories"]
+)
+def test_error_chain_a_null_flag_reads_unreadable_not_false(
+    flag: str, server: _Server, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    scenario = Scenario(group_body=_group_body_with(**{flag: None}))
     result = _run(_probe("github", scenario, server, tmp_path, monkeypatch))
     _assert_unknown(result, EnumExposureReadFailure.UNREADABLE)
 
