@@ -498,3 +498,49 @@ def test_control_a_settle_with_a_different_repository_is_refused(
             repo=InMemoryCanaryRepo(clock=lambda: SETTLE_T0),
             appender=InMemoryLedger(),
         )
+
+
+def test_open_and_settle_read_the_process_environment_when_given_none(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The runtime builds the handler with no environ, so the settle must read os.environ, never an empty map."""
+    for key, value in settle_overlays(tmp_path).items():
+        monkeypatch.setenv(key, value)
+    run = open_canary(
+        canary_overlay_id=CANARY_NODE,
+        environ=None,
+        clock=lambda: datetime.now(UTC),
+    )
+    assert run.opened is not None
+    outcome = settle_canary(
+        canary_overlay_id=CANARY_NODE,
+        environ=None,
+        clock=lambda: datetime.now(UTC),
+        run=run,
+        appender=InMemoryLedger(),
+    )
+    assert outcome is not None
+    assert outcome.failed is True
+    assert "fixture" in outcome.detail
+
+
+def test_control_a_settle_with_none_and_no_host_name_in_the_process_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Failing control: the host name unset in the process environment is still refused by name."""
+    env = settle_overlays(tmp_path)
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", env["ONEX_SKILL_OVERLAY_ROOTS"])
+    monkeypatch.delenv("EXAMPLE_HOST_NAME", raising=False)
+    run = open_canary(
+        canary_overlay_id=CANARY_NODE,
+        environ=None,
+        clock=lambda: datetime.now(UTC),
+    )
+    with pytest.raises(ValueError, match="EXAMPLE_HOST_NAME is not set"):
+        settle_canary(
+            canary_overlay_id=CANARY_NODE,
+            environ=None,
+            clock=lambda: datetime.now(UTC),
+            run=run,
+            appender=None,
+        )

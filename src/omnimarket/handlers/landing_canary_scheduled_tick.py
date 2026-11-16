@@ -12,6 +12,7 @@ the next tick settles it again.
 from __future__ import annotations
 
 import hashlib
+import os
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime, timedelta
 from typing import NamedTuple
@@ -105,12 +106,11 @@ def open_canary(
     repo: ProtocolCanaryRepo | None = None,
 ) -> ModelCanaryPendingRun:
     """Open the canary's test pull request and record the pending run."""
-    overlay = load_structured_overlay(
-        canary_overlay_id, ModelLandingCanaryOverlay, environ
-    )
+    env = os.environ if environ is None else environ
+    overlay = load_structured_overlay(canary_overlay_id, ModelLandingCanaryOverlay, env)
     started = clock().astimezone(UTC)
     if repo is None:
-        repo = REPO_BACKENDS[overlay.target.backend](overlay.target, environ or {})
+        repo = REPO_BACKENDS[overlay.target.backend](overlay.target, env)
     nonce = hashlib.sha256(
         f"landing-canary-scheduled|{stamp_text(started)}".encode()
     ).hexdigest()[:12]
@@ -138,13 +138,12 @@ def settle_canary(
     appender: ProtocolReadingAppender | None = None,
 ) -> ModelLandingCanaryTickOutcome | None:
     """Settle the canary once its pull request is terminal or the landing bound has run out."""
-    overlay = load_structured_overlay(
-        canary_overlay_id, ModelLandingCanaryOverlay, environ
-    )
+    env = os.environ if environ is None else environ
+    overlay = load_structured_overlay(canary_overlay_id, ModelLandingCanaryOverlay, env)
     if repo is None:
         repo = run.repo
     if repo is None:
-        repo = REPO_BACKENDS[overlay.target.backend](overlay.target, environ or {})
+        repo = REPO_BACKENDS[overlay.target.backend](overlay.target, env)
     if run.opened is not None:
         try:
             state = repo.state(run.opened.number)
@@ -155,11 +154,9 @@ def settle_canary(
         settled = state is not None and (state.merged or state.closed)
         if not settled and clock().astimezone(UTC) < opened_at.astimezone(UTC) + bound:
             return None
-    host = _required(overlay.ledger_append.host_env, environ or {})
+    host = _required(overlay.ledger_append.host_env, env)
     if appender is None:
-        appender = build_appender(
-            overlay.ledger_append, overlay.publish.lane, environ or {}
-        )
+        appender = build_appender(overlay.ledger_append, overlay.publish.lane, env)
 
     def _sleep(_seconds: float) -> None:
         raise RuntimeError("the settle step must not wait")
