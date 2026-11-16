@@ -48,9 +48,8 @@ def _host_row_bolt_uri(host: str) -> str | None:
             f"({type(exc).__name__}: {exc}); fix the document, no lower source is tried"
         ) from exc
     wanted = host.casefold()
-    for row in overlay.bindings:
-        if row.host.casefold() == wanted:
-            return row.bolt_uri
+    if any(name.casefold() == wanted for name in overlay.hosts):
+        return overlay.bolt_uri
     return None
 
 
@@ -64,7 +63,7 @@ def resolve_arch_graph_bolt_uri(host: str | None = None) -> str:
         return row_uri
     raise ValueError(
         "ARCH_GRAPH_BOLT_URI is not bound by the active overlay; set the variable or "
-        f"add this host's row to <overlay root>/{ARCH_GRAPH_BOLT_OVERLAY_ID}/overlay.yaml "
+        f"add this host in the hosts list to <overlay root>/{ARCH_GRAPH_BOLT_OVERLAY_ID}/overlay.yaml "
         f"so the contract reference {_BOLT_URI_CONTRACT_REF!r} resolves to a Bolt URI."
     )
 

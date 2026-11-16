@@ -1,14 +1,15 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The ``arch_graph_bolt`` overlay: the architecture graph Bolt URI of each host (OMN-24687).
+"""The ``arch_graph_bolt`` overlay: the architecture graph Bolt URI and the hosts that use it (OMN-24687).
 
 ``node_architecture_graph_query_effect`` and ``node_architecture_graph_populate_effect``
 read the overlay file ``<overlay root>/arch_graph_bolt/overlay.yaml`` when
-``ARCH_GRAPH_BOLT_URI`` is unset, and take the row whose ``host`` matches the local host
-name. This model is what the overlay home validates the document through, so it imports
-pydantic alone. It checks the shape of the document and that every address is a Bolt URI;
-which hosts appear and where the service runs is the operator's choice, so no host name and
-no address lives here.
+``ARCH_GRAPH_BOLT_URI`` is unset: the file declares one ``bolt_uri`` and a ``hosts`` list,
+and a host whose short name is in the list gets that address. This model is what the
+overlay home validates the document through, so it imports pydantic alone. It checks the
+shape of the document and that the address is a Bolt URI with a host; which hosts appear
+and where the service runs is the operator's choice, so no host name and no address lives
+here.
 """
 
 from __future__ import annotations
@@ -55,31 +56,23 @@ def _bolt_scheme(value: str) -> str:
 BoltUri = Annotated[NonBlank, AfterValidator(_bolt_scheme)]
 
 
-class ModelArchGraphBoltHostBinding(BaseModel):
-    """The Bolt URI one host's architecture graph nodes connect to."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    host: NonBlank
-    bolt_uri: BoltUri
-
-
 class ModelArchGraphBoltOverlay(BaseModel):
-    """``arch_graph_bolt``: the Bolt URI of each host, by host name."""
+    """``arch_graph_bolt``: one Bolt URI, declared once, and the hosts that use it."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     schema_version: Literal["arch_graph_bolt.v1"]
-    bindings: tuple[ModelArchGraphBoltHostBinding, ...] = Field(min_length=1)
+    bolt_uri: BoltUri
+    hosts: tuple[NonBlank, ...] = Field(min_length=1)
 
     @model_validator(mode="after")
     def _unique_host_names(self) -> ModelArchGraphBoltOverlay:
         seen: set[str] = set()
-        for row in self.bindings:
-            key = row.host.casefold()
+        for host in self.hosts:
+            key = host.casefold()
             if key in seen:
                 raise ValueError(
-                    f"two rows name the same host {row.host!r} ignoring case"
+                    f"two entries name the same host {host!r} ignoring case"
                 )
             seen.add(key)
         return self
@@ -87,6 +80,5 @@ class ModelArchGraphBoltOverlay(BaseModel):
 
 __all__ = [
     "SCHEMA_VERSION",
-    "ModelArchGraphBoltHostBinding",
     "ModelArchGraphBoltOverlay",
 ]

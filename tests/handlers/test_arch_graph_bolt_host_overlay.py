@@ -13,6 +13,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+import yaml
 
 from omnimarket.handlers.arch_graph_bolt_host_overlay import (
     ARCH_GRAPH_BOLT_OVERLAY_ID,
@@ -28,13 +29,11 @@ from omnimarket.nodes.node_architecture_graph_query_effect.models import (
 _URI = "bolt://graph.example.test:7687"
 _OVERLAY = f"""\
 schema_version: arch_graph_bolt.v1
-bindings:
-  - host: Mac-Host
-    bolt_uri: {_URI}
-  - host: lab-host-a
-    bolt_uri: {_URI}
-  - host: lab-host-b
-    bolt_uri: {_URI}
+bolt_uri: {_URI}
+hosts:
+  - Mac-Host
+  - lab-host-a
+  - lab-host-b
 """
 
 
@@ -63,6 +62,42 @@ def test_variable_wins_over_the_host_row(
 
 
 @pytest.mark.unit
+def test_arch_graph_bolt_overlay_declares_the_uri_once_for_a_hosts_list() -> None:
+    from omnimarket.models.node_overlays.model_arch_graph_bolt_overlay import (
+        ModelArchGraphBoltOverlay,
+    )
+
+    overlay = ModelArchGraphBoltOverlay.model_validate(yaml.safe_load(_OVERLAY))
+    assert overlay.bolt_uri == _URI
+    assert overlay.hosts == ("Mac-Host", "lab-host-a", "lab-host-b")
+
+
+@pytest.mark.unit
+def test_arch_graph_bolt_overlay_refuses_per_host_rows_and_duplicate_hosts() -> None:
+    from pydantic import ValidationError
+
+    from omnimarket.models.node_overlays.model_arch_graph_bolt_overlay import (
+        ModelArchGraphBoltOverlay,
+    )
+
+    with pytest.raises(ValidationError):
+        ModelArchGraphBoltOverlay.model_validate(
+            {
+                "schema_version": "arch_graph_bolt.v1",
+                "bindings": [{"host": "h", "bolt_uri": _URI}],
+            }
+        )
+    with pytest.raises(ValidationError):
+        ModelArchGraphBoltOverlay.model_validate(
+            {
+                "schema_version": "arch_graph_bolt.v1",
+                "bolt_uri": _URI,
+                "hosts": ["a", "A"],
+            }
+        )
+
+
+@pytest.mark.unit
 def test_host_without_a_row_fails_closed(overlay_root: Path) -> None:
     with pytest.raises(ValueError, match="ARCH_GRAPH_BOLT_URI is not bound"):
         resolve_arch_graph_bolt_uri(host="lab-host-z")
@@ -86,7 +121,7 @@ def test_broken_overlay_is_refused_not_skipped(
     target = tmp_path / ARCH_GRAPH_BOLT_OVERLAY_ID
     target.mkdir()
     (target / "overlay.yaml").write_text(
-        "schema_version: arch_graph_bolt.v1\nbindings:\n  - {host: lab-host-b, bolt_uri: 'http://x'}\n",
+        "schema_version: arch_graph_bolt.v1\nbolt_uri: 'http://x'\nhosts: [lab-host-b]\n",
         encoding="utf-8",
     )
     monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path))
@@ -135,7 +170,7 @@ def test_arch_graph_bolt_broken_overlay_refusal_carries_the_reader_message(
     target = tmp_path / ARCH_GRAPH_BOLT_OVERLAY_ID
     target.mkdir()
     (target / "overlay.yaml").write_text(
-        "schema_version: arch_graph_bolt.v1\nbindings:\n  - {host: lab-host-b, bolt_uri: 'http://x'}\n",
+        "schema_version: arch_graph_bolt.v1\nbolt_uri: 'http://x'\nhosts: [lab-host-b]\n",
         encoding="utf-8",
     )
     monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path))

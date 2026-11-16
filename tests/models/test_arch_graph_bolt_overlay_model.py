@@ -8,7 +8,7 @@ import pytest
 from pydantic import ValidationError
 
 from omnimarket.models.node_overlays.model_arch_graph_bolt_overlay import (
-    ModelArchGraphBoltHostBinding,
+    ModelArchGraphBoltOverlay,
 )
 
 
@@ -24,7 +24,12 @@ from omnimarket.models.node_overlays.model_arch_graph_bolt_overlay import (
     ],
 )
 def test_arch_graph_bolt_uri_with_a_host_is_accepted(uri: str) -> None:
-    assert ModelArchGraphBoltHostBinding(host="h", bolt_uri=uri).bolt_uri == uri
+    assert (
+        ModelArchGraphBoltOverlay(
+            schema_version="arch_graph_bolt.v1", bolt_uri=uri, hosts=("h",)
+        ).bolt_uri
+        == uri
+    )
 
 
 @pytest.mark.unit
@@ -45,4 +50,6 @@ def test_arch_graph_bolt_uri_without_a_host_or_with_trailing_text_is_refused(
     uri: str,
 ) -> None:
     with pytest.raises(ValidationError):
-        ModelArchGraphBoltHostBinding(host="h", bolt_uri=uri)
+        ModelArchGraphBoltOverlay(
+            schema_version="arch_graph_bolt.v1", bolt_uri=uri, hosts=("h",)
+        )
