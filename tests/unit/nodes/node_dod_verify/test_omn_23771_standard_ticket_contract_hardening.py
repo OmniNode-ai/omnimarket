@@ -11,6 +11,9 @@ and a schema version that crashes the run.
 
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
@@ -336,3 +339,57 @@ class TestFullContractPathNeedsAContractPath:
             requested_at=datetime.now(tz=UTC),
         )
         assert command.full_contract_path == "contracts/full.yaml"
+
+
+PLANTED_HEAD = (
+    Path(__file__).resolve().parents[3] / "fixtures" / "dod_verify_planted_head"
+)
+
+
+@pytest.mark.unit
+class TestPlantedHeadFixtureRefusedByTheNodeCli:
+    """The committed planted head, run through the node's entry point as the lab run does."""
+
+    @staticmethod
+    def _run(contract: Path, tmp_path: Path) -> subprocess.CompletedProcess[str]:
+        env = {
+            "PATH": os.environ.get("PATH", ""),
+            "HOME": str(tmp_path),
+            "ONEX_SKILL_OVERLAY_ROOTS": str(PLANTED_HEAD / "overlay"),
+        }
+        return subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "omnimarket.nodes.node_dod_verify",
+                "--ticket-id",
+                AT_CUTOVER,
+                "--contract-path",
+                str(contract),
+                "--full-contract-path",
+                str(contract),
+                "--execution-audience",
+                "hosted",
+                "--dry-run",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+            cwd=PLANTED_HEAD,
+            env=env,
+        )
+
+    def test_planted_head_cli_refuses_contract_not_synced(self, tmp_path: Path) -> None:
+        proc = self._run(PLANTED_HEAD / "planted_head.yaml", tmp_path)
+        assert proc.returncode == 1, proc.stdout + proc.stderr
+        assert "contract_not_synced" in proc.stdout + proc.stderr
+
+    def test_planted_head_cli_control_accepts_the_synced_contract(
+        self, tmp_path: Path
+    ) -> None:
+        """Control: the same node and overlay accept the same contract once it is synced."""
+        synced = tmp_path / REPOSITORY / "contracts" / f"{AT_CUTOVER}.yaml"
+        synced.parent.mkdir(parents=True)
+        synced.write_text(synced_yaml(standard_contract()), encoding="utf-8")
+        proc = self._run(synced, tmp_path)
+        assert proc.returncode == 0, proc.stdout + proc.stderr
