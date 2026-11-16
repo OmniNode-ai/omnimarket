@@ -1,0 +1,71 @@
+schema_version: 1.0.0
+ticket_id: OMN-24725
+title: 'omnimarket#6312: the key-credit probe''s schedule unit carries the environment its command reads, and a test runs the real command under it'
+summary: The review of the key-credit probe's schedule unit found that its rendered environment lacked the lab host table (ONEX_LAB_RUN_HOSTS) and the ledger writer command (ONEX_LEDGER_COMMAND) the scheduled command reads, so every tick would exit 1. The unit now declares both, the lab host table required at install, a test runs the real command with a tick's argv under only the rendered environment, a timed-out probe's captured output reaches the tick's streams, and the tick's refusal exit differs from argparse's usage-error exit.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24725-unit-environment
+  statement: The schedule unit's rendered environment carries what the scheduled command reads, and a test runs the real command under it.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the unit''s contract declares ONEX_LEDGER_COMMAND as work-ledger-parity-receipt does and ONEX_LAB_RUN_HOSTS as an install-time path override required at install, with its roots variable if the read needs it -- falsifier: uv run pytest on the new rendered-environment test fails before the change and passes after'
+  - id: AC2
+    statement: 'AC2: a test runs the real command with the tick''s argv under only the rendered unit environment and an empty key store, and asserts it gets past both the lab-host-table refusal and the ledger-command refusal -- falsifier: uv run pytest on the new real-command test fails with either variable removed from the contract and passes with both declared'
+- id: req-omn24725-tick-output
+  statement: A timed-out probe's output is not lost and the tick's refusal exit is distinguishable.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: on TimeoutExpired the child''s captured stdout and stderr are written through before the heartbeat, and the tick''s refusal exit code differs from argparse''s usage-error exit or the docstring says they coincide -- falsifier: uv run pytest on the new timeout-output test fails before the change and passes after'
+- id: req-omn24725-lab-run
+  statement: The schedule suites run on the lab at the pushed head.
+  acceptance:
+  - id: AC4
+    statement: 'AC4: the schedule suites the pull request requires run on the lab at the pushed head and pass, with any whole-suite timeout split into named parts -- falsifier: onex lab-run uv run pytest tests/unit/nodes/node_claude_review_gateway_effect exits 0 at the pull request head'
+evidence_requirements:
+- kind: tests
+  description: The schedule test file at the pushed head.
+  command: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect/test_review_key_credit_probe_schedule_omn24656.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24725-ac1-rendered-environment
+  description: 'AC1: the rendered unit carries the lab host table and the ledger command, and an install without the lab host table is refused. Red at the merge base of this change (the unit declares neither), green after.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect/test_review_key_credit_probe_schedule_omn24656.py -q --no-cov -n 0 -p no:randomly -k 'rendered_unit_carries or without_the_lab_host_table or declared_as_a_launchd_tick'
+    cwd: .
+- id: dod-omn24725-ac2-real-command
+  description: 'AC2: the real review-gateway-key-probe command, run with a tick''s argv under only the rendered unit environment and an empty key store, gets past both refusals; with either variable removed it refuses. The command is added by the review gateway change that this branch lands after, so these tests need that change in the tree.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect/test_review_key_credit_probe_schedule_omn24656.py -q --no-cov -n 0 -p no:randomly -k real_probe_command
+    cwd: .
+- id: dod-omn24725-ac3-tick-output
+  description: 'AC3: a timed-out probe''s partial stdout and stderr reach the tick''s streams before its notice and heartbeat, and the refusal exit is not argparse''s usage-error exit.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect/test_review_key_credit_probe_schedule_omn24656.py -q --no-cov -n 0 -p no:randomly -k 'timed_out or refusal_exit'
+    cwd: .
+- id: dod-omn24725-ac4-lab-run
+  description: 'AC4: the node''s unit tests run on a lab host at the pushed head through lab-work.'
+  source: manual
+  binds_ac:
+  - AC4
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24725 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_claude_review_gateway_effect -q --no-cov -n 0 -p no:randomly
+    cwd: .
