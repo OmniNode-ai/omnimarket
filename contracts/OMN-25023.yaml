@@ -107,10 +107,18 @@ dod_evidence:
     check_value: uv run pytest tests/nodes/node_code_graph_effect -q --no-cov -n 0 -p no:randomly -p no:cacheprovider
     cwd: .
 - id: dod-omn25023-ac8
-  description: Only the local Done gate runs this unbound check, which reads the pull request checks from the watcher state and needs the lab comment. It fails unless the watcher state names the pull request.
+  description: Only the local Done gate runs this unbound check, which reads the pull request checks from the watcher state and needs the lab comment. It fails unless the watcher state holds at least one success context for the pull request; that every required context is success at the new head, and that the Lab comment names the head, is read from the same output by whoever closes the ticket.
   source: manual
   execution_scope: local_done_gate
   checks:
   - check_type: command
     check_value: onex scm pr-checks OmniNode-ai/omnimarket#6308 | grep -q success
+    cwd: .
+- id: dod-omn25023-integration-proof
+  description: Hosted CI cannot reach a lab host, so only the local Done gate runs this unbound check. It runs the refresh verb of the code graph node at the sha on a lab host against the lab clones and a scratch state directory, and fails unless the verb prints a REFRESH line whose outcome is refreshed, fresh or deferred. With the empty scratch state directory the verb runs a writing build, so each run appends one operational code graph row to the ledger; a failed outcome fails the check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25023 --kind test -- sh -c 'ONEX_CODE_GRAPH_STATE_DIR="$(mktemp -d)" uv run --frozen python -m omnimarket.nodes.node_code_graph_effect refresh | grep -Eq "^REFRESH outcome=(refreshed|fresh|deferred) "'
     cwd: .
