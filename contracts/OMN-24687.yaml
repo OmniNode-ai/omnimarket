@@ -9,10 +9,16 @@ requirements:
 - id: req-omn24687-reach
   statement: The two architecture graph nodes resolve a Bolt URI on h051, h053 and the operator Mac from one declared overlay, and answer a query there.
   acceptance:
+  - id: AC1
+    statement: 'AC1: the architecture graph node count is read from the running Memgraph service through the query node on a lab host -- UNMET, the Bolt service omnibase-infra-memgraph runs on no lab host (read 2026-11-16); carried by the ticket and the lane report, not by this code change'
   - id: AC2
     statement: 'AC2: the address of that service is declared once in the declared overlay or env source the two nodes read, never a hand-edited host env file, so that ARCH_GRAPH_BOLT_URI resolves on h051, h053 and the operator Mac -- falsifier: the nodes own config resolver run on each of the three hosts prints the same bolt uri and the unbound-variable error no longer occurs'
   - id: AC3
-    statement: 'AC3: a test of the declared overlay fails when the ARCH_GRAPH_BOLT_URI entry for a lab host or the Mac is missing and passes when it is present, written red first -- falsifier: uv run pytest -q -k arch_graph_bolt in the repository that owns the overlay'
+    statement: 'AC3: a test of the declared overlay fails when the ARCH_GRAPH_BOLT_URI entry for a lab host or the Mac is missing and passes when it is present, written red first -- falsifier: uv run pytest -q -k arch_graph_bolt in the repository that owns the overlay (the overlays repository: tests/test_arch_graph_bolt_overlay.py, bound by overlays#577, not by this contract)'
+  - id: AC4
+    statement: 'AC4: the architecture graph is brought up and populated on the dev lane (compose profile omnimemory, then node_architecture_graph_populate_effect) -- UNMET, not done: the service is down and this change starts nothing'
+  - id: AC5
+    statement: 'AC5: a graph query answers through the query node from a lab host with a timed answer -- UNMET, no host can be asked while the service is down'
 evidence_requirements:
 - kind: tests
   description: The host overlay resolution tests.
@@ -22,21 +28,54 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
-- id: dod-omn24687-ac2-ac3-resolution
-  description: The per-host overlay row resolves for each declared host, the variable wins, and a host with no row or a broken overlay fails closed.
+- id: dod-omn24687-ac2-resolution
+  description: The per-host overlay row resolves for each declared host, the variable wins, and a host with no row or a broken overlay fails closed. Uses a synthetic overlay, so it proves the resolver (AC2) and not the shipped overlay file (AC3, owned by the overlays repository).
   source: manual
   binds_ac:
   - AC2
-  - AC3
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/handlers/test_arch_graph_bolt_host_overlay.py -q --no-cov -n 0 -p no:randomly
     cwd: .
-- id: dod-omn24687-integration-proof
-  description: Hosted CI cannot reach a lab host. The local Done gate runs the query node's own config resolver on a lab host with no ARCH_GRAPH_BOLT_URI set; it fails while the host has no row in the arch_graph_bolt overlay.
+- id: dod-omn24687-integration-proof-h051
+  description: Hosted CI cannot reach a lab host. The local Done gate runs the query node's own config resolver on h051 with no ARCH_GRAPH_BOLT_URI set and requires the printed address to start with bolt; it fails while h051 has no row in the arch_graph_bolt overlay.
   source: manual
   execution_scope: local_done_gate
+  binds_ac:
+  - AC2
   checks:
   - check_type: command
-    check_value: onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24687 --kind test -- sh -c 'env -u ARCH_GRAPH_BOLT_URI uv run --frozen python -c "from omnimarket.nodes.node_architecture_graph_query_effect.models import ModelArchitectureGraphQueryConfig as C; print(C().bolt_uri)"'
+    check_value: onex lab-work run --host h051 --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24687-h051 --kind test -- sh -c 'env -u ARCH_GRAPH_BOLT_URI uv run --frozen python -c "from omnimarket.nodes.node_architecture_graph_query_effect.models import ModelArchitectureGraphQueryConfig as C; print(C().bolt_uri)" | grep -q ^bolt'
+    cwd: .
+- id: dod-omn24687-integration-proof-h053
+  description: The same local Done gate check pinned to h053, so a placement on a host with no row cannot give a false red and a printed string that is not a Bolt URI cannot pass.
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: command
+    check_value: onex lab-work run --host h053 --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24687-h053 --kind test -- sh -c 'env -u ARCH_GRAPH_BOLT_URI uv run --frozen python -c "from omnimarket.nodes.node_architecture_graph_query_effect.models import ModelArchitectureGraphQueryConfig as C; print(C().bolt_uri)" | grep -q ^bolt'
+    cwd: .
+- id: dod-omn24687-ac3-overlays-test
+  description: AC3 is owned by the overlays repository (overlays#577, tests/test_arch_graph_bolt_overlay.py), which tests the shipped overlay file. Hosted CI of this repository cannot run that suite, so the local Done gate runs it on a lab host at the overlays branch head.
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: command
+    check_value: onex lab-work run --repo OmniNode-ai/overlays --sha "$(git -C "$OMNI_HOME/overlays" rev-parse origin/omn-24687-arch-graph-bolt-host-overlay)" --lane dod-omn24687-ac3-overlays --kind test -- uv run --no-project --with pytest --with pyyaml pytest -q -k arch_graph_bolt tests/test_arch_graph_bolt_overlay.py
+    cwd: .
+- id: dod-omn24687-ac1-ac4-ac5-unmet
+  description: AC1, AC4 and AC5 are live-service outcomes and stay unmet. This check resolves the declared address and opens a TCP connection to it; it reads red while no Bolt service answers there and turns green only once one does. It proves the service answers, not that the graph is populated or queried.
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC1
+  - AC4
+  - AC5
+  checks:
+  - check_type: command
+    check_value: env -u ARCH_GRAPH_BOLT_URI uv run --frozen python -c "import socket; from urllib.parse import urlsplit; from omnimarket.handlers.arch_graph_bolt_host_overlay import resolve_arch_graph_bolt_uri as r; u = urlsplit(r()); socket.create_connection((u.hostname, u.port or 7687), 10)"
     cwd: .

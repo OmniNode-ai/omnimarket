@@ -14,6 +14,7 @@ no address lives here.
 from __future__ import annotations
 
 from typing import Annotated, Literal
+from urllib.parse import urlsplit
 
 from pydantic import (
     AfterValidator,
@@ -28,13 +29,27 @@ SCHEMA_VERSION = "arch_graph_bolt.v1"
 
 NonBlank = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 
-_BOLT_SCHEMES = ("bolt://", "bolt+s://", "bolt+ssc://")
+_BOLT_SCHEMES = ("bolt", "bolt+s", "bolt+ssc")
 
 
 def _bolt_scheme(value: str) -> str:
-    if value.startswith(_BOLT_SCHEMES) and len(value.split("://", 1)[1]) > 0:
-        return value
-    raise ValueError(f"must be a Bolt URI starting with one of {_BOLT_SCHEMES}")
+    """Accept ``<bolt scheme>://<host>[:<port>]`` and nothing after it."""
+    if any(ch.isspace() for ch in value):
+        raise ValueError("must not contain whitespace or trailing text")
+    try:
+        parts = urlsplit(value)
+        port = parts.port
+    except ValueError as exc:
+        raise ValueError(f"must be a valid Bolt URI ({exc})") from exc
+    if parts.scheme not in _BOLT_SCHEMES:
+        raise ValueError(f"must be a Bolt URI starting with one of {_BOLT_SCHEMES}")
+    if not parts.hostname:
+        raise ValueError("must name a host after the scheme")
+    if parts.path not in ("", "/") or parts.query or parts.fragment:
+        raise ValueError("must be a bare host and optional port, no path or query")
+    if port is not None and port == 0:
+        raise ValueError("port must be nonzero")
+    return value
 
 
 BoltUri = Annotated[NonBlank, AfterValidator(_bolt_scheme)]

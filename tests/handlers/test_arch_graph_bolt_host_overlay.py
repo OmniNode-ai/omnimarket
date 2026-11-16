@@ -104,3 +104,41 @@ def test_both_nodes_config_models_read_the_same_row(
     )
     assert ModelArchitectureGraphQueryConfig().bolt_uri == _URI
     assert ModelArchitectureGraphPopulateConfig().bolt_uri == _URI
+
+
+@pytest.mark.unit
+def test_arch_graph_bolt_handler_imports_the_one_short_host_name_helper() -> None:
+    from omnimarket.handlers import arch_graph_bolt_host_overlay as mod
+    from omnimarket.handlers.projection_read_binding_host_overlay import (
+        local_host_short_name,
+    )
+
+    assert mod.local_host_short_name is local_host_short_name
+
+
+@pytest.mark.unit
+def test_arch_graph_bolt_dotted_gethostname_resolves_the_short_name_row(
+    overlay_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "omnimarket.handlers.projection_read_binding_host_overlay.socket.gethostname",
+        lambda: "lab-host-b.example.test",
+    )
+    assert resolve_arch_graph_bolt_uri() == _URI
+
+
+@pytest.mark.unit
+def test_arch_graph_bolt_broken_overlay_refusal_carries_the_reader_message(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("ARCH_GRAPH_BOLT_URI", raising=False)
+    target = tmp_path / ARCH_GRAPH_BOLT_OVERLAY_ID
+    target.mkdir()
+    (target / "overlay.yaml").write_text(
+        "schema_version: arch_graph_bolt.v1\nbindings:\n  - {host: lab-host-b, bolt_uri: 'http://x'}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path))
+    # the reader's own message names the roots variable and the invalid field
+    with pytest.raises(ValueError, match=r"ONEX_SKILL_OVERLAY_ROOTS.*bolt_uri"):
+        resolve_arch_graph_bolt_uri(host="lab-host-b")

@@ -17,8 +17,6 @@ not as absent.
 
 from __future__ import annotations
 
-import socket
-
 from omnibase_infra.runtime.overlay.contract_env_ref import expand_contract_env_refs
 
 from omnimarket.handlers.node_overlay_reader import (
@@ -26,17 +24,15 @@ from omnimarket.handlers.node_overlay_reader import (
     find_node_overlay,
     load_structured_overlay,
 )
+from omnimarket.handlers.projection_read_binding_host_overlay import (
+    local_host_short_name,
+)
 from omnimarket.models.node_overlays.model_arch_graph_bolt_overlay import (
     ModelArchGraphBoltOverlay,
 )
 
 ARCH_GRAPH_BOLT_OVERLAY_ID = "arch_graph_bolt"
 _BOLT_URI_CONTRACT_REF = "${env.ARCH_GRAPH_BOLT_URI}"
-
-
-def local_host_short_name() -> str:
-    """The local host name without any domain suffix."""
-    return socket.gethostname().split(".", 1)[0]
 
 
 def _host_row_bolt_uri(host: str) -> str | None:
@@ -49,7 +45,7 @@ def _host_row_bolt_uri(host: str) -> str | None:
     except NodeOverlayError as exc:
         raise ValueError(
             f"overlay {ARCH_GRAPH_BOLT_OVERLAY_ID} does not load "
-            f"({type(exc).__name__}); fix the document, no lower source is tried"
+            f"({type(exc).__name__}: {exc}); fix the document, no lower source is tried"
         ) from exc
     wanted = host.casefold()
     for row in overlay.bindings:
