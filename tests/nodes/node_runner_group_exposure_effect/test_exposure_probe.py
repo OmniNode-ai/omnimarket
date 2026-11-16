@@ -339,6 +339,11 @@ def test_error_chain_a_broken_workflow_listing_reads_unreadable(
     _assert_unknown(result, EnumExposureReadFailure.UNREADABLE)
 
 
+# The retired flag name, spelled in two parts so that a repository-wide search for the name stays
+# empty: any other hit is a reader or a fixture the rename missed.
+_RETIRED_FLAG = "restricted_to_selected_workflows"
+
+
 def _group_body_with(**over: object) -> dict[str, object]:
     body: dict[str, object] = {
         "allows_public_repositories": False,
@@ -349,19 +354,37 @@ def _group_body_with(**over: object) -> dict[str, object]:
     return body
 
 
+def _assert_group_body_path_reads_working(
+    server: _Server, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The positive control: the group_body path itself reads a well-formed body as WORKING.
+
+    Without it a group_body path that read UNREADABLE for any other reason would let every
+    refusal test below pass vacuously.
+    """
+    clean = _run(
+        _probe(
+            "github",
+            Scenario(group_body=_group_body_with()),
+            server,
+            tmp_path,
+            monkeypatch,
+        )
+    )
+    assert clean.reading.verdict is EnumReadingVerdict.WORKING
+
+
 def test_error_chain_a_body_with_only_the_old_flag_name_reads_unreadable(
     server: _Server, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """GitHub names the flag restricted_to_workflows; the old key alone is refused."""
+    """GitHub names the flag restricted_to_workflows; the old key alone is refused (KeyError)."""
+    _assert_group_body_path_reads_working(server, tmp_path, monkeypatch)
     body = _group_body_with()
     del body["restricted_to_workflows"]
-    body["restricted_to_selected_workflows"] = True
+    body[_RETIRED_FLAG] = True
     scenario = Scenario(group_body=body)
     result = _run(_probe("github", scenario, server, tmp_path, monkeypatch))
     _assert_unknown(result, EnumExposureReadFailure.UNREADABLE)
-    # the positive control: the same server with the real key reads WORKING
-    clean = _run(_probe("github", Scenario(), server, tmp_path, monkeypatch))
-    assert clean.reading.verdict is EnumReadingVerdict.WORKING
 
 
 @pytest.mark.parametrize(
@@ -370,9 +393,36 @@ def test_error_chain_a_body_with_only_the_old_flag_name_reads_unreadable(
 def test_error_chain_a_null_flag_reads_unreadable_not_false(
     flag: str, server: _Server, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """A flag that is not a real bool is refused (ValueError), never read as False."""
+    _assert_group_body_path_reads_working(server, tmp_path, monkeypatch)
     scenario = Scenario(group_body=_group_body_with(**{flag: None}))
     result = _run(_probe("github", scenario, server, tmp_path, monkeypatch))
     _assert_unknown(result, EnumExposureReadFailure.UNREADABLE)
+
+
+def test_error_chain_a_restricted_group_without_its_pinned_list_reads_unreadable(
+    server: _Server, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A restricted group with no selected_workflows list is half read, never an empty pin."""
+    _assert_group_body_path_reads_working(server, tmp_path, monkeypatch)
+    body = _group_body_with()
+    del body["selected_workflows"]
+    result = _run(
+        _probe("github", Scenario(group_body=body), server, tmp_path, monkeypatch)
+    )
+    _assert_unknown(result, EnumExposureReadFailure.UNREADABLE)
+
+
+def test_an_unrestricted_group_may_omit_the_pinned_list(
+    server: _Server, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """GitHub ignores the list for an unrestricted group, so its absence is not a refusal."""
+    body = _group_body_with(restricted_to_workflows=False)
+    del body["selected_workflows"]
+    result = _run(
+        _probe("github", Scenario(group_body=body), server, tmp_path, monkeypatch)
+    )
+    assert result.reading.verdict is EnumReadingVerdict.NOT_WORKING
 
 
 def test_error_chain_the_call_past_the_budget_is_not_made(

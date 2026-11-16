@@ -1,16 +1,37 @@
 schema_version: 1.0.0
 ticket_id: OMN-24871
 title: The runner group read names the flag GitHub returns, so the hourly reading can read the group
-summary: The write node's runner-group-get handler and the exposure node's direct GitHub source read the key restricted_to_selected_workflows from GitHub's runner group body. GitHub names that flag restricted_to_workflows, so the write node answered github_refused (both GETs returned 200) and the hourly reading carried reason=group-read-refused. Both readers now read restricted_to_workflows.
+summary: >-
+  The write node's runner-group-get handler and the exposure node's direct GitHub source read the key
+  restricted_to_selected_workflows from GitHub's runner group body. GitHub names that flag
+  restricted_to_workflows, so the write node answered github_refused (both GETs returned 200) and the
+  hourly reading carried reason=group-read-refused. Both readers now read restricted_to_workflows. A
+  restricted group whose body has no selected_workflows list is refused by both readers, never read as
+  pinning nothing. This is an interface change on the bus: the field restricted_to_selected_workflows
+  of ModelRepoWriteRunnerGroup (omnimarket.models.model_repo_write_io), the runner_group of the result
+  ModelRepoWriteCompleted that node_github_repo_write_effect publishes for runner_group_get, is
+  renamed restricted_to_workflows, and the node contract.yaml operation description names the new
+  field. Before this change the deployed write node never published a completed runner_group (GitHub's
+  body carries no key of the old name, so every runner_group_get answered github_refused), so no
+  payload of the old shape was ever on the bus. The reader of that payload, WriteNodeGroupReader, runs
+  inside the h053 exposure unit tree. Deploy order, both from the merge commit of omnimarket#6332 --
+  first the write node on the dev lane (redeploy of node_github_repo_write_effect), then the h053
+  exposure unit tree (reinstall of the unit). Until both run the merged code the reading stays
+  UNKNOWN, as it is today: an old reader meeting the new payload fails validation and reads
+  UNREADABLE, and a new reader meeting an old write node meets github_refused. Neither pairing reads
+  WORKING.
 is_seam_ticket: false
-interface_change: false
-interfaces_touched: []
+interface_change: true
+interfaces_touched:
+- events
 requirements:
 - id: req-omn24871-group-flag
   statement: A runner group body carrying GitHub's flag restricted_to_workflows is read; a body carrying only the old key is refused.
   acceptance:
   - id: AC4
     statement: 'AC4: the write node reads restricted_to_workflows from the runner group body and refuses a body that carries only restricted_to_selected_workflows -- falsifier: uv run pytest tests/unit/nodes/node_github_repo_write_effect/test_handler_runner_group_get.py -q fails'
+  - id: AC5
+    statement: 'AC5: the exposure node''s direct GitHub source reads restricted_to_workflows, and a body missing the key (KeyError), carrying a flag that is not a bool (ValueError) or restricting the group without a selected_workflows list (ValueError) reads UNREADABLE, never WORKING or NOT_WORKING -- falsifier: uv run pytest tests/nodes/node_runner_group_exposure_effect/test_exposure_probe.py -q fails with the except clause around the flag reads narrowed to TypeError, or with the group_body path forced to UNREADABLE'
 evidence_requirements:
 - kind: tests
   description: The runner-group-get handler tests, the bus group read tests, the direct GitHub source tests (test_exposure_probe.py) and the golden chain.
@@ -21,7 +42,7 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn24871-ac4-handler-tests
-  description: The runner-group-get handler reads restricted_to_workflows and refuses the old key.
+  description: The runner-group-get handler reads restricted_to_workflows, refuses the old key and refuses a restricted group without its pinned list, each with the refusal message in result.detail.
   source: manual
   binds_ac:
   - AC4
@@ -39,10 +60,10 @@ dod_evidence:
     check_value: uv run pytest tests/nodes/node_runner_group_exposure_effect/test_bus_group_read.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn24871-direct-source
-  description: The exposure node's direct GitHub source reads restricted_to_workflows, refuses a body that carries only the old key and refuses a null flag instead of reading it as False.
+  description: The exposure node's direct GitHub source reads restricted_to_workflows, refuses a body that carries only the old key, refuses a null flag instead of reading it as False and refuses a restricted group without its pinned list; the positive control reads the same group_body path as WORKING.
   source: manual
   binds_ac:
-  - AC4
+  - AC5
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_runner_group_exposure_effect/test_exposure_probe.py -q --no-cov -n 0 -p no:randomly
@@ -57,12 +78,13 @@ dod_evidence:
     check_value: uv run pytest tests/test_golden_chain_github_repo_write_effect.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn24871-running-reading
-  description: Hosted CI cannot reach the lab host. Only the local Done gate runs this unbound check; it reads the rolling ledger for a STATUS row naming this fix, pull request omnimarket#6332, installed on h053, and for the newest hourly reading row of host h053 showing a verdict of WORKING or NOT_WORKING with no reason=group-read-refused. It runs where the ledger path is set and fails until the merged fix is installed on h053 and the unit has run there.
+  description: Hosted CI cannot reach the lab host. Only the local Done gate runs this unbound check; it reads the merge commit of omnimarket#6332 from the watcher, then the rolling ledger for the newest STATUS row naming pr=omnimarket#6332 with installed=h053:<the merged sha or its 12-character prefix> (an install of an older head does not match), then for the newest hourly reading row of host h053, which must carry a verdict of WORKING or NOT_WORKING with no reason=group-read-refused and a timestamp after the install row. It runs where the ledger path is set and fails until the merged fix is installed on h053 and the unit has run there after the install.
   source: manual
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: grep -F 'pr=omnimarket#6332' "$ONEX_LEDGER_PATH" | grep -qF 'installed=h053:' && grep -F 'src=runner-group-exposure' "$ONEX_LEDGER_PATH" | grep -F 'host=h053' | tail -n 1 | grep -E 'verdict=(WORKING|NOT_WORKING)' | grep -vF 'reason=group-read-refused'
+    check_value: |-
+      M=$(onex scm pr-merge-commit OmniNode-ai/omnimarket#6332 | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"].get("merge_commit_sha") or "")') && test -n "$M" && I=$(grep -F 'pr=omnimarket#6332' "$ONEX_LEDGER_PATH" | grep -F "installed=h053:$(printf '%s' "$M" | cut -c 1-12)" | tail -n 1 | cut -d ' ' -f 1) && test -n "$I" && R=$(grep -F 'src=runner-group-exposure' "$ONEX_LEDGER_PATH" | grep -F 'host=h053' | tail -n 1) && T=$(printf '%s' "$R" | cut -d ' ' -f 1) && [ "$T" '>' "$I" ] && printf '%s' "$R" | grep -E 'verdict=(WORKING|NOT_WORKING)' | grep -vF 'reason=group-read-refused'
     cwd: .
 - id: dod-omn24871-integration-proof
   description: Hosted CI cannot reach the lab bus. Only the local Done gate runs this unbound check; it asks the deployed GitHub write node on the dev lane to read runner group 7 of the organization that owns the named repository (the group id and the repository are a runner_group_reads pair of its overlay) and fails while the write node answers failed, which it does until the redeployed write node reads restricted_to_workflows.
