@@ -1,0 +1,39 @@
+schema_version: 1.0.0
+ticket_id: OMN-24688
+title: A code lane brief carries a context pack built from a lane-brief context profile and approved by the orchestrator
+summary: node_context_pack_orchestrator gains the lane_brief_context profile (seven budgeted tiers) and a handler that builds the pack with final_pack_hash, reads six tiers by code and records every rung the model-selected exemplar tier tried.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24688-lane-brief-context-profile
+  statement: The lane_brief_context profile names exemplar, graph answers, review findings in full, files to touch, tests and required CI contexts, prior lane history and risks, each with a token budget; the built pack carries final_pack_hash; a profile missing a tier and a pack with no hash are refused.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a lane_brief_context profile exists on node_context_pack_orchestrator with the tiers exemplar, graph answers, review findings in full, files to touch, tests and required CI contexts, prior lane history and risks, each with a token budget, and the built pack carries final_pack_hash; a profile missing a tier or a pack with no hash is refused -- falsifier: uv run pytest tests -q -k lane_brief_context_tiers in omnimarket, red before the change and green after'
+evidence_requirements:
+- kind: tests
+  description: The lane-brief context tests and the node's other tests pass at the pushed head.
+  command: uv run --frozen pytest tests/nodes/node_context_pack_orchestrator tests/pack -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24688-ac1
+  description: The profile resolves with seven tiers and budgets inside token_budget, a profile missing any one tier and a pack with no final_pack_hash are each refused, and the same tests fail on the base where the module does not exist.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_context_pack_orchestrator/test_lane_brief_context_profile.py -k lane_brief_context_tiers -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24688-integration-proof
+  description: Run the lane-brief context tests on a lab host at the pushed head. Hosted CI cannot reach the lab hosts, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24688 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_context_pack_orchestrator/test_lane_brief_context_profile.py -q --no-cov -n 0 -p no:randomly
+    cwd: .

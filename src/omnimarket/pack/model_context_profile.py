@@ -10,9 +10,11 @@ from omnibase_core.enums.enum_context_factor import EnumContextFactor
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.enums.enum_context_binding_kind import EnumContextBindingKind
+from omnimarket.enums.enum_lane_brief_tier import EnumLaneBriefTier
 from omnimarket.models.context_pack.model_context_task_kind_rule import (
     ModelContextTaskKindRule,
 )
+from omnimarket.models.context_pack.model_context_tier_spec import ModelContextTierSpec
 
 #: Factors of plan section 4.2 rows 1 to 5: bytes depend only on the pinned commit.
 STABLE_TIER_FACTORS: frozenset[EnumContextFactor] = frozenset(
@@ -71,6 +73,27 @@ class ModelContextProfile(BaseModel):
     context_window_tokens: int | None = Field(default=None, gt=0)
     reserved_output_tokens: int | None = Field(default=None, ge=0)
     reserved_system_tokens: int | None = Field(default=None, ge=0)
+    # Per-tier budgets of a profile that declares its tiers one by one (lane_brief_context).
+    tier_specs: tuple[ModelContextTierSpec, ...] = Field(default_factory=tuple)
+
+    @model_validator(mode="after")
+    def _validate_tier_specs(self) -> ModelContextProfile:
+        if not self.tier_specs:
+            return self
+        named = [spec.tier for spec in self.tier_specs]
+        missing = [t.value for t in EnumLaneBriefTier if t not in named]
+        if missing or len(set(named)) != len(named):
+            raise ValueError(
+                f"tier_specs must name each lane-brief tier exactly once; missing: {missing}"
+            )
+        if not {spec.factor for spec in self.tier_specs} <= set(self.required_factors):
+            raise ValueError("every tier_specs factor must be in required_factors")
+        total = sum(spec.token_budget for spec in self.tier_specs)
+        if total > self.token_budget:
+            raise ValueError(
+                f"tier_specs budgets sum to {total}, above token_budget {self.token_budget}"
+            )
+        return self
 
     @model_validator(mode="after")
     def _validate_factor_policy(self) -> ModelContextProfile:

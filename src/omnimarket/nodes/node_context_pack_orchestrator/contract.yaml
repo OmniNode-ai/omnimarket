@@ -117,6 +117,9 @@ capabilities:
   - name: context.pack.build
     description: Build and render one context package for a named profile
     version: 1.0.0
+  - name: context.pack.lane_brief
+    description: Build the lane-brief context pack (seven budgeted tiers, final_pack_hash, recorded rungs) for the orchestrator to approve
+    version: 1.0.0
 
 event_bus:
   subscribe_topics:
