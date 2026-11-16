@@ -61,6 +61,15 @@ def parse_rate_limit_reset(
     return None
 
 
+# The ``reset_from`` values that read an inline naive stamp, and the UTC offset in minutes each is written in. The zone
+# is part of the value because ModelQuotaCodeRule is a wire model and the consumers that pin it refuse a key they do not
+# declare; ``reset_from`` is a free string they already accept.
+RESET_STAMP_UTC_OFFSET_MINUTES: dict[str, int] = {
+    "message_reset_timestamp": 0,
+    "message_reset_timestamp_beijing": 480,
+}
+
+
 def parse_reset_instant(
     message: str, *, utc_offset_minutes: int = 0
 ) -> datetime | None:
@@ -68,8 +77,9 @@ def parse_reset_instant(
 
     The provider reports a naive wall-clock stamp with no offset. The rule that
     selects this reader declares the offset the stamp is written in
-    (``reset_utc_offset_minutes``; z.ai writes Beijing time, 480), and the stamp
-    is converted to UTC with it. With no offset declared the stamp is read as
+    (``utc_offset_minutes``; z.ai writes Beijing time, 480), and the stamp is
+    converted to UTC with it. A rule names the offset through its ``reset_from``
+    value (``message_reset_timestamp_beijing``), never through a key of its own. With no offset declared the stamp is read as
     UTC. Reading a Beijing stamp as UTC would hold the provider out eight hours
     past its reset.
     """
@@ -110,9 +120,10 @@ class HandlerProviderQuotaReset:
         self, request: ModelProviderQuotaResetRequest
     ) -> ModelProviderQuotaResetResult:
         reset = None
-        if request.reset_from == "message_reset_timestamp":
+        if request.reset_from in RESET_STAMP_UTC_OFFSET_MINUTES:
             reset = parse_reset_instant(
-                request.message, utc_offset_minutes=request.reset_utc_offset_minutes
+                request.message,
+                utc_offset_minutes=RESET_STAMP_UTC_OFFSET_MINUTES[request.reset_from],
             )
         elif request.reset_from == "message_retry_delay":
             reset = parse_retry_delay(request.message, reference=request.reference)

@@ -6,18 +6,10 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Any, Literal
+from typing import Literal
 from uuid import UUID
 
-from pydantic import (
-    BaseModel,
-    ConfigDict,
-    Field,
-    SerializerFunctionWrapHandler,
-    StrictBool,
-    model_serializer,
-    model_validator,
-)
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, model_validator
 
 from omnimarket.enums.enum_deployment_fact_kind import EnumDeploymentFactKind
 from omnimarket.models.delegation.model_deployment_fact_marker import deployment_fact
@@ -481,21 +473,13 @@ class ModelQuotaCodeRule(BaseModel):
         default=None,
         description=(
             "How to source the reset instant. 'message_reset_timestamp' reads an "
-            "absolute stamp the provider states inline (z.ai); "
+            "absolute stamp the provider states inline, in UTC; "
+            "'message_reset_timestamp_beijing' reads the same stamp as Beijing time "
+            "(UTC+8, what z.ai writes); "
             "'message_retry_delay' reads a relative 'retry in <N>s' delay "
             "(Gemini, OMN-16932); 'rate_limit_reset_milliseconds' reads "
             "X-RateLimit-Reset from response or error.metadata.headers. "
             "Anything else falls back to the cooldown."
-        ),
-    )
-    reset_utc_offset_minutes: int = Field(
-        default=0,
-        ge=-840,
-        le=840,
-        description=(
-            "Offset from UTC, in minutes, of the naive wall-clock stamp "
-            "'message_reset_timestamp' reads. z.ai writes its reset stamp in "
-            "Beijing time (480); a provider that states UTC leaves this 0."
         ),
     )
     fallback_cooldown_seconds: int = Field(
@@ -524,22 +508,6 @@ class ModelQuotaCodeRule(BaseModel):
             "request hit the pay-as-you-go surface (OMN-6790)."
         ),
     )
-
-    @model_serializer(mode="wrap")
-    def _dump_in_the_base_shape_unless_an_offset_is_declared(
-        self, handler: SerializerFunctionWrapHandler
-    ) -> dict[str, Any]:
-        """Omit ``reset_utc_offset_minutes`` while it is the default 0.
-
-        A consumer that still reads quota rules in the base shape (the schema pinned by
-        ``tests/fixtures/delegation/quota_rule_legacy_schema.json``, which forbids extra keys) is handed every rule
-        that states UTC, or no stamp at all, exactly as before; only a rule that declares a non-zero offset (the zai
-        stamps, Beijing time) carries the key.
-        """
-        data: dict[str, Any] = handler(self)
-        if self.reset_utc_offset_minutes == 0:
-            data.pop("reset_utc_offset_minutes", None)
-        return data
 
 
 class ModelQuotaProviderRule(BaseModel):

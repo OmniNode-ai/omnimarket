@@ -39,7 +39,9 @@ RECORDED = (
     "claude-glm exited rc=1: API Error: Request rejected (429) · [1310][Weekly/Monthly Limit Exhausted. "
     "Your limit will reset at 2026-11-15 01:38:18][2026111421065430b8c2c98d0a4d56]"
 )
-RECORDED_1308 = (
+# BUILT_1308 and BUILT_1316 are built texts, not receipts: they carry the shape of the recorded receipt above with the
+# code, the sentence and the stamp of the case under test, since no receipt of those codes has been captured.
+BUILT_1308 = (
     "claude-glm exited rc=1: API Error: Request rejected (429) · [1308][Usage limit reached for 5 hour. "
     "Your limit will reset at 2026-11-14 23:06:54][2026111421065430b8c2c98d0a4d56]"
 )
@@ -124,10 +126,10 @@ def test_a_later_marker_is_never_shortened_and_an_absurd_one_is_ignored() -> Non
 def test_code_1308_holds_for_its_stated_reset_and_reads_its_rule_from_the_policy() -> (
     None
 ):
-    assert plan_limit_rule(RECORDED_1308) is zai_rule("1308") or plan_limit_rule(
-        RECORDED_1308
+    assert plan_limit_rule(BUILT_1308) is zai_rule("1308") or plan_limit_rule(
+        BUILT_1308
     ) == zai_rule("1308")
-    noted = ask("note", CALL_ENDED, RECORDED_1308)
+    noted = ask("note", CALL_ENDED, BUILT_1308)
     assert noted.held is True
     assert noted.code == "1308"
     assert noted.until == RESET_1308
@@ -218,9 +220,7 @@ def test_the_adapter_keeps_the_hold_in_one_marker_file(
 def test_the_adapter_writes_the_1308_code_into_the_marker(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    assert (
-        run(tmp_path, CALL_ENDED, "note", RECORDED_1308, capsys=capsys)["held"] is True
-    )
+    assert run(tmp_path, CALL_ENDED, "note", BUILT_1308, capsys=capsys)["held"] is True
     assert (
         json.loads((tmp_path / MARKER_NAME).read_text(encoding="utf-8"))["code"]
         == "1308"
@@ -275,22 +275,38 @@ def test_a_state_root_with_a_file_as_a_path_component_prints_not_held_and_exits_
     assert not state_root.exists()
 
 
+@pytest.mark.parametrize(
+    "failure",
+    [
+        ValueError("policy block missing"),
+        AttributeError("'NoneType' object has no attribute 'providers'"),
+    ],
+    ids=["ValueError", "AttributeError"],
+)
 def test_an_unreadable_policy_fails_open(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
+    failure: Exception,
 ) -> None:
+    """Any failure of the policy loader prints the JSON line and exits 0, as the module docstring says."""
+
     def broken() -> None:
-        raise ValueError("policy block missing")
+        raise failure
 
     monkeypatch.setattr(
         "omnimarket.handlers.handler_glm_quota_gate.load_provider_quota_policy", broken
     )
     assert main(["note", str(tmp_path), RECORDED], now=CALL_ENDED) == 0
-    assert json.loads(capsys.readouterr().out)["held"] is False
+    assert json.loads(capsys.readouterr().out) == {
+        "held": False,
+        "until": "",
+        "reason": "",
+    }
 
 
-RECORDED_1316 = (
+# A built text, not a receipt (see BUILT_1308).
+BUILT_1316 = (
     "claude-glm exited rc=1: API Error: Request rejected (429) · [1316][Plan window spent. "
     "Your limit will reset at 2026-11-15 01:38:18][2026111421065430b8c2c98d0a4d56]"
 )
@@ -298,7 +314,7 @@ RECORDED_1316 = (
 
 @pytest.mark.parametrize("code", ["1316", "1317", "1318", "1319", "1320", "1321"])
 def test_codes_1316_to_1321_hold_until_the_beijing_time_reset(code: str) -> None:
-    text = RECORDED_1316.replace("[1316]", f"[{code}]")
+    text = BUILT_1316.replace("[1316]", f"[{code}]")
     noted = ask("note", CALL_ENDED, text)
     assert noted.held is True
     assert noted.code == code
@@ -320,9 +336,33 @@ def test_a_rate_limit_refusal_followed_by_a_plan_limit_refusal_holds_on_the_plan
     assert noted.until == RESET
 
 
-def test_the_first_refusal_that_names_a_hold_rule_is_the_one_taken() -> None:
-    both = f"{RECORDED_1308}\n{RECORDED}"
+STAMPLESS_1308 = "claude-glm exited rc=1: API Error: Request rejected (429) · [1308][Usage limit reached for 5 hour.]"
+
+
+def test_a_stampless_1308_followed_by_a_1310_holds_until_the_1310_stamp() -> None:
+    """The 1308 refusal states no reset; the first "reset at" in the text belongs to the 1310 refusal after it."""
+    both = f"{STAMPLESS_1308}\n{RECORDED}"
     noted = ask("note", CALL_ENDED, both)
-    assert noted.code == "1308"
-    assert noted.until == RESET_1308
+    assert noted.held is True
+    assert noted.code == "1310"
+    assert noted.until == RESET
+    fallback = timedelta(seconds=zai_rule("1308").fallback_cooldown_seconds)
+    assert noted.until > CALL_ENDED + fallback
+
+
+def test_a_stamp_belongs_to_the_refusal_before_it_not_to_the_one_after() -> None:
+    """A stamped 1310 followed by a stampless 1308: the 1308 holds its fallback, the 1310 its stamp; the later hold wins."""
+    noted = ask("note", CALL_ENDED, f"{RECORDED}\n{STAMPLESS_1308}")
+    assert noted.code == "1310"
+    assert noted.until == RESET
+
+
+def test_each_holding_refusal_is_read_on_its_own_stamp_and_the_latest_hold_wins() -> (
+    None
+):
+    both = f"{BUILT_1308}\n{RECORDED}"
+    noted = ask("note", CALL_ENDED, both)
+    assert noted.code == "1310"
+    assert noted.until == RESET  # 17:38:18Z, after the 1308's 15:06:54Z
+    assert ask("note", CALL_ENDED, f"{RECORDED}\n{BUILT_1308}").until == RESET
     assert plan_limit_rule(f"{RATE_LIMIT}\n{RATE_LIMIT}") is None

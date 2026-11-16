@@ -277,6 +277,8 @@ async def test_ac4_wrong_key_control_bites_and_all_live_needs_it(
     assert blind.all_live is False
 
 
+# z.ai writes its reset stamp in Beijing time (UTC+8): the stamp 2026-10-19 08:00:00 below is 2026-10-19T00:00:00Z.
+ZAI_1310_RESET = datetime(2026, 10, 19, 0, 0, tzinfo=UTC)
 ZAI_1310 = {
     "http_status": 429,
     "provider_error_code": "1310",
@@ -310,7 +312,7 @@ async def test_ac5_zai_1310_and_1113_are_distinguished(tmp_path: Path) -> None:
     assert (a.provider_error_code, b.provider_error_code) == ("1310", "1113")
     assert a.quota_class == "disable_until_reset"
     assert b.quota_class == "disable_until_billing"
-    assert a.suppressed_until == datetime(2026, 10, 19, 8, 0, tzinfo=UTC)
+    assert a.suppressed_until == ZAI_1310_RESET
     assert b.suppressed_until is None
 
 
@@ -333,13 +335,13 @@ async def test_ac5_1310_with_reset_suppresses_reprobe_in_window(tmp_path: Path) 
     assert second.requests == []
     [rung] = [r for r in inside.rungs if r.backend_id == "cloud-glm"]
     assert rung.verdict is V.SKIPPED_SUPPRESSED
-    assert rung.suppressed_until == datetime(2026, 10, 19, 8, 0, tzinfo=UTC)
+    assert rung.suppressed_until == ZAI_1310_RESET
 
     third = FakeTransport()
     after = ModelProviderRungCanaryRequest(
         contract_path=contract,
         state_path=state,
-        now=datetime(2026, 10, 19, 8, 0, tzinfo=UTC) + timedelta(seconds=1),
+        now=ZAI_1310_RESET + timedelta(seconds=1),
     )
     result = await HandlerProviderRungCanary(_resolver(KEYS), third).handle(after)
     assert [r.verdict for r in result.rungs if r.backend_id == "cloud-glm"] == [V.LIVE]
@@ -379,9 +381,7 @@ async def test_state_file_holds_no_key_material_and_is_owner_only(
     assert isinstance(rows, list)
     assert all(set(row) == {"backend_id", "until", "quota_code"} for row in rows)
     [glm] = [row for row in rows if row["backend_id"] == "cloud-glm"]
-    assert datetime.fromisoformat(glm["until"]) == datetime(
-        2026, 10, 19, 8, 0, tzinfo=UTC
-    )
+    assert datetime.fromisoformat(glm["until"]) == ZAI_1310_RESET
     assert stat.S_IMODE(os.stat(state).st_mode) == 0o600
 
 

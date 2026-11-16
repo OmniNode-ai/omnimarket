@@ -426,7 +426,6 @@ def classify_quota_response(
             .handle(
                 ModelProviderQuotaResetRequest(
                     reset_from=rule.reset_from,
-                    reset_utc_offset_minutes=rule.reset_utc_offset_minutes,
                     reference=reference,
                     message=_extract_error_message(body),
                     body=body,

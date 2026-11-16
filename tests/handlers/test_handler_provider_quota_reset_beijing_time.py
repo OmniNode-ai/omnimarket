@@ -9,7 +9,11 @@ The recorded text is receipt 018b9825-a3b3-4d5d-9338-1b49f4fa47b8 of 2026-11-14:
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
+from pathlib import Path
+
+from jsonschema import Draft202012Validator
 
 from omnimarket.handlers.handler_provider_quota_reset import (
     HandlerProviderQuotaReset,
@@ -43,19 +47,27 @@ def test_the_recorded_beijing_stamp_is_eight_hours_before_the_same_digits_in_utc
     )
 
 
-def test_the_reset_handler_applies_the_offset_the_request_declares() -> None:
+def test_the_reset_handler_applies_the_offset_the_reset_from_value_names() -> None:
     result = HandlerProviderQuotaReset().handle(
         ModelProviderQuotaResetRequest(
-            reset_from="message_reset_timestamp",
-            reset_utc_offset_minutes=480,
+            reset_from="message_reset_timestamp_beijing",
             reference=CALL_ENDED,
             message=RECORDED,
         )
     )
     assert result.reset_at == RESET_UTC
+    # A rule that names no zone reads the same stamp as UTC, so a provider that states UTC is unchanged.
+    as_utc = HandlerProviderQuotaReset().handle(
+        ModelProviderQuotaResetRequest(
+            reset_from="message_reset_timestamp",
+            reference=CALL_ENDED,
+            message=RECORDED,
+        )
+    )
+    assert as_utc.reset_at == datetime(2026, 11, 15, 1, 38, 18, tzinfo=UTC)
 
 
-def test_the_zai_rule_declares_beijing_time_and_the_bifrost_path_holds_until_the_utc_reset() -> (
+def test_the_zai_rule_names_beijing_time_and_the_bifrost_path_holds_until_the_utc_reset() -> (
     None
 ):
     """The bifrost path (zai rules, reset_from: message_reset_timestamp) is the behaviour that held eight hours too long."""
@@ -79,28 +91,27 @@ def test_the_zai_rule_declares_beijing_time_and_the_bifrost_path_holds_until_the
             for r in p.codes
             if r.code == code
         )
-        assert rule.reset_utc_offset_minutes == 480
+        assert rule.reset_from == "message_reset_timestamp_beijing"
 
 
-def test_every_zai_rule_that_reads_its_reset_from_the_message_declares_beijing_time() -> (
+def test_every_zai_rule_that_reads_its_reset_from_the_message_names_beijing_time() -> (
     None
 ):
-    """Codes 1316 to 1321 held the same Beijing-time stamp eight hours too long while they declared no offset."""
-    stamped = [
+    """Codes 1316 to 1321 held the same Beijing-time stamp eight hours too long while they read it as UTC."""
+    utc_readers = [
         (p.provider_id, r.code)
         for p in load_provider_quota_policy().providers
         if p.provider_id.startswith("zai")
         for r in p.codes
         if r.reset_from == "message_reset_timestamp"
-        and r.reset_utc_offset_minutes != 480
     ]
-    assert stamped == []
+    assert utc_readers == []
     declared = {
         r.code
         for p in load_provider_quota_policy().providers
         if p.provider_id.startswith("zai")
         for r in p.codes
-        if r.reset_from == "message_reset_timestamp"
+        if r.reset_from == "message_reset_timestamp_beijing"
     }
     assert declared == {"1310", "1308"} | {str(c) for c in range(1316, 1322)}
 
@@ -117,3 +128,32 @@ def test_the_bifrost_path_reads_a_1316_stamp_as_beijing_time() -> None:
     )
     assert verdict is not None
     assert verdict.disabled_until == RESET_UTC
+
+
+LEGACY_FIXTURE = (
+    Path(__file__).resolve().parents[1]
+    / "fixtures"
+    / "delegation"
+    / "quota_rule_legacy_schema.json"
+)
+
+
+def test_every_quota_rule_of_every_provider_decodes_on_the_pinned_consumer_shape() -> (
+    None
+):
+    """The Wire Compatibility Gate's consumer, the omniclaude pin dev-20261112062638-179aa1280722.
+
+    tests/fixtures/delegation/quota_rule_legacy_schema.json stands for that pin's ModelQuotaCodeRule: it forbids extra
+    keys. The z.ai rules carry the Beijing offset in their ``reset_from`` value, so no rule of any provider dumps a key
+    the pin refuses.
+    """
+    schema = json.loads(LEGACY_FIXTURE.read_text())["schema"]
+    validator = Draft202012Validator(schema)
+    rules = [
+        (p.provider_id, r)
+        for p in load_provider_quota_policy().providers
+        for r in p.codes
+    ]
+    assert any(pid == "zai" for pid, _ in rules)
+    for _pid, rule in rules:
+        validator.validate(rule.model_dump(mode="json"))

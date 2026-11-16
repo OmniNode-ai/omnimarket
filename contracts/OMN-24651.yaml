@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-24651
 title: Hold GLM out of the lane delegation ladders while the Coding Plan's limit is exhausted
-summary: Adds handler_glm_quota_gate, which reads z.ai's plan-limit refusal (codes 1310 and 1308, from the zai quota rules) out of a failed GLM call and answers whether GLM is held out. node_llm_delegation_call_effect binds it and owns its command line, which keeps the hold in one marker file under the state root. The zai rules declare the reset stamp's Beijing-time offset, which the shared reset handler applies. The lane delegation step runs the command line in the dispatch venv before and after each GLM call.
+summary: Adds handler_glm_quota_gate, which reads z.ai's plan-limit refusals (codes 1308, 1310 and 1316 to 1321, from the zai quota rules) out of a failed GLM call and answers whether GLM is held out. node_llm_delegation_call_effect binds it and owns its command line, which keeps the hold in one marker file under the state root. The zai rules read the reset stamp with reset_from message_reset_timestamp_beijing, and the shared reset handler applies the Beijing-time offset that value names. The lane delegation step runs the command line in the dispatch venv before and after each GLM call.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []

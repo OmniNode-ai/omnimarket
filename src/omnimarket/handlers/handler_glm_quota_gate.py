@@ -12,7 +12,10 @@ reset.
 Which codes hold GLM out, what a stated reset is read as, and the cooldown for a notice that states none are the zai
 rules of ``provider_quota_policy`` (``load_provider_quota_policy``), not constants here: a rule whose disposition is
 ``disable_until_reset`` (codes 1310, 1308 and 1316 to 1321) holds. The reset stamp is read by ``HandlerProviderQuotaReset`` with the
-rule's declared ``reset_utc_offset_minutes`` (Beijing time, 480) and the gate uses the instant as returned.
+rule's ``reset_from`` value (``message_reset_timestamp_beijing``: the stamp is Beijing time, UTC+8) and the gate uses the
+instant as returned. The zone rides in that value and not in a key of its own because ModelQuotaCodeRule is a wire
+model and the omniclaude pin that `tests/fixtures/delegation/quota_rule_legacy_schema.json` stands for refuses an
+undeclared key.
 
 This handler is pure: it takes the clock, the text and the hold already on record, and answers. The command line the
 lane delegation step runs, with its marker file under the state root, is ``runtime_glm_quota_gate`` in the node that
@@ -51,15 +54,16 @@ def _stamp(at: datetime) -> str:
     return at.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def plan_limit_rule(error_text: str) -> ModelQuotaCodeRule | None:
-    """The declared zai ``disable_until_reset`` rule the first refusal in ``error_text`` that names one matches, or None.
+def _holding_refusals(error_text: str) -> list[tuple[ModelQuotaCodeRule, str]]:
+    """Each ``(429) [code]`` refusal in the text that names a hold rule, in order, with the text of that refusal alone.
 
-    Every ``(429) [code]`` refusal in the text is read in order, so a rate-limit refusal (1302) that precedes a plan-limit
-    refusal (1310) does not hide it.
+    A refusal's text runs from its own ``(429) [code]`` to the next refusal, so the reset stamp a rule reads is the one
+    its own refusal states, never one that belongs to a refusal after it.
     """
-    codes = _REFUSAL.findall(error_text or "")
-    if not codes:
-        return None
+    text = error_text or ""
+    matches = list(_REFUSAL.finditer(text))
+    if not matches:
+        return []
     holding = {
         rule.code: rule
         for provider in load_provider_quota_policy().providers
@@ -67,29 +71,33 @@ def plan_limit_rule(error_text: str) -> ModelQuotaCodeRule | None:
         for rule in provider.codes
         if rule.disposition is EnumQuotaDisposition.DISABLE_UNTIL_RESET
     }
-    return next((holding[c] for c in codes if c in holding), None)
+    found: list[tuple[ModelQuotaCodeRule, str]] = []
+    for i, match in enumerate(matches):
+        rule = holding.get(match.group(1))
+        if rule is not None:
+            end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+            found.append((rule, text[match.start() : end]))
+    return found
 
 
-def exhausted_until(
-    error_text: str, now: datetime
-) -> tuple[ModelQuotaCodeRule, datetime] | None:
-    """The rule and the UTC instant GLM is held until for the refusal in ``error_text``, or None for any other text.
+def plan_limit_rule(error_text: str) -> ModelQuotaCodeRule | None:
+    """The declared zai ``disable_until_reset`` rule the first refusal in ``error_text`` that names one matches, or None.
 
-    A stated reset that is after ``now`` and within ``LONGEST_HOLD`` is the hold. A notice that states none, one whose
-    stated reset is not after ``now`` (a wrong zone or a clock running ahead would read so), or one that cannot be
-    read holds for the rule's ``fallback_cooldown_seconds``; a stamp past ``LONGEST_HOLD`` is cut to it.
+    Every ``(429) [code]`` refusal in the text is read in order, so a rate-limit refusal (1302) that precedes a plan-limit
+    refusal (1310) does not hide it.
     """
-    rule = plan_limit_rule(error_text)
-    if rule is None:
-        return None
+    found = _holding_refusals(error_text)
+    return found[0][0] if found else None
+
+
+def _hold_for(
+    rule: ModelQuotaCodeRule, refusal: str, now: datetime
+) -> tuple[ModelQuotaCodeRule, datetime]:
     stated = (
         HandlerProviderQuotaReset()
         .handle(
             ModelProviderQuotaResetRequest(
-                reset_from=rule.reset_from,
-                reset_utc_offset_minutes=rule.reset_utc_offset_minutes,
-                reference=now,
-                message=error_text,
+                reset_from=rule.reset_from, reference=now, message=refusal
             )
         )
         .reset_at
@@ -98,6 +106,25 @@ def exhausted_until(
         unstated = max(timedelta(seconds=rule.fallback_cooldown_seconds), timedelta(0))
         return rule, now + (unstated or _FALLBACK_FLOOR)
     return rule, min(stated, now + LONGEST_HOLD)
+
+
+def exhausted_until(
+    error_text: str, now: datetime
+) -> tuple[ModelQuotaCodeRule, datetime] | None:
+    """The rule and the UTC instant GLM is held until for the refusals in ``error_text``, or None for any other text.
+
+    Each refusal that names a hold rule is read on its own text: a stated reset that is after ``now`` and within
+    ``LONGEST_HOLD`` is its hold. A refusal that states none, one whose stated reset is not after ``now`` (a wrong zone
+    or a clock running ahead would read so), or one that cannot be read holds for the rule's
+    ``fallback_cooldown_seconds``; a stamp past ``LONGEST_HOLD`` is cut to it. The latest of the refusals' holds is the
+    answer, so a 1308 that states no reset followed by a 1310 that states one holds until the 1310 stamp.
+    """
+    holds = [
+        _hold_for(rule, refusal, now) for rule, refusal in _holding_refusals(error_text)
+    ]
+    if not holds:
+        return None
+    return max(holds, key=lambda hold: hold[1])
 
 
 class HandlerGlmQuotaGate:

@@ -20,8 +20,6 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
-import yaml
-
 from omnimarket.handlers.handler_glm_quota_gate import HandlerGlmQuotaGate
 from omnimarket.models.delegation.model_glm_quota_gate import (
     ModelGlmQuotaGateRequest,
@@ -96,7 +94,9 @@ def main(argv: Sequence[str] | None = None, now: datetime | None = None) -> int:
         return EXIT_INVALID
     try:
         answer = _answer(args, now or datetime.now(UTC))
-    except (OSError, ValueError, KeyError, TypeError, yaml.YAMLError):
+    except Exception:
+        # Fail open for any failure (a policy loader that raises AttributeError included): the gate is an
+        # optimisation and must always print its JSON line, never a traceback.
         answer = dict(_NOT_HELD)
     sys.stdout.write(json.dumps(answer) + "\n")
     return 0
