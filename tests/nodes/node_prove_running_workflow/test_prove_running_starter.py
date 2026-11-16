@@ -166,3 +166,31 @@ async def test_not_running_lines_start_one_workflow_each_and_never_twice() -> No
         assert {s["start"] for s in third} == {"refused-already-proven"}
     finally:
         await env.shutdown()
+
+
+SHA = "270e510aaf9da7fb52ba45df4ede46af2444b83c"
+
+
+def test_parse_merge_sha_reads_the_verbs_json_line() -> None:
+    from omnimarket.nodes.node_prove_running_workflow.runtime_prove_running import (
+        parse_merge_sha,
+    )
+
+    out = (
+        '{"verb":"pr-merge-commit","outcome":"completed","result":{"repo":"OmniNode-ai/omnimarket",'
+        f'"number":5752,"merged":true,"merge_commit_sha":"{SHA}"}}}}\n'
+    )
+    assert parse_merge_sha(out) == SHA
+
+
+def test_parse_merge_sha_reads_a_bare_sha_and_refuses_the_rest() -> None:
+    from omnimarket.nodes.node_prove_running_workflow.runtime_prove_running import (
+        parse_merge_sha,
+    )
+
+    assert parse_merge_sha(f"merge commit {SHA}\n") == SHA
+    assert (
+        parse_merge_sha('{"result":{"merged":false,"merge_commit_sha":null}}') is None
+    )
+    assert parse_merge_sha('{"result":{"merge_commit_sha":"abc"}}') is None
+    assert parse_merge_sha("") is None

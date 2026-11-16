@@ -205,6 +205,32 @@ def cmd_write_row(cfg: dict[str, Any], outcome: str) -> int:
     return 0
 
 
+def _is_sha(token: object) -> bool:
+    return (
+        isinstance(token, str)
+        and len(token) == 40
+        and all(c in "0123456789abcdef" for c in token)
+    )
+
+
+def parse_merge_sha(stdout: str) -> str | None:
+    """The merge sha in ``onex scm pr-merge-commit`` output: the verb's JSON line (``result.merge_commit_sha``), or a
+    bare 40-hex token on an older verb that printed one."""
+    for line in reversed(stdout.splitlines()):
+        try:
+            doc = json.loads(line)
+        except ValueError:
+            continue
+        result = doc.get("result") if isinstance(doc, dict) else None
+        sha = result.get("merge_commit_sha") if isinstance(result, dict) else None
+        if _is_sha(sha):
+            return str(sha)
+    for token in reversed(stdout.split()):
+        if _is_sha(token):
+            return token
+    return None
+
+
 class CliMergeShaResolver:
     """The merge sha through ``onex scm pr-merge-commit`` (the PR watcher state and the clones, never GitHub)."""
 
@@ -218,10 +244,7 @@ class CliMergeShaResolver:
             text=True,
             check=False,
         )
-        for token in reversed(proc.stdout.split()):
-            if len(token) == 40 and all(c in "0123456789abcdef" for c in token):
-                return token
-        return None
+        return parse_merge_sha(proc.stdout)
 
 
 async def _connect(target_host: str, namespace: str) -> Any:
