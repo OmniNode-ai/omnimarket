@@ -37,9 +37,10 @@ METERING_COLUMNS = (
 #: column existed holds no run handed back to its caller.
 METERING_CAUSE_COLUMN = "terminal_failure_cause"
 RETURNED_TO_CALLER = "returned_to_caller"
-#: OMN-24615 AC1: the run's provider usage over its calls, where the reader has
-#: it. Any value but "measured", a missing call record included, means the
-#: tokens were not measured, so the run is counted as unknown tokens.
+#: OMN-24615 AC1, AC5: the run's provider usage over its calls, where the reader
+#: has it. No call record (NULL) means its tokens are unknown, as usage-by-model-day
+#: never sees the run; any other value but "measured" keeps the tokens in the token
+#: totals and counts the run as unknown tokens, with no saving.
 METERING_USAGE_COLUMN = "call_usage_source"
 
 
@@ -131,9 +132,8 @@ def metering_record_from_row(row: Mapping[str, Any]) -> ModelMeteringRecord | No
     # Both zero is the table default, not a measurement. See the reader's
     # module docstring: a completed delegation consuming no tokens in either
     # direction does not happen; an unpopulated pair of columns does.
-    unrecorded_tokens = (tokens_in == 0 and tokens_out == 0) or (
-        METERING_USAGE_COLUMN in row and row[METERING_USAGE_COLUMN] != "measured"
-    )
+    usage = row.get(METERING_USAGE_COLUMN, "measured")
+    unrecorded_tokens = (tokens_in == 0 and tokens_out == 0) or usage is None
 
     return ModelMeteringRecord(
         correlation_id=str(row["correlation_id"]),
@@ -144,6 +144,7 @@ def metering_record_from_row(row: Mapping[str, Any]) -> ModelMeteringRecord | No
         tokens_out=None if unrecorded_tokens else tokens_out,
         # OMN-24615 AC3: spend only from a named price source.
         spend_usd=priced_spend(row),
+        usage_measured=usage in (None, "measured"),
         recorded_savings_usd=_to_decimal(row["cost_savings_usd"]),
         returned_to_caller=row.get(METERING_CAUSE_COLUMN) == RETURNED_TO_CALLER,
         # OMN-24615 AC1: any stored failure cause, so a refused run saves nothing.

@@ -146,7 +146,7 @@ class HandlerMeteringSummary:
             # the order they narrow the type. The enum on the record is the
             # readable statement of the same classification and is what the
             # tests assert against; these are the branches that consume it.
-            if not record.has_tokens:
+            if not record.has_tokens or not record.usage_measured:
                 runs_unknown_tokens += 1
                 continue
             spend = record.spend_usd

@@ -173,6 +173,16 @@ class ModelMeteringRecord(BaseModel):
             "is counted in runs_failed."
         ),
     )
+    usage_measured: bool = Field(
+        default=True,
+        description=(
+            "OMN-24615 AC1, AC5: whether every LLM call of the run was measured by "
+            "the provider. A run whose calls were recorded but estimated or of "
+            "unknown provenance keeps its tokens in the token totals, which then "
+            "match usage-by-model-day.v1, and is counted as unknown tokens with no "
+            "saving."
+        ),
+    )
 
     @property
     def failed(self) -> bool:
@@ -197,7 +207,7 @@ class ModelMeteringRecord(BaseModel):
         """
         if self.returned_to_caller:
             return EnumMeteringMeasurement.MEASURED
-        if not self.has_tokens:
+        if not self.has_tokens or not self.usage_measured:
             return EnumMeteringMeasurement.UNKNOWN_TOKENS
         if self.spend_usd is None:
             return EnumMeteringMeasurement.UNKNOWN_SPEND
