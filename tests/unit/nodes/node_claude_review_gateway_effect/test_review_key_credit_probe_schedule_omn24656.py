@@ -249,8 +249,9 @@ def test_the_scheduled_probe_command_exists_with_the_options_the_tick_passes() -
 
 
 def _tick_argv(tmp_path: Path, host: str | None) -> list[str]:
+    # The command validates the model name's shape (claude-...), so the argv carries one.
     overlay = ModelReviewKeyProbeOverlay(
-        tenant_id="tenant-1", model="model-1", host=host
+        tenant_id="tenant-1", model="claude-test-model", host=host
     )
     return tick.probe_argv(overlay, tmp_path / "state")
 

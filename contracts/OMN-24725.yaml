@@ -59,7 +59,7 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect/test_review_key_credit_probe_schedule_omn24656.py -q --no-cov -n 0 -p no:randomly -k 'timed_out or refusal_exit'
     cwd: .
-- id: dod-omn24725-ac4-lab-run
+- id: dod-omn24725-ac4-integration-proof
   description: 'AC4: the node''s unit tests run on a lab host at the pushed head through lab-work.'
   source: manual
   binds_ac:
