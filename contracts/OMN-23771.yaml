@@ -88,14 +88,21 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/unit/nodes/node_dod_verify/test_omn_23771_standard_ticket_contract.py -q --no-cov -n 0 -p no:randomly -k second_repository_refused
     cwd: .
 - id: dod-omn23771-integration-proof
-  description: 'AC7: the node from the pushed head, run on a lab host with --execution-audience hosted against a planted head whose contract was edited after its last sync, refuses contract_not_synced and exits 1. Hosted CI cannot reach the lab, so only the local Done gate runs this check.'
+  description: 'AC7: the node from the pushed head, run on a lab host with --execution-audience hosted against a planted head whose contract was edited after its last sync, refuses contract_not_synced and exits 1. Hosted CI cannot reach the lab, so only the local Done gate runs this check; it binds no criterion, and AC7 is bound by dod-omn23771-ac7, which the hosted check runs.'
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC7
   checks:
   - check_type: command
     check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23771 -- uv run --frozen pytest tests/unit/nodes/node_dod_verify/test_omn_23771_standard_ticket_contract.py -q --no-cov -n 0 -p no:randomly -k cli_accepts_full_contract_path
+    cwd: .
+- id: dod-omn23771-ac7
+  description: 'AC7: the node_dod_verify entry point of the pushed head accepts --full-contract-path and, run with --execution-audience hosted against a planted head whose contract was edited after its last sync, refuses contract_not_synced and exits 1. Default execution scope, so the hosted check runs it at the head and as a must-fail control at the merge base; the run on a lab host is the integration proof item above and the pull request comment that starts Lab:.'
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_dod_verify/test_omn_23771_standard_ticket_contract.py -q --no-cov -n 0 -p no:randomly -k cli_accepts_full_contract_path
     cwd: .
 - id: dod-omn23771-deploy-check
   description: 'Deploy check: the node_dod_verify entry point of the pushed head exposes --full-contract-path and refuses contract_not_synced, run by the hosted runner with no lab access. Fails if the deployed CLI option or the refusal is removed.'
