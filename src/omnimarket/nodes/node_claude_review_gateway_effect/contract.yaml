@@ -126,3 +126,10 @@ handler:
   module: omnimarket.nodes.node_claude_review_gateway_effect.handlers.handler_claude_review_gateway
   class: HandlerClaudeReviewGateway
   input_model: omnimarket.nodes.node_claude_review_gateway_effect.models.model_claude_review_gateway.ModelClaudeReviewGatewayRequest
+
+# OMN-24577: the reader of a lab host's declared bus lane. `onex models review-gateway` opens the
+# bus on that lane when the environment names no broker; descriptive binding, handler above serves.
+host_bus_lane:
+  handler:
+    name: lab_host_bus_lane
+    module: omnimarket.nodes.node_claude_review_gateway_effect.handlers.handler_lab_host_bus_lane

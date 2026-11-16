@@ -9,12 +9,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 from click.testing import CliRunner
 
 from omnimarket.cli import cli_secret
@@ -22,26 +24,30 @@ from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailure
 from omnimarket.inference.local_byok_credential_adapter import LocalByokCredentialStore
 from omnimarket.nodes.node_claude_review_gateway_effect.handlers.handler_claude_review_gateway import (
     ClaudeReviewGateway,
-)
-from omnimarket.nodes.node_claude_review_gateway_effect.handlers.review_key_credit_probe import (
-    LEDGER_COMMAND_VARIABLE,
-    PROBE_PAYLOAD,
-    NoReadingError,
-    flips,
-    ledger_appender_from_environment,
-    read_states,
-    record,
-    render_alarm_row,
+    ReviewKeyProbe,
 )
 from omnimarket.nodes.node_claude_review_gateway_effect.models.model_claude_review_gateway import (
     ModelClaudeReviewGatewayRequest,
-    ModelReviewGatewayOverlay,
 )
 from omnimarket.nodes.node_friction_rollup_tick_effect.protocols.protocol_ledger_appender import (
     InMemoryLedgerAppender,
 )
 from omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_tenant_credentials_store import (
     apply_credential_registered,
+)
+from omnimarket.nodes.node_review_key_credit_probe_effect.handlers import (
+    handler_review_key_credit_probe as probe_handler,
+)
+from omnimarket.nodes.node_review_key_credit_probe_effect.handlers.handler_review_key_credit_probe import (
+    LEDGER_COMMAND_VARIABLE,
+    NoReadingError,
+    flips,
+    ledger_appender_from_environment,
+    load_probe_config,
+    probe_payload,
+    read_states,
+    record,
+    render_alarm_row,
 )
 from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
 from tests.unit.nodes.node_claude_review_gateway_effect.test_claude_review_gateway import (
@@ -62,9 +68,9 @@ pytestmark = pytest.mark.unit
 _NOW = datetime(2026, 11, 15, 23, 0, tzinfo=UTC)
 
 
-def _gateway(call: FakeCall, names: list[str]) -> ClaudeReviewGateway:
+def _gateway(call: FakeCall, names: list[str]) -> ReviewKeyProbe:
     refs = [str(_row(n)["api_key_ref"]) for n in names]
-    return ClaudeReviewGateway(
+    return ReviewKeyProbe(
         ModelClaudeReviewGatewayRequest(
             host=_HOST,
             tenant_id=_TENANT,
@@ -75,8 +81,6 @@ def _gateway(call: FakeCall, names: list[str]) -> ClaudeReviewGateway:
         key_values=FakeValues(refs),
         call=call,
         endpoint_url=_URL,
-        overlay=ModelReviewGatewayOverlay(key_set_aside_ttl_seconds=1),
-        event_bus=None,
         clock=lambda: _NOW,
     )
 
@@ -93,7 +97,7 @@ async def test_probe_reads_every_bound_key_and_names_none_by_reference() -> None
         ]
     )
     states = await _gateway(call, ["key-a", "key-b", "key-c", "key-d"]).probe_keys(
-        PROBE_PAYLOAD
+        probe_payload(load_probe_config())
     )
     assert states == [
         ("key-a", "out_of_credit"),
@@ -425,3 +429,64 @@ def test_the_command_refuses_a_thinking_mode_the_gateway_does_not_know(
     result = world.run("--thinking-mode", "always")
     assert result.exit_code != 0
     assert not world.requests
+
+
+_PROBE_NODE = (
+    Path(__file__).resolve().parents[4]
+    / "src/omnimarket/nodes/node_review_key_credit_probe_effect"
+)
+
+
+def test_the_probe_builds_no_gateway_and_so_no_gateway_without_a_bus(
+    world: _ProbeWorld, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    built: list[object] = []
+    original = ClaudeReviewGateway.__init__
+
+    def _watch(self: ClaudeReviewGateway, *args: Any, **kwargs: Any) -> None:
+        built.append(kwargs.get("event_bus"))
+        original(self, *args, **kwargs)
+
+    monkeypatch.setattr(ClaudeReviewGateway, "__init__", _watch)
+    world.outcomes[:] = [_ok(), _ok()]
+    result = world.run()
+    assert result.exit_code == 0, result.output
+    assert built == []
+
+
+def test_no_source_file_the_probe_touches_passes_event_bus_none() -> None:
+    root = _PROBE_NODE.parents[2]
+    for path in (
+        *_PROBE_NODE.rglob("*.py"),
+        root / "omnimarket/cli/cli_secret.py",
+        root / "omnimarket/nodes/node_claude_review_gateway_effect/handlers",
+    ):
+        files = list(path.rglob("*.py")) if path.is_dir() else [path]
+        for file in files:
+            assert not re.search(r"event_bus\s*=\s*None", file.read_text("utf-8")), file
+
+
+def test_the_probe_token_budget_is_declared_in_the_node_contract() -> None:
+    contract = yaml.safe_load((_PROBE_NODE / "contract.yaml").read_text("utf-8"))
+    assert contract["config"]["probe"]["max_tokens"] == 1
+    assert load_probe_config().max_tokens == contract["config"]["probe"]["max_tokens"]
+    source = (_PROBE_NODE / "handlers/handler_review_key_credit_probe.py").read_text(
+        "utf-8"
+    )
+    assert not re.search(r"max_tokens\W{1,4}\d", source)
+
+
+def test_a_budget_the_contract_declares_is_the_one_the_request_carries(
+    world: _ProbeWorld, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def _other_contract(node: str, section: str) -> object:
+        assert (node, section) == ("node_review_key_credit_probe_effect", "config")
+        return {"probe": {"max_tokens": 7, "prompt": "Say OK."}}
+
+    monkeypatch.setattr(
+        probe_handler, "load_packaged_contract_section", _other_contract
+    )
+    world.outcomes[:] = [_ok(), _ok()]
+    result = world.run()
+    assert result.exit_code == 0, result.output
+    assert [request.max_tokens for request in world.requests] == [7, 7]

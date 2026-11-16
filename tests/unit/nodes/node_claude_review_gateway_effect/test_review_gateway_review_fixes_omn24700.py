@@ -20,7 +20,7 @@ _ROOT = Path(__file__).resolve().parents[4]
 _CLI_SECRET = _ROOT / "src/omnimarket/cli/cli_secret.py"
 _PROBE_HANDLER = (
     _ROOT
-    / "src/omnimarket/nodes/node_claude_review_gateway_effect/handlers/review_key_credit_probe.py"
+    / "src/omnimarket/nodes/node_review_key_credit_probe_effect/handlers/handler_review_key_credit_probe.py"
 )
 _CODE_LINE_BUDGET = 1212  # the code lines cli_secret.py has at the landing branch
 

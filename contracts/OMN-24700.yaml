@@ -18,7 +18,7 @@ requirements:
   statement: The probe command body is in the probe handler module and the baselined cli_secret.py has at most 1212 code lines.
   acceptance:
   - id: AC2
-    statement: 'AC2: cli_secret.py has at most 1212 code lines and the probe command body lives in src/omnimarket/nodes/node_claude_review_gateway_effect/handlers/review_key_credit_probe.py -- falsifier: uv run pytest on the canonical
+    statement: 'AC2: cli_secret.py has at most 1212 code lines and the probe command body lives in src/omnimarket/handlers/handler_review_key_credit_probe.py -- falsifier: uv run pytest on the canonical
       file shape ratchet test passes and the code-line count of cli_secret.py is at most 1212'
 - id: req-omn24700-ac3
   statement: The gateway contract's evidence and integration-proof commands exclude the kafka-marked test and exit 0 without broker credentials.

@@ -48,8 +48,8 @@ import yaml
 from omnibase_core.errors.model_onex_error import ModelOnexError
 from pydantic import SecretStr, ValidationError
 
-import omnimarket.nodes.node_claude_review_gateway_effect.handlers.lab_host_bus_lane as bus_lane_reader
-import omnimarket.nodes.node_claude_review_gateway_effect.handlers.review_key_credit_probe as key_probe
+import omnimarket.nodes.node_claude_review_gateway_effect.handlers.handler_lab_host_bus_lane as lane_reader
+import omnimarket.nodes.node_review_key_credit_probe_effect.handlers.handler_review_key_credit_probe as key_probe
 from omnimarket.handlers import handler_model_keys as model_keys
 from omnimarket.handlers.models_list_ladder import ladder_option, model_json
 from omnimarket.handlers.models_only_command import MODEL_COMMANDS, listed, models_text
@@ -315,7 +315,7 @@ def _environment_names_broker() -> bool:
 
 def _lab_host_bus_lane(bound_host: str | None) -> str | None:
     """The bound host's declared ``ledger_bus_lane`` in the lab host table."""
-    return bus_lane_reader.lab_host_bus_lane(_lab_host_table(), bound_host)
+    return lane_reader.lab_host_bus_lane(_lab_host_table(), bound_host)
 
 
 async def _register_on_declared_bus[T](
@@ -1390,7 +1390,7 @@ def review_gateway(
         f"{len(cloud_refused_repositories)} repositories refused cloud review)"
     )
 
-    # OMN-19998: the launchd unit (ai.omninode.review-gateway) passes no
+    # OMN-24577: the launchd unit (ai.omninode.review-gateway) passes no
     # KAFKA_BOOTSTRAP_SERVERS and a lab host never carries one, so serving used
     # to exit 1 in a crash loop. The bound host's lab host table row names the
     # bus lane it publishes on; the helper opens that lane's bus and hands the
