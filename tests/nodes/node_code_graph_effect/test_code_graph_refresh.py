@@ -651,13 +651,15 @@ def _dod(document: dict[str, object], dod_id: str) -> dict[str, object]:
     return found
 
 
-def test_contract_states_the_four_ticket_criteria_with_the_architecture_graph() -> None:
+def test_contract_states_the_bound_ticket_criteria_with_the_architecture_graph() -> (
+    None
+):
     document = _contract()
     assert "architecture graph" in str(document["title"])
     requirements = document["requirements"]
     assert isinstance(requirements, list)
     criteria = {item["id"]: item["statement"] for item in requirements[0]["acceptance"]}
-    assert list(criteria) == ["AC1", "AC2", "AC3", "AC4"]
+    assert list(criteria) == ["AC1", "AC3", "AC4"]
     assert "architecture graph" in criteria["AC1"]
     assert "NOT MET" in criteria["AC1"]
     assert "OMN-14572" in criteria["AC1"]
@@ -671,7 +673,7 @@ def test_contract_states_the_four_ticket_criteria_with_the_architecture_graph() 
 def test_contract_binds_the_installed_unit_to_a_local_done_gate_check_on_h053() -> None:
     gate = _dod(_contract(), "dod-omn24642-ac4-installed-unit")
     assert gate["execution_scope"] == "local_done_gate"
-    assert gate["binds_ac"] == ["AC4"]
+    assert "binds_ac" not in gate, "a local-only check is unbound for hosted dod-verify"
     (check,) = gate["checks"]
     command = check["check_value"]
     assert "--host h053" in command
