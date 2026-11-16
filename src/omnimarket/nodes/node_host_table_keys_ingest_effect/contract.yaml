@@ -43,6 +43,8 @@ broker_acl_grants:
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.overlay-store-loaded.v1, operation: DESCRIBE}
 runtime_dispatch:
   command_topic: onex.evt.omnimarket.overlay-store-loaded.v1
+  terminal_events:
+    success: onex.evt.omnimarket.host-table-keys-ingested.v1
 side_effects:
 - key-value-write
 descriptor:

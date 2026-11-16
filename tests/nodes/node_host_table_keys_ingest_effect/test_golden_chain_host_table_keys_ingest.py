@@ -65,7 +65,8 @@ def test_contract_golden_chain() -> None:
     # would leave every dispatch with a result and no applier (the undeliverable-output path).
     assert "output_model" not in contract
     assert "output_model" not in binding
-    assert "terminal_events" not in contract.get("runtime_dispatch", {})
+    # The runtime route resolver still needs a terminal topic; it is not a publish topic.
+    assert contract["runtime_dispatch"]["terminal_events"]["success"]
     assert contract["event_bus"]["publish_topics"] == []
     hints = get_type_hints(handler_class.handle)
     assert hints["request"] is model(binding["input_model"])

@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-24693
 title: The dev runtime logs no undeliverable-output ERROR for node_host_table_keys_ingest_effect, and a real-path test fails on the unfixed shape
-summary: node_host_table_keys_ingest_effect drops its unused output_model, handler.output_model and runtime_dispatch.terminal_events, its handler returns no model, and the unused ModelHostTableKeysIngestResult is deleted, so auto-wiring no longer meets a result with no applier on every dispatch.
+summary: node_host_table_keys_ingest_effect drops its unused output_model, and handler.output_model, its handler returns no model, and the unused ModelHostTableKeysIngestResult is deleted, so auto-wiring no longer meets a result with no applier on every dispatch.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -10,7 +10,7 @@ requirements:
   statement: The node declares no result model and its handler returns none, because the node declares no publish topic and nothing consumes a result.
   acceptance:
   - id: AC1
-    statement: 'AC1: the node contract declares no output_model and no terminal_events, its handler returns no model, and the unused ModelHostTableKeysIngestResult is deleted -- falsifier: uv run pytest tests/nodes/node_host_table_keys_ingest_effect tests/nodes/node_host_table_keys_read_effect -q --no-cov in omnimarket passes, and grep -rn ModelHostTableKeysIngestResult src tests prints nothing'
+    statement: 'AC1: the node contract declares no output_model, its handler returns no model, and the unused ModelHostTableKeysIngestResult is deleted -- falsifier: uv run pytest tests/nodes/node_host_table_keys_ingest_effect tests/nodes/node_host_table_keys_read_effect -q --no-cov in omnimarket passes, and grep -rn ModelHostTableKeysIngestResult src tests prints nothing'
   - id: AC2
     statement: 'AC2: a real-path test in omnibase_infra wires a stand-in contract of the fixed shape through wire_from_manifest and asserts the undeliverable-output route is never awaited, and the same test run against the unfixed shape (handler returning a model, no publish_topics) fails -- falsifier: uv run pytest tests/integration/nodes/node_host_table_keys_ingest_effect -q --no-cov passes on the branch and the unfixed-shape case asserts UndeliverableDispatchOutputError is raised once'
   - id: AC3
@@ -25,7 +25,7 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn24693-ac1
-  description: The node's golden chain asserts the contract holds no output_model and no terminal_events and the handler returns None; the error chain asserts a record of another overlay returns None and writes nothing; the read effect's seam test stays green.
+  description: The node's golden chain asserts the contract holds no output_model and the handler returns None; the error chain asserts a record of another overlay returns None and writes nothing; the read effect's seam test stays green.
   source: manual
   binds_ac:
   - AC1
