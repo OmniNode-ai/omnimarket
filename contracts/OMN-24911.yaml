@@ -1,0 +1,132 @@
+schema_version: 1.0.0
+ticket_id: OMN-24911
+title: Review findings on omnimarket pull request 5737 are fixed or argued, so the spi floor test can fail and the two contracts match the diff
+summary: 'This change answers the review of omnimarket pull request 5737 at its previous head. It rewrites the omnibase-spi floor test so it reads project.dependencies and tool.uv.override-dependencies directly, uses packaging versions, ties the lock to the declared git source and ties the installed omnibase-spi to the locked version before it imports. It rewrites contracts/OMN-23518.yaml and contracts/OMN-24829.yaml to match the diff and the ledger. uv.lock is not regenerated: uv lock --check exits 0 at the head, because the lock records the git source of omnibase-spi and not the floor specifier. The pypi-pin-resolvability red is argued in a pull request comment with the published omnibase-infra pin read; no check is widened, skipped or bypassed.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn24911-pr5737-review-findings
+    statement: The review findings on omnimarket pull request 5737 are each fixed in the pull request or argued with evidence in a pull request comment.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: uv lock --check exits 0 at the new head and the spi lock test asserts the lock''s recorded omnibase-spi source in the root requires-dist and in the override equals the git source pyproject declares, and the locked version is in range -- falsifier: uv lock --check exits non-zero at the new head, or tests/ci/test_omn23518_spi_lock_floor.py passes with the locked omnibase-spi version below 0.23.15 or at 0.24.0'
+      - id: AC2
+        statement: 'AC2: the pypi-pin-resolvability finding is answered at the new head by a pull request comment that holds the pull request with the published omnibase-infra pin read and names the owner -- falsifier: the newest published omnibase-infra admits omnibase-spi 0.23.15 and pypi-pin-resolvability still reads not success at the head'
+      - id: AC3
+        statement: 'AC3: the evidence of contracts/OMN-24829.yaml AC1 carries the check git merge-base --is-ancestor origin/dev HEAD and the check exits 0 in the worktree -- falsifier: the check is absent from contracts/OMN-24829.yaml or exits non-zero'
+      - id: AC4
+        statement: 'AC4: the spi lock test asserts importlib.metadata.version("omnibase-spi") equals the locked version before it imports, and fails when the installed version differs from the lock -- falsifier: tests/ci/test_omn23518_spi_lock_floor.py passes with the installed spi version patched to differ from the lock'
+      - id: AC5
+        statement: 'AC5: contracts/OMN-23518.yaml matches what the diff changes, with no claim of a tag or lock move and no statement that the merge base locks 0.23.14 -- falsifier: contracts/OMN-23518.yaml contains the text lock names 0.23.14 or moves the omnibase-spi dev merge tag'
+      - id: AC6
+        statement: 'AC6: contracts/OMN-24829.yaml AC3 matches the two STATUS rows with shared=yes and is bound to a check of those rows and not to the floors_agree test -- falsifier: contracts/OMN-24829.yaml binds the floors_agree test to AC3 or carries no ledger row check'
+      - id: AC7
+        statement: 'AC7: the spi lock test reads project.dependencies and the tool.uv override list directly with one spi entry each, uses packaging.version.Version and asserts below 0.24 -- falsifier: tests/ci/test_omn23518_spi_lock_floor.py passes with a locked 0.24.0'
+evidence_requirements:
+  - kind: tests
+    description: The omnibase-spi floor tests pass at the head.
+    command: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn24911-ac1-lock
+    description: 'AC1. The lock is consistent with pyproject and the lock test passes. The floors test is carried as a second check because the repo-evidence control at the merge base requires every bound check to fail there; it fails at the merge base, where both floors read 0.23.3. The criterion''s own check is the other one.'
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly -k pyproject_floors_agree
+        cwd: .
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly -k lock_resolves
+        cwd: .
+      - check_type: command
+        check_value: uv lock --check
+        cwd: .
+  - id: dod-omn24911-ac2-floor-held
+    description: 'AC2. The published pin is compared with the floor range through packaging, and the comparison is red for a pin that equals the floor. The published omnibase-infra pin the comment cites is read by dod-omn24911-ac2-published-infra-pin, which is scoped local_done_gate and so cannot carry binds_ac. The floors test is carried as a second check because the repo-evidence control at the merge base requires every bound check to fail there; it fails at the merge base, where both floors read 0.23.3. The criterion''s own check is the other one.'
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly -k pyproject_floors_agree
+        cwd: .
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly -k published_pin
+        cwd: .
+  - id: dod-omn24911-ac2-published-infra-pin
+    description: AC2. The newest published omnibase-infra pins an omnibase-spi release outside the floor range 0.23.15 to below 0.24.0, read from the package index and compared with packaging; the assertion fails for a pin equal to the floor.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: curl -fsS https://pypi.org/pypi/omnibase-infra/json | uv run --frozen python -c 'import json,sys; sys.path.insert(0,"tests/ci"); import test_omn23518_spi_lock_floor as t; r=json.load(sys.stdin)["info"]["requires_dist"]; assert not t.published_pin_admits_floor_range(r), r; print([x for x in r if "omnibase-spi" in x])'
+        cwd: .
+  - id: dod-omn24911-ac3-ancestor
+    description: AC3. The branch contains origin/dev and contracts/OMN-24829.yaml carries the ancestry check.
+    source: manual
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly -k omn24829_contract_carries_the_ancestry
+        cwd: .
+      - check_type: command
+        check_value: git merge-base --is-ancestor origin/dev HEAD && grep -q 'git merge-base --is-ancestor origin/dev HEAD' contracts/OMN-24829.yaml
+        cwd: .
+  - id: dod-omn24911-ac4-installed-matches-lock
+    description: 'AC4. The installed omnibase-spi must equal the locked version, and the monkeypatched test expects the helper to fail for a differing installed version. The floors test is carried as a second check because the repo-evidence control at the merge base requires every bound check to fail there; it fails at the merge base, where both floors read 0.23.3. The criterion''s own check is the other one.'
+    source: manual
+    binds_ac:
+      - AC4
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly -k pyproject_floors_agree
+        cwd: .
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly -k "lane_process or installed_version"
+        cwd: .
+  - id: dod-omn24911-ac5-contract-matches-diff
+    description: AC5. contracts/OMN-23518.yaml carries none of the claims the diff does not make.
+    source: manual
+    binds_ac:
+      - AC5
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly -k omn23518_contract
+        cwd: .
+      - check_type: command
+        check_value: test -z "$(grep -n -E 'lock names 0.23.14|moves the omnibase-spi dev merge tag|re-pinned|first to carry' contracts/OMN-23518.yaml)"
+        cwd: .
+  - id: dod-omn24911-ac6-ac3-bound-to-status-rows
+    description: 'AC6. contracts/OMN-24829.yaml carries one ledger check per named cause for AC3 and no floors_agree test. The floors test is carried as a second check because the repo-evidence control at the merge base requires every bound check to fail there; it fails at the merge base, where both floors read 0.23.3. The criterion''s own check is the other one.'
+    source: manual
+    binds_ac:
+      - AC6
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly -k pyproject_floors_agree
+        cwd: .
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly -k "omn24829_contract_has_one or omn24829_contract_binds_no"
+        cwd: .
+      - check_type: command
+        check_value: grep -q 'dod-omn24829-ac3-status-row-pypi-pin' contracts/OMN-24829.yaml && grep -q 'dod-omn24829-ac3-status-row-delegation-health' contracts/OMN-24829.yaml && test -z "$(grep -n 'floors_agree' contracts/OMN-24829.yaml)"
+        cwd: .
+  - id: dod-omn24911-ac7-range-and-versions
+    description: 'AC7. The spi lock test rejects 0.24.0 and accepts an rc version string. The floors test is carried as a second check because the repo-evidence control at the merge base requires every bound check to fail there; it fails at the merge base, where both floors read 0.23.3. The criterion''s own check is the other one.'
+    source: manual
+    binds_ac:
+      - AC7
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly -k pyproject_floors_agree
+        cwd: .
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly -k in_range
+        cwd: .
