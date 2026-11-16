@@ -683,14 +683,14 @@ def test_a_benign_container_under_a_verbatim_field_still_crosses_verbatim() -> N
 # registry test, not an egress test: the later atomic infra activation must
 # couple its governed/allowlist widening to this already-tested transform.
 
-#: OMN-19513, operator RULING 2026-10-15T04:24:42Z: these two topics carry
-#: captured content raw. The emit registry routes them with ``passthrough``;
-#: their contract entries remain only for the content size bound the producer
-#: reads, never as a redaction applied on the bus.
+#: OMN-19513, operator RULING 2026-10-15T04:24:42Z: this topic carries captured
+#: content raw. The emit registry still routes it with ``passthrough``. OMN-24062
+#: removed the sibling full-content topic (content-captured.v1) from this set:
+#: its rule now names ``redact_capture``, so its contract entry governs the bus
+#: again instead of only bounding the producer.
 RAW_CAPTURE_TOPICS = frozenset(
     {
         "onex.evt.omniclaude.hook-event.v1",
-        "onex.cmd.omniintelligence.content-captured.v1",
     }
 )
 

@@ -30,6 +30,13 @@ class ModelContainerCreate(_Frozen):
     env_file: NonEmptyStr | None = None
 
 
+class ModelContainerRecreate(_Frozen):
+    compose_file: NonEmptyStr
+    env_file: NonEmptyStr
+    project: NonEmptyStr
+    service: NonEmptyStr
+
+
 class ModelContainerUnit(_Frozen):
     """One declared unit: ``name`` is the unit file stem, ``container`` the docker container it keeps running."""
 
@@ -46,6 +53,7 @@ class ModelContainerUnit(_Frozen):
     network: NonEmptyStr | None = None
     published_ports: tuple[ModelContainerPort, ...] = ()
     create: ModelContainerCreate | None = None
+    recreate: ModelContainerRecreate | None = None
     # OMN-24208: applied in place with docker update --memory/--memory-swap, no restart and
     # no recreate. memory_swap_gib is memory plus swap, so the two are declared together and
     # swap cannot sit below memory.
@@ -54,9 +62,9 @@ class ModelContainerUnit(_Frozen):
 
     @model_validator(mode="after")
     def _network_required_for_ports_or_create(self) -> ModelContainerUnit:
-        if (self.published_ports or self.create) and not self.network:
+        if (self.published_ports or self.create or self.recreate) and not self.network:
             raise ValueError(
-                "network is required when published_ports or create is declared"
+                "network is required when published_ports, create or recreate is declared"
             )
         return self
 

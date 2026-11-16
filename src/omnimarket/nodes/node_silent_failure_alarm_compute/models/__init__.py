@@ -3,9 +3,13 @@
 """Models of the silent-failure alarm compute node (OMN-17427)."""
 
 from omnimarket.models.model_running_vs_merged_alarm import (
+    ModelBranchInstallReading,
     ModelFleetFoldAbsence,
+    ModelHostOmniHome,
     ModelRunningSurface,
+    ModelRunningVsMergedAcknowledgement,
     ModelRunningVsMergedFinding,
+    ModelRunningVsMergedHeld,
     ModelRunningVsMergedRequest,
     ModelRunningVsMergedResult,
 )
@@ -41,12 +45,14 @@ from .model_throughput_results_alarm import (
 from .model_tick_liveness_alarm import ModelTickLivenessRequest, ModelTickLivenessResult
 
 __all__ = [
+    "ModelBranchInstallReading",
     "ModelDrainerObservation",
     "ModelDrainerRepair",
     "ModelDrainerRequest",
     "ModelDrainerResult",
     "ModelFleetFoldAbsence",
     "ModelHostActivity",
+    "ModelHostOmniHome",
     "ModelJobExitAlarmRequest",
     "ModelJobExitAlarmResult",
     "ModelJobExitEpisode",
@@ -59,7 +65,9 @@ __all__ = [
     "ModelQuietHostRequest",
     "ModelQuietHostResult",
     "ModelRunningSurface",
+    "ModelRunningVsMergedAcknowledgement",
     "ModelRunningVsMergedFinding",
+    "ModelRunningVsMergedHeld",
     "ModelRunningVsMergedRequest",
     "ModelRunningVsMergedResult",
     "ModelThroughputResultsRequest",

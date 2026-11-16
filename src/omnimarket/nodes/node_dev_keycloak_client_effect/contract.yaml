@@ -1,0 +1,90 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Dev Keycloak Client Effect (OMN-24237, the dev realm's service-account client)
+#
+# Ensures ONE confidential service-account client in the declared dev Keycloak realm whose only powers are the two
+# realm-management roles the dev_only block allows, with a secret generated into the secret store, then proves it with a
+# client_credentials token request (status only). The result carries names, ids and a status code only: never a token or
+# a secret. Any lane, realm or role the dev_only block does not declare is refused before any secret read or HTTP call.
+# The run also ensures the declared sign-in client's tenant claim mappers, so its access tokens carry the tenant.
+name: node_dev_keycloak_client_effect
+contract_name: node_dev_keycloak_client_effect
+node_name: node_dev_keycloak_client_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Ensures the dev Keycloak service-account client. The dev-only guard refuses, with no side effect, any command lane,
+  overlay lane, Keycloak realm or requested role the dev_only block does not declare. A run reads the Keycloak bootstrap
+  admin credential from the host env file, generates the declared client secret key (an existing key is reused, never
+  replaced), creates or updates the one confidential service-account client, grants the allowed realm-management roles
+  to its service account and its scope, ensures the declared sign-in client's tenant claim mappers and proves the client
+  with a client_credentials token request; a probe stops at the credential read and answers ready. Every failure is a
+  typed result.
+
+handler:
+  module: omnimarket.nodes.node_dev_keycloak_client_effect.handlers.handler_dev_keycloak_client
+  class: HandlerDevKeycloakClient
+  input_model: omnimarket.nodes.node_dev_keycloak_client_effect.models.model_dev_keycloak_client.ModelDevKeycloakClientCommand
+
+# HandlerDevKeycloakClient takes the overlay, the transport, the settings store, the key generator, the bootstrap
+# credential source and the contract path as constructor parameters, so the node runs through its own CLI, not
+# handler_routing.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [keycloak-client-write, secret-store-write, role-grant, protocol-mapper-write]
+  timeout_ms: 120000
+
+input_model:
+  name: ModelDevKeycloakClientCommand
+  module: omnimarket.nodes.node_dev_keycloak_client_effect.models.model_dev_keycloak_client
+  description: Which lane acts, and whether to write anything.
+output_model:
+  name: ModelDevKeycloakClientResult
+  module: omnimarket.nodes.node_dev_keycloak_client_effect.models.model_dev_keycloak_client
+  description: The outcome, the realm and lane, the client id and the token status; never a token or a secret.
+
+terminal_event: onex.evt.omnimarket.dev-keycloak-client-completed.v1
+
+runtime_dispatch:
+  external_trigger: true
+
+topics:
+  command: onex.cmd.omnimarket.dev-keycloak-client-requested.v1
+  completed: onex.evt.omnimarket.dev-keycloak-client-completed.v1
+  failed: onex.evt.omnimarket.dev-keycloak-client-failed.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.dev-keycloak-client-completed.v1
+  - onex.evt.omnimarket.dev-keycloak-client-failed.v1
+
+overlay:
+  node: node_dev_keycloak_client_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+dev_only:
+  # The guard reads this block from this file, never from code: a run or probe whose command lane, overlay lane, Keycloak
+  # realm, requested client role or sign-in client is not declared here is refused before any secret read or HTTP call.
+  lane: dev
+  realms:
+    - omninode
+  allowed_roles:
+    - manage-users
+    - view-users
+  mapper_clients:
+    - omnidash-spa
+
+metadata:
+  ticket: OMN-24237
+  transport_type: inmemory

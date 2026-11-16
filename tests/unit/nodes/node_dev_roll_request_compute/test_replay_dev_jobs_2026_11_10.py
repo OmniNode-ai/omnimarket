@@ -23,15 +23,17 @@ from uuid import UUID, uuid5
 
 import pytest
 
-from omnimarket.nodes.node_dev_roll_request_compute.handlers import decide_dev_roll
-from omnimarket.nodes.node_dev_roll_request_compute.models import (
+from omnimarket.models.dev_roll import (
     EnumDevRollAction,
     EnumDevRollHealth,
     ModelDevRollDecided,
     ModelDevRollFacts,
-    ModelDevRollPolicy,
     ModelDevRollRecord,
     ModelDevTipChanged,
+)
+from omnimarket.nodes.node_dev_roll_request_compute.handlers import decide_dev_roll
+from omnimarket.nodes.node_dev_roll_request_compute.models import (
+    ModelDevRollPolicy,
 )
 
 pytestmark = pytest.mark.unit

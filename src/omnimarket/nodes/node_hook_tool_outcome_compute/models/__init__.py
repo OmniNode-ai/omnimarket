@@ -11,11 +11,19 @@ from omnimarket.nodes.node_hook_tool_outcome_compute.models.model_hook_tool_outc
     ModelRefusalRule,
     ModelToolOutcomeRules,
 )
+from omnimarket.nodes.node_hook_tool_outcome_compute.models.model_hook_tool_outcome_classified import (
+    ModelHookToolOutcomeClassified,
+)
+from omnimarket.nodes.node_hook_tool_outcome_compute.models.model_tool_content_record import (
+    ModelToolContentRecord,
+)
 
 __all__ = [
     "EnumToolOutcome",
+    "ModelHookToolOutcomeClassified",
     "ModelHookToolOutcomeRequest",
     "ModelHookToolOutcomeResult",
     "ModelRefusalRule",
+    "ModelToolContentRecord",
     "ModelToolOutcomeRules",
 ]

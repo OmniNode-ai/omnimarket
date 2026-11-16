@@ -15,6 +15,7 @@ from omnimarket.handlers.ticket.ticket_cli import load_ticket_topics
 from omnimarket.models.scm import ModelScmBusReceipt, ModelScmTerminal
 from omnimarket.models.ticket_closer import ModelCloserWriteReceipt
 from omnimarket.models.ticket_write_io import (
+    ModelTicketWriteFailed,
     ModelTicketWriteRequest,
 )
 from omnimarket.nodes.node_ticket_closer_scheduled_effect.handlers.ticket_done_writer import (
@@ -105,6 +106,28 @@ def test_error_a_failed_transition_carries_the_refusal_and_its_codes() -> None:
     receipt = mark(call)
     assert receipt.ok is False
     assert receipt.reason == "done guard [NO_RECEIPT]"
+
+
+def test_seam_a_done_refusal_from_the_write_node_reads_with_its_cause() -> None:
+    """The write node's typed failure, dumped as it is published, is what the writer reads: its cause reaches the outcome."""
+    failure = ModelTicketWriteFailed(
+        correlation_id=uuid4(),
+        operation="transition",
+        idempotency_key="k",
+        requested_by_lane="ticket-closer-fixture",
+        reason="done_write_refused",
+        terminal_failure_cause="dod_verify for OMN-1 is not a PASS (OMN-20368).",
+        finding_codes=["done_write_gate_refused"],
+    )
+    call = Call(
+        [terminal(), terminal(failed=True, payload=failure.model_dump(mode="json"))]
+    )
+    receipt = mark(call)
+    assert receipt.ok is False
+    assert receipt.reason == (
+        "done_write_refused: dod_verify for OMN-1 is not a PASS (OMN-20368). "
+        "[done_write_gate_refused]"
+    )
 
 
 def test_error_a_call_that_times_out_is_reported() -> None:

@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_host_drift_plugin_rules_effect
+version: 1.0.0
+description: Load and validate the host-drift plugin sync rules from plugin_sync_policy.yaml.
+pack: distributed_validation
+node_role: effect
+display_name: Host Drift Plugin Rules Effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_host_drift_plugin_rules_effect: omnimarket.nodes.node_host_drift_plugin_rules_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: local_read
+dependencies:
+- pydantic>=2.0.0
+- pyyaml>=6.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- host-drift

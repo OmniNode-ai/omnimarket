@@ -109,8 +109,9 @@ NODES = REPO / "src" / "omnimarket" / "nodes"
 PILOT_CONTRACT: dict[str, Any] = yaml.safe_load(
     (NODES / "node_pilot_manifest_check_compute" / "contract.yaml").read_text()
 )
+# The emission topics are read from the contract that publishes them (OMN-24298): the receipt calculator subscribes to nothing.
 FLOOR_CONTRACT: dict[str, Any] = yaml.safe_load(
-    (NODES / "node_floor_emission_compute" / "contract.yaml").read_text()
+    (NODES / "node_floor_simple_effect" / "contract.yaml").read_text()
 )
 POLICY = load_join_j15_policy()
 
@@ -124,7 +125,7 @@ DRILL_REPLICATION = 1
 PILOT_COMMAND_TOPIC: str = PILOT_CONTRACT["runtime_dispatch"]["command_topic"]
 PILOT_TERMINAL_TOPIC: str = PILOT_CONTRACT["terminal_event"]
 # The floor's emission topics, told apart by the phase word in their contract names.
-_FLOOR_TOPICS = FLOOR_CONTRACT["event_bus"]["subscribe_topics"]
+_FLOOR_TOPICS = FLOOR_CONTRACT["event_bus"]["publish_topics"]
 EMISSION_TOPIC = {
     phase: next(t for t in _FLOOR_TOPICS if word in t)
     for phase, word in (

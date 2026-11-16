@@ -22,6 +22,7 @@ class ModelBranchDeployCommandRequest(BaseModel):
     pr_number: int = Field(ge=1)
     git_ref: str = Field(pattern=r"^[0-9a-f]{40}$")
     image_ref: str = ""
+    overlay_ref: str = Field(default="", pattern=r"^([0-9a-f]{40})?$")
     rollback_actor: str = Field(min_length=1)
     rollback_reason: str = Field(min_length=1)
     requested_by: str = Field(min_length=1)
@@ -36,3 +37,6 @@ class ModelBranchDeployCommandResult(BaseModel):
     mode: Literal["deploy", "rollback"]
     status: Literal["published", "refused", "failed"]
     detail: str = ""
+    # Set only on a key mismatch refusal (OMN-24396): the one-way check values of both keys, never a key.
+    signer_key_check: str = ""
+    agent_key_check: str = ""

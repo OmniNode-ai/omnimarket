@@ -83,6 +83,15 @@ handler_routing:
         module: "omnimarket.nodes.node_lab_fill_effect.handlers.handler_lab_fill_send"
       input_model: "omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_send.ModelLabFillSendRequest"
       output_model: "omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_effect.ModelLabFillLaunchResult"
+    # OMN-19998: the select step of the fill. The selection runs on the rolling ledger's rows read from the bus-fed work
+    # ledger query node (the reader named on the request, moved in the reader overlay), never from the file; a stale,
+    # unreadable or not-moved read is a typed result with no selection. Shell entry: select_entry (typed JSON on stdin).
+    - operation: "select_lab_fill_candidates"
+      handler:
+        name: "HandlerLabFillSelect"
+        module: "omnimarket.nodes.node_lab_fill_effect.handlers.handler_lab_fill_select"
+      input_model: "omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_select.ModelLabFillSelectRequest"
+      output_model: "omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_select.ModelLabFillSelectResult"
     # The send gate on its own: the same decision the launch handler takes, answered from supplied facts.
     - operation: "gate_lab_fill_send"
       handler:

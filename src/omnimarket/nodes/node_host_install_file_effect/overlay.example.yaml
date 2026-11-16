@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. A deployment's real overlay lives in the overlays repository.
+digest_algorithm: sha256
+backup_root: /var/lib/example/host-install-backups
+backup_suffix: .bak
+manifest_name: manifest.json
+max_text_bytes: 1048576

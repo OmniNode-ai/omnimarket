@@ -35,6 +35,8 @@ from typing import Any
 
 import yaml
 
+import omnimarket.nodes.node_entry_point_registration_compute as registration
+
 NODES_DIR = Path("src/omnimarket/nodes")
 PYPROJECT = Path("pyproject.toml")
 
@@ -330,14 +332,11 @@ def validate_node(
             f"contract.yaml missing 'handler' block (required for node_type={node_type!r})",
         )
 
-    # Check 3: pyproject.toml entry point. A node explicitly marked
-    # lifecycle/status: deprecated or experimental (OMN-14151) is intentionally
-    # unregistered — e.g. a hard-gated legacy surface retired in favor of a
-    # replacement node — and is exempt, mirroring the orphan-node lifecycle
-    # exemption below.
-    if node_name not in entry_points and _contract_lifecycle(contract) not in (
-        LIFECYCLE_EXEMPTIONS
-    ):
+    # Check 3: pyproject.toml entry point. A node with no entry point passes only
+    # when node_entry_point_registration_compute's reviewed list names it (OMN-24354);
+    # a lifecycle of experimental or deprecated no longer excuses it. The node
+    # inventory test asks the same node, so the two cannot disagree.
+    if not registration.is_registered_or_reviewed(node_name, entry_points):
         add(
             "pyproject_entry",
             f'no entry in pyproject.toml [project.entry-points."onex.nodes"] for {node_name}',

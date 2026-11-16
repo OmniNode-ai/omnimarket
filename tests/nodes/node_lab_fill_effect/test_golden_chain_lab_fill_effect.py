@@ -49,6 +49,7 @@ OPERATIONS = (
     "read_lab_fill_owner_facts",
     "launch_lab_fill_lane",
     "send_lab_fill_lane",
+    "select_lab_fill_candidates",
     "gate_lab_fill_send",
     "read_lab_fill_receipts",
     "pick_lab_fill_fallback_host",

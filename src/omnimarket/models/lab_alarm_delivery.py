@@ -99,6 +99,10 @@ class ModelAlarmDelivery(BaseModel):
     ledger: EnumDeliveryStep
     #: The ledger request id the row was appended under.
     ledger_request_id: str = ""
+    #: The owner route's step (one push notice and one MSG row) when the condition has one; NOT_DUE otherwise.
+    owner: EnumDeliveryStep = EnumDeliveryStep.NOT_DUE
+    #: The owner MSG row's request id when the condition has an owner route.
+    owner_request_id: str = ""
     failure: str = ""
 
 

@@ -1,0 +1,78 @@
+schema_version: 1.0.0
+ticket_id: OMN-24200
+title: A raised lab alarm that no lane covers past its bound is answered with one lane to start
+summary: A pure compute node reads the lab alarm's FRICTION rows into cause keys and answers one lane dispatch per distinct key whose first raise is older than the policy bound and that no live lane covers by cause key or lane name. A lane that names only the umbrella ticket the alarm rows cite does not cover a key. Every threshold comes from a policy the caller passes (the example overlay file names the keys). This pull request adds the node, its replay, error and seam tests; it starts no lane and writes no file, and the caller that starts the lanes is a separate change.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24200-alarm-owner
+  statement: A lab alarm raised past its bound with no lane covering its cause key is answered with exactly one lane dispatch, with a typed skip reason for every other key.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: for recorded lab alarm rows older than the policy bound with no covering lane, the responder returns one dispatch per cause key and a skip reason for every other key -- falsifier: pytest tests/nodes/node_alarm_owner_responder_compute/test_alarm_owner_responder.py -n 0 --no-cov fails when the alarm path is removed from the handler'
+  - id: AC2
+    statement: 'AC2: a lane whose CLAIM names only the umbrella ticket does not cover an alarm key, and a lane that names the cause key does -- falsifier: the same test file fails when ticket-only coverage is accepted'
+  - id: AC3
+    statement: 'AC3: a row with an invalid date or no subject is refused alone with a typed reason and the other rows are answered -- falsifier: the error chain test in tests/nodes/node_alarm_owner_responder_compute/test_alarm_owner_responder_errors.py fails when the refusal is removed'
+  - id: AC4
+    statement: 'AC4: the row that the lab alarm delivery writes today parses into the key the responder dispatches on -- falsifier: the seam test in tests/nodes/node_alarm_owner_responder_compute/test_alarm_owner_responder_seam.py fails when render_ledger_row changes a cell name'
+  - id: AC5
+    statement: 'AC5: integrated: the node answers the recorded alarm rows of 2026-11-03 to 2026-11-13 on the dev runtime with a dispatch for the chain canary key -- falsifier: the terminal event for a request carrying those rows on the dev broker shows no dispatch for that key'
+evidence_requirements:
+- kind: tests
+  description: The tests of the alarm owner responder node pass, and its contract test.
+  command: uv run pytest tests/nodes/node_alarm_owner_responder_compute -n 0 --no-cov -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24200-ac1
+  description: The replay of the recorded alarm rows dispatches the chain canary key and every other uncovered key in the policy's conditions, and skips the rest with a typed reason.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_alarm_owner_responder_compute/test_alarm_owner_responder.py -n 0 --no-cov -q -k 'golden or below_bound or redispatch or purity or old_behaviour'
+- id: dod-omn24200-ac2
+  description: A lane that works the umbrella ticket does not cover a key; a lane that names the cause key or carries the key's lane stem does.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_alarm_owner_responder_compute/test_alarm_owner_responder.py -n 0 --no-cov -q -k 'covered or umbrella'
+- id: dod-omn24200-ac3
+  description: A row with an invalid calendar date, no subject or no condition is refused alone; a bad now or a zero bound is a validation error.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_alarm_owner_responder_compute/test_alarm_owner_responder_errors.py -n 0 --no-cov -q
+- id: dod-omn24200-ac4
+  description: The row render_ledger_row writes today is dispatched on the key condition:subject.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_alarm_owner_responder_compute/test_alarm_owner_responder_seam.py -n 0 --no-cov -q
+- id: dod-omn24200-ac5
+  description: 'hosted proxy for AC5: the replay of the recorded alarm rows tick by tick dispatches the chain canary key six hours after its raise and once a day after, and the node routes its operation to a callable handler on the contract''s command topic; the dev-runtime terminal event for the same rows is read after the node is served there and named in the pull request.'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_alarm_owner_responder_compute/test_alarm_owner_responder.py tests/nodes/node_alarm_owner_responder_compute/test_alarm_owner_responder_contract.py -n 0 --no-cov -q -k 'hourly_ticks or routes_its_operation or topics_are_declared'
+    cwd: .
+- id: dod-omn24200-integration-proof
+  description: Run the alarm owner responder node's tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24200 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_alarm_owner_responder_compute -q --no-cov

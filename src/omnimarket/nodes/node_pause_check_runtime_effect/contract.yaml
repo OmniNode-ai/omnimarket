@@ -1,0 +1,73 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Pause Check Runtime Effect (OMN-24233, cutover plan step L6)
+#
+# The command pr-land's pause check and the drain map call. It reads the ledger file once, reads the
+# bus-fed holds answer once for the whole batch through node_work_ledger_reader_effect and
+# node_ledger_hold_verdict_effect, and lets that answer replace the file's HOLD findings, which
+# node_pause_check_findings_compute (pure) decides. A bus read that did not answer falls back to the
+# file's HOLD findings while the hold verdict overlay allows it (until plan step L15); each
+# fallback is counted and printed. A failed read is never CLEAR.
+name: node_pause_check_runtime_effect
+contract_name: node_pause_check_runtime_effect
+node_name: node_pause_check_runtime_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Decides HELD, CLEAR or UNDECIDED findings for a batch of pull requests: the ledger file's rows
+  through node_pause_check_findings_compute, the HOLD findings from the one live-log read. A node
+  answer is source=node; a read that did not answer is the counted source=file-fallback while the
+  hold verdict overlay allows it, and UNDECIDED (a stop, never CLEAR) otherwise. Every decision emits
+  a golden (answered) or error (refused) event.
+
+handler:
+  module: omnimarket.nodes.node_pause_check_findings_compute.handlers.handler_pause_check_findings
+  class: HandlerPauseCheckFindings
+  input_model: omnimarket.models.pause_check.ModelPauseCheckRequest
+
+# The command builds the handler from the overlay, so it runs through its own main(), not handler_routing.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [ledger-file-read, event-journal]
+  timeout_ms: 30000
+
+input_model:
+  name: ModelPauseCheckRequest
+  module: omnimarket.models.pause_check
+  description: The pull requests with their labels, the pause rules, the ledger text and the time.
+output_model:
+  name: ModelPauseDecision
+  module: omnimarket.models.pause_check
+  description: Per pull request the result (None when undecided), the source of its HOLD findings and the reason.
+
+runtime_dispatch:
+  external_trigger: true
+
+# The topics by role; the command reads these and holds no topic string.
+topics:
+  pause_check_answered: onex.evt.omnimarket.pause-check-answered.v1
+  pause_check_refused: onex.evt.omnimarket.pause-check-refused.v1
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.pause-check-answered.v1
+  - onex.evt.omnimarket.pause-check-refused.v1
+
+overlay:
+  node: node_pause_check_runtime_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+metadata:
+  ticket: OMN-24233
+  transport_type: inmemory

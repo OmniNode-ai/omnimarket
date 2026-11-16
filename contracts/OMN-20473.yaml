@@ -6,6 +6,18 @@ summary: "The acceptance judge compute node gains an events operation (handlers/
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
+context:
+  ac_binding_provenance:
+    "dod-omn20473-ac1-accepted-20261113t1945z":
+      - label: "AC1"
+        criterion_hash: "e9ac609b5d3890dd877c876afcd125bf2ad7fffb94c0b6ed3c99dedd6a5dc5ef"
+        proposed_by: "lane=dod-closeout-bind-2026-11-13T1945Z-c1"
+        accepted_by: "lane=dod-closeout-accept-2026-11-13T1945Z-c1"
+    "dod-omn20473-ac2-accepted-20261113t1945z":
+      - label: "AC2"
+        criterion_hash: "478bb849c0feb28108f1b7df40144f924d10fcba7d57d5edbd86ca2a5b54e057"
+        proposed_by: "lane=dod-closeout-bind-2026-11-13T1945Z-c1"
+        accepted_by: "lane=dod-closeout-accept-2026-11-13T1945Z-c1"
 requirements:
   - id: "req-omn20473-events-operation"
     statement: |-
@@ -47,4 +59,28 @@ dod_evidence:
       - check_type: "command"
         check_value: |-
           bash -o pipefail -c 'body="$(curl --fail --silent --show-error --max-time 20 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_delegation_acceptance_judge_compute/handlers/build_events.py")" && printf "%s" "$body" | grep -q "^def build_events(" && printf "%s" "$body" | grep -q "MODEL_KEY_MISSING"'
+        cwd: "."
+  - id: "dod-omn20473-ac1-accepted-20261113t1945z"
+    description: "AC1 accepted binding: one event per validated primary verdict, none for liveness probes, and a typed refusal for an item with no delegated model key. The selected tests do not exist at the merge's parent, so the selection fails there."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_acceptance_judge_compute -k \"events_one_per_verdict or events_probe_excluded or events_missing_model_refused\" -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20473-ac2-accepted-20261113t1945z"
+    description: "AC2 accepted binding: building events twice is byte-identical and the operation performs no I/O under monkeypatched I/O guards."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_acceptance_judge_compute -k \"events_deterministic or events_no_io\" -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn20473-integration-proof"
+    description: "Run the ticket's tests on a lab host at the pushed head. Hosted CI cannot reach the lab hosts, so only the local Done gate runs this unbound check."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-omn20473 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_delegation_acceptance_judge_compute -q --no-cov -n 0 -p no:randomly"
         cwd: "."

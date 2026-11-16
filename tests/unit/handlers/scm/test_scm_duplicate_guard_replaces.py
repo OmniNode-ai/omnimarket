@@ -19,6 +19,7 @@ from typing import Any
 
 import pytest
 
+from omnimarket.delegated_test_loop.lane_bus import LabRunBusError
 from omnimarket.handlers.scm import scm_cli
 from tests.unit.handlers.scm.test_scm_duplicate_guard import (
     commit_edit,
@@ -177,9 +178,16 @@ class World:
         ]
 
 
+def _no_bus(_: dict[str, object]) -> Any:
+    raise LabRunBusError("no bus in this test")
+
+
 @pytest.fixture
 def world(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> World:
     built = World(tmp_path)
+    # The watcher state holds every pull request these tests name, so the gateway is never asked; a bus that
+    # cannot be opened keeps a test that reaches for it from waiting on a real one.
+    monkeypatch.setattr(scm_cli, "_open_bus", _no_bus)
     monkeypatch.setenv("ONEX_PR_WATCHER_STATE", str(built.state))
     monkeypatch.setenv("ONEX_SCM_CLONE_ROOT", str(built.root))
     return built

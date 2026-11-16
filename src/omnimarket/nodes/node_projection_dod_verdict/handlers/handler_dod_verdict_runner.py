@@ -46,6 +46,10 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from omnibase_infra.runtime.boundary_failure_terminal import (
+    ModelBoundaryFailureTerminal,
+)
+from pydantic import ValidationError
 
 from omnimarket.models.model_projection_request import ModelProjectionRequest
 from omnimarket.nodes.node_projection_dod_verdict.handlers.handler_projection_dod_verdict import (
@@ -57,6 +61,7 @@ from omnimarket.nodes.node_projection_dod_verdict.models import (
     ModelDodVerdictRow,
     ModelDodVerdictWire,
 )
+from omnimarket.projection.envelope import strip_runner_injected_keys
 from omnimarket.projection.runner import (
     BaseProjectionRunner,
     MessageMeta,
@@ -207,14 +212,27 @@ class DodVerdictProjectionWriter(BaseProjectionRunner):
     async def _project_one_message(
         self, topic: str, data: dict[str, Any], meta: MessageMeta
     ) -> dict[str, Any]:
-        """Project one runtime-dispatched message and report what was written."""
+        """Project one runtime-dispatched message and report what was written.
+
+        A runtime boundary failure notice (OMN-24235) declines with no write:
+        it is the runtime's own shape, not a malformed verdict, so it reports
+        as a refusal rather than reaching the malformed DLQ.
+        """
         # The fold runs before the pool opens: it is pure, and a verdict it
         # refuses to validate must not cost a connection.
         result = self._fold_verdict(data)
-        declined = result.row is None
+        if result is None:
+            # A runtime failure notice: nothing to store, so no connection opens.
+            return {
+                "rows_upserted": 0,
+                ROWS_REFUSED_KEY: 1,
+                "dod_verdict_rows": [],
+            }
+        row = result.row
+        declined = row is None
         await self.db.connect()
         try:
-            written = None if result.row is None else await self._persist(result.row)
+            written = None if row is None else await self._persist(row)
         finally:
             await self._stop_producer()
             await self.db.close()
@@ -248,24 +266,61 @@ class DodVerdictProjectionWriter(BaseProjectionRunner):
         """Fold and persist one verdict.
 
         Returns a compact description of the row the database accepted, or
-        ``None`` when nothing was written. ``None`` is a real answer reported
-        as such, never a truthy acknowledgement the runtime would read as a
-        row. The in-process entry above calls the two halves itself, because
-        it must also tell the runtime WHY nothing was written.
+        ``None`` when nothing was written -- a declined rehearsal or, since
+        OMN-24235, a runtime boundary failure notice. ``None`` is a real
+        answer reported as such, never a truthy acknowledgement the runtime
+        would read as a row. The in-process entry above calls the two halves
+        itself, because it must also tell the runtime WHY nothing was written.
         """
         result = self._fold_verdict(data)
-        if result.row is None:
+        if result is None or result.row is None:
             return None
         return await self._persist(result.row)
 
-    def _fold_verdict(self, data: dict[str, Any]) -> ModelDodVerdictProjectionResult:
+    def _fold_verdict(
+        self, data: dict[str, Any]
+    ) -> ModelDodVerdictProjectionResult | None:
         """Validate the wire payload and run the pure fold over it.
+
+        When the node_dod_verify handler fails, the runtime posts its own
+        boundary failure notice on this topic (OMN-24235): a known shape, not
+        a verdict and not a malformed one, so it declines with ``None`` and no
+        row instead of dead-lettering. Anything else that is not a verdict
+        still raises here, which is what reaches the malformed DLQ.
 
         The fold, not this writer, decides whether an event is stored
         (OMN-18901): a rehearsal comes back with no row. Logged rather than
         silent, so a run that produced no row for a legitimate reason reads
         differently from one whose write path is broken.
+
+        The failure notice is read after the runtime-injected keys are
+        stripped (the helper's set and the database adapter ``_db``, which
+        the lab proof receipts writer also pops separately), so a real notice
+        delivered with them still declines rather than falling through to the
+        verdict read.
         """
+        notice_payload = strip_runner_injected_keys(data)
+        notice_payload.pop("_db", None)
+        terminal: ModelBoundaryFailureTerminal | None
+        try:
+            terminal = ModelBoundaryFailureTerminal.model_validate(notice_payload)
+        except ValidationError:
+            # Not a failure notice -- the verdict read below decides its fate,
+            # and a payload that satisfies neither model raises there.
+            terminal = None
+        if terminal is not None:
+            # Ticket-less by construction: a failure notice carries no
+            # ticket_id, so it is named by its failure class and origin.
+            logger.info(
+                "projection_dod_verdict: declined runtime failure notice "
+                "(failure_class %s, origin_topic %s, correlation %s); "
+                "a boundary failure notice is not a verdict and is not "
+                "projected",
+                terminal.failure_class,
+                terminal.origin_topic,
+                terminal.correlation_id,
+            )
+            return None
         event = ModelDodVerdictWire.model_validate(data)
         result = self._fold.handle(ModelDodVerdictProjectionRequest(event=event))
         if result.row is None:

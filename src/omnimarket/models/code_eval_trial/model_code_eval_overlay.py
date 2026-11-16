@@ -6,8 +6,9 @@ Every value the runner's try leg takes, declared by the deployment: the
 attempt ladder, the try wall-clock bound (the score's own bound is the score node's contract timeout), the receipt slack and
 the nudge cadence, the agent's turn and diff ceilings, the draft checks, the
 tools the runner needs, the source surface, the unit lane prefix, the onex
-executable and the caller's ticket. No key has a default: an absent key
-refuses the load, and an invalid file names its fields.
+executable and the caller's ticket. No key has a default but the two retry and
+void keys of OMN-24173 (0 retries and a tenth, so an overlay written before them
+loads): an absent key refuses the load, and an invalid file names its fields.
 """
 
 from __future__ import annotations
@@ -17,6 +18,8 @@ from itertools import pairwise
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from omnimarket.models.bus_binding.model_node_event_bus import ModelNodeEventBus
+
 # A check is a shell-free command word list joined by a single space (for
 # example ``uv run python -c pass``): words of plain characters, separated by
 # exactly one space, and no shell metacharacter anywhere.
@@ -24,7 +27,11 @@ _DRAFT_CHECK_COMMAND = re.compile(r"^[A-Za-z0-9_.+/=%:@,-]+( [A-Za-z0-9_.+/=%:@,
 
 
 class ModelCodeEvalRunnerOverlay(BaseModel):
-    """The runner's overlay. No key has a default."""
+    """The runner's overlay. No key has a default.
+
+    The optional ``event_bus`` key is read by the bus overlay reader behind
+    ``onex run-node`` and the node never reads it.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -40,6 +47,11 @@ class ModelCodeEvalRunnerOverlay(BaseModel):
     unit_lane_prefix: str
     onex_executable: str = Field(min_length=1)
     caller_ticket: str | None = Field(pattern=r"^OMN-[0-9]+$")
+    #: Times an infrastructure-unscorable try is scored again or regenerated (OMN-24173); 0 retries none.
+    infra_retries: int = Field(default=0, ge=0)
+    #: A run closes void when more than this percent of its first tries were infrastructure-unscorable.
+    void_infra_first_try_percent: int = Field(default=10, ge=0, le=100)
+    event_bus: ModelNodeEventBus | None = None
 
     @field_validator("draft_checks")
     @classmethod

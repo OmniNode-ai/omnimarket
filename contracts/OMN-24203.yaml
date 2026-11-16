@@ -1,0 +1,34 @@
+schema_version: 1.0.0
+ticket_id: OMN-24203
+title: The dev lane container budget of 3 judges a fourth application container as over budget
+summary: The factory floor overlay's dev application_container_budget is already 3 (overlays main). This change adds the node-side proof for AC2, a chain test that judges the recorded h201 dev read plus a fourth running application container against a budget of 3 and requires FAIL with one alarm, with controls for the recorded 3 (PASS), a stopped fourth container (not counted) and the old budget of 19 (the fourth container passed unnoticed).
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24203-dev-budget-over
+  statement: A fourth running application container on the dev lane is judged over budget by the container budget node under the overlay's dev budget of 3.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: the container budget node judges a recorded dev read of 4 application containers against that budget as over budget -- falsifier: the node''s fixture test with 4 containers returns FAIL under the overlay''s budget'
+evidence_requirements:
+- kind: tests
+  description: The dev lane four-application chain test and its controls pass.
+  command: uv run --frozen pytest tests/chains/lane_container_budget -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24203-ac2-four-applications
+  description: AC2 runs the recorded h201 dev listing plus a fourth running application container against the dev budget of 3 on the in-memory bus and requires status FAIL, observed 4, one alarm lane-budget:h201:dev; controls require PASS for the recorded 3, PASS for a stopped fourth container, and PASS for the old budget of 19.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/chains/lane_container_budget/test_chain_dev_lane_four_applications.py -q --no-cov --tb=line
+    cwd: .
+  - check_type: command
+    check_value: python3 -c "import json; p='tests/chains/lane_container_budget/test_chain_dev_lane_four_applications.py'; d=json.load(open('config/test_file_durations.d/tests__chains__lane_container_budget__test_chain_dev_lane_four_applications.json')); assert d[p] > 0, d"
+    cwd: .
