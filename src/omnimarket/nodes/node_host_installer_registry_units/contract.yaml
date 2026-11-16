@@ -1678,6 +1678,47 @@ units:
     # h101's registry root links to an external volume, launchd could not open logs or stand in a working directory there, exit 78.
     log_directory: .local/state/omni/claude-pool-rotation-tick
     launchd_root: .local/state/omni/claude-pool-rotation-tick
+  # The review key credit probe (OMN-24656): the Mac reads each review key bound to it with one token and ledgers a credit flip
+  # (onex models review-gateway-key-probe, node_claude_review_gateway_effect). Shaped like claude-pool-rotation-tick. The tenant, the
+  # model and the host row are the node's overlay in the deployment overlays; this unit holds none of them and no credential.
+  review-key-credit-probe:
+    platform: launchd
+    kind: registry_module_tick
+    label: ai.omninode.review-key-credit-probe
+    template: templates/ai.omninode.registry-module-tick.plist.tmpl
+    schedule:
+      start_interval: 900
+      run_at_load: true
+      description: every 900 s and at load
+    # One probe is one token per key, bounded by the tick's own subprocess timeout; the unit ends a hung run before the next tick is due.
+    run_timeout_s: 600
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /opt/homebrew/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_claude_review_gateway_effect.runtime_review_key_credit_probe_tick
+    entry_file: src/omnimarket/nodes/node_claude_review_gateway_effect/runtime_review_key_credit_probe_tick.py
+    probe_argv: ["--probe"]
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
+      OMNIBASE_PATH: "{registry_root}"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    # The ledger the probe appends a flip to is the one the installing request names (as the host drift owner unit's is).
+    environment_inputs:
+      ONEX_LEDGER_PATH: ledger_path
+    required_environment_inputs: [ONEX_LEDGER_PATH]
+    evidence_file: .local/state/omni/review-key-credit-probe/last-run.json
+    state_directory: .onex_state/review-key-credit-probe
+    log_directory: .local/state/omni/review-key-credit-probe
+    launchd_root: .local/state/omni/review-key-credit-probe
   silent-failure-alarm:
     platform: launchd
     kind: registry_module_tick
