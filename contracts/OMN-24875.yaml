@@ -65,11 +65,18 @@ dod_evidence:
     check_value: uv run pytest tests/handlers/bus_binding -q --no-cov -p no:cacheprovider -k "contract and (OMN_24827 or OMN_24250 or OMN_24875 or OMN_24921)"
     cwd: .
 - id: dod-omn24875-ac5
-  description: 'AC5, the required checks half: this check is bound to AC5 and can fail. onex scm pr-checks itself exits 0 whatever the head''s state (read at 7c5d0b219491, where four required contexts were red), so the command reads its JSON and exits 0 only when head_sha equals git rev-parse HEAD, class is green and no context is red or pending; a stale head, empty output or any other class exits 1. The watcher is not reachable from hosted CI, so only the local Done gate runs it; the Lab comment half of AC5 is read from the PR comments, not by this check.'
+  description: 'AC5, the required checks half: this check is bound to AC5 and can fail. onex scm pr-checks itself exits 0 whatever the head''s state, so the command in this contract (and its copy in the OMN-24921 contract) reads its JSON and exits 0 only when head_sha equals git rev-parse HEAD, class is green and no context is red or pending; a stale head, empty output or any other class exits 1. The hosted test runs both copies against a stand-in onex; the live run is the unbound item beside this one, and the Lab comment half of AC5 is read from the PR comments.'
   source: manual
-  execution_scope: local_done_gate
   binds_ac:
   - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/handlers/bus_binding/test_outbox_contract_text.py -q --no-cov -p no:cacheprovider -k "contract and pr_checks"
+    cwd: .
+- id: dod-omn24875-ac5-live
+  description: 'AC5, the live half: the same command run against the watcher exits 0 only when head_sha equals git rev-parse HEAD, class is green and no context is red or pending; the watcher is not reachable from hosted CI, so only the local Done gate runs it. It binds no criterion because a scoped item may not.'
+  source: manual
+  execution_scope: local_done_gate
   checks:
   - check_type: command
     check_value: sh -c 'onex scm pr-checks OmniNode-ai/omnimarket#6052 | python3 -c "import json,subprocess,sys; L=[json.loads(l) for l in sys.stdin if l.startswith(chr(123))]; r=L[-1][\"result\"] if L else {}; h=subprocess.run([\"git\",\"rev-parse\",\"HEAD\"],capture_output=True,text=True).stdout.strip(); print(r.get(\"head_sha\"),h,r.get(\"class\"),r.get(\"red\"),r.get(\"pending\")); sys.exit(0 if h and r.get(\"head_sha\")==h and r.get(\"class\")==\"green\" and not r.get(\"red\") and not r.get(\"pending\") else 1)"'

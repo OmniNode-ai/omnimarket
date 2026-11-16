@@ -33,11 +33,18 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn24985-ac1
-  description: 'AC1: the required contexts on dev (CI Summary, and repo-evidence / dod-verify from the ruleset) are not red or pending at the head the watcher read, and that head is this checkout''s HEAD. delegation-health-check is not a required context on dev, so the shared red does not fire this falsifier; the Lab comment, the quoted log lines, the dev read and the tests/ diff are PR comments. The watcher is not reachable from hosted CI, so only the local Done gate runs it.'
+  description: 'AC1: the hosted proof of the pr-checks check: it exits 0 only on the current head with class green (stand-in onex over both copies). The live read is the unbound item beside it.'
   source: manual
-  execution_scope: local_done_gate
   binds_ac:
   - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/handlers/bus_binding/test_outbox_contract_text.py -q --no-cov -p no:cacheprovider -k "contract and pr_checks"
+    cwd: .
+- id: dod-omn24985-ac1-live
+  description: 'AC1, the live half: the required contexts on dev (CI Summary, and repo-evidence / dod-verify from the ruleset) are not red or pending at the head the watcher read, and that head is this checkout''s HEAD. delegation-health-check is not a required context on dev, so the shared red does not fire this falsifier; the Lab comment, the quoted log lines, the dev read and the tests/ diff are PR comments. The watcher is not reachable from hosted CI, so only the local Done gate runs it.'
+  source: manual
+  execution_scope: local_done_gate
   checks:
   - check_type: command
     check_value: sh -c 'onex scm pr-checks OmniNode-ai/omnimarket#6052 | python3 -c "import json,subprocess,sys; L=[json.loads(l) for l in sys.stdin if l.startswith(chr(123))]; r=L[-1][\"result\"] if L else {}; h=subprocess.run([\"git\",\"rev-parse\",\"HEAD\"],capture_output=True,text=True).stdout.strip(); bad=set(r.get(\"red\",[]))|set(r.get(\"pending\",[])); print(r.get(\"head_sha\"),h,sorted(bad)); sys.exit(0 if h and r.get(\"head_sha\")==h and not bad & {\"CI Summary\",\"repo-evidence / dod-verify\"} else 1)"'
@@ -57,8 +64,8 @@ dod_evidence:
   binds_ac:
   - AC3
   checks:
-  - check_type: command
-    check_value: sh -c 'test "$(grep -rl "outbox.drain(" src/ | tr "\n" " ")" = "src/omnimarket/handlers/bus_binding/select.py "'
+  - check_type: test_passes
+    check_value: uv run pytest tests/handlers/bus_binding -q --no-cov -p no:cacheprovider -k "outbox and drain and callers"
     cwd: .
 - id: dod-omn24985-ac4
   description: 'AC4: report_refused_to_writers holds .drain.lock while it rewrites refused files and leaves the pass to the next replay while a drain holds it; the drain''s refresh already runs under that lock. At c63e9dec2571 the reporter reports while the lock is held.'

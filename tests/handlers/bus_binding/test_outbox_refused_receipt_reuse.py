@@ -921,3 +921,18 @@ async def test_outbox_stored_clash_files_for_one_id_reuse_any_file_in_the_window
     assert len(calls) == 1
     assert result.refused == 1
     assert {p: p.read_bytes() for p in _refused_files(tmp_path)} == before
+
+
+def test_outbox_drain_callers_in_src_are_the_replay_only() -> None:
+    """The one caller of ``outbox.drain`` in src/ is ``select.replay_outbox``, which reports from refused/.
+
+    A new caller would read ``DrainResult.refused`` without the replay's report step, so it has to be looked
+    at: this fails until the new caller is listed here.
+    """
+    src = Path(__file__).resolve().parents[3] / "src"
+    callers = sorted(
+        str(path.relative_to(src.parent))
+        for path in src.rglob("*.py")
+        if "outbox.drain(" in path.read_text(encoding="utf-8")
+    )
+    assert callers == ["src/omnimarket/handlers/bus_binding/select.py"]

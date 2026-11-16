@@ -229,8 +229,8 @@ PR_CHECKS_CASES = [
 ]
 # The two copies of the check: AC5 of the OMN-24875 contract and AC1 of the OMN-24921 contract.
 PR_CHECKS_COPIES = [
-    ("OMN-24875.yaml", "dod-omn24875-ac5"),
-    ("OMN-24921.yaml", "dod-omn24921-ac1"),
+    ("OMN-24875.yaml", "dod-omn24875-ac5-live"),
+    ("OMN-24921.yaml", "dod-omn24921-ac1-live"),
 ]
 
 
