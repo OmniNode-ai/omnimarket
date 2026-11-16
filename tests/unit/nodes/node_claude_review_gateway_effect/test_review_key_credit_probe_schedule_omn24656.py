@@ -65,6 +65,8 @@ def brew_python(monkeypatch: pytest.MonkeyPatch) -> None:
 # refuses every tick (the ledger writer's refusal comes after the keys are read, so each tick spends a token).
 LAB_HOSTS_VARIABLE = "ONEX_LAB_RUN_HOSTS"
 LEDGER_COMMAND_VARIABLE = "ONEX_LEDGER_COMMAND"
+# The host's proven onex-ledger command line, as the installing request passes it (an executable that exists here).
+LEDGER_COMMAND_OVERRIDE = sys.executable
 
 
 def _ledger_variable() -> str:
@@ -96,6 +98,7 @@ def _rendered_environment(tmp_path: Path) -> dict[str, str]:
             path_overrides={
                 "ONEX_SKILL_OVERLAY_ROOTS": str(tmp_path / "overlays"),
                 LAB_HOSTS_VARIABLE: str(table),
+                LEDGER_COMMAND_VARIABLE: LEDGER_COMMAND_OVERRIDE,
             },
             ledger_path=str(tmp_path / "ledger.md"),
         )
@@ -183,15 +186,9 @@ def test_the_rendered_unit_carries_the_lab_host_table_and_the_ledger_command(
 ) -> None:
     environment = _rendered_environment(tmp_path)
     assert environment[LAB_HOSTS_VARIABLE] == str(tmp_path / "lab_hosts.yaml")
-    # The ledger writer is the host's onex-ledger command line, declared as the parity receipt unit declares it.
-    parity = load_units()["work-ledger-parity-receipt"]["environment"]
-    assert (
-        load_units()[UNIT]["environment"][LEDGER_COMMAND_VARIABLE]
-        == parity[LEDGER_COMMAND_VARIABLE]
-    )
-    assert environment[LEDGER_COMMAND_VARIABLE] == str(
-        tmp_path / "home" / ".local" / "bin" / "onex-ledger"
-    )
+    # The ledger writer is the host's onex-ledger command line, passed by the installing request: the unit's own default
+    # is empty, so a default install cannot carry a path that is absent on the host.
+    assert environment[LEDGER_COMMAND_VARIABLE] == LEDGER_COMMAND_OVERRIDE
     assert environment[_ledger_variable()] == str(tmp_path / "ledger.md")
 
 
@@ -219,11 +216,38 @@ def test_an_install_without_the_lab_host_table_is_refused(tmp_path: Path) -> Non
             path_overrides={
                 "ONEX_SKILL_OVERLAY_ROOTS": str(tmp_path / "o"),
                 LAB_HOSTS_VARIABLE: str(tmp_path / "lab_hosts.yaml"),
+                LEDGER_COMMAND_VARIABLE: LEDGER_COMMAND_OVERRIDE,
             },
         ),
         unit,
     )
     assert named[LAB_HOSTS_VARIABLE] == str(tmp_path / "lab_hosts.yaml")
+
+
+def test_a_default_install_cannot_carry_a_ledger_command_the_host_does_not_have(
+    tmp_path: Path,
+) -> None:
+    """The command only checks its variable is non-empty, so a default naming an absent binary would exit 0 until the
+    first credit flip and then fail to write the alarm row on every tick. The unit declares no default and requires
+    the request's override at install, so the install refuses instead of rendering a path nobody checked."""
+    unit = load_units()[UNIT]
+    assert unit["environment"][LEDGER_COMMAND_VARIABLE] == ""
+    assert LEDGER_COMMAND_VARIABLE in unit["required_environment_inputs"]
+    handler = HandlerRegistryUnits(Recorder())
+    with pytest.raises(ValueError, match=f"{LEDGER_COMMAND_VARIABLE} is unset"):
+        handler.environment(
+            request(
+                tmp_path,
+                unit=UNIT,
+                mode="install",
+                ledger_path=str(tmp_path / "ledger.md"),
+                path_overrides={
+                    "ONEX_SKILL_OVERLAY_ROOTS": str(tmp_path / "o"),
+                    LAB_HOSTS_VARIABLE: str(tmp_path / "lab_hosts.yaml"),
+                },
+            ),
+            unit,
+        )
 
 
 # --- the command the unit schedules -----------------------------------------------------------
@@ -369,7 +393,10 @@ def _configured(
 
 
 def _heartbeat(state: Path) -> dict[str, object]:
-    return json.loads((state / "last-run.json").read_text(encoding="utf-8"))  # type: ignore[no-any-return]
+    loaded: dict[str, object] = json.loads(
+        (state / "last-run.json").read_text(encoding="utf-8")
+    )
+    return loaded
 
 
 def _value_after(argv: list[str], flag: str) -> str:

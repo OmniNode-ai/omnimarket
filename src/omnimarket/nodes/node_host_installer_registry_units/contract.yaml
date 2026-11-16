@@ -1720,12 +1720,14 @@ units:
       # without it is refused (required_environment_inputs below). The command reads the table's path directly, so it
       # needs no roots variable (the pool read's ONEX_LAB_HOST_TABLE_ROOTS is not read by this command).
       ONEX_LAB_RUN_HOSTS: ""
-      # The host's proven onex-ledger command line, as the work-ledger parity receipt unit declares it.
-      ONEX_LEDGER_COMMAND: "{home}/.local/bin/onex-ledger"
+      # The host's proven onex-ledger command line. There is no default: the command only checks the variable is non-empty,
+      # so a default naming a binary the host lacks would let every tick exit 0 until the first credit flip and then fail to
+      # write the alarm row. The installing request names it as a path override, and an install without it is refused.
+      ONEX_LEDGER_COMMAND: ""
     # The ledger the probe appends a flip to is the one the installing request names (as the host drift owner unit's is).
     environment_inputs:
       ONEX_LEDGER_PATH: ledger_path
-    required_environment_inputs: [ONEX_LEDGER_PATH, ONEX_LAB_RUN_HOSTS]
+    required_environment_inputs: [ONEX_LEDGER_PATH, ONEX_LAB_RUN_HOSTS, ONEX_LEDGER_COMMAND]
     evidence_file: .local/state/omni/review-key-credit-probe/last-run.json
     state_directory: .onex_state/review-key-credit-probe
     log_directory: .local/state/omni/review-key-credit-probe
