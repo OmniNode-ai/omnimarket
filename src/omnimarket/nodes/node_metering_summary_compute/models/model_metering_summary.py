@@ -36,6 +36,10 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from omnimarket.nodes.node_metering_summary_compute.models.model_run_duration import (
+    ModelRunDuration,
+)
+
 
 class EnumMeteringMeasurement(StrEnum):
     """How completely one delegation run was measured.
@@ -380,6 +384,8 @@ class ModelMeteringSummary(BaseModel):
     baseline: ModelCounterfactualBaseline | None = Field(default=None)
 
     reconciliation: ModelMeteringReconciliation
+    # OMN-24615 AC8: the one run duration every page shows, with its definition.
+    run_duration: ModelRunDuration = Field(default_factory=ModelRunDuration)
     by_model: tuple[ModelMeteringModelRow, ...] = Field(default=())
     by_run: tuple[ModelMeteringRunRow, ...] = Field(default=())
 
