@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""``python -m omnimarket.nodes.node_review_gate_context_orchestrator <verb>``.
+"""``python -m omnimarket.nodes.node_review_gate_context_orchestrator.runtime_review_gate_context_sweep <verb>``.
 
 ``sweep``  read the open pull requests and the recorded review verdicts, decide each head's
            review-gate context check and post it.
@@ -8,7 +8,7 @@
 
 Exit codes: 0 every head the sweep read was decided and every post succeeded; 1 a source could
 not be read (the sweep read nothing and posted nothing) or a post failed; 3 a deployment fact is
-missing (INDETERMINATE).
+missing or the watcher state is not an object (INDETERMINATE).
 """
 
 from __future__ import annotations
@@ -51,6 +51,9 @@ from omnimarket.nodes.node_review_gate_context_orchestrator.models.model_review_
 from omnimarket.nodes.node_review_gate_context_orchestrator.overlay import (
     NODE_NAME,
     load_overlay,
+)
+from omnimarket.nodes.node_review_gate_context_orchestrator.protocols.protocol_review_gate_sources import (
+    ReviewGateSourceError,
 )
 
 if TYPE_CHECKING:
@@ -156,6 +159,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     except (
         NodeOverlayError,
         LedgerRouteError,
+        ReviewGateSourceError,
         ValidationError,
         ValueError,
         OSError,

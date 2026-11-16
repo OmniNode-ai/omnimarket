@@ -203,14 +203,16 @@ def test_author_compared_case_insensitively() -> None:
 
 def test_unknown_input_key_refused_by_model() -> None:
     with pytest.raises(ValidationError):
-        ModelReviewGatePrSubject(
-            repository="example-org/example-repo",
-            pr_number=42,
-            head_sha=HEAD,
-            author_login="example-dev",
-            head_ref="feature/x",
-            title="feat: something",
-            unknown_key="x",  # type: ignore[call-arg]
+        ModelReviewGatePrSubject.model_validate(
+            {
+                "repository": "example-org/example-repo",
+                "pr_number": 42,
+                "head_sha": HEAD,
+                "author_login": "example-dev",
+                "head_ref": "feature/x",
+                "title": "feat: something",
+                "unknown_key": "x",
+            }
         )
 
 

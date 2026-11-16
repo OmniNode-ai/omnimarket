@@ -136,25 +136,47 @@ def _apply(**overrides: object) -> ModelRepoWriteRequest:
 _ALLOWED = (_REPO, _BRANCH, _CONTEXT)
 
 
-async def test_required_context_allowlist_adds_an_allowed_context_keeping_the_others() -> (
-    None
-):
+_CONTEXTS_PATH = (
+    f"/repos/{_REPO}/branches/{_BRANCH}/protection/required_status_checks/contexts"
+)
+
+
+@pytest.mark.parametrize(
+    "readback",
+    [
+        {"strict": True, "checks": [{"context": "CI Summary", "app_id": 15368}]},
+        {"strict": True, "checks": [{"context": "CI Summary", "app_id": None}]},
+        {"strict": True, "contexts": ["CI Summary"]},
+    ],
+    ids=["integer-app-id", "null-app-id", "contexts-only-body"],
+)
+async def test_required_context_allowlist_adds_only_the_one_context(
+    readback: dict[str, object],
+) -> None:
     read = read_required_checks_request(_REPO, _BRANCH)
-    existing = [{"context": "CI Summary", "app_id": 15368}]
-    patch = add_required_context_request(
-        _REPO, _BRANCH, [*existing, {"context": _CONTEXT}]
-    )
-    transport = _Recorded(
-        [(read, _ok({"strict": True, "checks": existing})), (patch, _ok({}))]
-    )
+    post = add_required_context_request(_REPO, _BRANCH, _CONTEXT)
+    transport = _Recorded([(read, _ok(readback)), (post, _ok({}))])
     result = await _handler(transport, _overlay(_ALLOWED)).handle(_apply())
     assert isinstance(result, ModelRepoWriteCompleted)
     assert result.required_context_applied is True
-    assert transport.sent == [read, patch]
-    assert patch.method == "PATCH"
-    assert patch.path == (
-        f"/repos/{_REPO}/branches/{_BRANCH}/protection/required_status_checks"
-    )
+    assert transport.sent == [read, post]
+    assert post.method == "POST"
+    assert post.path == _CONTEXTS_PATH
+    # Add-only: the checks the read returned (a null app_id the PATCH would answer 422 for, or a check another writer
+    # added after the read) are never in the body, so none is rewritten or dropped.
+    assert post.body == {"contexts": [_CONTEXT]}
+
+
+async def test_required_context_allowlist_replays_a_context_named_in_the_contexts_only_body() -> (
+    None
+):
+    read = read_required_checks_request(_REPO, _BRANCH)
+    transport = _Recorded([(read, _ok({"contexts": [_CONTEXT]}))])
+    result = await _handler(transport, _overlay(_ALLOWED)).handle(_apply())
+    assert isinstance(result, ModelRepoWriteCompleted)
+    assert result.replayed is True
+    assert result.required_context_applied is False
+    assert transport.sent == [read]
 
 
 async def test_required_context_allowlist_replays_when_already_required() -> None:

@@ -16,7 +16,9 @@ from pathlib import Path
 
 import pytest
 
-from omnimarket.nodes.node_review_gate_context_orchestrator.__main__ import main
+from omnimarket.nodes.node_review_gate_context_orchestrator.runtime_review_gate_context_sweep import (
+    main,
+)
 from tests.unit.nodes.node_review_gate_context_orchestrator.support import HEAD
 
 pytestmark = pytest.mark.unit
@@ -107,3 +109,12 @@ def test_a_missing_overlay_is_indeterminate(
     monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path / "none"))
     assert main(["probe"]) == 3
     assert "INDETERMINATE" in capsys.readouterr().err
+
+
+def test_a_watcher_state_that_is_not_an_object_is_indeterminate(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _env(monkeypatch, tmp_path, clean=True, tick=datetime.now(UTC))
+    (tmp_path / "state.json").write_text("[1, 2]", encoding="utf-8")
+    assert main(["probe"]) == 3
+    assert "INDETERMINATE: ReviewGateSourceError" in capsys.readouterr().err

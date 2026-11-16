@@ -21,7 +21,9 @@ runtime_profiles: [effects]
 description: >
   Posts a pull request head's review verdict as the fable-review-gate commit status on GitHub through the GitHub
   write node, idempotently, and reads it back: a status on the exact head already holding the decision's state is
-  unchanged and nothing is posted for it; a status of another context or on another head never counts. No check run
+  unchanged and nothing is posted for it; a status of another context or on another head never counts. The status's
+  target_url is the link to the pull request the decision is for (the page that holds its review verdict comment),
+  not a link to the verdict comment itself. No check run
   is created. Every call is one chain on the floor's
   emission contract: a start, then a success or a typed failure.
 

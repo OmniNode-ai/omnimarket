@@ -5,8 +5,8 @@
 Beside the ledger verdict gate, a new-work head merges only with a success ``fable-review-gate`` status on the exact
 head. A status on an older head does not count. Each non-pass reading holds the head with its own named reason:
 ``review_status_missing``, ``review_status_failing``, ``review_status_other_head`` and, when the policy expects the
-statuses to be read and none were, ``review_status_unread``. A PR that is not new work, or whose statuses were not
-supplied while the policy does not expect them, is decided as before. Every hold has its control: the same facts with
+statuses to be read (the default) and none were, ``review_status_unread``. A PR that is not new work, or whose
+statuses were not supplied while the policy does not expect them, is decided as before. Every hold has its control: the same facts with
 a success status on the head merge.
 """
 
@@ -138,11 +138,11 @@ def test_landing_review_status_ignores_a_status_of_another_context() -> None:
 def test_landing_review_status_unread_statuses_hold_only_when_the_policy_expects_them() -> (
     None
 ):
-    unread = _facts(None)
-    assert _merges(unread) == [HEAD]
-    expected = _facts(None, policy={"review_status_read_expected": True})
+    expected = _facts(None)
     assert _merges(expected) == []
     assert _skip(expected) is EnumLandingLandSkipReason.REVIEW_STATUS_UNREAD
+    not_expected = _facts(None, policy={"review_status_read_expected": False})
+    assert _merges(not_expected) == [HEAD]
 
 
 def test_landing_review_status_does_not_gate_a_pr_that_is_not_new_work() -> None:

@@ -29,7 +29,6 @@ from omnimarket.github_landing.github_landing_requests import (
     artifact_archive_request,
     artifact_request,
     commit_check_runs_request,
-    commit_statuses_request,
     issue_comments_request,
     job_log_request,
     job_request,
@@ -40,6 +39,7 @@ from omnimarket.github_landing.github_landing_requests import (
     review_threads_request,
     run_artifacts_request,
     run_jobs_request,
+    split_repository,
     tags_request,
     workflow_runs_request,
 )
@@ -862,10 +862,15 @@ def read_commit_statuses(
     head_sha = request.head_sha
     if head_sha is None:  # defensive; the request validator already enforces this
         raise ValueError("this operation requires head_sha.")
+    owner, name = split_repository(request.repo)
     raw, total, truncated = _collect(
         transport,
-        commit_statuses_request(
-            request.repo, head_sha, per_page=min(request.limit, LIST_PAGE_SIZE)
+        ModelGithubHttpRequest(
+            method="GET",
+            path=(
+                f"/repos/{owner}/{name}/commits/{head_sha}/statuses"
+                f"?per_page={min(request.limit, LIST_PAGE_SIZE)}"
+            ),
         ),
         item_key="value",
         limit=request.limit,

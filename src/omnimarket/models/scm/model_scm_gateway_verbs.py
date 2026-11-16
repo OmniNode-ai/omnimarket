@@ -6,12 +6,13 @@ from __future__ import annotations
 
 from typing import Final
 
+from omnimarket.handlers.scm.scm_status_write_verbs import SCM_STATUS_WRITE_VERBS
 from omnimarket.models.scm import EnumScmNode, ModelScmVerb
 
 _G = EnumScmNode.GATEWAY
 
-SCM_GATEWAY_VERBS: Final[tuple[ModelScmVerb, ...]] = tuple(
-    (
+SCM_GATEWAY_VERBS: Final[tuple[ModelScmVerb, ...]] = (
+    *tuple(
         ModelScmVerb(verb=v, node=_G, operation=op, replaces=gh)
         for v, op, gh in (
             ("pr-review", "review_gate", "gh pr view --json reviewDecision"),
@@ -48,5 +49,6 @@ SCM_GATEWAY_VERBS: Final[tuple[ModelScmVerb, ...]] = tuple(
                 "gh api repos/<o>/<r>/code-scanning/alerts",
             ),
         )
-    )
+    ),
+    *SCM_STATUS_WRITE_VERBS,
 )

@@ -3,8 +3,10 @@
 """The required_context_apply requests of node_github_repo_write_effect.
 
 A branch's required status checks are read, and one context is added to them
-with a PATCH that keeps every check already required. The handler sends the
-requests and decides from the read; this module only builds them.
+with an add-only POST to the ``contexts`` endpoint. The existing checks are never
+copied back, so a check another writer added between the read and the write is not
+dropped and an ``app_id`` GitHub reads back as null is never sent. The handler sends
+the requests and decides from the read; this module only builds them.
 """
 
 from __future__ import annotations
@@ -26,11 +28,11 @@ def read_required_checks_request(
 
 
 def add_required_context_request(
-    repository: str, branch: str, checks: list[dict[str, object]]
+    repository: str, branch: str, context: str
 ) -> ModelGithubHttpRequest:
-    """PATCH the branch's required checks to ``checks`` (the existing ones plus the new context)."""
+    """POST the one new context to the branch's required contexts; the checks already required stay as they are."""
     return ModelGithubHttpRequest(
-        method="PATCH",
-        path=_checks_path(repository, branch),
-        body={"checks": checks},
+        method="POST",
+        path=f"{_checks_path(repository, branch)}/contexts",
+        body={"contexts": [context]},
     )

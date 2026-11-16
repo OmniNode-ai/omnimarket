@@ -12,11 +12,15 @@ that lists drafts.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import datetime
 
 import pytest
 
-from omnimarket.models.model_landing_review import EnumReviewVerdict
+from omnimarket.models.model_landing_review import (
+    EnumReviewVerdict,
+    ModelLandingReviewFacts,
+)
 from omnimarket.models.model_review_gate_context import (
     EnumReviewContextReason,
     EnumReviewContextState,
@@ -33,6 +37,7 @@ from omnimarket.nodes.node_review_gate_context_orchestrator.handlers.handler_rev
 )
 from omnimarket.nodes.node_review_gate_context_orchestrator.models.model_review_gate_sweep import (
     ModelReviewGateSweepCommand,
+    ModelReviewGateSweepResult,
 )
 from omnimarket.nodes.node_review_gate_context_orchestrator.protocols.protocol_review_gate_sources import (
     ReviewGateSourceError,
@@ -76,8 +81,8 @@ def _clean_for_first() -> InMemoryReviewVerdicts:
     return InMemoryReviewVerdicts({"repo-a#1": verdict_facts(HEAD, CLEAN)})
 
 
-def _states(result: object) -> dict[int, tuple[str, str]]:
-    return {e.pr_number: (e.state.value, e.reason.value) for e in result.entries}  # type: ignore[attr-defined]
+def _states(result: ModelReviewGateSweepResult) -> dict[int, tuple[str, str]]:
+    return {e.pr_number: (e.state.value, e.reason.value) for e in result.entries}
 
 
 def test_golden_sweep_posts_success_for_clean_and_bypass_and_failure_for_no_verdict() -> (
@@ -169,7 +174,7 @@ def test_a_probe_posts_nothing_and_names_each_decision() -> None:
 class _SwallowingVerdicts(InMemoryReviewVerdicts):
     """Break: reads an unreadable record as no verdicts."""
 
-    def review_facts(self, now: datetime):  # type: ignore[no-untyped-def]
+    def review_facts(self, now: datetime) -> Mapping[str, ModelLandingReviewFacts]:
         try:
             return super().review_facts(now)
         except ReviewGateSourceError:

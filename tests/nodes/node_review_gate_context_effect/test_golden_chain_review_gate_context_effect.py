@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import pytest
 
+from omnimarket.handlers.emission_sink import InMemoryEmissionSink
 from omnimarket.nodes.node_review_gate_context_effect.adapters.inmemory_head_statuses import (
     InMemoryHeadStatuses,
 )
@@ -27,8 +28,8 @@ from tests.unit.nodes.node_review_gate_context_effect.test_review_gate_context_e
 pytestmark = pytest.mark.unit
 
 
-def _phases(sink: object) -> list[tuple[str, str | None]]:
-    return [(e.phase, e.failure_code) for e in sink.events]  # type: ignore[attr-defined]
+def _phases(sink: InMemoryEmissionSink) -> list[tuple[str, str | None]]:
+    return [(e.phase, e.failure_code) for e in sink.events]
 
 
 def test_golden_chain_post_on_the_exact_head() -> None:

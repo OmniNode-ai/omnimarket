@@ -343,16 +343,6 @@ def commit_check_runs_request(
     )
 
 
-def commit_statuses_request(
-    repository: str, head_sha: str, *, per_page: int
-) -> ModelGithubHttpRequest:
-    """GET the commit statuses posted on a commit, newest first."""
-    return ModelGithubHttpRequest(
-        method="GET",
-        path=f"{_repo_path(repository)}/commits/{head_sha}/statuses?per_page={per_page}",
-    )
-
-
 def head_check_runs_request(
     repository: str, head_sha: str, *, etag: str | None = None, page: int = 1
 ) -> ModelGithubHttpRequest:
@@ -620,7 +610,6 @@ __all__: list[str] = [
     "branch_rules_request",
     "cancel_run_request",
     "commit_check_runs_request",
-    "commit_statuses_request",
     "compare_request",
     "convert_to_draft_request",
     "create_commit_request",

@@ -49,8 +49,10 @@ description: >
   the link to the verdict. The request model refuses anything else before any
   call. Its replay record is in-process only; GitHub keeps every status posted.
   required_context_apply adds one required status-check context to a branch's
-  protection (GET then PATCH of /repos/{o}/{r}/branches/{b}/protection/
-  required_status_checks, keeping every check already required). It is served
+  protection (GET of /repos/{o}/{r}/branches/{b}/protection/
+  required_status_checks to see whether it is already required, then an add-only
+  POST of the one context to its /contexts endpoint, so every check already
+  required stays as it is). It is served
   only for a (repository, branch, context) triple the overlay's
   required_contexts entries name; any other repository, branch or context, an
   absent overlay or an absent required_contexts is refused
@@ -177,7 +179,7 @@ operations:
     description: "Request ModelRepoWriteRequest with commit_sha, status_context (fable-review-gate only), status_state (success or failure only), status_target_url and optional status_description; replaces gh api --method POST /repos/{o}/{r}/statuses/{sha}. POST /repos/{o}/{r}/statuses/{sha} via the existing GitHub transport and the node's token. Result ModelRepoWriteCompleted with commit_status_id and head_sha or ModelRepoWriteFailed. Any other context or state, and an empty or short sha, is refused by the request model before any call."
     transport: rest
   - name: required_context_apply
-    description: "Request ModelRepoWriteRequest with protected_branch and required_context; replaces gh api --method PATCH /repos/{o}/{r}/branches/{b}/protection/required_status_checks. GET then PATCH /repos/{o}/{r}/branches/{b}/protection/required_status_checks, only for a (repository, branch, context) the overlay's required_contexts allowlist names, else refused required_context_not_allowed before any call. Result ModelRepoWriteCompleted with required_context_applied (False and replayed when already required) or ModelRepoWriteFailed."
+    description: "Request ModelRepoWriteRequest with protected_branch and required_context; replaces gh api --method POST /repos/{o}/{r}/branches/{b}/protection/required_status_checks/contexts. GET /repos/{o}/{r}/branches/{b}/protection/required_status_checks to see whether the context is already required, then an add-only POST /repos/{o}/{r}/branches/{b}/protection/required_status_checks/contexts with the one context (the checks already required are never sent back), only for a (repository, branch, context) the overlay's required_contexts allowlist names, else refused required_context_not_allowed before any call. Result ModelRepoWriteCompleted with required_context_applied (False and replayed when already required) or ModelRepoWriteFailed."
     transport: rest
   - name: pr_label
     description: "Request ModelRepoWriteRequest with pr_number, expected_head_sha, add_labels and remove_labels, result ModelRepoWriteCompleted (html_url, head_sha) or ModelRepoWriteFailed (label_not_allowed when a label is not in the overlay's allowed set); replaces gh api --method POST /repos/{o}/{r}/issues/{n}/labels. GET the PR (expected head), POST /repos/{o}/{r}/issues/{n}/labels for labels to add, DELETE /repos/{o}/{r}/issues/{n}/labels/{label} for each label to remove."

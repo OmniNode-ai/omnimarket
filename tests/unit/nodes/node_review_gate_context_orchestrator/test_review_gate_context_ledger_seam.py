@@ -34,6 +34,7 @@ from omnimarket.nodes.node_review_gate_context_orchestrator.adapters.ledger_revi
 )
 from omnimarket.nodes.node_review_gate_context_orchestrator.models.model_review_gate_sweep import (
     ModelReviewGateSweepCommand,
+    ModelReviewGateSweepResult,
 )
 from omnimarket.nodes.node_review_gate_context_orchestrator.overlay import (
     ModelReviewGateSweepSettings,
@@ -95,7 +96,7 @@ def _row(
     )
 
 
-def _sweep(rows: _Rows, head: str = HEAD):  # type: ignore[no-untyped-def]
+def _sweep(rows: _Rows, head: str = HEAD) -> tuple[Rig, ModelReviewGateSweepResult]:
     rig = Rig(
         InMemoryOpenPullRequests((subject("repo-a", 1, head),)),
         LedgerReviewVerdicts(rows, SETTINGS),

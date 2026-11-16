@@ -44,7 +44,8 @@ Rules this handler enforces:
   empty or short sha before any call. Like check_run_create it keeps only the
   in-process replay record.
 - **Required contexts.** required_context_apply adds one required status-check
-  context to a branch's protection, only for a (repository, branch, context)
+  context to a branch's protection with an add-only POST to its ``contexts`` endpoint (the
+  checks already required are never rewritten), only for a (repository, branch, context)
   the overlay's ``required_contexts`` names; anything else or an unreadable overlay
   is refused ``required_context_not_allowed`` before any GitHub call, in either mode.
 - **Allowed labels.** pr_label adds and removes labels on a pull request, pinned to
@@ -1682,8 +1683,8 @@ async def _required_context_apply(run: _Run) -> ModelRepoWriteCompleted:
     branch, context = c.protected_branch or "", c.required_context or ""
     current = (await run.send(read_required_checks_request(c.repo, branch))).body or {}
     raw = current.get("checks")
-    checks: list[dict[str, object]] = [
-        dict(entry)
+    checks = [
+        entry
         for entry in (raw if isinstance(raw, list) else [])
         if isinstance(entry, dict)
     ]
@@ -1695,9 +1696,7 @@ async def _required_context_apply(run: _Run) -> ModelRepoWriteCompleted:
     }
     if context in named:
         return run.completed(replayed=True, required_context_applied=False)
-    await run.send(
-        add_required_context_request(c.repo, branch, [*checks, {"context": context}])
-    )
+    await run.send(add_required_context_request(c.repo, branch, context))
     return run.completed(required_context_applied=True)
 
 

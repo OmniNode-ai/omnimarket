@@ -101,8 +101,8 @@ def _facts(
         "prs": [row],
         "state": {"last_tick": 4, "records": []},
     }
-    if policy is not None:
-        facts["policy"] = policy
+    # These cases are the ledger verdict gate's: the status gate (test_landing_review_status.py) is set aside here.
+    facts["policy"] = {"review_status_read_expected": False, **(policy or {})}
     return ModelLandingFacts.model_validate(facts)
 
 

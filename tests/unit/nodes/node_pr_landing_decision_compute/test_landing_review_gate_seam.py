@@ -122,6 +122,8 @@ def _pipe(rows: tuple[ModelLandingLedgerRow, ...], **request: Any) -> ModelLandi
             "observed_at": NOW.isoformat(),
             "prs": [row],
             "state": {"last_tick": 4, "records": []},
+            # The ledger verdict gate's cases: the status gate (test_landing_review_status.py) is set aside here.
+            "policy": {"review_status_read_expected": False},
         }
     )
 
