@@ -21,7 +21,6 @@ from omnimarket.models.host_table import (
 )
 from omnimarket.models.host_table_keys import (
     ModelHostTableKeysDocument,
-    ModelHostTableKeysIngestResult,
     ModelHostTableKeysOverlay,
 )
 from omnimarket.models.overlay_keys import ModelLabHostsTable
@@ -67,15 +66,17 @@ class HandlerHostTableKeysIngest:
             )
         return self._store, self._overlay
 
-    def handle(
-        self, request: ModelOverlayStoreRecord
-    ) -> ModelHostTableKeysIngestResult:
+    def handle(self, request: ModelOverlayStoreRecord) -> None:
+        """Write the host table document to the one key; return nothing.
+
+        The node declares no publish topic and nothing consumes a result, so it returns no model: a returned
+        model would reach the runtime with no applier wired and be dropped as undeliverable output. A record
+        of another overlay is ignored and writes nothing.
+        """
         store, overlay = self._resolve()
         key = f"{overlay.key_prefix}:table"
         if request.overlay_id != overlay.overlay_id:
-            return ModelHostTableKeysIngestResult(
-                outcome="ignored", key=key, digest="", hosts=0, admitted=0
-            )
+            return
         try:
             table = ModelLabHostsTable.model_validate(request.document)
             result = HandlerHostTable().handle(ModelHostTableRequest(table=table))
@@ -91,10 +92,3 @@ class HandlerHostTableKeysIngest:
             table=result,
         )
         store.set(key, document.model_dump_json())
-        return ModelHostTableKeysIngestResult(
-            outcome="written",
-            key=key,
-            digest=request.digest,
-            hosts=len(result.rows),
-            admitted=len(result.admitted),
-        )

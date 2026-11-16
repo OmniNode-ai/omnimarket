@@ -61,9 +61,15 @@ def test_contract_golden_chain() -> None:
         assert issubclass(result, BaseModel)
         return result
 
+    # Nothing consumes a result of this node and it declares no publish topic, so a declared output model
+    # would leave every dispatch with a result and no applier (the undeliverable-output path).
+    assert "output_model" not in contract
+    assert "output_model" not in binding
+    assert "terminal_events" not in contract.get("runtime_dispatch", {})
+    assert contract["event_bus"]["publish_topics"] == []
     hints = get_type_hints(handler_class.handle)
     assert hints["request"] is model(binding["input_model"])
-    assert hints["return"] is model(binding["output_model"])
+    assert hints["return"] is type(None)
 
 
 def test_one_record_writes_one_key_holding_the_node_rows() -> None:
@@ -72,17 +78,13 @@ def test_one_record_writes_one_key_holding_the_node_rows() -> None:
         store=store, overlay=overlay(), clock=lambda: NOW
     )
     incoming = record(registry_document(*three_hosts()))
-    result = handler.handle(incoming)
-    assert (result.outcome, result.key, result.hosts, result.admitted) == (
-        "written",
-        f"{PREFIX}:table",
-        3,
-        2,
-    )
+    assert handler.handle(incoming) is None
     stored = store.get(f"{PREFIX}:table")
     assert stored is not None
     document = ModelHostTableKeysDocument.model_validate_json(stored)
     assert document.digest == incoming.digest
+    assert len(document.table.rows) == 3
+    assert len(document.table.admitted) == 2
     assert [r.name for r in document.table.rows] == [
         "admitted-a",
         EXCLUDED,

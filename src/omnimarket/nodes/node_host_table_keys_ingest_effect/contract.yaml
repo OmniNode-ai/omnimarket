@@ -14,9 +14,6 @@ description: Ingest the lab host table into the key-value store when the overlay
 input_model:
   name: ModelOverlayStoreRecord
   module: omnimarket.models.overlay_store.model_overlay_store
-output_model:
-  name: ModelHostTableKeysIngestResult
-  module: omnimarket.models.host_table_keys
 overlay:
   node: node_host_table_keys_ingest_effect
   roots_env: ONEX_SKILL_OVERLAY_ROOTS
@@ -24,7 +21,6 @@ handler:
   module: omnimarket.nodes.node_host_table_keys_ingest_effect.handlers.handler_host_table_keys_ingest
   class: HandlerHostTableKeysIngest
   input_model: omnimarket.models.overlay_store.model_overlay_store.ModelOverlayStoreRecord
-  output_model: omnimarket.models.host_table_keys.ModelHostTableKeysIngestResult
 handler_routing:
   routing_strategy: payload_type_match
   handlers:
@@ -47,8 +43,6 @@ broker_acl_grants:
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.overlay-store-loaded.v1, operation: DESCRIBE}
 runtime_dispatch:
   command_topic: onex.evt.omnimarket.overlay-store-loaded.v1
-  terminal_events:
-    success: onex.evt.omnimarket.host-table-keys-ingested.v1
 side_effects:
 - key-value-write
 descriptor:
