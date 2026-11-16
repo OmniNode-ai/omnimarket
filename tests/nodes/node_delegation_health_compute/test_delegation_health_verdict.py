@@ -295,10 +295,7 @@ def test_not_judged_expected_rungs_with_no_lanes_running() -> None:
     payload["outcomes"]["causes"] = []
     verdict = run(payload)
     assert verdict.verdict is Verdict.OK
-    assert verdict.not_judged == (
-        "expected rungs: no lanes running",
-        "local share: the caller read no local share counts",
-    )
+    assert verdict.not_judged == ("expected rungs: no lanes running",)
 
 
 def test_rung_findings_pin_only_and_harness_use_the_shared_evidence() -> None:

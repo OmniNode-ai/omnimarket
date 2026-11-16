@@ -48,7 +48,6 @@ inputs:
   unresolved_tiers: {type: list, required: false, description: Expected tiers with no model on a live endpoint.}
   outcomes: {type: object, required: false, description: Real runs and the failed ones by terminal_failure_cause; absent when the table has no such column, which is not judged.}
   lanes_running: {type: int, required: false, description: Lanes with an open CLAIM that wrote a row inside the window.}
-  local_share: {type: object, required: false, description: Delegated runs and local-backend runs over the local share window, with the declared local endpoints that answered a model-list call; absent is not judged.}
 outputs:
   correlation_id: {type: str}
   verdict: {type: str, enum: [OK, DEGRADED, UNREADABLE, UNTRUSTED]}
@@ -81,10 +80,6 @@ verdict_rules:
   timeout_share_percent: 50
   # ... and there are at least this many real runs in the window.
   timeout_min_events: 20
-  # OMN-24980: DEGRADED when, over a window of at least this many minutes, at least local_share_min_runs
-  # delegated runs were answered by no local backend while a declared local endpoint answered.
-  local_share_window_minutes: 360
-  local_share_min_runs: 5
   # backend_row_then_model: an expected rung whose own backend row was read is judged by that row,
   # not by the model count (two backends can serve one model). model_count: the model count alone.
   expected_rung_rule: backend_row_then_model
@@ -108,7 +103,3 @@ verdict_rules:
       read the dead-letter topic for failure_class=no_dispatcher
     expected_rung_silent: >-
       smoke the rung: {smoke}{pin}; then brief text steps through onex delegate (lane-brief 3a.9)
-    local_share_zero: >-
-      read the delegation projection for the window's delegated runs by backend and the routing overlay's local
-      endpoints: a prompt above a rung's max_context_tokens, a rung whose use_for omits the class, or an endpoint the
-      deployed ladder does not declare each drops the local rung; smoke it: {smoke} --backend-id local-heavy-reasoning
