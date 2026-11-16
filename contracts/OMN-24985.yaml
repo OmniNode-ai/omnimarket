@@ -12,17 +12,17 @@ requirements:
   - id: AC1
     statement: 'AC1: the head''s required contexts are each read as success at the new head, or AC1 of [OMN-24921](https://linear.app/omninode/issue/OMN-24921) is amended to exclude the shared delegation-health-check red, with a pr-checks output line, a comment starting `Lab: head=<new head>` carrying the suite run on the lab (parts named if split), the quoted log lines, the dev 6efbe3ee read and the output of git diff 17dfc41 to the new head over tests/ posted as PR comments -- falsifier: `onex scm pr-checks OmniNode-ai/omnimarket#6052` lists a required context that is not success at the new head and no amendment is posted'
   - id: AC2
-    statement: 'AC2: the pr-checks DoD check in contracts/[OMN-24875](https://linear.app/omninode/issue/OMN-24875).yaml and contracts/[OMN-24921](https://linear.app/omninode/issue/OMN-24921).yaml exits 0 only when head_sha equals git rev-parse HEAD and class is green, with stale-head, empty-output and non-green cases tested against both copies -- falsifier: `uv run pytest tests/ -q -k "contract and pr_checks"` in omnimarket exits non-zero at c63e9dec2571 or selects zero tests'
+    statement: 'AC2: the pr-checks DoD check in contracts/[OMN-24875](https://linear.app/omninode/issue/OMN-24875).yaml and contracts/[OMN-24921](https://linear.app/omninode/issue/OMN-24921).yaml exits 0 only when head_sha equals git rev-parse HEAD and class is green, with stale-head, empty-output and non-green cases tested against both copies -- falsifier: `uv run pytest tests/ -q -k "contract and pr_checks"` in omnimarket exits zero at c63e9dec2571 or selects zero tests'
   - id: AC3
     statement: 'AC3: PR comments carry the src/ grep of outbox.drain callers and DrainResult.refused readers, and the case for the 6h window, the roll cadence and the queue-status read -- falsifier: `onex scm pr-view OmniNode-ai/omnimarket#6052` lists no comment with the grep output'
   - id: AC4
-    statement: 'AC4: report_refused_to_writers and the refused-file refresh hold DRAIN_LOCK (or a PR comment shows the reporter already holds it), so a reported_at stamp written between the read and the replace is not lost -- falsifier: `uv run pytest tests/ -q -k "outbox and refused and lock"` in omnimarket exits non-zero at c63e9dec2571 or selects zero tests'
+    statement: 'AC4: report_refused_to_writers and the refused-file refresh hold DRAIN_LOCK (or a PR comment shows the reporter already holds it), so a reported_at stamp written between the read and the replace is not lost -- falsifier: `uv run pytest tests/ -q -k "outbox and refused and lock"` in omnimarket exits zero at c63e9dec2571 or selects zero tests'
   - id: AC5
-    statement: 'AC5: the [OMN-24921](https://linear.app/omninode/issue/OMN-24921) AC6 text says a naive refused_at is read as UTC and reused, [OMN-24250](https://linear.app/omninode/issue/OMN-24250).yaml line 13 states the six hour window, and the [OMN-24875](https://linear.app/omninode/issue/OMN-24875) falsifier selects the outbox-driving test -- falsifier: `uv run pytest tests/ -q -k "contract and OMN_24827"` in omnimarket exits non-zero or selects zero tests at c63e9dec2571'
+    statement: 'AC5: the [OMN-24921](https://linear.app/omninode/issue/OMN-24921) AC6 text says a naive refused_at is read as UTC and reused, [OMN-24250](https://linear.app/omninode/issue/OMN-24250).yaml line 13 states the six hour window, and the [OMN-24875](https://linear.app/omninode/issue/OMN-24875) falsifier selects the outbox-driving test -- falsifier: `uv run pytest tests/ -q -k "omn_24250_ac1 or omn_24921_ac6 or omn_24875_ac4_falsifier"` in omnimarket exits non-zero or selects zero tests at c63e9dec2571'
   - id: AC6
-    statement: 'AC6: a test holds several stored clash files for one id and rows and proves the stored[-1] choice, and dod-omn24921-ac5 says only the two object shapes of the replay test can be red at 7c5d0b219491 -- falsifier: `uv run pytest tests/ -q -k "outbox and stored and clash"` in omnimarket exits non-zero at c63e9dec2571 or selects zero tests'
+    statement: 'AC6: a test holds several stored clash files for one id and rows and proves the stored[-1] choice, and dod-omn24921-ac5 says only the two object shapes of the replay test can be red at 7c5d0b219491 -- falsifier: `uv run pytest tests/ -q -k "outbox and stored and clash"` in omnimarket exits zero at c63e9dec2571 or selects zero tests'
   - id: AC7
-    statement: 'AC7: a PR comment states whether the CLI logs INFO for the outbox logger, and the reuse line is raised to a level the CLI shows if it does not -- falsifier: `uv run pytest tests/ -q -k "outbox and reuse and log"` in omnimarket exits non-zero at c63e9dec2571 or selects zero tests'
+    statement: 'AC7: a PR comment states whether the CLI logs INFO for the outbox logger, and the reuse line is raised to a level the CLI shows if it does not -- falsifier: `uv run pytest tests/ -q -k "outbox and reuse and log"` in omnimarket exits zero at c63e9dec2571 or selects zero tests'
 evidence_requirements:
 - kind: tests
   description: The outbox reuse and contract-text tests pass at the pushed head; the pr-checks head and class cases, the reporter lock test and the warning-level reuse log test fail at c63e9dec2571.
@@ -33,7 +33,7 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn24985-ac1
-  description: 'AC1: the hosted proof of the pr-checks check: it exits 0 only on the current head with class green (stand-in onex over both copies). The live read is the unbound item beside it.'
+  description: 'hosted proxy; AC1: the hosted proof of the pr-checks check: it exits 0 only on the current head with class green (stand-in onex over all three live copies). The live read is the unbound item beside it.'
   source: manual
   binds_ac:
   - AC1
@@ -42,15 +42,15 @@ dod_evidence:
     check_value: uv run pytest tests/handlers/bus_binding/test_outbox_contract_text.py -q --no-cov -p no:cacheprovider -k "contract and pr_checks"
     cwd: .
 - id: dod-omn24985-ac1-live
-  description: 'AC1, the live half: the required contexts on dev (CI Summary, and repo-evidence / dod-verify from the ruleset) are not red or pending at the head the watcher read, and that head is this checkout''s HEAD. delegation-health-check is not a required context on dev, so the shared red does not fire this falsifier; the Lab comment, the quoted log lines, the dev read and the tests/ diff are PR comments. The watcher is not reachable from hosted CI, so only the local Done gate runs it.'
+  description: 'AC1, the live half: head_sha must equal this checkout''s HEAD, class must be green and no context may be red or pending, using the same conservative rule as the other live copies. delegation-health-check is absent from the dev required list but still keeps this all-checks proxy red; the Lab comment, the quoted log lines, the dev read and the tests/ diff are PR comments. The watcher is not reachable from hosted CI, so only the local Done gate runs it.'
   source: manual
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: sh -c 'onex scm pr-checks OmniNode-ai/omnimarket#6052 | python3 -c "import json,subprocess,sys; L=[json.loads(l) for l in sys.stdin if l.startswith(chr(123))]; r=L[-1][\"result\"] if L else {}; h=subprocess.run([\"git\",\"rev-parse\",\"HEAD\"],capture_output=True,text=True).stdout.strip(); bad=set(r.get(\"red\",[]))|set(r.get(\"pending\",[])); print(r.get(\"head_sha\"),h,sorted(bad)); sys.exit(0 if h and r.get(\"head_sha\")==h and not bad & {\"CI Summary\",\"repo-evidence / dod-verify\"} else 1)"'
+    check_value: sh -c 'onex scm pr-checks OmniNode-ai/omnimarket#6052 | python3 -c "import json,subprocess,sys; L=[json.loads(l) for l in sys.stdin if l.startswith(chr(123))]; r=L[-1][\"result\"] if L else {}; h=subprocess.run([\"git\",\"rev-parse\",\"HEAD\"],capture_output=True,text=True).stdout.strip(); print(r.get(\"head_sha\"),h,r.get(\"class\"),r.get(\"red\"),r.get(\"pending\")); sys.exit(0 if h and r.get(\"head_sha\")==h and r.get(\"class\")==\"green\" and not r.get(\"red\") and not r.get(\"pending\") else 1)"'
     cwd: .
 - id: dod-omn24985-ac2
-  description: 'AC2: both copies of the pr-checks check (OMN-24875 AC5, OMN-24921 AC1) are one command that exits 0 only on head_sha equal to git rev-parse HEAD with class green; twelve stand-in onex outputs per copy cover a stale head, empty output, text only, broken JSON and each non-green class. At c63e9dec2571 the stale-head, non-green-class and missing-head cases exit 0 where they must exit 1.'
+  description: 'AC2: all three live copies of the pr-checks check are one command that exits 0 only on head_sha equal to git rev-parse HEAD with class green; fourteen stand-in onex outputs per copy cover a stale head, empty output, text only, broken JSON and each non-green class. At c63e9dec2571 the stale-head, non-green-class and missing-head cases exit 0 where they must exit 1.'
   source: manual
   binds_ac:
   - AC2
@@ -83,7 +83,7 @@ dod_evidence:
   - AC5
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/handlers/bus_binding -q --no-cov -p no:cacheprovider -k "contract and OMN_24827"
+    check_value: uv run pytest tests/handlers/bus_binding -q --no-cov -p no:cacheprovider -k "omn_24250_ac1 or omn_24921_ac6 or omn_24875_ac4_falsifier"
     cwd: .
 - id: dod-omn24985-ac6
   description: 'AC6: three stored clash files for one id and rows: the refresh rewrites only the newest and any file inside the window answers a replay; with stored[-1] changed to stored[0] the refresh test fails. dod-omn24921-ac5 says which two object shapes can be red at 7c5d0b219491.'

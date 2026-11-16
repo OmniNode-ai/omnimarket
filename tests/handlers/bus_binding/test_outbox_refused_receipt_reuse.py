@@ -11,10 +11,12 @@ still sent.
 
 from __future__ import annotations
 
+import ast
 import fcntl
 import json
 import logging
 from datetime import UTC, datetime, timedelta
+from importlib.util import resolve_name
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -331,6 +333,73 @@ async def test_replay_of_clash_refusal_adds_no_new_report_for_the_writer(
         await outbox.drain(tmp_path, send)
         assert recovery.report_refused_to_writers(tmp_path, datetime.now(UTC)) == 0
     assert len(_open_refused_rows(tmp_path)) == 1
+
+
+async def test_outbox_refused_lock_is_held_at_the_emit_seam(
+    tmp_path: Path,
+    handler: HandlerWorkLedgerAppendEffect,
+    ledger: _FakeLedger,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    handler.handle(_request("the row that landed first"), writer_principal=WRITER)
+    outbox.queue_request(tmp_path, _request("different rows"))
+    send, _calls = _counting_sender(handler)
+    await outbox.drain(tmp_path, send)
+    factory = recovery.create_handler_exception_emit
+    observed: list[bool] = []
+
+    def at_emit() -> Any:
+        lock_path = outbox.outbox_dir(tmp_path) / outbox.DRAIN_LOCK_NAME
+        with (
+            lock_path.open("a+", encoding="utf-8") as contender,
+            pytest.raises(BlockingIOError),
+        ):
+            fcntl.flock(contender, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        observed.append(True)
+        return factory()
+
+    monkeypatch.setattr(recovery, "create_handler_exception_emit", at_emit)
+    assert recovery.report_refused_to_writers(tmp_path, datetime.now(UTC)) == 1
+    assert observed == [True]
+    assert _refused_body(tmp_path)["reported_at"]
+
+
+async def test_outbox_refused_skipped_pass_then_select_replay_reports_once(
+    workspace: Path,
+    tmp_path: Path,
+    handler: HandlerWorkLedgerAppendEffect,
+    ledger: _FakeLedger,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = tmp_path / "state"
+    handler.handle(_request("the row that landed first"), writer_principal=WRITER)
+    outbox.queue_request(state, _request("different rows"))
+    send, calls = _counting_sender(handler)
+    await outbox.drain(state, send)
+    factory = recovery.create_handler_exception_emit
+    emissions: list[bool] = []
+
+    def counted_emit() -> Any:
+        emissions.append(True)
+        return factory()
+
+    monkeypatch.setattr(recovery, "create_handler_exception_emit", counted_emit)
+    # The old queue timestamp must remain eligible on the next replay.
+    (written,) = _refused_files(state)
+    written.rename(written.with_name(f"{1:020d}_{REQUEST_ID}.json"))
+    with outbox.try_hold_drain_lock(state) as held:
+        assert held
+        assert recovery.report_refused_to_writers(state, datetime.now(UTC)) is None
+        assert _open_refused_rows(state) == []
+    await _replay_through_select(workspace, state, send)
+    assert len(calls) == 1
+    (row,) = _open_refused_rows(state)
+    assert emissions == [True]
+    await _replay_through_select(workspace, state, send)
+    (again,) = _open_refused_rows(state)
+    assert again["id"] == row["id"]
+    assert emissions == [True]
+    assert recovery.report_refused_to_writers(state, datetime.now(UTC)) == 0
 
 
 def _refused_body(state_dir: Path) -> dict[str, object]:
@@ -810,7 +879,7 @@ async def test_outbox_refused_lock_reporter_leaves_the_pass_while_a_drain_holds_
     lock_path = outbox.outbox_dir(tmp_path) / outbox.DRAIN_LOCK_NAME
     with lock_path.open("a+", encoding="utf-8") as held:
         fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        assert recovery.report_refused_to_writers(tmp_path, datetime.now(UTC)) == 0
+        assert recovery.report_refused_to_writers(tmp_path, datetime.now(UTC)) is None
         assert _refused_body(tmp_path) == before
         assert _open_refused_rows(tmp_path) == []
 
@@ -923,16 +992,139 @@ async def test_outbox_stored_clash_files_for_one_id_reuse_any_file_in_the_window
     assert {p: p.read_bytes() for p in _refused_files(tmp_path)} == before
 
 
-def test_outbox_drain_callers_in_src_are_the_replay_only() -> None:
-    """The one caller of ``outbox.drain`` in src/ is ``select.replay_outbox``, which reports from refused/.
+def _outbox_callers_and_readers(
+    source: str, package: str = "omnimarket.handlers.bus_binding"
+) -> tuple[set[str], set[str]]:
+    """Resolve imported aliases and follow drain/replay results and annotated DrainResult arguments."""
+    tree = ast.parse(source)
+    symbols: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            imported = node.module or ""
+            if node.level:
+                imported = resolve_name("." * node.level + imported, package)
+            for alias in node.names:
+                symbols[alias.asname or alias.name] = f"{imported}.{alias.name}"
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                symbols[alias.asname or alias.name.split(".")[0]] = (
+                    alias.name if alias.asname else alias.name.split(".")[0]
+                )
 
-    A new caller would read ``DrainResult.refused`` without the replay's report step, so it has to be looked
-    at: this fails until the new caller is listed here.
-    """
+    def qualified(node: ast.AST | None) -> str:
+        if isinstance(node, ast.Name):
+            return symbols.get(node.id, node.id)
+        if isinstance(node, ast.Attribute):
+            return f"{qualified(node.value)}.{node.attr}"
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            return node.value
+        return ""
+
+    module = "omnimarket.handlers.bus_binding"
+    producers = {f"{module}.outbox.drain", f"{module}.select.replay_outbox"}
+    callers: set[str] = set()
+    readers: set[str] = set()
+    for function in ast.walk(tree):
+        if not isinstance(function, ast.FunctionDef | ast.AsyncFunctionDef):
+            continue
+        nodes: list[ast.AST] = []
+        pending = list(function.body)
+        while pending:
+            node = pending.pop()
+            if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+                continue
+            nodes.append(node)
+            pending.extend(ast.iter_child_nodes(node))
+        results = {
+            arg.arg
+            for arg in (
+                *function.args.posonlyargs,
+                *function.args.args,
+                *function.args.kwonlyargs,
+            )
+            if qualified(arg.annotation).endswith("DrainResult")
+        }
+        for node in nodes:
+            if (
+                isinstance(node, ast.Call)
+                and qualified(node.func) == f"{module}.outbox.drain"
+            ):
+                callers.add(function.name)
+            if isinstance(node, ast.Assign | ast.AnnAssign):
+                value = node.value
+                if isinstance(value, ast.Await):
+                    value = value.value
+                targets = (
+                    node.targets if isinstance(node, ast.Assign) else [node.target]
+                )
+                if isinstance(value, ast.Call) and qualified(value.func) in producers:
+                    results.update(
+                        target.id for target in targets if isinstance(target, ast.Name)
+                    )
+        for node in nodes:
+            if (
+                isinstance(node, ast.Attribute)
+                and node.attr == "refused"
+                and isinstance(node.value, ast.Name)
+                and node.value.id in results
+            ):
+                readers.add(function.name)
+            if (
+                isinstance(node, ast.Call)
+                and qualified(node.func) == "getattr"
+                and node.args
+                and isinstance(node.args[0], ast.Name)
+                and node.args[0].id in results
+            ):
+                readers.add(function.name)
+    return callers, readers
+
+
+@pytest.mark.parametrize(
+    ("import_line", "call"),
+    [
+        ("from omnimarket.handlers.bus_binding.outbox import drain", "drain"),
+        ("from omnimarket.handlers.bus_binding.outbox import drain as send", "send"),
+        ("from omnimarket.handlers.bus_binding import outbox as box", "box.drain"),
+        ("import omnimarket.handlers.bus_binding.outbox as box", "box.drain"),
+        ("from .outbox import drain as send", "send"),
+        ("from . import outbox as box", "box.drain"),
+    ],
+)
+def test_outbox_callers_ast_finds_imported_drain_and_refused_reader(
+    import_line: str, call: str
+) -> None:
+    source = f"{import_line}\nasync def caller():\n    result = await {call}(state, send)\n    return result.refused\n"
+    assert _outbox_callers_and_readers(source) == ({"caller"}, {"caller"})
+
+
+def test_outbox_callers_ast_finds_annotated_refused_readers() -> None:
+    source = """
+from omnimarket.handlers.bus_binding.outbox import DrainResult as Result
+def reader(result: Result):
+    return result.refused
+def dynamic_reader(result: Result):
+    return getattr(result, 'refused')
+"""
+    assert _outbox_callers_and_readers(source) == (set(), {"reader", "dynamic_reader"})
+
+
+def test_outbox_drain_callers_in_src_are_the_replay_only() -> None:
     src = Path(__file__).resolve().parents[3] / "src"
-    callers = sorted(
-        str(path.relative_to(src.parent))
-        for path in src.rglob("*.py")
-        if "outbox.drain(" in path.read_text(encoding="utf-8")
-    )
-    assert callers == ["src/omnimarket/handlers/bus_binding/select.py"]
+    callers: set[str] = set()
+    readers: set[str] = set()
+    for path in src.rglob("*.py"):
+        source = path.read_text(encoding="utf-8")
+        # A lexical prefilter avoids parsing unrelated modules, never identifies a call itself.
+        if "bus_binding" not in source and "bus_binding" not in path.parts:
+            continue
+        package = ".".join(path.parent.relative_to(src).parts)
+        found_callers, found_readers = _outbox_callers_and_readers(source, package)
+        relative = path.relative_to(src.parent)
+        callers.update(f"{relative}:{name}" for name in found_callers)
+        readers.update(f"{relative}:{name}" for name in found_readers)
+    assert callers == {"src/omnimarket/handlers/bus_binding/select.py:replay_outbox"}
+    assert readers == {
+        "src/omnimarket/handlers/bus_binding/recovery.py:record_replay",
+        "src/omnimarket/work_ledger_bus/cli.py:main",
+    }

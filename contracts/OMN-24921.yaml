@@ -31,7 +31,7 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn24921-ac1
-  description: 'AC1: the copy of the pr-checks check bound here exits 0 only when head_sha equals git rev-parse HEAD, class is green and none is red or pending; the hosted test runs it against a stand-in onex (stale head, empty output, text only, broken JSON and each non-green class exit 1). The live run is the unbound item beside this one; the failing job log lines, the dev read, the lab run and the tests/ diff are in the PR comments.'
+  description: 'hosted proxy; AC1: the copy of the pr-checks check bound here exits 0 only when head_sha equals git rev-parse HEAD, class is green and none is red or pending; the hosted test runs it against a stand-in onex (stale head, empty output, text only, broken JSON and each non-green class exit 1). The live run is the unbound item beside this one; the failing job log lines, the dev read, the lab run and the tests/ diff are in the PR comments.'
   source: manual
   binds_ac:
   - AC1

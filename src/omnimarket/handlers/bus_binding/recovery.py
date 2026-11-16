@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import logging
 import os
 import tempfile
 from datetime import datetime
@@ -41,6 +42,7 @@ ALARM_CLASS = "bus-binding-degraded"
 OUTAGE_CLASS = "bus-binding-outage"
 REFUSED_CLASS = "bus-binding-outbox-refused"
 SOURCE = "omnimarket.handlers.bus_binding"
+logger = logging.getLogger(__name__)
 
 
 def state_path(state_dir: Path, lane: str) -> Path:
@@ -236,12 +238,13 @@ def report_refused_to_writers(
     *,
     since_ns: int = 0,
     guard: GuardPorts | None = None,
-) -> int:
+) -> int | None:
     """Emit one non-decision case per refused request nobody has been told about yet; return how many.
 
     The case is keyed to the writer's lane, the one told "queued", not to the bus lane. It does not wait
     for an outage episode to close: a refusal is reported by the replay that found it. A report is marked
     on the refused file, so a later replay or episode does not report it twice.
+    A busy drain lock returns None and logs the deferred pass; zero means a completed pass emitted no cases.
 
     With ``guard`` bound (OMN-21959), a ledger guard's refusal whose cause is already gone is settled in code
     first and not emitted at all; only a case the guard actor cannot settle is emitted. Each pass then settles
@@ -261,7 +264,10 @@ def report_refused_to_writers(
         # ``reported_at``).
         if not held:
             _settle_open_guard_cases(state_dir, observed_at, guard)
-            return count
+            logger.warning(
+                "outbox refused reporting deferred: another drain holds the outbox"
+            )
+            return None
         for path in sorted(directory.glob("*.json")):
             try:
                 queued_ns = int(path.stem.split("_", 1)[0])

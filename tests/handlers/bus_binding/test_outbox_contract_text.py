@@ -227,10 +227,11 @@ PR_CHECKS_CASES = [
     ("text-only-no-json", "bus-binding lane=dev binding=durable", 1),
     ("broken-json", '{{"result": ', 1),
 ]
-# The two copies of the check: AC5 of the OMN-24875 contract and AC1 of the OMN-24921 contract.
+# Every live copy must apply the same head and class rule.
 PR_CHECKS_COPIES = [
     ("OMN-24875.yaml", "dod-omn24875-ac5-live"),
     ("OMN-24921.yaml", "dod-omn24921-ac1-live"),
+    ("OMN-24985.yaml", "dod-omn24985-ac1-live"),
 ]
 
 
@@ -317,6 +318,70 @@ def test_contract_pr_checks_check_copies_are_one_command() -> None:
         _dod_check(_load(contract), item_id) for contract, item_id in PR_CHECKS_COPIES
     }
     assert len(commands) == 1
+
+
+@pytest.mark.parametrize(("contract", "item_id"), PR_CHECKS_COPIES)
+@pytest.mark.parametrize(
+    ("case", "output", "expected_exit"),
+    [
+        *PR_CHECKS_CASES,
+        (
+            "unreported-required-context",
+            '{{"result": {{"head_sha": "{head}", "class": "unknown", "red": [], "pending": []}}}}',
+            1,
+        ),
+        (
+            "differently-spelled-context",
+            '{{"result": {{"head_sha": "{head}", "class": "red", "red": ["CI summary / summary"], "pending": []}}}}',
+            1,
+        ),
+    ],
+)
+def test_contract_pr_checks_copies_apply_the_same_rule(
+    tmp_path: Path,
+    contract: str,
+    item_id: str,
+    case: str,
+    output: str,
+    expected_exit: int,
+) -> None:
+    done = _run_pr_checks_check(tmp_path, contract, item_id, output)
+    assert done.returncode == expected_exit, (case, done.stdout, done.stderr)
+
+
+def test_contract_ac5_bound_check_selects_its_three_text_tests() -> None:
+    contract = _load("OMN-24985.yaml")
+    expected = "omn_24250_ac1 or omn_24921_ac6 or omn_24875_ac4_falsifier"
+    for command in (_ac(contract, "AC5"), _dod_check(contract, "dod-omn24985-ac5")):
+        selection = SELECTION.search(command)
+        assert selection is not None
+        assert selection.group(1) == expected
+    names = [name for name in globals() if name.startswith("test_")]
+    assert (
+        len(
+            [
+                name
+                for name in names
+                if any(token in name for token in expected.split(" or "))
+            ]
+        )
+        == 3
+    )
+
+
+@pytest.mark.parametrize("ticket", ["24985", "24875", "24921"])
+def test_contract_ac1_is_described_as_a_hosted_proxy(ticket: str) -> None:
+    contract = _load(f"OMN-{ticket}.yaml")
+    (item,) = [
+        item for item in contract["dod_evidence"] if "AC1" in item.get("binds_ac", [])
+    ]
+    assert "hosted proxy" in item["description"].lower()
+
+
+def test_contract_review_falsifiers_describe_an_unexpected_pass() -> None:
+    contract = _load("OMN-24985.yaml")
+    for ac in ("AC2", "AC4", "AC7"):
+        assert "exits zero at c63e9dec2571" in _ac(contract, ac)
 
 
 def test_contract_omn_24875_ac4_falsifier_selects_the_outbox_driving_test() -> None:

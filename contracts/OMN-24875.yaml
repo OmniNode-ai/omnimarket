@@ -29,7 +29,7 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn24875-ac1
-  description: 'AC1: five corrupt refused-file shapes (a list, null, a string, a number, broken JSON) leave the request out of the lookup, the request is sent and the drain returns, and a replay through select.replay_outbox survives them and the reporter that reads refused/ (with two object shapes whose refusal is not an object). At c91b6efced5e the list, null, string and number shapes raise AttributeError; broken JSON raises ValueError there, which the lookup caught, so that shape is green at c91b6efced5e and is the positive control.'
+  description: 'hosted proxy; AC1: five corrupt refused-file shapes (a list, null, a string, a number, broken JSON) leave the request out of the lookup, the request is sent and the drain returns, and a replay through select.replay_outbox survives them and the reporter that reads refused/ (with two object shapes whose refusal is not an object). At c91b6efced5e the list, null, string and number shapes raise AttributeError; broken JSON raises ValueError there, which the lookup caught, so that shape is green at c91b6efced5e and is the positive control.'
   source: manual
   binds_ac:
   - AC1
