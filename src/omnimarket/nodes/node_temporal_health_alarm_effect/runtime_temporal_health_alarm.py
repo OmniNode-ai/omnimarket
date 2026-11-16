@@ -77,6 +77,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="node_temporal_health_alarm_effect")
     parser.add_argument("--probe", action="store_true")
     parser.add_argument("--state-dir", default="")
+    # The registry_module_tick unit passes --omni-home with --state-dir; the tick reads the registry root from it.
+    parser.add_argument("--omni-home", default="")
     parser.add_argument("--host", default="")
     args = parser.parse_args(argv)
     environ = dict(os.environ)

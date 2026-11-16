@@ -71,3 +71,24 @@ config:
   namespace: default
   task_queue: run-engine
   cli_timeout_s: 20
+# The self-hosted server and the workflow 1 worker on the lab host, each a long-running registry_module_tick unit of
+# node_host_installer_registry_units (temporal-server-systemd, temporal-worker-systemd): the timer starts the run at
+# load and starts it again within start_interval_s of any exit, a kill included. The server is one pinned release of
+# the official temporalio CLI, fetched once into a durable directory under the home and checked against the sha256
+# its release's own checksums.txt publishes on every start (the release URL is built from release and asset); its SQLite store is in the same directory, never scratch.
+server:
+  release: v1.10.1
+  asset: temporal_cli_1.10.1_linux_amd64.tar.gz
+  sha256: 4c1500e2ce2d4de136e5fe8852d9b7f82eb62f19b6b383b3e0c040519a9d20b1
+  data_directory: .local/share/onex-temporal
+  db_filename: temporal.db
+  ip: 127.0.0.1
+  port: 7233
+  ui_port: 8233
+  namespace: default
+  download_timeout_s: 300
+worker:
+  module: omnimarket.nodes.node_prove_running_workflow
+  project_environment: ONEX_TEMPORAL_WORKER_PROJECT
+  address: 127.0.0.1:7233
+  namespace: default

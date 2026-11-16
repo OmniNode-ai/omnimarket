@@ -1470,9 +1470,94 @@ units:
     project_path_override:
       request_field: project_path
       requires: clean git checkout that carries entry_file
+    # The alarm's environment is rendered into the unit by this installer (the pinned CLI the server unit fetched, the
+    # workflow 1 task queue, and the bus ledger writer); the optional environment file may only add to it.
+    environment:
+      ONEX_TEMPORAL_CLI: "{home}/.local/share/onex-temporal/cli/v1.10.1/temporal"
+      ONEX_TEMPORAL_ADDRESS: "127.0.0.1:7233"
+      ONEX_TEMPORAL_TASK_QUEUE: "onex-prove-running"
+      ONEX_LEDGER_WRITE_VIA: "bus"
+      ONEX_LEDGER_BUS_APPEND_COMMAND: "{registry_root}/omnimarket/.venv/bin/python -m omnimarket.work_ledger_bus.cli append --bus-lane dev --omnibase-path {registry_root}"
+    environment_inputs:
+      ONEX_LEDGER_HOST_NAME: ledger_host_name
+      ONEX_LEDGER_PATH: ledger_path
+      OMNIBASE_INTERNAL_HOME: appender_root
+    required_environment_inputs: [ONEX_LEDGER_HOST_NAME, ONEX_LEDGER_PATH, OMNIBASE_INTERNAL_HOME]
     environment_file: .config/onex/temporal-health-alarm.env
     evidence_file: .local/state/omni/temporal-health-alarm/last-run.json
     state_directory: .onex_state/temporal-health-alarm
+  # The self-hosted Temporal server on the lab host (OMN-24900): one pinned temporalio CLI release (version and sha256 in
+  # the server block of node_temporal_health_alarm_effect's contract), its SQLite store under
+  # .local/share/onex-temporal in the home. A long-running run of a registry_module_tick unit, as
+  # stability-refresh-serve-systemd: the timer starts it at load (so at boot, with linger) and again within 60 s of any
+  # exit, a kill included; run_timeout_s (30 days) is the bound of one run.
+  temporal-server-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-temporal-server
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 60
+      run_timeout_s: 2592000
+      run_at_load: true
+      description: at load and within 60 s of any exit
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_temporal_health_alarm_effect.runtime_temporal_server
+    entry_file: src/omnimarket/nodes/node_temporal_health_alarm_effect/runtime_temporal_server.py
+    probe_argv: ["--probe"]
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    evidence_file: .local/state/omni/temporal-server/last-run.json
+    state_directory: .onex_state/temporal-server
+  # The workflow 1 worker (node_prove_running_workflow, task queue onex-prove-running) against that server: the same
+  # long-running run, started again within 60 s of any exit, so a worker that starts before the server answers
+  # retries on the next timer tick. Its steps append rows through the bus ledger writer.
+  temporal-worker-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-temporal-worker
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 60
+      run_timeout_s: 2592000
+      run_at_load: true
+      description: at load and within 60 s of any exit
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_temporal_health_alarm_effect.runtime_temporal_worker
+    entry_file: src/omnimarket/nodes/node_temporal_health_alarm_effect/runtime_temporal_worker.py
+    probe_argv: ["--probe"]
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    # ONEX_TEMPORAL_WORKER_PROJECT is the checkout whose environment runs the workflow node: the canonical clone once the
+    # workflow node is merged, or a clean checkout of its branch named with --set at install.
+    environment_path_overrides:
+      - ONEX_TEMPORAL_WORKER_PROJECT
+    environment:
+      ONEX_TEMPORAL_ADDRESS: "127.0.0.1:7233"
+      ONEX_TEMPORAL_WORKER_PROJECT: "{registry_root}/omnimarket"
+      ONEX_LEDGER_WRITE_VIA: "bus"
+      ONEX_LEDGER_BUS_APPEND_COMMAND: "{registry_root}/omnimarket/.venv/bin/python -m omnimarket.work_ledger_bus.cli append --bus-lane dev --omnibase-path {registry_root}"
+    environment_inputs:
+      ONEX_LEDGER_HOST_NAME: ledger_host_name
+      ONEX_LEDGER_PATH: ledger_path
+      OMNIBASE_INTERNAL_HOME: appender_root
+    required_environment_inputs: [ONEX_LEDGER_HOST_NAME, ONEX_LEDGER_PATH, OMNIBASE_INTERNAL_HOME]
+    evidence_file: .local/state/omni/temporal-worker/last-run.json
+    state_directory: .onex_state/temporal-worker
   # The three landing units on a Linux pool host (OMN-23662): the same modules, overlays, probes and environment as the
   # launchd units above, as a systemd user service and timer, so the new landing workflow runs in observe mode on a lab host
   # beside the controller. Each start check runs the unit with its rendered --omni-home and --state-dir plus --probe.
