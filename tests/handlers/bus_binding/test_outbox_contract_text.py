@@ -10,7 +10,9 @@ criterion: its behavioural tests also pass at the merge base, which sent every r
 from __future__ import annotations
 
 import ast
+import os
 import re
+import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -167,3 +169,44 @@ async def test_contract_omn_24875_ac4_outbox_under_test_reuses_a_clash_refusal(
 
     assert len(calls) == 1
     assert result.refused == 1
+
+
+@pytest.mark.parametrize(
+    ("state", "expected_exit"),
+    [
+        (
+            '{"result": {"head_sha": "abc", "class": "red", "red": ["CI Summary"], "pending": []}}',
+            1,
+        ),
+        (
+            '{"result": {"head_sha": "abc", "class": "pending", "red": [], "pending": ["Lint"]}}',
+            1,
+        ),
+        (
+            '{"result": {"head_sha": "abc", "class": "green", "red": [], "pending": []}}',
+            0,
+        ),
+    ],
+)
+def test_contract_omn_24875_ac5_check_exits_non_zero_on_a_red_context(
+    tmp_path: Path, state: str, expected_exit: int
+) -> None:
+    """The check bound to AC5 can fail: it exits 1 on a red or pending context and 0 on none.
+
+    ``onex scm pr-checks`` exits 0 on a red head, so the bound command reads its JSON. A stand-in ``onex`` on
+    the path prints a red, a pending and a green state to show both outcomes.
+    """
+    fake = tmp_path / "bin" / "onex"
+    fake.parent.mkdir()
+    fake.write_text(f"#!/bin/sh\ncat <<'EOF'\n{state}\nEOF\n", encoding="utf-8")
+    fake.chmod(0o755)
+    command = _dod_check(_load("OMN-24875.yaml"), "dod-omn24875-ac5")
+    done = subprocess.run(
+        command,
+        shell=True,
+        capture_output=True,
+        text=True,
+        env={**os.environ, "PATH": f"{fake.parent}:{os.environ['PATH']}"},
+        check=False,
+    )
+    assert done.returncode == expected_exit, done.stderr
