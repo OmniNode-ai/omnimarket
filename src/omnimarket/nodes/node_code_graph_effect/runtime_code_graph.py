@@ -6,7 +6,10 @@
 ``probe``    the same build and verdict, appending nothing.
 ``check``    ``--repo R --base REF --head REF``: name the modules the head adds that no root reaches.
 ``shadow``   check every open pull request of the overlay's shadow repositories, append one row, hold nothing.
-``lookup``   ``--question Q --repo R`` and the question's argument: one MATCH row per answer, then a LOOKUP line.
+``lookup``   ``--question Q --repo R`` and the question's argument: one MATCH row per answer, then a LOOKUP line
+             carrying the answered commit's time and the read time. ``--host H`` reads the overlay from the
+             overlays clone the lab host table declares for H; ``--retention-versions N`` is the caller's
+             lookup block where the overlay carries none.
 ``schedule`` install | uninstall | status | run-now, for a host in the overlay; ``--unit shadow`` is the shadow's timer.
 
 ``--fault`` on nightly, probe or shadow injects a declared fault; the row then carries ``drill=yes``.
@@ -24,15 +27,23 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import yaml
 from pydantic import ValidationError
 
-from omnimarket.handlers.node_overlay_reader import NodeOverlayError, find_node_overlay
+from omnimarket.handlers.node_overlay_reader import (
+    OVERLAY_FILE_NAME,
+    OVERLAY_ROOTS_ENV,
+    NodeOverlayError,
+    find_node_overlay,
+)
 from omnimarket.handlers.rules_overlay_root_declared import (
+    HOST_TABLE_OVERLAY,
     OverlayRootRefusedError,
+    declared_overlay_root,
     refuse_undeclared_overlay_root,
 )
 from omnimarket.models.model_code_graph import (
@@ -46,6 +57,7 @@ from omnimarket.models.model_code_graph_lookup import (
     EnumCodeGraphQuestion,
     ModelCodeGraphLookupCommand,
     ModelCodeGraphLookupResult,
+    ModelCodeGraphLookupSettings,
 )
 from omnimarket.nodes.node_code_graph_effect.adapters.pull_request_sources import (
     WatcherStatePullRequestSource,
@@ -115,11 +127,65 @@ def _source(overlay: ModelCodeGraphOverlay) -> GitRepoSource:
 _VERSIONS: dict[int, InMemoryVersionStore] = {}
 
 
-def answer_lookup(command: ModelCodeGraphLookupCommand) -> ModelCodeGraphLookupResult:
+def declared_lookup_roots(
+    host: str, omni_root: Path, environ: Mapping[str, str] | None = None
+) -> dict[str, str]:
+    """The environment with the overlays clone the lab host table declares for ``host`` read first.
+
+    The table is the first ``lab_hosts/overlay.yaml`` under the roots in ``ONEX_SKILL_OVERLAY_ROOTS``,
+    then under the two registry-relative places the table itself declares clones at
+    (``$OMNI_HOME/overlays`` and ``$OMNI_HOME/../overlays``). Refuses with
+    :class:`OverlayRootRefusedError` when no table is found, the table declares no overlays clone for
+    the host, or the declared clone holds no overlay of this node.
+    """
+    env = dict(os.environ if environ is None else environ)
+    roots = [
+        Path(root) for root in env.get(OVERLAY_ROOTS_ENV, "").split(os.pathsep) if root
+    ]
+    candidates = [
+        *roots,
+        omni_root / "overlays" / "overlays",
+        omni_root.parent / "overlays" / "overlays",
+    ]
+    table = next(
+        (
+            root / HOST_TABLE_OVERLAY / OVERLAY_FILE_NAME
+            for root in candidates
+            if (root / HOST_TABLE_OVERLAY / OVERLAY_FILE_NAME).is_file()
+        ),
+        None,
+    )
+    if table is None:
+        raise OverlayRootRefusedError(
+            f"{host}: no {HOST_TABLE_OVERLAY}/{OVERLAY_FILE_NAME} under "
+            + ", ".join(str(root) for root in candidates)
+        )
+    document = yaml.safe_load(table.read_text(encoding="utf-8"))
+    if not isinstance(document, dict):
+        raise OverlayRootRefusedError(f"{host}: {table} is not a mapping")
+    declared = declared_overlay_root(document, host, omni_root)
+    if not (declared / NODE_NAME / OVERLAY_FILE_NAME).is_file():
+        raise OverlayRootRefusedError(
+            f"{host}: the declared overlays clone {declared} holds no {NODE_NAME}/{OVERLAY_FILE_NAME}"
+        )
+    env[OVERLAY_ROOTS_ENV] = os.pathsep.join(
+        [str(declared), *(str(root) for root in roots)]
+    )
+    return env
+
+
+def answer_lookup(
+    command: ModelCodeGraphLookupCommand,
+    *,
+    environ: Mapping[str, str] | None = None,
+    settings: ModelCodeGraphLookupSettings | None = None,
+) -> ModelCodeGraphLookupResult:
     """Answer a lookup from the overlay's versions, building the head version of a repository on first ask.
 
-    A lookup for a repository the overlay does not declare, or an overlay with no lookup block, or a
-    repository that cannot be read, is a typed ``failed`` result and never an empty answer.
+    ``environ`` is where the overlay is found (default: the process environment). ``settings`` is
+    the caller's lookup block and comes before the overlay's. A lookup for a repository the overlay
+    does not declare, or with no lookup block from either, or a repository that cannot be read, is a
+    typed ``failed`` result and never an empty answer.
     """
 
     def failed(reason: str) -> ModelCodeGraphLookupResult:
@@ -131,16 +197,17 @@ def answer_lookup(command: ModelCodeGraphLookupCommand) -> ModelCodeGraphLookupR
             reason=reason,
         )
 
-    overlay = load_overlay()
-    if overlay.lookup is None:
+    overlay = load_overlay(environ)
+    lookup = settings or overlay.lookup
+    if lookup is None:
         return failed("the overlay has no lookup block")
     declared = {repo.name: repo for repo in overlay.repos}
     if command.repo not in declared:
         return failed(f"the overlay does not declare {command.repo}")
     source = _source(overlay)
     store = _VERSIONS.setdefault(
-        overlay.lookup.retention_versions,
-        InMemoryVersionStore(overlay.lookup.retention_versions),
+        lookup.retention_versions,
+        InMemoryVersionStore(lookup.retention_versions),
     )
     if store.newest(command.repo) is None:
         try:
@@ -318,6 +385,22 @@ def _shadow(arguments: argparse.Namespace) -> int:
 
 def _lookup(arguments: argparse.Namespace) -> int:
     now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    environ: dict[str, str] | None = None
+    if arguments.host:
+        if not arguments.workspace_root:
+            raise ValueError("OMNI_HOME is not set and --workspace-root was not passed")
+        try:
+            environ = declared_lookup_roots(
+                arguments.host, Path(arguments.workspace_root)
+            )
+        except OverlayRootRefusedError as exc:
+            sys.stderr.write(f"{exc}\n")
+            return 3
+    settings = (
+        ModelCodeGraphLookupSettings(retention_versions=arguments.retention_versions)
+        if arguments.retention_versions is not None
+        else None
+    )
     result = answer_lookup(
         ModelCodeGraphLookupCommand(
             correlation_id=f"code-graph-lookup-{now}",
@@ -329,7 +412,9 @@ def _lookup(arguments: argparse.Namespace) -> int:
             archetype=arguments.archetype,
             hint=arguments.hint,
             as_of=arguments.as_of,
-        )
+        ),
+        environ=environ,
+        settings=settings,
     )
     for match in result.matches:
         cells = [
@@ -339,9 +424,15 @@ def _lookup(arguments: argparse.Namespace) -> int:
         ]
         sys.stdout.write(" ".join(["MATCH", match.path, *cells]) + "\n")
     nearest = result.nearest.commit[:12] if result.nearest else "none"
+    committed_at = "none"
+    for store in _VERSIONS.values():
+        version = store.newest(result.repo)
+        if version is not None and version.committed_at is not None:
+            committed_at = version.committed_at.strftime("%Y-%m-%dT%H:%M:%SZ")
     sys.stdout.write(
         f"LOOKUP question={result.question.value} repo={result.repo} status={result.status} "
-        f"answered_from={(result.answered_from or 'none')[:12]} matches={len(result.matches)} "
+        f"answered_from={(result.answered_from or 'none')[:12]} committed_at={committed_at} "
+        f"read_at={now} matches={len(result.matches)} "
         f"nearest={nearest} reason={result.reason or 'none'}\n"
     )
     return 1 if result.status == "failed" else 0
@@ -456,6 +547,21 @@ def main(argv: Sequence[str] | None = None) -> int:
             "--as-of",
             dest="as_of",
             help="the commit to answer as of; absent means the head",
+        )
+        lookup.add_argument(
+            "--host",
+            help="read the overlay from the overlays clone the lab host table declares for this host",
+        )
+        lookup.add_argument(
+            "--workspace-root",
+            dest="workspace_root",
+            default=os.environ.get("OMNI_HOME", ""),
+        )
+        lookup.add_argument(
+            "--retention-versions",
+            dest="retention_versions",
+            type=int,
+            help="the caller's lookup block, read before the overlay's",
         )
         args = parser.parse_args(arguments)
         if args.verb == "check":
