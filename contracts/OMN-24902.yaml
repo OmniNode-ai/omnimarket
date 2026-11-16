@@ -32,13 +32,13 @@ dod_evidence:
     check_value: uv run pytest tests/delegation_golden/test_runner_unterminalised_row_omn24831.py -q --no-cov -n 0 -p no:randomly -p no:cacheprovider
     cwd: .
 - id: dod-omn24902-ac1-findings-3-to-5
-  description: 'AC1 is held to the tests that answer findings 3 to 5 of the review at the live head: the declared-unknown case (3), the xfail tracking of I2 and I4 (3), the exact failure lists of the guard (4) and the consumer scan (5). The -k expression selects them by name, so the check exits non-zero (no tests collected) while any of them is absent, and fails if one of them fails.'
+  description: 'AC1 is held to the tests that answer findings 3 to 5 of the review at the live head: the declared-unknown case (3), the xfail tracking of I2 and I4 (3), the exact failure lists of the guard (4) and the consumer scan with its positive control (5). The -k expression selects them by name, so the check exits non-zero (no tests collected) while any of them is absent, and fails if one of them fails.'
   source: manual
   binds_ac:
   - AC1
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/delegation_golden/test_runner_unterminalised_row_omn24831.py -q --no-cov -n 0 -p no:randomly -p no:cacheprovider -k "TestACaseDeclaringUnknownIsNotShortCircuited or TestXfailTrackingIsNotKeyedOnTheFailureText or an_undeclared_terminal_is_judged_by_the_old_lines_exactly or TestNoConsumerClassifiesFailuresByText"
+    check_value: uv run pytest tests/delegation_golden/test_runner_unterminalised_row_omn24831.py -q --no-cov -n 0 -p no:randomly -p no:cacheprovider -k "TestACaseDeclaringUnknownIsNotShortCircuited or TestXfailTrackingIsNotKeyedOnTheFailureText or an_undeclared_terminal_is_judged_by_the_old_lines_exactly or test_the_scan_flags_a_consumer_that_matches_the_old_line"
     cwd: .
 - id: dod-omn24902-ac1-fails-on-base
   description: 'The new test file is run against a copy of the head tree whose tests/delegation_golden/runner.py is the file at the pinned base 6efbe3ee5027. The check passes only when that run exits with exactly nine failures: the eight test_one_failure_names_the_null_terminal_ok ids (I1, I10, I3, I5, I6, I7, I8, I9) and test_it_does_not_report_telemetry_misses_it_cannot_judge. A bare failing run does not pass it. It needs the pinned base object in the clone, so only the local Done gate runs it.'

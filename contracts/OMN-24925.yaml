@@ -84,7 +84,7 @@ dod_evidence:
   - AC5
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/delegation_golden/test_runner_unterminalised_row_omn24831.py -q --no-cov -n 0 -p no:randomly -p no:cacheprovider -k "TestNoConsumerClassifiesFailuresByText"
+    check_value: uv run pytest tests/delegation_golden/test_runner_unterminalised_row_omn24831.py -q --no-cov -n 0 -p no:randomly -p no:cacheprovider -k "test_the_scan_flags_a_consumer_that_matches_the_old_line"
     cwd: .
   - check_type: test_passes
     check_value: uv run pytest tests/delegation_golden -q --no-cov -n 0 -p no:randomly -p no:cacheprovider -m "not e2e"
