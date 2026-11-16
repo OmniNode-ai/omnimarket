@@ -31,12 +31,22 @@ _TENANT = "beta-business-proof"
 _TIER = "tenant_overlay"
 
 
-async def _complete(runner: DelegationProjectionRunner, *, cost: float) -> str:
+async def _complete(
+    runner: DelegationProjectionRunner,
+    *,
+    cost: float,
+    model: str | None = None,
+    backend_id: str | None = None,
+) -> str:
     cid = str(uuid4())
     payload = _real_delegation_completed_payload(correlation_id=cid, tenant_id=_TENANT)
     payload["cumulative_attempt_cost"] = cost
     payload["final_attempt_cost"] = cost
     payload["cost_tier_name"] = _TIER
+    if model is not None:
+        payload["model_used"] = model
+    if backend_id is not None:
+        payload["backend_id"] = backend_id
     assert await runner.project_event(
         runner._topic_delegation_completed,
         payload,
@@ -65,3 +75,19 @@ async def test_an_unpriced_tenant_overlay_run_is_still_stored_as_null() -> None:
         assert row is not None
         assert row["cost_measurement_source"] == "no_cost_model"
         assert row["cost_usd"] is None
+
+
+@pytest.mark.integration
+async def test_a_zero_cost_terminal_on_a_byok_backend_is_priced_and_stored_metered() -> (
+    None
+):
+    # omnimarket#6331's case, on Postgres: the terminal arrives with cost 0 and names the catalogue BYOK backend.
+    async with _provisioned_runner() as (runner, admin_conn, _schema):
+        cid = await _complete(
+            runner, cost=0.0, model="glm-5.3-flash", backend_id="byok-glm-general"
+        )
+        row = await admin_conn.fetchrow(_SELECT, cid)
+        assert row is not None
+        assert row["cost_measurement_source"] == "metered"
+        assert row["cost_usd"] is not None
+        assert float(row["cost_usd"]) > 0.0

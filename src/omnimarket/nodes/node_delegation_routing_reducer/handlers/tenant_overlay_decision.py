@@ -27,9 +27,12 @@ from omnimarket.nodes.node_delegation_routing_reducer.models.model_dod_resolutio
     ModelDodResolution,
 )
 from omnimarket.projection.tenant_isolation import HOUSE_TENANT_SLUG
-from omnimarket.routing.tenant_overlay_resolver import HOUSE_OVERLAY_COST_TIER
-
-TENANT_OVERLAY_TIER_NAME = "tenant_overlay"
+from omnimarket.routing.tenant_overlay_resolver import (
+    HOUSE_OVERLAY_COST_TIER,
+)
+from omnimarket.routing.tenant_overlay_resolver import (
+    TENANT_OVERLAY_TIER_NAME as TENANT_OVERLAY_TIER_NAME,
+)
 
 
 def build_tenant_overlay_decision(

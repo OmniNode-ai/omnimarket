@@ -1,0 +1,168 @@
+schema_version: 1.0.0
+ticket_id: OMN-24918
+title: 'Review findings 1 to 9 on omnimarket PR 6335 at head ed751014245a are fixed or argued: the pricing call site is tested, the fallback is tenant-overlay only, the alarm reads age and a missing record, and 6331 is folded in or kept open'
+summary: 'Fixes for the review of omnimarket#6335: the pricing call site and the tier gate, the projection''s authority order and the mixed case, the alarm''s age check, request-id time bucket and bucket-start row stamp, the alarm fixture built through the real R8 and R9 writer, the OMN-24874 contract''s real checks, the real-Postgres file in a dod command, and the zero-cost terminal pricing of omnimarket#6331 folded in.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24918-ac1
+  statement: a test drives the terminal builder from a real tenant_overlay decision and asserts cost above 0, and the endpoint_url that h053's probe tenant carries resolves in byok_declared_price_per_1m
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a test drives the terminal builder from a real tenant_overlay decision and asserts cost above 0, and the endpoint_url that h053''s probe tenant carries resolves in byok_declared_price_per_1m -- falsifier: `uv run --frozen pytest tests/unit/delegation/test_omn24874_tenant_overlay_terminal_cost.py -q` passes with the pricing call at the call site in handler_delegation_workflow.py removed'
+- id: req-omn24918-ac2
+  statement: the pricing fallback is gated on TENANT_OVERLAY_TIER_NAME, the projection no longer trusts a producer's cost ahead of the [OMN-13408](https://linear.app/omninode/issue/OMN-13408) branch, and a positive-cost event marked no_cost_model is stored with a source that is not NULL, with a test for the mixe
+  acceptance:
+  - id: AC2
+    statement: 'AC2: the pricing fallback is gated on TENANT_OVERLAY_TIER_NAME, the projection no longer trusts a producer''s cost ahead of the [OMN-13408](https://linear.app/omninode/issue/OMN-13408) branch, and a positive-cost event marked no_cost_model is stored with a source that is not NULL, with a test for the mixed case -- falsifier: `uv run --frozen pytest tests/unit/delegation -k "tenant_overlay or no_cost_model" -q` passes with the tier gate removed'
+- id: req-omn24918-ac3
+  statement: the alarm effect alarms on a ran_at older than a contract-declared age or on the unit's exit state, so a unit killed before it wrote its record or a stopped timer raises it, with a test
+  acceptance:
+  - id: AC3
+    statement: 'AC3: the alarm effect alarms on a ran_at older than a contract-declared age or on the unit''s exit state, so a unit killed before it wrote its record or a stopped timer raises it, with a test -- falsifier: `uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect -q` passes with the ran_at age check removed'
+- id: req-omn24918-ac4
+  statement: a missing record carries a time bucket in its request id so a later outage on the same host writes its own row, and the ledger dedup retention is read and stated, with a test
+  acceptance:
+  - id: AC4
+    statement: 'AC4: a missing record carries a time bucket in its request id so a later outage on the same host writes its own row, and the ledger dedup retention is read and stated, with a test -- falsifier: `uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect -q` passes with the time bucket removed'
+- id: req-omn24918-ac5
+  statement: the golden chain fixture record is built through the real R8 and R9 writer and its shape matches the live last-run.json read on h053
+  acceptance:
+  - id: AC5
+    statement: 'AC5: the golden chain fixture record is built through the real R8 and R9 writer and its shape matches the live last-run.json read on h053 -- falsifier: `uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect/test_golden_chain_delegation_scenario_alarm.py -q` passes with the writer''s field names changed'
+- id: req-omn24918-ac6
+  statement: contracts/[OMN-24874](https://linear.app/omninode/issue/OMN-24874).yaml parses conclusion instead of `grep -q success`, and AC2, AC3 and AC5 are bound to real checks (ancestry, a ledger grep, 13 of 13 with cost above 0) or unbound
+  acceptance:
+  - id: AC6
+    statement: 'AC6: contracts/[OMN-24874](https://linear.app/omninode/issue/OMN-24874).yaml parses conclusion instead of `grep -q success`, and AC2, AC3 and AC5 are bound to real checks (ancestry, a ledger grep, 13 of 13 with cost above 0) or unbound -- falsifier: `uv run --frozen pytest tests -k "omn24874 and contract" -q` passes with the check text set back to `grep -q success`'
+- id: req-omn24918-ac7
+  statement: tests/test_omn24874_tenant_overlay_cost_real_postgres.py runs against Postgres on the lab with its pass count recorded in a PR comment and is a command in the dod item
+  acceptance:
+  - id: AC7
+    statement: 'AC7: tests/test_omn24874_tenant_overlay_cost_real_postgres.py runs against Postgres on the lab with its pass count recorded in a PR comment and is a command in the dod item -- falsifier: `onex lab-work run` of that file reports skipped for either of its tests, or no dod command names it'
+- id: req-omn24918-ac8
+  statement: omnimarket#6331's projection pricing of a terminal arriving with cost_usd 0 is folded into 6335 with a test, or 6331 stays open and is rebased, stated in a PR comment
+  acceptance:
+  - id: AC8
+    statement: 'AC8: omnimarket#6331''s projection pricing of a terminal arriving with cost_usd 0 is folded into 6335 with a test, or 6331 stays open and is rebased, stated in a PR comment -- falsifier: `uv run --frozen pytest tests/unit/delegation -k "zero_cost or cost_usd_zero" -q` collects no test for a terminal arriving with cost_usd 0 while 6331 is closed'
+- id: req-omn24918-ac9
+  statement: the alarm tick is run once over a forced r8 or r9 failure and leaves one STATUS row with alarm= naming it, and the live readings of [OMN-24874](https://linear.app/omninode/issue/OMN-24874) AC1 to AC3 are stated in a PR comment
+  acceptance:
+  - id: AC9
+    statement: 'AC9: the alarm tick is run once over a forced r8 or r9 failure and leaves one STATUS row with alarm= naming it, and the live readings of [OMN-24874](https://linear.app/omninode/issue/OMN-24874) AC1 to AC3 are stated in a PR comment -- falsifier: the ledger holds no STATUS row with alarm= naming r8 or r9 from that run'
+- id: req-omn24918-ac10
+  statement: 'a PR comment starting `Lab: head=<full new head sha>` names the sha, the command and exit 0, the non-blocking findings 10 to 12 are fixed or argued in a PR comment, and every required check-run of omnimarket#6335 reads success at the new head'
+  acceptance:
+  - id: AC10
+    statement: 'AC10: a PR comment starting `Lab: head=<full new head sha>` names the sha, the command and exit 0, the non-blocking findings 10 to 12 are fixed or argued in a PR comment, and every required check-run of omnimarket#6335 reads success at the new head -- falsifier: `onex scm pr-checks OmniNode-ai/omnimarket#6335` lists a required context that is not success at the new head, or the Lab comment lacks the full sha, the command or exit 0'
+evidence_requirements:
+- kind: tests
+  description: The pricing, projection, alarm and contract tests pass at the pushed head.
+  command: uv run --frozen pytest tests/unit/delegation/test_omn24874_tenant_overlay_terminal_cost.py tests/nodes/node_delegation_scenario_alarm_effect tests/test_omn24874_contract_checks.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24918-ac1
+  description: The terminal builder, driven from a decision built by the tenant overlay routing code, prices the run above zero from the declared price of the endpoint the probe tenant's route carries; with the endpoint and model arguments dropped at the call site the same test fails.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_omn24874_tenant_overlay_terminal_cost.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24918-ac2
+  description: The declared-price fallback is gated on the tenant overlay tier, any other tier without a cost model stays no_cost_model, the projection prices a tenant overlay terminal under the same authority order as the OMN-13408 branch, and a positive-cost tenant overlay event marked no_cost_model is stored metered.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_omn24874_tenant_overlay_terminal_cost.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24918-ac3
+  description: A record whose last run is older than the scenario's contract-declared max_age_seconds, or whose time cannot be read, raises the alarm as stale; the writer's refused record raises it too.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24918-ac4
+  description: A missing record carries the alarm time bucket in its request id and the row is stamped with the bucket start, so a later outage has its own row and a repeated tick in one bucket is an identical row; the dedup read is stated in the node contract.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24918-ac5
+  description: The alarm tests write the last-run record through scenario_tick_main, the writer R8 and R9 use, and pin the keys of the record read on h053 (conclusion, ran_at, scenario).
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_alarm_effect/test_golden_chain_delegation_scenario_alarm.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24918-ac6
+  description: The OMN-24874 contract's live reading parses conclusion, no check greps for success, AC2 is bound to a live R9 reading, AC1 to a 13-of-13 reading with the cost assertion, and the proxy items for AC2, AC3 and AC5 are removed.
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_omn24874_contract_checks.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24918-ac8
+  description: The projection prices a tenant overlay terminal that arrives with cost_usd 0 from the declared price of the BYOK catalogue backend it names (the case of omnimarket#6331); a house backend and an undeclared model stay unpriced.
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_omn24874_tenant_overlay_terminal_cost.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24918-ac7
+  description: 'The real-Postgres file runs on a lab host against a disposable postgres:16-alpine container through the dod item of OMN-24874, which fails when any test of the file is skipped. Local Done gate only: hosted CI cannot reach the lab.'
+  source: manual
+  binds_ac:
+  - AC7
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: uv run --frozen pytest tests/test_omn24874_contract_checks.py -k real_postgres -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24918-ac9
+  description: The ledger holds a STATUS row with src=alarm and alarm=delegation-scenario-r8-failed or -r9-failed, left by the alarm tick run once over a forced failure. Local Done gate only.
+  source: manual
+  binds_ac:
+  - AC9
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: sh -c 'python3 "${OMNI_PLUGIN_ROOT:?}/skills/lane-brief/scripts/lane_brief.py" grep "src=alarm.*alarm=delegation-scenario-r[89]-failed" | grep -q STATUS'
+    cwd: .
+- id: dod-omn24918-integration-proof
+  description: 'The focused tests of this change run on a lab host at the pushed head through the lab work runner; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. The PR comment that starts Lab: head= names the head, the command and the exit code (AC10).'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24918 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/delegation/test_omn24874_tenant_overlay_terminal_cost.py tests/nodes/node_delegation_scenario_alarm_effect tests/test_omn24874_contract_checks.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24918-ac10
+  description: 'The hand-off of the new head to the landing controller is on the ledger for omnimarket#6335. The Lab: head= comment and the check-runs at that head are read from the pull request. Local Done gate only.'
+  source: manual
+  binds_ac:
+  - AC10
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: sh -c 'python3 "${OMNI_PLUGIN_ROOT:?}/skills/lane-brief/scripts/lane_brief.py" grep "to=landing-controller" | grep -F "omnimarket#6335" | grep -q MSG'
+    cwd: .

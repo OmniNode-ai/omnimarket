@@ -47,13 +47,46 @@ dod_evidence:
     check_value: uv run pytest tests/nodes/node_delegation_scenario_alarm_effect/test_golden_chain_delegation_scenario_alarm.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn24874-live-readings
-  description: Hosted CI cannot reach a lab host, so only the local Done gate runs this unbound check. It reads the newest R8 and R9 last-run records on the lab host and fails unless both read success. AC2 and AC3 are readings taken on h053 and on the dev runtime after the merge.
+  description: 'Hosted CI cannot reach a lab host, so only the local Done gate runs this unbound check. It parses the conclusion field of the newest R8 and R9 last-run records on the lab host and fails unless both read success; a record whose conclusion is failure or refused fails it.'
   source: manual
   execution_scope: local_done_gate
   checks:
   - check_type: command
     check_value: >-
-      sh -c 'grep -q success "$HOME/.local/state/omni/delegation-scenario-r8/last-run.json" && grep -q success "$HOME/.local/state/omni/delegation-scenario-r9/last-run.json"'
+      sh -c 'python3 -c "import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if d[sys.argv[2]]==sys.argv[3] else 1)" "$HOME/.local/state/omni/delegation-scenario-r8/last-run.json" conclusion success && python3 -c "import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if d[sys.argv[2]]==sys.argv[3] else 1)" "$HOME/.local/state/omni/delegation-scenario-r9/last-run.json" conclusion success'
+    cwd: .
+- id: dod-omn24874-ac1-r8-live-13-of-13
+  description: Live reading for AC1. The newest R8 scenario result in the host's event journal concluded success with 13 assertions all held (each reads +name), including +organic_run_has_values, the assertion that the organic run carries a cost above zero. Local Done gate only; the reading is taken on h053 after the fix runs on the dev runtime.
+  source: manual
+  binds_ac:
+  - AC1
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: >-
+      sh -c 'python3 -c "import json,sys; f,sc,pl,sid,asr,cc,ok,n,plus,cost=sys.argv[1:]; rows=[json.loads(l)[pl] for l in open(f) if l.strip()]; p=[r for r in rows if r.get(sid)==sc][-1]; a=p[asr]; sys.exit(0 if p[cc]==ok and len(a)==int(n) and all(x.startswith(plus) for x in a) and plus+cost in a else 1)" "${OMNI_HOME:?}/.onex_state/delegation-scenario-r8/events.jsonl" R8 payload scenario_id assertions conclusion success 13 + organic_run_has_values'
+    cwd: .
+- id: dod-omn24874-ac2-r9-live
+  description: Live reading for AC2. The newest R9 last-run record on the lab host parses to conclusion success. Local Done gate only.
+  source: manual
+  binds_ac:
+  - AC2
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: >-
+      sh -c 'python3 -c "import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if d[sys.argv[2]]==sys.argv[3] else 1)" "$HOME/.local/state/omni/delegation-scenario-r9/last-run.json" conclusion success'
+    cwd: .
+- id: dod-omn24874-ac4-alarm-ledger-row
+  description: Live reading for AC4. The ledger holds a STATUS row with src=alarm and alarm=delegation-scenario-r8-failed or alarm=delegation-scenario-r9-failed, left by the alarm tick run once over a forced failure. Local Done gate only.
+  source: manual
+  binds_ac:
+  - AC4
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: >-
+      sh -c 'python3 "${OMNI_PLUGIN_ROOT:?}/skills/lane-brief/scripts/lane_brief.py" grep "src=alarm.*alarm=delegation-scenario-r[89]-failed" | grep -q STATUS'
     cwd: .
 - id: dod-omn24874-integration-proof
   description: The tenant overlay pricing tests, the projection cost tests and the alarm node tests run on a lab host at the pushed head through the lab work runner; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. The live r8 and r9 readings on h053 follow the dev deploy of the merged fix.
@@ -63,30 +96,34 @@ dod_evidence:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24874 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/delegation/test_omn24874_tenant_overlay_terminal_cost.py tests/nodes/node_delegation_scenario_alarm_effect/test_golden_chain_delegation_scenario_alarm.py tests/nodes/node_host_installer_registry_units/test_registry_units.py -q --no-cov -n 0 -p no:randomly
     cwd: .
-- id: dod-omn24874-ac2-r9-node
-  description: Hosted proxy for AC2. The R9 node's golden-chain test still passes with this change. The live r9 reading is taken on h053 from its own job record.
+- id: dod-omn24874-real-postgres
+  description: The real-Postgres file of this change runs on a lab host against a disposable postgres:16-alpine container that the command starts (random password, loopback port) and removes; it fails when any of the file's tests is skipped, so a host without Docker or a database cannot pass it. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
   source: manual
-  binds_ac:
-  - AC2
+  execution_scope: local_done_gate
   checks:
-  - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_delegation_scenario_r9_effect/test_golden_chain_scenario_r9_effect.py -q --no-cov -n 0 -p no:randomly
+  - check_type: command
+    check_value: >-
+      env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-real-postgres-24874 --kind test -- sh -c 'PW=$(head -c 18 /dev/urandom | base64 | tr -dc A-Za-z0-9); N=dod-omn24874-pg-$$; OUT=/tmp/$N.out; docker run -d --rm --name "$N" -e POSTGRES_PASSWORD="$PW" -e POSTGRES_DB=omnibase_infra -p 127.0.0.1::5432 postgres:16-alpine >/dev/null; trap "docker rm -f $N >/dev/null; rm -f $OUT" EXIT; for i in $(seq 1 40); do docker exec "$N" pg_isready -U postgres -q && break; sleep 1; done; PORT=$(docker port "$N" 5432/tcp | head -1 | sed "s/.*://"); INTEGRATION_POSTGRES_PASSWORD="$PW" INTEGRATION_POSTGRES_HOST=127.0.0.1 INTEGRATION_POSTGRES_PORT="$PORT" env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/test_omn24874_tenant_overlay_cost_real_postgres.py -q --no-cov -n 0 -p no:randomly -rs > "$OUT" 2>&1; R=$?; cat "$OUT"; ! grep -q skipped "$OUT" && exit $R'
     cwd: .
-- id: dod-omn24874-ac3-fix-in-tree
-  description: Hosted proxy for AC3. The pricing fix and the alarm node are in the tree at the head under test. The dev-merge tag reading on h053 and on the dev runtime is taken after the merge.
+- id: dod-omn24874-ac3-fix-ancestry
+  description: Live reading for AC3. The merge commit of this change on origin/dev is an ancestor of the revision the registry clone on this lab host runs, which is the revision the R8 and R9 units render from. Local Done gate only; it fails before the merge, when no commit on origin/dev names the ticket.
   source: manual
   binds_ac:
   - AC3
+  execution_scope: local_done_gate
   checks:
-  - check_type: test_passes
-    check_value: uv run pytest tests/unit/delegation/test_omn24874_tenant_overlay_terminal_cost.py tests/nodes/node_delegation_scenario_alarm_effect/test_golden_chain_delegation_scenario_alarm.py -q --no-cov -n 0 -p no:randomly
+  - check_type: command
+    check_value: >-
+      sh -c 'F=$(git log origin/dev -1 --format=%H --grep="^OMN-24874") && test -n "$F" && git -C "${OMNI_HOME:?}/omnimarket" merge-base --is-ancestor "$F" HEAD'
     cwd: .
-- id: dod-omn24874-ac5-reviewed-head
-  description: Hosted proxy for AC5. The tests of the reviewed head pass; the verdict=CLEAN row is written by the Fable review at that head, not by this check.
+- id: dod-omn24874-ac5-clean-verdict-row
+  description: Live reading for AC5. The ledger holds a STATUS row with verdict=CLEAN for this pull request. Local Done gate only.
   source: manual
   binds_ac:
   - AC5
+  execution_scope: local_done_gate
   checks:
-  - check_type: test_passes
-    check_value: uv run pytest tests/unit/delegation/test_omn24874_tenant_overlay_terminal_cost.py -q --no-cov -n 0 -p no:randomly
+  - check_type: command
+    check_value: >-
+      sh -c 'python3 "${OMNI_PLUGIN_ROOT:?}/skills/lane-brief/scripts/lane_brief.py" grep "verdict=CLEAN" | grep -F "omnimarket#6335" | grep -q STATUS'
     cwd: .

@@ -5563,7 +5563,8 @@ class HandlerDelegationWorkflow:
         OMN-24874: a tier the registry has no cost model for (the tenant overlay
         route's ``tenant_overlay``, a run on the customer's own key) is priced from
         the catalogue's declared per-1M price for the endpoint and model, booked
-        as ``metered``. A model no table prices stays ``no_cost_model``.
+        as ``metered``. Only that tier takes the declared price: any other tier
+        without a cost model, and a model no table prices, stays ``no_cost_model``.
         """
         measurement = recompute_actual_cost_and_savings(
             tier_name=tier_name,
@@ -5571,7 +5572,11 @@ class HandlerDelegationWorkflow:
             completion_tokens=completion_tokens,
             premium_counterfactual=premium_counterfactual,
         )
-        if measurement.cost_measurement_source != "no_cost_model" or not model_id:
+        if (
+            tier_name != TENANT_OVERLAY_TIER_NAME
+            or measurement.cost_measurement_source != "no_cost_model"
+            or not model_id
+        ):
             return measurement
         declared = byok_declared_price_per_1m(endpoint_url, model_id)
         if declared is None:
