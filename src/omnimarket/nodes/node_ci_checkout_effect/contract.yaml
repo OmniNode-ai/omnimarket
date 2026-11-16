@@ -1,0 +1,89 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - CI Checkout Effect
+#
+# Answers a bus request for a repository at a sha from this host's clones, never GitHub.
+name: node_ci_checkout_effect
+lifecycle: experimental
+node_type: effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+description: >
+  EFFECT: answers a bus request for a repository at a sha from this host's bare git mirror or
+  canonical clone, syncing on a miss through the host's own clone sync. The bus carries request
+  and reply only; the bytes move over git from the served source URL the reply names.
+input_model:
+  name: ModelCiCheckoutRequest
+  module: omnimarket.nodes.node_ci_checkout_effect.models.model_ci_checkout
+  description: "The requested repository, sha, optional ref hint, lane and host."
+output_model:
+  name: ModelCiCheckoutResult
+  module: omnimarket.nodes.node_ci_checkout_effect.models.model_ci_checkout
+  description: "The checkout status, source name, serve URL and upstream fetch count."
+handler:
+  module: omnimarket.nodes.node_ci_checkout_effect.handlers.handler_ci_checkout
+  class: HandlerCiCheckout
+  input_model: omnimarket.nodes.node_ci_checkout_effect.models.model_ci_checkout.ModelCiCheckoutRequest
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: HandlerCiCheckout
+        module: omnimarket.nodes.node_ci_checkout_effect.handlers.handler_ci_checkout
+      event_model:
+        name: ModelCiCheckoutRequest
+        module: omnimarket.nodes.node_ci_checkout_effect.models.model_ci_checkout
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 600000
+  runtime_profiles:
+    - effects
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.ci-checkout-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.ci-checkout-completed.v1
+    - onex.evt.omnimarket.ci-checkout-failed.v1
+terminal_event: onex.evt.omnimarket.ci-checkout-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.ci-checkout-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.ci-checkout-completed.v1
+    failure: onex.evt.omnimarket.ci-checkout-failed.v1
+# Broker permission rows (OMN-24005): the node's serve login reads the command and writes both terminals; the caller's login
+# (the runner's lane login, `onex ci checkout`) writes the command and reads both terminals. The principals are placeholders
+# the overlays repository's broker_acl_principals scope fills; none is a login named here.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_CI_CHECKOUT_SERVE_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.ci-checkout-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.ci-checkout-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.ci-checkout-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.ci-checkout-completed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.ci-checkout-failed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.ci-checkout-failed.v1, operation: DESCRIBE}
+  - principal: "${ONEX_ACL_CI_CHECKOUT_CALLER_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.ci-checkout-requested.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.ci-checkout-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.ci-checkout-completed.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.ci-checkout-completed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.ci-checkout-failed.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.ci-checkout-failed.v1, operation: DESCRIBE}
+externally_produced_topics:
+  - topic: onex.cmd.omnimarket.ci-checkout-requested.v1
+    producer: "CI jobs on runners asking for a repository at a sha"
+externally_consumed_topics:
+  - onex.evt.omnimarket.ci-checkout-completed.v1
+  - onex.evt.omnimarket.ci-checkout-failed.v1
+overlay:
+  id: node_ci_checkout_effect
+  file_env: ONEX_CI_CHECKOUT_OVERLAY
+  example: overlay.example.yaml
+metadata:
+  transport_type: kafka
+  description: "Serves a repository at a sha from this host's clones, never GitHub"
+  author: "OmniNode Team"
+  tags: ["effect", "ci-checkout", "git"]

@@ -33,9 +33,9 @@ ROUTE = "/v1/workflows/contracts"
 
 @pytest.fixture
 def mounted() -> Iterator[FastAPI]:
-    contract = yaml.safe_load(http_dependencies.CONTRACT_PATH.read_text())
-    module_name, _, attribute = contract["http_mount"]["factory"].partition(":")
-    factory = getattr(importlib.import_module(module_name), attribute)
+    factory = importlib.import_module(
+        "omnimarket.nodes.node_workflow_contract_catalog_effect.handlers.http_app"
+    ).create_app
     route = http_dependencies.load_http_route()
     bind_overlay(
         in_memory_overlay(
