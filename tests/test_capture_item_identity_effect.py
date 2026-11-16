@@ -223,17 +223,49 @@ def _issue(args: tuple[str, str, int]) -> list[int]:
     ]
 
 
+def _writer_context() -> multiprocessing.context.BaseContext:
+    """Spawn starts fresh interpreters: forking a multithreaded host may deadlock."""
+    return multiprocessing.get_context("spawn")
+
+
 def test_eight_concurrent_writers_issue_1000_gap_free_sequence_numbers(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # A loaded runner must not turn this into a lock-timeout test.
     monkeypatch.setenv("ONEX_HOOK_LOCK_WAIT_S", "60")
     jobs = [(str(tmp_path), ident.STREAM_CONTENT, 125)] * 8
-    with multiprocessing.get_context("fork").Pool(8) as pool:
-        issued = [n for batch in pool.map(_issue, jobs) for n in batch]
+    pool = _writer_context().Pool(8)
+    try:
+        issued = [
+            n for batch in pool.map_async(_issue, jobs).get(timeout=180) for n in batch
+        ]
+    finally:
+        pool.terminate()
+        pool.join()
     assert sorted(issued) == list(range(1, 1001))
     assert ident.high_water(tmp_path, SESSION, ident.STREAM_CONTENT) == 1000
     assert ident.high_water(tmp_path, SESSION, ident.STREAM_LINEAGE) == 0
+
+
+_PARENT_STATE = {"marked": False}
+
+
+def _child_sees_parent_mark(_: None) -> bool:
+    return _PARENT_STATE["marked"]
+
+
+def test_writer_pool_workers_start_fresh_not_forked() -> None:
+    _PARENT_STATE["marked"] = True
+    try:
+        pool = _writer_context().Pool(1)
+        try:
+            saw = pool.map_async(_child_sees_parent_mark, [None]).get(timeout=180)
+        finally:
+            pool.terminate()
+            pool.join()
+    finally:
+        _PARENT_STATE["marked"] = False
+    assert saw == [False]
 
 
 def test_barrier_states_the_high_water_and_the_lineage_capture_flag() -> None:

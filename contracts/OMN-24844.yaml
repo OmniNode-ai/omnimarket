@@ -1,0 +1,64 @@
+schema_version: 1.0.0
+ticket_id: OMN-24844
+title: The eight-writer sequence number test starts its workers fresh and bounds its wait so it cannot hang a test split
+summary: tests/test_capture_item_identity_effect.py ran its eight concurrent writers in a fork-context multiprocessing Pool inside a multi-threaded pytest process (CPython warns this may deadlock in the child) with an unbounded pool.map and a terminate-join on exit. A hung run cancelled one test split and failed the Coverage Sweep Gate and CI Summary. The test now starts its workers through the spawn context, waits on the result with a timeout and always terminates the pool; the gap-free 1000 sequence number assertion is unchanged. Not in this change - the handler under test, the sequence number logic, and any other test.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24844-forkpool
+  statement: The concurrent-writer test cannot hang on a forked pool, and its gap-free assertion over 1000 writes still holds.
+  acceptance:
+  - id: AC1
+    statement: "AC1: the test that uses the fork Pool is named by file and test id, and the measured hazard is stated -- falsifier: the test file at the previous head has no get_context(\"fork\") Pool in test_eight_concurrent_writers_issue_1000_gap_free_sequence_numbers"
+  - id: AC2
+    statement: "AC2: the test uses a spawn context with a result timeout and is not skipped, xfailed or deselected -- falsifier: git diff against the previous head shows a skip, xfail, deselect or removed assertion for that test"
+  - id: AC3
+    statement: "AC3: a regression test fails when the writers' pool context is fork and passes on the fix -- falsifier: test_writer_pool_workers_start_fresh_not_forked passes with the context set to fork"
+  - id: AC4
+    statement: "AC4: one pull request on omnimarket's default branch carries a comment starting Lab: head= with the full head sha -- falsifier: the pull request lists no such comment"
+evidence_requirements:
+- kind: tests
+  description: The capture item identity test file at the pushed head, run on a lab host.
+  command: uv run pytest tests/test_capture_item_identity_effect.py -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24844-ac1
+  description: 'AC1: the writers test and its regression test both pass with the spawn context in place.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_capture_item_identity_effect.py -q -n 0 --no-cov -p no:cacheprovider -k eight_concurrent
+    cwd: .
+- id: dod-omn24844-ac2
+  description: 'AC2: the writers test runs and passes (not skipped) with the gap-free assertion over 1000 writes.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_capture_item_identity_effect.py -q -n 0 --no-cov -p no:cacheprovider -k eight_concurrent
+    cwd: .
+- id: dod-omn24844-ac3
+  description: 'AC3: the fresh-worker regression test passes on the fix; the lab red run with the context set to fork is recorded in the pull request Lab comment.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_capture_item_identity_effect.py -q -n 0 --no-cov -p no:cacheprovider -k start_fresh_not_forked
+    cwd: .
+- id: dod-omn24844-ac4
+  description: 'AC4: the Lab comment is on the pull request; hosted proxy is the focused test file passing at the head.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_capture_item_identity_effect.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
