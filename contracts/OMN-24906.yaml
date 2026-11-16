@@ -31,8 +31,9 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn24906-ac1
-  description: 'The three-tier fill order: not implemented in the reviewed PR; this check fails (collects zero tests) until the order lands or AC2 of the parent ticket is moved.'
+  description: 'The three-tier fill order is not implemented in this change, and no ticket for it is minted yet: the move of AC2 of the parent ticket to a minted ticket is requested in a PR comment, and the owner decides. This check selects no test until the order lands, so it stays unproven and runs only at the local Done gate, where a failure is the true answer.'
   source: manual
+  execution_scope: local_done_gate
   binds_ac:
   - AC1
   checks:
@@ -67,14 +68,18 @@ dod_evidence:
     check_value: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests -k measured_cause_sends -q
     cwd: .
 - id: dod-omn24906-ac5
-  description: 'The pull request''s Lab: head= comment and its required check-runs are read from the watcher state by the local Done gate.'
+  description: 'Every check-run of the pull request is success at its head, read from the watcher state by the local Done gate: the head the watcher shows is this checkout''s head, the checks list has at least one success and no check in any other state (failure, pending, cancelled, unread, timed out, queued, in progress, action required, expected). The Lab: head= comment names the full sha and is read by the reviewer; the watcher state holds no comments.'
   source: manual
   execution_scope: local_done_gate
   binds_ac:
   - AC5
   checks:
   - check_type: command
-    check_value: onex scm pr-checks OmniNode-ai/omnimarket#6333 | grep -q success
+    check_value: |-
+      test "$(onex scm pr-view OmniNode-ai/omnimarket#6333 | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"]["head_sha"])')" = "$(git rev-parse HEAD)"
+  - check_type: command
+    check_value: |-
+      onex scm pr-checks OmniNode-ai/omnimarket#6333 > "$TMPDIR/omn24906-checks.txt" && grep -qi success "$TMPDIR/omn24906-checks.txt" && ! grep -Eqi 'failure|pending|cancel|error|unread|timed_out|timed out|queued|in_progress|action_required|expected|skipped' "$TMPDIR/omn24906-checks.txt"
 - id: dod-omn24906-ac6
   description: The claim_at before sent_at case, the minutes wording and the dedupe key, each tested in the alarm rule tests.
   source: manual

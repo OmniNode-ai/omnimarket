@@ -33,6 +33,9 @@ from omnimarket.nodes.node_lane_host_pool_snapshot_effect.handlers.pool_snapshot
     InMemoryPoolSnapshotStore,
     InMemoryRunningLanesSource,
 )
+from omnimarket.nodes.node_lane_host_pool_snapshot_effect.handlers.pool_snapshot_refusals import (
+    ACCOUNTS_UNREAD_PREFIX,
+)
 from omnimarket.nodes.node_lane_host_pool_snapshot_effect.handlers.snapshot_errors import (
     PoolSnapshotSourceError,
 )
@@ -120,7 +123,7 @@ def build_pool_snapshot(
         elif ad.capacity_refusal:
             refusal = f"capacity: {ad.capacity_refusal}"
         elif acc and acc.unread_reason:
-            refusal = f"accounts-unread: {acc.unread_reason}"
+            refusal = f"{ACCOUNTS_UNREAD_PREFIX}: {acc.unread_reason}"
         elif not accounts_usable:
             refusal = "no-usable-account"
         elif row.contributor and not row.lane_ready:

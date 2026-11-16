@@ -9,7 +9,10 @@ description: >
   run history), the lanes it started with the CLAIM time of each from the ledger, and the free slots from a pool read of
   its own, asks node_floor_fill_alarm_compute for the alarms, and writes one STATUS row per alarm to the ledger through
   the declared append command. An unread pool is an alarm, not a zero; a source that cannot be read fails the check
-  and writes no row. A row whose alarm key was written inside the repeat window is not written again.
+  and writes no row. A row whose alarm key was written inside the repeat window is not written again, and an alarm whose
+  cause never clears (a CLAIM that arrived late) is written once. The container binds the four ports from the overlay's
+  floor_fill_alarm section and runs one check as one call (container/container_live.py); the schedule that calls it
+  belongs to the Temporal workflow that runs the floor fill, so this node starts no timer, unit or scheduler.
 handler:
   module: omnimarket.nodes.node_floor_fill_alarm_effect.handlers.handler_floor_fill_alarm_check
   class: HandlerFloorFillAlarmCheck
@@ -44,6 +47,7 @@ descriptor:
   side_effects:
     - appends one STATUS row per alarm to the rolling ledger through the declared append command
     - appends the fill's run history to its own run log file
+    - appends one line per check to its own check log file
 event_bus:
   subscribe_topics: [onex.cmd.omnimarket.floor-fill-alarm-requested.v1]
   publish_topics: [onex.evt.omnimarket.floor-fill-alarm-completed.v1]

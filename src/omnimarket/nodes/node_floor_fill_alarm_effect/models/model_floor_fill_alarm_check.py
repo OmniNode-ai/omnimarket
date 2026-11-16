@@ -6,6 +6,8 @@ from __future__ import annotations
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
+TOKEN = r"^[A-Za-z0-9_.:-]+$"
+
 
 class ModelFloorFillAlarmCheckRequest(BaseModel):
     """The time of the check, the lane and ticket the alarm rows are written under, and the rule's bounds."""
@@ -13,8 +15,10 @@ class ModelFloorFillAlarmCheckRequest(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     now: AwareDatetime
-    row_lane: str = Field(min_length=1)
-    row_ticket: str = Field(min_length=1)
+    # One token each: the ledger reads ``lane=`` as a whole cell holding one token and refuses a row without it.
+    row_lane: str = Field(pattern=TOKEN)
+    row_ticket: str = Field(pattern=TOKEN)
+    row_actor: str = Field(default="script:floor-fill-alarm-check", pattern=TOKEN)
     # A row with the same alarm key written within this many minutes is not written again.
     repeat_after_minutes: int = Field(default=60, ge=1)
     slot_threshold: int = Field(default=5, ge=0)

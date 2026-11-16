@@ -15,22 +15,10 @@ Failing control: a snapshot that reads zero free slots starts nothing and is not
 
 from __future__ import annotations
 
-import json
-import sys
-import uuid
-from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
 
 import pytest
-from omnibase_spi.contracts.services import (
-    ModelLaneHostPoolReading,
-    ModelLaneHostPoolSnapshot,
-)
 
-from omnimarket.nodes.node_floor_fill_orchestrator.container.container_live import (
-    build_live_handler_factory,
-)
 from omnimarket.nodes.node_floor_fill_orchestrator.models import (
     EXIT_CODE_BY_STATUS,
     EnumFloorFillStatus,
@@ -41,179 +29,21 @@ from omnimarket.nodes.node_floor_fill_orchestrator.models.model_floor_fill_confi
 from omnimarket.nodes.node_floor_fill_orchestrator.models.model_floor_fill_live_settings import (
     load_floor_fill_live_settings,
 )
-from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.scripted_ports import (
-    ScriptedTickets,
-)
 from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.store import (
     InMemoryFloorStateStore,
 )
-from omnimarket.nodes.node_floor_fill_orchestrator.runtime_floor_fill_orchestrator import (
-    run_entry,
-)
-from omnimarket.nodes.node_floor_fill_orchestrator.tests.support import (
-    overlay,
-)
-from omnimarket.nodes.node_lane_host_pool_snapshot_effect.handlers.adapter_snapshot_file import (
-    FileSnapshotStore,
-)
-from omnimarket.nodes.node_lane_host_pool_snapshot_effect.models.model_pool_snapshot import (
-    ModelPoolHostRow,
-    ModelPoolSnapshotRecord,
+from omnimarket.nodes.node_floor_fill_orchestrator.tests.support_live_tick import (
+    RECORD_MAX_AGE_SECONDS,
+    SCOPE,
+    SETTINGS_MAX_AGE_SECONDS,
+    live_section,
+    live_tick,
 )
 
 pytestmark = pytest.mark.unit
 
-RECORDED_FLOOR = (
-    Path(__file__).resolve().parents[2]
-    / "node_floor_fill_candidates_compute"
-    / "tests"
-    / "fixtures"
-    / "factory-floor-2026-11-02T1040Z.json"
-)
-SUFFIX = ".read-at.json"
-SCOPE = "floor-fill-test"
-
-
-def _write_snapshot(
-    path: Path,
-    *,
-    free: int,
-    read_at: datetime,
-    cap: int | None = None,
-    away_slots: int = 0,
-    unread_hosts: tuple[str, ...] = (),
-    engines: tuple[str, ...] = ("claude",),
-) -> None:
-    """Host ``h1`` admitting ``free`` slots (its cap differs), an away host holding ``away_slots``, and the hosts in
-    ``unread_hosts`` as the snapshot unit writes a host whose token pool read failed: zero slots and an
-    ``accounts-unread`` refusal."""
-    readings = [
-        ModelLaneHostPoolReading(
-            name="h1",
-            lane_slots=free,
-            lane_cap=free + 3 if cap is None else cap,
-            placed=3,
-            engines=engines,
-        ),
-        ModelLaneHostPoolReading(
-            name="h2",
-            lane_slots=away_slots,
-            lane_cap=away_slots,
-            lane_admission_refusal="away: parked",
-            engines=engines,
-        ),
-    ]
-    for host in unread_hosts:
-        readings.append(
-            ModelLaneHostPoolReading(
-                name=host,
-                lane_slots=0,
-                lane_admission_refusal="accounts-unread: token pool command rc=3: no overlay roots",
-                engines=(),
-            )
-        )
-    snapshot = ModelLaneHostPoolSnapshot(readings=tuple(readings))
-    record = ModelPoolSnapshotRecord(
-        correlation_id=uuid.uuid4(),
-        read_at=read_at,
-        max_age_seconds=180,
-        hosts=(
-            ModelPoolHostRow(
-                host="h1",
-                declared_slots=free + 3,
-                running_lanes=3,
-                free_slots=free,
-                accounts_usable=("acct",),
-                accounts_limited=(),
-                away=False,
-            ),
-        ),
-        free_slots_total=free,
-        snapshot_path=str(path),
-        provenance="test",
-    )
-    FileSnapshotStore(path, SUFFIX).write(snapshot, record)
-
-
-def _live_section(tmp_path: Path, engine: str = "claude") -> dict[str, Any]:
-    return {
-        "store_dsn_env": "EXAMPLE_FLOOR_FILL_DSN",
-        "store_schema_name": "public",
-        "store_table_name": "floor_fill_state",
-        "store_connect_timeout_seconds": 5,
-        "floor_fetch_timeout_seconds": 5.0,
-        "plan_file_pattern": "{line_id}.md",
-        "ledger_path": str(tmp_path / "ledger.md"),
-        "process_output_dir": str(tmp_path / "out"),
-        "pool_snapshot_path": str(tmp_path / "pool.json"),
-        "pool_record_suffix": SUFFIX,
-        "pool_snapshot_max_age_seconds": 180,
-        "pool_engine": engine,
-    }
-
-
-def _recorded_floor(now: datetime) -> tuple[str, dict[str, list[str]]]:
-    """The recorded floor of 2026-11-02 (the candidates node's fixture) made current: its text and each line's plan."""
-    body = json.loads(RECORDED_FLOOR.read_text(encoding="utf-8"))
-    body["generated_at"] = now.isoformat()
-    return json.dumps(body), {line["line_id"]: [] for line in body["lines"]}
-
-
-def _tick(
-    tmp_path: Path,
-    *,
-    free: int,
-    age_seconds: int,
-    engine: str = "claude",
-    bind_seams: bool = True,
-    **snapshot: Any,
-) -> tuple[str, int, InMemoryFloorStateStore]:
-    now = datetime.now(UTC)
-    _write_snapshot(
-        tmp_path / "pool.json",
-        free=free,
-        read_at=now - timedelta(seconds=age_seconds),
-        **snapshot,
-    )
-    (tmp_path / "ledger.md").write_text("", encoding="utf-8")
-    (tmp_path / "out").mkdir()
-    record, plan_lines = _recorded_floor(now)
-    plans = tmp_path / "plans"
-    plans.mkdir()
-    for line_id in plan_lines:
-        (plans / f"{line_id}.md").write_text(f"# {line_id}\n", encoding="utf-8")
-    config = overlay(
-        plans_root=str(plans),
-        runner_command=[sys.executable, "-c", "pass", "{lane}", "{key}", "{ticket}"],
-        process_working_directory=str(tmp_path),
-        stopped_reports_root=str(tmp_path),
-        stopped_brief_directory=str(tmp_path / "briefs"),
-    )
-    store = InMemoryFloorStateStore()
-    settings = load_floor_fill_live_settings(_live_section(tmp_path, engine))
-    seams: dict[str, Any] = (
-        {
-            "tickets": ScriptedTickets(),
-            "brake": lambda: False,
-            "stop": lambda _task_class: None,
-        }
-        if bind_seams
-        else {}
-    )
-    result = run_entry(
-        ["tick"],
-        {"floor_fill": config},
-        host_id=config["host_id"],
-        hosts=[(config["host_id"], True)],
-        build_handler=build_live_handler_factory(
-            settings,
-            dsn="unused",
-            store=store,
-            fetch_text=lambda _url, _timeout: record,
-            **seams,
-        ),
-    )
-    return result.stdout, result.exit_code, store
+_tick = live_tick
+_live_section = live_section
 
 
 def _reserved(store: InMemoryFloorStateStore) -> int:
@@ -342,3 +172,68 @@ def test_measured_cause_sends_an_overlay_without_the_pool_keys_names_them(
             "pool_engine",
         )
     }
+
+
+def test_measured_cause_sends_the_settings_bound_governs_not_the_record_bound(
+    tmp_path: Path,
+) -> None:
+    """The record declares 60 seconds for itself and the settings bound is 180: a snapshot read 120 seconds before the
+    injected pool clock is older than the record's own bound and inside the settings', and the tick reads it fresh."""
+    assert RECORD_MAX_AGE_SECONDS < 120 < SETTINGS_MAX_AGE_SECONDS
+    out, code, store = _tick(tmp_path, free=2, age_seconds=120)
+    assert "pool-unread" not in out, out
+    assert code == OK, out
+    assert _reserved(store) == 2
+
+
+def test_measured_cause_sends_the_settings_bound_is_inclusive_at_its_edge(
+    tmp_path: Path,
+) -> None:
+    out, code, store = _tick(tmp_path, free=2, age_seconds=SETTINGS_MAX_AGE_SECONDS)
+    assert code == OK, out
+    assert _reserved(store) == 2
+
+
+def test_measured_cause_sends_one_second_past_the_settings_bound_is_stale(
+    tmp_path: Path,
+) -> None:
+    out, code, store = _tick(tmp_path, free=2, age_seconds=SETTINGS_MAX_AGE_SECONDS + 1)
+    assert "pool-unread:pool-snapshot" in out, out
+    assert code == DEGRADED
+    assert store.load(SCOPE).version == 0
+
+
+def test_measured_cause_sends_refuses_a_host_with_empty_engines_and_no_refusal(
+    tmp_path: Path,
+) -> None:
+    """The snapshot writer empties ``engines`` only for a host that has no usable account, and that host carries a
+    refusal. A host with empty engines and no refusal is a writer fault (an overlay with no engines): it is an unread
+    pool, never a host that counts as zero free slots."""
+    out, code, store = _tick(tmp_path, free=2, age_seconds=5, engines=())
+    assert "pool-unread:pool-snapshot:" in out, out
+    assert "engines" in out, out
+    assert code == DEGRADED, out
+    assert _reserved(store) == 0
+
+
+def test_measured_cause_sends_unread_refusal_prefix_is_spelled_once() -> None:
+    """The writer, the reader and these tests take the prefix from the one constant: only its own module spells it."""
+    from pathlib import Path as _Path
+
+    from omnimarket.nodes.node_lane_host_pool_snapshot_effect.handlers import (
+        adapter_snapshot_file,
+        handler_pool_snapshot,
+        pool_snapshot_refusals,
+    )
+    from omnimarket.nodes.node_lane_host_pool_snapshot_effect.handlers.pool_snapshot_refusals import (
+        ACCOUNTS_UNREAD_PREFIX,
+    )
+
+    for module in (adapter_snapshot_file, handler_pool_snapshot):
+        text = _Path(str(module.__file__)).read_text(encoding="utf-8")
+        assert ACCOUNTS_UNREAD_PREFIX not in text.replace(
+            "ACCOUNTS_UNREAD_PREFIX", ""
+        ).replace("``accounts-unread``", ""), module.__name__
+    assert ACCOUNTS_UNREAD_PREFIX in _Path(
+        str(pool_snapshot_refusals.__file__)
+    ).read_text(encoding="utf-8")

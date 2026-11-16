@@ -127,6 +127,8 @@ class _Pass:
         self.unread: list[str] = []
         self.ledger_unread = False
         self.free_slots = 0
+        # False until this pass's pool read returned a count; a failed read leaves the slots unseen, never 0.
+        self.free_slots_read = False
         self.started = 0
         # Reservations of earlier commands whose CLAIM is not on the ledger yet: lanes the pool read cannot show yet.
         self.outstanding = 0
@@ -331,6 +333,7 @@ class FloorFillOrchestrator:
             ctx.unread.append(f"floor:{_cause(error)}")
         try:
             ctx.free_slots = self._pool.free_slots()
+            ctx.free_slots_read = True
         except Exception as error:
             ctx.unread.append(f"pool:{_cause(error)}")
         try:
@@ -921,6 +924,8 @@ class FloorFillOrchestrator:
                 observed_at=ctx.now,
                 seq=read.version + 1,
                 state_seq=ctx.state.seq,
+                free_slots=ctx.free_slots if ctx.free_slots_read else None,
+                lanes_started=sum(1 for r in ctx.results if r.kind == "started"),
             ).model_dump_json()
             if not self._store.compare_and_set(
                 key, read.version, read.version + 1, payload

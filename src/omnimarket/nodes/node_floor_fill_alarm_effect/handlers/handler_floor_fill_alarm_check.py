@@ -4,8 +4,12 @@
 write one STATUS row per alarm to the ledger.
 
 A source that cannot be read fails the check by name and writes no row: a check that read nothing never reports quiet.
-A row whose alarm key was written within ``repeat_after_minutes`` is not written again, so a lane with a late CLAIM
-does not alarm on every check.
+A row whose alarm key was written within ``repeat_after_minutes`` is not written again, and an alarm whose cause never
+clears (a CLAIM that arrived late) is written once, so a lane with a late CLAIM does not alarm on every check.
+
+The row is a ledger STATUS row of a script lane: ``lane=`` one token, ``actor=`` and ``model=none`` as the other script
+rows carry them. It names no ``principal=``: the ledger writer adds the authenticated principal of the host that appends,
+and refuses a row whose own principal differs from it.
 """
 
 from __future__ import annotations
@@ -53,6 +57,8 @@ def render_row(
         stamp,
         "STATUS",
         f"lane={request.row_lane}",
+        f"actor={request.row_actor}",
+        "model=none",
         f"ticket={request.row_ticket}",
         f"alarm={alarm.kind.value}",
         f"{KEY_CELL}{alarm_key(alarm)}",
@@ -134,6 +140,8 @@ class HandlerFloorFillAlarmCheck:
         for row in existing:
             if cell not in (c.strip() for c in row.split(CELL_SEPARATOR)):
                 continue
+            if alarm.write_once:
+                return True
             written = _written_at(row)
             if written is not None and written >= bound:
                 return True

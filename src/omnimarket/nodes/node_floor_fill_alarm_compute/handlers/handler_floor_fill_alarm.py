@@ -6,7 +6,7 @@ IDLE: the last ``idle_runs`` runs by time all sent 0 lanes, none of them saw ``s
 independent pool read of the check shows more than ``slot_threshold`` free slots; the row names the latest run's cause. A run
 that answered ``UNKNOWN pool-unread:*`` saw no slots (None), so only the pool read can raise IDLE for it. POOL_UNREAD: the
 pool read failed; an unread pool is an alarm of its own, never a count of zero. UNCLAIMED: a started lane with no CLAIM read more than ``claim_deadline_minutes`` after
-its start, or whose CLAIM arrived later than that; a CLAIM at the deadline or sooner is on time. NOT_RUNNING (only when
+its start, or whose CLAIM arrived later than that (written once: a late CLAIM stays late); a CLAIM at the deadline or sooner is on time. NOT_RUNNING (only when
 ``max_run_age_minutes`` is set): no run observed in that many minutes before the check, which the IDLE rule cannot see.
 """
 
@@ -121,6 +121,7 @@ class HandlerFloorFillAlarm:
         request: ModelFloorFillAlarmRequest, lane: ModelFloorFillSentLane
     ) -> ModelFloorFillAlarmRow | None:
         deadline = lane.sent_at + timedelta(minutes=request.claim_deadline_minutes)
+        late = lane.claim_at is not None
         if lane.claim_at is None:
             if request.now <= deadline:
                 return None
@@ -136,7 +137,13 @@ class HandlerFloorFillAlarm:
             subject=lane.lane,
             cause=cause,
             row_text=f"lane {lane.lane} {cause}",
-            dedupe_key=f"{EnumFloorFillAlarmKind.UNCLAIMED.value}:{lane.lane}:{lane.key}",
+            # A late CLAIM has its own key, so the earlier "no CLAIM" row never stands in for it, and it is written once.
+            dedupe_key=(
+                f"{EnumFloorFillAlarmKind.UNCLAIMED.value}:late-claim:{lane.lane}:{lane.key}"
+                if late
+                else f"{EnumFloorFillAlarmKind.UNCLAIMED.value}:{lane.lane}:{lane.key}"
+            ),
+            write_once=late,
         )
 
 

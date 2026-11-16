@@ -22,8 +22,6 @@ from omnimarket.nodes.node_floor_fill_alarm_compute.models import (
 from omnimarket.nodes.node_floor_fill_alarm_effect.handlers.adapter_floor_fill_alarm_sources import (
     CallablePoolReader,
     CommandLedger,
-    StoredAnswerRunSource,
-    StoredStateSentLanes,
 )
 from omnimarket.nodes.node_floor_fill_alarm_effect.handlers.handler_floor_fill_alarm_check import (
     CELL_SEPARATOR,
@@ -35,6 +33,9 @@ from omnimarket.nodes.node_floor_fill_alarm_effect.models import (
 from omnimarket.nodes.node_floor_fill_alarm_effect.protocols.protocol_floor_fill_alarm_check import (
     AlarmSourceError,
     ProtocolAlarmLedger,
+)
+from omnimarket.nodes.node_floor_fill_alarm_effect.tests.support_ledger_grammar import (
+    grammar_ledger,
 )
 
 pytestmark = pytest.mark.unit
@@ -230,76 +231,6 @@ def test_floor_fill_alarm_check_a_source_that_cannot_be_read_writes_no_row() -> 
 
 # Adapters over what the fill leaves behind.
 
-SCOPE = "floor-fill"
-
-
-def _answer(seq: int, minutes_ago: int, lines: list[str]) -> str:
-    import json
-
-    return json.dumps(
-        {
-            "lines": lines,
-            "status": "OK",
-            "observed_at": (NOW - timedelta(minutes=minutes_ago)).isoformat(),
-            "seq": seq,
-            "state_seq": seq,
-        }
-    )
-
-
-def test_floor_fill_alarm_check_run_source_accumulates_each_stored_answer(
-    tmp_path: Path,
-) -> None:
-    store = {SCOPE + ":answer": _answer(1, 10, [CAUSE])}
-    source = StoredAnswerRunSource(store.get, SCOPE, tmp_path / "runs.jsonl")
-    assert len(source.read_runs(NOW)) == 1
-    assert len(source.read_runs(NOW)) == 1
-    store[SCOPE + ":answer"] = _answer(2, 5, ["NOTE line-filled:alpha | lane=la,lb"])
-    runs = source.read_runs(NOW)
-    assert [run.lanes_sent for run in runs] == [0, 2]
-    assert runs[0].cause == CAUSE
-    assert runs[0].free_slots is None
-
-
-def test_floor_fill_alarm_check_sent_lanes_carry_the_claim_time(tmp_path: Path) -> None:
-    import json
-
-    started = (NOW - timedelta(minutes=20)).isoformat()
-    state = json.dumps(
-        {
-            "seq": 3,
-            "entries": {
-                KEY: {
-                    "key": KEY,
-                    "state": "RESERVED",
-                    "lane": LANE,
-                    "reserved_at": started,
-                },
-                "floor:alpha:a2": {
-                    "key": "floor:alpha:a2",
-                    "state": "RESERVED",
-                    "lane": "lane-two",
-                    "reserved_at": started,
-                },
-                "stopped:x": {
-                    "key": "stopped:x",
-                    "state": "RESERVED",
-                    "lane": "s",
-                    "reserved_at": started,
-                },
-            },
-        }
-    )
-    claim_ts = (NOW - timedelta(minutes=15)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    rows = (f"{claim_ts} | CLAIM | lane={LANE} | key={KEY} | ticket=OMN-1",)
-    lanes = StoredStateSentLanes(
-        {SCOPE: state}.get, SCOPE, lambda: rows
-    ).read_sent_lanes()
-    by_lane = {lane.lane: lane for lane in lanes}
-    assert set(by_lane) == {LANE, "lane-two"}
-    assert by_lane[LANE].claim_at is not None
-    assert by_lane["lane-two"].claim_at is None
-
 
 def test_floor_fill_alarm_check_pool_reader_distinguishes_unread_from_zero() -> None:
     def zero() -> int:
@@ -353,3 +284,43 @@ def test_floor_fill_alarm_check_a_refused_append_fails_the_check(
             ledger,
         ).handle(_request())
     assert ledger_file.read_text(encoding="utf-8") == ""
+
+
+def test_floor_fill_alarm_check_row_passes_the_ledger_append_grammar(
+    tmp_path: Path,
+) -> None:
+    ledger, ledger_file = grammar_ledger(tmp_path)
+    _handler(_runs(free=None), ModelFloorFillPoolRead(free_slots=25), ledger).handle(
+        _request()
+    )
+    (row,) = ledger_file.read_text(encoding="utf-8").splitlines()
+    cells = row.split(CELL_SEPARATOR)
+    assert cells[1] == "STATUS"
+    assert "lane=floor-fill-alarm" in cells
+    assert "actor=script:floor-fill-alarm-check" in cells
+    assert "model=none" in cells
+    # The ledger writer adds the authenticated principal itself and refuses a hand-written one that differs.
+    assert not any(cell.startswith("principal=") for cell in cells)
+
+
+def test_floor_fill_alarm_check_the_grammar_appender_refuses_a_row_without_its_lane(
+    tmp_path: Path,
+) -> None:
+    """Positive control for the check above: the appender does refuse a row that breaks the grammar."""
+    ledger, ledger_file = grammar_ledger(tmp_path)
+    with pytest.raises(AlarmSourceError, match="missing lane="):
+        ledger.append("2026-11-16T17:00:00Z | STATUS | ticket=OMN-24873 | text")
+    with pytest.raises(AlarmSourceError, match="principal"):
+        ledger.append(
+            "2026-11-16T17:00:00Z | STATUS | lane=x | principal=someone | text"
+        )
+    assert ledger_file.read_text(encoding="utf-8") == ""
+
+
+def test_floor_fill_alarm_check_a_lane_with_a_space_is_refused_before_a_row_exists() -> (
+    None
+):
+    with pytest.raises(ValueError, match="row_lane"):
+        ModelFloorFillAlarmCheckRequest(
+            now=NOW, row_lane="floor fill alarm", row_ticket="OMN-24873"
+        )

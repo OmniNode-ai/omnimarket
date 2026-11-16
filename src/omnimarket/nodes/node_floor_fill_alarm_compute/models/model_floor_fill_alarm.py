@@ -117,6 +117,9 @@ class ModelFloorFillAlarmRow(BaseModel):
     row_text: str
     # What a repeat of this alarm shares: the effect writes one row per key until the cause clears.
     dedupe_key: str
+    # True for a cause that never clears (a CLAIM that arrived late stays late): the effect writes it once, however long
+    # the repeat window is, where any other alarm is written again when the window has passed and the cause stands.
+    write_once: bool = False
 
 
 class ModelFloorFillAlarmResult(BaseModel):
