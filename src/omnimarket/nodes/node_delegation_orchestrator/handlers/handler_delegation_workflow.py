@@ -29,6 +29,7 @@ import time
 from collections.abc import Callable, Mapping, MutableMapping
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Any, ClassVar, Final, Literal, cast
 from urllib.parse import urlparse
@@ -137,6 +138,7 @@ from omnimarket.handlers.routing.backend_placement import (
 )
 from omnimarket.handlers.routing.byok_provider_backends import (
     byok_backend_max_retries,
+    byok_declared_price_per_1m,
     resolve_byok_backend_by_id,
 )
 from omnimarket.handlers.routing.customer_key_terminus import (
@@ -5539,6 +5541,8 @@ class HandlerDelegationWorkflow:
         prompt_tokens: int,
         completion_tokens: int,
         premium_counterfactual: ModelPremiumCounterfactual | None,
+        endpoint_url: str = "",
+        model_id: str = "",
     ) -> ModelActualCostMeasurement:
         """Measure a terminal event's actual cost from the typed tier cost model.
 
@@ -5555,12 +5559,48 @@ class HandlerDelegationWorkflow:
         canonical routing registry, priced against the measured token counts —
         ``free_local`` → 0.0, ``metered`` → ``rate_per_1k_usd * tokens / 1000``.
         No parallel formula, no hardcoded 0.0.
+
+        OMN-24874: a tier the registry has no cost model for (the tenant overlay
+        route's ``tenant_overlay``, a run on the customer's own key) is priced from
+        the catalogue's declared per-1M price for the endpoint and model, booked
+        as ``metered``. A model no table prices stays ``no_cost_model``.
         """
-        return recompute_actual_cost_and_savings(
+        measurement = recompute_actual_cost_and_savings(
             tier_name=tier_name,
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
             premium_counterfactual=premium_counterfactual,
+        )
+        if measurement.cost_measurement_source != "no_cost_model" or not model_id:
+            return measurement
+        declared = byok_declared_price_per_1m(endpoint_url, model_id)
+        if declared is None:
+            return measurement
+        price_in, price_out = declared
+        cash = round(
+            float(
+                (
+                    Decimal(prompt_tokens) * price_in
+                    + Decimal(completion_tokens) * price_out
+                )
+                / Decimal(1_000_000)
+            ),
+            10,
+        )
+        savings = (
+            0.0
+            if premium_counterfactual is None
+            else float(
+                premium_counterfactual.counterfactual_cost_usd - Decimal(str(cash))
+            )
+        )
+        return measurement.model_copy(
+            update={
+                "cash_cost_usd": cash,
+                "cost_savings_usd": savings,
+                "cost_tier_type": "metered",
+                "cost_measurement_source": "metered",
+            }
         )
 
     @staticmethod
@@ -5712,6 +5752,8 @@ class HandlerDelegationWorkflow:
             prompt_tokens=inputs.prompt_tokens,
             completion_tokens=inputs.completion_tokens,
             premium_counterfactual=inputs.premium_counterfactual,
+            endpoint_url=inputs.endpoint_url,
+            model_id=inputs.model_used,
         )
 
         # OMN-13535: total metered spend = the FINAL tier's measured cost PLUS the

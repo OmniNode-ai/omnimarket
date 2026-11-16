@@ -1907,6 +1907,29 @@ def _measure_actual_cost(
         premium_counterfactual=event.premium_counterfactual,
     )
 
+    if measurement.cost_measurement_source == "no_cost_model" and event.cost_usd > 0.0:
+        # OMN-24874: the registry has no cost model for this tier (the tenant
+        # overlay route's ``tenant_overlay``, a run on the customer's own key), so
+        # the re-measurement is a zero that proves nothing. The terminal priced
+        # the run from the catalogue's declared model price; keep that cost and
+        # its provenance instead of overwriting it with the zero.
+        savings_usd = (
+            0.0
+            if event.premium_counterfactual is None
+            else float(
+                event.premium_counterfactual.counterfactual_cost_usd
+                - Decimal(str(event.cost_usd))
+            )
+        )
+        return ModelActualCostProjection(
+            cost_usd=event.cost_usd,
+            cost_savings_usd=savings_usd,
+            headroom_consumed_usd=event.budget_headroom_consumed_usd,
+            cost_tier_type=event.cost_tier_type or "metered",
+            cost_tier_name=event.cost_tier_name,
+            cost_measurement_source=event.cost_measurement_source or "metered",
+        )
+
     if event.premium_counterfactual is None:
         # FAILED / escalation terminal (OMN-13408). The terminal's ``cost_usd``
         # is the authoritative total (final + prior, counted once). Trust it when
