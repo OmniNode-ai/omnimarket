@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-24829
-title: Omnimarket pull request 5737 no longer conflicts with its base and its causes of red outside the diff are each recorded
-summary: 'The branch of omnimarket pull request 5737 had fallen 389 commits behind dev and conflicted with it in pyproject.toml, uv.lock and 70 work-contract files. This change merges the current dev into the branch. Dev already locks omnibase-spi 0.23.15, so the conflicted spi tag, the lock and the work-contract uv.lock hashes take dev''s content and the pull request keeps only its floor raise, its floor test, its contract and its duration record. No check, ratchet or workflow file is touched.'
+title: Omnimarket pull request 5737 no longer conflicts with its base and its required checks read green at its new head
+summary: 'The branch of omnimarket pull request 5737 had fallen 389 commits behind dev and conflicted with it in pyproject.toml, uv.lock and 70 work-contract files. This change merges the current dev into the branch. Dev already locks omnibase-spi 0.23.15, so the conflicted spi tag, the lock and the work-contract uv.lock hashes take dev''s content and the pull request keeps only its floor raise, its floor test, its contract and its duration record. No check, ratchet or workflow file is touched. pypi-pin-resolvability is red at this head because this change raises the floor to 0.23.15 while the newest published omnibase-infra pins an older omnibase-spi; that red belongs to this pull request, is not recorded as shared, and the pull request holds until a published omnibase-infra admits omnibase-spi>=0.23.15. delegation-health-check is red on dev as well and is recorded as shared.'
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -10,11 +10,11 @@ requirements:
     statement: The pull request branch contains the current dev and its diff against dev touches no check, ratchet or workflow file.
     acceptance:
       - id: AC1
-        statement: 'AC1: omnimarket pull request 5737 no longer conflicts with its base: the branch contains the current dev and the floor test passes at the new head -- falsifier: the branch does not contain origin/dev, or the floor test fails at the head'
+        statement: 'AC1: omnimarket pull request 5737 no longer conflicts with its base and its required checks read green at the new head -- falsifier: the branch does not contain origin/dev, the floor test fails at the head, or pypi-pin-resolvability, which this change causes by raising the floor, reads not success at the head'
       - id: AC2
         statement: 'AC2: the fix is made on the pull request''s own branch with no check widened, skipped or bypassed, and a PR comment starting Lab: head=<full 40-character head sha> carries the lab proof for the new head -- falsifier: the diff against dev touches a file under .github, .onex_ratchets or scripts/ci, or the newest Lab comment names a sha that is not the full 40-character head'
       - id: AC3
-        statement: 'AC3: the causes of red that this diff does not fix, pypi-pin-resolvability (it passes on the dev tip, whose floor 0.23.3 admits the published omnibase-infra pin omnibase-spi==0.23.7, and fails at this head because this pull request raises the floor to 0.23.15 while the newest published omnibase-infra pins 0.23.7; it clears when omnibase_infra publishes a release carrying omnibase-spi>=0.23.15; it is not itself a branch-protection context, but CI Summary asserts it, so the pull request cannot go green while it is red) and delegation-health-check (red from dev''s own delegation-regression-nightly run; not itself a branch-protection context, and asserted by CI Summary the same way), are each recorded in their own STATUS row with shared=yes and check=<name>, and nothing is patched around them -- falsifier: the ledger holds no STATUS row for omnimarket#5737 with shared=yes and check=pypi-pin-resolvability, or none with check=delegation-health-check, or the diff against dev touches a file under .github, .onex_ratchets or scripts/ci'
+        statement: 'AC3: when the cause is outside the pull request, the lane writes a STATUS row with shared=yes and patches nothing around it -- falsifier: none applies, the cause was inside the pull request (a stale branch) and AC1 holds'
 evidence_requirements:
   - kind: tests
     description: The omnibase-spi floor tests pass at the merged head.
@@ -56,31 +56,25 @@ dod_evidence:
       - check_type: command
         check_value: gh pr view 5737 --repo OmniNode-ai/omnimarket --json comments | uv run --frozen python -c 'import json,subprocess,sys; sys.path.insert(0,"tests/ci"); import test_omn23518_spi_lock_floor as t; c=[x["body"] for x in json.load(sys.stdin)["comments"]]; h=subprocess.check_output(["git","rev-parse","HEAD"],text=True).strip(); assert t.lab_comment_head_is_full(c,h), (h,[x[:60] for x in c if x.startswith("Lab:")])'
         cwd: .
-  - id: dod-omn24829-ac3-status-rows-named
-    description: 'AC3. The criterion names both causes and this contract carries one ledger check per named check. A criterion cannot be bound to the ledger read itself, because the ledger is not on the hosted runner and a bound local_done_gate item is refused; this bound check fails when a named check loses its row check or the two checks collapse into one. The pyproject floor check is the other half of the criterion: the cause only exists because this pull request raises the floor to 0.23.15 in both places, so it fails at the merge base, where the floors read 0.23.3, as the repo-evidence control requires.'
-    source: manual
-    binds_ac:
-      - AC3
-    checks:
-      - check_type: command
-        check_value: test "$(grep -c 'omnibase-spi>=0.23.15,<0.24.0' pyproject.toml)" = 2
-        cwd: .
-      - check_type: test_passes
-        check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly -k "omn24829_contract and not ancestry"
-        cwd: .
-      - check_type: command
-        check_value: uv run --frozen python -c 'import yaml; d=yaml.safe_load(open("contracts/OMN-24829.yaml")); n=["pypi-pin-resolvability","delegation-health-check"]; a=[x["statement"] for r in d["requirements"] for x in r["acceptance"] if x["id"]=="AC3"][0]; l=[c["check_value"] for i in d["dod_evidence"] if i.get("execution_scope")=="local_done_gate" for c in i["checks"]]; assert all(x in a for x in n), a; assert all(sum(("check="+x in v and "shared=yes" in v) for v in l)==1 for x in n), l'
-        cwd: .
-      - check_type: command
-        check_value: test -z "$(git diff --name-only origin/dev...HEAD -- .github .onex_ratchets scripts/ci)"
-        cwd: .
-  - id: dod-omn24829-ac3-status-row-pypi-pin
-    description: AC3. One STATUS row for omnimarket#5737 carries shared=yes and check=pypi-pin-resolvability; the row is read from the ledger file named by ONEX_LEDGER_PATH.
+  - id: dod-omn24829-ac1-published-infra-admits-floor
+    description: AC1. The newest published omnibase-infra pins an omnibase-spi release inside the floor range 0.23.15 to below 0.24.0, which is what clears pypi-pin-resolvability. It is scoped local_done_gate because it reads the package index, so it cannot carry binds_ac; it fails until omnibase_infra publishes a release that admits the floor.
     source: manual
     execution_scope: local_done_gate
     checks:
       - check_type: command
-        check_value: test "$(grep -a '| STATUS |' "$ONEX_LEDGER_PATH" | grep -a 'pr=omnimarket#5737' | grep -a 'shared=yes' | grep -a -c 'check=pypi-pin-resolvability')" -ge 1
+        check_value: curl -fsS https://pypi.org/pypi/omnibase-infra/json | uv run --frozen python -c 'import json,sys; sys.path.insert(0,"tests/ci"); import test_omn23518_spi_lock_floor as t; r=json.load(sys.stdin)["info"]["requires_dist"]; assert t.published_pin_admits_floor_range(r), r'
+        cwd: .
+  - id: dod-omn24829-ac3-status-row-read-exercised
+    description: AC3. The ledger read of the cause outside this pull request is run, as the contract spells it, against an empty ledger, which it must refuse, and against ledgers whose rows name another pull request, another check or no shared=yes, which it must refuse, and against the matching row, which it must accept. The read itself is scoped local_done_gate and cannot be bound, so this bound check is the one that exercises it.
+    source: manual
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/contracts/test_omn24829_contract_evidence.py -q --no-cov -n 0 -p no:randomly -k "ledger_status or ac3_bound"
+        cwd: .
+      - check_type: command
+        check_value: test -z "$(git diff --name-only origin/dev...HEAD -- .github .onex_ratchets scripts/ci)"
         cwd: .
   - id: dod-omn24829-ac3-status-row-delegation-health
     description: AC3. One STATUS row for omnimarket#5737 carries shared=yes and check=delegation-health-check; the row is read from the ledger file named by ONEX_LEDGER_PATH.

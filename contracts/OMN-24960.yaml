@@ -20,7 +20,7 @@ requirements:
       - id: AC5
         statement: 'AC5: `_spi_entries` in tests/ci/test_omn23518_spi_lock_floor.py parses with packaging.requirements.Requirement and matches on the name, so a second entry written as ==, ~=, [extra]>= or @ git+ fails the one-entry-each test, and the lock source match uses startswith(locked_source + "#") -- falsifier: `uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q` passes with an added `omnibase-spi==0.23.7` entry or a longer tag in the lock source'
       - id: AC6
-        statement: 'AC6: the AC4 falsifier of the spi lock test is exercised: the version comparison is a helper and a monkeypatched test expects it to fail when the installed version differs, the claim of the first release that carries the lane process types cites the spi release notes or is reworded in pyproject.toml and contracts/OMN-23518.yaml, and the shared=yes check of contracts/OMN-24829.yaml greps one row per named check -- falsifier: `uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q` passes with the helper left to accept a differing installed version'
+        statement: 'AC6: the AC4 falsifier of the spi lock test is exercised: the version comparison is a helper and a monkeypatched test expects it to fail when the installed version differs, the claim of the first release that carries the lane process types cites the spi release notes or is reworded in pyproject.toml and contracts/OMN-23518.yaml, and the ledger commands of contracts/OMN-24829.yaml are exercised against an empty ledger -- falsifier: `uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q` passes with the helper left to accept a differing installed version'
 evidence_requirements:
   - kind: tests
     description: The omnibase-spi floor tests pass at the head.
@@ -31,79 +31,52 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
   - id: dod-omn24960-ac1-contracts-bound
-    description: 'AC1. floors_agree is absent from contracts/OMN-24829.yaml, which carries one ledger check per named cause, and the evidence of contracts/OMN-24911.yaml names those checks. The floors test is carried as a second check because the repo-evidence control at the merge base requires every bound check to fail there; it fails at the merge base, where both floors read 0.23.3. The criterion''s own check is the other one.'
+    description: AC1. contracts/OMN-24829.yaml AC3 is bound to the check that runs its ledger commands against an empty and a matching ledger, and no check bound to AC3 is a floors check.
     source: manual
     binds_ac:
       - AC1
     checks:
       - check_type: test_passes
-        check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly -k pyproject_floors_agree
-        cwd: .
-      - check_type: test_passes
-        check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly -k "omn24829_contract_has_one or omn24829_contract_binds_no"
-        cwd: .
-      - check_type: command
-        check_value: test "$(grep -c floors_agree contracts/OMN-24829.yaml)" = 0 && grep -q 'dod-omn24829-ac3-status-row-pypi-pin' contracts/OMN-24829.yaml && grep -q 'dod-omn24829-ac3-status-row-delegation-health' contracts/OMN-24829.yaml
+        check_value: uv run --frozen pytest tests/contracts/test_omn24829_contract_evidence.py -q --no-cov -n 0 -p no:randomly -k "ledger_status or ac3_bound"
         cwd: .
   - id: dod-omn24960-ac2-published-pin-answered
-    description: 'AC2. contracts/OMN-24829.yaml AC3 says the pypi-pin-resolvability red comes from this pull request''s floor raise against the published omnibase-infra pin, that CI Summary asserts the check although branch protection does not list it, and what clears it; the published pin comparison is exercised by the tests. The floors test is carried as a second check because the repo-evidence control at the merge base requires every bound check to fail there; it fails at the merge base, where both floors read 0.23.3. The criterion''s own check is the other one.'
+    description: AC2. The published pin comparison is exercised by the tests; whether the published omnibase-infra pin admits the floor is read by the local_done_gate items of contracts/OMN-24911.yaml and contracts/OMN-24829.yaml.
     source: manual
     binds_ac:
       - AC2
     checks:
       - check_type: test_passes
-        check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly -k pyproject_floors_agree
-        cwd: .
-      - check_type: test_passes
-        check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly -k omn24829_contract_states_why
-        cwd: .
-      - check_type: command
-        check_value: grep -q 'passes on the dev tip' contracts/OMN-24829.yaml && grep -q 'CI Summary asserts it' contracts/OMN-24829.yaml
-        cwd: .
-      - check_type: test_passes
         check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly -k published_pin
         cwd: .
   - id: dod-omn24960-ac3-pin-compared-with-packaging
-    description: 'AC3. The published pin is compared with the floor range through packaging.requirements and packaging.version.Version, and the test is red for a pin that equals the floor. The floors test is carried as a second check because the repo-evidence control at the merge base requires every bound check to fail there; it fails at the merge base, where both floors read 0.23.3. The criterion''s own check is the other one.'
+    description: 'AC3. The published pin is compared with the floor range through packaging.requirements and packaging.version.Version, and the test is red for a pin that equals the floor.'
     source: manual
     binds_ac:
       - AC3
     checks:
       - check_type: test_passes
-        check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly -k pyproject_floors_agree
-        cwd: .
-      - check_type: test_passes
         check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly -k published_pin
         cwd: .
-      - check_type: command
-        check_value: grep -q 'Requirement' tests/ci/test_omn23518_spi_lock_floor.py && grep -q 'Version' tests/ci/test_omn23518_spi_lock_floor.py && grep -q 'omnibase-spi==0.23.15' tests/ci/test_omn23518_spi_lock_floor.py
-        cwd: .
   - id: dod-omn24960-ac4-lab-comment-check
-    description: 'AC4. The Lab comment parser fails for a comment that carries a 12-character sha. The read of the pull request''s comments is dod-omn24829-ac2-lab-comment-full-head, scoped local_done_gate. The lock check and the floor test run at the head are reported in the pull request comment, not in a contract. The floors test is carried as a second check because the repo-evidence control at the merge base requires every bound check to fail there; it fails at the merge base, where both floors read 0.23.3. The criterion''s own check is the other one.'
+    description: 'AC4. The Lab comment parser fails for a comment that carries a 12-character sha. The read of the pull request''s comments is dod-omn24829-ac2-lab-comment-full-head, scoped local_done_gate. The lock check and the floor test run at the head are reported in the pull request comment, not in a contract.'
     source: manual
     binds_ac:
       - AC4
     checks:
       - check_type: test_passes
-        check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly -k pyproject_floors_agree
-        cwd: .
-      - check_type: test_passes
         check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly -k lab_comment
         cwd: .
   - id: dod-omn24960-ac5-entries-and-lock-source
-    description: 'AC5. A second omnibase-spi entry in any spelling fails the one-entry-each test, and a longer tag fails the lock source match. The floors test is carried as a second check because the repo-evidence control at the merge base requires every bound check to fail there; it fails at the merge base, where both floors read 0.23.3. The criterion''s own check is the other one.'
+    description: 'AC5. A second omnibase-spi entry in any spelling fails the one-entry-each test, and a longer tag fails the lock source match.'
     source: manual
     binds_ac:
       - AC5
     checks:
       - check_type: test_passes
-        check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly -k pyproject_floors_agree
-        cwd: .
-      - check_type: test_passes
         check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly -k "spi_entries or lock_source"
         cwd: .
   - id: dod-omn24960-ac6-installed-helper-and-notes
-    description: AC6. The monkeypatched test expects the installed-version helper to fail for a differing version, the first-release claim cites the omnibase_spi release notes, and contracts/OMN-24829.yaml greps one row per named check.
+    description: AC6. The monkeypatched test expects the installed-version helper to fail for a differing version, and the first-release claim cites the omnibase_spi release notes in pyproject.toml and contracts/OMN-23518.yaml.
     source: manual
     binds_ac:
       - AC6
@@ -111,6 +84,6 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly -k installed_version
         cwd: .
-      - check_type: command
-        check_value: grep -q 'CHANGELOG v0.23.15' pyproject.toml && grep -q 'v0.23.15 release notes' contracts/OMN-23518.yaml && test -z "$(grep -n 'first to carry' contracts/OMN-23518.yaml)" && test "$(grep -c 'check=pypi-pin-resolvability' contracts/OMN-24829.yaml)" -ge 1 && test "$(grep -c 'check=delegation-health-check' contracts/OMN-24829.yaml)" -ge 1
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/contracts/test_omn24829_contract_evidence.py -q --no-cov -n 0 -p no:randomly -k omn23518_contract
         cwd: .

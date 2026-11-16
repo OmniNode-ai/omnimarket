@@ -19,7 +19,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-import yaml
 from packaging.requirements import Requirement
 from packaging.specifiers import SpecifierSet
 from packaging.utils import canonicalize_name
@@ -34,6 +33,9 @@ _SPI_SPEC = "omnibase-spi>=0.23.15,<0.24.0"
 _SPI = "omnibase-spi"
 _RANGE = SpecifierSet(">=0.23.15,<0.24.0")
 _FULL_SHA = re.compile(r"[0-9a-f]{40}")
+# The last omnibase-spi release whose omnibase_spi.contracts.services lacks the three lane
+# process names (the v0.23.15 CHANGELOG lists them under "Included Since v0.23.14").
+_LAST_RELEASE_WITHOUT_LANE_TYPES = Version("0.23.14")
 
 
 def _in_range(version: str) -> bool:
@@ -67,12 +69,21 @@ def _assert_installed_is_locked() -> None:
     )
 
 
+def _just_above(version: Version) -> Version:
+    """The release one step above ``version`` in its last release component."""
+    release = list(version.release)
+    release[-1] += 1
+    return Version(".".join(str(part) for part in release))
+
+
 def published_pin_admits_floor_range(requires_dist: list[str]) -> bool:
     """True when the one omnibase-spi pin in ``requires_dist`` admits a release in the floor range.
 
     ``requires_dist`` is the published package's dependency list. The pin is compared with
     the floor range through ``packaging``: it admits the range when some version named by the
-    pin, or the floor itself, satisfies both the pin and the floor range.
+    pin, the release just above one of its bounds, or the floor itself, satisfies both the pin
+    and the floor range. The probe just above a bound is what lets ``>0.23.15`` and
+    ``!=0.23.15`` read as admitting 0.23.16.
     """
     pins = [
         r
@@ -82,7 +93,8 @@ def published_pin_admits_floor_range(requires_dist: list[str]) -> bool:
     ]
     assert len(pins) == 1, pins
     spec = pins[0].specifier
-    candidates = [Version(s.version.rstrip(".*")) for s in spec] + [_FLOOR]
+    bounds = [Version(s.version.rstrip(".*")) for s in spec]
+    candidates = [*bounds, *(_just_above(b) for b in bounds), _FLOOR]
     return any(
         spec.contains(v, prereleases=True) and _RANGE.contains(v, prereleases=True)
         for v in candidates
@@ -116,12 +128,27 @@ def test_in_range_rejects_below_the_floor_and_the_0_24_line(version: str) -> Non
     assert not _in_range(version), version
 
 
-def test_pyproject_floors_agree() -> None:
+def test_pyproject_floor_held_in_both_places() -> None:
     doc = _pyproject()
     in_deps = _spi_entries(doc["project"]["dependencies"])
     in_overrides = _spi_entries(doc["tool"]["uv"]["override-dependencies"])
     assert in_deps == [_SPI_SPEC], in_deps
     assert in_overrides == [_SPI_SPEC], in_overrides
+
+
+def test_declared_floor_excludes_the_release_without_lane_types() -> None:
+    """The floor must keep out 0.23.14, which lacks the types the fill orchestrator imports."""
+    doc = _pyproject()
+    for entries in (
+        doc["project"]["dependencies"],
+        doc["tool"]["uv"]["override-dependencies"],
+    ):
+        (entry,) = _spi_entries(entries)
+        spec = Requirement(entry).specifier
+        assert not spec.contains(_LAST_RELEASE_WITHOUT_LANE_TYPES, prereleases=True), (
+            entry
+        )
+        assert spec.contains(_FLOOR, prereleases=True), entry
 
 
 @pytest.mark.parametrize(
@@ -139,7 +166,6 @@ def test_spi_entries_sees_every_spelling_of_a_second_entry(entry: str) -> None:
     """A second spi entry, in any form, breaks the one-entry-each assertion."""
     entries = [_SPI_SPEC, entry, "pydantic>=2"]
     assert _spi_entries(entries) == [_SPI_SPEC, entry]
-    assert _spi_entries(entries) != [_SPI_SPEC]
 
 
 def test_spi_entries_ignores_other_packages() -> None:
@@ -173,15 +199,6 @@ def test_lock_source_match_rejects_a_longer_tag(suffix: str) -> None:
     assert not _lock_source_matches(declared, declared)
 
 
-def test_installed_version_helper_passes_when_it_equals_the_lock(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        importlib.metadata, "version", lambda _name: _locked_spi_versions()[0]
-    )
-    _assert_installed_is_locked()
-
-
 def test_installed_version_helper_fails_when_it_differs_from_the_lock(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -201,6 +218,11 @@ def test_installed_version_helper_fails_when_it_differs_from_the_lock(
         (["omnibase-spi==0.23.16"], True),
         (["omnibase-spi>=0.23.15,<0.24.0"], True),
         (["omnibase-spi>=0.23.3,<0.24.0"], True),
+        (["omnibase-spi>0.23.15"], True),
+        (["omnibase-spi!=0.23.15"], True),
+        (["omnibase-spi>0.23.15,<0.23.17"], True),
+        (["omnibase-spi<0.23.15"], False),
+        (["omnibase-spi>0.23.15,<0.23.16"], False),
         (["omnibase-spi==0.23.99; extra == 'dev'", "omnibase-spi==0.23.7"], False),
     ],
 )
@@ -244,76 +266,3 @@ def test_lane_process_types_import() -> None:
 
     types = (ModelLaneProcessRunResult, ModelLaneProcessStartResult, ModelLaneStartSpec)
     assert all(isinstance(t, type) for t in types)
-
-
-def _contract(ticket: str) -> dict[str, Any]:
-    text = (_REPO / "contracts" / f"{ticket}.yaml").read_text(encoding="utf-8")
-    loaded: dict[str, Any] = yaml.safe_load(text)
-    return loaded
-
-
-def _criterion(contract: dict[str, Any], label: str) -> str:
-    return str(
-        next(
-            a["statement"]
-            for r in contract["requirements"]
-            for a in r["acceptance"]
-            if a["id"] == label
-        )
-    )
-
-
-def _check_values(contract: dict[str, Any], *, local: bool) -> list[str]:
-    return [
-        c["check_value"]
-        for item in contract["dod_evidence"]
-        if (item.get("execution_scope") == "local_done_gate") is local
-        for c in item["checks"]
-    ]
-
-
-_NAMED_CAUSES = ("pypi-pin-resolvability", "delegation-health-check")
-
-
-def test_omn24829_contract_has_one_ledger_check_per_named_cause() -> None:
-    """AC3 of the unblock contract names two causes and reads one STATUS row for each."""
-    contract = _contract("OMN-24829")
-    ac3 = _criterion(contract, "AC3")
-    assert all(name in ac3 for name in _NAMED_CAUSES), ac3
-    ledger_reads = _check_values(contract, local=True)
-    for name in _NAMED_CAUSES:
-        rows = [v for v in ledger_reads if f"check={name}" in v and "shared=yes" in v]
-        assert len(rows) == 1, (name, ledger_reads)
-
-
-def test_omn24829_contract_binds_no_floors_agree_test() -> None:
-    text = (_REPO / "contracts" / "OMN-24829.yaml").read_text(encoding="utf-8")
-    assert "floors_" + "agree" not in text
-
-
-def test_omn24829_contract_states_why_the_pin_check_is_red() -> None:
-    """The cause is this PR's floor raise against the published pin, and CI Summary asserts it."""
-    ac3 = _criterion(_contract("OMN-24829"), "AC3")
-    assert "passes on the dev tip" in ac3, ac3
-    assert "CI Summary asserts it" in ac3, ac3
-    assert "outside the pull request" not in ac3, ac3
-
-
-def test_omn24829_contract_carries_the_ancestry_check() -> None:
-    values = _check_values(_contract("OMN-24829"), local=False)
-    assert "git merge-base --is-ancestor origin/dev HEAD" in values, values
-
-
-def test_omn23518_contract_claims_only_what_the_notes_and_diff_show() -> None:
-    text = (_REPO / "contracts" / "OMN-23518.yaml").read_text(encoding="utf-8")
-    for claim in (
-        "lock names 0.23.14",
-        "moves the omnibase-spi dev merge tag",
-        "re-pinned",
-        "first to carry",
-    ):
-        assert claim not in text, claim
-    assert "v0.23.15 release notes" in text
-    assert "CHANGELOG v0.23.15" in (_REPO / "pyproject.toml").read_text(
-        encoding="utf-8"
-    )

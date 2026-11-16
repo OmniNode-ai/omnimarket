@@ -274,6 +274,7 @@
   "tests/contract/test_gate_store_contract.py": 3.17,
   "tests/contract/test_gate_store_suite_hash.py": 3.26,
   "tests/contracts/test_omn19998_check_cwd.py": 0.28,
+  "tests/contracts/test_omn24829_contract_evidence.py": 0.4,
   "tests/delegation_golden/test_code_case_names_its_artifact.py": 0.04,
   "tests/delegation_golden/test_corpus_boundary_conformance.py": 0.7,
   "tests/delegation_golden/test_layer1_contract_unit.py": 0.35,

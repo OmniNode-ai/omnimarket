@@ -10,7 +10,7 @@ requirements:
     statement: The omnimarket lock resolves an omnibase-spi that carries the lane process types the floor fill orchestrator imports, and the pyproject floors in both places agree with it.
     acceptance:
       - id: AC1
-        statement: 'AC1: omnimarket''s pyproject carries omnibase-spi>=0.23.15,<0.24.0 in both places it lists the floor, and uv.lock resolves omnibase-spi 0.23.15 from the git source pyproject declares -- falsifier: run tests/ci/test_omn23518_spi_lock_floor.py at the merge base; test_pyproject_floors_agree fails there (both floors read 0.23.3; the lock already names 0.23.15 at the merge base, so the lock test passes there), and it also fails with either floor entry set back to 0.23.3, and the lock test fails with the locked omnibase-spi below 0.23.15, at 0.24.0 or above, or from a different git tag than pyproject declares'
+        statement: 'AC1: omnimarket''s pyproject carries omnibase-spi>=0.23.15,<0.24.0 in both places it lists the floor, and uv.lock resolves omnibase-spi 0.23.15 from the git source pyproject declares -- falsifier: run tests/ci/test_omn23518_spi_lock_floor.py at the merge base; test_pyproject_floor_held_in_both_places fails there (both floors read 0.23.3; the lock already names 0.23.15 at the merge base, so the lock test passes there), and it also fails with either floor entry set back to 0.23.3, and the lock test fails with the locked omnibase-spi below 0.23.15, at 0.24.0 or above, or from a different git tag than pyproject declares'
       - id: AC2
         statement: 'AC2: the locked omnibase-spi provides ModelLaneProcessRunResult, ModelLaneProcessStartResult and ModelLaneStartSpec, the three names node_floor_fill_orchestrator imports, and the installed omnibase-spi is the locked version -- falsifier: run the test in an environment whose installed omnibase-spi differs from the locked version (for example 0.23.14, which lacks the three names); test_lane_process_types_import fails on the version assertion before the import, and the import raises ImportError where the names are absent'
 evidence_requirements:
@@ -32,13 +32,13 @@ dod_evidence:
         check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly
         cwd: .
   - id: dod-omn23518-omnimarket-ac2-import
-    description: 'AC2. The installed omnibase-spi is the locked version and provides the three lane process names the fill orchestrator imports; the test fails when the installed version differs from the lock. The floors test is carried as a second check because the repo-evidence control at the merge base requires every bound check to fail there; it fails at the merge base, where both floors read 0.23.3. The criterion''s own check is the other one.'
+    description: 'AC2. The installed omnibase-spi is the locked version and provides the three lane process names the fill orchestrator imports; the test fails when the installed version differs from the lock. The second check reads the declared floor: it must keep out 0.23.14, the release that lacks the three names, and admit 0.23.15; it fails at the merge base, where both floors read 0.23.3 and admit 0.23.14.'
     source: manual
     binds_ac:
       - AC2
     checks:
       - check_type: test_passes
-        check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly -k pyproject_floors_agree
+        check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly -k declared_floor_excludes
         cwd: .
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly -k lane_process
