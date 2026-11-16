@@ -332,7 +332,7 @@ def test_built_package_setup_delegation_dashboard_journey(
             "--connection",
             "fixture-server",
             "--provider",
-            "ollama",
+            "local",
             "--model",
             model,
             "--url",
