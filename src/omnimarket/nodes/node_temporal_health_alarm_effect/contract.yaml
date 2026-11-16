@@ -1,0 +1,73 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Temporal Health Alarm Effect (OMN-24900)
+# Shape of the deploy-job-failed alarm (omnibase_infra handler_deploy_job_reading): a STATUS row with src=alarm, the
+# alarm name, the owner and the owner line. Run every 60 s by its registry_module_tick unit
+# (node_host_installer_registry_units: temporal-health-alarm-systemd).
+name: node_temporal_health_alarm_effect
+node_type: EFFECT_GENERIC
+version: 1.0.0
+lifecycle: experimental
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Reads three facts of the self-hosted Temporal server on a lab host: the server answers, a worker is polling its task
+  queue, and the newest workflow task poll is under poll_stale_after_s (600 s) old. When any is false it appends one
+  alarm row per episode, and when all three hold again it appends one recovery row. A row that cannot be appended is
+  reported in the result and tried again on the next tick; nothing is raised.
+input_model:
+  name: ModelTemporalHealthAlarmRequest
+  module: omnimarket.nodes.node_temporal_health_alarm_effect.models.model_temporal_health_alarm
+output_model:
+  name: ModelTemporalHealthAlarmResult
+  module: omnimarket.nodes.node_temporal_health_alarm_effect.models.model_temporal_health_alarm
+handler:
+  class: HandlerTemporalHealthAlarm
+  name: HandlerTemporalHealthAlarm
+  module: omnimarket.nodes.node_temporal_health_alarm_effect.handlers.handler_temporal_health_alarm
+entrypoint:
+  name: NodeTemporalHealthAlarmEffect
+  module: omnimarket.nodes.node_temporal_health_alarm_effect.node
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - event_model:
+        name: ModelTemporalHealthAlarmRequest
+        module: omnimarket.nodes.node_temporal_health_alarm_effect.models.model_temporal_health_alarm
+      handler:
+        name: HandlerTemporalHealthAlarm
+        module: omnimarket.nodes.node_temporal_health_alarm_effect.handlers.handler_temporal_health_alarm
+schedule:
+  installer: node_host_installer_registry_units
+  unit: temporal-health-alarm-systemd
+  start_interval_s: 60
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 60000
+  side_effects:
+  - runs the temporal CLI against the declared address
+  - appends an alarm or recovery row to the rolling work ledger
+  - writes the open episode to its state directory
+metadata:
+  ticket: OMN-24900
+  transport_type: in_process
+execution:
+  deterministic: false
+  side_effects: true
+# The row cells and the facts' bounds. ONEX_TEMPORAL_CLI, ONEX_TEMPORAL_ADDRESS, ONEX_TEMPORAL_NAMESPACE and
+# ONEX_TEMPORAL_TASK_QUEUE in the unit's environment override the matching keys.
+config:
+  alarm: temporal-down
+  poll_stale_after_s: 600
+  row_lane: temporal-health-alarm
+  row_actor: script:temporal-health-alarm
+  row_ticket: OMN-24900
+  alarm_owner: orchestrator
+  alarm_owner_line: restart the Temporal server or worker unit through its declared installer and read its log
+  temporal_cli: temporal
+  address: 127.0.0.1:7233
+  namespace: default
+  task_queue: run-engine
+  cli_timeout_s: 20

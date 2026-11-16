@@ -1445,6 +1445,34 @@ units:
       ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}"
     evidence_file: .local/state/omni/lab-disk-hygiene/last-run.json
     state_directory: .onex_state/lab-disk-hygiene
+  # The Temporal health alarm on the lab host that runs the self-hosted Temporal server (OMN-24900): every 60 s it reads
+  # the server's cluster health and the worker's task queue pollers and appends one alarm row per episode.
+  temporal-health-alarm-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-temporal-health-alarm
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 60
+      run_timeout_s: 55
+      run_at_load: true
+      description: every 60 s and at load
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_temporal_health_alarm_effect
+    entry_file: src/omnimarket/nodes/node_temporal_health_alarm_effect/__main__.py
+    probe_argv: ["--probe"]
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_file: .config/onex/temporal-health-alarm.env
+    evidence_file: .local/state/omni/temporal-health-alarm/last-run.json
+    state_directory: .onex_state/temporal-health-alarm
   # The three landing units on a Linux pool host (OMN-23662): the same modules, overlays, probes and environment as the
   # launchd units above, as a systemd user service and timer, so the new landing workflow runs in observe mode on a lab host
   # beside the controller. Each start check runs the unit with its rendered --omni-home and --state-dir plus --probe.
