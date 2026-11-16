@@ -382,8 +382,8 @@ def test_postgres_sequence_read_is_scoped_parameterized_and_keeps_null_history(
             if fail:
                 raise RuntimeError("postgresql://test-private-dsn")
 
-        def fetchall(self) -> list[tuple[str, str, int | None]]:
-            return [(row.row_id, row.raw_row, row.ledger_seq) for row in rows]
+        def fetchall(self) -> list[tuple[str, str, int | None, bool]]:
+            return [(row.row_id, row.raw_row, row.ledger_seq, False) for row in rows]
 
     class Connection:
         closed = False
@@ -418,6 +418,82 @@ def test_postgres_sequence_read_is_scoped_parameterized_and_keeps_null_history(
     assert len(executed) == 1
     query, params = executed[0]
     assert params == ("other-ledger", 2)
-    assert "WHERE ledger_id = %s AND (ledger_seq <= %s OR ledger_seq IS NULL)" in query
+    assert "WHERE ledger_id = %s AND (ledger_seq <= %s OR ledger_seq IS NULL" in query
     assert "row_ts" not in query
     assert "other-ledger" not in query
+
+
+class _ProvisionalTableCursor:
+    """A cursor over one fixed table that answers only the columns the query names.
+
+    The table is judge rows 1-3 plus a live unsequenced row that took the provisional number 4 (the judge's
+    row 4 has not arrived). A query that does not name ``ledger_seq_provisional`` cannot tell the provisional
+    row from a judged one, so it gets the bare number, as the head's reader did (OMN-24683).
+    """
+
+    def __init__(self) -> None:
+        self.rows = _seq_rows(1, 2, 3, 4)
+        self._answer: list[tuple[object, ...]] = []
+
+    def __enter__(self) -> _ProvisionalTableCursor:
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        pass
+
+    def execute(self, query: object, params: tuple[object, ...]) -> None:
+        names_flag = "ledger_seq_provisional" in str(query)
+        self._answer = [
+            (row.row_id, row.raw_row, row.ledger_seq, row.ledger_seq == 4)
+            if names_flag
+            else (row.row_id, row.raw_row, row.ledger_seq)
+            for row in self.rows
+        ]
+
+    def fetchall(self) -> list[tuple[object, ...]]:
+        return self._answer
+
+
+def _provisional_table_reader() -> object:
+    from omnimarket.nodes.node_context_source_ledger_effect.handlers.ledger_row_reader import (
+        ModelLedgerSourceBinding,
+        PostgresLedgerRowReader,
+    )
+
+    class Connection:
+        closed = False
+
+        def cursor(self) -> _ProvisionalTableCursor:
+            return _ProvisionalTableCursor()
+
+    reader = PostgresLedgerRowReader(
+        ModelLedgerSourceBinding(
+            relation="fixture.work_ledger_rows",
+            dsn_env="TEST_LEDGER_SEQUENCE_DSN",
+            binding_ref="test",
+        )
+    )
+    reader._conn = Connection()
+    return reader
+
+
+def test_provisional_row_is_read_unsequenced_by_the_postgres_sequence_reader() -> None:
+    """Judge rows 1-3 and a provisional row 4: the reader returns the provisional row with no sequence."""
+    from omnimarket.nodes.node_context_source_ledger_effect.handlers.ledger_row_reader import (
+        PostgresLedgerRowReader,
+    )
+
+    reader = _provisional_table_reader()
+    assert isinstance(reader, PostgresLedgerRowReader)
+    result = reader.read_sequence(ledger_id=LEDGER, through_seq=4)
+    assert sorted(row.ledger_seq or 0 for row in result) == [0, 1, 2, 3]
+    assert sum(row.ledger_seq is None for row in result) == 1
+
+
+def test_provisional_row_four_does_not_resolve_a_revision_through_four() -> None:
+    """The review's case end to end: the revision reads STALE at watermark 3, never complete."""
+    reader = _provisional_table_reader()
+    result = _handler(reader).handle(_request(_seq_revision(4)))  # type: ignore[arg-type]
+    assert result.status is EnumContextSourceStatus.STALE
+    assert result.watermark_reached == 3
+    assert not result.entries

@@ -207,12 +207,20 @@ class PostgresLedgerRowReader:
         mistake a contiguous modern tail for complete authority history. Only a
         governed backfill can remove that stale condition; this reader never
         assigns synthetic sequences or writes the projection.
+
+        A projection-assigned (provisional) sequence is not the judge's: such a
+        row is returned with ``ledger_seq`` None, whatever number it holds, so a
+        snapshot that holds one reads STALE exactly as for a legacy NULL row and
+        never resolves complete on a number the judge has not assigned. The row
+        is included even above ``through_seq``: it is unsequenced, and an
+        unsequenced row is always part of the snapshot's staleness (OMN-24683).
         """
         schema, table = self._binding.relation.split(".", 1)
         query = pgsql.SQL(
-            "SELECT row_id, raw_row, ledger_seq FROM {relation}"
-            " WHERE ledger_id = %s AND (ledger_seq <= %s OR ledger_seq IS NULL)"
-            " ORDER BY ledger_seq NULLS FIRST, row_id"
+            "SELECT row_id, raw_row, ledger_seq, ledger_seq_provisional FROM {relation}"
+            " WHERE ledger_id = %s AND (ledger_seq <= %s OR ledger_seq IS NULL"
+            " OR ledger_seq_provisional)"
+            " ORDER BY ledger_seq_provisional DESC, ledger_seq NULLS FIRST, row_id"
         ).format(relation=pgsql.Identifier(schema, table))
         try:
             with self._connect().cursor() as cursor:
@@ -223,9 +231,9 @@ class PostgresLedgerRowReader:
                     row_id=row_id,
                     raw_row=raw_row,
                     source_ref=f"{table}:{row_id}",
-                    ledger_seq=ledger_seq,
+                    ledger_seq=None if provisional else ledger_seq,
                 )
-                for row_id, raw_row, ledger_seq in fetched
+                for row_id, raw_row, ledger_seq, provisional in fetched
             )
         except Exception as exc:
             with contextlib.suppress(Exception):

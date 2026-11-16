@@ -281,3 +281,19 @@ async def test_provisional_rows_moved_counts_each_row_moved() -> None:
     assert writer.provisional_rows_moved == 2
     assert writer.sequence_counters["provisional_rows_moved"] == 2
     assert connection.conflicts == {}
+
+
+@pytest.mark.asyncio
+async def test_provisional_rows_moved_leaves_the_row_being_written_out_of_the_count() -> (
+    None
+):
+    """Third review of omnimarket#6306, finding 4: provisional rows at 1 and 2, the judge accepts the second as 1."""
+    writer, connection = _writer()
+    await _project(writer, _claim(1), None)  # provisional 1
+    await _project(writer, _claim(2), None)  # provisional 2
+    await _project(writer, _claim(2), 1)  # the judge accepts the second row as 1
+    seqs = _seqs(connection)
+    assert seqs[_claim(2)] == 1  # the judge's number stands on its own row
+    assert seqs[_claim(1)] == 3  # the other provisional row moved above the tip
+    assert connection.conflicts == {}
+    assert writer.provisional_rows_moved == 1  # one row moved, not two

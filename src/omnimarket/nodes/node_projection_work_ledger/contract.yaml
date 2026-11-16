@@ -128,7 +128,9 @@ work_ledger:
   # states a number a provisional row holds, the judge's number stands and the projection moves its own rows:
   # the provisional rows at or above that number go, in their current order, above the tip, so provisional rows
   # keep their relative order to one another. A provisional row is read as unsequenced by every reader (the
-  # unjudged-row reading, the gap check, the history completeness read and the parity split).
+  # unjudged-row reading, the gap check, the history completeness read, the parity split and the context-source
+  # sequence reader in node_context_source_ledger_effect, which returns it with no ledger_seq so a revision never
+  # resolves complete on a number the judge has not assigned).
   sequence_assigned_sources: [onex-ledger]
   # OMN-23606: the row types work_ledger_latest keeps the newest row of, per lane and per ticket. A board or lane
   # placement reads that table (the work ledger query node's latest-state query) instead of paging raw rows.

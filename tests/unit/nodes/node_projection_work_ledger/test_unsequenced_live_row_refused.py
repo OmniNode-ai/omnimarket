@@ -418,3 +418,48 @@ def test_seam_the_emit_node_default_source_is_not_a_refused_source() -> None:
         }
     )
     assert result["rows_upserted"] == 2
+
+
+def test_sequence_counters_are_logged_at_info_when_one_changes(
+    caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Third review of omnimarket#6306, finding 3: the runtime prints the result's counters at DEBUG only."""
+    import logging
+
+    _stateful_holds(monkeypatch)
+    writer = _writer(_FakeDb())
+    with caplog.at_level(logging.INFO):
+        writer.handle(_live_row())
+    lines = [r.getMessage() for r in caplog.records if r.levelno == logging.INFO]
+    counters = [line for line in lines if "sequence counters" in line]
+    assert len(counters) == 1
+    assert "unsequenced_live_rows_in=1" in counters[0]
+    assert "unsequenced_live_rows_sequenced=1" in counters[0]
+    assert "provisional_rows_moved=0" in counters[0]
+
+
+def test_sequence_counters_are_not_logged_when_nothing_changed(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    import logging
+
+    writer = _writer(_FakeDb())
+    ordinary = {**_live_row(), "ledger_seq": 5}  # the judge's own row: no counter moves
+    with caplog.at_level(logging.INFO):
+        writer.handle(ordinary)
+    assert not [r for r in caplog.records if "sequence counters" in r.getMessage()]
+
+
+def test_sequence_counters_are_logged_for_a_refused_delivery(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    import logging
+
+    writer = _unassigned(_writer(_FakeDb()))
+    with caplog.at_level(logging.INFO), pytest.raises(UnsequencedLiveRowError):
+        writer.handle(_live_row())
+    counters = [
+        r.getMessage() for r in caplog.records if "sequence counters" in r.getMessage()
+    ]
+    assert len(counters) == 1
+    assert "unsequenced_live_rows_dead_lettered=1" in counters[0]

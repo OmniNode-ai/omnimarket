@@ -152,6 +152,24 @@ def test_provisional_extra_counts_as_unsequenced(
     assert (explain["extra_unsequenced"], explain["extra_sequenced"]) == (1, 1)
 
 
+def test_an_export_without_a_provisional_key_reads_a_numbered_row_as_sequenced(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Third review of omnimarket#6306, finding 5: the export cannot say, and the reader documents that.
+
+    An entry holding a ``ledger_seq`` and no ``ledger_seq_provisional`` key is counted sequenced; the docstring of
+    ``load_projection_unsequenced_json`` names that blind spot, and this test pins it so a change is deliberate.
+    """
+    from omnimarket.nodes.node_projection_work_ledger import parity_unsequenced
+
+    doc = parity_unsequenced.load_projection_unsequenced_json.__doc__ or ""
+    assert "NO such key" in doc
+    assert "reads as sequenced" in doc
+    extras = [_entry(UNSEQUENCED_EXTRA, "2026-10-03T04:00:00Z", ledger_seq=300)]
+    _, explain = _explain(tmp_path, capsys, extras)
+    assert (explain["extra_unsequenced"], explain["extra_sequenced"]) == (0, 1)
+
+
 def test_provisional_rows_are_selected_as_unsequenced_in_the_database_read() -> None:
     from omnimarket.nodes.node_projection_work_ledger.parity_unsequenced import (
         SELECT_UNSEQUENCED,

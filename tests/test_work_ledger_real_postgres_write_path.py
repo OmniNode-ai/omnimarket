@@ -428,6 +428,25 @@ async def test_provisional_rows_keep_their_arrival_order_over_three_judge_rows()
 
 @pytest.mark.integration
 @pytest.mark.asyncio
+async def test_provisional_rows_moved_leaves_the_row_being_written_out_on_real_postgres() -> (
+    None
+):
+    """Third review of omnimarket#6306, finding 4: provisional rows at 1 and 2, the judge accepts the second as 1."""
+    async with _migrated() as (writer, connection, schema):
+        await _live(writer, 7, None)  # provisional 1
+        await _live(writer, 8, None)  # provisional 2
+        await _live(writer, 8, 1)  # the judge accepts the second row as 1
+        assert await _seq_of(connection, schema, 8) == 1
+        assert await _seq_of(connection, schema, 7) == 3
+        conflicts = await connection.fetchval(
+            f"SELECT count(*) FROM {schema}.work_ledger_seq_conflicts"
+        )
+        assert conflicts == 0
+        assert writer.provisional_rows_moved == 1  # one row moved, not two
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
 async def test_provisional_row_is_unsequenced_to_the_gap_check_and_the_parity_split(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -327,8 +327,10 @@ class WorkLedgerProjectionWriter(BaseProjectionRunner):
         self.unsequenced_live_rows_sequenced = 0
         self.unsequenced_live_rows_redelivered = 0
         self.unsequenced_live_rows_dead_lettered = 0
-        #: Provisional rows moved to fresh numbers because the judge stated a number one of them held.
+        #: Provisional rows moved to fresh numbers because the judge stated a number one of them held (the
+        #: row being written is never counted: it takes the judge's number, it is not moved).
         self.provisional_rows_moved = 0
+        self._logged_sequence_counters: dict[str, int] = self.sequence_counters
 
     @property
     def sequence_counters(self) -> dict[str, int]:
@@ -388,10 +390,24 @@ class WorkLedgerProjectionWriter(BaseProjectionRunner):
                     err,
                     exc_info=err,
                 )
+                # A refused delivery moves a counter too (dead_lettered, or ``in`` with no outcome).
+                self._log_sequence_counters()
                 raise
         # ``rows_upserted`` is the key the runtime's write-path guard reads; the sequence counters ride
-        # beside it as running totals of this writer.
+        # beside it as running totals of this writer. The runtime prints the rest of this result at DEBUG, so
+        # the counters are also logged at INFO whenever one of them changes: that line is the operator reading.
+        self._log_sequence_counters()
         return {"rows_upserted": written, **self.sequence_counters}
+
+    def _log_sequence_counters(self) -> None:
+        """Log the sequence counters at INFO when any of them changed since the last line (OMN-24634)."""
+        counters = self.sequence_counters
+        if counters != self._logged_sequence_counters:
+            self._logged_sequence_counters = counters
+            logger.info(
+                "work-ledger projection sequence counters: %s",
+                " ".join(f"{name}={value}" for name, value in counters.items()),
+            )
 
     async def _project_one_message(
         self, topic: str, data: dict[str, Any], meta: MessageMeta
@@ -494,7 +510,13 @@ class WorkLedgerProjectionWriter(BaseProjectionRunner):
                         moved_rows = await conn.fetch(
                             _MOVE_PROVISIONAL, row.ledger_id, row.ledger_seq
                         )
-                        moved += len(moved_rows)
+                        # The row being written may itself be among them (its own provisional copy sat at or
+                        # above the stated number): it is written with the judge's number, not moved.
+                        moved += sum(
+                            1
+                            for moved_row in moved_rows
+                            if moved_row["row_id"] != row.row_id
+                        )
                     else:
                         await conn.execute(
                             _INSERT_SEQ_CONFLICT,

@@ -39,7 +39,14 @@ SELECT_UNSEQUENCED = """
 def load_projection_unsequenced_json(
     path: Path, since: datetime, until: datetime
 ) -> frozenset[str]:
-    """Row ids in the window whose export HAS a ``ledger_seq`` key holding None, or marks it provisional."""
+    """Row ids in the window whose export HAS a ``ledger_seq`` key holding None, or marks it provisional.
+
+    The provisional mark is read from the export's ``ledger_seq_provisional`` key. An export entry that holds a
+    ``ledger_seq`` number and has NO such key (an export written before that column existed, or by a producer
+    that does not select it) cannot say whether the number is the judge's or the projection's: this reader
+    counts it sequenced, so a provisional row in such an export reads as sequenced. That blind spot is the
+    export's, not the database's; ``load_unsequenced_db`` reads the column itself and has none (OMN-24683).
+    """
     data = json.loads(path.read_text(encoding="utf-8"))
     return frozenset(
         str(r["row_id"])

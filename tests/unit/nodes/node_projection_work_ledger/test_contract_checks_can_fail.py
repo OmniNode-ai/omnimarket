@@ -114,3 +114,34 @@ def test_findings_comment_check_fails_until_a_comment_answers_every_finding(
     assert _run(command, tmp_path) == 0
     _stand_in(tmp_path, "onex", "exit 1")
     assert _run(command, tmp_path) != 0  # the read itself failing is a failure
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        pytest.param("NOT fixed", id="not-fixed"),
+        pytest.param("not argued", id="not-argued"),
+        pytest.param("still unfixed", id="unfixed"),
+        pytest.param("the reviewer says this is fixed", id="fixed-mid-line"),
+    ],
+)
+def test_findings_comment_check_fails_for_numbered_lines_that_deny_the_fix(
+    tmp_path: Path, answer: str
+) -> None:
+    """Review of omnimarket#6306, third review, finding 2: six numbered lines that each say NOT fixed exited 0."""
+    command = _check("OMN-24644", "dod-omn24644-findings-comment")
+    lines = "\n".join(f"{n}. {answer}" for n in range(1, 7))
+    _onex_answering(tmp_path, [f"Head {HEAD[:12]}\n{lines}"])
+    assert _run(command, tmp_path) != 0
+    _onex_answering(tmp_path, [_answer(range(1, 7))])
+    assert (
+        _run(command, tmp_path) == 0
+    )  # positive control: the answer form still passes
+    _onex_answering(
+        tmp_path,
+        [
+            f"Head {HEAD[:12]}\n"
+            + "\n".join(f"{n}. **fixed** evidence" for n in range(1, 7))
+        ],
+    )
+    assert _run(command, tmp_path) == 0  # a bold answer is still an answer
