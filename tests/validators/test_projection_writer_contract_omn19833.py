@@ -216,6 +216,20 @@ def test_the_key_the_gate_demands_is_the_key_the_runtime_counts() -> None:
     )
 
 
+def _add_writer(
+    found: list[tuple[str, type[BaseProjectionRunner]]],
+    node: str,
+    cls: type[BaseProjectionRunner],
+) -> None:
+    """Count a writer class once per node, however many contract entries route it.
+
+    The gate counts a (class, module) once per node (a writer routed once per source topic is one
+    writer) and two different writer classes in one node twice, so the runtime reading does the same.
+    """
+    if (node, cls) not in found:
+        found.append((node, cls))
+
+
 def _runtime_writers() -> list[tuple[str, type[BaseProjectionRunner]]]:
     found: list[tuple[str, type[BaseProjectionRunner]]] = []
     for path in sorted(_NODES_ROOT.glob("*/contract.yaml")):
@@ -225,13 +239,67 @@ def _runtime_writers() -> list[tuple[str, type[BaseProjectionRunner]]]:
             if (
                 issubclass(cls, BaseProjectionRunner)
                 and getattr(cls, gate.INPROCESS_ATTR, False) is True
-                # The gate counts a writer once per node however many contract
-                # entries route it (a writer routed once per source topic is one
-                # writer), so the runtime reading counts it once too.
-                and (path.parent.name, cls) not in found
             ):
-                found.append((path.parent.name, cls))
+                _add_writer(found, path.parent.name, cls)
     return found
+
+
+class _WriterA(BaseProjectionRunner):
+    onex_runtime_inprocess_dispatch = True
+
+
+class _WriterB(BaseProjectionRunner):
+    onex_runtime_inprocess_dispatch = True
+
+
+def test_the_runtime_reading_counts_two_writer_classes_in_one_node_twice() -> None:
+    found: list[tuple[str, type[BaseProjectionRunner]]] = []
+    for cls in (_WriterA, _WriterB, _WriterA, _WriterB):
+        _add_writer(found, "node_one", cls)
+    assert found == [("node_one", _WriterA), ("node_one", _WriterB)]
+    # A writer routed once per source topic is one writer, in one node or another.
+    other: list[tuple[str, type[BaseProjectionRunner]]] = []
+    for node in ("node_one", "node_one", "node_two"):
+        _add_writer(other, node, _WriterA)
+    assert other == [("node_one", _WriterA), ("node_two", _WriterA)]
+
+
+def test_the_gate_counts_two_writer_classes_in_one_node_twice_and_one_routed_twice_once(
+    tmp_path: Path,
+) -> None:
+    node_dir = tmp_path / "node_two_writers"
+    (node_dir / "handlers").mkdir(parents=True)
+    (node_dir / "handlers" / "writers.py").write_text(
+        "from omnimarket.projection.runner import BaseProjectionRunner\n\n"
+        + "".join(
+            f"class {name}(BaseProjectionRunner):\n"
+            "    onex_runtime_inprocess_dispatch = True\n"
+            "    def handle(self, input_data):\n"
+            '        return {"rows_upserted": 1}\n\n'
+            for name in ("WriterOne", "WriterTwo")
+        ),
+        encoding="utf-8",
+    )
+
+    def route(name: str, operation: str) -> dict[str, Any]:
+        return {
+            "operation": operation,
+            "handler": {
+                "name": name,
+                "module": "omnimarket.nodes.node_two_writers.handlers.writers",
+            },
+        }
+
+    def contract(*handlers: dict[str, Any]) -> None:
+        (node_dir / "contract.yaml").write_text(
+            yaml.safe_dump({"handler_routing": {"handlers": list(handlers)}}),
+            encoding="utf-8",
+        )
+
+    contract(route("WriterOne", "a"), route("WriterTwo", "b"))
+    assert gate.scan(tmp_path) == ([], 2)
+    contract(route("WriterOne", "a"), route("WriterOne", "b"))
+    assert gate.scan(tmp_path) == ([], 1)
 
 
 def test_the_gates_writers_are_the_runtimes_in_process_writers() -> None:

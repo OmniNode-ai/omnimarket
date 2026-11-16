@@ -46,6 +46,39 @@ def _infrastructure_unscorable(item: ModelEvalItemRow) -> bool:
     )
 
 
+def _sample_state(
+    record: ModelEvalRunRecord, tries: tuple[ModelEvalItemRow, ...]
+) -> tuple[EnumEvalRunState, str]:
+    """Whether the first tries held are the registered sequences: closed, still closing, or void.
+
+    A close that names the context arm and replicate of every sequence is compared on the full
+    (task, model, arm, replicate) key. A close that does not (dev's names only task and model) is
+    compared per arm and replicate the held tries came from: each of them must hold every
+    registered (task, model) and nothing else, so one arm's tries cannot stand for another's.
+    A held key nobody registered voids the run; a registered key not yet held keeps it closing.
+    """
+    if all(s.context_arm for s in record.sequences):
+        registered_full = {
+            (s.task_id, s.model_id, s.context_arm, s.replicate)
+            for s in record.sequences
+        }
+        held_full = {(t.task_id, t.model_id, t.context_arm, t.replicate) for t in tries}
+        if held_full - registered_full:
+            return EnumEvalRunState.VOID, SAMPLE_MISMATCH
+        if registered_full - held_full:
+            return EnumEvalRunState.CLOSING, ""
+        return EnumEvalRunState.CLOSED, ""
+    registered = {(s.task_id, s.model_id) for s in record.sequences}
+    by_arm: dict[tuple[str, int], set[tuple[str, str]]] = defaultdict(set)
+    for t in tries:
+        by_arm[(t.context_arm, t.replicate)].add((t.task_id, t.model_id))
+    if any(held - registered for held in by_arm.values()):
+        return EnumEvalRunState.VOID, SAMPLE_MISMATCH
+    if not by_arm or any(registered - held for held in by_arm.values()):
+        return EnumEvalRunState.CLOSING, ""
+    return EnumEvalRunState.CLOSED, ""
+
+
 def run_state_of(
     run_id: str,
     record: ModelEvalRunRecord | None,
@@ -63,10 +96,7 @@ def run_state_of(
     ):
         return EnumEvalRunState.CLOSING, ""
     if record.sequences:
-        registered = {(s.task_id, s.model_id) for s in record.sequences}
-        held = {(t.task_id, t.model_id) for t in tries}
-        if held != registered:
-            return EnumEvalRunState.VOID, SAMPLE_MISMATCH
+        return _sample_state(record, tries)
     return EnumEvalRunState.CLOSED, ""
 
 

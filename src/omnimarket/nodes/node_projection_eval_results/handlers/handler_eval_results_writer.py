@@ -41,6 +41,7 @@ from omnimarket.nodes.node_projection_eval_results.models.model_eval_projection_
     TOPIC_SNAPSHOT,
     TOPIC_TICK,
     ModelEvalProjectionRequest,
+    ModelEvalRefusedPart,
 )
 from omnimarket.nodes.node_projection_eval_results.models.model_eval_rows import (
     EnumEvalRefusal,
@@ -57,7 +58,7 @@ from omnimarket.projection.handler_shim import (
 )
 from omnimarket.projection.runner import BaseProjectionRunner, MessageMeta
 from omnimarket.projection.tenant_isolation import house_tenant_write_stamp
-from omnimarket.topic_namespace import apply_topic_namespace
+from omnimarket.topic_namespace import apply_topic_namespace, strip_topic_namespace
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +71,8 @@ _DLQ_REFUSALS = frozenset(
         EnumEvalRefusal.INVALID_ITEM,
         EnumEvalRefusal.TRACE_DIGEST_MISMATCH,
         EnumEvalRefusal.UNMAPPED_TIER,
+        EnumEvalRefusal.UNMAPPED_PROVIDER,
+        EnumEvalRefusal.TENANT_MISMATCH,
     }
 )
 _TENANT_TABLE = "eval_item_scores"
@@ -105,6 +108,7 @@ class EvalResultsProjectionWriter(BaseProjectionRunner):
         self._clock = clock or (lambda: datetime.now(UTC))
         self._store_factory = store_factory
         self._last_published_at: datetime | None = None
+        self._tenants_seen: set[str] = set()
 
     @property
     def subscribe_topics(self) -> list[str]:
@@ -160,9 +164,33 @@ class EvalResultsProjectionWriter(BaseProjectionRunner):
         )
         return str(UUID(str(tenant)))
 
+    async def _route_refusals(
+        self, payload: dict[str, Any], refused: tuple[ModelEvalRefusedPart, ...]
+    ) -> int:
+        """Send each refusal that names a malformed delivery or a mapping gap to the contract's DLQ topic."""
+        routed = 0
+        for refusal in refused:
+            if refusal.reason in _DLQ_REFUSALS:
+                routed += int(
+                    await route_to_dlq(
+                        publish=await self.get_publish_fn(),
+                        dlq_topics=self.poison_dlq_topics,
+                        original_message=payload,
+                        failure_reason=f"{refusal.reason.value}: {refusal.detail}",
+                        handler=type(self).__name__,
+                        correlation_id=correlation_id_from_payload(
+                            payload, fallback=refusal.subject
+                        ),
+                    )
+                )
+        return routed
+
     async def _project(
         self, topic: str, data: dict[str, Any], meta: MessageMeta
     ) -> dict[str, Any]:
+        # The consume path hands the contract's names, a namespaced dispatch the physical ones:
+        # strip first (tolerant of either) so both match what the contract declares.
+        topic = strip_topic_namespace(topic)
         if topic == TOPIC_TICK:
             return await self._tick(data)
         if topic not in SOURCE_TOPICS:
@@ -171,9 +199,22 @@ class EvalResultsProjectionWriter(BaseProjectionRunner):
             )
         overlay = self.overlay()
         payload = {k: v for k, v in data.items() if k not in RUNTIME_INJECTED_KEYS}
-        tenant = self._default_tenant(data)
-        observed_at = _instant(data.get(INJECTED_ENVELOPE_TIMESTAMP_KEY))
+        try:
+            tenant = self._default_tenant(data)
+            observed_at = _instant(data.get(INJECTED_ENVELOPE_TIMESTAMP_KEY))
+        except ValueError as exc:
+            return await self._refused_outcome(
+                payload,
+                ModelEvalRefusedPart(
+                    reason=EnumEvalRefusal.INVALID_EVENT,
+                    subject=topic,
+                    detail=str(exc),
+                ),
+            )
         plan = self._fold.read_plan(topic, payload, tenant)
+        if plan.refusal is not None:
+            return await self._refused_outcome(payload, plan.refusal)
+        self._tenants_seen.add(tenant)
         store = self._store_factory(self.db)
         items, record, parts = await store.load(plan)
         result = self._fold.handle(
@@ -191,21 +232,7 @@ class EvalResultsProjectionWriter(BaseProjectionRunner):
             )
         )
         counts = await store.apply(plan, result)
-        routed = 0
-        for refusal in result.refused:
-            if refusal.reason in _DLQ_REFUSALS:
-                routed += int(
-                    await route_to_dlq(
-                        publish=await self.get_publish_fn(),
-                        dlq_topics=self.poison_dlq_topics,
-                        original_message=payload,
-                        failure_reason=f"{refusal.reason.value}: {refusal.detail}",
-                        handler=type(self).__name__,
-                        correlation_id=correlation_id_from_payload(
-                            payload, fallback=refusal.subject
-                        ),
-                    )
-                )
+        routed = await self._route_refusals(payload, result.refused)
         outcome: dict[str, Any] = {
             "rows_upserted": sum(counts.values()),
             **{f"{name}_written": n for name, n in counts.items()},
@@ -218,8 +245,23 @@ class EvalResultsProjectionWriter(BaseProjectionRunner):
             )
         return outcome
 
+    async def _refused_outcome(
+        self, payload: dict[str, Any], refusal: ModelEvalRefusedPart
+    ) -> dict[str, Any]:
+        """A delivery that cannot be read: nothing is read or written and it goes to the DLQ."""
+        routed = await self._route_refusals(payload, (refusal,))
+        return {
+            "rows_upserted": 0,
+            "items_written": 0,
+            "traces_written": 0,
+            "run_written": 0,
+            "rates_written": 0,
+            "refused": [refusal.model_dump(mode="json")],
+            "dlq_routed": routed,
+        }
+
     async def _tick(self, data: dict[str, Any]) -> dict[str, Any]:
-        """Republish the snapshot at the tick's time once per publish interval; reads no other clock."""
+        """Republish each tenant's snapshot at the tick's time once per publish interval; reads no other clock."""
         now = _instant(data.get("now") or data.get(INJECTED_ENVELOPE_TIMESTAMP_KEY))
         interval = self.overlay().publish_interval_s
         last = self._last_published_at
@@ -228,10 +270,17 @@ class EvalResultsProjectionWriter(BaseProjectionRunner):
                 "rows_upserted": 0,
                 "snapshot": {"published": False, "reason": "interval"},
             }
-        snapshot = await self._publish(
-            self._store_factory(self.db), self._default_tenant(data), published_at=now
-        )
-        return {"rows_upserted": 0, "snapshot": snapshot}
+        default = self._default_tenant(data)
+        store = self._store_factory(self.db)
+        snapshot = await self._publish(store, default, published_at=now)
+        others = sorted(self._tenants_seen - {default})
+        for tenant in others:
+            await self._publish(store, tenant, published_at=now)
+        return {
+            "rows_upserted": 0,
+            "snapshot": snapshot,
+            "tenants_published": 1 + len(others),
+        }
 
     async def _publish(
         self, store: Any, tenant: str, *, published_at: datetime

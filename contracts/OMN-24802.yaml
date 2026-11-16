@@ -32,10 +32,17 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/test_omn16874_consumer_flow_writer_dispatch.py tests/validators/test_projection_writer_contract_omn19833.py tests/unit/scripts/test_application_relation_inventory.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn24802-ac2
-  description: 'AC2: the eval projection node still passes its own unit and golden-chain tests after the operation rename'
+  description: 'AC2: the rolling ledger holds a STATUS row naming omnimarket#6204 with a cause= cell and shared=yes (the grant on the four eval tables that sits in the infrastructure topology). The check exits non-zero when no such row exists; it reads the ledger through the lane-brief reader, so it runs at the local Done gate, never on the hosted runner.'
   source: manual
+  execution_scope: local_done_gate
   binds_ac:
   - AC2
+  checks:
+  - check_type: command
+    check_value: bash -c 'python3 "${OMNI_PLUGIN_ROOT:?}/skills/lane-brief/scripts/lane_brief.py" grep "omnimarket#6204" --tail 500 | grep -F " | STATUS | " | grep -F "cause=" | grep -qF "shared=yes"'
+- id: dod-omn24802-ac2-node-tests
+  description: 'the eval projection node still passes its own unit and golden-chain tests after the operation rename (supporting evidence, not the AC2 binding)'
+  source: manual
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_projection_eval_results tests/test_golden_chain_projection_eval_results.py -q --no-cov -n 0 -p no:randomly

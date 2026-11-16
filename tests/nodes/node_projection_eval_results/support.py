@@ -95,6 +95,7 @@ def try_row(
         "prompt_template_version": "prompt-v1",
         "scorer_version": "scorer-v1",
         "context_factor_subset": "off",
+        "provider": "local",
     }
     return ModelAttemptReductionRow(**(fields | extra)).model_dump(mode="json")
 
@@ -258,11 +259,6 @@ class MemoryStore:
         self, plan: ModelEvalReadPlan, result: ModelEvalProjectionResult
     ) -> dict[str, int]:
         counts = {"items": 0, "traces": 0, "run": 0, "rates": 0}
-        for scoring in result.drop_scoring_ids:
-            for key in [
-                k for k in self.parts if k[0] == plan.tenant_id and k[2] == scoring
-            ]:
-                del self.parts[key]
         for item in result.items:
             key = (item.tenant_id, item.item_key)
             held = self.items.get(key)
@@ -277,7 +273,7 @@ class MemoryStore:
         if result.run_record is not None:
             key = (result.run_record.tenant_id, result.run_record.run_id)
             held_run = self.runs.get(key)
-            if held_run is None or held_run.closed_at < result.run_record.closed_at:
+            if held_run is None or result.run_record.supersedes(held_run):
                 self.runs[key] = result.run_record
                 counts["run"] += 1
         if plan.run_id and (result.rates or result.items or result.run_record):

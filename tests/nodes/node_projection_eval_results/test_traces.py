@@ -89,7 +89,9 @@ async def test_a_redelivered_part_changes_nothing() -> None:
     assert len(store.parts) == 1
 
 
-async def test_a_trace_whose_parts_do_not_reassemble_is_refused_never_stored() -> None:
+async def test_a_trace_whose_parts_do_not_reassemble_is_refused_at_its_last_part_and_never_completed() -> (
+    None
+):
     store = MemoryStore()
     writer, _ = make_writer(store)
     parts = list(trace_parts(RUN, "t1", text="x" * 400, bound=_SMALL))
@@ -106,4 +108,7 @@ async def test_a_trace_whose_parts_do_not_reassemble_is_refused_never_stored() -
         o["refused"] and o["refused"][0]["reason"] == "trace_digest_mismatch"
         for o in outcomes
     )
-    assert store.parts == {}
+    # Only the part that would have completed a bad trace is refused: nothing already held is deleted.
+    assert sorted(p.part_index for p in store.parts.values()) == list(
+        range(len(parts) - 1)
+    )

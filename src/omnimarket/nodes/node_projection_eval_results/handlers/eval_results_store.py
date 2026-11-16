@@ -4,8 +4,9 @@
 
 Every statement names ``tenant_id`` and runs under the caller-resolved tenant, so the table's
 row-level-security policy decides it. An item is replaced in SQL only by a later ``scored_at``,
-or at an equal one by the greater ``outcome_digest``, so concurrent consumers agree with the
-fold whatever the arrival order. A trace part is inserted and never replaced.
+or at an equal one by the greater ``outcome_digest``, and a run's close by a later ``closed_at``
+or at an equal one the greater digest, so concurrent consumers agree with the fold whatever the
+arrival order. A trace part is inserted and never replaced or deleted.
 """
 
 from __future__ import annotations
@@ -73,9 +74,6 @@ INSERT_TRACE = (
     "ON CONFLICT (tenant_id, item_key, scoring_id, part_index) DO NOTHING\n"
     "RETURNING projection_cursor"
 )
-DELETE_TRACE_PARTS = (
-    "DELETE FROM public.eval_item_traces WHERE tenant_id = $1 AND scoring_id = $2"
-)
 UPSERT_RUN = (
     f"INSERT INTO public.eval_run_closes ({', '.join(_RUN_COLUMNS)})\n"
     f"VALUES ({_placeholders(_RUN_COLUMNS, _RUN_JSON)})\n"
@@ -87,7 +85,8 @@ UPSERT_RUN = (
         if name not in ("tenant_id", "run_id")
     )
     + ",\n        updated_at = NOW()\n"
-    "WHERE public.eval_run_closes.closed_at < EXCLUDED.closed_at\n"
+    "WHERE (public.eval_run_closes.closed_at, public.eval_run_closes.outcome_digest)\n"
+    "    < (EXCLUDED.closed_at, EXCLUDED.outcome_digest)\n"
     "RETURNING projection_cursor"
 )
 DELETE_RATES_OF_RUN = (
@@ -215,10 +214,6 @@ class EvalResultsStore:
         """Write what the fold decided; returns the counts of rows that changed a table."""
         tenant = plan.tenant_id
         counts = {"items": 0, "traces": 0, "run": 0, "rates": 0}
-        for scoring in result.drop_scoring_ids:
-            await self._db.execute(
-                DELETE_TRACE_PARTS, UUID(tenant), UUID(scoring), tenant=tenant
-            )
         for item in result.items:
             returned = await self._db.execute(
                 UPSERT_ITEM, *item_params(item), tenant=str(item.tenant_id)

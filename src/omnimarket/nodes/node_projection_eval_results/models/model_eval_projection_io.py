@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 
 from omnimarket.enums.enum_eval_lane import EnumEvalLane
 from omnimarket.nodes.node_projection_eval_results.models.model_eval_rows import (
@@ -45,8 +45,22 @@ SOURCE_TOPICS: tuple[str, ...] = (
 )
 
 
+class ModelEvalRefusedPart(BaseModel):
+    """One refusal: what was refused and why."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    reason: EnumEvalRefusal
+    subject: str
+    detail: str = ""
+
+
 class ModelEvalReadPlan(BaseModel):
-    """What the writer must read before the fold can decide one delivery."""
+    """What the writer must read before the fold can decide one delivery.
+
+    ``refusal`` is set when the delivery cannot be read at all (a malformed uuid, a tenant that
+    disagrees with the envelope): the writer reads and writes nothing and routes it to the DLQ.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -54,6 +68,7 @@ class ModelEvalReadPlan(BaseModel):
     run_id: str = ""
     model_id: str = ""
     scoring_id: str = ""
+    refusal: ModelEvalRefusedPart | None = None
 
 
 class ModelEvalProjectionRequest(BaseModel):
@@ -77,16 +92,6 @@ class ModelEvalProjectionRequest(BaseModel):
     standing_parts: tuple[ModelEvalTraceRow, ...] = ()
 
 
-class ModelEvalRefusedPart(BaseModel):
-    """One refusal: what was refused and why."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    reason: EnumEvalRefusal
-    subject: str
-    detail: str = ""
-
-
 class ModelEvalProjectionResult(BaseModel):
     """What the writer persists: only rows that change the tables, and the refusals."""
 
@@ -94,10 +99,6 @@ class ModelEvalProjectionResult(BaseModel):
 
     items: tuple[ModelEvalItemRow, ...] = ()
     traces: tuple[ModelEvalTraceRow, ...] = ()
-    drop_scoring_ids: tuple[str, ...] = Field(
-        default=(),
-        description="Scorings whose stored parts must be deleted: the parts did not reassemble to their sha256.",
-    )
     run_record: ModelEvalRunRecord | None = None
     rates: tuple[ModelEvalRateRow, ...] = ()
     refused: tuple[ModelEvalRefusedPart, ...] = ()

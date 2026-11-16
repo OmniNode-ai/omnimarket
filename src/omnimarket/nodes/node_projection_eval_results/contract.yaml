@@ -68,14 +68,26 @@ dod_evidence:
     description: "The golden chain over all four source topics gives the expected item, trace and run-rate rows, and replaying every event gives the same tables"
   - test: tests/nodes/node_projection_eval_results/test_item_storage.py::test_equal_time_pair_leaves_the_same_row_in_either_order
     description: "Two events for one item at an equal time that differ in any stored field leave the same row in either arrival order"
-  - test: tests/nodes/node_projection_eval_results/test_item_storage.py::test_every_field_of_the_event_model_is_stored
-    description: "Every field of the event model is stored, so a dropped column fails"
+  - test: tests/nodes/node_projection_eval_results/test_item_storage.py::test_every_field_of_the_event_model_has_a_real_column_and_is_stored
+    description: "Every field of the event model has a column in the migration and a place in the upsert, so a dropped column fails"
   - test: tests/nodes/node_projection_eval_results/test_rates.py::test_close_shows_no_rate_until_the_last_event
     description: "A close shows no snapshot rate until all its attempts are in, in either delivery order"
   - test: tests/nodes/node_projection_eval_results/test_snapshot.py::test_worst_case_snapshot_fits_under_the_bound
     description: "The snapshot at the retention limits fits under 900,000 bytes; an oversized fixture and a 201-character model id each get a typed refusal"
   - test: tests/nodes/node_projection_eval_results/test_writer.py::test_a_tick_republishes_with_a_new_publish_time_and_unchanged_run_times
     description: "A tick republishes the snapshot with a new publish time and unchanged run times"
+  - test: tests/nodes/node_projection_eval_results/test_eval_results_fold.py::test_an_older_close_cannot_rewrite_the_rates_from_the_losing_record_in_either_order
+    description: "A close that loses on closed_at, then digest, registers nothing and its rates are recounted from the standing record, in either delivery order"
+  - test: tests/nodes/node_projection_eval_results/test_eval_results_fold.py::test_a_repeated_part_with_different_bytes_refuses_only_that_part_of_a_verified_trace
+    description: "A repeated trace part with different bytes refuses that part alone and deletes no stored part"
+  - test: tests/nodes/node_projection_eval_results/test_eval_results_rates.py::test_a_two_arm_run_is_not_closed_while_the_second_arm_lacks_a_task
+    description: "A two-arm run reads closing until every arm holds every registered task"
+  - test: tests/nodes/node_projection_eval_results/test_eval_results_mapping.py::test_a_replay_after_a_redeploy_rewrites_no_row_in_either_order
+    description: "Lane stamps stay out of the tie-break digest, so a replay after a redeploy rewrites no row"
+  - test: tests/nodes/node_projection_eval_results/test_eval_results_store.py::test_a_trace_with_a_bad_scoring_uuid_reaches_the_dlq_and_runs_no_sql
+    description: "A malformed uuid is refused in read_plan and reaches the DLQ before any SQL runs"
+  - test: tests/nodes/node_projection_eval_results/test_eval_results_writer.py::test_a_namespaced_source_topic_is_matched_and_the_snapshot_published_namespaced
+    description: "The writer matches a namespaced topic as the contract names it"
 db_io:
   db_tables:
     - name: eval_item_scores

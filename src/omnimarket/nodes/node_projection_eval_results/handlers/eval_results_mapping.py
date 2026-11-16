@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -52,7 +53,10 @@ LIVE_TASK_SET_ID = "live"
 JUDGED_EVAL_TASK_SET_ID = "judged_eval"
 LIVE_RUN_PREFIX = "live-"
 
+#: The providers a code try row names. A provider outside this table is refused like an unmapped
+#: tier, never labelled as the local engine.
 _PROVIDER_ENGINE = {
+    "local": EnumEvalEngine.LOCAL,
     "glm": EnumEvalEngine.GLM,
     "codex": EnumEvalEngine.CODEX,
     "claude": EnumEvalEngine.CLAUDE,
@@ -120,6 +124,16 @@ def code_try_items(
             )
             continue
         subject = f"{run_id}:{row.task_id}:{row.model_id}:{row.try_ordinal}"
+        engine = _PROVIDER_ENGINE.get(row.provider)
+        if engine is None:
+            refused.append(
+                ModelEvalRefusedPart(
+                    reason=EnumEvalRefusal.UNMAPPED_PROVIDER,
+                    subject=subject,
+                    detail=row.provider,
+                )
+            )
+            continue
         if row.row_kind is not EnumContextRoiRowKind.TRY:
             refused.append(
                 ModelEvalRefusedPart(reason=EnumEvalRefusal.NOT_A_TRY, subject=subject)
@@ -154,7 +168,7 @@ def code_try_items(
                     "task_id": row.task_id,
                     "task_type": "code",
                     "size_band": row.size_band,
-                    "engine": _PROVIDER_ENGINE.get(row.provider, EnumEvalEngine.LOCAL),
+                    "engine": engine,
                     "model_id": row.model_id,
                     "model_revision": row.model_revision,
                     "generation_settings_hash": row.generation_settings_hash,
@@ -205,6 +219,12 @@ def judged_item(
             detail=str(exc.errors()[0]["msg"]),
         )
     subject = str(event.correlation_id)
+    if str(event.tenant_id) != str(UUID(request.tenant_id)):
+        return None, ModelEvalRefusedPart(
+            reason=EnumEvalRefusal.TENANT_MISMATCH,
+            subject=subject,
+            detail=f"payload tenant {event.tenant_id} is not the envelope tenant {request.tenant_id}",
+        )
     if event.kind != "task":
         return None, ModelEvalRefusedPart(
             reason=EnumEvalRefusal.NOT_A_TASK, subject=subject
@@ -221,7 +241,7 @@ def judged_item(
     try:
         item = ModelEvalItemScored.model_validate(
             {
-                "tenant_id": str(event.tenant_id),
+                "tenant_id": request.tenant_id,
                 "run_id": run_id,
                 "try_ordinal": 1,
                 "task_set_id": LIVE_TASK_SET_ID if live else JUDGED_EVAL_TASK_SET_ID,
@@ -275,6 +295,8 @@ class _ClosedSequenceWire(BaseModel):
     task_key: str
     model: str
     band: str = ""
+    context_arm: str = ""
+    replicate: int = Field(default=0, ge=0)
 
 
 class _ClosedWire(BaseModel):
@@ -282,7 +304,8 @@ class _ClosedWire(BaseModel):
 
     ``ModelCodeEvalRunClosed`` on dev carries ``sequences`` and ``void_reason`` but not ``series``,
     ``task_sample_digest``, ``item_count``, ``band_usable`` or ``band_target``; they are read when
-    present. Without ``item_count`` the first tries the run closed over are its sequences.
+    present. Without ``item_count`` the first tries the run closed over are its sequences. A
+    sequence names its ``context_arm`` and ``replicate`` when the producer sends them; dev's does not.
     """
 
     model_config = ConfigDict(frozen=True, extra="ignore")
@@ -312,7 +335,13 @@ def run_record_of(
             detail=str(exc.errors()[0]["msg"]),
         )
     sequences = tuple(
-        ModelEvalRunSequence(task_id=s.task_key, model_id=s.model, band=s.band)
+        ModelEvalRunSequence(
+            task_id=s.task_key,
+            model_id=s.model,
+            band=s.band,
+            context_arm=s.context_arm,
+            replicate=s.replicate,
+        )
         for s in wire.sequences
     )
     return (
@@ -328,7 +357,7 @@ def run_record_of(
             sequences=sequences,
             band_usable=wire.band_usable,
             band_target=wire.band_target,
-        ),
+        ).with_digest(),
         None,
     )
 

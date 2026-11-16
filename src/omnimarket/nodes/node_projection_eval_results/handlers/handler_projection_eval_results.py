@@ -9,13 +9,16 @@ delivery can change. It reads no clock, database, broker or envelope; replaying 
 gives the same rows.
 
 Ordering authority: an item is replaced only by an event with a later ``scored_at``; at an equal
-``scored_at`` the greater ``outcome_digest`` stands, so arrival order never decides.
+``scored_at`` the greater ``outcome_digest`` stands, so arrival order never decides. A run's close
+follows the same rule on ``closed_at``, then its digest: a close that loses to the standing one
+registers nothing and its rates are recounted from the standing record.
 """
 
 from __future__ import annotations
 
 from datetime import datetime
 from typing import Any
+from uuid import UUID
 
 from omnimarket.models.eval_item.model_eval_item_traced import (
     ModelEvalItemTracePart,
@@ -62,13 +65,26 @@ def _judged_scope(payload: dict[str, Any]) -> tuple[str, str]:
         return "", ""
 
 
+def _refused_plan(tenant_id: str, subject: str, detail: str) -> ModelEvalReadPlan:
+    return ModelEvalReadPlan(
+        tenant_id=tenant_id,
+        refusal=ModelEvalRefusedPart(
+            reason=EnumEvalRefusal.INVALID_EVENT, subject=subject, detail=detail
+        ),
+    )
+
+
 class HandlerProjectionEvalResults:
     """Fold one delivery of any of the four source topics."""
 
     def read_plan(
         self, topic: str, payload: dict[str, Any], tenant_id: str
     ) -> ModelEvalReadPlan:
-        """What the writer reads before calling ``handle``: the run (and model) or the scoring."""
+        """What the writer reads before calling ``handle``: the run (and model) or the scoring.
+
+        Every uuid the reads take is validated here, so a malformed delivery is refused in the plan
+        and never raises in the store. The tenant is always the envelope's.
+        """
         if topic == TOPIC_CODE_TRY:
             return ModelEvalReadPlan(
                 tenant_id=tenant_id, run_id=str(payload.get("run_id", ""))
@@ -78,16 +94,36 @@ class HandlerProjectionEvalResults:
                 tenant_id=tenant_id, run_id=str(payload.get("correlation_id", ""))
             )
         if topic == TOPIC_JUDGED:
+            claimed = payload.get("tenant_id")
+            if claimed is not None:
+                try:
+                    claimed_tenant = str(UUID(str(claimed)))
+                except ValueError:
+                    return _refused_plan(
+                        tenant_id, "judged", f"tenant_id {claimed!r} is not a uuid"
+                    )
+                if claimed_tenant != tenant_id:
+                    return ModelEvalReadPlan(
+                        tenant_id=tenant_id,
+                        refusal=ModelEvalRefusedPart(
+                            reason=EnumEvalRefusal.TENANT_MISMATCH,
+                            subject=str(payload.get("correlation_id", "judged")),
+                            detail=f"payload tenant {claimed_tenant} is not the envelope tenant {tenant_id}",
+                        ),
+                    )
             run_id, model_id = _judged_scope(payload)
             return ModelEvalReadPlan(
-                tenant_id=str(payload.get("tenant_id", tenant_id)),
-                run_id=run_id,
-                model_id=model_id,
+                tenant_id=tenant_id, run_id=run_id, model_id=model_id
             )
         if topic == TOPIC_TRACE:
-            return ModelEvalReadPlan(
-                tenant_id=tenant_id, scoring_id=str(payload.get("scoring_id", ""))
-            )
+            scoring = str(payload.get("scoring_id", ""))
+            try:
+                UUID(scoring)
+            except ValueError:
+                return _refused_plan(
+                    tenant_id, "trace", f"scoring_id {scoring!r} is not a uuid"
+                )
+            return ModelEvalReadPlan(tenant_id=tenant_id, scoring_id=scoring)
         return ModelEvalReadPlan(tenant_id=tenant_id)
 
     def handle(self, request: ModelEvalProjectionRequest) -> ModelEvalProjectionResult:
@@ -104,12 +140,7 @@ class HandlerProjectionEvalResults:
                     refused=(refusal,) if refusal is not None else ()
                 )
             return self._items(
-                request,
-                (item,),
-                (),
-                run_id=item.run_id,
-                model_id=item.model_id,
-                tenant_id=item.tenant_id,
+                request, (item,), (), run_id=item.run_id, model_id=item.model_id
             )
         if request.topic == TOPIC_RUN_CLOSED:
             return self._close(request)
@@ -131,9 +162,8 @@ class HandlerProjectionEvalResults:
         *,
         run_id: str,
         model_id: str,
-        tenant_id: str | None = None,
     ) -> ModelEvalProjectionResult:
-        tenant = tenant_id or request.tenant_id
+        tenant = request.tenant_id
         standing = {item.item_key: item for item in request.standing_items}
         changed: list[ModelEvalItemRow] = []
         for item in incoming:
@@ -165,20 +195,24 @@ class HandlerProjectionEvalResults:
             return ModelEvalProjectionResult(
                 refused=(refusal,) if refusal is not None else ()
             )
+        standing = request.standing_run
+        wins = standing is None or record.supersedes(standing)
+        winner = record if wins or standing is None else standing
         scope = tuple(
-            item for item in request.standing_items if item.run_id == record.run_id
+            item for item in request.standing_items if item.run_id == winner.run_id
         )
         return ModelEvalProjectionResult(
-            run_record=record,
+            run_record=record if wins else None,
             rates=recount_rates(
-                tenant_id=record.tenant_id,
-                run_id=record.run_id,
+                tenant_id=winner.tenant_id,
+                run_id=winner.run_id,
                 items=scope,
-                record=record,
+                record=winner,
             ),
         )
 
     def _trace(self, request: ModelEvalProjectionRequest) -> ModelEvalProjectionResult:
+        """Store one part, or refuse that part alone. A stored part is never deleted or replaced."""
         part, refusal = trace_part_of(request)
         if part is None:
             return ModelEvalProjectionResult(
@@ -195,8 +229,8 @@ class HandlerProjectionEvalResults:
             return ModelEvalProjectionResult()
         everything = {
             index: ModelEvalItemTracePart(
-                event_id=part.event_id,
-                scoring_id=part.scoring_id,
+                event_id=UUID(row.item_key),
+                scoring_id=row.scoring_id,
                 trace_sha256=row.trace_sha256,
                 part_index=row.part_index,
                 part_count=row.part_count,
@@ -205,20 +239,17 @@ class HandlerProjectionEvalResults:
             )
             for index, row in held.items()
         }
-        everything[part.part_index] = part
-        complete = len(everything) == part.part_count
         try:
             if existing is not None:
                 raise ValueError(
                     f"part {part.part_index} arrived twice with different bytes"
                 )
-            if complete:
+            everything[part.part_index] = part
+            _agree(tuple(everything.values()))
+            if len(everything) == part.part_count:
                 assemble_trace(tuple(everything.values()))
-            else:
-                _agree(tuple(everything.values()))
         except ValueError as exc:
             return ModelEvalProjectionResult(
-                drop_scoring_ids=(scoring,),
                 refused=(
                     ModelEvalRefusedPart(
                         reason=EnumEvalRefusal.TRACE_DIGEST_MISMATCH,

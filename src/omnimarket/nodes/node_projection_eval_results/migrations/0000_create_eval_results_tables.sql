@@ -76,6 +76,7 @@ CREATE TABLE IF NOT EXISTS public.eval_run_closes (
     sequences JSONB NOT NULL DEFAULT '[]'::jsonb,
     band_usable JSONB NOT NULL DEFAULT '{}'::jsonb,
     band_target JSONB NOT NULL DEFAULT '{}'::jsonb,
+    outcome_digest TEXT NOT NULL DEFAULT '',
     first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     projection_cursor BIGSERIAL,

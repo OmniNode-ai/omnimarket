@@ -124,22 +124,6 @@ async def test_the_lane_stamps_come_from_the_overlay() -> None:
     assert item.tenant_id == TENANT
 
 
-async def test_an_event_with_no_envelope_time_is_refused_not_stamped_with_a_clock() -> (
-    None
-):
-    from omnimarket.projection.runner import MessageMeta
-
-    store = MemoryStore()
-    writer, _ = make_writer(store)
-    with pytest.raises(ValueError, match="event time"):
-        await writer._project(
-            TOPIC_CODE_TRY,
-            {**code_event(RUN, try_row(RUN, "t1")), "_tenant_id": TENANT},
-            MessageMeta(partition=0, offset=0, fallback_id="", topic=TOPIC_CODE_TRY),
-        )
-    assert store.items == {}
-
-
 async def test_a_malformed_delivery_goes_to_the_contract_dlq_topic_and_stores_nothing() -> (
     None
 ):

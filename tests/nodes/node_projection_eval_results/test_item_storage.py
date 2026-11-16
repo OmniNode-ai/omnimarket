@@ -24,6 +24,7 @@ from omnimarket.models.eval_item.model_eval_field_score import ModelEvalFieldSco
 from omnimarket.models.eval_item.model_eval_item_scored import ModelEvalItemScored
 from omnimarket.nodes.node_projection_eval_results.handlers.eval_results_store import (
     ITEM_COLUMNS,
+    UPSERT_ITEM,
     item_params,
 )
 from omnimarket.nodes.node_projection_eval_results.models.model_eval_projection_io import (
@@ -88,12 +89,38 @@ def _record(**updates: object) -> ModelEvalItemScored:
     return ModelEvalItemScored.model_validate(values | updates)
 
 
-def test_every_field_of_the_event_model_is_stored() -> None:
+def _table_columns(table: str) -> set[str]:
+    """The columns the migration DDL really declares for ``table``."""
+    block = (
+        _MIGRATION.read_text()
+        .split(f"CREATE TABLE IF NOT EXISTS public.{table} (", 1)[1]
+        .split("PRIMARY KEY", 1)[0]
+    )
+    return set(re.findall(r"^\s+(\w+) [A-Z]", block, re.MULTILINE))
+
+
+def _insert_columns() -> tuple[str, ...]:
+    """The column list the upsert statement names, read from its SQL text."""
+    head = UPSERT_ITEM.split("(", 1)[1].split(")", 1)[0]
+    return tuple(c.strip() for c in head.split(","))
+
+
+def test_every_field_of_the_event_model_has_a_real_column_and_is_stored() -> None:
+    """Fields of ``ModelEvalItemScored`` against the migration's columns and the SQL's own insert list.
+
+    Neither side is ``ITEM_COLUMNS``, which is derived from the stored row's own fields: a field
+    dropped from the table or from the statement fails here.
+    """
     record = _record()
     row = ModelEvalItemRow.of(record)
-    params = dict(zip(ITEM_COLUMNS, item_params(row), strict=True))
+    columns = _table_columns("eval_item_scores")
+    insert = _insert_columns()
+    params = dict(zip(insert, item_params(row), strict=True))
     for name in ModelEvalItemScored.model_fields:
-        assert name in params, f"{name} has no column: a dropped field"
+        assert name in columns, (
+            f"{name} has no column in the migration: a dropped field"
+        )
+        assert name in params, f"{name} is not written by the upsert"
         assert getattr(row, name) == getattr(record, name), (
             f"{name} changed on its way into the row"
         )
@@ -119,12 +146,8 @@ def test_every_field_of_the_event_model_is_stored() -> None:
 
 
 def test_the_migration_holds_a_column_for_every_stored_field() -> None:
-    ddl = _MIGRATION.read_text()
-    block = ddl.split("CREATE TABLE IF NOT EXISTS public.eval_item_scores (", 1)[
-        1
-    ].split("PRIMARY KEY", 1)[0]
-    columns = set(re.findall(r"^\s+(\w+) [A-Z]", block, re.MULTILINE))
-    assert set(ITEM_COLUMNS) <= columns
+    assert set(ITEM_COLUMNS) <= _table_columns("eval_item_scores")
+    assert {"item_key", "outcome_digest"} <= _table_columns("eval_item_scores")
 
 
 def test_outcome_digest_differs_for_every_stored_field() -> None:
@@ -135,7 +158,6 @@ def test_outcome_digest_differs_for_every_stored_field() -> None:
         "step_verdict": EnumEvalStepVerdict.ACCEPT,
         "step_verdict_source": EnumEvalStepVerdictSource.DETERMINISTIC,
         "model_revision": "other",
-        "host": "other",
         "trace_sha256": "u" * 64,
     }
     seen = {base.outcome_digest}
@@ -143,6 +165,19 @@ def test_outcome_digest_differs_for_every_stored_field() -> None:
         other = ModelEvalItemRow.of(_record(**{name: value}))
         assert other.outcome_digest not in seen, name
         seen.add(other.outcome_digest)
+
+
+def test_the_lane_stamps_are_not_in_the_tie_break_digest() -> None:
+    base = ModelEvalItemRow.of(_record())
+    for name, value in (
+        ("host", "other"),
+        ("install_revision", "other"),
+        ("lane", EnumEvalLane.DEV),
+    ):
+        other = ModelEvalItemRow.of(_record(**{name: value}))
+        assert other.outcome_digest == base.outcome_digest, name
+        assert not other.supersedes(base)
+        assert not base.supersedes(other)
 
 
 def test_equal_time_pair_leaves_the_same_row_in_either_order() -> None:

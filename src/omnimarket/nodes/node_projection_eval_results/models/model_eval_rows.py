@@ -50,18 +50,31 @@ class EnumEvalRefusal(StrEnum):
     UNSCORED = "unscored"
     NOT_A_TASK = "not_a_task"
     UNMAPPED_TIER = "unmapped_tier"
+    UNMAPPED_PROVIDER = "unmapped_provider"
+    TENANT_MISMATCH = "tenant_mismatch"
     INVALID_ITEM = "invalid_item"
     TRACE_DIGEST_MISMATCH = "trace_digest_mismatch"
     INVALID_EVENT = "invalid_event"
+
+
+DIGEST_EXCLUDED_FIELDS: set[str] = {
+    "outcome_digest",
+    "lane",
+    "host",
+    "install_revision",
+}
+"""The stored item fields the tie-break digest leaves out: the digest itself and the lane stamps."""
 
 
 class ModelEvalItemRow(ModelEvalItemScored):
     """One stored scored try: every field of the scored-item record, its key and its outcome digest.
 
     ``item_key`` is the record's ``event_id``. ``outcome_digest`` is the sha256 of the canonical
-    form of every other stored field, so two events that differ in any stored value have
-    different digests and, at an equal ``scored_at``, the greater digest stands whatever the
-    arrival order.
+    form of every other stored field but the lane stamps (``lane``, ``host``, ``install_revision``),
+    so two events that differ in any scored value have different digests and, at an equal
+    ``scored_at``, the greater digest stands whatever the arrival order. The stamps say where the
+    event was projected, not what it scored: a replay after a redeploy carries new stamps and must
+    rewrite no row, so they stay out of the tie-break.
     """
 
     item_key: str
@@ -81,9 +94,9 @@ class ModelEvalItemRow(ModelEvalItemScored):
         return draft.model_copy(update={"outcome_digest": digest})
 
     def digest_material(self) -> bytes:
-        """The canonical bytes ``outcome_digest`` covers: every stored field but the digest."""
+        """The canonical bytes ``outcome_digest`` covers: every stored field but the digest and the lane stamps."""
         return json.dumps(
-            self.model_dump(mode="json", exclude={"outcome_digest"}),
+            self.model_dump(mode="json", exclude=DIGEST_EXCLUDED_FIELDS),
             sort_keys=True,
             ensure_ascii=True,
             separators=(",", ":"),
@@ -113,13 +126,19 @@ class ModelEvalTraceRow(BaseModel):
 
 
 class ModelEvalRunSequence(BaseModel):
-    """One (task, model) pair the run registered, from its close."""
+    """One (task, model) pair the run registered, from its close.
+
+    ``context_arm`` and ``replicate`` are set when the close names the arm and replicate the
+    sequence ran under; the dev producer's close does not, and they read empty and zero.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     task_id: str
     model_id: str
     band: str
+    context_arm: str = ""
+    replicate: int = Field(default=0, ge=0)
 
 
 class ModelEvalRunRecord(BaseModel):
@@ -138,6 +157,25 @@ class ModelEvalRunRecord(BaseModel):
     sequences: tuple[ModelEvalRunSequence, ...] = ()
     band_usable: dict[str, int] = Field(default_factory=dict)
     band_target: dict[str, int] = Field(default_factory=dict)
+    outcome_digest: str = Field(default="", max_length=64)
+
+    def with_digest(self) -> ModelEvalRunRecord:
+        """This record with its ``outcome_digest`` filled in: the sha256 of every other field."""
+        material = json.dumps(
+            self.model_dump(mode="json", exclude={"outcome_digest"}),
+            sort_keys=True,
+            ensure_ascii=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        return self.model_copy(
+            update={"outcome_digest": hashlib.sha256(material).hexdigest()}
+        )
+
+    def supersedes(self, standing: ModelEvalRunRecord) -> bool:
+        """True when this close replaces ``standing``: a later ``closed_at``, or at an equal one the greater digest."""
+        if self.closed_at != standing.closed_at:
+            return self.closed_at > standing.closed_at
+        return self.outcome_digest > standing.outcome_digest
 
 
 class ModelEvalRateRow(BaseModel):

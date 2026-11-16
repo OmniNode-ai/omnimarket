@@ -25,7 +25,11 @@ import pytest
 from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
 from omnimarket.enums.enum_eval_step_verdict import EnumEvalStepVerdictSource
 from omnimarket.nodes.node_projection_eval_results.handlers.eval_results_store import (
+    _RUN_COLUMNS,
+    _RUN_JSON,
     UPSERT_ITEM,
+    UPSERT_RUN,
+    _params,
     item_params,
 )
 from omnimarket.nodes.node_projection_eval_results.handlers.handler_eval_results_writer import (
@@ -33,6 +37,7 @@ from omnimarket.nodes.node_projection_eval_results.handlers.handler_eval_results
 )
 from omnimarket.nodes.node_projection_eval_results.models.model_eval_rows import (
     ModelEvalItemRow,
+    ModelEvalRunRecord,
 )
 from omnimarket.projection.runner import MessageMeta
 from tests.helpers.isolated_schema_sql import for_isolated_schema
@@ -231,3 +236,49 @@ async def test_the_sql_ordering_guard_leaves_the_same_row_in_either_order() -> N
                 stored["outcome_digest"] == max(a.outcome_digest, b.outcome_digest)
             )
         assert winners == [True, True]
+
+
+@pytest.mark.integration
+async def test_the_sql_close_guard_keeps_the_winning_close_in_either_order() -> None:
+    """A close replaces the stored one only with a later closed_at, or at an equal one the greater digest."""
+    async with _migrated_schema() as (db, _admin):
+        winners = []
+        for name in ("ab", "ba"):
+            run = f"close-{name}"
+            records = [
+                ModelEvalRunRecord(
+                    tenant_id=TENANT,
+                    run_id=run,
+                    closed_at=at(30),
+                    item_count=1,
+                    void_reason=reason,
+                ).with_digest()
+                for reason in ("", "stale_run")
+            ]
+            older = ModelEvalRunRecord(
+                tenant_id=TENANT,
+                run_id=run,
+                closed_at=at(10),
+                item_count=1,
+                void_reason="older",
+            ).with_digest()
+            for record in (
+                (*records, older) if name == "ab" else (older, *records[::-1])
+            ):
+                await db.execute(
+                    UPSERT_RUN,
+                    *_params(record, _RUN_COLUMNS, _RUN_JSON),
+                    tenant=TENANT,
+                )
+            (stored,) = await db.execute(
+                "SELECT outcome_digest, closed_at FROM public.eval_run_closes WHERE run_id = $1",
+                run,
+                tenant=TENANT,
+            )
+            winners.append(
+                (
+                    stored["outcome_digest"] == max(r.outcome_digest for r in records),
+                    stored["closed_at"] == at(30),
+                )
+            )
+        assert winners == [(True, True), (True, True)]
