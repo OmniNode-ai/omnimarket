@@ -69,7 +69,7 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/unit/delegation -k headroom -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn24978-ac3
-  description: The AC5 check of contracts/OMN-24874.yaml greps the 12-character head (behavioural test over a temp repo), and the AC3 check reads the R8 unit's installed revision on the pinned host with a dev-merge tag and an age; the live readings pin host and age.
+  description: The AC5 check of contracts/OMN-24874.yaml greps the 12-character head (behavioural test over a temp repo), and the partial R8 ancestry diagnostic is unbound from AC3 because it does not read the alarm unit or dev runtime; the live readings pin host and age.
   source: manual
   binds_ac:
   - AC3

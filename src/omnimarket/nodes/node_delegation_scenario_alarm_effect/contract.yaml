@@ -4,13 +4,14 @@
 # host (the evidence file its own unit writes) and writes one ledger STATUS row with src=alarm and alarm=<scenario alarm name>
 # for a run that did not succeed, whose record is missing or unreadable, or whose last run is older than the scenario's declared
 # max_age_seconds (a unit killed before it wrote its record, a stopped timer). The row's request id is the scenario, the host,
-# the run's own time and the alarm time bucket, and the row is stamped with the bucket's start: the work ledger answers a
-# repeated request id duplicate only when the rows are identical, so a later tick in the same bucket over the same run writes
-# nothing twice, and a new run or the next bucket is a new row (a missing record in a later bucket is its own outage). A
-# successful, recent run writes nothing.
+# the run's own readable time alone for a failed run; its row is stamped at that run time. Thus ticks across a bucket
+# boundary submit the identical row and request id. Missing, unreadable and stale records also name their six-hour bucket
+# and use its start as the row stamp, allowing another outage reading each bucket. A successful, recent run writes nothing.
 # Ledger dedup (read in node_work_ledger_append_effect, handler_work_ledger_append_effect.py): a request id is found by its
 # req= cell in the live ledger file's text and in the bus ledger store; once a row rolls into the archive the id is no longer
-# found in the live file, so the same id would append again. The bucket bounds that repeat to one row per bucket. The pattern is the deploy-job-failed alarm row of omnibase_infra.
+# found in the live file, so the same id would append again. Missing and stale records recur per bucket. Readers that use a
+# time window filter on the row stamp; a failed run is never stamped before its ran_at. Outage queries must include the
+# bucket start. The pattern is the deploy-job-failed alarm row of omnibase_infra.
 name: node_delegation_scenario_alarm_effect
 contract_name: node_delegation_scenario_alarm_effect
 node_name: node_delegation_scenario_alarm_effect

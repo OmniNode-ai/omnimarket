@@ -7,15 +7,18 @@ from __future__ import annotations
 import importlib
 import json
 from datetime import UTC, datetime, timedelta
-from enum import Enum
 from pathlib import Path
 from uuid import UUID
 
 import pytest
 import yaml
-from pydantic import BaseModel
 
 from omnimarket.handlers import delegation_readiness_scenario as readiness_scenario
+from omnimarket.models.model_delegation_scenario import (
+    EnumScenarioConclusion,
+    EnumScenarioTrigger,
+    ModelScenarioResult,
+)
 from omnimarket.nodes.node_delegation_scenario_alarm_effect.handlers.handler_delegation_scenario_alarm import (
     CONTRACT_PATH,
     HandlerDelegationScenarioAlarm,
@@ -30,9 +33,13 @@ from omnimarket.nodes.node_host_installer_registry_units.handlers.handler_regist
     load_units,
 )
 from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
+    InMemoryLedger,
     stamp_request_cell,
 )
-from omnimarket.nodes.node_reading_writer_effect.protocols import ModelAppendOutcome
+from omnimarket.nodes.node_reading_writer_effect.protocols import (
+    ModelAppendOutcome,
+    ModelLedgerQuery,
+)
 from omnimarket.nodes.node_runtime_sweep.__main__ import _probe_entry_point
 from omnimarket.nodes.node_work_ledger_append_effect import (
     EnumWorkLedgerAppendStatus,
@@ -63,23 +70,20 @@ class _Appender:
         return ModelAppendOutcome(status=self._status)
 
 
-class _Conclusion(Enum):
-    SUCCESS = "success"
-    FAILURE = "failure"
-
-
-class _Result(BaseModel):
-    conclusion: _Conclusion
-
-
 class _Scenario:
     def __init__(self, conclusion: str | None) -> None:
         self._conclusion = conclusion
 
-    def run(self) -> _Result:
+    def run(self) -> ModelScenarioResult:
         if self._conclusion is None:
             raise RuntimeError("no ledger route")
-        return _Result(conclusion=_Conclusion(self._conclusion))
+        return ModelScenarioResult(
+            scenario_id="R8",
+            slot_start=_NOW,
+            trigger=EnumScenarioTrigger.SCHEDULE,
+            conclusion=EnumScenarioConclusion(self._conclusion),
+            recorded_at=_NOW,
+        )
 
 
 def _record(
@@ -134,8 +138,8 @@ def test_a_failed_r8_run_writes_one_alarm_row_and_a_passing_r9_writes_none(
     assert len(appender.calls) == 1
     row, request_id = appender.calls[0]
     cells = row.split(" | ")
-    # stamped with the start of its 6-hour alarm bucket, not the tick clock
-    assert cells[0] == "2026-11-16T12:00:00Z"
+    # A failed run is stamped with its own time, independently of the tick bucket.
+    assert cells[0] == "2026-11-16T14:48:29Z"
     assert cells[1] == "STATUS"
     for cell in (
         "src=alarm",
@@ -199,6 +203,17 @@ def test_an_unappended_alarm_fails_the_tick(
     stub = tmp_path / "append.sh"
     stub.write_text("#!/bin/sh\ncat >/dev/null\nexit 1\n", encoding="utf-8")
     stub.chmod(0o755)
+    alarm_module = importlib.import_module(
+        "omnimarket.nodes.node_delegation_scenario_alarm_effect.handlers.handler_delegation_scenario_alarm"
+    )
+
+    class _AlarmClock(datetime):
+        @classmethod
+        def now(cls, tz: object = None) -> datetime:  # type: ignore[override]
+            del tz
+            return _NOW
+
+    monkeypatch.setattr(alarm_module, "datetime", _AlarmClock)
     state = tmp_path / "state"
     code = main(
         ["--home", str(tmp_path), "--state-dir", str(state)],
@@ -320,12 +335,13 @@ def test_a_second_tick_over_the_same_failure_appends_the_identical_row(
     _record(tmp_path, "r8", "failure", "2026-11-16T14:48:29+00:00", monkeypatch)
     _record(tmp_path, "r9", "success", "2026-11-16T14:48:30+00:00", monkeypatch)
     rows = []
-    for offset in (0, 900):
+    moments = iter((_NOW, _NOW + timedelta(seconds=900)))
+    for _ in range(2):
         appender = _Appender()
         HandlerDelegationScenarioAlarm(
             load_alarm_settings(),
             appender,
-            clock=lambda offset=offset: _NOW + timedelta(seconds=offset),
+            clock=moments.__next__,
         ).handle(ModelScenarioAlarmRequest(home=tmp_path, host="h053"))
         rows.append(appender.calls[0])
     assert rows[0] == rows[1]
@@ -367,17 +383,22 @@ def test_the_rendered_unit_state_dir_receives_the_ticks_declared_evidence_file(
     argv = HandlerRegistryUnits().tick_arguments(
         request(tmp_path, unit="scenario-alarm-systemd"), unit
     )
-    state_dir = Path(argv[argv.index("--state-dir") + 1])
     stub = tmp_path / "append.sh"
-    stub.write_text("#!/bin/sh\ncat >/dev/null\nexit 0\n", encoding="utf-8")
+    stub.write_text(
+        "#!/bin/sh\ncat >/dev/null\nprintf '%s\\n' '{\"status\":\"accepted\"}'\n",
+        encoding="utf-8",
+    )
     stub.chmod(0o755)
     home = tmp_path / "home"
     code = main(
-        ["--home", str(tmp_path / "empty"), "--state-dir", str(state_dir)],
+        [*argv, "--home", str(tmp_path / "empty")],
         environ={"ONEX_LEDGER_BUS_APPEND_COMMAND": str(stub), "ONEX_HOST_NAME": "h053"},
     )
-    assert code in (0, 1)
-    assert (home / unit["evidence_file"]).is_file()
+    assert code == 0
+    record = json.loads((home / unit["evidence_file"]).read_text(encoding="utf-8"))
+    assert record["conclusion"] == "success"
+    assert record["unappended"] == []
+    assert record["alarms"] == ["R8", "R9"]
 
 
 @pytest.mark.unit
@@ -417,20 +438,23 @@ class _FileRunner:
 def test_the_ledger_takes_the_backdated_stamp_of_an_alarm_row(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mode: str
 ) -> None:
-    # An alarm row is stamped with the start of its 6-hour bucket, so it is older than the ledger's newest row by up to
-    # six hours. The real append handler, over a ledger that already holds a newer row, must still accept it.
-    _record(tmp_path, "r8", "failure", "2026-11-16T14:48:29+00:00", monkeypatch)
+    # Missing records recur per bucket. Exercise a tick just before its six-hour
+    # boundary against a ledger already holding a newer row.
+    del monkeypatch
+    now = datetime(2026, 11, 16, 17, 59, 59, tzinfo=UTC)
     captured = _Appender()
-    _handler(captured).handle(ModelScenarioAlarmRequest(home=tmp_path, host="h053"))
+    HandlerDelegationScenarioAlarm(
+        load_alarm_settings(), captured, clock=lambda: now
+    ).handle(ModelScenarioAlarmRequest(home=tmp_path, host="h053"))
     row, request_id = captured.calls[0]
     stamp = datetime.strptime(row.split(" | ")[0], "%Y-%m-%dT%H:%M:%SZ").replace(
         tzinfo=UTC
     )
-    assert _NOW - stamp > timedelta(hours=2)
+    assert now - stamp == timedelta(hours=6) - timedelta(seconds=1)
 
     ledger = tmp_path / "ledger.md"
     ledger.write_text(
-        f"{_NOW:%Y-%m-%dT%H:%M:%SZ} | STATUS | lane=newer | principal=alarm-principal | ticket=OMN-24874 | "
+        f"{now:%Y-%m-%dT%H:%M:%SZ} | STATUS | lane=newer | principal=alarm-principal | ticket=OMN-24874 | "
         "actor=claude:sonnet:remote-lane | model=sonnet | a row newer than the backdated alarm\n",
         encoding="utf-8",
     )
@@ -452,7 +476,7 @@ def test_the_ledger_takes_the_backdated_stamp_of_an_alarm_row(
             rows=stamp_request_cell(row, request_id),
             requested_by_lane="delegation-scenario-alarm",
             requesting_host="h053",
-            requested_at=_NOW,
+            requested_at=now,
         ),
         writer_principal="alarm-principal",
     )
@@ -472,7 +496,23 @@ def test_discovery_never_builds_the_alarm_handler_without_arguments() -> None:
     assert contract["descriptor"]["runtime_profiles"] == ["effects"]
     with pytest.raises(TypeError):
         HandlerDelegationScenarioAlarm()  # type: ignore[call-arg]
-    # The repository's own discovery (the runtime sweep's entry point probe) imports the class and never calls it.
+    from omnibase_infra.runtime.kafka_contract_source import (
+        _resolve_handler_class_from_routing,
+    )
+
+    assert _resolve_handler_class_from_routing(contract) is None
+    handler = contract["handler"]
+    routed: dict[str, object] = {
+        "handler_routing": {
+            "handlers": [
+                {"handler": {"module": handler["module"], "name": handler["class"]}}
+            ]
+        }
+    }
+    assert _resolve_handler_class_from_routing(routed) == (
+        handler["module"] + "." + handler["class"]
+    )
+    # The repository's own discovery imports the class and never calls it.
     module = importlib.import_module(
         "omnimarket.nodes.node_delegation_scenario_alarm_effect"
     )
@@ -480,3 +520,56 @@ def test_discovery_never_builds_the_alarm_handler_without_arguments() -> None:
         "node_delegation_scenario_alarm_effect", module.__name__, _REPO / "src"
     )
     assert probe.ok, probe.reason
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("conclusion", ["failure", "refused"])
+def test_a_failed_run_crossing_a_bucket_boundary_has_one_row_and_request_id(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, conclusion: str
+) -> None:
+    _record(tmp_path, "r8", conclusion, "2026-11-16T17:59:00+00:00", monkeypatch)
+    _record(tmp_path, "r9", "success", "2026-11-16T17:59:00+00:00", monkeypatch)
+    appender = _Appender()
+    moments = iter(
+        (
+            datetime(2026, 11, 16, 17, 59, 59, tzinfo=UTC),
+            datetime(2026, 11, 16, 18, 0, 1, tzinfo=UTC),
+        )
+    )
+    handler = HandlerDelegationScenarioAlarm(
+        load_alarm_settings(), appender, clock=moments.__next__
+    )
+    for _ in range(2):
+        handler.handle(ModelScenarioAlarmRequest(home=tmp_path, host="h053"))
+    assert len(appender.calls) == 2
+    assert appender.calls[0] == appender.calls[1]
+    assert appender.calls[0][0].startswith("2026-11-16T17:59:00Z | STATUS")
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("microsecond", [0, 496205, 999999])
+def test_failure_stamp_is_visible_to_a_reader_window_starting_at_the_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, microsecond: int
+) -> None:
+    ran_at = datetime(2026, 11, 16, 14, 48, 29, microsecond=microsecond, tzinfo=UTC)
+    _record(tmp_path, "r8", "failure", ran_at.isoformat(), monkeypatch)
+    _record(tmp_path, "r9", "success", ran_at.isoformat(), monkeypatch)
+    ledger = InMemoryLedger()
+    handler = HandlerDelegationScenarioAlarm(
+        load_alarm_settings(), ledger, clock=lambda: _NOW
+    )
+    request_ = ModelScenarioAlarmRequest(home=tmp_path, host="h053")
+    assert handler.handle(request_).alarms[0].append_status == "accepted"
+    assert handler.handle(request_).alarms[0].append_status == "duplicate"
+    assert len(ledger.lines) == 1
+    reading = ledger.read(
+        ModelLedgerQuery(
+            since=ran_at,
+            until=_NOW + timedelta(seconds=1),
+            row_type="STATUS",
+            term="alarm=delegation-scenario-r8-failed",
+        )
+    )
+    assert reading.error is None
+    assert len(reading.rows) == 1
+    assert ran_at <= reading.rows[0].stamp < ran_at + timedelta(seconds=1)

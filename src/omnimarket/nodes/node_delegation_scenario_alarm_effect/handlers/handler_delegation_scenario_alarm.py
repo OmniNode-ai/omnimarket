@@ -8,9 +8,9 @@ and a record that is missing or unreadable, yields one STATUS row with ``src=ala
 name>``, the unit, the run's time and an owner line. A passing record yields no row unless it is older than the scenario's declared
 ``max_age_seconds`` (or its time is unreadable): a unit killed before it wrote its record, or a stopped timer, leaves the last
 run's success in place, and that reads ``stale``. The request id is the scenario, the host, the run's own time and the alarm
-time bucket (``alarm_bucket_seconds``), and the row is stamped with the bucket's start, not the tick's clock: the work ledger
-answers a repeated request id duplicate only when the rows are identical, so a later tick in the same bucket over the same run
-is answered duplicate, a new run or the next bucket is a new row, and a missing record in a later bucket is its own row. The
+time bucket only for missing, unreadable or stale records. A failed run with a readable time is keyed on that time alone
+and stamped with it, so ticks on either side of a bucket boundary submit the identical row and request id. Missing and stale
+records use the bucket start, allowing another outage reading in each bucket. The
 pattern is the deploy-job-failed alarm row of omnibase_infra's deploy job reading.
 """
 
@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import NAMESPACE_URL, uuid5
 
@@ -131,30 +131,28 @@ def alarm_bucket(settings: ModelScenarioAlarmSettings, now: datetime) -> int:
 
 
 def alarm_request_id(
-    watch: ModelScenarioWatch, host: str, ran_at: str, bucket: int
+    watch: ModelScenarioWatch, host: str, ran_at: str, bucket: int | None
 ) -> str:
-    """One UUID per run and alarm bucket on one host.
+    """One UUID per readable run; missing and stale records also name their bucket."""
+    key = f"onex-scenario-alarm:{watch.alarm}|{host}|{ran_at}"
+    if bucket is not None:
+        key += f"|{bucket}"
+    return str(uuid5(NAMESPACE_URL, key))
 
-    A retry or a later tick over the same run in the same bucket is a duplicate; a missing record in a later bucket
-    is a new outage and gets its own id.
-    """
-    return str(
-        uuid5(
-            NAMESPACE_URL,
-            f"onex-scenario-alarm:{watch.alarm}|{host}|{ran_at}|{bucket}",
-        )
-    )
+
+def _read_run_time(ran_at: str) -> datetime | None:
+    """Read an aware run time; an absent time zone cannot identify a run."""
+    try:
+        ran = datetime.fromisoformat(ran_at)
+    except ValueError:
+        return None
+    return ran if ran.tzinfo is not None else None
 
 
 def is_stale(ran_at: str, max_age_seconds: int, now: datetime) -> bool:
     """True when ``ran_at`` is unreadable or more than ``max_age_seconds`` before ``now``."""
-    try:
-        ran = datetime.fromisoformat(ran_at)
-    except ValueError:
-        return True
-    if ran.tzinfo is None:
-        return True
-    return (now - ran).total_seconds() > max_age_seconds
+    ran = _read_run_time(ran_at)
+    return ran is None or (now - ran).total_seconds() > max_age_seconds
 
 
 def build_alarm_row(
@@ -164,12 +162,20 @@ def build_alarm_row(
     host: str,
     conclusion: str,
     ran_at: str,
-    bucket: int,
+    bucket: int | None,
 ) -> str:
-    """The STATUS alarm row for one failed, stale or unreadable scenario run, stamped with its bucket's start."""
-    stamp = datetime.fromtimestamp(
-        bucket * settings.alarm_bucket_seconds, UTC
-    ).strftime("%Y-%m-%dT%H:%M:%SZ")
+    """Stamp a failed run at its own time, or a recurring outage at its bucket start."""
+    if bucket is None:
+        moment = _read_run_time(ran_at)
+        if moment is None:
+            raise ValueError("a run alarm requires a readable ran_at")
+    else:
+        moment = datetime.fromtimestamp(bucket * settings.alarm_bucket_seconds, UTC)
+    # Ledger stamps have second precision. Round a fractional run time up so a
+    # reader whose window starts at ran_at cannot exclude this run's alarm.
+    if moment.microsecond:
+        moment = moment.replace(microsecond=0) + timedelta(seconds=1)
+    stamp = moment.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     if conclusion == "no-record":
         reason = "no readable last-run record"
     elif conclusion == "stale":
@@ -230,16 +236,24 @@ class HandlerDelegationScenarioAlarm:
                     )
                 )
                 continue
+            # A failed run remains the same run across later ticks. Only missing,
+            # unreadable and stale records represent recurring outage readings.
+            row_bucket = (
+                bucket
+                if conclusion in ("no-record", "stale")
+                or _read_run_time(ran_at) is None
+                else None
+            )
             row = build_alarm_row(
                 self._settings,
                 watch,
                 host=request.host,
                 conclusion=conclusion,
                 ran_at=ran_at,
-                bucket=bucket,
+                bucket=row_bucket,
             )
             outcome = self._appender.append(
-                row, alarm_request_id(watch, request.host, ran_at, bucket)
+                row, alarm_request_id(watch, request.host, ran_at, row_bucket)
             )
             readings.append(
                 ModelScenarioReading(

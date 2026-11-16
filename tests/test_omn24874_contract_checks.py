@@ -9,9 +9,11 @@ import re
 import shlex
 import stat
 import subprocess
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -38,7 +40,7 @@ _REMOVED_PROXIES = {
 }
 
 
-def _items() -> dict[str, dict[str, object]]:
+def _items() -> dict[str, dict[str, Any]]:
     document = yaml.safe_load(_CONTRACT.read_text(encoding="utf-8"))
     return {item["id"]: item for item in document["dod_evidence"]}
 
@@ -47,7 +49,7 @@ def _commands() -> list[str]:
     return [
         str(check["check_value"])
         for item in _items().values()
-        for check in item["checks"]  # type: ignore[attr-defined]
+        for check in item["checks"]
     ]
 
 
@@ -78,10 +80,10 @@ def _max_age(scenario: str) -> int:
 def test_omn24874_contract_live_reading_parses_the_conclusion_field(
     tmp_path: Path,
 ) -> None:
-    command = str(_items()["dod-omn24874-live-readings"]["checks"][0]["check_value"])  # type: ignore[index]
+    command = str(_items()["dod-omn24874-live-readings"]["checks"][0]["check_value"])
 
     def run(
-        r8: dict[str, object], r9: dict[str, object], host: str = _PINNED_HOST
+        r8: Mapping[str, object], r9: Mapping[str, object], host: str = _PINNED_HOST
     ) -> int:
         for name, record in (("r8", r8), ("r9", r9)):
             path = (
@@ -126,12 +128,12 @@ def test_omn24874_contract_live_command_ages_equal_the_alarm_contract_max_ages()
 ):
     # A number in a command that drifts from the alarm contract's max age is a live reading with the wrong tolerance.
     items = _items()
-    live = str(items["dod-omn24874-live-readings"]["checks"][0]["check_value"])  # type: ignore[index]
+    live = str(items["dod-omn24874-live-readings"]["checks"][0]["check_value"])
     assert f'"r8 {_max_age("R8")}"' in live
     assert f'"r9 {_max_age("R9")}"' in live
-    r9 = str(items["dod-omn24874-ac2-r9-live"]["checks"][0]["check_value"])  # type: ignore[index]
+    r9 = str(items["dod-omn24874-ac2-r9-live"]["checks"][0]["check_value"])
     assert r9.rstrip("' ").endswith(f"ran_at {_max_age('R9')}")
-    r8 = str(items["dod-omn24874-ac1-r8-live-13-of-13"]["checks"][0]["check_value"])  # type: ignore[index]
+    r8 = str(items["dod-omn24874-ac1-r8-live-13-of-13"]["checks"][0]["check_value"])
     assert r8.rstrip("' ").endswith(f"recorded_at {_max_age('R8')}")
     for command in (live, r9, r8):
         assert f'test "$(hostname -s)" = {_PINNED_HOST}' in command
@@ -162,7 +164,7 @@ def test_omn24874_contract_r8_reading_means_cost_above_zero_on_a_real_writer_row
     # +organic_run_has_values is ``tokens > 0 and cost_usd > 0`` (handler_scenario_r8.py): the 13 of 13 reading rests on it.
     command = str(
         _items()["dod-omn24874-ac1-r8-live-13-of-13"]["checks"][0]["check_value"]
-    )  # type: ignore[index]
+    )
     env = {"OMNI_HOME": str(tmp_path), **_hostname_shim(tmp_path, _PINNED_HOST)}
 
     def reading() -> int:
@@ -223,7 +225,7 @@ def _ac5_command_env(
     )
     command = str(
         _items()["dod-omn24874-ac5-clean-verdict-row"]["checks"][0]["check_value"]
-    )  # type: ignore[index]
+    )
     env = {
         "OMNI_PLUGIN_ROOT": str(tmp_path / "plugin"),
         "PATH": "/usr/bin:/bin:/usr/local/bin",
@@ -256,7 +258,7 @@ def test_omn24874_contract_ac5_check_needs_the_clean_row_to_name_the_head(
 def test_omn24874_contract_ac3_check_reads_the_running_revision_on_the_pinned_host() -> (
     None
 ):
-    command = str(_items()["dod-omn24874-ac3-fix-ancestry"]["checks"][0]["check_value"])  # type: ignore[index]
+    command = str(_items()["dod-omn24874-ac3-fix-ancestry"]["checks"][0]["check_value"])
     # Host pinned, the revision read is the R8 unit's installed revision (not the gate host's checkout HEAD), a dev-merge tag
     # must contain it, and the newest dev-merge tag must be at most a day old.
     assert f'test "$(hostname -s)" = {_PINNED_HOST}' in command
@@ -272,14 +274,11 @@ def test_omn24874_contract_binds_no_proxy_test_to_ac2_ac3_or_ac5() -> None:
     items = _items()
     assert not (_REMOVED_PROXIES & set(items))
     for item in items.values():
-        bound = set(item.get("binds_ac") or [])  # type: ignore[call-overload]
+        bound = set(item.get("binds_ac") or [])
         if bound & {"AC2", "AC3", "AC5"}:
             # Only a live reading (a command in the local Done gate) may bind these.
             assert item.get("execution_scope") == "local_done_gate", item["id"]
-            assert all(
-                c["check_type"] == "command"
-                for c in item["checks"]  # type: ignore[attr-defined]
-            ), item["id"]
+            assert all(c["check_type"] == "command" for c in item["checks"]), item["id"]
 
 
 @pytest.mark.unit
@@ -290,3 +289,11 @@ def test_omn24874_contract_real_postgres_file_is_a_dod_command() -> None:
     assert commands, "no dod command names the real-Postgres file"
     # A run that skips any of its tests must fail the command.
     assert all("grep -q skipped" in c for c in commands)
+
+
+@pytest.mark.unit
+def test_omn24874_contract_partial_ancestry_reading_cannot_bind_ac3() -> None:
+    item = _items()["dod-omn24874-ac3-fix-ancestry"]
+    assert not item.get("binds_ac"), (
+        "R8 installed.json alone cannot attest the alarm unit and dev runtime"
+    )
