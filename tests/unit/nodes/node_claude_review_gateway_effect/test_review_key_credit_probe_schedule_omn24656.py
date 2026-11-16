@@ -111,6 +111,7 @@ def test_the_rendered_unit_runs_the_tick_module_on_the_declared_interval(
             project_path=str(branch),
             expected_revision=revision,
             path_overrides={"ONEX_SKILL_OVERLAY_ROOTS": str(tmp_path / "overlays")},
+            ledger_path=str(tmp_path / "ledger.md"),
         )
     )
     assert result.status == "success", result.stderr
