@@ -186,7 +186,6 @@ node_schema_repair_compute repair_prompt
 node_schema_repair_compute repairable
 node_schema_repair_compute run_id
 node_schema_repair_compute status
-node_seam_parallel_executor onex.evt.omnimarket.seam-parallel-completed.v1
 node_self_healing_dispatch_orchestrator onex.evt.omnimarket.self-healing-dispatch-recovery-dispatched.v1
 node_self_healing_dispatch_orchestrator onex.evt.omnimarket.self-healing-dispatch-worker-dispatched.v1
 node_swarm_aggregator_compute onex.evt.omnimarket.swarm-aggregation-completed.v1

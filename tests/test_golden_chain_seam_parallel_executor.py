@@ -329,3 +329,20 @@ class TestSeamParallelExecutorGoldenChain:
         # A must be first, D must be last
         assert tracker.order[0] == "A"
         assert tracker.order[-1] == "D"
+
+
+def test_contract_declares_seam_parallel_completed_terminal_event() -> None:
+    """The contract's terminal event is published and externally consumed."""
+    from pathlib import Path
+
+    import yaml
+
+    import omnimarket.nodes.node_seam_parallel_executor as node_pkg
+
+    contract = yaml.safe_load(
+        (Path(node_pkg.__file__).parent / "contract.yaml").read_text()
+    )
+    expected = "onex.evt.omnimarket.seam-parallel-completed.v1"
+    assert contract["terminal_event"] == expected
+    assert contract["event_bus"]["publish_topics"] == [expected]
+    assert expected in contract["externally_consumed_topics"]
