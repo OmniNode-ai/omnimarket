@@ -708,13 +708,17 @@ def evaluate_row(case: ModelCorpusCase, row: dict[str, Any]) -> list[str]:
     # an explicit ``terminal_state``/``status`` of "unknown" on a row that carries
     # ``terminal_ok``, and that row is judged by the old lines. The case still
     # FAILS (it carries a terminal expectation that was not observed); only a
-    # case that declares a terminal is short-circuited, so no pass/fail verdict
-    # changes -- only the text. ``evaluate_row`` cannot know whether a settle
+    # case that declares a terminal other than the one observed is
+    # short-circuited, so no pass/fail verdict changes -- only the text. The
+    # ``exp.terminal != terminal`` leg keeps that true for a case that declares
+    # "unknown" itself: it has no terminal failure here, as at the base, and is
+    # judged by the lines below. ``evaluate_row`` cannot know whether a settle
     # window elapsed, so the message states only what the row read holds.
     if (
         terminal == "unknown"
         and row.get("terminal_ok") is None
         and exp.terminal is not None
+        and exp.terminal != terminal
     ):
         failures.append(
             f"no terminal outcome: terminal_ok is NULL in the row read "

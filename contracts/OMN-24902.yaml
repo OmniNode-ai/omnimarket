@@ -1,13 +1,13 @@
 schema_version: 1.0.0
 ticket_id: OMN-24902
-title: 'Omnimarket PR 6326 at head da6946c35cce answers its review findings, and the next dev delegation-regression-nightly run is judged to pass because of it'
-summary: 'Second review round on the nightly runner change. The task text carried no finding list for this round, so no runner or test change is made; the live head is re-verified, its tests are run on the lab at the pushed head and at the base runner, and the verdict on the next nightly is read from the failing job text. AC2 (the Lab comment and the required checks) and AC3 (the ledger TERMINAL verdict) are read from the pull request watcher and the ledger, not from hosted CI.'
+title: 'Omnimarket PR 6326 at head da6946c35ce0 answers its review findings'
+summary: 'Second review round on the nightly runner change, reviewed at head da6946c35ce0. The task text for the round carried a finding list (ten findings, held in ledger comment 6922291635), so the runner and the tests are changed for them in later commits and each finding is fixed or argued in a pull request comment. This change is a diagnostic: the dev delegation-regression-nightly is not claimed to pass because of it, since the lane still does not terminalise delegations. AC2 and AC3 of the ticket are read from the pull request watcher and the ledger, not from hosted CI, and are not restated in this contract.'
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
 - id: req-omn24902-6326-round-two
-  statement: The nightly runner change on omnimarket#6326 holds at its live head, with its tests red at the base runner and green at the head, and the verdict on the next dev nightly is stated from the failing job text.
+  statement: The nightly runner change on omnimarket#6326 holds at its live head, with its tests red at the pinned base runner and green at the head; the nightly itself is not claimed to pass because of it.
   acceptance:
   - id: AC1
     statement: 'AC1: every blocking finding of the review at the live head of omnimarket#6326 is fixed by a change with a test that fails at the base runner and passes at the new head, or argued with evidence in a PR comment -- falsifier: `uv run pytest tests/delegation_golden/test_runner_unterminalised_row_omn24831.py -q -p no:cacheprovider` passes with the runner change reverted to the base'
@@ -31,17 +31,26 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/delegation_golden/test_runner_unterminalised_row_omn24831.py -q --no-cov -n 0 -p no:randomly -p no:cacheprovider
     cwd: .
+- id: dod-omn24902-ac1-findings-3-to-5
+  description: 'AC1 is held to the tests that answer findings 3 to 5 of the review at the live head: the declared-unknown case (3), the xfail tracking of I2 and I4 (3), the exact failure lists of the guard (4) and the consumer scan (5). The -k expression selects them by name, so the check exits non-zero (no tests collected) while any of them is absent, and fails if one of them fails.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/delegation_golden/test_runner_unterminalised_row_omn24831.py -q --no-cov -n 0 -p no:randomly -p no:cacheprovider -k "TestACaseDeclaringUnknownIsNotShortCircuited or TestXfailTrackingIsNotKeyedOnTheFailureText or an_undeclared_terminal_is_judged_by_the_old_lines_exactly or TestNoConsumerClassifiesFailuresByText"
+    cwd: .
 - id: dod-omn24902-ac1-fails-on-base
-  description: The runner test file is run against a copy of the head tree whose tests/delegation_golden/runner.py is the merge-base file, and the check passes only when that run FAILS. It needs the origin/dev ref, so only the local Done gate runs it.
+  description: 'The new test file is run against a copy of the head tree whose tests/delegation_golden/runner.py is the file at the pinned base 6efbe3ee5027. The check passes only when that run exits with exactly nine failures: the eight test_one_failure_names_the_null_terminal_ok ids (I1, I10, I3, I5, I6, I7, I8, I9) and test_it_does_not_report_telemetry_misses_it_cannot_judge. A bare failing run does not pass it. It needs the pinned base object in the clone, so only the local Done gate runs it.'
   source: manual
   execution_scope: local_done_gate
   checks:
   - check_type: command
     check_value: |-
-      bash -c 'd="$(mktemp -d)" && git archive HEAD | tar -x -C "$d" && git show origin/dev:tests/delegation_golden/runner.py > "$d/tests/delegation_golden/runner.py" && cd "$d" && ! env -u PYTHONPATH uv run --frozen pytest tests/delegation_golden/test_runner_unterminalised_row_omn24831.py -q --no-cov -n 0 -p no:randomly -p no:cacheprovider'
+      bash -c 'b=6efbe3ee5027f6efb67d0b81a1421f0dda32b4e5; t=tests/delegation_golden/test_runner_unterminalised_row_omn24831.py; d="$(mktemp -d)" && git archive HEAD | tar -x -C "$d" && git show "$b:tests/delegation_golden/runner.py" > "$d/tests/delegation_golden/runner.py" && cd "$d" && out="$(env -u PYTHONPATH uv run --frozen pytest $t -q --no-cov -n 0 -p no:randomly -p no:cacheprovider 2>&1)"; printf "%s\n" "$out" | tail -3; [ "$(printf "%s\n" "$out" | grep -cE "^FAILED .*test_one_failure_names_the_null_terminal_ok\[I(1|10|3|5|6|7|8|9)\]")" = 8 ] && printf "%s\n" "$out" | grep -q "^FAILED .*test_it_does_not_report_telemetry_misses_it_cannot_judge" && printf "%s\n" "$out" | grep -qE "(^| )9 failed"'
     cwd: .
 - id: dod-omn24902-ac4-case-still-fails
-  description: Hosted proxy for AC4. The runner test file asserts that the eight nightly hard-failure cases still fail on a row with terminal_ok NULL, that a completed row is still judged on its behaviour and that a wrong terminal keeps its old text, and no assertion, skip, xfail or threshold is changed. The git-diff falsifier below needs the origin/dev ref and runs at the local Done gate only.
+  description: Hosted proxy for AC4. The runner test file asserts that the eight nightly hard-failure cases still fail on a row with terminal_ok NULL, that a completed row is still judged on its behaviour and that a wrong terminal keeps its old text, and no assertion, skip, xfail or threshold is changed. The git-diff falsifier below needs the landing-branch ref and runs at the local Done gate only.
   source: manual
   binds_ac:
   - AC4
@@ -50,11 +59,11 @@ dod_evidence:
     check_value: uv run pytest tests/delegation_golden/test_runner_unterminalised_row_omn24831.py -q --no-cov -n 0 -p no:randomly -p no:cacheprovider -k "the_case_still_fails or StillJudged or still_a_behavioural_miss"
     cwd: .
 - id: dod-omn24902-ac4-git-diff
-  description: 'Git-diff falsifier for AC4: against the base, the diff of tests/ and .github/ removes no assert line, adds no skip or xfail marker, and leaves .github/ untouched. Needs the origin/dev ref, so only the local Done gate runs it.'
+  description: 'Git-diff falsifier: against the merge base with the landing branch, the diff of tests/ and .github/ removes no assert line, adds no skip or xfail marker (a decorator, a call or a marks= argument) and leaves .github/ untouched. Needs the landing-branch ref, so only the local Done gate runs it.'
   source: manual
   execution_scope: local_done_gate
   checks:
   - check_type: command
     check_value: |-
-      bash -c 'git diff --quiet origin/dev -- .github/ && [ "$(git diff origin/dev -- tests/ .github/ | grep -cE "^-[^-].*[[:space:]]assert[[:space:]]")" = 0 ] && [ "$(git diff origin/dev -- tests/ .github/ | grep -cE "^\+[[:space:]]*(@pytest\.mark\.(skip|skipif|xfail)|.*pytest\.(skip|xfail)\()")" = 0 ]'
+      bash -c 'mb="$(git merge-base HEAD origin/HEAD)" && git diff --quiet "$mb" -- .github/ && [ "$(git diff "$mb" -- tests/ .github/ | grep -cE "^-[^-].*[[:space:]]assert[[:space:]]")" = 0 ] && [ "$(git diff "$mb" -- tests/ .github/ | grep -cE "^\+.*pytest\.(mark\.)?(skip|skipif|xfail)")" = 0 ]'
     cwd: .

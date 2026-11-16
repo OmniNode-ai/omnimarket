@@ -36,7 +36,7 @@ from typing import Any
 import pytest
 
 from tests.delegation_golden import runner as runner_module
-from tests.delegation_golden.corpus_loader import load_corpus
+from tests.delegation_golden.corpus_loader import ModelCorpusCase, load_corpus
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -93,7 +93,7 @@ def _completed_row() -> dict[str, Any]:
 class TestAnUnterminalisedRowIsNamedAsSuch:
     @pytest.mark.parametrize("case_id", sorted(_NIGHTLY_HARD_FAILURES))
     def test_one_failure_names_the_null_terminal_ok(self, case_id: str) -> None:
-        """RED at the base: two or three lines, none of them naming the cause."""
+        """RED at the base: one to four lines (I10 reads one, I1 reads four), none naming the cause."""
         case = load_corpus().by_id(case_id)
         row = _unterminalised_row(_NIGHTLY_HARD_FAILURES[case_id])
         failures = runner_module.evaluate_row(case, row)
@@ -151,12 +151,102 @@ class TestTheGateIsTerminalOkNull:
         """``expected.terminal`` None on a NULL ``terminal_ok`` row is not named.
 
         U1 declares no terminal, so the ``exp.terminal is not None`` guard leaves
-        it out of the new branch: it never reads "no terminal outcome".
+        it out of the new branch. Its exact failure list is empty: it asserts
+        nothing about the row. An absence check alone would also pass if U1
+        returned before the new branch, so the list is pinned, and the I9 case
+        below pins a list that is NOT empty.
         """
         case = load_corpus().by_id("U1")
         assert case.expected.terminal is None
+        assert runner_module.evaluate_row(case, _unterminalised_row()) == []
+
+    def test_an_undeclared_terminal_is_judged_by_the_old_lines_exactly(self) -> None:
+        """I9 with its terminal undeclared reaches the old token line, and only it.
+
+        The row is unterminalised (terminal unknown, ``terminal_ok`` NULL), so
+        only the ``exp.terminal is not None`` guard keeps it out of the new
+        branch. Past that guard the old path yields exactly the token line: no
+        terminal line (nothing declared), no ``no terminal outcome``. A guard
+        that returned early, or dropped the ``exp.terminal`` test, changes this
+        list.
+        """
+        base = load_corpus().by_id("I9")
+        case = _declaring_terminal(base, None)
+        assert runner_module.evaluate_row(case, _unterminalised_row()) == [
+            "tokens: expected positive, got input=0 output=0"
+        ]
+
+
+def _declaring_terminal(case: ModelCorpusCase, terminal: str | None) -> ModelCorpusCase:
+    """A copy of ``case`` whose expected terminal is ``terminal``, unvalidated."""
+    expected = case.expected.model_copy(update={"terminal": terminal})
+    return case.model_copy(update={"expected": expected})
+
+
+@pytest.mark.unit
+class TestACaseDeclaringUnknownIsNotShortCircuited:
+    """R is ``exp.terminal != terminal``: a declared ``unknown`` is not unmet."""
+
+    def test_the_corpus_declares_no_unknown_terminal(self) -> None:
+        """The typed corpus only allows completed and failed, and none says unknown."""
+        declared = {
+            case.id: case.expected.terminal
+            for case in load_corpus().cases
+            if case.expected.terminal is not None
+        }
+        assert declared, "no case declares a terminal"
+        assert set(declared.values()) <= {"completed", "failed"}, declared
+
+    def test_a_declared_unknown_on_a_null_row_has_no_terminal_failure(self) -> None:
+        """At the base a case declaring ``unknown`` had no terminal line on this row.
+
+        RED without the ``exp.terminal != terminal`` leg: the branch fires and
+        names ``no terminal outcome`` for a terminal the row did show.
+        """
+        case = _declaring_terminal(load_corpus().by_id("I9"), "unknown")
         failures = runner_module.evaluate_row(case, _unterminalised_row())
         assert not any("no terminal outcome" in f for f in failures), failures
+        assert not any("terminal: expected" in f for f in failures), failures
+        assert failures == ["tokens: expected positive, got input=0 output=0"]
+
+
+@pytest.mark.unit
+class TestXfailTrackingIsNotKeyedOnTheFailureText:
+    """I2 and I4 stay tracked whatever line their failure carries."""
+
+    @pytest.mark.parametrize("case_id", ["I2", "I4"])
+    def test_the_xfail_ticket_does_not_depend_on_the_failure_wording(
+        self, case_id: str
+    ) -> None:
+        case = load_corpus().by_id(case_id)
+        assert case.xfail is not None
+        null_row = runner_module._result_from_row(case, "c-null", _unterminalised_row())
+        wrong = runner_module._result_from_row(case, "c-wrong", _completed_row())
+        # Two different failure texts, both non-empty, one ticket for both.
+        assert null_row.failures
+        assert wrong.failures
+        assert null_row.failures != wrong.failures
+        for result in (null_row, wrong):
+            assert result.passed is False
+            assert result.xfail_ticket == case.xfail.ticket
+
+    @pytest.mark.parametrize("case_id", ["I2", "I4"])
+    def test_a_tracked_case_is_not_a_hard_failure_on_either_wording(
+        self, case_id: str
+    ) -> None:
+        case = load_corpus().by_id(case_id)
+        results = [
+            runner_module._result_from_row(case, "c-null", _unterminalised_row()),
+            runner_module._result_from_row(case, "c-wrong", _completed_row()),
+        ]
+        scoreboard = runner_module.Scoreboard(
+            lane=runner_module._LANE,
+            corpus_version="1.0.0",
+            started_at="t0",
+            finished_at="t1",
+            results=results,
+        )
+        assert scoreboard.hard_failures == []
 
 
 @pytest.mark.unit
@@ -188,26 +278,49 @@ class TestATerminalisedRowIsStillJudged:
 
 @pytest.mark.unit
 class TestNoConsumerClassifiesFailuresByText:
-    """The consumers of the failure text are read, and none matches on it."""
+    """The consumers of the failure text are read, and none matches on it.
 
-    _FAILURE_TEXT = (
-        "no terminal outcome",
+    The needles are the lines the old runner printed and the Layer-2 consumers
+    could have keyed on, plus the two this change introduces. The consumers are
+    the delegation-health-check caller workflow, the nightly workflow and the
+    OMN-18349 placement and budget tests that read it, and the delegation health
+    compute handlers. The health check itself lives in omnibase_infra and reads
+    a workflow verdict, not failure lines.
+    """
+
+    _NEEDLES = (
+        "terminal: expected",
+        "tokens: expected positive",
         "got 'unknown'",
+        "no terminal outcome",
         "terminal_ok is NULL",
-        "lane/platform fact",
     )
 
-    @pytest.mark.parametrize(
-        "relative",
-        [
-            "tests/delegation_golden/test_layer2_live_runner.py",
-            ".github/workflows/delegation-regression-nightly.yml",
-        ],
+    _CONSUMERS = (
+        ".github/workflows/delegation-health-check.yml",
+        ".github/workflows/delegation-regression-nightly.yml",
+        "tests/test_delegation_nightly_placement.py",
+        "tests/test_delegation_nightly_budget.py",
+        "src/omnimarket/nodes/node_delegation_health_compute/handlers/handler_delegation_health.py",
     )
+
+    @classmethod
+    def _matched(cls, text: str) -> list[str]:
+        return [needle for needle in cls._NEEDLES if needle in text]
+
+    @pytest.mark.parametrize("relative", _CONSUMERS)
     def test_consumer_does_not_match_on_the_failure_text(self, relative: str) -> None:
         text = (_REPO_ROOT / relative).read_text(encoding="utf-8")
-        matched = [line for line in self._FAILURE_TEXT if line in text]
-        assert matched == [], f"{relative} matches on failure text: {matched}"
+        assert self._matched(text) == [], f"{relative} matches on failure text"
+
+    @pytest.mark.parametrize(
+        "needle", ["terminal: expected", "tokens: expected positive"]
+    )
+    def test_the_scan_flags_a_consumer_that_matches_the_old_line(
+        self, needle: str
+    ) -> None:
+        """Positive control: a consumer carrying the old line is reported."""
+        assert self._matched(f"if grep -q '{needle}' log; then retry; fi") == [needle]
 
     def test_the_verdict_is_the_failure_list_not_its_text(self) -> None:
         """A case passes iff ``evaluate_row`` returns no failure; the wording is free."""
