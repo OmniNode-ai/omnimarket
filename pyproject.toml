@@ -290,6 +290,8 @@ dependencies = [
     # S3 sink and KMS envelope encryption of topic archives; already resolved
     # through omnibase-infra, declared here because omnimarket now imports it.
     "boto3>=1.43.0,<2.0.0",
+    # node_floor_fill_temporal_workflow imports the Temporal SDK at module import.
+    "temporalio>=1.35.0,<2.0.0",
 ]
 
 [project.optional-dependencies]
