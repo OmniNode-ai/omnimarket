@@ -38,8 +38,8 @@ async def test_one_switch_uses_only_hook_commands_for_any_selected_model() -> No
         for _ in range(6):
             await pilot.pause()
         assert not app.screen.query(RadioButton)
-        # One switch per hook (operator 2026-11-15), and nothing else to choose.
-        assert len(app.screen.query(Switch)) == 2
+        # One hook, one switch (OMN-23413 Amendment 14a), and nothing else to choose.
+        assert len(app.screen.query(Switch)) == 1
         app.screen.set_all(True)
         await _press(pilot, app, "dsave")
         for _ in range(6):

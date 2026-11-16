@@ -48,8 +48,8 @@ from tests.unit.nodes.node_onex_setup_effect.test_onex_tui_delegation_hooks impo
 
 pytestmark = pytest.mark.unit
 
-_ON = {"prompt_hook": "installed", "subagent_hook": "installed"}
-_OFF = {"prompt_hook": "missing", "subagent_hook": "missing"}
+_ON = {"prompt_hook": "installed"}
+_OFF = {"prompt_hook": "missing"}
 _SWITCHES = {("delegation", "on"), ("delegation", "off")}
 
 

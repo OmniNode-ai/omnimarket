@@ -168,14 +168,14 @@ class ModelTuiDelegationHook(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     #: Its evidence key in `onex delegation status --json` (claude-hooks step).
-    key: Literal["prompt_hook", "subagent_hook"]
+    key: Literal["prompt_hook"]
     #: The switch's own label (operator 2026-11-15: one switch per hook).
     label: str
     name: str
     what: str
     #: Its key in status's "switches" (~/.onex/delegation.json), and the
     #: `onex delegation on` flag that pauses it (operator 2026-11-15).
-    switch: Literal["prompts", "subagents"]
+    switch: Literal["prompts"]
     pause_flag: str = Field(pattern=r"^--no-[a-z]+$")
 
 
@@ -187,8 +187,6 @@ class ModelTuiDelegation(BaseModel):
     enable: tuple[tuple[str, ...], ...] = Field(min_length=1)
     disable: tuple[tuple[str, ...], ...] = Field(min_length=1)
     switched_on: str
-    switched_on_prompts: str
-    switched_on_subagents: str
     switched_off: str
     not_switched: str
     nothing_ticked: str
@@ -203,7 +201,8 @@ class ModelTuiDelegation(BaseModel):
     state_reading: str
     state_unread: str
     hooks_title: str
-    hooks: tuple[ModelTuiDelegationHook, ...] = Field(min_length=2, max_length=2)
+    #: One hook, the prompt hook (OMN-23413 Amendment 14a, 2026-11-17).
+    hooks: tuple[ModelTuiDelegationHook, ...] = Field(min_length=1, max_length=1)
     hook_installed: str
     hook_missing: str
     hook_unknown: str

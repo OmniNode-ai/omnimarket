@@ -1,17 +1,17 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""`onex delegation on --no-prompts | --no-subagents`: one switch per hook (OMN-23413).
+"""`onex delegation on --no-prompts`: the prompt hook's switch (OMN-23413).
 
-Operator, 2026-11-15: "how to enable and disable separate hooks?" then "build
-separate switches". Both hooks stay installed; ~/.onex/delegation.json says
-which delegates, so a pause never edits Claude Code's settings.
+Operator, 2026-11-15: "build separate switches"; operator, 2026-11-17
+(Amendment 14a): one hook, the prompt hook. It stays installed;
+~/.onex/delegation.json says whether it delegates, so a pause never edits
+Claude Code's settings.
 
 Failure modes:
-  X1  `on --no-prompts` (or --no-subagents) does not save that hook paused and
-      the other on, or reinstalls hooks that are already in place.
-  X2  plain `on` keeps a hook paused from before.
-  X3  both hooks paused is accepted as "on" instead of pointing to off.
-  X4  status does not say, hook by hook, whether it delegates or is paused.
+  X1  `on --no-prompts` does not save the hook paused, or reinstalls hooks that
+      are already in place.
+  X2  plain `on` keeps the hook paused from before.
+  X4  status does not say whether the hook delegates or is paused.
 """
 
 from __future__ import annotations
@@ -47,71 +47,43 @@ def _switch_on(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(cli_delegation, "delegation_switch_enabled", lambda: True)
 
 
-@pytest.mark.parametrize(
-    ("flag", "prompts", "subagents"),
-    [("--no-prompts", False, True), ("--no-subagents", True, False)],
-)
-def test_on_pauses_one_hook_and_keeps_the_other(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    flag: str,
-    prompts: bool,
-    subagents: bool,
+def test_on_no_prompts_saves_the_hook_paused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """X1, X4."""
     claude = _ready()
-    code, doc, switched = _run(monkeypatch, tmp_path, claude, "on", flag)
+    code, doc, switched = _run(monkeypatch, tmp_path, claude, "on", "--no-prompts")
     assert code == 0
     assert doc["status"] == "on"
-    assert read_switches() == ModelDelegationSwitches(
-        prompts=prompts, subagents=subagents
-    )
-    assert doc["switches"] == {
-        "prompts": "on" if prompts else "paused",
-        "subagents": "on" if subagents else "paused",
-    }
+    assert read_switches().prompts is False
+    assert doc["switches"] == {"prompts": "paused"}
     assert "claude-hooks" not in claude.applied  # installed already: nothing rewritten
     assert switched == [("on",)]
 
 
-def test_plain_on_turns_both_hooks_back_on(
+def test_plain_on_turns_the_hook_back_on(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """X2."""
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
-    write_switches(ModelDelegationSwitches(prompts=False, subagents=True))
+    write_switches(ModelDelegationSwitches(prompts=False))
     code, doc, _switched = _run(monkeypatch, tmp_path, _ready(), "on")
     assert code == 0
-    assert read_switches() == ModelDelegationSwitches(prompts=True, subagents=True)
-    assert doc["switches"] == {"prompts": "on", "subagents": "on"}
+    assert read_switches().prompts is True
+    assert doc["switches"] == {"prompts": "on"}
 
 
-def test_pausing_both_hooks_points_to_off(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """X3."""
-    claude = _ready()
-    code, doc, switched = _run(
-        monkeypatch, tmp_path, claude, "on", "--no-prompts", "--no-subagents"
-    )
-    assert code == 1
-    assert "onex delegation off" in str(doc["fix"])
-    assert claude.applied == []
-    assert switched == []
-
-
-def test_status_names_each_hooks_switch(
+def test_status_names_the_switch(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """X4: JSON and text."""
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
-    write_switches(ModelDelegationSwitches(prompts=True, subagents=False))
+    write_switches(ModelDelegationSwitches(prompts=True))
     _code, doc, _switched = _run(monkeypatch, tmp_path, _ready(), "status")
-    assert doc["switches"] == {"prompts": "on", "subagents": "paused"}
+    assert doc["switches"] == {"prompts": "on"}
     from click.testing import CliRunner
 
     monkeypatch.setattr(cli_delegation, "HandlerSetupClaude", _ready().make)
     text = CliRunner().invoke(cli_delegation.delegation_group, ["status"]).output
     assert "Prompts: on" in text
-    assert "Subagent tasks: paused" in text
     assert json.loads(json.dumps(doc))["status"] == "on"

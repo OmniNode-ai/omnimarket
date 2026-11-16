@@ -1,18 +1,18 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""/delegation: one switch per hook (OMN-23413, operator 2026-11-15).
+"""/delegation: one hook, one switch (OMN-23413).
 
-Operator, 2026-11-15 (screenshot of /delegation): "how to enable and disable
-separate hooks?" then "build separate switches", then of the tick boxes: "bad
-design". Each hook has its own switch; both off removes the hooks.
+Operator, 2026-11-15 (screenshot of /delegation): "build separate switches",
+then of the tick boxes: "bad design". Operator, 2026-11-17 (Amendment 14a):
+"keep one hook for all claude prompt delegation", so the tab has one switch,
+the prompt hook's; switching it off removes the hook.
 
 Failure modes:
   H1  a paused hook is drawn as installed, or its switch on.
-  H2  unticking one hook and saving does not send on with that hook paused.
-  H3  both switches off does not send off (it removes the hooks).
-  H4  a paused hook's switch turned off with the other does not send off.
-  H5  status's per-hook switches do not reach the rows.
-  H6  the status bar says "prompts and tasks" while one is paused.
+  H3  the switch off does not send off (it removes the hook).
+  H4  a paused hook's switch turned off does not send off.
+  H5  status's switch does not reach the row.
+  H6  the status bar says delegation is on, unqualified, while it is paused.
 """
 
 from __future__ import annotations
@@ -36,11 +36,11 @@ from tests.unit.nodes.node_onex_setup_effect.test_onex_tui_delegation_hooks impo
 
 pytestmark = pytest.mark.unit
 
-_BOTH = {"prompt_hook": "installed", "subagent_hook": "installed"}
+_ON = {"prompt_hook": "installed"}
 
 
 def _on(hooks: dict[str, str] | None = None) -> ModelTuiStatus:
-    return ModelTuiStatus(models=1, delegation="hook", hooks=hooks or _BOTH)
+    return ModelTuiStatus(models=1, delegation="hook", hooks=hooks or _ON)
 
 
 def _sent(app) -> list[tuple[str, ...]]:  # type: ignore[no-untyped-def]
@@ -52,45 +52,24 @@ async def _settle(pilot) -> None:  # type: ignore[no-untyped-def]
         await pilot.pause()
 
 
-async def test_a_paused_hook_is_drawn_paused_and_its_box_unticked() -> None:
+async def test_a_paused_hook_is_drawn_paused_and_its_switch_off() -> None:
     """H1."""
     words = tui_design().delegation
-    app = _app(_on({"prompt_hook": "paused", "subagent_hook": "installed"}))
+    app = _app(_on({"prompt_hook": "paused"}))
     async with app.run_test(size=(160, 46)) as pilot:
         await _open(pilot, app)
         prompt = _text(app, "#hook-prompt_hook")
-        ticked = {
-            key: app.screen.query_one(f"#use-{key}", Switch).value
-            for key in ("prompt_hook", "subagent_hook")
-        }
+        ticked = app.screen.query_one("#use-prompt_hook", Switch).value
     assert words.hook_paused in prompt
-    assert ticked == {"prompt_hook": False, "subagent_hook": True}
+    assert ticked is False
 
 
-@pytest.mark.parametrize(
-    ("key", "flag"),
-    [("prompt_hook", "--no-prompts"), ("subagent_hook", "--no-subagents")],
-)
-async def test_unticking_one_hook_saves_on_with_it_paused(key: str, flag: str) -> None:
-    """H2."""
+async def test_the_switch_off_is_delegation_off() -> None:
+    """H3: off removes the hook, as the old main switch did."""
     app = _app(_on())
     async with app.run_test(size=(160, 46)) as pilot:
         await _open(pilot, app)
-        app.screen.query_one(f"#use-{key}", Switch).value = False
-        await pilot.pause()
-        await _press(pilot, app, "dsave")
-        await _settle(pilot)
-        sent = _sent(app)
-    assert ("delegation", "on", "--json", flag) in sent
-
-
-async def test_both_switches_off_is_delegation_off() -> None:
-    """H3: both off removes the hooks, as the old main switch did."""
-    app = _app(_on())
-    async with app.run_test(size=(160, 46)) as pilot:
-        await _open(pilot, app)
-        for key in ("prompt_hook", "subagent_hook"):
-            app.screen.query_one(f"#use-{key}", Switch).value = False
+        app.screen.query_one("#use-prompt_hook", Switch).value = False
         await pilot.pause()
         await _press(pilot, app, "dsave")
         await _settle(pilot)
@@ -99,9 +78,9 @@ async def test_both_switches_off_is_delegation_off() -> None:
     assert not any(call[1] == "on" for call in sent)
 
 
-async def test_turning_off_the_last_delegating_switch_sends_off() -> None:
+async def test_turning_off_a_paused_hook_sends_off() -> None:
     """H4."""
-    app = _app(_on({"prompt_hook": "paused", "subagent_hook": "installed"}))
+    app = _app(_on({"prompt_hook": "paused"}))
     async with app.run_test(size=(160, 46)) as pilot:
         await _open(pilot, app)
         app.screen.set_all(False)
@@ -112,35 +91,25 @@ async def test_turning_off_the_last_delegating_switch_sends_off() -> None:
     assert ("delegation", "off", "--json") in sent
 
 
-def test_status_switches_reach_the_hook_rows() -> None:
+def test_status_switch_reaches_the_hook_row() -> None:
     """H5: an installed hook whose switch is paused reads paused."""
     document = {
         "status": "on",
-        "switches": {"prompts": "paused", "subagents": "on"},
+        "switches": {"prompts": "paused"},
         "observations": [
-            {"step": "claude-hooks", "evidence": dict(_BOTH)},
+            {"step": "claude-hooks", "evidence": dict(_ON)},
         ],
     }
     state, hooks, problem = _delegation_read(0, json.dumps(document))
     assert (state, problem) == ("hook", None)
-    assert hooks == {"prompt_hook": "paused", "subagent_hook": "installed"}
+    assert hooks == {"prompt_hook": "paused"}
 
 
 @pytest.mark.parametrize(
     ("hooks", "word"),
-    [
-        (
-            {"prompt_hook": "paused", "subagent_hook": "installed"},
-            "delegation_hook_tasks",
-        ),
-        (
-            {"prompt_hook": "installed", "subagent_hook": "paused"},
-            "delegation_hook_prompts",
-        ),
-        (_BOTH, "delegation_hook"),
-    ],
+    [({"prompt_hook": "paused"}, "delegation_hook_paused"), (_ON, "delegation_hook")],
 )
-async def test_the_status_bar_names_what_delegates(
+async def test_the_status_bar_says_whether_delegation_is_paused(
     hooks: dict[str, str], word: str
 ) -> None:
     """H6."""
@@ -149,3 +118,5 @@ async def test_the_status_bar_names_what_delegates(
         await _settle(pilot)
         bar = " ".join(str(app.query_one("#status").render()).split())
     assert tui_design().words[word] in bar
+    if word == "delegation_hook":
+        assert tui_design().words["delegation_hook_paused"] not in bar

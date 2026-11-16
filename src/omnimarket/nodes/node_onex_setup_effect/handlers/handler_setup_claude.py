@@ -265,7 +265,7 @@ class HandlerSetupClaude:
                 # Each hook's installed state reaches status and the TUI (OMN-23413).
                 hooks = {
                     key: legacy.evidence[key]
-                    for key in ("prompt_hook", "subagent_hook")
+                    for key in ("prompt_hook",)
                     if key in legacy.evidence
                 }
                 if not delegation_switch_enabled():

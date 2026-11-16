@@ -191,7 +191,8 @@ def test_off_turns_the_switch_off(
     assert switched == [("off",)]
     assert claude.removed == ["claude-hooks"]
     assert document["status"] == "off"
-    assert claude.preserve_history == [True]
+    # AC43 (Amendment 14d): off keeps no history helper.
+    assert claude.preserve_history == [False]
 
 
 def test_off_disables_before_reporting_refused_owned_hook_removal(

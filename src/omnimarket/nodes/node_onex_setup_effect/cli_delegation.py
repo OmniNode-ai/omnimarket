@@ -79,12 +79,9 @@ def _switch(on: bool) -> None:
 
 
 def _switch_words() -> dict[str, str]:
-    """Each hook's own switch (~/.onex/delegation.json): on, or paused."""
-    switches = read_switches()
-    return {
-        "prompts": "on" if switches.prompts else "paused",
-        "subagents": "on" if switches.subagents else "paused",
-    }
+    """The prompt hook's switch (~/.onex/delegation.json): on, or paused. It is
+    the one switch (OMN-23413 Amendment 14a): subagents always run on Claude."""
+    return {"prompts": "on" if read_switches().prompts else "paused"}
 
 
 def _switch_failed(on: bool) -> ModelSetupObservation:
@@ -147,9 +144,7 @@ def _report(
         return
     click.echo(f"Claude Code delegation: {status} (Claude Code: {claude_code})")
     if status == "on":
-        click.echo(
-            f"Prompts: {switches['prompts']} · Subagent tasks: {switches['subagents']}"
-        )
+        click.echo(f"Prompts: {switches['prompts']}")
     note = fix if status != "on" else _advice(observations)
     if note:
         click.echo(note)
@@ -205,7 +200,7 @@ def status_command(json_output: bool) -> None:
     older_on = (
         plugin.status == "success"
         and hooks.evidence.get("installed") == "older"
-        and not hooks.evidence.get("installed_missing")  # AC38: both hooks, or off
+        and not hooks.evidence.get("installed_missing")  # AC38: the prompt hook, or off
         and delegation_switch_enabled()
     )
     on = all(o.status == "success" for o in seen) or older_on
@@ -223,30 +218,14 @@ def status_command(json_output: bool) -> None:
     default=True,
     help="Delegate every prompt (the prompt hook). --no-prompts pauses it.",
 )
-@click.option(
-    "--subagents/--no-subagents",
-    default=True,
-    help="Delegate subagent tasks (the subagent hook). --no-subagents pauses it.",
-)
 @click.option("--json", "json_output", is_flag=True)
-def on_command(
-    replace: bool,
-    prompts: bool,
-    subagents: bool,
-    json_output: bool,
-) -> None:
+def on_command(replace: bool, prompts: bool, json_output: bool) -> None:
     """Switch Claude Code delegation on, for every folder you run claude in.
 
-    Both hooks are installed; --no-prompts or --no-subagents pauses one of them
-    without touching Claude Code's settings (operator 2026-11-15)."""
-    if not (prompts or subagents):
-        both = ModelSetupObservation(
-            step="switches",
-            status="action_required",
-            fix="Pausing both hooks is delegation off: run onex delegation off.",
-        )
-        _report([both], "not_ready", json_output, cause=both)
-        raise SystemExit(1)
+    One hook is installed, the prompt hook; --no-prompts installs it paused
+    without touching Claude Code's settings again."""
+    # One hook (OMN-23413 Amendment 14a, operator 2026-11-17): Claude's own
+    # helper tasks always run on Claude, so `on` offers no second switch.
     plan = _plan()
     plugin = HandlerSetupClaude(name="claude-plugin").observe(plan)
     if _claude_code(plugin) in ("not_installed", "signed_out"):  # the user's step
@@ -279,14 +258,17 @@ def on_command(
         failed = _switch_failed(True)
         _report([plugin, hooks, failed], "not_ready", json_output, cause=failed)
         raise SystemExit(1) from None
-    write_switches(ModelDelegationSwitches(prompts=prompts, subagents=subagents))
+    write_switches(ModelDelegationSwitches(prompts=prompts))
     _report([plugin, hooks], "on", json_output)
 
 
 @delegation_group.command("off")
 @click.option("--json", "json_output", is_flag=True)
 def off_command(json_output: bool) -> None:
-    """Disable delegation and remove its owned prompt and tool registrations."""
+    """Disable delegation and remove the whole hook, its history helper included.
+
+    Nothing records prompts while delegation is off; the delegation store keeps
+    its run history."""
     try:
         _switch(False)
         switch_failed = None
@@ -295,9 +277,9 @@ def off_command(json_output: bool) -> None:
         switch_failed = _switch_failed(False)
     plan = _plan()
     try:
-        HandlerSetupClaude(name="claude-hooks").remove_delegation_hooks(
-            preserve_history=True
-        )
+        # OMN-23413 AC43 (Amendment 14d, operator 2026-11-17): off keeps no
+        # history helper, superseding Amendment 13's "OFF retains pending context".
+        HandlerSetupClaude(name="claude-hooks").remove_delegation_hooks()
     except Exception:
         refused = ModelSetupObservation(
             step="claude-hooks",

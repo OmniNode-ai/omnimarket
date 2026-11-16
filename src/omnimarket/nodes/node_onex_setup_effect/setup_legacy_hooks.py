@@ -4,7 +4,6 @@
 
 import hashlib
 import json
-import re
 import shlex
 import shutil
 import sys
@@ -16,10 +15,8 @@ from omnibase_core.cli.cli_user_config import user_config_path
 
 from .models.model_setup_observation import ModelSetupObservation
 
-#: The script both delegation hooks run; its event says which hook it is.
+#: The script the delegation hook runs (the prompt hook, on UserPromptSubmit).
 DELEGATION_SCRIPT = "/hooks/scripts/pre_tool_use_delegation.sh"
-#: Matchers Claude Code reads as exact tool names, one or a list (code.claude.com/docs/en/hooks).
-_EXACT_NAMES = re.compile(r"[A-Za-z0-9_\- ,|]+")
 
 
 class ClaudeSettingsError(ValueError):
@@ -163,51 +160,24 @@ def keep_installed_hooks(claude_home: Path) -> Path:
     return kept
 
 
-def matches_tool(matcher: object, tool: str) -> bool:
-    """Whether a hook group's matcher fires for ``tool``, as Claude Code reads it:
-    "*", "" or none match every tool; letters, digits, "_", "-", spaces, "|" and
-    "," name tools exactly; anything else is an unanchored regular expression,
-    and one Python cannot compile matches nothing here."""
-    if matcher is None or matcher in ("", "*"):
-        return True
-    if not isinstance(matcher, str):
-        return False
-    if _EXACT_NAMES.fullmatch(matcher):
-        return tool in {name.strip() for name in re.split(r"[|,]", matcher)}
-    try:
-        return re.search(matcher, tool) is not None
-    except re.error:
-        return False
-
-
 def missing_delegation_hooks(rows: dict[str, Any]) -> list[str]:
-    """Which of the two delegation hooks a bundle's manifest or an install lacks (AC38).
+    """Whether a bundle's manifest or an install lacks the delegation hook (AC38).
 
-    Delegation is two hooks running the delegation script: on UserPromptSubmit
-    (the prompt hook, labelled ONEX_DELEGATION_HOOK=prompts) and on PreToolUse
-    for the Agent tool (the subagent hook, ONEX_DELEGATION_HOOK=subagents). Any
-    other command, such as the no-op prompt classifier installs before
-    2026-11-11 registered, is not one of them. A bundle or install carrying
-    only one must never read as delegation on.
+    Delegation is one hook, the prompt hook: the delegation script on
+    UserPromptSubmit, labelled ONEX_DELEGATION_HOOK=prompts (OMN-23413
+    Amendment 14a, operator 2026-11-17: "keep one hook for all claude prompt
+    delegation"). Subagents always run on Claude, so no PreToolUse row is
+    needed. Any other command, such as the no-op prompt classifier installs
+    before 2026-11-11 registered, is not the prompt hook, and a bundle or
+    install without it must never read as delegation on.
     """
-
-    def delegates(event: str, *, tool: str | None) -> bool:
-        # UserPromptSubmit has no matcher; Claude Code ignores one written there.
-        return any(
-            DELEGATION_SCRIPT in str(hook.get("command") or "")
-            for group in rows.get(event) or []
-            if tool is None or matches_tool(group.get("matcher"), tool)
-            for hook in group.get("hooks") or []
-        )
-
-    subagent = delegates("PreToolUse", tool="Agent")
-    prompt = delegates("UserPromptSubmit", tool=None)
-    absent = []
-    if not prompt:
-        absent.append("prompt (UserPromptSubmit)")
-    if not subagent:
-        absent.append("subagent (PreToolUse Agent|Task)")
-    return absent
+    # UserPromptSubmit has no matcher; Claude Code ignores one written there.
+    prompt = any(
+        DELEGATION_SCRIPT in str(hook.get("command") or "")
+        for group in rows.get("UserPromptSubmit") or []
+        for hook in group.get("hooks") or []
+    )
+    return [] if prompt else ["prompt (UserPromptSubmit)"]
 
 
 def _owned_rows(rows: dict[str, Any], root: Path) -> dict[str, Any]:
@@ -229,11 +199,9 @@ def _owned_rows(rows: dict[str, Any], root: Path) -> dict[str, Any]:
 
 
 def _hook_presence(owned: dict[str, Any]) -> dict[str, str]:
-    """Each delegation hook as installed or missing, for status and the TUI."""
-    absent = " ".join(missing_delegation_hooks(owned))
+    """The delegation hook as installed or missing, for status and the TUI."""
     return {
-        "prompt_hook": "missing" if "prompt" in absent else "installed",
-        "subagent_hook": "missing" if "subagent" in absent else "installed",
+        "prompt_hook": "missing" if missing_delegation_hooks(owned) else "installed"
     }
 
 
@@ -243,7 +211,7 @@ def observe_legacy_hooks(
     """Compare files and exact registered rows; never infer success from a receipt.
 
     ``require_both=False`` is for removal: whether the install changed does not
-    depend on the bundle carrying both hooks, and the uninstaller works from
+    depend on the bundle carrying the prompt hook, and the uninstaller works from
     what was installed (OMN-23413 review 2026-11-15)."""
     source = installer.parent.parent / "plugins" / "onex"
     root = _root()
@@ -282,7 +250,7 @@ def observe_legacy_hooks(
             step="claude-hooks",
             status="action_required",
             evidence={"bundle_missing": ", ".join(absent), **presence},
-            fix=f"This onex's omninode-claude bundle has no {' or '.join(absent)} delegation hook, so Claude Code delegation cannot be switched on. Install an omninode-claude that carries both hooks, then run onex delegation on.",
+            fix=f"This onex's omninode-claude bundle has no {' or '.join(absent)} delegation hook, so Claude Code delegation cannot be switched on. Install an omninode-claude that carries the prompt hook, then run onex delegation on.",
         )
     expected_files = _files(source)
     actual_files = _files(target)
@@ -326,8 +294,8 @@ def observe_legacy_hooks(
         changed.add(Path("settings.json"))
     registered = wanted_rows <= set(current_rows)
     if changed and _unchanged_since_recorded(claude_home):
-        # AC38: an older install may hold only one of the two hooks; name it so
-        # status never reads a subagent-only install as delegation on.
+        # AC38: an older install may lack the prompt hook; name it so
+        # status never reads an install without the prompt hook as delegation on.
         lacking = missing_delegation_hooks(owned)
         if lacking:
             return ModelSetupObservation(

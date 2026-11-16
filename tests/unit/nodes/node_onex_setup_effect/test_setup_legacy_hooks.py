@@ -2,19 +2,17 @@
 # SPDX-License-Identifier: MIT
 """Legacy owner seam: missing closure, edited state and rerun are distinct.
 
-AC38 (OMN-23413 Amendment 11): delegation is two hooks, the prompt hook
-(UserPromptSubmit) and the subagent hook (PreToolUse Agent|Task). Seen
-2026-11-14: `onex delegation status` said "on" while the bundle onex installs
-from carried only the subagent hook, so no prompt was ever delegated.
-Failure modes:
+AC38 (OMN-23413 Amendment 11), as amended 2026-11-17 (Amendment 14a): delegation
+is one hook, the prompt hook (UserPromptSubmit). Seen 2026-11-14: `onex
+delegation status` said "on" while the bundle onex installs from carried no
+prompt hook, so no prompt was ever delegated. Failure modes:
   B1  a bundle without the prompt hook is reported installed ("on").
-  B2  a bundle without the subagent hook is reported installed ("on").
   B3  `onex delegation on` (with or without --replace) runs the installer for
       such a bundle, rewriting settings without ever reaching "on".
-  B4  an older, untouched install that has only the subagent hook is not
-      named as missing the prompt hook, so status can read it as "on".
-  B5  an observation does not say, hook by hook, whether the prompt hook and
-      the subagent hook are installed, so the TUI can show only one switch.
+  B4  an older, untouched install without the prompt hook is not named as
+      missing it, so status can read it as "on".
+  B5  an observation does not say whether the prompt hook is installed, so the
+      TUI cannot show its row.
 """
 
 import json
@@ -255,17 +253,12 @@ def test_missing_bundle_is_action_required_on_observe_and_apply(tmp_path, monkey
     assert commands == []
 
 
-@pytest.mark.parametrize(
-    ("drop", "named"),
-    [(("UserPromptSubmit",), "prompt"), (("PreToolUse",), "subagent")],
-)
 @pytest.mark.parametrize("replace", [False, True])
-def test_a_bundle_without_both_delegation_hooks_is_never_on(
-    tmp_path, monkeypatch, drop, named, replace
-):
-    """B1, B2, B3."""
+def test_a_bundle_without_the_prompt_hook_is_never_on(tmp_path, monkeypatch, replace):
+    """B1, B3."""
+    named = "prompt"
     owner, plan, installed, _profile, _installer, commands = bundle(
-        tmp_path, monkeypatch, drop=drop
+        tmp_path, monkeypatch, drop=("UserPromptSubmit",)
     )
     owner._replace = replace
     seen = owner.observe(plan)
@@ -289,7 +282,7 @@ def test_an_older_install_without_the_prompt_hook_names_it(tmp_path, monkeypatch
         tmp_path, monkeypatch
     )
     assert owner.apply(plan) is None
-    # What an earlier onex left: the subagent hook only, recorded as installed.
+    # What an earlier onex left: no prompt hook, recorded as installed.
     for path in (installed / "hooks-delegation.json", profile / "settings.json"):
         data = json.loads(path.read_text())
         data["hooks"].pop("UserPromptSubmit")
@@ -301,8 +294,9 @@ def test_an_older_install_without_the_prompt_hook_names_it(tmp_path, monkeypatch
     assert "prompt" in str(seen.fix)
 
 
-def test_the_two_labelled_hooks_count_as_both_hooks():
-    """Both hooks run the delegation script, each named by its label (OMN-23413)."""
+def test_only_the_prompt_hook_counts_as_delegation():
+    """The prompt hook runs the delegation script on UserPromptSubmit; the retired
+    subagent row (PreToolUse Agent|Task) is not delegation (Amendment 14a)."""
     from omnimarket.nodes.node_onex_setup_effect.setup_legacy_hooks import (
         missing_delegation_hooks,
     )
@@ -326,16 +320,17 @@ def test_the_two_labelled_hooks_count_as_both_hooks():
         ],
     }
     assert missing_delegation_hooks(rows) == []
+    assert (
+        missing_delegation_hooks({"UserPromptSubmit": rows["UserPromptSubmit"]}) == []
+    )
     assert missing_delegation_hooks({"PreToolUse": rows["PreToolUse"]}) == [
         "prompt (UserPromptSubmit)"
     ]
-    bash_only = {**rows, "PreToolUse": [{"matcher": "Bash", **row("/x/guard.sh")}]}
-    assert missing_delegation_hooks(bash_only) == ["subagent (PreToolUse Agent|Task)"]
 
 
 def test_every_observation_says_which_hooks_are_installed(tmp_path, monkeypatch):
-    """B5: before install both missing, after install both installed, and an
-    older subagent-only install names the prompt hook missing."""
+    """B5: before install missing, after install installed, and an older install
+    without the prompt hook names it missing."""
     from omnimarket.nodes.node_onex_setup_effect.setup_legacy_hooks import (
         record_installed_hooks,
     )
@@ -344,14 +339,15 @@ def test_every_observation_says_which_hooks_are_installed(tmp_path, monkeypatch)
         tmp_path, monkeypatch
     )
     before = owner.observe(plan).evidence
-    assert (before["prompt_hook"], before["subagent_hook"]) == ("missing", "missing")
+    assert before["prompt_hook"] == "missing"
+    assert "subagent_hook" not in before
     assert owner.apply(plan) is None
     after = owner.observe(plan).evidence
-    assert (after["prompt_hook"], after["subagent_hook"]) == ("installed", "installed")
+    assert after["prompt_hook"] == "installed"
     for path in (installed / "hooks-delegation.json", profile / "settings.json"):
         data = json.loads(path.read_text())
         data["hooks"].pop("UserPromptSubmit")
         path.write_text(json.dumps(data))
     record_installed_hooks(profile)
     older = owner.observe(plan).evidence
-    assert (older["prompt_hook"], older["subagent_hook"]) == ("missing", "installed")
+    assert older["prompt_hook"] == "missing"

@@ -198,8 +198,8 @@ class ModelTuiStatus(BaseModel):
     #: the read failed, ``None`` until it is read. No folder: delegation is
     #: system-wide (OMN-23413).
     delegation: DelegationState | None = None
-    #: Each delegation hook as `onex delegation status` read it: prompt_hook and
-    #: subagent_hook, "installed" or "missing"; empty until it is read.
+    #: The delegation hook as `onex delegation status` read it: prompt_hook,
+    #: "installed", "missing" or "paused"; empty until it is read.
     hooks: dict[str, str] = Field(default_factory=dict)
     #: Why the delegation read failed; ``None`` when it was read.
     problem: str | None = None
@@ -415,7 +415,7 @@ async def load_status() -> ModelTuiStatus:
 
 
 def _hook_presence(doc: object) -> dict[str, str]:
-    """prompt_hook and subagent_hook from status's claude-hooks evidence."""
+    """prompt_hook from status's claude-hooks evidence (OMN-23413: one hook)."""
     observations = doc.get("observations") if isinstance(doc, dict) else None
     for observation in observations if isinstance(observations, list) else ():
         evidence = (
@@ -423,9 +423,7 @@ def _hook_presence(doc: object) -> dict[str, str]:
         )
         if isinstance(evidence, dict) and observation.get("step") == "claude-hooks":
             return {
-                key: str(evidence[key])
-                for key in ("prompt_hook", "subagent_hook")
-                if key in evidence
+                key: str(evidence[key]) for key in ("prompt_hook",) if key in evidence
             }
     return {}
 
@@ -1519,18 +1517,9 @@ class DelegationScreen(_TabbedScreen[None]):
             return await app.apply_delegation(
                 ModelTuiDelegationChoice(on=False, commands=words.disable)
             )
-        flags = tuple(h.pause_flag for h in words.hooks if not boxes[h.key])
-        sentences: dict[tuple[str, ...], str] = {
-            ("--no-subagents",): words.switched_on_prompts,
-            ("--no-prompts",): words.switched_on_subagents,
-        }
-        done = sentences.get(flags)
+        # One hook, one switch (OMN-23413 Amendment 14a): on is the hook on.
         return await app.apply_delegation(
-            ModelTuiDelegationChoice(
-                on=True,
-                commands=tuple((*argv, *flags) for argv in words.enable),
-                done=done,
-            )
+            ModelTuiDelegationChoice(on=True, commands=words.enable)
         )
 
     def _show_selection(self) -> None:
@@ -2005,10 +1994,9 @@ class OnexTui(App[int]):
         pill = tui_design().model_table.status_pill
         on = status.delegation == "hook"
         paused = {key for key, state in status.hooks.items() if state == "paused"}
-        delegating = {
-            frozenset({"prompt_hook"}): "delegation_hook_tasks",
-            frozenset({"subagent_hook"}): "delegation_hook_prompts",
-        }.get(frozenset(paused), "delegation_hook")
+        delegating = (
+            "delegation_hook_paused" if "prompt_hook" in paused else "delegation_hook"
+        )
         delegation = {
             "hook": (_say(delegating), _style("success", "bold")),
             "off": (_say("delegation_off"), _style("muted")),

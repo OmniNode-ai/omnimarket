@@ -764,9 +764,7 @@ async def test_delegation_hook_mode_runs_the_design_commands_on_and_off() -> Non
         for _ in range(6):
             await pilot.pause()
         assert _actions(runner)[-len(hook.enable) :] == list(hook.enable)
-        assert "Claude Code delegation is on: prompts and subagent tasks" in _log_text(
-            app
-        )
+        assert hook.switched_on.rstrip(".") in _log_text(app)
         assert "Welcome To OmniNode" not in _log_text(app)  # one line only
 
         # The tab stays open: switch off from the same screen.

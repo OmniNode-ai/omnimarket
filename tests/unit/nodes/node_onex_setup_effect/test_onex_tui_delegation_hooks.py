@@ -1,13 +1,14 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""/delegation shows both hooks and an unmistakable switch (OMN-23413).
+"""/delegation shows its hook and an unmistakable switch (OMN-23413).
 
-Seen 2026-11-14 on the operator's screen: one switch and no word of the two
-hooks it installs, and a switch whose state was a small green square. Failure
+Seen 2026-11-14 on the operator's screen: one switch and no word of the hooks
+it installs, and a switch whose state was a small green square. Since
+2026-11-17 (Amendment 14a) delegation is one hook, the prompt hook. Failure
 modes:
 
-  D1  the tab does not show the prompt hook and the subagent hook, each with
-      whether Claude Code has it installed.
+  D1  the tab does not show the prompt hook with whether Claude Code has it
+      installed.
   D2  the switch's state is not written out (ON / OFF).
   D3  a flipped but unsaved switch looks the same as the saved state.
   D4  after Save the hook rows still show the state from before.
@@ -32,8 +33,8 @@ from tests.unit.nodes.node_onex_setup_effect.test_onex_tui import (
 
 pytestmark = pytest.mark.unit
 
-_ON = {"prompt_hook": "installed", "subagent_hook": "installed"}
-_HALF = {"prompt_hook": "missing", "subagent_hook": "installed"}
+_ON = {"prompt_hook": "installed"}
+_HALF = {"prompt_hook": "missing"}
 
 
 def _app(before: ModelTuiStatus, after: ModelTuiStatus | None = None) -> OnexTui:
@@ -78,18 +79,17 @@ def _text(app: OnexTui, selector: str) -> str:
     return " ".join(str(app.screen.query_one(selector, Static).render()).split())
 
 
-async def test_both_hooks_are_shown_with_their_installed_state() -> None:
-    """D1: one row per hook, named, with what it does and its state."""
+async def test_the_hook_is_shown_with_its_installed_state() -> None:
+    """D1: one row, named, with what it does and its state."""
     words = tui_design().delegation
     app = _app(ModelTuiStatus(models=1, delegation="off", hooks=_HALF))
     async with app.run_test(size=(160, 46)) as pilot:
         await _open(pilot, app)
         prompt = _text(app, "#hook-prompt_hook")
-        subagent = _text(app, "#hook-subagent_hook")
+        rows = len(app.screen.query(".hook"))
+    assert rows == 1
     assert words.hooks[0].name in prompt
     assert _state(prompt) == words.hook_missing
-    assert words.hooks[1].name in subagent
-    assert _state(subagent) == words.hook_installed
 
 
 @pytest.mark.parametrize(

@@ -196,7 +196,7 @@ model_table:
     delegation: "Tab next screen · Space switches · I details · Ctrl+S saves · Esc back"
     dashboard: "Tab next screen · S start · Enter opens · X stop · Esc back"
 
-# /delegation: one switch for prompts and subagent tasks; no model binding.
+# /delegation: one switch, the prompt hook; subagents always run on Claude (OMN-23413).
 delegation:
   title: Claude Code delegation
   table_title: Your selected models (from /config), in the order delegation tries them
@@ -204,16 +204,13 @@ delegation:
     - [delegation, "on", --json]
   disable:
     - [delegation, "off", --json]
-  switched_on: "Claude Code delegation is on: prompts and subagent tasks."
-  # Operator 2026-11-15, "build separate switches": a hook's box pauses only it.
-  switched_on_prompts: "Claude Code delegation is on for prompts; subagent tasks are paused."
-  switched_on_subagents: "Claude Code delegation is on for subagent tasks; prompts are paused."
+  switched_on: "Claude Code delegation is on: every prompt goes to your model first."
   switched_off: "Claude Code delegation is off."
   not_switched: "Claude Code delegation was not switched {state}: {reason}"
   nothing_ticked: "Tick at least one model first: click it, or press Space on it."
   no_models: "Select a model with /config first: Claude delegation needs at least one selected model."
-  # OMN-23413, operator 2026-11-14: the switch's state is written out, and each of
-  # the two hooks it installs is shown with whether Claude Code has it.
+  # OMN-23413, operator 2026-11-14: the switch's state is written out, and the
+  # hook it installs is shown with whether Claude Code has it (one hook, 2026-11-17).
   glyph_on: "●"
   glyph_off: "○"
   state_on: "ON"
@@ -223,7 +220,7 @@ delegation:
   glyph_unknown: "◌"
   state_reading: "checking…"
   state_unread: "status could not be read"
-  hooks_title: "Each switch delegates through its own hook in Claude Code; both off removes the hooks."
+  hooks_title: "Delegation runs through one hook in Claude Code; switching it off removes the hook."
   hooks:
     - key: prompt_hook
       label: Delegate prompts
@@ -231,12 +228,6 @@ delegation:
       what: every prompt goes to delegation first
       switch: prompts
       pause_flag: --no-prompts
-    - key: subagent_hook
-      label: Delegate subagent tasks
-      name: Subagent hook
-      what: subagent tasks go to delegation
-      switch: subagents
-      pause_flag: --no-subagents
   hook_installed: installed
   hook_missing: not installed
   hook_unknown: not read yet
@@ -340,9 +331,8 @@ words:
   status_first: "{model} first"
   # Claude Code delegation in the status bar, as it is (OMN-23413).
   delegation_off: "delegation off"
-  delegation_hook: "delegation on · prompts and tasks"
-  delegation_hook_prompts: "delegation on · prompts only"
-  delegation_hook_tasks: "delegation on · tasks only"
+  delegation_hook: "delegation on"
+  delegation_hook_paused: "delegation on · paused"
   delegation_reading: "delegation: checking…"
   delegation_unknown: "delegation: status could not be read"
   delegation_unreadable: "could not read delegation's state ({reason}); /delegation shows it as not read"

@@ -8,9 +8,9 @@ Failure modes:
   E2  a settings.json Claude Code cannot use (empty, not an object, hooks not an
       object) is reported as a broken onex bundle, or crashes, instead of being
       named; empty entries ("hooks": null) crash instead of reading as no hooks.
-  E3  matchers are not read the way Claude Code reads them: "*", "" or none
-      match every tool, letters, digits and "|" "," are exact names, anything
-      else is an unanchored regular expression; UserPromptSubmit has no matcher.
+  E3  a matcher written on UserPromptSubmit (Claude Code ignores it) stops the
+      prompt hook counting, or a delegation script on another event counts as
+      the prompt hook (one hook since 2026-11-17, Amendment 14a).
   E4  the no-op prompt classifier that installs before 2026-11-11 registered
       counts as the prompt hook.
   E5  with a bundle that carries one hook, off refuses to remove an install made
@@ -67,7 +67,6 @@ pytestmark = pytest.mark.unit
 
 SCRIPT = "/x/hooks/scripts/pre_tool_use_delegation.sh"
 PROMPT = "prompt (UserPromptSubmit)"
-SUBAGENT = "subagent (PreToolUse Agent|Task)"
 
 
 def _uninstall(installer: Path) -> tuple[str, ...]:
@@ -98,10 +97,7 @@ def test_another_tools_matcher_never_breaks_status_or_off(
     _add_foreign_group(profile, matcher)
     seen = owner.observe(plan)
     assert seen.status == "success"
-    assert (seen.evidence["prompt_hook"], seen.evidence["subagent_hook"]) == (
-        "installed",
-        "installed",
-    )
+    assert seen.evidence["prompt_hook"] == "installed"
     commands.clear()
     owner.remove_hooks()
     assert commands == [_uninstall(installer)]
@@ -149,47 +145,31 @@ def test_empty_hook_entries_read_as_no_hooks(tmp_path, monkeypatch, content):
     profile.mkdir()
     (profile / "settings.json").write_text(content)
     seen = owner.observe(plan)
-    assert (seen.evidence["prompt_hook"], seen.evidence["subagent_hook"]) == (
-        "missing",
-        "missing",
-    )
+    assert seen.evidence["prompt_hook"] == "missing"
     assert owner.apply(plan) is None
     assert owner.observe(plan).status == "success"
 
 
-@pytest.mark.parametrize(
-    ("matcher", "covers_agent"),
-    [
-        (None, True),
-        ("", True),
-        ("*", True),
-        ("Agent", True),
-        ("Agent|Task", True),
-        ("Task, Agent", True),
-        ("^(Agent|Task)$", True),
-        ("Ag.*", True),
-        ("Task", False),
-        ("Bash", False),
-        ("AgentX", False),
-        ("*Edit", False),
-        ("(", False),
-    ],
-)
-def test_matchers_are_read_the_way_claude_code_reads_them(matcher, covers_agent):
-    """E3 (code.claude.com/docs/en/hooks, matcher table, read 2026-11-15)."""
+@pytest.mark.parametrize("matcher", [None, "", "*", "Bash", "("])
+def test_the_prompt_hook_counts_whatever_matcher_it_carries(matcher):
+    """E3: Claude Code ignores a matcher on UserPromptSubmit (code.claude.com/docs/en/hooks)."""
     group: dict[str, object] = {"hooks": [{"type": "command", "command": SCRIPT}]}
     if matcher is not None:
         group["matcher"] = matcher
+    assert missing_delegation_hooks({"UserPromptSubmit": [group]}) == []
+
+
+def test_the_delegation_script_on_another_event_is_not_the_prompt_hook():
+    """E3: the retired subagent row (PreToolUse Agent|Task) is not delegation."""
     rows = {
-        # A matcher on UserPromptSubmit is ignored by Claude Code.
-        "UserPromptSubmit": [
-            {"matcher": "Bash", "hooks": [{"type": "command", "command": SCRIPT}]}
-        ],
-        "PreToolUse": [group],
+        "PreToolUse": [
+            {
+                "matcher": "^(Agent|Task)$",
+                "hooks": [{"type": "command", "command": SCRIPT}],
+            }
+        ]
     }
-    absent = missing_delegation_hooks(rows)
-    assert PROMPT not in absent
-    assert (SUBAGENT not in absent) is covers_agent
+    assert missing_delegation_hooks(rows) == [PROMPT]
 
 
 def test_the_old_prompt_classifier_stub_is_not_the_prompt_hook():

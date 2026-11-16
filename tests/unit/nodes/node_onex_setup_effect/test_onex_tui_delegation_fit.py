@@ -74,18 +74,22 @@ def _above(upper: Widget, lower: Widget) -> bool:
     return upper.region.height > 0 and bottom <= lower.region.y
 
 
+@pytest.mark.parametrize("state", ["missing", "installed"])
 @pytest.mark.parametrize("size", _SIZES)
-async def test_every_hook_row_keeps_its_state_word(size: tuple[int, int]) -> None:
-    """DF1."""
+async def test_every_hook_row_keeps_its_state_word(
+    size: tuple[int, int], state: str
+) -> None:
+    """DF1: the one hook row (OMN-23413 Amendment 14a) keeps its state word."""
     words = tui_design().delegation
-    app = _app({"prompt_hook": "missing", "subagent_hook": "installed"})
+    app = _app({"prompt_hook": state})
     async with app.run_test(size=size) as pilot:
         await _open(pilot)
         prompt = _shown(app.screen.query_one("#hook-prompt_hook"))
-        subagent = _shown(app.screen.query_one("#hook-subagent_hook"))
-    assert words.hook_missing in prompt, prompt
-    assert words.hook_installed in subagent, subagent
-    assert words.hook_missing not in subagent
+    if state == "missing":
+        assert words.hook_missing in prompt, prompt
+    else:
+        assert words.hook_installed in prompt, prompt
+        assert words.hook_missing not in prompt, prompt
 
 
 @pytest.mark.parametrize("size", _SIZES)
@@ -94,7 +98,7 @@ async def test_an_unread_hook_row_differs_from_a_missing_one(
 ) -> None:
     """DF1."""
     words = tui_design().delegation
-    app = _app({"subagent_hook": "missing"})
+    app = _app({})
     async with app.run_test(size=size) as pilot:
         await _open(pilot)
         prompt = _shown(app.screen.query_one("#hook-prompt_hook"))
