@@ -35,11 +35,18 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/nodes/node_context_source_ledger_effect -k provisional -q -n 0 --no-cov -p no:cacheprovider
     cwd: ${OMNI_HOME}/omnimarket
-- id: dod-omn24683-reader-real-postgres
-  description: 'AC2: the real-Postgres test passes with none skipped; the hosted runner has no database for the unbound environment, so only the local Done gate runs it.'
+- id: dod-omn24683-reader-real-postgres-hosted
+  description: 'AC2, hosted: the real-Postgres provisional test passes against the Postgres 16 the hosted verifier provides to every bound test. The none-skipped reading of the same test stays in the item below, a local Done gate item that binds no criterion.'
   source: manual
   binds_ac:
   - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_context_source_ledger_real_postgres.py -k provisional -q -n 0 --no-cov -p no:cacheprovider
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn24683-reader-real-postgres
+  description: 'AC2: the real-Postgres test passes with none skipped; only the local Done gate runs it.'
+  source: manual
   execution_scope: local_done_gate
   checks:
   - check_type: command
@@ -51,8 +58,8 @@ dod_evidence:
   binds_ac:
   - AC3
   checks:
-  - check_type: command
-    check_value: grep -n "node_context_source_ledger_effect" src/omnimarket/nodes/node_projection_work_ledger/contract.yaml
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_projection_work_ledger/test_contract_names_context_source_reader.py -q -n 0 --no-cov -p no:cacheprovider
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn24683-non-blocking
   description: 'AC4: the findings-comment check, the counter log, the moved count and the parity export docstring each have a test.'

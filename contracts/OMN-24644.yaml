@@ -36,13 +36,20 @@ dod_evidence:
 - id: dod-omn24644-findings-comment
   description: 'AC2: the pull request comment that lists each finding number with fixed or argued is read against the Fable comment; the hosted runner cannot read a comment, so only the local Done gate runs it. The check reads the conversation comments through the bus (the watcher answer carries none) and exits non-zero unless a comment names the current head and answers each of the second review''s findings 1-6 by number as fixed or argued.'
   source: manual
-  binds_ac:
-  - AC2
   execution_scope: local_done_gate
   checks:
   - check_type: command
     check_value: "onex scm pr-view OmniNode-ai/omnimarket#6306 --watcher-state /nonexistent/state.json | python3 -c \"import json,re,sys; line=[l for l in sys.stdin.read().splitlines() if l.startswith('{')][-1]; r=json.loads(line)['result']; head=r['head_sha'][:12]; cs=[c['body'] for c in r['comments'] if head in c['body']]; missing=[n for n in range(1,7) if not any(re.search(r'(?m)^\\s*'+str(n)+r'\\.\\s*\\**(fixed|argued)\\b', b, re.I) for b in cs)]; sys.exit('no comment names head %s and answers findings %s by number as fixed or argued' % (head, missing) if missing else 0)\""
     cwd: .
+- id: dod-omn24644-findings-fixed-suite
+  description: 'AC2, hosted proxy: the focused projection suite, which holds the tests that pin each finding the review rounds raised against the provisional sequencing, passes at the head and fails at the merge base. The comment reading above stays a local Done gate item and binds no criterion, because the hosted runner cannot read a pull request comment.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_projection_work_ledger -q -n 0 --no-cov -p no:cacheprovider
+    cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn24644-suite
   description: 'AC3: the whole node suite passes on the new head.'
   source: manual

@@ -30,11 +30,18 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
-- id: dod-omn24662-real-postgres
-  description: 'AC1: the three real-Postgres files run against a real Postgres and every test passes with none skipped; the hosted runner has no database for the unbound environment, so only the local Done gate runs it.'
+- id: dod-omn24662-real-postgres-hosted
+  description: 'AC1, hosted: the three real-Postgres files pass against the Postgres 16 the hosted verifier provides to every bound test, and fail at the merge base, which holds neither migration 0013 nor the 11th _INSERT_ROW argument. The none-skipped reading of the same files stays in the item below, a local Done gate item that binds no criterion.'
   source: manual
   binds_ac:
   - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_work_ledger_real_postgres_write_path.py tests/test_work_ledger_history_postgres.py tests/test_work_ledger_point_query_postgres.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn24662-real-postgres
+  description: 'AC1: the three real-Postgres files run against a real Postgres and every test passes with none skipped; only the local Done gate runs it.'
+  source: manual
   execution_scope: local_done_gate
   checks:
   - check_type: command
