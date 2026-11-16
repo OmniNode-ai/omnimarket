@@ -40,6 +40,7 @@ from omnimarket.nodes.node_review_key_credit_probe_effect.handlers import (
 )
 from omnimarket.nodes.node_review_key_credit_probe_effect.handlers.handler_review_key_credit_probe import (
     LEDGER_COMMAND_VARIABLE,
+    HandlerReviewKeyCreditProbe,
     NoReadingError,
     flips,
     ledger_appender_from_environment,
@@ -48,6 +49,9 @@ from omnimarket.nodes.node_review_key_credit_probe_effect.handlers.handler_revie
     read_states,
     record,
     render_alarm_row,
+)
+from omnimarket.nodes.node_review_key_credit_probe_effect.models.model_review_key_credit_probe import (
+    ModelReviewKeyCreditProbeRequest,
 )
 from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
 from tests.unit.nodes.node_claude_review_gateway_effect.test_claude_review_gateway import (
@@ -490,3 +494,42 @@ def test_a_budget_the_contract_declares_is_the_one_the_request_carries(
     result = world.run()
     assert result.exit_code == 0, result.output
     assert [request.max_tokens for request in world.requests] == [7, 7]
+
+
+@pytest.mark.asyncio
+async def test_the_handler_result_counts_the_flips_it_wrote(tmp_path: Path) -> None:
+    ledger = InMemoryLedgerAppender()
+    request = ModelReviewKeyCreditProbeRequest(
+        tenant_id=_TENANT,
+        model=_MODEL,
+        host=_HOST,
+        state_dir=tmp_path / "state",
+        ledger=tmp_path / "ledger.md",
+    )
+
+    async def run(call: FakeCall) -> Any:
+        gateway = _gateway(call, ["key-a"])
+        return await HandlerReviewKeyCreditProbe(
+            catalog=gateway._catalog,
+            key_values=gateway._key_values,
+            call=call,
+            endpoint_url=_URL,
+            config=load_probe_config(),
+            appender=ledger,
+            clock=lambda: _NOW,
+        ).handle(request)
+
+    first = await run(FakeCall([_ok()]))
+    assert first.flips_written == 0
+    second = await run(
+        FakeCall(
+            [
+                _fail(
+                    EnumDelegationFailureClass.PROVIDER_BILLING,
+                    "credit balance is too low",
+                )
+            ]
+        )
+    )
+    assert second.flips_written == 1
+    assert second.states == (("key-a", "out_of_credit"),)
