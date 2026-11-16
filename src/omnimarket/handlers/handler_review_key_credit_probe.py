@@ -41,6 +41,13 @@ LEDGER_COMMAND_VARIABLE = "ONEX_LEDGER_COMMAND"
 _APPEND_TIMEOUT_SECONDS = 60
 
 
+class _ProbeDiscardBus:
+    """A bus that drops key-state events: the probe writes its own alarm rows."""
+
+    async def publish(self, topic: str, key: bytes | None, value: bytes) -> object:
+        return None
+
+
 def _safe(text: str) -> str:
     return " ".join(text.replace("|", "/").split())
 
@@ -239,7 +246,7 @@ def review_key_probe_command(
                 call=HandlerLlmDelegationCall(),
                 endpoint_url=backend.endpoint_url,
                 overlay=ModelReviewGatewayOverlay(key_set_aside_ttl_seconds=1),
-                event_bus=None,
+                event_bus=_ProbeDiscardBus(),
             )
         except (ValidationError, ValueError) as exc:
             raise click.ClickException(
