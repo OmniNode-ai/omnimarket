@@ -251,3 +251,20 @@ condition_schedules:
         scheduler: systemd-user
         venv: examplepkg/.venv
         environment: {}
+  # The daily digest (OMN-24939): one message per held day of DIGEST sources and the fix-cause STATUS row, once a day.
+  alarm-digest:
+    unit_name: example-lab-alarm-digest
+    launchd_label: example.lab-alarm-digest
+    state_directory: .onex_state/lab-alarm
+    interval_seconds: 86400
+    timeout_seconds: 120
+    hosts:
+      - name: example-mac
+        scheduler: launchd
+        venv: examplepkg/.venv
+        environment:
+          EXAMPLE_SETTING: $OMNI_HOME/example
+      - name: example-linux
+        scheduler: systemd-user
+        venv: examplepkg/.venv
+        environment: {}

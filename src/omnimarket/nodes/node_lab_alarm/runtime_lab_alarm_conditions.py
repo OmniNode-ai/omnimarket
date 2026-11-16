@@ -32,7 +32,13 @@ from omnimarket.nodes.node_lab_alarm.adapters.receipt_adapters import (
     GatewayLabPassReceiptSource,
     HttpDeliveredShaSource,
 )
+from omnimarket.nodes.node_lab_alarm.adapters.routed_delivery_adapters import (
+    build_routed_delivery,
+)
 from omnimarket.nodes.node_lab_alarm.adapters.runtime_adapters import FileRunRecords
+from omnimarket.nodes.node_lab_alarm.handlers.handler_alarm_route import (
+    HandlerAlarmRoute,
+)
 from omnimarket.nodes.node_lab_alarm.handlers.handler_lab_pass_receipt import (
     HandlerLabPassReceipt,
 )
@@ -83,14 +89,8 @@ from omnimarket.nodes.node_lab_alarm.overlay import (
     ModelStaleIndeterminateSettings,
 )
 from omnimarket.nodes.node_lab_alarm.protocols import RunRecordUnwritableError
-from omnimarket.nodes.node_lab_alarm_deliver_effect.handlers.handler_lab_alarm_deliver import (
-    HandlerLabAlarmDeliver,
-)
 from omnimarket.nodes.node_lab_alarm_deliver_effect.overlay import (
     load_overlay as load_delivery_overlay,
-)
-from omnimarket.nodes.node_lab_alarm_deliver_effect.runtime_lab_alarm_deliver import (
-    build_handler as build_delivery_handler,
 )
 
 __all__ = [
@@ -112,11 +112,11 @@ __all__ = [
 # ---------------------------------------------------------------------------
 
 
-def _delivery_for(overlay: ModelLabAlarmOverlay) -> HandlerLabAlarmDeliver | None:
+def _delivery_for(overlay: ModelLabAlarmOverlay) -> HandlerAlarmRoute | None:
     """Return the delivery handler when the overlay declares and enables it."""
     if overlay.alarm_delivery is None or not overlay.alarm_delivery.enabled:
         return None
-    return build_delivery_handler(load_delivery_overlay())
+    return build_routed_delivery(load_delivery_overlay(), alarm_overlay=overlay)
 
 
 def _inmemory_records(

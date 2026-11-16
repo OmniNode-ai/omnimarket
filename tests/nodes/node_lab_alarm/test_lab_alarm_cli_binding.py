@@ -36,6 +36,7 @@ _OPERATIONS = {
     "container_unhealthy",
     "lab_pass_receipt",
     "stale_indeterminate",
+    "alarm_digest",
 }
 _BOOT_INJECTABLE = {"event_bus", "container", "ownership_query"}
 
