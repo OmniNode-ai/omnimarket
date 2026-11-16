@@ -67,6 +67,9 @@ dod_evidence:
     binds_ac:
       - AC3
     checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly -k omn24829_contract_carries_the_ancestry
+        cwd: .
       - check_type: command
         check_value: git merge-base --is-ancestor origin/dev HEAD && grep -q 'git merge-base --is-ancestor origin/dev HEAD' contracts/OMN-24829.yaml
         cwd: .
@@ -85,6 +88,9 @@ dod_evidence:
     binds_ac:
       - AC5
     checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly -k omn23518_contract
+        cwd: .
       - check_type: command
         check_value: test -z "$(grep -n -E 'lock names 0.23.14|moves the omnibase-spi dev merge tag|re-pinned|first to carry' contracts/OMN-23518.yaml)"
         cwd: .
@@ -94,6 +100,9 @@ dod_evidence:
     binds_ac:
       - AC6
     checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly -k "omn24829_contract_has_one or omn24829_contract_binds_no"
+        cwd: .
       - check_type: command
         check_value: grep -q 'dod-omn24829-ac3-status-row-pypi-pin' contracts/OMN-24829.yaml && grep -q 'dod-omn24829-ac3-status-row-delegation-health' contracts/OMN-24829.yaml && test -z "$(grep -n 'floors_agree' contracts/OMN-24829.yaml)"
         cwd: .

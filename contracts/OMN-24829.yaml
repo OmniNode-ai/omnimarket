@@ -62,6 +62,9 @@ dod_evidence:
     binds_ac:
       - AC3
     checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly -k "omn24829_contract and not ancestry"
+        cwd: .
       - check_type: command
         check_value: uv run --frozen python -c 'import yaml; d=yaml.safe_load(open("contracts/OMN-24829.yaml")); n=["pypi-pin-resolvability","delegation-health-check"]; a=[x["statement"] for r in d["requirements"] for x in r["acceptance"] if x["id"]=="AC3"][0]; l=[c["check_value"] for i in d["dod_evidence"] if i.get("execution_scope")=="local_done_gate" for c in i["checks"]]; assert all(x in a for x in n), a; assert all(sum(("check="+x in v and "shared=yes" in v) for v in l)==1 for x in n), l'
         cwd: .

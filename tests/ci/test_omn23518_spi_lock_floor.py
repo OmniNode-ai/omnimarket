@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 from packaging.requirements import Requirement
 from packaging.specifiers import SpecifierSet
 from packaging.utils import canonicalize_name
@@ -243,3 +244,76 @@ def test_lane_process_types_import() -> None:
 
     types = (ModelLaneProcessRunResult, ModelLaneProcessStartResult, ModelLaneStartSpec)
     assert all(isinstance(t, type) for t in types)
+
+
+def _contract(ticket: str) -> dict[str, Any]:
+    text = (_REPO / "contracts" / f"{ticket}.yaml").read_text(encoding="utf-8")
+    loaded: dict[str, Any] = yaml.safe_load(text)
+    return loaded
+
+
+def _criterion(contract: dict[str, Any], label: str) -> str:
+    return str(
+        next(
+            a["statement"]
+            for r in contract["requirements"]
+            for a in r["acceptance"]
+            if a["id"] == label
+        )
+    )
+
+
+def _check_values(contract: dict[str, Any], *, local: bool) -> list[str]:
+    return [
+        c["check_value"]
+        for item in contract["dod_evidence"]
+        if (item.get("execution_scope") == "local_done_gate") is local
+        for c in item["checks"]
+    ]
+
+
+_NAMED_CAUSES = ("pypi-pin-resolvability", "delegation-health-check")
+
+
+def test_omn24829_contract_has_one_ledger_check_per_named_cause() -> None:
+    """AC3 of the unblock contract names two causes and reads one STATUS row for each."""
+    contract = _contract("OMN-24829")
+    ac3 = _criterion(contract, "AC3")
+    assert all(name in ac3 for name in _NAMED_CAUSES), ac3
+    ledger_reads = _check_values(contract, local=True)
+    for name in _NAMED_CAUSES:
+        rows = [v for v in ledger_reads if f"check={name}" in v and "shared=yes" in v]
+        assert len(rows) == 1, (name, ledger_reads)
+
+
+def test_omn24829_contract_binds_no_floors_agree_test() -> None:
+    text = (_REPO / "contracts" / "OMN-24829.yaml").read_text(encoding="utf-8")
+    assert "floors_" + "agree" not in text
+
+
+def test_omn24829_contract_states_why_the_pin_check_is_red() -> None:
+    """The cause is this PR's floor raise against the published pin, and CI Summary asserts it."""
+    ac3 = _criterion(_contract("OMN-24829"), "AC3")
+    assert "passes on the dev tip" in ac3, ac3
+    assert "CI Summary asserts it" in ac3, ac3
+    assert "outside the pull request" not in ac3, ac3
+
+
+def test_omn24829_contract_carries_the_ancestry_check() -> None:
+    values = _check_values(_contract("OMN-24829"), local=False)
+    assert "git merge-base --is-ancestor origin/dev HEAD" in values, values
+
+
+def test_omn23518_contract_claims_only_what_the_notes_and_diff_show() -> None:
+    text = (_REPO / "contracts" / "OMN-23518.yaml").read_text(encoding="utf-8")
+    for claim in (
+        "lock names 0.23.14",
+        "moves the omnibase-spi dev merge tag",
+        "re-pinned",
+        "first to carry",
+    ):
+        assert claim not in text, claim
+    assert "v0.23.15 release notes" in text
+    assert "CHANGELOG v0.23.15" in (_REPO / "pyproject.toml").read_text(
+        encoding="utf-8"
+    )
