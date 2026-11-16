@@ -135,10 +135,12 @@ def declared_lookup_roots(
     The table is the first ``lab_hosts/overlay.yaml`` under the roots in ``ONEX_SKILL_OVERLAY_ROOTS``,
     then under the two registry-relative places the table itself declares clones at
     (``$OMNI_HOME/overlays`` and ``$OMNI_HOME/../overlays``). Refuses with
-    :class:`OverlayRootRefusedError` when no table is found, the table declares no overlays clone for
-    the host, or the declared clone holds no overlay of this node.
+    :class:`OverlayRootRefusedError` when no table is found, the table cannot be read or is not a
+    mapping, the table declares no overlays clone for the host, the declared clone holds no overlay of
+    this node, or the host the overlay names in its ``host_env`` is set and is not ``host``.
     """
     env = dict(os.environ if environ is None else environ)
+    omni_root = omni_root.resolve()
     roots = [
         Path(root) for root in env.get(OVERLAY_ROOTS_ENV, "").split(os.pathsep) if root
     ]
@@ -160,7 +162,12 @@ def declared_lookup_roots(
             f"{host}: no {HOST_TABLE_OVERLAY}/{OVERLAY_FILE_NAME} under "
             + ", ".join(str(root) for root in candidates)
         )
-    document = yaml.safe_load(table.read_text(encoding="utf-8"))
+    try:
+        document = yaml.safe_load(table.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, yaml.YAMLError) as exc:
+        raise OverlayRootRefusedError(
+            f"{host}: {table} cannot be read as YAML: {' '.join(str(exc).split())}"
+        ) from None
     if not isinstance(document, dict):
         raise OverlayRootRefusedError(f"{host}: {table} is not a mapping")
     declared = declared_overlay_root(document, host, omni_root)
@@ -171,6 +178,12 @@ def declared_lookup_roots(
     env[OVERLAY_ROOTS_ENV] = os.pathsep.join(
         [str(declared), *(str(root) for root in roots)]
     )
+    running = env.get(load_overlay(env).ledger_append.host_env, "").strip()
+    if running and running != host:
+        raise OverlayRootRefusedError(
+            f"{host}: this process runs as host {running}, so the overlays clone declared for {host} "
+            f"is not the one on this host"
+        )
     return env
 
 
@@ -183,7 +196,7 @@ def answer_lookup(
     """Answer a lookup from the overlay's versions, building the head version of a repository on first ask.
 
     ``environ`` is where the overlay is found (default: the process environment). ``settings`` is
-    the caller's lookup block and comes before the overlay's. A lookup for a repository the overlay
+    the caller's lookup block, used only where the overlay carries none. A lookup for a repository the overlay
     does not declare, or with no lookup block from either, or a repository that cannot be read, is a
     typed ``failed`` result and never an empty answer.
     """
@@ -198,7 +211,7 @@ def answer_lookup(
         )
 
     overlay = load_overlay(environ)
-    lookup = settings or overlay.lookup
+    lookup = overlay.lookup if overlay.lookup is not None else settings
     if lookup is None:
         return failed("the overlay has no lookup block")
     declared = {repo.name: repo for repo in overlay.repos}
@@ -383,6 +396,29 @@ def _shadow(arguments: argparse.Namespace) -> int:
     return 1 if result.status == "failed" else 0
 
 
+def _utc_stamp(moment: datetime) -> str:
+    """``moment`` in UTC as ``YYYY-MM-DDTHH:MM:SSZ``; a time with no offset is read as UTC."""
+    aware = (
+        moment.replace(tzinfo=UTC) if moment.tzinfo is None else moment.astimezone(UTC)
+    )
+    return aware.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _answered_commit_time(result: ModelCodeGraphLookupResult) -> str:
+    """The time of the commit the answer came from; ``none`` when nothing answered or the clone gave none."""
+    if result.answered_from is None:
+        return "none"
+    for store in _VERSIONS.values():
+        version = store.get(result.repo, result.answered_from)
+        if version is not None:
+            return (
+                "none"
+                if version.committed_at is None
+                else _utc_stamp(version.committed_at)
+            )
+    return "none"
+
+
 def _lookup(arguments: argparse.Namespace) -> int:
     now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     environ: dict[str, str] | None = None
@@ -424,15 +460,11 @@ def _lookup(arguments: argparse.Namespace) -> int:
         ]
         sys.stdout.write(" ".join(["MATCH", match.path, *cells]) + "\n")
     nearest = result.nearest.commit[:12] if result.nearest else "none"
-    committed_at = "none"
-    for store in _VERSIONS.values():
-        version = store.newest(result.repo)
-        if version is not None and version.committed_at is not None:
-            committed_at = version.committed_at.strftime("%Y-%m-%dT%H:%M:%SZ")
+    read_at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     sys.stdout.write(
         f"LOOKUP question={result.question.value} repo={result.repo} status={result.status} "
-        f"answered_from={(result.answered_from or 'none')[:12]} committed_at={committed_at} "
-        f"read_at={now} matches={len(result.matches)} "
+        f"answered_from={(result.answered_from or 'none')[:12]} committed_at={_answered_commit_time(result)} "
+        f"read_at={read_at} matches={len(result.matches)} "
         f"nearest={nearest} reason={result.reason or 'none'}\n"
     )
     return 1 if result.status == "failed" else 0
@@ -561,7 +593,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "--retention-versions",
             dest="retention_versions",
             type=int,
-            help="the caller's lookup block, read before the overlay's",
+            help="the caller's lookup block, used only where the overlay has no lookup block",
         )
         args = parser.parse_args(arguments)
         if args.verb == "check":
