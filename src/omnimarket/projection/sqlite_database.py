@@ -50,7 +50,12 @@ from omnimarket.models.model_local_install_delegation_summary import (
     DELEGATION_SUMMARY_VIEW_STEPS,
     create_delegation_summary_view,
 )
-from omnimarket.models.model_local_install_schema import _CURSOR_TABLE_STEPS
+from omnimarket.models.model_local_install_schema import (
+    _CURSOR_TABLE_STEPS,
+    RUN_SAVINGS_RECOMPUTE_STEP,
+    recompute_run_savings,
+    relabel_usage_source,
+)
 from omnimarket.models.model_local_install_schema import (
     METERING_SUMMARY_COLUMN_STEPS as _METERING_SUMMARY_COLUMN_STEPS,
 )
@@ -805,7 +810,7 @@ class SqliteDatabaseAdapter(CredentialSqliteStore):
             pending.append(
                 (
                     _USAGE_SOURCE_VOCABULARY_STEP,
-                    cls._relabel_usage_source,
+                    relabel_usage_source,
                     "moved llm_call_metrics.usage_source onto the shared vocabulary",
                 )
             )
@@ -901,6 +906,9 @@ class SqliteDatabaseAdapter(CredentialSqliteStore):
                     "indexed the delegate-skill command claims by correlation",
                 )
             )
+        if not cls._store_step_recorded(conn, RUN_SAVINGS_RECOMPUTE_STEP):
+            redo = "recomputed each run's modelled saving"
+            pending.append((RUN_SAVINGS_RECOMPUTE_STEP, recompute_run_savings, redo))
         pending.extend(cls._credential_store_steps(conn))
         for index, (step, apply, _) in enumerate(pending):
             try:
@@ -931,20 +939,6 @@ class SqliteDatabaseAdapter(CredentialSqliteStore):
             except BaseException:
                 conn.rollback()
                 raise
-
-    @staticmethod
-    def _relabel_usage_source(conn: sqlite3.Connection) -> None:
-        """OMN-19968: move rows written before the shared vocabulary onto it.
-
-        The SQLite counterpart of migration 0003 (EnumUsageSource; omnibase_infra
-        migration 077), run once per store as a store step.
-        """
-        conn.execute(
-            "UPDATE llm_call_metrics SET usage_source = CASE usage_source "
-            "WHEN 'API' THEN 'measured' WHEN 'ESTIMATED' THEN 'estimated' "
-            "WHEN 'MISSING' THEN 'unknown' ELSE usage_source END "
-            "WHERE usage_source IN ('API', 'ESTIMATED', 'MISSING')"
-        )
 
     @classmethod
     def _add_usage_by_model_day_columns(cls, conn: sqlite3.Connection) -> None:

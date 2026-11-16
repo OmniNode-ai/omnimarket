@@ -6,6 +6,8 @@ These are data only. The SQLite adapter applies them through its recorded store
 steps, so readers of an initialized store do not acquire a write transaction.
 """
 
+import sqlite3
+
 # OMN-19988: the latest environment report per (tenant, mode, service), with the
 # verdict and open alert the alert compute gave it. A row changes in place, so its
 # cursor is re-stamped from a one-row sequence on every insert and update, as
@@ -201,3 +203,54 @@ METERING_SUMMARY_COLUMN_STEPS: tuple[
         "added the metering-summary failed runs column",
     ),
 )
+
+
+def relabel_usage_source(conn: sqlite3.Connection) -> None:
+    """OMN-19968: move rows written before the shared vocabulary onto it.
+
+    The SQLite counterpart of migration 0003 (EnumUsageSource; omnibase_infra
+    migration 077), run once per store as a store step.
+    """
+    conn.execute(
+        "UPDATE llm_call_metrics SET usage_source = CASE usage_source "
+        "WHEN 'API' THEN 'measured' WHEN 'ESTIMATED' THEN 'estimated' "
+        "WHEN 'MISSING' THEN 'unknown' ELSE usage_source END "
+        "WHERE usage_source IN ('API', 'ESTIMATED', 'MISSING')"
+    )
+
+
+RUN_SAVINGS_RECOMPUTE_STEP = "omn24615_delegation_events_run_savings_recompute"
+
+
+def recompute_run_savings(conn: sqlite3.Connection) -> None:
+    """OMN-24615 AC1: recompute every stored run's derived saving once, with the writer's own definition.
+
+    The savings view sums each run's stored modelled_savings_usd, while the
+    metering headline is folded live, so a store written by an earlier build
+    (a refused run or a run on a model with no price given a figure, a run from
+    before the column given none) showed two totals. Only the derived columns
+    are written; the recorded cost columns are never touched (decision D1).
+    """
+    # Imported here: the handler reaches this module through the store it writes.
+    from omnimarket.nodes.node_projection_delegation.handlers.handler_run_savings import (
+        RUN_SAVINGS_DERIVED_COLUMNS,
+        RUN_SAVINGS_INPUT_COLUMNS,
+        modelled_run_savings_columns,
+    )
+
+    have = {
+        str(info[1]) for info in conn.execute("PRAGMA table_info(delegation_events)")
+    }
+    if not set(RUN_SAVINGS_DERIVED_COLUMNS) <= have:
+        return
+    read = ["correlation_id", *(c for c in RUN_SAVINGS_INPUT_COLUMNS if c in have)]
+    assignments = ", ".join(f"{column} = ?" for column in RUN_SAVINGS_DERIVED_COLUMNS)
+    rows = conn.execute(
+        f"SELECT rowid, {', '.join(read)} FROM delegation_events"
+    ).fetchall()
+    for rowid, *values in rows:
+        derived = modelled_run_savings_columns(dict(zip(read, values, strict=True)))
+        conn.execute(
+            f"UPDATE delegation_events SET {assignments} WHERE rowid = ?",
+            (*(derived[column] for column in RUN_SAVINGS_DERIVED_COLUMNS), rowid),
+        )
