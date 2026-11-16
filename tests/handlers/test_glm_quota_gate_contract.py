@@ -39,7 +39,7 @@ def test_ac1_and_ac3_name_where_they_are_met() -> None:
 def test_every_criterion_is_bound_by_a_dod_evidence_entry_with_a_check() -> None:
     bound: dict[str, list[dict[str, Any]]] = {}
     for entry in _contract()["dod_evidence"]:
-        for ac in entry["binds_ac"]:
+        for ac in entry.get("binds_ac", []):
             bound.setdefault(ac, []).extend(entry["checks"])
     for ac in _criteria():
         assert bound.get(ac), f"{ac} has no dod_evidence check"

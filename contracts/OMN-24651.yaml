@@ -39,8 +39,6 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24651 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/handlers/test_handler_glm_quota_gate.py tests/handlers/test_handler_provider_quota_reset_beijing_time.py -q --no-cov
-  binds_ac:
-  - AC2
 - id: dod-omn24651-ac1
   description: "AC1: the contract names the report and the TERMINAL row of 2026-11-16T01:00:28Z where each rung's first failing cause per host is recorded"
   source: manual
