@@ -350,6 +350,7 @@ node_agent_review_cloud_rung_effect = "omnimarket.nodes.node_agent_review_cloud_
 node_agent_review_dispatch_orchestrator = "omnimarket.nodes.node_agent_review_dispatch_orchestrator"
 node_agent_review_gate_accept_effect = "omnimarket.nodes.node_agent_review_gate_accept_effect"
 node_agent_review_harness_rung_effect = "omnimarket.nodes.node_agent_review_harness_rung_effect"
+node_agent_trace_otel_compute = "omnimarket.nodes.node_agent_trace_otel_compute"
 node_aislop_sweep = "omnimarket.nodes.node_aislop_sweep"
 node_alarm_owner_responder_compute = "omnimarket.nodes.node_alarm_owner_responder_compute"
 node_alert_channel_liveness_effect = "omnimarket.nodes.node_alert_channel_liveness_effect"

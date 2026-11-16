@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_agent_trace_otel_compute
+version: 0.1.0
+description: Converts the recorded log of one headless agent run into an OpenTelemetry GenAI trace (tool calls, results, final message) and an MCP-style tools list.
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_agent_trace_otel_compute: omnimarket.nodes.node_agent_trace_otel_compute
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  side_effect_class: none
+dependencies:
+  - pydantic>=2.11.0
+authors: [OmniNode Team]
+license: MIT
+tags: [compute, otel, genai, trace, pure]
+node_role: compute
+pack: routing
+display_name: Agent Trace OTel Compute
