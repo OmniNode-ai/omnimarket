@@ -16,6 +16,7 @@ contract_version: {major: 1, minor: 0, patch: 0}
 node_version: {major: 1, minor: 0, patch: 0}
 node_type: ORCHESTRATOR_GENERIC
 lifecycle: experimental
+runtime_profiles: [main]
 
 description: >
   Sweeps the open pull requests of the overlay's repositories: each head's review-gate context

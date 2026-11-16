@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """Models for node_review_gate_context_effect."""
 
-from omnimarket.nodes.node_review_gate_context_effect.models.model_review_context_post import (
+from omnimarket.models.model_review_context_post import (
     EnumReviewContextPostOutcome,
     ModelHeadStatus,
     ModelReviewContextPostCommand,

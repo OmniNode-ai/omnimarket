@@ -122,12 +122,8 @@ dod_evidence:
     source: manual
     binds_ac: [AC1]
     checks:
-      - check_type: command
-        check_value: |
-          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_github_repo_write_effect/services/commit_status.py?ref=$(git rev-parse HEAD)" --jq .content |
-            base64 -d > commit_status.src &&
-          grep -F '/statuses/{sha}' commit_status.src > /dev/null &&
-          grep -F 'def commit_status_request' commit_status.src > /dev/null
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_github_repo_write_effect/test_handler_commit_status.py -q --no-cov -n 0 -p no:randomly
         cwd: ${OMNI_HOME}/omnimarket
   - id: dod-omn24638-ac6-hosted-hold-path
     description: >-

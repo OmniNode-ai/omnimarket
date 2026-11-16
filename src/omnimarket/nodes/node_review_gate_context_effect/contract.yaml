@@ -30,7 +30,7 @@ description: >
 handler:
   module: omnimarket.nodes.node_review_gate_context_effect.handlers.handler_review_gate_context_effect
   class: HandlerReviewGateContextEffect
-  input_model: omnimarket.nodes.node_review_gate_context_effect.models.model_review_context_post.ModelReviewContextPostCommand
+  input_model: omnimarket.models.model_review_context_post.ModelReviewContextPostCommand
 
 # Not a runtime-dispatched handler: HandlerReviewGateContextEffect takes the reader, the poster, the emission sink,
 # the emission identity and the clock as constructor parameters, so it runs from its own caller and the orchestrator
@@ -45,11 +45,11 @@ descriptor:
 
 input_model:
   name: ModelReviewContextPostCommand
-  module: omnimarket.nodes.node_review_gate_context_effect.models.model_review_context_post
+  module: omnimarket.models.model_review_context_post
   description: The correlation id and the decision the pure node made for the head.
 output_model:
   name: ModelReviewContextPostResult
-  module: omnimarket.nodes.node_review_gate_context_effect.models.model_review_context_post
+  module: omnimarket.models.model_review_context_post
   description: The outcome, the head, the posted status's id when one was posted, the port calls made and the detail.
 
 terminal_event: onex.evt.omnimarket.review-gate-context-post-completed.v1

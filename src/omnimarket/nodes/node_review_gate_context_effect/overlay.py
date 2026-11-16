@@ -18,10 +18,10 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
 from omnimarket.models.model_github_gateway_io import ModelGithubGatewayRequest
 from omnimarket.models.model_repo_write_io import ModelRepoWriteRequest
-from omnimarket.nodes.node_lab_check_run_effect.overlay import ModelEmissionSettings
-from omnimarket.nodes.node_review_gate_context_effect.models.model_review_context_post import (
+from omnimarket.models.model_review_context_post import (
     ModelHeadStatus,
 )
+from omnimarket.nodes.node_lab_check_run_effect.overlay import ModelEmissionSettings
 from omnimarket.nodes.node_review_gate_context_effect.protocols.protocol_head_statuses import (
     ProtocolHeadStatusPoster,
     ProtocolHeadStatusReader,

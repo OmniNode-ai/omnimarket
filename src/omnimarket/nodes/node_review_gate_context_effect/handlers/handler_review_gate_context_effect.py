@@ -27,7 +27,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 
 from omnimarket.handlers.emission_sink import ChainEmitter, ProtocolEmissionSink
-from omnimarket.nodes.node_review_gate_context_effect.models.model_review_context_post import (
+from omnimarket.models.model_review_context_post import (
     EnumReviewContextPostOutcome,
     ModelHeadStatus,
     ModelReviewContextPostCommand,

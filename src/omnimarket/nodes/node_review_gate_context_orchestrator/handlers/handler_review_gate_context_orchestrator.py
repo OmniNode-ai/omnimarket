@@ -14,6 +14,9 @@ from collections.abc import Callable, Mapping
 from datetime import datetime
 
 from omnimarket.models.model_landing_review import ModelLandingReviewFacts
+from omnimarket.models.model_review_context_post import (
+    ModelReviewContextPostCommand,
+)
 from omnimarket.models.model_review_gate_context import (
     EnumReviewContextState,
     ModelReviewGateContextDecision,
@@ -23,9 +26,6 @@ from omnimarket.models.model_review_gate_context import (
 )
 from omnimarket.nodes.node_review_gate_context_compute.handlers.handler_review_gate_context import (
     HandlerReviewGateContext,
-)
-from omnimarket.nodes.node_review_gate_context_effect.models.model_review_context_post import (
-    ModelReviewContextPostCommand,
 )
 from omnimarket.nodes.node_review_gate_context_orchestrator.models.model_review_gate_sweep import (
     ModelReviewGateSweepCommand,

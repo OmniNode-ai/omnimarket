@@ -13,11 +13,11 @@ from __future__ import annotations
 import pytest
 
 from omnimarket.handlers.emission_sink import InMemoryEmissionSink
+from omnimarket.models.model_review_context_post import (
+    EnumReviewContextPostOutcome,
+)
 from omnimarket.nodes.node_review_gate_context_effect.adapters.inmemory_head_statuses import (
     InMemoryHeadStatuses,
-)
-from omnimarket.nodes.node_review_gate_context_effect.models.model_review_context_post import (
-    EnumReviewContextPostOutcome,
 )
 from tests.unit.nodes.node_review_gate_context_effect.test_review_gate_context_effect import (
     EnumReviewContextState,

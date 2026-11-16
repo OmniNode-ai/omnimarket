@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from omnimarket.nodes.node_review_gate_context_effect.models.model_review_context_post import (
+from omnimarket.models.model_review_context_post import (
     ModelHeadStatus,
 )
 from omnimarket.nodes.node_review_gate_context_effect.protocols.protocol_head_statuses import (
