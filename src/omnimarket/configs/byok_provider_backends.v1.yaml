@@ -444,6 +444,19 @@ providers:
       source: >-
         docs.z.ai/guides/overview/pricing, read 2026-09-30: glm-4.5-flash input,
         cached input and output all Free.
+    # glm-5.3-flash is the model a key on this surface resolves first (see MODEL
+    # above) and it is metered, so a call to it is booked at its own price, never
+    # left unpriced and never at the tier's rate.
+    model_prices:
+      - model_name: glm-5.3-flash
+        input_per_1m_usd: 0.15
+        output_per_1m_usd: 0.50
+        source: >-
+          docs.z.ai/guides/overview/pricing, read 2026-11-15: glm-5.3-flash $0.15
+          input and $0.50 output per 1M tokens. The page also lists cached input
+          at $0.03, which this row cannot state, so cached tokens are booked at
+          the input price. glm-5.3-flashx ($0.37 input, $1.25 output) stays
+          undeclared.
     limit_model:
       billing: pay_as_you_go
       counter_scope: model

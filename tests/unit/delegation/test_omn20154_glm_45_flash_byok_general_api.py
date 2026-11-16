@@ -330,7 +330,7 @@ def test_the_catalogue_declares_the_free_model_zero_price() -> None:
 
 
 def test_a_model_the_catalogue_does_not_declare_has_no_declared_price() -> None:
-    assert byok_declared_price_per_1m(_GENERAL_API_URL, "glm-5.3-flash") is None
+    assert byok_declared_price_per_1m(_GENERAL_API_URL, "glm-5.3-flashx") is None
     assert byok_declared_price_per_1m(_CODING_PLAN_URL, _FREE_MODEL) is None
 
 
