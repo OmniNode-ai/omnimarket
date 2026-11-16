@@ -296,9 +296,7 @@ def parse_retry_after(
 
 
 def _extract_error_message(body: dict[str, Any] | None) -> str:
-    if not isinstance(body, dict):
-        return ""
-    error = body.get("error")
+    error = body.get("error") if isinstance(body, dict) else None
     if not isinstance(error, dict):
         return ""
     return str(error.get("message") or "")

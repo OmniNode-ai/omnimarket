@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Literal
 
 import pytest
 
@@ -22,7 +23,13 @@ from omnimarket.handlers.handler_glm_quota_gate import (
     plan_limit_rule,
 )
 from omnimarket.inference.provider_quota_policy import load_provider_quota_policy
-from omnimarket.models.delegation.model_glm_quota_gate import ModelGlmQuotaGateRequest
+from omnimarket.models.delegation.model_glm_quota_gate import (
+    ModelGlmQuotaGateRequest,
+    ModelGlmQuotaGateResult,
+)
+from omnimarket.models.delegation.wire.model_bifrost_delegation_config import (
+    ModelQuotaCodeRule,
+)
 from omnimarket.nodes.node_llm_delegation_call_effect.runtime_glm_quota_gate import (
     MARKER_NAME,
     main,
@@ -45,7 +52,7 @@ RESET_1308 = datetime(
 FIVE_HOURS = timedelta(hours=5)
 
 
-def zai_rule(code: str):  # type: ignore[no-untyped-def]
+def zai_rule(code: str) -> ModelQuotaCodeRule:
     return next(
         r
         for p in load_provider_quota_policy().providers
@@ -55,13 +62,18 @@ def zai_rule(code: str):  # type: ignore[no-untyped-def]
     )
 
 
-def ask(operation: str, now: datetime, error: str = "", marker: datetime | None = None):  # type: ignore[no-untyped-def]
+def ask(
+    operation: Literal["check", "note"],
+    now: datetime,
+    error: str = "",
+    marker: datetime | None = None,
+) -> ModelGlmQuotaGateResult:
     return HandlerGlmQuotaGate().handle(
         ModelGlmQuotaGateRequest(
             operation=operation,
             now=now,
             error_text=error,
-            marker_until=marker,  # type: ignore[arg-type]
+            marker_until=marker,
         )
     )
 
@@ -182,7 +194,8 @@ def run(
     tmp_path: Path, now: datetime, *args: str, capsys: pytest.CaptureFixture[str]
 ) -> dict[str, object]:
     assert main([args[0], str(tmp_path), *args[1:]], now=now) == 0
-    return json.loads(capsys.readouterr().out)
+    line: dict[str, object] = json.loads(capsys.readouterr().out)
+    return line
 
 
 def test_the_adapter_keeps_the_hold_in_one_marker_file(
