@@ -146,3 +146,58 @@ _CURSOR_TABLE_STEPS = (
         _DELEGATION_EVENTS_CURSOR,
     ),
 )
+
+
+# OMN-20226: metering_summary's three not-yet-measured fields. A store written
+# before them has the table without the columns, and CREATE TABLE IF NOT EXISTS
+# leaves it so; the read node then refuses the whole exposure
+# (projection_column_missing). They are added once, nullable with no default
+# like migration 0003, so a row written before them reads null, never a zero.
+METERING_SUMMARY_MEASURES_STEP = "omn20226_metering_summary_measure_columns"
+METERING_SUMMARY_ADDED_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("compression_ratio", "TEXT"),
+    ("cache_hit_rate", "TEXT"),
+    ("runs_cache_answered", "INTEGER"),
+)
+# OMN-20008: metering_summary's savings share of the baseline, the counterpart
+# of migration 0004. Its own step, not a fourth entry above: a store that has
+# already recorded the OMN-20226 step would never run that step again.
+METERING_SUMMARY_SAVINGS_PCT_STEP = "omn20008_metering_summary_savings_pct_column"
+# OMN-21361: metering_summary's savings per measured run, the counterpart of
+# migration 0002. A store written before it has the table without the column,
+# and read_summary_row refused that row on every delegation. Its own step, for
+# the same reason as the savings share above.
+METERING_SUMMARY_SAVINGS_PER_RUN_STEP = (
+    "omn21361_metering_summary_savings_per_measured_run_column"
+)
+# OMN-24615 AC1: metering_summary's count of runs that ended with a failure
+# cause, the counterpart of migration 0005. Its own step for the same reason.
+METERING_SUMMARY_RUNS_FAILED_STEP = "omn24615_metering_summary_runs_failed_column"
+# Each step adds its columns once per store, nullable with no default, so a row
+# written before them reads null. The columns are read again under the step's
+# write lock, so a fresh store, whose table already has them, and two first
+# opens that race both add nothing twice.
+METERING_SUMMARY_COLUMN_STEPS: tuple[
+    tuple[str, tuple[tuple[str, str], ...], str], ...
+] = (
+    (
+        METERING_SUMMARY_MEASURES_STEP,
+        METERING_SUMMARY_ADDED_COLUMNS,
+        "added the metering-summary compression and cache columns",
+    ),
+    (
+        METERING_SUMMARY_SAVINGS_PCT_STEP,
+        (("savings_pct_of_counterfactual", "TEXT"),),
+        "added the metering-summary savings share column",
+    ),
+    (
+        METERING_SUMMARY_SAVINGS_PER_RUN_STEP,
+        (("savings_per_measured_run_usd", "TEXT"),),
+        "added the metering-summary savings per measured run column",
+    ),
+    (
+        METERING_SUMMARY_RUNS_FAILED_STEP,
+        (("runs_failed", "INTEGER"),),
+        "added the metering-summary failed runs column",
+    ),
+)

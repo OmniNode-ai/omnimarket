@@ -121,6 +121,7 @@ class HandlerProjectionMeteringSummary:
                     runs_measured=summary.runs_measured,
                     runs_unknown_tokens=summary.runs_unknown_tokens,
                     runs_unknown_spend=summary.runs_unknown_spend,
+                    runs_failed=summary.runs_failed,
                     tokens_in=summary.tokens_in,
                     tokens_out=summary.tokens_out,
                     spend_usd=payload["spend_usd"],

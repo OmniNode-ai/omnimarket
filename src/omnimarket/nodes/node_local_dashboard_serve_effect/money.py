@@ -49,6 +49,7 @@ _RANGE_COUNTS: Final = (
     "runs_measured",
     "runs_unknown_tokens",
     "runs_unknown_spend",
+    "runs_failed",
     "tokens_in",
     "tokens_out",
 )

@@ -40,6 +40,7 @@ import pytest
 import yaml
 from fastapi.testclient import TestClient
 
+from omnimarket.models.model_local_install_schema import METERING_SUMMARY_MEASURES_STEP
 from omnimarket.nodes.node_local_dashboard_serve_effect.handlers.handler_local_dashboard_serve import (
     create_dashboard_app,
 )
@@ -284,7 +285,7 @@ def _old_store(db_path: Path, *, recorded_steps: tuple[str, ...]) -> None:
 
 @pytest.mark.parametrize(
     "recorded_steps",
-    [(), (sqlite_database._METERING_SUMMARY_MEASURES_STEP,)],
+    [(), (METERING_SUMMARY_MEASURES_STEP,)],
     ids=["no-steps-recorded", "omn20226-step-recorded"],
 )
 def test_p11_an_old_store_gains_the_column_once_and_keeps_its_rows(

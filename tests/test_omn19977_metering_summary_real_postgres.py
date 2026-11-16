@@ -43,6 +43,7 @@ _MIGRATIONS = tuple(
         "0002_metering_summary_savings_per_measured_run.sql",
         "0003_metering_summary_compression_and_cache_hit.sql",
         "0004_metering_summary_savings_pct.sql",
+        "0005_metering_summary_runs_failed.sql",
     )
 )
 _SCHEMA = "omn19977_metering_summary_write_path_test"
@@ -269,6 +270,71 @@ async def test_omn20008_the_writer_stores_the_savings_share_of_the_baseline() ->
 
         await writer._project(request)
         assert [dict(row) for row in await conn.fetch(query)] == stored
+    finally:
+        try:
+            await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
+        finally:
+            await conn.close()
+
+
+@pytest.mark.integration
+async def test_omn24615_the_writer_stores_runs_failed_and_books_no_saving_for_them() -> (
+    None
+):
+    """OMN-24615 AC1: a refused run is counted in runs_failed and saves nothing.
+
+    One run succeeded and one ended quality_gate_refused, each with 1000 tokens
+    in and 0.1 spent at a baseline of 1 per 1k in: the stored saving is the
+    successful run's 0.9 alone, both runs are measured, runs_failed is 1, and a
+    replay rewrites the same row.
+    """
+    conn = await _connect_or_skip()
+    try:
+        await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
+        await conn.execute(f"CREATE SCHEMA {_SCHEMA}")
+        for migration in _MIGRATIONS:
+            await conn.execute(_scoped(migration.read_text(encoding="utf-8")))
+        writer = _scoped_writer(conn)
+        as_of = datetime(2026, 9, 28, 12, tzinfo=UTC)
+        records = tuple(
+            ModelMeteringRecord(
+                correlation_id=f"run-{cause or 'ok'}",
+                occurred_at=as_of - timedelta(hours=1),
+                model="local-a",
+                tokens_in=1000,
+                tokens_out=0,
+                spend_usd=Decimal("0.1"),
+                failure_cause=cause,
+            )
+            for cause in (None, "quality_gate_refused")
+        )
+        request = ModelMeteringSummaryFoldRequest(
+            tenant_id="local",
+            baseline_model="baseline-model",
+            baseline=ModelCounterfactualBaseline(
+                model="baseline-model",
+                price_in_per_1k=Decimal("1"),
+                price_out_per_1k=Decimal("2"),
+                as_of="2026-09-01",
+                pricing_manifest_version="1",
+                source="pricing_manifest",
+            ),
+            as_of=as_of,
+            records=records,
+        )
+        query = (
+            f"SELECT savings_usd, spend_usd, runs_measured, runs_failed "
+            f"FROM {_SCHEMA}.metering_summary WHERE window_kind = 'all'"
+        )
+        await writer._project(request)
+        stored = dict(await conn.fetchrow(query))
+        assert Decimal(stored["savings_usd"]) == Decimal("0.9")
+        assert Decimal(stored["spend_usd"]) == Decimal("0.2")
+        assert stored["runs_measured"] == 2
+        assert stored["runs_failed"] == 1
+
+        await writer._project(request)
+        assert dict(await conn.fetchrow(query)) == stored
     finally:
         try:
             await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
