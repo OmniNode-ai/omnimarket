@@ -327,6 +327,23 @@ class HandlerPromptDelegate:
         """Deliver accepted exchanges without classifying or delegating a prompt."""
         return context_output(cls._take_pending(session_id))
 
+    @classmethod
+    def history_hook(cls) -> str:
+        """The context-only installed adapter: no classifier or model call."""
+        import sys
+
+        from omnimarket.handlers.delegation_hook_switch import delegation_switch_enabled
+        from omnimarket.nodes.node_hook_delegate_effect import container
+
+        if delegation_switch_enabled():
+            return ""
+        payload = json.load(sys.stdin)
+        session_id = payload.get("session_id") if isinstance(payload, dict) else None
+        if not isinstance(session_id, str) or not session_id:
+            return ""
+        container.build_handler().begin_turn(session_id)
+        return cls.drain_history(session_id)
+
     def _pass(
         self,
         session_id: str,

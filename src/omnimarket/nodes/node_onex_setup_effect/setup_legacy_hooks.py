@@ -253,6 +253,9 @@ def observe_legacy_hooks(
     def rewrite(value: Any, key: str = "") -> Any:
         if isinstance(value, str):
             value = value.replace("${CLAUDE_PLUGIN_ROOT}", str(target))
+            value = value.replace(
+                "${ONEX_DELEGATION_PYTHON}", shlex.quote(sys.executable)
+            )
             return (
                 f"PLUGIN_PYTHON_BIN={shlex.quote(sys.executable)} {value}"
                 if key == "command"

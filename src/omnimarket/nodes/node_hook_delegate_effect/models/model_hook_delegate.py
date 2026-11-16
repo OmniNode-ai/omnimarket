@@ -49,6 +49,18 @@ class ModelHookDelegateRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
+    @staticmethod
+    def strings(value: object) -> list[str]:
+        """Decoded strings, including nested keys and values, for sensitivity checks."""
+        items = [*value.keys(), *value.values()] if isinstance(value, dict) else value
+        if isinstance(items, list):
+            return [
+                text
+                for item in items
+                for text in ModelHookDelegateRequest.strings(item)
+            ]
+        return [value] if isinstance(value, str) else []
+
     task: str = Field(min_length=1, description="The subagent's prompt.")
     intent: str = Field(
         default="", description="The classifier's intent, e.g. research."

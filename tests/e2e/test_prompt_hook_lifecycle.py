@@ -181,7 +181,7 @@ def test_cli_on_off_owns_both_registrations_and_preserves_settings(
                 group["hooks"] = [
                     h
                     for h in group["hooks"]
-                    if "user_prompt_delegation_history.sh" not in h.get("command", "")
+                    if "--history-only" not in h.get("command", "")
                 ]
             older["hooks"]["UserPromptSubmit"] = [
                 g for g in older["hooks"]["UserPromptSubmit"] if g["hooks"]
@@ -193,10 +193,7 @@ def test_cli_on_off_owns_both_registrations_and_preserves_settings(
     remaining_owned = owned(after)
     assert set(remaining_owned) == {"UserPromptSubmit"}
     assert len(remaining_owned["UserPromptSubmit"]) == 1
-    assert (
-        "user_prompt_delegation_history.sh"
-        in remaining_owned["UserPromptSubmit"][0]["command"]
-    )
+    assert "--history-only" in remaining_owned["UserPromptSubmit"][0]["command"]
     assert {k: v for k, v in after.items() if k != "hooks"} == {
         k: v for k, v in original.items() if k != "hooks"
     }

@@ -64,6 +64,62 @@ def _settings_problem(step: str, error: ClaudeSettingsError) -> ModelSetupObserv
 class HandlerSetupClaude:
     """Observe or reconcile the selected plugin profile and delegation hook rows."""
 
+    @staticmethod
+    def rollback_hook_registration(
+        manifest_path: Path, preserve_history: bool = False
+    ) -> str:
+        """Remove exact installer-owned registrations, optionally retaining history."""
+        manifest = json.loads(manifest_path.read_text())
+        pause = preserve_history
+        backup = manifest.get("settings_backup")
+        settings = manifest.get("claude_settings")
+        hooks_config = manifest.get("installed_hook_config")
+        settings_path = Path(settings) if settings else None
+        if settings_path is None:
+            raise SystemExit("rollback manifest missing claude_settings")
+        if not settings_path.exists():
+            if backup and Path(backup).exists():
+                settings_path.parent.mkdir(parents=True, exist_ok=True)
+                settings_path.write_text(Path(backup).read_text())
+                return f"restored missing {settings} from {backup}"
+            return ""
+        current = json.loads(settings_path.read_text())
+        hook_cfg = {}
+        if hooks_config and Path(hooks_config).exists():
+            hook_cfg = json.loads(Path(hooks_config).read_text()).get("hooks", {})
+        delegation_commands = {
+            hook.get("command")
+            for groups in hook_cfg.values()
+            for group in groups
+            for hook in group.get("hooks", [])
+            if hook.get("command")
+            and not (pause and "--history-only" in hook["command"])
+        }
+        hooks = current.get("hooks", {})
+        for event in list(hooks):
+            filtered_groups = []
+            for group in hooks.get(event, []):
+                filtered_hooks = [
+                    hook
+                    for hook in group.get("hooks", [])
+                    if hook.get("command") not in delegation_commands
+                ]
+                if filtered_hooks:
+                    filtered_groups.append({**group, "hooks": filtered_hooks})
+            if filtered_groups:
+                hooks[event] = filtered_groups
+            else:
+                hooks.pop(event, None)
+        if hooks:
+            current["hooks"] = hooks
+        else:
+            current.pop("hooks", None)
+        if current:
+            settings_path.write_text(json.dumps(current, indent=2) + "\n")
+            return f"removed delegation hooks from {settings}"
+        settings_path.unlink()
+        return f"removed {settings} after clearing installer-managed hooks"
+
     def __init__(
         self,
         *,
