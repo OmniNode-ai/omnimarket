@@ -14,7 +14,7 @@ requirements:
       - id: AC2
         statement: 'AC2: the fix is made on the pull request''s own branch with no check widened, skipped or bypassed, and a PR comment starting Lab: head=<full head sha> carries the lab proof for the new head -- falsifier: the diff against dev touches a file under .github, .onex_ratchets or scripts/ci'
       - id: AC3
-        statement: 'AC3: when the cause is outside the pull request, the lane writes a STATUS row with shared=yes and patches nothing around it -- falsifier: none applies, the cause was inside the pull request (a stale branch) and AC1 holds'
+        statement: 'AC3: the causes of red that sit outside the pull request, pypi-pin-resolvability (the newest published omnibase-infra pins omnibase-spi==0.23.7, which the 0.23.15 floor excludes, until omnibase_infra publishes a release that carries omnibase-spi>=0.23.15) and delegation-health-check (red from dev''s own delegation-regression-nightly run), are each recorded in a STATUS row with shared=yes, and nothing is patched around them -- falsifier: the ledger holds fewer than two STATUS rows for omnimarket#5737 with shared=yes, or the diff against dev touches a file under .github, .onex_ratchets or scripts/ci'
 evidence_requirements:
   - kind: tests
     description: The omnibase-spi floor tests pass at the merged head.
@@ -33,6 +33,19 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly
         cwd: .
+      - check_type: command
+        check_value: git merge-base --is-ancestor origin/dev HEAD
+        cwd: .
+  - id: dod-omn24829-ac1-required-checks-at-head
+    description: AC1. The required checks are read at the new head from the PR watcher state; the class reads green only when every required context is green, and it reads red while pypi-pin-resolvability fails.
+    source: manual
+    execution_scope: local_done_gate
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: command
+        check_value: onex scm pr-checks OmniNode-ai/omnimarket#5737 | grep -q '"class":"green"'
+        cwd: .
   - id: dod-omn24829-ac2-no-check-touched
     description: AC2. The diff against dev changes no workflow, ratchet or CI script file.
     source: manual
@@ -42,12 +55,22 @@ dod_evidence:
       - check_type: command
         check_value: test -z "$(git diff --name-only origin/dev...HEAD -- .github .onex_ratchets scripts/ci)" && test "$(grep -c 'omnibase-spi>=0.23.15,<0.24.0' pyproject.toml)" = 2
         cwd: .
-  - id: dod-omn24829-ac3-no-shared-cause
-    description: AC3. The cause sat inside the pull request, so no shared-cause patch exists; the pyproject floors agree on 0.23.15, a test that fails at the merge base (floor 0.23.3).
+  - id: dod-omn24829-ac3-shared-status-rows
+    description: AC3. Two STATUS rows for omnimarket#5737 carry shared=yes, one for each cause outside the pull request; the rows are read from the ledger file named by ONEX_LEDGER_PATH.
+    source: manual
+    execution_scope: local_done_gate
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: command
+        check_value: test "$(grep -a '| STATUS |' "$ONEX_LEDGER_PATH" | grep -a 'pr=omnimarket#5737' | grep -a -c 'shared=yes')" -ge 2
+        cwd: .
+  - id: dod-omn24829-ac3-nothing-patched-around
+    description: AC3. Nothing is patched around the shared causes; the diff against dev changes no workflow, ratchet or CI script file.
     source: manual
     binds_ac:
       - AC3
     checks:
-      - check_type: test_passes
-        check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly -k floors_agree
+      - check_type: command
+        check_value: test -z "$(git diff --name-only origin/dev...HEAD -- .github .onex_ratchets scripts/ci)"
         cwd: .
