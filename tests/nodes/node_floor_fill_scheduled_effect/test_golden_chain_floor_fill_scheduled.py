@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import cast
@@ -14,6 +15,10 @@ import pytest
 import yaml
 from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 
+from omnimarket.handlers.floor_fill_scheduled_tick import (
+    FloorFillProfileUnboundError,
+    run_floor_fill_tick,
+)
 from omnimarket.handlers.schedule_run_store import InMemoryScheduleRunStore
 from omnimarket.nodes.node_floor_fill_orchestrator.handlers.handler_floor_fill_command import (
     HandlerFloorFillCommand,
@@ -22,6 +27,9 @@ from omnimarket.nodes.node_floor_fill_orchestrator.models import (
     ModelFloorFillCommandRequest,
     ModelFloorFillConfig,
     ModelFloorFillEntryResult,
+)
+from omnimarket.nodes.node_floor_fill_orchestrator.models.model_floor_fill_live_settings import (
+    ModelFloorFillLiveSettings,
 )
 from omnimarket.nodes.node_floor_fill_scheduled_effect.handlers.handler_floor_fill_scheduled import (
     HandlerFloorFillScheduled,
@@ -141,14 +149,69 @@ def test_error_a_missing_fill_overlay_is_a_failed_run_naming_it(
     assert "node_floor_fill_orchestrator" in event.detail
 
 
-def test_error_the_live_profile_is_refused_by_name_until_it_is_bound(
-    tmp_path: Path,
+def _refuse_inmemory(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Bind the in-memory builder to a refusal, so a test fails loudly if the tick picks it."""
+
+    def refuse(config: ModelFloorFillConfig) -> HandlerFloorFillCommand:
+        raise AssertionError("in-memory profile bound")
+
+    monkeypatch.setattr(
+        "omnimarket.handlers.floor_fill_scheduled_tick.build_inmemory_handler", refuse
+    )
+
+
+def test_golden_live_profile_binds_the_live_factory_and_never_the_inmemory_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    h = HandlerFloorFillScheduled(environ=environ(tmp_path, profile="live"))
-    event = h.handle(tick(T0))
+    env = environ(tmp_path, profile="live")
+    env["EXAMPLE_FLOOR_FILL_DSN"] = "postgresql://x"
+    seen: list[tuple[ModelFloorFillLiveSettings, str]] = []
+
+    def factory(
+        settings: ModelFloorFillLiveSettings, *, dsn: str
+    ) -> Callable[[ModelFloorFillConfig], _Done]:
+        seen.append((settings, dsn))
+
+        def build(config: ModelFloorFillConfig) -> _Done:
+            return _Done(0, "ok line\n")
+
+        return build
+
+    monkeypatch.setattr(
+        "omnimarket.nodes.node_floor_fill_orchestrator.container.container_live"
+        ".build_live_handler_factory",
+        factory,
+    )
+    _refuse_inmemory(monkeypatch)
+    event = HandlerFloorFillScheduled(environ=env).handle(tick(T0))
+    assert event is not None
+    assert (event.outcome, event.detail) == ("completed", "ok line")
+    assert len(seen) == 1
+    live_settings, dsn = seen[0]
+    assert dsn == "postgresql://x"
+    assert live_settings.store_dsn_env == "EXAMPLE_FLOOR_FILL_DSN"
+
+
+def test_error_live_profile_without_its_store_dsn_is_a_failed_run_naming_the_variable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _refuse_inmemory(monkeypatch)
+    event = HandlerFloorFillScheduled(environ=environ(tmp_path, profile="live")).handle(
+        tick(T0)
+    )
     assert event is not None
     assert event.outcome == "failed"
-    assert "live profile is not bound" in event.detail
+    assert "EXAMPLE_FLOOR_FILL_DSN" in event.detail
+
+
+def test_error_an_unknown_profile_is_still_refused_by_name(tmp_path: Path) -> None:
+    with pytest.raises(FloorFillProfileUnboundError) as refused:
+        run_floor_fill_tick(
+            fill_overlay_id="node_floor_fill_orchestrator",
+            profile="nosuch",
+            environ=environ(tmp_path),
+        )
+    assert str(refused.value) == "nosuch"
 
 
 def test_seam_the_run_event_folds_into_the_reducer_and_the_topics_match(

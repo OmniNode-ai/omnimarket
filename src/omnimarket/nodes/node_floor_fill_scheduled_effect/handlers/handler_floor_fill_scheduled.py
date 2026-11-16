@@ -17,6 +17,7 @@ from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 
 from omnimarket.handlers.floor_fill_scheduled_tick import (
     FloorFillProfileUnboundError,
+    FloorFillStoreDsnUnsetError,
     run_floor_fill_tick,
 )
 from omnimarket.handlers.node_overlay_reader import (
@@ -100,6 +101,12 @@ class HandlerFloorFillScheduled:
                 request,
                 "failed",
                 f"the {overlay.profile} profile is not bound in the runtime yet",
+            )
+        except FloorFillStoreDsnUnsetError as exc:
+            return self._event(
+                request,
+                "failed",
+                f"the live profile's store DSN variable {exc.variable} is unset",
             )
         return self._event(
             request,

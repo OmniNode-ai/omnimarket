@@ -8,6 +8,7 @@ so no node imports another node's model package.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable, Mapping
 from typing import Any, NamedTuple
 
@@ -28,6 +29,14 @@ class FloorFillProfileUnboundError(Exception):
     """The overlay names a profile the runtime does not bind yet."""
 
 
+class FloorFillStoreDsnUnsetError(Exception):
+    """The live profile's store DSN variable is unset in the environment."""
+
+    def __init__(self, variable: str) -> None:
+        self.variable = variable
+        super().__init__(variable)
+
+
 class ModelFloorFillTickOutcome(NamedTuple):
     """The exit code and the first stdout line of one fill tick."""
 
@@ -42,16 +51,28 @@ def run_floor_fill_tick(
     environ: Mapping[str, str] | None,
     build_handler: Callable[[Any], Any] | None = None,
 ) -> ModelFloorFillTickOutcome:
-    """Read the fill overlay and run one tick; raises ``NodeOverlayError`` when it cannot be read."""
+    """Read the fill overlay and run one tick; raises ``NodeOverlayError`` when it cannot be read, ``FloorFillProfileUnboundError`` for a profile the runtime does not bind, and ``FloorFillStoreDsnUnsetError`` when the live profile's store DSN variable is unset."""
     document = load_structured_overlay(
         fill_overlay_id, ModelFloorFillOverlayDocument, environ
     )
     config = document.floor_fill
     build = build_handler
     if build is None:
-        if profile != "inmemory":
+        if profile == "inmemory":
+            build = build_inmemory_handler
+        elif profile == "live":
+            live = document.floor_fill_live
+            name = live.store_dsn_env
+            dsn = (os.environ if environ is None else environ).get(name, "")
+            if not dsn:
+                raise FloorFillStoreDsnUnsetError(name)
+            from omnimarket.nodes.node_floor_fill_orchestrator.container.container_live import (
+                build_live_handler_factory,
+            )
+
+            build = build_live_handler_factory(live, dsn=dsn)
+        else:
             raise FloorFillProfileUnboundError(profile)
-        build = build_inmemory_handler
     result = build(config).handle(
         ModelFloorFillCommandRequest(
             command=EnumFloorFillCommand.TICK, key=None, host_id=config.host_id
@@ -63,6 +84,7 @@ def run_floor_fill_tick(
 
 __all__: list[str] = [
     "FloorFillProfileUnboundError",
+    "FloorFillStoreDsnUnsetError",
     "ModelFloorFillTickOutcome",
     "run_floor_fill_tick",
 ]

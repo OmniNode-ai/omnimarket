@@ -1,0 +1,108 @@
+schema_version: 1.0.0
+ticket_id: OMN-25027
+title: The floor fill node on h051 reads the slots the remote-lane runner sees, runs its real profile, has its alarm scheduled, and its installed one-run command places one real lane
+summary: The pool read of the lane host pool snapshot is fixed at its source in the overlays repository (the token pool command over ssh needs ONEX_SKILL_OVERLAY_ROOTS and --entries; the fill overlay's
+  --pool-snapshot names the file the snapshot unit writes), and the runtime-scheduled fill path binds the live profile (the live factory, store DSN from the environment) instead of refusing it. This change
+  relies on omnimarket PR 6333 for the live pool seam binding (container_live) and the alarm nodes. The alarm schedule, the tickets, brake and stop-signal seams of the live profile, the tick unit install
+  and the one placed lane are not in this change.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn25027-live-fill
+  statement: The floor fill reads the pool slots the runner sees and the scheduled path runs the live profile.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the pool snapshot on h051 reports non-zero free slots while the remote-lane runner''s own pool probe sees free slots -- falsifier: the pool snapshot file and its read-at file on h051
+      read after the fix show free_slots_total 0 while the runner''s pool probe shows free slots'
+  - id: AC2
+    statement: 'AC2: the scheduled path and the one-run command bind the real profile and never the in-memory one -- falsifier: `uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_orchestrator
+      -k live_profile -q` passes with the in-memory profile bound'
+  - id: AC3
+    statement: 'AC3: the alarm rule runs on a declared schedule on h051 and writes a tick row -- falsifier: `systemctl --user list-timers` on h051 lists no alarm timer, or the alarm''s tick row is absent
+      after one interval'
+  - id: AC4
+    statement: 'AC4: the one-run command installed on h051 through the declared installer is run once by hand and places one real lane -- falsifier: the fill''s answer line and the CLAIM row of the lane
+      it started are absent from the ledger after the run'
+  - id: AC5
+    statement: 'AC5: a STATUS row on the rolling ledger carries the exact one-run command, the installed revision and the read time -- falsifier: `python3 "$LB" grep ''floorfill2-2115''` finds no STATUS
+      row carrying installed=h051:'
+  - id: AC6
+    statement: 'AC6: a draft PR carries a Lab: head=<full head sha> comment with installed= and observed= -- falsifier: `onex scm pr-view` of the PR lists no comment that starts with Lab: head='
+evidence_requirements:
+- kind: tests
+  description: The live profile tests of the scheduled path.
+  command: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_live_profile.py tests/nodes/node_floor_fill_scheduled_effect -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25027-ac1-pool-read
+  description: The overlays repository change sets ONEX_SKILL_OVERLAY_ROOTS and --entries in the snapshot overlay's accounts argv; the pool snapshot on the fill host, read after the overlay is installed,
+    reads non-zero lane slots. Reads the fill host, so only the local Done gate runs it.
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: command
+    check_value: ssh hp-gen8 "python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if sum(r[\"lane_slots\"] for r in d[\"readings\"])>0 else 1)' $OMNI_HOME/.onex_state/lane-host-pool-snapshot/pool.json"
+- id: dod-omn25027-ac2-live-profile
+  description: 'The scheduled path builds the live factory for profile live and never the in-memory builder: the tests bind the in-memory builder to a refusal and fail at the base.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_orchestrator -k live_profile -q
+    cwd: .
+- id: dod-omn25027-ac2-integration-proof
+  description: The live-profile tests of the scheduled path run on a lab host at the pushed head through onex lab-work; a lab host is not reachable from the hosted runner, so only the local Done gate runs
+    it.
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: command
+    check_value: onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25027 --kind test -- uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_orchestrator
+      -k live_profile -q
+- id: dod-omn25027-ac3-alarm-scheduled
+  description: 'Not met by this change: the alarm is scheduled by the change of omnimarket PR 6333 (one writer: the lane working it). The check reads the fill host''s timers and fails while no alarm timer
+    is listed.'
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: command
+    check_value: ssh hp-gen8 'systemctl --user list-timers --all' | grep -q floor-fill-alarm
+- id: dod-omn25027-ac4-one-lane
+  description: 'Not met by this change: the live profile has no source for the tickets, brake and stop-signal seams. The check reads the rolling ledger for a CLAIM row keyed floor: and fails while none
+    exists.'
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: command
+    check_value: test -n "$ONEX_LEDGER_PATH" && grep -E '[|] CLAIM [|]' "$ONEX_LEDGER_PATH" | grep -q 'key=floor:'
+- id: dod-omn25027-ac5-status-row
+  description: 'A STATUS row of lane floorfill2-2115 carries installed=h051: and the one-run command; read from the ledger, so only the local Done gate runs it.'
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: command
+    check_value: test -n "$ONEX_LEDGER_PATH" && grep STATUS "$ONEX_LEDGER_PATH" | grep lane=floorfill2-2115 | grep -q 'installed=h051:'
+- id: dod-omn25027-ac6-lab-comment
+  description: 'The draft pull request carries a comment that starts Lab: head= with a full sha; read from the watcher state by the local Done gate.'
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: command
+    check_value: 'python3 "${OMNI_PLUGIN_ROOT:?}"/skills/merge-drain/scripts/pr_state_local.py --find OMN-25027 --json | grep -Eq ''Lab: head=[0-9a-f]{40}'''
