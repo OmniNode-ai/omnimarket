@@ -1,0 +1,86 @@
+schema_version: 1.0.0
+ticket_id: OMN-24904
+title: The review findings on the eight-writer test pull request are fixed or argued with evidence, and the contract marks its restated criteria
+summary: Second fix round on the pull request that starts the eight-writer test's pool workers through spawn (implementation ticket OMN-24844). Changes only tests/test_capture_item_identity_effect.py and contracts/OMN-24844.yaml. The test file gains a check that the eight-writer test carries no skip, skipif or xfail marker, a second fork control that runs the eight-writer test itself under a forced fork context, a fork control that checks the value the fork child returns instead of accepting any assertion error, and a subprocess wait longer than the pool wait it guards. The contract of OMN-24844 now says its criteria are restated, names where --refuse-skips is defined and what it does and does not refuse, adds xfail_strict=true to its AC2 check so an xfail on a passing test fails, runs the prior-head check through git show, and anchors its two greps to the code line. Linear AC1 of OMN-24844 (a lab hang at the unfixed head) is falsified by the pull request's own run data; whether the ticket owner amends or waives it is an open decision that this change does not make. Not in this change - any workflow file, any other test, the handler under test.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24904-review-round
+  statement: Every blocking finding of the review at head b13188dd6eff is fixed with a red-then-green check or argued with evidence, and no check is widened or bypassed.
+  acceptance:
+  - id: AC1
+    statement: "AC1: every blocking finding of the review at the live head of omnimarket#6327 is fixed by a change with a test that fails at head b13188dd6eff and passes at the new head, or argued with evidence in a PR comment -- falsifier: uv run pytest tests/test_capture_item_identity_effect.py -q -p no:cacheprovider passes with the change reverted to head b13188dd6eff"
+  - id: AC2
+    statement: "AC2: a PR comment starting Lab: head=<full new head sha> names the sha, the command and exit 0 for the PR's required suites, and every required check-run of omnimarket#6327 reads success at the new head -- falsifier: onex scm pr-checks OmniNode-ai/omnimarket#6327 lists a required context that is not success at the new head, or the Lab comment lacks the full sha, the command or exit 0"
+  - id: AC3
+    statement: "AC3: contracts/OMN-24844.yaml marks its restated criteria as restated, cites where the owner's decision on the Linear AC1 is to be recorded, and its AC2 check names where --refuse-skips is defined and fails on xfail as well as skip -- falsifier: grep -F restated contracts/OMN-24844.yaml finds no line, or the test file still passes with an xfail marker added to the eight-writer test"
+  - id: AC4
+    statement: "AC4: the change widens or bypasses no check, so the diff removes no assertion and adds no skip, xfail, loosened threshold or changed required-check list -- falsifier: git diff <base> <head> -- tests/ .github/ shows a removed assert, a new skip or xfail marker, or a changed required-check list"
+evidence_requirements:
+- kind: tests
+  description: The capture item identity test file at the pushed head, run on a lab host with the flags the CI test split uses (coverage on, 300 s thread timeout, no xdist), with --refuse-skips and strict xfail.
+  command: uv run pytest tests/test_capture_item_identity_effect.py -v --tb=short -m "not kafka" --cov=src --cov-report= --timeout=300 --timeout-method=thread -p no:cacheprovider --refuse-skips -o xfail_strict=true
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24904-ac1-tests
+  description: 'AC1: the whole capture item identity test file passes at the new head, with the two fork controls and the marker check included.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_capture_item_identity_effect.py -q --cov=src --cov-report= --timeout=300 --timeout-method=thread -p no:cacheprovider --refuse-skips -o xfail_strict=true
+    cwd: .
+- id: dod-omn24904-ac2-lab-comment
+  description: 'AC2: the pull request carries a comment starting Lab: head= with the pull request head sha; this check fails when no such comment exists. Read at the local Done gate, because the comment is written after the push.'
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: command
+    check_value: |-
+      bash -o pipefail -c 'h=$(gh api repos/OmniNode-ai/omnimarket/pulls/6327 --jq .head.sha) && gh api --paginate repos/OmniNode-ai/omnimarket/issues/6327/comments --jq ".[].body" | grep -E "^Lab: head=$h" > /dev/null'
+    cwd: .
+- id: dod-omn24904-ac3-restated
+  description: 'AC3: the contract of the implementation ticket carries the word restated and names tests/refuse_skips.py as where --refuse-skips is defined; this check fails if either line is gone.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: command
+    check_value: bash -o pipefail -c 'grep -F restated contracts/OMN-24844.yaml > /dev/null && grep -F "tests/refuse_skips.py" contracts/OMN-24844.yaml > /dev/null'
+    cwd: .
+- id: dod-omn24904-ac3-xfail-marker
+  description: 'AC3: the marker check fails when the eight-writer test carries an xfail marker; the lab run with the marker added is in the pull request Lab comment.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_capture_item_identity_effect.py -q -k no_skip_or_xfail_marker --no-cov --refuse-skips -o xfail_strict=true -p no:cacheprovider
+    cwd: .
+- id: dod-omn24904-ac4-no-widening
+  description: 'AC4: the test file has at least as many assert lines as at head b13188dd6eff and no skip or xfail marker or call; this check fails if an assertion is removed or a marker is added.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: command
+    check_value: |-
+      bash -o pipefail -c 'old=$(git show b13188dd6effee1baf11a7c662ae0725fcfadb83:tests/test_capture_item_identity_effect.py | grep -cE "^ *assert ") && new=$(grep -cE "^ *assert " tests/test_capture_item_identity_effect.py) && test "$new" -ge "$old" && ! grep -nE "pytest\.mark\.(skip|skipif|xfail)|pytest\.(skip|xfail)\(" tests/test_capture_item_identity_effect.py'
+    cwd: .
+- id: dod-omn24904-ac4-no-workflow-change
+  description: 'AC4: the change touches no workflow file, so the required-check list is unchanged; this check fails if the diff against the base touches .github. Read at the local Done gate, because the base moves on the hosted runner.'
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: command
+    check_value: bash -o pipefail -c 'test -z "$(git diff --name-only origin/dev...HEAD -- .github)"'
+    cwd: .

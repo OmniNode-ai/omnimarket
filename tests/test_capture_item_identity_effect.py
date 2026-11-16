@@ -226,9 +226,18 @@ def test_discriminator_is_the_tool_use_id_or_the_text_digest() -> None:
 _WRITER_BARRIER_WAIT_S = 120.0
 _WRITER_RESULT_WAIT_S = 180.0
 _TEST_TIMEOUT_S = 240
+#: A subprocess that runs one pool wait gets longer than that wait, so a hung
+#: child fails inside the subprocess (a non-zero exit with its traceback) and
+#: never reaches ``TimeoutExpired``; it still ends under ``_TEST_TIMEOUT_S``.
+_SUBPROCESS_WAIT_S = _WRITER_RESULT_WAIT_S + 30.0
 
 #: Set in each spawn worker by ``_init_writer``; the parent never holds a barrier here.
 _writer_barrier: Any = None
+
+#: Set only in the parent, only while a writers pool is being started. A spawn
+#: worker re-imports this module and sees ``False``; a forked worker copies the
+#: parent's memory and sees ``True``.
+_PARENT_STATE = {"marked": False}
 
 
 def _init_writer(barrier: Any) -> None:
@@ -239,9 +248,10 @@ def _init_writer(barrier: Any) -> None:
 def _issue(args: tuple[str, str, int, float]) -> tuple[int, str, list[int]]:
     """One writer: wait for every other writer, then issue ``count`` sequence numbers.
 
-    Returns the worker's pid and the start method its interpreter was created with,
-    so the test can read, from the workers themselves, that they ran side by side
-    and were started fresh. A pool with fewer workers than barrier parties breaks
+    Returns the worker's pid and the start method its own process was created with
+    (CPython sets it in the child's bootstrap, whatever the parent's default is), so
+    the test can read, from the workers themselves, that they ran side by side and
+    were started fresh. A pool with fewer workers than barrier parties breaks
     the barrier after ``barrier_wait_s`` and the job raises.
     """
     directory, stream, count, barrier_wait_s = args
@@ -250,6 +260,10 @@ def _issue(args: tuple[str, str, int, float]) -> tuple[int, str, list[int]]:
         ident.next_producer_seq(Path(directory), SESSION, stream) for _ in range(count)
     ]
     return os.getpid(), multiprocessing.get_start_method(), seqs
+
+
+def _child_sees_parent_mark(_: None) -> tuple[bool, str]:
+    return _PARENT_STATE["marked"], multiprocessing.get_start_method()
 
 
 def _writer_context() -> multiprocessing.context.BaseContext:
@@ -264,17 +278,26 @@ def _start_writer_pool(workers: int, parties: int) -> multiprocessing_pool.Pool:
     return ctx.Pool(workers, initializer=_init_writer, initargs=(barrier,))
 
 
+def _run_pool(workers: int, parties: int, func: Any, jobs: list[Any]) -> list[Any]:
+    """Run ``jobs`` on a writers pool with the parent mark set while workers start."""
+    _PARENT_STATE["marked"] = True
+    try:
+        pool = _start_writer_pool(workers, parties)
+        try:
+            return pool.map_async(func, jobs, chunksize=1).get(
+                timeout=_WRITER_RESULT_WAIT_S
+            )
+        finally:
+            pool.terminate()
+            pool.join()
+    finally:
+        _PARENT_STATE["marked"] = False
+
+
 def _run_writers(
     workers: int, parties: int, jobs: list[tuple[str, str, int, float]]
 ) -> list[tuple[int, str, list[int]]]:
-    pool = _start_writer_pool(workers, parties)
-    try:
-        return pool.map_async(_issue, jobs, chunksize=1).get(
-            timeout=_WRITER_RESULT_WAIT_S
-        )
-    finally:
-        pool.terminate()
-        pool.join()
+    return _run_pool(workers, parties, _issue, jobs)
 
 
 @pytest.mark.timeout(_TEST_TIMEOUT_S)
@@ -304,65 +327,104 @@ def test_serial_writers_cannot_satisfy_the_concurrency_barrier(tmp_path: Path) -
         _run_writers(1, 8, jobs)
 
 
-_PARENT_STATE = {"marked": False}
-
-
-def _child_sees_parent_mark(_: None) -> tuple[bool, str]:
-    return _PARENT_STATE["marked"], multiprocessing.get_start_method()
+def _worker_view_of_the_parent_mark() -> list[tuple[bool, str]]:
+    """What one pool worker sees of the parent's mark."""
+    return _run_pool(1, 1, _child_sees_parent_mark, [None])
 
 
 @pytest.mark.timeout(_TEST_TIMEOUT_S)
 def test_writer_pool_workers_start_fresh_not_forked() -> None:
-    _PARENT_STATE["marked"] = True
-    try:
-        pool = _start_writer_pool(1, 1)
-        try:
-            saw = pool.map_async(_child_sees_parent_mark, [None]).get(
-                timeout=_WRITER_RESULT_WAIT_S
-            )
-        finally:
-            pool.terminate()
-            pool.join()
-    finally:
-        _PARENT_STATE["marked"] = False
+    saw = _worker_view_of_the_parent_mark()
     assert saw == [(False, "spawn")]
 
 
-_FORK_VARIANT = """
+def _mark_of_the_eight_writer_test() -> set[str]:
+    fn = test_eight_concurrent_writers_issue_1000_gap_free_sequence_numbers
+    marks = [*getattr(fn, "pytestmark", []), *[pytestmark]]
+    return {mark.name for mark in marks}
+
+
+def test_the_eight_writer_test_carries_no_skip_or_xfail_marker() -> None:
+    """A marker on the writers test would let it pass without proving anything."""
+    assert not _mark_of_the_eight_writer_test() & {"skip", "skipif", "xfail"}
+
+
+#: Each variant runs in a fresh single-threaded interpreter that forks, so the
+#: multithreaded pytest process these controls guard is never forked itself.
+#: ``set_start_method("spawn")`` makes the default method differ from the forced
+#: context: a worker still reports the method that created it, so both tests fail.
+_FORK_VARIANT_PRELUDE = """
 import multiprocessing
+multiprocessing.set_start_method("spawn")
 import tests.test_capture_item_identity_effect as mod
 
 mod._writer_context = lambda: multiprocessing.get_context("fork")
-try:
-    mod.test_writer_pool_workers_start_fresh_not_forked()
-except AssertionError as error:
-    print("fork variant failed as required:", error)
-    raise SystemExit(0)
-raise SystemExit("the fresh-worker test passed with a fork context")
 """
 
+_FRESH_WORKER_FORK_VARIANT = (
+    _FORK_VARIANT_PRELUDE
+    + """
+saw = mod._worker_view_of_the_parent_mark()
+if saw != [(True, "fork")]:
+    raise SystemExit(f"a forked worker was expected to report (True, 'fork'), saw {saw}")
+print("fork variant: the worker saw the parent mark, so the fresh-worker test goes red")
+"""
+)
 
-@pytest.mark.timeout(_TEST_TIMEOUT_S)
-def test_fresh_worker_test_fails_when_the_writer_context_is_fork() -> None:
-    """Red-then-green control: run the fresh-worker test with ``_writer_context`` forked.
+_WRITERS_FORK_VARIANT = (
+    _FORK_VARIANT_PRELUDE
+    + """
+import pathlib
+import tempfile
+import traceback
+import pytest
 
-    A fresh single-threaded interpreter does the forking, so this test does not
-    fork the multithreaded pytest process it guards.
-    """
+with pytest.MonkeyPatch.context() as patch, tempfile.TemporaryDirectory() as tmp:
+    try:
+        mod.test_eight_concurrent_writers_issue_1000_gap_free_sequence_numbers(
+            pathlib.Path(tmp), patch
+        )
+    except AssertionError as error:
+        failed_line = traceback.extract_tb(error.__traceback__)[-1].line or ""
+        if '== {"spawn"}' not in failed_line:
+            raise SystemExit(f"the writers test failed on another line: {failed_line}")
+        print("fork variant: the writers test failed on the start method check")
+    else:
+        raise SystemExit("the writers test passed with a fork context")
+"""
+)
+
+
+def _run_fork_variant(script: str) -> subprocess.CompletedProcess[str]:
     root = Path(__file__).resolve().parents[1]
     env = {
         **os.environ,
         "PYTHONPATH": os.pathsep.join([str(root / "src"), str(root)]),
     }
-    done = subprocess.run(
-        [sys.executable, "-c", _FORK_VARIANT],
+    return subprocess.run(
+        [sys.executable, "-c", script],
         cwd=root,
         env=env,
         capture_output=True,
         text=True,
-        timeout=_WRITER_RESULT_WAIT_S,
+        timeout=_SUBPROCESS_WAIT_S,
         check=False,
     )
+
+
+@pytest.mark.timeout(_TEST_TIMEOUT_S)
+def test_fresh_worker_test_fails_when_the_writer_context_is_fork() -> None:
+    """Red-then-green control: the fresh-worker test with ``_writer_context`` forked."""
+    done = _run_fork_variant(_FRESH_WORKER_FORK_VARIANT)
+    assert done.returncode == 0, done.stdout + done.stderr
+
+
+@pytest.mark.timeout(_TEST_TIMEOUT_S)
+def test_writers_test_fails_when_the_writer_context_is_fork_under_a_spawn_default() -> (
+    None
+):
+    """Red-then-green control: the writers test with ``_writer_context`` forked."""
+    done = _run_fork_variant(_WRITERS_FORK_VARIANT)
     assert done.returncode == 0, done.stdout + done.stderr
 
 
