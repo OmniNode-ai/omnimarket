@@ -64,7 +64,6 @@ class HandlerReviewGateContextEffect:
         self._clock = clock or (lambda: datetime.now(UTC))
 
     def _chain(self, request: ModelReviewContextPostCommand) -> ChainEmitter:
-        bus = self._route_backend == "bus"
         return ChainEmitter(
             self._sink,
             node=self._emission_node,
@@ -72,7 +71,7 @@ class HandlerReviewGateContextEffect:
             clock=self._clock,
             correlation_id=request.correlation_id,
             backend="real" if self._emission_backend == "journal" else "in_memory",
-            origin="real" if bus else "unknown",
+            origin="probe",
         )
 
     def handle(
