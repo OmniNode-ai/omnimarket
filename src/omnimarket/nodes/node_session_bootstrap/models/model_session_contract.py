@@ -1,10 +1,8 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Local definition of ModelSessionContract for node_session_bootstrap.
+"""ModelSessionContract wire type for node_session_bootstrap.
 
-Mirrors the wire type in omnibase_compat.overseer.model_session_contract.
-When omnibase_compat >= 0.4.0 ships this model, this file can be removed and
-the import updated to point at the canonical location.
+This module is the home of the session contract wire type.
 """
 
 from __future__ import annotations
@@ -33,7 +31,9 @@ class ModelSessionContract(BaseModel, frozen=True, extra="forbid"):
     halt_on_build_loop_failure: bool = True
     dry_run: bool = False
     started_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-    schema_version: str = "1.0"  # string-version-ok: wire envelope field mirrors omnibase_compat overseer wire type
+    schema_version: str = (
+        "1.0"  # string-version-ok: wire envelope field of the session contract
+    )
     # Rev 7 fields
     session_mode: str = Field(default="build", pattern="^(build|close-out|reporting)$")
     active_sprint_id: str = "auto-detect"

@@ -85,6 +85,18 @@ PRE_PUBLISHED_AT_RELEASE = "v0.4.133"
 
 WIRE_MODULE = "src/omnimarket/models/delegation/wire/model_delegate_skill_request.py"
 
+#: ``ReadinessState`` moved into this repository after ``v0.4.133`` was cut
+#: (OMN-14108), and the package the release tree imported it from is retired.
+#: The release's wire module reaches it through ``omnimarket.events``, so the
+#: real-history controls replay the release tree with that one import pointed
+#: at the type's home here and the home's file added beside it; every other
+#: byte of the released tree, ``ModelDelegateSkillRequest`` included, is the
+#: release's own.
+READINESS_HOME = "src/omnimarket/models/evidence_pipeline/wire/types.py"
+READINESS_HOME_MODULE = "omnimarket.models.evidence_pipeline.wire.types"
+READINESS_IMPORTER = "src/omnimarket/events/runtime_deployment.py"
+_READINESS_IMPORT_RE = re.compile(r"^from \S+ import ReadinessState$", re.MULTILINE)
+
 #: Where a reader of a skipped real-history control is sent. A skip whose
 #: reason does not say where the assertion DOES run is indistinguishable from
 #: an assertion nobody makes.
@@ -162,6 +174,49 @@ def _write(repo: Path, relative: str, body: str) -> None:
     target = repo / relative
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(body, encoding="utf-8")
+
+
+def _retargeted_release_clone(tmp_path: Path) -> tuple[Path, str]:
+    """Clone this repository and move the release tag onto its retargeted tree.
+
+    Returns the clone and the commit the moved ``PRE_PUBLISHED_AT_RELEASE`` tag
+    now names: a child of the real release commit whose only change is the
+    ``ReadinessState`` import pointed at :data:`READINESS_HOME_MODULE`, with
+    this repository's copy of that module added.
+    """
+    clone = tmp_path / "clone"
+    subprocess.run(
+        ["git", "clone", "--quiet", str(REPO_ROOT), str(clone)],
+        env=scrub_git_location_env(os.environ),
+        capture_output=True,
+        check=True,
+    )
+    released = _git(clone, "rev-parse", f"{PRE_PUBLISHED_AT_RELEASE}^{{commit}}")
+    tree = tmp_path / "released"
+    _git(clone, "worktree", "add", "--quiet", "--detach", str(tree), released)
+    importer = tree / READINESS_IMPORTER
+    source = importer.read_text(encoding="utf-8")
+    retargeted, count = _READINESS_IMPORT_RE.subn(
+        f"from {READINESS_HOME_MODULE} import ReadinessState", source
+    )
+    assert count == 1, (
+        f"{READINESS_IMPORTER} at {released} no longer imports ReadinessState once"
+    )
+    importer.write_text(retargeted, encoding="utf-8")
+    _write(
+        tree, READINESS_HOME, (REPO_ROOT / READINESS_HOME).read_text(encoding="utf-8")
+    )
+    _git(tree, "add", READINESS_IMPORTER, READINESS_HOME)
+    _git(
+        tree,
+        "commit",
+        "-q",
+        "-m",
+        f"{PRE_PUBLISHED_AT_RELEASE} with ReadinessState from its home",
+    )
+    retargeted_sha = _git(tree, "rev-parse", "HEAD")
+    _git(clone, "tag", "-f", PRE_PUBLISHED_AT_RELEASE, retargeted_sha)
+    return clone, retargeted_sha
 
 
 @pytest.fixture
@@ -304,7 +359,9 @@ def test_release_is_resolved_from_the_release_never_from_the_tree(
 
 
 @pytest.mark.integration
-def test_real_published_at_replay_against_the_release_that_predates_it() -> None:
+def test_real_published_at_replay_against_the_release_that_predates_it(
+    tmp_path: Path,
+) -> None:
     """AC1/AC2: the actual incident, replayed against the actual release.
 
     ``omnimarket#2692`` put ``published_at`` on the delegate-skill request. The
@@ -316,13 +373,14 @@ def test_real_published_at_replay_against_the_release_that_predates_it() -> None
     measured refusing.
     """
     _require_tag(PRE_PUBLISHED_AT_RELEASE)
+    clone, _ = _retargeted_release_clone(tmp_path)
 
     completed = subprocess.run(
         [
             sys.executable,
             str(REPO_ROOT / "scripts" / "ci" / "check_wire_compatibility.py"),
             "--repo-root",
-            str(REPO_ROOT),
+            str(clone),
             "--grade-release-tag",
             "--tag-anchor",
             PRE_PUBLISHED_AT_RELEASE,
@@ -451,14 +509,7 @@ def test_real_published_at_replay_through_a_dev_merge_tag_pin(tmp_path: Path) ->
     refusing.
     """
     _require_tag(PRE_PUBLISHED_AT_RELEASE)
-    clone = tmp_path / "clone"
-    subprocess.run(
-        ["git", "clone", "--quiet", str(REPO_ROOT), str(clone)],
-        env=scrub_git_location_env(os.environ),
-        capture_output=True,
-        check=True,
-    )
-    pre = _git(clone, "rev-parse", f"{PRE_PUBLISHED_AT_RELEASE}^{{commit}}")
+    clone, pre = _retargeted_release_clone(tmp_path)
     tag = f"dev-20260920000000-{pre[:12]}"
     _git(clone, "tag", tag, pre)
 

@@ -88,9 +88,9 @@ FAILED_CHECK_CONCLUSIONS = {
     "TIMED_OUT",
 }
 
-# Default routing policy for Phase 2 LLM commands. It must match
-# omnibase_compat.routing.model_routing_policy.ModelRoutingPolicy because effect
-# handlers fail-loud on malformed command routing.
+# Default routing policy for Phase 2 LLM commands. It must match the routing
+# policy model the loader validates, because effect handlers fail-loud on
+# malformed command routing.
 _DEFAULT_ROUTING_POLICY: dict[str, Any] = model_binding_section("triage_routing_policy")
 
 

@@ -629,9 +629,28 @@ def test_every_hard_task_records_its_structural_features() -> None:
                 assert f"### {str(line).removeprefix('FILE: ')}\n" in bundle.prompt
 
 
+#: A merged single-file fix whose own test fails on its parent's source. Its tree
+#: imports ``ReadinessState`` from this repository (OMN-14108 moved it here), so
+#: the scorer replays it with the project environment as it stands; the H6 bundle
+#: commits predate that move and import it from a package this repository no
+#: longer installs.
+REPLAYABLE_FIX = {
+    "repo_commit": "195ecfcf9e2edae162b8ead0d69fe02e594e432d",
+    "changed_files": [
+        "src/omnimarket/nodes/node_lane_container_budget_compute/handlers/"
+        "handler_lane_container_budget.py"
+    ],
+    "editable_files": [
+        "src/omnimarket/nodes/node_lane_container_budget_compute/handlers/"
+        "handler_lane_container_budget.py"
+    ],
+    "test_path": "tests/nodes/node_lane_container_budget_compute/"
+    "test_lane_container_budget.py",
+}
+
+
 def test_the_merged_change_passes_a_hard_task_and_a_no_op_edit_fails_it() -> None:
-    bundle = _hard("H6-04")
-    config = dict(bundle.scorer_config)
+    config: dict[str, object] = {**_hard("H6-04").scorer_config, **REPLAYABLE_FIX}
     commit = str(config["repo_commit"])
     changed = config["changed_files"]
     assert isinstance(changed, list)

@@ -17,8 +17,8 @@ from typing import Protocol, runtime_checkable
 class ProtocolProjectionDatabaseSync(Protocol):
     """Protocol for synchronous projection database operations.
 
-    Disambiguated from the async ProtocolProjectionDatabase in
-    omnibase_compat which serves projection runners.
+    Disambiguated from the async ProtocolProjectionDatabase, which serves
+    projection runners.
     """
 
     def upsert(

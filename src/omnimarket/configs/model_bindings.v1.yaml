@@ -77,7 +77,7 @@ bridge_model_keys:
   - {key: "qwen3-next", url_env: "LLM_QWEN3_NEXT_URL", model_env: "LLM_QWEN3_NEXT_MODEL_NAME"}
 
 # Default routing policy for Phase 2 LLM commands of the merge-sweep triage node.
-# It must match omnibase_compat.routing.model_routing_policy.ModelRoutingPolicy.
+# It must match the routing policy model the node's policy loader validates.
 triage_routing_policy:
   primary: "deepseek-r1-14b"
   fallback: "qwen3-coder-30b"

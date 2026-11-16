@@ -54,7 +54,7 @@ RED_LOG = "FAILED tests/unit/test_seam.py::test_field_match - AssertionError\n1 
 
 def make_request(**overrides: Any) -> ModelSuiteEvaluationRequest:
     kwargs: dict[str, Any] = {
-        "repo": "OmniNode-ai/omnibase_compat",
+        "repo": "OmniNode-ai/omnibase_core",
         "commit_sha": COMMIT_SHA,
         "requester": "session:omn16524-r1-build",
         "correlation_id": CORRELATION,
@@ -121,7 +121,7 @@ async def test_green_suite_produces_pass_verdict_no_failure_detail() -> None:
     assert receipt.suite_log_digest == hashlib.sha256(GREEN_LOG.encode()).hexdigest()
     assert client.calls == [
         "read_host_identity",
-        f"evaluate_commit:OmniNode-ai/omnibase_compat:{COMMIT_SHA}:tests/unit",
+        f"evaluate_commit:OmniNode-ai/omnibase_core:{COMMIT_SHA}:tests/unit",
     ]
 
 
@@ -214,5 +214,5 @@ async def test_correlation_and_tenant_binding_echoed() -> None:
     assert receipt.correlation_id == CORRELATION
     assert receipt.tenant_principal_id == PRINCIPAL
     assert receipt.host_identity == "gate-runner-201"
-    assert receipt.repo == "OmniNode-ai/omnibase_compat"
+    assert receipt.repo == "OmniNode-ai/omnibase_core"
     assert receipt.commit_sha == COMMIT_SHA

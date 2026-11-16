@@ -646,7 +646,13 @@ def git_text(*args: str) -> str:
 
 
 def materialise_tree(commit: str, dest: Path, revert_to_parent: list[str]) -> None:
-    """Write src, tests and pyproject at ``commit``, with some files at the parent."""
+    """Write src, tests, scripts, config and pyproject at ``commit``, some at the parent.
+
+    ``scripts`` and ``config`` ride along because a tree's own source reads files
+    there at import time (the bus binding loads ``scripts/ci_bus_lanes.py`` and
+    ``config/test_bus_lane.yaml`` relative to the working directory), so a tree
+    without them cannot collect its tests.
+    """
     archive = subprocess.run(
         [
             "git",
@@ -656,6 +662,8 @@ def materialise_tree(commit: str, dest: Path, revert_to_parent: list[str]) -> No
             commit,
             "src",
             "tests",
+            "scripts",
+            "config",
             "pyproject.toml",
         ],
         capture_output=True,

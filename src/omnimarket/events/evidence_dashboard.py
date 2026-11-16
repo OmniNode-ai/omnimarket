@@ -1,7 +1,7 @@
 """Shared evidence dashboard event models.
 
-The canonical wire DTO belongs in omnibase_compat. This local model keeps the
-omnimarket handler and tests executable until that compat package is published.
+This local model is the canonical home of the wire DTO in omnimarket; the
+omnimarket handler and tests import it directly.
 """
 
 from __future__ import annotations

@@ -15,7 +15,7 @@ Content-type mapping (extension-based, not MIME / magic bytes):
     everything else  → unknown
 
 Excludes: ``__pycache__``, ``.git``, ``node_modules``, ``.venv`` (configurable).
-No imports from omnimemory, omniintelligence, or omnibase_compat.
+No imports from omnimemory or omniintelligence.
 Paths come from the input model — never read from OMNI_HOME or env vars.
 """
 

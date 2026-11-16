@@ -81,7 +81,7 @@ def test_canonical_symbols_still_importable_from_omnibase_core() -> None:
 
     assert ModelTaskDelegatedEvent.__name__ == "ModelTaskDelegatedEvent"
 
-    # adapters/database.py re-exported DatabaseAdapter from omnibase_compat;
+    # adapters/database.py re-exported DatabaseAdapter from a retired package;
     # projection handlers already import it from the canonical projection path.
     from omnimarket.projection.protocol_database import DatabaseAdapter
 

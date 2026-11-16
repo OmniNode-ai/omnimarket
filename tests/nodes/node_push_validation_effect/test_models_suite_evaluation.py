@@ -29,7 +29,7 @@ CORRELATION = "00000000-0000-4000-8000-000000000004"
 
 def make_request(**overrides: Any) -> ModelSuiteEvaluationRequest:
     kwargs: dict[str, Any] = {
-        "repo": "OmniNode-ai/omnibase_compat",
+        "repo": "OmniNode-ai/omnibase_core",
         "commit_sha": COMMIT_SHA,
         "requester": "session:test",
         "correlation_id": CORRELATION,
@@ -45,7 +45,7 @@ def make_receipt(**overrides: Any) -> ModelSuiteEvaluationReceipt:
         "correlation_id": CORRELATION,
         "tenant_principal_id": PRINCIPAL,
         "requester": "session:test",
-        "repo": "OmniNode-ai/omnibase_compat",
+        "repo": "OmniNode-ai/omnibase_core",
         "commit_sha": COMMIT_SHA,
         "evaluated_tree_digest": TREE_DIGEST,
         "selector_policy_digest": POLICY_DIGEST,

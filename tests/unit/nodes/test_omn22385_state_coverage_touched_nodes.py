@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """Assert the declared outputs, topics and states of three nodes (OMN-22385).
 
-Removing the omnibase-compat dependency from these nodes' ``metadata.yaml``
+Removing the retired package's dependency from these nodes' ``metadata.yaml``
 touches each node, and a touched node's contract-state coverage is checked
 strictly. Their handler tests live under ``src/omnimarket/nodes/<node>/tests``,
 which the coverage gate does not read, so the outputs, topics and FSM state

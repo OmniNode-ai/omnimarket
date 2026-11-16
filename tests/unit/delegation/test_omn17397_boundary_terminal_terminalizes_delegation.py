@@ -14,7 +14,7 @@ contract says so itself, in the comment shipped beside the declaration:
     deliberately not smuggled in here.
 
 Nothing propagated it. A cross-repo grep for ``routing-decision-failed`` across
-omnimarket, omnibase_infra, omnibase_core, omninode_infra and omnibase_compat
+omnimarket, omnibase_infra, omnibase_core and the private deployment repository
 returns the reducer's own declaration and one test — **zero subscribers**. The
 delegation orchestrator subscribes to ``routing-decision.v1`` alone, so a
 routing raise leaves its FSM parked in ``RECEIVED`` forever,

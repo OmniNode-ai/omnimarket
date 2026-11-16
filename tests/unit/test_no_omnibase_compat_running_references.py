@@ -95,3 +95,29 @@ def test_no_node_metadata_lists_omnibase_compat_dependency() -> None:
         )
     )
     assert offenders == []
+
+
+#: The surfaces that installed or vendored the retired package so a replayed
+#: historical tree could import it: the lint and wire-gate CI jobs and the
+#: delegation-ladder scorer. The replays now point the tree at the symbol's home.
+_INSTALL_SURFACES = (
+    ".github/workflows/ci.yml",
+    "benchmarks/delegation_ladder/scorers.py",
+)
+
+
+@pytest.mark.unit
+def test_no_ci_job_or_tree_replay_installs_the_retired_package() -> None:
+    """No CI job, scorer or vendoring helper installs the package for a replay.
+
+    Falsifier: a job or the scorer installs it beside a historical tree, or the
+    vendoring helper is back.
+    """
+    assert _COMPAT.search("uv pip install 'omnibase-compat==0.5.7'")
+    offenders = [
+        relative
+        for relative in _INSTALL_SURFACES
+        if _COMPAT.search((REPO_ROOT / relative).read_text(encoding="utf-8"))
+    ]
+    assert offenders == []
+    assert not (SRC_ROOT / "handlers" / "vendor_compat.py").exists()

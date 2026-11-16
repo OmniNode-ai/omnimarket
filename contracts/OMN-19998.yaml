@@ -264,6 +264,14 @@ requirements:
         statement: "AC133: the repository's own grep for omnibase.compat over the changed paths returns no hit
           -- falsifier: git grep -n -i 'omnibase.compat' -- .github/workflows/ci.yml benchmarks/delegation_ladder/scorers.py src/omnimarket/handlers/vendor_compat.py exits 1 at the head and
           exits 0 at the merge base"
+  - id: "req-omn19998-compat-replays-retargeted"
+    statement: "No CI job, benchmark scorer or vendoring helper installs the retired package for a replayed
+      historical tree; the wire-gate and delegation-ladder replays point their trees at the symbol's home."
+    acceptance:
+      - id: "AC134"
+        statement: "AC134: the install guard reads no install of the retired package in ci.yml or the scorer and
+          no vendoring helper -- falsifier: uv run --frozen pytest tests/unit/test_no_omnibase_compat_running_references.py
+          -q --no-cov -n 0 -p no:randomly fails at the merge base and passes at the head"
 evidence_requirements:
   - kind: tests
     description: Recorded gate subject spellings and named causes run through the production ledger parser and contract handler.
@@ -1001,3 +1009,11 @@ dod_evidence:
         check_value: "! git grep -n -i 'omnibase.compat' -- .github/workflows/ci.yml benchmarks/delegation_ladder/scorers.py src/omnimarket/handlers/vendor_compat.py"
         cwd: "."
     binds_ac: ["AC133"]
+  - id: "dod-omn19998-compat-install-guard"
+    description: "The install guard finds no CI job, scorer or helper installing the retired package."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run --frozen pytest tests/unit/test_no_omnibase_compat_running_references.py -q --no-cov -n 0 -p no:randomly"
+        cwd: "."
+    binds_ac: ["AC134"]

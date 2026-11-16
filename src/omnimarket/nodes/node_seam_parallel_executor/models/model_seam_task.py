@@ -23,7 +23,6 @@ class EnumSeamTaskStatus(StrEnum):
     """Task lifecycle states for seam parallel execution.
 
     Mirrors the overseer EnumTaskStatus subset relevant to parallel execution.
-    Will be replaced by omnibase_compat.overseer.EnumTaskStatus once OMN-8026 merges.
     """
 
     PENDING = "pending"
