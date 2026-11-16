@@ -122,7 +122,10 @@ async def test_a_handler_that_raises_leaves_no_key_so_the_dispatch_is_really_the
     store = StoreHostKeysInMemory()
     calls: list[int] = []
 
-    class Raising(_injected(store)):  # type: ignore[misc]
+    class Raising(HandlerHostTableKeysIngest):
+        def __init__(self) -> None:
+            super().__init__(store=store, overlay=overlay(), clock=lambda: NOW)
+
         def handle(self, request: Any) -> None:
             calls.append(1)
             raise RuntimeError("handler body replaced")
