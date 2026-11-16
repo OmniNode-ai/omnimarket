@@ -12,6 +12,7 @@ capabilities:
   side_effect_class: publish_event
 dependencies:
   - "omnibase_core>=0.39.0"
+  - "omnibase-infra>=0.32.0"
   - "pyyaml>=6.0"
 tags: [effect, github, commit-status, review-gate]
 pack: "data"
