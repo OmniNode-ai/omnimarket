@@ -225,6 +225,10 @@ def _runtime_writers() -> list[tuple[str, type[BaseProjectionRunner]]]:
             if (
                 issubclass(cls, BaseProjectionRunner)
                 and getattr(cls, gate.INPROCESS_ATTR, False) is True
+                # The gate counts a writer once per node however many contract
+                # entries route it (a writer routed once per source topic is one
+                # writer), so the runtime reading counts it once too.
+                and (path.parent.name, cls) not in found
             ):
                 found.append((path.parent.name, cls))
     return found

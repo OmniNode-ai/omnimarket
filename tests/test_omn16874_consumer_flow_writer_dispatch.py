@@ -439,7 +439,13 @@ def test_no_sibling_projection_runner_claims_in_process_dispatch() -> None:
     # auto-wiring; its pure fold does NOT declare the capability.
     # HostDiskProjectionWriter is node_projection_host_disk's only DB writer,
     # dispatched once per consumed reading by runtime auto-wiring.
+    # EvalResultsProjectionWriter (OMN-24171) is the only writer of
+    # eval_item_scores, eval_item_traces, eval_run_closes and eval_run_rates,
+    # dispatched once per consumed source event by runtime auto-wiring, with no
+    # dedicated writer deployment. Its node's pure fold,
+    # HandlerProjectionEvalResults, does NOT declare the capability.
     assert declared == {
+        "EvalResultsProjectionWriter",
         "AgentActionsProjectionWriter",
         "AlertChannelLivenessProjectionWriter",
         "AutomationLivenessProjectionWriter",

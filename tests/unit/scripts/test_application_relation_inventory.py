@@ -645,7 +645,9 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # +2 for OMN-23865's host_disk_class and host_disk_volume, declared and created in the same PR = 132.
     # +1 for skill_executions, created by node_projection_skill_lifecycle = 133.
     # +2 for OMN-20034's goal_trace_events and goal_traces, created by node_projection_goal_trace = 135.
-    assert census["source_created_tables"] == 135
+    # +4 for OMN-24171's eval_item_scores, eval_item_traces, eval_run_closes and
+    # eval_run_rates, created by node_projection_eval_results = 139.
+    assert census["source_created_tables"] == 139
     # 63 as of OMN-15631 (rebased onto OMN-16316/OMN-16293): 59 as of
     # OMN-16146, +2 for OMN-16293's two omnibase_infra#2818 catalog
     # declarations (savings_injection_signals, savings_validator_catch_signals)
@@ -839,7 +841,8 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # +1 for OMN-24118's branch_deploy_state: ownership is declared before the
     # omnibase_infra migration 116 that creates it.
     # +1 for skill_executions, declared with its CREATE in the same change = 148.
-    assert census["source_declared_tables"] == 148
+    # +4 for OMN-24171's eval tables, declared with their CREATE in the same change = 152.
+    assert census["source_declared_tables"] == 152
     # 27 as of OMN-15631. This figure is arithmetic, not an observation:
     # the generator computes max(0, 86 - source_created_tables), so each
     # newly source-created table (tenant_inference_credentials, then
