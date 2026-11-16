@@ -45,21 +45,21 @@ dod_evidence:
         check_value: uv lock --check
         cwd: .
   - id: dod-omn24911-ac2-floor-held
-    description: AC2. The floor the hold comment argues about is the one the floors test pins. The published omnibase-infra pin the comment cites is read by dod-omn24911-ac2-published-infra-pin, which is scoped local_done_gate and so cannot carry binds_ac.
+    description: AC2. The published pin is compared with the floor range through packaging, and the comparison is red for a pin that equals the floor. The published omnibase-infra pin the comment cites is read by dod-omn24911-ac2-published-infra-pin, which is scoped local_done_gate and so cannot carry binds_ac.
     source: manual
     binds_ac:
       - AC2
     checks:
       - check_type: test_passes
-        check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly -k floors_agree
+        check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly -k published_pin
         cwd: .
   - id: dod-omn24911-ac2-published-infra-pin
-    description: AC2. The newest published omnibase-infra pins an omnibase-spi release the 0.23.15 floor excludes, read from the package index.
+    description: AC2. The newest published omnibase-infra pins an omnibase-spi release outside the floor range 0.23.15 to below 0.24.0, read from the package index and compared with packaging; the assertion fails for a pin equal to the floor.
     source: manual
     execution_scope: local_done_gate
     checks:
       - check_type: command
-        check_value: curl -fsS https://pypi.org/pypi/omnibase-infra/json | python3 -I -c 'import json,sys; r=json.load(sys.stdin)["info"]["requires_dist"]; assert any(x.startswith("omnibase-spi==") for x in r), r; print([x for x in r if "omnibase-spi" in x])'
+        check_value: curl -fsS https://pypi.org/pypi/omnibase-infra/json | uv run --frozen python -c 'import json,sys; sys.path.insert(0,"tests/ci"); import test_omn23518_spi_lock_floor as t; r=json.load(sys.stdin)["info"]["requires_dist"]; assert not t.published_pin_admits_floor_range(r), r; print([x for x in r if "omnibase-spi" in x])'
         cwd: .
   - id: dod-omn24911-ac3-ancestor
     description: AC3. The branch contains origin/dev and contracts/OMN-24829.yaml carries the ancestry check.
@@ -67,20 +67,17 @@ dod_evidence:
     binds_ac:
       - AC3
     checks:
-      - check_type: test_passes
-        check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly -k floors_agree
-        cwd: .
       - check_type: command
         check_value: git merge-base --is-ancestor origin/dev HEAD && grep -q 'git merge-base --is-ancestor origin/dev HEAD' contracts/OMN-24829.yaml
         cwd: .
   - id: dod-omn24911-ac4-installed-matches-lock
-    description: AC4. The import test asserts the installed omnibase-spi equals the locked version.
+    description: AC4. The installed omnibase-spi must equal the locked version, and the monkeypatched test expects the helper to fail for a differing installed version.
     source: manual
     binds_ac:
       - AC4
     checks:
       - check_type: test_passes
-        check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly -k lane_process
+        check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly -k "lane_process or installed_version"
         cwd: .
   - id: dod-omn24911-ac5-contract-matches-diff
     description: AC5. contracts/OMN-23518.yaml carries none of the claims the diff does not make.
@@ -88,23 +85,17 @@ dod_evidence:
     binds_ac:
       - AC5
     checks:
-      - check_type: test_passes
-        check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly
-        cwd: .
       - check_type: command
-        check_value: test -z "$(grep -n -E 'lock names 0.23.14|moves the omnibase-spi dev merge tag|re-pinned' contracts/OMN-23518.yaml)"
+        check_value: test -z "$(grep -n -E 'lock names 0.23.14|moves the omnibase-spi dev merge tag|re-pinned|first to carry' contracts/OMN-23518.yaml)"
         cwd: .
   - id: dod-omn24911-ac6-ac3-bound-to-status-rows
-    description: AC6. contracts/OMN-24829.yaml binds AC3 to a check of the STATUS rows and not to the floors_agree test.
+    description: AC6. contracts/OMN-24829.yaml carries one ledger check per named cause for AC3 and no floors_agree test.
     source: manual
     binds_ac:
       - AC6
     checks:
-      - check_type: test_passes
-        check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly -k floors_agree
-        cwd: .
       - check_type: command
-        check_value: grep -q 'dod-omn24829-ac3-shared-status-rows' contracts/OMN-24829.yaml && test -z "$(grep -n 'floors_agree' contracts/OMN-24829.yaml)"
+        check_value: grep -q 'dod-omn24829-ac3-status-row-pypi-pin' contracts/OMN-24829.yaml && grep -q 'dod-omn24829-ac3-status-row-delegation-health' contracts/OMN-24829.yaml && test -z "$(grep -n 'floors_agree' contracts/OMN-24829.yaml)"
         cwd: .
   - id: dod-omn24911-ac7-range-and-versions
     description: AC7. The spi lock test rejects 0.24.0 and accepts an rc version string.

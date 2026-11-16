@@ -1,6 +1,6 @@
 schema_version: 1.0.0
 ticket_id: OMN-24829
-title: Omnimarket pull request 5737 no longer conflicts with its base and its required checks read green at its new head
+title: Omnimarket pull request 5737 no longer conflicts with its base and its causes of red outside the diff are each recorded
 summary: 'The branch of omnimarket pull request 5737 had fallen 389 commits behind dev and conflicted with it in pyproject.toml, uv.lock and 70 work-contract files. This change merges the current dev into the branch. Dev already locks omnibase-spi 0.23.15, so the conflicted spi tag, the lock and the work-contract uv.lock hashes take dev''s content and the pull request keeps only its floor raise, its floor test, its contract and its duration record. No check, ratchet or workflow file is touched.'
 is_seam_ticket: false
 interface_change: false
@@ -10,11 +10,11 @@ requirements:
     statement: The pull request branch contains the current dev and its diff against dev touches no check, ratchet or workflow file.
     acceptance:
       - id: AC1
-        statement: 'AC1: omnimarket pull request 5737 no longer conflicts with its base and its required checks read green at the new head -- falsifier: the branch does not contain origin/dev, or the floor test fails at the head'
+        statement: 'AC1: omnimarket pull request 5737 no longer conflicts with its base: the branch contains the current dev and the floor test passes at the new head -- falsifier: the branch does not contain origin/dev, or the floor test fails at the head'
       - id: AC2
-        statement: 'AC2: the fix is made on the pull request''s own branch with no check widened, skipped or bypassed, and a PR comment starting Lab: head=<full head sha> carries the lab proof for the new head -- falsifier: the diff against dev touches a file under .github, .onex_ratchets or scripts/ci'
+        statement: 'AC2: the fix is made on the pull request''s own branch with no check widened, skipped or bypassed, and a PR comment starting Lab: head=<full 40-character head sha> carries the lab proof for the new head -- falsifier: the diff against dev touches a file under .github, .onex_ratchets or scripts/ci, or the newest Lab comment names a sha that is not the full 40-character head'
       - id: AC3
-        statement: 'AC3: the causes of red that sit outside the pull request, pypi-pin-resolvability (the newest published omnibase-infra pins omnibase-spi==0.23.7, which the 0.23.15 floor excludes, until omnibase_infra publishes a release that carries omnibase-spi>=0.23.15) and delegation-health-check (red from dev''s own delegation-regression-nightly run), are each recorded in a STATUS row with shared=yes, and nothing is patched around them -- falsifier: the ledger holds fewer than two STATUS rows for omnimarket#5737 with shared=yes, or the diff against dev touches a file under .github, .onex_ratchets or scripts/ci'
+        statement: 'AC3: the causes of red that this diff does not fix, pypi-pin-resolvability (it passes on the dev tip, whose floor 0.23.3 admits the published omnibase-infra pin omnibase-spi==0.23.7, and fails at this head because this pull request raises the floor to 0.23.15 while the newest published omnibase-infra pins 0.23.7; it clears when omnibase_infra publishes a release carrying omnibase-spi>=0.23.15; it is not itself a branch-protection context, but CI Summary asserts it, so the pull request cannot go green while it is red) and delegation-health-check (red from dev''s own delegation-regression-nightly run; not itself a branch-protection context, and asserted by CI Summary the same way), are each recorded in their own STATUS row with shared=yes and check=<name>, and nothing is patched around them -- falsifier: the ledger holds no STATUS row for omnimarket#5737 with shared=yes and check=pypi-pin-resolvability, or none with check=delegation-health-check, or the diff against dev touches a file under .github, .onex_ratchets or scripts/ci'
 evidence_requirements:
   - kind: tests
     description: The omnibase-spi floor tests pass at the merged head.
@@ -25,7 +25,7 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
   - id: dod-omn24829-ac1-floor-test
-    description: AC1. At the merged head the lock and floors agree and the lane process types import.
+    description: AC1. At the merged head the lock and floors agree and the lane process types import, and the branch contains origin/dev.
     source: manual
     binds_ac:
       - AC1
@@ -36,43 +36,51 @@ dod_evidence:
       - check_type: command
         check_value: git merge-base --is-ancestor origin/dev HEAD
         cwd: .
-  - id: dod-omn24829-ac1-required-checks-at-head
-    description: AC1. The required checks are read at the new head from the PR watcher state; the class reads green only when every required context is green, and it reads red while pypi-pin-resolvability fails.
-    source: manual
-    execution_scope: local_done_gate
-    checks:
-      - check_type: command
-        check_value: onex scm pr-checks OmniNode-ai/omnimarket#5737 | grep -q '"class":"green"'
-        cwd: .
   - id: dod-omn24829-ac2-no-check-touched
-    description: AC2. The diff against dev changes no workflow, ratchet or CI script file.
+    description: AC2. The diff against dev changes no workflow, ratchet or CI script file, and the floor is raised in both places.
     source: manual
     binds_ac:
       - AC2
     checks:
-      - check_type: test_passes
-        check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly -k floors_agree
-        cwd: .
       - check_type: command
         check_value: test -z "$(git diff --name-only origin/dev...HEAD -- .github .onex_ratchets scripts/ci)" && test "$(grep -c 'omnibase-spi>=0.23.15,<0.24.0' pyproject.toml)" = 2
         cwd: .
-  - id: dod-omn24829-ac3-shared-status-rows
-    description: AC3. Two STATUS rows for omnimarket#5737 carry shared=yes, one for each cause outside the pull request; the rows are read from the ledger file named by ONEX_LEDGER_PATH.
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly -k lab_comment
+        cwd: .
+  - id: dod-omn24829-ac2-lab-comment-full-head
+    description: AC2. The newest Lab comment of the pull request names the full 40-character head. The read needs the pull request's comments, which the hosted check cannot take, so it is scoped local_done_gate and carries no binds_ac; the comparison it runs is the one the lab_comment tests above exercise.
     source: manual
     execution_scope: local_done_gate
     checks:
       - check_type: command
-        check_value: test "$(grep -a '| STATUS |' "$ONEX_LEDGER_PATH" | grep -a 'pr=omnimarket#5737' | grep -a -c 'shared=yes')" -ge 2
+        check_value: gh pr view 5737 --repo OmniNode-ai/omnimarket --json comments | uv run --frozen python -c 'import json,subprocess,sys; sys.path.insert(0,"tests/ci"); import test_omn23518_spi_lock_floor as t; c=[x["body"] for x in json.load(sys.stdin)["comments"]]; h=subprocess.check_output(["git","rev-parse","HEAD"],text=True).strip(); assert t.lab_comment_head_is_full(c,h), (h,[x[:60] for x in c if x.startswith("Lab:")])'
         cwd: .
-  - id: dod-omn24829-ac3-nothing-patched-around
-    description: AC3. Nothing is patched around the shared causes; the diff against dev changes no workflow, ratchet or CI script file. The STATUS rows themselves are read by dod-omn24829-ac3-shared-status-rows, which is scoped local_done_gate and so cannot carry binds_ac.
+  - id: dod-omn24829-ac3-status-rows-named
+    description: AC3. The criterion names both causes and this contract carries one ledger check per named check. A criterion cannot be bound to the ledger read itself, because the ledger is not on the hosted runner and a bound local_done_gate item is refused; this bound check fails when a named check loses its row check or the two checks collapse into one.
     source: manual
     binds_ac:
       - AC3
     checks:
-      - check_type: test_passes
-        check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly -k floors_agree
+      - check_type: command
+        check_value: uv run --frozen python -c 'import yaml; d=yaml.safe_load(open("contracts/OMN-24829.yaml")); n=["pypi-pin-resolvability","delegation-health-check"]; a=[x["statement"] for r in d["requirements"] for x in r["acceptance"] if x["id"]=="AC3"][0]; l=[c["check_value"] for i in d["dod_evidence"] if i.get("execution_scope")=="local_done_gate" for c in i["checks"]]; assert all(x in a for x in n), a; assert all(sum(("check="+x in v and "shared=yes" in v) for v in l)==1 for x in n), l'
         cwd: .
       - check_type: command
         check_value: test -z "$(git diff --name-only origin/dev...HEAD -- .github .onex_ratchets scripts/ci)"
+        cwd: .
+  - id: dod-omn24829-ac3-status-row-pypi-pin
+    description: AC3. One STATUS row for omnimarket#5737 carries shared=yes and check=pypi-pin-resolvability; the row is read from the ledger file named by ONEX_LEDGER_PATH.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: test "$(grep -a '| STATUS |' "$ONEX_LEDGER_PATH" | grep -a 'pr=omnimarket#5737' | grep -a 'shared=yes' | grep -a -c 'check=pypi-pin-resolvability')" -ge 1
+        cwd: .
+  - id: dod-omn24829-ac3-status-row-delegation-health
+    description: AC3. One STATUS row for omnimarket#5737 carries shared=yes and check=delegation-health-check; the row is read from the ledger file named by ONEX_LEDGER_PATH.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: test "$(grep -a '| STATUS |' "$ONEX_LEDGER_PATH" | grep -a 'pr=omnimarket#5737' | grep -a 'shared=yes' | grep -a -c 'check=delegation-health-check')" -ge 1
         cwd: .

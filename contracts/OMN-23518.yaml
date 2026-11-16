@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-23518
 title: The lab environment's shared library moves to the version the automatic work-filler needs
-summary: 'omnimarket raises its omnibase-spi floor from 0.23.3 to 0.23.15 in both places pyproject.toml lists it (project.dependencies and tool.uv.override-dependencies). The omnibase-spi dev merge tag and uv.lock are not changed: dev already locks omnibase-spi 0.23.15 through the git source, and uv.lock records that git source and the resolved version, not the floor specifier. The reason: the floor fill orchestrator in omnimarket imports ModelLaneProcessRunResult, ModelLaneProcessStartResult and ModelLaneStartSpec from omnibase_spi.contracts.services, which release 0.23.15 is the first to carry (0.23.14 does not). No release is cut.'
+summary: 'omnimarket raises its omnibase-spi floor from 0.23.3 to 0.23.15 in both places pyproject.toml lists it (project.dependencies and tool.uv.override-dependencies). The omnibase-spi dev merge tag and uv.lock are not changed: dev already locks omnibase-spi 0.23.15 through the git source, and uv.lock records that git source and the resolved version, not the floor specifier. The reason: the floor fill orchestrator in omnimarket imports ModelLaneProcessRunResult, ModelLaneProcessStartResult and ModelLaneStartSpec from omnibase_spi.contracts.services, which the omnibase_spi v0.23.15 release notes list (CHANGELOG, Included Since v0.23.14: ProtocolLaneProcessRunner and lane process wire models); omnibase_spi.contracts.services at tag v0.23.14 carries none of the three names and at v0.23.15 carries all three. No release is cut.'
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []

@@ -13,11 +13,15 @@ the installed distribution is tied to the lock through ``importlib.metadata``.
 from __future__ import annotations
 
 import importlib.metadata
+import re
 import tomllib
 from pathlib import Path
 from typing import Any
 
 import pytest
+from packaging.requirements import Requirement
+from packaging.specifiers import SpecifierSet
+from packaging.utils import canonicalize_name
 from packaging.version import Version
 
 pytestmark = pytest.mark.unit
@@ -27,6 +31,8 @@ _FLOOR = Version("0.23.15")
 _CEILING = Version("0.24")
 _SPI_SPEC = "omnibase-spi>=0.23.15,<0.24.0"
 _SPI = "omnibase-spi"
+_RANGE = SpecifierSet(">=0.23.15,<0.24.0")
+_FULL_SHA = re.compile(r"[0-9a-f]{40}")
 
 
 def _in_range(version: str) -> bool:
@@ -44,7 +50,53 @@ def _lock() -> dict[str, Any]:
 
 
 def _spi_entries(entries: list[str]) -> list[str]:
-    return [e for e in entries if e.replace(" ", "").startswith(_SPI + ">")]
+    """Every entry that names omnibase-spi, whatever its operator, extra or URL form."""
+    return [e for e in entries if canonicalize_name(Requirement(e).name) == _SPI]
+
+
+def _lock_source_matches(lock_git: str, locked_source: str) -> bool:
+    """The lock appends ``#<commit>`` to the declared source; a longer tag must not match."""
+    return lock_git.startswith(locked_source + "#")
+
+
+def _assert_installed_is_locked() -> None:
+    installed = importlib.metadata.version(_SPI)
+    assert [installed] == _locked_spi_versions(), (
+        f"installed omnibase-spi {installed} differs from the locked version"
+    )
+
+
+def published_pin_admits_floor_range(requires_dist: list[str]) -> bool:
+    """True when the one omnibase-spi pin in ``requires_dist`` admits a release in the floor range.
+
+    ``requires_dist`` is the published package's dependency list. The pin is compared with
+    the floor range through ``packaging``: it admits the range when some version named by the
+    pin, or the floor itself, satisfies both the pin and the floor range.
+    """
+    pins = [
+        r
+        for r in map(Requirement, requires_dist)
+        if canonicalize_name(r.name) == _SPI
+        and (r.marker is None or r.marker.evaluate({"extra": ""}))
+    ]
+    assert len(pins) == 1, pins
+    spec = pins[0].specifier
+    candidates = [Version(s.version.rstrip(".*")) for s in spec] + [_FLOOR]
+    return any(
+        spec.contains(v, prereleases=True) and _RANGE.contains(v, prereleases=True)
+        for v in candidates
+    )
+
+
+def lab_comment_head_is_full(comments: list[str], head: str) -> bool:
+    """True when the newest ``Lab: head=`` comment names exactly the 40-character ``head``."""
+    labs = [c for c in comments if c.startswith("Lab: head=")]
+    if not labs:
+        return False
+    named = re.match(r"Lab: head=(\S+)", labs[-1])
+    return (
+        named is not None and named.group(1) == head and bool(_FULL_SHA.fullmatch(head))
+    )
 
 
 def _locked_spi_versions() -> list[str]:
@@ -71,6 +123,30 @@ def test_pyproject_floors_agree() -> None:
     assert in_overrides == [_SPI_SPEC], in_overrides
 
 
+@pytest.mark.parametrize(
+    "entry",
+    [
+        "omnibase-spi==0.23.7",
+        "omnibase-spi~=0.23.7",
+        "omnibase-spi[extra]>=0.23.15",
+        "omnibase-spi @ git+https://example.invalid/omnibase_spi.git",
+        "omnibase_spi>=0.23.15,<0.24.0",
+        "Omnibase.SPI>=0.23.15",
+    ],
+)
+def test_spi_entries_sees_every_spelling_of_a_second_entry(entry: str) -> None:
+    """A second spi entry, in any form, breaks the one-entry-each assertion."""
+    entries = [_SPI_SPEC, entry, "pydantic>=2"]
+    assert _spi_entries(entries) == [_SPI_SPEC, entry]
+    assert _spi_entries(entries) != [_SPI_SPEC]
+
+
+def test_spi_entries_ignores_other_packages() -> None:
+    assert (
+        _spi_entries(["omnibase-spi-extra>=1", "omnibase-core>=0.47", "pydantic"]) == []
+    )
+
+
 def test_lock_resolves_spi_in_range_from_the_declared_source() -> None:
     lock = _lock()
     source = _pyproject()["tool"]["uv"]["sources"][_SPI]
@@ -78,7 +154,9 @@ def test_lock_resolves_spi_in_range_from_the_declared_source() -> None:
     pinned = [p for p in lock["package"] if p["name"] == _SPI]
     assert len(pinned) == 1, pinned
     assert _in_range(pinned[0]["version"]), pinned[0]["version"]
-    assert pinned[0]["source"]["git"].startswith(locked_source), pinned[0]["source"]
+    assert _lock_source_matches(pinned[0]["source"]["git"], locked_source), pinned[0][
+        "source"
+    ]
     overrides = [o for o in lock["manifest"]["overrides"] if o["name"] == _SPI]
     assert [o["git"] for o in overrides] == [locked_source], overrides
     root = next(p for p in lock["package"] if p["name"] == "omnimarket")
@@ -86,11 +164,77 @@ def test_lock_resolves_spi_in_range_from_the_declared_source() -> None:
     assert [r["git"] for r in required] == [locked_source], required
 
 
-def test_lane_process_types_import() -> None:
-    installed = importlib.metadata.version(_SPI)
-    assert [installed] == _locked_spi_versions(), (
-        f"installed omnibase-spi {installed} differs from the locked version"
+@pytest.mark.parametrize("suffix", ["-2", "x", ".1"])
+def test_lock_source_match_rejects_a_longer_tag(suffix: str) -> None:
+    declared = "https://example.invalid/omnibase_spi.git?tag=dev-1"
+    assert _lock_source_matches(declared + "#abc123", declared)
+    assert not _lock_source_matches(declared + suffix + "#abc123", declared)
+    assert not _lock_source_matches(declared, declared)
+
+
+def test_installed_version_helper_passes_when_it_equals_the_lock(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        importlib.metadata, "version", lambda _name: _locked_spi_versions()[0]
     )
+    _assert_installed_is_locked()
+
+
+def test_installed_version_helper_fails_when_it_differs_from_the_lock(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """AC4 falsifier: an installed 0.23.14 (which lacks the lane process types) is refused."""
+    monkeypatch.setattr(importlib.metadata, "version", lambda _name: "0.23.14")
+    with pytest.raises(AssertionError, match="differs from the locked version"):
+        _assert_installed_is_locked()
+
+
+@pytest.mark.parametrize(
+    ("requires_dist", "admits"),
+    [
+        (["omnibase-compat==0.5.7", "omnibase-spi==0.23.7"], False),
+        (["omnibase-spi==0.23.5"], False),
+        (["omnibase-spi==0.24.0"], False),
+        (["omnibase-spi==0.23.15"], True),
+        (["omnibase-spi==0.23.16"], True),
+        (["omnibase-spi>=0.23.15,<0.24.0"], True),
+        (["omnibase-spi>=0.23.3,<0.24.0"], True),
+        (["omnibase-spi==0.23.99; extra == 'dev'", "omnibase-spi==0.23.7"], False),
+    ],
+)
+def test_published_pin_is_compared_to_the_floor_range(
+    requires_dist: list[str], admits: bool
+) -> None:
+    """The red cause holds only while the published pin excludes the floor range.
+
+    A pin equal to the floor admits it, so the contract's published-pin read, which asserts
+    the pin does not admit the range, fails for ``omnibase-spi==0.23.15``.
+    """
+    assert published_pin_admits_floor_range(requires_dist) is admits
+
+
+def test_lab_comment_head_must_be_the_full_head() -> None:
+    head = "0123456789abcdef0123456789abcdef01234567"
+    assert lab_comment_head_is_full([f"Lab: head={head} host h201"], head)
+    assert not lab_comment_head_is_full([f"Lab: head={head[:12]} host h201"], head)
+    assert not lab_comment_head_is_full([f"Lab: head={head[:12]} host h201"], head[:12])
+    assert not lab_comment_head_is_full([f"Lab: head={'f' * 40} host h201"], head)
+    assert not lab_comment_head_is_full(["no lab line here"], head)
+    assert not lab_comment_head_is_full([], head)
+
+
+def test_lab_comment_check_reads_the_newest_lab_comment() -> None:
+    head = "0123456789abcdef0123456789abcdef01234567"
+    newer_short = [f"Lab: head={head}", "other", f"Lab: head={head[:12]}"]
+    assert not lab_comment_head_is_full(newer_short, head)
+    assert lab_comment_head_is_full(
+        ["Lab: head=" + head[:12], f"Lab: head={head}"], head
+    )
+
+
+def test_lane_process_types_import() -> None:
+    _assert_installed_is_locked()
     from omnibase_spi.contracts.services import (
         ModelLaneProcessRunResult,
         ModelLaneProcessStartResult,
