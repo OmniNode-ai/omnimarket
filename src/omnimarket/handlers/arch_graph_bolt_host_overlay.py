@@ -1,16 +1,16 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Resolve the architecture graph Bolt URI: the variable, then the host's overlay row (OMN-24687).
+"""Resolve the architecture graph Bolt URI: the variable, then the host list of the overlay (OMN-24687).
 
 ``node_architecture_graph_query_effect`` and ``node_architecture_graph_populate_effect``
 bind ``bolt_uri`` to the contract reference ``${env.ARCH_GRAPH_BOLT_URI}``. The dev lane's
 containers get the variable from the runtime policy contract; a lab host or the operator Mac
 that sets nothing had no address, so both nodes refused. This module adds the second source:
-the row for this host in ``<overlay root>/arch_graph_bolt/overlay.yaml`` under
+the hosts list of ``<overlay root>/arch_graph_bolt/overlay.yaml`` under
 ``ONEX_SKILL_OVERLAY_ROOTS``, validated through :class:`ModelArchGraphBoltOverlay`, the same
 shape as the projection read binding host overlay (OMN-23994).
 
-The variable keeps winning. A host with no row, or no overlay file, fails closed; a found
+The variable keeps winning. A host not in the list, or no overlay file, fails closed; a found
 overlay that does not load raises and never falls back, so a broken overlay reads as broken,
 not as absent.
 """
@@ -63,7 +63,7 @@ def resolve_arch_graph_bolt_uri(host: str | None = None) -> str:
         return row_uri
     raise ValueError(
         "ARCH_GRAPH_BOLT_URI is not bound by the active overlay; set the variable or "
-        f"add this host in the hosts list to <overlay root>/{ARCH_GRAPH_BOLT_OVERLAY_ID}/overlay.yaml "
+        f"add this host to the hosts list of <overlay root>/{ARCH_GRAPH_BOLT_OVERLAY_ID}/overlay.yaml "
         f"so the contract reference {_BOLT_URI_CONTRACT_REF!r} resolves to a Bolt URI."
     )
 
