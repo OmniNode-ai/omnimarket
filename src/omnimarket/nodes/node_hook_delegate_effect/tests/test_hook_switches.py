@@ -27,7 +27,7 @@ from omnimarket.nodes.node_hook_delegate_effect.container.container_hook_delegat
     build_handler,
     build_prompt_handler,
 )
-from omnimarket.nodes.node_hook_delegate_effect.handlers.handler_delegation_switches import (
+from omnimarket.nodes.node_hook_delegate_effect.handlers.handler_hook_delegate import (
     read_switches,
     switches_path,
     write_switches,

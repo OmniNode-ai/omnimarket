@@ -27,12 +27,10 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from omnimarket.nodes.node_hook_delegate_effect.handlers.handler_delegation_switches import (
-    read_switches,
-)
 from omnimarket.nodes.node_hook_delegate_effect.handlers.handler_hook_delegate import (
     TASK_CLASS_BY_INTENT,
     HandlerHookDelegate,
+    read_switches,
 )
 from omnimarket.nodes.node_hook_delegate_effect.models import (
     DECLINE_TOKEN,

@@ -30,7 +30,7 @@ def installed_onex() -> Path | None:
     return Path(found) if found else None
 
 
-class AdapterDelegateCli:
+class HandlerDelegateCli:
     """Runs `onex`; a missing `onex` or a start failure is reported, not raised."""
 
     def __init__(self, onex: Path | None = None) -> None:

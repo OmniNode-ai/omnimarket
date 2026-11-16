@@ -30,7 +30,7 @@ import pytest
 from pydantic import ValidationError
 
 from omnimarket.nodes.node_hook_delegate_effect.adapters.adapter_delegate_cli import (
-    AdapterDelegateCli,
+    HandlerDelegateCli,
 )
 from omnimarket.nodes.node_hook_delegate_effect.container import build_handler
 from omnimarket.nodes.node_hook_delegate_effect.models import (
@@ -187,7 +187,7 @@ def test_the_real_adapter_reports_a_missing_onex(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """N8."""
-    ran = AdapterDelegateCli(onex=tmp_path / "no-onex").run(
+    ran = HandlerDelegateCli(onex=tmp_path / "no-onex").run(
         ["delegate", "x", "--json"], 5
     )
     assert ran.state is EnumDelegateCliState.NOT_FOUND
@@ -213,7 +213,7 @@ def test_the_real_adapter_runs_onex_and_honours_the_limit(
     onex.write_text(f"#!/bin/sh\n{body}\n")
     onex.chmod(0o755)
     monkeypatch.setenv("PATH", f"/bin{os.pathsep}/usr/bin")  # sleep and echo
-    ran = AdapterDelegateCli(onex=onex).run(["delegate", "x", "--json"], limit)
+    ran = HandlerDelegateCli(onex=onex).run(["delegate", "x", "--json"], limit)
     assert (ran.state, ran.stdout) == (state, stdout)
 
 
