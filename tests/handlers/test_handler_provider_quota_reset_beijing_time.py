@@ -65,6 +65,12 @@ def test_the_zai_rule_declares_beijing_time_and_the_bifrost_path_holds_until_the
             "message": "Weekly/Monthly Limit Exhausted. Your limit will reset at 2026-11-15 01:38:18",
         }
     }
+    verdict = classify_quota_response(
+        status_code=429, endpoint_url=ZAI_URL, body=body, now=CALL_ENDED
+    )
+    assert verdict is not None
+    assert verdict.disposition is EnumQuotaDisposition.DISABLE_UNTIL_RESET
+    assert verdict.disabled_until == RESET_UTC
     for code in ("1310", "1308"):
         rule = next(
             r
@@ -74,9 +80,3 @@ def test_the_zai_rule_declares_beijing_time_and_the_bifrost_path_holds_until_the
             if r.code == code
         )
         assert rule.reset_utc_offset_minutes == 480
-    verdict = classify_quota_response(
-        status_code=429, endpoint_url=ZAI_URL, body=body, now=CALL_ENDED
-    )
-    assert verdict is not None
-    assert verdict.disposition is EnumQuotaDisposition.DISABLE_UNTIL_RESET
-    assert verdict.disabled_until == RESET_UTC
