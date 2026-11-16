@@ -1,0 +1,81 @@
+schema_version: "1.0.0"
+ticket_id: OMN-25138
+title: "The declared alarm installer installs an alarm as a systemd timer on a Linux lab host and as a launchd job on the Mac from one declaration"
+summary: >-
+  node_host_installer_registry_units gives a unit declared for launchd an optional systemd block. On a Linux host the block
+  replaces the launchd-only fields and the unit installs as a systemd user service and timer with no launchctl call; on the Mac
+  the same declaration installs the launchd job. The silent-failure alarm unit carries the block.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn25138-one-declaration-two-platforms
+    statement: One alarm unit declaration installs as a systemd timer and service on a Linux host and as a launchd job on the Mac, selected by the host platform.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: the declared installer path the alarm node units go through renders one alarm unit declaration as a systemd timer and service on a Linux host and as a launchd job on the Mac, with no launchctl call on Linux -- falsifier: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_alarm_platform_units.py -q -k linux, run at the base commit, fails (red) and passes at the pull request head'
+      - id: AC2
+        statement: 'AC2: a test per platform covers the render and the install command sequence, and the Mac test still passes -- falsifier: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_alarm_platform_units.py -q exits 0 at the pull request head'
+      - id: AC3
+        statement: 'AC3: one existing alarm is installed on h201 through the declared installer from the branch, and a test reads the installed timer fire -- falsifier: ssh h201 systemctl --user list-timers lists the alarm timer, the fire is read, and the STATUS row carries installed= and observed='
+      - id: AC4
+        statement: 'AC4: the change widens or bypasses no check, so the diff removes no assertion and adds no skip, xfail or --no-verify -- falsifier: git diff base head shows a removed assert, a new skip or xfail marker, or a --no-verify flag'
+      - id: AC5
+        statement: 'AC5: the draft pull request body carries a line starting Lab: and the lane TERMINAL names the head -- falsifier: the pull request body carries no line starting Lab:'
+evidence_requirements:
+  - kind: tests
+    description: The platform tests and the registry units tests that render the launchd units.
+    command: uv run --frozen pytest tests/nodes/node_host_installer_registry_units -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn25138-platform-tests
+    description: The Linux and Mac platform tests pass at the pull request head; the Linux tests fail at the base commit because the alarm unit installs through launchctl there.
+    source: manual
+    execution_scope: hosted_and_local
+    binds_ac: [AC1, AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_alarm_platform_units.py -q --no-cov -p no:randomly
+        cwd: .
+  - id: dod-omn25138-launchd-units-unchanged
+    description: The launchd registry units still render as they did, with the Mac platform pinned in the three tests that render the alarm unit.
+    source: manual
+    execution_scope: hosted_and_local
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_alarm_config_omn22778.py tests/nodes/node_host_installer_registry_units/test_run_timeout.py tests/nodes/node_host_installer_registry_units/test_host_table_readers_declare_overlay_roots.py tests/nodes/node_host_installer_registry_units/test_registry_units_systemd.py -q --no-cov -p no:randomly
+        cwd: .
+  - id: dod-omn25138-no-bypass
+    description: The diff against the landing branch adds no skip, xfail or --no-verify; the unbound check is run by the local Done gate only because it reads the pushed head against the landing branch.
+    source: manual
+    execution_scope: local_done_gate
+    binds_ac: [AC4]
+    checks:
+      - check_type: command
+        check_value: 'sh -c "! git diff origin/dev...HEAD | grep -E ''^\+.*(pytest\.mark\.(skip|xfail)|--no-verify)''"'
+        cwd: .
+  - id: dod-omn25138-integration-proof-h201
+    description: The alarm timer is listed on h201 and its fire is read; hosted CI cannot reach h201, so only the local Done gate runs this unbound check, and the STATUS row of the lane carries installed= and observed=.
+    source: manual
+    execution_scope: local_done_gate
+    binds_ac: [AC3]
+    checks:
+      - check_type: command
+        check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25138 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_alarm_platform_units.py -q --no-cov -p no:randomly'
+        cwd: .
+      - check_type: command
+        check_value: 'ssh h201 systemctl --user list-timers onex-silent-failure-alarm.timer --no-pager'
+        cwd: .
+  - id: dod-omn25138-lab-line
+    description: The draft pull request body carries a line starting with the word Lab and naming the head; the pull request state is read from the launching host watcher, so only the local Done gate runs this unbound check.
+    source: manual
+    execution_scope: local_done_gate
+    binds_ac: [AC5]
+    checks:
+      - check_type: command
+        check_value: 'sh -c "python3 \"$OMNI_PLUGIN_ROOT\"/skills/merge-drain/scripts/pr_state_local.py --find OMN-25138 --json | grep -q ''Lab: head=''"'
+        cwd: .

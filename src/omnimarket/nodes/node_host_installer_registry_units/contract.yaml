@@ -7,7 +7,7 @@ lifecycle: experimental
 contract_version: {major: 1, minor: 0, patch: 0}
 node_version: "1.0.0"
 description: >-
-  Install a self-contained copied alarm payload, or render and install a launchd (or, for a unit declaring platform systemd, a systemd user service and timer) registry_module_tick unit that runs a node module of a project with
+  Install a self-contained copied alarm payload, or render and install a launchd (or, for a unit declaring platform systemd or carrying a systemd block on a Linux host, a systemd user service and timer) registry_module_tick unit that runs a node module of a project with
   `uv run --frozen --project <project> python -m <module>`. The project is the canonical registry clone unless the
   unit declares a project path override and the request names a checkout: then the rendered unit runs that checkout,
   which must be a clean git checkout carrying the unit's entry file (and, when the request names an expected
@@ -1694,6 +1694,22 @@ units:
     interpreter_candidates:
       - /opt/homebrew/bin/python3.13
       - /usr/local/bin/python3.13
+    # One declaration, two platforms: a Linux host installs this unit as a systemd user service and timer from the fields
+    # below, which replace the launchd fields of the same name; every other field (module, environment, configuration,
+    # state) is shared, and the Mac installs the launchd job above. The host's platform selects, no install names it.
+    systemd:
+      label: onex-silent-failure-alarm
+      template: templates/onex-registry-module-tick.service.tmpl
+      timer_template: templates/onex-registry-module-tick.timer.tmpl
+      schedule:
+        start_interval: 300
+        run_timeout_s: 900
+        run_at_load: true
+        description: every 300 s and at load
+      interpreter_candidates:
+        - /usr/bin/python3.12
+        - /usr/bin/python3.13
+        - /usr/local/bin/python3.13
     module: omnimarket.nodes.node_silent_failure_alarm_effect.runtime_silent_failure_alarm
     entry_file: src/omnimarket/nodes/node_silent_failure_alarm_effect/runtime_silent_failure_alarm.py
     project_path_override:

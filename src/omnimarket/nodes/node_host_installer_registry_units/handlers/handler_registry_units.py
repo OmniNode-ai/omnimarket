@@ -22,6 +22,7 @@ import re
 import shutil
 import signal
 import subprocess
+import sys
 import tempfile
 import time
 from collections.abc import Callable, Iterator
@@ -165,6 +166,32 @@ def interpreter_present(path: str) -> bool:
     return os.path.isfile(path) and os.access(path, os.X_OK)
 
 
+def host_platform() -> str:
+    """The platform this host's scheduler belongs to: ``darwin`` for the Mac's launchd, ``linux`` for a lab host's systemd."""
+    return "darwin" if sys.platform == "darwin" else "linux"
+
+
+def for_host_platform(unit: dict[str, Any]) -> dict[str, Any]:
+    """The unit as this host installs it.
+
+    A unit declared for launchd may carry a ``systemd`` block: the fields a Linux host installs differently (``label``,
+    ``template``, ``timer_template``, ``schedule``, ``interpreter_candidates``). On a Linux host the block replaces those fields and the
+    unit becomes ``platform: systemd``; every other field (module, environment, configuration, state) is the one
+    declaration both platforms share. On the Mac, and for a unit with no block, the unit is returned unchanged.
+    """
+    declared = unit.get("systemd")
+    if not declared or host_platform() != "linux":
+        return unit
+    resolved = {
+        key: value
+        for key, value in unit.items()
+        if key not in ("systemd", "run_timeout_s")
+    }
+    resolved.update(declared)
+    resolved["platform"] = "systemd"
+    return resolved
+
+
 Runner = Callable[[list[str]], "subprocess.CompletedProcess[str]"]
 
 
@@ -292,6 +319,7 @@ class HandlerRegistryUnits:
             return self.result(
                 request, 2, error=f"{request.unit} is not a unit of this node\n"
             )
+        unit = for_host_platform(unit)
         if request.plan_verb is not None:
             verb = request.plan_verb
             plan_text = (
@@ -1194,6 +1222,8 @@ class HandlerRegistryUnits:
         service, timer = self.render_systemd(request, unit, project, uv, python)
         text = service + "\n" + timer
         declared_files = self.declared_file_writes(request, unit)
+        config_path = self.config_target(request, unit)
+        config = self.config_text(request, unit)
         if request.mode == "dry-run":
             return self.result(
                 request,
@@ -1202,11 +1232,14 @@ class HandlerRegistryUnits:
                 + "".join(
                     f"\ndeclared file {path}:\n{body}"
                     for path, body, _mode in declared_files
-                ),
+                )
+                + (f"\nconfiguration {config_path}:\n{config}" if config else ""),
                 rendered=text,
                 project=project,
                 revision=revision,
                 canonical=canonical,
+                config=config,
+                config_path=str(config_path or ""),
             )
         proof = self.start_check(request, unit, uv, python, project)
         if proof.returncode:
@@ -1217,6 +1250,12 @@ class HandlerRegistryUnits:
         unit_dir.mkdir(parents=True, exist_ok=True)
         for path, body, mode in declared_files:
             self.write_config(path, body, mode)
+        if config_path is not None:
+            self.write_config(
+                config_path,
+                config,
+                int(str(unit["config_file"].get("mode", "0600")), 8),
+            )
         previous = {
             path: (path.read_bytes() if path.exists() else None)
             for path in (service_path, timer_path)
@@ -1274,6 +1313,7 @@ class HandlerRegistryUnits:
                     "project": str(project),
                     "project_is_canonical": canonical,
                     "revision": revision,
+                    "config_inputs": self.config_inputs(request, unit),
                     "installed_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
                 },
                 indent=1,
@@ -1292,6 +1332,8 @@ class HandlerRegistryUnits:
             revision=revision,
             canonical=canonical,
             record=str(record),
+            config=config,
+            config_path=str(config_path or ""),
         )
 
     def status_systemd(
