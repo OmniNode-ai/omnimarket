@@ -332,6 +332,10 @@ def test_a_shorter_hook_limit_wins() -> None:
             EnumPromptDelegateOutcome.CONTROL,
         ),
         ("Please check the PR and its comments", {}, EnumPromptDelegateOutcome.CONTROL),
+        ("now edit my file", {}, EnumPromptDelegateOutcome.CONTROL),
+        ("and run the tests", {}, EnumPromptDelegateOutcome.CONTROL),
+        ("Help me fix the workspace hooks", {}, EnumPromptDelegateOutcome.CONTROL),
+        ("I want you to close PR6134", {}, EnumPromptDelegateOutcome.CONTROL),
         (
             "Can you update the hook configuration for me?",
             {},
@@ -399,7 +403,7 @@ def test_claude_is_told_once_what_delegation_answered_while_blocked() -> None:
     )
     _ask(cli, "How do TCP and UDP differ?")
     first = _ask(cli, "now edit my file")
-    assert first.outcome is EnumPromptDelegateOutcome.DECLINED
+    assert first.outcome is EnumPromptDelegateOutcome.CONTROL
     out = json.loads(first.hook_output)
     assert out["hookSpecificOutput"]["hookEventName"] == "UserPromptSubmit"
     context = out["hookSpecificOutput"]["additionalContext"]
@@ -407,7 +411,7 @@ def test_claude_is_told_once_what_delegation_answered_while_blocked() -> None:
     assert _ANSWER in context
     assert "r-1" in context
     assert "decision" not in out
-    assert _ANSWER in _task(cli.calls[1][0])
+    assert len(cli.calls) == 1  # Work requests reach Claude without another run.
     again = _ask(cli, "and run the tests")
     assert again.hook_output == ""
 
@@ -416,6 +420,8 @@ def test_the_same_run_is_kept_once_and_sessions_do_not_mix() -> None:
     cli = _Cli(_doc(_ANSWER, "r-same"), _doc(_ANSWER, "r-same"))
     _ask(cli, "How do TCP and UDP differ?")
     _ask(cli, "TCP vs UDP, again?")
+    # A different session must neither receive nor consume pending history.
+    assert _ask(_Cli(), "edit my file", session_id="other").hook_output == ""
     context = _ask(_Cli(), "edit my file").hook_output
     assert (
         json.loads(context)["hookSpecificOutput"]["additionalContext"].count("r-same")

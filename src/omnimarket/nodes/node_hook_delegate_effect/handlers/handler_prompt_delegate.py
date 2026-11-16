@@ -60,7 +60,9 @@ _CONTROL = re.compile(
 # These messages direct the working session; an advice-only model must not
 # consume them even when it can produce a plausible answer (2026-11-16).
 _WORK_REQUEST = re.compile(
-    r"(?:(?:can|could|would|will)\s+you\s+)?(?:please\s+)?"
+    r"(?:(?:please|now|and)\s+)*"
+    r"(?:(?:can|could|would|will)\s+you\s+|help\s+me\s+"
+    r"|i\s+(?:want|need)\s+you\s+to\s+)?(?:please\s+)?"
     r"(?:fix|check|inspect|update|edit|change|remove|delete|close|reopen|merge"
     r"|push|commit|deploy|install|uninstall|enable|disable|run|implement|build"
     r"|test|verify|read|open|move|revert|restore)\b",
