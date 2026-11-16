@@ -1,0 +1,141 @@
+schema_version: 1.0.0
+ticket_id: OMN-24914
+title: 'Review findings 1 to 11 on omnimarket PR 6204 are fixed or argued: the close fold keeps one winner, a repeated part refuses only itself, and the grant has a named owner'
+summary: The review of the eval results projection pull request is answered in the node (close fold winner, trace part refusal, per-arm completeness, lane stamps out of the tie-break digest, tenant refusal, read_plan validation, namespaced topic match) and in the two contracts the pull request carries, with a test for each that fails on the previous head.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24914-review-findings
+  statement: Each blocking review finding on the eval results projection pull request is fixed with a test that is red at the reviewed head and green at the new one, or is argued with evidence in a pull request comment.
+  acceptance:
+  - id: AC1
+    statement: "AC1: every required check-run of omnimarket#6204 reads success at the new head, the grants it needs sit in an omnibase_infra PR that exists, each red check is named with its log read, OMN-24802 AC2 is bound to a ledger-row check, and a PR comment starting `Lab: head=<new head>` names the sha, the command and the parts run -- falsifier: `onex scm pr-checks OmniNode-ai/omnimarket#6204` lists a required context that is not success at the new head, or the Lab comment lacks the sha or the command"
+  - id: AC2
+    statement: "AC2: contracts/OMN-24171.yaml AC5 is bound to a check that can fail for AC5 (the dev SQL count per run id after install), not to a rerun of the AC1 and AC4 tests -- falsifier: `uv run pytest tests/validators -k omn24171 -q -p no:cacheprovider` passes with the AC5 binding set back to the AC1 and AC4 test ids"
+  - id: AC3
+    statement: "AC3: the close fold in handler_projection_eval_results.py picks the winner by closed_at then digest, so an older or equal-time close cannot rewrite eval_run_rates from the losing record, with a test in both delivery orders -- falsifier: `uv run pytest tests/nodes -k projection_eval_results -q -p no:cacheprovider` passes with the recount taken from the incoming close again"
+  - id: AC4
+    statement: "AC4: a repeated part with different bytes refuses only that part and never deletes a stored trace, even a verified one, and the rebuild of held parts uses row.item_key so the agree check can fail, with a test for each -- falsifier: `uv run pytest tests/nodes -k projection_eval_results -q -p no:cacheprovider` passes with the whole-trace delete restored"
+  - id: AC5
+    statement: "AC5: eval_results_rates.py compares full (task, model, arm, replicate) keys, close sequences are read per arm, and a two-arm run cannot read void or closed with rates before all attempts are in, with a two-arm test -- falsifier: `uv run pytest tests/nodes -k eval_results_rates -q -p no:cacheprovider` passes with the count-and-(task, model)-set comparison restored"
+  - id: AC6
+    statement: "AC6: eval_results_mapping.py derives item_key from identity fields only (checked against ModelEvalItemScored), lane stamps such as host and install_revision stay out of the tie-break digest, and a replay after a redeploy rewrites no row, with a test -- falsifier: `uv run pytest tests/nodes -k eval_results_mapping -q -p no:cacheprovider` passes with host and install_revision back in the digest"
+  - id: AC7
+    statement: "AC7: a judged payload whose tenant_id differs from the envelope tenant is refused, with a test -- falsifier: `uv run pytest tests/nodes -k projection_eval_results -q -p no:cacheprovider` passes with the payload tenant override restored"
+  - id: AC8
+    statement: "AC8: a bad uuid or a missing time in an event is validated in read_plan and reaches the DLQ instead of raising in S or W, with a test -- falsifier: `uv run pytest tests/nodes -k eval_results_store -q -p no:cacheprovider` passes with the validation left to the fold"
+  - id: AC9
+    statement: "AC9: the writer matches topics as the dispatch passes them (contract names, or the namespace stripped before matching), shown by a test that publishes through a namespaced topic -- falsifier: `uv run pytest tests/nodes -k eval_results_writer -q -p no:cacheprovider` passes with the un-namespaced match restored"
+  - id: AC10
+    statement: "AC10: tests/validators/test_projection_writer_contract_omn19833.py is shown to count two writer classes in one node twice, and the contract.yaml test ids all exist, with the every-field test comparing ModelEvalItemScored fields against the real table columns and not ITEM_COLUMNS against itself -- falsifier: `uv run pytest tests/validators/test_projection_writer_contract_omn19833.py tests/nodes -k \"eval_results or omn19833\" -q -p no:cacheprovider` passes with ITEM_COLUMNS compared with itself"
+  - id: AC11
+    statement: "AC11: the non-blocking findings (an unknown provider refused like an unmapped tier, the tick publishing per tenant, the producer emitting series on dev closes) are fixed or argued in a PR comment -- falsifier: `uv run pytest tests/nodes -k \"eval_results_mapping or eval_results_writer\" -q -p no:cacheprovider` passes with the unknown provider labelled local again"
+evidence_requirements:
+- kind: tests
+  description: The eval-results projection tests and the contract-binding validators pass at the pushed head.
+  command: uv run --frozen pytest tests/nodes/node_projection_eval_results tests/test_golden_chain_projection_eval_results.py tests/validators/test_omn24171_contract_bindings.py tests/validators/test_projection_writer_contract_omn19833.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24914-ac1
+  description: "AC1: every check-run of omnimarket#6204 reads green with none pending at the head read (run at the local Done gate: it reads the PR watcher)"
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: command
+    check_value: "bash -c 'onex scm pr-checks OmniNode-ai/omnimarket#6204 | grep \"^{\\\"verb\\\"\" | python3 -c \"import sys,json; r=json.loads(sys.stdin.read())[\\\"result\\\"]; sys.exit(0 if not r[\\\"red\\\"] and not r[\\\"pending\\\"] else 1)\"'"
+- id: dod-omn24914-ac2
+  description: "AC2: the OMN-24171 AC5 binding is the dev SQL count and not the AC1 and AC4 test ids"
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: "uv run --frozen pytest tests/validators/test_omn24171_contract_bindings.py -k omn24171 -q --no-cov -n 0 -p no:randomly"
+    cwd: .
+- id: dod-omn24914-ac3
+  description: "AC3: an older or equal-time close cannot rewrite rates from the losing record, in both delivery orders"
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: "uv run --frozen pytest tests/nodes/node_projection_eval_results/test_eval_results_fold.py -k close -q --no-cov -n 0 -p no:randomly"
+    cwd: .
+- id: dod-omn24914-ac4
+  description: "AC4: a repeated part refuses only itself and deletes no stored part; held parts are rebuilt with their stored item key"
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: "uv run --frozen pytest tests/nodes/node_projection_eval_results/test_eval_results_fold.py tests/nodes/node_projection_eval_results/test_traces.py -k \"part or trace\" -q --no-cov -n 0 -p no:randomly"
+    cwd: .
+- id: dod-omn24914-ac5
+  description: "AC5: a two-arm run reads closing until every arm holds every registered task, and a full-key close is compared on the full key"
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: "uv run --frozen pytest tests/nodes/node_projection_eval_results/test_eval_results_rates.py -q --no-cov -n 0 -p no:randomly"
+    cwd: .
+- id: dod-omn24914-ac6
+  description: "AC6: the item key is the uuid5 of the identity fields and lane stamps stay out of the tie-break digest"
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: "uv run --frozen pytest tests/nodes/node_projection_eval_results/test_eval_results_mapping.py tests/nodes/node_projection_eval_results/test_item_storage.py -k \"redeploy or item_key or lane_stamps\" -q --no-cov -n 0 -p no:randomly"
+    cwd: .
+- id: dod-omn24914-ac7
+  description: "AC7: a judged payload tenant that differs from the envelope tenant is refused"
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: "uv run --frozen pytest tests/nodes/node_projection_eval_results/test_eval_results_mapping.py -k tenant -q --no-cov -n 0 -p no:randomly"
+    cwd: .
+- id: dod-omn24914-ac8
+  description: "AC8: a bad uuid or a missing time is refused in read_plan and the writer and reaches the DLQ with no SQL run"
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: "uv run --frozen pytest tests/nodes/node_projection_eval_results/test_eval_results_store.py -q --no-cov -n 0 -p no:randomly"
+    cwd: .
+- id: dod-omn24914-ac9
+  description: "AC9: the writer matches namespaced topics and publishes the snapshot namespaced"
+  source: manual
+  binds_ac:
+  - AC9
+  checks:
+  - check_type: test_passes
+    check_value: "uv run --frozen pytest tests/nodes/node_projection_eval_results/test_eval_results_writer.py -q --no-cov -n 0 -p no:randomly"
+    cwd: .
+- id: dod-omn24914-ac10
+  description: "AC10: two writer classes in one node count twice, every contract test id exists, and the every-field test compares model fields with the migration columns"
+  source: manual
+  binds_ac:
+  - AC10
+  checks:
+  - check_type: test_passes
+    check_value: "uv run --frozen pytest tests/validators/test_projection_writer_contract_omn19833.py tests/validators/test_omn24171_contract_bindings.py tests/nodes/node_projection_eval_results/test_item_storage.py -q --no-cov -n 0 -p no:randomly"
+    cwd: .
+- id: dod-omn24914-ac11
+  description: "AC11: an unknown provider is refused, the tick publishes per tenant; the producer series emission is argued in a PR comment"
+  source: manual
+  binds_ac:
+  - AC11
+  checks:
+  - check_type: test_passes
+    check_value: "uv run --frozen pytest tests/nodes/node_projection_eval_results/test_eval_results_mapping.py tests/nodes/node_projection_eval_results/test_eval_results_writer.py -q --no-cov -n 0 -p no:randomly"
+    cwd: .

@@ -17,7 +17,7 @@ GRANT USAGE ON SCHEMA public TO tenant_projection_writer;
 GRANT SELECT, INSERT, UPDATE
     ON public.eval_item_scores, public.eval_run_closes, public.eval_run_rates
     TO tenant_projection_writer;
-GRANT SELECT, INSERT, DELETE
+GRANT SELECT, INSERT
     ON public.eval_item_traces
     TO tenant_projection_writer;
 GRANT DELETE ON public.eval_run_rates TO tenant_projection_writer;
