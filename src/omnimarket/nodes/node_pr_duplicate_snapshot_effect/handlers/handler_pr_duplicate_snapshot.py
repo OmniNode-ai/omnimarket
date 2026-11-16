@@ -33,7 +33,6 @@ from omnimarket.models.model_github_gateway_io import ModelOpenPrFactsResult
 from omnimarket.models.model_pr_duplicate_guard import (
     EnumStackBaseRule,
     ModelDuplicateDigestConfig,
-    ModelDuplicateGuardRules,
     ModelDuplicateStackConfig,
     ModelFileTouch,
     ModelJudgedCommit,
@@ -45,6 +44,9 @@ from omnimarket.models.model_pr_duplicate_guard import (
     ModelReplacedPrFacts,
     ModelSpanCommits,
     validate_replaces,
+)
+from omnimarket.models.node_overlays.model_node_overlays import (
+    ModelDuplicateGuardGeneratedPathsOverlay,
 )
 from omnimarket.nodes.node_pr_duplicate_snapshot_effect.ports.protocol_open_pr_facts_source import (
     OpenPrFactsUnreadableError,
@@ -119,14 +121,19 @@ def _git(cwd: Path, *args: str, timeout: int = 30) -> str | None:
     return done.stdout if done.returncode == 0 else None
 
 
-def parse_diff(diff: str) -> ModelPrTouch:
-    """Files, old-line spans and signed changed-line fingerprints, excluding diff headers."""
-    config = load_digest_config()
+def parse_diff(
+    diff: str, *, repo: str = "", config: ModelDuplicateDigestConfig | None = None
+) -> ModelPrTouch:
+    """Files, old-line spans and signed changed-line fingerprints, excluding diff headers.
+
+    A file's ``digest`` is the one scored digest: its added and removed lines together, less the removed lines
+    that ``config`` declares shared catalog lines for ``repo`` at this path. A file whose only changed lines are
+    such removed lines is scored on them, so two deletions of the same catalog line stay one change.
+    """
+    config = config or load_digest_config()
     spans: dict[str, list[tuple[int, int]]] = {}
     digests: dict[str, set[str]] = {}
-    added_digests: dict[str, set[str]] = {}
-    removed_digests: dict[str, set[str]] = {}
-    catalog_lines = [re.compile(p) for p in config.shared_catalog_line_patterns]
+    catalog_removed: dict[str, set[str]] = {}
     added: set[str] = set()
     current: str | None = None
     in_hunk = False
@@ -136,8 +143,7 @@ def parse_diff(diff: str) -> ModelPrTouch:
             current = header[1]
             spans[current] = []
             digests[current] = set()
-            added_digests[current] = set()
-            removed_digests[current] = set()
+            catalog_removed[current] = set()
             in_hunk = False
         elif current is None:
             continue
@@ -156,20 +162,19 @@ def parse_diff(diff: str) -> ModelPrTouch:
                     digest = sha1(
                         (line[0] + text).encode(), usedforsecurity=False
                     ).hexdigest()[: config.prefix_chars]
-                    digests[current].add(digest)
-                    if line[0] == "+":
-                        added_digests[current].add(digest)
-                    elif not any(p.search(text) for p in catalog_lines):
-                        removed_digests[current].add(digest)
+                    if line[0] == "-" and config.is_shared_catalog_line(
+                        repo, current, text
+                    ):
+                        catalog_removed[current].add(digest)
+                    else:
+                        digests[current].add(digest)
     return ModelPrTouch(
         files=tuple(
             ModelFileTouch(
                 path=path,
                 added=path in added,
                 spans=tuple(found),
-                digest=tuple(sorted(digests[path])),
-                added_digest=tuple(sorted(added_digests[path])),
-                removed_digest=tuple(sorted(removed_digests[path])),
+                digest=tuple(sorted(digests[path] or catalog_removed[path])),
             )
             for path, found in sorted(spans.items())
         )
@@ -183,7 +188,13 @@ def _resolves(repo_dir: Path, ref: str) -> bool:
     )
 
 
-def _diff(repo_dir: Path, base_ref: str, head_ref: str) -> ModelPrTouch | None:
+def _diff(
+    repo_dir: Path,
+    base_ref: str,
+    head_ref: str,
+    repo: str = "",
+    config: ModelDuplicateDigestConfig | None = None,
+) -> ModelPrTouch | None:
     text = _git(
         repo_dir,
         "diff",
@@ -194,7 +205,7 @@ def _diff(repo_dir: Path, base_ref: str, head_ref: str) -> ModelPrTouch | None:
         f"{base_ref}...{head_ref}",
         timeout=DIFF_TIMEOUT_S,
     )
-    return parse_diff(text) if text is not None else None
+    return parse_diff(text, repo=repo, config=config) if text is not None else None
 
 
 def _base_ref(repo_dir: Path, base: str | None) -> str | None:
@@ -245,6 +256,7 @@ def new_branch_touch(
     worktree: Path | None,
     clone: Path | None,
     diff_base: str | None = None,
+    config: ModelDuplicateDigestConfig | None = None,
 ) -> ModelPrTouch:
     """What the new branch changes against its base, read where the lane holds it: its worktree, else the clone."""
     if not _BRANCH.match(head_ref):
@@ -259,7 +271,7 @@ def new_branch_touch(
             continue
         _refresh_base(repo_dir, base)
         base_ref = diff_base or _base_ref(repo_dir, base)
-        touch = _diff(repo_dir, base_ref, head) if base_ref else None
+        touch = _diff(repo_dir, base_ref, head, repo, config) if base_ref else None
         if touch is not None:
             return touch
     raise DuplicateGuardUncheckedError(
@@ -570,6 +582,7 @@ def _open_prs(
     worktree: Path | None = None,
     new_head: str | None = None,
     attribute_against: ModelPrTouch | None = None,
+    config: ModelDuplicateDigestConfig | None = None,
 ) -> tuple[ModelOpenPr, ...]:
     prs = state["prs"]
     assert isinstance(prs, dict)
@@ -611,7 +624,7 @@ def _open_prs(
         wanted = base is None or pr_base == base
         if wanted and clone is not None and sha and _resolves(clone, sha):
             base_ref = _base_ref(clone, pr_base)
-            touch = _diff(clone, base_ref, sha) if base_ref else None
+            touch = _diff(clone, base_ref, sha, repo, config) if base_ref else None
             if touch is not None and base_ref and attribute_against is not None:
                 touch = _attribute(clone, base_ref, sha, touch, attribute_against)
         out.append(
@@ -796,26 +809,25 @@ def _overlay_candidates() -> list[Path]:
     return [Path(root) / OVERLAY_NODE / OVERLAY_FILE for root in roots]
 
 
-def load_generated_paths() -> dict[str, tuple[str, ...]]:
-    """The deployment overlay's per-repository generated paths: the first overlay found, or none declared.
+def _load_overlay() -> ModelDuplicateGuardGeneratedPathsOverlay | None:
+    """The deployment overlay of this node: the first one found, or none declared.
 
-    An overlay that exists and is not exactly a ``generated_paths`` mapping is unchecked, never ignored: a
-    guard that silently dropped its declarations would refuse every plan pull request again.
+    An overlay that exists and is not a valid document (``generated_paths`` and, optionally, ``shared_catalog_lines``
+    with each pattern compiling) is unchecked, never ignored: a guard that silently dropped its declarations would
+    refuse every plan pull request again, or read a catalog line as a shared change.
     """
     path = next((c for c in _overlay_candidates() if c.is_file()), None)
     if path is None:
-        return {}
+        return None
     try:
-        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
-        if not isinstance(raw, dict) or set(raw) != {"generated_paths"}:
-            raise ValueError("overlay must contain exactly generated_paths")
-        return ModelDuplicateGuardRules.model_validate(
-            {"generated_paths": raw["generated_paths"]}
-        ).generated_paths
+        return ModelDuplicateGuardGeneratedPathsOverlay.model_validate(
+            yaml.safe_load(path.read_text(encoding="utf-8"))
+        )
     except (OSError, UnicodeError, yaml.YAMLError, ValueError, TypeError) as exc:
         raise DuplicateGuardUncheckedError(
             f"the duplicate guard's deployment overlay {path} is invalid ({type(exc).__name__}): "
-            "it must be a mapping with exactly generated_paths, repository to a list of paths"
+            "it must be a mapping with generated_paths (repository to a list of paths) and, optionally, "
+            "shared_catalog_lines (repository to a list of path and line patterns, each pattern a valid expression)"
         ) from None
 
 
@@ -838,6 +850,10 @@ def read_request(
 ) -> ModelPrDuplicateGuardRequest:
     """The fold's request for one new pull request, or ``DuplicateGuardUncheckedError``."""
     moment = now or datetime.now(UTC)
+    overlay = _load_overlay()
+    digest_config = load_digest_config().with_shared_catalog_lines(
+        {} if overlay is None else overlay.shared_catalog_lines
+    )
     state = _open_pr_state(repo, watcher_state, moment, open_prs_source)
     declared = os.environ.get(LEDGER_ENV)
     ledger_text = _load_ledger(ledger or (Path(declared) if declared else None))
@@ -850,7 +866,9 @@ def read_request(
     # Only a caller that names a replaced pull request pays for reading the new branch's diff first and blaming
     # the overlaps; without ``replaces`` the reads and their order are exactly what they were.
     early_touch = (
-        new_branch_touch(repo, head_ref, base, lane_dir, where, diff_base)
+        new_branch_touch(
+            repo, head_ref, base, lane_dir, where, diff_base, digest_config
+        )
         if replaces
         else None
     )
@@ -862,6 +880,7 @@ def read_request(
         worktree=lane_dir,
         new_head=head,
         attribute_against=early_touch,
+        config=digest_config,
     )
     return ModelPrDuplicateGuardRequest(
         repo=repo,
@@ -873,12 +892,14 @@ def read_request(
         cause=cause,
         now=moment,
         touch=early_touch
-        or new_branch_touch(repo, head_ref, base, lane_dir, where, diff_base),
+        or new_branch_touch(
+            repo, head_ref, base, lane_dir, where, diff_base, digest_config
+        ),
         judged_commits=judged_commits(dirs, head, base, diff_base, contained.values()),
         judged_base=diff_base[:12] if diff_base else None,
         open_prs=open_prs,
         ledger_text=ledger_text,
-        generated_paths=load_generated_paths(),
+        generated_paths={} if overlay is None else overlay.generated_paths,
         replaced=_replaced_facts(state, replaces, repo, where, open_prs_source)
         if replaces
         else (),

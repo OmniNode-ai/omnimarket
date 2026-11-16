@@ -8,11 +8,12 @@ records plus a ``git diff -U0`` against the merge base) and the rolling ledger t
 when any of these holds, naming the pull request to take over:
 
 - ``branch``: a pull request is already open from this branch;
-- ``lines``: overlapping existing lines or the same added file, and the same change: added lines or removed
-  lines together (a declared shared catalog line both replace does not count) at least
-  ``config.intent.min_same_change_similarity`` alike, or at least ``min_same_ticket_similarity`` alike under a
-  shared ticket (a shared ticket alone, with changed lines that share almost nothing, is one ticket over many pull
-  requests); proximity with different intent supplies only a note;
+- ``lines``: overlapping existing lines or the same added file, and the same change by the share rule: one
+  share over all the changed lines of both diffs, added and removed together, less the removed lines a deployment
+  declares shared catalog lines for that path (a path glob and a line pattern per repository, in its overlay beside
+  ``generated_paths``); at least ``config.intent.min_same_ticket_similarity`` alike under a shared ticket,
+  ``config.intent.min_same_change_similarity`` otherwise (a shared ticket alone, with changed lines that share
+  almost nothing, is one ticket over many pull requests); proximity with different intent supplies only a note;
 - ``files_and_title``: it changes the same file and its title shares four distinctive words with the new
   one (two pull requests in a second repository added one dispatch on 2026-10-30);
 - ``cause_cited``: its title (a fix title) or a ``Fix-Check:`` / ``Fix-Cause:`` body line cites a check or
@@ -309,35 +310,18 @@ def _overlap(
 def _similarity(
     new: ModelPrTouch, other: ModelPrTouch, paths: set[str]
 ) -> float | None:
-    """Share of the changed-line digests two diffs have in common on ``paths``; None when either side has none.
+    """The one share of the changed lines two diffs have in common on ``paths``; None when either side has none.
 
-    One share over the added and the removed lines together, less the declared shared catalog lines (a rendered
-    catalog's fingerprint is rewritten by every pull request that touches the catalog, so a diff's removal of it
-    says nothing about the change). A lone shared replaced line weighs what it weighs among the rest and is never
-    scored as a share of its own: two diffs that replace one line with different content are not one change, and
-    two diffs that delete the same many lines are, whatever each adds. When either side has no such line (a pure deletion of
-    catalog lines) both are compared on all their changed lines.
+    The share rule: one share over all the changed lines of both diffs, added and removed together, less the
+    removed lines a deployment declares shared catalog lines for that path; the snapshot effect folds that into
+    each file's ``digest``, so this function only counts. The bar is ``min_same_ticket_similarity`` under a shared
+    ticket and ``min_same_change_similarity`` otherwise.
     """
-    fields = ("added_digest", "removed_digest")
-    mine, theirs = _changed(new, paths, fields), _changed(other, paths, fields)
-    if not (mine and theirs):
-        mine, theirs = (
-            _changed(new, paths, ("digest",)),
-            _changed(other, paths, ("digest",)),
-        )
+    mine = {d for f in new.files if f.path in paths for d in f.digest}
+    theirs = {d for f in other.files if f.path in paths for d in f.digest}
     if not (mine and theirs):
         return None
     return len(mine & theirs) / len(mine | theirs)
-
-
-def _changed(touch: ModelPrTouch, paths: set[str], fields: tuple[str, ...]) -> set[str]:
-    return {
-        d
-        for f in touch.files
-        if f.path in paths
-        for field in fields
-        for d in getattr(f, field)
-    }
 
 
 def _same_intent(shared_ticket: bool, similarity: float | None) -> bool:

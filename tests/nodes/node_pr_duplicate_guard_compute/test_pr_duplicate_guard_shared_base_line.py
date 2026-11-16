@@ -4,8 +4,10 @@
 
 The recorded case: a rendered database catalog holds a ``sha256:`` fingerprint line at line 493 of nine files. One
 pull request added a table, another added four eval-table grants; each rewrote that one line to its own value and
-added its own list rows. Both diffs carry the same removed line, and under a shared ticket that one shared digest
-was enough to read them as the same change. The guard compares added lines and removed lines apart from the declared shared catalog line.
+added its own list rows. Both diffs carry the same removed line, which the deployment overlay declares a shared
+catalog line of that path. The share rule: one share over all the changed lines of both diffs, added and removed
+together, less the removed lines a deployment declares shared catalog lines for that path. Two different changes of
+the catalog therefore clear, and two diffs that delete the same lines or add the same lines are still one change.
 """
 
 from __future__ import annotations
@@ -19,11 +21,14 @@ from omnimarket.models.model_pr_duplicate_guard import (
     ModelOpenPr,
     ModelPrDuplicateGuardRequest,
     ModelPrDuplicateGuardResult,
+    ModelPrTouch,
 )
+from omnimarket.models.node_overlays.model_node_overlays import ModelSharedCatalogLine
 from omnimarket.nodes.node_pr_duplicate_guard_compute.handlers.handler_pr_duplicate_guard import (
     HandlerPrDuplicateGuard,
 )
 from omnimarket.nodes.node_pr_duplicate_snapshot_effect.handlers.handler_pr_duplicate_snapshot import (
+    load_digest_config,
     parse_diff,
 )
 
@@ -32,6 +37,21 @@ pytestmark = pytest.mark.unit
 NOW = datetime(2026, 11, 15, 21, 0, tzinfo=UTC)
 CATALOG = "docker/catalog/database-topology/local.yaml"
 OLD_FINGERPRINT = "6ba08450e54a3b8af18c0b30a1f487cf1697c890981c95eda6097c3ac76ce0e5"
+REPO = "OmniNode-ai/omnibase_infra"
+FINGERPRINT_LINE = r"^sha256: [0-9a-f]{64}$"
+#: What the deployment overlay declares for the repository: the fingerprint line, in the catalog files only.
+DECLARED = load_digest_config().with_shared_catalog_lines(
+    {
+        "omnibase_infra": (
+            ModelSharedCatalogLine(path="docker/catalog/*", line=FINGERPRINT_LINE),
+        )
+    }
+)
+
+
+def declared_diff(diff: str) -> ModelPrTouch:
+    """A diff read the way the snapshot reads it for the repository with the overlay's declarations."""
+    return parse_diff(diff, repo=REPO, config=DECLARED)
 
 
 def catalog_diff(*, rows: tuple[str, ...], row_line: int, new_fingerprint: str) -> str:
@@ -67,7 +87,7 @@ def open_pr(diff: str) -> ModelOpenPr:
         head_ref="omn-19998-work-state-panel-state-table",
         base="dev",
         title="OMN-24528 work_state_panel_state table and runtime grant for the board panel row",
-        touch=parse_diff(diff),
+        touch=declared_diff(diff),
     )
 
 
@@ -76,26 +96,28 @@ def run(diff: str, open_prs: tuple[ModelOpenPr, ...]) -> ModelPrDuplicateGuardRe
         ModelPrDuplicateGuardRequest.model_validate(
             {
                 "now": NOW,
-                "repo": "OmniNode-ai/omnibase_infra",
+                "repo": REPO,
                 "head_ref": "omn-19998-eval-table-grants",
                 "base": "dev",
                 "title": "OMN-19998: eval-table grants for tenant_projection_writer",
-                "touch": parse_diff(diff),
+                "touch": declared_diff(diff),
                 "open_prs": open_prs,
             }
         )
     )
 
 
-def test_parse_diff_separates_added_lines_from_the_shared_removed_line() -> None:
-    state_panel = {f.path: f for f in parse_diff(STATE_PANEL).files}[CATALOG]
-    grants = {f.path: f for f in parse_diff(EVAL_GRANTS).files}[CATALOG]
+def test_parse_diff_leaves_the_declared_shared_line_out_of_the_scored_digest() -> None:
+    state_panel = {f.path: f for f in declared_diff(STATE_PANEL).files}[CATALOG]
+    grants = {f.path: f for f in declared_diff(EVAL_GRANTS).files}[CATALOG]
+    undeclared = {f.path: f for f in parse_diff(STATE_PANEL).files}[CATALOG]
 
-    assert set(state_panel.digest) & set(grants.digest), (
-        "the removed fingerprint line is shared"
+    assert not set(state_panel.digest) & set(grants.digest), (
+        "the removed fingerprint line is declared shared and scored in neither"
     )
-    assert not set(state_panel.added_digest) & set(grants.added_digest)
-    assert set(state_panel.added_digest) < set(state_panel.digest)
+    assert set(state_panel.digest) < set(undeclared.digest), (
+        "without the declaration the removed line is scored like any other"
+    )
 
 
 def test_duplicate_guard_eval_grants_one_shared_catalog_line_distinct_content_clears() -> (
@@ -147,10 +169,9 @@ def test_duplicate_guard_shared_removals_with_different_added_lines_refuse() -> 
 
     mine, theirs = diff("modern_setting_one: on"), diff("another_replacement: off")
     path = "src/app/config.yaml"
-    new_touch = {f.path: f for f in parse_diff(mine).files}[path]
-    old_touch = {f.path: f for f in parse_diff(theirs).files}[path]
-    assert len(set(new_touch.removed_digest) & set(old_touch.removed_digest)) == 20
-    assert not set(new_touch.added_digest) & set(old_touch.added_digest)
+    new_touch = {f.path: f for f in declared_diff(mine).files}[path]
+    old_touch = {f.path: f for f in declared_diff(theirs).files}[path]
+    assert len(set(new_touch.digest) & set(old_touch.digest)) == 20
 
     result = run(mine, (open_pr(theirs),))
 

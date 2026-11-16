@@ -4,9 +4,10 @@
 
 Two diffs that each replace the same single base line carry that line's removal in common, and nothing else. Scored
 on its own, the removed side reads that lone line as a share of 1.0, so two distinct changes under different tickets
-that happen to rewrite one line refuse each other, where the blended share of all their changed lines (the rule
-before the removed side was scored apart) is a third and clears. The guard scores one share over the added and removed
-lines together, less the declared shared catalog lines, so a lone shared line weighs what it weighs among the rest.
+that happen to rewrite one line refuse each other. The share rule scores one share over all the changed lines of
+both diffs, added and removed together, less the removed lines a deployment declares shared catalog lines for that
+path, so a lone shared line weighs what it weighs among the rest (a third here, and the shared-ticket bar is
+unchanged: adopt under one ticket, clear under two).
 """
 
 from __future__ import annotations
@@ -96,7 +97,7 @@ def test_duplicate_guard_shared_replaced_line_distinct_tickets_clears() -> None:
 def test_duplicate_guard_shared_replaced_line_with_other_distinct_content_clears() -> (
     None
 ):
-    """One shared replaced line among otherwise distinct removed and added lines is a fifth of the changed lines."""
+    """One shared replaced line among otherwise distinct removed and added lines is one of seven changed lines."""
     mine = replacement(
         removed=("retry_limit: 3", "batch_window: 10"),
         added=("retry_limit: 5", "batch_size: 50"),
@@ -149,3 +150,27 @@ def test_duplicate_guard_shared_removals_of_many_lines_with_different_added_line
 
     assert result.state == "adopt"
     assert result.evidence[0].kind is EnumDuplicateEvidence.LINES
+
+
+def test_duplicate_guard_shared_line_among_distinct_lines_under_one_ticket_stays_clear() -> (
+    None
+):
+    """Through parse_diff: one shared replaced line among thirty distinct lines each is 1 of 61, below the 0.1 bar."""
+    mine = replacement(
+        removed=("retry_limit: 3", *(f"batch_window_{n:02d}: {n}" for n in range(30))),
+        added=("retry_limit: 5", *(f"batch_size_{n:02d}: {n}" for n in range(30))),
+    )
+    theirs = replacement(
+        removed=("retry_limit: 3", *(f"api_window_{n:02d}: {n}" for n in range(30))),
+        added=("retry_limit: 1", *(f"api_size_{n:02d}: {n}" for n in range(30))),
+    )
+    mine_digest = {d for f in parse_diff(mine).files for d in f.digest}
+    theirs_digest = {d for f in parse_diff(theirs).files for d in f.digest}
+    share = len(mine_digest & theirs_digest) / len(mine_digest | theirs_digest)
+    assert 0 < share < 0.1, share
+
+    for other_ticket in ("OMN-1001", "OMN-1002"):
+        result = run(mine, theirs, new_ticket="OMN-1001", other_ticket=other_ticket)
+
+        assert result.state == "clear", other_ticket
+        assert result.evidence == ()

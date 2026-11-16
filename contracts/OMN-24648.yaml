@@ -1,13 +1,14 @@
 schema_version: 1.0.0
 ticket_id: OMN-24648
 title: 'PR duplicate guard: one shared replaced line must not refuse distinct pull requests that dev clears'
-summary: The PR duplicate guard no longer scores the removed lines as a share of their own, so one base line that two diffs both replace is not read as a shared change. One share is scored over the added and removed lines together, less the declared shared catalog lines.
+summary: The PR duplicate guard no longer scores the removed lines as a share of their own, so one base line that two diffs both replace is not read as a shared change. The guard scores one share over all the changed lines of both diffs, added and removed together, less the removed lines a deployment declares shared catalog lines for that path. The additive interface change is that the scored digest of a file touch folds the declared catalog lines in, and the duplicate-guard overlay document gains an optional shared_catalog_lines key (a path glob and a line pattern per repository).
 is_seam_ticket: false
-interface_change: false
-interfaces_touched: []
+interface_change: true
+interfaces_touched:
+- public_api
 requirements:
 - id: req-omn24648-shared-replaced-line
-  statement: The guard does not refuse two distinct pull requests because they replace one line in common.
+  statement: The guard does not refuse two distinct pull requests under different tickets because they replace one line in common; under one ticket the shared-ticket bar is unchanged and a lone shared replaced line still adopts.
   acceptance:
   - id: AC1
     statement: 'AC1: a regression test built from the reviewed probe (one shared replaced line, otherwise distinct added and removed content) fails on head 6d87d35548be and passes on the fix -- falsifier: uv run pytest tests -k "duplicate_guard and shared_replaced_line" -q'
@@ -54,13 +55,13 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/nodes/node_pr_duplicate_guard_compute -k "duplicate_guard and eval_grants" -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn24648-ac4
-  description: The guard suite and the replaces suite pass at the pushed head.
+  description: 'The findings of the named review each have a test that fails on head 96fb58622179 or pins the stated rule: a pin manifest the overlay does not declare keeps its removed lines (catalog_path_scope), a pattern that does not compile refuses at load (catalog_pattern_invalid), one shared replaced non-catalog line among many distinct lines stays clear under one ticket (shared_line_among_distinct), and the share rule is stated one way in every guard file (share_rule_stated_once).'
   source: manual
   binds_ac:
   - AC4
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/nodes/node_pr_duplicate_guard_compute tests/unit/handlers/scm/test_scm_duplicate_guard_replaces.py -q --no-cov -n 0 -p no:randomly
+    check_value: uv run --frozen pytest tests/nodes/node_pr_duplicate_guard_compute -k "catalog_path_scope or catalog_pattern or shared_line_among_distinct or share_rule_stated_once" -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn24648-integration-proof
   description: Run the guard tests on a lab host at the pushed head. Hosted CI cannot reach the lab hosts, so only the local Done gate runs this unbound check.
