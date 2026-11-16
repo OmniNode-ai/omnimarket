@@ -33,6 +33,7 @@ from omnibase_core.enums.enum_context_source_status import EnumContextSourceStat
 
 from omnimarket.nodes.node_context_source_ledger_effect.handlers.ledger_row_reader import (
     ModelLedgerSourceRow,
+    PostgresLedgerRowReader,
 )
 from omnimarket.nodes.node_context_source_ledger_effect.models import (
     ModelLedgerSourceResult,
@@ -454,10 +455,9 @@ class _ProvisionalTableCursor:
         return self._answer
 
 
-def _provisional_table_reader() -> object:
+def _provisional_table_reader() -> PostgresLedgerRowReader:
     from omnimarket.nodes.node_context_source_ledger_effect.handlers.ledger_row_reader import (
         ModelLedgerSourceBinding,
-        PostgresLedgerRowReader,
     )
 
     class Connection:
@@ -479,12 +479,7 @@ def _provisional_table_reader() -> object:
 
 def test_provisional_row_is_read_unsequenced_by_the_postgres_sequence_reader() -> None:
     """Judge rows 1-3 and a provisional row 4: the reader returns the provisional row with no sequence."""
-    from omnimarket.nodes.node_context_source_ledger_effect.handlers.ledger_row_reader import (
-        PostgresLedgerRowReader,
-    )
-
     reader = _provisional_table_reader()
-    assert isinstance(reader, PostgresLedgerRowReader)
     result = reader.read_sequence(ledger_id=LEDGER, through_seq=4)
     assert sorted(row.ledger_seq or 0 for row in result) == [0, 1, 2, 3]
     assert sum(row.ledger_seq is None for row in result) == 1
@@ -493,7 +488,7 @@ def test_provisional_row_is_read_unsequenced_by_the_postgres_sequence_reader() -
 def test_provisional_row_four_does_not_resolve_a_revision_through_four() -> None:
     """The review's case end to end: the revision reads STALE at watermark 3, never complete."""
     reader = _provisional_table_reader()
-    result = _handler(reader).handle(_request(_seq_revision(4)))  # type: ignore[arg-type]
+    result = _handler(reader).handle(_request(_seq_revision(4)))
     assert result.status is EnumContextSourceStatus.STALE
     assert result.watermark_reached == 3
     assert not result.entries
