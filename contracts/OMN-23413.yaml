@@ -157,6 +157,16 @@ requirements:
   acceptance:
   - id: AC33
     statement: Every ordinary prompt goes to delegation first when bit 11 is enabled; documented slash and @claude skips remain native. A quality-passed answer is shown with model and full run ID without native Claude inference. Decline via the fixed CANNOT_ANSWER marker, failure, timeout, quality veto or OFF continues to Claude. Bounded delegated history is deduplicated by run ID and delivered once on the next native turn. onex delegation on/off and the TUI switch add/remove prompt and Agent/Task hooks together while preserving Claude settings. Real inference and token receipt evidence is required separately from deterministic process controls.
+- id: req-omn23413-ac37
+  statement: 'No Claude gateway remains (Amendment 11): no claude_gateway, cli_gateway, gateway_owns_session or `onex claude` command in omnimarket; Claude Code delegation is the two hooks.'
+  acceptance:
+  - id: AC37
+    statement: 'No Claude gateway remains (Amendment 11): no claude_gateway, cli_gateway, gateway_owns_session or `onex claude` command in omnimarket; Claude Code delegation is the two hooks.'
+- id: req-omn23413-ac38
+  statement: '`onex delegation status` reports on only when both delegation hooks (UserPromptSubmit and PreToolUse Agent|Task) are installed and bit 11 is set; a subagent-only install reports off and names the missing prompt hook. Each hook can be paused on its own (operator 2026-11-15).'
+  acceptance:
+  - id: AC38
+    statement: '`onex delegation status` reports on only when both delegation hooks (UserPromptSubmit and PreToolUse Agent|Task) are installed and bit 11 is set; a subagent-only install reports off and names the missing prompt hook. Each hook can be paused on its own (operator 2026-11-15).'
 evidence_requirements:
 - kind: tests
   description: Run fixture controls plus required installed-wheel and actual model/Claude evidence; preserve
@@ -474,4 +484,31 @@ dod_evidence:
     check_value: env ONEX_E2E_REQUIRE_COMPLETE=1 uv run pytest tests/e2e/test_combined_hook_journey.py
       tests/e2e/test_prompt_hook_lifecycle.py tests/e2e/test_prompt_delegation_real_evidence.py
       tests/unit/nodes/node_onex_setup_effect/test_onex_tui.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+
+- id: dod-omn23413-ac37-no-gateway
+  description: No gateway identifier in omnimarket's source and no `onex claude` command group; a leftover
+    gateway journal does not stop delegation; the CLI offers no gateway mode.
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac:
+  - AC37
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_no_claude_gateway_omn23413.py
+      tests/unit/nodes/node_onex_setup_effect/test_combined_delegation.py src/omnimarket/nodes/node_hook_delegate_effect/tests/test_hook_review.py
+      -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23413-ac38-both-hooks
+  description: A bundle or install with one hook is never on; status names each hook and its switch;
+    one hook can be paused alone; matchers, malformed settings and removal edges hold.
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac:
+  - AC38
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_setup_legacy_hooks.py tests/unit/nodes/node_onex_setup_effect/test_cli_delegation.py
+      tests/unit/nodes/node_onex_setup_effect/test_setup_delegation_hook_edges.py tests/unit/nodes/node_onex_setup_effect/test_cli_delegation_switches.py
+      tests/unit/nodes/node_onex_setup_effect/test_onex_tui_hook_switches.py -q --no-cov -n 0 -p no:randomly
     cwd: .

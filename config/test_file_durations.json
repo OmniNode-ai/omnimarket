@@ -5184,6 +5184,7 @@
   "tests/unit/nodes/node_onex_setup_effect/test_cli_delegation.py": 0.36,
   "tests/unit/nodes/node_onex_setup_effect/test_cli_delegation_switches.py": 0.6,
   "tests/unit/nodes/node_onex_setup_effect/test_combined_delegation.py": 2.45,
+  "tests/unit/nodes/node_onex_setup_effect/test_no_claude_gateway_omn23413.py": 3.24,
   "tests/unit/nodes/node_onex_setup_effect/test_onex_command_cancel.py": 3.43,
   "tests/unit/nodes/node_onex_setup_effect/test_onex_setup_contract.py": 0.03,
   "tests/unit/nodes/node_onex_setup_effect/test_onex_setup_model_step.py": 10.27,
