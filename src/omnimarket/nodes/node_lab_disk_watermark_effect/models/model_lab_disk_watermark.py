@@ -144,6 +144,15 @@ class ModelLabDiskWatermarkReading(_Frozen):
     #: The host disk event this run published, or the typed failure; None when the overlay declares no ``reading``.
     #: Not part of the reading file: placement reads that file's ``level`` and nothing else changes in it.
     host_disk: ModelHostDiskRead | ModelHostDiskReadFailed | None = None
+
+
+class ModelLabDiskWatermarkGrowthReading(ModelLabDiskWatermarkReading):
+    """A reading with the growth of each volume against the admission floor (OMN-21663).
+
+    The growth is a result of the run and never part of the ``host-disk-read`` event, so it sits beside the contract's
+    output model and leaves that model, which the bus-model seam check pairs with the event's consumer, unchanged.
+    """
+
     growth: tuple[ModelVolumeGrowth, ...] = ()
     growth_paged: bool = False
 

@@ -44,6 +44,7 @@ from omnimarket.nodes.node_lab_disk_watermark_effect.handlers.host_disk_ports im
 from omnimarket.nodes.node_lab_disk_watermark_effect.models.model_lab_disk_watermark import (
     Level,
     ModelHostDiskReadingSettings,
+    ModelLabDiskWatermarkGrowthReading,
     ModelLabDiskWatermarkOverlay,
     ModelLabDiskWatermarkReading,
     ModelLabDiskWatermarkRequest,
@@ -203,7 +204,7 @@ class HandlerLabDiskWatermark:
 
     def handle(
         self, request: ModelLabDiskWatermarkRequest
-    ) -> ModelLabDiskWatermarkReading:
+    ) -> ModelLabDiskWatermarkGrowthReading:
         overlay = load_overlay(request.overlay_file)
         row = host_row(overlay, request.host_name)
         reading_file = expand(row.reading_file, self.home)
@@ -243,7 +244,7 @@ class HandlerLabDiskWatermark:
         growth_paged = False
         if row.growth is not None:
             growth, growth_paged = self._growth(row, row.growth, reading_file, usages)
-        reading = ModelLabDiskWatermarkReading(
+        reading = ModelLabDiskWatermarkGrowthReading(
             host_name=row.name,
             read_at=self.now().strftime("%Y-%m-%dT%H:%M:%SZ"),
             level=worst,

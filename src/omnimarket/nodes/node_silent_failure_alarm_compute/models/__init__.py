@@ -13,18 +13,18 @@ from omnimarket.models.model_running_vs_merged_alarm import (
     ModelRunningVsMergedRequest,
     ModelRunningVsMergedResult,
 )
+from omnimarket.models.silent_failure_alarm.model_install_failure_alarm import (
+    ModelInstallFailureAlarmRequest,
+    ModelInstallFailureAlarmResult,
+    ModelInstallFailureRow,
+    ModelInstallFailureState,
+)
 
 from .model_drainer_alarm import (
     ModelDrainerObservation,
     ModelDrainerRepair,
     ModelDrainerRequest,
     ModelDrainerResult,
-)
-from .model_install_failure_alarm import (
-    ModelInstallFailureAlarmRequest,
-    ModelInstallFailureAlarmResult,
-    ModelInstallFailureRow,
-    ModelInstallFailureState,
 )
 from .model_job_exit_alarm import (
     ModelJobExitAlarmRequest,

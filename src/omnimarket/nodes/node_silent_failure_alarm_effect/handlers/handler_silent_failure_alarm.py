@@ -52,6 +52,9 @@ from omnimarket.models.silent_failure_alarm import (
 from omnimarket.models.silent_failure_alarm.model_closer_staleness_alarm import (
     ModelCloserStalenessResult,
 )
+from omnimarket.models.silent_failure_alarm.model_install_failure_alarm import (
+    ModelInstallFailureAlarmRequest,
+)
 from omnimarket.nodes.node_silent_failure_alarm_compute import (
     HandlerCloserStalenessAlarm,
     HandlerDrainerAlarm,
@@ -62,9 +65,6 @@ from omnimarket.nodes.node_silent_failure_alarm_compute import (
     HandlerThroughputResultsAlarm,
     HandlerTickLivenessAlarm,
     host_id,
-)
-from omnimarket.nodes.node_silent_failure_alarm_compute.models import (
-    ModelInstallFailureAlarmRequest,
 )
 
 from ..host_table import read_unavailable_hosts

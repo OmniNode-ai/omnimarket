@@ -14,7 +14,7 @@ import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 
-from omnimarket.nodes.node_silent_failure_alarm_compute.models import (
+from omnimarket.models.silent_failure_alarm.model_install_failure_alarm import (
     ModelInstallFailureRow,
     ModelInstallFailureState,
 )

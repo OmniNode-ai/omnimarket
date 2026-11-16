@@ -10,14 +10,14 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from omnimarket.nodes.node_silent_failure_alarm_compute.handlers.handler_install_failure_alarm import (
-    HandlerInstallFailureAlarm,
-)
-from omnimarket.nodes.node_silent_failure_alarm_compute.models.model_install_failure_alarm import (
+from omnimarket.models.silent_failure_alarm.model_install_failure_alarm import (
     ModelInstallFailureAlarmRequest,
     ModelInstallFailureAlarmResult,
     ModelInstallFailureRow,
     ModelInstallFailureState,
+)
+from omnimarket.nodes.node_silent_failure_alarm_compute.handlers.handler_install_failure_alarm import (
+    HandlerInstallFailureAlarm,
 )
 
 NOW = datetime(2026, 11, 12, 12, 0, tzinfo=UTC)
