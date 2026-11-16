@@ -11,6 +11,7 @@ still sent.
 
 from __future__ import annotations
 
+import fcntl
 import json
 import logging
 from datetime import UTC, datetime, timedelta
@@ -760,3 +761,163 @@ async def test_outbox_corrupt_refused_file_replay_through_select_survives(
     else:
         assert "unreadable" in str(_open_refused_rows(state)[0]["evidence"])
     assert recovery.report_refused_to_writers(state, datetime.now(UTC)) == 0
+
+
+async def test_outbox_reuse_log_line_is_shown_where_the_append_cli_logs(
+    tmp_path: Path,
+    handler: HandlerWorkLedgerAppendEffect,
+    ledger: _FakeLedger,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The reuse line reaches a process that configures no logging.
+
+    Only ``work-ledger serve`` calls ``logging.basicConfig``; the ``append`` command that runs the replay does
+    not, so Python's last-resort handler shows WARNING and above. An INFO reuse line would be silent there and
+    a dropped replay would leave no trace, so the line is a warning.
+    """
+    handler.handle(_request("the row that landed first"), writer_principal=WRITER)
+    queued = _request("a different row under the same request id")
+    outbox.queue_request(tmp_path, queued)
+    send, _calls = _counting_sender(handler)
+    await outbox.drain(tmp_path, send)
+
+    with caplog.at_level(logging.WARNING, logger=outbox.__name__):
+        outbox.queue_request(tmp_path, queued)
+        await outbox.drain(tmp_path, send)
+    lines = [r for r in caplog.records if r.name == outbox.__name__]
+    assert len(lines) == 1
+    assert lines[0].levelno >= logging.WARNING
+    assert str(queued.request_id) in lines[0].getMessage()
+
+
+async def test_outbox_refused_lock_reporter_leaves_the_pass_while_a_drain_holds_it(
+    tmp_path: Path, handler: HandlerWorkLedgerAppendEffect, ledger: _FakeLedger
+) -> None:
+    """The reporter rewrites a refused file's whole body, as the drain's refresh does, so it takes the drain lock.
+
+    While another process holds ``.drain.lock`` (a drain that may be mid-refresh) the reporter writes nothing:
+    the file keeps no ``reported_at`` and no case is emitted. Once the lock is free the next pass reports it
+    once, so a stamp written between a read and a replace is never lost and the writer is told once.
+    """
+    handler.handle(_request("the row that landed first"), writer_principal=WRITER)
+    queued = _request("a different row under the same request id")
+    outbox.queue_request(tmp_path, queued)
+    send, _calls = _counting_sender(handler)
+    await outbox.drain(tmp_path, send)
+    before = _refused_body(tmp_path)
+    assert "reported_at" not in before
+
+    lock_path = outbox.outbox_dir(tmp_path) / outbox.DRAIN_LOCK_NAME
+    with lock_path.open("a+", encoding="utf-8") as held:
+        fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        assert recovery.report_refused_to_writers(tmp_path, datetime.now(UTC)) == 0
+        assert _refused_body(tmp_path) == before
+        assert _open_refused_rows(tmp_path) == []
+
+    assert recovery.report_refused_to_writers(tmp_path, datetime.now(UTC)) == 1
+    assert _refused_body(tmp_path)["reported_at"]
+    assert recovery.report_refused_to_writers(tmp_path, datetime.now(UTC)) == 0
+    assert len(_open_refused_rows(tmp_path)) == 1
+
+
+async def test_outbox_refused_lock_reporter_releases_the_lock_for_the_next_drain(
+    tmp_path: Path, handler: HandlerWorkLedgerAppendEffect, ledger: _FakeLedger
+) -> None:
+    """The reporter holds the lock only for its pass: a drain right after it is not refused."""
+    handler.handle(_request("the row that landed first"), writer_principal=WRITER)
+    queued = _request("a different row under the same request id")
+    outbox.queue_request(tmp_path, queued)
+    send, _calls = _counting_sender(handler)
+    await outbox.drain(tmp_path, send)
+    assert recovery.report_refused_to_writers(tmp_path, datetime.now(UTC)) == 1
+
+    outbox.queue_request(tmp_path, queued)
+    result = await outbox.drain(tmp_path, send)
+    assert result.stopped is None
+    assert result.refused == 1
+
+
+def _three_stored_clash_files(
+    state_dir: Path, queued: ModelWorkLedgerAppendRequest, *, ages: list[timedelta]
+) -> list[Path]:
+    """Three refused files for one id and one set of rows, oldest queue stamp first.
+
+    The first drain wrote one file; it is replaced by three copies under earlier queue stamps, each told
+    apart by its ledger host and aged by ``ages`` (oldest first).
+    """
+    (written,) = _refused_files(state_dir)
+    body = json.loads(written.read_text(encoding="utf-8"))
+    paths: list[Path] = []
+    for index, age in enumerate(ages):
+        copy = json.loads(json.dumps(body))
+        copy["refusal"]["ledger_host"] = f"stored-{index}"
+        copy["refused_at"] = (datetime.now(UTC) - age).isoformat()
+        copy.pop("reported_at", None)
+        path = written.with_name(f"{index + 1:020d}_{queued.request_id}.json")
+        path.write_text(json.dumps(copy, sort_keys=True), encoding="utf-8")
+        paths.append(path)
+    written.unlink()
+    return paths
+
+
+async def test_outbox_stored_clash_files_for_one_id_refresh_only_the_newest(
+    tmp_path: Path, handler: HandlerWorkLedgerAppendEffect, ledger: _FakeLedger
+) -> None:
+    """Several stored clash files for one id and rows: the refresh rewrites the newest, the last sorted name.
+
+    The files sort by their queue stamp, oldest first, and ``stored[-1]`` is the newest. A repeat clash past
+    the window is written into that one, so the older copies keep their words and their ``refused_at``.
+    """
+    handler.handle(_request("the row that landed first"), writer_principal=WRITER)
+    queued = _request("a different row under the same request id")
+    outbox.queue_request(tmp_path, queued)
+    send, calls = _counting_sender(handler)
+    await outbox.drain(tmp_path, send)
+    expired = outbox.REUSE_WINDOW + timedelta(hours=1)
+    oldest, middle, newest = _three_stored_clash_files(
+        tmp_path,
+        queued,
+        ages=[expired + timedelta(hours=2), expired + timedelta(hours=1), expired],
+    )
+    untouched = {p: p.read_bytes() for p in (oldest, middle)}
+    assert outbox.stored_refusal(tmp_path, queued) is None
+
+    outbox.queue_request(tmp_path, queued)
+    result = await outbox.drain(tmp_path, send)
+
+    assert len(calls) == 2
+    assert result.refused == 1
+    assert _refused_files(tmp_path) == [oldest, middle, newest]
+    assert {p: p.read_bytes() for p in (oldest, middle)} == untouched
+    body = json.loads(newest.read_text(encoding="utf-8"))
+    assert body["refusal"]["ledger_host"] != "stored-2"
+    assert datetime.now(UTC) - datetime.fromisoformat(body["refused_at"]) < timedelta(
+        minutes=1
+    )
+
+
+async def test_outbox_stored_clash_files_for_one_id_reuse_any_file_in_the_window(
+    tmp_path: Path, handler: HandlerWorkLedgerAppendEffect, ledger: _FakeLedger
+) -> None:
+    """Of several stored clash files for one id and rows, one still inside the window answers the replay.
+
+    Here only the oldest-named file is fresh (its ``refused_at`` was refreshed); the newer-named ones are
+    past the window. The replay is answered from the stored refusal and nothing is sent or written.
+    """
+    handler.handle(_request("the row that landed first"), writer_principal=WRITER)
+    queued = _request("a different row under the same request id")
+    outbox.queue_request(tmp_path, queued)
+    send, calls = _counting_sender(handler)
+    await outbox.drain(tmp_path, send)
+    expired = outbox.REUSE_WINDOW + timedelta(hours=1)
+    paths = _three_stored_clash_files(
+        tmp_path, queued, ages=[timedelta(minutes=5), expired, expired]
+    )
+    before = {p: p.read_bytes() for p in paths}
+
+    outbox.queue_request(tmp_path, queued)
+    result = await outbox.drain(tmp_path, send)
+
+    assert len(calls) == 1
+    assert result.refused == 1
+    assert {p: p.read_bytes() for p in _refused_files(tmp_path)} == before
