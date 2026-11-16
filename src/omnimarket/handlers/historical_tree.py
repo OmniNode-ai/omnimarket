@@ -12,6 +12,7 @@ not import a package this repository no longer installs.
 
 from __future__ import annotations
 
+import importlib.util
 import re
 import subprocess
 from pathlib import Path
@@ -19,10 +20,6 @@ from pathlib import Path
 #: The top-level paths a replayed tree needs, in archive order. A commit that
 #: predates one of them is archived without it.
 REPLAY_PATHS: tuple[str, ...] = ("src", "tests", "scripts", "config", "pyproject.toml")
-
-_IMPORT_FAILURE_RE = re.compile(
-    r"^(?:E\s+)?(?:ModuleNotFoundError|ImportError):.*$", re.MULTILINE
-)
 
 
 def replay_paths(repo_root: Path, commit: str) -> list[str]:
@@ -39,13 +36,55 @@ def replay_paths(repo_root: Path, commit: str) -> list[str]:
     return held
 
 
-def import_failure(output: str) -> str | None:
-    """The first import error in a test run's output, or ``None`` when it has none.
+_MISSING_MODULE_RE = re.compile(
+    r"^(?:E\s+)?ModuleNotFoundError: No module named '(?P<module>[^']+)'.*$",
+    re.MULTILINE,
+)
 
-    An import error is a fact about the replayed tree, not about the answer under
-    test, so a scorer reports it apart from a failed answer.
+
+def _importable_here(module: str) -> bool:
+    """Whether the project environment can import ``module``."""
+    try:
+        return importlib.util.find_spec(module) is not None
+    except (ImportError, ValueError):
+        return False
+
+
+def _tree_holds(repo_root: Path, commit: str, module: str) -> bool:
+    """Whether ``commit``'s own tree holds ``module`` as a file, package or directory."""
+    stem = module.replace(".", "/")
+    for root in ("src/", ""):
+        for suffix in (".py", "/__init__.py", ""):
+            probe = subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(repo_root),
+                    "cat-file",
+                    "-e",
+                    f"{commit}:{root}{stem}{suffix}",
+                ],
+                capture_output=True,
+                check=False,
+            )
+            if probe.returncode == 0:
+                return True
+    return False
+
+
+def import_failure(output: str, repo_root: Path, commit: str) -> str | None:
+    """The first missing module in a test run's output that nothing can supply.
+
+    A module the change itself adds is absent from the control tree (its files
+    are put back to the parent) yet is exactly what the answer must create, and a
+    symbol the change adds fails its control with an ``ImportError`` for the same
+    reason; both are the task, not a broken tree. Only a module absent from the
+    project environment and from ``commit``'s own tree is a fact about the replay
+    that no answer can repair, so only that is reported.
     """
-    match = _IMPORT_FAILURE_RE.search(output)
-    if match is None:
-        return None
-    return match.group(0).removeprefix("E").strip()
+    for match in _MISSING_MODULE_RE.finditer(output):
+        module = match.group("module")
+        if _importable_here(module) or _tree_holds(repo_root, commit, module):
+            continue
+        return match.group(0).removeprefix("E").strip()
+    return None

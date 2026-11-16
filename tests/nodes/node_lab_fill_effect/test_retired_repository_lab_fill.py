@@ -10,10 +10,20 @@ order, over the same window and refs.
 
 from __future__ import annotations
 
+import os
+import subprocess
+from pathlib import Path
+
 import pytest
+from omnibase_core.validators.no_unguarded_git_subprocess import (
+    scrub_git_location_env,
+)
 
 from omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_merged_history import (
     load_merged_history,
+)
+from omnimarket.nodes.node_lab_fill_effect.protocols.local_lab_fill_merged_history import (
+    LocalMergedHistory,
 )
 
 pytestmark = pytest.mark.unit
@@ -35,3 +45,45 @@ def test_the_merged_history_read_lists_no_clone_of_the_retired_repository() -> N
     )
     assert settings.since_days == 120
     assert settings.evidence_prefix == "evidence("
+
+
+def _clone(path: Path, subject: str) -> None:
+    path.mkdir(parents=True)
+    git = [
+        "git",
+        "-C",
+        str(path),
+        "-c",
+        "user.name=t",
+        "-c",
+        "user.email=t@example.com",
+    ]
+    env = scrub_git_location_env(os.environ)
+    subprocess.run([*git, "init", "-q"], check=True, env=env)
+    subprocess.run(
+        [*git, "commit", "-q", "--allow-empty", "-m", subject], check=True, env=env
+    )
+    subprocess.run(
+        [*git, "update-ref", "refs/remotes/origin/dev", "HEAD"], check=True, env=env
+    )
+
+
+def test_the_merged_ticket_skip_reads_no_clone_of_the_retired_repository(
+    tmp_path: Path,
+) -> None:
+    """Behaviour: a merge only the retired repository's clone holds is not found.
+
+    Both clones are planted under the root. The ticket merged in a listed clone is
+    found; the ticket merged only in the retired clone is not. The control lists the
+    retired name in the settings and the same plant is then found.
+    """
+    _clone(tmp_path / "omnibase_core", "feat(OMN-1): core (#1)")
+    _clone(tmp_path / _RETIRED, "feat(OMN-2): retired (#2)")
+    settings = load_merged_history({})
+
+    reader = LocalMergedHistory(settings, tmp_path)
+    assert reader.merged("OMN-1") == ("omnibase_core#1",)
+    assert reader.merged("OMN-2") == ()
+
+    restored = settings.model_copy(update={"repos": (*settings.repos, _RETIRED)})
+    assert LocalMergedHistory(restored, tmp_path).merged("OMN-2") == (f"{_RETIRED}#2",)

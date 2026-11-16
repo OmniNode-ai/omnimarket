@@ -637,30 +637,9 @@ def test_every_hard_task_records_its_structural_features() -> None:
                 assert f"### {str(line).removeprefix('FILE: ')}\n" in bundle.prompt
 
 
-#: A merged single-file fix, replayed with its own full config, as the positive
-#: control of the scorer: its tree imports with the project environment as it
-#: stands, and its own test fails on its parent's source. The H6 bundle commits
-#: do not import here (they import a package this repository no longer
-#: installs), so none of them can carry this control; the test after it states
-#: what the scorer reports for each of them instead.
-REPLAYABLE_FIX: dict[str, object] = {
-    "repo_commit": "195ecfcf9e2edae162b8ead0d69fe02e594e432d",
-    "changed_files": [
-        "src/omnimarket/nodes/node_lane_container_budget_compute/handlers/"
-        "handler_lane_container_budget.py"
-    ],
-    "editable_files": [
-        "src/omnimarket/nodes/node_lane_container_budget_compute/handlers/"
-        "handler_lane_container_budget.py"
-    ],
-    "test_path": "tests/nodes/node_lane_container_budget_compute/"
-    "test_lane_container_budget.py",
-    "timeout_s": 240,
-}
-
-
 def test_the_merged_change_passes_a_hard_task_and_a_no_op_edit_fails_it() -> None:
-    config = dict(REPLAYABLE_FIX)
+    """Positive control: H6-10's own commit passes, a no-op edit fails its control."""
+    config = dict(_hard("H6-10").scorer_config)
     commit = str(config["repo_commit"])
     changed = config["changed_files"]
     assert isinstance(changed, list)
@@ -683,19 +662,112 @@ def _no_op_answer(config: dict[str, object]) -> str:
     return f"FILE: {path}\n<<<<<<< SEARCH\n{first}\n=======\n{first}\n>>>>>>> REPLACE"
 
 
-def test_a_tree_that_cannot_import_is_a_harness_error_never_a_failed_answer() -> None:
-    """H6-04 replays under its own config; its import error is reported apart."""
-    config = dict(_hard("H6-04").scorer_config)
+@pytest.mark.parametrize(
+    "path", sorted(HARD_BUNDLES.glob("H6-*.json")), ids=lambda p: p.stem
+)
+def test_every_h6_bundle_is_scorable(path: Path) -> None:
+    """Each H6 commit's tree imports, so a no-op answer FAILS its control run.
+
+    A HARNESS_ERROR here would mean the bundle's tree cannot be replayed and no
+    answer to it could ever be scored.
+    """
+    config = dict(_hard(path.stem).scorer_config)
     result = score_multi_file_edit_and_test(_no_op_answer(config), config)
-    assert result.outcome is EnumOutcome.HARNESS_ERROR
-    assert "cannot import" in result.detail
-    assert result.checklist["tree_imports"] is False
+    assert result.outcome is EnumOutcome.FAIL, result.detail
 
 
-def test_an_import_error_is_found_in_a_test_runs_output_and_only_there() -> None:
-    out = "E   ModuleNotFoundError: No module named 'gone'\n1 error in 0.1s"
-    assert import_failure(out) == "ModuleNotFoundError: No module named 'gone'"
-    assert import_failure("1 failed, 3 passed in 0.1s") is None
+def _scratch_commit(tmp_path: Path, files: dict[str, str]) -> tuple[Path, str]:
+    repo = tmp_path / "scratch"
+    for relative, body in files.items():
+        target = repo / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(body, encoding="utf-8")
+    git = [
+        "git",
+        "-C",
+        str(repo),
+        "-c",
+        "user.name=t",
+        "-c",
+        "user.email=t@example.com",
+    ]
+    subprocess.run([*git, "init", "-q"], check=True)
+    subprocess.run([*git, "add", "."], check=True)
+    subprocess.run([*git, "commit", "-q", "-m", "scratch"], check=True)
+    commit = subprocess.run(
+        [*git, "rev-parse", "HEAD"], capture_output=True, text=True, check=True
+    ).stdout.strip()
+    return repo, commit
+
+
+def _missing(module: str) -> str:
+    return f"E   ModuleNotFoundError: No module named '{module}'\n1 error in 0.1s"
+
+
+def test_a_module_absent_from_environment_and_tree_is_an_import_failure(
+    tmp_path: Path,
+) -> None:
+    repo, commit = _scratch_commit(tmp_path, {"src/pkg/__init__.py": ""})
+    found = import_failure(_missing("no_such_module_anywhere"), repo, commit)
+    assert found == "ModuleNotFoundError: No module named 'no_such_module_anywhere'"
+
+
+def test_a_module_the_change_adds_is_not_an_import_failure(tmp_path: Path) -> None:
+    """A change that adds ``pkg.fresh`` fails its control on that very module."""
+    repo, commit = _scratch_commit(
+        tmp_path, {"src/pkg/__init__.py": "", "src/pkg/fresh.py": "VALUE = 1\n"}
+    )
+    assert import_failure(_missing("pkg.fresh"), repo, commit) is None
+    assert import_failure(_missing("pkg.other"), repo, commit) is not None
+
+
+def test_a_module_the_environment_provides_is_not_an_import_failure(
+    tmp_path: Path,
+) -> None:
+    repo, commit = _scratch_commit(tmp_path, {"src/pkg/__init__.py": ""})
+    assert import_failure(_missing("json"), repo, commit) is None
+
+
+def test_a_missing_symbol_is_not_an_import_failure(tmp_path: Path) -> None:
+    """A change that adds a name fails its control with ImportError, which is the task."""
+    repo, commit = _scratch_commit(tmp_path, {"src/pkg/__init__.py": ""})
+    out = "E   ImportError: cannot import name 'added' from 'pkg' (src/pkg/__init__.py)"
+    assert import_failure(out, repo, commit) is None
+    assert import_failure("1 failed, 3 passed in 0.1s", repo, commit) is None
+
+
+def _scored_with_control_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, output: str
+) -> EnumOutcome:
+    repo, commit = _scratch_commit(
+        tmp_path, {"src/pkg/__init__.py": "", "src/pkg/fresh.py": "VALUE = 1\n"}
+    )
+    monkeypatch.setattr(scorers, "REPO_ROOT", repo)
+    monkeypatch.setattr(scorers, "materialise_tree", lambda *_: None)
+    monkeypatch.setattr(scorers, "apply_search_replace", lambda *_: None)
+    monkeypatch.setattr(scorers, "run_tree_test", lambda *_: (1, output))
+    config: dict[str, object] = {
+        "repo_commit": commit,
+        "changed_files": ["src/pkg/__init__.py"],
+        "editable_files": ["src/pkg/__init__.py"],
+        "test_path": "tests/test_pkg.py",
+    }
+    answer = "FILE: src/pkg/__init__.py\n<<<<<<< SEARCH\na\n=======\nb\n>>>>>>> REPLACE"
+    return score_multi_file_edit_and_test(answer, config).outcome
+
+
+def test_a_task_whose_change_adds_a_module_is_scored_not_discarded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    outcome = _scored_with_control_output(tmp_path, monkeypatch, _missing("pkg.fresh"))
+    assert outcome is EnumOutcome.FAIL
+
+
+def test_a_tree_missing_a_module_nothing_supplies_is_a_harness_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    outcome = _scored_with_control_output(tmp_path, monkeypatch, _missing("gone_pkg"))
+    assert outcome is EnumOutcome.HARNESS_ERROR
 
 
 def test_the_archive_names_only_the_paths_a_commit_holds(
@@ -740,7 +812,7 @@ def test_every_bundle_commit_holds_the_paths_the_replay_archives(path: Path) -> 
 
 
 def test_a_hard_edit_to_a_file_not_shown_is_refused_before_any_test_runs() -> None:
-    config = dict(REPLAYABLE_FIX)
+    config = dict(_hard("H6-10").scorer_config)
     answer = "FILE: src/elsewhere.py\n<<<<<<< SEARCH\na\n=======\nb\n>>>>>>> REPLACE"
     result = score_multi_file_edit_and_test(answer, config)
     assert result.outcome is EnumOutcome.FAIL

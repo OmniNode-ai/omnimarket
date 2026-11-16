@@ -1,0 +1,150 @@
+schema_version: 1.0.0
+ticket_id: OMN-25026
+title: 'Review findings 1 to 10 on omnimarket PR 6300 at head 11fa894677cc are fixed or argued: the guard file is renamed and bound to the grep, H6 bundles score, the import-error flag is narrowed, and the Lab comment is at the new head'
+summary: The running-reference guard is renamed and catches multi-line, backslash-continued and requirements installs; H6 bundles are re-anchored to importable commits and score; the scorer flags only a module absent from the environment and the tree; the wire test resolves each consumer's pinned tag with the gate's resolver and runs in every checkout; the seam test proves a run publishes on the declared topic; the triage pointer is validated against the imported model; both node stops are tested by behaviour.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn25026-review
+  statement: Every blocking finding of the review of omnimarket PR 6300 at head 11fa894677cc is fixed or argued with evidence in a PR comment, and the non-blocking one is fixed.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the guard file test_no_retired_package_running_references.py replaces the old guard file name, the contracts name the new path, the AC133 grep over the diff prints no line, and the AC133 DoD runs that grep, not the install guard -- falsifier: the grep over the PR diff prints a line, or the guard test passes with the old file name restored'
+  - id: AC2
+    statement: 'AC2: every H6 bundle of the delegation ladder is scorable: H6 is re-anchored to importable commits, H6-04 is no longer asserted HARNESS_ERROR, and the positive control sits on a bundle commit -- falsifier: uv run pytest benchmarks/delegation_ladder/tests/test_scorers.py -q -p no:cacheprovider passes with the non-bundle positive control and the HARNESS_ERROR assertion restored'
+  - id: AC3
+    statement: 'AC3: scorers.py and historical_tree.py flag HARNESS_ERROR only for a module absent from both the environment and the replayed tree, so a task whose change adds a module or symbol is scored, with a test for each case -- falsifier: uv run pytest benchmarks/delegation_ladder/tests/test_scorers.py -q -p no:cacheprovider passes with the any-ImportError-line rule restored'
+  - id: AC4
+    statement: 'AC4: the wire-compatibility test resolves tags with the gate''s own resolver for every consumer, no hardcoded pin remains, the tests run and do not skip in CI, and the _git helper sets the asserted identity -- falsifier: uv run pytest tests/ci/test_check_wire_compatibility_omn18868.py -q -p no:cacheprovider -rs reports a skip outside the recorded real-history set, or passes with a hardcoded pin restored'
+  - id: AC5
+    statement: 'AC5: the running-references guard catches the deleted helper''s multi-line list-form install, a backslash-continued install and a requirements*.txt install, each with a planted case that fails the guard -- falsifier: uv run pytest tests/unit/test_no_retired_package_running_references.py -q -p no:cacheprovider passes with the line-bound pattern restored'
+  - id: AC6
+    statement: 'AC6: both changed test files are run through the lab at ebb006955dd0 (base red shown) and at the new head, a PR comment starting Lab: head=<all 40 characters of the new head> quotes both receipts, and the wire-gate and delegation-ladder job logs at the head are read with onex scm job-log -- falsifier: the PR comment lacks a receipt for either sha or carries fewer than 40 sha characters, or the base run reads green'
+  - id: AC7
+    statement: 'AC7: the golden-chain seam test asserts that a run of the node publishes its result on the declared terminal topic, so the state_coverage_baseline.txt entry stays dropped on evidence -- falsifier: uv run pytest tests/test_golden_chain_seam_parallel_executor.py -q -p no:cacheprovider passes with the contract''s terminal topic changed'
+  - id: AC8
+    statement: 'AC8: the packet carries a STATUS row, the homes cited at handler_triage.py and topic_namespace.py are shown to exist in the pinned core and spi, and the triage pointer test validates the binding against the imported model, not a comment -- falsifier: uv run pytest tests -k triage_routing_policy_pointer -q -p no:cacheprovider passes with the model binding broken'
+  - id: AC9
+    statement: 'AC9: the closer overlay and the lab fill contract stopping reads of the dropped repository are backed by evidence read from the watcher and the clones, and the tests assert behaviour and not only the lists -- falsifier: the node tests pass with the old repository entry restored'
+  - id: AC10
+    statement: 'AC10: the non-blocking finding is fixed: the AC1 and AC6 DoDs of the earlier contract test their ACs, and the 2026-11-15 RULING is cited in it -- falsifier: grep -n RULING contracts/OMN-24967.yaml prints no line naming 2026-11-15'
+evidence_requirements:
+- kind: tests
+  description: The guard, scorer, wire, seam, triage pointer and two node tests run over the real tree.
+  command: bash -c 'uv run pytest benchmarks/delegation_ladder/tests/test_scorers.py tests/ci/test_check_wire_compatibility_omn18868.py tests/unit/test_no_retired_package_running_references.py tests/test_golden_chain_seam_parallel_executor.py tests/unit/test_triage_routing_policy_pointer_omn24967.py tests/nodes/node_dod_closeout_sweep_compute/test_retired_repository_dod_closeout_sweep_compute.py tests/nodes/node_lab_fill_effect/test_retired_repository_lab_fill.py -q --no-cov'
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25026-ac1-guard
+  description: AC1 the renamed guard test passes.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/test_no_retired_package_running_references.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25026-ac1-grep
+  description: AC1 the AC133 grep over the diff against origin/dev prints no line; it reads the diff, so only the local Done gate runs it.
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: command
+    check_value: bash -c 'out="$(git diff --name-only --diff-filter=d origin/dev...HEAD | xargs -r git grep -n -i -E "omnibase[_-]compat" --)"; test -z "$out"'
+    cwd: .
+- id: dod-omn25026-ac2
+  description: 'AC2 every H6 bundle replays: a no-op answer fails its control and the positive control passes on a bundle commit.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest benchmarks/delegation_ladder/tests/test_scorers.py -q --no-cov -n 0 -p no:randomly -k 'h6 or merged_change or hard_edit'
+    cwd: .
+- id: dod-omn25026-ac3
+  description: AC3 a module the change adds, a symbol the change adds and a module in the environment are not harness errors; a module absent from both is.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest benchmarks/delegation_ladder/tests/test_scorers.py -q --no-cov -n 0 -p no:randomly -k 'import_failure or adds_a_module or missing_symbol or nothing_supplies or environment_provides'
+    cwd: .
+- id: dod-omn25026-ac4
+  description: AC4 the wire-compatibility tests pass, the helper-level controls run in every checkout and the real-history set is recorded.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_check_wire_compatibility_omn18868.py -q --no-cov -n 0 -p no:randomly -rs
+    cwd: .
+- id: dod-omn25026-ac5
+  description: AC5 the guard fails for each planted multi-line, backslash-continued and requirements install.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/test_no_retired_package_running_references.py -q --no-cov -n 0 -p no:randomly -k planted
+    cwd: .
+- id: dod-omn25026-ac6-integration-proof
+  description: AC6 both changed test files run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this check.
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: command
+    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane fix6300-2048 -- uv run --frozen pytest benchmarks/delegation_ladder/tests/test_scorers.py tests/ci/test_check_wire_compatibility_omn18868.py -q --no-cov
+    cwd: .
+- id: dod-omn25026-ac6-hosted
+  description: AC6 the scorer and wire files run at the pushed head in hosted CI; the base and head lab receipts are in the PR comment.
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest benchmarks/delegation_ladder/tests/test_scorers.py tests/ci/test_check_wire_compatibility_omn18868.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25026-ac7
+  description: AC7 a run of the seam node publishes on the declared terminal topic and a changed topic publishes nothing there.
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_golden_chain_seam_parallel_executor.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25026-ac8
+  description: AC8 the triage default routing policy validates as the imported core model and the cited path is that model's source file.
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/test_triage_routing_policy_pointer_omn24967.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25026-ac9
+  description: AC9 the closer and the lab fill read no clone of the dropped repository, with a planted clone as the control.
+  source: manual
+  binds_ac:
+  - AC9
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_dod_closeout_sweep_compute/test_retired_repository_dod_closeout_sweep_compute.py tests/nodes/node_lab_fill_effect/test_retired_repository_lab_fill.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25026-ac10
+  description: AC10 the earlier contract cites the 2026-11-15 RULING.
+  source: manual
+  binds_ac:
+  - AC10
+  checks:
+  - check_type: command
+    check_value: grep -n 'RULING 2026-11-15' contracts/OMN-24967.yaml
+    cwd: .

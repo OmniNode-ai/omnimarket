@@ -2198,48 +2198,50 @@ def write_mined(
 HARD_BUNDLES = HERE / "bundles_hard"
 
 # (merged commit, the test that commit added or changed). Picked from the
-# first-parent history of omnimarket dev at 29555c1082f2a8f6d76bd18ac4a73c77bf48a20b
-# for a spread of files touched and of where the cause sits.
+# first-parent history of omnimarket dev at f3a1133502a568471206a174373fd7a2a3770d45,
+# all after the commit that took the last retired-package import out of src, so every
+# tree imports in the project environment and the scorer can run it; for a spread of
+# files touched and of where the cause sits.
 HARD_COMMITS: tuple[tuple[str, str], ...] = (
     (
-        "272fde1064b71d207b57c2a206febe14637cdd68",
-        "tests/nodes/node_delegation_availability_report_compute/test_golden_chain_delegation_availability_report_compute.py",
+        "0732bdd0ad089865b608775bc1801db51c04a8bd",
+        "tests/unit/nodes/node_work_progress_compute/test_overlay_event_bus_omn19998.py",
     ),
     (
-        "56d792624915857a39365ee58508ca1c1c367859",
-        "tests/unit/nodes/node_pr_lifecycle_orchestrator/test_ci_red_triage.py",
+        "08428a3bfb86b39ce7180affea47c51b82c62173",
+        "tests/nodes/node_runner_group_exposure_effect/test_bus_group_read.py",
     ),
     (
-        "7edc88f40c542f3cd06a0302cf04e15aa378c3ca",
-        "tests/unit/test_occ_contention_omn_15247.py",
+        "8e65adba80331fe9e49a0acf8ba3779f2e61eb80",
+        "tests/nodes/node_factory_floor_publish_effect/test_runner_fleet_projection_read.py",
     ),
     (
-        "611dedc42eb9740873845c582f7ef6407dd95a73",
-        "tests/nodes/node_merge_sweep_orchestrator/test_error_chain_merge_sweep_orchestrator.py",
+        "ddd7db6f245c7fc07c8e1b65c1a89f78e26c5842",
+        "tests/nodes/node_remote_lane_compute/test_host_reach_placement.py",
     ),
     (
-        "7036d5794b81fb36c11a671c15a07526d1794b07",
-        "tests/nodes/node_delegation_output_materialize_effect/test_materialize_refusals.py",
+        "6ccfc8efb47a282bc711974ed89eb66a25e379ac",
+        "tests/unit/nodes/node_github_repo_write_effect/test_overlay_three_readers_omn24088.py",
     ),
     (
-        "bf08d061a1c03327f4b4d85868e88add17806250",
-        "tests/nodes/node_delegation_eval_sample_compute/test_delegation_eval_sample.py",
+        "bff989b921882bffecf0c00dd768de7308b0173d",
+        "tests/handlers/test_edge_overlay_identity_routes.py",
     ),
     (
-        "4f2cd57b33ae9ecc707361fb04f729523872b347",
-        "tests/unit/nodes/node_projection_pr_state/test_pr_state_schema_versions.py",
+        "bb92a404d0a358b295b7fe5ba3382096e21275cf",
+        "tests/unit/nodes/node_overlay_store/test_snapshot_bus_lane.py",
     ),
     (
-        "cdba07dc7337ac7fc347f1e84045a69e4f75e4ff",
-        "tests/unit/delegation/test_unbound_local_model_probe_omn17427.py",
+        "e57a70ff3f48a6e686fa1b72bf5ad923cfb141df",
+        "tests/nodes/node_context_pack_orchestrator/test_duplicate_tier_text_chunk_refs.py",
     ),
     (
-        "15afc64f9df1d957b57b3a3e10fefa905ee757a5",
-        "tests/test_omn17372_byok_bus_transport_auth.py",
+        "e6ab57bf3757b2d36c6851d3020b2e91b3daca0f",
+        "tests/nodes/node_runner_group_exposure_effect/test_org_read_permission.py",
     ),
     (
-        "a0f4654f2ab8d5e523c8acac1b80530ce863fc41",
-        "tests/unit/nodes/node_delegate_skill_orchestrator/test_claim_store_contract_schema_omn19661.py",
+        "195ecfcf9e2edae162b8ead0d69fe02e594e432d",
+        "tests/nodes/node_lane_container_budget_compute/test_lane_container_budget.py",
     ),
 )
 

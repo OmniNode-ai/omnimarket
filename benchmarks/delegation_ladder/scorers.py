@@ -771,7 +771,7 @@ def score_multi_file_edit_and_test(
         patched_rc, patched_out = 1, ""
         if refused is None:
             patched_rc, patched_out = run_tree_test(tree, test_path, timeout_s)
-    broken = import_failure(control_out)
+    broken = import_failure(control_out, REPO_ROOT, commit)
     if control_rc == 0 or broken is not None:
         return ModelScore(
             outcome=EnumOutcome.HARNESS_ERROR,
