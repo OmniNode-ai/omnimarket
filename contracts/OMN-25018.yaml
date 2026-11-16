@@ -1,0 +1,86 @@
+schema_version: 1.0.0
+ticket_id: OMN-25018
+title: The Mac lab-alarm-broker-lag exit 2 is read as a real lag with a named owner or fixed as a reading fault
+summary: 'The broker-lag ALARM the Mac job prints is a real, growing consumer-group backlog on the dev broker, not a reading fault. This change adds a test file pinning what one run of the broker-lag verb prints: the alarm lines name the group and its topic, the manifest fallback note and the alarm print in the same run, a manifest that answered prints no fallback note, and the verb prints no effects-held reading. No source file changes.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn25018-broker-lag-job-output
+  statement: The lab alarm's broker-lag verb exits 2 on a persistently growing group and prints the group, its topic and the growth, without hiding the manifest fallback note and without printing any effects-held reading.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the consumer groups and topics the alarm reports lagging are listed with the lag read through the declared broker read path, and the lag is classed real or a reading fault -- falsifier: the draft PR body read for a Diagnosis line listing each group, topic and lag value with the read command used'
+  - id: AC2
+    statement: 'AC2: a real lag names the stalled consumer and its fix or its owner, and a reading fault is fixed with a regression test that fails on main and passes on the fix, both runs on the lab -- falsifier: uv run pytest on the new test file under the lab alarm node''s tests in omnimarket, red on origin/main and green on the branch, or the PR body naming the owner'
+  - id: AC3
+    statement: 'AC3: the PR body states why the behaviour of omnimarket 5522, 5413 and 5355 cannot be seen while the alarm fires -- falsifier: the draft PR body read for one sentence per line naming the check the alarm blocks'
+  - id: AC4
+    statement: 'AC4: a draft PR with a Lab: line is open and a MSG to orchestrator-31d9-swarm names its branch and the exact installer command -- falsifier: onex scm pr-view body read for the Lab: line, and a grep of the ledger for the MSG row'
+  - id: AC5
+    statement: 'AC5: integrated: after the orchestrator installs the branch on the Mac h200, one run of the launchd job ai.omninode.lab-alarm-broker-lag reads its broker lag with the exit code the diagnosis predicts -- falsifier: readback on the Mac h200 of the job log and exit status after the install, plus the broker read path output beside it'
+evidence_requirements:
+- kind: tests
+  description: The broker-lag job output tests pass.
+  command: uv run --frozen pytest tests/nodes/node_lab_alarm/test_lab_alarm_broker_lag_job_output.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25018-ac1
+  description: The Diagnosis line, listing each lagging group, topic and lag with the read command, is on the ledger MSG row to the orchestrator and in the draft PR body.
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: command
+    check_value: grep -F "OMN-25018" "$ONEX_LEDGER_PATH" | grep -F "| MSG |" | grep -F "Diagnosis:"
+    cwd: .
+- id: dod-omn25018-ac2
+  description: The lag is classed real, not a reading fault, so no source fix is made; the owner is named in the PR body and the job output is pinned by the new tests.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_lab_alarm/test_lab_alarm_broker_lag_job_output.py -q --no-cov -k "growth_exits_2"
+    cwd: .
+- id: dod-omn25018-ac3
+  description: The alarm does not hide the fallback note, prints no fallback note when the manifest answered, and prints no effects-held reading -- proven by the named tests.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_lab_alarm/test_lab_alarm_broker_lag_job_output.py -q --no-cov -k "fallback_note or manifest_that_answered or effects_held"
+    cwd: .
+- id: dod-omn25018-ac4
+  description: A MSG row to orchestrator-31d9-swarm names the branch and the installer command.
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: command
+    check_value: grep -F "OMN-25018" "$ONEX_LEDGER_PATH" | grep -F "| MSG |" | grep -F "omn-25018-broker-lag-alarm-reading" | grep -F "orchestrator-31d9-swarm"
+    cwd: .
+- id: dod-omn25018-ac5
+  description: After the install on the Mac h200, a STATUS row names the installed revision and the job's exit status and log line.
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: command
+    check_value: grep -F "OMN-25018" "$ONEX_LEDGER_PATH" | grep -F "| STATUS |" | grep -F "installed=h200:"
+    cwd: .
+- id: dod-omn25018-integration-proof
+  description: Run this pull request's own check on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25018 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_lab_alarm -q --no-cov
+    cwd: .
