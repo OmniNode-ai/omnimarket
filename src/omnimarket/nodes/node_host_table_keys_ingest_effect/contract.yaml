@@ -39,12 +39,18 @@ handler_routing:
 event_bus:
   subscribe_topics:
   - onex.evt.omnimarket.overlay-store-loaded.v1
-  publish_topics: []
+  publish_topics:
+  - onex.evt.omnimarket.host-table-keys-ingested.v1
+externally_consumed_topics:
+- onex.evt.omnimarket.host-table-keys-ingested.v1
 broker_acl_grants:
   - principal: "${ONEX_ACL_DEV_RUNTIME_EFFECTS_PRINCIPAL}"
     grants:
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.overlay-store-loaded.v1, operation: READ}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.overlay-store-loaded.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-table-keys-ingested.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-table-keys-ingested.v1, operation: DESCRIBE}
+terminal_event: onex.evt.omnimarket.host-table-keys-ingested.v1
 runtime_dispatch:
   command_topic: onex.evt.omnimarket.overlay-store-loaded.v1
   terminal_events:
