@@ -29,3 +29,11 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect/test_review_key_credit_probe_schedule_omn24656.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn24656-integration-proof
+  description: 'Integration proof run on a lab host at the pushed head: the schedule test file runs through lab-work.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24656 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_claude_review_gateway_effect/test_review_key_credit_probe_schedule_omn24656.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
