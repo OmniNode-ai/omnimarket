@@ -110,7 +110,9 @@ SCHEDULE_BLOCKS = {
 }
 
 
-def _source(overlay: ModelCodeGraphOverlay) -> GitRepoSource:
+def _source(
+    overlay: ModelCodeGraphOverlay, *, max_fetch_age: timedelta | None = None
+) -> GitRepoSource:
     if overlay.graph_backend != "git":
         raise ValueError(
             "graph_backend in_memory is the test backend; a deployment reads git"
@@ -120,7 +122,11 @@ def _source(overlay: ModelCodeGraphOverlay) -> GitRepoSource:
         raise ValueError(
             f"{overlay.repos_root_env} is not set; the overlay names it as the clones' root"
         )
-    return GitRepoSource(Path(root), max_file_bytes=overlay.graph_roots.max_file_bytes)
+    return GitRepoSource(
+        Path(root),
+        max_file_bytes=overlay.graph_roots.max_file_bytes,
+        max_fetch_age=max_fetch_age,
+    )
 
 
 #: The versions this process holds. The persistent, merge-refreshed projection replaces it (OMN-23648, later slice).
@@ -213,7 +219,7 @@ def build_refresh_handler() -> tuple[CodeGraphRefresh, str]:
 
     refresh = CodeGraphRefresh(
         overlay=overlay,
-        heads=_source(overlay),
+        heads=_source(overlay, max_fetch_age=FETCH_MAX_AGE),
         state_directory=directory,
         run=run,
         clock=lambda: datetime.now(UTC),
@@ -261,6 +267,9 @@ def build_handler(write: bool) -> tuple[CodeGraphRun, str]:
 
 #: How long a writing run waits for another writing build of the state directory before it defers.
 BUILD_LOCK_WAIT = timedelta(minutes=15)
+#: How old a clone's last fetch may be before the refresh stops reading its head as current. The
+#: canonical clone sync fetches the host's clones every 3 minutes, so an hour is twenty missed ticks.
+FETCH_MAX_AGE = timedelta(hours=1)
 
 
 def _run(arguments: argparse.Namespace, write: bool) -> int:
@@ -270,7 +279,13 @@ def _run(arguments: argparse.Namespace, write: bool) -> int:
         state_directory(dict(os.environ)) if write else None, wait=BUILD_LOCK_WAIT
     ) as held:
         if not held:
-            sys.stdout.write("RUN status=deferred reason=build-lock-held\n")
+            # Exit 0 on purpose: the holder is a writing build whose row the ledger gets, and the
+            # drill unit counts exit 1 as success, so a nonzero code could not tell it apart. The
+            # line says that this run waited out the lock and for how long.
+            sys.stdout.write(
+                "RUN status=deferred reason=build-lock-held "
+                f"waited={int(BUILD_LOCK_WAIT.total_seconds())}s\n"
+            )
             return 0
         return _build_and_report(arguments, write)
 

@@ -140,7 +140,7 @@ class CodeGraphRefresh:
                 attempted_at=now,
                 current_heads=current_heads,
                 changed=changed,
-                reason=result.failure or "run-failed",
+                reason=reason_token(result.failure) if result.failure else "run-failed",
                 result=result,
             )
         # The marker is what the build left, not what this decision assumed: read it back.

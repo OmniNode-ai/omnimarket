@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import subprocess
 from collections.abc import Callable, Mapping
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
@@ -53,11 +53,17 @@ class GitRepoSource:
     """Read ``<root>/<repo>`` at a ref from its git objects."""
 
     def __init__(
-        self, root: Path, *, max_file_bytes: int, timeout_seconds: int = 600
+        self,
+        root: Path,
+        *,
+        max_file_bytes: int,
+        timeout_seconds: int = 600,
+        max_fetch_age: timedelta | None = None,
     ) -> None:
         self._root = root
         self._max = max_file_bytes
         self._timeout = timeout_seconds
+        self._max_fetch_age = max_fetch_age
 
     def _git(self, clone: Path, *arguments: str, stdin: bytes | None = None) -> bytes:
         try:
@@ -91,11 +97,35 @@ class GitRepoSource:
         except (RepoSourceError, ValueError):
             return None
 
+    def _refuse_stale_fetch(self, clone: Path, repo: str) -> None:
+        """Raise when the clone's last fetch is older than ``max_fetch_age``.
+
+        This source reads the clone's own tracking ref and fetches nothing: on a lab host the
+        canonical clone sync fetches the clones, so a stalled sync leaves every head frozen and a
+        refresh comparing them would read ``fresh`` forever. ``FETCH_HEAD`` is rewritten by every
+        fetch, so its age is the age of the data. A clone with no ``FETCH_HEAD`` has no fetch
+        record to judge and is read as it is.
+        """
+        if self._max_fetch_age is None:
+            return
+        fetch_head = Path(
+            self._git(clone, "rev-parse", "--git-path", "FETCH_HEAD").decode().strip()
+        )
+        if not fetch_head.is_absolute():
+            fetch_head = clone / fetch_head
+        try:
+            fetched = datetime.fromtimestamp(fetch_head.stat().st_mtime, UTC)
+        except OSError:
+            return
+        if datetime.now(UTC) - fetched > self._max_fetch_age:
+            raise RepoSourceError(f"fetch-stale:{repo}")
+
     def head(self, repo: str, ref: str) -> str:
-        """The commit ``ref`` resolves to in the clone; no clone raises."""
+        """The commit ``ref`` resolves to in the clone; no clone, or a stale fetch when bounded, raises."""
         clone = self._root / repo
         if not (clone / ".git").exists():
             raise RepoSourceError(f"no-clone:{repo}")
+        self._refuse_stale_fetch(clone, repo)
         return (
             self._git(clone, "rev-parse", "--verify", f"{ref}^{{commit}}")
             .decode()

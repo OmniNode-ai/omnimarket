@@ -10,8 +10,12 @@ renders its own ten-minute timer; and the writing build's marker is what the ref
 from __future__ import annotations
 
 import json
+import os
 import re
+import shlex
 import subprocess
+import threading
+import time
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -28,6 +32,7 @@ from omnimarket.models.model_code_graph import (
 )
 from omnimarket.nodes.node_code_graph_effect import runtime_code_graph
 from omnimarket.nodes.node_code_graph_effect.adapters.repo_sources import (
+    GitRepoSource,
     InMemoryRepoSource,
 )
 from omnimarket.nodes.node_code_graph_effect.handlers.code_graph_refresh import (
@@ -457,6 +462,10 @@ def test_failed_build_exits_one_and_leaves_the_marker_untouched(
     code, out, _err = _tick(capsys)
     assert code == 1, out
     assert "REFRESH outcome=failed" in out
+    # the build's own failure is the reason: not the read-back's marker-not-rewritten, which also
+    # answers failed when the status branch is gone
+    assert "reason=append-failed-error" in out, out
+    assert "marker-not-rewritten" not in out
     assert (state / BUILT_MARKER).read_bytes() == before
     assert ledger.lines == []
     assert (state / ATTEMPT_MARKER).is_file(), (
@@ -659,15 +668,24 @@ def test_contract_states_the_bound_ticket_criteria_with_the_architecture_graph()
     requirements = document["requirements"]
     assert isinstance(requirements, list)
     criteria = {item["id"]: item["statement"] for item in requirements[0]["acceptance"]}
-    assert list(criteria) == ["AC1", "AC3", "AC4"]
+    assert list(criteria) == ["AC1", "AC2", "AC3", "AC4"]
     assert "architecture graph" in criteria["AC1"]
     assert "NOT MET" in criteria["AC1"]
     assert "OMN-14572" in criteria["AC1"]
+    # AC2 as the ticket words it, and marked NOT MET: its dod check reads a lane report that holds no query yet
     assert (
-        "installed from its branch and observed running before the pull request is handed off"
-        in criteria["AC4"]
-    )
+        'the query "who imports node_host_table_keys_ingest_effect" is run against the refreshed graph'
+        " and its answer recorded in the lane report"
+    ) in criteria["AC2"]
+    assert "NOT MET" in criteria["AC2"]
     assert "polling timer" in criteria["AC3"]
+    # the installed-unit criterion follows the merge: no branch install is observable before it
+    assert "after the pull request merges" in criteria["AC4"]
+    assert "before the pull request is handed off" not in criteria["AC4"]
+    # every dod_evidence id that names an AC names one the acceptance list holds
+    for item in document["dod_evidence"]:
+        for named in re.findall(r"-ac(\d+)", str(item["id"])):
+            assert f"AC{named}" in criteria, item["id"]
 
 
 def test_contract_binds_the_installed_unit_to_a_local_done_gate_check_on_h053() -> None:
@@ -701,3 +719,360 @@ def test_contract_integration_proof_matches_only_non_failed_outcomes_and_states_
     )
     for outcome in ("refreshed", "fresh", "deferred"):
         assert re.search(pattern, f"REFRESH outcome={outcome} changed=none") is not None
+
+
+def test_contract_of_the_review_findings_labels_no_check_with_an_ac_its_list_lacks() -> (
+    None
+):
+    document = yaml.safe_load(
+        (CONTRACT.parent / "OMN-24659.yaml").read_text(encoding="utf-8")
+    )
+    requirements = document["requirements"]
+    stated = {item["id"] for item in requirements[0]["acceptance"]}
+    assert stated == {"AC1", "AC2", "AC3", "AC4", "AC5"}
+    for item in document["dod_evidence"]:
+        for named in re.findall(r"-ac(\d+)", str(item["id"])):
+            assert f"AC{named}" in stated, item["id"]
+        for named in re.findall(r"\bAC(\d+)\b", str(item["description"])):
+            assert f"AC{named}" in stated, (item["id"], "describes an AC it lacks")
+    # the pull request body check survives under a label that claims no criterion
+    scope = _dod(document, "dod-omn24659-pr-body-scope")
+    assert scope["execution_scope"] == "local_done_gate"
+    assert "binds_ac" not in scope
+    assert "ARCH_GRAPH_BOLT_URI" in scope["checks"][0]["check_value"]
+
+
+def _installed_unit_script(tmp_path: Path) -> str:
+    """The sh -c script of the installed-unit check, its host paths moved under ``tmp_path``."""
+    command = _dod(_contract(), "dod-omn24642-ac4-installed-unit")["checks"][0][
+        "check_value"
+    ]
+    script = shlex.split(command)[-1]
+    assert "/data/omninode" in script
+    return script.replace("/data/omninode", str(tmp_path / "data"))
+
+
+def _installed_unit(
+    tmp_path: Path, ticks: Sequence[str], *, age: timedelta = timedelta(0)
+) -> int:
+    """Run the installed-unit check over a unit and a refresh log whose ticks print ``ticks``."""
+    home = tmp_path / "home"
+    unit = home / ".config" / "systemd" / "user" / "onex-code-graph-refresh.service"
+    unit.parent.mkdir(parents=True)
+    unit.write_text(
+        "ExecStart=/venv/bin/python -m omnimarket.nodes.node_code_graph_effect refresh\n",
+        encoding="utf-8",
+    )
+    log = (
+        tmp_path
+        / "data"
+        / "registry"
+        / ".onex_state"
+        / "code-graph"
+        / "code-graph-refresh.out.log"
+    )
+    log.parent.mkdir(parents=True)
+    log.write_text("".join(f"{tick}\n" for tick in ticks), encoding="utf-8")
+    stamp = (datetime.now(UTC) - age).timestamp()
+    os.utime(log, (stamp, stamp))
+    done = subprocess.run(
+        ["sh", "-c", _installed_unit_script(tmp_path)],
+        env={"HOME": str(home), "PATH": os.environ["PATH"]},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return done.returncode
+
+
+FRESH_TICK = "REFRESH outcome=fresh changed=none built_at=none built_heads=none attempted_at=none reason=heads-unchanged"
+FAILED_TICK = "REFRESH outcome=failed changed=none built_at=none built_heads=none attempted_at=none reason=heads-unreadable"
+
+
+@pytest.mark.parametrize("outcome", ["refreshed", "fresh", "deferred"])
+def test_contract_installed_unit_check_passes_when_the_last_tick_did_not_fail(
+    tmp_path: Path, outcome: str
+) -> None:
+    tick = f"REFRESH outcome={outcome} changed=none built_at=none"
+    assert _installed_unit(tmp_path, [FAILED_TICK, tick]) == 0
+
+
+def test_contract_installed_unit_check_fails_when_every_tick_printed_failed(
+    tmp_path: Path,
+) -> None:
+    assert _installed_unit(tmp_path, [FAILED_TICK, FAILED_TICK, FAILED_TICK]) != 0
+
+
+def test_contract_installed_unit_check_fails_when_the_last_tick_failed(
+    tmp_path: Path,
+) -> None:
+    assert _installed_unit(tmp_path, [FRESH_TICK, FRESH_TICK, FAILED_TICK]) != 0
+
+
+def test_contract_installed_unit_check_fails_for_a_log_with_no_refresh_line(
+    tmp_path: Path,
+) -> None:
+    assert _installed_unit(tmp_path, ["RUN status=deferred"]) != 0
+
+
+def test_contract_installed_unit_check_fails_for_a_log_older_than_thirty_minutes(
+    tmp_path: Path,
+) -> None:
+    assert _installed_unit(tmp_path, [FRESH_TICK], age=timedelta(hours=2)) != 0
+
+
+def _status_row_check(ledger: Path) -> int:
+    command = _dod(_contract(), "dod-omn24642-ac1-status-rows")["checks"][0][
+        "check_value"
+    ]
+    # the variable the check reads the ledger path from is the one its own text names
+    variable = re.search(r"\$\{(\w+):-", command)
+    assert variable is not None
+    done = subprocess.run(
+        ["sh", "-c", command],
+        env={variable.group(1): str(ledger), "PATH": os.environ["PATH"]},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return done.returncode
+
+
+STATUS_HEAD = "2026-11-16T10:00:00Z | STATUS | lane=graphfresh-2300 | ticket=OMN-24642 | graph=code-graph"
+
+
+@pytest.mark.parametrize(
+    ("cells", "passes"),
+    [
+        (
+            " | graph_built=2026-11-16T09:40:12Z | revisions=omnimarket@0123456789ab,omnibase_core@abcdef012345 | stale=false",
+            True,
+        ),
+        (
+            " | graph_built=2026-11-16T09:40:12Z | revisions=omnimarket@0123456789ab | stale=true",
+            True,
+        ),
+        ("", False),
+        (" | revisions=omnimarket@0123456789ab | stale=false", False),
+        (" | graph_built=2026-11-16T09:40:12Z | stale=false", False),
+        (
+            " | graph_built=2026-11-16T09:40:12Z | revisions=omnimarket@0123456789ab",
+            False,
+        ),
+        (
+            " | graph_built=none | revisions=omnimarket@0123456789ab | stale=false",
+            False,
+        ),
+        (
+            " | graph_built=2026-11-16T09:40:12Z | revisions=omnimarket@0123456789ab | stale=unknown",
+            False,
+        ),
+    ],
+)
+def test_contract_status_row_check_reads_build_time_revisions_and_staleness(
+    tmp_path: Path, cells: str, passes: bool
+) -> None:
+    ledger = tmp_path / "ledger.md"
+    ledger.write_text(f"{STATUS_HEAD}{cells}\n", encoding="utf-8")
+    assert (_status_row_check(ledger) == 0) is passes
+
+
+def test_the_refresh_schedule_installs_through_the_cli_unit_flag_in_a_dry_run(
+    world: dict[str, object],
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # the declared-overlay-root guard reads the lab host table, which has its own tests
+    monkeypatch.setattr(
+        runtime_code_graph, "refuse_undeclared_overlay_root", lambda *_a, **_k: None
+    )
+    code = main(
+        [
+            "schedule",
+            "install",
+            "--unit",
+            "refresh",
+            "--host",
+            "example-host",
+            "--workspace-root",
+            str(tmp_path / "root"),
+            "--dry-run",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert code == 0, out
+    assert "onex-code-graph-refresh" in out
+    assert "-m omnimarket.nodes.node_code_graph_effect refresh\n" in out
+    assert "OnCalendar=*-*-* *:0/10:00 UTC" in out
+    assert runtime_code_graph.SCHEDULE_BLOCKS["refresh"] == "refresh_schedule"
+
+
+def test_every_writing_unit_renders_the_one_state_directory_variable(
+    tmp_path: Path,
+) -> None:
+    contract = yaml.safe_load(
+        (Path(runtime_code_graph.__file__).parent / "contract.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    blocks = [
+        runtime_code_graph.SCHEDULE_BLOCKS[unit]
+        for unit in ("nightly", "drill", "refresh")
+    ]
+    directories = {contract[block]["state_directory"] for block in blocks}
+    assert len(directories) == 1, (
+        "the nightly, the drill and the refresh share one lock and one marker"
+    )
+    (directory,) = directories
+    root = tmp_path / "root"
+    for block in blocks:
+        scheduler = CodeGraphScheduler(
+            schedule=load_schedule(block=block),
+            overlay=overlay(),
+            home=tmp_path / "home",
+            run=_Runner(),
+        )
+        result = scheduler.install(
+            "example-host",
+            omni_root=root,
+            overlay_root=tmp_path / "overlays",
+            dry_run=True,
+        )
+        assert result.exit_code == 0, result.stderr
+        assert (
+            f'Environment="ONEX_CODE_GRAPH_STATE_DIR={root / directory}"'
+            in result.stdout
+        ), block
+
+
+def test_a_writing_run_that_waits_for_the_lock_builds_once_it_is_released(
+    world: dict[str, object],
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = world["state"]
+    assert isinstance(state, Path)
+    ledger = world["ledger"]
+    assert isinstance(ledger, InMemoryLedger)
+    monkeypatch.setattr(runtime_code_graph, "BUILD_LOCK_WAIT", timedelta(seconds=30))
+    holding = threading.Event()
+    release = threading.Event()
+
+    def hold() -> None:
+        # a separate open file description, so the nightly's flock contends with it
+        with build_lock(state) as held:
+            assert held
+            holding.set()
+            release.wait(timeout=30)
+
+    holder = threading.Thread(target=hold)
+    holder.start()
+    assert holding.wait(timeout=10)
+    threading.Timer(1.0, release.set).start()
+    started = time.monotonic()
+    code = main(["nightly"])
+    waited = time.monotonic() - started
+    holder.join(timeout=10)
+    out = capsys.readouterr().out
+    assert code == 0, out
+    assert "status=deferred" not in out
+    assert waited >= 0.9, "the run waited for the holder instead of deferring at once"
+    assert len(ledger.lines) == 1, "the waited-for run built and wrote its row"
+
+
+def test_a_writing_run_that_waits_out_the_lock_defers_with_its_stated_reason(
+    world: dict[str, object],
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = world["state"]
+    assert isinstance(state, Path)
+    ledger = world["ledger"]
+    assert isinstance(ledger, InMemoryLedger)
+    monkeypatch.setattr(runtime_code_graph, "BUILD_LOCK_WAIT", timedelta(seconds=1))
+    with build_lock(state) as held:
+        assert held
+        code = main(["nightly"])
+    out = capsys.readouterr().out
+    # exit 0 by design: the holder is a writing build whose row the ledger gets, and a nonzero exit
+    # would fail the drill unit, which counts exit 1 as success; the line says it waited and why
+    assert code == 0
+    assert "RUN status=deferred reason=build-lock-held waited=1s" in out
+    assert ledger.lines == []
+
+
+def test_repo_sources_head_fails_on_a_stale_fetch_record(tmp_path: Path) -> None:
+    clones = tmp_path / "clones"
+    make_clone(clones, "example_core", CORE)
+    git_source = GitRepoSource(
+        clones, max_file_bytes=1_000_000, max_fetch_age=timedelta(hours=1)
+    )
+    fetch_head = clones / "example_core" / ".git" / "FETCH_HEAD"
+    fetch_head.write_text("", encoding="utf-8")
+    assert len(git_source.head("example_core", REF)) == 40
+    old = (datetime.now(UTC) - timedelta(hours=3)).timestamp()
+    os.utime(fetch_head, (old, old))
+    with pytest.raises(RepoSourceError, match="fetch-stale:example_core"):
+        git_source.head("example_core", REF)
+
+
+def test_repo_sources_head_reads_a_clone_with_no_fetch_record_and_no_age_limit(
+    tmp_path: Path,
+) -> None:
+    clones = tmp_path / "clones"
+    make_clone(clones, "example_core", CORE)
+    limited = GitRepoSource(
+        clones, max_file_bytes=1_000_000, max_fetch_age=timedelta(hours=1)
+    )
+    assert len(limited.head("example_core", REF)) == 40
+    fetch_head = clones / "example_core" / ".git" / "FETCH_HEAD"
+    fetch_head.write_text("", encoding="utf-8")
+    old = (datetime.now(UTC) - timedelta(days=30)).timestamp()
+    os.utime(fetch_head, (old, old))
+    unlimited = GitRepoSource(clones, max_file_bytes=1_000_000)
+    assert len(unlimited.head("example_core", REF)) == 40
+
+
+def test_repo_sources_a_stalled_fetch_makes_the_refresh_fail_and_not_read_fresh(
+    world: dict[str, object], capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    assert _tick(capsys)[0] == 0
+    capsys.readouterr()
+    fetch_head = tmp_path / "clones" / "example_core" / ".git" / "FETCH_HEAD"
+    fetch_head.write_text("", encoding="utf-8")
+    old = (datetime.now(UTC) - timedelta(hours=3)).timestamp()
+    os.utime(fetch_head, (old, old))
+    code, out, _err = _tick(capsys)
+    assert code == 1, out
+    assert "REFRESH outcome=failed" in out
+    assert "reason=heads-unreadable:fetch-stale-example-core" in out
+    assert "outcome=fresh" not in out
+
+
+def test_the_refresh_reason_is_one_cell_safe_token_when_the_build_failed(
+    tmp_path: Path,
+) -> None:
+    repos = source("memory", tmp_path)
+    build = _WritingBuild(repos)
+
+    def failing() -> ModelCodeGraphResult:
+        result = build()
+        return result.model_copy(
+            update={
+                "status": "failed",
+                "failure": "append-failed:error:Ledger said No | try again\nline two",
+            }
+        )
+
+    handler = CodeGraphRefresh(
+        overlay=overlay(),
+        heads=_StaticHeads(TWO_HEADS),
+        state_directory=tmp_path / "state",
+        run=failing,
+        clock=lambda: RUN_AT,
+    )
+    result = handler.handle()
+    assert result.outcome is EnumRefreshOutcome.FAILED
+    assert result.reason == "append-failed-error-ledger-said-no-try-again-line-two"
+    assert re.fullmatch(r"[a-z0-9-]+", result.reason)
