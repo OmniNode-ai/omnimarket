@@ -25,15 +25,41 @@ from __future__ import annotations
 
 import ast
 import hashlib
+import importlib.util
 import pathlib
 import re
 import sys
 
-from omnimarket.handlers.unimported_handler_baseline import (
-    _repo_relative,
-    find_dead_handlers,
-    find_stale_baseline_entries,
-)
+
+def _load_scan_module() -> object:
+    """Load the stdlib-only scan helper by file path.
+
+    Importing it as ``omnimarket.handlers.<name>`` would run the handlers package
+    ``__init__`` (pydantic and two unrelated handlers) and need ``omnimarket`` on
+    the path; this gate stays a stdlib script that runs from any working directory.
+    """
+    path = (
+        pathlib.Path(__file__).resolve().parents[2]
+        / "src"
+        / "omnimarket"
+        / "handlers"
+        / "unimported_handler_baseline.py"
+    )
+    spec = importlib.util.spec_from_file_location("unimported_handler_baseline", path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"cannot load {path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+_scan = _load_scan_module()
+repo_relative = _scan.repo_relative  # type: ignore[attr-defined]
+load_baseline = _scan.load_baseline  # type: ignore[attr-defined]
+find_dead_handlers = _scan.find_dead_handlers  # type: ignore[attr-defined]
+find_stale_baseline_entries = _scan.find_stale_baseline_entries  # type: ignore[attr-defined]
+scan_unimported_handlers = _scan.scan_unimported_handlers  # type: ignore[attr-defined]
 
 # The transport hook uses this existing import gate's CLI, so both import checks
 # share one implementation file. The core validator
@@ -346,7 +372,7 @@ def transport_import_main(paths: list[str]) -> int:
         )
         if node_index is None:
             continue
-        rel = _repo_relative(path, root).as_posix()
+        rel = repo_relative(path, root).as_posix()
         node_rel = pathlib.Path(*path.parts[node_index:]).as_posix()
         if (
             path.parts[node_index].endswith(("_compute", "_reducer"))
@@ -380,7 +406,7 @@ def main() -> int:
         print(f"ERROR: src/omnimarket not found under {repo_root}", file=sys.stderr)
         return 2
 
-    stale = find_stale_baseline_entries(src_root, baseline_path)
+    stale, dead = scan_unimported_handlers(src_root, baseline_path)
     if stale:
         print(f"ERROR: {len(stale)} stale unimported-handler baseline entr(ies):")
         for entry in stale:
@@ -391,10 +417,9 @@ def main() -> int:
             "scripts/validation/unimported_handler_baseline.txt (its file or "
             "class is gone, or the class is now imported)."
         )
-        return 1
-
-    dead = find_dead_handlers(src_root, baseline_path=baseline_path)
     if dead:
+        if stale:
+            print()
         print(f"ERROR: {len(dead)} Handler class(es) with no wiring evidence:")
         for entry in dead:
             print(f"  {entry}")
@@ -403,6 +428,7 @@ def main() -> int:
             "Fix: import the handler in a Python module, or add a documented "
             "legacy entry to scripts/validation/unimported_handler_baseline.txt."
         )
+    if stale or dead:
         return 1
 
     print(

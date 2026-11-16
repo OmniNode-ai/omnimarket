@@ -56,13 +56,13 @@ def _collect_all_source_lines(src_root: pathlib.Path) -> dict[pathlib.Path, str]
     return sources
 
 
-def _repo_relative(path: pathlib.Path, repo_root: pathlib.Path) -> pathlib.Path:
+def repo_relative(path: pathlib.Path, repo_root: pathlib.Path) -> pathlib.Path:
     with contextlib.suppress(ValueError):
         return path.relative_to(repo_root)
     return path
 
 
-def _load_baseline(baseline_path: pathlib.Path | None) -> set[str]:
+def load_baseline(baseline_path: pathlib.Path | None) -> set[str]:
     """Load documented legacy entries as ``repo/path.py:HandlerClass`` keys."""
     if baseline_path is None or not baseline_path.is_file():
         return set()
@@ -105,34 +105,46 @@ def _collect_referenced_symbols(source: str) -> set[str]:
     return symbols
 
 
+def scan_unimported_handlers(
+    src_root: pathlib.Path,
+    baseline_path: pathlib.Path | None = None,
+) -> tuple[list[str], list[str]]:
+    """Scan the tree once; return (stale baseline entries, dead handlers).
+
+    A baseline entry is stale when its file or class is gone, when the file now
+    carries the inline allow marker, or when the class is now imported elsewhere.
+    The baseline is shrink-only, so a stale entry must be removed rather than left
+    to hide a future regression of the same name. A dead handler is a ``Handler*``
+    class with no wiring evidence that the baseline does not record.
+    """
+    definitions = _collect_handler_definitions(src_root)
+    baseline = load_baseline(baseline_path)
+    if not definitions and not baseline:
+        return [], []
+
+    all_source_symbols = {
+        py_file: _collect_referenced_symbols(source)
+        for py_file, source in _collect_all_source_lines(src_root).items()
+    }
+    repo_root = src_root.parent.parent
+    still_dead: set[str] = set()
+    dead: list[str] = []
+    for class_name, defining_file, lineno in sorted(definitions):
+        if _is_imported_elsewhere(class_name, defining_file, all_source_symbols):
+            continue
+        rel = repo_relative(defining_file, repo_root)
+        still_dead.add(f"{rel}:{class_name}")
+        if f"{rel}:{class_name}" not in baseline:
+            dead.append(f"{rel}:{lineno}: {class_name}")
+    return sorted(baseline - still_dead), dead
+
+
 def find_dead_handlers(
     src_root: pathlib.Path,
     baseline_path: pathlib.Path | None = None,
 ) -> list[str]:
     """Return sorted violation strings for Handler* with no wiring evidence."""
-    definitions = _collect_handler_definitions(src_root)
-    if not definitions:
-        return []
-
-    all_sources = _collect_all_source_lines(src_root)
-    all_source_symbols = {
-        py_file: _collect_referenced_symbols(source)
-        for py_file, source in all_sources.items()
-    }
-    repo_root = src_root.parent.parent
-    baseline = _load_baseline(baseline_path)
-
-    dead: list[str] = []
-    for class_name, defining_file, lineno in sorted(definitions):
-        if _is_imported_elsewhere(class_name, defining_file, all_source_symbols):
-            continue
-        rel = _repo_relative(defining_file, repo_root)
-        baseline_key = f"{rel}:{class_name}"
-        if baseline_key in baseline:
-            continue
-        dead.append(f"{rel}:{lineno}: {class_name}")
-
-    return dead
+    return scan_unimported_handlers(src_root, baseline_path)[1]
 
 
 def _is_imported_elsewhere(
@@ -152,25 +164,5 @@ def find_stale_baseline_entries(
     src_root: pathlib.Path,
     baseline_path: pathlib.Path | None,
 ) -> list[str]:
-    """Return sorted baseline keys that no longer name a dead Handler* class.
-
-    A baseline entry is stale when its file or class is gone, or when the class is
-    now imported elsewhere. The baseline is shrink-only, so a stale entry must be
-    removed rather than left to hide a future regression of the same name.
-    """
-    baseline = _load_baseline(baseline_path)
-    if not baseline:
-        return []
-
-    repo_root = src_root.parent.parent
-    all_sources = _collect_all_source_lines(src_root)
-    all_source_symbols = {
-        py_file: _collect_referenced_symbols(source)
-        for py_file, source in all_sources.items()
-    }
-    still_dead = {
-        f"{_repo_relative(defining_file, repo_root)}:{class_name}"
-        for class_name, defining_file, _lineno in _collect_handler_definitions(src_root)
-        if not _is_imported_elsewhere(class_name, defining_file, all_source_symbols)
-    }
-    return sorted(baseline - still_dead)
+    """Return sorted baseline keys that no longer name a dead Handler* class."""
+    return scan_unimported_handlers(src_root, baseline_path)[0]

@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-23335
 title: Remove stale unimported-handler baseline entries and add a gate that refuses stale entries (validator exclusion burn-down slice)
-summary: The unimported-handler baseline lost the six entries that no longer name a dead handler (67 to 61), and the check now refuses a stale entry. The stale-entry logic lives in a handler module under src/omnimarket/handlers, so the baselined CI script does not grow.
+summary: The unimported-handler baseline lost the six entries that no longer name a dead handler (67 to 61), and the check now refuses a stale entry. The stale-entry logic lives in a stdlib-only helper module under src/omnimarket/handlers, which the baselined CI script loads by file path, so the script does not grow and still runs without omnimarket on the import path.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -15,7 +15,7 @@ requirements:
     statement: 'AC2: the remaining exclusion count is recorded after this slice merges -- falsifier: the burn-down count in the PR body matches a recount on dev'
 evidence_requirements:
 - kind: tests
-  description: The stale-entry tests (deleted file, class now imported, live entry kept, committed baseline clean) and the dead-handler tests pass.
+  description: The stale-entry tests (deleted file, class gone with the file kept, class now imported, inline allow marker, live entry kept, committed baseline clean), the tests that run the gate's main() as a command on a tmp repo, and the dead-handler tests pass.
   command: uv run --frozen pytest tests/ci/test_check_unimported_handlers.py -q -n 0 --no-cov -p no:randomly
 emergency_bypass:
   enabled: false
@@ -23,7 +23,7 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn23335-stale-entries-refused
-  description: Runs the focused tests selected by stale_baseline_entry. A planted entry for a deleted file and a planted entry for a class that is now imported are each reported, a live entry is not, and the committed baseline reports none. The planted-entry tests fail against the pre-change baseline, which carries six stale entries.
+  description: Runs the focused tests selected by stale_baseline_entry. A planted entry for a deleted file, for a class gone from a file that remains, for a class that is now imported and for a file carrying the inline allow marker are each reported, a live entry is not, the gate's main() exits 1 naming a planted entry and 0 on a clean baseline, and the committed baseline reports none. The planted-entry tests build their own tree under tmp_path and never read the committed baseline; at the merge base they fail only because the stale-entry function is not there (ImportError). Only the committed-baseline test depends on the committed file, which carries six stale entries at the merge base.
   source: manual
   binds_ac:
   - AC1
@@ -39,7 +39,7 @@ dod_evidence:
     check_value: uv run --frozen python scripts/ci/check_unimported_handlers.py
     cwd: .
 - id: dod-omn23335-baseline-count
-  description: Runs the focused test selected by baseline_entry_count. The baseline file holds at most 61 entries, the count after this slice and down from 67 at the merge base, so the test fails on the merge base. The PR body states the count.
+  description: Runs the focused test selected by baseline_entry_count. The baseline file, read through the loader, holds exactly 61 entries, the count after this slice and down from 67 at the merge base, so the test fails on the merge base. A PR comment states the count.
   source: manual
   binds_ac:
   - AC2
