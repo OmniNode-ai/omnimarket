@@ -4,7 +4,8 @@
 -- saving. Each session's saving is the run's modelled saving against the named
 -- baseline (modelled_savings_usd), never the legacy recorded cost_savings_usd,
 -- and none for a run that ended with a failure cause; each session names the
--- baseline model and pricing version its saving was priced against. Totals stay
+-- baseline model and pricing version its saving was priced against, and the
+-- topic names the newest priced run's. Totals stay
 -- over measured runs, so unknown and estimated runs are counted, not summed.
 -- Applied as a new one-time store step after the null-cost revision.
 CREATE VIEW projection_delegation_savings AS
@@ -120,9 +121,18 @@ sessions AS (
     GROUP BY tenant_id
 ),
 latest AS (
+    -- The newest run that was priced, so an unpriced newest run never blanks
+    -- the topic's baseline.
     SELECT tenant_id, baseline_model, pricing_manifest_version
-    FROM ranked_sessions
-    WHERE tenant_rank = 1
+    FROM (
+        SELECT tenant_id, baseline_model, pricing_manifest_version,
+            ROW_NUMBER() OVER (
+                PARTITION BY tenant_id ORDER BY created_at DESC
+            ) AS priced_rank
+        FROM event_sessions
+        WHERE baseline_model IS NOT NULL
+    ) AS priced
+    WHERE priced_rank = 1
 )
 SELECT
     totals.cumulative_savings_usd,
