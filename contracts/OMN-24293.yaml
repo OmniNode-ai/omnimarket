@@ -63,13 +63,13 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/nodes/node_workflow_gateway_effect/test_seam_canary_request.py tests/nodes/node_workflow_gateway_effect/test_workflow_wire_envelope.py tests/nodes/node_workflow_gateway_effect/test_workflow_receipt_render.py -q --no-cov --refuse-skips
     cwd: .
 - id: dod-workflow-gateway-ac4
-  description: 'hosted proxy for AC4: the route inventory control passes here; the read of the contracts route on the dev runtime after the deploy is posted as a pull request comment naming the head.'
+  description: 'hosted proxy for AC4: the route inventory control and the gateway node catalog tests pass here (the node tests do not exist at the merge base, so the control fails there); the read of the contracts route on the dev runtime after the deploy is posted as a pull request comment naming the head.'
   source: manual
   binds_ac:
   - AC4
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/integration/onex_api_fold -q --no-cov
+    check_value: uv run --frozen pytest tests/integration/onex_api_fold tests/nodes/node_workflow_gateway_effect/test_workflow_catalog.py -q --no-cov --refuse-skips
     cwd: .
 - id: dod-workflow-gateway-integration-proof
   description: the node tests run on a lab host at the pushed head, the Redpanda profile included; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
