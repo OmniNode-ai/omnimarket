@@ -480,6 +480,16 @@ class ModelQuotaCodeRule(BaseModel):
             "Anything else falls back to the cooldown."
         ),
     )
+    reset_utc_offset_minutes: int = Field(
+        default=0,
+        ge=-840,
+        le=840,
+        description=(
+            "Offset from UTC, in minutes, of the naive wall-clock stamp "
+            "'message_reset_timestamp' reads. z.ai writes its reset stamp in "
+            "Beijing time (480); a provider that states UTC leaves this 0."
+        ),
+    )
     fallback_cooldown_seconds: int = Field(
         default=0,
         ge=0,

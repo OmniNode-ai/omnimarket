@@ -2,60 +2,100 @@
 # SPDX-License-Identifier: MIT
 """Hold GLM out of the lane delegation ladders while the Coding Plan's limit is exhausted (OMN-24651).
 
-z.ai answers a call over the plan's weekly or monthly limit with a 429 that carries business code 1310 and the reset
-time, after the claude CLI has retried it for about three minutes. Receipt 018b9825-a3b3-4d5d-9338-1b49f4fa47b8 of
-2026-11-14 took 188.989 s to read ``claude-glm exited rc=1: API Error: Request rejected (429) . [1310][Weekly/Monthly
-Limit Exhausted. Your limit will reset at 2026-11-15 01:38:18][2026111421065430b8c2c98d0a4d56]``. The lane delegation
-step then asked glm-5.3, which draws on the same quota, and asked again on the next step of every lane: 58 receipts on
-one host carry the same reset.
+z.ai answers a call over a plan limit with a 429 that carries a business code and the reset time, after the claude CLI
+has retried it for about three minutes. Receipt 018b9825-a3b3-4d5d-9338-1b49f4fa47b8 of 2026-11-14 took 188.989 s to
+read ``claude-glm exited rc=1: API Error: Request rejected (429) . [1310][Weekly/Monthly Limit Exhausted. Your limit
+will reset at 2026-11-15 01:38:18][2026111421065430b8c2c98d0a4d56]``. The lane delegation step then asked glm-5.3,
+which draws on the same quota, and asked again on the next step of every lane: 58 receipts on one host carry the same
+reset.
 
-The reset stamp is Beijing time. The call began 2026-11-14T13:03:45Z and lasted 189 s, and its request id reads
-20261114210654, the end of the call plus eight hours. ``parse_reset_instant`` reads the naive stamp as UTC, which would
-hold GLM eight hours past the reset, so this gate re-reads the stamp it returns in UTC+8.
+Which codes hold GLM out, what a stated reset is read as, and the cooldown for a notice that states none are the zai
+rules of ``provider_quota_policy`` (``load_provider_quota_policy``), not constants here: a rule whose disposition is
+``disable_until_reset`` (codes 1310 and 1308) holds. The reset stamp is read by ``HandlerProviderQuotaReset`` with the
+rule's declared ``reset_utc_offset_minutes`` (Beijing time, 480) and the gate uses the instant as returned.
 
-The pure handler decides; ``main`` is the adapter the lane delegation step runs (``python -m
-omnimarket.handlers.handler_glm_quota_gate check|note <state_root> [error text]``). It keeps the hold in one marker file
-under the state root and prints one JSON line. A 429 without code 1310 (a rate limit, code 1302) is transient and sets
-no hold. Every failure to read or write the marker reads as not held: the gate is an optimisation and never bricks a
-ladder.
+This handler is pure: it takes the clock, the text and the hold already on record, and answers. The command line the
+lane delegation step runs, with its marker file under the state root, is ``runtime_glm_quota_gate`` in the node that
+binds this handler.
 """
 
 from __future__ import annotations
 
-import json
-import os
 import re
-import sys
-from datetime import UTC, datetime, timedelta, timezone
-from pathlib import Path
+from datetime import UTC, datetime, timedelta
 
-from omnimarket.handlers.handler_provider_quota_reset import parse_reset_instant
+from omnimarket.handlers.handler_provider_quota_reset import HandlerProviderQuotaReset
+from omnimarket.inference.provider_quota_policy import load_provider_quota_policy
 from omnimarket.models.delegation.model_glm_quota_gate import (
     ModelGlmQuotaGateRequest,
     ModelGlmQuotaGateResult,
 )
+from omnimarket.models.delegation.model_provider_quota_reset import (
+    ModelProviderQuotaResetRequest,
+)
+from omnimarket.models.delegation.wire.model_bifrost_delegation_config import (
+    EnumQuotaDisposition,
+    ModelQuotaCodeRule,
+)
 
-MARKER_NAME = "glm-quota-exhausted.json"
-BEIJING = timezone(timedelta(hours=8))
-# A limit notice that states no reset holds GLM out this long.
-UNSTATED_HOLD = timedelta(hours=1)
+PROVIDER_ID = "zai"
 # A marker further out than a monthly plan can run is garbage, not a hold.
 LONGEST_HOLD = timedelta(days=35)
-_EXHAUSTED = re.compile(r"\[1310\]|Weekly/Monthly Limit Exhausted")
+# The claude CLI's refusal shape: "Request rejected (429) · [1310][...]". Text that only quotes a code does not match.
+_REFUSAL = re.compile(r"\(429\)[^\[\]\n]{0,8}\[(\d{4})\]")
+# A rule that declares no cooldown must still hold a cap it cannot time (fail closed, as the policy does).
+_FALLBACK_FLOOR = timedelta(hours=1)
 
 
 def _stamp(at: datetime) -> str:
     return at.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def exhausted_until(error_text: str, now: datetime) -> datetime | None:
-    """When the plan's limit named in ``error_text`` resets (UTC), or None when the text is no exhausted-limit notice."""
-    if not _EXHAUSTED.search(error_text or ""):
+def plan_limit_rule(error_text: str) -> ModelQuotaCodeRule | None:
+    """The declared zai ``disable_until_reset`` rule the refusal in ``error_text`` names, or None."""
+    match = _REFUSAL.search(error_text or "")
+    if match is None:
         return None
-    stated = parse_reset_instant(error_text)
-    if stated is None:
-        return now + UNSTATED_HOLD
-    return stated.replace(tzinfo=None).replace(tzinfo=BEIJING).astimezone(UTC)
+    for provider in load_provider_quota_policy().providers:
+        if provider.provider_id != PROVIDER_ID:
+            continue
+        for rule in provider.codes:
+            if (
+                rule.code == match.group(1)
+                and rule.disposition is EnumQuotaDisposition.DISABLE_UNTIL_RESET
+            ):
+                return rule
+    return None
+
+
+def exhausted_until(
+    error_text: str, now: datetime
+) -> tuple[ModelQuotaCodeRule, datetime] | None:
+    """The rule and the UTC instant GLM is held until for the refusal in ``error_text``, or None for any other text.
+
+    A stated reset that is after ``now`` and within ``LONGEST_HOLD`` is the hold. A notice that states none, one whose
+    stated reset is not after ``now`` (a wrong zone or a clock running ahead would read so), or one that cannot be
+    read holds for the rule's ``fallback_cooldown_seconds``; a stamp past ``LONGEST_HOLD`` is cut to it.
+    """
+    rule = plan_limit_rule(error_text)
+    if rule is None:
+        return None
+    stated = (
+        HandlerProviderQuotaReset()
+        .handle(
+            ModelProviderQuotaResetRequest(
+                reset_from=rule.reset_from,
+                reset_utc_offset_minutes=rule.reset_utc_offset_minutes,
+                reference=now,
+                message=error_text,
+            )
+        )
+        .reset_at
+    )
+    if stated is None or stated <= now:
+        unstated = max(timedelta(seconds=rule.fallback_cooldown_seconds), timedelta(0))
+        return rule, now + (unstated or _FALLBACK_FLOOR)
+    return rule, min(stated, now + LONGEST_HOLD)
 
 
 class HandlerGlmQuotaGate:
@@ -68,76 +108,20 @@ class HandlerGlmQuotaGate:
             else None
         )
         write_until = None
+        code = ""
         if request.operation == "note":
-            reset = exhausted_until(request.error_text, now)
-            if reset is not None and reset > now and (until is None or reset > until):
-                until = write_until = reset
+            noted = exhausted_until(request.error_text, now)
+            if noted is not None:
+                rule, reset = noted
+                if until is None or reset > until:
+                    until = write_until = reset
+                    code = rule.code
         if until is None or until <= now:
             return ModelGlmQuotaGateResult(held=False)
         return ModelGlmQuotaGateResult(
             held=True,
             until=until,
+            code=code,
             write_until=write_until,
-            reason=f"GLM skipped: the Coding Plan's limit is exhausted until {_stamp(until)} (z.ai code 1310); this lane did not call it",
+            reason=f"GLM skipped: the Coding Plan's limit is exhausted until {_stamp(until)} (z.ai plan limit); this lane did not call it",
         )
-
-
-def _read_marker(path: Path) -> datetime | None:
-    try:
-        until = datetime.fromisoformat(
-            str(json.loads(path.read_text(encoding="utf-8"))["until"]).replace(
-                "Z", "+00:00"
-            )
-        )
-    except (OSError, UnicodeError, ValueError, KeyError, TypeError):
-        return None
-    return until if until.tzinfo is not None else None
-
-
-def _write_marker(path: Path, until: datetime, noted: datetime) -> None:
-    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        tmp.write_text(
-            json.dumps(
-                {"until": _stamp(until), "code": "1310", "noted_at": _stamp(noted)}
-            ),
-            encoding="utf-8",
-        )
-        tmp.replace(path)
-    except OSError:
-        tmp.unlink(missing_ok=True)
-
-
-def main(argv: list[str] | None = None, now: datetime | None = None) -> int:
-    args = sys.argv[1:] if argv is None else argv
-    if len(args) < 2 or args[0] not in ("check", "note"):
-        sys.stdout.write(json.dumps({"held": False, "reason": ""}) + "\n")
-        return 2
-    path = Path(args[1]) / MARKER_NAME
-    at = now or datetime.now(UTC)
-    result = HandlerGlmQuotaGate().handle(
-        ModelGlmQuotaGateRequest(
-            operation=args[0],
-            now=at,
-            error_text=" ".join(args[2:]),
-            marker_until=_read_marker(path),
-        )
-    )
-    if result.write_until is not None:
-        _write_marker(path, result.write_until, at)
-    sys.stdout.write(
-        json.dumps(
-            {
-                "held": result.held,
-                "until": _stamp(result.until) if result.until else "",
-                "reason": result.reason,
-            }
-        )
-        + "\n"
-    )
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

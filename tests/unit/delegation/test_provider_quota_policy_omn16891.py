@@ -64,7 +64,8 @@ class TestZaiQuotaCodes:
         )
         assert verdict.disposition is EnumQuotaDisposition.DISABLE_UNTIL_RESET
         assert verdict.provider_code == "1310"
-        assert verdict.disabled_until == datetime(2026, 8, 30, 20, 32, 52, tzinfo=UTC)
+        # The stamp is Beijing time (UTC+8, declared on the zai rule): 20:32:52 there is 12:32:52Z.
+        assert verdict.disabled_until == datetime(2026, 8, 30, 12, 32, 52, tzinfo=UTC)
         # A cap that will lift on its own is not an operator emergency.
         assert verdict.alert is False
         assert verdict.retryable is False

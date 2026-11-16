@@ -15,6 +15,9 @@ class ModelProviderQuotaResetRequest(BaseModel):
 
     reset_from: str | None
     reference: datetime
+    reset_utc_offset_minutes: int = (
+        0  # the offset the provider's naive reset stamp is written in
+    )
     message: str = ""
     body: dict[str, Any] | None = None
     headers: dict[str, str] | None = None

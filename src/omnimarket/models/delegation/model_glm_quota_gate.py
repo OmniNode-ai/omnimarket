@@ -27,6 +27,9 @@ class ModelGlmQuotaGateResult(BaseModel):
 
     held: bool
     until: AwareDatetime | None = None
+    code: str = (
+        ""  # the z.ai business code behind the hold, read from the declared rule
+    )
     reason: str = ""
     write_until: AwareDatetime | None = (
         None  # a hold the caller persists; None leaves the marker as it is

@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-24651
 title: Hold GLM out of the lane delegation ladders while the Coding Plan's limit is exhausted
-summary: Adds handler_glm_quota_gate, which reads z.ai's weekly or monthly limit refusal (code 1310) from a failed GLM call, keeps the hold in one marker file under the state root, and answers whether GLM is held out; the reset stamp is read as Beijing time. The lane delegation step runs it in the dispatch venv before and after each GLM call.
+summary: Adds handler_glm_quota_gate, which reads z.ai's plan-limit refusal (codes 1310 and 1308, from the zai quota rules) out of a failed GLM call and answers whether GLM is held out. node_llm_delegation_call_effect binds it and owns its command line, which keeps the hold in one marker file under the state root. The zai rules declare the reset stamp's Beijing-time offset, which the shared reset handler applies. The lane delegation step runs the command line in the dispatch venv before and after each GLM call.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -10,30 +10,30 @@ requirements:
   statement: A GLM call refused for an exhausted plan limit holds GLM out until the stated reset, read as Beijing time, and a rate limit holds nothing.
   acceptance:
   - id: AC2
-    statement: "AC2: the mechanism the five whys reach is fixed in its owning repository and a test built from the recorded failure text fails on the broken code and passes on the fix -- falsifier: uv run pytest tests/handlers/test_handler_glm_quota_gate.py fails against the base commit"
+    statement: "AC2: the mechanism the five whys reach is fixed in its owning repository and a test built from the recorded failure text fails on the broken code and passes on the fix -- falsifier: uv run pytest tests/handlers/test_handler_provider_quota_reset_beijing_time.py fails on the base parser, which reads the recorded Beijing-time stamp as UTC"
 evidence_requirements:
 - kind: tests
-  description: The quota gate handler tests at the pushed head.
-  command: uv run --frozen pytest tests/handlers/test_handler_glm_quota_gate.py -q --no-cov -p no:cacheprovider
+  description: The quota gate, Beijing-time reset and node binding tests at the pushed head.
+  command: uv run --frozen pytest tests/handlers/test_handler_glm_quota_gate.py tests/handlers/test_handler_provider_quota_reset_beijing_time.py tests/handlers/test_glm_quota_gate_node_binding.py -q --no-cov -p no:cacheprovider
 emergency_bypass:
   enabled: false
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn24651-ac2
-  description: "AC2: 13 handler tests pass on host h051 at the head; at the base commit the module does not exist, so the file fails to import"
+  description: "AC2: the recorded 1310 text with its Beijing-time stamp reads as 2026-11-14T17:38:18Z on the shared reset handler, through the zai rule on the bifrost path, and on the gate; read as UTC (the base parser) it is eight hours later and the test fails"
   source: manual
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/handlers/test_handler_glm_quota_gate.py -q --no-cov -p no:cacheprovider
+    check_value: uv run --frozen pytest tests/handlers/test_handler_provider_quota_reset_beijing_time.py tests/handlers/test_handler_glm_quota_gate.py -q --no-cov -p no:cacheprovider
   binds_ac:
   - AC2
 - id: dod-omn24651-integration-proof
-  description: the handler tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  description: the gate tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
   source: manual
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24651 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/handlers/test_handler_glm_quota_gate.py -q --no-cov
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24651 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/handlers/test_handler_glm_quota_gate.py tests/handlers/test_handler_provider_quota_reset_beijing_time.py -q --no-cov
   binds_ac:
   - AC2

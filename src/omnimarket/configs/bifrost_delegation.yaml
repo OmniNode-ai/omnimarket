@@ -834,10 +834,14 @@ provider_quota_policy:
         # The reset instant is parsed out of the message; when it cannot be
         # parsed the fallback cooldown below applies (fail-closed: a cap we
         # cannot time is still a cap).
+        # The stamp is Beijing time (UTC+8): receipt 018b9825-a3b3-4d5d-9338-1b49f4fa47b8
+        # of 2026-11-14 began at 13:03:45Z, lasted 189 s, and carries request id
+        # 20261114210654, the call's end plus eight hours.
         - code: "1310"
           disposition: disable_until_reset
           scope: provider
           reset_from: message_reset_timestamp
+          reset_utc_offset_minutes: 480
           fallback_cooldown_seconds: 3600
           alert: false
         # OMN-19432: the other two plan windows. z.ai's error-code page
@@ -851,6 +855,7 @@ provider_quota_policy:
         - code: "1308"
           disposition: disable_until_reset
           reset_from: message_reset_timestamp
+          reset_utc_offset_minutes: 480
           fallback_cooldown_seconds: 3600
           alert: false
         # 1302 "Rate limit reached for requests" and 1305 "The service may be
