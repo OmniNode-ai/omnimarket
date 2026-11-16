@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-24839
 title: The overlay store refresh tick ends at its deadline because its watchdog always exits the process, and the unit declares a hard run timeout
-summary: 'The overlay store refresh tick no longer arms the interpreter''s traceback timer with exit=True. A tick on the Mac hung four hours in that timer''s dump and launchd started no further run. The tick now arms a watchdog thread that ends the process with os._exit at the contract deadline whatever the tick or its stderr is doing, and the overlay-store-refresh unit declares run_timeout_s (240) in the host installer contract, above the 120 s node deadline and under the 300 s interval. The other node ticks that arm the same timer are listed on the ledger and not changed; the producer of the stale overlay readings is named on the ledger and not changed.'
+summary: 'The overlay store refresh tick no longer arms the interpreter''s traceback timer with exit=True. A tick on the Mac hung four hours in that timer''s dump and launchd started no further run. The tick now arms a watchdog thread that ends the process with os._exit at the contract deadline unless the tick returned first, whatever its Python code or its stderr is doing; a C call that holds the GIL for good stops that thread too, and then only the unit''s run_timeout_s ends the run. The overlay-store-refresh unit declares run_timeout_s (240) in the host installer contract, above the 120 s node deadline and under the 300 s interval. The other node ticks that arm the same timer are listed on the ledger and not changed; the producer of the stale overlay readings is named on the ledger and not changed.'
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -60,14 +60,32 @@ dod_evidence:
     check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_workspace_root.py tests/nodes/node_host_installer_registry_units/test_overlay_store_refresh_watchdog.py -q --no-cov -n 0 -p no:randomly -p no:cacheprovider -k run_timeout
     cwd: .
 - id: dod-overlay-tick-ledger-rows-ac4
-  description: The lane's STATUS rows list the other ticks by file path and name the producer of the stale readings; the lane changed none of them.
+  description: The lane's own STATUS rows (lane=ovwatch-1420, row type STATUS) cite each of the four other ticks that arm the faulthandler exit by file path, one check per file, and name the producer of the stale readings in a row of its own. No other file under src arms dump_traceback_later, and the branch changes none of the four.
   source: manual
   execution_scope: local_done_gate
   binds_ac:
   - AC4
   checks:
   - check_type: command
-    check_value: grep -c 'runtime_c32_probe_tick.py' "$ONEX_LEDGER_PATH"
+    check_value: grep -E '\| STATUS \| lane=ovwatch-1420 \|.*runtime_c32_probe_tick\.py' "$ONEX_LEDGER_PATH"
+    cwd: .
+  - check_type: command
+    check_value: grep -E '\| STATUS \| lane=ovwatch-1420 \|.*runtime_declared_clone_tick\.py' "$ONEX_LEDGER_PATH"
+    cwd: .
+  - check_type: command
+    check_value: grep -E '\| STATUS \| lane=ovwatch-1420 \|.*runtime_job_log_filler_tick\.py' "$ONEX_LEDGER_PATH"
+    cwd: .
+  - check_type: command
+    check_value: grep -E '\| STATUS \| lane=ovwatch-1420 \|.*runtime_overlay_store_load_tick\.py' "$ONEX_LEDGER_PATH"
+    cwd: .
+  - check_type: command
+    check_value: grep -E '\| STATUS \| lane=ovwatch-1420 \|.*producer of the stale overlay readings.*node_overlay_store_load_effect' "$ONEX_LEDGER_PATH"
+    cwd: .
+  - check_type: command
+    check_value: test -z "$(grep -rl --include='*.py' dump_traceback_later src/ | grep -v -e node_c32_auth_boundary_probe_effect/runtime_c32_probe_tick.py -e node_canonical_clone_refresh_effect/runtime_declared_clone_tick.py -e node_job_log_filler_effect/runtime_job_log_filler_tick.py -e node_overlay_store_load_effect/runtime_overlay_store_load_tick.py)"
+    cwd: .
+  - check_type: command
+    check_value: test -z "$(git diff --name-only origin/dev...HEAD -- src/omnimarket/nodes/node_c32_auth_boundary_probe_effect/runtime_c32_probe_tick.py src/omnimarket/nodes/node_canonical_clone_refresh_effect/runtime_declared_clone_tick.py src/omnimarket/nodes/node_job_log_filler_effect/runtime_job_log_filler_tick.py src/omnimarket/nodes/node_overlay_store_load_effect/runtime_overlay_store_load_tick.py)"
     cwd: .
 - id: dod-overlay-tick-integration-proof
   description: The pushed head ran the watchdog, run-timeout and tick-disarm tests on a lab host through the lab work runner and exited 0. The lab host, sha and exit code are in the pull request's Lab line.

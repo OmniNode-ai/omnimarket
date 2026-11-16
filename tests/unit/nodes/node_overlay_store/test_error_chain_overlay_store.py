@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -52,6 +54,27 @@ from tests.unit.nodes.node_overlay_store.support import (
 )
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.fixture(autouse=True)
+def _tick_watchdog_does_not_outlive_its_test(
+    monkeypatch: pytest.MonkeyPatch,
+) -> Iterator[list[int]]:
+    """A test that runs the tick in-process must not leave a process-ending watchdog behind it.
+
+    ``tick_main`` arms a watchdog thread that calls ``os._exit`` at the contract deadline. ``main`` disarms it in a
+    ``finally``, but a regression there would end the whole pytest run 120 s later, silently, on whichever test is
+    executing then. The exit is replaced here with a recorder, and a watchdog still alive after the test fails it.
+    """
+    ended: list[int] = []
+    monkeypatch.setattr(tick_module, "terminate_process", ended.append)
+    before = set(threading.enumerate())
+    yield ended
+    for thread in set(threading.enumerate()) - before:
+        if thread.name == tick_module.WATCHDOG_THREAD:
+            thread.join(2.0)
+            assert not thread.is_alive(), "the tick left its watchdog armed"
+    assert ended == [], "the tick's watchdog ended the process during the test"
 
 
 def _loader(
@@ -360,12 +383,13 @@ def test_a_tick_arms_the_contracts_deadline_before_it_touches_the_bus(
 ) -> None:
     for key, value in _tick_overlay(tmp_path).items():
         monkeypatch.setenv(key, value)
-    armed: list[float] = []
+    armed: list[tuple[float, object]] = []
     monkeypatch.setattr(
         tick_module,
         "arm_watchdog",
-        lambda seconds, _terminate: armed.append(seconds) or (lambda: None),
+        lambda seconds, terminate: armed.append((seconds, terminate)) or (lambda: None),
     )
     tick_main(["--omni-home", str(tmp_path), "--state-dir", str(tmp_path / "run")])
-    assert armed == [120.0]
+    # The terminator is the module's own: a tick that armed a no-op one would pass on the deadline alone.
+    assert armed == [(120.0, tick_module.terminate_process)]
     assert tick_module.tick_deadline_s() == 120.0

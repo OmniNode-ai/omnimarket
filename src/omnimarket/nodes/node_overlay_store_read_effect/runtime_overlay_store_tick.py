@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import json
 import os
 import sys
@@ -68,24 +69,35 @@ def _report_stuck(deadline_s: float, stuck: int | None) -> None:
 def arm_watchdog(
     deadline_s: float, terminate: Callable[[int], None] = terminate_process
 ) -> Callable[[], None]:
-    """End the process at ``deadline_s`` whatever the tick is doing; the returned call disarms it.
+    """End the process at ``deadline_s`` unless the tick returns first; the returned call disarms it.
 
     The watchdog is a thread, not the interpreter's own exit timer: that one dumps every thread's
     traceback before it exits, and a dump that does not finish keeps the process alive (measured on a Mac: four hours
     in the dump, no further launchd tick, overlay refresh frozen). Here the report is written by a second thread the
-    watchdog waits on for ``REPORT_GRACE_S`` at most, so a stderr that blocks cannot hold the exit."""
+    watchdog waits on for ``REPORT_GRACE_S`` at most, so a stderr that blocks cannot hold the exit, and a report that
+    cannot be started or fails does not stop the exit either. A tick that returns while the report is still running
+    disarms the watchdog, and the watchdog then leaves the process alone.
+
+    The limit: a Python thread needs the GIL. A call into C code that holds the GIL for good stops this watchdog too,
+    and then only the unit's ``run_timeout_s`` ends the run."""
     disarmed = threading.Event()
     stuck = threading.get_ident()
 
     def watch() -> None:
         if disarmed.wait(deadline_s):
             return
-        reporter = threading.Thread(
-            target=_report_stuck, args=(deadline_s, stuck), daemon=True
-        )
-        reporter.start()
-        reporter.join(REPORT_GRACE_S)
-        terminate(EXIT_DEADLINE)
+        try:
+            # The report is a courtesy: where it cannot be written, there is nowhere to say so.
+            with contextlib.suppress(Exception):
+                reporter = threading.Thread(
+                    target=_report_stuck, args=(deadline_s, stuck), daemon=True
+                )
+                reporter.start()
+                reporter.join(REPORT_GRACE_S)
+        finally:
+            # A tick that returned during the grace has disarmed: the process ends on its own, not with 124.
+            if not disarmed.is_set():
+                terminate(EXIT_DEADLINE)
 
     threading.Thread(target=watch, name=WATCHDOG_THREAD, daemon=True).start()
     return disarmed.set
