@@ -1,0 +1,285 @@
+{
+  "source_commit": "f3a1133502a568471206a174373fd7a2a3770d45",
+  "graph_code_commit": "794939d154cf357813cae6a5a903393ae1cbdcc7",
+  "source_prs": [
+    {
+      "pr": 5404,
+      "commit": "6bc43c27d3b73a8d6126917e0c0a08ca0299eb5a",
+      "subject": "feat(OMN-23078): validator workflow orchestrator and verdict reducer nodes (#5404)",
+      "nodes": [
+        "node_validator_verdict_reducer",
+        "node_validator_workflow_orchestrator"
+      ]
+    },
+    {
+      "pr": 5628,
+      "commit": "2f7eb82281278f586bb150ef674f7b15314742fc",
+      "subject": "fix(OMN-22347): recognize fill-ticket lanes as attempts and skip already-built tickets (#5628)",
+      "nodes": [
+        "node_lab_fill_selection_compute"
+      ]
+    },
+    {
+      "pr": 5685,
+      "commit": "0290b0851fde832885c95edd2355a0a2d3e4868a",
+      "subject": "fix(OMN-23425): refuse unfillable lane start templates at load and carry the host PATH prefix (#5685)",
+      "nodes": [
+        "node_lane_report_relay_effect",
+        "node_remote_lane_start_effect",
+        "node_remote_lane_start_orchestrator"
+      ]
+    },
+    {
+      "pr": 5699,
+      "commit": "56c0d8f2c9c5e6dbe9954d51d088fa5da9d5fadd",
+      "subject": "feat(OMN-23416): the fill starts a continuation lane for each stopped lane, with the earlier result in its brief (#5699)",
+      "nodes": [
+        "node_floor_fill_orchestrator"
+      ]
+    },
+    {
+      "pr": 5715,
+      "commit": "4e92c094bd0d6d7b28d7389b540de035b8240176",
+      "subject": "fix(OMN-23463): fill accepts a real task id that contains a dot (#5715)",
+      "nodes": [
+        "node_floor_fill_orchestrator",
+        "node_floor_fill_reducer"
+      ]
+    },
+    {
+      "pr": 5716,
+      "commit": "19eb0b7ca3dfa120126e14238b9f0a286edaaaf6",
+      "subject": "feat(OMN-23464): the fill puts a stopped lane's next-step note into the continuation's brief (#5716)",
+      "nodes": [
+        "node_floor_fill_candidates_compute"
+      ]
+    },
+    {
+      "pr": 5879,
+      "commit": "37abf52e3bd78b809c1d12d69b04fe7675b5c26a",
+      "subject": "feat(OMN-23899): integration readings travel as the integration floor projection (#5879)",
+      "nodes": [
+        "node_floor_projection_read_effect",
+        "node_integration_projection_compute",
+        "node_integration_reading_publish_effect"
+      ]
+    },
+    {
+      "pr": 5289,
+      "commit": "7035566a2879dd56d67eeff24cf174aa5f205d37",
+      "subject": "feat(OMN-22992): floor fill marks a task ready from its Start when criterion alone (#5289)",
+      "nodes": [
+        "node_floor_fill_candidates_compute",
+        "node_floor_fill_orchestrator"
+      ]
+    },
+    {
+      "pr": 5502,
+      "commit": "d840cf4766ae73fe32c7bf4923b412d831ee5db9",
+      "subject": "feat(OMN-23150): a join check compares each overlay value with the value its consumer depends on (#5502)",
+      "nodes": [
+        "node_overlay_drift_compute"
+      ]
+    },
+    {
+      "pr": 5503,
+      "commit": "d1839306da3b81b596b872feb735f45a4e5483ca",
+      "subject": "feat(OMN-23002): a table-backed conditional state store for node_floor_fill_orchestrator, bound to floor_fill_state (#5503)",
+      "nodes": [
+        "node_floor_fill_orchestrator"
+      ]
+    },
+    {
+      "pr": 5546,
+      "commit": "367eb879eb26bb58df2f91eed2280cdbcc1cf049",
+      "subject": "feat(OMN-23250): lab fill enumerate reads each source on its own budget floor, plans-today from a young copy (#5546)",
+      "nodes": [
+        "node_lab_fill_effect",
+        "node_lab_fill_selection_compute"
+      ]
+    },
+    {
+      "pr": 5641,
+      "commit": "27e0a423f05811dff0627cd02c303acaae72f93b",
+      "subject": "feat(OMN-19044): broker authentication refusals are a reading (node_broker_auth_refusal_reading_effect) (#5641)",
+      "nodes": [
+        "node_broker_auth_refusal_reading_effect"
+      ]
+    },
+    {
+      "pr": 5657,
+      "commit": "71336753dbd4be6eb704b78bac8f56cb5da7b407",
+      "subject": "OMN-23366: node_runtime_boot_set_compute judges a boot against its deployment's declared boot set (#5657)",
+      "nodes": [
+        "node_runtime_boot_set_compute"
+      ]
+    }
+  ],
+  "rows": [
+    {
+      "node": "node_broker_auth_refusal_reading_effect",
+      "repository": "omnimarket",
+      "merged_pr": 5641,
+      "ticket": "OMN-19044",
+      "ticket_purpose": "A client that cannot authenticate against a SASL listener surfaces somewhere a human looks, rather than only in the broker's own warnings.",
+      "caller_or_flow": "contract.yaml dependency injection and runtime_broker_auth_refusal.py: read/probe CLI; ticket AC-4 requires visible refusal readings.",
+      "evidence_file": "src/omnimarket/nodes/node_broker_auth_refusal_reading_effect/contract.yaml",
+      "why_cannot_run": "subscribe_topics=[]; metadata.transport_type=inmemory; constructor needs overlay, host, log source, appender and clock; no external source importer.",
+      "recommendation": "MOVE",
+      "recommendation_target": "Proposed onex-broker-auth-refusal.timer on the declared monitoring host, every 5 minutes: python -m omnimarket.nodes.node_broker_auth_refusal_reading_effect read; install via the host installer; use its declared dev broker log source.",
+      "graph_answered_from": "f3a1133502a568471206a174373fd7a2a3770d45"
+    },
+    {
+      "node": "node_overlay_drift_compute",
+      "repository": "omnimarket",
+      "merged_pr": 5502,
+      "ticket": "OMN-23150",
+      "ticket_purpose": "a join check compares the values consumers depend on.",
+      "caller_or_flow": "contract.yaml:53 names a host timer and the node CLI; ticket Plan task cites beta/plans/2026-11-05-base-first-stopgap-plan.md 6.3 rule 13 (that plan file is not present in this host checkout).",
+      "evidence_file": "src/omnimarket/nodes/node_overlay_drift_compute/contract.yaml",
+      "why_cannot_run": "runtime_profiles=[]; subscribe_topics=[]; local transport and injected overlay/file source/environment/appender/clock; no external source importer.",
+      "recommendation": "MOVE",
+      "recommendation_target": "Proposed onex-overlay-consumer-join.timer on the declared overlay-reading host, daily: python -m omnimarket.nodes.node_overlay_drift_compute daily; install through the host installer and preserve the existing consumer-join overlay.",
+      "graph_answered_from": "f3a1133502a568471206a174373fd7a2a3770d45"
+    },
+    {
+      "node": "node_runtime_boot_set_compute",
+      "repository": "omnimarket",
+      "merged_pr": 5657,
+      "ticket": "OMN-23366",
+      "ticket_purpose": "a compute node compares a runtime's booted node set with the deployment's declared boot set and returns a typed verdict naming missing and extra nodes",
+      "caller_or_flow": "contract.yaml runtime_dispatch and one-runtime plan beta/plans/2026-11-01-one-runtime-plan.md:492, T28; no boot-observation producer invokes this handler in the inspected sources.",
+      "evidence_file": "src/omnimarket/nodes/node_runtime_boot_set_compute/contract.yaml",
+      "why_cannot_run": "runtime_profiles=[]; subscribe_topics=[]; local direct invocation needs declaration, catalog and observed boot; no external source importer.",
+      "recommendation": "WIRE",
+      "recommendation_target": "Proposed dev boot-completion verification flow for one-runtime T28 calls HandlerRuntimeBootSet with the deployment overlay, announced catalog and actual attached contracts/subscriptions; main profile for a bus adapter on the declared boot-set-judge command, once per completed dev boot.",
+      "graph_answered_from": "f3a1133502a568471206a174373fd7a2a3770d45"
+    },
+    {
+      "node": "node_validator_workflow_orchestrator",
+      "repository": "omnimarket",
+      "merged_pr": 5404,
+      "ticket": "OMN-23078",
+      "ticket_purpose": "An orchestrator node picks the validators that apply to a change from contracts, then runs the read effects, the compute nodes and the emit and gate effects.",
+      "caller_or_flow": "contract.yaml:4-10 and dependency_ownership: caller constructs real change reader, contract source, reducer, emitter and gate; adapters/two_backend.py:220 has make_real_backend; source ticket names the validator workflow.",
+      "evidence_file": "src/omnimarket/nodes/node_validator_workflow_orchestrator/contract.yaml",
+      "why_cannot_run": "subscribe_topics=[]; metadata.transport_type=inmemory; default backend in_memory; constructor dependencies supplied only by its adapters; no external source importer.",
+      "recommendation": "WIRE",
+      "recommendation_target": "Proposed pull-request head-change workflow caller builds the real adapters and sends the declared validator-workflow-requested command; effects profile on a dependency-injecting runtime adapter. Keep node_validator_verdict_reducer called in process by this workflow.",
+      "graph_answered_from": "f3a1133502a568471206a174373fd7a2a3770d45"
+    },
+    {
+      "node": "node_integration_reading_publish_effect",
+      "repository": "omnimarket",
+      "merged_pr": 5879,
+      "ticket": "OMN-23899",
+      "ticket_purpose": "The hourly check sends its list to the shared message system, the status page reads it from there",
+      "caller_or_flow": "contract.yaml runtime_dispatch: hourly integration pass pipes ModelIntegrationReadingBatch on stdin to python -m omnimarket.nodes.node_integration_reading_publish_effect --home; the current INTEGRATION_PASS_TICK_PROMPT does not invoke this publisher.",
+      "evidence_file": "src/omnimarket/nodes/node_integration_reading_publish_effect/contract.yaml",
+      "why_cannot_run": "subscribe_topics=[]; CLI composes the projection compute and publisher; graph has no external source importer; the declared hourly prompt does not yet call the typed batch publisher.",
+      "recommendation": "WIRE",
+      "recommendation_target": "Hourly integration-pass writer at cron 37 * * * * calls the existing publisher CLI with the typed JSON batch after its ledger rewrite; schedule on the launching host (not a new h201 subscription), using its declared projection publisher overlay.",
+      "graph_answered_from": "f3a1133502a568471206a174373fd7a2a3770d45"
+    }
+  ],
+  "reachable_exclusions": [
+    {
+      "node": "node_floor_fill_candidates_compute",
+      "merged_prs": [
+        5716,
+        5289
+      ],
+      "caller": "src/omnimarket/nodes/node_floor_fill_orchestrator/orchestration/core.py",
+      "reason": "Existing local/host caller; empty profiles, local transport or no subscription alone do not establish NO-CALLER. A live execution reading remains unverified."
+    },
+    {
+      "node": "node_floor_fill_orchestrator",
+      "merged_prs": [
+        5699,
+        5715,
+        5289,
+        5503
+      ],
+      "caller": "src/omnimarket/handlers/floor_fill_scheduled_tick.py",
+      "reason": "Existing local/host caller; empty profiles, local transport or no subscription alone do not establish NO-CALLER. A live execution reading remains unverified."
+    },
+    {
+      "node": "node_floor_fill_reducer",
+      "merged_prs": [
+        5715
+      ],
+      "caller": "src/omnimarket/nodes/node_floor_fill_orchestrator/orchestration/core.py",
+      "reason": "Existing local/host caller; empty profiles, local transport or no subscription alone do not establish NO-CALLER. A live execution reading remains unverified."
+    },
+    {
+      "node": "node_floor_projection_read_effect",
+      "merged_prs": [
+        5879
+      ],
+      "caller": "src/omnimarket/nodes/node_factory_floor_publish_effect/__init__.py",
+      "reason": "Existing local/host caller; empty profiles, local transport or no subscription alone do not establish NO-CALLER. A live execution reading remains unverified."
+    },
+    {
+      "node": "node_integration_projection_compute",
+      "merged_prs": [
+        5879
+      ],
+      "caller": "src/omnimarket/nodes/node_integration_reading_publish_effect/runtime_integration_reading_publish.py",
+      "reason": "Existing local/host caller; empty profiles, local transport or no subscription alone do not establish NO-CALLER. A live execution reading remains unverified."
+    },
+    {
+      "node": "node_lab_fill_effect",
+      "merged_prs": [
+        5546
+      ],
+      "caller": "src/omnimarket/nodes/node_lab_fill_effect/runtime_lab_fill_tick.py",
+      "reason": "Existing local/host caller; empty profiles, local transport or no subscription alone do not establish NO-CALLER. A live execution reading remains unverified."
+    },
+    {
+      "node": "node_lab_fill_selection_compute",
+      "merged_prs": [
+        5628,
+        5546
+      ],
+      "caller": "src/omnimarket/nodes/node_lab_fill_effect/handlers/handler_lab_fill_select.py",
+      "reason": "Existing local/host caller; empty profiles, local transport or no subscription alone do not establish NO-CALLER. A live execution reading remains unverified."
+    },
+    {
+      "node": "node_lane_report_relay_effect",
+      "merged_prs": [
+        5685
+      ],
+      "caller": "src/omnimarket/nodes/node_remote_lane_start_effect/adapters/adapter_ssh_transport.py",
+      "reason": "Existing local/host caller; empty profiles, local transport or no subscription alone do not establish NO-CALLER. A live execution reading remains unverified."
+    },
+    {
+      "node": "node_remote_lane_start_effect",
+      "merged_prs": [
+        5685
+      ],
+      "caller": "src/omnimarket/nodes/node_remote_lane_start_orchestrator/orchestration/core.py",
+      "reason": "Existing local/host caller; empty profiles, local transport or no subscription alone do not establish NO-CALLER. A live execution reading remains unverified."
+    },
+    {
+      "node": "node_remote_lane_start_orchestrator",
+      "merged_prs": [
+        5685
+      ],
+      "caller": "src/omnimarket/nodes/node_lab_fill_effect/runtime_lab_fill_tick.py",
+      "reason": "Existing local/host caller; empty profiles, local transport or no subscription alone do not establish NO-CALLER. A live execution reading remains unverified."
+    },
+    {
+      "node": "node_validator_verdict_reducer",
+      "merged_prs": [
+        5404
+      ],
+      "caller": "src/omnimarket/nodes/node_validator_workflow_orchestrator/handlers/handler_validator_workflow.py",
+      "reason": "Existing local/host caller; empty profiles, local transport or no subscription alone do not establish NO-CALLER. A live execution reading remains unverified."
+    }
+  ],
+  "counts": {
+    "WIRE": 3,
+    "RETIRE": 0,
+    "MOVE": 2
+  }
+}

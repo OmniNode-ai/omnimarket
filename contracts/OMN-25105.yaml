@@ -1,0 +1,136 @@
+schema_version: 1.0.0
+ticket_id: OMN-25105
+title: Classify structural integration gaps and carry NO-CALLER recommendations
+summary: The reviewed inventory covers the named source PRs and excludes nodes with existing callers. The shared
+  integration reading model carries no_caller, recommendation and recommendation_target through the existing projection
+  and publisher while keeping the work outstanding. The Mac integration prompt patch and live ledger writer readback
+  remain pending; this is partial work, not Done evidence.
+requirements:
+- id: req-nocaller-1
+  statement: 'AC1: one table in the reports folder lists every merged node in the state (empty runtime_profiles,
+    no subscribe topic, no caller, in-process only or inmemory profile only) with node, merged PR, its ticket''s
+    stated purpose, what would call it and one recommendation of WIRE, RETIRE or MOVE -- falsifier: a node of the
+    PRs named in the description (5404, 5628, 5685, 5699, 5715, 5716, 5879, 5289, 5502, 5503, 5546, 5641, 5657)
+    that is absent from the table, or a table row with no recommendation, found by a grep of the table'
+  acceptance:
+  - id: AC1
+    statement: 'AC1: one table in the reports folder lists every merged node in the state (empty runtime_profiles,
+      no subscribe topic, no caller, in-process only or inmemory profile only) with node, merged PR, its ticket''s
+      stated purpose, what would call it and one recommendation of WIRE, RETIRE or MOVE -- falsifier: a node of
+      the PRs named in the description (5404, 5628, 5685, 5699, 5715, 5716, 5879, 5289, 5502, 5503, 5546, 5641,
+      5657) that is absent from the table, or a table row with no recommendation, found by a grep of the table'
+- id: req-nocaller-2
+  statement: 'AC2: every WIRE row names the caller and the runtime profile or schedule it needs, every RETIRE row
+    names what supersedes it, and every MOVE row names the host timer or Temporal schedule -- falsifier: a grep
+    of the table finds a WIRE, RETIRE or MOVE row whose caller, superseded-by or target cell is empty'
+  acceptance:
+  - id: AC2
+    statement: 'AC2: every WIRE row names the caller and the runtime profile or schedule it needs, every RETIRE
+      row names what supersedes it, and every MOVE row names the host timer or Temporal schedule -- falsifier: a
+      grep of the table finds a WIRE, RETIRE or MOVE row whose caller, superseded-by or target cell is empty'
+- id: req-nocaller-3
+  statement: 'AC3: the integration ledger format carries a NO-CALLER state written through its declared writer,
+    the integration pass script reads it, and the table''s nodes read NO-CALLER with their recommendation -- falsifier:
+    the integration pass script''s own reader run on the ledger file exits non-zero or lists no NO-CALLER line,
+    and a pytest of that reader on a sample with a NO-CALLER line fails before the change'
+  acceptance:
+  - id: AC3
+    statement: 'AC3: the integration ledger format carries a NO-CALLER state written through its declared writer,
+      the integration pass script reads it, and the table''s nodes read NO-CALLER with their recommendation -- falsifier:
+      the integration pass script''s own reader run on the ledger file exits non-zero or lists no NO-CALLER line,
+      and a pytest of that reader on a sample with a NO-CALLER line fails before the change'
+- id: req-nocaller-4
+  statement: 'AC4: no node was deleted, retired or edited by this work and the RETIRE rows are listed for the operator''s
+    yes -- falsifier: the pull request diff against its base shows a deleted or changed node directory under the
+    nodes folder'
+  acceptance:
+  - id: AC4
+    statement: 'AC4: no node was deleted, retired or edited by this work and the RETIRE rows are listed for the
+      operator''s yes -- falsifier: the pull request diff against its base shows a deleted or changed node directory
+      under the nodes folder'
+- id: req-nocaller-5
+  statement: 'AC5: the TERMINAL row summarises the count per recommendation and the counts equal the table''s row
+    counts -- falsifier: a count of WIRE, RETIRE and MOVE rows in the table differs from the TERMINAL''s counts'
+  acceptance:
+  - id: AC5
+    statement: 'AC5: the TERMINAL row summarises the count per recommendation and the counts equal the table''s
+      row counts -- falsifier: a count of WIRE, RETIRE and MOVE rows in the table differs from the TERMINAL''s counts'
+evidence_requirements:
+- kind: tests
+  description: Focused shared-model, existing projection/publisher and reviewed inventory coverage.
+  command: uv run --frozen python -m pytest tests/nodes/node_integration_projection_compute/test_no_caller.py -q
+    -n 0 -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-nocaller-ac1
+  description: AC1 repository evidence; the report records the external table and terminal observations separately.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen python -m pytest tests/nodes/node_integration_projection_compute/test_no_caller.py
+      -q -n 0 -p no:randomly --no-cov -k reviewed_inventory
+    cwd: .
+- id: dod-nocaller-ac2
+  description: AC2 repository evidence; the report records the external table and terminal observations separately.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen python -m pytest tests/nodes/node_integration_projection_compute/test_no_caller.py
+      -q -n 0 -p no:randomly --no-cov -k reviewed_inventory
+    cwd: .
+- id: dod-nocaller-ac3
+  description: Model reader and publisher half only; live Mac writer and prompt installation are pending and checked
+    separately.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen python -m pytest tests/nodes/node_integration_projection_compute/test_no_caller.py
+      -q -n 0 -p no:randomly --no-cov
+    cwd: .
+- id: dod-nocaller-ac4
+  description: AC4 repository evidence; the report records the external table and terminal observations separately.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: command
+    check_value: git diff --exit-code f3a1133502a568471206a174373fd7a2a3770d45 HEAD -- src/omnimarket/nodes/
+    cwd: .
+- id: dod-nocaller-ac5
+  description: AC5 repository evidence; the report records the external table and terminal observations separately.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen python -m pytest tests/nodes/node_integration_projection_compute/test_no_caller.py
+      -q -n 0 -p no:randomly --no-cov -k reviewed_inventory
+    cwd: .
+- id: dod-nocaller-integration-proof-live-writer
+  description: 'Pending: the launching host must read back NO-CALLER lines written by the integration pass and the
+    installed canonical prompt; this host has no Mac ledger. This unbound local check remains a Done requirement.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: python3 -c 'import os; from pathlib import Path; p=Path(os.environ.get("OMNI_SESSION_START_STATE_DIR",str(Path.home()/".local/state/omni/session-start")))/"integration-ledger.md";
+      rows=p.read_text().splitlines(); assert all(any("NO-CALLER" in r and "omnimarket "+str(n) in r for r in rows)
+      for n in (5404,5502,5641,5657,5879)), "live integration writer has not recorded all five NO-CALLER recommendations"'
+    cwd: .
+  - check_type: command
+    check_value: 'curl --fail --show-error --max-time 20 "${FLOOR_SIMPLE_URL:?set FLOOR_SIMPLE_URL to the served
+      lab floor-simple.json}" | python3 -c ''import json,sys; section=json.load(sys.stdin)["integration"]; expected={"omnimarket#5404":"WIRE",
+      "omnimarket#5502":"MOVE", "omnimarket#5641":"MOVE", "omnimarket#5657":"WIRE", "omnimarket#5879":"WIRE"}; assert
+      section["status"] == "read", section; assert any(row["key"] in expected and row["state"] == "no_caller" and
+      row["step"].startswith(expected[row["key"]]+":") and row["target"].strip() for row in section["rows"]), "the
+      live floor has not read back a NO-CALLER recommendation from the integration projection"'' '
+    cwd: .

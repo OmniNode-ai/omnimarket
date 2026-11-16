@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -26,6 +27,8 @@ class EnumIntegrationState(StrEnum):
 
     RUNNING = "running"
     NOT_RUNNING = "not_running"
+    # A proving lane cannot supply a missing caller or schedule. Keep the gap visible.
+    NO_CALLER = "no_caller"
     BLOCKED = "blocked"
     DEFECT = "defect"
     # In place or unproven: the change is where it would run, but no run of it has been seen yet; a reading is owed.
@@ -67,6 +70,7 @@ SETTLED_STATES = frozenset(
 UNINTEGRATED_STATES = frozenset(
     {
         EnumIntegrationState.NOT_RUNNING,
+        EnumIntegrationState.NO_CALLER,
         EnumIntegrationState.BLOCKED,
         EnumIntegrationState.DEFECT,
     }
@@ -95,6 +99,9 @@ class ModelIntegrationReading(_Frozen):
     gap_class: EnumIntegrationGapClass
     gap: str = ""
     step: str = ""
+    recommendation: Literal["WIRE", "RETIRE", "MOVE"] | None = None
+    # Caller and profile for WIRE, superseding flow for RETIRE, or host/Temporal schedule for MOVE.
+    recommendation_target: str = ""
     # The entry point that executes the change: unit, node, route or tick step.
     running_path: str = ""
     # One line from that entry point's latest run showing the changed behaviour.
@@ -117,6 +124,12 @@ class ModelIntegrationReading(_Frozen):
                 raise ValueError(
                     f"{name} carries its time zone; a bare time cannot be aged"
                 )
+        if self.state is EnumIntegrationState.NO_CALLER and (
+            self.recommendation is None or not self.recommendation_target.strip()
+        ):
+            raise ValueError(
+                "a no_caller change names WIRE, RETIRE or MOVE and its recommendation_target"
+            )
         if self.state in SETTLED_STATES:
             if self.gap_class is not EnumIntegrationGapClass.NONE:
                 raise ValueError(f"a {self.state.value} change has no gap class")
