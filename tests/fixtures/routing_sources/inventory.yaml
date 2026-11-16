@@ -232,6 +232,8 @@ not_routing_resolution_sites:
     reason: whether a deployment enables the lab SLI pack; an on or off switch for four nodes, not a route for delegated work
   - site: "src/omnimarket/nodes/node_dod_verify/services/standard_ticket_contract.py:load_node_overlay(NODE_NAME)"
     reason: the date and first ticket number from which dod-verify applies the standard ticket rules to a contract; it judges a ticket contract and chooses no backend, model, tier or provider
+  - site: "src/omnimarket/nodes/node_dod_verify/services/standard_ticket_contract.py:find_node_overlay(NODE_NAME)"
+    reason: asks whether the dod-verify overlay file exists when it names no cutover value, so an overlay that is present but empty is refused instead of read as no overlay; it judges a ticket contract and chooses no backend, model, tier or provider
   - site: "src/omnimarket/nodes/node_ilo_redfish_effect/runtime_ilo_redfish_cli.py:find_node_overlay(NODE_NAME)"
     reason: locates the directory of the iLO host overlay so a pinned certificate file can be read beside it; the overlay holds server management addresses and credential key names and selects no backend, model or tier
   - site: "src/omnimarket/nodes/node_lane_census_effect/handlers/adapter_lane_census_schedule.py:find_node_overlay(NODE_NAME)"

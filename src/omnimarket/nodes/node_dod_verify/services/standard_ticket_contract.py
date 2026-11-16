@@ -19,11 +19,13 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
+from omnibase_core.models.ticket.model_contract_dod_item import ModelContractDodItem
 from omnibase_core.models.ticket.model_ticket_contract import ModelTicketContract
 from pydantic import ValidationError
 
 from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
+    find_node_overlay,
     load_node_overlay,
 )
 from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
@@ -44,6 +46,7 @@ TICKET_NOT_STANDARD = "ticket_not_standard"
 CONTRACT_IN_SECOND_REPOSITORY = "contract_in_second_repository"
 GRANDFATHERED = "grandfathered"
 CUTOVER_UNREADABLE = "standard_ticket_cutover_unreadable"
+SCOPED_ITEM_NOT_IN_FULL_CONTRACT = "scoped_item_not_in_full_contract"
 
 STANDARD_EVIDENCE_ID = "contract_standard"
 
@@ -56,9 +59,9 @@ def load_cutover(
 ) -> ModelStandardTicketCutover | None:
     """The overlay's cutover, or ``None`` when no overlay names one.
 
-    A present overlay that names only one of the two values, or one that does not
-    parse, raises :class:`NodeOverlayError`: a broken overlay must not read as an
-    absent one.
+    A present overlay that names neither value, names only one of the two, or does
+    not parse, raises :class:`NodeOverlayError`: a broken overlay must not read as an
+    absent one, because an absent overlay switches every standard-ticket rule off.
     """
     fields = load_node_overlay(
         NODE_NAME,
@@ -66,7 +69,14 @@ def load_cutover(
         environ=environ,
     )
     if not fields:
-        return None
+        present = find_node_overlay(NODE_NAME, environ)
+        if present is None:
+            return None
+        raise NodeOverlayError(
+            f"the {NODE_NAME} overlay {present} names neither cutover value "
+            f"({CUTOVER_DATE_FIELD}, {CUTOVER_FIRST_TICKET_FIELD}); an overlay that "
+            "names no cutover does not read as an absent one"
+        )
     missing = sorted({CUTOVER_DATE_FIELD, CUTOVER_FIRST_TICKET_FIELD} - set(fields))
     if missing:
         raise NodeOverlayError(
@@ -151,6 +161,53 @@ def grandfathered_record(
     )
 
 
+def _normalised_item(item: object) -> object:
+    """An evidence item with the core model's defaults filled in, for comparison."""
+    try:
+        return ModelContractDodItem.model_validate(item).model_dump(mode="json")
+    except ValidationError:
+        return item
+
+
+def scoped_item_refusal(
+    ticket_id: str,
+    scoped: Mapping[str, Any],
+    full: Mapping[str, Any],
+) -> ModelEvidenceCheckResult | None:
+    """A refusal when a scoped ``dod_evidence`` item is not one the full contract holds.
+
+    The checks run from the scoped copy and the standard-ticket rules judge the full
+    contract, so each scoped item must equal an item of the full contract with the same
+    id. Otherwise a synced full contract could vouch for a scoped file whose checks
+    were rewritten.
+    """
+    full_items = full.get("dod_evidence")
+    held: dict[object, object] = {}
+    if isinstance(full_items, list):
+        held = {
+            item.get("id"): _normalised_item(item)
+            for item in full_items
+            if isinstance(item, dict)
+        }
+    scoped_items = scoped.get("dod_evidence")
+    differing: list[str] = []
+    for index, item in enumerate(
+        scoped_items if isinstance(scoped_items, list) else []
+    ):
+        item_id = item.get("id") if isinstance(item, dict) else None
+        if item_id not in held or held[item_id] != _normalised_item(item):
+            differing.append(str(item_id or f"dod_evidence[{index}]"))
+    if not differing:
+        return None
+    return _refusal(
+        SCOPED_ITEM_NOT_IN_FULL_CONTRACT,
+        ticket_id,
+        f"the scoped contract carries evidence items {differing} that are not equal "
+        "to an item of the full contract; the checks would run from a file the "
+        "fingerprinted contract does not hold.",
+    )
+
+
 def _schema_errors(exc: ValidationError) -> str:
     return "; ".join(
         f"{'.'.join(str(part) for part in error['loc']) or 'contract'}: {error['msg']}"
@@ -228,6 +285,7 @@ __all__: list[str] = [
     "CUTOVER_FIRST_TICKET_FIELD",
     "GRANDFATHERED",
     "NODE_NAME",
+    "SCOPED_ITEM_NOT_IN_FULL_CONTRACT",
     "STANDARD_EVIDENCE_ID",
     "TICKET_NOT_STANDARD",
     "cutover_unreadable_refusal",
@@ -235,6 +293,7 @@ __all__: list[str] = [
     "is_grandfathered",
     "load_cutover",
     "schema_refusal",
+    "scoped_item_refusal",
     "standard_ticket_refusals",
     "verified_repository",
 ]

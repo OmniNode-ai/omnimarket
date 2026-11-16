@@ -177,6 +177,7 @@ from omnimarket.nodes.node_dod_verify.services.standard_ticket_contract import (
     is_grandfathered,
     load_cutover,
     schema_refusal,
+    scoped_item_refusal,
     standard_ticket_refusals,
     verified_repository,
 )
@@ -3171,6 +3172,10 @@ class EvidenceCollector:
         refusals = standard_ticket_refusals(ticket_id, full, cutover, repository)
         if refusals:
             return refusals, None
+        if full is not raw:
+            scoped_refusal = scoped_item_refusal(ticket_id, raw, full)
+            if scoped_refusal is not None:
+                return [scoped_refusal], None
         if is_grandfathered(ticket_id, cutover):
             return [], grandfathered_record(ticket_id, cutover)
         return [], None
