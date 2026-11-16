@@ -11,16 +11,19 @@ so the scorers themselves get the same treatment.
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
 
+from benchmarks.delegation_ladder import scorers
 from benchmarks.delegation_ladder.models import EnumOutcome, ModelTaskBundle
 from benchmarks.delegation_ladder.scorers import (
     extract_code,
     extract_identifiers,
     git_text,
     grounding_report,
+    materialise_tree,
     parse_search_replace,
     score_diagnosis_location,
     score_exact_match,
@@ -30,6 +33,11 @@ from benchmarks.delegation_ladder.scorers import (
     score_patch_apply_and_test,
     score_unit_test_execution,
     split_answer,
+)
+from omnimarket.handlers.historical_tree import (
+    REPLAY_PATHS,
+    import_failure,
+    replay_paths,
 )
 
 HERE = Path(__file__).resolve().parent.parent
@@ -629,12 +637,13 @@ def test_every_hard_task_records_its_structural_features() -> None:
                 assert f"### {str(line).removeprefix('FILE: ')}\n" in bundle.prompt
 
 
-#: A merged single-file fix whose own test fails on its parent's source. Its tree
-#: imports ``ReadinessState`` from this repository (OMN-14108 moved it here), so
-#: the scorer replays it with the project environment as it stands; the H6 bundle
-#: commits predate that move and import it from a package this repository no
-#: longer installs.
-REPLAYABLE_FIX = {
+#: A merged single-file fix, replayed with its own full config, as the positive
+#: control of the scorer: its tree imports with the project environment as it
+#: stands, and its own test fails on its parent's source. The H6 bundle commits
+#: do not import here (they import a package this repository no longer
+#: installs), so none of them can carry this control; the test after it states
+#: what the scorer reports for each of them instead.
+REPLAYABLE_FIX: dict[str, object] = {
     "repo_commit": "195ecfcf9e2edae162b8ead0d69fe02e594e432d",
     "changed_files": [
         "src/omnimarket/nodes/node_lane_container_budget_compute/handlers/"
@@ -646,11 +655,12 @@ REPLAYABLE_FIX = {
     ],
     "test_path": "tests/nodes/node_lane_container_budget_compute/"
     "test_lane_container_budget.py",
+    "timeout_s": 240,
 }
 
 
 def test_the_merged_change_passes_a_hard_task_and_a_no_op_edit_fails_it() -> None:
-    config: dict[str, object] = {**_hard("H6-04").scorer_config, **REPLAYABLE_FIX}
+    config = dict(REPLAYABLE_FIX)
     commit = str(config["repo_commit"])
     changed = config["changed_files"]
     assert isinstance(changed, list)
@@ -665,8 +675,72 @@ def test_the_merged_change_passes_a_hard_task_and_a_no_op_edit_fails_it() -> Non
     assert score_multi_file_edit_and_test(no_op, config).outcome is EnumOutcome.FAIL
 
 
-def test_a_hard_edit_to_a_file_not_shown_is_refused_before_any_test_runs() -> None:
+def _no_op_answer(config: dict[str, object]) -> str:
+    changed = config["changed_files"]
+    assert isinstance(changed, list)
+    path = str(changed[0])
+    first = git_text("show", f"{config['repo_commit']}^:{path}").splitlines()[0]
+    return f"FILE: {path}\n<<<<<<< SEARCH\n{first}\n=======\n{first}\n>>>>>>> REPLACE"
+
+
+def test_a_tree_that_cannot_import_is_a_harness_error_never_a_failed_answer() -> None:
+    """H6-04 replays under its own config; its import error is reported apart."""
     config = dict(_hard("H6-04").scorer_config)
+    result = score_multi_file_edit_and_test(_no_op_answer(config), config)
+    assert result.outcome is EnumOutcome.HARNESS_ERROR
+    assert "cannot import" in result.detail
+    assert result.checklist["tree_imports"] is False
+
+
+def test_an_import_error_is_found_in_a_test_runs_output_and_only_there() -> None:
+    out = "E   ModuleNotFoundError: No module named 'gone'\n1 error in 0.1s"
+    assert import_failure(out) == "ModuleNotFoundError: No module named 'gone'"
+    assert import_failure("1 failed, 3 passed in 0.1s") is None
+
+
+def test_the_archive_names_only_the_paths_a_commit_holds(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = tmp_path / "repo"
+    (repo / "src").mkdir(parents=True)
+    (repo / "tests").mkdir()
+    (repo / "src" / "a.py").write_text("A = 1\n", encoding="utf-8")
+    (repo / "tests" / "test_a.py").write_text("", encoding="utf-8")
+    (repo / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
+    git = [
+        "git",
+        "-C",
+        str(repo),
+        "-c",
+        "user.name=t",
+        "-c",
+        "user.email=t@example.com",
+    ]
+    subprocess.run([*git, "init", "-q"], check=True)
+    subprocess.run([*git, "add", "."], check=True)
+    subprocess.run([*git, "commit", "-q", "-m", "old commit"], check=True)
+    commit = subprocess.run(
+        [*git, "rev-parse", "HEAD"], capture_output=True, text=True, check=True
+    ).stdout.strip()
+    assert replay_paths(repo, commit) == ["src", "tests", "pyproject.toml"]
+    monkeypatch.setattr(scorers, "REPO_ROOT", repo)
+    dest = tmp_path / "tree"
+    dest.mkdir()
+    materialise_tree(commit, dest, [])
+    assert (dest / "src" / "a.py").is_file()
+    assert not (dest / "scripts").exists()
+
+
+@pytest.mark.parametrize(
+    "path", sorted(HARD_BUNDLES.glob("H6-*.json")), ids=lambda p: p.stem
+)
+def test_every_bundle_commit_holds_the_paths_the_replay_archives(path: Path) -> None:
+    commit = str(_hard(path.stem).scorer_config["repo_commit"])
+    assert replay_paths(scorers.REPO_ROOT, commit) == list(REPLAY_PATHS)
+
+
+def test_a_hard_edit_to_a_file_not_shown_is_refused_before_any_test_runs() -> None:
+    config = dict(REPLAYABLE_FIX)
     answer = "FILE: src/elsewhere.py\n<<<<<<< SEARCH\na\n=======\nb\n>>>>>>> REPLACE"
     result = score_multi_file_edit_and_test(answer, config)
     assert result.outcome is EnumOutcome.FAIL

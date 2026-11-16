@@ -1,8 +1,9 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""ModelPostMortemReport and ModelFrictionEvent.
+"""ModelPostMortemReport and ModelFrictionEvent for node_session_post_mortem.
 
-This module is the home of the post-mortem telemetry wire types.
+These two models are defined in this module; omnibase_core, omnibase_spi and
+omnibase_infra define neither, so a change to their wire shape is made here.
 """
 
 from __future__ import annotations

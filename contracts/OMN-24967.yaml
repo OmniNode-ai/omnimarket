@@ -1,0 +1,149 @@
+schema_version: 1.0.0
+ticket_id: OMN-24967
+title: Review findings on omnimarket PR 6300 are fixed or argued, with a red-then-green test for each
+summary: The delegation-ladder scorer archives only the paths a commit holds and reports an import error apart from a failed answer; the wire-compatibility replay pins its baseline and commits under its own identity; the running-reference guard scans every tree a reference could live in and names the retired package nowhere; dropped pointers name real homes; two nodes' stopped reads of the retired repository are tested.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24967-scorer
+  statement: The delegation-ladder scorer replays each bundle under its own config, archives only the paths a commit holds, and reports an import error apart from a failed answer.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: the scorer archives only the paths a bundle commit holds, reports a tree that cannot import as a harness error, and every bundle commit is checked for scripts and config -- falsifier: uv run pytest benchmarks/delegation_ladder/tests/test_scorers.py -q -p no:cacheprovider fails with the unconditional archive restored'
+- id: req-omn24967-wire
+  statement: The wire-compatibility replay pins the baseline file to a fixed commit, commits under its own identity, and shows which tag the gate resolves imports.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: the replayed release carries the baseline file as a pinned commit holds it, the clone commits under its own identity, and the gate-resolved tag imports while the unretargeted release does not -- falsifier: uv run pytest tests/ci/test_check_wire_compatibility_omn18868.py -q -p no:cacheprovider fails with the head copy of the file in the baseline'
+- id: req-omn24967-guard
+  statement: The running-reference guard scans every tree a reference could live in.
+  acceptance:
+  - id: AC4
+    statement: 'AC4: no file this change touches names the retired sibling package -- falsifier: git diff --name-only --diff-filter=d origin/dev...HEAD | xargs git grep -n -i -E ''omnibase[_-]compat'' -- prints a line'
+  - id: AC7
+    statement: 'AC7: the guard scans .github/workflows, benchmarks, scripts, src and tests and fails for a reference planted in any of them -- falsifier: the guard test passes with the two-file scan restored'
+- id: req-omn24967-pointers
+  statement: Comments left for dropped pointers name the repository path of the type's home.
+  acceptance:
+  - id: AC5
+    statement: 'AC5: each pointer comment names a repository path -- falsifier: git grep -n src/omnibase_core/models/routing/model_routing_policy.py prints no line in the triage handler'
+- id: req-omn24967-lockfile
+  statement: Neither pyproject.toml nor uv.lock names the retired package, and the non-blocking comments say so.
+  acceptance:
+  - id: AC8
+    statement: 'AC8: grep for the retired package over uv.lock and pyproject.toml prints no line -- falsifier: it prints a live dependency line'
+  - id: AC10
+    statement: 'AC10: the two omnibase-infra pin comments say and a since-retired package -- falsifier: grep -n "since-retired package" pyproject.toml prints fewer than two lines'
+- id: req-omn24967-nodes
+  statement: The two nodes that stopped reading the retired repository are tested.
+  acceptance:
+  - id: AC9
+    statement: 'AC9: the closer overlay and the lab fill merged-history read list no clone of the retired repository -- falsifier: the two node tests pass with the old repository entry restored'
+- id: req-omn24967-ci
+  statement: State coverage holds for every node the change touches, and the lab shows the fix.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: strict state coverage reads PASS for every touched node and a Lab comment names all 40 characters of the head -- falsifier: scripts/validate_state_coverage.py --strict reports an uncovered state'
+  - id: AC6
+    statement: 'AC6: base red and head green are shown on the lab for the guard, scorer and wire files -- falsifier: the PR comment lacks a receipt for either sha'
+evidence_requirements:
+- kind: tests
+  description: The scorer, wire-compatibility, guard, seam-contract and two node tests run over the real tree.
+  command: bash -c 'uv run pytest benchmarks/delegation_ladder/tests/test_scorers.py tests/ci/test_check_wire_compatibility_omn18868.py tests/unit/test_no_*_running_references.py -q --no-cov'
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24967-ac1
+  description: AC1 strict state coverage passes for every node the change touches, including the seam parallel executor's terminal event.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_golden_chain_seam_parallel_executor.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24967-ac2
+  description: AC2 the scorer test file passes, including the import-error and missing-path controls.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest benchmarks/delegation_ladder/tests/test_scorers.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24967-ac3
+  description: AC3 the wire-compatibility test file passes, including the pinned-baseline, identity and gate-tag controls.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_check_wire_compatibility_omn18868.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24967-ac4
+  description: AC4 the guard test passes and no file this change touches names the retired package.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: bash -c 'uv run --frozen pytest tests/unit/test_no_*_running_references.py -q --no-cov -n 0 -p no:randomly'
+    cwd: .
+- id: dod-omn24967-ac5
+  description: AC5 the triage handler's pointer comment names the repository path of the routing policy model's home.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: command
+    check_value: git grep -n -F src/omnibase_core/models/routing/model_routing_policy.py -- src/omnimarket/nodes/node_merge_sweep_triage_orchestrator/handlers/handler_triage.py
+    cwd: .
+- id: dod-omn24967-ac6-integration-proof
+  description: AC6 the guard, scorer and wire files run on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: command
+    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane fix6300-1818 -- bash -c 'uv run --frozen pytest tests/unit/test_no_*_running_references.py tests/ci/test_check_wire_compatibility_omn18868.py -q --no-cov'
+    cwd: .
+- id: dod-omn24967-ac7
+  description: AC7 the guard fails for a reference planted outside the two files it read before.
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: bash -c 'uv run --frozen pytest tests/unit/test_no_*_running_references.py -q --no-cov -n 0 -p no:randomly -k planted'
+    cwd: .
+- id: dod-omn24967-ac8
+  description: AC8 neither uv.lock nor pyproject.toml names the retired package.
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: command
+    check_value: bash -c '! grep -n -i -E "omnibase[_-]compat" uv.lock pyproject.toml'
+    cwd: .
+- id: dod-omn24967-ac9
+  description: AC9 the two node tests pass with the retired repository gone from both lists.
+  source: manual
+  binds_ac:
+  - AC9
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_dod_closeout_sweep_compute/test_retired_repository_dod_closeout_sweep_compute.py tests/nodes/node_lab_fill_effect/test_retired_repository_lab_fill.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24967-ac10
+  description: AC10 both omnibase-infra pin comment blocks say and a since-retired package.
+  source: manual
+  binds_ac:
+  - AC10
+  checks:
+  - check_type: command
+    check_value: bash -c 'test "$(grep -c "since-retired package" pyproject.toml)" -ge 2'
+    cwd: .

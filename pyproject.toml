@@ -218,13 +218,13 @@ dependencies = [
     # that prices claude-sonnet-5-5 (omnibase_infra#4400). omnimarket#3172
     # changed DEFAULT_BASELINE_MODEL to claude-sonnet-5-5; below 0.38.61 the
     # premium counterfactual is None, so every savings row is BASELINE_UNRESOLVED.
-    # 0.38.61 declares omnibase-spi==0.23.5; the core floor above admits it,
-    # so this bump cascades nothing.
+    # 0.38.61 declares omnibase-spi==0.23.5 and a since-retired package; the core
+    # floor above admits it, so this bump cascades nothing.
     # OMN-20833: floor raised to 0.38.70, the first omnibase_infra release whose
     # pricing manifest carries the providers' published rates (omnibase_infra#4631):
     # claude-opus-4-6 at $5 / $25 per MTok, not $15 / $75. 0.38.70 declares
-    # omnibase-core>=0.47.31 and omnibase-spi==0.23.5; the
-    # floors above admit them, so this bump cascades nothing.
+    # omnibase-core>=0.47.31, omnibase-spi==0.23.5 and a since-retired package;
+    # the floors above admit them, so this bump cascades nothing.
     # OMN-17427: floor raised to 0.38.71, the first omnibase_infra release that
     # vendors the lab_job, run_trace and tenant_credentials 0006/0007 node
     # migrations, so the Sibling Release Compatibility Gate finds them in the
@@ -1921,13 +1921,13 @@ override-dependencies = [
     # that prices claude-sonnet-5-5 (omnibase_infra#4400). omnimarket#3172
     # changed DEFAULT_BASELINE_MODEL to claude-sonnet-5-5; below 0.38.61 the
     # premium counterfactual is None, so every savings row is BASELINE_UNRESOLVED.
-    # 0.38.61 declares omnibase-spi==0.23.5; the core floor above admits it,
-    # so this bump cascades nothing.
+    # 0.38.61 declares omnibase-spi==0.23.5 and a since-retired package; the core
+    # floor above admits it, so this bump cascades nothing.
     # OMN-20833: floor raised to 0.38.70, the first omnibase_infra release whose
     # pricing manifest carries the providers' published rates (omnibase_infra#4631):
     # claude-opus-4-6 at $5 / $25 per MTok, not $15 / $75. 0.38.70 declares
-    # omnibase-core>=0.47.31 and omnibase-spi==0.23.5; the
-    # floors above admit them, so this bump cascades nothing.
+    # omnibase-core>=0.47.31, omnibase-spi==0.23.5 and a since-retired package;
+    # the floors above admit them, so this bump cascades nothing.
     # OMN-17427: floor raised to 0.38.71, the first omnibase_infra release that
     # vendors the lab_job, run_trace and tenant_credentials 0006/0007 node
     # migrations, so the Sibling Release Compatibility Gate finds them in the

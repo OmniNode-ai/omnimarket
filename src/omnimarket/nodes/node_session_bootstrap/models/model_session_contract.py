@@ -1,8 +1,11 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""ModelSessionContract wire type for node_session_bootstrap.
+"""ModelSessionContract for node_session_bootstrap.
 
-This module is the home of the session contract wire type.
+This is the node's own frozen model of the session contract. omnibase_core
+defines a ModelSessionContract of its own at
+``src/omnibase_core/models/overseer/model_session_contract.py``; this module is
+not that type's home.
 """
 
 from __future__ import annotations

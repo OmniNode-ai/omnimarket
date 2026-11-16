@@ -67,7 +67,10 @@ from check_wire_compatibility import (
     OUTCOME_RELEASE_UNREADABLE,
     OUTCOME_RELEASE_UNRESOLVABLE,
     WIRE_MODEL_ROOTS,
+    GateError,
+    _run_probe,
     main,
+    materialise_release,
 )
 from ci_summary_gate import STRICT_GATE_JOBS
 
@@ -93,6 +96,15 @@ WIRE_MODULE = "src/omnimarket/models/delegation/wire/model_delegate_skill_reques
 #: byte of the released tree, ``ModelDelegateSkillRequest`` included, is the
 #: release's own.
 READINESS_HOME = "src/omnimarket/models/evidence_pipeline/wire/types.py"
+#: The home's file is read from this commit, never from the checkout under test:
+#: a baseline copied from head would carry every later edit to the type into the
+#: tree the gate compares head against, so a change to it could never be refused.
+READINESS_HOME_COMMIT = "ebb006955dd0301ecbd29974fa321682c359f5f8"
+READINESS_HOME_BLOB = "87582f7e5c582500d043f34a06e7a2e08a35c3a4"
+#: The dev-merge tag omniclaude pinned for this repository when the gate step
+#: (``ci.yml``, "Every changed wire payload must decode ...") last resolved it.
+GATE_PINNED_TAG = "dev-20261112062638-179aa1280722"
+WIRE_MODULE_DOTTED = "omnimarket.models.delegation.wire.model_delegate_skill_request"
 READINESS_HOME_MODULE = "omnimarket.models.evidence_pipeline.wire.types"
 READINESS_IMPORTER = "src/omnimarket/events/runtime_deployment.py"
 _READINESS_IMPORT_RE = re.compile(r"^from \S+ import ReadinessState$", re.MULTILINE)
@@ -182,7 +194,7 @@ def _retargeted_release_clone(tmp_path: Path) -> tuple[Path, str]:
     Returns the clone and the commit the moved ``PRE_PUBLISHED_AT_RELEASE`` tag
     now names: a child of the real release commit whose only change is the
     ``ReadinessState`` import pointed at :data:`READINESS_HOME_MODULE`, with
-    this repository's copy of that module added.
+    the home's file, as ``READINESS_HOME_COMMIT`` holds it, added.
     """
     clone = tmp_path / "clone"
     subprocess.run(
@@ -204,7 +216,16 @@ def _retargeted_release_clone(tmp_path: Path) -> tuple[Path, str]:
     )
     importer.write_text(retargeted, encoding="utf-8")
     _write(
-        tree, READINESS_HOME, (REPO_ROOT / READINESS_HOME).read_text(encoding="utf-8")
+        tree,
+        READINESS_HOME,
+        subprocess.run(
+            ["git", "show", f"{READINESS_HOME_COMMIT}:{READINESS_HOME}"],
+            cwd=str(clone),
+            env=scrub_git_location_env(os.environ),
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout,
     )
     _git(tree, "add", READINESS_IMPORTER, READINESS_HOME)
     _git(
@@ -1284,3 +1305,75 @@ def test_oldest_pin_two_consumers_on_one_tag_are_graded_once(
     out = capsys.readouterr().out
     assert out.count("pin-verdict PASS") == 1
     assert "pinned by a, b" in out
+
+
+@pytest.mark.integration
+def test_the_replayed_release_carries_the_pinned_baseline_not_heads_copy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A head edit to the type's home must not reach the baseline it is graded against."""
+    _require_tag(PRE_PUBLISHED_AT_RELEASE)
+    head = tmp_path / "head"
+    subprocess.run(
+        ["git", "clone", "--quiet", str(REPO_ROOT), str(head)],
+        env=scrub_git_location_env(os.environ),
+        capture_output=True,
+        check=True,
+    )
+    _write(head, READINESS_HOME, "READINESS_EDITED_AT_HEAD = True\n")
+    monkeypatch.setattr(sys.modules[__name__], "REPO_ROOT", head)
+    clone, retargeted = _retargeted_release_clone(tmp_path / "replay")
+    assert (
+        _git(clone, "rev-parse", f"{retargeted}:{READINESS_HOME}")
+        == READINESS_HOME_BLOB
+    )
+
+
+@pytest.mark.integration
+def test_the_replay_clone_commits_under_its_own_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The retargeting commit needs no identity from the machine running it."""
+    _require_tag(PRE_PUBLISHED_AT_RELEASE)
+    for name in ("GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME", "EMAIL"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", os.devnull)
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    clone, retargeted = _retargeted_release_clone(tmp_path)
+    author = _git(clone, "log", "-1", "--format=%an <%ae>", retargeted)
+    assert author == "wire compatibility gate test <gate@omninode.ai>"
+
+
+@pytest.mark.integration
+def test_the_tag_the_gate_resolves_imports_and_the_unretargeted_release_does_not(
+    tmp_path: Path,
+) -> None:
+    """The gate probe-fails on a baseline tree that cannot import.
+
+    ``GATE_PINNED_TAG`` is the tag the gate step resolves from the consumer's
+    pin: its wire module must import under this environment, or the gate reads
+    ``WIRE_COMPAT_PROBE_FAILED`` while every test above passes on a doctored
+    release. The released ``v0.4.133`` tree, unretargeted, is the control: it
+    imports a package this repository no longer installs, and the probe says so.
+    """
+    _require_tag(PRE_PUBLISHED_AT_RELEASE)
+    _require_tag(GATE_PINNED_TAG)
+    pinned = materialise_release(REPO_ROOT, GATE_PINNED_TAG, tmp_path / "pinned")
+    answer = _run_probe(
+        src_root=pinned,
+        module=WIRE_MODULE_DOTTED,
+        mode="describe",
+        workdir=tmp_path,
+    )
+    assert answer
+    released = materialise_release(
+        REPO_ROOT, PRE_PUBLISHED_AT_RELEASE, tmp_path / "released"
+    )
+    with pytest.raises(GateError) as refusal:
+        _run_probe(
+            src_root=released,
+            module=WIRE_MODULE_DOTTED,
+            mode="describe",
+            workdir=tmp_path,
+        )
+    assert refusal.value.outcome == OUTCOME_PROBE_FAILED

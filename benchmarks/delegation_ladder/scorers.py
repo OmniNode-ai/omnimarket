@@ -35,6 +35,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from benchmarks.delegation_ladder.models import EnumOutcome, ModelScore
+from omnimarket.handlers.historical_tree import import_failure, replay_paths
 from omnimarket.handlers.workflow_request_score import (
     same_literal,
     score_workflow_request,
@@ -654,11 +655,7 @@ def materialise_tree(commit: str, dest: Path, revert_to_parent: list[str]) -> No
             str(REPO_ROOT),
             "archive",
             commit,
-            "src",
-            "tests",
-            "scripts",
-            "config",
-            "pyproject.toml",
+            *replay_paths(REPO_ROOT, commit),
         ],
         capture_output=True,
         check=True,
@@ -774,14 +771,17 @@ def score_multi_file_edit_and_test(
         patched_rc, patched_out = 1, ""
         if refused is None:
             patched_rc, patched_out = run_tree_test(tree, test_path, timeout_s)
-    if control_rc == 0:
+    broken = import_failure(control_out)
+    if control_rc == 0 or broken is not None:
         return ModelScore(
             outcome=EnumOutcome.HARNESS_ERROR,
             score=0.0,
             mechanical=True,
-            detail="the commit's test PASSES on the files as shown; the task cannot "
+            detail=f"the commit's tree cannot import, so no answer can be scored: {broken}"
+            if broken
+            else "the commit's test PASSES on the files as shown; the task cannot "
             "discriminate: " + control_out[-400:],
-            checklist={"control_fails": False},
+            checklist={"control_fails": control_rc != 0, "tree_imports": not broken},
         )
     files_edited = len({path for path, _, _ in edits})
     if refused is not None:
