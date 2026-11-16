@@ -224,11 +224,11 @@ class HandlerRemoteLaneResult:
             outcome = REJECTED_OUTCOME
         else:
             outcome = declared
-        findings: tuple[str, ...] = ()
-        if outcome in FINISHING_OUTCOMES and code_lane(request.brief):
-            carried, findings = exemplar_graph_cells(message)
-            if not carried:  # OMN-24686: a code lane copies an exemplar and queries the graph, and says so
-                outcome, problem = "partial", NO_CELL_PROBLEM
+        carried, findings, step_cells = exemplar_graph_cells(message)
+        if (
+            outcome in FINISHING_OUTCOMES and not carried and code_lane(request.brief)
+        ):  # OMN-24686: a code lane copies an exemplar and queries the graph, and says so
+            outcome, problem = "partial", NO_CELL_PROBLEM
         usage = receipt_usage(
             request.engine, request.engine_output, request.brief, request.wall_seconds
         )
@@ -240,6 +240,9 @@ class HandlerRemoteLaneResult:
         }
         if withdrawn_by is not None:
             ledger_cells["withdrawn-by"] = withdrawn_by
+        ledger_cells.update(
+            step_cells
+        )  # the cells ride to the TERMINAL, not only in findings
         needs = lane_needs(message, outcome, self._needs_policy)
         report = report_text(message, self._needs_policy)
         if needs is not None:

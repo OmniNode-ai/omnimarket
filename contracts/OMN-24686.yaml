@@ -5,10 +5,13 @@ summary: >
   node_remote_lane_close_compute marks a code lane (its brief's CLAIM names a repo and its task writes code) that declared done or handed-off
   partial with the problem no exemplar or graph cell unless its TERMINAL or LANE_RESULT carries exemplar=<path> and graph=<query -> answer>;
   graph=unreachable:<why> is accepted and kept in the result's findings. A lane that writes no code, a brief naming no repo and a request with
-  no brief close as before.
-is_seam_ticket: false
-interface_change: false
-interfaces_touched: []
+  no brief close as before. The close request carries the lane brief (the start orchestrator and the runner send it); a code lane is a brief
+  that carries an EXEMPLAR or GRAPH step, the definition the lane-brief check enforces in the private plugin repository; exemplar=none:<reason> is accepted
+  and kept as a finding; both cells ride in ledger_cells.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+  - "events"
 requirements:
   - id: req-omn24686-exemplar-graph
     statement: "A code lane copies an exemplar and queries the code graph, and the brief check and the closeout hold it to both."
@@ -50,4 +53,3 @@ dod_evidence:
       - check_type: "command"
         check_value: "uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane exgraph-req-0320 --kind test -- uv run --frozen pytest tests/nodes/node_remote_lane_close_compute -q --no-cov -n 0"
         cwd: "."
-    binds_ac: ["AC2"]
