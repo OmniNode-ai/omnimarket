@@ -83,7 +83,7 @@ def _group_body(**over: object) -> dict[str, Any]:
         "id": _GROUP,
         "name": "example-group",
         "allows_public_repositories": False,
-        "restricted_to_selected_workflows": True,
+        "restricted_to_workflows": True,
         "selected_workflows": [_WORKFLOW],
         **over,
     }
@@ -243,6 +243,23 @@ async def test_a_body_without_the_exposure_fields_is_refused_not_defaulted() -> 
     ).handle(_request())
     assert isinstance(result, ModelRepoWriteFailed), result
     assert result.reason is EnumRepoWriteRefusal.GITHUB_REFUSED
+
+
+async def test_a_body_carrying_only_the_old_flag_name_is_refused() -> None:
+    """GitHub names the flag restricted_to_workflows; the old key is not a field."""
+    body = {
+        "id": _GROUP,
+        "name": "example-group",
+        "allows_public_repositories": False,
+        "restricted_to_selected_workflows": True,
+    }
+    fake = _Fake([(_GROUP_REQUEST, _ok(body)), (_PAGE_1, _ok(_repos(0)))])
+    result = await _handler(
+        fake, _overlay(ModelRunnerGroupEntry(organization=_ORG, group_id=_GROUP))
+    ).handle(_request())
+    assert isinstance(result, ModelRepoWriteFailed), result
+    assert result.reason is EnumRepoWriteRefusal.GITHUB_REFUSED
+    assert "restricted_to_workflows" in result.detail
 
 
 async def test_dry_run_plans_only_the_group_read() -> None:
