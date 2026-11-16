@@ -96,7 +96,13 @@ def test_node_is_registered_and_its_contract_binds_the_handler() -> None:
     assert hints["request"] is model(binding["input_model"])
     assert hints["return"] is model(binding["output_model"])
     assert contract["event_bus"]["subscribe_topics"] == [COMMAND_TOPIC]
-    assert contract["event_bus"]["publish_topics"] == [COMPARED_TOPIC, FAILED_TOPIC]
+    assert contract["event_bus"]["publish_topics"] == [
+        COMPARED_TOPIC,
+        FAILED_TOPIC,
+        "onex.evt.omnimarket.pr-landing-rerun-completed.v1",
+        "onex.evt.omnimarket.pr-landing-rerun-failed.v1",
+        "onex.cmd.omnimarket.pr-landing-rerun-requested.v1",
+    ]
     assert contract["runtime_dispatch"]["terminal_events"] == {
         "success": COMPARED_TOPIC,
         "failure": FAILED_TOPIC,
@@ -151,10 +157,15 @@ def test_error_chain_a_tick_with_no_recorded_decision_ends_in_the_failed_event()
 ):
     publisher = InMemoryTickPublisher()
     result = HandlerPrLandingTickOrchestrator(publisher=publisher).handle(
-        _request(recorded_decision=None)
+        _request(EnumTickMode.REPLAY, recorded_decision=None)
     )
     assert result.failure_reason is EnumTickFailureReason.RECORDED_DECISION_MISSING
     assert [t for t, _ in publisher.published] == [FAILED_TOPIC]
+    # observe mode names the cause as the controller's missing tick (OMN-22921)
+    observed = HandlerPrLandingTickOrchestrator(
+        publisher=InMemoryTickPublisher()
+    ).handle(_request(EnumTickMode.OBSERVE, recorded_decision=None))
+    assert observed.failure_reason is EnumTickFailureReason.CONTROLLER_TICK_MISSING
 
 
 class _RaisingDecider:
@@ -302,3 +313,18 @@ def test_chain_test_goes_red_under_its_named_mutation(name: str) -> None:
 def test_chain_tests_are_green_without_a_mutation() -> None:
     _golden_chain(InMemoryTickPublisher())
     _error_chain(InMemoryTickPublisher())
+
+
+class _RaisingPublisher:
+    def publish(self, topic: str, event: BaseModel) -> None:
+        raise RuntimeError("bus down")
+
+
+def test_a_publisher_that_raises_still_closes_the_floor_chain_with_a_failure() -> None:
+    sink = InMemoryEmissionSink()
+    result = HandlerPrLandingTickOrchestrator(
+        publisher=_RaisingPublisher(), emission_sink=sink, floor_piece=FLOOR_PIECE
+    ).handle(_request())
+    assert [e.phase for e in sink.events] == ["start", "failure"]
+    assert sink.events[1].failure_code == EnumTickFailureReason.TICK_STAGE_RAISED.value
+    assert result.status is EnumTickStatus.FAILED

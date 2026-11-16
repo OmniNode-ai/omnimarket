@@ -43,7 +43,12 @@ jobs:
     # omniclaude#2099 (a78b103e5, OMN-17172), which 96dd1896 predates.
     # Same commit as the exported pre-commit hook's rev in
     # .pre-commit-config.yaml, so local and CI cannot disagree.
-    uses: OmniNode-ai/omniclaude/.github/workflows/kb-doc-gate-reusable.yml@6bfba15f7d103ddaa9e949c459e95153b1ca6a94
+    # OMN-23542: bumped from 6bfba15f to the omniclaude dev-merge tag of omniclaude#3251
+    # (6f8f3646a88e12f6577a7989ceec3c3504889be6). That reusable resolves its validator ref from
+    # job.workflow_sha and retries a rate-limited fetch; 6bfba15f checked out with an empty ref,
+    # which made actions/checkout call the rate-limited default-branch API. The pre-commit hook
+    # rev in .pre-commit-config.yaml moves to the same commit.
+    uses: OmniNode-ai/omniclaude/.github/workflows/kb-doc-gate-reusable.yml@dev-20261110125151-6f8f3646a88e
     with:
       # OMN-16613: omnimarket's Wave-4 doc migration has landed (docs/ carries
       # zero markdown), so the gate runs tree-wide, not just over the PR diff.

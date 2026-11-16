@@ -1,0 +1,38 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# A synthetic copy of the node overlay: every host, container, address and number is made up.
+units:
+  - name: onex-example-broker
+    hosts: [host-a]
+    container: example-broker
+    ticket: OMN-23390
+    docker_binary: /usr/bin/docker
+    restart_seconds: 10
+    stop_timeout_seconds: 30
+    probe_address: 127.0.0.1
+    probe_port: 59092
+    probe_wait_seconds: 60
+    network: example-net
+    published_ports:
+      - host_address: 127.0.0.1
+        host_port: 59092
+        container_port: 59092
+    create:
+      image: example/broker:1.0
+      command: [broker, start]
+      volumes: [example-broker:/data]
+      restart_policy: unless-stopped
+    # OMN-24208: applied in place with docker update --memory/--memory-swap, so the running
+    # container neither restarts nor is recreated. memory_swap_gib is memory plus swap, so
+    # the two keys are declared together and swap never sits below memory; the installer
+    # skips docker update when the running container already matches.
+    memory_gib: 4
+    memory_swap_gib: 8
+    # OMN-24249: when the container's network or published port is wrong at install, the
+    # installer recreates this one service through its compose declaration and reads the
+    # container again before it writes the unit.
+    recreate:
+      compose_file: /etc/omni/example-broker-compose.yaml
+      env_file: /etc/omni/example-broker.env
+      project: example-broker
+      service: broker

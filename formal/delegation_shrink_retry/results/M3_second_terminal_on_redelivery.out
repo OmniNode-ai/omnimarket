@@ -1,0 +1,58 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 115 and seed 4400341989382151717 with 2 workers on 4 cores with 1820MB heap and 64MB offheap memory [pid: 3978747] (Linux 7.0.0-31-generic amd64, Ubuntu 21.0.12.1 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file DelegationShrinkRetry.tla
+Parsing file /tmp/Integers.tla
+Parsing file /tmp/Naturals.tla
+Semantic processing of module Naturals
+Semantic processing of module Integers
+Semantic processing of module DelegationShrinkRetry
+Starting... (2026-11-09 09:09:01)
+Implied-temporal checking--satisfiability problem has 1 branches.
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-11-09 09:09:01.
+Error: Invariant AtMostOneTerminal is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ deliveries = 0
+/\ depth = 0
+/\ shrank = FALSE
+/\ swaps = 0
+/\ wholeOK = FALSE
+/\ wholeChecked = FALSE
+/\ phase = "first"
+/\ accepted = FALSE
+/\ terminals = 0
+/\ kind = "none"
+/\ unitAtt = 0
+
+State 2: <FirstTry line 85, col 13 to line 92, col 45 of module DelegationShrinkRetry>
+/\ deliveries = 0
+/\ depth = 0
+/\ shrank = FALSE
+/\ swaps = 0
+/\ wholeOK = TRUE
+/\ wholeChecked = FALSE
+/\ phase = "terminal"
+/\ accepted = TRUE
+/\ terminals = 1
+/\ kind = "accepted"
+/\ unitAtt = 0
+
+State 3: <Redeliver line 137, col 14 to line 141, col 57 of module DelegationShrinkRetry>
+/\ deliveries = 1
+/\ depth = 0
+/\ shrank = FALSE
+/\ swaps = 0
+/\ wholeOK = TRUE
+/\ wholeChecked = FALSE
+/\ phase = "terminal"
+/\ accepted = TRUE
+/\ terminals = 2
+/\ kind = "accepted"
+/\ unitAtt = 0
+
+7 states generated, 7 distinct states found, 1 states left on queue.
+The depth of the complete state graph search is 4.
+The average outdegree of the complete state graph is 2 (minimum is 2, the maximum 2 and the 95th percentile is 2).
+Finished in 00s at (2026-11-09 09:09:01)
+exit=12

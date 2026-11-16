@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: MIT
 """The node's schedules: render, install, uninstall, read and run one on a declared host.
 
-The nightly graph is the contract's ``schedule`` block and the pull request check in shadow is its ``shadow_schedule``
-block; each names the verb its unit runs.
+The nightly graph is the contract's ``schedule`` block, the pull request check in shadow is its ``shadow_schedule``
+block, and the scheduled drill is its ``drill_schedule`` block; each names the verb its unit runs.
 The cadence is the contract's block; the hosts, their venv and the unit environment
 are the overlay's. ``uninstall`` is the rollback: it stops the timer and removes its unit files,
 and changes nothing else.
@@ -59,6 +59,7 @@ class ModelCodeGraphSchedule(BaseModel):
     log_stem: str = Field(min_length=1)
     state_directory: str
     timeout_seconds: int = Field(ge=1)
+    success_exit_status: tuple[int, ...] = ()
     cadence: ModelCodeGraphCadence
 
 
@@ -117,7 +118,12 @@ def render_systemd(
         "# Rollback: schedule uninstall.\n"
         f"[Unit]\nDescription={schedule.description}\n"
         "\n[Service]\nType=oneshot\nNice=10\n"
-        f"TimeoutStartSec={schedule.timeout_seconds}\n"
+        + (
+            f"SuccessExitStatus={' '.join(str(c) for c in schedule.success_exit_status)}\n"
+            if schedule.success_exit_status
+            else ""
+        )
+        + f"TimeoutStartSec={schedule.timeout_seconds}\n"
         + "".join(_assignment(name, value) for name, value in environment.items())
         + f"WorkingDirectory={root}\n"
         f"ExecStart={python} -m {NODE_MODULE} {schedule.verb}\n"

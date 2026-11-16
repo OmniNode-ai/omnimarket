@@ -16,6 +16,11 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+from omnimarket.models.dod_closeout_sweep import (
+    ModelDodCloseoutDecisionRequest,
+    ModelDodCloseoutZeroFlipReading,
+    ModelRunSummary,
+)
 from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_completion_rules import (
     held_reason_counts,
     zero_flip_reading,
@@ -23,11 +28,6 @@ from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.closer_completion
 )
 from omnimarket.nodes.node_dod_closeout_sweep_compute.handlers.handler_dod_closeout_sweep import (
     HandlerDodCloseoutSweep,
-)
-from omnimarket.nodes.node_dod_closeout_sweep_compute.models.model_dod_closeout_sweep import (
-    ModelDodCloseoutDecisionRequest,
-    ModelDodCloseoutZeroFlipReading,
-    ModelRunSummary,
 )
 from omnimarket.nodes.node_dod_closeout_sweep_compute.runtime_dod_closeout_sweep import (
     main,

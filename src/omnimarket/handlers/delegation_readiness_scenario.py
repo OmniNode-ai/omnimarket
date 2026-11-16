@@ -14,6 +14,7 @@ runtime block, ledger route, event sink, transport, clock) is injected.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import shlex
 import socket
@@ -22,7 +23,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Protocol
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
@@ -39,6 +40,11 @@ from omnimarket.handlers.delegation_scenario_runtime import (
     ProtocolScenarioEventSink,
     build_event_sink,
     bus_appender,
+    write_atomic,
+)
+from omnimarket.handlers.delegation_scenario_settings import (
+    ProtocolSettingStore,
+    fill_overlay_settings,
 )
 from omnimarket.models.model_delegation_scenario import (
     SCENARIO_ID_PATTERN,
@@ -82,6 +88,8 @@ class ModelReadinessRuntime(BaseModel):
     probe_tenant_slug: str = Field(min_length=1)
     #: The committed inputs file, relative to the node directory.
     inputs_relpath: str = Field(min_length=1)
+    #: The settings overlay (OMN-23602), relative to the node directory: where each run variable is found by existing name.
+    settings_overlay_relpath: str | None = None
 
 
 def read_contract(path: Path) -> dict[str, object]:
@@ -182,9 +190,20 @@ def build_scenario(
     contract_path: Path,
     env: Mapping[str, str] | None,
     trigger: EnumScenarioTrigger,
+    settings_store: ProtocolSettingStore | None = None,
+    settings_home: Path | None = None,
 ) -> ReadinessScenarioBase:
-    """The production wiring: the registry home, the bus commands and the contract's leg backend."""
-    environment = dict(os.environ if env is None else env)
+    """The production wiring: the registry home, the bus commands and the contract's leg backend.
+
+    The run's settings the node's overlay names are filled from the existing names they live under (OMN-23602).
+    """
+    environment = fill_overlay_settings(
+        dict(os.environ if env is None else env),
+        runtime.settings_overlay_relpath,
+        node_dir=contract_path.parent,
+        store=settings_store,
+        home=settings_home,
+    )
     append_argv = shlex.split(environment.get(runtime.ledger_append_command_env, ""))
     if not append_argv:
         raise RuntimeError(
@@ -253,3 +272,53 @@ def scenario_main(
         home=home,
         python=Path(args.python),
     )
+
+
+class ProtocolScenarioRunner(Protocol):
+    """What a tick needs of a scenario: one run that returns the typed result."""
+
+    def run(self) -> ModelScenarioResult: ...
+
+
+ScenarioTickBuild = Callable[
+    [Mapping[str, str], EnumScenarioTrigger], ProtocolScenarioRunner
+]
+
+
+def scenario_tick_main(
+    argv: Sequence[str] | None,
+    *,
+    prog: str,
+    scenario_id: str,
+    home_env: str,
+    build: ScenarioTickBuild,
+) -> int:
+    """One scheduled tick the registry installer renders (OMN-23454): run the scenario once as a SCHEDULE run.
+
+    The installer calls ``--omni-home <root> --state-dir <dir>``. The environment is the process environment with the home
+    set (under the contract's ``home_env``) to the root; the result goes to the ledger and the bus through the scenario's own wiring and to stdout, and
+    ``<state-dir>/last-run.json`` holds the conclusion. A run that refuses (no ledger route) exits 65 and records ``refused``.
+    """
+    parser = argparse.ArgumentParser(prog=prog)
+    parser.add_argument("--omni-home", dest="registry_root", required=True, type=Path)
+    parser.add_argument("--state-dir", required=True, type=Path)
+    args = parser.parse_args(argv)
+    environment: dict[str, str] = dict(os.environ)  # ONEX_FLAG_EXEMPT
+    environment[home_env] = str(args.registry_root)
+    record: dict[str, object] = {
+        "scenario": scenario_id,
+        "ran_at": datetime.now(UTC).isoformat(),
+    }
+    try:
+        result = build(environment, EnumScenarioTrigger.SCHEDULE).run()
+    except RuntimeError as exc:
+        sys.stderr.write(f"{prog}: {exc}\n")
+        record.update(conclusion="refused", refused=str(exc))
+        write_atomic(
+            args.state_dir / "last-run.json", json.dumps(record, sort_keys=True)
+        )
+        return 65
+    sys.stdout.write(result.model_dump_json(indent=2) + "\n")
+    record["conclusion"] = result.conclusion.value
+    write_atomic(args.state_dir / "last-run.json", json.dumps(record, sort_keys=True))
+    return 0 if result.conclusion.value == "success" else 1

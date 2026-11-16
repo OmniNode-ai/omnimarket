@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: plan_owner_check_effect
+version: "1.0.0"
+description: "Decides OWNED, MISSING or UNKNOWN for one plan finding from the bus-fed work ledger open-claims answer; a stale or failed read is never MISSING."
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_plan_owner_check_effect: omnimarket.nodes.node_plan_owner_check_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pyyaml>=6.0"
+  - "pydantic>=2.0"
+tags: [effect, work-ledger, plan-owner]
+pack: "data"
+display_name: "Effect: Plan Owner Check"
+node_role: "effect"
+license: "MIT"

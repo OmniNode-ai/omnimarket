@@ -1,0 +1,26 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 27 and seed -964120029623388745 with 8 workers on 56 cores with 2731MB heap and 64MB offheap memory [pid: 1] (Linux 6.8.0-147-generic amd64, Eclipse Adoptium 17.0.21 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file /w/TicketSync.tla
+Parsing file /tmp/Naturals.tla
+Parsing file /tmp/Sequences.tla
+Parsing file /tmp/FiniteSets.tla
+Parsing file /tmp/TLC.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module TLC
+Semantic processing of module TicketSync
+Starting... (2026-11-11 15:56:07)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-11-11 15:56:07.
+Progress(13) at 2026-11-11 15:56:10: 85,402 states generated (85,402 s/min), 34,664 distinct states found (34,664 ds/min), 9,076 states left on queue.
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 7.4E-10
+  based on the actual fingerprints:  val = 7.4E-10
+233833 states generated, 107412 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 27.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 16 and the 95th percentile is 2).
+Finished in 06s at (2026-11-11 15:56:13)
+exit=0

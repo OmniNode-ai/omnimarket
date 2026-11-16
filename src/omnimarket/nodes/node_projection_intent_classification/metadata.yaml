@@ -10,6 +10,9 @@ capabilities:
   requires_network: true
   requires_secrets: true
   side_effect_class: write_db
+dependencies:
+  - "omnibase_core>=0.45.0,<1.0.0"
+  - "omnibase-infra>=0.38.3"
 tags:
   - projection
   - intent

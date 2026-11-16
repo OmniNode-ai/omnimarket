@@ -61,7 +61,11 @@ def _load_gate(path: Path, name: str) -> ModuleType:
     return module
 
 
-def _replay(gate: ModuleType, rows: list[dict[str, object]]) -> dict[str, object]:
+def _replay(
+    gate: ModuleType, rows: list[dict[str, object]], registry: Path
+) -> dict[str, object]:
+    # The gate reads the registry the node resolved (OMN-23505), not the files.
+    gate.REGISTRY_FILE = registry
     now = _now()
     external = frozenset(gate.EXPECTED_EXTERNAL_CONTEXTS)
     jobs = [row for row in rows if row["name"] not in external]
@@ -108,13 +112,15 @@ def test_fixture_covers_pass_fail_and_pending_under_every_event() -> None:
 
 
 @pytest.mark.parametrize("head", _heads(), ids=lambda h: f"pr{h['pr']}-{h['sha'][:8]}")
-def test_ported_gate_replays_the_recorded_verdict(head: dict[str, object]) -> None:
+def test_ported_gate_replays_the_recorded_verdict(
+    head: dict[str, object], resolved_registry: Path
+) -> None:
     gate = _load_gate(GATE, "ci_summary_gate_replay_omn23079")
-    assert _replay(gate, head["check_runs"]) == head["verdicts"]
+    assert _replay(gate, head["check_runs"], resolved_registry) == head["verdicts"]
 
 
 def test_injected_break_in_the_overlay_changes_a_replayed_verdict(
-    tmp_path: Path,
+    tmp_path: Path, resolved_registry: Path
 ) -> None:
     """Control: the replay reads the overlay, so a dropped strict job must show."""
     for sibling in GATE.parent.glob("ci_summary_*"):
@@ -130,7 +136,7 @@ def test_injected_break_in_the_overlay_changes_a_replayed_verdict(
     changed = [
         head["pr"]
         for head in _heads()
-        if _replay(broken, head["check_runs"]) != head["verdicts"]
+        if _replay(broken, head["check_runs"], resolved_registry) != head["verdicts"]
     ]
     assert changed, "dropping a strict gate job left every replayed verdict unchanged"
 

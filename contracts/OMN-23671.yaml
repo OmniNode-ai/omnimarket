@@ -1,0 +1,62 @@
+schema_version: 1.0.0
+ticket_id: OMN-23671
+title: 'Delegation health check R5: the delegation request accepts a per-call model so the two pinned legs pass'
+summary: Scenario R5 (several OpenRouter models on one key, in order) failed every hour on its two pinned-model legs because the delegation request decoded the model key but refused a named model, the first of two planned steps (OMN-20844). This second step declares the model field on the request, omitted from the wire when unset, and the handler passes it to the dispatch port only when the request names one. The in-process port already runs the customer's own key route on a named model and refuses it for any other route; the runtime port still refuses it rather than dropping it.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn23671-per-call-model
+  statement: A delegation request can name the model the customer's own key runs for one call, a request that names none is unchanged on the wire and at the port, and scenario R5's pinned legs run on it.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the delegation request declares a per-call model field, omitted from the wire when unset, and the handler passes it to the dispatch port only when named -- falsifier: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_delegate_model_choice_omn20844.py -q (red against the unmodified request model)'
+  - id: AC2
+    statement: 'AC2: scenario R5''s two pinned legs are admitted by the production request model with no stand-in -- falsifier: uv run pytest tests/nodes/node_delegation_scenario_r5_effect/test_golden_chain_scenario_r5_effect.py -q (the production-run test is red against the old request model)'
+  - id: AC3
+    statement: 'AC3: integrated: scenario R5 installed from the branch on a lab host through the registry installer ran once and its tracker entry reads pass after its next scheduled run -- falsifier: the delegation tracker entry for R5 reads pass with a latest run newer than the install, and its status row names no failed pinned_model_accepted check'
+evidence_requirements:
+- kind: tests
+  description: The per-call model tests, the R5 golden and error chain tests and the R5 tick tests at the pushed head. The error chain control that reproduces the old request model reads the pinned legs red by design.
+  command: uv run --frozen pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_delegate_model_choice_omn20844.py tests/nodes/node_delegation_scenario_r5_effect -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23671-ac1-request-field
+  description: The per-call model tests pass at the pushed head; at the merge base the request refuses a named model by name and the handler never passes one, so the new tests read red there.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_delegate_model_choice_omn20844.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23671-ac2-r5-pinned-legs
+  description: The R5 golden chain reads green with the production admission of a pinned model and no stand-in, and the error chain that reproduces the old refusal reads exactly the four pinned assertions red.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_r5_effect/test_golden_chain_scenario_r5_effect.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23671-ac3-tick-record
+  description: The R5 golden tick test passes at the pushed head. It runs the scenario's own tick module and reads the last-run record it writes, with a conclusion.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_r5_effect/test_scenario_r5_tick.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23671-ac3-integration-proof-lab
+  description: AC3, the lab step, runs the request and R5 tests at the pushed head on a lab host through the lab work runner; the scenario run on the lab host and the tracker reading are in the pull request's Lab comment. It carries no binds_ac only because the hosted repo-evidence control never runs a local_done_gate item; the local Done gate executes it.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23671 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_delegate_model_choice_omn20844.py tests/nodes/node_delegation_scenario_r5_effect -q --no-cov -n 0 -p no:randomly'
+    cwd: .

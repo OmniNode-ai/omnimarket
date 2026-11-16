@@ -10,8 +10,9 @@ One run drives the delegation skill handler with synthetic requests and rungs-mo
    inside the class ceiling, and the returned bytes carry the fixed answer;
 2. a ladder with every rung down: the run ends ``failed``, cause ``returned_to_caller``, a reason from the closed list
    (OMN-23165) and ``savings_usd`` 0;
-3. a slowed rung, then a rung with no credential, then a healthy one: not expressible as a probe ladder today (a probe rung
-   has no credential setting), so it is a named failing assertion, never a skip.
+3. a slowed rung, then a rung that declares its credential absent -- never attempted, no provider call, the same skip
+   production takes (OMN-23511) -- then a healthy one: the run completes, the absent rung is never walked, the slowed rung is
+   typed and the healthy rung answers.
 
 Every assertion compares typed fields or bytes of the terminal; no model judges a pass. The result goes to the ledger first (one
 STATUS row, the row the green-days reading counts) and then to the bus.
@@ -23,10 +24,12 @@ import os
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Self
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from omnimarket.enums.enum_probe_rung_credential import EnumProbeRungCredential
 from omnimarket.handlers.delegation_readiness_probe import (
     LegTransportScope,
     ModelLegOutcome,
@@ -86,10 +89,34 @@ class ModelAllDownLeg(BaseModel):
 
 
 class ModelCredentialAbsentLeg(BaseModel):
+    """A leg whose absent rungs the port must skip, never attempt (OMN-23511)."""
+
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    runnable: bool
-    gap: str = ""
+    name: str = Field(min_length=1)
+    #: The typed failure class the first (failed) rung's attempt must carry.
+    expect_failure_class: str = Field(min_length=1)
+    rungs: tuple[ModelRungScript, ...] = Field(min_length=3)
+
+    @model_validator(mode="after")
+    def validate_absent_rung(self) -> Self:
+        """At least one absent rung, and never the last: the leg must end on a rung that can answer."""
+        if not self.absent_backend_ids:
+            raise ValueError("the leg needs a rung with credential declared_absent")
+        if self.rungs[-1].backend_id in self.absent_backend_ids:
+            raise ValueError(
+                f"the last rung must be attemptable, {self.rungs[-1].backend_id!r} declares no credential"
+            )
+        return self
+
+    @property
+    def absent_backend_ids(self) -> tuple[str, ...]:
+        """The backend ids of the rungs this leg expects never to be attempted."""
+        return tuple(
+            rung.backend_id
+            for rung in self.rungs
+            if rung.credential is EnumProbeRungCredential.DECLARED_ABSENT
+        )
 
 
 class ModelR4Inputs(BaseModel):
@@ -255,10 +282,50 @@ class HandlerScenarioR4(ReadinessScenarioBase):
         )
 
         absent = inputs.credential_absent_leg
+        walked_expected = tuple(
+            rung.backend_id
+            for rung in absent.rungs
+            if rung.backend_id not in absent.absent_backend_ids
+        )
+        skipped = self._run_leg(inputs.leg_spec(absent.name, absent.rungs))
+        first_attempt = skipped.attempts[0] if skipped.attempts else None
+        last_attempt = skipped.attempts[-1] if skipped.attempts else None
+        absent_leg_problems = [
+            reason
+            for held, reason in (
+                (skipped.status == "completed", f"status {skipped.status}"),
+                (
+                    not set(absent.absent_backend_ids) & set(skipped.walked),
+                    f"an absent rung was attempted, walked {skipped.walked}",
+                ),
+                (
+                    skipped.walked == walked_expected,
+                    f"walked {skipped.walked}, want {walked_expected}",
+                ),
+                (
+                    first_attempt is not None
+                    and first_attempt.failure_class == absent.expect_failure_class
+                    and first_attempt.failure_class != "unknown",
+                    f"first attempt failure_class {first_attempt.failure_class if first_attempt else None}, "
+                    f"want {absent.expect_failure_class}",
+                ),
+                (
+                    last_attempt is not None
+                    and last_attempt.accepted
+                    and last_attempt.backend_id == absent.rungs[-1].backend_id,
+                    "the last rung was not the accepted attempt",
+                ),
+                (
+                    marker in skipped.final_answer,
+                    "the returned bytes do not carry the fixed answer",
+                ),
+            )
+            if not held
+        ]
         check(
             "credential_absent_leg",
-            absent.runnable,
-            absent.gap or "the credential-absent leg is not runnable",
+            not absent_leg_problems,
+            "; ".join(absent_leg_problems),
         )
         return "; ".join(problems) or "every assertion held"
 

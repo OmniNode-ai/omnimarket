@@ -1,0 +1,32 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Scenario R7 inputs (readiness plan 2.2, OMN-23696). One summarization request, one probe ladder of two rungs: the first rung
+# answers with a 503 and charges nothing, the second answers and charges. The terminal's receipt must name the second rung's
+# backend, the host that served it and its cost, and the failed first attempt must name the first rung and its host.
+# `inmemory_host` is the host the scripted transport reports; on the loopback backend the expected host is the runtime's
+# `loopback_host`.
+leg_name: receipt_identity
+task_type: summarization
+prompt: Summarize in one sentence why a receipt names the model and the host that answered.
+answer_marker: R7-FIXED-ANSWER-9b2d
+answer: >-
+  ### ANSWER
+
+  A receipt names the model and the host that answered so the run can be traced to the machine that served it and the cost it
+  charged. The fixed marker of this answer is R7-FIXED-ANSWER-9b2d.
+inmemory_host: localhost
+cost_tolerance_usd: 0.000000001
+failing_rung:
+  backend_id: r7-failing
+  model_id: stub-failing
+  behaviour: status
+  status_code: 503
+  cost_class: free
+  tier: local
+answering_rung:
+  backend_id: r7-answering
+  model_id: stub-answering
+  behaviour: answer
+  cost_class: paid
+  tier: cloud
+  scripted_cost_usd: "0.0123"

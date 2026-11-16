@@ -1,0 +1,6 @@
+{
+ "source": "the key check value is hmac_sha256(key, label) cut to 16 hex characters; the signer, node_branch_deploy_command_effect, reads this same file in its seam test (OMN-24413)",
+ "secret": "fixture-key",
+ "label": "deploy-agent-key-check-v1",
+ "check": "6dce9bc99db04417"
+}

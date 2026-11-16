@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Settings overlay of scenario R2 (OMN-23602): where each run variable is found. Every secret and template part is a name that
+# already exists, looked up in the process environment, then the host environment file, then the store folder below. No key is
+# here, and no one sets a variable by hand. The one onboarding key is the house GLM key, an openai_compatible endpoint.
+folder: /shared/env
+host_env_file: .omnibase/.env
+settings:
+  - {env: ONEX_SCENARIO_R2_PROVIDER, value: openai_compatible}
+  - {env: ONEX_SCENARIO_R2_PROVIDER_URL, secret: LLM_GLM_URL}
+  - {env: ONEX_SCENARIO_R2_KEY, secret: LLM_GLM_API_KEY}
+  - {env: ONEX_SCENARIO_R2_PROVIDER_MODEL, secret: LLM_GLM_MODEL_NAME}
+  # The two local chat servers the scenario adds, first tried first: `<base url>|<model id>`, the model id the server itself lists
+  # at /v1/models (the stored LLM_CODER_MODEL_NAME, `qwen3.8`, is a routing alias the server does not list, so a pinned call to it
+  # fails). The first server's address is the existing name LLM_CODER_URL. LLM_CODER_FAST_URL names a server that was retired (its
+  # card went for repair), so the second server is the other lab host that serves the same model; its address is the setting
+  # LLM_CODER_PC2_URL, held with the others in the host's environment file or the secret store, never in this repository.
+  - {env: ONEX_SCENARIO_R2_LOCAL_FIRST, template: "{LLM_CODER_URL}|Qwen3.8-27B"}
+  - {env: ONEX_SCENARIO_R2_LOCAL_SECOND, template: "{LLM_CODER_PC2_URL}|Qwen3.8-27B"}
+  # A base URL nothing listens on (the discard port): the refusal leg's address.
+  - {env: ONEX_SCENARIO_R2_DEAD_URL, value: "http://127.0.0.1:9"}

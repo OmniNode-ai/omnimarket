@@ -1,0 +1,64 @@
+schema_version: 1.0.0
+ticket_id: OMN-23692
+title: The Tests job names how a shard process ended without reading the kernel log
+summary: "The Tests job's two pytest steps record pytest's exit status beside the log, and the failure-only diagnostic step prints that status, the signal name behind a status above 128, the job cgroup's memory high-water and memory-kill count read without privilege, and says when the kernel log cannot be read instead of printing nothing. A diagnostic: no test, flag, marker, timeout or required check changes."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23692-process-end-is-named
+  statement: A split that ends with no pytest summary prints its exit status, the signal when there is one, the memory high-water and kill count, and whether the kernel log was readable; an ordinary failure and a missing log are unchanged; pytest's exit status and every flag are unchanged.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: when pytest ends with no summary line the failure-only step prints pytest''s exit status, the signal name when the status is above 128, the last test started, and the job''s memory high-water and memory-kill count read without privilege -- falsifier: uv run --frozen pytest tests/unit/workflows/test_tests_job_crash_diagnostic_omn19998.py -k how_the_process_ended fails at the base, 3 of 3 red'
+  - id: AC2
+    statement: 'AC2: when the kernel log cannot be read the step says it could not be read instead of printing nothing -- falsifier: the same file with a sudo stand-in that refuses fails at the base (test_kernel_log_refused_is_said_not_silent)'
+  - id: AC3
+    statement: 'AC3: the pytest flags, marker filter, timeout and step exit status are unchanged and no check is dropped -- falsifier: the file''s flag and exit-status control cases fail if a flag is dropped or pipefail is removed'
+  - id: AC4
+    statement: 'AC4: integrated: on this change''s own Tests jobs the diagnostic step is present and the next shard that ends without a summary prints the block -- falsifier: the Tests job log of that shard lacks the exit-status line'
+evidence_requirements:
+- kind: tests
+  description: The Tests job crash diagnostic shape and behaviour tests, and the neighbouring tests that read the same job.
+  command: uv run --frozen pytest tests/unit/workflows/test_tests_job_crash_diagnostic_omn19998.py tests/unit/test_ci_workflow_shape_durations_merge.py tests/ci/test_omn18693_native_postgres_ci_wiring.py -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23692-ac1-process-end
+  description: The three process-end tests pass; at the base 6 of 30 tests in the file fail (the three process-end tests, the two kernel-log tests and the exit-status record test).
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/workflows/test_tests_job_crash_diagnostic_omn19998.py -k how_the_process_ended -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23692-ac2-kernel-log
+  description: A refused kernel read is named, a readable log with no fault line says so.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/workflows/test_tests_job_crash_diagnostic_omn19998.py -k kernel_log -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23692-ac3-nothing-loosened
+  description: Every pytest flag, the exit status of both pytest steps and the existing diagnostic cases still hold.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/workflows/test_tests_job_crash_diagnostic_omn19998.py tests/unit/test_ci_workflow_shape_durations_merge.py tests/ci/test_omn18693_native_postgres_ci_wiring.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23692-ac4-integrated
+  description: 'The hosted-runnable part of AC4: the diagnostic step script, run with bash on a log that ends mid-test with the status file written, prints the exit-status line; the read of the next failing shard''s job log waits for a shard that ends with no summary.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/workflows/test_tests_job_crash_diagnostic_omn19998.py -k "how_the_process_ended or record_their_exit_status" -q --no-cov -p no:randomly
+    cwd: .

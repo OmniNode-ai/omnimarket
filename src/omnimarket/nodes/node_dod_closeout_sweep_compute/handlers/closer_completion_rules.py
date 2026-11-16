@@ -16,7 +16,7 @@ from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from omnimarket.nodes.node_dod_closeout_sweep_compute.models.model_dod_closeout_sweep import (
+from omnimarket.models.dod_closeout_sweep import (
     EnumCloserHealth,
     ModelDodCloseoutZeroFlipAlert,
     ModelDodCloseoutZeroFlipReading,
@@ -31,6 +31,27 @@ _ROW = re.compile(
 )
 _FIELD = re.compile(r"^(?P<key>[A-Za-z][A-Za-z0-9_-]*)=(?P<value>.*)$", re.DOTALL)
 _REFUSED_BINDING = re.compile(r"binding refused \(([^)]+)\)")
+# Most unmet-criterion reasons are unique prose that never adds up across tickets;
+# the class of the rule that wrote the reason is what the ledger counts (OMN-19998).
+# Ordered: the first pattern that matches the start of the reason wins.
+REASON_CLASSES = (
+    (re.compile(r"no check authored"), "no-check-authored"),
+    (re.compile(r"binding rejected by the acceptor"), "binding-rejected-by-acceptor"),
+    (
+        re.compile(r"binding was not accepted by a lane other than its author"),
+        "binding-self-accepted",
+    ),
+    (
+        re.compile(r"dod_verify did not verify the bound check"),
+        "bound-check-not-verified",
+    ),
+    (re.compile(r"dod_verify did not run"), "verify-not-run"),
+    (re.compile(r"no contract:"), "no-contract"),
+    (re.compile(r"waiting on"), "waiting-on-condition"),
+)
+# The one line every unverified run shares; its class carries the error code, else the
+# status, so the shared line no longer outvotes every unique reason by repeating itself.
+_DOD_VERIFY = re.compile(r"verify_status=(\S+)(?: error=(\S+))?")
 
 
 @dataclass(frozen=True)
@@ -115,6 +136,27 @@ def cell(value: str) -> str:
     return " ".join(value.replace("|", "/").split())
 
 
+def reason_class(reason: str) -> str:
+    """The class an unmet criterion's reason counts under (OMN-19998).
+
+    A refused binding keeps its refusal class, the first REASON_CLASSES pattern that
+    matches the start of the reason names its class and the shared verify line carries
+    the verifier's error code or status. Unknown prose keeps today's behaviour: its
+    ledger-safe cell.
+    """
+    stripped = reason.strip()
+    refused = _REFUSED_BINDING.match(stripped)
+    if refused:
+        return f"binding-refused:{refused[1]}"
+    for pattern, token in REASON_CLASSES:
+        if pattern.match(stripped):
+            return token
+    verify = _DOD_VERIFY.match(stripped)
+    if verify:
+        return f"dod-verify:{verify[2] or verify[1]}"
+    return cell(reason)
+
+
 def top_reason(summary: ModelRunSummary) -> str:
     """Count unmet criteria; use refusal classes rather than variable binder prose.
 
@@ -124,8 +166,7 @@ def top_reason(summary: ModelRunSummary) -> str:
     counts: Counter[str] = Counter()
     for ticket in summary.open:
         for unmet in ticket.unmet:
-            match = _REFUSED_BINDING.match(unmet.reason)
-            counts[f"binding-refused:{match[1]}" if match else cell(unmet.reason)] += 1
+            counts[reason_class(unmet.reason)] += 1
     if not counts:
         counts.update(f"binding-refused:{r.refused}" for r in summary.refused_bindings)
     if counts:
@@ -149,8 +190,7 @@ def held_reason_counts(summary: ModelRunSummary) -> dict[str, int]:
     counts: Counter[str] = Counter()
     for ticket in summary.open:
         for unmet in ticket.unmet:
-            match = _REFUSED_BINDING.match(unmet.reason)
-            counts[f"binding-refused:{match[1]}" if match else cell(unmet.reason)] += 1
+            counts[reason_class(unmet.reason)] += 1
     if not counts:
         counts.update(f"binding-refused:{r.refused}" for r in summary.refused_bindings)
     if summary.flip_refused:

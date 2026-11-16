@@ -16,11 +16,43 @@ from collections.abc import Mapping
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
+from omnimarket.models.stop_gate import EnumStopMode
 from omnimarket.nodes.node_lab_check_run_effect.overlay import (
     ModelLabCheckRunOverlay,
 )
 
 OVERLAY_ID = "node_lab_check_run_join_j7"
+
+
+class ModelJoinJ7Control(BaseModel):
+    """The join's failing control (OMN-19998, the way join J1 gets its error side): a real piece 7 failure, on purpose.
+
+    The run asks the stop gate about a lane the open stop must refuse, with the stop class in ``mode`` (a mode that admits and
+    only names the stop) instead of the enforcing mode the deployment holds. The gate then admits what the stop must refuse,
+    which is piece 7 failing typed under its own id; piece 8 is not asked, posts nothing and answers with the typed refusal
+    ``upstream_<failure_code>``. A gate that still refuses in that mode means the control did not break the join: the run turns
+    red and writes nothing, because a join whose control cannot fail has no error side to read.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: The node name piece 7's control chain is emitted under, and the prefix of the control's own correlation id.
+    upstream_node: str = Field(min_length=1)
+    id_prefix: str = Field(min_length=1)
+    #: The typed failure code of piece 7's control chain; piece 8's refusal carries it behind ``upstream_``.
+    failure_code: str = Field(min_length=1)
+    #: The stop gate mode the control runs the stop class in; it must be one that admits.
+    mode: EnumStopMode
+    #: The control is written when the journal holds none in this many hours.
+    window_hours: int = Field(ge=1)
+
+    @model_validator(mode="after")
+    def _control_is_typed_and_not_enforcing(self) -> ModelJoinJ7Control:
+        if self.failure_code.startswith("upstream_"):
+            raise ValueError("the control's failure code is piece 7's, not a refusal")
+        if self.mode is EnumStopMode.ENFORCE:
+            raise ValueError("the control runs the stop in a mode that does not refuse")
+        return self
 
 
 class ModelJoinJ7Overlay(BaseModel):
@@ -51,6 +83,10 @@ class ModelJoinJ7Overlay(BaseModel):
     stop_class: str = Field(min_length=1)
     stop_age_minutes: int = Field(ge=1)
     lease_after_minutes: int = Field(ge=1)
+    #: The failing control that gives the join its error side from a real run, not a drill. An overlay that predates the control
+    #: (no ``control`` key) reads unconfigured for one release: no control is owed, none is written, and the run's result says
+    #: ``control_configured: false`` so the missing control is read, never silent. Code and overlay then land in either order.
+    control: ModelJoinJ7Control | None = None
     #: The twin's check-run settings (the in-memory source, the check's name and the superseded conclusion).
     check_run: ModelLabCheckRunOverlay
     #: Whether this overlay may run a named injected break (the join's failing control).
@@ -65,6 +101,13 @@ class ModelJoinJ7Overlay(BaseModel):
             raise ValueError("the head and the old head are two heads")
         if self.current_attempt_id == self.old_attempt_id:
             raise ValueError("the current attempt and the old attempt are two attempts")
+        if (
+            self.control is not None
+            and self.control.upstream_node == self.emission_node
+        ):
+            raise ValueError(
+                "the control's piece 7 node is not piece 8's emission node"
+            )
         if self.repository not in self.check_run.settings.lab_repositories:
             raise ValueError("the test repository is a lab repository of the twin")
         return self
@@ -74,4 +117,9 @@ def load_join_overlay(environ: Mapping[str, str] | None = None) -> ModelJoinJ7Ov
     return load_structured_overlay(OVERLAY_ID, ModelJoinJ7Overlay, environ)
 
 
-__all__ = ["OVERLAY_ID", "ModelJoinJ7Overlay", "load_join_overlay"]
+__all__ = [
+    "OVERLAY_ID",
+    "ModelJoinJ7Control",
+    "ModelJoinJ7Overlay",
+    "load_join_overlay",
+]

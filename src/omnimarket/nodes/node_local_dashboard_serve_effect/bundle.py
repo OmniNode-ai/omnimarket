@@ -28,11 +28,19 @@ interesting case is a cache that was correct when written and is not now. On a
 mismatch the extracted copy is left alone and the caller is refused: a cache
 this code silently re-downloaded would turn an attack into a cache miss and
 report nothing.
+
+THE PINNED BUNDLE SHIPS INSIDE THE PACKAGE. The pinned archive is split into
+parts that each stay under the repository's 1000 KB large-file limit and live
+under ``packaged_bundle/`` next to this module. ``ensure_bundle`` reassembles
+those parts and verifies them against the pin before it reaches for the
+network, so a cold first run needs no network. The network fetch is only the
+update path for a pin the package does not carry.
 """
 
 from __future__ import annotations
 
 import hashlib
+import os
 import shutil
 import tarfile
 import tomllib
@@ -45,6 +53,10 @@ from omnimarket.github_api import GitHubApiError, download_release_asset
 #: Where a verified bundle is unpacked. Keyed by digest, so a pin bump lands
 #: beside the old copy rather than over it and a rollback needs no re-download.
 _CACHE_ROOT = Path.home() / ".omninode" / "dashboard" / "bundles"
+
+#: The pinned bundle's parts, shipped inside the package so a cold first run
+#: needs no network. Concatenated in sorted-name order they are the archive.
+_PACKAGED_ROOT = Path(__file__).resolve().parent / "packaged_bundle"
 
 #: Read in 1 MiB blocks: the bundle is a few megabytes and a whole-file read
 #: would hold it twice in memory for no gain.
@@ -169,13 +181,32 @@ def _download(url: str, to: Path) -> None:
         ) from exc
 
 
+def _install(archive: Path, root: Path, pin: BundlePin) -> Path:
+    """The shared tail: unpack a verified archive and require the page marker."""
+    if root.exists():
+        shutil.rmtree(root)
+    _extract(archive, root)
+    if not (root / "index.html").is_file():
+        raise DashboardBundleError(
+            f"the bundle {pin.asset} carries no index.html, so there is no page "
+            "to serve"
+        )
+    return root
+
+
 def ensure_bundle(
     pin: BundlePin | None = None,
     *,
     cache_root: Path | None = None,
     allow_download: bool = True,
+    packaged_root: Path | None = None,
 ) -> Path:
     """The directory holding the verified pages, fetching it once if needed.
+
+    The pinned bundle ships inside the package as parts under ``packaged_root``;
+    those are reassembled and verified against the pin before any network
+    download, so a cold first run needs no network. The download is only the
+    update path for a pin the package does not carry.
 
     Raises :class:`DashboardBundleError` with a sentence a developer can act on
     when the bundle is absent and cannot be fetched, or present and wrong.
@@ -201,6 +232,31 @@ def ensure_bundle(
             )
         return root
 
+    parts = sorted((packaged_root or _PACKAGED_ROOT).glob(f"{pin.asset}.part-*"))
+    if parts:
+        archive.parent.mkdir(parents=True, exist_ok=True)
+        # Assembled beside the archive under a name only this process uses, and
+        # moved into place only once its digest matches: a copy that is not the
+        # pin is never visible to a concurrent start as the cached archive.
+        temp = archive.with_name(f"{archive.name}.{os.getpid()}.assembling")
+        with temp.open("wb") as out:
+            for part in parts:
+                out.write(part.read_bytes())
+        found = _digest(temp)
+        if found != pin.sha256:
+            temp.unlink(missing_ok=True)
+            raise DashboardBundleError(
+                f"the packaged dashboard bundle does not match the pin, so it was "
+                f"discarded and nothing was served.\n"
+                f"  pinned: {pin.sha256}\n"
+                f"  found:  {found}\n"
+                f"  from:   {parts[0].parent}\n"
+                "Nothing was downloaded and nothing was served. A packaged copy "
+                "that is not the pin is refused, not repaired."
+            )
+        temp.replace(archive)
+        return _install(archive, root, pin)
+
     if not allow_download:
         raise DashboardBundleError(
             f"the dashboard bundle {pin.asset} is not cached and downloading is "
@@ -218,15 +274,7 @@ def ensure_bundle(
             f"  found:  {found}\n"
             f"  from:   {pin.url}"
         )
-    if root.exists():
-        shutil.rmtree(root)
-    _extract(archive, root)
-    if not marker.is_file():
-        raise DashboardBundleError(
-            f"the bundle {pin.asset} carries no index.html, so there is no page "
-            "to serve"
-        )
-    return root
+    return _install(archive, root, pin)
 
 
 __all__ = [

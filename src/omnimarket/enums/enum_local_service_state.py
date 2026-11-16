@@ -16,6 +16,9 @@ class EnumLocalServiceState(StrEnum):
     EXITED_OK = "exited_ok"
     DOWN = "down"
     UNHEALTHY = "unhealthy"
+    # The observer's own statement that a service is no longer in the lane's roster. It is an instruction
+    # to the projection writer to forget the service's row and clear its alerts, never a stored state.
+    RETIRED = "retired"
 
 
 __all__ = ["EnumLocalServiceState"]

@@ -1,0 +1,61 @@
+schema_version: 1.0.0
+ticket_id: OMN-23644
+title: The full context package for a coding task builds when two sections repeat the same text
+summary: The context pack orchestrator handed the renderer a chunk ref for every tier entry, including an entry the pack builder had dropped as a content duplicate (OMN-21125), so a full delegation_payload_local pack for the omnimarket repository ended invalid_profile with chunk ref names no chunk of the pack. It now keeps only the refs of the chunks the built pack holds, in the order the entries produced them. Nothing is added to the pack, no check is widened and no bound is changed.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23644-chunk-refs-match-pack
+  statement: The orchestrator passes the renderer only the chunk refs whose chunks the built pack holds.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a pack for the delegation_payload_local profile whose canonical_shapes and architecture_patterns tiers answer the same text builds with status ok, no errors and the text once -- falsifier: uv run pytest tests/nodes/node_context_pack_orchestrator/test_duplicate_tier_text_chunk_refs.py -q'
+  - id: AC2
+    statement: 'AC2: failing control: with the orchestrator handler as it is on dev, the same test is red (the build ends invalid_profile with "chunk ref names no chunk of the pack") -- falsifier: the test file run against the unchanged handler'
+  - id: AC3
+    statement: 'AC3: integrated: the full delegation_payload_local pack for one omnimarket task at its base commit, built by the running pack orchestrator, has status ok and lists its four tiers with token counts -- falsifier: the built answer''s tier list and pack hash read from the pack receipt on the dev lane'
+evidence_requirements:
+- kind: tests
+  description: The new duplicate-text test and the orchestrator handler suite pass.
+  command: uv run --frozen pytest tests/nodes/node_context_pack_orchestrator -q -n 0 --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23644-ac1-duplicate-text
+  description: Builds a pack whose two tiers answer the same text; status ok, text once.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_context_pack_orchestrator/test_duplicate_tier_text_chunk_refs.py -q -n 0 --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23644-ac2-failing-control
+  description: The refs are filtered by the chunk ids the pack holds. Read on h202 with the test copied onto a tree whose handler is dev's, 1 failed and 1 passed, the build ending invalid_profile.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_context_pack_orchestrator/test_duplicate_tier_text_chunk_refs.py -q -n 0 --no-cov -p no:randomly -k still_builds
+    cwd: .
+- id: dod-omn23644-ac3-integration-hosted
+  description: Hosted proxy for the integrated criterion. The orchestrator builds, with the real doctrine-tier fixtures, a pack whose two tiers answer the same text and gets status ok with the text once. The full pack built by the running dev orchestrator is read after the merge and the dev redeploy.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_context_pack_orchestrator/test_duplicate_tier_text_chunk_refs.py -q -n 0 --no-cov -p no:randomly -k builds
+    cwd: .
+- id: dod-omn23644-integration-proof
+  description: Run the orchestrator suite on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23644 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_context_pack_orchestrator -q -n 0 --no-cov -p no:randomly
+    cwd: .

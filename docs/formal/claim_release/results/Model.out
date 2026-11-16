@@ -1,0 +1,31 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 93 and seed -5585846076684106292 with 2 workers on 56 cores with 1928MB heap and 64MB offheap memory [pid: 1] (Linux 6.8.0-147-generic amd64, Eclipse Adoptium 17.0.21 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file /work/ClaimRelease.tla
+Parsing file /tmp/Integers.tla
+Parsing file /tmp/FiniteSets.tla
+Parsing file /tmp/Naturals.tla
+Parsing file /tmp/Sequences.tla
+Semantic processing of module Naturals
+Semantic processing of module Integers
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module ClaimRelease
+Starting... (2026-11-11 13:54:55)
+Implied-temporal checking--satisfiability problem has 4 branches.
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-11-11 13:54:56.
+Checking 4 branches of temporal properties for the current state space with 52444 total distinct states at (2026-11-11 13:54:59)
+Finished checking temporal properties in 00s at 2026-11-11 13:54:59
+Progress(23) at 2026-11-11 13:54:59: 42,900 states generated (42,900 s/min), 13,111 distinct states found (13,111 ds/min), 546 states left on queue.
+Progress(27) at 2026-11-11 13:55:00: 46,323 states generated, 13,573 distinct states found, 0 states left on queue.
+Checking 4 branches of temporal properties for the complete state space with 54292 total distinct states at (2026-11-11 13:55:00)
+Finished checking temporal properties in 00s at 2026-11-11 13:55:00
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 2.4E-11
+46323 states generated, 13573 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 27.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 5 and the 95th percentile is 3).
+Finished in 05s at (2026-11-11 13:55:00)
+exit=0

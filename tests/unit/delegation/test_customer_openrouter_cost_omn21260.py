@@ -94,7 +94,9 @@ def test_a_paid_openrouter_model_on_the_customer_key_records_its_real_cost(
         provider="byok-openrouter",
     )
 
-    assert actual == Decimal("0.00376316")
+    # The registry price of qwen/qwen3.8-27b, 0.15 in and 1.875 out per 1M, as the
+    # live catalog read it on 2026-11-11 (OMN-23751; 0.24 / 2.20 before).
+    assert actual == Decimal("0.003191475")
     assert actual > 0
     assert cost_basis is EnumCostBasis.CLOUD_API_COST
     assert _cost_usage_source(cost_basis) is EnumUsageSource.MEASURED

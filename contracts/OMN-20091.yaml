@@ -58,6 +58,43 @@ emergency_bypass:
   enabled: false
   justification: ""
   follow_up_ticket_id: ""
+context:
+  ac_binding_provenance:
+    "dod-omn20091-ac1-accepted-20261113t0145z":
+      - label: "AC1"
+        criterion_hash: "1393c8f7f1c6ea2dbff3b5034439de95c6c4f1c2ec99465d85848781752850c9"
+        proposed_by: "lane=dod-closeout-bind-2026-11-13T0145Z-c3"
+        accepted_by: "lane=dod-closeout-accept-2026-11-13T0145Z-c3"
+    "dod-omn20091-ac2-accepted-20261113t0145z":
+      - label: "AC2"
+        criterion_hash: "c51625f3425876d68b9a080cb3d6d0c79222508d0d57a8b92bbf83feb9fd71e7"
+        proposed_by: "lane=dod-closeout-bind-2026-11-13T0145Z-c3"
+        accepted_by: "lane=dod-closeout-accept-2026-11-13T0145Z-c3"
+    "dod-omn20091-ac3-accepted-20261113t0145z":
+      - label: "AC3"
+        criterion_hash: "74af236b397bbbaa4d00e9c43f4f25def76305693c4333a9db987f42266f0a2c"
+        proposed_by: "lane=dod-closeout-bind-2026-11-13T0145Z-c3"
+        accepted_by: "lane=dod-closeout-accept-2026-11-13T0145Z-c3"
+    "dod-omn20091-ac4-accepted-20261113t0145z":
+      - label: "AC4"
+        criterion_hash: "93f33e7651f59ba3fb858fbdb9d2c7e870548d5485895035e7d8e88cc8b04a19"
+        proposed_by: "lane=dod-closeout-bind-2026-11-13T0145Z-c3"
+        accepted_by: "lane=dod-closeout-accept-2026-11-13T0145Z-c3"
+    "dod-omn20091-ac5-accepted-20261113t0145z":
+      - label: "AC5"
+        criterion_hash: "273592184b091d5fccab0c670a68f77351152cbd086b41d12b3cfcbc8b7a6dc4"
+        proposed_by: "lane=dod-closeout-bind-2026-11-13T0145Z-c3"
+        accepted_by: "lane=dod-closeout-accept-2026-11-13T0145Z-c3"
+    "dod-omn20091-ac6-accepted-20261113t0145z":
+      - label: "AC6"
+        criterion_hash: "b9288d612228d65892199f357450bc1fea83a164becc73cedd2483de8c02edb0"
+        proposed_by: "lane=dod-closeout-bind-2026-11-13T0145Z-c3"
+        accepted_by: "lane=dod-closeout-accept-2026-11-13T0145Z-c3"
+    "dod-omn20091-ac7-accepted-20261113t0145z":
+      - label: "AC7"
+        criterion_hash: "1f6b787a4ca94097c62e0f27b254f8c75a7ed2a34bcab2d83c58177981a658e3"
+        proposed_by: "lane=dod-closeout-bind-2026-11-13T0145Z-c3"
+        accepted_by: "lane=dod-closeout-accept-2026-11-13T0145Z-c3"
 dod_evidence:
   - id: "dod-omn20091-ac1-repository"
     description: "The AC1 tests pass: the repository is read from the GitHub origin, and a non-GitHub or non-git directory is a usage error."
@@ -121,3 +158,59 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_trajectory_evaluation_effect/cli.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'def trajectory_eval_group'"
+  - id: "dod-omn20091-ac1-accepted-20261113t0145z"
+    description: "AC1: https origin (two forms) and ssh origin resolve to OmniNode-ai/omnimarket, a non-GitHub remote and a directory outside git raise TrajectoryEvalUsageError. Re-run by the accepting lane at omnimarket dev 570cfb3b: 5 passed, 14 deselected. The test file does not exist at the parent of the implementing merge 560a303f (#4289)."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_cli_trajectory_eval.py -k repository -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn20091-ac2-accepted-20261113t0145z"
+    description: "AC2: the recorded run directory publishes exactly one submit command, correlation_id equals the run's and work_unit_repository is OmniNode-ai/omnimarket. Re-run by the accepting lane at omnimarket dev 570cfb3b: 1 passed."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_cli_trajectory_eval.py::test_submit_one_command_per_run -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn20091-ac3-accepted-20261113t0145z"
+    description: "AC3: a failed receipt exits EXIT_RUN_FAILED and publishes nothing. Re-run by the accepting lane at omnimarket dev 570cfb3b: 1 passed."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_cli_trajectory_eval.py::test_failed_run_publishes_nothing -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn20091-ac4-accepted-20261113t0145z"
+    description: "AC4: --mode meta carries neither prompt_text nor response_text and --mode full carries both. Re-run by the accepting lane at omnimarket dev 570cfb3b: 2 passed."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_cli_trajectory_eval.py::test_mode_controls_the_texts -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC4"]
+  - id: "dod-omn20091-ac5-accepted-20261113t0145z"
+    description: "AC5: poll publishes commands for the two pending receipts only, none for the terminal or refused rows. Re-run by the accepting lane at omnimarket dev 570cfb3b: 1 passed."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_cli_trajectory_eval.py::test_poll_one_command_per_pending_receipt -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
+  - id: "dod-omn20091-ac6-accepted-20261113t0145z"
+    description: "AC6: submit --from-json publishes the file bytes unchanged. Re-run by the accepting lane at omnimarket dev 570cfb3b: 1 passed."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_cli_trajectory_eval.py::test_from_json_publishes_the_file_byte_for_byte -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]
+  - id: "dod-omn20091-ac7-accepted-20261113t0145z"
+    description: "AC7: the onex.cli entry point loads the trajectory-eval group and no source hand-wires it. Re-run by the accepting lane at omnimarket dev 570cfb3b: 2 passed, 17 deselected."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_cli_trajectory_eval.py -k entry_point -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC7"]

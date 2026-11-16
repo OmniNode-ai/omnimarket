@@ -1,14 +1,7 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Where a pilot stands against its frozen bar. There is no extended state."""
+"""Re-export: EnumPilotStatus lives in omnimarket.models.pilot_manifest, shared by the manifest check and the pilot measurement node."""
 
-from __future__ import annotations
+from omnimarket.models.pilot_manifest.enum_pilot_status import EnumPilotStatus
 
-from enum import StrEnum
-
-
-class EnumPilotStatus(StrEnum):
-    REFUSED = "refused"
-    READY = "ready"
-    ACCEPTED = "accepted"
-    REJECTED = "rejected"
+__all__ = ["EnumPilotStatus"]

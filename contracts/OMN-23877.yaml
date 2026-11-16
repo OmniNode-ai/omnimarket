@@ -1,0 +1,120 @@
+schema_version: 1.0.0
+ticket_id: OMN-23877
+title: The board reads floor chain emissions from a bus projection and every chain says what kind of work it was
+summary: A projection node folds the three floor emission topics into the floor_emissions projection; the floor cycle reads real work from it and reads the journal file as health only; the broker rows for the topics are declared in the overlays repository; every chain publisher sets its origin.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- public_api
+- topics
+requirements:
+- id: req-omn23877-ac1
+  statement: The projection node folds the emission topics.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a projection node folds the three floor emission topics into a latest-state snapshot on the bus, following the work ledger latest-state projection -- falsifier: uv run pytest of the node''s fold and handler tests; a golden chain and an error chain on the in-memory bus must read back, and the same selection on the base commit fails because the node does not exist'
+- id: req-omn23877-ac2
+  statement: The floor cycle reads real work from the projection.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: the floor tick''s emission read for the readiness rule comes from that projection and the journal file reader gains no new input -- falsifier: uv run pytest with a tick fed only by the projection reading a real chain as real, and a grep-style test failing if a new file input is added to the reader'
+- id: req-omn23877-ac3
+  statement: The broker rows are declared, additions only.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: the broker permission rows for the emission topics and the projection topic are an addition-only overlays change with no topic DELETE row -- falsifier: the overlays rows test fails on a DELETE row or a missing topic and passes on the added rows'
+- id: req-omn23877-ac4
+  statement: Every chain publisher sets its origin.
+  acceptance:
+  - id: AC4
+    statement: 'AC4: every chain publisher sets its origin truthfully, probes, twins, controls, canaries and drills never say real -- falsifier: uv run pytest over each publisher''s chain asserting its origin, failing when any publisher leaves origin unset or says real for a probe'
+- id: req-omn23877-ac5
+  statement: Golden and error chains on the in-memory bus and the real dev broker.
+  acceptance:
+  - id: AC5
+    statement: 'AC5: golden and error chain tests run on the in-memory bus and, once the rows are applied, on the real dev broker -- falsifier: the same selection on the base commit fails; the dev-broker reading is recorded in the pull request body'
+- id: req-omn23877-ac6
+  statement: The projection runs on the lab runtime and the floor reads it.
+  acceptance:
+  - id: AC6
+    statement: 'AC6: integrated: the projection node runs on the lab runtime from the branch, publishes its snapshot after real chains are sent, and the floor reads it -- falsifier: the runtime''s own read of the snapshot topic on the dev broker showing the chain count and origin, host and revision named in a comment on this ticket'
+evidence_requirements:
+- kind: tests
+  description: The projection fold, the floor cycle read, the publisher origin table and the broker row tests (AC1 to AC5).
+  command: uv run --frozen pytest tests/nodes/node_floor_emissions_publish_effect tests/nodes/node_floor_simple_effect/test_emissions_projection_tick_omn23877.py tests/nodes/node_floor_emission_compute/test_publisher_origin_omn23877.py -q -n 0 -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23877-ac1
+  description: AC1 is the focused tests named in its check.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_floor_emissions_publish_effect/test_floor_emissions_publish_omn23877.py -q -n 0 -p no:randomly --no-cov -k "golden_chain or window or named_break or contract"
+    cwd: .
+- id: dod-omn23877-ac2
+  description: AC2 is the focused tests named in its check.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_floor_simple_effect/test_emissions_projection_tick_omn23877.py -q -n 0 -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn23877-ac3
+  description: AC3 is the focused tests named in its check.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_floor_emissions_publish_effect/test_emission_mirror_omn23877.py tests/nodes/node_floor_emissions_publish_effect/test_floor_emissions_publish_omn23877.py -q -n 0 -p no:randomly --no-cov -k "seam or overlay_refuses or contract_and_overlay"
+    cwd: .
+- id: dod-omn23877-ac4
+  description: AC4 is the focused tests named in its check.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_floor_emission_compute/test_publisher_origin_omn23877.py -q -n 0 -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn23877-ac5
+  description: AC5 is the focused tests named in its check.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_floor_emissions_publish_effect/test_floor_emissions_publish_omn23877.py -q -n 0 -p no:randomly --no-cov -k "not redpanda"
+    cwd: .
+- id: dod-omn23877-ac6
+  description: 'AC6 is the runtime reading on the lab: the projection node run from this branch, its snapshot read back on the dev broker, host and revision named in a ticket comment; hosted CI cannot reach the lab broker, so the hosted part is the in-memory chain test.'
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_floor_emissions_publish_effect/test_floor_emissions_publish_omn23877.py -q -n 0 -p no:randomly --no-cov -k "node_itself"
+    cwd: .
+- id: dod-omn23877-integration-proof-floor-emissions
+  description: 'AC6 on the running floor: the served board is read and its readiness block must be present while the floor cycle reads real work from the floor emissions projection; the lab run of the projection node against the dev broker (host, revision, snapshot read back) is a ticket comment. Hosted CI cannot reach the served board, so only the local Done gate runs this check.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: curl -sf -m 20 "${FLOOR_SIMPLE_URL:?set FLOOR_SIMPLE_URL to the served floor-simple.json}" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['readiness']['probe_health_text'], d['readiness']"
+    cwd: .
+- id: dod-omn23877-floor-publish-omnibase-path
+  description: The factory-floor-publish unit renders OMNIBASE_PATH as the registry root, so the emission mirror finds the lane declaration; the test fails on the base commit where the rendered environment has no OMNIBASE_PATH.
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_floor_publish_workspace_root.py -q -n 0 -p no:randomly --no-cov
+    cwd: .

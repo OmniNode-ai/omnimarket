@@ -16,7 +16,11 @@ from typing import Protocol, runtime_checkable
 
 from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 
-from omnimarket.handlers.node_overlay_reader import load_structured_overlay
+from omnimarket.handlers.node_overlay_reader import (
+    NodeOverlayNotFoundError,
+    load_structured_overlay,
+)
+from omnimarket.handlers.scheduled_overlay_refusal import ScheduledOverlayRefusalLatch
 from omnimarket.models.floor_17a import ModelFloorSimpleInput, ModelFloorSimpleOverlay
 from omnimarket.models.floor_17a.model_floor_document_event import (
     ModelFloorScheduleOverlay,
@@ -78,6 +82,7 @@ class HandlerFloorSimpleScheduled:
         self._source: ProtocolFloorReadingSource = source or UnreadFloorReadings()
         self._environ = environ
         self._last_run: datetime | None = None
+        self._refusals = ScheduledOverlayRefusalLatch(SCHEDULE_OVERLAY_ID)
 
     def _env(self) -> Mapping[str, str]:
         return os.environ if self._environ is None else self._environ
@@ -103,16 +108,25 @@ class HandlerFloorSimpleScheduled:
         return self._floor_overlay
 
     def handle(self, request: ModelRuntimeTick) -> ModelFloorSimpleDocumentEvent | None:
-        schedule = self._schedule_overlay()
+        try:
+            schedule = self._schedule_overlay()
+        except NodeOverlayNotFoundError as exc:
+            self._refusals.refuse(exc)
+            return None
         now = request.now.astimezone(UTC)
         last = self._last_run
         if last is not None and (now - last) < timedelta(
             seconds=schedule.run_interval_seconds
         ):
             return None
-        floor_overlay = self._floor(schedule)
+        try:
+            floor_overlay = self._floor(schedule)
+        except NodeOverlayNotFoundError as exc:
+            self._refusals.refuse(exc)
+            return None
         document = HandlerFloorSimple().handle(self._source.read(now, floor_overlay))
         self._last_run = now
+        self._refusals.recovered()
         return ModelFloorSimpleDocumentEvent(
             computed_at=now, document=document, tick_id=str(request.tick_id)
         )

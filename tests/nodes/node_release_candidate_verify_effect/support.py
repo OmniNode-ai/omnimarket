@@ -1,0 +1,524 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+"""Stub wheels, real installers and a manifest built from the stub wheels (OMN-23343).
+
+The wheels are hand-built (no network); the installs are real: uv tool, pipx (or the pip venv pipx
+wraps when pipx is absent) and an ordinary venv. The manifest is derived from the wheels exactly as
+the train derives it from the published ones: wheel sha256, RECORD, entry_points.txt.
+"""
+
+from __future__ import annotations
+
+import base64
+import ensurepip
+import hashlib
+import io
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+import zipfile
+from collections.abc import Sequence
+from pathlib import Path
+
+from omnimarket.nodes.node_release_candidate_verify_effect.handlers.handler_release_candidate_verify import (
+    load_default_overlay,
+)
+from omnimarket.nodes.node_release_candidate_verify_effect.handlers.verifier_pypi_ancestry import (
+    parse_wheel_record,
+)
+from omnimarket.nodes.node_release_candidate_verify_effect.models.model_release_candidate_manifest import (
+    ModelManifestDashboardBundle,
+    ModelManifestDistribution,
+    ModelManifestPlugin,
+    ModelManifestPluginFile,
+    ModelManifestProtectedScript,
+    ModelManifestRequiredChange,
+    ModelReleaseCandidateManifest,
+)
+from omnimarket.nodes.node_release_candidate_verify_effect.models.model_release_candidate_overlay import (
+    ModelLauncherTemplate,
+    ModelReleaseCandidateOverlay,
+)
+from omnimarket.nodes.node_release_candidate_verify_effect.models.model_release_candidate_verify_request import (
+    ModelReleaseCandidateVerifyRequest,
+)
+
+ONEX_TARGET = "omnibase_core.cli.cli_commands:cli"
+PLUGIN_FILES = {
+    ".claude-plugin/plugin.json": '{"name": "onex-delegate", "version": "0.3.3"}\n',
+    "commands/delegate.md": "delegate\n",
+    "hooks/hooks.json": "{}\n",
+}
+
+
+def build_wheel(
+    out: Path,
+    name: str,
+    version: str,
+    files: dict[str, str],
+    entry_points: str = "",
+    requires: tuple[str, ...] = (),
+) -> Path:
+    dist_info = f"{name}-{version}.dist-info"
+    metadata = f"Metadata-Version: 2.1\nName: {name}\nVersion: {version}\n"
+    metadata += "".join(f"Requires-Dist: {req}\n" for req in requires)
+    members = dict(files)
+    members[f"{dist_info}/METADATA"] = metadata
+    members[f"{dist_info}/WHEEL"] = (
+        "Wheel-Version: 1.0\nGenerator: stub\nRoot-Is-Purelib: true\nTag: py3-none-any\n"
+    )
+    if entry_points:
+        members[f"{dist_info}/entry_points.txt"] = entry_points
+    record = io.StringIO()
+    path = out / f"{name}-{version}-py3-none-any.whl"
+    with zipfile.ZipFile(path, "w") as archive:
+        for member, text in members.items():
+            data = text.encode()
+            archive.writestr(member, data)
+            digest = base64.urlsafe_b64encode(hashlib.sha256(data).digest()).rstrip(
+                b"="
+            )
+            record.write(f"{member},sha256={digest.decode()},{len(data)}\n")
+        record.write(f"{dist_info}/RECORD,,\n")
+        archive.writestr(f"{dist_info}/RECORD", record.getvalue())
+    return path
+
+
+def build_candidate_wheels(out: Path) -> dict[str, Path]:
+    out.mkdir(parents=True, exist_ok=True)
+    return {
+        "omnibase_core": build_wheel(
+            out,
+            "omnibase_core",
+            "1.0.0",
+            {
+                "omnibase_core/__init__.py": "",
+                "omnibase_core/cli/__init__.py": "",
+                "omnibase_core/cli/cli_commands.py": "def cli():\n    return 0\n\n\ndef other():\n    return 1\n",
+            },
+            f"[console_scripts]\nonex = {ONEX_TARGET}\n\n[onex.cli]\nsetup = omnibase_core.cli.cli_commands:cli\n"
+            "models = omnibase_core.cli.cli_commands:cli\ndelegate = omnibase_core.cli.cli_commands:cli\n"
+            "dashboard = omnibase_core.cli.cli_commands:cli\n",
+        ),
+        "omnibase_infra": build_wheel(
+            out,
+            "omnibase_infra",
+            "1.0.0",
+            {
+                "omnibase_infra/__init__.py": "",
+                "omnibase_infra/agent.py": "def main():\n    return 0\n",
+            },
+            "[console_scripts]\nomni-agent = omnibase_infra.agent:main\n",
+        ),
+        "omnimarket": build_wheel(
+            out,
+            "omnimarket",
+            "1.0.0",
+            {"omnimarket/__init__.py": "", "omnimarket/nodes/__init__.py": ""},
+            "[onex.nodes]\nnode_a = omnimarket.nodes\n",
+            requires=("uvicorn", "pytest"),
+        ),
+        "uvicorn": build_wheel(
+            out,
+            "uvicorn",
+            "0.1.0",
+            {"uvicorn/__init__.py": ""},
+            "[console_scripts]\nuvicorn = uvicorn:main\n",
+        ),
+        "pytest": build_wheel(
+            out,
+            "pytest",
+            "0.1.0",
+            {"pytest/__init__.py": ""},
+            "[console_scripts]\npytest = pytest:main\npy.test = pytest:main\n",
+        ),
+    }
+
+
+def _entry_points(wheel: Path) -> dict[str, dict[str, str]]:
+    with zipfile.ZipFile(wheel) as archive:
+        name = next(
+            (n for n in archive.namelist() if n.endswith("entry_points.txt")), None
+        )
+        if name is None:
+            return {}
+        text = archive.read(name).decode()
+    groups: dict[str, dict[str, str]] = {}
+    group = ""
+    for line in text.splitlines():
+        line = line.strip()
+        if line.startswith("[") and line.endswith("]"):
+            group = line[1:-1]
+            groups[group] = {}
+        elif line and group:
+            key, _, value = line.partition("=")
+            groups[group][key.strip()] = value.strip()
+    return groups
+
+
+def distribution_of(wheel: Path, name: str, version: str) -> ModelManifestDistribution:
+    with zipfile.ZipFile(wheel) as archive:
+        record_name = next(
+            n for n in archive.namelist() if n.endswith(".dist-info/RECORD")
+        )
+        record = parse_wheel_record(archive.read(record_name).decode())
+    return ModelManifestDistribution(
+        name=name,
+        version=version,
+        wheel_filename=wheel.name,
+        wheel_sha256=hashlib.sha256(wheel.read_bytes()).hexdigest(),
+        record=record,
+        entry_points=_entry_points(wheel),
+    )
+
+
+def write_plugin(root: Path) -> list[ModelManifestPluginFile]:
+    listed = []
+    for relative, text in PLUGIN_FILES.items():
+        target = root / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text)
+        listed.append(
+            ModelManifestPluginFile(
+                path=relative, sha256=hashlib.sha256(text.encode()).hexdigest()
+            )
+        )
+    return listed
+
+
+def candidate_manifest(
+    wheels: dict[str, Path], plugin_files: list[ModelManifestPluginFile]
+) -> ModelReleaseCandidateManifest:
+    return ModelReleaseCandidateManifest(
+        manifest_id="launch-candidate-test",
+        distributions=(
+            distribution_of(wheels["omnibase_core"], "omnibase-core", "1.0.0"),
+            distribution_of(wheels["omnibase_infra"], "omnibase-infra", "1.0.0"),
+            distribution_of(wheels["omnimarket"], "omnimarket", "1.0.0"),
+        ),
+        protected_scripts=(
+            ModelManifestProtectedScript(
+                name="onex", owner="omnibase-core", target=ONEX_TARGET
+            ),
+            ModelManifestProtectedScript(
+                name="omni-agent",
+                owner="omnibase-infra",
+                target="omnibase_infra.agent:main",
+            ),
+        ),
+        plugin=ModelManifestPlugin(
+            version="0.3.3", omniclaude_commit="abcdef0123", files=tuple(plugin_files)
+        ),
+        dashboard_bundle=ModelManifestDashboardBundle(
+            version="v1.1.11", sha256="a" * 64
+        ),
+        required_changes=(
+            ModelManifestRequiredChange(
+                repo="omnimarket", ticket="OMN-0001", sha="1111111"
+            ),
+        ),
+    )
+
+
+def _run(args: list[str], env: dict[str, str] | None = None) -> None:
+    # UV_LINK_MODE=copy: uv hardlinks installed files from its cache by default, so the mutation
+    # cases would edit the cached wheel itself and corrupt every later install of that wheel.
+    merged = {
+        **os.environ,
+        "UV_NO_CONFIG": "1",
+        "UV_LINK_MODE": "copy",
+        **(env or {}),
+    }
+    # Not the worktree: uv would read its pyproject and resolve the stub names against it.
+    done = subprocess.run(
+        args, capture_output=True, text=True, env=merged, cwd=tempfile.gettempdir()
+    )
+    if done.returncode:
+        raise RuntimeError(f"{args} exited {done.returncode}: {done.stderr}")
+
+
+def _specs() -> list[str]:
+    return ["omnibase-core==1.0.0", "omnibase-infra==1.0.0", "omnimarket==1.0.0"]
+
+
+def install_uv_tool(base: Path, wheel_dir: Path) -> tuple[str, str]:
+    """Returns (environment prefix, command -v onex) for a uv tool environment."""
+    tools, bin_dir = base / "uv-tools", base / "uv-bin"
+    env = {"UV_TOOL_DIR": str(tools), "UV_TOOL_BIN_DIR": str(bin_dir)}
+    args = [
+        "uv",
+        "tool",
+        "install",
+        "--offline",
+        "--no-index",
+        "--find-links",
+        str(wheel_dir),
+    ]
+    args += [
+        "--python",
+        sys.executable,
+        "--python-preference",
+        "only-system",
+        _specs()[0],
+    ]
+    for spec in _specs()[1:]:
+        args += ["--with", spec]
+    _run(args, env)
+    return str(tools / "omnibase-core"), str(bin_dir / "onex")
+
+
+def _launcher_template_text(text: str, prefix: Path) -> str:
+    """The launcher text with the venv's interpreter and target swapped for placeholders."""
+    text = text.replace(f"{prefix}/bin/python3", "{interpreter}").replace(
+        f"{prefix}/bin/python", "{interpreter}"
+    )
+    text = text.replace(
+        "from omnibase_core.cli.cli_commands import cli",
+        "from {target_module} import {target_attr}",
+    )
+    return text.replace("sys.exit(cli())", "sys.exit({target_attr}())")
+
+
+def pip_template_from_stub_install(
+    base: Path, wheel_dir: Path, installer_python: Path | None = None
+) -> ModelLauncherTemplate:
+    """The launcher template of the pip that writes the install, generated from a stub install.
+
+    That pip is the one this interpreter bundles, or the one the given interpreter carries (pipx's shared pip).
+    """
+    base.mkdir(parents=True, exist_ok=True)
+    stub = base / "pip-template-stub"
+    _run([sys.executable, "-m", "venv", str(stub)])
+    pip_cmd = (
+        [str(stub / "bin" / "pip")]
+        if installer_python is None
+        else [
+            str(installer_python),
+            "-m",
+            "pip",
+            "--python",
+            str(stub / "bin" / "python"),
+        ]
+    )
+    _run(
+        [
+            *pip_cmd,
+            "install",
+            "-q",
+            "--no-index",
+            "--no-deps",
+            "--find-links",
+            str(wheel_dir),
+            "omnibase-core==1.0.0",
+        ]
+    )
+    text = _launcher_template_text((stub / "bin" / "onex").read_text(), stub)
+    pip_version = subprocess.run(
+        [
+            str(stub / "bin" / "pip")
+            if installer_python is None
+            else str(installer_python),
+            *([] if installer_python is None else ["-m", "pip"]),
+            "--version",
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.split()[1]
+    return ModelLauncherTemplate(
+        name="pip-bundled",
+        installer="pip",
+        installer_version=pip_version,
+        interpreter_names=("python", "python3"),
+        text=text,
+    )
+
+
+def pipx_templates_from_stub_installs(
+    base: Path, wheel_dir: Path
+) -> tuple[ModelLauncherTemplate, ...]:
+    """The launcher templates of the pipx on PATH, generated from stub installs through pipx.
+
+    pip writes the short form when the interpreter line fits the 127 characters a shebang may hold and
+    the /bin/sh form otherwise, so one stub install sits at a short path and one at a path past the limit.
+    """
+    pipx_version = subprocess.run(
+        ["pipx", "--version"], capture_output=True, text=True, check=True
+    ).stdout.strip()
+    templates = []
+    for name, directory in (
+        ("pipx-generated", "short"),
+        ("pipx-generated-long-path", "long" * 40),
+    ):
+        home = base / directory
+        _run(
+            [
+                "pipx",
+                "install",
+                "--python",
+                sys.executable,
+                "--pip-args",
+                # pipx 1.6 to 1.11 hand --pip-args to the shared-library pip upgrade
+                f"--no-index --no-deps --find-links {wheel_dir} --find-links {pip_wheel_dir(base)}",
+                "omnibase-core==1.0.0",
+            ],
+            {"PIPX_HOME": str(home), "PIPX_BIN_DIR": str(home / "bin")},
+        )
+        prefix = home / "venvs" / "omnibase-core"
+        templates.append(
+            ModelLauncherTemplate(
+                name=name,
+                installer="pipx",
+                installer_version=pipx_version,
+                interpreter_names=("python",),
+                text=_launcher_template_text(
+                    (prefix / "bin" / "onex").read_text(), prefix
+                ),
+            )
+        )
+    return tuple(templates)
+
+
+def overlay_with_bundled_pip(
+    base: Path,
+    wheel_dir: Path,
+    installer_pythons: Sequence[Path | None] = (None,),
+    extra_templates: Sequence[ModelLauncherTemplate] = (),
+) -> ModelReleaseCandidateOverlay:
+    """The default overlay plus one generated template per pip that may have written the install."""
+    default = load_default_overlay()
+    generated = []
+    for index, installer_python in enumerate(installer_pythons):
+        template = pip_template_from_stub_install(
+            base / f"pip-template-{index}", wheel_dir, installer_python
+        )
+        generated.append(template.model_copy(update={"name": f"pip-generated-{index}"}))
+    return default.model_copy(
+        update={
+            "launcher_templates": (
+                *default.launcher_templates,
+                *generated,
+                *extra_templates,
+            )
+        }
+    )
+
+
+def pip_wheel_dir(base: Path) -> Path:
+    """The pip wheel this interpreter's ensurepip bundles, copied into base / "pip-wheel"."""
+    target = base / "pip-wheel"
+    target.mkdir(parents=True, exist_ok=True)
+    bundled = Path(ensurepip.__file__).parent / "_bundled"
+    wheels = list(bundled.glob("pip-*.whl"))
+    if not wheels:
+        raise RuntimeError(f"no pip wheel found in {bundled}")
+    shutil.copy2(wheels[0], target / wheels[0].name)
+    return target
+
+
+def install_pipx(base: Path, wheel_dir: Path) -> tuple[str, str]:
+    """A pipx environment reached through its bin symlink; pipx itself when present, else the pip venv it wraps."""
+    pipx_bin = base / "pipx-bin"
+    if shutil.which("pipx"):
+        # pipx 1.6 to 1.11 hand --pip-args to the shared-library pip upgrade
+        pip_args = (
+            f"--no-index --find-links {wheel_dir} --find-links {pip_wheel_dir(base)}"
+        )
+        env = {"PIPX_HOME": str(base / "pipx-home"), "PIPX_BIN_DIR": str(pipx_bin)}
+        _run(
+            [
+                "pipx",
+                "install",
+                "--python",
+                sys.executable,
+                "--pip-args",
+                pip_args,
+                "--include-deps",
+                _specs()[0],
+            ],
+            env,
+        )
+        _run(
+            ["pipx", "inject", "--pip-args", pip_args, "omnibase-core", *_specs()[1:]],
+            env,
+        )
+        return str(base / "pipx-home" / "venvs" / "omnibase-core"), str(
+            pipx_bin / "onex"
+        )
+    prefix = base / "pipx-home" / "venvs" / "omnibase-core"
+    _run([sys.executable, "-m", "venv", str(prefix)])
+    _run(
+        [
+            str(prefix / "bin" / "pip"),
+            "install",
+            "-q",
+            "--no-index",
+            "--find-links",
+            str(wheel_dir),
+            *_specs(),
+        ]
+    )
+    pipx_bin.mkdir(parents=True)
+    (pipx_bin / "onex").symlink_to(prefix / "bin" / "onex")
+    return str(prefix), str(pipx_bin / "onex")
+
+
+def install_venv(
+    base: Path, wheel_dir: Path, name: str = "venv", with_pip: bool = True
+) -> tuple[str, str]:
+    """An ordinary uv venv, with pip added when asked, whose bin is on PATH."""
+    prefix = base / name
+    if with_pip:
+        _run([sys.executable, "-m", "venv", str(prefix)])
+    else:
+        _run(["uv", "venv", "-q", "--python", sys.executable, str(prefix)])
+    _run(
+        [
+            "uv",
+            "pip",
+            "install",
+            "-q",
+            "--offline",
+            "--no-index",
+            "--find-links",
+            str(wheel_dir),
+            "--python",
+            str(prefix / "bin" / "python"),
+            *_specs(),
+        ]
+    )
+    return str(prefix), str(prefix / "bin" / "onex")
+
+
+def install_extra(prefix: str, wheel: Path) -> None:
+    _run(
+        [
+            "uv",
+            "pip",
+            "install",
+            "-q",
+            "--offline",
+            "--no-index",
+            "--no-deps",
+            "--python",
+            str(Path(prefix) / "bin" / "python"),
+            str(wheel),
+        ]
+    )
+
+
+def request(
+    manifest: ModelReleaseCandidateManifest,
+    prefix: str,
+    onex_on_path: str,
+    overlay: ModelReleaseCandidateOverlay | None = None,
+) -> ModelReleaseCandidateVerifyRequest:
+    return ModelReleaseCandidateVerifyRequest(
+        operation="verify_installed",
+        manifest=manifest,
+        environment_prefix=prefix,
+        onex_on_path=onex_on_path,
+        overlay=overlay,
+    )

@@ -436,7 +436,12 @@ def test_contract_loads_with_archetype_models_routing_and_descriptor() -> None:
     assert contract["name"] == "node_floor_task_ticket_effect"
     assert contract["node_type"] == "effect"
     assert contract["descriptor"]["node_archetype"] == "effect"
-    assert "handler_routing" not in contract
+    # The node is asked over the bus (OMN-23471): one command route to the bus handler; the in-process handlers stay unrouted.
+    (route,) = contract["handler_routing"]["handlers"]
+    assert route["handler"]["name"] == "HandlerFloorTaskTicketMintBus"
+    assert [h["operation"] for h in contract["in_process_handlers"]] == [
+        "floor_task_ticket_entry_check"
+    ]
     for dotted in (
         contract["handler"]["input_model"],
         contract["handler"]["output_model"],
@@ -456,10 +461,11 @@ def test_contract_declares_the_overlay_key_the_node_reads_and_the_example_suppli
 
     contract = yaml.safe_load((NODE_DIR / "contract.yaml").read_text())
     assert contract["deployment_overlay"]["fields"] == [
-        "floor_fill.mint_timeout_seconds"
+        "floor_fill.mint_timeout_seconds",
+        "floor_fill.ticket_store",
     ]
     example = yaml.safe_load((NODE_DIR / "overlay.example.yaml").read_text())
-    assert set(example["floor_fill"]) == {"mint_timeout_seconds"}
+    assert set(example["floor_fill"]) == {"mint_timeout_seconds", "ticket_store"}
 
 
 def test_seams_in_spi_each_injected_protocol_resolves_into_omnibase_spi() -> None:

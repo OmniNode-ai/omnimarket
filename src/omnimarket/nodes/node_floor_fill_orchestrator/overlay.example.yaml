@@ -11,9 +11,14 @@ floor_fill:
   url: https://floor.example.invalid/factory-floor.json
   # Where the plan texts the floor's lines name are read.
   plans_root: /srv/example/plans
-  # The argv of the lane start node's entry; {lane} {key} {ticket} {attempt} are filled per start. It must not
-  # name the script runner.
-  runner_command: [example-node-entry, --lane, "{lane}", --key, "{key}", --ticket, "{ticket}", --attempt, "{attempt}"]
+  # The argv of the lane start node's entry; {lane} {key} {ticket} {attempt} and {brief} (the path of the brief file the
+  # fill writes from line_brief_text) are filled per start. The entry requires --overlay, --ledger, --pool-snapshot,
+  # --model, --brief and --run-id, so the command carries them (the run id is the lane name, which carries the attempt).
+  # It must not name the script runner.
+  runner_command: [example-node-entry, --overlay, /srv/example/lane-start-overlay.yaml, --ledger, /srv/example/ledger.md, --pool-snapshot, /srv/example/pool-snapshot.json, --model, example-model, --lane, "{lane}", --key, "{key}", --ticket, "{ticket}", --attempt, "{attempt}", --brief, "{brief}", --run-id, "{lane}"]
+  # The text of the brief a floor-line start hands the entry through {brief}; {lane} {key} {ticket} {line_id} {task_id}
+  # and {plans_root} are filled per start: the entry requires --brief, and a line has no predecessor to continue.
+  line_brief_text: "Work task {task_id} of floor line {line_id} on ticket {ticket} as lane {lane} (key {key}). Read the line's plan under {plans_root} and do the task's work; do not widen it."
   # Above the start node's placement and start timeouts; the entry's own deadline is below it.
   reserved_timeout_seconds: 600
   # How long a started key is held (read from the idle_slot_fill window, not a second value).

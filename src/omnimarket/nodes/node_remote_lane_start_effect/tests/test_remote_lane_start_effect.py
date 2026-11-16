@@ -257,7 +257,10 @@ def test_ssh_transport_engine_survivor_of_a_dead_wrapper_is_still_running(
 def test_ssh_transport_start_that_does_not_settle_is_unresolved(tmp_path: Path) -> None:
     class Stalled:
         def run(
-            self, argv: Sequence[str], timeout_seconds: float
+            self,
+            argv: Sequence[str],
+            timeout_seconds: float,
+            stdin: bytes | None = None,
         ) -> ModelHostCommandResult:
             return ModelHostCommandResult(exit_code=124, stderr="timed out")
 
@@ -291,7 +294,10 @@ def test_ssh_transport_start_failure_is_unresolved_unless_nothing_was_launched(
 ) -> None:
     class Answer:
         def run(
-            self, argv: Sequence[str], timeout_seconds: float
+            self,
+            argv: Sequence[str],
+            timeout_seconds: float,
+            stdin: bytes | None = None,
         ) -> ModelHostCommandResult:
             return ModelHostCommandResult(
                 exit_code=exit_code, stdout=stdout, stderr="lost"
@@ -332,7 +338,10 @@ def test_ssh_transport_remote_host_goes_through_the_ssh_argv(tmp_path: Path) -> 
 
     class Record:
         def run(
-            self, argv: Sequence[str], timeout_seconds: float
+            self,
+            argv: Sequence[str],
+            timeout_seconds: float,
+            stdin: bytes | None = None,
         ) -> ModelHostCommandResult:
             seen.append(list(argv))
             return ModelHostCommandResult(exit_code=0, stdout="RUNNING\n")

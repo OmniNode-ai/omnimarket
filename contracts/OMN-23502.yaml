@@ -1,0 +1,61 @@
+schema_version: 1.0.0
+ticket_id: OMN-23502
+title: The start parts stage the work log, prompt and settings on a lab machine and the safety program is broken into pieces (child of OMN-23425)
+summary: 'The ssh transport runs stage_ledger_snapshot, stage_file and write_runtime_config with the runner''s recorded text, and the lane guard host program is wired into the start nodes.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-child-host-steps-b
+  statement: Three more provisioning steps of the ssh transport send the host the runner's recorded script lines and carry the staged bytes on stdin, and the start nodes inject the guard host program they own.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the ssh transport runs stage_ledger_snapshot, stage_file and write_runtime_config, sending the host the runner''s recorded text and carrying the staged bytes on stdin -- falsifier: uv run pytest test_remote_lane_start_staging_parity.py, red when the unpack script''s tar flag or the runtime-config printed line changes.'
+  - id: AC2
+    statement: 'AC2: the lane guard program is broken into node-shaped pieces (compute or effect, each with a contract), and the first piece, the guard source the start nodes inject, is wired and exercised on a real host -- falsifier: uv run pytest test_remote_lane_start_guard_wiring.py, red when build_real does not inject the guard source.'
+  - id: AC3
+    statement: 'AC3: integrated: the staging steps and the wired guard source run on a lab host through the ssh transport and the host''s printed lines are read -- falsifier: the lane''s STATUS row naming the host, revision and the printed LEDGER-SNAPSHOT or LANE-GUARD-STOP line.'
+evidence_requirements:
+- kind: tests
+  description: The staging parity tests of the ssh transport and the guard wiring tests of the start orchestrator.
+  command: uv run pytest src/omnimarket/nodes/node_remote_lane_start_effect/tests/test_remote_lane_start_staging_parity.py src/omnimarket/nodes/node_remote_lane_start_orchestrator/tests/test_remote_lane_start_guard_wiring.py -q --no-cov --tb=line
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-OMN-23502-ac1
+  description: The three staging steps send the recorded runner scripts and carry the staged bytes on stdin.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_remote_lane_start_effect/tests/test_remote_lane_start_staging_parity.py -q --no-cov --tb=line
+    cwd: .
+- id: dod-OMN-23502-ac2
+  description: build_real injects the guard host program, which answers the reap and spool-drain commands the nodes send.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_remote_lane_start_orchestrator/tests/test_remote_lane_start_guard_wiring.py -q --no-cov --tb=line
+    cwd: .
+- id: dod-OMN-23502-integration-proof
+  description: The staging steps and the wired guard source ran on a lab host through the ssh transport and the printed lines were read back from the work ledger STATUS row that carries them.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: onex ledger query --query rows --kind STATUS --term 'OMN-23502 host readings' --since 2026-11-10T06:00:00Z | grep -q 'OMN-23502 host readings'
+    cwd: .
+- id: dod-OMN-23502-ac3
+  description: The hosted reading of AC3, the staging steps and the wired guard source run through the ssh transport and the printed lines read back; the live lab-host run is the integration-proof item.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_remote_lane_start_effect/tests/test_remote_lane_start_staging_parity.py src/omnimarket/nodes/node_remote_lane_start_orchestrator/tests/test_remote_lane_start_guard_wiring.py -q --no-cov --tb=line
+    cwd: .

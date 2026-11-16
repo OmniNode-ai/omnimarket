@@ -29,6 +29,7 @@ from typing import Any, Protocol, runtime_checkable
 import yaml
 from pydantic import BaseModel, ConfigDict
 
+from omnimarket.handlers.node_overlay_reader import resolve_overlay_file
 from omnimarket.handlers.node_timeouts_reader import load_node_timeouts
 from omnimarket.nodes.node_ab_compare_orchestrator.models.model_ab_compare_result import (
     ModelAbCompareResult,
@@ -51,6 +52,11 @@ class ProtocolLlmEffectHandler(Protocol):
 
 
 _REGISTRY_PATH = Path(__file__).parent.parent / "models_registry.yaml"
+#: The deployment's registry (OMN-19184): a file named by this variable, else the whole file at
+#: ``<root>/node_ab_compare_orchestrator/overlay.yaml`` under ``ONEX_SKILL_OVERLAY_ROOTS``, else the
+#: neutral packaged registry, which declares no lab host or lab-only served model id.
+REGISTRY_OVERLAY_NODE = "node_ab_compare_orchestrator"
+REGISTRY_FILE_ENV = "ONEX_AB_COMPARE_MODELS_REGISTRY"
 # The infra OpenAI-compatible effect posts ``endpoint_url`` verbatim and builds
 # nothing from ``base_url``, so the orchestrator hands it the complete URL.
 _OPENAI_CHAT_COMPLETIONS_PATH = "/v1/chat/completions"
@@ -77,7 +83,10 @@ class _ResolvedModel(BaseModel):
 
 
 def _load_registry() -> list[dict[str, Any]]:
-    return yaml.safe_load(_REGISTRY_PATH.read_text())["models"]  # type: ignore[no-any-return]
+    path = resolve_overlay_file(
+        REGISTRY_OVERLAY_NODE, _REGISTRY_PATH, env_var=REGISTRY_FILE_ENV
+    )
+    return yaml.safe_load(path.read_text())["models"]  # type: ignore[no-any-return]
 
 
 def _resolve_models(

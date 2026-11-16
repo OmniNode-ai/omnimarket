@@ -10,7 +10,14 @@ adopt; a source the guard cannot read exits 3 and opens nothing. There is no swi
 A host with no fresh PR watcher state (a lab host) reads the open pull requests from the GitHub gateway instead
 (``open_pr_facts``, OMN-22654); when that read fails too, the answer names both reads it lacks.
 
-Exit codes: 0 clear, 3 unchecked (a source could not be read), 4 a pull request or a live CLAIM already covers it.
+``--replaces OWNER/REPO#N`` (repeatable) names closed, unmerged pull requests of the same repository that the new
+change replaces. The node reads each one's state itself; an overlap whose introducing commits all belong to such a
+pull request is set aside (the answer's ``set_aside``), any other overlap still refuses, and a ``replaces`` entry that
+is open, merged, of another repository or unreadable is refused with a typed reason (exit 5). With no ``--replaces``
+the answer is what it always was.
+
+Exit codes: 0 clear, 3 unchecked (a source could not be read), 4 a pull request or a live CLAIM already covers it,
+5 a ``replaces`` entry is refused.
 """
 
 from __future__ import annotations
@@ -23,7 +30,10 @@ from typing import Any, Final
 import click
 
 from omnimarket.lab_work.cli import _with_bus_options
-from omnimarket.models.model_pr_duplicate_guard import ModelPrDuplicateSnapshotRequest
+from omnimarket.models.model_pr_duplicate_guard import (
+    ModelPrDuplicateSnapshotRequest,
+    validate_replaces,
+)
 from omnimarket.nodes.node_pr_duplicate_guard_compute.handlers.handler_pr_duplicate_guard import (
     HandlerPrDuplicateGuard,
 )
@@ -37,7 +47,15 @@ from omnimarket.nodes.node_pr_duplicate_snapshot_effect.ports.protocol_open_pr_f
 EXIT_CLEAR: Final[int] = 0
 EXIT_UNCHECKED: Final[int] = 3
 EXIT_DUPLICATE: Final[int] = 4
+EXIT_REPLACES_REFUSED: Final[int] = 5
 _REPO = "OWNER/REPO"
+
+
+_EXIT_BY_STATE: Final[dict[str, int]] = {
+    "clear": EXIT_CLEAR,
+    "adopt": EXIT_DUPLICATE,
+    "replaces_refused": EXIT_REPLACES_REFUSED,
+}
 
 
 def check(
@@ -54,6 +72,7 @@ def check(
     clone: str | None = None,
     worktree: str | None = None,
     open_prs_source: ProtocolOpenPrFactsSource | None = None,
+    replaces: tuple[str, ...] = (),
 ) -> tuple[int, dict[str, Any]]:
     """(exit code, the one JSON answer) for a pull request about to be opened."""
     snapshot = HandlerPrDuplicateSnapshot(open_prs_source).handle(
@@ -69,6 +88,7 @@ def check(
             ledger=ledger,
             clone=clone,
             worktree=worktree,
+            replaces=replaces,
         )
     )
     if snapshot.request is None:
@@ -78,7 +98,7 @@ def check(
         }
     result = HandlerPrDuplicateGuard().handle(snapshot.request)
     answer = result.model_dump(mode="json")
-    return (EXIT_CLEAR if result.state == "clear" else EXIT_DUPLICATE), answer
+    return _EXIT_BY_STATE[result.state], answer
 
 
 def refuse_or_continue(
@@ -91,6 +111,7 @@ def refuse_or_continue(
     lane: str | None,
     watcher_state: str | None,
     open_prs_source: ProtocolOpenPrFactsSource | None = None,
+    replaces: tuple[str, ...] = (),
 ) -> int | None:
     """``onex scm pr-create``'s step: None to go on and create, else the exit code, with the refusal printed."""
     code, answer = check(
@@ -102,6 +123,7 @@ def refuse_or_continue(
         lane=lane,
         watcher_state=watcher_state,
         open_prs_source=open_prs_source,
+        replaces=replaces,
     )
     click.echo(json.dumps(answer, separators=(",", ":")))
     if code == EXIT_CLEAR:
@@ -114,12 +136,29 @@ def refuse_or_continue(
             f"PR-DUPLICATE-GUARD unchecked, no pull request opened: {answer['reason']}",
             err=True,
         )
+    elif code == EXIT_REPLACES_REFUSED:
+        click.echo(
+            f"PR-REPLACES-REFUSED, no pull request opened: {answer['message']}",
+            err=True,
+        )
     else:
+        for item in answer.get("set_aside") or ():
+            click.echo(
+                f"PR-DUPLICATE-GUARD set aside {item['place']} of {item['pr']}: {item['why']}",
+                err=True,
+            )
         click.echo(
             f"PR-DUPLICATE-REFUSED, no pull request opened: {answer['message']}",
             err=True,
         )
     return code
+
+
+def _replaces(raw: tuple[str, ...]) -> tuple[str, ...]:
+    try:
+        return validate_replaces(tuple(raw))
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
 
 
 @click.command("pr-duplicate-check")
@@ -161,6 +200,12 @@ def refuse_or_continue(
 )
 @click.option("--watcher-state", type=click.Path(dir_okay=False), default=None)
 @click.option(
+    "--replaces",
+    multiple=True,
+    metavar="OWNER/REPO#N",
+    help="A closed, unmerged pull request of this repository that this change replaces (repeatable).",
+)
+@click.option(
     "--ledger",
     type=click.Path(dir_okay=False),
     default=None,
@@ -191,6 +236,7 @@ def duplicate_check_command(
     worktree: str | None,
     clone: str | None,
     watcher_state: str | None,
+    replaces: tuple[str, ...],
     ledger: str | None,
 ) -> None:
     """Would this pull request duplicate an open one or a live CLAIM? Exit 0 clear, 4 duplicate, 3 unchecked."""
@@ -213,6 +259,7 @@ def duplicate_check_command(
         ledger=ledger or os.environ.get("ONEX_LEDGER_PATH"),
         clone=clone,
         worktree=worktree,
+        replaces=_replaces(replaces),
         open_prs_source=scm_cli.gateway_open_prs_source(
             {
                 "omnibase_path": omnibase_path,
@@ -228,6 +275,8 @@ def duplicate_check_command(
         click.echo(f"PR-DUPLICATE-GUARD clear: {answer['message']}", err=True)
     elif code == EXIT_DUPLICATE:
         click.echo(f"PR-DUPLICATE-REFUSED: {answer['message']}", err=True)
+    elif code == EXIT_REPLACES_REFUSED:
+        click.echo(f"PR-REPLACES-REFUSED: {answer['message']}", err=True)
     elif code == EXIT_UNCHECKED:
         click.echo(f"PR-DUPLICATE-GUARD unchecked: {answer['reason']}", err=True)
     raise SystemExit(code)

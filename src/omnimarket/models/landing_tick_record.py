@@ -14,6 +14,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.models.landing_controller_carry import ModelLandingControllerDecisions
 from omnimarket.models.landing_decision import ModelLandingFacts
 
 
@@ -27,6 +28,13 @@ class ModelLandingTickRecord(BaseModel):
     facts: ModelLandingFacts
     provenance: str = Field(
         ..., min_length=1, description="The declared sources the facts came from."
+    )
+    controller: ModelLandingControllerDecisions | None = Field(
+        default=None,
+        description=(
+            "The old controller's finished tick this record's state was carried from, with its "
+            "decision rows only, never its facts; None outside the cutover period (OMN-23665)."
+        ),
     )
 
 

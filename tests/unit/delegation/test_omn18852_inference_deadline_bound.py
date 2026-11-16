@@ -18,10 +18,12 @@ inside the budget its caller is measured against cannot produce a usable
 answer; it can only hold the single global inference slot until the caller has
 already terminalized.
 
-The bound therefore belongs at the EFFECT BOUNDARY, against a ceiling this
-node's own contract already declares (``io_operations`` ``http_request``
-``timeout_seconds``), and an abandonment must leave a line a single grep finds
-in ``docker logs omninode-runtime-effects``.
+The bound therefore belongs at the EFFECT BOUNDARY, and an abandonment must
+leave a line a single grep finds in ``docker logs omninode-runtime-effects``.
+Since OMN-24039 the ceiling itself is an overlay value: the code budget
+overlay's budget for the call's task class (or its ``ceiling_s`` for an intent
+that names no class), read on every call through
+``delegation_call_budget_reader`` -- the contract no longer declares one.
 """
 
 from __future__ import annotations
@@ -40,32 +42,16 @@ from uuid import uuid4
 
 import httpx
 import pytest
-import yaml
 from omnibase_core.models.delegation.wire import ModelInferenceIntent
 
+from omnimarket.handlers.routing.measured_correct_ceiling import (
+    CODE_BUDGET_OVERLAY_ID,
+)
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference_intent import (
     HandlerInferenceIntent,
 )
 from omnimarket.nodes.node_llm_delegation_call_effect.models.model_inference_call_budget import (
     INFERENCE_TIMEOUT_LOG_TOKEN,
-    load_inference_call_budget,
-)
-
-_EFFECT_CONTRACT_PATH = (
-    Path(__file__).resolve().parents[3]
-    / "src"
-    / "omnimarket"
-    / "nodes"
-    / "node_llm_delegation_call_effect"
-    / "contract.yaml"
-)
-_DELEGATE_SKILL_CONTRACT_PATH = (
-    Path(__file__).resolve().parents[3]
-    / "src"
-    / "omnimarket"
-    / "nodes"
-    / "node_delegate_skill_orchestrator"
-    / "contract.yaml"
 )
 
 # The live value the local Qwen backend declares, and the one the producer hands
@@ -106,28 +92,72 @@ def _mock_client(mock_client_cls: MagicMock, *, post_side_effect: Any = None) ->
     return client
 
 
+def _overlay(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    ceiling_s: float,
+    class_budgets: dict[str, float],
+) -> None:
+    """Write the code budget overlay under ``tmp_path`` and point the env root there."""
+    path = tmp_path / CODE_BUDGET_OVERLAY_ID / "overlay.yaml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    budgets = "\n".join(f"  {k}: {v}" for k, v in class_budgets.items())
+    path.write_text(
+        (
+            "class_budgets_s:\n"
+            f"{budgets}\n"
+            "sizing_margin: 1.5\n"
+            "round_up_to_s: 60\n"
+            "min_completed_samples: 3\n"
+            f"ceiling_s: {ceiling_s}\n"
+            "input_ceilings:\n"
+            "  local-coder:\n"
+            "    code_generation: 65536\n"
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path))
+
+
 @pytest.mark.unit
-def test_the_provider_call_is_bounded_by_the_contract_ceiling_not_the_request() -> None:
+def test_the_provider_call_is_bounded_by_the_overlay_ceiling_not_the_request(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """RED before the fix: the boundary posts with the requested 300 s.
 
     The defect in one assertion. A caller whose whole execution budget is 240 s
     cannot be served by a rung permitted to run for 300 s, and the rung holds
     the one global inference slot for every one of those seconds.
     """
-    ceiling = float(load_inference_call_budget().max_inference_duration_seconds)
-    assert ceiling < _LOCAL_BACKEND_REQUESTED_TIMEOUT_SECONDS
+    _overlay(
+        tmp_path,
+        monkeypatch,
+        ceiling_s=120,
+        class_budgets={"code_generation": 120},
+    )
 
     with patch("httpx.Client") as mock_client_cls:  # onex-allow-faked-boundary
         client = _mock_client(mock_client_cls)
         HandlerInferenceIntent().handle(_intent())
 
-    assert mock_client_cls.call_args.kwargs["timeout"] == ceiling
-    assert client.post.call_args.kwargs["timeout"] == ceiling
+    assert mock_client_cls.call_args.kwargs["timeout"] == 120.0
+    assert client.post.call_args.kwargs["timeout"] == 120.0
 
 
 @pytest.mark.unit
-def test_a_request_inside_the_ceiling_is_not_lengthened() -> None:
+def test_a_request_inside_the_ceiling_is_not_lengthened(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """The clamp is a ceiling, never a floor: a 15 s backend still gets 15 s."""
+    _overlay(
+        tmp_path,
+        monkeypatch,
+        ceiling_s=120,
+        class_budgets={"code_generation": 120},
+    )
     with patch("httpx.Client") as mock_client_cls:  # onex-allow-faked-boundary
         HandlerInferenceIntent().handle(_intent(timeout_seconds=15.0))
 
@@ -136,6 +166,8 @@ def test_a_request_inside_the_ceiling_is_not_lengthened() -> None:
 
 @pytest.mark.unit
 def test_a_timed_out_rung_emits_one_greppable_line_naming_the_correlation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """RED before the fix: the timeout path logs nothing distinguishable.
@@ -148,6 +180,12 @@ def test_a_timed_out_rung_emits_one_greppable_line_naming_the_correlation(
     indistinguishable from a 0.1 s malformed-payload failure, and there is no
     token to grep for.
     """
+    _overlay(
+        tmp_path,
+        monkeypatch,
+        ceiling_s=120,
+        class_budgets={"code_generation": 120},
+    )
     intent = _intent()
 
     with (
@@ -186,12 +224,20 @@ def test_a_timed_out_rung_emits_one_greppable_line_naming_the_correlation(
 
 @pytest.mark.unit
 def test_a_non_timeout_failure_does_not_claim_a_timeout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Positive control on the token: it must not fire on every failure.
 
     A token emitted on all failures is a token that identifies none of them.
     """
+    _overlay(
+        tmp_path,
+        monkeypatch,
+        ceiling_s=120,
+        class_budgets={"code_generation": 120},
+    )
     with (
         caplog.at_level(logging.WARNING),
         patch("httpx.Client") as mock_client_cls,  # onex-allow-faked-boundary
@@ -203,63 +249,6 @@ def test_a_non_timeout_failure_does_not_claim_a_timeout(
         HandlerInferenceIntent().handle(_intent())
 
     assert INFERENCE_TIMEOUT_LOG_TOKEN not in caplog.text
-
-
-@pytest.mark.unit
-def test_the_ceiling_leaves_room_for_a_second_rung_inside_the_callers_budget() -> None:
-    """The cross-node invariant the 300 s value violated.
-
-    ``node_delegate_skill_orchestrator`` terminalizes at
-    ``handler_execution_budget.max_handler_duration_seconds``. With a single
-    rung permitted 300 s, the escalation ladder could never reach a SECOND rung
-    inside that budget -- measured live: correlation ``6c0aaeec`` terminalized
-    at 19:51:26 and its cloud rung did not start until 19:57:02. Requiring two
-    rungs to fit makes the ladder reachable rather than nominal.
-    """
-    ceiling = load_inference_call_budget().max_inference_duration_seconds
-    raw = yaml.safe_load(_DELEGATE_SKILL_CONTRACT_PATH.read_text(encoding="utf-8"))
-    caller_budget = int(raw["handler_execution_budget"]["max_handler_duration_seconds"])
-
-    assert ceiling < caller_budget
-    assert 2 * ceiling <= caller_budget
-
-
-@pytest.mark.unit
-def test_loader_refuses_a_contract_that_declares_no_http_timeout(
-    tmp_path: Path,
-) -> None:
-    """Fail loud rather than fall back to a silent default (CLAUDE.md rule 8)."""
-    raw = yaml.safe_load(_EFFECT_CONTRACT_PATH.read_text(encoding="utf-8"))
-    raw["io_operations"] = [
-        entry
-        for entry in raw["io_operations"]
-        if entry["operation_type"] != "http_request"
-    ]
-    bad = tmp_path / "contract.yaml"
-    bad.write_text(yaml.safe_dump(raw), encoding="utf-8")
-
-    with pytest.raises(ValueError, match="http_request"):
-        load_inference_call_budget(bad)
-
-
-@pytest.mark.unit
-def test_loader_refuses_a_ceiling_that_cannot_bind(tmp_path: Path) -> None:
-    """A ceiling at or above the wire model's own maximum clamps nothing.
-
-    ``ModelInferenceIntent.timeout_seconds`` is bounded ``le=600.0``, so a
-    declared ceiling of 600 admits every value the wire can carry. That is a
-    bound that does not bind, which reads downstream exactly like one that does
-    -- the OMN-15504 lesson, applied to the rung instead of the handler.
-    """
-    raw = yaml.safe_load(_EFFECT_CONTRACT_PATH.read_text(encoding="utf-8"))
-    for entry in raw["io_operations"]:
-        if entry["operation_type"] == "http_request":
-            entry["timeout_seconds"] = 600
-    bad = tmp_path / "contract.yaml"
-    bad.write_text(yaml.safe_dump(raw), encoding="utf-8")
-
-    with pytest.raises(ValueError, match="strictly less than"):
-        load_inference_call_budget(bad)
 
 
 @contextmanager

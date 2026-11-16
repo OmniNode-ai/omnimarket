@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_goal_verification_orchestrator
+version: "1.0.0"
+description: Closing a goal starts one verification run per goal and contract revision, retries a lost run to a bound, and lists every close that has no verdict
+omnibase_core_compat: ">=0.47.28,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_goal_verification_orchestrator: omnimarket.nodes.node_goal_verification_orchestrator
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  side_effect_class: effect
+dependencies:
+  - pydantic>=2.11.0
+  - pyyaml>=6.0
+authors: [OmniNode Team]
+license: MIT
+tags: [orchestrator, goal-contract, verification, closure]
+node_role: orchestrator
+pack: "routing"
+display_name: "Goal Verification Orchestrator"

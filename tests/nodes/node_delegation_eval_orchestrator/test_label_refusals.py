@@ -8,6 +8,7 @@ import pytest
 from pydantic import ValidationError
 
 from omnimarket.events.delegation_eval import ModelLabelRecordRequest
+from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.nodes.node_delegation_eval_orchestrator.handlers import (
     HandlerDelegationEvalOrchestrator,
 )
@@ -31,12 +32,15 @@ def _label() -> dict[str, object]:
     }
 
 
-def test_missing_snapshot_source_refuses_dispatch() -> None:
+def test_unbound_snapshot_source_refuses_dispatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # OMN-20577: with no injected source the handler binds the overlay-named reader;
+    # with no overlay it refuses before reading anything.
+    monkeypatch.delenv("ONEX_SKILL_OVERLAY_ROOTS", raising=False)
     request = ModelLabelRecordRequest.model_validate(_label())
 
-    with pytest.raises(
-        RuntimeError, match=r"^tenant-scoped snapshot source is required for dispatch$"
-    ):
+    with pytest.raises(NodeOverlayError):
         HandlerDelegationEvalOrchestrator().handle(request)
 
 

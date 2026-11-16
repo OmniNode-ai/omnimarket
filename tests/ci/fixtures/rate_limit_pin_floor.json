@@ -1,0 +1,20 @@
+{
+  "callers": [
+    {
+      "workflow": "imperative-contract-guard.yml",
+      "uses": "OmniNode-ai/omnibase_core/.github/workflows/imperative-contract-guard.yml",
+      "fix": "OmniNode-ai/omnibase_core#2306",
+      "floor_tag": "dev-20261110125852-e6bc5e13e9e7",
+      "hook_repo": null,
+      "hook_id": null
+    },
+    {
+      "workflow": "kb-doc-gate.yml",
+      "uses": "OmniNode-ai/omniclaude/.github/workflows/kb-doc-gate-reusable.yml",
+      "fix": "OmniNode-ai/omniclaude#3251",
+      "floor_tag": "dev-20261110125151-6f8f3646a88e",
+      "hook_repo": "https://github.com/OmniNode-ai/omniclaude",
+      "hook_id": "kb-doc-gate"
+    }
+  ]
+}

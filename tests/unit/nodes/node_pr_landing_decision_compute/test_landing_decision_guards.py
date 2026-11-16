@@ -705,19 +705,13 @@ def test_rule_d5_pool_load_and_engine_fallback() -> None:
     )
     run_scenario(
         {
-            "id": "D5-codex",
+            # Codex reviews and never works a lane (operator ruling 2026-11-05): a pool that offers only it dispatches nothing
+            "id": "D5-codex-never",
             "world": {
                 "available_engines": ["codex_high"],
                 "prs": [_pr("acme/app#1", **RED)],
             },
-            "ticks": [
-                {
-                    "expect": {
-                        "actions": ["dispatch_worker acme/app#1 real_red"],
-                        "engine": {"acme/app#1": "codex_high"},
-                    }
-                }
-            ],
+            "ticks": [{"expect": {"actions": []}}],
         }
     )
     run_scenario(
@@ -743,7 +737,7 @@ def test_rule_r1_escalation_ladder_parks_after_three() -> None:
             "id": "R1-ladder",
             "world": {"prs": [_pr("acme/app#1", **RED)]},
             "ticks": [
-                {"expect": {"engine": {"acme/app#1": "codex_high"}}},
+                {"expect": {"engine": {"acme/app#1": "claude_sonnet"}}},
                 {
                     "events": _invalid_then_exit(),
                     "expect": {"engine": {"acme/app#1": "claude_sonnet"}},
@@ -779,7 +773,7 @@ def test_rule_r1_escalation_ladder_parks_after_three() -> None:
                     ],
                     "expect": {
                         "actions": ["dispatch_worker acme/app#1 real_red"],
-                        "engine": {"acme/app#1": "codex_high"},
+                        "engine": {"acme/app#1": "claude_sonnet"},
                         "degraded": [],
                     },
                 },
@@ -800,7 +794,7 @@ def test_rule_r1_failed_attempt_escalates_new_red_does_not() -> None:
             "id": "R1-failed-attempt",
             "world": {"prs": [_pr("acme/app#1", **RED)]},
             "ticks": [
-                {"expect": {"engine": {"acme/app#1": "codex_high"}}},
+                {"expect": {"engine": {"acme/app#1": "claude_sonnet"}}},
                 {
                     "events": fix,
                     "expect": {
@@ -828,7 +822,7 @@ def test_rule_r1_failed_attempt_escalates_new_red_does_not() -> None:
             "id": "R1-new-red",
             "world": {"prs": [_pr("acme/app#1", **RED)]},
             "ticks": [
-                {"expect": {"engine": {"acme/app#1": "codex_high"}}},
+                {"expect": {"engine": {"acme/app#1": "claude_sonnet"}}},
                 {"events": fix, "expect": {"actions": []}},
                 {
                     "events": [
@@ -840,7 +834,7 @@ def test_rule_r1_failed_attempt_escalates_new_red_does_not() -> None:
                             }
                         }
                     ],
-                    "expect": {"engine": {"acme/app#1": "codex_high"}},
+                    "expect": {"engine": {"acme/app#1": "claude_sonnet"}},
                 },
             ],
         }

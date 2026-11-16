@@ -98,6 +98,7 @@ def test_the_reader_opens_the_declared_lane_and_reads_from_the_earliest_record_u
     messages = [_Message(f"{i}".encode()) for i in range(3)]
     opener = _install(monkeypatch, messages)
     selection = ModelTickTopicSelection(
+        join_timeout_s=1.0,
         topic=TOPIC,
         consumer_group=GROUP,
         bus_lane="dev",
@@ -122,6 +123,7 @@ def test_the_reader_stops_at_max_records(monkeypatch: pytest.MonkeyPatch) -> Non
     messages = [_Message(f"{i}".encode()) for i in range(5)]
     _install(monkeypatch, messages)
     selection = ModelTickTopicSelection(
+        join_timeout_s=1.0,
         topic=TOPIC,
         consumer_group=GROUP,
         bus_lane="dev",
@@ -135,6 +137,7 @@ def test_a_plaintext_broker_selection_opens_no_lane(
 ) -> None:
     opener = _install(monkeypatch, [])
     selection = ModelTickTopicSelection(
+        join_timeout_s=1.0,
         topic=TOPIC,
         consumer_group=GROUP,
         bootstrap_servers="broker.example:9092",
@@ -149,6 +152,7 @@ def test_an_empty_topic_returns_nothing_at_the_timeout(
 ) -> None:
     opener = _install(monkeypatch, [])
     selection = ModelTickTopicSelection(
+        join_timeout_s=1.0,
         topic=TOPIC,
         consumer_group=GROUP,
         bus_lane="dev",

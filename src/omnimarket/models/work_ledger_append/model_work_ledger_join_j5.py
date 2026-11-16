@@ -3,7 +3,7 @@
 """J5 join (piece 5 to piece 6) request, result and policy (OMN-22914).
 
 The policy is the ``join_j5`` section of the append node's contract: the two piece numbers, the emitting node's
-name and the three typed failure codes. Nothing in the handler spells one of them.
+name and the six typed failure codes (the last two close a chain whose run was interrupted or ran out of time). Nothing in the handler spells one of them.
 """
 
 from __future__ import annotations
@@ -27,6 +27,9 @@ class EnumJoinJ5Outcome(StrEnum):
     REFUSED_IDENTITY_UNRESOLVED = "refused_identity_unresolved"
     APPEND_NOT_ACCEPTED = "append_not_accepted"
     PROJECTED_ROW_MISSING = "projected_row_missing"
+    PROJECTION_READ_FAILED = "projection_read_failed"
+    INTERRUPTED = "interrupted"
+    DEADLINE_EXCEEDED = "deadline_exceeded"
 
 
 class ModelJoinJ5Policy(BaseModel):
@@ -41,6 +44,9 @@ class ModelJoinJ5Policy(BaseModel):
     identity_unresolved_failure_code: str = Field(min_length=1)
     append_not_accepted_failure_code: str = Field(min_length=1)
     projected_row_missing_failure_code: str = Field(min_length=1)
+    projection_read_failed_failure_code: str = Field(min_length=1)
+    interrupted_failure_code: str = Field(min_length=1)
+    deadline_exceeded_failure_code: str = Field(min_length=1)
 
     @field_validator("identity_unresolved_failure_code")
     @classmethod

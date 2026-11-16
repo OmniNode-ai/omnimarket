@@ -88,3 +88,58 @@ def test_a_request_with_a_non_positive_window_is_refused() -> None:
 def test_a_request_with_an_unknown_field_is_refused() -> None:
     with pytest.raises(ValidationError):
         ModelHookLaneJoinRequest.model_validate({"agents": [], "surprise": 1})
+
+
+def _join_with_hosts(
+    agents: tuple[ModelHookLaneJoinAgent, ...],
+    event_hosts: tuple[str | None, ...],
+    expected_hosts: tuple[str, ...],
+):
+    return HandlerHookLaneJoin().handle(
+        ModelHookLaneJoinRequest(
+            agents=agents,
+            lanes=(LANE,),
+            event_hosts=event_hosts,
+            expected_hosts=expected_hosts,
+        )
+    )
+
+
+def test_control_every_agent_fits_a_lane_and_every_host_reports() -> None:
+    """Unbroken control: nothing is unmatched and no host is silent."""
+    result = _join_with_hosts(
+        (agent("a", "lane-e"),), ("mac", "hp-gen9"), ("mac", "hp-gen9")
+    )
+    assert [j.lane for j in result.joins] == ["lane-e-2330"]
+    assert result.unmatched_agents == ()
+    assert result.silent_hosts == ()
+
+
+def test_injected_break_an_agent_that_fits_no_lane_is_named_not_dropped() -> None:
+    result = _join_with_hosts(
+        (agent("a", "lane-e"), agent("b", "lane-z", 2), agent("c", None, 3)),
+        (),
+        (),
+    )
+    assert [j.agent_id for j in result.joins] == ["a"]
+    assert [(u.agent_id, u.description, u.reason) for u in result.unmatched_agents] == [
+        ("b", "lane-z", "no lane fits the description and start time"),
+        ("c", None, "the agent carries no description"),
+    ]
+
+
+def test_an_agent_started_outside_the_window_is_named_unmatched() -> None:
+    result = _join_with_hosts((agent("a", "lane-e", 40),), (), ())
+    assert [u.agent_id for u in result.unmatched_agents] == ["a"]
+
+
+def test_injected_break_a_host_with_no_events_is_counted_at_zero_and_named() -> None:
+    result = _join_with_hosts((), ("mac", "mac"), ("mac", "h202"))
+    assert result.silent_hosts == ("h202",)
+    assert [(h.host, h.events) for h in result.hosts] == [("mac", 2), ("h202", 0)]
+
+
+def test_an_unexpected_host_that_reports_is_still_counted() -> None:
+    result = _join_with_hosts((), ("stray",), ("mac",))
+    assert result.silent_hosts == ("mac",)
+    assert [(h.host, h.events) for h in result.hosts] == [("stray", 1), ("mac", 0)]

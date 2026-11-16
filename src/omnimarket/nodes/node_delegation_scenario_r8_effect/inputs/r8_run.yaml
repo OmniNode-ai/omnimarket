@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Scenario R8 inputs (readiness plan 2.2, OMN-23175). In a probe tenant that only this scenario uses: read the totals, send one
+# synthetic run and one organic control, wait until the projection lists both correlation ids, read the totals again. The
+# synthetic run is asked for with `--traffic-class synthetic --source-surface readiness_probe`; the organic one with neither.
+task_type: summarization
+prompt: Summarize in one sentence why a probe run is kept out of a customer's totals.
+wait_timeout_seconds: 240
+poll_interval_seconds: 10
+# Money is compared at the precision the projection stores it (six decimal places), after reading it as text.
+money_decimal_places: 6
+synthetic:
+  traffic_class: synthetic
+  source_surface: readiness_probe
+organic:
+  traffic_class: organic

@@ -31,6 +31,7 @@ from omnimarket.handlers.handler_modelled_terminal_savings import (
 from omnimarket.handlers.handler_projection_derived_write import (
     HandlerProjectionDerivedWrite,
 )
+from omnimarket.handlers.projection_dlq_source import route_malformed_with_source
 from omnimarket.models.delegation.quality_bar_evidence import (
     extract_quality_bar_evidence,
 )
@@ -53,6 +54,9 @@ from omnimarket.nodes.node_projection_delegation.handlers.delegation_coercion im
     _gate_count,
     _safe_int_or_none,
     _safe_numeric_str,
+)
+from omnimarket.nodes.node_projection_delegation.handlers.delegation_runtime_coalescing import (
+    CoalescingProjectionBase,
 )
 from omnimarket.nodes.node_projection_delegation.handlers.handler_budget_state import (
     ModelDelegationBudgetStateEvent,
@@ -114,11 +118,7 @@ from omnimarket.nodes.node_projection_delegation.models.model_terminal_precedenc
 )
 from omnimarket.pricing import build_premium_counterfactual, resolve_tier_cost
 from omnimarket.projection.discovery import load_projection_exposures_from_contract
-from omnimarket.projection.dlq import (
-    correlation_id_from_payload,
-    dlq_topics_from_contract,
-    route_to_dlq,
-)
+from omnimarket.projection.dlq import dlq_topics_from_contract
 from omnimarket.projection.envelope import (
     DATA_SOURCE_REAL,
     envelope_data_source,
@@ -130,7 +130,6 @@ from omnimarket.projection.envelope import (
 from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.relation_domains import assert_internal_relation
 from omnimarket.projection.runner import (
-    BaseProjectionRunner,
     MessageMeta,
     PublishFn,
     safe_parse_date,
@@ -290,7 +289,7 @@ WRITE_ATTESTATION_COLUMNS: Final[Mapping[str, str]] = MappingProxyType(
 )
 
 
-class DelegationProjectionRunner(BaseProjectionRunner):
+class DelegationProjectionRunner(CoalescingProjectionBase):
     """Projects task-delegated and delegation-shadow-comparison events.
 
     Two topics -> two tables, each with ON CONFLICT (correlation_id) DO NOTHING.
@@ -450,17 +449,6 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         self._coalescer = AggregateCoalescer(
             window_s_from_contract(self._contract), self._publish_aggregate_snapshots
         )
-
-    async def run(self) -> None:
-        if self._coalescer.window_s is not None:
-            self._coalescer.enable()
-        await super().run()
-
-    async def _stop_producer(self) -> None:
-        # Every exit of run and shutdown stops the producer: publish what the
-        # coalescer still holds first.
-        await self._coalescer.drain()
-        await super()._stop_producer()
 
     def _resolve_aggregate_exposures(
         self, contract_path: Path
@@ -864,15 +852,13 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         True so the consumer still commits the offset (the message is durably
         captured on the DLQ, not reprocessed in a hot loop).
         """
-        fallback = meta.fallback_id if meta is not None else ""
-        correlation_id = correlation_id_from_payload(data, fallback=fallback)
-        await route_to_dlq(
+        await route_malformed_with_source(
             publish=await self.get_publish_fn(),
             dlq_topics=self._dlq_topics,
-            original_message=data,
+            data=data,
             failure_reason=reason,
             handler=HANDLER_ID_PROJECTION_DELEGATION,
-            correlation_id=correlation_id,
+            meta=meta,
         )
         return True
 
@@ -889,7 +875,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             # handler — same payload shape, same generation_events table write.
             ok = await self._project_generation_completed(data, meta)
         elif topic == self._topic_judge_verdict:
-            ok = await self._project_judge_verdict(data)
+            ok = await self._project_judge_verdict(data, meta)
         elif topic in {
             self._topic_delegate_skill_completed,
             self._topic_delegate_skill_failed,
@@ -945,7 +931,9 @@ class DelegationProjectionRunner(BaseProjectionRunner):
 
         return ok
 
-    async def _project_judge_verdict(self, data: dict[str, Any]) -> bool:
+    async def _project_judge_verdict(
+        self, data: dict[str, Any], meta: MessageMeta | None = None
+    ) -> bool:
         try:
             # OMN-16831: ``ModelDelegationJudgeVerdictEvent`` is extra="forbid",
             # and ``unwrap_envelope`` injects ``_envelope`` into every payload
@@ -959,7 +947,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             )
         except ValidationError as exc:
             return await self._route_malformed_to_dlq(
-                data, f"judge verdict event failed model validation: {exc}"
+                data, f"judge verdict event failed model validation: {exc}", meta
             )
 
         row = _judge_verdict_projection_row(event)
@@ -1023,6 +1011,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
                 f"{len(attribution_rows or [])} delegation row(s) yielding "
                 f"{len(attributions)} usable attribution(s) -- refusing rather "
                 "than letting the tenant column default absorb the write",
+                meta,
             )
         tenant_id = attributions.pop()
 

@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. A deployment's real overlay lives in the overlays repository.
+# The hosted bus lane the recorded events are carried to (resolved to its broker from the lane declaration).
+event_bus:
+  type: kafka
+  lane: example-lane
+max_events: 500
+flush_timeout_seconds: 10
+allowed_topic_prefixes:
+  - "example.evt."
+  - "example.cmd."

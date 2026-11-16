@@ -1,0 +1,94 @@
+Design verdict: the ticket node's draft create (OMN-23760, plan S3)
+===================================================================
+
+Verdict: PASS with conditions. The draft create may be built against this model under the conditions B2 to B14 below. The
+first model (the ticket's design as written: a stamp in the issue, a rerun finds it by search) was not safe; the design changed
+(D1 to D8 in README.txt and in the model header), the properties did not.
+
+Question: is the create-then-write retry safe to build: at most one issue per draft, one terminal per run, the written event after
+a successful write and hashing what Linear returned, success never reported for an issue with no block?
+
+Model: formal/create_ticket_draft/CreateTicketDraft.tla sha256=f2e5209a2ade9ef52da49d1e254e9e5cb7c7f944c9142ecd1cb5818940e0f3a3
+TLC: 2.19 (tla2tools.jar v1.7.4, sha256 936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88) in
+eclipse-temurin:17-jre-alpine on lab host h053, one process per config, -workers 2 -Xmx2g. Receipt:
+formal/create_ticket_draft/results/SUMMARY.txt (sha256 of the model, each config and each output).
+
+Reviewer: an independent agent (Claude opus, not the author's lane std-s3-model-4250), two rounds. Round 1 returned
+Verdict: FAIL (results/review_round1.txt): the hand edit between the description write and the readback broke "success is
+never reported for an issue with no block" and let a rerun certify an edit; the draft's correlation id exists nowhere in the code;
+plus an unbounded refused-create loop, a resume that skips the project clear, an unstable fingerprint and a write that may drop the
+stamp. Round 2 returned Verdict: PASS with conditions (results/review_round2.txt) on the model digest above; the reviewer reran
+nine configs and four of its own breaks and matched the recorded results. The author reran every config of the final model after
+the review and the results above are from that run.
+
+Results (TLC, exit code in results/*.out)
+-----------------------------------------
+Model                             PASS     1631088 states  design, one draft, original + duplicate, 2 crashes, 2 failures, 1 hand edit (safety)
+Model_live                        PASS      336230 states  same, no hand edit, liveness RunEnds and CommandAnswered
+Model_2draft_fail                 PASS      533174 states  two drafts, no duplicate, 2 crashes, 2 failures (safety and liveness)
+Model_2draft_crash                PASS     1822263 states  two drafts, a duplicate, 1 crash, no failure
+Model_2draft_dupfail              PASS      360297 states  two drafts, a duplicate, 1 failure, no crash
+alt_stamp_serial                  PASS       64627 states  alternative design: search by stamp, runs of a draft never overlap (safety and liveness)
+
+Mutants and hazards (each flips one knob named in its cfg and must violate the one property its cfg checks)
+-----------------------------------------------------------------------------------------------------------
+mut_stamp_search_concurrent   VIOLATED AtMostOneIssuePerCid            the ticket's own design: stamp, rerun finds by search, a command delivered twice in parallel
+mut_find_lag                  VIOLATED AtMostOneIssuePerCid            a search that misses a just-made issue
+mut_stamp_after_create        VIOLATED AtMostOneIssuePerCid            the stamp is a second call after the create
+mut_alt_write_drops_stamp     VIOLATED AtMostOneIssuePerCid            fallback design whose description write drops the stamp
+mut_resume_trusts_issue       VIOLATED CompletedHasBlock               a rerun that finds an issue reports completed without checking the block
+mut_resume_skips_publish      VIOLATED CompletedHasWritten             a rerun that finds the block skips the publish
+mut_resume_skips_clear        VIOLATED CompletedNoProject              a rerun skips the project clear
+mut_readback_unchecked        VIOLATED WrittenCertifiesBlock           readback does not check the block (hand edit between write and readback)
+mut_publish_before_write      VIOLATED WrittenFollowsWrite             the event is published before the description write (and no readback check)
+mut_hash_of_sent              VIOLATED WrittenHashesReturned           the event hashes what was sent, not what Linear returned
+mut_swallow_error             VIOLATED DoneHasTerminal                 an error ends the run with no terminal
+mut_event_id_per_run          VIOLATED OneWrittenPerCid                the event id includes the run
+mut_fp_unstable               VIOLATED OneWrittenPerCid                the fingerprint differs between runs
+mut_conflict_loops            VIOLATED RunEnds                         a refused create loops back to find with no bound
+mut_no_redelivery             VIOLATED CommandAnswered                 a crashed run is never delivered again
+haz_fail_after_complete       VIOLATED NoFailAfterComplete             hazard accepted: a later run of a completed draft fails on a Linear error
+haz_block_without_event       VIOLATED BlockHasEventWhenQuiet          hazard accepted: block written, no event until the caller retries
+
+Ten witnesses (wit_*.cfg) each violate an invariant that says a state is unreachable, which shows it is reachable: a completed
+terminal, a failed terminal, a hand_edited failure, an id_unreadable failure, a rerun completing after a crash, a rerun completing
+an issue whose creating run failed after the create took effect, two runs of one draft active at once, a republish on a rerun, a
+refused create, a terminal that could not be published.
+
+What the model found
+--------------------
+1. Stamp search is not enough: a command delivered twice in parallel makes two issues (7 states), and so does a search that lags or a
+   stamp written in a second call. Design change: the issue id is derived from the draft id and carried in the create (D1).
+2. A hand edit between the description write and the readback is the seam the ticket names: the readback must return the block
+   built, else a typed hand_edited failure with no overwrite and no republish (D5, D6).
+3. The refused-create path needs one lookup and a typed failure on a miss (D3); every rerun clears the inherited project (D4); the
+   fingerprint must not depend on the run (D6); the consumer acknowledges only after the terminal is published (D8).
+
+Conditions the build must meet
+------------------------------
+B2  A draft-stable id on ModelCreateTicketRequest; the D1 issue id and the stamp derive from it, never from the bus envelope's
+    correlation id. Test: two envelopes with different correlation ids and the same draft id make one issue.
+B3  Measure D1 in a sandbox team before merge: a client id in v4 format is accepted; a second create with the same id is refused
+    with an error shape recorded and typed; lookup of a trashed or archived issue; one real write and readback. If any part
+    fails, build alt_stamp_serial with an enforced per-draft lease, a consistent filter and a stamp a hand edit cannot remove.
+B4  One lookup after a refused create; a miss ends with the typed reason id_unreadable; no loop.
+B5  Every run, fresh or rerun, clears the inherited project before the write.
+B6  The build and the fingerprint are deterministic in (request, issue id): no clock, no random; a rerun rebuilds; the same draft
+    id with a different payload is refused.
+B7  The consumer commits only after the terminal publish is acknowledged; establish which consumer path the write effect runs under
+    (auto-commit breaks D8). The first completed is authoritative over a late failed.
+B8  The description write keeps the stamp.
+B9  The written event carries the hash of what the readback returned (title and description) and is published only after the
+    readback check passes.
+B10 Await the broker ack of ticket-contract-written before the terminal; its id is deterministic in (draft id, issue, fingerprint,
+    hash) and consumers dedupe on it; the topic is in the effect's publish topics.
+B11 The description write keeps the caller's first-line lane stamp and the guard judges the final rendered text.
+B12 The readback compares the parsed fingerprint plus a normalised rendering, with a test on Linear's real normalisation; a
+    mismatch gives hand_edited.
+B13 No retry or backoff between find and write; re-read just before the write and refuse with hand_edited unless the content is the
+    stub or the exact block built (Linear has no compare-and-set).
+B14 Regenerate results/ against the model digest above on any change (the test tests/formal/test_create_ticket_draft_model.py fails
+    when the model or a config changes without a rerun).
+
+Not checked: Linear's behaviour (no Linear call was made), the consumer commit mode in the deployed runtime, the contract renderer
+and guard, time. CI runs no TLC; the test reads the recorded run.

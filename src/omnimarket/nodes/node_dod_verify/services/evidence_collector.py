@@ -33,7 +33,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Final, cast
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from omnibase_core.enums.ticket.enum_dod_check_type import EnumDodCheckType
 from omnibase_core.enums.ticket.enum_dod_evidence_execution_scope import (
@@ -2305,6 +2305,13 @@ class EvidenceCollector:
         # two is non-None, and a failure is remembered so a broken environment
         # is not re-attempted once per check.
         self._hermetic_uv_envs: dict[Path, tuple[Path | None, str | None]] = {}
+        # OMN-23198: every environment directory THIS collector started building,
+        # and the token that makes its path unique to this run. A peer run's
+        # directory is never in the list, so ``close`` can remove everything in
+        # it without touching an environment another run is still using.
+        self._hermetic_uv_built: list[Path] = []
+        self._hermetic_run_token = uuid4().hex[:10]
+        self._hermetic_close_registered = False
         # OMN-17863: the JS sibling of the memo above. Same shape, same
         # per-run-once contract -- a project's stage is built at most once
         # per collector, and a build FAILURE is memoised too so a second
@@ -5778,6 +5785,39 @@ class EvidenceCollector:
         """True only for the OMN-15620 gate's own verbatim refusal banner."""
         return all(marker in message for marker in _VENV_PURITY_REFUSAL_MARKERS)
 
+    def _register_close_at_exit(self) -> None:
+        """Remove this run's environments at interpreter exit as a backstop.
+
+        ``close`` is the path a run takes; this covers a caller that never
+        reached it (an unhandled signal that still unwinds the interpreter).
+        """
+        if not self._hermetic_close_registered:
+            self._hermetic_close_registered = True
+            atexit.register(self.close)
+
+    def close(self) -> None:
+        """Remove every hermetic environment this collector built (OMN-23198).
+
+        Called when a run ends, whether it succeeded, failed or timed out.
+        Idempotent, and it only ever removes directories this collector began
+        building, so an environment a peer run built under the same root is
+        never touched. A removal that fails is logged and the rest still run:
+        a stuck directory must not strand the others on disk.
+        """
+        built, self._hermetic_uv_built = self._hermetic_uv_built, []
+        self._hermetic_uv_envs.clear()
+        for env_path in built:
+            try:
+                shutil.rmtree(env_path)
+            except FileNotFoundError:
+                continue
+            except OSError as exc:
+                logger.warning(
+                    "OMN-23198: could not remove hermetic environment %s: %s",
+                    env_path,
+                    exc,
+                )
+
     def _ensure_hermetic_uv_env(
         self, project_root: Path
     ) -> tuple[Path | None, str | None]:
@@ -5807,7 +5847,13 @@ class EvidenceCollector:
 
         result: tuple[Path | None, str | None]
         try:
-            env_path = _hermetic_venv_path(project_root)
+            # OMN-23198: the run token makes the path this run's own, so the
+            # directory is safe to remove when the run ends and a concurrent run
+            # on the same lock never shares (or loses) it.
+            shared_path = _hermetic_venv_path(project_root)
+            env_path = shared_path.with_name(
+                f"{shared_path.name}-{self._hermetic_run_token}"
+            )
         except OSError as exc:
             result = (
                 None,
@@ -5846,6 +5892,10 @@ class EvidenceCollector:
             project_root,
             env_path,
         )
+        # OMN-23198: recorded BEFORE the build so a build that times out or dies
+        # half-way is removed by ``close`` like a finished one.
+        self._hermetic_uv_built.append(env_path)
+        self._register_close_at_exit()
         try:
             env_path.parent.mkdir(parents=True, exist_ok=True)
             proc = subprocess.run(

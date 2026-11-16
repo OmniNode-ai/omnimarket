@@ -6,8 +6,10 @@ The task-complexity-acceptance eval measured local-coder correct up to 8169
 input tokens (R6-23, scorer 1.0). The code_generation budget was 32000, so a
 24579-token task (H6-05) was routed to local-coder first and its answer was
 gate-passed at quality_score 0.733 while the scorer gave it 0.0. The ceiling is
-declared in ``configs/grounding_budget_by_task_class.yaml``; routing skips the
-rung above it, and an above-ceiling answer the scorer did not pass is refused.
+the overlay value
+``delegation.code_budget.input_ceilings.local-coder.code_generation`` of
+``node_delegation_code_budget_compute``; routing skips the rung above it, and
+an above-ceiling answer the scorer did not pass is refused.
 
 Every fixture is in memory: the tier ladder comes from the packaged routing
 contract and the backends are fakes, so no endpoint is called.
@@ -21,7 +23,8 @@ from uuid import uuid4
 import pytest
 
 from omnimarket.handlers.routing.measured_correct_ceiling import (
-    load_grounding_budget_by_task_class,
+    grounded_input_budget,
+    measured_correct_ceiling,
     refuse_above_measured_correct_ceiling,
 )
 from omnimarket.models.delegation.wire import ModelDelegationConfig, ModelTierModel
@@ -115,12 +118,11 @@ def _verdict(
 
 
 def test_ceiling_and_budget_are_declared_in_data() -> None:
-    config = load_grounding_budget_by_task_class()
-    assert config.ceiling_for(_CODER, _TASK) == _CEILING
-    assert config.budget_for(_CODER, _TASK) == _CEILING
+    assert measured_correct_ceiling(_CODER, _TASK) == _CEILING
+    assert grounded_input_budget(_CODER, _TASK) == _CEILING
     # Only the named backend and class carry the ceiling.
-    assert config.ceiling_for(_CODER, "research") is None
-    assert config.ceiling_for("local-heavy-reasoning", _TASK) is None
+    assert measured_correct_ceiling(_CODER, "research") is None
+    assert measured_correct_ceiling("local-heavy-reasoning", _TASK) is None
 
 
 def test_above_ceiling_not_local_for_a_24579_token_task() -> None:

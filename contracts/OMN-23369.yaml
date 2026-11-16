@@ -1,0 +1,60 @@
+schema_version: 1.0.0
+ticket_id: OMN-23369
+title: The delegation writer's runtime delivery stops republishing its four aggregate views inline, so a delegate-skill-completed commit no longer waits 4 to 33 seconds
+summary: The runtime delivery path of the delegation projection runner never enabled the OMN-22874 aggregate coalescer, so each delegate-skill-completed write re-read four whole-table views before its offset commit. The delivery now enables the coalescer on the kept runner; the republish runs after the contract window and when the writer closes.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23369-commit-off-republish
+  statement: A runtime delivery of delegate-skill-completed returns, and commits its offset, without waiting on the four aggregate view reads; the views still publish the same rows after the contract window or when the writer closes; a contract with no window keeps the inline republish.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: handling one delegate-skill-completed event commits its offset without waiting on the aggregate view republish -- falsifier: uv run pytest over the delegation writer delivery tests with a slow view publisher stub fails today on the commit wait'
+  - id: AC2
+    statement: 'AC2: the aggregate views still reach the same rows, published after the commit or batched -- falsifier: the same pytest module asserts the four views'' rows after a run of events'
+evidence_requirements:
+- kind: tests
+  description: The delegation runtime delivery coalescing tests and the OMN-22874 coalescer tests pass
+  command: uv run --frozen pytest tests/test_delegation_runtime_delivery_aggregate_coalescing.py -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23369-delivery-commit-not-held
+  description: Drives project_runtime_event the way the runtime delivery host does, with each aggregate view read made slow by an injected 0.15 s delay. One delivery returns in under one read and reads no view inside the delivery. The file fails on the unfixed handler (5 of 6 tests fail; the sixth, the no-window control, passes on both).
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_delegation_runtime_delivery_aggregate_coalescing.py -q --no-cov -p no:randomly -k test_a_delivery_returns_before_one_aggregate_read_completes
+    cwd: .
+- id: dod-omn23369-views-publish-after-commit
+  description: After a burst of three deliveries each of the aggregate views is read and published once after the window, a pending republish is published when the writer closes, a failed view read is retried without holding a delivery, and a contract with no declared window keeps the inline republish. The real-Postgres test asserts the migrated views' rows on the deferred path.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_delegation_runtime_delivery_aggregate_coalescing.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23369-coalescer-regression
+  description: The OMN-22874 consume-loop coalescer tests still pass beside the runtime path. A regression check, not proof of a criterion.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_omn22874_delegation_writer_aggregate_coalescing.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23369-integration-proof
+  description: Runs the delivery coalescing tests at the pushed sha on a lab host through onex lab-work, then reads the served floor (its URL in FLOOR_SIMPLE_URL) and requires that no cause names local.omnimarket.projection_delegation after rollout. Hosted CI cannot reach the floor, so AC3 (the consumer-group lag falls after rollout) stays in the ticket and in this unbound local_done_gate item, not in the repo-owned acceptance list.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23369 --kind test -- uv run --frozen pytest tests/test_delegation_runtime_delivery_aggregate_coalescing.py -q --no-cov -p no:randomly'
+    cwd: .
+  - check_type: command
+    check_value: 'test -n "$FLOOR_SIMPLE_URL" && ! curl -s "$FLOOR_SIMPLE_URL" | grep -q projection_delegation'
+    cwd: .

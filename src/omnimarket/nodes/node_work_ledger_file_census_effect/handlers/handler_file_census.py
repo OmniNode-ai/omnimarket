@@ -65,6 +65,7 @@ class HandlerFileCensus:
             self._sink,
             node=NODE_NAME,
             piece=PIECE,
+            origin="probe",
             clock=self._clock,
             correlation_id=request.correlation_id,
             backend="in_memory" if self._backend == "in_memory" else "real",

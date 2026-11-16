@@ -43,6 +43,10 @@ LANE_GUARD_TOOL_PREFIX = "lane-guard:"
 #: caller on an older omnimarket still parses the advertisement. A host with no sensor (a Mac, a VM) advertises none
 #: and is never judged on temperature. Pool placement reads it against the host row's ``max_cpu_c`` bar.
 CPU_TEMP_TOOL_PREFIX = "cpu-temp-c:"
+#: A pseudo-tool ``disk-watermark:page`` that a host advertises while its watermark reading file reads ``page`` (OMN-23390):
+#: a volume is past its high-water mark, which sits above the admission floor, so pool placement refuses new units there
+#: before the floor does. A host below the page mark advertises none. It rides ``tools`` for the same reason the lane guard does.
+DISK_WATERMARK_PAGE_TOOL = "disk-watermark:page"
 _HWMON_ROOT = Path("/sys/class/hwmon")
 _CPU_CHIPS = ("k10temp", "coretemp")
 _CPU_LABELS = ("Tctl", "Package id")
@@ -60,6 +64,11 @@ def cpu_temp_from_tools(tools: Iterable[str]) -> float | None:
             except ValueError:
                 return None
     return None
+
+
+def disk_watermark_paged(tools: Iterable[str]) -> bool:
+    """Whether an advertisement carries the ``disk-watermark:page`` pseudo-tool."""
+    return DISK_WATERMARK_PAGE_TOOL in tools
 
 
 def linux_cpu_temp_c(hwmon_root: Path = _HWMON_ROOT) -> float | None:
@@ -306,12 +315,14 @@ class LocalHostReader:
 __all__ = [
     "CLAUDE_LOGIN_TOOL",
     "CPU_TEMP_TOOL_PREFIX",
+    "DISK_WATERMARK_PAGE_TOOL",
     "LANE_GUARD_TOOL_PREFIX",
     "HostCapacityUnreadableError",
     "HostReading",
     "LocalHostReader",
     "ProtocolHostReader",
     "cpu_temp_from_tools",
+    "disk_watermark_paged",
     "installed_lane_guards",
     "linux_cpu_temp_c",
 ]

@@ -176,7 +176,7 @@ class ModelInferenceCredentialCreateRequest(BaseModel):
         pattern=LAB_HOST_NAME_PATTERN,
         description=(
             "OMN-21012. The lab host whose Claude account owns this key, as its "
-            "lab host table row name (for example h201). Operator ruling "
+            "lab host table row name. Operator ruling "
             "2026-10-11T17:58:45Z binds each account's key to the machine the "
             "account lives on, so the router spends it only on work sent from "
             "that host. None leaves the key usable from any host, as before."

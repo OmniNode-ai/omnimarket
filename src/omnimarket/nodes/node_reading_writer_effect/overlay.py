@@ -90,6 +90,17 @@ class ModelLandingRoute(BaseModel):
     conflict_merge_states: tuple[str, ...] = ()
 
 
+class ModelLandingProjectionRetry(BaseModel):
+    """Passes that read the pr_state projection again when it could not be reached, inside the same run (OMN-23077)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: Passes after the first; 0 reads the projection once.
+    passes: int = Field(ge=0)
+    #: Seconds before each pass, so a runtime that is restarting has time to answer.
+    pause_seconds: int = Field(ge=0)
+
+
 class ModelLandingProjectionRoute(BaseModel):
     """Where piece 9's snapshot comes from on a lab host: the pr_state projection, read through the pr_state read node.
 
@@ -106,6 +117,9 @@ class ModelLandingProjectionRoute(BaseModel):
     goal_scope_file_env: str = Field(min_length=1)
     #: The watcher classes that are green and waiting (an eligible head).
     queue_classes: tuple[str, ...] = Field(min_length=1)
+    #: A projection that could not be reached (no answer, or a 5xx) is read again by up to ``passes`` passes; absent,
+    #: it is read once. A refusal that is not a transient one (an unknown topic, a malformed page) is never read again.
+    retry: ModelLandingProjectionRetry | None = None
 
 
 class ModelReadingScheduleHost(BaseModel):
@@ -141,6 +155,9 @@ class ModelReadingReadRetry(BaseModel):
     #: Seconds one cycle may spend on source reads that failed (the attempts and the pauses between them). Once spent, a read is
     #: tried once, and the first such read that fails stops the cycle's later reads (read-budget-spent). Absent, no budget.
     budget_seconds: int | None = Field(default=None, ge=1)
+    #: Seconds the end-of-run final pass may spend starting source reads again for pieces whose source stayed unreadable through
+    #: their inline retries; absent, there is no final pass.
+    reread_budget_seconds: int | None = Field(default=None, ge=1)
 
 
 class ModelTwoBackendReading(BaseModel):

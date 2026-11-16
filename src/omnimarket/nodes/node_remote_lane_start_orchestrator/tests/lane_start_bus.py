@@ -3,10 +3,12 @@
 """The request/reply buses the lane start bus proofs run over (OMN-22848).
 
 ``Bus`` carries one JSON request to a consumer's ``decide`` callable and the JSON output
-back: ``InmemoryBus`` on the in-memory event bus (runs everywhere) and ``RedpandaBus`` on
-the lab broker the caller names in ``FLOOR_FILL_PARITY_BOOTSTRAP``. Both take the
-consumer's ``decide`` and a topic-prefix name at construction, so a proof module supplies
-its own consumer and namespace instead of reading a module global.
+back: ``InmemoryBus`` on the in-memory event bus (runs everywhere), ``RedpandaBus`` on
+the lab broker the caller names in ``FLOOR_FILL_PARITY_BOOTSTRAP``, and ``LaneBus`` on
+the declared bus lane the caller names in ``LANE_START_SEAM_LANE`` (workspace root in
+``OMNIBASE_PATH``). All take the consumer's ``decide`` and a topic-prefix name at
+construction, so a proof module supplies its own consumer and namespace instead of
+reading a module global.
 """
 
 from __future__ import annotations
@@ -15,11 +17,14 @@ import asyncio
 import json
 import uuid
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
 BOOTSTRAP_ENV = "FLOOR_FILL_PARITY_BOOTSTRAP"
+LANE_ENV = "LANE_START_SEAM_LANE"
+ROOT_ENV = "OMNIBASE_PATH"
 TIMEOUT_S = 30.0
 
 
@@ -145,6 +150,77 @@ class RedpandaBus(Bus):
         for consumer in self.consumers:
             await consumer.stop()
         await self.producer.stop()
+
+
+class LaneBus(Bus):
+    def __init__(
+        self,
+        decide: Callable[[dict[str, Any]], dict[str, Any]],
+        prefix: str,
+        lane: str,
+        root: Path,
+        group: str | None = None,
+    ) -> None:
+        self.decide = decide
+        self.lane = lane
+        self.root = root
+        self.prefix = prefix
+        self.group = group or prefix
+        self.handles: list[Any] = []
+        self.waiting: dict[str, asyncio.Future[dict[str, Any]]] = {}
+        self.kafka: Any = None
+        self._ctx: Any = None
+
+    async def start(self) -> None:
+        from omnimarket.handlers.overlay_store.bus_opener import open_lane_bus
+
+        self._ctx = open_lane_bus(
+            bus="kafka", lane=self.lane, kafka_bootstrap=None, root=self.root
+        )
+        self.kafka = await self._ctx.__aenter__()
+
+        async def serve(message: Any) -> None:
+            reply = self.decide(json.loads(bytes(message.value)))
+            await self.kafka.publish(
+                f"{self.prefix}.res", None, json.dumps(reply).encode()
+            )
+
+        async def answer(message: Any) -> None:
+            reply = json.loads(bytes(message.value))
+            future = self.waiting.pop(reply["id"], None)
+            if future is not None:
+                future.set_result(reply)
+
+        try:
+            for suffix, on_message in (("req", serve), ("res", answer)):
+                self.handles.append(
+                    await self.kafka.subscribe(
+                        f"{self.prefix}.{suffix}",
+                        on_message=on_message,
+                        group_id=f"{self.group}-{suffix}",
+                        auto_offset_reset="earliest",
+                    )
+                )
+        except BaseException:
+            # a refused subscription (an ungranted topic or group) closes the lane bus in this task
+            await self.stop()
+            raise
+        await asyncio.sleep(3.0)  # let the consumers join their topics
+
+    async def call(self, payload: dict[str, Any]) -> dict[str, Any]:
+        future: asyncio.Future[dict[str, Any]] = (
+            asyncio.get_running_loop().create_future()
+        )
+        self.waiting[payload["id"]] = future
+        await self.kafka.publish(
+            f"{self.prefix}.req", None, json.dumps(payload).encode()
+        )
+        return await asyncio.wait_for(future, TIMEOUT_S)
+
+    async def stop(self) -> None:
+        for handle in self.handles:
+            await handle.stop()
+        await self._ctx.__aexit__(None, None, None)
 
 
 def topic_prefix(scope: str) -> str:

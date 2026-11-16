@@ -1185,7 +1185,7 @@
    "cause_attempt_budget": 2,
    "cause_diagnosis_engine": "claude_sonnet",
    "cause_engine_ladder": [
-    "codex_high",
+    "claude_sonnet",
     "claude_sonnet"
    ],
    "cause_lease_seconds": 5400,

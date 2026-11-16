@@ -17,6 +17,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
+from omnimarket.models.model_dev_deploy_reading import ModelLineageRule
 from omnimarket.nodes.node_reading_writer_effect.overlay import ModelLedgerAppendRoute
 
 NODE_NAME = "node_dev_deploy_reading_effect"
@@ -62,6 +63,38 @@ class ModelReceiptSettings(BaseModel):
 
     projection_url: str = Field(min_length=1)
     timeout_seconds: int = Field(gt=0)
+
+
+class ModelDeployMergeRepo(BaseModel):
+    """One repository whose dev merge the deploy source can read: its clone, its ref and its place in the build record."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    source_repo: str = Field(min_length=1)
+    #: The variable that holds the clone's path on the host.
+    clone_path_env: str = Field(min_length=1)
+    ref: str = Field(min_length=1)
+    provenance_section: Literal["siblings", "build_context"]
+
+
+class ModelDeployAgentSettings(BaseModel):
+    """The deploy agent as the deploy source: its /health and /queue answers, and where its build records live."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: The deploy agent's /health: the job in flight and the newest finished job.
+    health_url: str = Field(min_length=1)
+    #: The deploy agent's /queue: the commands ahead.
+    queue_url: str = Field(min_length=1)
+    timeout_seconds: int = Field(gt=0)
+    #: How long an idle deploy agent may leave a runtime-affecting merge out of the running build before it reads NOT WORKING.
+    idle_grace_seconds: int = Field(gt=0)
+    #: Which section of the runtime's build provenance record names the merge repository.
+    provenance_section: Literal["siblings", "build_context"]
+    #: The merge repository whose commit the build record names.
+    source_repo: str = Field(min_length=1)
+    #: Every repository the probe-merge verb may read a merge of; the hourly reading uses ``source_repo``.
+    merge_repos: tuple[ModelDeployMergeRepo, ...] = Field(min_length=1)
 
 
 class ModelProbeSettings(BaseModel):
@@ -115,7 +148,13 @@ class ModelDevDeployReadingOverlay(BaseModel):
     publish: ModelDevDeployPublish
     thresholds: ModelDevDeployThresholds
     merges: ModelMergeSettings
+    #: Whether a later commit's receipt or running sha stands in for the merge's own, and the bounds of it.
+    lineage: ModelLineageRule
     receipts: ModelReceiptSettings
+    #: The deploy source of the reading: the lane's lab pass receipts, or the deploy agent itself.
+    source_rule: Literal["lab_pass_receipt", "deploy_agent"]
+    #: The deploy-agent settings; the source of the reading when ``source_rule`` is deploy_agent.
+    deploy_agent: ModelDeployAgentSettings
     probe: ModelProbeSettings
     #: Applied only by the drill verb, whose rows are tagged so no operational read counts them.
     drill_fault: ModelDrillFault
@@ -137,8 +176,14 @@ class ModelDevDeployReadingOverlay(BaseModel):
             {
                 "thresholds": self.thresholds.model_dump(mode="json"),
                 "merges": self.merges.model_dump(mode="json"),
+                "lineage": self.lineage.model_dump(mode="json"),
                 "receipts": self.receipts.projection_url,
                 "probe": [self.probe.health_url, list(self.probe.sha_path)],
+                "source_rule": self.source_rule,
+                "deploy_agent": {
+                    "health_url": self.deploy_agent.health_url,
+                    "queue_url": self.deploy_agent.queue_url,
+                },
                 "max_age": self.publish.publish_max_age_seconds,
             },
             sort_keys=True,
@@ -155,6 +200,8 @@ def load_overlay(
 
 __all__ = [
     "NODE_NAME",
+    "ModelDeployAgentSettings",
+    "ModelDeployMergeRepo",
     "ModelDevDeployPublish",
     "ModelDevDeployReadingOverlay",
     "ModelDevDeployScheduleHost",

@@ -480,7 +480,7 @@ def _resolve_bound_host(declared: str | None) -> str | None:
     default=None,
     help=(
         "The lab host whose Claude account owns this key (a lab host table row, "
-        "e.g. h201). Work sent from that host is the only work that spends it. "
+        "a name from that table). Work sent from that host is the only work that spends it. "
         "Defaults to this machine's row in the ONEX_LAB_RUN_HOSTS table; off "
         "the lab the key is unbound."
     ),

@@ -22,7 +22,7 @@ requirements:
 evidence_requirements:
   - kind: "tests"
     description: "Checkpoint capture effect tests for OMN-21121."
-    command: "uv run pytest tests/test_checkpoint_capture_effect.py tests/test_golden_chain_checkpoint_capture_effect.py -q --no-cov"
+    command: "uv run pytest tests/ci/test_retired_context_nodes_omn24517.py -q --no-cov -n 0"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -33,7 +33,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/test_checkpoint_capture_effect.py -q --no-cov -k 'byte_for_byte or opt_out'"
+        check_value: "uv run pytest tests/ci/test_retired_context_nodes_omn24517.py -q --no-cov -n 0"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC1"]
   - id: "dod-omn21121-ac2-outcomes"
@@ -41,7 +41,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/test_checkpoint_capture_effect.py -q --no-cov -k 'failed or skipped'"
+        check_value: "uv run pytest tests/ci/test_retired_context_nodes_omn24517.py -q --no-cov -n 0"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC2"]
   - id: "dod-omn21121-ac3-discovery"
@@ -49,7 +49,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/test_checkpoint_capture_effect.py -q --no-cov -k 'installed or missing_a_half or clone'"
+        check_value: "uv run pytest tests/ci/test_retired_context_nodes_omn24517.py -q --no-cov -n 0"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC3"]
   - id: "dod-omn21121-ac4-shape"
@@ -57,7 +57,7 @@ dod_evidence:
     source: "manual"
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/test_checkpoint_capture_effect.py tests/test_golden_chain_checkpoint_capture_effect.py -q --no-cov -k 'standard_library or golden_chain or error_chain'"
+        check_value: "uv run pytest tests/ci/test_retired_context_nodes_omn24517.py -q --no-cov -n 0"
         cwd: "${OMNI_HOME}/omnimarket"
     binds_ac: ["AC4"]
   - id: "dod-omn21121-deploy-probe"

@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Default profile (OMN-24198): the in-memory sender answers every unit itself and nothing reaches a host or a broker. Synthetic values
+# only. A deployment's overlay lives at <root>/node_convergence_orchestrator/overlay.yaml under a root named in ONEX_SKILL_OVERLAY_ROOTS.
+job_id: convergence
+run_interval_seconds: 180
+grace_seconds: 120
+mode: observe
+backend: in_memory
+max_parallel_units: 4
+lab_work:
+  repo: example-owner/example-repo
+  commit_sha: "0000000000000000000000000000000000000000"
+  lane: example-lane
+  unit_id_prefix: cv
+  bus_lane: example-lane
+observe_command:
+  timeout_seconds: 600
+  kind: other
+  argv: [env, "OMNI_HOME={registry_root}", uv, run, --frozen, python, -m, omnimarket.nodes.node_canonical_clone_dirty_converge_effect.handlers.handler_canonical_clone_dirty_converge_effect, --observe]
+act_command:
+  timeout_seconds: 1500
+  kind: other
+  argv: [env, "OMNI_HOME={registry_root}", uv, run, --frozen, python, -m, omnimarket.nodes.node_canonical_clone_dirty_converge_effect.handlers.handler_canonical_clone_dirty_converge_effect]
+hosts:
+  - name: example-host-a
+    registry_root: /example/registry
+  - name: example-host-b
+    registry_root: /example/registry
+  - name: example-host-c
+    registry_root: /example/registry

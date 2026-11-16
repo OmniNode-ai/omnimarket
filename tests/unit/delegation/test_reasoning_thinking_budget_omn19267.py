@@ -18,8 +18,12 @@ from uuid import uuid4
 import pytest
 
 from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReason
+from omnimarket.handlers.delegation_call_budget_reader import require_call_budget_s
 from omnimarket.handlers.routing.delegation_backend_resolution import (
     ModelResolvedDelegationBackend,
+)
+from omnimarket.handlers.routing.measured_correct_ceiling import (
+    CODE_BUDGET_OVERLAY_ID,
 )
 from omnimarket.inference.protocol_config import (
     apply_inference_protocol,
@@ -31,9 +35,6 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegati
 from omnimarket.nodes.node_llm_delegation_call_effect import (
     ModelLlmDelegationCallRequest,
     ModelLlmDelegationCallResult,
-)
-from omnimarket.nodes.node_llm_delegation_call_effect.models.model_inference_call_budget import (
-    load_inference_call_budget,
 )
 
 # The slowest capped call measured 2026-10-10 on a GPU rung under load:
@@ -60,6 +61,34 @@ _PROMPT: Final[str] = (
     "Reason step by step: if every bloop is a razzie and every razzie is a "
     "lazzie, is every bloop a lazzie? State the conclusion."
 )
+
+
+def _overlay(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    ceiling_s: float,
+    class_budgets: dict[str, float],
+) -> None:
+    """Write the code budget overlay under ``tmp_path`` and point the env root there."""
+    path = tmp_path / CODE_BUDGET_OVERLAY_ID / "overlay.yaml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    budgets = "\n".join(f"  {k}: {v}" for k, v in class_budgets.items())
+    path.write_text(
+        (
+            "class_budgets_s:\n"
+            f"{budgets}\n"
+            "sizing_margin: 1.5\n"
+            "round_up_to_s: 60\n"
+            "min_completed_samples: 3\n"
+            f"ceiling_s: {ceiling_s}\n"
+            "input_ceilings:\n"
+            "  local-coder:\n"
+            "    code_generation: 65536\n"
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path))
 
 
 @pytest.mark.unit
@@ -89,8 +118,17 @@ def test_reasoning_profile_bounds_thinking_under_both_server_spellings() -> None
 
 
 @pytest.mark.unit
-def test_reasoning_thinking_budget_fits_the_per_call_ceiling() -> None:
+def test_reasoning_thinking_budget_fits_the_per_call_ceiling(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """At 4096 this fails (4608 > 4080), matching the measured 123.1 s call."""
+    _overlay(
+        tmp_path,
+        monkeypatch,
+        ceiling_s=120,
+        class_budgets={"reasoning": 120},
+    )
     _, _, request_options = apply_inference_protocol(
         system_prompt="You are a helpful assistant.",
         prompt="Reason about it.",
@@ -103,7 +141,7 @@ def test_reasoning_thinking_budget_fits_the_per_call_ceiling() -> None:
     assert isinstance(budget, int), (
         f"thinking_token_budget is not an integer: {budget!r}"
     )
-    ceiling = load_inference_call_budget().ceiling_for("Qwen3.8-27B")
+    ceiling = require_call_budget_s("reasoning")
 
     assert (
         budget + _ANSWER_ALLOWANCE_TOKENS

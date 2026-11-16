@@ -32,6 +32,7 @@ from omnimarket.github_landing.model_github_http_exchange import (
     ModelGithubHttpRequest,
     ModelGithubHttpResponse,
 )
+from omnimarket.models.github_landing.model_transport_error import GitHubTransportError
 from omnimarket.nodes.node_github_repo_gateway_effect import (
     token_resolver,
 )
@@ -64,7 +65,6 @@ from omnimarket.nodes.node_github_repo_gateway_effect.read_operations import (
 from omnimarket.nodes.node_github_repo_gateway_effect.transport import (
     RealGitHubReadTransport,
 )
-from omnimarket.nodes.node_merge_sweep_compute.protocols import GitHubTransportError
 from tests.nodes.node_github_repo_gateway_effect.test_github_repo_gateway_scm_reads import (
     SCM_READ_RESULT_MODELS,
 )

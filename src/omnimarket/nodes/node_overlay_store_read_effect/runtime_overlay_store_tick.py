@@ -137,34 +137,40 @@ def main(argv: list[str] | None = None) -> int:
     # A consumer caught mid-join when its broker goes away can retry its coordinator forever, and a unit
     # manager starts no second tick while one runs: measured on a lab host, 18 minutes and counting.
     faulthandler.dump_traceback_later(tick_deadline_s(), exit=True)
+    # A tick run in-process must not leave the process-ending timer armed.
     try:
-        overlay = load_structured_overlay(NODE, ModelOverlayStoreReadOverlay, env)
-        handler = build_handler(overlay, env)
-    except NodeOverlayError as exc:
-        sys.stderr.write(f"{NODE}: {exc}\n")
-        return EXIT_UNREADABLE
-    readings = asyncio.run(handler.refresh_all())
-    summary = [reading.model_dump(mode="json") for reading in readings]
-    sys.stdout.write(json.dumps(summary, sort_keys=True) + "\n")
-    if overlay.fleet_record_relpath:
-        record = args.registry_root / overlay.fleet_record_relpath
-        fleet_record = _fleet_record(overlay, env, record, summary)
-        _write_atomically(record, json.dumps(fleet_record, indent=2))
         try:
-            asyncio.run(
-                _publish_fleet_projection(overlay, env, fleet_record, datetime.now(UTC))
-            )
-        except (
-            Exception
-        ) as exc:  # the broker down is the case the projection's age shows
-            sys.stderr.write(
-                f"{NODE}: fleet projection not published: {type(exc).__name__}: {exc}\n"
-            )
-    _write_atomically(
-        args.state_dir / "last-run.json",
-        json.dumps({"ran_at": datetime.now(UTC).isoformat(), "readings": summary}),
-    )
-    return exit_for(readings)
+            overlay = load_structured_overlay(NODE, ModelOverlayStoreReadOverlay, env)
+            handler = build_handler(overlay, env)
+        except NodeOverlayError as exc:
+            sys.stderr.write(f"{NODE}: {exc}\n")
+            return EXIT_UNREADABLE
+        readings = asyncio.run(handler.refresh_all())
+        summary = [reading.model_dump(mode="json") for reading in readings]
+        sys.stdout.write(json.dumps(summary, sort_keys=True) + "\n")
+        if overlay.fleet_record_relpath:
+            record = args.registry_root / overlay.fleet_record_relpath
+            fleet_record = _fleet_record(overlay, env, record, summary)
+            _write_atomically(record, json.dumps(fleet_record, indent=2))
+            try:
+                asyncio.run(
+                    _publish_fleet_projection(
+                        overlay, env, fleet_record, datetime.now(UTC)
+                    )
+                )
+            except (
+                Exception
+            ) as exc:  # the broker down is the case the projection's age shows
+                sys.stderr.write(
+                    f"{NODE}: fleet projection not published: {type(exc).__name__}: {exc}\n"
+                )
+        _write_atomically(
+            args.state_dir / "last-run.json",
+            json.dumps({"ran_at": datetime.now(UTC).isoformat(), "readings": summary}),
+        )
+        return exit_for(readings)
+    finally:
+        faulthandler.cancel_dump_traceback_later()
 
 
 if __name__ == "__main__":

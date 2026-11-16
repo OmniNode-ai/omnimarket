@@ -7,6 +7,8 @@ A draw names the pool label and nothing else: no model here has a field that cou
 
 from __future__ import annotations
 
+from typing import Annotated
+
 from pydantic import BaseModel, ConfigDict, Field
 
 #: The label grammar of node_claude_token_pool_effect (its LABEL_RE), so a line that is not a label is not one.
@@ -34,9 +36,50 @@ class ModelEngineLoginDraw(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     label: str | None = Field(default=None, pattern=LABEL_PATTERN)
-    #: ``drawn``, or ``none`` when the pool resolved nothing (no pool, empty, or every token limited or revoked).
-    state: str = Field(pattern=r"^(drawn|none)$")
+    #: ``drawn``, or ``none`` when the pool resolved nothing (no pool, empty, or every token limited or revoked),
+    #: or ``refused`` when the pool holds a usable token and refused this start (``refusal`` is its code).
+    state: str = Field(pattern=r"^(drawn|none|refused)$")
+    detail: str = ""
+    #: The pool's refusal code (for one, ``label_lane_cap``); empty unless ``state`` is ``refused``.
+    refusal: str = Field(default="", pattern=r"^[a-z_]*$")
+
+
+class ModelEngineLoginLaneCount(BaseModel):
+    """The lanes running under one pool label, as the lane start counted them."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    label: str = Field(pattern=LABEL_PATTERN)
+    lanes: int = Field(ge=0)
+
+
+class ModelEngineLoginSteer(BaseModel):
+    """What a switched-on lane start passes to the pool's ``resolve``: the labels to stay off and the lanes per label.
+
+    Every label matches the pool's label grammar, so the arguments built from it are plain words.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    drain_labels: tuple[Annotated[str, Field(pattern=LABEL_PATTERN)], ...] = ()
+    lane_counts: tuple[ModelEngineLoginLaneCount, ...] = ()
+    #: Why the drain list is what it is when the verdict could not be had (shown on the start's login line).
     detail: str = ""
 
+    def resolve_arguments(self) -> tuple[str, ...]:
+        """The ``resolve`` flags: both always present, so the pool knows a count was made even when it is empty."""
+        return (
+            "--drain-labels",
+            ",".join(self.drain_labels),
+            "--lanes",
+            ",".join(f"{row.label}={row.lanes}" for row in self.lane_counts),
+        )
 
-__all__ = ["LABEL_PATTERN", "ModelEngineLoginDraw", "ModelEngineLoginPool"]
+
+__all__ = [
+    "LABEL_PATTERN",
+    "ModelEngineLoginDraw",
+    "ModelEngineLoginLaneCount",
+    "ModelEngineLoginPool",
+    "ModelEngineLoginSteer",
+]

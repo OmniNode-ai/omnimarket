@@ -3,7 +3,8 @@
 # ONEX Node Contract - Remote Lane Start Effect (OMN-22848)
 #
 # The host calls of a lane start: prepare the worktree at an exact sha, start the engine
-# detached in a session of its own, read the engine's log tail and its exit, stop it. Each call
+# detached in a session of its own, read the engine's log tail and its exit, stop it, and the
+# provisioning steps around the engine (OMN-23528). Each call
 # is one omnibase_spi ProtocolLaneHostTransport call; the transport is injected (the ssh adapter
 # for a real host, the scripted adapter in memory).
 #
@@ -23,7 +24,11 @@ description: >
   Makes one host call of a lane start through the injected ProtocolLaneHostTransport:
   prepare_worktree, start_engine_detached (returns only when the engine started or failed, or
   unresolved when it did not settle within the request's timeout), read_engine_exit, stop_engine
-  (confirmed false when the engine survives) and read_log_tail. No expected outcome raises.
+  (confirmed false when the engine survives) and read_log_tail, and (OMN-23528) the fifteen provisioning
+  steps of the transport, each routed to the transport method of the same name: resolve_registry_root,
+  prepare_run_dirs, stage_ledger_snapshot, stage_file, ship_plugin_trees, mirror_ledger, write_runtime_config,
+  drain_guard_spool, relay_reports, read_ledger_outbox, read_lane_changes, closeout_worktrees,
+  hold_run_dir_guard, retain_run_artifacts and stop_lane_guard. No expected outcome raises.
 input_model:
   name: "ModelRemoteLaneHostCall"
   module: "omnimarket.models.remote_lane_host_call.model_remote_lane_host_call"

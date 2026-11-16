@@ -19,8 +19,15 @@ from omnimarket.nodes.node_test_selection_selector_compute.adapters.source_durat
 from omnimarket.nodes.node_test_selection_selector_compute.adapters.source_in_memory import (
     SourceInMemory,
 )
+from omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_test_path_resolution import (
+    HandlerTestPathResolution,
+)
 from omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_test_selection_selector import (
     HandlerTestSelectionSelector,
+)
+from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_path_resolution import (
+    ModelAdjacencyMap,
+    ModelPathResolutionRequest,
 )
 from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_selection_selector import (
     EnumSelectorOutcome,
@@ -141,3 +148,76 @@ def test_selection_selector_durations_file_source_reads_and_fails_closed(
     assert source.read(str(tmp_path), "list.json") is None
     (tmp_path / "bad.json").write_text("not json")
     assert source.read(str(tmp_path), "bad.json") is None
+
+
+# OMN-23719: test-path resolution (golden, error, failing control).
+
+
+def _tree(root: Path) -> None:
+    files = {
+        "src/omnimarket/nodes/node_a/handler.py": "VALUE = 1\n",
+        "src/omnimarket/nodes/node_b/handler.py": (
+            "from omnimarket.nodes.node_a.handler import VALUE\n"
+        ),
+        "src/omnimarket/nodes/node_c/handler.py": "OTHER = 2\n",
+        "tests/nodes/node_a/test_a.py": "def test_a() -> None: ...\n",
+        "tests/nodes/node_b/test_b.py": "def test_b() -> None: ...\n",
+        "tests/nodes/node_c/test_c.py": "def test_c() -> None: ...\n",
+    }
+    for rel, text in files.items():
+        path = root / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+
+
+def _resolution_request(
+    root: Path, changed: tuple[str, ...], node_scoped: list[str]
+) -> ModelPathResolutionRequest:
+    return ModelPathResolutionRequest(
+        changed_files=changed,
+        adjacency=ModelAdjacencyMap.model_validate(
+            {
+                "schema_version": 1,
+                "shared_modules": [],
+                "thresholds": {"modules_changed_for_full_suite": 3},
+                "test_infrastructure_paths": [],
+                "adjacency": {"nodes": {}},
+                "node_scoped_modules": node_scoped,
+            }
+        ),
+        repo_root=str(root),
+    )
+
+
+def test_golden_one_node_change_selects_its_tests_and_its_dependents(
+    tmp_path: Path,
+) -> None:
+    _tree(tmp_path)
+    result = HandlerTestPathResolution().handle(
+        _resolution_request(
+            tmp_path, ("src/omnimarket/nodes/node_a/handler.py",), ["nodes"]
+        )
+    )
+    assert result.selected_paths == ("tests/nodes/node_a/", "tests/nodes/node_b/")
+
+
+def test_error_a_deleted_node_falls_back_to_the_whole_directory(
+    tmp_path: Path,
+) -> None:
+    _tree(tmp_path)
+    result = HandlerTestPathResolution().handle(
+        _resolution_request(
+            tmp_path, ("src/omnimarket/nodes/node_gone/handler.py",), ["nodes"]
+        )
+    )
+    assert result.selected_paths == ("tests/nodes/",)
+
+
+def test_failing_control_without_a_node_scoped_module_selects_the_whole_directory(
+    tmp_path: Path,
+) -> None:
+    _tree(tmp_path)
+    result = HandlerTestPathResolution().handle(
+        _resolution_request(tmp_path, ("src/omnimarket/nodes/node_a/handler.py",), [])
+    )
+    assert result.selected_paths == ("tests/nodes/",)

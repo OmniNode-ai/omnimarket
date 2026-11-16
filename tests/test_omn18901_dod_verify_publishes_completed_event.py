@@ -511,8 +511,7 @@ def test_ac3_the_returned_model_is_the_state_so_the_receipt_contract_holds() -> 
     assert type(state) is ModelDodVerifyState
     qualified = f"{type(state).__module__}.{type(state).__qualname__}"
     assert qualified == (
-        "omnimarket.nodes.node_dod_verify.models.model_dod_verify_state."
-        "ModelDodVerifyState"
+        "omnimarket.models.model_dod_verify_state.ModelDodVerifyState"
     ), (
         "the receipt's declared result model moved; the evidence-autoclose "
         "sweep matches this string literally and will stop parsing verdicts"

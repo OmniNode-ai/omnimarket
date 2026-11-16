@@ -1,0 +1,95 @@
+schema_version: 1.0.0
+ticket_id: OMN-23626
+title: Code written by cheaper models is scored by running the ticket's own definition-of-done checks against it
+summary: >-
+  Adds node_code_contract_score_effect: given a base commit, a draft diff and a ticket contract, it applies the draft in a scratch worktree at the base, places the pinned check files, runs the contract's own bound test_passes and command checks, and returns a typed verdict per request (pass, fail_check, fail_did_not_apply, fail_tampered, unscorable with a source). The delegation gate's text criteria are recorded beside the verdict and never used as the score.
+is_seam_ticket: true
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23626-code-contract-score
+  statement: A code draft is scored by the ticket contract's own bound checks run against the draft in a scratch worktree, and an infrastructure fault is never a pass or a fail.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: over a fixture repository an empty draft scores `fail_check`, the known-good diff scores `pass`, a diff that does not apply scores `fail_did_not_apply`, and a diff that edits the contract file or a check file scores `fail_tampered` -- falsifier: uv run pytest tests/nodes/node_code_contract_score_effect/test_score_verdicts.py -q'
+  - id: AC2
+    statement: 'AC2: failing control: with the injected break "skip placing the check files" the known-good diff no longer scores `pass`, and with the injected break "run the check at the merge commit instead of the base plus draft" the empty draft scores `pass`; each break turns its test red -- falsifier: uv run pytest tests/nodes/node_code_contract_score_effect/test_failing_controls.py -q'
+  - id: AC3
+    statement: 'AC3: error chain: an environment sync failure, an unreadable contract and a check whose type is not runnable in a worktree each give `unscorable` with their own source, never a fail, and a failed request ends on the failed topic with a typed code -- falsifier: uv run pytest tests/nodes/node_code_contract_score_effect/test_error_chain_code_contract_score.py -q'
+  - id: AC4
+    statement: 'AC4: golden chain and determinism: a request yields one scored event, the same request scored three times gives the same verdict, and a check file whose sha256 differs from the request is refused -- falsifier: uv run pytest tests/nodes/node_code_contract_score_effect/test_golden_chain_code_contract_score.py tests/nodes/node_code_contract_score_effect/test_determinism.py -q'
+  - id: AC5
+    statement: 'AC5: integrated: on a lab host through the dev bus the step scores rows 1, 13 and 21 of the first task set with the empty draft and with the merged diff and reproduces the 2026-11-10 pilot''s readings (row 1: 1 failed and 53 passed, then 54 passed; rows 13 and 21: fail, then pass) -- falsifier: the six scored events read back from the dev bus by request key, beside the pilot''s numbers'
+  - id: AC6
+    statement: 'AC6: integrated: a real delegated code draft that names a ticket is scored by this step from the existing start-command producer on the dev lane, and its verdict row joins to its delegation run -- falsifier: one delegation run id read with its verdict row from the dev lane''s projection'
+evidence_requirements:
+- kind: tests
+  description: The node's verdict, failing-control, error-chain, golden-chain, determinism, overlay and seam tests.
+  command: uv run --frozen pytest tests/nodes/node_code_contract_score_effect -q --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23626-ac1-verdicts
+  description: 'The verdict test over a fixture git repository: empty draft fail_check, known-good diff pass, a diff that does not apply fail_did_not_apply, a diff that edits the contract, a check file or a protected path fail_tampered, and a check that also passes at the base is unscorable (falsifier_not_held). It reads red at the merge base, where the node does not exist.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_code_contract_score_effect/test_score_verdicts.py -q --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn23626-ac2-failing-controls
+  description: 'The two injected breaks (skip placing the check files; judge at the merge commit) each turn their reading red while the unbroken handler reads green.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_code_contract_score_effect/test_failing_controls.py -q --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn23626-ac3-error-chain
+  description: 'An environment sync failure, an unreadable contract, a check type not runnable in a worktree, a worktree failure and a check at its limit each give unscorable with their own source; a refused request and an internal error end on the failed topic with a typed code.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_code_contract_score_effect/test_error_chain_code_contract_score.py -q --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn23626-ac4-golden-determinism
+  description: 'One scored event per request on the contract''s topic, the same request three times gives the same verdict, and a contract or check file whose sha256 differs is refused on the failed topic.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_code_contract_score_effect/test_golden_chain_code_contract_score.py tests/nodes/node_code_contract_score_effect/test_determinism.py -q --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn23626-seams
+  description: 'The overlay carries every value with no default; real contracts of the three first rows are read through ModelTicketContract and the scorer runs exactly the bound commands and never a local-Done-gate item; the dod_verify start command is pinned to carry the delegation run id the scored event joins on and no draft or base field.'
+  source: manual
+  binds_ac:
+  - AC1
+  - AC5
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_code_contract_score_effect/test_overlay_keys.py tests/nodes/node_code_contract_score_effect/test_seam_ticket_contract.py tests/nodes/node_code_contract_score_effect/test_seam_dod_verify_producer.py -q --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-deploy-omn23626-node-declared
+  description: 'Hosted structural probe: the node''s contract declares the request topic and both result topics at the checked-out head. It fails at the merge base, which holds no such node.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: grep -F 'code-contract-score-requested.v1' src/omnimarket/nodes/node_code_contract_score_effect/contract.yaml && grep -F 'code-contract-score-failed.v1' src/omnimarket/nodes/node_code_contract_score_effect/contract.yaml
+    cwd: .
+- id: dod-omn23626-ac5-integration-proof
+  description: On a lab host, from the pushed head, the node scores rows 1, 13 and 21 of the first task set twice each (empty draft, merged diff) and the six scored events are read back. Hosted CI cannot reach a lab host, so this unbound check belongs to the local Done gate; AC5 is read there and in the PR's lab comment.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23626 --kind test -- uv run --frozen pytest tests/nodes/node_code_contract_score_effect -q --no-cov'
+    cwd: .

@@ -138,10 +138,19 @@ class CountingReader:
         self.cache_path = inner.cache_path
         self.probes: list[int] = []
 
-    def read(self, repo: str, job_id: int, *, cache_only: bool) -> Any:
+    def read(
+        self,
+        repo: str,
+        job_id: int,
+        *,
+        cache_only: bool,
+        tail_bytes: int | None = None,
+    ) -> Any:
         if cache_only:
             self.probes.append(job_id)
-        return self.inner.read(repo, job_id, cache_only=cache_only)
+        return self.inner.read(
+            repo, job_id, cache_only=cache_only, tail_bytes=tail_bytes
+        )
 
 
 def counting_handler(

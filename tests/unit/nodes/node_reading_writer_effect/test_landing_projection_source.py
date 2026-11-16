@@ -34,7 +34,6 @@ from omnimarket.nodes.node_reading_writer_effect.overlay import (
 )
 from tests.nodes.node_reading_writer_effect.reading_support import RUN_AT, START, stamp
 from tests.unit.nodes.node_reading_writer_effect.landing_support import (
-    canary_row,
     landing_overlay_document,
 )
 
@@ -47,11 +46,14 @@ ROUTE_DOCUMENT = {
     "goal_scope_file_env": "READING_TEST_GOAL_SCOPE",
     "queue_classes": ["green-unarmed", "queue-stuck"],
 }
+RETRY_DOCUMENT = {"passes": 3, "pause_seconds": 60}
 
 
-def _overlay() -> ModelReadingOverlay:
+def _overlay(retry: dict[str, int] | None = None) -> ModelReadingOverlay:
     document = landing_overlay_document()
     document["landing_route"] = dict(ROUTE_DOCUMENT)
+    if retry is not None:
+        document["landing_route"]["retry"] = dict(retry)
     return ModelReadingOverlay.model_validate(document)
 
 
@@ -199,7 +201,7 @@ def test_a_head_waiting_over_an_hour_makes_the_written_reading_not_working(
 ) -> None:
     projection = _Projection([_row(1, read_minutes_ago=75)])
     result = _writer(
-        InMemoryLedger([canary_row()]), _source(projection, _environ(tmp_path))
+        InMemoryLedger([]), _source(projection, _environ(tmp_path))
     ).handle(_window())
     (piece,) = result.pieces
     assert piece.verdict is EnumReadingVerdict.NOT_WORKING
@@ -209,7 +211,7 @@ def test_a_head_waiting_over_an_hour_makes_the_written_reading_not_working(
 def test_the_same_head_waiting_inside_the_hour_reads_working(tmp_path: Path) -> None:
     projection = _Projection([_row(1, read_minutes_ago=30)])
     result = _writer(
-        InMemoryLedger([canary_row()]), _source(projection, _environ(tmp_path))
+        InMemoryLedger([]), _source(projection, _environ(tmp_path))
     ).handle(_window())
     assert result.pieces[0].verdict is EnumReadingVerdict.WORKING
 
@@ -219,7 +221,7 @@ def test_a_projection_nothing_has_written_to_reads_stale_and_not_working(
 ) -> None:
     projection = _Projection([_row(1, observed_minutes_ago=7 * 24 * 60)])
     result = _writer(
-        InMemoryLedger([canary_row()]), _source(projection, _environ(tmp_path))
+        InMemoryLedger([]), _source(projection, _environ(tmp_path))
     ).handle(_window())
     (piece,) = result.pieces
     assert piece.verdict is EnumReadingVerdict.NOT_WORKING
@@ -236,9 +238,7 @@ def test_without_the_overlay_address_the_read_is_an_error_and_the_piece_reads_un
     assert read.snapshot is None
     assert "projection address" in (read.error or "")
     assert projection.requests == []
-    result = _writer(
-        InMemoryLedger([canary_row()]), _source(projection, environ)
-    ).handle(_window())
+    result = _writer(InMemoryLedger([]), _source(projection, environ)).handle(_window())
     assert result.pieces[0].verdict is EnumReadingVerdict.UNKNOWN
 
 
@@ -287,3 +287,121 @@ def test_the_overlay_document_loads_through_its_model_and_names_the_address(
         "node_pr_state_read_effect", ModelPrStateReadOverlay, _environ(tmp_path)
     )
     assert loaded.projection_api_url == URL
+
+
+class _Restarting:
+    """A projection API whose runtime is restarting: it answers each request from a script, then the page."""
+
+    def __init__(self, script: list[str], rows: list[dict]) -> None:
+        self.script = list(script)
+        self.rows = rows
+        self.requests = 0
+
+    def factory(self, base_url: str) -> httpx.Client:
+        def answer(request: httpx.Request) -> httpx.Response:
+            self.requests += 1
+            step = self.script.pop(0) if self.script else "page"
+            if step == "refused":
+                raise httpx.ConnectError("connection refused", request=request)
+            if step == "unavailable":
+                return httpx.Response(503, json={"error": "starting"})
+            if step == "unknown_topic":
+                return httpx.Response(404, json={"error": "unknown_topic"})
+            return httpx.Response(
+                200,
+                json={
+                    "topic": "onex.snapshot.projection.pr-state.v1",
+                    "rows": self.rows,
+                    "truncated": False,
+                },
+            )
+
+        return httpx.Client(base_url=base_url, transport=httpx.MockTransport(answer))
+
+
+def _retrying(
+    projection: _Restarting,
+    environ: dict[str, str],
+    pauses: list[float],
+    retry: dict[str, int] | None = RETRY_DOCUMENT,
+) -> ProjectionLandingSource:
+    route = _overlay(retry).landing_route
+    assert isinstance(route, ModelLandingProjectionRoute)
+    return ProjectionLandingSource(
+        route, environ, client_factory=projection.factory, pause=pauses.append
+    )
+
+
+def test_a_projection_that_is_back_within_the_retries_reads_as_a_snapshot(
+    tmp_path: Path,
+) -> None:
+    """Golden: the runtime refuses, then answers 503 while it warms, then serves; the reading is the page's."""
+    projection = _Restarting(["refused", "unavailable"], [_row(1, read_minutes_ago=30)])
+    pauses: list[float] = []
+    ledger = InMemoryLedger([])
+    source = _retrying(projection, _environ(tmp_path), pauses)
+    result = _writer(ledger, source).handle(_window())
+    assert projection.requests == 3
+    assert pauses == [60, 60]
+    assert result.pieces[0].verdict is EnumReadingVerdict.WORKING
+
+
+def test_a_projection_still_down_after_the_last_pass_reads_unknown_never_working(
+    tmp_path: Path,
+) -> None:
+    """Error: every pass fails, the reading is recorded UNKNOWN after the declared reads, never guessed WORKING."""
+    projection = _Restarting(["refused"] * 10, [_row(1, read_minutes_ago=30)])
+    pauses: list[float] = []
+    source = _retrying(projection, _environ(tmp_path), pauses)
+    read = source.read(REQUIREMENTS, RUN_AT)
+    assert read.snapshot is None
+    assert (
+        read.error
+        == "the pr_state projection is not read after 4 reads (projection_unreachable)"
+    )
+    assert projection.requests == 4
+    assert pauses == [60, 60, 60]
+    result = _writer(InMemoryLedger([]), source).handle(_window())
+    (piece,) = result.pieces
+    assert piece.verdict is EnumReadingVerdict.UNKNOWN
+    assert "projection_unreachable" in piece.reasons[0].replace("-", "_")
+
+
+def test_without_the_retry_a_restart_in_the_window_reads_unknown_at_the_first_refusal(
+    tmp_path: Path,
+) -> None:
+    """The failing control: the same restart against a route with no retry is the reading that was observed UNKNOWN."""
+    projection = _Restarting(["refused"], [_row(1, read_minutes_ago=30)])
+    pauses: list[float] = []
+    source = _retrying(projection, _environ(tmp_path), pauses, retry=None)
+    result = _writer(InMemoryLedger([]), source).handle(_window())
+    assert projection.requests == 1
+    assert pauses == []
+    assert result.pieces[0].verdict is EnumReadingVerdict.UNKNOWN
+
+
+def test_a_refusal_that_is_not_transient_is_not_read_again(tmp_path: Path) -> None:
+    projection = _Restarting(["unknown_topic"], [_row(1)])
+    pauses: list[float] = []
+    read = _retrying(projection, _environ(tmp_path), pauses).read(REQUIREMENTS, RUN_AT)
+    assert read.snapshot is None
+    assert read.error == "the pr_state projection is not read (unknown_topic)"
+    assert projection.requests == 1
+    assert pauses == []
+
+
+def test_a_page_with_no_rows_is_not_read_again(tmp_path: Path) -> None:
+    projection = _Restarting([], [])
+    pauses: list[float] = []
+    read = _retrying(projection, _environ(tmp_path), pauses).read(REQUIREMENTS, RUN_AT)
+    assert read.error == "the pr_state projection holds no rows"
+    assert projection.requests == 1
+    assert pauses == []
+
+
+def test_the_retry_is_declared_by_the_overlay_and_never_by_the_code() -> None:
+    assert ROUTE.retry is None
+    retrying = _overlay(RETRY_DOCUMENT).landing_route
+    assert isinstance(retrying, ModelLandingProjectionRoute)
+    assert retrying.retry is not None
+    assert (retrying.retry.passes, retrying.retry.pause_seconds) == (3, 60)

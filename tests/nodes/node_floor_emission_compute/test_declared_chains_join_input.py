@@ -79,6 +79,9 @@ ROW_CHAINS_UNCODED = 1
 JOIN_FAILURES = {"J2": 8, "J3": 1, "J4": 5, "J5": 14}
 J0_ROW_CHAINS = sum(ROW_CHAINS.values()) + ROW_CHAINS_UNCODED
 PIPELINE_NODES = load_runtime().pipeline_chains
+J2_FROM_NODE = next(
+    c.from_nodes[0] for c in load_runtime().join_chains if c.join == "J2"
+)
 
 
 def _row_read(code: str) -> ModelLabSourceRead:
@@ -133,7 +136,9 @@ def todays_chains() -> list[ModelNodeEmission]:
     for join, count in JOIN_FAILURES.items():
         from_piece = int(join[1:])
         for i in range(count):
-            events += piece_failure(from_piece, f"node_p{from_piece}", f"{join}-{i}", i)
+            # J2 reads only the nodes the contract names (OMN-23083), so its real failures come from one of them.
+            node = J2_FROM_NODE if join == "J2" else f"node_p{from_piece}"
+            events += piece_failure(from_piece, node, f"{join}-{i}", i)
     # The cycle the kickstart killed: a start and nothing after it.
     events.append(
         ModelNodeEmission.model_validate(
@@ -276,6 +281,10 @@ def test_error_every_chain_the_cycle_emits_is_declared_in_the_contract() -> None
     """A node added to the cycle and left out of the contract would silently stop being judged by J0."""
     source = Path(tick_module.__file__).read_text(encoding="utf-8")
     emitted = set(re.findall(r'"(node_[a-z_]+:[a-z_]+)"', source))
+    # The J16 join (OMN-23601) writes its piece 17 answer under this declared node from its own package, not the tick.
+    emitted.add("node_floor_simple_effect:join_j16")
+    # The J0 join (OMN-23747) likewise writes its piece 17 answer from its own package.
+    emitted.add("node_floor_simple_effect:join_j0")
     assert emitted == set(PIPELINE_NODES)
     assert OVERLAY_STORE_EMITTER not in PIPELINE_NODES
     assert DEPLOY_AGENT_EMITTER not in PIPELINE_NODES

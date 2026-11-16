@@ -11,10 +11,11 @@ repository (from the PR watcher), what each one changes, and the rolling ledger 
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from enum import StrEnum
 from fnmatch import fnmatch
-from typing import Literal
+from typing import Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -110,6 +111,22 @@ def keyed_by_repository(
     return {_repo_key(name): files for name, files in paths.items()}
 
 
+REPLACES_REF: Final[re.Pattern[str]] = re.compile(
+    r"^([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)#([1-9][0-9]*)$"
+)
+
+
+def validate_replaces(value: tuple[str, ...]) -> tuple[str, ...]:
+    """``replaces`` entries are ``OWNER/REPO#N``, each once; the order the caller gave is kept."""
+    seen: list[str] = []
+    for item in value:
+        if REPLACES_REF.match(item) is None:
+            raise ValueError(f"replaces entry {item!r} is not OWNER/REPO#N")
+        if item not in seen:
+            seen.append(item)
+    return tuple(seen)
+
+
 class ModelDuplicateGuardRules(BaseModel):
     """Which files say nothing about a shared fix, declared as data in the node's ``contract.yaml``.
 
@@ -143,6 +160,21 @@ class ModelDuplicateGuardRules(BaseModel):
         )
 
 
+class ModelSpanCommits(BaseModel):
+    """The commits that introduced the lines one hunk of a diff leaves in the file.
+
+    ``start`` and ``end`` are the hunk's inclusive pre-image lines, the same coordinates as ``ModelFileTouch.spans``.
+    ``commits`` are 12-character shas; it is empty when the hunk only deletes lines or the source could not blame
+    them: an overlap nobody can attribute is never set aside.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    start: int = Field(ge=1)
+    end: int = Field(ge=1)
+    commits: tuple[str, ...] = ()
+
+
 class ModelFileTouch(BaseModel):
     """One file a diff changes.
 
@@ -158,6 +190,9 @@ class ModelFileTouch(BaseModel):
     spans: tuple[tuple[int, int], ...] = ()
     #: Sorted unique sha1 prefixes of normalized, signed changed lines.
     digest: tuple[str, ...] = ()
+    #: For each pre-image span of this file's diff that the new branch also changes, the commits that introduced
+    #: the changed lines (read with ``git blame``). Empty unless the caller named a replaced pull request.
+    attributed: tuple[ModelSpanCommits, ...] = ()
 
 
 class ModelPrTouch(BaseModel):
@@ -195,6 +230,56 @@ class ModelJudgedCommit(BaseModel):
     subject: str = ""
 
 
+class EnumReplacesRefusal(StrEnum):
+    """Why a ``replaces`` entry is refused: the typed reason a caller reads, never a free-text guess."""
+
+    OTHER_REPOSITORY = (
+        "other_repository"  # the entry names a pull request of another repository
+    )
+    STILL_OPEN = "still_open"  # the replaced pull request is open
+    MERGED = "merged"  # the replaced pull request merged: nothing to replace
+    UNREADABLE = "unreadable"  # the node could not read the pull request's state
+    NO_COMMITS = (
+        "no_commits"  # closed and not merged, but its commits could not be listed
+    )
+
+
+class ModelReplacedPrFacts(BaseModel):
+    """One ``replaces`` entry as the node itself read it (never the caller's word for it).
+
+    ``state`` is None when the entry is of another repository or its state could not be read. ``commits`` are the
+    12-character shas of the replaced pull request's own change (its head past its base branch).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    repo: str = Field(min_length=1)
+    number: int = Field(ge=1)
+    state: Literal["OPEN", "CLOSED", "MERGED"] | None = None
+    merged: bool = False
+    commits: tuple[str, ...] = ()
+
+
+class ModelReplacesRefusal(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    ref: str
+    reason: EnumReplacesRefusal
+    detail: str
+
+
+class ModelSetAsideOverlap(BaseModel):
+    """One overlap the guard did not count, and why: its lines were introduced only by a replaced closed change."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    pr: str
+    place: str
+    commits: tuple[str, ...]
+    replaced: tuple[str, ...]
+    why: str
+
+
 class ModelPrDuplicateGuardRequest(BaseModel):
     """The new pull request, the open ones in its repository, and the ledger text."""
 
@@ -218,6 +303,8 @@ class ModelPrDuplicateGuardRequest(BaseModel):
     #: Per-repository paths the deployment declares generated (a rendered index every pull request of a kind
     #: regenerates), read from the node's deployment overlay by the caller; the guard is pure and reads no file.
     generated_paths: dict[str, tuple[str, ...]] = Field(default_factory=dict)
+    #: The pull requests the caller says this change replaces, as the node read them (empty: today's behaviour).
+    replaced: tuple[ModelReplacedPrFacts, ...] = ()
 
     @field_validator("generated_paths")
     @classmethod
@@ -241,7 +328,7 @@ class ModelPrDuplicateGuardResult(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    state: Literal["clear", "adopt"]
+    state: Literal["clear", "adopt", "replaces_refused"]
     adopt_pr: str | None = None
     adopt_lane: str | None = None
     evidence: tuple[ModelDuplicateEvidence, ...] = ()
@@ -251,6 +338,10 @@ class ModelPrDuplicateGuardResult(BaseModel):
     #: The commits the answer judged (echoed from the request, newest first) and the sha their diff started from.
     judged_commits: tuple[ModelJudgedCommit, ...] = ()
     judged_base: str | None = None
+    #: Overlaps not counted because a replaced closed change alone introduced them, each with its reason.
+    set_aside: tuple[ModelSetAsideOverlap, ...] = ()
+    #: Each ``replaces`` entry refused (state ``replaces_refused``), with its typed reason.
+    replaces_refusals: tuple[ModelReplacesRefusal, ...] = ()
 
 
 class ModelPrDuplicateSnapshotRequest(BaseModel):
@@ -269,6 +360,13 @@ class ModelPrDuplicateSnapshotRequest(BaseModel):
     ledger: str | None = None
     clone: str | None = None
     worktree: str | None = None
+    #: ``OWNER/REPO#N`` pull requests the caller says this change replaces; the snapshot reads each one's state.
+    replaces: tuple[str, ...] = ()
+
+    @field_validator("replaces")
+    @classmethod
+    def _replaces_are_pull_request_refs(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        return validate_replaces(value)
 
 
 class ModelPrDuplicateSnapshotResult(BaseModel):

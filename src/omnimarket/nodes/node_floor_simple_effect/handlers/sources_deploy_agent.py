@@ -213,6 +213,7 @@ def deploy_agent_events(
         correlation_id=correlation_id,
         phase="start",
         emitted_at=now,
+        origin="probe",
     )
     if read.status != "read":
         code, detail = "deploy_agent_unread", read.reason

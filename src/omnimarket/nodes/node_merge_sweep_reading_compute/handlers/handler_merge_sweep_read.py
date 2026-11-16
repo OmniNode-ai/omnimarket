@@ -28,6 +28,9 @@ from omnimarket.models.merge_sweep import (
     ModelMergeSweepUnread,
     ModelSweepOpenPr,
 )
+from omnimarket.nodes.node_goal_scope_admission_compute.handlers.handler_goal_scope_admission import (
+    HandlerGoalScopeAdmission,
+)
 
 BAD = frozenset(
     {
@@ -83,6 +86,18 @@ class HandlerMergeSweepRead:
             if p.repo in request.out_of_scope
         )
         in_scope = frozenset(request.fleet) - request.out_of_scope.keys()
+        # The goal's scope is decided by the one rule and nothing else (OMN-23851): a PR it does not
+        # admit is named and never read; one it could not read, or holds no candidate for, is unread.
+        goal_admitted: dict[str, str] = {}
+        goal_not_admitted: dict[str, str] = {}
+        goal_unread: dict[str, str] = {}
+        if request.goal_scope is not None:
+            verdict = HandlerGoalScopeAdmission().handle(request.goal_scope)
+            goal_admitted = {
+                ref: f"{v.via}:{v.label}" for ref, v in verdict.admitted.items()
+            }
+            goal_not_admitted = dict(verdict.not_admitted)
+            goal_unread = dict(verdict.unread)
         reds: list[dict[str, Any]] = []
         open_prs: list[dict[str, Any]] = []
         red_now: dict[str, bool] = {}
@@ -92,6 +107,21 @@ class HandlerMergeSweepRead:
         ):
             repo = pr.repo
             key = f"{repo}#{pr.number}"
+            if request.goal_scope is not None and key not in goal_admitted:
+                if key in goal_unread:
+                    unread.append(
+                        ModelMergeSweepUnread(
+                            field=f"goal_scope:{key}", why=goal_unread[key]
+                        )
+                    )
+                elif key not in goal_not_admitted:
+                    unread.append(
+                        ModelMergeSweepUnread(
+                            field=f"goal_scope:{key}",
+                            why="the request carries no goal-scope candidate for it",
+                        )
+                    )
+                continue
             open_prs.append(
                 {
                     "repo": repo,
@@ -205,6 +235,8 @@ class HandlerMergeSweepRead:
             open_prs=len(open_prs),
             scope=sorted(in_scope),
             out_of_scope_prs=out_of_scope_prs,
+            goal_admitted=dict(sorted(goal_admitted.items())),
+            goal_not_admitted=dict(sorted(goal_not_admitted.items())),
             unread=unread,
         )
 

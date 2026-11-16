@@ -346,12 +346,14 @@ class JoinJ2:
             or receipt.exit_code != 0
             or marked not in receipt.output_tail
         ):
-            return failed(
-                EnumJoinJ2Outcome.COMMAND_FAILED,
-                FAIL_COMMAND,
+            detail = (
                 f"status {receipt.status.value}, exit {receipt.exit_code}, "
-                f"nonce {'seen' if marked in receipt.output_tail else 'not seen'}",
+                f"nonce {'seen' if marked in receipt.output_tail else 'not seen'}"
             )
+            receipt_detail = " ".join(receipt.detail.split())
+            if receipt_detail:
+                detail = f"{detail}: {receipt_detail}"
+            return failed(EnumJoinJ2Outcome.COMMAND_FAILED, FAIL_COMMAND, detail)
         seam.success({"results": 1})
         return ModelJoinJ2HostResult(
             host=host,
@@ -371,6 +373,7 @@ class JoinJ2:
             correlation_id=cid,
             backend=self._backend,
             drill=self._drill,
+            origin="canary",
         )
 
     def _advert_age(self, host: str) -> int | None:
@@ -407,6 +410,7 @@ class JoinJ2:
                     "drill": self._drill,
                     "failure_code": UPSTREAM_PREFIX + code,
                     "failure_detail": detail[:300],
+                    "origin": "canary",
                 }
             )
         )

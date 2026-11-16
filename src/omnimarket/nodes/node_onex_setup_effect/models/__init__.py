@@ -4,6 +4,7 @@
 
 from omnimarket.nodes.node_onex_setup_effect.models.model_onex_setup import (
     ModelOnexSetupFailure,
+    ModelOnexSetupReceipt,
     ModelOnexSetupRequest,
     ModelOnexSetupResult,
     ModelOnexSetupState,
@@ -12,6 +13,7 @@ from omnimarket.nodes.node_onex_setup_effect.models.model_onex_setup import (
 
 __all__ = [
     "ModelOnexSetupFailure",
+    "ModelOnexSetupReceipt",
     "ModelOnexSetupRequest",
     "ModelOnexSetupResult",
     "ModelOnexSetupState",

@@ -532,7 +532,7 @@ def test_cause_scenario_s21_cluster_of_three_gets_one_lease_and_no_per_pr_dispat
     assert action.cause_brief is not None
     assert action.cause_brief.brief_class.value == "shared_cause"
     assert action.cause_brief.attempt == 1
-    assert action.cause_brief.engine.value == "codex_high"
+    assert action.cause_brief.engine.value == "claude_sonnet"
     assert member_prs(action) == [f"{REPO}#1", f"{REPO}#2", f"{REPO}#3"]
     lease = world.lease(key)
     assert lease.deadline_at - lease.dispatched_at == timedelta(seconds=5400)
@@ -540,6 +540,49 @@ def test_cause_scenario_s21_cluster_of_three_gets_one_lease_and_no_per_pr_dispat
     # two red PRs do not cluster: each gets its own worker, as before
     pair = CauseWorld([Pr(1), Pr(2)])
     assert sorted(dispatched(pair.step())) == [f"{REPO}#1", f"{REPO}#2"]
+
+
+@pytest.mark.unit
+def test_follower_only_reds_never_form_a_cause() -> None:
+    follower_ann = "Repo evidence concluded failure; refusing to start this workflow."
+    prs = [
+        Pr(
+            n,
+            red_checks=("Repo Evidence Dependency",),
+            annotations={"Repo Evidence Dependency": follower_ann},
+        )
+        for n in (1, 2, 3)
+    ]
+    world = CauseWorld(prs)
+    decision = world.step()
+    assert cause_dispatched(decision) == []
+    assert sorted(per_pr_dispatched(decision)) == [
+        f"{REPO}#1",
+        f"{REPO}#2",
+        f"{REPO}#3",
+    ]
+
+
+@pytest.mark.unit
+def test_follower_signature_is_the_live_cause_the_controller_recorded() -> None:
+    """The seam to the controller's state: the cause key the controller held for the
+    three omnimarket PRs red only on this follower (tick of 2026-11-13T21:09:50Z)."""
+    assert (
+        key_for(
+            "Repo Evidence Dependency",
+            "Repo evidence concluded failure; refusing to start this workflow.",
+            OMNIMARKET,
+        )
+        == "cause:OmniNode-ai/omnimarket:d17cc3829668"
+    )
+
+
+@pytest.mark.unit
+def test_dod_verify_reds_with_one_message_still_form_a_cause() -> None:
+    prs = [Pr(n) for n in (1, 2, 3)]
+    world = CauseWorld(prs)
+    decision = world.step()
+    assert cause_dispatched(decision) == [key_for()]
 
 
 @pytest.mark.unit
@@ -751,7 +794,7 @@ def test_cause_scenario_s27_cause_not_shared_returns_members_to_per_pr_rung_zero
     assert sorted(a.subject for a in per_pr) == [p.key for p in prs]
     for action in per_pr:
         assert action.brief is not None
-        assert action.brief.engine.value == "codex_high"
+        assert action.brief.engine.value == "claude_sonnet"
         assert action.brief.brief_class.value == "real_red"
     records = {r.pr: r for r in world.state.records}
     assert all(records[p.key].ladder_index == 0 for p in prs)
@@ -1360,7 +1403,7 @@ def _assert_fallback_once(
     assert sorted(per_pr_dispatched(park)) == members
     for action in actions_of(park, "dispatch_worker"):
         assert action.brief is not None
-        assert action.brief.engine.value == "codex_high"
+        assert action.brief.engine.value == "claude_sonnet"
         assert action.brief.brief_class.value == "real_red"
     assert world.cause(key).parked_until is not None
     for _ in range(3):  # parked, members working: no cause worker, no second ticket
@@ -1585,7 +1628,7 @@ def test_park_default_third_attempt_is_one_opus_diagnosis_with_no_operator_msg()
     assert brief.engine.value == "claude_sonnet"
     assert brief.brief_class.value == "cause_diagnosis"
     assert [a.engine.value for a in brief.prior_attempts] == [
-        "codex_high",
+        "claude_sonnet",
         "claude_sonnet",
     ]
     assert {a.outcome.value for a in brief.prior_attempts} == {"external_blocker"}
@@ -1627,7 +1670,7 @@ def test_park_default_files_ticket_after_a_third_failure_and_asks_nobody() -> No
     assert ticket.dedupe_key == f"{key}@{rec.parked_until.isoformat()}"
     assert [m.pr for m in ticket.members] == [p.key for p in three()]
     assert [a.engine.value for a in ticket.attempts] == [
-        "codex_high",
+        "claude_sonnet",
         "claude_sonnet",
         "claude_sonnet",
     ]

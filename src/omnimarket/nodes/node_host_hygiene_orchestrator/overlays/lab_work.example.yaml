@@ -1,0 +1,38 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Lab work profile (OMN-23707): this node runs in the runtime container, which holds its own broker login in its environment and reads no
+# lane declaration file, so each cleanup goes to the broker address stated here as one lab work unit; the host's lab-work serve runs the
+# cleanup's argv there at the pinned commit and answers with its receipt. Synthetic values; the deployment's overlay is in the overlays
+# repository. commit_sha must be a commit that holds every module the cleanups' argv names.
+job_id: host_hygiene
+run_interval_seconds: 3600
+grace_seconds: 600
+backend: lab_work
+max_reading_age_seconds: 900
+max_parallel_units: 4
+lab_work:
+  repo: example-owner/example-repo
+  commit_sha: "0000000000000000000000000000000000000000"
+  lane: example-lane
+  unit_id_prefix: hh
+  kafka_bootstrap: example-broker:9092
+cleanups:
+  - cleanup_id: docker_hygiene
+    min_used_fraction: 0.80
+    min_interval_seconds: 21600
+    when_unread: dispatch
+    timeout_seconds: 1800
+    kind: other
+    argv: [uv, run, --frozen, python, -m, omnimarket.nodes.node_lab_disk_hygiene_effect, --omni-home, "{registry_root}"]
+  - cleanup_id: file_retention
+    min_used_fraction: 0.70
+    min_interval_seconds: 43200
+    when_unread: skip
+    timeout_seconds: 1800
+    kind: other
+    argv: [uv, run, --frozen, python, -m, omnimarket.nodes.node_retention_cleanup, --files]
+hosts:
+  - name: example-host-a
+    registry_root: /example/registry
+    pressure_volume: /
+    cleanup_ids: [docker_hygiene, file_retention]

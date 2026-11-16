@@ -250,3 +250,17 @@ def test_tick_for_an_undeclared_host_is_indeterminate(
     code = cli.main(["tick", "--host", "h999"])
     assert code == 3
     assert "INDETERMINATE" in capsys.readouterr().err
+
+
+def test_example_overlay_declares_the_spread_block() -> None:
+    spread = example_overlay().spread
+    assert spread is not None
+    assert spread.enabled is True
+    assert spread.in_use_longer_than_seconds >= 60
+
+
+def test_overlay_refuses_an_unknown_spread_key() -> None:
+    raw = yaml.safe_load((NODE / "overlay.example.yaml").read_text(encoding="utf-8"))
+    raw["spread"]["unknown_key"] = 1
+    with pytest.raises(ValueError, match="unknown_key"):
+        ModelRotationOverlay.model_validate(raw)

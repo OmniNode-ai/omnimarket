@@ -5,6 +5,7 @@
 ``read``     gather the merges, receipts and probe and append the piece 11 reading row.
 ``probe``    the same reads, appending nothing.
 ``drill``    the same reads with the overlay's injected fault (an unreceipted merge), appended as a drill row.
+``probe-merge`` read named dev merges (``--repo <name> --sha <commit>``) against the deploy agent and the running build, appending nothing.
 ``schedule`` check | install | uninstall | status | run-now, for a host in the overlay.
 
 Each read and probe prints the events the run produced, one JSON object per line (topic and body).
@@ -29,6 +30,10 @@ from pydantic import ValidationError
 
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError, find_node_overlay
 from omnimarket.nodes.node_dev_deploy_reading_effect.adapters import LabDevDeployFacts
+from omnimarket.nodes.node_dev_deploy_reading_effect.handlers.handler_dev_deploy_merge_probe import (
+    HandlerDevDeployMergeProbe,
+    ModelDevDeployMergeProbeCommand,
+)
 from omnimarket.nodes.node_dev_deploy_reading_effect.handlers.handler_dev_deploy_reading_run import (
     HandlerDevDeployReadingRun,
     events_of,
@@ -79,6 +84,39 @@ def _run(arguments: argparse.Namespace, write: bool, drill: bool) -> int:
         )
     sys.stdout.flush()
     return 0 if result.status == "completed" else 1
+
+
+def _probe_merge(arguments: Sequence[str]) -> int:
+    """Read named dev merges against the deploy agent and the running build; writes nothing.
+
+    Exit 0 every merge read WORKING, UNKNOWN or NOT WORKING (a reading refuses nothing); 1 a merge could not be read
+    (unknown repository, commit not on the ref); 3 the deploy agent or the build record could not be read.
+    """
+    parser = argparse.ArgumentParser(prog="probe-merge")
+    parser.add_argument(
+        "--repo", required=True, help="the merge repository's name in the overlay"
+    )
+    parser.add_argument(
+        "--sha",
+        required=True,
+        action="append",
+        help="a commit of the repository's dev ref",
+    )
+    args = parser.parse_args(list(arguments))
+    overlay = load_overlay()
+    handler = HandlerDevDeployMergeProbe(overlay, os.environ, lambda: datetime.now(UTC))
+    code = 0
+    for sha in args.sha:
+        result = handler.handle(
+            ModelDevDeployMergeProbeCommand(source_repo=args.repo, commit=sha)
+        )
+        sys.stdout.write(result.model_dump_json() + "\n")
+        if result.failure is not None:
+            code = max(code, 1)
+        elif any(r.startswith("deploy-source-unread:") for r in result.reasons):
+            code = 3
+    sys.stdout.flush()
+    return code
 
 
 def _schedule(arguments: Sequence[str]) -> int:
@@ -133,6 +171,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         if arguments and arguments[0] == "schedule":
             return _schedule(arguments[1:])
+        if arguments and arguments[0] == "probe-merge":
+            return _probe_merge(arguments[1:])
         parser = argparse.ArgumentParser(prog=NODE_NAME, description=__doc__)
         parser.add_argument("verb", choices=("read", "probe", "drill"))
         parser.add_argument("--correlation-id")

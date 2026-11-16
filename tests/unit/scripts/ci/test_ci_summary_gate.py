@@ -15,6 +15,7 @@ at the caller's deadline — never SUCCESS and never absence.
 
 from __future__ import annotations
 
+import ast
 import json
 from dataclasses import FrozenInstanceError, replace
 from datetime import UTC, datetime, timedelta
@@ -42,6 +43,7 @@ from scripts.ci.ci_summary_gate import (
     evaluate,
     evaluate_external,
 )
+from tests.unit.scripts.ci.registry_support import shipped_request, write_resolved
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 WORKFLOWS_DIR = REPO_ROOT / ".github" / "workflows"
@@ -903,13 +905,6 @@ EXEMPT_CONTEXTS: dict[tuple[str, str], str] = {
         "and lab-pass receipt live in the called workflow and report on the "
         "post-merge run, not on any PR."
     ),
-    ("runtime-rebuild-trigger.yml", "notify-omniclaude-pin"): (
-        "post-merge automation (if: pull_request.merged == true) — "
-        "structurally cannot gate the merge that already happened. It sends "
-        "one omnimarket-dev-moved repository_dispatch so omniclaude's git pin "
-        "follows omnimarket dev (OMN-19998); omniclaude's hourly schedule is "
-        "the fallback when the dispatch is lost."
-    ),
     # --- self-declared staged / deliberately-deferred promotion.
     ("dep-health-gate.yml", "dep-health"): (
         "Phase 1 advisory by explicit design (file header: 'Phase 1 "
@@ -1013,6 +1008,11 @@ _CI_YML_STRUCTURALLY_COVERED_KEYS: frozenset[str] = frozenset(
         # would be wrong: it legitimately reports `skipped` on every non-docs
         # PR, which is exactly the state the gates are built to reject.
         "docs-only-marker",
+        # Overlay Main Load: unconditional, no skip path other than the fork
+        # guard; covered by the L3 default-deny sweep, not individually named
+        # (naming it in STRICT_GATE_JOBS changes the bytes the recorded-head
+        # replay pins).
+        "overlay-main-load",
     }
 )
 
@@ -2001,12 +2001,6 @@ class TestExternalDefaultDenySweep:
         assert gate.evaluate_external_sweep([], now=self.NOW)[0] == EXIT_SUCCESS
 
 
-# The check-run name of the automated reviewer app (OMN-22478): it posts a
-# ``neutral`` row on every pull request and the ruling of 2026-11-05T20:27:56Z
-# takes it out of what blocks a merge.
-AUTOMATED_REVIEWER = "Tessl Reviewer"
-
-
 class TestExternalSweepExclusions:
     """OMN-17427: every exception is bounded, validated and reported."""
 
@@ -2019,16 +2013,14 @@ class TestExternalSweepExclusions:
         )
 
     def test_registry_has_exactly_measured_valid_entries(self) -> None:
-        assert set(gate.EXTERNAL_SWEEP_EXCLUSIONS) == {
+        shipped = gate.load_resolved_registry(gate.REGISTRY_FILE)[0]
+        assert set(shipped) == {
             "AC1 exact revision row on PostgreSQL 16",
             "auto-tag",
-            AUTOMATED_REVIEWER,
         }
-        assert gate.validate_sweep_exclusions(gate.EXTERNAL_SWEEP_EXCLUSIONS) == []
-        active, expired = gate.active_sweep_exclusions(
-            gate.EXTERNAL_SWEEP_EXCLUSIONS, now=self.NOW
-        )
-        assert active == frozenset(gate.EXTERNAL_SWEEP_EXCLUSIONS)
+        assert gate.validate_sweep_exclusions(shipped) == []
+        active, expired = gate.active_sweep_exclusions(shipped, now=self.NOW)
+        assert active == frozenset(shipped)
         assert expired == ()
         assert not active.intersection(EXPECTED_EXTERNAL_CONTEXTS)
         # OMN-23029: the shape of every entry is pinned, not the literal values of
@@ -2037,7 +2029,7 @@ class TestExternalSweepExclusions:
         # could not be added without editing an assertion that was never about it.
         # What must hold of EVERY entry is that it is reasoned, carries a real
         # ticket, is dated, and expires after it was added.
-        for name, entry in gate.EXTERNAL_SWEEP_EXCLUSIONS.items():
+        for name, entry in shipped.items():
             assert entry.reason.strip(), name
             assert gate._SWEEP_TICKET_RE.match(entry.ticket), (name, entry.ticket)
             assert gate._SWEEP_DATE_RE.match(entry.added), (name, entry.added)
@@ -2172,58 +2164,6 @@ class TestExternalSweepExclusions:
         code, report = evaluate_external(rows, now=self.NOW)
         assert code == EXIT_FAILURE, report
         assert f"external-context failures: {name}" in report
-
-
-class TestAutomatedReviewerDoesNotBlockOmn22478:
-    """RULING 2026-11-05T20:27:56Z: the automated reviewer never blocks a merge.
-
-    The reviewer app posts a ``neutral`` check run named ``Tessl Reviewer`` on
-    every pull request. The default-deny sweep judges only ``success`` as good,
-    so without the exclusion it fails CI Summary with every gate green.
-    """
-
-    NOW = datetime(2026, 11, 7, 18, 8, tzinfo=UTC)
-
-    @pytest.mark.parametrize(
-        ("conclusion", "status"),
-        [
-            ("neutral", "completed"),
-            (None, "in_progress"),
-            ("failure", "completed"),
-            ("skipped", "completed"),
-        ],
-    )
-    def test_reviewer_row_in_any_state_does_not_fail_the_sweep(
-        self, conclusion: str | None, status: str
-    ) -> None:
-        row = _check_run(AUTOMATED_REVIEWER, conclusion=conclusion, status=status)
-        code, report = gate.evaluate_external_sweep([row], now=self.NOW)
-        assert code == EXIT_SUCCESS, report
-        assert f"exclusions applied: {AUTOMATED_REVIEWER}" in report
-        assert "external sweep failures" not in report
-
-    def test_control_the_same_neutral_row_under_another_name_still_fails(
-        self,
-    ) -> None:
-        row = _check_run("Another Reviewer", conclusion="neutral")
-        code, report = gate.evaluate_external_sweep([row], now=self.NOW)
-        assert code == EXIT_FAILURE, report
-        assert "Another Reviewer (neutral)" in report
-
-    def test_control_without_the_exclusion_the_reviewer_row_fails(self) -> None:
-        row = _check_run(AUTOMATED_REVIEWER, conclusion="neutral")
-        code, report = gate.evaluate_external_sweep(
-            [row], sweep_exclusions={}, now=self.NOW
-        )
-        assert code == EXIT_FAILURE, report
-        assert f"{AUTOMATED_REVIEWER} (neutral)" in report
-
-    def test_exclusion_is_unexpired_at_the_pinned_read_time(self) -> None:
-        active, expired = gate.active_sweep_exclusions(
-            gate.EXTERNAL_SWEEP_EXCLUSIONS, now=self.NOW
-        )
-        assert AUTOMATED_REVIEWER in active
-        assert expired == ()
 
 
 class TestSweepIsWiredIntoProductionPoller:
@@ -2445,17 +2385,27 @@ class TestSweepIsWiredIntoProductionPoller:
         assert gate.main(args) == EXIT_SUCCESS
 
     def test_main_rejects_malformed_registry(
-        self,
-        tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
-        capsys: pytest.CaptureFixture[str],
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(
-            gate, "EXTERNAL_SWEEP_EXCLUSIONS", {"X": {"reason": "untyped"}}
+        malformed = tmp_path / "malformed_registry.json"
+        malformed.write_text(
+            json.dumps(
+                {
+                    "exclusions": {"X": {"reason": "untyped"}},
+                    "check_modes": {},
+                    "refusals": [],
+                }
+            ),
+            encoding="utf-8",
         )
-        assert self._main(tmp_path, _healthy_check_runs(), []) == EXIT_FAILURE
-        assert "external sweep exclusion registry REFUSED" in capsys.readouterr().out
-        monkeypatch.setattr(gate, "EXTERNAL_SWEEP_EXCLUSIONS", {})
+        good = gate.REGISTRY_FILE
+        monkeypatch.setattr(gate, "REGISTRY_FILE", malformed)
+        with pytest.raises(TypeError):
+            self._main(tmp_path, _healthy_check_runs(), [])
+        monkeypatch.setattr(gate, "REGISTRY_FILE", tmp_path / "absent_registry.json")
+        with pytest.raises(FileNotFoundError):
+            self._main(tmp_path, _healthy_check_runs(), [])
+        monkeypatch.setattr(gate, "REGISTRY_FILE", good)
         assert self._main(tmp_path, _healthy_check_runs(), []) == EXIT_SUCCESS
 
     def test_main_keeps_unavailable_checks_pending(
@@ -2600,6 +2550,8 @@ def test_ci_summary_restores_every_gate_data_file_from_the_head() -> None:
         "scripts/ci/ci_summary_external_producers.json",
         "scripts/ci/ci_summary_sweep_non_pr_events.json",
         "scripts/ci/ci_summary_sweep_exclusions.json",
+        "scripts/ci/ci_summary_external_check_modes.contract.json",
+        "scripts/ci/ci_summary_external_check_modes.json",
         "scripts/ci/ci_summary_rules.json",
     ):
         assert text.count(filename) >= 2, (
@@ -2648,3 +2600,74 @@ def test_prompt_cost_estimate_contract_workflow_reports_on_every_shape() -> None
     job = doc["jobs"][PROMPT_COST_CONTEXT]
     assert job["name"] == PROMPT_COST_CONTEXT
     assert "if" not in job
+
+
+# OMN-23505: the gate reads the registries the node resolved and holds no loader of them.
+
+# Code lines (neither blank nor comment) scripts/ci/ci_summary_gate.py held at the
+# baselined limit: the file may only shrink.
+GATE_BASELINE_CODE_LINES = 1504
+REGISTRY_LIST_FILES = (
+    "ci_summary_sweep_exclusions",
+    "ci_summary_external_check_modes",
+)
+
+
+def _gate_code_lines(source: str) -> int:
+    return sum(
+        1
+        for line in source.splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    )
+
+
+def _registry_loader_sites(source: str) -> list[str]:
+    """Names of the strings in ``source`` that point at one of the two list files."""
+    return sorted(
+        node.value
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.Constant)
+        and isinstance(node.value, str)
+        and any(name in node.value for name in REGISTRY_LIST_FILES)
+    )
+
+
+def test_registry_from_node_gate_holds_no_loader_of_the_two_lists() -> None:
+    source = Path(gate.__file__).read_text(encoding="utf-8")
+    assert _registry_loader_sites(source) == []
+    assert _gate_code_lines(source) <= GATE_BASELINE_CODE_LINES
+
+
+def test_registry_from_node_control_a_loader_in_the_source_is_found() -> None:
+    """The detector is not vacuous: a gate that opens either list file is caught."""
+    loader = 'raw = json.loads(Path("ci_summary_sweep_exclusions.json").read_text())'
+    assert _registry_loader_sites(loader) == ["ci_summary_sweep_exclusions.json"]
+
+
+def test_registry_from_node_answer_is_what_the_gate_reads(tmp_path: Path) -> None:
+    from omnimarket.nodes.node_ci_summary_registry_compute.handlers.handler_ci_summary_registry import (
+        HandlerCiSummaryRegistry,
+    )
+
+    request = shipped_request()
+    answer = HandlerCiSummaryRegistry().handle(request)
+    path = write_resolved(tmp_path / "resolved.json", request)
+    exclusions, check_modes, refusals = gate.load_resolved_registry(path)
+    assert refusals == [] == answer.refusals
+    assert check_modes == answer.check_modes
+    assert {n: vars(e) for n, e in exclusions.items()} == {
+        n: e.model_dump() for n, e in answer.exclusions.items()
+    }
+
+
+def test_registry_from_node_refusal_fails_the_gate_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bad_overlay = {"Tessl Reviewer": {"mode": "no-such-mode", "reason": "x"}}
+    path = write_resolved(
+        tmp_path / "resolved.json", shipped_request(check_modes_overlay=bad_overlay)
+    )
+    monkeypatch.setattr(gate, "REGISTRY_FILE", path)
+    code, report = gate.evaluate_external_sweep([])
+    assert code == EXIT_FAILURE, report
+    assert "CI Summary registry check-modes: Tessl Reviewer" in report

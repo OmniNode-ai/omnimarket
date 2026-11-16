@@ -13,7 +13,7 @@ preserves the projection between ordinary incremental reads.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from contextlib import AsyncExitStack
 from datetime import UTC, datetime, timedelta
 
@@ -22,6 +22,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
 
+from ..adapters.parked_hosts import LabHostTableParkedSource
 from ..models import (
     ModelHostDriftFleetOverlay,
     ModelHostDriftFleetRequest,
@@ -30,7 +31,11 @@ from ..models import (
     ModelHostDriftHeartbeatEvent,
     ModelHostDriftResolvedEvent,
 )
-from ..protocols import ProtocolHostDriftFleetBus, ProtocolHostDriftFleetStateStore
+from ..protocols import (
+    ProtocolHostDriftFleetBus,
+    ProtocolHostDriftFleetStateStore,
+    ProtocolHostDriftParkedSource,
+)
 from .fold_host_drift_view import FleetEvent, fold_view
 
 
@@ -68,6 +73,7 @@ class HandlerHostDriftFleet:
         clock: Callable[[], datetime] | None = None,
         state_store: ProtocolHostDriftFleetStateStore | None = None,
         topics: tuple[str, ...] | None = None,
+        parked_source: ProtocolHostDriftParkedSource | None = None,
     ) -> None:
         from ..node import load_topics
 
@@ -82,6 +88,9 @@ class HandlerHostDriftFleet:
         self._clock = clock if clock is not None else lambda: datetime.now(UTC)
         self._state_store: ProtocolHostDriftFleetStateStore = (
             state_store if state_store is not None else InMemoryFleetStateStore()
+        )
+        self._parked_source = (
+            parked_source if parked_source is not None else LabHostTableParkedSource()
         )
 
     def _group_id(self, request: ModelHostDriftFleetRequest) -> str:
@@ -183,6 +192,17 @@ class HandlerHostDriftFleet:
             event = queue.get_nowait()
             if event is not None:
                 events.append(event)
+        # A host the lab host table parks is never required; an unreadable table
+        # leaves every host required and says why on the view.
+        parked: Mapping[str, str] = {}
+        parked_cause = ""
+        try:
+            parked = dict(self._parked_source.parked_hosts())
+        except Exception as exc:
+            parked = {}
+            parked_cause = (
+                f"{type(exc).__name__}: {str(exc).splitlines()[0] if str(exc) else ''}"
+            )
         view = fold_view(
             previous=previous,
             events=events,
@@ -190,10 +210,26 @@ class HandlerHostDriftFleet:
             now=request.now,
             consumer_group=group_id,
             malformed=malformed,
+            parked=parked,
+            parked_cause=parked_cause,
         )
-        if error and previous is not None:
-            # A failed read must not be saved or served as a fresh fold: keep the
-            # last good projection, with its own folded_at, and say it is stale.
+        if error and events:
+            # The group's offsets are committed as records are delivered, so events
+            # that arrived before the failure are never delivered again: fold and
+            # save them, and say the read was partial.
+            view = view.model_copy(
+                update={
+                    "status_line": (
+                        f"host-drift: PARTIAL read failed ({error}); "
+                        f"{view.status_line.removeprefix('host-drift: ')}"
+                    ),
+                }
+            )
+            self._state_store.save(view)
+        elif error and previous is not None:
+            # A failed read that delivered no valid events must not be saved or
+            # served as a fresh fold: keep the last good projection, with its own
+            # folded_at, and say it is stale.
             view = previous.model_copy(
                 update={
                     "status_line": (

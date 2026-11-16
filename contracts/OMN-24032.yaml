@@ -1,0 +1,71 @@
+schema_version: 1.0.0
+ticket_id: OMN-24032
+title: "One overlay root resolver: store root, then canonical overlays clone"
+summary: A node's deployment settings are read from a list of folders, and the command that runs a node on the bus read its bus setting from one frozen folder only, so the broker permission request could not find the setting merged in the settings repository. This adds one resolver of the folder list (the host's local copy of the settings first, then the canonical settings clone beside the working folder, then the folders a unit declares) and makes the bus setting lookup use it; the frozen folder stays the last source.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24032-overlay-roots-resolver
+  statement: The resolver returns the overlay roots in one order, the bus overlay lookup finds an overlay under those roots, and the retired inside-the-registry-root overlays path is never produced.
+  acceptance:
+  - id: AC1
+    statement: "AC1: one resolver returns the overlay roots in the order store root, then canonical overlays clone, and never the retired working-folder overlays path -- falsifier: uv run pytest src/omnimarket/nodes/node_overlay_roots_resolve_effect/tests -q fails at the merge base"
+  - id: AC2
+    statement: "AC2: a node's bus overlay is found under the resolved roots, so the broker permission derive request finds the overlay merged in the settings repository -- falsifier: the bus-overlay seam test finds no event_bus for node_broker_acl_overlay_render_compute with only the settings repository root set"
+  - id: AC3
+    statement: "AC3: the remote-lane runner builds its lane roots from the same resolver and the lane_time_box value reaches a Mac-launched lane -- falsifier: the runner roots test lists the retired working-folder overlays path"
+  - id: AC4
+    statement: "AC4: integrated: the derive request run through the development runtime over the bus returns derived rows and the coverage check -- falsifier: the run-node request is refused for a missing overlay or the broker is unreadable and is named as such"
+evidence_requirements:
+- kind: tests
+  description: The resolver node tests and the bus overlay lookup tests pass at the pushed head.
+  command: uv run pytest tests/nodes/node_overlay_roots_resolve_effect tests/unit/handlers/bus_binding/test_node_event_bus_overlay_roots.py -q -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24032-ac1
+  description: 'AC1: the resolver node tests pass at the head; at the merge base the node does not exist, so the test directory cannot import it.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_overlay_roots_resolve_effect -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn24032-ac2
+  description: 'AC2: the bus overlay lookup tests pass at the head; at the merge base the lookup answers no event_bus for an overlay held only in the settings repository.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/handlers/bus_binding/test_node_event_bus_overlay_roots.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn24032-ac3
+  description: 'hosted proxy for AC3: the runner side is the draft pull request of this lane against the lane plugin repository; the resolver tests here are what it calls.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_overlay_roots_resolve_effect -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn24032-ac4
+  description: 'hosted proxy for AC4: the lookup tests pass here; the derive request through the development runtime is read after the merge and posted as a pull request comment naming the running revision.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/handlers/bus_binding/test_node_event_bus_overlay_roots.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn24032-integration-proof
+  description: the resolver and lookup tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24032 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_overlay_roots_resolve_effect tests/unit/handlers/bus_binding/test_node_event_bus_overlay_roots.py -q --no-cov -p no:randomly

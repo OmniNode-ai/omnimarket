@@ -24,7 +24,6 @@ from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import
 from tests.nodes.node_reading_writer_effect.reading_support import START
 from tests.unit.nodes.node_reading_writer_effect.landing_support import (
     HEAD_LIMIT,
-    canary_row,
     heads,
     landing_overlay_document,
     snapshot,
@@ -34,8 +33,8 @@ from tests.unit.nodes.node_reading_writer_effect.landing_support import (
 pytestmark = pytest.mark.unit
 
 
-def _read(waiting, *, merges=0, canary=True, age_seconds=60):
-    ledger = InMemoryLedger([canary_row()] if canary else [])
+def _read(waiting, *, merges=0, age_seconds=60):
+    ledger = InMemoryLedger([])
     source = InMemoryLandingSource(
         snapshot(waiting=waiting, merges=merges, age_seconds=age_seconds)
     )
@@ -108,7 +107,7 @@ def test_a_stale_watcher_snapshot_reads_not_working() -> None:
 def test_a_stale_snapshot_names_its_newest_observation_when_the_source_gives_it() -> (
     None
 ):
-    ledger = InMemoryLedger([canary_row()])
+    ledger = InMemoryLedger([])
     newest = START - timedelta(days=8)
     source = InMemoryLandingSource(
         snapshot(merges=1, age_seconds=704265, newest_at=newest)
@@ -133,7 +132,7 @@ def test_probing_a_stale_window_again_later_reads_already_written_not_replay_fai
     ``snapshot-stale:age-705641s-over-900s`` and the probe at 04:17:07Z, over the same
     unchanged projection, read another age, so the second row was ``replay-failed``.
     """
-    ledger = InMemoryLedger([canary_row()])
+    ledger = InMemoryLedger([])
     newest = START - timedelta(days=8) if newest_known else None
     command = ModelReadingWindowCommand(
         correlation_id="c-s", window_start=START, pieces=(9,)
@@ -154,7 +153,7 @@ def test_probing_a_stale_window_again_later_reads_already_written_not_replay_fai
 
 def test_a_stale_snapshot_whose_newest_observation_moved_is_another_reading() -> None:
     """The check stays: a different snapshot for a written window is still a replay failure."""
-    ledger = InMemoryLedger([canary_row()])
+    ledger = InMemoryLedger([])
     command = ModelReadingWindowCommand(
         correlation_id="c-m", window_start=START, pieces=(9,)
     )
@@ -176,7 +175,7 @@ def test_a_stale_snapshot_whose_newest_observation_moved_is_another_reading() ->
 
 
 def test_a_watcher_that_cannot_be_read_gives_unknown_and_never_an_empty_queue() -> None:
-    ledger = InMemoryLedger([canary_row()])
+    ledger = InMemoryLedger([])
     source = InMemoryLandingSource(error="the watcher state is not found")
     result = writer(ledger, source).handle(
         ModelReadingWindowCommand(correlation_id="c-x", window_start=START, pieces=(9,))
@@ -190,7 +189,7 @@ def test_a_watcher_that_cannot_be_read_gives_unknown_and_never_an_empty_queue() 
 
 
 def test_no_landing_source_wired_gives_unknown() -> None:
-    ledger = InMemoryLedger([canary_row()])
+    ledger = InMemoryLedger([])
     result = writer(ledger, None).handle(
         ModelReadingWindowCommand(correlation_id="c-n", window_start=START, pieces=(9,))
     )
@@ -201,7 +200,7 @@ def test_no_landing_source_wired_gives_unknown() -> None:
 
 def test_replaying_a_written_window_does_not_write_it_twice() -> None:
     waiting = heads(1)
-    ledger = InMemoryLedger([canary_row()])
+    ledger = InMemoryLedger([])
     source = InMemoryLandingSource(snapshot(waiting=waiting, merges=1))
     command = ModelReadingWindowCommand(
         correlation_id="c-r", window_start=START, pieces=(9,)

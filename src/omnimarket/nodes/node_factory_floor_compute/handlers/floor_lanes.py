@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import functools
 import re
 from collections import Counter
 from collections.abc import Mapping
@@ -109,6 +110,7 @@ def _engine(model: str, request: ModelFactoryFloorRequest) -> str:
 DOTTED_TASK_RE = re.compile(r"[A-Za-z]+\.\d+")
 
 
+@functools.lru_cache(maxsize=65536)
 def name_tokens(text: str) -> tuple[str, ...]:
     """The lower-case alphanumeric words of a lane name or a task id (``one-rt-t10-x`` is one, rt, t10, x)."""
     return tuple(part for part in re.split(r"[^0-9a-z]+", text.casefold()) if part)
@@ -127,6 +129,21 @@ def names_task(task_id: str, lane_tokens: tuple[str, ...]) -> bool:
             for i in range(len(lane_tokens) - width + 1)
         )
     )
+
+
+def lanes_naming_task(
+    task_id: str,
+    lanes_by_token: Mapping[str, tuple[str, ...]],
+    lane_words: Mapping[str, tuple[str, ...]],
+) -> tuple[str, ...]:
+    """The lanes whose name tokens can carry the task id's words, so a task row scan tests only those lanes."""
+    wanted = name_tokens(task_id)
+    if not wanted:
+        return ()
+    candidates = set(lanes_by_token.get(wanted[0], ()))
+    if DOTTED_TASK_RE.fullmatch(task_id):
+        candidates |= set(lanes_by_token.get("".join(wanted), ()))
+    return tuple(lane for lane in candidates if names_task(task_id, lane_words[lane]))
 
 
 def _station(
@@ -336,6 +353,7 @@ def build_lanes(
                 liveness_detail=detail,
                 owns=owned,
                 parent_ticket=claim.parent_tickets[0] if claim.parent_tickets else "",
+                read_only=claim.read_only,
             )
         )
     ordered = sorted(
@@ -498,11 +516,16 @@ def build_bays(machines: tuple[ModelFloorMachine, ...]) -> tuple[ModelFloorBay, 
     because a unit of lab work takes a slot of the same cap as a lane does. Free is the machine's own free figure, the
     pool reading's lane slots, which is zero for a host the reading refuses, so a host the bars refuse is never drawn
     as room. The bay's slots are those two added together: a refused host adds only what runs on it. A machine the pool
-    did not read (unread, in repair or out of selection) or read too long ago has no free bay: its count is the lanes
-    the ledger places there, its slots are its cap, and it is marked stale rather than shown as room.
+    did not read or read too long ago has no free bay: its count is the lanes the ledger places there, its slots are
+    its cap, and it is marked stale rather than shown as room — unread, repair and stale machines all still draw a bay,
+    so a machine down for repair keeps its stale bay. A machine out of selection (parked by the host table) is not
+    drawn as a bay at all: a parked host has no room and is not an unread machine.
     """
     bays: list[ModelFloorBay] = []
     for machine in sorted(machines, key=lambda m: m.host):
+        if machine.state == "out":
+            # A parked host (available false, not in repair) has no room and is not an unread machine: no bay at all.
+            continue
         stale = machine.state != "read" or machine.stale
         running = max(machine.lanes_placed, machine.units_placed or 0)
         if stale:

@@ -51,6 +51,8 @@ FLOOR_PIECE = OVERLAY.rebuild.lab_state_piece
 DEADLINE = OVERLAY.chain_deadline_s
 RUNTIME = load_runtime()
 J0_END = (ModelJoinEnd(join="J0", node=EMIT_CYCLE),)
+# The contract ends J0 at the join J0 effect node (OMN-23747), not at the cycle chain.
+J0_CONTRACT_END = (ModelJoinEnd(join="J0", node="node_floor_simple_effect:join_j0"),)
 DECLARED = (ModelPieceChains(piece=FLOOR_PIECE, nodes=RUNTIME.pipeline_chains),)
 
 
@@ -178,9 +180,9 @@ def test_error_a_drilled_cycle_is_not_evidence_for_the_join() -> None:
 
 
 def test_golden_the_tick_hands_the_receipt_the_contracts_join_ends() -> None:
-    assert RUNTIME.join_ends == J0_END
+    assert RUNTIME.join_ends == J0_CONTRACT_END
     sink = InMemoryEmissionSink()
-    for event in chain("c1", T0, "failure"):
+    for event in chain("c1", T0, "failure", node="node_floor_simple_effect:join_j0"):
         sink.emit(event)
     receipts = HandlerFloorSimpleTick._receipts(
         sink, OVERLAY, T0 + timedelta(hours=1), RUNTIME, 6, ()

@@ -1,0 +1,91 @@
+Verdict: PASS with conditions
+
+# Design review, round 3: LaneStart.tla
+
+Reviewer: the same independent agent as rounds 1 and 2. I edited no repository file and ran no git write command.
+Model reviewed: `model/LaneStart.tla`, sha256 `323dcbfddee5fd06b5dda7c3d8e0b437e13d17eda774d2daea8fef1deceaea97`. I diffed it against the round-2 file: the only changes are the header (R4, R6, R5, the property-to-config list, the citation), the `RetryInflight` constant, and the `Retry` guard.
+
+## Re-run (TLC2 2.19, the run_tlc.sh jar), in `review/model3/`
+
+**All 28 author configs** reproduce the author's outputs:
+- Model: no error, 371 distinct states, depth 18. obs_model and chk_unresolved_stays_dead: no error.
+- asbuilt_outcomes: StartedAtMostOnce violated. asbuilt_stopper: LeaderTerminalAfterExit violated. asbuilt_stopper_liveness: temporal property violated.
+- haz_late_start: LeaderTerminalAfterExit violated.
+- The 9 mutants each violate their named property. The new `mut_retry_inflight` differs from Model.cfg in exactly one line (`RetryInflight = TRUE`). It violates StartedAtMostOnce with attempts 1 and 2 both `running`.
+- The 12 witnesses each violate their invariant.
+
+**My own checks:**
+- `x_M4` and `x_M5` (the design at 4 and 5 attempts): pass, with 795 and 1643 states.
+- `x_r6text`: pass, 371 states. This config uses `LaneStartR6.tla`, which replaces the Retry phase guard with R6 exactly as the header words it. Attempt a+1 is allowed only after attempt a answered (refused, done, unresolved or observed), or once a's CLAIM is closed, and the R3 ledger guard is unchanged. This shows that the prose of R6, not just the model's stricter phase set, is enough for StartedAtMostOnce and every other design property.
+- `x_r6equiv`: with that knob off, the variant reproduces Model exactly (371 states).
+- `x_r6text_late` (the same with `LateStart=TRUE`): violates LeaderTerminalAfterExit. That is the known late-start hazard, not an R6 problem.
+
+## 1. Is R1 to R6 a correct and complete statement of the conditions?
+
+**Correct:** yes.
+- Each requirement has a config that breaks it: R1 by mut_stopper_closes_prestart and asbuilt_stopper; R2 by mut_no_reaper and asbuilt_stopper_liveness; R3 by asbuilt_outcomes, mut_retry_any and mut_retry_after_started; R4 by mut_no_single_closer; R6 by mut_retry_inflight.
+- With all six held and `LateStart=FALSE`, the design config proves claims 1 to 4 at MaxAttempts 2 to 5:
+  - claim 1: StartedAtMostOnce
+  - claim 2: AtMostOneTerminal, StartedReachesTerminal, ClaimReachesTerminal and NoStartAfterTerminal
+  - claim 3: NoTerminalWithoutClaim
+  - claim 4: ObserveWritesNothing
+
+**Complete:** nearly. Four items are not in the R-list. None makes the model unsound, because each is either stated elsewhere in the header or holds by construction in the model. But a builder needs them in writing:
+
+- **M1, the late-start assumption.** The header states `LateStart=FALSE` as an UNMEASURED assumption, not as an R. It is a condition on the start transport and the reaper exactly like R1 to R6: haz_late_start and x_r6text_late break the design without it. It should be read as R7.
+- **M2, the writer side of R3.** R3 names the cell the re-requester reads (`outcome start-failed`). It does not say that the orchestrator may write that cell only when the engine provably never launched.
+  - The cell is safe only on the three paths before the launch: a fatal provisioning step, a worktree that was not prepared, and the transport's `failed` result, which it returns only before `setsid` (core.py:734-747,766-775,805-814; adapter_ssh_transport.py:502-507).
+  - It must never be written for `unresolved`, for an engine that ran, or by the stopper.
+  - The model enforces this by construction (LeaderOutcomes). The code must enforce it explicitly.
+- **M3, R1 needs a fence, not a wait.** The model's stopper can tell a live leader from a dead one (`lp = "claimed"` versus `"gone"`), but a real stop node cannot.
+  - A stop node that waits for some time before closing breaks R1 for any leader slower than the wait: provisioning alone may take 1440 s (overlay.example.yaml:47-54).
+  - R1 is met only if the leader checks its CLAIM is still open, or honours a lease, immediately before `START_ENGINE_DETACHED`, and the stopper respects that lease.
+- **M4, the scope of R2.** R2 lists an unresolved start, a refused or failed closing append, and a dead leader. It should also list an orphan CLAIM: a CLAIM append the leader reported as `claim-refused` (ERROR, or the 150 s timeout, on the bus path) whose row lands later (core.py:704-719).
+  - This is safe for StartedAtMostOnce, because that attempt never starts and R3 blocks a retry while the CLAIM is open or closed as `stopped`.
+  - But only the reaper can close it, and the model does not represent it (`Refuse` never adds a CLAIM).
+
+**Consequences** (stated, not required):
+- A key whose start went unresolved can never be retried (chk_unresolved_stays_dead).
+- Under R6, a leader that dies before its CLAIM never answers and writes no CLAIM, so its key can never be retried either.
+
+## 2. Verdict and conditions
+
+PASS with conditions. The design model is sound, and every gap I found in the code is named. Each one is in R1 to R6 or the stated LateStart assumption, and M1 to M4 above only make explicit what those already imply.
+
+I do not know which component each of P3, LF4 and H4 builds; no file I read maps them. The conditions are therefore grouped by component. Each builder takes the group for the component it builds.
+
+**A. The start orchestrator** (node_remote_lane_start_orchestrator, plus its ssh start transport)
+1. **R3, writer side (M2).** Write a ledger-visible `outcome=start-failed`, or an equivalent dedicated cell, only on the three paths before the launch. Keep `outcome=failed` for an engine that ran. Today all three paths write `outcome=failed` (handler_remote_lane_result.py:215-216).
+2. **R1, leader side (M3).** Immediately before `START_ENGINE_DETACHED`, check that this attempt's CLAIM is still open on the ledger of record (or that the leader's lease is still held). If it is closed, end without starting.
+3. **LateStart (M1, R7).** Show that a start reported `unresolved`, or interrupted by the leader's death, cannot launch after the reaper has seen no process tree. Alternatively, fence it: the reaper kills any tree for that run_id before it closes. Until then haz_late_start is a live hazard.
+4. **R5.** Keep the lane name constant across attempts of a key, and never reuse a `run_id` across attempts.
+
+**B. The stop node and the reaper** (node_remote_lane_stop_effect, and the reaper that does not exist yet)
+1. **R1, stopper side.** Never close a CLAIM whose live leader has not started the engine. Today the stop node closes any receipt with an empty status (handler_remote_lane_stop.py:45,151).
+2. **R2, with M4.** A reaper closes every CLAIM left open, and it may close only once no process tree exists for the lane:
+   - unresolved starts
+   - stop-refused CLAIMs
+   - closing appends that were refused or failed
+   - dead leaders
+   - orphan CLAIMs from a refused append
+   Today the stop node answers `already-ended` and writes nothing for `start-unresolved`, `stop-refused` and `ledger-refused`. No reaper exists.
+3. The stopper writes `outcome=stopped`, never `start-failed`.
+
+**C. The re-requester** (whatever re-issues a key's start; today neither the node nor the fill)
+1. **R6.** Re-requests of a key are serialized through one issuer. Attempt a+1 is issued only after attempt a has answered (its completed event) or its CLAIM is closed.
+2. **R3, reader side.** Before issuing a+1, every earlier attempt that holds a CLAIM is closed with the start-failed cell from A1. Any other closing outcome (`stopped`, `failed`, `ended`) or an open CLAIM leaves the key dead.
+
+**D. The ledger writer on the leader's path** (the `ledger_append_argv` command, local or bus)
+1. **R4.** It refuses a second TERMINAL for one CLAIM, and a second CLAIM for one attempt, on the write path actually deployed. Today this is UNMEASURED: `HandlerWorkLedgerAppendEffect` checks only the `req=` cell under a flock beside a local file, and the external writer's source was not on this host.
+   - Until R4 is measured, AtMostOneTerminal rests on it alone. `LeaderChecksSelfClose`, which picks STATUS over TERMINAL, adds no safety, as the header now says.
+
+**Whoever closes this design gate** should record the following:
+- The revised model's hash, the hashes of its cfgs and of `out/*.out`, in the form of the stop-side SUMMARY.txt.
+- That the asbuilt_* configs are expected to stay VIOLATED until A1-A2 (R3, R1) and B1-B2 (R1, R2) land. When they do, each asbuilt config should be re-run and flipped to its design value.
+
+## What I read this round
+
+- The round-3 `model/LaneStart.tla` (the diff against round 2, and the full header).
+- Model.cfg and mut_retry_inflight.cfg (diffed), and the list of all cfgs.
+- `runner.log` and the directory listing of the report directory, which I searched for P3, LF4 and H4 and found nothing.
+- Code citations are from my round-1 reading of core.py, handler_remote_lane_result.py, handler_remote_lane_stop.py, adapter_ssh_transport.py and overlay.example.yaml.

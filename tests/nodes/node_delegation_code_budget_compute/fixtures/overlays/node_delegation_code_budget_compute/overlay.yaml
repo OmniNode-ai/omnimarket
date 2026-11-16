@@ -4,7 +4,31 @@ class_budgets_s:
   code_generation: 480
   test: 480
   code_review: 600
+  reasoning: 300
+  complex_reasoning: 300
+  agent_delegation: 180
+  brief_drafting: 180
+  context_compaction: 180
+  context_selection: 180
+  document: 180
+  documentation: 180
+  escalation: 180
+  evidence_comment: 180
+  extraction_proposer: 180
+  planning: 180
+  refactor: 180
+  research: 180
+  review: 180
+  summarization: 180
+  tail_summary: 180
+  validator_generation: 180
 sizing_margin: 1.5
 round_up_to_s: 60
 min_completed_samples: 3
 ceiling_s: 600
+input_ceilings:
+  local-coder:
+    code_generation: 8169
+  fixture-backend:
+    code_generation: 1000
+    test: 2000

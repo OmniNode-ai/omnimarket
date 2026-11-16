@@ -136,6 +136,7 @@ def _real_overlay(tmp: Path) -> ModelSnapshotOverlay:
             "owner": OWNER,
             "record_journal": str(tmp / "records.jsonl"),
             "emission_journal": str(tmp / "emissions.jsonl"),
+            "record_max_bytes": 1_000_000,
         }
     )
 
@@ -190,7 +191,15 @@ def test_golden_two_controller_ticks_each_taken_by_one_pass_are_both_recorded(
     )  # the controller's next tick overwrites it
     code2, line2 = _pass(ov, sink)
     assert (code1, line1["status"], line1["tick"]) == (0, "recorded", FIRST)
-    assert (again, same) == (0, {"status": "already_recorded", "tick": FIRST})
+    assert (again, same) == (
+        0,
+        {
+            "status": "already_recorded",
+            "tick": FIRST,
+            "journal_retention": "unset",
+            "journal_retention_missing_key": "record_journal_max_records",
+        },
+    )
     assert (code2, line2["status"], line2["tick"]) == (0, "recorded", SECOND)
     records = JsonlLandingTickRecorder(tmp_path / "records.jsonl").recorded()
     assert [r.tick for r in records] == [FIRST, SECOND]
@@ -298,7 +307,7 @@ def test_the_redpanda_overlay_names_every_field_it_needs() -> None:
     base = overlay().model_dump()
     with pytest.raises(
         ValueError,
-        match="facts_path, watcher_state_path, watcher_max_age_seconds, owner, record_journal, emission_journal",
+        match="facts_path, watcher_state_path, watcher_max_age_seconds, owner, record_journal, emission_journal, record_max_bytes",
     ):
         ModelSnapshotOverlay.model_validate(
             {**base, "backend": "redpanda", "bootstrap_servers": "b:1"}

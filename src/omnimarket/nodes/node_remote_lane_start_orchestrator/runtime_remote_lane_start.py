@@ -27,6 +27,7 @@ import time
 from pathlib import Path
 
 import yaml
+from omnibase_spi.contracts.services import ModelLanePluginTree
 
 from omnimarket.nodes.node_remote_lane_start_orchestrator.handlers.adapter_host_pool import (
     SnapshotFileLaneHostPool,
@@ -81,11 +82,24 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--owner")
     p.add_argument("--sha")
     p.add_argument(
+        "--plugin-tree",
+        action="append",
+        default=[],
+        metavar="NAME:DIGEST:ARCHIVE",
+        help="a plugin tree to ship to the host: its name, the digest naming the installed copy and its archive on this host; repeat per tree",
+    )
+    p.add_argument(
         "--timeout-min",
         type=int,
         help="the lane's runtime limit; the CLAIM's est hours follow it",
     )
     return p
+
+
+def plugin_tree(spec: str) -> ModelLanePluginTree:
+    """One ``--plugin-tree NAME:DIGEST:ARCHIVE`` value; the archive path may itself hold colons."""
+    name, digest, archive = [*spec.split(":", 2), "", ""][:3]
+    return ModelLanePluginTree(name=name, source_digest=digest, archive_path=archive)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -117,6 +131,7 @@ def main(argv: list[str] | None = None) -> int:
             owner=args.owner,
             sha=args.sha,
             timeout_min=args.timeout_min,
+            plugin_trees=tuple(plugin_tree(spec) for spec in args.plugin_tree),
         )
     except (OSError, KeyError, ValueError) as exc:
         sys.stderr.write(f"node_remote_lane_start_orchestrator: refused: {exc}\n")

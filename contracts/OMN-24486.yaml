@@ -1,0 +1,71 @@
+schema_version: 1.0.0
+ticket_id: OMN-24486
+title: The scheduled lab alarm and work-state jobs wait without freezing the shared runtime
+summary: The runtime's scheduled lab alarm tick and work-state projection tick called their blocking work directly on the runtime's asyncio event loop. py-spy dumps taken on h201 on 2026-11-14 at 20:04:49Z and 20:05:19Z show the main thread inside a synchronous urlopen read of the runtime's own manifest endpoint (three attempts of a 20 second timeout with 5 second delays, about 70 seconds with the runtime at 0 percent CPU, repeating every 300 seconds) and inside a thread join of the work-state source reads. Each handler class gains an async handle_async that the runtime wiring prefers over handle, running handle on a worker thread with a one-run-at-a-time guard; handle itself is unchanged.
+is_seam_ticket: true
+interface_change: false
+requirements:
+- id: req-omn24486-scheduled-ticks-off-loop
+  statement: The lab alarm and work-state projection scheduled handlers run their blocking work on a worker thread through handle_async, which the runtime wiring selects, so the runtime's event loop keeps serving heartbeats and its own endpoints while they run.
+  acceptance:
+  - id: AC1
+    statement: "AC1: the lab alarm's and the work-state projection's scheduled handlers each expose an async entry point that runs the blocking work on a worker thread, and the event loop keeps beating while it runs -- falsifier: pytest tests/nodes/node_lab_alarm_scheduled_effect/test_event_loop_stays_responsive.py tests/nodes/node_work_state_projection_scheduled_effect/test_event_loop_stays_responsive.py -q"
+  - id: AC2
+    statement: "AC2: a second tick while a run is in flight starts no second run -- falsifier: pytest tests/nodes/node_lab_alarm_scheduled_effect/test_event_loop_stays_responsive.py -k second_tick -q"
+  - id: AC3
+    statement: "AC3: the runtime wiring picks the async entry point of both handlers -- falsifier: pytest tests/nodes/node_lab_alarm_scheduled_effect/test_event_loop_stays_responsive.py tests/nodes/node_work_state_projection_scheduled_effect/test_event_loop_stays_responsive.py -k wiring -q"
+  - id: AC4
+    statement: "AC4: integrated: on the rolled dev runtime on h201 a 20-minute reading of the readiness endpoint every 5 seconds shows no latency above 3 seconds and no 5-minute pattern of silence -- falsifier: any sample in the sampler file with latency above 3 seconds or a non-200 answer at 5-minute spacing"
+evidence_requirements:
+- kind: tests
+  description: The event loop responsiveness tests of both handlers with their failing controls, the second-tick guard tests and the wiring seam tests, plus the neighbouring golden and error chain tests.
+  command: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_lab_alarm_scheduled_effect/test_event_loop_stays_responsive.py tests/nodes/node_work_state_projection_scheduled_effect/test_event_loop_stays_responsive.py tests/nodes/node_lab_alarm_scheduled_effect tests/nodes/node_work_state_projection_scheduled_effect -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24486-ac1-loop-responsive
+  description: Both handlers keep the heartbeat gap under the bound while a 0.6 second blocking run is in flight; the failing control calls the old sync handle on the loop and reads a gap of at least 0.48 seconds.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lab_alarm_scheduled_effect/test_event_loop_stays_responsive.py tests/nodes/node_work_state_projection_scheduled_effect/test_event_loop_stays_responsive.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24486-ac2-second-tick
+  description: A second tick while a run is in flight starts no second run, in both handlers.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lab_alarm_scheduled_effect/test_event_loop_stays_responsive.py tests/nodes/node_work_state_projection_scheduled_effect/test_event_loop_stays_responsive.py -k second_tick -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24486-ac3-wiring-seam
+  description: The seam test between the runtime wiring (the entry point resolver in omnibase_infra) and each handler class, the resolver returns handle_async.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lab_alarm_scheduled_effect/test_event_loop_stays_responsive.py tests/nodes/node_work_state_projection_scheduled_effect/test_event_loop_stays_responsive.py -k wiring -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24486-ac4-hosted-loop
+  description: The hosted half of AC4. The handlers run their blocking work off the event loop under the full neighbouring node test directories, the same behaviour the running readiness sampler reads on the rolled runtime.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lab_alarm_scheduled_effect tests/nodes/node_work_state_projection_scheduled_effect -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24486-ac4-integration-proof
+  description: Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. The pushed head ran the event loop tests on a lab host through the lab work runner and exited 0. The running reading (the rolled dev runtime on h201 and a 20 minute readiness sampler file) is read from the lab receipt comment on the ticket.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-omn24486 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_lab_alarm_scheduled_effect/test_event_loop_stays_responsive.py tests/nodes/node_work_state_projection_scheduled_effect/test_event_loop_stays_responsive.py -q --no-cov -n 0 -p no:randomly
+    cwd: .

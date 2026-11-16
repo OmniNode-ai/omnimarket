@@ -28,5 +28,7 @@ projection:
   interval_seconds: 5
   slack_seconds: 120
 max_appends_per_run: 1
+# OMN-23591: the run's own time limit, inside the publish step's (90 s). A run still open at it closes its chain typed.
+run_deadline_seconds: 75
 allow_injected_break: false
 injected_fault: Point the projection read at a ledger that never hears the row, or revoke the identity's key in the store

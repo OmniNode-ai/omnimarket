@@ -17,7 +17,10 @@ description: >
   next sweep), and what the sweep does next with a lane whose runner exited without a
   host (wait and retry on no host, retry once on another host when the account is limited
   or its login expired), and the brief each lane is dispatched with. The reading and the
-  lane receipts arrive evaluated.
+  lane receipts arrive evaluated. The plan also returns watch-only (dry_run) landing
+  commands for the reds whose remedy is a landing operation (rerun, update the branch,
+  arm or enqueue), each for node_pr_landing_github_effect and once per head, and refuses
+  a request that asks for enforce (OMN-23850).
 handler_routing:
   routing_strategy: operation_match
   handlers:

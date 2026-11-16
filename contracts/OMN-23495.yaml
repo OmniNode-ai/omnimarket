@@ -1,0 +1,53 @@
+schema_version: 1.0.0
+ticket_id: OMN-23495
+title: The fill program's meeting points with other pieces are each tested from both sides
+summary: The floor fill orchestrator meets the lane process effect, the lane start entry, the floor_fill_state table, the ticket seam and the overlay keys. Each meeting point has a test that reads both sides and fails when either changes shape; the ticket seam's method pin follows dev's current shape, which now includes the start criteria read.
+is_seam_ticket: true
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23495-fill-seams
+  statement: Each seam of the fill orchestrator has a test that fails when either side changes shape, and a planted change to the ticket seam's method set turns the pin test red.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: each seam of the fill orchestrator (the process effect, the lane start entry, the floor_fill_state table, the ticket seam and the overlay keys) has a test that reads both sides and fails when either changes shape -- falsifier: uv run pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_seams.py -q --no-cov'
+  - id: AC2
+    statement: 'AC2: a planted change to the ticket seam''s method set turns the pin test red -- falsifier: uv run pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_seams.py -q --no-cov -k test_ticket_seam_methods_are_pinned'
+  - id: AC3
+    statement: 'AC3: integrated: the seam tests run on a lab host at the pushed head and exit 0 against the running dev system''s declared lane -- falsifier: the lab work receipt for the pushed head names the host, the revision and exit 0'
+evidence_requirements:
+- kind: tests
+  description: The fill orchestrator's seam tests at the pushed head.
+  command: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_seams.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23495-ac1-seams
+  description: The seam tests pass on the branch; on origin/dev source the file does not exist, so the check fails there. A break on either side of a seam turns its test red.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_seams.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23495-ac2-pin
+  description: The ticket seam's method pin test passes on the branch and fails on origin/dev source, where the test file is absent.
+  source: manual
+  binds_ac:
+  - AC2
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_seams.py -q --no-cov -n 0 -p no:randomly -k test_ticket_seam_methods_are_pinned
+    cwd: .
+- id: dod-omn23495-integration-proof
+  description: The pushed head ran the fill orchestrator's tests on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23495 -- uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests tests/nodes/node_floor_fill_orchestrator -q --no-cov'
+    cwd: .

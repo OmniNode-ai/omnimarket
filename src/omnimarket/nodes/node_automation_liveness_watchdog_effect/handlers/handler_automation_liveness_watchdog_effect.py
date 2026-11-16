@@ -22,6 +22,7 @@ import logging
 from datetime import datetime, timedelta
 from uuid import UUID
 
+from omnimarket.models.alarm_send_receipt import ModelAlarmSendReceipt
 from omnimarket.models.liveness.model_automation_liveness import (
     EnumAlarmDeliveryRoute,
     EnumAlarmSeverity,
@@ -46,7 +47,6 @@ from omnimarket.nodes.node_automation_liveness_watchdog_effect.handlers.protocol
     UnwiredEventSink,
 )
 from omnimarket.nodes.node_automation_liveness_watchdog_effect.models.model_watchdog_delivery import (
-    ModelAlarmSendReceipt,
     ModelOutboxEntry,
     ModelWatchdogDeliveryRequest,
     ModelWatchdogDeliveryResult,

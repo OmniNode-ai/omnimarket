@@ -27,17 +27,31 @@ from __future__ import annotations
 import json
 import os
 import re
+import socket
 import subprocess
 from pathlib import Path
+from typing import cast
 
 import pytest
 from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
 
-from omnimarket.github_api import download_release_asset, rest_json
+from omnimarket.github_api import download_release_asset
+from omnimarket.models.model_github_gateway_io import ModelWorkflowRunsResult
+from omnimarket.nodes.node_github_repo_gateway_effect.dispatcher import dispatch
+from omnimarket.nodes.node_github_repo_gateway_effect.models.model_gateway_io import (
+    EnumGithubGatewayOperation,
+    ModelGithubGatewayRequest,
+)
 from omnimarket.nodes.node_local_dashboard_serve_effect.bundle import (
     BundlePin,
     ensure_bundle,
     load_pin,
+)
+from tests.nodes.node_github_repo_gateway_effect.recorded_transport import (
+    JsonExchange,
+    RecordedGatewayTransport,
+    get,
+    json_response,
 )
 
 _REPOSITORY = "OmniNode-ai/omnidash"
@@ -65,6 +79,44 @@ def _carries_settings_nav_entry(root: Path) -> bool:
         _SETTINGS_NAV_ENTRY.search(script.read_text(encoding="utf-8", errors="replace"))
         for script in sorted(root.rglob("*.js"))
     )
+
+
+# The publish-dashboard-bundle run listing for the tag, recorded from the
+# repository gateway read node, so the check reads without the public endpoint's
+# rate limits. It is replayed through the node's own read, so the recorded shape
+# is parsed by the code that serves it.
+_PUBLISH_RUNS_FIXTURE = (
+    Path(__file__).parents[1]
+    / "fixtures"
+    / "dashboard_bundle"
+    / "omnidash_publish_runs_v1_1_11.json"
+)
+_PUBLISH_WORKFLOW = "publish-dashboard-bundle.yml"
+
+
+def _publish_runs(body: dict[str, object]) -> ModelWorkflowRunsResult:
+    request = ModelGithubGatewayRequest.model_validate(
+        {
+            "operation": EnumGithubGatewayOperation.WORKFLOW_RUNS,
+            "repo": _REPOSITORY,
+            "workflow": _PUBLISH_WORKFLOW,
+            "branch": _RELEASE,
+            "event": "push",
+        }
+    )
+    path = (
+        f"/repos/{_REPOSITORY}/actions/workflows/{_PUBLISH_WORKFLOW}/runs"
+        f"?branch={_RELEASE}&event=push&per_page=30"
+    )
+    transport = RecordedGatewayTransport([JsonExchange(get(path), json_response(body))])
+    result = dispatch(request, transport)
+    transport.assert_drained()
+    assert isinstance(result, ModelWorkflowRunsResult)
+    return result
+
+
+def _recorded_publish_body() -> dict[str, object]:
+    return json.loads(_PUBLISH_RUNS_FIXTURE.read_text(encoding="utf-8"))
 
 
 @pytest.mark.unit
@@ -120,20 +172,31 @@ def test_the_release_carries_the_bundle_and_its_sidecar(tmp_path: Path) -> None:
     ]
 
 
-@pytest.mark.integration
-def test_the_publish_run_for_the_tag_succeeded(tmp_path: Path) -> None:
-    path = (
-        f"/repos/{_REPOSITORY}/actions/workflows/publish-dashboard-bundle.yml"
-        f"/runs?branch={_RELEASE}&event=push"
+@pytest.mark.unit
+def test_the_publish_run_for_the_tag_succeeded() -> None:
+    assert _publish_runs(_recorded_publish_body()).succeeded_at(_BUMP_MERGE_COMMIT), (
+        f"no successful publish-dashboard-bundle run for {_RELEASE}"
     )
-    token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
-    if token:
-        runs = rest_json("GET", path, token=token)
-    else:
-        listing = tmp_path / "runs.json"
-        download_release_asset(f"https://api.github.com{path}", listing)
-        runs = json.loads(listing.read_text(encoding="utf-8"))
-    assert any(
-        run.get("head_sha") == _BUMP_MERGE_COMMIT and run.get("conclusion") == "success"
-        for run in runs.get("workflow_runs", [])
-    ), f"no successful publish-dashboard-bundle run for {_RELEASE}"
+
+
+@pytest.mark.unit
+def test_the_publish_run_check_reads_the_recorded_fixture_without_network(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _refuse(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("the publish-run check opened a network connection")
+
+    monkeypatch.setattr(socket.socket, "connect", _refuse)
+    assert _publish_runs(_recorded_publish_body()).succeeded_at(_BUMP_MERGE_COMMIT)
+
+
+@pytest.mark.unit
+def test_the_publish_run_check_rejects_a_wrong_run() -> None:
+    body = _recorded_publish_body()
+    runs = cast(list[dict[str, object]], body["workflow_runs"])
+    assert not _publish_runs(body).succeeded_at("0" * 40)
+    failed = {**body, "workflow_runs": [{**runs[0], "conclusion": "failure"}]}
+    assert not _publish_runs(failed).succeeded_at(_BUMP_MERGE_COMMIT)
+    assert not _publish_runs({**body, "workflow_runs": []}).succeeded_at(
+        _BUMP_MERGE_COMMIT
+    )

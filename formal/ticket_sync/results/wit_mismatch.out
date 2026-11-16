@@ -1,0 +1,322 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 16 and seed 6129073233045433044 with 8 workers on 56 cores with 2731MB heap and 64MB offheap memory [pid: 1] (Linux 6.8.0-147-generic amd64, Eclipse Adoptium 17.0.21 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file /w/TicketSync.tla
+Parsing file /tmp/Naturals.tla
+Parsing file /tmp/Sequences.tla
+Parsing file /tmp/FiniteSets.tla
+Parsing file /tmp/TLC.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module TLC
+Semantic processing of module TicketSync
+Starting... (2026-11-11 15:57:08)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-11-11 15:57:08.
+Error: Invariant NeverMismatch is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ W = {}
+/\ r = ( <<"b1", 1>> :>
+      [ pc |-> "idle",
+        kind |-> "sync",
+        X |-> <<"none", "none", "none">>,
+        rb |-> <<"none", "none", "none">>,
+        rh |-> <<"none", "none">>,
+        rt |-> FALSE,
+        eh |-> <<"none", "none">>,
+        ec |-> TRUE,
+        cur |-> <<"none", "none", "none">>,
+        base |-> <<"none", "none", "none">>,
+        out |-> "none",
+        wh |-> <<"none", "none">>,
+        noopc |-> FALSE ] @@
+  <<"b1", 2>> :>
+      [ pc |-> "idle",
+        kind |-> "sync",
+        X |-> <<"none", "none", "none">>,
+        rb |-> <<"none", "none", "none">>,
+        rh |-> <<"none", "none">>,
+        rt |-> FALSE,
+        eh |-> <<"none", "none">>,
+        ec |-> TRUE,
+        cur |-> <<"none", "none", "none">>,
+        base |-> <<"none", "none", "none">>,
+        out |-> "none",
+        wh |-> <<"none", "none">>,
+        noopc |-> FALSE ] @@
+  <<"b2", 1>> :>
+      [ pc |-> "idle",
+        kind |-> "sync",
+        X |-> <<"none", "none", "none">>,
+        rb |-> <<"none", "none", "none">>,
+        rh |-> <<"none", "none">>,
+        rt |-> FALSE,
+        eh |-> <<"none", "none">>,
+        ec |-> TRUE,
+        cur |-> <<"none", "none", "none">>,
+        base |-> <<"none", "none", "none">>,
+        out |-> "none",
+        wh |-> <<"none", "none">>,
+        noopc |-> FALSE ] )
+/\ files = [ b1 |-> [cur |-> <<"fp", "init", 0>>, base |-> <<"fp", "init", 0>>],
+  b2 |-> [cur |-> <<"fp", "init", 0>>, base |-> <<"fp", "init", 0>>] ]
+/\ ev = << [ kind |-> "written",
+     h |-> <<"n", <<"fp", "init", 0>>>>,
+     by |-> <<"create", 0>>,
+     cap |-> TRUE ] >>
+/\ fe = [b1 |-> 0, b2 |-> 0]
+/\ tk = [ blk |-> <<"fp", "init", 0>>,
+  h |-> <<"n", <<"fp", "init", 0>>>>,
+  txt |-> FALSE,
+  by |-> <<"create", 0>> ]
+/\ hn = 0
+/\ crashes = 0
+/\ lateH = (<<"b1", 1>> :> FALSE @@ <<"b1", 2>> :> FALSE @@ <<"b2", 1>> :> FALSE)
+/\ terms = (<<"b1", 1>> :> <<>> @@ <<"b1", 2>> :> <<>> @@ <<"b2", 1>> :> <<>>)
+
+State 2: <HandEdit line 148, col 3 to line 155, col 54 of module TicketSync>
+/\ W = {}
+/\ r = ( <<"b1", 1>> :>
+      [ pc |-> "idle",
+        kind |-> "sync",
+        X |-> <<"none", "none", "none">>,
+        rb |-> <<"none", "none", "none">>,
+        rh |-> <<"none", "none">>,
+        rt |-> FALSE,
+        eh |-> <<"none", "none">>,
+        ec |-> TRUE,
+        cur |-> <<"none", "none", "none">>,
+        base |-> <<"none", "none", "none">>,
+        out |-> "none",
+        wh |-> <<"none", "none">>,
+        noopc |-> FALSE ] @@
+  <<"b1", 2>> :>
+      [ pc |-> "idle",
+        kind |-> "sync",
+        X |-> <<"none", "none", "none">>,
+        rb |-> <<"none", "none", "none">>,
+        rh |-> <<"none", "none">>,
+        rt |-> FALSE,
+        eh |-> <<"none", "none">>,
+        ec |-> TRUE,
+        cur |-> <<"none", "none", "none">>,
+        base |-> <<"none", "none", "none">>,
+        out |-> "none",
+        wh |-> <<"none", "none">>,
+        noopc |-> FALSE ] @@
+  <<"b2", 1>> :>
+      [ pc |-> "idle",
+        kind |-> "sync",
+        X |-> <<"none", "none", "none">>,
+        rb |-> <<"none", "none", "none">>,
+        rh |-> <<"none", "none">>,
+        rt |-> FALSE,
+        eh |-> <<"none", "none">>,
+        ec |-> TRUE,
+        cur |-> <<"none", "none", "none">>,
+        base |-> <<"none", "none", "none">>,
+        out |-> "none",
+        wh |-> <<"none", "none">>,
+        noopc |-> FALSE ] )
+/\ files = [ b1 |-> [cur |-> <<"fp", "init", 0>>, base |-> <<"fp", "init", 0>>],
+  b2 |-> [cur |-> <<"fp", "init", 0>>, base |-> <<"fp", "init", 0>>] ]
+/\ ev = << [ kind |-> "written",
+     h |-> <<"n", <<"fp", "init", 0>>>>,
+     by |-> <<"create", 0>>,
+     cap |-> TRUE ] >>
+/\ fe = [b1 |-> 0, b2 |-> 0]
+/\ tk = [ blk |-> <<"fp", "init", 0>>,
+  h |-> <<"h", 1>>,
+  txt |-> TRUE,
+  by |-> <<"hand", 0>> ]
+/\ hn = 1
+/\ crashes = 0
+/\ lateH = (<<"b1", 1>> :> FALSE @@ <<"b1", 2>> :> FALSE @@ <<"b2", 1>> :> FALSE)
+/\ terms = (<<"b1", 1>> :> <<>> @@ <<"b1", 2>> :> <<>> @@ <<"b2", 1>> :> <<>>)
+
+State 3: <Issue line 164, col 3 to line 168, col 66 of module TicketSync>
+/\ W = {}
+/\ r = ( <<"b1", 1>> :>
+      [ pc |-> "pending",
+        kind |-> "replace",
+        X |-> <<"fp", "b1", 1>>,
+        rb |-> <<"none", "none", "none">>,
+        rh |-> <<"none", "none">>,
+        rt |-> FALSE,
+        eh |-> <<"none", "none">>,
+        ec |-> TRUE,
+        cur |-> <<"none", "none", "none">>,
+        base |-> <<"none", "none", "none">>,
+        out |-> "none",
+        wh |-> <<"none", "none">>,
+        noopc |-> FALSE ] @@
+  <<"b1", 2>> :>
+      [ pc |-> "idle",
+        kind |-> "sync",
+        X |-> <<"none", "none", "none">>,
+        rb |-> <<"none", "none", "none">>,
+        rh |-> <<"none", "none">>,
+        rt |-> FALSE,
+        eh |-> <<"none", "none">>,
+        ec |-> TRUE,
+        cur |-> <<"none", "none", "none">>,
+        base |-> <<"none", "none", "none">>,
+        out |-> "none",
+        wh |-> <<"none", "none">>,
+        noopc |-> FALSE ] @@
+  <<"b2", 1>> :>
+      [ pc |-> "idle",
+        kind |-> "sync",
+        X |-> <<"none", "none", "none">>,
+        rb |-> <<"none", "none", "none">>,
+        rh |-> <<"none", "none">>,
+        rt |-> FALSE,
+        eh |-> <<"none", "none">>,
+        ec |-> TRUE,
+        cur |-> <<"none", "none", "none">>,
+        base |-> <<"none", "none", "none">>,
+        out |-> "none",
+        wh |-> <<"none", "none">>,
+        noopc |-> FALSE ] )
+/\ files = [ b1 |-> [cur |-> <<"fp", "init", 0>>, base |-> <<"fp", "init", 0>>],
+  b2 |-> [cur |-> <<"fp", "init", 0>>, base |-> <<"fp", "init", 0>>] ]
+/\ ev = << [ kind |-> "written",
+     h |-> <<"n", <<"fp", "init", 0>>>>,
+     by |-> <<"create", 0>>,
+     cap |-> TRUE ] >>
+/\ fe = [b1 |-> 0, b2 |-> 0]
+/\ tk = [ blk |-> <<"fp", "init", 0>>,
+  h |-> <<"h", 1>>,
+  txt |-> TRUE,
+  by |-> <<"hand", 0>> ]
+/\ hn = 1
+/\ crashes = 0
+/\ lateH = (<<"b1", 1>> :> FALSE @@ <<"b1", 2>> :> FALSE @@ <<"b2", 1>> :> FALSE)
+/\ terms = (<<"b1", 1>> :> <<>> @@ <<"b1", 2>> :> <<>> @@ <<"b2", 1>> :> <<>>)
+
+State 4: <Begin line 172, col 3 to line 202, col 59 of module TicketSync>
+/\ W = {}
+/\ r = ( <<"b1", 1>> :>
+      [ pc |-> "ending",
+        kind |-> "replace",
+        X |-> <<"fp", "b1", 1>>,
+        rb |-> <<"fp", "init", 0>>,
+        rh |-> <<"h", 1>>,
+        rt |-> TRUE,
+        eh |-> <<"n", <<"fp", "init", 0>>>>,
+        ec |-> TRUE,
+        cur |-> <<"fp", "init", 0>>,
+        base |-> <<"fp", "init", 0>>,
+        out |-> "mismatch",
+        wh |-> <<"h", 1>>,
+        noopc |-> FALSE ] @@
+  <<"b1", 2>> :>
+      [ pc |-> "idle",
+        kind |-> "sync",
+        X |-> <<"none", "none", "none">>,
+        rb |-> <<"none", "none", "none">>,
+        rh |-> <<"none", "none">>,
+        rt |-> FALSE,
+        eh |-> <<"none", "none">>,
+        ec |-> TRUE,
+        cur |-> <<"none", "none", "none">>,
+        base |-> <<"none", "none", "none">>,
+        out |-> "none",
+        wh |-> <<"none", "none">>,
+        noopc |-> FALSE ] @@
+  <<"b2", 1>> :>
+      [ pc |-> "idle",
+        kind |-> "sync",
+        X |-> <<"none", "none", "none">>,
+        rb |-> <<"none", "none", "none">>,
+        rh |-> <<"none", "none">>,
+        rt |-> FALSE,
+        eh |-> <<"none", "none">>,
+        ec |-> TRUE,
+        cur |-> <<"none", "none", "none">>,
+        base |-> <<"none", "none", "none">>,
+        out |-> "none",
+        wh |-> <<"none", "none">>,
+        noopc |-> FALSE ] )
+/\ files = [ b1 |-> [cur |-> <<"fp", "init", 0>>, base |-> <<"fp", "init", 0>>],
+  b2 |-> [cur |-> <<"fp", "init", 0>>, base |-> <<"fp", "init", 0>>] ]
+/\ ev = << [ kind |-> "written",
+     h |-> <<"n", <<"fp", "init", 0>>>>,
+     by |-> <<"create", 0>>,
+     cap |-> TRUE ] >>
+/\ fe = [b1 |-> 0, b2 |-> 0]
+/\ tk = [ blk |-> <<"fp", "init", 0>>,
+  h |-> <<"h", 1>>,
+  txt |-> TRUE,
+  by |-> <<"hand", 0>> ]
+/\ hn = 1
+/\ crashes = 0
+/\ lateH = (<<"b1", 1>> :> FALSE @@ <<"b1", 2>> :> FALSE @@ <<"b2", 1>> :> FALSE)
+/\ terms = (<<"b1", 1>> :> <<>> @@ <<"b1", 2>> :> <<>> @@ <<"b2", 1>> :> <<>>)
+
+State 5: <Term line 268, col 3 to line 275, col 59 of module TicketSync>
+/\ W = {}
+/\ r = ( <<"b1", 1>> :>
+      [ pc |-> "done",
+        kind |-> "replace",
+        X |-> <<"fp", "b1", 1>>,
+        rb |-> <<"fp", "init", 0>>,
+        rh |-> <<"h", 1>>,
+        rt |-> TRUE,
+        eh |-> <<"n", <<"fp", "init", 0>>>>,
+        ec |-> TRUE,
+        cur |-> <<"fp", "init", 0>>,
+        base |-> <<"fp", "init", 0>>,
+        out |-> "mismatch",
+        wh |-> <<"h", 1>>,
+        noopc |-> FALSE ] @@
+  <<"b1", 2>> :>
+      [ pc |-> "idle",
+        kind |-> "sync",
+        X |-> <<"none", "none", "none">>,
+        rb |-> <<"none", "none", "none">>,
+        rh |-> <<"none", "none">>,
+        rt |-> FALSE,
+        eh |-> <<"none", "none">>,
+        ec |-> TRUE,
+        cur |-> <<"none", "none", "none">>,
+        base |-> <<"none", "none", "none">>,
+        out |-> "none",
+        wh |-> <<"none", "none">>,
+        noopc |-> FALSE ] @@
+  <<"b2", 1>> :>
+      [ pc |-> "idle",
+        kind |-> "sync",
+        X |-> <<"none", "none", "none">>,
+        rb |-> <<"none", "none", "none">>,
+        rh |-> <<"none", "none">>,
+        rt |-> FALSE,
+        eh |-> <<"none", "none">>,
+        ec |-> TRUE,
+        cur |-> <<"none", "none", "none">>,
+        base |-> <<"none", "none", "none">>,
+        out |-> "none",
+        wh |-> <<"none", "none">>,
+        noopc |-> FALSE ] )
+/\ files = [ b1 |-> [cur |-> <<"fp", "init", 0>>, base |-> <<"fp", "init", 0>>],
+  b2 |-> [cur |-> <<"fp", "init", 0>>, base |-> <<"fp", "init", 0>>] ]
+/\ ev = << [ kind |-> "written",
+     h |-> <<"n", <<"fp", "init", 0>>>>,
+     by |-> <<"create", 0>>,
+     cap |-> TRUE ] >>
+/\ fe = [b1 |-> 0, b2 |-> 0]
+/\ tk = [ blk |-> <<"fp", "init", 0>>,
+  h |-> <<"h", 1>>,
+  txt |-> TRUE,
+  by |-> <<"hand", 0>> ]
+/\ hn = 1
+/\ crashes = 0
+/\ lateH = (<<"b1", 1>> :> FALSE @@ <<"b1", 2>> :> FALSE @@ <<"b2", 1>> :> FALSE)
+/\ terms = (<<"b1", 1>> :> <<"mismatch">> @@ <<"b1", 2>> :> <<>> @@ <<"b2", 1>> :> <<>>)
+
+2374 states generated, 1217 distinct states found, 980 states left on queue.
+The depth of the complete state graph search is 6.
+The average outdegree of the complete state graph is 5 (minimum is 1, the maximum 18 and the 95th percentile is 15).
+Finished in 00s at (2026-11-11 15:57:08)
+exit=12

@@ -66,6 +66,11 @@ readiness:
     downstream_started_before_upstream_succeeded: to
     downstream_started_after_upstream_failed: to
     downstream_missing_typed_failure: to
+  # Real work (OMN-23862). A join counts toward READY only when its golden chain inside the emission window came from a chain whose
+  # typed origin is one of these; probe, twin, control, canary, drill and unknown chains stay on the board as health and never count.
+  real_origins: [real]
+  # A piece is not READY while a neighbour on a counted join has one of these piece statuses; the board says which neighbour.
+  blocking_neighbour_statuses: [not_working]
 
 # The rebuild strip. Piece 17 is step 0 (17a) and its reading is the lab state.
 rebuild:

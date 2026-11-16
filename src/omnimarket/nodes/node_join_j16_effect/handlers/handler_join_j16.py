@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Literal
@@ -153,6 +153,7 @@ class HandlerJoinJ16:
             clock=self._clock,
             correlation_id=cid,
             backend=self._backend,
+            origin="probe",
         )
 
     @staticmethod
@@ -201,3 +202,14 @@ class HandlerJoinJ16:
 
 def _age_s(reading: ModelReadingRow | None, now: datetime) -> int | None:
     return None if reading is None else int((now - reading.probed_at).total_seconds())
+
+
+def refuse_unread_floor_node(to_node: str, floor_chains: Sequence[str]) -> None:
+    """A join's target node must be one of the floor's declared piece chains, or the join's own
+    refusal is a record the floor never reads (OMN-23601)."""
+    if to_node not in floor_chains:
+        raise ValueError(
+            f"{to_node} is not among the chains the floor reads for its piece "
+            f"(pipeline_chains); the join's refusal would be unread and read as "
+            f"downstream_missing_typed_failure"
+        )

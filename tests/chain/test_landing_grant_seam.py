@@ -3,11 +3,11 @@
 """The landing chain's broker calls stay inside the dev principal's grants (OMN-23395).
 
 The dev-lane principal's broker grants (the developer principal bindings of the lab
-infrastructure declaration) grant exactly two topics -- the decision node's command and success
-terminals -- and two consumer-group prefixes; the failure terminal is not granted. This
-seam test spells the granted lists here and holds ``RedpandaDecisionBus`` against them,
-so the chain the controller will run cannot drift onto a topic or a group the dev broker
-refuses. It runs with no broker: the bus opener the bus imports inside ``start`` is
+infrastructure declaration) grant exactly three topics -- the decision node's command,
+success and failure terminals -- and two consumer-group prefixes; the chain itself never
+uses the failure terminal. This seam test spells the granted lists here and holds
+``RedpandaDecisionBus`` against them, so the chain the controller will run cannot
+drift onto a topic or a group the dev broker refuses. It runs with no broker: the bus opener the bus imports inside ``start`` is
 patched to yield a fake client that records every call. The control feeds the same
 checks a group id under a prefix the grants do not name and demands red.
 """
@@ -21,7 +21,8 @@ from collections.abc import AsyncIterator, Mapping, Sequence
 from typing import Any, Final
 
 import pytest
-from omnibase_infra.tools.contract_topic_extractor import ContractTopicExtractor
+from omnibase_infra.runtime.auto_wiring.discovery import discover_contracts_from_paths
+from omnibase_infra.runtime.auto_wiring.handler_wiring import _contract_provision_topics
 
 from omnimarket.delegated_test_loop.lane_bus import open_lab_run_bus
 from tests.chain.landing_chain import (
@@ -38,8 +39,9 @@ pytestmark = pytest.mark.unit
 # other repository.
 GRANTED_COMMAND_TOPIC: Final = "onex.cmd.omnimarket.pr-landing-decision-requested.v1"
 GRANTED_SUCCESS_TOPIC: Final = "onex.evt.omnimarket.pr-landing-decision-completed.v1"
+GRANTED_FAILURE_TOPIC: Final = "onex.evt.omnimarket.pr-landing-decision-failed.v1"
 GRANTED_TOPICS: Final[frozenset[str]] = frozenset(
-    {GRANTED_COMMAND_TOPIC, GRANTED_SUCCESS_TOPIC}
+    {GRANTED_COMMAND_TOPIC, GRANTED_SUCCESS_TOPIC, GRANTED_FAILURE_TOPIC}
 )
 NODE_GROUP_PREFIX: Final = "landing-chain-node-"
 CONTROLLER_GROUP_PREFIX: Final = "landing-chain-controller-"
@@ -72,7 +74,12 @@ def assert_grant_shape(
         assert published["topic"] in GRANTED_TOPICS, (
             f"published {published['topic']!r}, which the grants do not name"
         )
-    assert failure not in GRANTED_TOPICS, "the grants cover the failure terminal"
+    assert failure not in {sub["topic"] for sub in subscriptions}, (
+        "the chain subscribes to the failure terminal"
+    )
+    assert failure not in {published["topic"] for published in publishes}, (
+        "the chain publishes to the failure terminal"
+    )
     carried = {sub["topic"] for sub in subscriptions} | {
         published["topic"] for published in publishes
     }
@@ -158,7 +165,7 @@ async def test_decision_bus_publishes_only_granted_topics(
         )
         assert_grant_shape(fake.subscriptions, fake.published, run_id=bus.run_id)
         failure = decision_topics()["failure"]
-        assert failure not in GRANTED_TOPICS
+        assert failure in GRANTED_TOPICS
         assert failure not in {sub["topic"] for sub in fake.subscriptions}
         assert failure not in {published["topic"] for published in fake.published}
     finally:
@@ -174,21 +181,20 @@ def test_topics_equal_the_node_contract() -> None:
 def test_every_granted_topic_is_provisioned_by_a_node_contract() -> None:
     """A topic the principal is granted exists on the broker, or the chain times out.
 
-    The provisioner creates what the contracts declare in ``consumed_events``,
-    ``published_events`` and ``event_bus``, and not what ``runtime_dispatch`` names. The
-    command topic is declared by the decision node and its success terminal by the
-    ledger mirror node, which consumes it. A grant on a topic no contract declares
-    is a grant on a topic that was never created.
+    The dev runtime runs with ONEX_BOOT_UNIVERSE_PROVISION=0, so it creates a node's
+    topics only through the per-contract provisioning, which reads the contract's
+    ``event_bus`` section (subscribe, publish and dlq topics) and not
+    ``consumed_events``, ``published_events`` or ``runtime_dispatch``. This reads the
+    decision node's contract through that same path. A grant on a topic it does not
+    provision is a grant on a topic that was never created.
     """
-    decision_dir = DECISION_CONTRACT.parent
-    mirror_dir = decision_dir.parent / "node_work_ledger_landing_mirror"
-    provisioned = {
-        entry.topic
-        for node_dir in (decision_dir, mirror_dir)
-        for entry in ContractTopicExtractor().extract(node_dir)
-    }
+    manifest = discover_contracts_from_paths([DECISION_CONTRACT])
+    assert len(manifest.contracts) == 1, (
+        f"the decision contract was not discovered: {manifest.errors} {manifest.skips}"
+    )
+    provisioned = set(_contract_provision_topics(manifest.contracts[0]))
     assert provisioned >= GRANTED_TOPICS, (
-        f"granted but declared by no node contract: {sorted(GRANTED_TOPICS - provisioned)}"
+        f"granted but provisioned by no node contract: {sorted(GRANTED_TOPICS - provisioned)}"
     )
 
 

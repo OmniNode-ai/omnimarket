@@ -28,6 +28,7 @@ from tests.nodes.node_machine_grant_role_compute.overlay_fixture import (
 pytestmark = pytest.mark.unit
 
 NODE_DIR = Path(node_package.__file__).parent
+DISPATCH_DIR = NODE_DIR.parent / "node_lane_dispatch_effect"
 
 
 def _handle(**kwargs: object) -> dict[str, object]:
@@ -54,10 +55,39 @@ def test_scm_writer_grants_are_the_write_node_dispatch_topics() -> None:
     }
 
 
+@pytest.mark.parametrize("role", ["lane-dispatch-caller", "lane-dispatch-runtime"])
+def test_lane_dispatch_roles_resolve_only_the_contract_topics(role: str) -> None:
+    """Resolve through the role handler, including the local runtime's reverse side."""
+    contract = yaml.safe_load((DISPATCH_DIR / "contract.yaml").read_text())
+    command = contract["runtime_dispatch"]["command_topic"]
+    terminal = contract["terminal_event"]
+    write, read = (
+        (command, terminal) if role == "lane-dispatch-caller" else (terminal, command)
+    )
+    result = _handle(overlay=overlay(machine("dispatch-host", role)), role=role)
+    assert result["status"] == "resolved", result
+    assert len(result["bindings"]) == 1
+    assert {
+        (grant["operation"], grant["resource_name"])
+        for grant in result["bindings"][0]["grants"]
+    } == {("write", write), ("read", read), ("describe", read)}
+    assert all(
+        grant["resource_type"] == "topic" and grant["pattern_type"] == "literal"
+        for grant in result["bindings"][0]["grants"]
+    )
+    assert (
+        _handle(overlay=overlay(machine("dispatch-host")), role=role)["bindings"] == []
+    )
+
+
 def test_machines_bound_in_the_overlay_get_the_role_and_nothing_else_does() -> None:
     result = _handle(overlay=TWO_WRITERS)
     assert result["status"] == "resolved"
-    assert result["declared_roles"] == ["scm-writer"]
+    assert result["declared_roles"] == [
+        "lane-dispatch-caller",
+        "lane-dispatch-runtime",
+        "scm-writer",
+    ]
     holders = [(b["principal"], b["role"]) for b in result["bindings"]]
     assert holders == [("lab-host-a", "scm-writer"), ("lab-host-b", "scm-writer")]
     assert result["bindings"][0]["acl_principal"] == "User:lab-host-a"

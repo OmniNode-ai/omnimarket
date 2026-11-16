@@ -73,3 +73,75 @@ dod_evidence:
     check_value: >-
       gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_delegated_test_loop_orchestrator/handlers/handler_delegated_test_loop_orchestrator.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -q '^def _compact_result('
     cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn19362-ac1-accepted-20261111t1145z
+  description: 'AC1: with every child run failing, the loop dispatches exactly three delegates and stops FAILED with attempts == 3. Re-run by the accepting lane at omnimarket origin/dev 932c240449: 1 passed. The test file is absent at the parent of the implementing merge 03478c1b5f.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegated_test_loop_orchestrator/test_handler_delegated_test_loop_orchestrator.py::test_attempt_bound_is_three -q -p no:cacheprovider
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC1
+- id: dod-omn19362-ac2-accepted-20261111t1145z
+  description: 'AC2: two consecutive identical failure fingerprints stop the loop with NO_PROGRESS after two delegates. Re-run by the accepting lane at omnimarket origin/dev 932c240449: 1 passed. The test file is absent at the parent of the implementing merge 03478c1b5f.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegated_test_loop_orchestrator/test_handler_delegated_test_loop_orchestrator.py::test_two_identical_fingerprints_in_a_row_stop_with_no_progress -q -p no:cacheprovider
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC2
+- id: dod-omn19362-ac4-accepted-20261111t1145z
+  description: 'AC4: a loop receipt recorded to disk lists every child run and replays through replay_loop_receipt to the same status. Re-run by the accepting lane at omnimarket origin/dev 932c240449: 1 passed. The test file is absent at the parent of the implementing merge 03478c1b5f.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegated_test_loop_orchestrator/test_handler_delegated_test_loop_orchestrator.py::test_the_loop_receipt_lists_every_child_and_replays_to_the_same_status -q -p no:cacheprovider
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC4
+- id: dod-omn19362-ac5-accepted-20261111t1145z
+  description: 'AC5: oversized ASCII, Unicode and escaped digests serialize under MAX_RESULT_BYTES (4096) through both JSON serializers. Re-run by the accepting lane at omnimarket origin/dev 932c240449: 3 passed. The test file is absent at the parent of the implementing merge 03478c1b5f.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegated_test_loop_orchestrator/test_handler_delegated_test_loop_orchestrator.py::test_oversized_diagnostics_are_compact_and_retained_in_the_receipt -q -p no:cacheprovider
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC5
+- id: dod-omn19362-ac7-accepted-20261111t1145z
+  description: 'AC7: no Python source of node_delegated_test_loop_orchestrator declares a class Plugin* (or names ModelEventEnvelope). Re-run by the accepting lane at omnimarket origin/dev 932c240449: 1 passed. The test file is absent at the parent of the implementing merge 03478c1b5f.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegated_test_loop_orchestrator/test_handler_delegated_test_loop_orchestrator.py::test_the_node_declares_no_plugin_class_and_no_envelope -q -p no:cacheprovider
+    cwd: ${OMNI_HOME}/omnimarket
+  binds_ac:
+  - AC7
+context:
+  ac_binding_provenance:
+    dod-omn19362-ac1-accepted-20261111t1145z:
+    - label: AC1
+      criterion_hash: 7c53317279169409c8fa57b1daa754a4316d547a2e8f682719462d5effe48160
+      proposed_by: lane=dod-closeout-bind-2026-11-11T1145Z-c1
+      accepted_by: lane=dod-closeout-accept-2026-11-11T1145Z-c1
+    dod-omn19362-ac2-accepted-20261111t1145z:
+    - label: AC2
+      criterion_hash: 1e41d91370519cc764fa51be50d2684f5bb69bfdb33fac6b1540267e9158ffad
+      proposed_by: lane=dod-closeout-bind-2026-11-11T1145Z-c1
+      accepted_by: lane=dod-closeout-accept-2026-11-11T1145Z-c1
+    dod-omn19362-ac4-accepted-20261111t1145z:
+    - label: AC4
+      criterion_hash: e814cd1ceecf0aef8edea3f66c985e6b6af24370460a3c092bea76b1ba5b5d04
+      proposed_by: lane=dod-closeout-bind-2026-11-11T1145Z-c1
+      accepted_by: lane=dod-closeout-accept-2026-11-11T1145Z-c1
+    dod-omn19362-ac5-accepted-20261111t1145z:
+    - label: AC5
+      criterion_hash: 30431c29f551a92b763c2c0a56bcc0c11a4835a394bbb97bfd7e42eca2d7aab2
+      proposed_by: lane=dod-closeout-bind-2026-11-11T1145Z-c1
+      accepted_by: lane=dod-closeout-accept-2026-11-11T1145Z-c1
+    dod-omn19362-ac7-accepted-20261111t1145z:
+    - label: AC7
+      criterion_hash: 3077995d6f09abcd24c6edc0a01f621b54a96e050677571a2e81ff1d14b89d15
+      proposed_by: lane=dod-closeout-bind-2026-11-11T1145Z-c1
+      accepted_by: lane=dod-closeout-accept-2026-11-11T1145Z-c1

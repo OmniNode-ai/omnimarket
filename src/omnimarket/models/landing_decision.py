@@ -10,7 +10,8 @@ ledger facts node, which derives the rows the decision reads. The PR facts model
 patterns are re-exported for the tick's act-mode writer and the snapshot step, which fill and
 read the per-PR write facts (OMN-23409). The CI, merge state, pull request state and red class
 enums are re-exported for the watcher facts node, which writes them from the PR watcher's state
-(OMN-23507).
+(OMN-23507). The liveness fact and its read enum are re-exported for the liveness read node, which
+writes the fact the decision reads (OMN-23529).
 """
 
 from __future__ import annotations
@@ -30,15 +31,21 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_deci
 from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_facts import (
     ModelLandingCauseOwner,
     ModelLandingCauseRelease,
+    ModelLandingExternalJudged,
     ModelLandingFacts,
     ModelLandingPrFacts,
     ModelLandingSharedCheckVerdict,
     ModelLandingUpdateNoNewCommits,
 )
+from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_liveness import (
+    EnumLivenessRead,
+    ModelLandingLivenessFacts,
+)
 from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_state import (
     PR_KEY_PATTERN,
     REPO_PATTERN,
     SHA_PATTERN,
+    ModelLandingControllerState,
 )
 
 __all__ = [
@@ -51,11 +58,15 @@ __all__ = [
     "EnumLandingPrState",
     "EnumLandingRedClass",
     "EnumLandingSuspension",
+    "EnumLivenessRead",
     "ModelLandingAction",
     "ModelLandingCauseOwner",
     "ModelLandingCauseRelease",
+    "ModelLandingControllerState",
     "ModelLandingDecision",
+    "ModelLandingExternalJudged",
     "ModelLandingFacts",
+    "ModelLandingLivenessFacts",
     "ModelLandingPrFacts",
     "ModelLandingSharedCheckVerdict",
     "ModelLandingUpdateNoNewCommits",

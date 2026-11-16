@@ -1,0 +1,76 @@
+schema_version: 1.0.0
+ticket_id: OMN-23607
+title: 'Move lanes off an account before its limit: per-account usage verdict'
+summary: A pure compute node reads each Claude token-pool label's measured usage against its five-hour and weekly windows and answers per label the fraction used, the seconds to reset and a verdict (ok, drain, limited, unknown) from overlay thresholds, and lists the labels the pool should skip for new lane starts.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn23607-usage-verdict
+  statement: Per pool label, a verdict from the overlay's thresholds, with the labels to skip for new starts handed to the pool's resolve through one agreed field.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a compute node returns, per pool label, fraction used and seconds to reset for the five-hour and weekly windows and a verdict (ok, drain, limited, unknown) from overlay thresholds, with the thresholds in the overlay and none in code -- falsifier: pytest tests/nodes/node_pool_usage_verdict_compute/test_handler_pool_usage_verdict.py -q fails at the base where the node is absent, and its failing-control test flips a verdict by changing only the policy'
+  - id: AC2
+    statement: 'AC2: the drain list is empty unless at least one label is ok, and a stale or never-read label is unknown, never ok -- falsifier: pytest tests/nodes/node_pool_usage_verdict_compute/test_handler_pool_usage_verdict.py -q -k "drain_labels or stale or no_reading"'
+  - id: AC3
+    statement: 'AC3: the seams are measured: the usage source (floor cloud accounts and pool status mirror) to this node, and this node''s drain list to the pool resolve input owned by the pool-pin lane -- falsifier: pytest tests/nodes/node_pool_usage_verdict_compute/test_seam_floor_to_pool_usage_verdict.py tests/nodes/node_pool_usage_verdict_compute/test_seam_pool_resolve_input.py -q fails when either side renames or retypes the field'
+  - id: AC4
+    statement: 'AC4: golden and error chain tests pass on the in-memory bus and on the real broker -- falsifier: pytest tests/nodes/node_pool_usage_verdict_compute/test_golden_chain_pool_usage_verdict_compute.py tests/nodes/node_pool_usage_verdict_compute/test_error_chain_pool_usage_verdict_compute.py -q'
+  - id: AC5
+    statement: 'AC5: integrated: in the running dev runtime the node, given the live pool readings, prints one verdict per account label (labels only) -- falsifier: the runtime receipt shows a label with a verdict and a time to reset, and an empty readings list shows no verdicts rather than ok'
+evidence_requirements:
+- kind: tests
+  description: The node's handler, golden chain, error chain, overlay, mapper and seam tests
+  command: uv run --frozen pytest tests/nodes/node_pool_usage_verdict_compute -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23607-verdict
+  description: Each rule of the verdict (revoked, pool limited mark, window thresholds at their exact values, unread and reset windows, missing or stale reading, worst window) and the failing control that flips a verdict by the policy alone. With the stale rule removed two tests fail; with the drain list no longer conditioned on an ok label one test fails.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_pool_usage_verdict_compute/test_handler_pool_usage_verdict.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23607-seams
+  description: The floor rows and pool status mirror map to readings and the verdicts follow; the field names read on the floor side are asserted, and the pool resolve field is asserted awaiting the peer lane until its request model carries it, then bound with the same element type.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_pool_usage_verdict_compute/test_seam_floor_to_pool_usage_verdict.py tests/nodes/node_pool_usage_verdict_compute/test_seam_pool_resolve_input.py tests/nodes/node_pool_usage_verdict_compute/test_mapper_floor_readings.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23607-chains
+  description: Golden chain from a JSON request to the verdict, over the in-memory bus from the command topic to the terminal event, and the error chain (percent-scaled utilization, duplicate labels, naive clock, inverted thresholds, missing overlay) refused.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_pool_usage_verdict_compute/test_golden_chain_pool_usage_verdict_compute.py tests/nodes/node_pool_usage_verdict_compute/test_error_chain_pool_usage_verdict_compute.py tests/nodes/node_pool_usage_verdict_compute/test_overlay_pool_usage_verdict_compute.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn23607-integration-proof-lab
+  description: Runs the node tests at the pushed head on a lab host through the lab work runner. Hosted CI cannot reach the lab runner, so only the local Done gate runs this unbound item; the live-pool reading is recorded in the pull request after the runtime install.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23607 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_pool_usage_verdict_compute -q --no-cov -p no:randomly'
+    cwd: .
+- id: dod-omn23607-runtime-proxy
+  description: AC5 hosted proxy. The golden chain over the in-memory bus returns one verdict per label from a request shaped like the live pool; the lab readback for the live pool is recorded in the pull request after the runtime install.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_pool_usage_verdict_compute/test_golden_chain_pool_usage_verdict_compute.py -k over_the_inmemory_bus -q --no-cov -p no:randomly
+    cwd: .

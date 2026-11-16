@@ -19,8 +19,9 @@ host or every host the private overlay declares, one run:
    served host whose pool holds the same token, so no other host spends a probe finding it again;
 4. returns one summary line per host for the caller's ledger row.
 
-Every host, path, key name, the model and the answer patterns come from the overlay at
-``$ONEX_WORKSPACE_CONFIG_ROOT/config/onex/overlays/node_claude_pool_refill_effect/overlay.yaml``. A token value only travels through a
+Every host, path, key name, the model and the answer patterns come from the overlay found under the overlay roots
+(``ONEX_SKILL_OVERLAY_ROOTS``) first, and under ``$ONEX_WORKSPACE_CONFIG_ROOT/config/onex/overlays/node_claude_pool_refill_effect/overlay.yaml``
+otherwise. A token value only travels through a
 pipe between two remote sessions, or sits in a shell variable on the host whose pool it is; this process
 never reads one, and every excerpt it returns is redacted. The command line is ``runtime_claude_pool_refill``.
 """
@@ -37,17 +38,32 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from pydantic import ValidationError
 
 from omnimarket.handlers.node_overlay_reader import find_node_overlay
 from omnimarket.models.delegation.model_claude_credential_probe import (
     ModelClaudeCredentialProbeReceipt,
     ModelClaudeCredentialProbeRequest,
 )
+from omnimarket.models.model_claude_pool_store_adopt import (
+    ModelAdoptCommand,
+    ModelHeldLabel,
+    ModelStoreAdoptPolicy,
+    ModelStoreAdoptRequest,
+    ModelStoreToken,
+)
 from omnimarket.nodes.node_claude_pool_refill_effect.models.model_claude_pool_refill import (
     ModelClaudePoolRefillRequest,
     ModelClaudePoolRefillResult,
 )
+from omnimarket.nodes.node_claude_pool_refill_effect.models.model_claude_pool_refill_overlay import (
+    ModelClaudePoolRefillOverlay,
+)
+from omnimarket.nodes.node_claude_pool_store_adopt_compute.handlers.handler_store_adopt import (
+    HandlerStoreAdopt,
+)
 
+NODE_NAME = "node_claude_pool_refill_effect"
 OVERLAY_REL = Path("config/onex/overlays/node_claude_pool_refill_effect/overlay.yaml")
 POOL_MODULE = "omnimarket.nodes.node_claude_token_pool_effect"
 PROBE_MODULE = "omnimarket.nodes.node_llm_delegation_call_effect.runtime_claude_probe"
@@ -93,6 +109,10 @@ class Overlay:
     timeout_s: int
     limited_seconds: int
     patterns: dict[str, list[str]] = field(default_factory=dict)
+    #: The overlay's ``adopt.key_prefix`` (OMN-23895): present => a label held on a host and outside the store may be
+    #: adopted into it; absent => ``--adopt`` is refused as not configured.
+    adopt_prefix: str | None = None
+    overlay_roots: list[str] = field(default_factory=list)
 
 
 def _need(mapping: dict[str, Any], key: str, where: str) -> Any:
@@ -105,6 +125,19 @@ def _safe(value: str, pattern: re.Pattern[str], what: str) -> str:
     if not pattern.match(value):
         raise ClaudePoolRefillRefusedError(
             f"{what} {value!r} holds characters this script will not put in a remote shell"
+        )
+    return value
+
+
+def _safe_overlay_root(value: str) -> str:
+    _safe(value, _SAFE_PATH, "overlay root")
+    if value.startswith("/") or value.startswith("~"):
+        raise ClaudePoolRefillRefusedError(
+            f"overlay root {value!r} must be relative to the registry root"
+        )
+    if ".." in value.split("/"):
+        raise ClaudePoolRefillRefusedError(
+            f"overlay root {value!r} must not contain a .. path part"
         )
     return value
 
@@ -127,6 +160,13 @@ def load_overlay(path: Path) -> Overlay:
     raw = yaml.safe_load(path.read_text(encoding="utf-8"))
     if not isinstance(raw, dict):
         raise ClaudePoolRefillRefusedError(f"{path} has no mapping at its root")
+    try:
+        ModelClaudePoolRefillOverlay.model_validate(raw)
+    except ValidationError as err:
+        loc = ".".join(str(p) for p in err.errors()[0]["loc"])
+        raise ClaudePoolRefillRefusedError(
+            f"{path} fails the overlay model at {loc}"
+        ) from err
     where = str(path)
     store = _need(raw, "store", where)
     # The lab host table is the file ONEX_LAB_RUN_HOSTS names, else the lab_hosts overlay of the overlay roots; the
@@ -215,6 +255,14 @@ def load_overlay(path: Path) -> Overlay:
         timeout_s=int(_need(probe, "timeout_s", where + " probe")),
         limited_seconds=int(_need(probe, "limited_seconds", where + " probe")),
         patterns={k: [str(p).lower() for p in v] for k, v in patterns.items()},
+        adopt_prefix=(
+            str(_need(raw["adopt"], "key_prefix", where + " adopt"))
+            if isinstance(raw.get("adopt"), dict)
+            else None
+        ),
+        overlay_roots=[
+            _safe_overlay_root(str(r)) for r in raw.get("overlay_roots") or []
+        ],
     )
 
 
@@ -224,11 +272,14 @@ def load_overlay(path: Path) -> Overlay:
 def _prelude(ov: Overlay) -> str:
     roots = " ".join(f'"{r}"' for r in ov.venv_roots)
     path = ":".join(ov.path_prepend)
-    return (f'export PATH="{path}:$PATH"\n' if path else "") + (
-        f'P=""; for r in {roots}; do if [ -x "$r/.onex-dispatch-venv/bin/python" ]; then '
-        'P="$r/.onex-dispatch-venv/bin/python"; break; fi; done\n'
+    text = (f'export PATH="{path}:$PATH"\n' if path else "") + (
+        f'P=""; R=""; for r in {roots}; do if [ -x "$r/.onex-dispatch-venv/bin/python" ]; then '
+        'P="$r/.onex-dispatch-venv/bin/python"; R="$r"; break; fi; done\n'
         '[ -n "$P" ] || { echo "NO-VENV"; exit 69; }\n'
     )
+    if ov.overlay_roots:
+        text += f'export ONEX_SKILL_OVERLAY_ROOTS="{":".join(f"$R/{r}" for r in ov.overlay_roots)}"\n'
+    return text
 
 
 def _cmd(host: Host, script: str) -> list[str]:
@@ -252,14 +303,19 @@ def _run(
 
 
 def host_pool(ov: Overlay, host: Host) -> dict[str, dict[str, Any]]:
-    script = _prelude(ov) + f'cd /tmp; "$P" -m {POOL_MODULE} status --json\n'
+    script = _prelude(ov) + f'cd /tmp; "$P" -m {POOL_MODULE} status --json --entries\n'
     done = _run(host, script, timeout=60)
     if done.returncode != 0:
         raise ClaudePoolRefillRefusedError(
             f"{host.name}: pool status failed rc={done.returncode}: {_REDACT.sub('<redacted>', done.stdout + done.stderr)[-200:]}"
         )
     body = json.loads(done.stdout)
-    return {t["label"]: t for t in body["tokens"]}
+    tokens = body["tokens"]
+    if not isinstance(tokens, list):
+        raise ClaudePoolRefillRefusedError(
+            f"{host.name}: the pool status carries no token entries (it answered the status view, so that host runs a pool without the status --entries flag)"
+        )
+    return {t["label"]: t for t in tokens}
 
 
 _READER_PY = r"""
@@ -357,6 +413,133 @@ def install(ov: Overlay, host: Host, token: Token, *, force: bool) -> str:
     return (
         text if target.returncode == 0 else f"FAILED add {token.label}: {text[-200:]}"
     )
+
+
+def _seed_script(ov: Overlay, key: str, *, execute: bool) -> str:
+    """The reader host's script that seeds one key from stdin through the existing secret seed node.
+
+    The machine identity names (never printed) come from the reader's identity file the way the store read loads them;
+    the value arrives on stdin and goes no further than the seed node, whose dry run (no ``--execute``) authenticates
+    and addresses the store without writing.
+    """
+    roots = " ".join(f'"{r}"' for r in ov.venv_roots)
+    return (
+        f'for r in {roots}; do if [ -x "$r/omnibase_infra/scripts/onex" ]; then ONEX="$r/omnibase_infra/scripts/onex"; break; fi; done\n'
+        '[ -n "$ONEX" ] || { echo "NO-ONEX"; exit 69; }\n'
+        "while IFS='=' read -r k v; do\n"
+        '  case "$k" in INFISICAL_ADDR|INFISICAL_CLIENT_ID|INFISICAL_CLIENT_SECRET)\n'
+        '    v=${v%\\"}; v=${v#\\"}; v=${v%\\\'}; v=${v#\\\'}; export "$k=$v";; esac\n'
+        f"done < {ov.identity_env_file.replace('~', '$HOME', 1)}\n"
+        'case "$INFISICAL_ADDR" in http*) H="$INFISICAL_ADDR";; *) H="http://$INFISICAL_ADDR";; esac\n'
+        f'"$ONEX" skill seed_secrets --source-path - --infisical-host "$H" --project-id {shlex.quote(ov.project_id)} '
+        f"--environment-slug {shlex.quote(ov.environment)} --secret-path {shlex.quote(ov.folder)} "
+        f"--keys {shlex.quote(key)}{' --execute' if execute else ''} 2>&1 | head -c 2000\n"
+    )
+
+
+def adopt(
+    ov: Overlay, source: Host, command: ModelAdoptCommand, *, execute: bool
+) -> str:
+    """Move one host-held label into the store: the source host's pool ``export`` piped into the seed node.
+
+    The value is on the pipe between two remote sessions only; this process never reads it. Without ``execute`` the
+    seed node runs its dry run (identity and addressing proven, nothing written). Returns one line: the label, the
+    key and the seed node's verdict word.
+    """
+    export_cmd = _prelude(ov) + (
+        f'cd /tmp; "$P" -m {POOL_MODULE} export --label {command.label} --name {command.key}'
+    )
+    exporter = subprocess.Popen(
+        _cmd(source, export_cmd),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    seeded = subprocess.run(
+        _cmd(ov.reader, _seed_script(ov, command.key, execute=execute)),
+        stdin=exporter.stdout,
+        capture_output=True,
+        text=True,
+        timeout=180,
+        check=False,
+    )
+    assert exporter.stdout is not None
+    exporter.stdout.close()
+    export_err = (
+        exporter.stderr.read().decode("utf-8", "replace") if exporter.stderr else ""
+    )
+    if exporter.wait(timeout=120) != 0:
+        return f"FAILED export {command.label}: {_REDACT.sub('<redacted>', export_err)[-160:]}"
+    verdict = re.search(r'"verdict"\s*:\s*"([a-z_]+)"', seeded.stdout)
+    word = verdict.group(1) if verdict else "no-verdict"
+    wanted = "seeded" if execute else "dry_run"
+    return (
+        f"{'adopted' if execute else 'would-adopt'} {command.label} key={command.key} verdict={word}"
+        if word == wanted and seeded.returncode == 0
+        else f"FAILED seed {command.label}: verdict={word} rc={seeded.returncode}"
+    )
+
+
+def adopt_held_labels(
+    ov: Overlay, served: list[Host], store: dict[str, str], *, execute: bool
+) -> list[str]:
+    """Decide with the store-adopt compute which host-held labels the store lacks, and run each adopt command.
+
+    Labels adopted (or, on a dry run, that would be) join ``ov.tokens`` for this run, so the refill that follows
+    hands them to every host; the line names the overlay rows to add so the next run does the same unaided.
+    """
+    if ov.adopt_prefix is None:
+        raise ClaudePoolRefillRefusedError(
+            f"{ov.path} declares no 'adopt' block with a key_prefix: nothing is adopted"
+        )
+    held: list[ModelHeldLabel] = []
+    for host in served:
+        for label, entry in host_pool(ov, host).items():
+            held.append(
+                ModelHeldLabel(
+                    host=host.name,
+                    label=label,
+                    fingerprint=entry["fingerprint"],
+                    revoked=bool(entry["revoked"]),
+                )
+            )
+    result = HandlerStoreAdopt().handle(
+        ModelStoreAdoptRequest(
+            store_tokens=tuple(
+                ModelStoreToken(
+                    label=t.label,
+                    key=t.key,
+                    fingerprint=None
+                    if store.get(t.label, "none") == "none"
+                    else store[t.label],
+                )
+                for t in ov.tokens
+            ),
+            held=tuple(held),
+            policy=ModelStoreAdoptPolicy(key_prefix=ov.adopt_prefix),
+        )
+    )
+    by_name = {h.name: h for h in served}
+    lines: list[str] = []
+    for decision in result.decisions:
+        if decision.command is None:
+            if decision.outcome != "in_store":
+                lines.append(
+                    f"claude-pool-adopt label={decision.label} {decision.outcome}"
+                )
+            continue
+        command = decision.command
+        line = adopt(ov, by_name[command.source_host], command, execute=execute)
+        lines.append(f"claude-pool-adopt label={command.label} {line}")
+        if not line.startswith("FAILED") and all(
+            t.label != command.label for t in ov.tokens
+        ):
+            ov.tokens.append(Token(command.label, command.key))
+            store[command.label] = command.fingerprint if execute else "none"
+            lines.append(
+                f"claude-pool-adopt overlay-add label={command.label} key={command.key}"
+            )
+    return lines
 
 
 def _lane_overlay_yaml() -> str:
@@ -614,6 +797,9 @@ def refill(
 def overlay_path(config_path: str | None) -> Path:
     if config_path:
         return Path(config_path)
+    found = find_node_overlay(NODE_NAME)
+    if found is not None:
+        return Path(found)
     root = os.environ.get("ONEX_WORKSPACE_CONFIG_ROOT", "")
     return Path(root) / OVERLAY_REL if root else OVERLAY_REL
 
@@ -641,12 +827,19 @@ class HandlerClaudePoolRefill:
                     f"not declared in {ov.path}: {sorted(unknown)}"
                 )
             store = store_fingerprints(ov)
+            adopt_lines: list[str] = []
+            served_hosts = [h for h in ov.hosts if not wanted or h.name in wanted]
+            if request.adopt:
+                adopt_lines = adopt_held_labels(
+                    ov, served_hosts, store, execute=not request.dry_run
+                )
             lines = [
                 f"claude-pool-store keys={len(store)} "
                 f"present={sum(1 for v in store.values() if v != 'none')}"
             ]
-            bad = 0
-            served = [h for h in ov.hosts if not wanted or h.name in wanted]
+            lines += adopt_lines
+            bad = sum(1 for line in adopt_lines if "FAILED" in line)
+            served = served_hosts
             state = RunState(hosts=served)
             for host in served:
                 try:

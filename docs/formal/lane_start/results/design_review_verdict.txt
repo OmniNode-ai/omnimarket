@@ -1,0 +1,83 @@
+# Design-review verdict: lane start (CLAIM, engine start, one TERMINAL)
+
+Verdict: **PASS with conditions.** The lane start may be built against this model under conditions A to D below. The conditions
+are on the pieces around the start node; the start node as it stands does not meet R1, R2 or R3 (the asbuilt_* configs below stay
+VIOLATED until those pieces land).
+
+Reviewer: an independent agent (Claude opus, a different instance from the author's lane start-model-4160), three rounds. Round 1
+returned `Verdict: FAIL` (results/review_round1.txt): the first model assumed a stop node that waits for a live leader and a reaper
+that the code does not have, and its retry fence read engine state the ledger cannot give. Round 2 returned `Verdict: FAIL`
+(results/review_round2.txt): the retry guard read the leader's phase, which no ledger reader can see (an attempt still in flight
+looks like a refused one). Round 3 returned `Verdict: PASS with conditions` (results/review_round3.txt) on model sha256
+`323dcbfddee5fd06b5dda7c3d8e0b437e13d17eda774d2daea8fef1deceaea97`; the author then edited the header only (R7, the writer side of
+R3, the fence wording of R1, the orphan CLAIM in R2) per that review's M1 to M4, giving the model recorded in SUMMARY.txt. The
+reviewer reran every config of rounds 2 and 3 itself and matched the author's outputs.
+
+Evidence is the recorded TLC 2.19 run in this directory, bound by `SUMMARY.txt` (sha256 of `LaneStart.tla`, of each cfg and of each
+`results/*.out`); regenerate with `python3 tests/formal/lane_start_tlc.py` (tla2tools.jar sha256
+`936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88`). CI runs no TLC (no java), so the test
+`tests/formal/test_lane_start_model.py` reads the recorded run. `mapping.txt` maps the model's actions to the running node.
+
+| Config | Expected | Result |
+| --- | --- | --- |
+| Model.cfg (design, 3 attempts, 371 states) | StartedAtMostOnce, ClaimBeforeEngine, NoTerminalWithoutClaim, AtMostOneTerminal, StartedTerminalPerKey, LeaderTerminalAfterExit, ObserveWritesNothing; liveness StartedReachesTerminal, ClaimReachesTerminal, NoStartAfterTerminal | PASS |
+| obs_model.cfg (observe mode) | the same | PASS |
+| chk_unresolved_stays_dead.cfg | a key whose start went unresolved is never re-requested | PASS |
+| mut_retry_any.cfg | a retry never looks at the key | StartedAtMostOnce violated (the planted second start) |
+| mut_retry_after_started.cfg | retry after a closed, started lane | StartedAtMostOnce violated |
+| mut_retry_inflight.cfg | a re-request while the earlier attempt is in flight (R6) | StartedAtMostOnce violated |
+| mut_engine_before_claim.cfg | engine before the CLAIM | ClaimBeforeEngine violated |
+| mut_no_single_closer.cfg | the ledger takes every TERMINAL (R4) | AtMostOneTerminal violated |
+| mut_terminal_without_claim.cfg | a TERMINAL for an unclaimed attempt | NoTerminalWithoutClaim violated |
+| mut_observe_claims.cfg | observe mode may claim | ObserveWritesNothing violated |
+| mut_no_reaper.cfg | no one closes an abandoned CLAIM (R2) | StartedReachesTerminal violated |
+| mut_stopper_closes_prestart.cfg | stopper closes a CLAIM before the engine starts (R1) | LeaderTerminalAfterExit violated |
+| haz_late_start.cfg | a detached start lands after the CLAIM was closed (R7) | LeaderTerminalAfterExit violated |
+| asbuilt_stopper.cfg | the stop node as coded | LeaderTerminalAfterExit violated |
+| asbuilt_stopper_liveness.cfg | the stop node as coded | StartedReachesTerminal violated |
+| asbuilt_outcomes.cfg | the TERMINAL outcome the code writes (failed for a failed start and a failed run) | StartedAtMostOnce violated |
+
+Twelve wit_* configs each violate an invariant that says a state is unreachable, which shows it is reachable: a started lane; a
+lane, a leader and a stopper each closing; a start-failed TERMINAL; a retry after a failed start and after a refusal; an unresolved
+start whose engine ran; a leader STATUS after the lane closed itself; a third attempt started; a stopper closing after a dead leader's
+engine ran; an observe-mode end.
+
+Limits of the check: three attempts of one key, abstract time, one leader per attempt (a second same-attempt leader is not
+exercised), the ledger as one atomic store. Unkillable engines are `RemoteLaneStop.tla`'s refused outcome and are outside this model.
+
+## Conditions on the pieces that build against the model
+
+Mapping of P3, LF4 and H4 to these groups was not found in any file the reviewer read; each builder takes the group of the
+component it builds.
+
+A. The start orchestrator and its ssh start transport
+1. R3, writer side: write a ledger-visible `outcome=start-failed` (or an equivalent cell) only on the three paths before the launch
+   (a fatal provisioning step, a worktree not prepared, the transport's `failed` result); keep `outcome=failed` for an engine that
+   ran. Today all three paths write `outcome=failed`.
+2. R1, leader side: immediately before the detached engine start, check this attempt's CLAIM is still open on the ledger of record, or
+   that the leader's lease is held; if closed, end without starting.
+3. R7: show that a start reported unresolved, or interrupted by the leader's death, cannot launch after the reaper has seen no process
+   tree, or have the reaper kill any tree for that run before it closes.
+4. R5: keep the lane name constant across attempts of a key and never reuse a run id across attempts.
+
+B. The stop node and the reaper
+1. R1, stopper side: never close a CLAIM whose live leader has not started the engine. Today the stop node closes any receipt with an
+   empty status.
+2. R2: a reaper closes every CLAIM left open (unresolved, stop-refused, refused or failed closing append, dead leader, orphan CLAIM
+   from a refused append that landed later), only once no process tree exists. Today the stop node answers `already-ended` and writes
+   nothing for start-unresolved, stop-refused and ledger-refused receipts, and no reaper exists.
+3. The stopper writes `outcome=stopped`, never `start-failed`.
+
+C. The re-requester (whatever re-issues a key's start; today neither the node nor the fill)
+1. R6: re-requests of a key go through one issuer; attempt a+1 is issued only after attempt a has answered or its CLAIM is closed.
+2. R3, reader side: before issuing a+1, every earlier attempt that holds a CLAIM is closed with the start-failed cell; any other
+   outcome or an open CLAIM leaves the key dead.
+
+D. The ledger writer on the leader's path
+1. R4: it refuses a second TERMINAL for one CLAIM and a second CLAIM for one attempt on the write path actually deployed (local or
+   bus). UNMEASURED today. Until measured, AtMostOneTerminal rests on it alone; `LeaderChecksSelfClose` adds no safety.
+
+When A1, A2, B1 and B2 land, rerun the asbuilt_* configs and flip each to its design value.
+
+Unmeasured by this lane: the bus leg of the observe event (the leader printed it, nothing published it), the act-mode CLAIM and
+TERMINAL rows in a running runtime, the leader's external ledger writer, and whether any caller already serializes re-requests.

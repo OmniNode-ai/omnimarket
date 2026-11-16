@@ -39,7 +39,8 @@ handler_routing:
 # overlay and the twin rigs as constructor parameters, so handler_routing would quarantine it at boot. It is the join's
 # caller: it runs from the publish cycle's join_j7 step (runtime_join_j7), in process, and answers each piece 7 golden
 # reading with a send past a stop whose lab check posts on a test head. Bound here so the contract owns it (the J6 run
-# in node_gate_store_effect is bound the same way).
+# in node_gate_store_effect is bound the same way). Join J7's error side is the run's failing control (OMN-23699): a piece 7
+# failure on purpose, written as non-drill chains once per overlay window.
 cli_handlers:
   - operation: join_j7_run
     handler:

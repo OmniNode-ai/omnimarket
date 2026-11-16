@@ -246,6 +246,34 @@ def test_structured_overlay_refusal_missing_names_file_env(tmp_path: Path) -> No
     assert "<root>/roles_overlay/overlay.yaml" in str(error.value)
 
 
+def test_structured_overlay_absent_file_names_only_the_file_and_roots(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(NodeOverlayNotFoundError) as error:
+        load_structured_overlay("roles_overlay", _Roles, _env(tmp_path))
+    message = str(error.value)
+    assert "roles_overlay" in message
+    assert "<root>/roles_overlay/overlay.yaml" in message
+    assert "ONEX_SKILL_OVERLAY_ROOTS" in message
+    assert str(tmp_path) in message
+    assert "roles_overlay.roles" not in message
+
+
+def test_structured_overlay_absent_file_without_roots_says_no_root() -> None:
+    with pytest.raises(NodeOverlayNotFoundError) as error:
+        load_structured_overlay("roles_overlay", _Roles, {})
+    assert "no root" in str(error.value)
+    assert "ONEX_SKILL_OVERLAY_ROOTS" in str(error.value)
+
+
+def test_structured_overlay_absent_file_names_file_env(tmp_path: Path) -> None:
+    with pytest.raises(NodeOverlayNotFoundError) as error:
+        load_structured_overlay(
+            "roles_overlay", _Roles, _env(tmp_path), file_env="TEST_OVERLAY_FILE"
+        )
+    assert "or set TEST_OVERLAY_FILE to the overlay file" in str(error.value)
+
+
 @pytest.mark.parametrize("message", [None, "roles are required"])
 def test_absent_structured_overlay_allows_source_discovery(
     tmp_path: Path, message: str | None

@@ -1,0 +1,22 @@
+name: node_triage_fences_effect
+version: "0.2.0"
+description: "Triage fences: reads the ledger, pull requests and runner receipts and returns the fence report"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_triage_fences_effect: "omnimarket.nodes.node_triage_fences_effect"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "triage-fences", "lab-fill"]
+pack: "operator_tooling"
+display_name: "Triage Fences"
+node_role: "effect"

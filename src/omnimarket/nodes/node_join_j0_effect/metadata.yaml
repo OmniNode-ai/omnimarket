@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_join_j0_effect
+version: 1.0.0
+description: Runs the J0 join (piece 17, the floor, to piece 1, the code graph) and writes its two chains to the floor's emission journal, golden when the floor record draws a reading age for the piece the code graph draws, typed error otherwise, with the control's verdict on the deliberately corrupt record.
+pack: operator_tooling
+node_role: effect
+display_name: Join J0 Effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_join_j0_effect: omnimarket.nodes.node_join_j0_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+- pydantic>=2.0
+- pyyaml>=6.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- floor
+- join

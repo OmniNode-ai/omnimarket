@@ -7,6 +7,8 @@ moved_readers: [inbox]
 max_watermark_age_seconds: 900
 page_size: 200
 max_pages: 50
+# The real overlay sets true once the query node serves lines-only pages.
+rows_lines_only: false
 route:
   kind: inmemory
 parity:

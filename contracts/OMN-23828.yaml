@@ -1,0 +1,118 @@
+schema_version: 1.0.0
+ticket_id: OMN-23828
+title: A checked model of two branches and a hand edit syncing one ticket
+summary: formal/ticket_sync is a TLA+ model of the ticket node's sync and pull (plan task S4, parent OMN-23761). One ticket, two branches each with its own file, a person who edits the ticket at any time, sync and sync --replace and pull as separate steps (read, re-read, write, file, event, terminal), crashes with redelivery. The design configs check the properties and pass; fourteen mutant configs each end in a TLC violation and M12 ends in a deadlock; residual.cfg finds the one race the node cannot close (a hand edit between sync's re-read and its write); witness configs show the passing runs are not vacuous. VERDICT.txt records the findings, the requirements the S4 code builds to, the residual race and the reviewer's verdict. Formal-model files and one test, tests/formal/test_ticket_sync_model.py, which reads the checked-in TLC results; no node or script.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn23828-design-passes
+    statement: TLC exits 0 on the design configs, with and without a crash.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: the model checker passes the design settings, with and without a crash, at the stated bound -- falsifier: uv run pytest tests/formal/test_ticket_sync_model.py -q -k design_run_passes'
+  - id: req-omn23828-mutants-violate
+    statement: Each planted break ends in a TLC violation naming the one property it breaks, and the recorded results match the committed model and settings.
+    acceptance:
+      - id: AC2
+        statement: 'AC2: each deliberately broken variant ends in a checker violation naming the one property it breaks, and the recorded results match the committed model and settings -- falsifier: uv run pytest tests/formal/test_ticket_sync_model.py -q -k "violation or digests"'
+  - id: req-omn23828-residual-and-verdict
+    statement: The residual race is stated with its bound and a design-review verdict from a reviewer other than the author is cited.
+    acceptance:
+      - id: AC3
+        statement: 'AC3: the remaining gap between the sync''s last check and its write is stated with its bound, and a verdict from a reviewer other than the author is cited on the parent ticket -- falsifier: uv run pytest tests/formal/test_ticket_sync_model.py -q -k verdict, and the verdict comment on the parent ticket'
+  - id: req-omn23828-run-on-lab
+    statement: The pinned checker is run on a lab host from the pushed branch.
+    acceptance:
+      - id: AC4
+        statement: 'AC4: integrated: done only when running and observed where it runs: the pinned checker is run on a lab host from the pushed branch over the design settings and one broken variant, and the recorded output is in the pull request -- falsifier: the host, revision and checker output for both runs pasted in the pull request'
+evidence_requirements:
+  - kind: manual
+    description: The checked-in TLC receipts name the design passes, the violations and the receipt path.
+    command: grep -c 'result=' formal/ticket_sync/results/SUMMARY.txt
+  - kind: tests
+    description: The checked-in TLC results, the configs and the verdict agree (AC1 to AC3).
+    command: uv run pytest tests/formal/test_ticket_sync_model.py -q -n 0 -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn23828-ac1
+    description: AC1 reads the checked-in TLC output of each design config (exit 0, no error found) and its own list of invariants.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: command
+        check_value: |
+          set -eu
+          cd formal/ticket_sync
+          for c in base1 base2 base3_crash base4_crash2 base5_wide base6_wide2 base7_fedit2 quiesce; do
+            grep -q '^exit=0$' results/$c.out
+            grep -q 'Model checking completed. No error has been found.' results/$c.out
+            grep -q "^$c .*result=PASS" results/SUMMARY.txt
+            grep -q '^INVARIANT OneTerm$' $c.cfg
+          done
+          grep -q '^INVARIANT P1$' base1.cfg
+          grep -q '^INVARIANT P6$' base3_crash.cfg
+        cwd: .
+      - check_type: test_passes
+        check_value: uv run pytest tests/formal/test_ticket_sync_model.py -q -n 0 -p no:randomly --no-cov
+        cwd: .
+  - id: dod-omn23828-ac2
+    description: AC2 reads the checked-in TLC output of the mutant configs and requires each violation to name the one invariant its config checks.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: command
+        check_value: |
+          set -eu
+          cd formal/ticket_sync
+          for m in M1_no_reread M2_no_serial M3_no_hash_check M5_pull_hash_only M6b_hash_readback_overwrite M10_replace_any; do
+            grep -q '^Error: Invariant P1 is violated' results/$m.out
+            grep -q "^$m .*result=VIOLATED P1 " results/SUMMARY.txt
+          done
+          grep -q '^Error: Invariant P3 is violated' results/M4_no_drift_check.out
+          grep -q '^Error: Invariant P6 is violated' results/M13_no_resume.out
+          grep -q '^Error: Deadlock reached.' results/M12_crash_loses_command.out
+        cwd: .
+      - check_type: test_passes
+        check_value: uv run pytest tests/formal/test_ticket_sync_model.py -q -n 0 -p no:randomly --no-cov
+        cwd: .
+  - id: dod-omn23828-ac3
+    description: AC3 reads the residual race and its bound in VERDICT.txt, the residual config's violation, and the reviewer's verdict.
+    source: manual
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: command
+        check_value: |
+          set -eu
+          cd formal/ticket_sync
+          grep -q '^RESIDUAL RACE' VERDICT.txt
+          grep -q '^Error: Invariant P1s is violated' results/residual.out
+          grep -q '^Design review (another reviewer)' VERDICT.txt
+        cwd: .
+      - check_type: test_passes
+        check_value: uv run pytest tests/formal/test_ticket_sync_model.py -q -n 0 -p no:randomly --no-cov -k verdict
+        cwd: .
+  - id: dod-omn23828-ac4
+    description: AC4 reads the receipt header of the checked-in results (host, pinned checker) and the two runs it names.
+    source: manual
+    binds_ac:
+      - AC4
+    checks:
+      - check_type: command
+        check_value: |
+          set -eu
+          cd formal/ticket_sync
+          grep -q '^host: h053' results/SUMMARY.txt
+          grep -q 'tla2tools.jar sha256=936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88' results/SUMMARY.txt
+          grep -q '^exit=0$' results/base2.out
+          grep -q '^exit=12$' results/M1_no_reread.out
+        cwd: .
+      - check_type: test_passes
+        check_value: uv run pytest tests/formal/test_ticket_sync_model.py -q -n 0 -p no:randomly --no-cov -k "digests or violation"
+        cwd: .

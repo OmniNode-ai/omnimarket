@@ -43,6 +43,11 @@ from scripts.ci.test_selection_models import (  # noqa: E402
     ModelTestSelection,
 )
 
+_REMOTE_LANE_HANDLER = (
+    "src/omnimarket/nodes/node_remote_lane_compute/handlers/"
+    "handler_remote_lane_placement.py"
+)
+
 
 def test_adjacency_yaml_loads() -> None:
     from scripts.ci.test_selection_loader import load_adjacency_map
@@ -54,11 +59,13 @@ def test_adjacency_yaml_loads() -> None:
 
 
 def test_src_change_maps_to_test_subdir() -> None:
+    # OMN-23719: a node change maps to that node's test directory, not tests/nodes/.
     paths = resolve_test_paths(
-        ["src/omnimarket/nodes/node_dispatch_worker/handler.py"],
+        [_REMOTE_LANE_HANDLER],
         ADJACENCY_PATH,
     )
-    assert "tests/nodes/" in paths
+    assert "tests/nodes/node_remote_lane_compute/" in paths
+    assert "tests/nodes/" not in paths
 
 
 def test_test_file_change_included() -> None:
@@ -454,9 +461,11 @@ def test_contract_change_still_selects_the_repo_wide_gate_dir() -> None:
     ``event_bus.consumer_group`` would merge green on the everyday dev path.
     This is the RED that wiring closes.
     """
+    # OMN-23719: node_dispatch_worker reaches tests/conftest.py through the import
+    # graph, so its change now takes the full suite; this node's change narrows.
     sel = compute_selection(
         changed_files=[
-            "src/omnimarket/nodes/node_dispatch_worker/contract.yaml",
+            "src/omnimarket/nodes/node_remote_lane_compute/contract.yaml",
         ],
         adjacency_path=ADJACENCY_PATH,
         ref_name="jonah/feature",
@@ -501,6 +510,121 @@ def test_node_change_still_selects_the_cross_node_reach_in_test() -> None:
     assert (
         ADJACENCY_PATH.parents[2] / "tests/test_no_cross_node_reach_in.py"
     ).is_file()
+
+
+def test_node_change_still_selects_the_contract_binding_test() -> None:
+    """OMN-23649: the repo-wide contract binding test reads every
+    contracts/OMN-*.yaml; a change that adds one contract narrowed to its own
+    node's tests and merged a contract that test refuses, so dev went red on
+    every open change.
+    """
+    sel = compute_selection(
+        changed_files=[
+            "src/omnimarket/nodes/node_remote_lane_compute/handlers/handler_remote_lane_placement.py",
+        ],
+        adjacency_path=ADJACENCY_PATH,
+        ref_name="jonah/feature",
+        event_name="pull_request",
+        feature_flag_enabled=True,
+    )
+    assert sel.is_full_suite is False, (
+        "fixture drifted -- this test must exercise the NARROWED path, "
+        "otherwise it passes vacuously via full-suite escalation"
+    )
+    assert "tests/ci/test_repo_evidence_caller_workflow.py" in sel.selected_paths, (
+        f"the contract binding test was narrowed away. selected={sel.selected_paths}"
+    )
+    assert (
+        ADJACENCY_PATH.parents[2] / "tests/ci/test_repo_evidence_caller_workflow.py"
+    ).is_file()
+
+
+DOGFOOD_TEST = "tests/test_market_node_runtime_dogfood.py"
+
+
+def test_node_contract_change_selects_the_node_inventory_test() -> None:
+    """A node contract change narrowed to the node's tests and skipped the
+    inventory test: the selector chose 52 paths for omnimarket#6071 and
+    omnimarket#6054 and none was this test. This is the RED the path trigger closes.
+    """
+    sel = compute_selection(
+        changed_files=[
+            "src/omnimarket/nodes/node_remote_lane_compute/contract.yaml",
+        ],
+        adjacency_path=ADJACENCY_PATH,
+        ref_name="jonah/feature",
+        event_name="pull_request",
+        feature_flag_enabled=True,
+    )
+    assert sel.is_full_suite is False, (
+        "fixture drifted -- this test must exercise the NARROWED path, "
+        "otherwise it passes vacuously via full-suite escalation"
+    )
+    assert DOGFOOD_TEST in sel.selected_paths, (
+        f"the node inventory test was narrowed away. selected={sel.selected_paths}"
+    )
+    assert (ADJACENCY_PATH.parents[2] / DOGFOOD_TEST).is_file()
+
+
+def test_node_handler_change_does_not_select_the_node_inventory_test() -> None:
+    """Control: the trigger is the contract glob, not every node change, so the
+    inventory test's recorded time is not added to every narrowed selection."""
+    sel = compute_selection(
+        changed_files=[
+            "src/omnimarket/nodes/node_remote_lane_compute/handlers/handler_remote_lane_placement.py",
+        ],
+        adjacency_path=ADJACENCY_PATH,
+        ref_name="jonah/feature",
+        event_name="pull_request",
+        feature_flag_enabled=True,
+    )
+    assert sel.is_full_suite is False
+    assert DOGFOOD_TEST not in sel.selected_paths
+
+
+def test_entry_point_change_takes_the_full_suite_that_holds_the_inventory_test() -> (
+    None
+):
+    """An onex.nodes entry point lives in pyproject.toml, which is test
+    infrastructure: the whole tests/ tree runs, the inventory test included."""
+    sel = compute_selection(
+        changed_files=["pyproject.toml"],
+        adjacency_path=ADJACENCY_PATH,
+        ref_name="jonah/feature",
+        event_name="pull_request",
+        feature_flag_enabled=True,
+    )
+    assert sel.is_full_suite is True
+    assert sel.selected_paths == ["tests/"]
+    assert (ADJACENCY_PATH.parents[2] / DOGFOOD_TEST).is_file()
+
+
+def test_exemption_list_change_takes_the_full_suite() -> None:
+    """The reviewed entry-point exemption list sits under scripts/, which is test
+    infrastructure, so a change to it runs the inventory test too."""
+    sel = compute_selection(
+        changed_files=["scripts/audit/node_entry_point_exemptions.yaml"],
+        adjacency_path=ADJACENCY_PATH,
+        ref_name="jonah/feature",
+        event_name="pull_request",
+        feature_flag_enabled=True,
+    )
+    assert sel.is_full_suite is True
+    assert sel.full_suite_reason == EnumFullSuiteReason.TEST_INFRASTRUCTURE
+
+
+@pytest.mark.parametrize(
+    "bad", ["tests/gates", "src/omnimarket/models/", "scripts/ci/helper.py"]
+)
+def test_path_triggered_selected_paths_reject_a_non_test_entry(bad: str) -> None:
+    from scripts.ci.test_selection_loader import ModelAdjacencyMap, load_adjacency_map
+
+    base = load_adjacency_map(ADJACENCY_PATH).model_dump()
+    trigger = {"changed_globs": ["src/*/contract.yaml"], "selected_paths": [bad]}
+    with pytest.raises(ValueError, match="path_triggered_selected_paths"):
+        ModelAdjacencyMap.model_validate(
+            {**base, "path_triggered_selected_paths": [trigger]}
+        )
 
 
 def test_always_selected_paths_reject_a_non_test_entry() -> None:
@@ -603,11 +727,15 @@ def test_non_delegation_node_still_narrows(tracked_paths: list[str]) -> None:
     sel = compute_selection([path], ADJACENCY_PATH, ref_name="jonah/feature")
     assert sel.is_full_suite is False
     assert sel.full_suite_reason is None
-    assert sel.selected_paths == [
+    # OMN-23719: the node's own tests and the repo-wide gates, not all of tests/nodes/.
+    assert "tests/nodes/node_code_embedding_effect/" in sel.selected_paths
+    assert "tests/nodes/" not in sel.selected_paths
+    for always in (
+        "tests/ci/test_repo_evidence_caller_workflow.py",
         "tests/gates/",
-        "tests/nodes/",
         "tests/test_no_cross_node_reach_in.py",
-    ]
+    ):
+        assert always in sel.selected_paths
 
 
 @pytest.mark.parametrize(
@@ -820,8 +948,10 @@ def test_without_the_selector_the_heavy_selection_is_two_unplanned_shards(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # Failing control (OMN-23296): a policy that sizes by path count alone, as the
-    # old script did, gives tests/nodes/ with tests/unit/ two shards of about 2,000
-    # recorded seconds each.
+    # old script did, gives the selection with tests/unit/ only the path-count
+    # rule's shards, each carrying past the target. (Before OMN-23719 narrowed
+    # node changes, this was tests/nodes/ with tests/unit/: two shards of about
+    # 2,000 recorded seconds each.)
     from omnimarket.nodes.node_test_selection_selector_compute.handlers import (
         handler_test_selection_selector as selector,
     )
@@ -838,9 +968,9 @@ def test_without_the_selector_the_heavy_selection_is_two_unplanned_shards(
         _HEAVY_CHANGE, ADJACENCY_PATH, ref_name="omn-22868-x", event_name="pull_request"
     )
     assert selection.is_full_suite is False
-    assert selection.split_count == 2
+    assert selection.split_count == loose.path_count_max_shards
     assert "tests/unit/" in selection.selected_paths
-    assert _shard_seconds(selection) > 1000
+    assert _shard_seconds(selection) > load_policy().target_shard_seconds
 
 
 def _shard_seconds(selection: ModelTestSelection) -> float:
@@ -866,7 +996,7 @@ def _every_single_module_change() -> list[list[str]]:
     ]
 
 
-def test_shard_bound_no_narrowed_selection_is_estimated_past_the_target() -> None:
+def test_split_count_by_duration_no_narrowed_shard_past_target() -> None:
     target = load_policy().target_shard_seconds
     narrowed = 0
     for changed in [_HEAVY_CHANGE, _LIGHT_CHANGE, *_every_single_module_change()]:
@@ -881,7 +1011,7 @@ def test_shard_bound_no_narrowed_selection_is_estimated_past_the_target() -> Non
     assert narrowed > 0
 
 
-def test_shard_bound_the_heavy_selection_is_the_planned_matrix_not_two_shards() -> None:
+def test_shards_fit_target_heavy_selection_is_the_planned_matrix() -> None:
     selection = compute_selection(
         _HEAVY_CHANGE, ADJACENCY_PATH, ref_name="omn-23296-x", event_name="pull_request"
     )
@@ -890,17 +1020,36 @@ def test_shard_bound_the_heavy_selection_is_the_planned_matrix_not_two_shards() 
     assert selection.matrix == list(range(1, 21))
 
 
-def test_shard_bound_a_mid_weight_selection_gets_more_shards_than_its_path_count() -> (
-    None
-):
-    # tests/nodes/ alone is over 900 recorded seconds: one path, at least three shards.
-    selection = compute_selection(
-        _LIGHT_CHANGE, ADJACENCY_PATH, ref_name="omn-23296-x", event_name="pull_request"
+def test_split_count_by_duration_mid_weight_gets_more_shards_than_paths() -> None:
+    # One mid-weight path, at least three shards. The test is given its own
+    # durations record so its claim does not move with the real one.
+    from omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_test_selection_selector import (
+        HandlerTestSelectionSelector,
     )
-    assert selection.is_full_suite is False
-    assert len(selection.selected_paths) < 5
-    assert 3 <= selection.split_count <= 5
-    assert _shard_seconds(selection) <= 360
+    from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_selection_selector import (
+        ModelSelectorRequest,
+    )
+
+    policy = load_policy()
+
+    class _FixedDurations:
+        def __init__(self, durations: dict[str, float]) -> None:
+            self._durations = durations
+
+        def read(self, repo_root: str, durations_path: str) -> dict[str, float] | None:
+            return self._durations
+
+    estimate = 3.5 * policy.target_shard_seconds
+    durations = {f"tests/unit/nodes/node_x/test_{i}.py": estimate / 7 for i in range(7)}
+    decision = HandlerTestSelectionSelector(_FixedDurations(durations), policy).handle(
+        ModelSelectorRequest(
+            selected_paths=("tests/unit/nodes/",), repo_root=str(REPO_ROOT)
+        )
+    )
+    assert decision.split_count is not None
+    assert 3 <= decision.split_count <= 5
+    assert decision.shard_seconds is not None
+    assert decision.shard_seconds <= policy.target_shard_seconds
 
 
 def test_a_bounded_selection_with_no_durations_file_fails_closed(
@@ -918,3 +1067,193 @@ def test_a_bounded_selection_with_no_durations_file_fails_closed(
     assert (
         selection.full_suite_reason == EnumFullSuiteReason.NARROWED_SELECTION_TOO_HEAVY
     )
+
+
+# OMN-23719: node-scoped narrowing over the import graph. On dev the whole of
+# tests/nodes/ summed to 1800.75 recorded seconds against the selector's 1800 s
+# bound, so every node change took the full suite. These run on a small tree so
+# the claim does not move with the real repository.
+
+
+def _tree(root: Path, files: dict[str, str]) -> Path:
+    for rel, text in files.items():
+        path = root / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text)
+    durations = {rel: 1.0 for rel in files if rel.startswith("tests/")}
+    (root / "config").mkdir(exist_ok=True)
+    (root / "config" / "test_file_durations.json").write_text(json.dumps(durations))
+    return root
+
+
+_NODES = {
+    "src/omnimarket/__init__.py": "",
+    "src/omnimarket/nodes/__init__.py": "",
+    "src/omnimarket/nodes/node_a/__init__.py": "",
+    "src/omnimarket/nodes/node_a/handler.py": "VALUE = 1\n",
+    "src/omnimarket/nodes/node_b/__init__.py": "",
+    "src/omnimarket/nodes/node_b/handler.py": (
+        "from omnimarket.nodes.node_a.handler import VALUE\n"
+    ),
+    "src/omnimarket/nodes/node_c/__init__.py": "",
+    "src/omnimarket/nodes/node_c/handler.py": "OTHER = 2\n",
+    "src/omnimarket/handlers/__init__.py": "",
+    "src/omnimarket/handlers/h.py": "from omnimarket.nodes.node_a import handler\n",
+    "src/omnimarket/handlers/g.py": "from .h import handler\n",
+    "src/omnimarket/nodes/node_e/__init__.py": "",
+    "src/omnimarket/nodes/node_e/handler.py": "from omnimarket.handlers import g\n",
+    "src/omnimarket/nodes/node_d/__init__.py": "",
+    "src/omnimarket/nodes/node_d/contract.yaml": "dependencies:\n  - node_a\n",
+    "src/omnimarket/nodes/node_lonely/__init__.py": "",
+    "src/omnimarket/nodes/node_lonely/handler.py": "X = 0\n",
+    "tests/__init__.py": "",
+    "tests/nodes/__init__.py": "",
+    "tests/nodes/test_flat_walker.py": "def test_walk():\n    pass\n",
+    "tests/nodes/node_a/__init__.py": "",
+    "tests/nodes/node_a/test_a.py": "from omnimarket.nodes.node_a.handler import VALUE\n",
+    "tests/nodes/node_b/__init__.py": "",
+    "tests/nodes/node_b/test_b.py": "def test_b():\n    pass\n",
+    "tests/nodes/node_c/__init__.py": "",
+    "tests/nodes/node_c/test_c.py": "def test_c():\n    pass\n",
+    "tests/nodes/node_d/__init__.py": "",
+    "tests/nodes/node_d/test_d.py": "def test_d():\n    pass\n",
+    "tests/nodes/node_e/__init__.py": "",
+    "tests/nodes/node_e/test_e.py": "def test_e():\n    pass\n",
+    "tests/nodes/node_c/support.py": "from omnimarket.nodes.node_a import handler\n",
+    "tests/nodes/node_c/test_uses_support.py": (
+        "from tests.nodes.node_c.support import handler\n"
+    ),
+    "tests/other/__init__.py": "",
+    "tests/other/test_names_a.py": "TARGET = 'omnimarket.nodes.node_a.handler.VALUE'\n",
+    "tests/other/test_unrelated.py": "def test_x():\n    pass\n",
+}
+
+
+def _select(root: Path, changed: list[str]) -> ModelTestSelection:
+    return compute_selection(
+        changed, ADJACENCY_PATH, ref_name="omn-23719-x", repo_root=root
+    )
+
+
+def test_node_change_selects_its_dependents_not_the_whole_node_tree(
+    tmp_path: Path,
+) -> None:
+    root = _tree(tmp_path, _NODES)
+    sel = _select(root, ["src/omnimarket/nodes/node_a/handler.py"])
+    assert sel.is_full_suite is False
+    paths = sel.selected_paths
+    assert "tests/nodes/" not in paths
+    assert "tests/nodes/node_a/" in paths  # its own tests
+    assert "tests/nodes/node_b/" in paths  # node_b imports node_a
+    assert (
+        "tests/nodes/node_e/" in paths
+    )  # node_e -> handlers.g -> handlers.h -> node_a
+    assert "tests/nodes/node_d/" in paths  # node_d's contract names node_a
+    assert "tests/other/test_names_a.py" in paths  # spells node_a in a string
+    assert "tests/nodes/node_c/test_uses_support.py" in paths  # through a helper
+    assert "tests/nodes/test_flat_walker.py" in paths  # flat tests/nodes/ files
+    assert "tests/nodes/node_c/" not in paths
+    assert "tests/other/test_unrelated.py" not in paths
+    assert "tests/gates/" in paths  # always-selected gates still unioned
+
+
+def test_unrelated_node_change_does_not_select_the_dependents_of_another(
+    tmp_path: Path,
+) -> None:
+    root = _tree(tmp_path, _NODES)
+    sel = _select(root, ["src/omnimarket/nodes/node_c/handler.py"])
+    assert sel.is_full_suite is False
+    assert "tests/nodes/node_c/" in sel.selected_paths
+    assert "tests/nodes/node_a/" not in sel.selected_paths
+    assert "tests/nodes/node_b/" not in sel.selected_paths
+
+
+def test_conftest_that_imports_the_node_selects_its_directory(tmp_path: Path) -> None:
+    files = dict(_NODES)
+    files["tests/other/conftest.py"] = "from omnimarket.nodes.node_a import handler\n"
+    root = _tree(tmp_path, files)
+    sel = _select(root, ["src/omnimarket/nodes/node_a/handler.py"])
+    assert "tests/other/" in sel.selected_paths
+
+
+def test_node_with_no_tests_falls_back_to_the_whole_node_tree(tmp_path: Path) -> None:
+    root = _tree(tmp_path, _NODES)
+    sel = _select(root, ["src/omnimarket/nodes/node_lonely/handler.py"])
+    assert "tests/nodes/" in sel.selected_paths
+
+
+def test_deleted_node_falls_back_to_the_whole_node_tree(tmp_path: Path) -> None:
+    root = _tree(tmp_path, _NODES)
+    sel = _select(root, ["src/omnimarket/nodes/node_gone/handler.py"])
+    assert "tests/nodes/" in sel.selected_paths
+
+
+def test_deleted_non_node_module_seeds_its_package(tmp_path: Path) -> None:
+    files = dict(_NODES)
+    # intelligence maps to reverse_deps [nodes] in the real adjacency map.
+    files["src/omnimarket/intelligence/__init__.py"] = ""
+    files["src/omnimarket/nodes/node_c/handler.py"] = (
+        "from omnimarket.intelligence.removed import thing\n"
+    )
+    root = _tree(tmp_path, files)
+    sel = _select(root, ["src/omnimarket/intelligence/removed.py"])
+    assert sel.is_full_suite is False
+    assert "tests/nodes/node_c/" in sel.selected_paths
+
+
+def test_changed_node_test_narrows_to_its_directory_and_importers(
+    tmp_path: Path,
+) -> None:
+    root = _tree(tmp_path, _NODES)
+    sel = _select(root, ["tests/nodes/node_c/support.py"])
+    assert sel.is_full_suite is False
+    assert "tests/nodes/node_c/" in sel.selected_paths
+    assert "tests/nodes/" not in sel.selected_paths
+    assert "tests/nodes/node_a/" not in sel.selected_paths
+
+
+def test_node_scoped_modules_must_be_mapped() -> None:
+    from scripts.ci.test_selection_loader import ModelAdjacencyMap
+
+    raw = yaml.safe_load(ADJACENCY_PATH.read_text())
+    raw["node_scoped_modules"] = ["not_a_module"]
+    with pytest.raises(ValueError, match="node_scoped_modules"):
+        ModelAdjacencyMap.model_validate(raw)
+
+
+def test_real_node_change_narrows_under_the_bound() -> None:
+    # The red this closes: on dev a one-node change summed tests/nodes/ (1800.75 s)
+    # past the 1800 s bound and took the full-suite matrix.
+    sel = compute_selection(
+        [_REMOTE_LANE_HANDLER], ADJACENCY_PATH, ref_name="omn-23719-x"
+    )
+    assert sel.is_full_suite is False
+    assert "tests/nodes/" not in sel.selected_paths
+    assert _shard_seconds(sel) <= load_policy().target_shard_seconds
+
+
+def test_changed_package_init_seeds_every_module_beneath_it(tmp_path: Path) -> None:
+    # Importing omnimarket.intelligence.sub runs intelligence/__init__.py first, so
+    # node_c depends on the package's __init__ although it never imports that name.
+    files = dict(_NODES)
+    files["src/omnimarket/intelligence/__init__.py"] = "SETTING = 1\n"
+    files["src/omnimarket/intelligence/sub.py"] = "VALUE = 2\n"
+    files["src/omnimarket/nodes/node_c/handler.py"] = (
+        "from omnimarket.intelligence.sub import VALUE\n"
+    )
+    root = _tree(tmp_path, files)
+    sel = _select(root, ["src/omnimarket/intelligence/__init__.py"])
+    assert sel.is_full_suite is False
+    assert "tests/nodes/node_c/" in sel.selected_paths
+    assert "tests/nodes/node_a/" not in sel.selected_paths
+
+
+def test_non_python_source_outside_a_node_falls_back_to_the_whole_node_tree(
+    tmp_path: Path,
+) -> None:
+    files = dict(_NODES)
+    files["src/omnimarket/intelligence/__init__.py"] = ""
+    files["src/omnimarket/intelligence/table.json"] = "{}\n"
+    root = _tree(tmp_path, files)
+    sel = _select(root, ["src/omnimarket/intelligence/table.json"])
+    assert "tests/nodes/" in sel.selected_paths

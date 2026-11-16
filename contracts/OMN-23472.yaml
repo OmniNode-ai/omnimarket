@@ -51,7 +51,7 @@ dod_evidence:
     check_value: onex ledger query --query rows --kind CLAIM --term 'node_remote_lane_start_orchestrator' --since 2026-11-10T06:00:00Z | grep -q 'node_remote_lane_start_orchestrator'
     cwd: .
 - id: dod-OMN-23472-ac3
-  description: The hosted reading of AC3, the overlay document loaded from the overlays repository path; the live lab-host lane start is the integration-proof item.
+  description: The overlay the start node loads from the overlays repository is read through the node's own model; the live lane start is the integration-proof item.
   source: manual
   binds_ac:
   - AC3

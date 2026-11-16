@@ -4,7 +4,8 @@
 
 Every call is counted against the overlay's ``max_calls``; the call past it is not made and the read
 ends in ``budget-exhausted``. Reads only (GET). The token comes from the environment variable the
-overlay names, at call time, and is never put in a result, an error or a log line.
+overlay names, at call time, or — when the overlay declares ``token_mint`` — is minted once per
+source instance from the named secrets; it is never put in a result, an error or a log line.
 
 Reading rules, all conservative so that an unreadable fact reads UNKNOWN and never WORKING:
 - a job selects the group when its ``runs-on`` (string, list or ``labels``) names a group label, or
@@ -20,6 +21,7 @@ import json
 from collections.abc import Mapping
 from datetime import datetime
 from typing import Any
+from uuid import UUID
 
 import yaml
 
@@ -29,6 +31,10 @@ from omnimarket.models.runner_group_exposure import (
     ModelGroupWorkflowFile,
     ModelRunnerGroupFacts,
 )
+from omnimarket.nodes.node_runner_group_exposure_effect.adapters.write_node_group_reader import (
+    GroupReadError,
+    WriteNodeGroupReader,
+)
 from omnimarket.nodes.node_runner_group_exposure_effect.models.model_exposure_probe import (
     ModelGroupRead,
 )
@@ -37,9 +43,13 @@ from omnimarket.nodes.node_runner_group_exposure_effect.overlay import (
 )
 from omnimarket.nodes.node_runner_group_exposure_effect.protocols.protocol_group_source import (
     ProtocolHttpGet,
+    ProtocolTokenMint,
 )
 
 _DENIED = (401, 403, 404)
+# A 401 says the token itself was refused (bad or expired); only a 403 or 404 on the org read says the
+# token is valid but lacks the permission the overlay declares.
+_PERMISSION_DENIED = (403, 404)
 _RUN_STATUSES = ("queued", "in_progress")
 
 
@@ -55,17 +65,53 @@ class GithubGroupSource:
         settings: ModelGithubSource,
         http_get: ProtocolHttpGet,
         environ: Mapping[str, str],
+        token_mint: ProtocolTokenMint | None = None,
+        group_reader: WriteNodeGroupReader | None = None,
+        correlation_id: UUID | None = None,
     ) -> None:
+        if settings.token_mint is not None and token_mint is None:
+            raise ValueError(
+                "the overlay declares token_mint, but no token minter was injected"
+            )
+        if settings.group_read is not None and (
+            group_reader is None or correlation_id is None
+        ):
+            raise ValueError(
+                "the overlay declares group_read, but no group reader was injected"
+            )
+        self._group_reader = group_reader
+        self._correlation_id = correlation_id
         self._s = settings
         self._http = http_get
         self._environ = environ
+        self._mint = token_mint
+        self._minted: str | None = None
         self._calls = 0
+        self._missing_permission: str | None = None
+
+    def _token(self) -> str:
+        """The read's bearer token: minted once per instance, or read from the environment."""
+        if self._s.token_mint is None:
+            return self._environ.get(self._s.token_env, "")
+        if self._minted is None:
+            mint = self._s.token_mint
+            if self._mint is None:
+                raise _StopError(EnumExposureReadFailure.TOKEN_MINT_FAILED)
+            try:
+                self._minted = self._mint.mint(
+                    org=mint.org,
+                    app_id_secret=mint.app_id_secret,
+                    private_key_secret=mint.private_key_secret,
+                )
+            except Exception as error:
+                raise _StopError(EnumExposureReadFailure.TOKEN_MINT_FAILED) from error
+        return self._minted
 
     # -- transport -----------------------------------------------------------------------
     def _get(self, path: str, *, denied_is_org: bool = False) -> Any:
         if self._calls >= self._s.max_calls:
             raise _StopError(EnumExposureReadFailure.BUDGET_EXHAUSTED)
-        token = self._environ.get(self._s.token_env, "")
+        token = self._token()
         if not token:
             raise _StopError(EnumExposureReadFailure.ORG_READ_DENIED)
         self._calls += 1
@@ -78,6 +124,8 @@ class GithubGroupSource:
             self._s.timeout_seconds,
         )
         if status in _DENIED and denied_is_org:
+            if status in _PERMISSION_DENIED:
+                self._missing_permission = self._s.org_read_permission
             raise _StopError(EnumExposureReadFailure.ORG_READ_DENIED)
         if status != 200:
             raise _StopError(EnumExposureReadFailure.UNREADABLE)
@@ -90,7 +138,7 @@ class GithubGroupSource:
         """A GET whose 404 means the thing is absent (a repository with no workflows)."""
         if self._calls >= self._s.max_calls:
             raise _StopError(EnumExposureReadFailure.BUDGET_EXHAUSTED)
-        token = self._environ.get(self._s.token_env, "")
+        token = self._token()
         if not token:
             raise _StopError(EnumExposureReadFailure.ORG_READ_DENIED)
         self._calls += 1
@@ -195,13 +243,44 @@ class GithubGroupSource:
             jobs = self._jobs(repositories, files)
         except _StopError as stop:
             return ModelGroupRead(
-                read_at=now, calls=self._calls, read_failure=stop.failure
+                read_at=now,
+                calls=self._calls,
+                read_failure=stop.failure,
+                missing_permission=self._missing_permission,
             )
         return ModelGroupRead(
             group=group, files=files, jobs=jobs, read_at=now, calls=self._calls
         )
 
+    def _group_via_write_node(
+        self, reader: WriteNodeGroupReader, correlation_id: UUID
+    ) -> tuple[ModelRunnerGroupFacts, tuple[str, ...]]:
+        """The group's settings and repositories from the write node over the bus.
+
+        One bus call counts as one call of the budget. No organization call is made with this
+        source's own token, and no token is minted for it.
+        """
+        if self._calls >= self._s.max_calls:
+            raise _StopError(EnumExposureReadFailure.BUDGET_EXHAUSTED)
+        self._calls += 1
+        try:
+            facts = reader.read(
+                org=self._s.org,
+                group_id=self._s.group_id,
+                correlation_id=correlation_id,
+            )
+        except GroupReadError as error:
+            if (
+                error.failure is EnumExposureReadFailure.ORG_READ_DENIED
+                and error.http_status in _PERMISSION_DENIED
+            ):
+                self._missing_permission = self._s.org_read_permission
+            raise _StopError(error.failure) from error
+        return facts, facts.repositories
+
     def _group(self) -> tuple[ModelRunnerGroupFacts, tuple[str, ...]]:
+        if self._group_reader is not None and self._correlation_id is not None:
+            return self._group_via_write_node(self._group_reader, self._correlation_id)
         base = f"/orgs/{self._s.org}/actions/runner-groups/{self._s.group_id}"
         meta = self._get(base, denied_is_org=True)
         listing = self._get(f"{base}/repositories", denied_is_org=True)

@@ -56,7 +56,7 @@ descriptor:
   idempotent: true
   timeout_ms: 600000
   side_effects:
-    - the file_sources profile reads the projection's sources and writes the projection JSON atomically where the floor and the fill dispatcher read it
+    - the file_sources profile reads the projection's sources and writes the projection JSON atomically where the floor and the fill dispatcher read it; the schedule overlay's state_home, when set, replaces OMNI_HOME as the directory every one of those home-relative paths is read and written under (the runtime's own data volume, because its OMNI_HOME is not writable by the runtime user)
 
 input_subscriptions:
   - topic: "onex.intent.platform.runtime-tick.v1"
@@ -80,6 +80,9 @@ published_events:
 externally_consumed_topics:
   - "onex.evt.omnimarket.work-state-projected.v1"
 
+# The schedule overlay's optional ledger_read (a command route: the env variable naming the bus read command, its timeout and row limit)
+# makes the file_sources profile read the ledger source through the work ledger query node and never from a file; a read that fails,
+# answers truncated or has no command set leaves the ledger named in the event's unread list (OMN-23691).
 # Where the schedule reads its settings. The overlay is found under ONEX_SKILL_OVERLAY_ROOTS or the file the env var names.
 runtime:
   schedule_overlay: {overlay_id: node_work_state_projection_scheduled_effect, file_env: ONEX_WORK_STATE_SCHEDULE_OVERLAY, model: omnimarket.models.work_state_projection.model_work_state_projected_event.ModelWorkStateScheduleOverlay}

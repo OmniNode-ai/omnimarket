@@ -12,7 +12,6 @@ import pytest
 import yaml
 from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 
-from omnimarket.handlers.node_overlay_reader import NodeOverlayNotFoundError
 from omnimarket.models.floor_17a.model_floor_document_event import (
     ModelFloorScheduleOverlay,
 )
@@ -86,10 +85,15 @@ def test_error_inputs_nothing_read_are_drawn_unread_never_zero() -> None:
     assert "0" not in number_values
 
 
-def test_error_no_schedule_overlay_refuses_naming_the_setting() -> None:
+def test_error_no_schedule_overlay_refuses_naming_the_setting(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     h = HandlerFloorSimpleScheduled(environ={})
-    with pytest.raises(NodeOverlayNotFoundError, match="ONEX_FLOOR_SCHEDULE_OVERLAY"):
-        h.handle(tick(T0))
+    with caplog.at_level("ERROR"):
+        assert h.handle(tick(T0)) is None
+    errors = [r for r in caplog.records if r.levelname == "ERROR"]
+    assert len(errors) == 1
+    assert "ONEX_FLOOR_SCHEDULE_OVERLAY" in errors[0].message
 
 
 def test_error_a_zero_interval_overlay_is_refused() -> None:

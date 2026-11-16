@@ -1,0 +1,31 @@
+# LaneStart.tla: model actions against the running node (OMN-23726)
+
+The node is `node_remote_lane_start_orchestrator` (`orchestration/core.py`, `RemoteLaneStartOrchestrator.run`). The observe-mode
+run below is one run of the lane entry (`runtime_remote_lane_start`) on lab host h201 with the production overlay of the
+overlays repository (`start_mode` changed from `act` to `observe`, nothing else), a pool snapshot of h201, lane
+`start-model-4160-observe`, attempt 1, at omnimarket dev `932c24044`. The ledger file it was given was byte-identical after the run
+(sha256 `138cf3045fc5015f5b2bc4fe028637b72c2bc68c9700c8a2c5deb85aa47979da`, one fixture line), no receipt directory was created and
+the run ended `outcome=observed exit=0`. The event was read from the leader's printed `REMOTE-LANE-OBSERVED` line; it was not read
+from the bus (the node is not attached to a shared runtime: its contract says so), so the bus leg is unmeasured here.
+
+| Model action | Code site | Event or row in the observe run | Reading |
+| --- | --- | --- | --- |
+| Init / Retry (a start requested, attempt n) | `run()` entry; request fields `lane`, `key`, `attempt`, `run_id`; command topic `onex.cmd.omnimarket.remote-lane-start-requested.v1` | event fields `lane=start-model-4160-observe`, `key=lane-start-model:observe:1`, `attempt=1`, `run_id=observe-start-model-4160-1` | measured on h201. Retry (attempt n+1) is not made by the node: it is the caller's `--attempt`; no event of the node marks a retry |
+| Observe (observe mode, one event, nothing written) | `_observe`, `core.py:465-546`, called from `run()` after placement | line `REMOTE-LANE-OBSERVED {json}` then `OK remote-lane-observe ... nothing written, nothing started`, result `outcome=observed exit=0` | measured on h201; ObserveWritesNothing read as ledger digest unchanged and no receipt directory |
+| Refuse (no CLAIM written) | `run()` steps 1 and 2 and the CLAIM append: unsupported-shape (64), no-host, pool-unreadable, login-refused (75), claim-refused, already-claimed (70) | lines `REMOTE-LANE-NO-HOST ...`, `REMOTE-LANE-UNSUPPORTED-SHAPE ...`, `REMOTE-LANE-LEDGER-REFUSED ...` | not in this run. The unit tests `test_remote_lane_start_observe_real_wiring.py` read the no-host refusal; a CLAIM append that errors but lands later is unmeasured |
+| Claim | `run()` step 3, `core.py:690-723`: the CLAIM row through `node_work_ledger_append_effect`, request id `uuid5(lane-claim:<lane>:<attempt>)` | event field `claim_cells`: `lane`, `ticket`, `actor`, `model`, the est cell, `host`, `key`, `run`, `priority`, `worktree` (the cells the act-mode CLAIM would carry) | the cells are measured on h201; the row itself is never written in observe mode, so the CLAIM append is unmeasured in the runtime |
+| StartEngine (running, failed or unresolved) | `run()` step 4, `core.py:781-815`, `START_ENGINE_DETACHED`; `adapter_ssh_transport.py` `start_engine_detached` | event fields `engine_argv` (brief replaced by its sha-256), `engine_environment_names`, `workdir` | argv and workdir measured on h201; the start result is not observable in observe mode: unmeasured |
+| EngineExit, LeaderSeesExit | `run()` step 5, `READ_ENGINE_EXIT` poll, `core.py:826-856` | none | unmeasured (act mode only) |
+| LeaderClose (TERMINAL, or STATUS when the lane closed itself) | `_close_lane`, `core.py:917-1035`, `_lane_closed_itself` | none: observe mode returns before any close, and the event has no field for the closing row | GAP: no observe-mode event carries the TERMINAL. Mapping this action needs an act-mode run or a field on the observed event |
+| LaneClose | the lane's own closeout inside the engine session | none | outside the node |
+| StopperClose | `node_remote_lane_stop_effect` | none | outside the node; the stop side is `RemoteLaneStop.tla` |
+| LeaderDies, LateStartLands | process death; an ssh detached start landing late | none | not an event; unmeasured |
+
+## Seams the model reads against the code (read, not run)
+
+- The CLAIM request id holds the lane and the attempt, not the key (`claim_request_id`, `core.py:118-119`), so the node fences one
+  attempt only; R3 and R5 in `LaneStart.tla` are the fence the node does not have.
+- The stop node closes a CLAIM whose receipt status is empty, which is every CLAIM between the CLAIM append and the engine start
+  (`asbuilt_stopper.cfg`, R1).
+- The TERMINAL's outcome cell is `failed` for a failed start and for a failed run, so a re-requester cannot read "the engine never
+  started" from the ledger (`asbuilt_outcomes.cfg`, R3).

@@ -10,8 +10,11 @@ from pathlib import Path
 
 import pytest
 import yaml
+from pydantic import ValidationError
 
 from omnimarket.nodes.node_seam_deadline_probe_effect.handlers.schedule import (
+    CONTRACT_PATH,
+    ModelSeamDeadlineSchedule,
     SeamDeadlineScheduler,
     load_schedule,
 )
@@ -60,6 +63,22 @@ def test_install_writes_an_hourly_timer_that_runs_the_read_verb(tmp_path: Path) 
         "--now",
         "onex-seam-deadline-hourly.timer",
     ] in calls
+    assert [
+        "systemctl",
+        "--user",
+        "enable",
+        "--now",
+        "onex-seam-deadline-drill.timer",
+    ] in calls
+    drill_service = (unit_dir / "onex-seam-deadline-drill.service").read_text()
+    drill_timer = (unit_dir / "onex-seam-deadline-drill.timer").read_text()
+    assert "OnCalendar=*-*-* 00,12:50:00" in drill_timer
+    assert "--fault deadline-zero" in drill_service
+    assert (
+        "-m omnimarket.nodes.node_seam_deadline_probe_effect read --fault deadline-zero"
+        in drill_service
+    )
+    assert "SyslogIdentifier=onex-seam-deadline-drill" in drill_service
 
 
 def test_uninstall_is_the_rollback(tmp_path: Path) -> None:
@@ -78,6 +97,13 @@ def test_uninstall_is_the_rollback(tmp_path: Path) -> None:
         "--now",
         "onex-seam-deadline-hourly.timer",
     ] in calls
+    assert [
+        "systemctl",
+        "--user",
+        "disable",
+        "--now",
+        "onex-seam-deadline-drill.timer",
+    ] in calls
 
 
 def test_a_host_the_overlay_does_not_declare_is_refused(tmp_path: Path) -> None:
@@ -86,3 +112,20 @@ def test_a_host_the_overlay_does_not_declare_is_refused(tmp_path: Path) -> None:
     )
     assert result.exit_code == 1
     assert "schedule_hosts" in result.stderr
+
+
+def test_a_schedule_without_the_drill_block_is_refused() -> None:
+    contract = yaml.safe_load(CONTRACT_PATH.read_text(encoding="utf-8"))
+    del contract["schedule"]["drill"]
+    with pytest.raises(ValidationError):
+        ModelSeamDeadlineSchedule.model_validate(contract["schedule"])
+
+
+def test_the_drill_fault_the_contract_names_is_one_the_node_accepts() -> None:
+    """Seam: the contract's drill fault against the node's fault enum, which the unit's ``--fault`` argument parses."""
+    from omnimarket.nodes.node_seam_deadline_probe_effect.models.model_seam_deadline import (
+        EnumSeamFault,
+    )
+
+    fault = load_schedule().drill.fault
+    assert EnumSeamFault(fault) is not EnumSeamFault.NONE

@@ -1,0 +1,7 @@
+# Test data. This overlay is read by the handler through ONEX_SKILL_OVERLAY_ROOTS;
+# it is not a deployment overlay. The line is the capability map's class line.
+line:
+  floor: 0.9
+  margin: 0.3
+  confidence: 0.95
+  power: 0.8

@@ -8,9 +8,10 @@ node_version: {major: 1, minor: 0, patch: 0}
 description: >
   Runs the private-repo-runner-placement gate once per registry repository, merges its
   Actions-variables snapshots dated by the oldest read, and copies the complete snapshot to
-  every available caller-supplied host. Remote copies must read back byte-identical. A failed
+  every available host the declared lab host table (the lab_hosts overlay) says takes lanes
+  (OMN-23219, OMN-23396); the command takes no host list of its own. Remote copies must read back byte-identical. A failed
   repository read publishes nothing; a failed host copy still lets the other hosts receive
-  the file. Only a complete run writes the heartbeat; a failed run writes a failure record.
+  the file; a lab host table that cannot be read fails the run the same way. Only a complete run writes the heartbeat; a failed run writes a failure record.
 
 input_model: omnimarket.nodes.node_prrp_snapshot_publish_effect.models.model_prrp_snapshot_publish_request.ModelPrrpSnapshotPublishRequest
 output_model: omnimarket.nodes.node_prrp_snapshot_publish_effect.models.model_prrp_snapshot_publish_result.ModelPrrpSnapshotPublishResult
@@ -35,7 +36,7 @@ descriptor:
   idempotent: true
   side_effects:
     - runs the placement gate's --write-variables-snapshot once per registry repository (live GitHub reads)
-    - replaces the snapshot file in the local home and, over ssh, in each available lab host's home
+    - replaces the snapshot file in the local home and, over ssh, in each available lab-host-table host's home
     - replaces heartbeat.json on a complete run and failure.json on a failed one in the state directory
   runtime_profiles: [effects]
 

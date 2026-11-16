@@ -51,6 +51,7 @@ from omnimarket.nodes.node_projection_query_api_effect.models import (
     ModelProjectionQueryRequest,
 )
 from omnimarket.nodes.node_projection_query_api_effect.ports.asgi_app import (
+    DerivedReadRowSource,
     configure_cors,
     cors_origins_from_env,
     to_response,
@@ -90,7 +91,6 @@ from omnimarket.projection.read_page import (
 from omnimarket.projection.table_reader import (
     ProjectionReadError,
     ProtocolProjectionRowSource,
-    TableRowSource,
 )
 
 log = logging.getLogger(__name__)
@@ -116,7 +116,7 @@ def _unranked_order_value_refusal(
 # ---------------------------------------------------------------------------
 
 _topic_map: dict[str, ProjectionTableConfig] = {}
-_row_source: TableRowSource | None = None
+_row_source: DerivedReadRowSource | None = None
 
 
 @asynccontextmanager
@@ -134,7 +134,7 @@ async def _lifespan(application: FastAPI) -> AsyncIterator[None]:
     # OMN-20152: constructing the row source connects to nothing, so the HTTP
     # server answers from its first second. A database that is down makes
     # reads refuse by name; it never holds startup.
-    _row_source = TableRowSource()
+    _row_source = DerivedReadRowSource()
     try:
         yield
     finally:

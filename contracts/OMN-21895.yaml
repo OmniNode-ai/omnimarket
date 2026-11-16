@@ -93,3 +93,15 @@ dod_evidence:
     cwd: ${OMNI_HOME}/omnimarket
   binds_ac:
   - AC6
+- id: dod-omn21895-spi-memory-floor
+  description: The spi and memory pins sit at the 20261108170744 and 20261108074331 dev tags and uv.lock resolves them; the raised floor fails at the merge base.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/test_sibling_pin_train_floor.py -q --no-cov
+    cwd: ${OMNI_HOME}/omnimarket
+  - check_type: command
+    check_value: grep -c 'omnibase_spi.git", tag = "dev-20261108170744-52946639a23a"' pyproject.toml
+    cwd: .
+  binds_ac:
+  - AC6

@@ -6,10 +6,23 @@ Moved out of the guard script unchanged in behaviour: absence is neutral, presen
 refuses with a ValueError the guard turns into a refusal. The paths and names arrive as arguments.
 """
 
+import getpass
 import os
+import pwd
 import subprocess
 from collections.abc import Mapping
 from pathlib import Path
+
+from omnimarket.handlers.node_overlay_reader import (
+    NodeOverlayNotFoundError,
+    load_structured_overlay,
+)
+from omnimarket.models.node_overlays.model_node_overlays import (
+    ModelPytestHostGuardOverlay,
+)
+from omnimarket.nodes.node_pytest_full_suite_host_guard.models.model_pytest_full_suite_host_guard import (
+    ModelPytestFullSuiteHostGuardRequest,
+)
 
 _GIT_LOCATION_ENV = (
     "GIT_DIR",
@@ -35,6 +48,40 @@ def login_overlay_text(env: Env, overlay_name: str, roots_env: str) -> str | Non
                     f"per-login host overlay cannot be read: {exc}"
                 ) from exc
     return None
+
+
+def legacy_override_by_label(env: Env) -> dict[str, str]:
+    """The node's overlay: per row label the env var that replaces that row's hostname (OMN-19184).
+
+    Absence is neutral, like ``login_overlay_text``; a broken overlay refuses and never reads as an
+    absent one.
+    """
+    try:
+        overlay = load_structured_overlay(
+            "node_pytest_full_suite_host_guard", ModelPytestHostGuardOverlay, env
+        )
+    except NodeOverlayNotFoundError:
+        return {}
+    return dict(overlay.legacy_override_by_label)
+
+
+def local_login() -> str:
+    """The invoking account name, which ssh(1) also uses when no user is configured."""
+    try:
+        return getpass.getuser()
+    except (KeyError, OSError):
+        return ""
+
+
+def login_home(login: str) -> str:
+    """The home directory the host's account database gives the login, empty when the login
+    is empty or has no entry; it never falls back to a constant or to $HOME."""
+    if not login:
+        return ""
+    try:
+        return pwd.getpwnam(login).pw_dir
+    except KeyError:
+        return ""
 
 
 def shipped_table_text(repo_root: Path, host_table_rel: str) -> str:
@@ -119,3 +166,29 @@ def private_table_text(root: Path | None, private_rel: str) -> str | None:
                 "private host table differs between the working tree and HEAD"
             )
     return working.decode("utf-8")
+
+
+def request(
+    table_text: str,
+    env: Env,
+    *,
+    host: str,
+    login: str,
+    login_home: str,
+    private_table_rel: str,
+    host_table_rel: str,
+    overlay_name: str,
+    roots_env: str,
+) -> ModelPytestFullSuiteHostGuardRequest:
+    """The node's request for a host and login, with the overlays read from ``env``."""
+    return ModelPytestFullSuiteHostGuardRequest(
+        table_text=table_text,
+        login_overlay_text=login_overlay_text(env, overlay_name, roots_env),
+        login=login,
+        login_home=login_home,
+        host=host,
+        env_overrides={k: v for k, v in env.items() if k.startswith("PREPUSH_")},
+        legacy_override_by_label=legacy_override_by_label(env),
+        private_table_rel=private_table_rel,
+        host_table_rel=host_table_rel,
+    )

@@ -42,6 +42,14 @@ class EnumRoutingExclusionReason(StrEnum):
     TIER_PAID_GATE_CLOSED = "tier_paid_gate_closed"
     """A metered tier, with paid escalation switched off (OMN-14225)."""
 
+    TIER_PAID_RUNG_SPEND_CAP_REACHED = "tier_paid_rung_spend_cap_reached"
+    """An overlay paid tier whose measured spend since switch-on reached the
+    overlay's ``spend_cap_usd`` (OMN-23756)."""
+
+    TIER_PAID_RUNG_SPEND_UNREADABLE = "tier_paid_rung_spend_unreadable"
+    """An overlay paid tier closed because the provider's usage accounting could
+    not be read, so the spend against the cap is unknown (OMN-23756)."""
+
     TIER_LOCAL_ONLY_UNDECLARED_TASK_CLASS = "tier_local_only_undeclared_task_class"
     """The task class has no contract entry, so only local tiers are eligible."""
 

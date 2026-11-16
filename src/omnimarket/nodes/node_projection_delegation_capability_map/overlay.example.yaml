@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. A deployment's real overlay lives in the overlays repository
+# (overlays/node_projection_delegation_capability_map/overlay.yaml). The schema is
+# ModelCapabilityMapOverlay; the key is delegation.capability_map.line; no key has a default.
+line:            # delegation.capability_map.line
+  floor: 0.90
+  margin: 0.07
+  confidence: 0.95
+  power: 0.8

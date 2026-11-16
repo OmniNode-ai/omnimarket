@@ -1,0 +1,72 @@
+schema_version: 1.0.0
+ticket_id: OMN-24031
+title: The work record query reads a long window once and pages from it
+summary: A rows query that carries page_size reads its window from the store once and holds it; the page cursor names the window's end, so every later page is cut from the held copy instead of re-reading the window. A page that finds no held window re-reads it, so the held copy is never the source of truth. The hold's time limit and size come from the contract and the node's overlay.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn24031-read-window-once
+  statement: One rows window is read from the store once and paged from a cursor.
+  acceptance:
+  - id: AC1
+    statement: "AC1: a multi-page rows read of one window reads the store once, not once per page. -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_query_effect/test_rows_window_read_once.py -k reads_the_window_once"
+  - id: AC2
+    statement: "AC2: pages from the held window return the same rows, order and total as the old per-page read, and a cursor with no held window still answers correctly. -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_query_effect/test_rows_window_read_once.py -k \"same_rows or cache_miss\""
+  - id: AC3
+    statement: "AC3: a store failure on any page is an error answer, never an empty page, and a failed window is not held. -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_query_effect/test_rows_window_read_once.py -k \"error_chain\""
+  - id: AC4
+    statement: "AC4: integrated: on a lab host running this revision the queue-status seven-day read answers with fallback_count 0 inside the 120 s bound. -- falsifier: run the loader for a 168 hour window on the lab host and read stderr for source=node fallback_count=0"
+evidence_requirements:
+- kind: tests
+  description: The node's focused tests pass at the pushed head.
+  command: uv run pytest tests/unit/nodes/node_work_ledger_query_effect/test_rows_window_read_once.py tests/unit/nodes/node_work_ledger_query_effect/test_rows_page_size.py -q -n 0 --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24031-ac1
+  description: 'AC1: the window is read once; the test file is added by this change and its count reads one page-count of reads when the held window is switched off (the injected break).'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_work_ledger_query_effect/test_rows_window_read_once.py -q -n 0 --no-cov -p no:randomly -k reads_the_window_once
+    cwd: .
+- id: dod-omn24031-ac2
+  description: 'AC2: the same rows, order and total, and a cursor with no held window still answers.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_work_ledger_query_effect/test_rows_window_read_once.py tests/unit/nodes/node_work_ledger_query_effect/test_rows_page_size.py -q -n 0 --no-cov -p no:randomly -k "same_rows or cache_miss or following_next_cursor"
+    cwd: .
+- id: dod-omn24031-ac3
+  description: 'AC3: a failed read is an error answer and the failed window is not held.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_work_ledger_query_effect/test_rows_window_read_once.py -q -n 0 --no-cov -p no:randomly -k error_chain
+    cwd: .
+- id: dod-omn24031-ac4
+  description: 'hosted proxy for AC4: the seam test of the reader paging the query node passes here; the seven-day lab reading is posted as a pull request comment naming the head.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_work_ledger_query_effect/test_rows_window_read_once.py -q -n 0 --no-cov -p no:randomly -k reader_seam
+    cwd: .
+- id: dod-omn24031-integration-proof
+  description: the focused tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24031 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_work_ledger_query_effect/test_rows_window_read_once.py -q --no-cov -n 0 -p no:randomly

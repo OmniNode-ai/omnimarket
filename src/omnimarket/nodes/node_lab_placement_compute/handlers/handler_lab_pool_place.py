@@ -15,6 +15,7 @@ from omnimarket.models.model_host_capacity_advertisement import (
 from omnimarket.models.overlay_keys import ModelLabHostsTable
 from omnimarket.nodes.node_lab_work_unit_effect.protocols.local_host_reader import (
     cpu_temp_from_tools,
+    disk_watermark_paged,
 )
 
 from ..models import (
@@ -133,6 +134,11 @@ class HandlerLabPoolPlace:
                 fresh_seen = True
                 if ad.host_name in draining:
                     reason = "draining: the drain verb stopped placement on this host"
+                elif disk_watermark_paged(ad.tools):
+                    reason = (
+                        "disk watermark: a volume is past its page mark, so this "
+                        "host takes no new unit before the admission floor"
+                    )
                 elif table is None or not table.eligible:
                     reason = "host table: " + (
                         table.reason

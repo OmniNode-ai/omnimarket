@@ -39,6 +39,23 @@ def run_process(
     )
 
 
+def psql_script(source: ModelDelegationEventsSource, sql: str) -> str:
+    """The shell script that runs ``sql`` in the postgres container of the overlay's compose project."""
+    return "\n".join(
+        [
+            "set -eu",
+            "DB=$(docker ps --filter "
+            f"label=com.docker.compose.project={source.compose_project} --filter "
+            f"label=com.docker.compose.service={source.service} "
+            "--filter status=running --format '{{.Names}}' | head -1)",
+            '[ -n "$DB" ]',
+            f"docker exec -i \"$DB\" psql -X -q -v ON_ERROR_STOP=1 -U {source.db_user} -d {source.database} -tA <<'SQL'",
+            sql,
+            "SQL",
+        ]
+    )
+
+
 class InMemoryEventSource:
     """Reads given rows at a given time, or fails with a given reason."""
 
@@ -113,19 +130,7 @@ class SshPostgresEventSource:
                 "COMMIT;",
             ]
         )
-        return "\n".join(
-            [
-                "set -eu",
-                "DB=$(docker ps --filter "
-                f"label=com.docker.compose.project={s.compose_project} --filter "
-                f"label=com.docker.compose.service={s.service} "
-                "--filter status=running --format '{{.Names}}' | head -1)",
-                '[ -n "$DB" ]',
-                f"docker exec -i \"$DB\" psql -X -q -v ON_ERROR_STOP=1 -U {s.db_user} -d {s.database} -tA <<'SQL'",
-                sql,
-                "SQL",
-            ]
-        )
+        return psql_script(s, sql)
 
     def read(self, window_seconds: int) -> ModelEventsRead:
         host = self._environ.get(self._source.ssh_host_env, "").strip()
@@ -159,5 +164,6 @@ __all__ = [
     "InMemoryEventSource",
     "SshPostgresEventSource",
     "parse_rows",
+    "psql_script",
     "run_process",
 ]

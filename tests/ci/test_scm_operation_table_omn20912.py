@@ -51,6 +51,12 @@ LANE_WRITES: dict[str, str] = {
     "api --method POST /repos/{o}/{r}/pulls/{n}/comments/{id}/replies": "pr_thread_reply",
     "api graphql resolveReviewThread": "pr_thread_resolve",
     "api --method POST /repos/{o}/{r}/pulls/{n}/reviews": "pr_review_post",
+    "api --method POST /repos/{o}/{r}/issues/{n}/labels": "pr_label",
+    "variable set": "repo_variable_set",
+    "variable get": "repo_variable_get",
+    "api --method GET /orgs/{o}/actions/runners": "runner_list",
+    "api --method DELETE /orgs/{o}/actions/runners/{id}": "runner_remove",
+    "api --method GET /orgs/{o}/actions/runner-groups/{id}": "runner_group_get",
 }
 _REGISTRY_OWNER = "OmniNode-ai"
 
@@ -190,6 +196,18 @@ _CONTRACT_PLANTS = [
         "operation pr_thread_reply does not say",
         id="thread-reply-description-reworded",
     ),
+    pytest.param(
+        _drop_operation,
+        "pr_label",
+        "no operation pr_label",
+        id="pr-label-dropped",
+    ),
+    pytest.param(
+        _drop_operation,
+        "repo_variable_set",
+        "no operation repo_variable_set",
+        id="repo-variable-set-dropped",
+    ),
 ]
 
 
@@ -225,6 +243,18 @@ _DISPATCH_PLANTS = [
         'replaces="gh pr mark-ready"',
         "not 'gh pr ready'",
         id="replaces-edited",
+    ),
+    pytest.param(
+        'operation="pr_label"',
+        'operation="pr_label_post"',
+        "SCM_VERBS has no write verb for operation pr_label",
+        id="pr-label-verb-points-at-another-operation",
+    ),
+    pytest.param(
+        'operation="repo_variable_set"',
+        'operation="repo_variable_put"',
+        "SCM_VERBS has no write verb for operation repo_variable_set",
+        id="repo-variable-set-verb-points-at-another-operation",
     ),
 ]
 

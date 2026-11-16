@@ -1,0 +1,39 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+schema_version: 1
+not_applicable:
+  class_id: runs_outside_runtime
+  rule: changed_path_live
+  repos:
+    - repo: OmniNode-ai/omnimarket
+      node_path_regex: '^src/omnimarket/nodes/(?P<node>[^/]+)/'
+      non_runtime_regex:
+        - '/tests/'
+      entries:
+        - node: node_overlay_drift_effect
+          runs_by: schedule
+          reason: The overlay drift effect runs on a schedule outside the runtime
+          substitute_proof:
+            how: The lab runs the overlay drift effect's own test suite on the head
+            host_classes:
+              - lab
+        - node: node_overlay_merge_order_compute
+          runs_by: command
+          reason: The overlay merge order compute is invoked by the pool driver
+          substitute_proof:
+            how: The lab runs the overlay merge order compute's golden chain on the head
+            host_classes:
+              - lab
+substitute_receipts:
+  root_env: LAB_PROOF_JUDGE_RECEIPTS_ROOT
+  subdir: lab-proof-judge
+test_markers:
+  repos:
+    - repo: OmniNode-ai/omnimarket
+      broker_marker: kafka
+      selector_without_broker: 'not kafka'
+      source: .github/workflows/ci.yml
+      not_run_reason: The kafka broker is not available in this pool
+all_not_run_ok: false
+retention:
+  log_hours: 24

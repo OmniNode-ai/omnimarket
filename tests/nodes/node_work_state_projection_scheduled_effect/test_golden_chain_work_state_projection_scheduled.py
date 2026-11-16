@@ -4,12 +4,12 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta
 
 import pytest
 from pydantic import ValidationError
 
-from omnimarket.handlers.node_overlay_reader import NodeOverlayNotFoundError
 from omnimarket.models.work_state_projection import (
     EnumWorkStateProjectorProfile,
     EnumWorkStateSource,
@@ -127,12 +127,18 @@ def test_error_a_projector_that_raises_leaves_the_last_run_so_the_next_tick_retr
         h.handle(tick(T0 + timedelta(seconds=1)))
 
 
-def test_error_no_schedule_overlay_refuses_naming_the_setting() -> None:
+def test_error_no_schedule_overlay_refuses_naming_the_setting(caplog) -> None:
+    caplog.set_level(logging.ERROR)
     h = HandlerWorkStateProjectionScheduled(environ={})
-    with pytest.raises(
-        NodeOverlayNotFoundError, match="ONEX_WORK_STATE_SCHEDULE_OVERLAY"
-    ):
-        h.handle(tick(T0))
+    assert h.handle(tick(T0)) is None
+    refused = [
+        r
+        for r in caplog.records
+        if r.levelno == logging.ERROR
+        and r.getMessage().startswith("scheduled overlay refused")
+    ]
+    assert len(refused) == 1
+    assert "ONEX_WORK_STATE_SCHEDULE_OVERLAY" in refused[0].getMessage()
 
 
 def test_error_a_zero_interval_is_refused() -> None:
@@ -147,11 +153,20 @@ def test_error_an_unknown_projector_profile_is_refused() -> None:
 
 def test_error_the_file_sources_profile_without_the_rules_overlay_refuses_naming_it(
     tmp_path,
+    caplog,
 ) -> None:
+    caplog.set_level(logging.ERROR)
     """The lab's state on 2026-11-10: the rules overlay was not in the overlays repository, so the projection refused."""
     h = HandlerWorkStateProjectionScheduled(
         schedule=schedule(projector="file_sources"),
         environ={"OMNI_HOME": str(tmp_path)},
     )
-    with pytest.raises(NodeOverlayNotFoundError, match="ONEX_WORK_STATE_OVERLAY"):
-        h.handle(tick(T0))
+    assert h.handle(tick(T0)) is None
+    refused = [
+        r
+        for r in caplog.records
+        if r.levelno == logging.ERROR
+        and r.getMessage().startswith("scheduled overlay refused")
+    ]
+    assert len(refused) == 1
+    assert "ONEX_WORK_STATE_OVERLAY" in refused[0].getMessage()

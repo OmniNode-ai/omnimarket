@@ -136,12 +136,30 @@ def test_error_chain_act_for_a_repository_the_old_controller_decides_for_is_refu
     assert sink.events[-1].failure_code == "recorded_decision_missing"
 
 
-def test_control_observe_mode_never_writes_a_record() -> None:
+def test_observe_mode_never_assumes_the_out_of_scope_no_action_it_reads_the_record_unread() -> (
+    None
+):
+    """OMN-22921: observe mode compared the no-action record an overlay declared (OMN-23514); the controller in fact decides
+    the cutover repository, so a record with no controller tick is unread and nothing is compared or written."""
     repository, _ = _cutover()
-    handler, writer, _, _ = _handler((repository,), repository)
+    handler, writer, publisher, sink = _handler((repository,), repository)
     request = _act_without_record().model_copy(update={"mode": EnumTickMode.OBSERVE})
     result = handler.handle(request)
-    assert result.failure_reason is EnumTickFailureReason.RECORDED_DECISION_MISSING
+    assert result.status is EnumTickStatus.FAILED
+    assert result.failure_reason is EnumTickFailureReason.CONTROLLER_TICK_MISSING
+    assert result.recorded_written is False
+    assert result.writes_performed == 0
+    assert writer.performed == []
+    assert [topic for topic, _ in publisher.published] == [FAILED_TOPIC]
+    assert sink.events[-1].failure_code == "controller_tick_missing"
+
+
+def test_control_observe_mode_without_a_cutover_repository_still_refuses() -> None:
+    repository, _ = _cutover()
+    handler, writer, _, _ = _handler((repository,), None)
+    request = _act_without_record().model_copy(update={"mode": EnumTickMode.OBSERVE})
+    result = handler.handle(request)
+    assert result.failure_reason is EnumTickFailureReason.CONTROLLER_TICK_MISSING
     assert result.recorded_written is False
     assert writer.performed == []
 

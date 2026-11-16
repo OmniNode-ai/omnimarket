@@ -78,6 +78,9 @@ from omnimarket.nodes.node_floor_fill_orchestrator.models import (
     ModelFloorFillKeyResult,
     ModelFloorFillStoredAnswer,
 )
+from omnimarket.nodes.node_floor_fill_orchestrator.models.model_floor_fill_config import (
+    BRIEF_PLACEHOLDER,
+)
 from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.ports import (
     ENV_ATTEMPT,
     ENV_KEY,
@@ -717,6 +720,24 @@ class FloorFillOrchestrator:
             "attempt": str(intent.attempt),
         }
         command = self._config.runner_command
+        continuation = brief is not None
+        if not continuation and any(BRIEF_PLACEHOLDER in part for part in command):
+            # A floor-line start hands the start node a brief file too: the entry requires --brief, and a
+            # line has no predecessor to continue, so the brief is the configured text for this line and task.
+            try:
+                brief = self._line_brief(intent.key, values)
+            except ValueError:
+                self._clear_failed_start(ctx, key, intent.attempt, intent.lane)
+                ctx.results.append(
+                    ModelFloorFillKeyResult(
+                        key=key,
+                        kind="failed",
+                        lane=intent.lane,
+                        ticket=intent.ticket,
+                        cause="brief-unwritable:not-a-floor-key",
+                    )
+                )
+                return "start-failed"
         if brief is not None:
             try:
                 values["brief"] = self._briefs.save_brief(intent.lane, brief)
@@ -732,7 +753,8 @@ class FloorFillOrchestrator:
                     )
                 )
                 return "start-failed"
-            command = self._config.stopped_runner_command
+            if continuation:
+                command = self._config.stopped_runner_command
         outcome = self._runner.start_detached(
             ModelLaneStartSpec(
                 argv=_fill(command, values),
@@ -765,6 +787,19 @@ class FloorFillOrchestrator:
             )
         )
         return "start-failed"
+
+    def _line_brief(self, key: str, values: Mapping[str, str]) -> str:
+        """The brief text of a floor-line start: ``line_brief_text`` filled with the line, the task and the start's names."""
+        line_id, task_id = line_and_task(key)
+        return _fill(
+            (self._config.line_brief_text,),
+            {
+                **values,
+                "line_id": line_id,
+                "task_id": task_id,
+                "plans_root": self._config.plans_root,
+            },
+        )[0]
 
     # ------------------------------------------------------------------ reads and writes
 

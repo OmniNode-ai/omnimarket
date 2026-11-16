@@ -6,6 +6,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from omnimarket.models.delegation.model_size_band import EnumSizeBand
+
 
 class ModelHarnessObservation(BaseModel):
     """Trusted checker evidence, with availability separate from task failure."""
@@ -23,6 +25,7 @@ class ModelHarnessObservation(BaseModel):
     passed: bool
     harness_succeeded: bool
     failure_kind: str | None = None
+    size_band: EnumSizeBand
 
     @model_validator(mode="after")
     def _availability(self) -> ModelHarnessObservation:

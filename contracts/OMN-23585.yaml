@@ -1,0 +1,53 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-23585"
+title: "The installer's start check uses the installed job's own settings, and the snapshot cutover job's settings file can be named by the installer"
+summary: "node_host_installer_registry_units runs a unit's module start check (--help) with the environment the unit is rendered with, the request's path overrides applied, instead of the installing shell's environment; and the landing-snapshot-cutover unit declares ONEX_LANDING_SNAPSHOT_OVERLAY_FILE as a request-overridable path like the overlay roots."
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "public_api"
+requirements:
+  - id: "req-omn23585-start-check-environment"
+    statement: |-
+      A unit whose overlay root comes only from the request's path override passes the installer's start check, and a request can name the cutover snapshot unit's overlay file.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the host installer registry node's start check runs the unit's module with the rendered unit's environment, the request's path overrides applied, not the installing shell's -- falsifier: the new test where the overlay root comes only from the request's override, run at the merge base"
+      - id: "AC2"
+        statement: "AC2: the landing-snapshot-cutover unit declares ONEX_LANDING_SNAPSHOT_OVERLAY_FILE as a request-overridable path, so a request can correct it -- falsifier: the new render test with that override, run at the merge base"
+      - id: "AC3"
+        statement: "AC3: integrated: one unit installs on a lab host through the fixed installer from a shell without the overlay root in its environment and is observed running there -- falsifier: the unit's run record on that host over one interval"
+evidence_requirements:
+  - kind: "tests"
+    description: "The start-check environment tests and the installer's existing proof-argv readers."
+    command: "uv run pytest tests/nodes/node_host_installer_registry_units/test_start_check_environment.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn23585-start-check-environment"
+    description: "The golden test (overlay root only from the request's override) and the error test (rendered environment lacks the root) pass; at the merge base the golden test is refused with 'overlay root unset' and the cutover override test is refused as an undeclared override."
+    source: "manual"
+    binds_ac: ["AC1", "AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_host_installer_registry_units/test_start_check_environment.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn23585-integration-hosted"
+    description: "Integrated, hosted proxy for AC3: the start check of a unit whose overlay root comes only from the request's override passes with no overlay root in the calling shell. At the merge base the same test is refused with 'overlay root unset', so the control fails there. The live read on a lab host is the unbound local item below, because the hosted must-fail control can never run a local_done_gate item."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_host_installer_registry_units/test_start_check_environment.py -q --no-cov -k golden"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn23585-integration-proof"
+    description: "A unit is installed on a lab host from this branch through the installer with no overlay root in the installing shell, and observed running; recorded in the pull request's Lab comment. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound item; the hosted proxy above binds AC3."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-23585 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_start_check_environment.py -q --no-cov"
+        cwd: "."

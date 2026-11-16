@@ -59,6 +59,12 @@ from omnimarket.events.context_roi import (
     ModelAttemptReductionRow,
     ModelContextRoiRunResult,
 )
+from omnimarket.models.model_factor_arm import (
+    EnumArmLabel,
+)
+from omnimarket.models.model_factor_matrix import (
+    build_canonical_factor_matrix,
+)
 from omnimarket.nodes.node_context_roi_compute.handlers.handler_context_roi import (
     HandlerContextRoi,
 )
@@ -68,12 +74,6 @@ from omnimarket.nodes.node_context_roi_compute.models.model_context_roi_request 
 )
 from omnimarket.nodes.node_context_roi_compute.models.model_context_roi_result import (
     ModelContextRoiResult,
-)
-from omnimarket.nodes.node_context_roi_compute.models.model_factor_arm import (
-    EnumArmLabel,
-)
-from omnimarket.nodes.node_context_roi_compute.models.model_factor_matrix import (
-    build_canonical_factor_matrix,
 )
 from omnimarket.nodes.node_context_roi_compute.models.model_task_manifest import (
     EnumFailureStage as EnumScorerFailureStage,

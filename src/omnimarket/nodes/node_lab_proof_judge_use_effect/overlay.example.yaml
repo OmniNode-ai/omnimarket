@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. A deployment's real overlay lives in the overlays repository.
+schema_version: 1
+event:
+  topic: onex.evt.omnimarket.lab-proof-judge-use-recorded.v1
+  event_type: lab_proof_judge.use_recorded
+ledger:
+  append:
+    command_env: EXAMPLE_LEDGER_APPEND_COMMAND
+    host_env: EXAMPLE_HOST_NAME
+    timeout_seconds: 60
+  lane: lab-proof-judge
+  actor: node:node_lab_proof_judge_use_effect
+  ticket: OMN-23642
+  kind_cell: lab-proof-class-use

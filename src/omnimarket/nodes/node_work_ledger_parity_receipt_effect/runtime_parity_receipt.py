@@ -38,6 +38,7 @@ PYTHON_VARIABLE = "ONEX_LEDGER_PARITY_PYTHON"
 OVERLAY_VARIABLE = "ONEX_LEDGER_PARITY_OVERLAY"
 ENV_FILE_VARIABLE = "ONEX_LEDGER_PARITY_ENV_FILE"
 PG_PORT_VARIABLE = "ONEX_LEDGER_PARITY_PG_PORT"
+VERB_COMMAND_VARIABLE = "ONEX_LEDGER_PARITY_VERB_COMMAND"
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -79,6 +80,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             registry_root=args.registry_root,
             ledger_path=ledger,
             parity_python=os.environ.get(PYTHON_VARIABLE, ""),
+            verb_command=os.environ.get(VERB_COMMAND_VARIABLE, ""),
             dsn_overlay_path=os.environ.get(OVERLAY_VARIABLE, ""),
             dsn_env_file=os.environ.get(ENV_FILE_VARIABLE, ""),
             pg_port=os.environ.get(PG_PORT_VARIABLE, ""),

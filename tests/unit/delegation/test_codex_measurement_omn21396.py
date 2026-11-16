@@ -20,6 +20,9 @@ from omnimarket.handlers.handler_harness_eval import (
 from omnimarket.models.delegation.model_harness_observation import (
     ModelHarnessObservation,
 )
+from omnimarket.models.delegation_capability_map.model_capability_line import (
+    ModelCapabilityLine,
+)
 from omnimarket.models.model_engine_experiment import (
     ModelEngineExperimentRow,
     format_experiment_line,
@@ -48,7 +51,8 @@ def test_recorded_codex_measurement_replays(cohort: str, n: int, offset: int) ->
         return json.loads((directory / name).read_text())
 
     observations = tuple(
-        ModelHarnessObservation.model_validate(row) for row in read("observations.json")
+        ModelHarnessObservation.model_validate({**row, "size_band": "S"})
+        for row in read("observations.json")
     )
     tasks = fixed_tasks() if cohort == "fixed" else recent_tasks()
     digest = fixture_digest() if cohort == "fixed" else recent_digest()
@@ -100,6 +104,7 @@ def test_recorded_codex_measurement_replays(cohort: str, n: int, offset: int) ->
         observed_at=observed_at,
         suite_revision=digest,
         harness_revision=harness_revision,
+        line=ModelCapabilityLine(floor=0.9, margin=0.07, confidence=0.95, power=0.8),
     )
     assert capability.model_dump(mode="json") == read("capability-map-run.json")
     projection = HandlerProjectionDelegationCapabilityMap().handle(capability)

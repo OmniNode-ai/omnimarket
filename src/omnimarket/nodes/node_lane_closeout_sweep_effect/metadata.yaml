@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lane_closeout_sweep_effect
+version: "1.0.0"
+description: "Close out every ended lane on the host it ran on, whichever launcher started it: salvage dirty trees, remove trees and run directories, write one closeout record per lane run."
+omnibase_core_compat: ">=0.47.53,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_lane_closeout_sweep_effect: omnimarket.nodes.node_lane_closeout_sweep_effect
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  side_effect_class: write
+dependencies:
+  - omnibase_core>=0.47.53
+  - pydantic>=2.11.0
+authors: [OmniNode Team]
+license: MIT
+tags: [lane, closeout, sweep, effect]
+pack: operator_tooling
+display_name: "Lane Closeout Sweep Effect"
+node_role: effect
+tickets: ["OMN-23375"]

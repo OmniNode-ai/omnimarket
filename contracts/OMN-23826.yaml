@@ -1,0 +1,79 @@
+schema_version: 1.0.0
+ticket_id: OMN-23826
+title: Move the delegation routing settings from the plugin folder into the settings store and read them from there
+summary: The house delegation routing overlay (harness backends, harness tiers and per-class escalation chains) lives in the internal plugin repository's onex-overlays directory and is read only through the file DELEGATION_ROUTING_OVERLAY_PATH names. This change makes load_delegation_routing_overlay read the document <root>/delegation_routing/overlay.yaml under the first ONEX_SKILL_OVERLAY_ROOTS root that holds one (the overlay store) before that key, and the overlays repository now holds the document with its pin. A broken store document refuses and never falls through to a lower source.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn23826-store-first
+  statement: load_delegation_routing_overlay resolves the explicit path, then the overlay store root document, then DELEGATION_ROUTING_OVERLAY_PATH, then the empty overlay, and a broken selected source refuses with its key and path.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the overlays repository holds the delegation routing overlay with content equal to the plugin copy on its main branch, pinned to the omnimarket model and loaded through it by the existing pin check -- falsifier: edit one escalation rung in the overlays copy and `pytest tests/test_delegation_routing_overlay.py -q` in overlays fails'
+  - id: AC2
+    statement: 'AC2: the overlay store loads and serves the document (loader list, reader list and pin agree) -- falsifier: remove the id from the loader list and `pytest tests/test_overlay_store_load_list.py -q` in overlays fails'
+  - id: AC3
+    statement: 'AC3: load_delegation_routing_overlay reads the document from the overlay roots first, then DELEGATION_ROUTING_OVERLAY_PATH, then the empty overlay -- falsifier: `uv run pytest tests/unit/delegation/test_routing_overlay_store_first.py -q` in omnimarket fails when the store lookup is removed'
+  - id: AC4
+    statement: 'AC4: a broken store document refuses with the key and path and does not fall through to a lower source -- falsifier: `uv run pytest tests/unit/delegation/test_routing_overlay_store_first.py -q -k broken` in omnimarket'
+  - id: AC5
+    statement: 'AC5: integrated: on one lab host a delegation routing read with the plugin copy still present resolves its routing overlay path under the overlays store root -- falsifier: the lab receipt on this ticket names the host, the omnimarket revision and the resolved path, read back with onex ticket read'
+evidence_requirements:
+- kind: tests
+  description: The focused test file and the routing sources inventory at the pushed head; the first fails at origin/dev because the store lookup does not exist.
+  command: env -u PYTHONPATH uv run --frozen pytest tests/unit/delegation/test_routing_overlay_store_first.py tests/test_routing_sources_omn20601.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23826-ac1-ac2-ac5-store-document-loads
+  description: The omnimarket half of AC1, AC2 and AC5 at the pushed head. The store document is read through the omnimarket routing overlay model and resolved from the overlay store root while a plugin copy still exists. These tests fail at the merge base, where the store lookup does not exist. The overlays repository half (its own tests and pin check) is read by the unbound local Done gate items below.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_routing_overlay_store_first.py -q --no-cov -n 0 -p no:randomly -k "store_document_wins or golden_chain"
+    cwd: .
+- id: dod-omn23826-overlays-repository-readback
+  description: The overlays half (AC1 and AC2) is held by tests in the overlays repository pull request for this ticket (tests/test_delegation_routing_overlay.py, tests/test_overlay_store_load_list.py) and its ci pin check; hosted CI here cannot run them, so the local Done gate reads the merged document and the loader list from the overlays clone. Unbound because the hosted control cannot run a local_done_gate item.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: git -C "$OMNI_HOME/../overlays" show origin/main:overlays/delegation_routing/overlay.yaml
+    cwd: .
+  - check_type: command
+    check_value: git -C "$OMNI_HOME/../overlays" grep -q delegation_routing origin/main -- overlays/node_overlay_store_load_effect/overlay.yaml
+    cwd: .
+- id: dod-omn23826-ac3-store-first
+  description: The store-first order tests pass at the pushed head.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_routing_overlay_store_first.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23826-ac4-error-chain
+  description: The broken store document error chain passes at the pushed head.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_routing_overlay_store_first.py -q --no-cov -n 0 -p no:randomly -k broken
+    cwd: .
+- id: dod-omn23826-ac5-integration-proof
+  description: The pushed head ran the store-first tests on a lab host through the lab work runner and exited 0. The running-host half (the resolved path on a lab host) is read from the lab receipt comment on the ticket.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23826 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/delegation/test_routing_overlay_store_first.py -q --no-cov -n 0 -p no:randomly
+    cwd: .

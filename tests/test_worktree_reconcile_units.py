@@ -206,3 +206,136 @@ def test_an_environment_file_that_names_a_tree_counts(tmp_path: Path) -> None:
     text = f"# /etc/x/{UNIT}\n[Service]\nExecStart=/bin/true\nEnvironmentFile={env}\n"
     roots = SystemdUnitRootReader(run=_Systemctl(text=text)).read()
     assert roots.naming(REMOVED_TREE) == UNIT
+
+
+def _denied(_path: str) -> str:
+    raise PermissionError("denied")
+
+
+def _missing(_path: str) -> str:
+    raise FileNotFoundError("missing")
+
+
+def _names_removed_tree(_path: str) -> str:
+    return f"OMNIBASE_PATH={REMOVED_TREE}\n"
+
+
+def _env_unit_text(env: str) -> str:
+    return f"# /etc/x/{UNIT}\n[Service]\nExecStart=/bin/true\nEnvironmentFile={env}\n"
+
+
+def test_declared_unreadable_environment_file_joins_the_live_set(
+    tmp_path: Path,
+) -> None:
+    env = str(tmp_path / "secret.env")
+    reader = SystemdUnitRootReader(
+        run=_Systemctl(text=_env_unit_text(env)),
+        declared_environment_files={env: (REMOVED_TREE,)},
+        read_file=_denied,
+    )
+    assert reader.read().naming(REMOVED_TREE) == UNIT
+
+
+def test_declared_unreadable_environment_file_with_no_paths_names_nothing(
+    tmp_path: Path,
+) -> None:
+    env = str(tmp_path / "secret.env")
+    reader = SystemdUnitRootReader(
+        run=_Systemctl(text=_env_unit_text(env)),
+        declared_environment_files={env: ()},
+        read_file=_denied,
+    )
+    roots = reader.read()
+    assert roots.naming(REMOVED_TREE) == ""
+
+
+def test_undeclared_unreadable_environment_file_still_raises(tmp_path: Path) -> None:
+    env = str(tmp_path / "secret.env")
+    text = _env_unit_text(env)
+    with pytest.raises(UnitSnapshotError):
+        SystemdUnitRootReader(
+            run=_Systemctl(text=text),
+            read_file=_denied,
+        ).read()
+    with pytest.raises(UnitSnapshotError):
+        SystemdUnitRootReader(
+            run=_Systemctl(text=text),
+            declared_environment_files={"/etc/other.env": (REMOVED_TREE,)},
+            read_file=_denied,
+        ).read()
+
+
+def test_declared_value_does_not_cover_a_missing_required_file(tmp_path: Path) -> None:
+    env = str(tmp_path / "secret.env")
+    with pytest.raises(UnitSnapshotError):
+        SystemdUnitRootReader(
+            run=_Systemctl(text=_env_unit_text(env)),
+            declared_environment_files={env: (REMOVED_TREE,)},
+            read_file=_missing,
+        ).read()
+
+
+def test_declared_value_is_ignored_when_the_file_is_readable(tmp_path: Path) -> None:
+    env = str(tmp_path / "secret.env")
+    roots = SystemdUnitRootReader(
+        run=_Systemctl(text=_env_unit_text(env)),
+        declared_environment_files={env: ()},
+        read_file=_names_removed_tree,
+    ).read()
+    assert roots.naming(REMOVED_TREE) == UNIT
+
+
+def test_declared_unreadable_environment_file_run_chain_golden(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, path, head = squash_merged_then_moved_on(tmp_path)
+    reader = FakeMergedPrReader(frozenset({head}))
+    env = str(tmp_path / "secret.env")
+    units = SystemdUnitRootReader(
+        run=_Systemctl(text=_env_unit_text(env)),
+        declared_environment_files={env: (str(path.resolve()),)},
+        read_file=_denied,
+    )
+    result = run_with(probe_for(reader, monkeypatch, units=units), root, monkeypatch)
+    row = result.decided_events[0]
+    assert "unit_snapshot_failed" not in row.facts.probe_errors
+    assert result.completed_event.failures == 0
+
+
+def test_undeclared_unreadable_environment_file_run_chain_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, path, head = squash_merged_then_moved_on(tmp_path)
+    reader = FakeMergedPrReader(frozenset({head}))
+    env = str(tmp_path / "secret.env")
+    units = SystemdUnitRootReader(
+        run=_Systemctl(text=_env_unit_text(env)),
+        read_file=_denied,
+    )
+    result = run_with(probe_for(reader, monkeypatch, units=units), root, monkeypatch)
+    row = result.decided_events[0]
+    assert "unit_snapshot_failed" in row.facts.probe_errors
+    assert row.outcome == "kept"
+    assert path.exists()
+    assert result.completed_event.failures >= 1
+
+
+def test_unreadable_environment_files_must_be_absolute_paths() -> None:
+    from pydantic import ValidationError
+
+    from omnimarket.models.model_worktree_reconcile_policy import (
+        ModelWorktreeReconcilePolicy,
+    )
+
+    with pytest.raises(ValidationError):
+        ModelWorktreeReconcilePolicy(
+            unreadable_environment_files={"relative/env": ("/a",)}
+        )
+    with pytest.raises(ValidationError):
+        ModelWorktreeReconcilePolicy(
+            unreadable_environment_files={"/env": ("relative/a",)}
+        )
+    declared = ModelWorktreeReconcilePolicy(
+        unreadable_environment_files={"/env": ("/a",)}
+    )
+    assert declared.unreadable_environment_files == {"/env": ("/a",)}

@@ -282,6 +282,7 @@ class HandlerFloorCompare:
             piece=rt.emission_piece,
             clock=self._clock,
             drill=request.drill_error,
+            origin="probe",
         )
         # From the start, every way out ends in a success or a typed failure (OMN-22864): an error, a termination signal and
         # the cycle's own deadline each close the start. The close is outside the signal span so a late signal cannot cut it.

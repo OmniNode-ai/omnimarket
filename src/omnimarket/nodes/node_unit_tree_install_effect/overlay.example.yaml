@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. The deployment's overlay lives at <root>/node_unit_tree_install_effect/overlay.yaml
+# under a root named in the environment variable named by omni_root_env. No key has a default.
+omni_root_env: EXAMPLE_UNIT_TREE_ROOT
+units:
+  - name: example-unit
+    host: example-host
+    clone_relative: example/clone
+    ref: origin/dev
+    install_relative: example/unit
+    record_relative: example/unit-record.json
+    preserve_paths:
+      - .venv
+    sync_command:
+      - /usr/bin/env
+      - "true"
+    smoke_commands:
+      - - /usr/bin/env
+        - "true"
+    command_timeout_seconds: 60
+    keep: 2

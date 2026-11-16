@@ -1,0 +1,106 @@
+{
+ "candidates": {
+  "omnibase_infra#9103": {
+   "title": "fix(OMN-22664): recorded",
+   "body": ""
+  },
+  "omnibase_infra#9104": {
+   "title": "fix(OMN-22669): recorded",
+   "body": ""
+  },
+  "omniclaude#9105": {
+   "title": "fix(OMN-22391): recorded",
+   "body": ""
+  },
+  "omnimarket#5150": {
+   "title": "fix(OMN-17427): recorded",
+   "body": ""
+  },
+  "omnimarket#9101": {
+   "title": "fix(OMN-22663): recorded",
+   "body": ""
+  },
+  "omnimarket#9102": {
+   "title": "fix(OMN-22667): recorded",
+   "body": ""
+  }
+ },
+ "rule": {
+  "roots": [
+   "OMN-21288",
+   "OMN-22478"
+  ],
+  "endpoint": "https://linear.invalid/graphql",
+  "cache_seconds": 3600,
+  "reads_per_tick": 40,
+  "read_timeout_seconds": 5,
+  "max_depth": 6
+ },
+ "scope": null,
+ "ticket_facts": {
+  "OMN-17427": {
+   "parent": null,
+   "project_id": "",
+   "project_name": "",
+   "parent_known": true,
+   "project_known": true
+  },
+  "OMN-20768": {
+   "parent": null,
+   "project_id": "",
+   "project_name": "",
+   "parent_known": true,
+   "project_known": true
+  },
+  "OMN-21288": {
+   "parent": "OMN-20768",
+   "project_id": "",
+   "project_name": "",
+   "parent_known": true,
+   "project_known": true
+  },
+  "OMN-22391": {
+   "parent": "OMN-21288",
+   "project_id": "",
+   "project_name": "",
+   "parent_known": true,
+   "project_known": true
+  },
+  "OMN-22478": {
+   "parent": "OMN-17427",
+   "project_id": "",
+   "project_name": "",
+   "parent_known": true,
+   "project_known": true
+  },
+  "OMN-22663": {
+   "parent": "OMN-22478",
+   "project_id": "",
+   "project_name": "",
+   "parent_known": true,
+   "project_known": true
+  },
+  "OMN-22664": {
+   "parent": "OMN-21288",
+   "project_id": "",
+   "project_name": "",
+   "parent_known": true,
+   "project_known": true
+  },
+  "OMN-22667": {
+   "parent": "OMN-22478",
+   "project_id": "",
+   "project_name": "",
+   "parent_known": true,
+   "project_known": true
+  },
+  "OMN-22669": {
+   "parent": "OMN-21288",
+   "project_id": "",
+   "project_name": "",
+   "parent_known": true,
+   "project_known": true
+  }
+ },
+ "unread_tickets": {}
+}

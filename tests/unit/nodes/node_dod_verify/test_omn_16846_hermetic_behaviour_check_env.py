@@ -47,12 +47,16 @@ name is exempted, and a build failure is recorded SKIPPED with a typed cause
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
 from uuid import uuid4
 
 import pytest
+from omnibase_core.validators.no_unguarded_git_subprocess import (
+    scrub_git_location_env,
+)
 
 from omnimarket.nodes.node_dod_verify.handlers.handler_dod_verify import (
     HandlerDodVerify,
@@ -83,7 +87,11 @@ _requires_uv = pytest.mark.skipif(
 
 def _git(repo: Path, *args: str) -> str:
     proc = subprocess.run(
-        ["git", "-C", str(repo), *args], capture_output=True, text=True, check=True
+        ["git", "-C", str(repo), *args],
+        capture_output=True,
+        text=True,
+        check=True,
+        env=scrub_git_location_env(os.environ),
     )
     return proc.stdout.strip()
 
@@ -146,6 +154,10 @@ def collector(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> EvidenceCollec
     monkeypatch.setenv("OMNI_HOME", str(tmp_path))
     monkeypatch.setenv("DOD_VERIFY_LIVE_PR_CHECK", "0")
     monkeypatch.delenv("DOD_VERIFY_ALLOW_STALE_PRODUCT_CLONE", raising=False)
+    # dod-verify runs this file as a test_passes check inside its own hermetic
+    # environment, so uv hands the parent environment path down; a test of the
+    # unrouted case must not inherit it.
+    monkeypatch.delenv(ec_mod._UV_PROJECT_ENVIRONMENT_ENV, raising=False)
     return EvidenceCollector()
 
 

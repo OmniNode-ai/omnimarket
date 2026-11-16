@@ -1,0 +1,118 @@
+Verdict: PASS with conditions
+Independent design review, round 2. Model CreateTicketDraft.tla sha256=f2e5209a2ade9ef52da49d1e254e9e5cb7c7f944c9142ecd1cb5818940e0f3a3 (OMN-23760, plan S3).
+Bottom line: the round-1 BLOCKING finding (R1, the hand edit) is fixed in the model's behaviour, not renamed: readback
+checks the block, find on an edited issue fails hand_edited, and the mutant that removes the check breaks P3 through
+exactly the round-1 path. R4 to R9 are modelled and each has a mutant that fails as expected. No property I checked is
+vacuous. My two new breaks found no new BLOCKING defect under the main design D1. They found one condition for the
+fallback design, and one hazard where an edit is lost, which falls inside the window the header says is not modelled.
+
+FINDINGS ON THE ROUND-1 ITEMS
+1. R1 FIXED. ReadOk fails with fail_edited when the readback is not block_norm (line 260). Cont(i) sends an edited issue
+   to fail_edited (line 107), so there is no overwrite and no republish. mut_readback_unchecked: "Invariant
+   WrittenCertifiesBlock is violated", trace Start FindOk CreateOk ClearOk Build WriteOk HandEdit ReadOk PublishOk, the
+   same seam as round 1. Model.cfg (MaxEdit 1) passes all 11 invariants.
+   Not vacuous: on the resume path seen = rh[s], and only ReadOk sets it (Crash resets it). A Term without a read
+   therefore carries NoHash and would fail CompletedHasBlock. Round 1's mut_resume_trusts_issue is still the mutant
+   that covers this.
+2. R2 STATED, not modelled. The header defines cid as the draft's own id and Dup as a new envelope with the same draft
+   id. This stays a build condition (B2 below).
+3. R3 STATED. D1 is still unmeasured and the header says ASSUMES. alt_stamp_serial passes (64,627 distinct states,
+   liveness included), but see N1.
+4. R4 FIXED. RelookOk does one lookup and a miss goes to fail_unreadable. FindMayMiss now also applies under IdLookup
+   (SeenSet). mut_conflict_loops: "Temporal properties were violated", a lasso back to FindOk.
+5. R5 FIXED. ResumeClears sends Cont to clear. mut_resume_skips_clear: "Invariant CompletedNoProject is violated".
+6. R6 FIXED in the model. mut_fp_unstable: "Invariant OneWrittenPerCid is violated". Caveat in N3: the resume path
+   never builds in the model.
+7. R7 MODELLED. TermPubFail goes to "unacked" and charges the crash budget. Redeliver re-queues. RunEnds treats
+   unacked as an end, so CommandAnswered is the property that carries the obligation (Model_live, which I did not
+   run). K = 1+MaxExtra+MaxCrash covers every Start: pending only grows through Crash or TermPubFail, both capped by
+   MaxCrash.
+8. R8 FIXED. mut_alt_write_drops_stamp: "Invariant AtMostOneIssuePerCid is violated". The fallback requires
+   FindMayMiss = FALSE.
+9. R9 FIXED. The reads ghost set and WrittenCertifiesBlock. NOTE: reads is not tied to the run (any run's read of the
+   same id and hash satisfies WrittenHashesReturned). That is acceptable because WrittenCertifiesBlock and
+   ReadChecksBlock pin the value.
+12/13/14 accepted. wit_NeverCreateFailAfterThenRerun is reachable with the creator in done and iss=0 (the
+   fail-after-create path, not a crash). Model.cfg is the full single-draft bound.
+NEW FINDINGS
+N1 CONDITION (fallback alt_stamp_serial only). HandEdit never removes the stamp. If the stamp lives in the
+   description text, as the lane stamp does, a person can delete it, and a rerun's search then misses and creates a
+   second issue. Scratch variant with EditDropsStamp=TRUE, x_alt_edit_drops_stamp: "Invariant AtMostOneIssuePerCid is
+   violated", 9 states: Start FindOk CreateOk HandEdit Crash Start FindOk CreateOk. Under D1 the same knob is harmless
+   (x_d1_edit_drops_stamp: no error, 1,631,088 distinct states, P1 + CompletedHasBlock + WrittenCertifiesBlock).
+   Fix if the fallback is ever used: keep the stamp in a field that hand editing of the description cannot change
+   (a label, an attachment, or a link), and have the search use that field. Alternatively, model the edit as
+   dropping the stamp and accept the fallback only if it passes.
+N2 CONDITION (a lost edit, inside the stated NOT-MODELLED window). A concurrent duplicate that found the stub before
+   the first run's write can write over a human edit that lands after that write. Both runs then complete, and the
+   written event certifies the block, with no record that the edit ever happened. Scratch ghost lost (an edit
+   overwritten after the issue was written), x_lost_edit_after_write: "Invariant NoLostEdit is violated", 13 states:
+   Start FindOk CreateOk ClearOk Build Dup FindOk WriteOk(run1) ClearOk Build HandEdit WriteOk(dup). This matches the
+   header's exclusion "a hand edit between a run's find and its write". No ticket property covers it, so it is not
+   BLOCKING. Build: (a) no retry or backoff loop between find and write (keep the window to seconds); (b) just before
+   the write, re-read and refuse with hand_edited unless the content is the stub or exactly the block built, which
+   narrows the window (Linear has no compare-and-set). Record the exclusion in the README. The simpler case, an edit
+   of the stub before the first write, is also reachable (x_lost_edit, 8 states) and is the stated "the write wins".
+N3 CONDITION (the comparator). Linear normalises markdown (block_sent is not block_norm), so a readback check that
+   compares raw text with the rendered build fails EVERY run with hand_edited. In the model the check is a symbol
+   comparison. The build must compare the parsed block's fingerprint plus a normalised rendering, and the D1 sandbox
+   measurement must include one real write and readback, to show that the comparator accepts Linear's own
+   normalisation. The resume path (Cont goes straight to readback) does not build in the model, so the build must
+   rebuild deterministically before that comparison (this is round-1 R6, now load-bearing for R1).
+N4 NOTE (stale evidence). results/SUMMARY.txt and every results/*.out carry the round-1 model sha (64d3cedf...). For
+   example, results/Model.out has 17,025 distinct states, against 1,631,088 now. There is no .out for the new mutants
+   (readback_unchecked, conflict_loops, resume_skips_clear, fp_unstable, alt_write_drops_stamp, haz_block_without_event).
+   Regenerate results/ against sha f2e5209a before merge. That run may be in progress, as the brief says.
+N5 NOTE. The model directory has no README, yet the brief says the two-knob mutants are stated in the README. Add it,
+   or move the statement into the .tla header.
+N6 NOTE. hand_edited is permanent for a draft: every later retry fails it, and a late failed after a completed is
+   reachable (haz_fail_after_complete). Consumers must treat the first completed as authoritative (R7 carry). An edit
+   after a run's readback and before its terminal still yields completed. P4 is stated on the read, which is the
+   restated P4 the author chose, and that is acceptable.
+WHAT I RERAN (tla2tools.jar sha256 936a2620...e050e88, docker eclipse-temurin:17-jre-alpine, -workers 2)
+ Model.cfg                       No error has been found. 3954475 generated, 1631088 distinct, depth complete.
+ alt_stamp_serial.cfg            No error has been found. 85596 generated, 64627 distinct (LiveSpec, RunEnds, CommandAnswered).
+ mut_readback_unchecked          Invariant WrittenCertifiesBlock is violated (10 states, HandEdit between WriteOk and ReadOk).
+ mut_conflict_loops              Temporal properties were violated (lasso FindOk/CreateOk/FindOk).
+ mut_resume_skips_clear          Invariant CompletedNoProject is violated.
+ mut_fp_unstable                 Invariant OneWrittenPerCid is violated.
+ mut_alt_write_drops_stamp       Invariant AtMostOneIssuePerCid is violated.
+ haz_block_without_event         Invariant BlockHasEventWhenQuiet is violated (13 states: WriteFailAfter, FailTerm, Dup, FindFail, FailTerm).
+ wit_NeverCreateFailAfterThenRerun  Invariant NeverCreateFailAfterThenRerun is violated (reachable, as intended).
+ Own breaks (copies under /data/omninode/scratch/rev2-4250/var and var2, never in the worktree):
+ x_alt_edit_drops_stamp          AtMostOneIssuePerCid violated, 9 states (N1).
+ x_d1_edit_drops_stamp           No error, 1631088 distinct (D1 is immune to the stamp being removed).
+ x_lost_edit_after_write         NoLostEdit violated, 13 states (N2; duplicate racing an edit).
+ x_lost_edit                     NoLostEdit violated, 8 states (edit of the stub; stated exclusion).
+ Duplicate racing a crash: covered exhaustively by Model.cfg (MaxExtra 1, MaxCrash 2, MaxFail 2, MaxEdit 1). Under D1 no
+ interleaving breaks P1 to P4. Not run by me: Model_live, Model_2draft_* (in progress, per the brief).
+
+CONDITIONS THE BUILD MUST MEET
+ B2 (R2) Put a draft-stable id on ModelCreateTicketRequest, and derive the D1 issue id and the stamp from it, never
+    from the envelope correlation_id. Test: two envelopes with different correlation_ids and the same draft id make
+    one issue.
+ B3 (R3) Measure D1 in a sandbox team before merge: a client id in v4 format is accepted; a second create with the
+    same id is refused, with the error shape recorded and typed (not a bare RuntimeError); issue(id:) on a trashed or
+    archived issue. Include one real write and readback for the N3 comparator. If any part fails, fall back to
+    alt_stamp_serial, with an enforced per-draft lease, a consistent filter, and N1 resolved.
+ B4 (R4) One lookup after a refused create; a miss ends with a typed id_unreadable failure; no loop.
+ B5 (R5) Every run, fresh or resume, clears the inherited project before the write.
+ B6 (R6) The build and the fingerprint are deterministic in (request, issue id): no clock, no random. The resume path
+    rebuilds. A same draft id with a different payload is refused (idempotency_conflict).
+ B7 (R7) The consumer commits only after the terminal publish is acknowledged; a terminal publish error leads to no
+    commit, so the message is redelivered. Establish which consumer path the write effect uses (auto-commit=True
+    there breaks D8). The first completed is authoritative over a late failed.
+ B8 (R8) The write keeps the stamp. Fallback only: a consistent filter (not the search index), and Serial enforced
+    across processes and replicas.
+ B9 (R9) The written event carries the hash of what the readback returned (title and description) and is published
+    only after the readback check passes.
+ B10 (R10, carried) Await the broker ack of ticket-contract-written before the terminal. The event id is
+    deterministic in (draft id, issue, fp, hash), and consumers dedupe on it. The written topic is in publish_topics.
+ B11 (R11, carried) The description write keeps the caller's first-line lane stamp, and the guard judges the final
+    rendered text.
+ B12 (N3, new) The readback check compares the parsed fingerprint plus a normalised rendering, with a test that uses
+    Linear's real normalisation. A mismatch gives typed hand_edited: no overwrite, no republish.
+ B13 (N2, new) No retry or backoff between find and write. Re-read just before the write, and refuse with
+    hand_edited unless the content is the stub or the exact built block.
+ B14 (N4, new) Regenerate results/ and SUMMARY.txt against model sha f2e5209a, including the new mutants and
+    Model_live / Model_2draft_*, all as expected, before merge.

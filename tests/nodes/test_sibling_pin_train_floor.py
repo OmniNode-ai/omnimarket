@@ -10,8 +10,8 @@ ROOT = Path(__file__).parents[2]
 FLOORS = {
     "omnibase-core": "20261105194015",
     "omnibase-infra": "20261108054615",
-    "omnibase-spi": "20261108015921",
-    "omninode-memory": "20261106074413",
+    "omnibase-spi": "20261108170744",
+    "omninode-memory": "20261108074331",
 }
 
 

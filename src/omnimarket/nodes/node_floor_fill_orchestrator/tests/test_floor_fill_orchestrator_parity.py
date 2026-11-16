@@ -63,8 +63,25 @@ CASES = (
     "00:four-lines",
     "01:one-refusing-runner",
     "02:degraded-read",
+    "03:start-entry-argv",
     "04:stopped-continuation",
 )
+# The argv the fill renders for the lane start node's entry (the process seam, OMN-22854): the placeholders are
+# the options that entry reads; the seam test (test_floor_fill_seams) judges them against the entry's own parser.
+START_ENTRY_COMMAND = [
+    "onex",
+    "run-node",
+    "node_remote_lane_start_orchestrator",
+    "--",
+    "--lane",
+    "{lane}",
+    "--key",
+    "{key}",
+    "--ticket",
+    "{ticket}",
+    "--attempt",
+    "{attempt}",
+]
 STOPPED_REPORT_PATH = ".claude_scratch/reports/prev-0100/result.md"
 STOPPED = {
     "lane": "prev-0100",
@@ -91,6 +108,8 @@ def run_case(name: str) -> dict[str, Any]:
             config=config,
             starter=ScriptedStarter(fail_keys=frozenset({"floor:bravo:b1"})),
         )
+    elif name == "02:degraded-read":
+        h = harness(config=config, pool=ScriptedPool(5, unreadable=True))
     elif name == "04:stopped-continuation":
         h = harness(
             config=config,
@@ -101,7 +120,17 @@ def run_case(name: str) -> dict[str, Any]:
             ),
         )
     else:
-        h = harness(config=config, pool=ScriptedPool(5, unreadable=True))
+        starter = ScriptedStarter()
+        h = harness(
+            config=overlay(
+                max_fill_lanes_per_line=1, runner_command=START_ENTRY_COMMAND
+            ),
+            starter=starter,
+        )
+        projection = (
+            h.orchestrator().run(EnumFloorFillCommand.TICK).decision_projection()
+        )
+        return {**projection, "argv": [list(start.argv) for start in starter.starts]}
     return h.orchestrator().run(EnumFloorFillCommand.TICK).decision_projection()
 
 
@@ -291,6 +320,20 @@ def test_floor_fill_orchestrator_parity_the_scenario_decides_what_the_rules_say(
     assert degraded["exit_code"] == 3
     assert degraded["lines"] == ["UNKNOWN pool-unread:no host answered"]
     assert degraded["key_results"] == []
+    entry = rows["03:start-entry-argv"]
+    assert entry["status"] == "OK"
+    assert [a[a.index("--key") + 1] for a in entry["argv"]] == [
+        "floor:alpha:a1",
+        "floor:bravo:b1",
+        "floor:charlie:c1",
+        "floor:delta:d1",
+    ]
+    assert all(
+        a[:4] == ["onex", "run-node", "node_remote_lane_start_orchestrator", "--"]
+        and a[-2:] == ["--attempt", "1"]
+        and not any("{" in element for element in a)
+        for a in entry["argv"]
+    )
     stopped = rows["04:stopped-continuation"]
     assert [r[:2] for r in stopped["key_results"]] == [
         ["floor:stopped:prev-0100", "started"]

@@ -9,7 +9,9 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.models.model_dev_deploy_reading import (
+    ModelDeploySource,
     ModelLabPassReceiptFact,
+    ModelLineageFact,
     ModelRuntimeMerge,
     ModelRuntimeProbeFact,
 )
@@ -33,8 +35,12 @@ class ModelDevDeployFacts(BaseModel):
     merges: tuple[ModelRuntimeMerge, ...] = ()
     receipts: tuple[ModelLabPassReceiptFact, ...] = ()
     probes: tuple[ModelRuntimeProbeFact, ...] = ()
+    #: What the clone says of the (merge, receipt) and (expected, observed) pairs; a pair it could not read says so.
+    lineage: tuple[ModelLineageFact, ...] = ()
     receipts_unread_reason: str | None = None
     probes_unread_reason: str | None = None
+    #: The deploy agent's own report, when the overlay's source rule is deploy_agent; absent for the lab pass receipt rule.
+    deploy_source: ModelDeploySource | None = None
 
 
 class ModelDevDeployReadingResult(BaseModel):

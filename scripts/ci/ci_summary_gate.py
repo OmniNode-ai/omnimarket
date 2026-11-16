@@ -121,7 +121,7 @@ Every head check-run not owned by this run, the event's asserted contexts,
 :data:`SOFT_ALLOWLIST`, or CI Summary is judged with a success-only bar.
 Running rows and due replacements hold PENDING. Only known non-PR workflow
 run events exempt a row; unresolved provenance is swept. Dated, validated
-:data:`EXTERNAL_SWEEP_EXCLUSIONS` stop excluding on their expiry date.
+the resolved sweep exclusions stop excluding on their expiry date.
 
 Jobs produced by other workflow files that are NOT in
 :data:`EXPECTED_EXTERNAL_CONTEXTS` also carry an explicit, reasoned
@@ -617,25 +617,22 @@ class SweepExclusion:
 
 SWEEP_EXCLUSION_MAX_DAYS: int = 90
 
-# The registry is data, in ci_summary_sweep_exclusions.json beside this file
-# (stdlib json: the poller runs with no third-party packages). Each entry names
-# its reason, ticket, added date and expiry. The first two were measured over 43
-# merged PR heads on 2026-10-17 (OMN-17427): the only external pull_request rows
-# that skip by design. The Tessl Reviewer entry is RULING 2026-11-05T20:27:56Z
-# (OMN-22478, now OMN-23029): the automated reviewer's neutral row never blocks a merge.
-# Expiry re-arms the sweep.
-SWEEP_EXCLUSIONS_FILE = Path(__file__).with_name("ci_summary_sweep_exclusions.json")
+# Both registries (the sweep exclusions and each check's advisory or blocking mode,
+# ruling 2026-11-08) are resolved by node_ci_summary_registry_compute (OMN-23505): the
+# workflow step feeds the files through the node's runtime module and writes its answer
+# beside this file. The gate holds no loader of the files; it reads the answer, and an
+# absent or malformed answer raises, and any refusal the node reported fails closed.
+# A neutral passes only for a declared-advisory check; undeclared stays denied.
+REGISTRY_FILE = Path(__file__).with_name("ci_summary_registry.resolved.json")
 
 
-def load_sweep_exclusions(path: Path) -> dict[str, SweepExclusion]:
-    """Read the exclusion registry; a malformed file raises and fails the gate."""
+def load_resolved_registry(path: Path) -> tuple[dict, dict, list[str]]:
+    # Raises on an absent or malformed file, which fails the gate (exit 1) like the
+    # loader this replaces; the node's own refusals come back in the third item.
     raw = json.loads(path.read_text(encoding="utf-8"))
-    return {name: SweepExclusion(**fields) for name, fields in raw.items()}
+    exclusions = {n: SweepExclusion(**e) for n, e in raw["exclusions"].items()}
+    return exclusions, raw["check_modes"], list(raw["refusals"])
 
-
-EXTERNAL_SWEEP_EXCLUSIONS: dict[str, SweepExclusion] = load_sweep_exclusions(
-    SWEEP_EXCLUSIONS_FILE
-)
 
 _SWEEP_TICKET_RE = re.compile(r"^OMN-\d+$")
 _SWEEP_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -1699,7 +1696,7 @@ def _parse_exclusion_date(raw: object) -> date | None:
 def validate_sweep_exclusions(
     exclusions: Mapping[str, object],
 ) -> list[str]:
-    """Refusal reasons for malformed :data:`EXTERNAL_SWEEP_EXCLUSIONS` entries.
+    """Refusal reasons for malformed sweep exclusion entries.
 
     A non-empty return FAILS the gate. That is the point: an exclusion nobody
     could have reviewed is worse than no exclusion, because it reads as a
@@ -1859,8 +1856,8 @@ def evaluate_external_sweep(
             EXIT_SUCCESS,
             "External default-deny sweep: not applicable to this event.",
         )
-    if sweep_exclusions is None:
-        sweep_exclusions = EXTERNAL_SWEEP_EXCLUSIONS
+    loaded, check_modes, mode_refusals = load_resolved_registry(REGISTRY_FILE)
+    sweep_exclusions = loaded if sweep_exclusions is None else sweep_exclusions
     findings = validate_sweep_exclusions(sweep_exclusions)
     active, expired = active_sweep_exclusions(sweep_exclusions, now=now)
     accounted = frozenset(expected) | in_run_names | SOFT_ALLOWLIST | {self_name}
@@ -1874,7 +1871,9 @@ def evaluate_external_sweep(
         and check_run_workflow_run_id(raw) not in own_run_ids
         and resolve_check_run_event(raw, events) not in SWEEP_NON_PR_EVENTS
     ]
-    failures: list[str] = []
+    # A row a declared-advisory check's mode admits lands in ``excluded`` as
+    # "name (conclusion, declared advisory)"; an unreadable registry is a failure.
+    failures = [f"CI Summary registry {r}" for r in mode_refusals]
     running: list[str] = []
     swept: list[str] = []
     excluded: list[str] = []
@@ -1888,6 +1887,8 @@ def evaluate_external_sweep(
             running.append(name)
         elif state.conclusion in SWEEP_GOOD_CONCLUSIONS:
             continue
+        elif state.conclusion in check_modes.get(name, ()):
+            excluded.append(f"{name} ({state.conclusion}, declared advisory)")
         elif verdict_is_provisional(state, now) or replacement_run_in_flight(
             state, workflow_runs
         ):

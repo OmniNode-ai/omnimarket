@@ -8,4 +8,10 @@ nodes:
   node_thread_reply_effect:
     fast_model: "deepseek-r1-14b"
     coder_model: "qwen3-coder-30b"
+    # OMN-19127: "glm-4.5" is the thread-reply registry's key for the cloud-glm
+    # backend (handler_thread_reply._CONTRACT_BACKENDS), not the model id the
+    # delegation ladder serves: bifrost_delegation.yaml declares cloud-glm as
+    # "glm-5.3-flash" and parks it (OMN-20173). The two spellings are read by
+    # different paths and are not reconciled by changing either; the note in
+    # bifrost_delegation.yaml above cloud-glm says the same.
     glm_model: "glm-4.5"

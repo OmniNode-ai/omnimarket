@@ -1,0 +1,56 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# The settings of node_test_duration_record_check_effect (OMN-23560). No value is set in code.
+#
+#   record_path          the committed per-file seconds the full-suite shard planner reads, relative to
+#                        the repository root (scripts/ci/merge_test_durations.py DEFAULT_RECORD).
+#   record_dir           the directory of per-test-file entries (one small file per recorded test file,
+#                        written by --sidecar), read with the record, so a change adds its entry without
+#                        editing the shared list (OMN-23537). A refresh of the record folds them in.
+#   max_unrecorded_files the unrecorded count at which the post-merge freshness run turns red; the same
+#                        limit as test_committed_record_leaves_fewer_than_fifty_test_files_unrecorded.
+#   tests_dir            the directory pytest collects, relative to the repository root.
+#   test_file_patterns   the file names pytest collects (its default python_files).
+#   norecurse_patterns   the directory names pytest does not enter (its default norecursedirs).
+#   record_command       the command a refusal prints; {files} is the unrecorded files, space separated.
+#   measure_command      argv that times one file; {file} is the test file and {durations_path} the
+#                        pytest-split durations file it writes, the same measure the record was built from.
+#   decimals             decimal places a recorded time keeps (the planner's record keeps 2).
+#   min_seconds          a recorded time is never below this, so a fast file is not recorded as 0.
+record_path: config/test_file_durations.json
+record_dir: config/test_file_durations.d
+max_unrecorded_files: 50
+tests_dir: tests
+test_file_patterns:
+  - "test_*.py"
+  - "*_test.py"
+norecurse_patterns:
+  - "*.egg"
+  - ".*"
+  - "_darcs"
+  - "build"
+  - "CVS"
+  - "dist"
+  - "node_modules"
+  - "venv"
+  - "{arch}"
+record_command: >-
+  env -u PYTHONPATH uv run --frozen python -m
+  omnimarket.nodes.node_test_duration_record_check_effect.runtime_test_duration_record_check
+  --sidecar --record {files}
+measure_command:
+  - python
+  - -m
+  - pytest
+  - "{file}"
+  - -q
+  - --no-cov
+  - -n
+  - "0"
+  - -p
+  - no:randomly
+  - --store-durations
+  - --durations-path
+  - "{durations_path}"
+decimals: 2
+min_seconds: 0.01

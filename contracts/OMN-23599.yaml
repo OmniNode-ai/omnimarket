@@ -1,0 +1,59 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-23599"
+title: "Dashboard bundle pin test reads a recorded publish run, not the GitHub API"
+summary: "test_the_publish_run_for_the_tag_succeeded in tests/projection/test_dashboard_bundle_pin_omn21469.py read the publish-dashboard-bundle run list for omnidash v1.1.11 from the public GitHub REST endpoint, so it failed in CI with HTTP 403 rate limit exceeded. It now reads a recorded copy of that run list, tests/fixtures/dashboard_bundle/omnidash_publish_runs_v1_1_11.json, taken from the repository gateway read node and replayed through that node's own read; the typed result gains succeeded_at(head_sha); a control test shows the check rejects a wrong commit, a failed conclusion and an empty list."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn23599-publish-run-from-recorded-fixture"
+    statement: |-
+      The check that the v1.1.11 publish run succeeded reads a recorded run list and makes no network call, and it fails for a run that is wrong.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: test_the_publish_run_for_the_tag_succeeded reads a recorded fixture of the publish-dashboard-bundle run list for v1.1.11 and makes no network call -- falsifier: pytest tests/projection/test_dashboard_bundle_pin_omn21469.py -k publish_run with the network blocked fails on dev's version and passes on the head"
+      - id: "AC2"
+        statement: "AC2: a fixture whose run has a different head commit or a non-success conclusion makes the check fail (failing control) -- falsifier: pytest tests/projection/test_dashboard_bundle_pin_omn21469.py -k publish_run_check_rejects"
+      - id: "AC3"
+        statement: "AC3: integrated: the recorded fixture equals the run list the running read node returns for the omnidash publish workflow at v1.1.11 -- falsifier: onex scm run-list OmniNode-ai/omnidash --workflow publish-dashboard-bundle.yml --branch v1.1.11 --event push on the dev runtime returns the head commit and conclusion the fixture holds"
+evidence_requirements:
+  - kind: "tests"
+    description: "The publish-run check passes on the recorded fixture with the network blocked, and its control rejects a wrong commit, a failed conclusion and an empty list."
+    command: "uv run pytest tests/projection/test_dashboard_bundle_pin_omn21469.py -q -p no:randomly -k publish_run"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn23599-publish-run-reads-recorded-fixture"
+    description: "The publish-run check passes with every socket connection refused: it replays the recorded run list through the repository gateway node's own workflow-runs read and asks the typed result whether a run on the bump commit succeeded. At the merge base the typed result has no such question, so the case fails there (the failing control)."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/projection/test_dashboard_bundle_pin_omn21469.py -q -p no:randomly -k publish_run_check_reads_the_recorded_fixture"
+        cwd: "."
+  - id: "dod-omn23599-publish-run-control-rejects-wrong-run"
+    description: "The control test builds a different commit, a failed conclusion and an empty run list from the recorded fixture and asserts the typed result's question returns false for each; at the merge base the question does not exist, so the control fails there."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/projection/test_dashboard_bundle_pin_omn21469.py -q -p no:randomly -k publish_run_check_rejects"
+        cwd: "."
+  - id: "dod-omn23599-fixture-parsed-by-read-node"
+    description: "The recorded run list is accepted by the gateway read node's own workflow-runs read under a strict recorded replay of the request it sends, and names a successful run on the bump commit; the replay fails if the node's request shape or the fixture's shape drifts. At the merge base the typed result lacks the question, so the case fails there."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/projection/test_dashboard_bundle_pin_omn21469.py -q -p no:randomly -k publish_run_for_the_tag_succeeded"
+        cwd: "."
+  - id: "dod-omn23599-integration-proof-read-node"
+    description: "On the dev runtime, the repository gateway read node returns, for the omnidash publish workflow at v1.1.11, the run with the head commit and success conclusion the recorded fixture holds. Hosted CI cannot reach the lab bus, so only the local Done gate runs this unbound item; the lane records the read and its terminal offset in the pull request."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "onex scm run-list OmniNode-ai/omnidash --workflow publish-dashboard-bundle.yml --branch v1.1.11 --event push --bus kafka --bus-lane dev | grep -F '\"head_sha\":\"3149cd09f4da87094901fa787a287f9dba23db74\"' | grep -F '\"conclusion\":\"success\"'"
+        cwd: "."

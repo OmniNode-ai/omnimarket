@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Settings overlay of scenario R8 (OMN-23695): the probe tenant's key is the key the secret store node's generate_key operation
+# created (generated_keys.r8_probe_tenant_key in that node's contract), under the name it was stored as, looked up in the process
+# environment, then the host environment file, then the store folder. No key is here, and none is ever written to a host file.
+folder: /shared/env
+host_env_file: .omnibase/.env
+settings:
+  - {env: R8_PROBE_TENANT_API_KEY, secret: R8_PROBE_TENANT_API_KEY}

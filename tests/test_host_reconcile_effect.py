@@ -183,6 +183,14 @@ def command(
     ).model_copy(update=updates)
 
 
+def receipt_name(mode: str) -> str:
+    return (
+        ".onex-workspace-reconcile.check.json"
+        if mode == "check"
+        else ".onex-workspace-reconcile.json"
+    )
+
+
 def calls(root: Path) -> list[list[str]]:
     return [
         json.loads(line) for line in (root / "verifier.calls").read_text().splitlines()
@@ -211,7 +219,7 @@ def test_failures_publish_slack_command_before_completed_event(
     )
     assert slack.text == (
         f"*OmniNode workspace reconcile FAILED* ({result.host})\n{message}\n"
-        f"receipt: {root / '.onex-workspace-reconcile.json'}\nhost root: {root}"
+        f"receipt: {root / receipt_name(mode)}\nhost root: {root}"
     )
     assert publisher.events[-1][1] == result
 
@@ -320,7 +328,7 @@ def test_run_receipt_lock_and_publication(
     assert publisher.events == [(publish_topics()[1], result)]
     assert result.floor_stamped is (mode == "repair")
     assert (root / ".onex-workspace-floor.json").exists() is (mode == "repair")
-    path = root / ".onex-workspace-reconcile.json"
+    path = root / receipt_name(mode)
     text = path.read_text()
     receipt = json.loads(text)
     assert list(receipt) == [
@@ -1080,6 +1088,17 @@ def test_an_install_off_the_clone_history_still_fails(
     assert surface_verdict(result, "venv:omnimarket") == "DID_NOT_MOVE"
     assert result.exit_code == 2
     assert result.floor_stamped is False
+
+
+def test_check_run_leaves_the_repair_receipt_intact(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = setup_workspace(tmp_path, monkeypatch)
+    repair = root / ".onex-workspace-reconcile.json"
+    repair.write_text("last repair receipt\n")
+    handler(RecordingEvaluator(), RecordingPublisher()).handle(command(root, "check"))
+    assert repair.read_text() == "last repair receipt\n"
+    assert (root / ".onex-workspace-reconcile.check.json").exists()
 
 
 def restoring_delegate(root: Path, proven: str, argv_log: Path) -> None:

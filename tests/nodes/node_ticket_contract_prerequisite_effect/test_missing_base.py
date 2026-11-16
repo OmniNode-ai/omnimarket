@@ -150,6 +150,27 @@ def test_fetch_preserves_missing_contract_refusal(tmp_path: Path) -> None:
     assert _git(worker, "rev-parse", "origin/dev")
 
 
+# A base that names a remote and cannot be fetched propagates its fetch error to the
+# failed typed verdict (the handler's documented behaviour on dev), so only a base
+# that names no remote keeps the contract refusal.
+@pytest.mark.parametrize("base", ["no-such-base"])
+def test_unreadable_base_preserves_explicit_missing_contract_refusal(
+    tmp_path: Path, base: str
+) -> None:
+    """The CLI must retain the contract refusal even when base repair fails."""
+    worker = _worker(tmp_path, contract=False)
+    before = _git(worker, "rev-parse", "HEAD")
+    _git(worker, "remote", "set-url", "origin", str(tmp_path / "unreachable"))
+    result = _hook(worker, "--base", base, "--title", f"fix({TICKET}): change")
+    assert result.returncode == 1
+    assert result.stderr.strip() == (
+        f"pull request cites {TICKET} but carries no contracts/{TICKET}.yaml"
+    )
+    assert _git(worker, "rev-parse", "HEAD") == before
+    assert _git(worker, "status", "--porcelain") == ""
+    assert _remote_branches(worker) == ["refs/remotes/origin/worker"]
+
+
 def test_fetch_preserves_runtime_integration_proof_refusal(tmp_path: Path) -> None:
     worker = _worker(tmp_path, runtime=True)
     result = _hook(worker)

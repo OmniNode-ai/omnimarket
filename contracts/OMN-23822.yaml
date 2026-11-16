@@ -1,0 +1,56 @@
+schema_version: 1.0.0
+ticket_id: OMN-23822
+title: R8 reads the probe tenant's totals and runs over the bus instead of a retired web service
+summary: The two tenant read nodes answer a typed bus command with a typed terminal event (the HTTP route and its shape are unchanged; the bus terminal adds the token total and per-run traffic class and token count). Scenario R8 gains a lane backend named bus that publishes those commands, takes the bus, lane and probe tenant from its overlay document and parses the terminal with the same contract keys the HTTP lane used. The contract's lane backend becomes bus.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- events
+- topics
+- public_api
+requirements:
+- id: req-omn23822-r8-bus-read
+  statement: R8 reads the probe tenant's totals and runs over the event bus through the two tenant read nodes' command and terminal topics, never over a separate HTTP address.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the tenant savings and tenant delegations read nodes each answer a typed bus command with a typed terminal event that carries the correlation id, the tenant''s totals including token count, and per run the run label and token count -- falsifier: pytest tests/nodes/node_tenant_savings_read_effect/test_bus_read.py tests/nodes/node_tenant_delegations_read_effect/test_bus_read.py -q fails when the terminal drops a totals key or the correlation id'
+  - id: AC2
+    statement: 'AC2: a command with an unreadable projection or a tenant id that is not a UUID gets a failed terminal naming the reason and no figures -- falsifier: the error chain tests in the same files fail when the failed terminal is replaced by an empty success'
+  - id: AC3
+    statement: 'AC3: R8 has a lane backend named bus that publishes the read commands, polls the terminal by correlation id, and reads the probe tenant id from its overlay document; the shape shared by the tenant nodes and R8 is one model -- falsifier: pytest tests/nodes/node_delegation_scenario_r8_effect/test_bus_lane.py -q fails when either side''s model changes a key name'
+evidence_requirements:
+- kind: tests
+  description: The focused tests of this change pass at the pushed head.
+  command: uv run --frozen pytest tests/nodes/node_tenant_savings_read_effect/test_bus_read.py tests/nodes/node_tenant_delegations_read_effect/test_bus_read.py tests/nodes/test_tenant_read_bus_seam.py tests/nodes/node_delegation_scenario_r8_effect -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23822-tenant-bus-read
+  description: Golden chain (command in, completed terminal out with total_tokens and per-run traffic_class and total_tokens), error chains (unreadable projection, wrong kind, non-UUID tenant) and the failing control that goes red when a key is dropped.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_tenant_savings_read_effect/test_bus_read.py tests/nodes/node_tenant_delegations_read_effect/test_bus_read.py tests/nodes/test_tenant_read_bus_seam.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23822-r8-bus-lane
+  description: 'The R8 bus lane over the real tenant bus handlers: golden scenario chain, failed terminal, missing overlay block, dropped totals key (failing control) and the seam to the tenant node contracts.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_r8_effect -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23822-integration-proof
+  description: Run this pull request's own checks on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check; the unit run on h053 is read in the pull request's Lab comment.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23822 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_tenant_savings_read_effect/test_bus_read.py tests/nodes/node_tenant_delegations_read_effect/test_bus_read.py tests/nodes/test_tenant_read_bus_seam.py tests/nodes/node_delegation_scenario_r8_effect -q --no-cov -n 0 -p no:randomly
+    cwd: .

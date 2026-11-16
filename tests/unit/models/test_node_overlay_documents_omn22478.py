@@ -14,10 +14,13 @@ from pydantic import BaseModel, ValidationError
 
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
 from omnimarket.models.node_overlays.model_node_overlays import (
+    ModelAbCompareRegistryOverlay,
     ModelDuplicateGuardGeneratedPathsOverlay,
     ModelIntegrationSweepOverlay,
     ModelLabDiskHygieneOverlay,
     ModelLabSliPackOverlay,
+    ModelPytestHostGuardOverlay,
+    ModelRouteCheckOverlay,
     ModelRuntimeHostOverlay,
 )
 
@@ -32,11 +35,39 @@ SWEEP = {
     "projection_api_url": "http://host-a:2",
 }
 
+AB_COMPARE_REGISTRY = {
+    "schema_version": "1.0.0",
+    "models": [
+        {
+            "id": "model-a",
+            "display_name": "Model A",
+            "endpoint_env": "MODEL_A_URL",
+            "protocol": "openai_compatible",
+            "model_id_env": "MODEL_A_NAME",
+            "model_id_default": "",
+            "cost_per_1k_input": 0.0,
+            "cost_per_1k_output": 0.0,
+            "location": "local",
+            "context_window": 8192,
+        }
+    ],
+}
+
 DOCUMENTS: list[tuple[str, type[BaseModel], dict[str, object]]] = [
     ("lab_sli_pack", ModelLabSliPackOverlay, {"status": "enabled"}),
     ("node_data_flow_sweep", ModelRuntimeHostOverlay, {"runtime_host": "host-a"}),
     ("node_database_sweep", ModelRuntimeHostOverlay, {"runtime_host": "host-a"}),
     ("node_integration_sweep_orchestrator", ModelIntegrationSweepOverlay, SWEEP),
+    (
+        "node_delegation_rubric_check_compute",
+        ModelRouteCheckOverlay,
+        {"route_check_local_model": "model-a"},
+    ),
+    (
+        "node_ab_compare_orchestrator",
+        ModelAbCompareRegistryOverlay,
+        AB_COMPARE_REGISTRY,
+    ),
     (
         "node_lab_disk_hygiene_effect",
         ModelLabDiskHygieneOverlay,
@@ -88,6 +119,21 @@ def test_a_missing_or_blank_field_refuses(
 def test_the_sli_pack_status_is_one_of_two_words() -> None:
     with pytest.raises(ValidationError):
         ModelLabSliPackOverlay.model_validate({"status": "on"})
+
+
+def test_the_pytest_host_guard_overlay_maps_row_labels_to_variables_and_refuses_strays() -> (
+    None
+):
+    document = {"legacy_override_by_label": {"row-a": "PREPUSH_INVENTED"}}
+    assert ModelPytestHostGuardOverlay.model_validate(
+        document
+    ).legacy_override_by_label == {"row-a": "PREPUSH_INVENTED"}
+    with pytest.raises(ValidationError):
+        ModelPytestHostGuardOverlay.model_validate({**document, "stray": 1})
+    with pytest.raises(ValidationError):
+        ModelPytestHostGuardOverlay.model_validate(
+            {"legacy_override_by_label": {"row-a": " "}}
+        )
 
 
 def test_the_models_import_with_pydantic_alone() -> None:

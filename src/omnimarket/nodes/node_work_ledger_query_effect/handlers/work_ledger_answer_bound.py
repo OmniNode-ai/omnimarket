@@ -49,6 +49,7 @@ def _answered_count(result: ModelWorkLedgerQueryResult) -> int:
         len(result.rows)
         + len(result.holds)
         + len(result.open_claims)
+        + len(result.latest)
         + sum(len(box.entries) for box in result.inbox)
     )
 
@@ -59,6 +60,11 @@ def _bounded_form(request: ModelWorkLedgerQueryRequest, suggested: int | None) -
         return (
             "ask for a smaller ledger_seq interval of the history range and page "
             "it with the cursor"
+        )
+    if kind is EnumWorkLedgerQueryKind.LATEST_STATE:
+        return (
+            "ask for a smaller page_size and follow next_cursor, or narrow with "
+            "subject_kind, lanes, tickets, kinds or since"
         )
     if kind in POINT_QUERY_KINDS:
         return (
@@ -87,7 +93,9 @@ def bound_answer(
     shown = _answered_count(result)
     suggested = (
         max(1, int(shown * bound.max_answer_bytes / size * _SUGGESTION_FILL))
-        if shown and request.query not in POINT_QUERY_KINDS
+        if shown
+        and request.query not in POINT_QUERY_KINDS
+        and request.query is not EnumWorkLedgerQueryKind.LATEST_STATE
         else None
     )
     form = _bounded_form(request, suggested)

@@ -8,11 +8,15 @@ import re
 from collections.abc import Mapping
 from enum import StrEnum
 from pathlib import Path
-from typing import Final, Self
+from typing import Any, Final, Self
 from urllib.parse import urlparse
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from omnimarket.nodes.node_memory_pilot_effect.models.model_memory_pilot_run import (
+    ModelMemoryPilotRunSettings,
+)
 
 
 class EnumMemoryPilotOperation(StrEnum):
@@ -200,6 +204,14 @@ class ModelMemoryPilotOverlay(BaseModel):
     max_completion_tokens: int = Field(default=1024, gt=0)
     top_k: int = Field(default=5, gt=0)
     ingest_data_per_batch: int | None = Field(default=None, gt=0)
+    #: Extra arguments for every Cognee model call (JSON object), e.g. the extraction model's thinking switched off.
+    llm_args: dict[str, Any] | None = None
+    #: Where the tokenizer vocabulary is cached, so a run never fetches it; the storage root's own when unset.
+    tiktoken_cache_dir: Path | None = None
+    #: An import root appended to the END of sys.path so the optional Cognee package is found.
+    cognee_site_packages: Path | None = None
+    #: The daily run's settings; absent for a node that only serves ingest and query requests.
+    run: ModelMemoryPilotRunSettings | None = None
 
     @field_validator("telemetry_disabled")
     @classmethod

@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. A deployment's real overlay lives in the overlays repository.
+emission:
+  home_env: EXAMPLE_FLOOR_HOME
+  journal_relpath: .onex_state/floor-simple/emissions.jsonl
+  floor_record_relpath: .claude_scratch/factory-floor/floor-simple.json
+join:
+  join: J0
+  from_piece: 17
+  to_piece: 1
+  # The floor's own chain: it must be one of the floor simple node's pipeline_chains and a join end the floor judges,
+  # or the floor reads no answer and the run exits 3.
+  from_node: "node_floor_simple_effect:join_j0"
+  to_node: "node_code_graph_effect:join_j0"
+  injected_fault: Feed the record reader a floor record that is not JSON
+control:
+  record_text: "{ control: not json"
+  injected_fault: The deliberately corrupt floor record text the record reader must reject

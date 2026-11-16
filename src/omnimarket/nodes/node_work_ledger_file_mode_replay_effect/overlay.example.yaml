@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Every deployment fact of node_work_ledger_file_mode_replay_effect (OMN-21849, OMN-19998).
+# The node reads this as its overlay; a deployment copies it to
+# <root>/node_work_ledger_file_mode_replay_effect/overlay.yaml under ONEX_SKILL_OVERLAY_ROOTS.
+# No key has a default in code.
+backend: file
+# The durable queue: one JSON line per row, each a retry record with its attempts and last reason.
+queue_path: /var/lib/onex/work-ledger-replay/queue.jsonl
+# replay_from_file reads the rows it re-emits from the ledger file of record and its archive splits.
+ledger_path: /path/to/the/ledger/file.md
+archive_dir: /path/to/the/ledger/archive
+archive_glob: '*-split.md'
+# The source cell the re-emitted rows carry: the projection's backfill source, which projects a row
+# that holds no ledger_seq. It must not be a source node_projection_work_ledger lists in
+# sequence_required_sources (a seam test reads both files).
+replay_source: ledger-emit

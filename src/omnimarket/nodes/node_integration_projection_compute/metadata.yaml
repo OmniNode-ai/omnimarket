@@ -1,0 +1,23 @@
+name: node_integration_projection_compute
+version: "0.1.0"
+description: "The newest integration reading per merged change, with the counts and groups the factory floor draws"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_integration_projection_compute: "omnimarket.nodes.node_integration_projection_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "floor", "projection", "integration", "OMN-23899"]
+pack: "pipeline"
+display_name: "Integration Projection"
+node_role: "compute"

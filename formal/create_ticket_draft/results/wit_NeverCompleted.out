@@ -1,0 +1,285 @@
+Parsing file CreateTicketDraft.tla
+Parsing file Naturals.tla
+Parsing file FiniteSets.tla
+Parsing file TLC.tla
+Parsing file Sequences.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module TLC
+Semantic processing of module CreateTicketDraft
+Computing initial states...
+Error: Invariant NeverCompleted is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ extra = (c1 :> 0)
+/\ reads = {}
+/\ events = {}
+/\ iss = (<<c1, 1>> :> 0 @@ <<c1, 2>> :> 0 @@ <<c1, 3>> :> 0 @@ <<c1, 4>> :> 0)
+/\ fails = 0
+/\ pc = ( <<c1, 1>> :> "none" @@
+  <<c1, 2>> :> "none" @@
+  <<c1, 3>> :> "none" @@
+  <<c1, 4>> :> "none" )
+/\ nextId = 1
+/\ pending = (c1 :> 1)
+/\ issues = {}
+/\ rh = ( <<c1, 1>> :> "none" @@
+  <<c1, 2>> :> "none" @@
+  <<c1, 3>> :> "none" @@
+  <<c1, 4>> :> "none" )
+/\ crashes = 0
+/\ tcount = (<<c1, 1>> :> 0 @@ <<c1, 2>> :> 0 @@ <<c1, 3>> :> 0 @@ <<c1, 4>> :> 0)
+/\ edits = 0
+/\ terms = {}
+
+State 2: <Start line 137, col 3 to line 141, col 102 of module CreateTicketDraft>
+/\ extra = (c1 :> 0)
+/\ reads = {}
+/\ events = {}
+/\ iss = (<<c1, 1>> :> 0 @@ <<c1, 2>> :> 0 @@ <<c1, 3>> :> 0 @@ <<c1, 4>> :> 0)
+/\ fails = 0
+/\ pc = ( <<c1, 1>> :> "find" @@
+  <<c1, 2>> :> "none" @@
+  <<c1, 3>> :> "none" @@
+  <<c1, 4>> :> "none" )
+/\ nextId = 1
+/\ pending = (c1 :> 0)
+/\ issues = {}
+/\ rh = ( <<c1, 1>> :> "none" @@
+  <<c1, 2>> :> "none" @@
+  <<c1, 3>> :> "none" @@
+  <<c1, 4>> :> "none" )
+/\ crashes = 0
+/\ tcount = (<<c1, 1>> :> 0 @@ <<c1, 2>> :> 0 @@ <<c1, 3>> :> 0 @@ <<c1, 4>> :> 0)
+/\ edits = 0
+/\ terms = {}
+
+State 3: <FindOk line 159, col 3 to line 167, col 106 of module CreateTicketDraft>
+/\ extra = (c1 :> 0)
+/\ reads = {}
+/\ events = {}
+/\ iss = (<<c1, 1>> :> 0 @@ <<c1, 2>> :> 0 @@ <<c1, 3>> :> 0 @@ <<c1, 4>> :> 0)
+/\ fails = 0
+/\ pc = ( <<c1, 1>> :> "create" @@
+  <<c1, 2>> :> "none" @@
+  <<c1, 3>> :> "none" @@
+  <<c1, 4>> :> "none" )
+/\ nextId = 1
+/\ pending = (c1 :> 0)
+/\ issues = {}
+/\ rh = ( <<c1, 1>> :> "none" @@
+  <<c1, 2>> :> "none" @@
+  <<c1, 3>> :> "none" @@
+  <<c1, 4>> :> "none" )
+/\ crashes = 0
+/\ tcount = (<<c1, 1>> :> 0 @@ <<c1, 2>> :> 0 @@ <<c1, 3>> :> 0 @@ <<c1, 4>> :> 0)
+/\ edits = 0
+/\ terms = {}
+
+State 4: <CreateOk line 177, col 3 to line 185, col 90 of module CreateTicketDraft>
+/\ extra = (c1 :> 0)
+/\ reads = {}
+/\ events = {}
+/\ iss = (<<c1, 1>> :> 1 @@ <<c1, 2>> :> 0 @@ <<c1, 3>> :> 0 @@ <<c1, 4>> :> 0)
+/\ fails = 0
+/\ pc = ( <<c1, 1>> :> "clear" @@
+  <<c1, 2>> :> "none" @@
+  <<c1, 3>> :> "none" @@
+  <<c1, 4>> :> "none" )
+/\ nextId = 2
+/\ pending = (c1 :> 0)
+/\ issues = { [ cid |-> c1,
+    stamped |-> TRUE,
+    content |-> "stub",
+    id |-> 1,
+    by |-> <<c1, 1>>,
+    proj |-> TRUE,
+    wrote |-> FALSE ] }
+/\ rh = ( <<c1, 1>> :> "none" @@
+  <<c1, 2>> :> "none" @@
+  <<c1, 3>> :> "none" @@
+  <<c1, 4>> :> "none" )
+/\ crashes = 0
+/\ tcount = (<<c1, 1>> :> 0 @@ <<c1, 2>> :> 0 @@ <<c1, 3>> :> 0 @@ <<c1, 4>> :> 0)
+/\ edits = 0
+/\ terms = {}
+
+State 5: <ClearOk line 224, col 3 to line 227, col 103 of module CreateTicketDraft>
+/\ extra = (c1 :> 0)
+/\ reads = {}
+/\ events = {}
+/\ iss = (<<c1, 1>> :> 1 @@ <<c1, 2>> :> 0 @@ <<c1, 3>> :> 0 @@ <<c1, 4>> :> 0)
+/\ fails = 0
+/\ pc = ( <<c1, 1>> :> "build" @@
+  <<c1, 2>> :> "none" @@
+  <<c1, 3>> :> "none" @@
+  <<c1, 4>> :> "none" )
+/\ nextId = 2
+/\ pending = (c1 :> 0)
+/\ issues = { [ cid |-> c1,
+    stamped |-> TRUE,
+    content |-> "stub",
+    id |-> 1,
+    by |-> <<c1, 1>>,
+    proj |-> FALSE,
+    wrote |-> FALSE ] }
+/\ rh = ( <<c1, 1>> :> "none" @@
+  <<c1, 2>> :> "none" @@
+  <<c1, 3>> :> "none" @@
+  <<c1, 4>> :> "none" )
+/\ crashes = 0
+/\ tcount = (<<c1, 1>> :> 0 @@ <<c1, 2>> :> 0 @@ <<c1, 3>> :> 0 @@ <<c1, 4>> :> 0)
+/\ edits = 0
+/\ terms = {}
+
+State 6: <Build line 235, col 3 to line 237, col 111 of module CreateTicketDraft>
+/\ extra = (c1 :> 0)
+/\ reads = {}
+/\ events = {}
+/\ iss = (<<c1, 1>> :> 1 @@ <<c1, 2>> :> 0 @@ <<c1, 3>> :> 0 @@ <<c1, 4>> :> 0)
+/\ fails = 0
+/\ pc = ( <<c1, 1>> :> "write" @@
+  <<c1, 2>> :> "none" @@
+  <<c1, 3>> :> "none" @@
+  <<c1, 4>> :> "none" )
+/\ nextId = 2
+/\ pending = (c1 :> 0)
+/\ issues = { [ cid |-> c1,
+    stamped |-> TRUE,
+    content |-> "stub",
+    id |-> 1,
+    by |-> <<c1, 1>>,
+    proj |-> FALSE,
+    wrote |-> FALSE ] }
+/\ rh = ( <<c1, 1>> :> "none" @@
+  <<c1, 2>> :> "none" @@
+  <<c1, 3>> :> "none" @@
+  <<c1, 4>> :> "none" )
+/\ crashes = 0
+/\ tcount = (<<c1, 1>> :> 0 @@ <<c1, 2>> :> 0 @@ <<c1, 3>> :> 0 @@ <<c1, 4>> :> 0)
+/\ edits = 0
+/\ terms = {}
+
+State 7: <WriteOk line 241, col 3 to line 244, col 103 of module CreateTicketDraft>
+/\ extra = (c1 :> 0)
+/\ reads = {}
+/\ events = {}
+/\ iss = (<<c1, 1>> :> 1 @@ <<c1, 2>> :> 0 @@ <<c1, 3>> :> 0 @@ <<c1, 4>> :> 0)
+/\ fails = 0
+/\ pc = ( <<c1, 1>> :> "readback" @@
+  <<c1, 2>> :> "none" @@
+  <<c1, 3>> :> "none" @@
+  <<c1, 4>> :> "none" )
+/\ nextId = 2
+/\ pending = (c1 :> 0)
+/\ issues = { [ cid |-> c1,
+    stamped |-> TRUE,
+    content |-> "block_norm",
+    id |-> 1,
+    by |-> <<c1, 1>>,
+    proj |-> FALSE,
+    wrote |-> TRUE ] }
+/\ rh = ( <<c1, 1>> :> "none" @@
+  <<c1, 2>> :> "none" @@
+  <<c1, 3>> :> "none" @@
+  <<c1, 4>> :> "none" )
+/\ crashes = 0
+/\ tcount = (<<c1, 1>> :> 0 @@ <<c1, 2>> :> 0 @@ <<c1, 3>> :> 0 @@ <<c1, 4>> :> 0)
+/\ edits = 0
+/\ terms = {}
+
+State 8: <ReadOk line 257, col 3 to line 265, col 100 of module CreateTicketDraft>
+/\ extra = (c1 :> 0)
+/\ reads = {[id |-> 1, hash |-> "block_norm"]}
+/\ events = {}
+/\ iss = (<<c1, 1>> :> 1 @@ <<c1, 2>> :> 0 @@ <<c1, 3>> :> 0 @@ <<c1, 4>> :> 0)
+/\ fails = 0
+/\ pc = ( <<c1, 1>> :> "publish" @@
+  <<c1, 2>> :> "none" @@
+  <<c1, 3>> :> "none" @@
+  <<c1, 4>> :> "none" )
+/\ nextId = 2
+/\ pending = (c1 :> 0)
+/\ issues = { [ cid |-> c1,
+    stamped |-> TRUE,
+    content |-> "block_norm",
+    id |-> 1,
+    by |-> <<c1, 1>>,
+    proj |-> FALSE,
+    wrote |-> TRUE ] }
+/\ rh = ( <<c1, 1>> :> "block_norm" @@
+  <<c1, 2>> :> "none" @@
+  <<c1, 3>> :> "none" @@
+  <<c1, 4>> :> "none" )
+/\ crashes = 0
+/\ tcount = (<<c1, 1>> :> 0 @@ <<c1, 2>> :> 0 @@ <<c1, 3>> :> 0 @@ <<c1, 4>> :> 0)
+/\ edits = 0
+/\ terms = {}
+
+State 9: <PublishOk line 273, col 3 to line 277, col 103 of module CreateTicketDraft>
+/\ extra = (c1 :> 0)
+/\ reads = {[id |-> 1, hash |-> "block_norm"]}
+/\ events = {[cid |-> c1, id |-> 1, hash |-> "block_norm", fp |-> <<"fp", c1>>, who |-> 0]}
+/\ iss = (<<c1, 1>> :> 1 @@ <<c1, 2>> :> 0 @@ <<c1, 3>> :> 0 @@ <<c1, 4>> :> 0)
+/\ fails = 0
+/\ pc = ( <<c1, 1>> :> "term" @@
+  <<c1, 2>> :> "none" @@
+  <<c1, 3>> :> "none" @@
+  <<c1, 4>> :> "none" )
+/\ nextId = 2
+/\ pending = (c1 :> 0)
+/\ issues = { [ cid |-> c1,
+    stamped |-> TRUE,
+    content |-> "block_norm",
+    id |-> 1,
+    by |-> <<c1, 1>>,
+    proj |-> FALSE,
+    wrote |-> TRUE ] }
+/\ rh = ( <<c1, 1>> :> "block_norm" @@
+  <<c1, 2>> :> "none" @@
+  <<c1, 3>> :> "none" @@
+  <<c1, 4>> :> "none" )
+/\ crashes = 0
+/\ tcount = (<<c1, 1>> :> 0 @@ <<c1, 2>> :> 0 @@ <<c1, 3>> :> 0 @@ <<c1, 4>> :> 0)
+/\ edits = 0
+/\ terms = {}
+
+State 10: <Term line 285, col 3 to line 290, col 96 of module CreateTicketDraft>
+/\ extra = (c1 :> 0)
+/\ reads = {[id |-> 1, hash |-> "block_norm"]}
+/\ events = {[cid |-> c1, id |-> 1, hash |-> "block_norm", fp |-> <<"fp", c1>>, who |-> 0]}
+/\ iss = (<<c1, 1>> :> 1 @@ <<c1, 2>> :> 0 @@ <<c1, 3>> :> 0 @@ <<c1, 4>> :> 0)
+/\ fails = 0
+/\ pc = ( <<c1, 1>> :> "ack" @@
+  <<c1, 2>> :> "none" @@
+  <<c1, 3>> :> "none" @@
+  <<c1, 4>> :> "none" )
+/\ nextId = 2
+/\ pending = (c1 :> 0)
+/\ issues = { [ cid |-> c1,
+    stamped |-> TRUE,
+    content |-> "block_norm",
+    id |-> 1,
+    by |-> <<c1, 1>>,
+    proj |-> FALSE,
+    wrote |-> TRUE ] }
+/\ rh = ( <<c1, 1>> :> "block_norm" @@
+  <<c1, 2>> :> "none" @@
+  <<c1, 3>> :> "none" @@
+  <<c1, 4>> :> "none" )
+/\ crashes = 0
+/\ tcount = (<<c1, 1>> :> 1 @@ <<c1, 2>> :> 0 @@ <<c1, 3>> :> 0 @@ <<c1, 4>> :> 0)
+/\ edits = 0
+/\ terms = { [ cid |-> c1,
+    id |-> 1,
+    seen |-> "block_norm",
+    fp |-> <<"fp", c1>>,
+    kind |-> "completed",
+    reason |-> "none",
+    late |-> FALSE ] }
+
+5118 states generated, 2373 distinct states found, 1356 states left on queue.
+The depth of the complete state graph search is 10.
+The average outdegree of the complete state graph is 2 (minimum is 0, the maximum 6 and the 95th percentile is 5).
+exit=12

@@ -1,0 +1,62 @@
+schema_version: 1.0.0
+ticket_id: OMN-23650
+title: Work-state projection node writes its state under a folder the runtime owns
+summary: node_work_state_projection_scheduled_effect writes under OMNI_HOME, which is /app in the runtime image and is owned by root, while the runtime process runs as the unprivileged runtime user, so every tick raised PermissionError on /app/.onex_state and was routed to the dead-letter topic (1049 dispatch failures in 6 minutes read on 2026-11-10). The schedule overlay gains an optional state_home, an absolute directory; when set, the file_sources profile reads and writes its home-relative paths under it. The overlay in the overlays repository names a directory on the runtime's own data volume. A host that sets no state_home keeps the old location.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn23650-state-home
+  statement: The scheduled work-state projection reads and writes under the overlay's state_home when one is set and under the registry home when none is set, and a state home that cannot be written still raises instead of being swallowed.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the scheduled work-state projection writes its projection and source snapshots under the overlay''s state home when one is set, and under the registry home when none is set -- falsifier: pytest tests/nodes/node_work_state_projection_scheduled_effect/test_state_home.py -q goes red with the handler restored to origin/dev (the state_home tests fail with the permission-class error the runtime logged)'
+  - id: AC2
+    statement: 'AC2: a state home the runtime user cannot write still raises the permission-class error and leaves the last-run time unmoved -- falsifier: pytest tests/nodes/node_work_state_projection_scheduled_effect/test_state_home.py -k unwritable -q passes only while the error is raised, not swallowed'
+  - id: AC3
+    statement: 'AC3: integrated: in the running dev runtime log, over ten minutes after the roll that carries this change and the overlay value, node_work_state_projection_scheduled_effect shows zero PermissionError lines -- falsifier: docker logs omninode-runtime grep PermissionError count is greater than zero'
+evidence_requirements:
+- kind: tests
+  description: The focused test file at the pushed head, and the same file at origin/dev handler and model sources, where the state_home tests fail.
+  command: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_work_state_projection_scheduled_effect/test_state_home.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23650-ac1-state-home
+  description: The state_home golden tests and the seam test with the lab fill and the floor reader pass at the pushed head.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_work_state_projection_scheduled_effect/test_state_home.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23650-ac2-error-chain
+  description: The unwritable-state-home and unwritable-home error chains pass at the pushed head.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_work_state_projection_scheduled_effect/test_state_home.py -q --no-cov -n 0 -p no:randomly -k error
+    cwd: .
+- id: dod-omn23650-ac3-in-process
+  description: The in-process half of AC3. With the runtime's home unwritable, the run with a state home writes the projection and the snapshots under the state home and the lab fill reads them there. The runtime half is the unbound integration proof below.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_work_state_projection_scheduled_effect/test_state_home.py -q --no-cov -n 0 -p no:randomly -k "test_golden_state_home_receives_the_projection_when_the_runtime_home_is_unwritable or test_seam_the_fill_and_the_floor_read_what_the_state_home_run_wrote"
+    cwd: .
+- id: dod-omn23650-integration-proof
+  description: The pushed head ran the focused tests of the node on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. The runtime half (zero PermissionError lines for ten minutes in the running dev runtime log) is read after the deploy agent rolls the merged tag.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23650 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_work_state_projection_scheduled_effect -q --no-cov -n 0 -p no:randomly
+    cwd: .

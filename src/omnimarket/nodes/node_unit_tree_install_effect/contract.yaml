@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_unit_tree_install_effect
+node_type: EFFECT_GENERIC
+version: 1.0.0
+lifecycle: experimental
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Install the whole code tree a lab host unit runs from, from one commit of a clone, checked before and after, with
+  automatic rollback. The tree is built whole from the commit (git archive: every file, dotfiles included), checked
+  equal to the commit's tree blob for blob, synced and smoked, swapped in by rename, the checks run again on the
+  installed tree, and any failure renames the previous tree back. The commit is recorded in the record file, so the
+  installed tree always equals its recorded revision. A branch, a tag or a commit names the revision; verify checks
+  the installed tree against the recorded revision and runs the smoke commands.
+input_model:
+  name: ModelUnitTreeInstallRequest
+  module: omnimarket.nodes.node_unit_tree_install_effect.models.model_unit_tree_install
+output_model:
+  name: ModelUnitTreeInstallResult
+  module: omnimarket.nodes.node_unit_tree_install_effect.models.model_unit_tree_install
+handler:
+  name: HandlerUnitTreeInstall
+  module: omnimarket.nodes.node_unit_tree_install_effect.handlers.handler_unit_tree_install
+entrypoint:
+  name: NodeUnitTreeInstallEffect
+  module: omnimarket.nodes.node_unit_tree_install_effect.node
+execution:
+  deterministic: false
+  side_effects: true

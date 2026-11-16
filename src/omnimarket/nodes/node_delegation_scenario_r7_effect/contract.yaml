@@ -1,0 +1,99 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Delegation Scenario R7 Effect (OMN-23696, readiness plan A9)
+#
+# Scenario R7, the receipt and the cost name the answering backend and host. One scheduled run drives the delegation skill handler
+# with a synthetic request and a probe ladder of loopback stub rungs: the first rung fails, the second answers at a scripted cost
+# from the declared loopback host. It holds only when the terminal's accepted attempt names the second rung's backend id, the host
+# that served it and the cost the rung was scripted to charge, the failed attempt names the first rung and charges nothing, and the
+# terminal's cost equals the attempts' costs added. The same facts are what the hosted workflow chain-canary-c16-receipt-identity
+# read through the gateway's HTTP interface; here they are read from the terminal the run puts on the bus (operator ruling
+# 2026-11-10: no separate HTTP API). Every assertion compares typed fields; no model judges a pass.
+name: node_delegation_scenario_r7_effect
+contract_name: node_delegation_scenario_r7_effect
+node_name: node_delegation_scenario_r7_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Runs readiness scenario R7 once through the delegation skill handler with a probe ladder, publishes the result on the bus
+  and writes one ledger STATUS row. The node's own systemd user timer (`schedule install`) runs it every six hours.
+
+handler:
+  module: omnimarket.nodes.node_delegation_scenario_r7_effect.handlers.handler_scenario_r7
+  class: HandlerScenarioR7
+  input_model: omnimarket.nodes.node_delegation_scenario_r7_effect.handlers.handler_scenario_r7.ModelScenarioR7RunCommand
+
+# Not a runtime-dispatched handler: HandlerScenarioR7 takes its contract runtime block, leg transport, ledger append route,
+# event sink and clock as constructor parameters, so the node runs through its own CLI and schedule.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: false
+  side_effects: [loopback-socket, file-write, ledger-append, bus-publish]
+  timeout_ms: 900000
+
+input_model:
+  name: ModelScenarioR7RunCommand
+  module: omnimarket.nodes.node_delegation_scenario_r7_effect.handlers.handler_scenario_r7
+  description: One run of scenario R7; it carries no value.
+output_model:
+  name: ModelScenarioResult
+  module: omnimarket.models.model_delegation_scenario
+  description: The slot, trigger, conclusion and each assertion that held or did not.
+
+terminal_event: onex.evt.omnimarket.delegation-scenario-result.v1
+
+runtime_dispatch:
+  external_trigger: true
+
+event_bus:
+  subscribe_topics: []
+  publish_topics:
+    - onex.evt.omnimarket.delegation-scenario-result.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.delegation-scenario-result.v1
+
+runtime:
+  home_env: OMNI_HOME
+  ledger_append_command_env: ONEX_LEDGER_BUS_APPEND_COMMAND
+  ledger_append_timeout_seconds: 60
+  host_env: ONEX_HOST_NAME
+  bus_emit_command_env: ONEX_BUS_EMIT_COMMAND
+  # Every event is journalled here; when the deployment names a bus produce command in bus_emit_command_env it also gets the event.
+  event_journal_relpath: .onex_state/delegation-scenario-r7/events.jsonl
+  bus_emit_timeout_seconds: 60
+  scenario_id: R7
+  cadence: every_6h
+  ticket: OMN-23696
+  # The lane the green-days reader (node_delegation_scenario_days_effect) names for R7.
+  lane: node_delegation_scenario_r7
+  actor: script:node_delegation_scenario_r7_effect
+  work_relpath: .onex_state/delegation-scenario-r7/work
+  # loopback: one stub HTTP server per rung, called by the real delegation effect. inmemory: scripted typed replies.
+  leg_backend: loopback
+  loopback_host: 127.0.0.1
+  probe_tenant_slug: readiness-probe
+  inputs_relpath: inputs/r7_legs.yaml
+
+schedule:
+  unit_name: onex-delegation-scenario-r7
+  state_directory: .onex_state/delegation-scenario-r7
+  timeout_seconds: 900
+  unit_environment: [ONEX_LEDGER_BUS_APPEND_COMMAND, ONEX_HOST_NAME, ONEX_WORKSPACE_CONFIG_ROOT, ONEX_BUS_EMIT_COMMAND]
+  cadence:
+    on_calendar: "*-*-* 00,06,12,18:40:00"
+    time_zone: UTC
+    randomized_delay: 0s
+    persistent: false
+    description: delegation readiness scenario R7, every six hours at 40 minutes past 00, 06, 12 and 18 UTC
+
+metadata:
+  ticket: OMN-23696
+  transport_type: inmemory

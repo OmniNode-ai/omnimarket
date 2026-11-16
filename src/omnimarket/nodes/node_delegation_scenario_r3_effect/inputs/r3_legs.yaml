@@ -19,7 +19,7 @@ expected_returned: >-
   therefore we conclude Y. See references [12] for the methodical analysis and the risk profile this approach carries in
   practice. Marker R3-FIXED-ANSWER-9d2b.
 prompt: |-
-  Review the twelve items below and say in one sentence each whether it should be escalated.
+  Review the twelve items below and say in one sentence which one most needs escalation.
   - item 1 the cache layer
   - item 2 the retry policy
   - item 3 the queue depth
@@ -54,7 +54,7 @@ leg_b:
   real_backend_id: r3-openrouter
   rungs:
     - {backend_id: r3-free-b, model_id: stub-free, behaviour: status, status_code: 503, tier: local, timeout_ms: 5000}
-    - {backend_id: r3-openrouter, model_id: placeholder-replaced-by-overlay, behaviour: answer, tier: cheap_cloud, cost_class: paid, scripted_cost_usd: "0.0002", max_tokens: 16, timeout_ms: 60000}
+    - {backend_id: r3-openrouter, model_id: placeholder-replaced-by-overlay, behaviour: answer, tier: cheap_cloud, cost_class: paid, scripted_cost_usd: "0.0002", max_tokens: 256, timeout_ms: 60000}
 #: Falsifier control: the same ladder with the paid rung down too. The run must end `returned_to_caller`.
 all_down_leg:
   name: free_and_paid_both_503

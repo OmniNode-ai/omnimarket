@@ -43,13 +43,13 @@ from omnimarket.nodes.node_projection_query_api_effect.ports.contract_routes imp
     contract_mount,
     contract_routes,
 )
+from omnimarket.nodes.node_projection_query_api_effect.ports.derived_row_source import (
+    DerivedReadRowSource as DerivedReadRowSource,
+)
 from omnimarket.projection.discovery import build_projection_topic_map
 from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.read_page import PROJECTION_VERSION
-from omnimarket.projection.table_reader import (
-    ProtocolProjectionRowSource,
-    TableRowSource,
-)
+from omnimarket.projection.table_reader import ProtocolProjectionRowSource
 
 log = logging.getLogger(__name__)
 
@@ -118,7 +118,7 @@ async def _lifespan(application: FastAPI) -> AsyncIterator[None]:
     application.state.topic_map = build_projection_topic_map()
     # Constructing the row source connects to nothing, so the app answers from
     # its first second; a database that is down makes reads refuse by name.
-    source = TableRowSource()
+    source = DerivedReadRowSource()
     application.state.row_source = source
     try:
         yield

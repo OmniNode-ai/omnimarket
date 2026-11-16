@@ -66,6 +66,12 @@ def document(**changes: Any) -> dict[str, Any]:
             "runtime_path_globs": ["src/**", "docker/*.yml"],
             "git_timeout_seconds": 5,
         },
+        "lineage": {
+            "receipt_covers_descendant": False,
+            "probe_accepts_descendant": False,
+            "max_commits_between": 50,
+            "receipt_cover_window_seconds": 86400,
+        },
         "receipts": {
             "projection_url": "http://projection.test/rows",
             "timeout_seconds": 5,
@@ -79,6 +85,29 @@ def document(**changes: Any) -> dict[str, Any]:
             "provenance_path": "/app/build-provenance.json",
             "sha_path": ["vcs_ref"],
             "timeout_seconds": 5,
+        },
+        "source_rule": "lab_pass_receipt",
+        "deploy_agent": {
+            "health_url": "http://agent.test/health",
+            "queue_url": "http://agent.test/queue",
+            "timeout_seconds": 5,
+            "idle_grace_seconds": 7200,
+            "provenance_section": "build_context",
+            "source_repo": "repo-a",
+            "merge_repos": [
+                {
+                    "source_repo": "repo-a",
+                    "clone_path_env": "TEST_CLONE",
+                    "ref": "origin/dev",
+                    "provenance_section": "build_context",
+                },
+                {
+                    "source_repo": "repo-b",
+                    "clone_path_env": "TEST_CLONE",
+                    "ref": "origin/dev",
+                    "provenance_section": "siblings",
+                },
+            ],
         },
         "drill_fault": {"synthetic_merge_sha": SHA_DRILL, "age_seconds": 7200},
         "schedule_units": {

@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Settings overlay of scenario R3 (OMN-23602): the paid rung's probe key is the house OpenRouter key under the name it already
+# has, looked up in the process environment, then the host environment file, then the store folder. No key is here.
+folder: /shared/env
+host_env_file: .omnibase/.env
+settings:
+  - {env: ONEX_R3_OPENROUTER_PROBE_KEY, secret: OPENROUTER_API_KEY}

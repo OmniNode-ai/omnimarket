@@ -11,6 +11,7 @@ answers a fixed snapshot or error and is the default of the tests.
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
@@ -32,10 +33,12 @@ from omnimarket.models.pr_state.model_pr_state_page_fetch import (
     ModelPrStatePageRequest,
 )
 from omnimarket.models.pr_state.model_pr_state_projection_page import (
+    ModelPrStateProjectionPage,
     ModelPrStateProjectionRefusal,
 )
 from omnimarket.nodes.node_floor_simple_effect.handlers.sources import read_watcher
 from omnimarket.nodes.node_pr_state_read_effect.handlers.handler_pr_state_page_source import (
+    UNREACHABLE,
     HandlerPrStatePageSource,
     open_projection_client,
 )
@@ -145,7 +148,11 @@ class ProjectionLandingSource:
     * A page the projection reports ``truncated`` is read as it is: rows come newest first, so the merges of the
       window are in it, and a head older than the page is not.
 
-    Every read that cannot be completed is an error, never an empty queue.
+    Every read that cannot be completed is an error, never an empty queue. The runtime that serves the projection
+    restarts on every deploy and the address refuses connections until it is back: a projection that could not be
+    reached (no answer, or a 5xx) is read again, by the passes and pauses the route's ``retry`` declares, and the
+    error is returned only when the last pass failed too (OMN-23077). A refusal of any other kind is not transient and
+    is returned at once.
     """
 
     def __init__(
@@ -154,10 +161,46 @@ class ProjectionLandingSource:
         environ: Mapping[str, str],
         *,
         client_factory: Callable[[str], httpx.Client] = open_projection_client,
+        pause: Callable[[float], None] = time.sleep,
     ) -> None:
         self._route = route
         self._environ = environ
         self._client_factory = client_factory
+        self._pause = pause
+
+    def _fetch(
+        self, url: str
+    ) -> ModelPrStateProjectionPage | ModelPrStateProjectionRefusal:
+        client = self._client_factory(url)
+        try:
+            return (
+                HandlerPrStatePageSource(client)
+                .handle(
+                    ModelPrStatePageRequest(
+                        topic=load_pr_state_read_policy().projection_topic
+                    )
+                )
+                .result
+            )
+        finally:
+            client.close()
+
+    def _fetch_with_retries(
+        self, url: str
+    ) -> tuple[ModelPrStateProjectionPage | ModelPrStateProjectionRefusal, int]:
+        """The page or the last refusal, and the number of reads it took."""
+        fetched = self._fetch(url)
+        reads = 1
+        retry = self._route.retry
+        if retry is None:
+            return fetched, reads
+        for _ in range(retry.passes):
+            if not _is_transient(fetched):
+                break
+            self._pause(retry.pause_seconds)
+            fetched = self._fetch(url)
+            reads += 1
+        return fetched, reads
 
     def read(
         self, requirements: ModelLandingRequirements, now: datetime
@@ -179,22 +222,11 @@ class ProjectionLandingSource:
             return ModelLandingRead(
                 error=f"the projection address or goal scope is not read ({type(exc).__name__})"
             )
-        client = self._client_factory(url)
-        try:
-            fetched = (
-                HandlerPrStatePageSource(client)
-                .handle(
-                    ModelPrStatePageRequest(
-                        topic=load_pr_state_read_policy().projection_topic
-                    )
-                )
-                .result
-            )
-        finally:
-            client.close()
+        fetched, reads = self._fetch_with_retries(url)
         if isinstance(fetched, ModelPrStateProjectionRefusal):
+            after = f" after {reads} reads" if reads > 1 else ""
             return ModelLandingRead(
-                error=f"the pr_state projection is not read ({fetched.error})"
+                error=f"the pr_state projection is not read{after} ({fetched.error})"
             )
         if not fetched.rows:
             return ModelLandingRead(error="the pr_state projection holds no rows")
@@ -233,6 +265,15 @@ class ProjectionLandingSource:
                 merges_in_window=merges,
             )
         )
+
+
+def _is_transient(
+    fetched: ModelPrStateProjectionPage | ModelPrStateProjectionRefusal,
+) -> bool:
+    """A refusal that a restarting runtime gives: no answer at all, or a server error."""
+    return isinstance(fetched, ModelPrStateProjectionRefusal) and (
+        fetched.error == UNREACHABLE or fetched.status_code >= 500
+    )
 
 
 def _parse_stamp(text: str) -> datetime | None:

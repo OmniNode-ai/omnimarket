@@ -1,0 +1,52 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_host_installer_container_units
+node_type: EFFECT_GENERIC
+version: 1.0.0
+lifecycle: experimental
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Install, inspect and remove the systemd user unit that keeps one declared docker container running on a Linux pool host.
+  The overlay declares each unit (its hosts, container, restart interval and the TCP port that must answer); the unit runs
+  `docker start -a <container>`, which attaches to a container that is already running and starts one that is stopped, and
+  systemd restarts it after the restart interval whenever it exits, a `docker stop` included (a docker restart policy of
+  unless-stopped does not restart a container that was stopped by hand). Installing never restarts a running container.
+  A unit may also declare the docker network its container must be on, the ports it publishes and, optionally, the settings
+  to create the container from when it does not exist (image, command, volumes, restart policy, env file). A declared network
+  is connected before every start (a connect that is already made is harmless), and an install is refused, with nothing
+  written, when the container is on another network, does not publish a declared port, or is running with no attachment to
+  its network (OMN-19998).
+  A unit may also declare a recreate block (compose file, env file, project, service); when the container's network or published port is wrong at install, the installer recreates that one service through its compose declaration and reads the container again before it writes the unit.
+  A host or unit the overlay does not declare, a container that does not exist on the host and has no create settings, a
+  container whose network or published port differs from the declaration, and a port that does not answer after the install
+  are refused with a typed reason.
+input_model:
+  name: ModelContainerUnitsRequest
+  module: omnimarket.nodes.node_host_installer_container_units.models.model_container_units
+output_model:
+  name: ModelContainerUnitsResult
+  module: omnimarket.nodes.node_host_installer_container_units.models.model_container_units
+handler:
+  name: HandlerContainerUnits
+  module: omnimarket.nodes.node_host_installer_container_units.handlers.handler_container_units
+entrypoint:
+  name: NodeHostInstallerContainerUnits
+  module: omnimarket.nodes.node_host_installer_container_units.node
+execution:
+  deterministic: false
+  side_effects: true
+overlay:
+  file: overlay.yaml
+  environment_pin: ONEX_HOST_CONTAINER_UNITS_OVERLAY
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  side_effects:
+  - creates the declared docker container when it is absent and its overlay declares how
+  - writes a systemd user unit
+  - enables the unit
+metadata:
+  ticket: OMN-23390
+  transport_type: in_process

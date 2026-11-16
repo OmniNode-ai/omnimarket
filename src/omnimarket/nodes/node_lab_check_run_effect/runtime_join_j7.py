@@ -7,9 +7,10 @@
 ``probe``  read what is owed and write nothing.
 
 ``--inject <break>`` swaps one real part for a named injected break (the failing control); it is refused unless the overlay
-sets ``allow_injected_break``. Each verb prints one JSON object naming correlation ids and outcomes, never a value. Exit
-codes: 0 every chain written landed (or nothing was owed); 1 a chain did not land or the ledger could not be read; 3 a
-deployment fact is missing (no overlay, no home, no ledger route), reported as INDETERMINATE.
+sets ``allow_injected_break``. Each verb prints one JSON object naming correlation ids and outcomes, never a value; a verb
+that fails also writes its reason as one ``JOIN-J7-FAILED`` line to stderr, because the publisher keeps only the stderr
+tail of a failed step. Exit codes: 0 every chain written landed (or nothing was owed); 1 a chain did not land or the
+ledger could not be read; 3 a deployment fact is missing (no overlay, no home, no ledger route), reported as INDETERMINATE.
 """
 
 from __future__ import annotations
@@ -30,7 +31,11 @@ from omnimarket.models.model_gate_store import (
     EnumGateStoreBackend,
     ModelGateStorePolicy,
 )
-from omnimarket.models.model_lab_check_run_join_j7_run import ModelJoinJ7RunCommand
+from omnimarket.models.model_lab_check_run_join_j7_run import (
+    EnumJoinJ7RunOutcome,
+    ModelJoinJ7RunCommand,
+    ModelJoinJ7RunResult,
+)
 from omnimarket.nodes.node_gate_store_effect.handlers.adapters_join_j6 import (
     InMemoryJoinJ6AuditSink,
     InMemoryJoinJ6Projection,
@@ -114,6 +119,33 @@ def build_rig(overlay: ModelJoinJ7Overlay, *, deaf: bool = False) -> JoinJ7Rig:
     return JoinJ7Rig(join=join, api=api, labcheck=labcheck)
 
 
+def failure_report(result: ModelJoinJ7RunResult) -> str | None:
+    """The one-line stderr report of a run that did not land; ``None`` when the ledger read and every chain landed (the drill
+    counts as landed when it recorded the late post refused)."""
+    if result.ok:
+        return None
+    if not result.read_ok:
+        return f"JOIN-J7-FAILED read_ok=false reason={result.reason}"
+    return "JOIN-J7-FAILED " + "; ".join(
+        f"{item.correlation_id} {item.outcome.value} {item.failure_code}: {item.detail}"
+        for item in result.items
+        if item.outcome
+        not in (EnumJoinJ7RunOutcome.LANDED, EnumJoinJ7RunOutcome.DRILL_RECORDED)
+    )
+
+
+def emit(result: ModelJoinJ7RunResult) -> int:
+    """The run's answer to the step: the JSON on stdout, the failure line on stderr when present, the exit code."""
+    sys.stdout.buffer.write(
+        (json.dumps(result.model_dump(mode="json"), sort_keys=True) + "\n").encode()
+    )
+    sys.stdout.buffer.flush()
+    report = failure_report(result)
+    if report is not None:
+        sys.stderr.write(report + "\n")
+    return 0 if report is None else 1
+
+
 def _run(arguments: argparse.Namespace) -> int:
     overlay = load_join_overlay()
     if arguments.inject is not None and not overlay.allow_injected_break:
@@ -145,11 +177,7 @@ def _run(arguments: argparse.Namespace) -> int:
         clock=lambda: datetime.now(UTC),
     )
     result = handler.handle(ModelJoinJ7RunCommand(probe=arguments.verb == "probe"))
-    sys.stdout.buffer.write(
-        (json.dumps(result.model_dump(mode="json"), sort_keys=True) + "\n").encode()
-    )
-    sys.stdout.buffer.flush()
-    return 0 if result.ok else 1
+    return emit(result)
 
 
 def main(argv: Sequence[str] | None = None) -> int:

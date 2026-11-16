@@ -60,10 +60,25 @@ def test_recent_json_grading_accepts_equivalent_formatting(tmp_path):
     assert not check(task, tmp_path)
 
 
-def test_collector_keeps_attempt_numbers_unique_between_cohorts(tmp_path, monkeypatch):
+@pytest.fixture
+def capability_line_overlay(tmp_path, monkeypatch):
+    """The capability map overlay a lab driver reads its class line from."""
+    root = tmp_path / "capability_line_overlay_root"
+    node = root / "node_projection_delegation_capability_map"
+    node.mkdir(parents=True)
+    (node / "overlay.yaml").write_text(
+        "line:\n  floor: 0.9\n  margin: 0.07\n  confidence: 0.95\n  power: 0.8\n"
+    )
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(root))
+
+
+def test_collector_keeps_attempt_numbers_unique_between_cohorts(
+    tmp_path, monkeypatch, capability_line_overlay
+):
     import sys
 
     from omnimarket.handlers.handler_harness_eval import ModelHarnessObservation
+    from omnimarket.models.delegation.model_size_band import EnumSizeBand
     from tests.harness_evals.collect import main
     from tests.harness_evals.fixtures import fixed_tasks
 
@@ -89,6 +104,7 @@ def test_collector_keeps_attempt_numbers_unique_between_cohorts(tmp_path, monkey
                     duration_s=1,
                     passed=True,
                     harness_succeeded=True,
+                    size_band=EnumSizeBand.S,
                 ).model_dump_json()
             )
         (trial / "observations.jsonl").write_text("\n".join(rows) + "\n")

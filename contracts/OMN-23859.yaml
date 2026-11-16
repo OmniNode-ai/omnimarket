@@ -1,0 +1,40 @@
+schema_version: 1.0.0
+ticket_id: OMN-23859
+title: The drill topics need no delete permission on the broker
+summary: The real-broker leg of the piece 16 chain test created its disposable drill topic and deleted it in the final step. The broker permission tool refuses any row that lets a login delete a topic, so the declared rows were never applied. The leg now creates its topic and leaves it, never calling delete; the declaration in the overlays repository loses its topic delete rows in a separate pull request.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- topics
+requirements:
+- id: req-omn23859-drill-topic-no-delete
+  statement: The redpanda leg of the piece 16 chain test creates its disposable drill topic through the admin client and never calls a topic delete, so the lab logins need no DELETE row on a topic.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: the delivery-chain check against the real broker creates its topic and leaves it, never calling delete -- falsifier: uv run pytest tests/chains/piece16/test_piece16_chain.py -k drill_topic -q'
+evidence_requirements:
+- kind: tests
+  description: The piece 16 chain tests pass at the pushed head.
+  command: uv run --frozen pytest tests/chains/piece16/test_piece16_chain.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23859-ac2
+  description: The golden test shows the leg never calls a topic delete; it fails against the previous roundtrip, which deleted its topic in the final step (the control test shows the check can see a delete).
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/chains/piece16/test_piece16_chain.py -k drill_topic_is_never_deleted -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23859-integration-proof
+  description: After the declaration without topic delete rows is applied on the development broker, the real-broker cases of the piece 16 chain test pass on a lab host at the pushed head. Hosted CI cannot reach the lab broker, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23859-redpanda --kind test -- env RUN_REDPANDA_PIECE16=1 PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/chains/piece16/test_piece16_chain.py -k redpanda -q --no-cov -n 0 -p no:randomly
+    cwd: .

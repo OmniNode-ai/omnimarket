@@ -251,7 +251,7 @@ def delegation_body(
             (
                 "It writes its own crush config under your scratchpad (the operator's crush "
                 "config is never read or edited), refuses a directory that is not a linked "
-                "worktree, refuses a lab model server that does not list Qwen3.8-27B or holds "
+                "worktree, refuses a lab model server that does not list the lab model or holds "
                 "under 65536 tokens of context, runs crush with an output cap of 32768 (the "
                 "model reasons in its visible output: a cap of 8192 lost one run in two and "
                 "16384 stopped a 3,458-character task mid-reasoning, OMN-20084 and OMN-20106), "

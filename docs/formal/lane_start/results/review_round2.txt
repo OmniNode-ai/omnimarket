@@ -1,0 +1,97 @@
+Verdict: FAIL
+
+# Design review, round 2: LaneStart.tla (revised)
+
+Reviewer: the same independent agent as round 1. I re-reviewed the revision on its own merits. I edited no repository file and ran no git write command.
+Revised model: `model/LaneStart.tla`, sha256 `743bdebc0aa62e6e32682ddad9237c7b110fd52e5627b716f3ee49b68ecfa968`. Round 1 is kept in `model/v1/`, sha256 `78b2c932...`.
+
+## Summary
+
+The revision is much better.
+- The design config now carries a failing close, the split read and append, a reaper that closes a "done" leader, and the guard `closed_unstarted_ledger`.
+- R1 to R5 name the stopper, the reaper, the retry cell, the single closer and the lane-as-key gaps.
+- The asbuilt_* configs show that the code fails R1, R2 and R3 today.
+- I re-ran all 28 configs myself, and every result matches the author's outputs.
+
+It still FAILs on one point that matters for claim 1, plus several smaller ones:
+
+- **R3 is not the whole fence (blocking).** The `Retry` action is enabled only when `lp[a]` is in `{refused, done, gone, unresolved, observed}`. That is the leader's own phase, and no ledger reader can see it.
+  - A refused attempt, or a leader that dies before its CLAIM, writes nothing on the ledger. To a ledger reader that looks exactly like an attempt still placing.
+  - I relaxed only that set, adding `requested`. With everything else on the design config, `StartedAtMostOnce` is violated in 6 steps: attempt 2 is requested while attempt 1 is in flight, then both claim and both start (`review/model2/out/c_retry_inflight.out`).
+  - So a re-requester built from R3 as written ("reads a ledger cell") passes the model's stated requirements and still starts two engines. That is an unnamed gap claim 1 depends on. The prose at lines 24 and 219 ("after attempt a ended") states it informally, but R3 and the coordinator's summary ("reads only ledger cells") do not.
+
+**To flip this to PASS with conditions:** amend R3, or add R6, to say: "re-requests of a key are serialized, and attempt a+1 is issued only after attempt a's leader has answered (its completed event) or its CLAIM is closed. A leader that never answered and wrote no CLAIM leaves the key unretryable until something proves it is gone." Add a mutant for it (the one-line relaxation above). Then fix items N2 to N6, which are not blocking on their own.
+
+## 1. Round-1 conditions
+
+| # | Round-1 condition | Status | Evidence |
+|---|---|---|---|
+| 1 | Model the stopper that exists, and name the reaper or drop the fairness | **Met.** <br>• `StopperCode` matches the stop node: no leader wait, refuses `unresolved` and `done`. <br>• `asbuilt_stopper` violates `LeaderTerminalAfterExit`; `asbuilt_stopper_liveness` violates `StartedReachesTerminal`. <br>• R1 and R2 say the code does not meet them and that no reaper exists. <br>• `WF(StopperClose)` is now explicitly the R2 reaper. | LaneStart.tla:35-38,207-212,246-248; my re-runs of asbuilt_stopper and asbuilt_stopper_liveness |
+| 2 | Make the retry fence implementable and place it | **Partly met.** <br>• The ledger cell is named (`outcome=start-failed`, R3). The omniscient `eng` conjunct is gone from the design guard. `asbuilt_outcomes` shows the code's `failed` cell is not enough. <br>• Not met: the guard still depends on an unobservable leader phase (the blocking finding above). <br>• Not met: the component that enforces it is still only "whoever re-requests"; neither the node nor the fill is named. | LaneStart.tla:24-26,39-43,225-226,231-236; c_retry_inflight.out |
+| 3 | Prove the single closer on the leader's path or model without it; give `LeaderChecksSelfClose` a mutant or remove it | **Honestly stated, but the new mutant does not isolate its knob.** <br>• R4 says the single closer is UNMEASURED for the leader's external writer. <br>• `mut_no_self_close_check` flips three knobs at once (SingleCloser, LeaderChecksSelfClose, Reaper). The same config with `LeaderChecksSelfClose=TRUE` still violates `AtMostOneTerminal` (c_lcsc_true_mut), so the mutant proves nothing about the knob. <br>• Turning the knob off in the design still passes (c_design_lcsc_false). <br>• `_lane_closed_itself` adds no safety in this model. AtMostOneTerminal rests on R4 alone, and the spec should say so. | model/mut_no_self_close_check.cfg; review/model2/out/c_lcsc_true_mut.out, c_design_lcsc_false.out, c_lcsc_isolate_lane_first_on.out |
+| 4 | Add the missing paths | **Mostly met.** <br>• Added: the failing close (`CloseCanFail` in Model.cfg, with the reaper closing "done"), the split read and append (`SplitClose`), and the late start from a dead leader (`LateStartLands` from "gone"). <br>• Still absent and unnamed: (a) a CLAIM append reported refused or error whose row lands later, leaving an orphan CLAIM (core.py:704-719 and the 150 s append timeout); (b) the CLAIM dedupe on the `ledger_write_via: bus` path, where the model has one leader per attempt, so a second same-attempt leader is never exercised; (c) `_lane_closed_itself` matching another attempt's TERMINAL. <br>• (c) is unreachable under R3 but is a gap in today's code. | LaneStart.tla:125-128,155-158,187-203,205-216; round-1 F4, F7, F8 |
+| 5 | Separate `lane` from `key` | **Honestly stated (R5).** <br>• The reuse of `run_id` across attempts is still not mentioned. | LaneStart.tla:47-49 |
+
+## 2. Is the model now a correct statement of the design?
+
+**Almost, but not yet.**
+
+What is sound:
+- With R1, R2, R4 and the assumption `LateStart=FALSE`, the design config proves the properties listed below. MaxAttempts 2 to 5 give 159, 371, 795 and 1643 distinct states, and all pass (c_design_M2/M4/M5).
+  - Safety: StartedAtMostOnce, ClaimBeforeEngine, NoTerminalWithoutClaim, AtMostOneTerminal, LeaderTerminalAfterExit, ObserveWritesNothing.
+  - Liveness: StartedReachesTerminal, ClaimReachesTerminal.
+  - Action property: NoStartAfterTerminal.
+- The asbuilt configs honestly show the code violating R1 (safety), R2 (liveness) and R3 (outcome cell).
+
+What is wrong:
+- R3 as written is not sufficient for claim 1. The model passes only because `Retry` also reads the leader's phase, and R3 does not say this.
+
+What I would record once R3 or R6 names the serialization: `Verdict: PASS with conditions`, with these conditions on the pieces that build against the model:
+
+1. **Stop node (R1):** it never closes a CLAIM whose live leader has not started the engine.
+   - The model gives the stopper an oracle for whether the leader is alive (`lp = "claimed"` versus `"gone"`).
+   - In code that needs a lease or fence that the leader honours: the leader must re-check its CLAIM, or hold a lease, immediately before `START_ENGINE_DETACHED`. A stopper that merely waits a while is not enough, because a slow but live leader can outlast any timeout.
+2. **A reaper exists (R2).** It closes unresolved, failed-close and dead-leader CLAIMs, plus orphan CLAIMs from a refused append that landed later.
+3. **The orchestrator writes a ledger-visible `start-failed`** only on the paths before the launch: a fatal provisioning step, the worktree not prepared, and the transport's `failed` result (R3).
+4. **One serialized re-requester per key.** It issues a+1 only after attempt a answered or its CLAIM closed (R3, amended).
+5. **The leader's ledger writer, on the path actually deployed (bus or local),** refuses a second TERMINAL for one CLAIM. It also refuses a second same-attempt CLAIM from a different leader (R4, extended to the CLAIM).
+6. **The key is the lane name, and `run_id` is not reused across attempts (R5).**
+7. **The detached start does not land late (LateStart, UNMEASURED).** The hazard config shows the consequence if it does.
+
+## 3. New findings
+
+| # | Sev | Finding | Evidence |
+|---|---|---|---|
+| N1 | High (blocking) | **The `Retry` enabling guard reads the leader's phase, which R3 does not name.** <br>• A ledger-only re-requester cannot tell a refused attempt from one still in flight, or from a leader that died before its CLAIM. <br>• Refused attempts write no ledger row. `LeaderDies` is not allowed from `requested`, so a pre-CLAIM death is not modelled at all. <br>• Relaxing the guard to include `requested` breaks `StartedAtMostOnce`. | LaneStart.tla:24,170-171,219,231-236; core.py:561-654,668-719 (no ledger row on these refusals); review/model2/LaneStartObs.tla, out/c_retry_inflight.out |
+| N2 | Med | **`mut_no_self_close_check` is not an isolating mutant.** <br>• It flips three constants, and its violation persists with the knob back on. <br>• The header's list of mutations omits it. <br>• `LeaderChecksSelfClose` stays vacuous in the design. | model/mut_no_self_close_check.cfg; c_lcsc_true_mut.out, c_design_lcsc_false.out |
+| N3 | Med | **R4 covers only the TERMINAL.** <br>• Claim 1 also assumes "the ledger refuses a second CLAIM for the same attempt" (line 12). <br>• The model never exercises a second same-attempt leader. <br>• On the bus write path this is unverified (handler_remote_lane_start.py:103-115; overlay.example.yaml:76). | LaneStart.tla:11-13,44-46 |
+| N4 | Low | **The header's property list is overstated.** <br>• It says each property "is broken by its own mutation below", but NoRetryAfterUnresolved, ClaimReachesTerminal, NoStartAfterTerminal and StartedTerminalPerKey have no mutation in the list. <br>• I checked that each can be broken: NoRetryAfterUnresolved by RetryGuard any or no_open_claim (c_unres_any, c_unres_noopen); NoStartAfterTerminal by haz_late_start (c_haz_noafter); ClaimReachesTerminal by the asbuilt stopper (c_asbuilt_all). <br>• StartedTerminalPerKey is still implied by StartedAtMostOnce plus AtMostOneTerminal. <br>• NoRetryAfterUnresolved checks only attempt 1 to attempt 2. The generalized form holds at M3 and M4 (c_unresolved_all, c_unresolved_all_M4). | LaneStart.tla:51-63,274 |
+| N5 | Low | **`LateStartLands` fires from any "gone".** <br>• That includes a leader that died after a `failed` start, but the transport returns `failed` only before launch (adapter_ssh_transport.py:502-507). <br>• This is harmless (the stopper then writes `stopped` and the key dies), but it over-approximates. | LaneStart.tla:155-158,170-173 |
+| N6 | Low | **Wrong citation.** <br>• The header says the review that failed v1 is `results/design_review_verdict.txt`. That file is the stop-side verdict, which passed. The round-1 review is `review/review.md`. | LaneStart.tla:33-34 |
+
+## What I ran (TLC2 2.19, the run_tlc.sh jar)
+
+- **All author configs**, copied to `review/model2/` and run with `./run_tlc.sh`:
+  - Model, obs_model, chk_unresolved_stays_dead: no error. Model: 371 distinct states, depth 18. obs_model: 21 states.
+  - asbuilt_outcomes: StartedAtMostOnce violated. asbuilt_stopper: LeaderTerminalAfterExit violated. asbuilt_stopper_liveness: temporal property violated.
+  - haz_late_start: LeaderTerminalAfterExit violated.
+  - The 9 mut_* configs: each violates its named property.
+  - The 12 wit_* configs: each violates its invariant.
+  - Every first-error line equals the author's `model/out/*.out`.
+- **Probe configs** `review/model2/c_*.cfg`, run through `LaneStartChk.tla` (it EXTENDS LaneStart with generalized checks) or `LaneStartObs.tla` (a one-line change to the Retry guard):
+  - c_design_M2, c_design_M4, c_design_M5: pass (159, 795 and 1643 states).
+  - c_design_plain: pass, 224 states, with CloseCanFail and SplitClose off.
+  - c_design_lcsc_false: pass.
+  - c_design_no_stopper_done: pass.
+  - c_unresolved_all and c_unresolved_all_M4: pass.
+  - c_lcsc_true_mut: AtMostOneTerminal violated.
+  - c_lcsc_isolate_lane_first and c_lcsc_isolate_lane_first_on: both violated.
+  - c_haz_noafter: NoStartAfterTerminal violated.
+  - c_asbuilt_all: ClaimReachesTerminal violated.
+  - c_unres_any and c_unres_noopen: NoRetryAfterUnresolved violated.
+  - c_retry_inflight: StartedAtMostOnce violated.
+
+## What I read
+
+- `model/LaneStart.tla` (revised, all 303 lines), every revised cfg, and `model/out/*.out` (first-error lines).
+- From round 1, where I read them in full and re-used the line numbers: core.py, handler_remote_lane_start.py, overlay.example.yaml, handler_remote_lane_stop.py and adapter_ssh_transport.py.

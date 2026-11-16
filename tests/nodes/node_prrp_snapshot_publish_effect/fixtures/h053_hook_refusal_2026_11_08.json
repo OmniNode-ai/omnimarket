@@ -1,0 +1,9 @@
+{
+  "recorded_from": "the OMN-23219 ticket text and the dlg-23172 lane's blocked report, 2026-11-08",
+  "refused_hook": "private-repo-runner-placement",
+  "hook_preflight_exit": 3,
+  "refused_on_host": "h053",
+  "snapshot_on_refused_host": "absent",
+  "last_publish_wrote": ["h200", "h201", "h202"],
+  "lane_hosts_at_the_time": ["h053", "h051"]
+}

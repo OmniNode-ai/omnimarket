@@ -23,6 +23,10 @@ from omnimarket.nodes.node_branch_protection_audit_effect.models.model_branch_pr
 from omnimarket.nodes.node_branch_protection_audit_effect.models.model_branch_protection_finding import (
     ModelBranchProtectionFinding,
 )
+from omnimarket.nodes.node_branch_protection_audit_effect.models.model_branch_protection_landing_branch import (
+    ModelBranchProtectionBypassActor,
+    ModelBranchProtectionLandingBranch,
+)
 from omnimarket.nodes.node_branch_protection_audit_effect.models.model_branch_protection_policy_load_request import (
     ModelBranchProtectionPolicyLoadRequest,
 )
@@ -43,8 +47,10 @@ __all__ = [
     "ModelBranchProtectionAuditPolicy",
     "ModelBranchProtectionAuditRequest",
     "ModelBranchProtectionAuditResult",
+    "ModelBranchProtectionBypassActor",
     "ModelBranchProtectionFetchRequest",
     "ModelBranchProtectionFinding",
+    "ModelBranchProtectionLandingBranch",
     "ModelBranchProtectionPolicyLoadRequest",
     "ModelBranchProtectionSnapshot",
     "protection_key",

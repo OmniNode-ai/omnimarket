@@ -1,0 +1,47 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-23583"
+title: "The hourly runner group exposure check fetches a fresh access key every run"
+summary: "node_runner_group_exposure_effect's GitHub source gains an optional token_mint overlay block (the org and the names of the App id and private key secret references). When set, the source mints one GitHub App installation token per read instead of reading the stored token_env value, which expires after an hour and has made the h053 hourly unit read org-read-denied on every run since it was installed. A refused mint reads UNKNOWN with its own reason, token-mint-failed, and makes no GitHub call."
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "public_api"
+requirements:
+  - id: "req-omn23583-token-mint"
+    statement: |-
+      The exposure source authenticates with a token minted at read time from secrets the overlay names, so the hourly unit no longer depends on a hand-pasted expiring token.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: with a github source that declares an App token mint, each run mints a fresh installation token and uses it for every call; a stored expired token is never read -- falsifier: pytest tests/nodes/node_runner_group_exposure_effect/test_token_mint.py -q fails at the base, where the source only reads the stored environment token"
+      - id: "AC2"
+        statement: "AC2: when the mint fails (secret missing, App refuses) the reading is UNKNOWN with its own named reason and not org-read-denied, and the hourly verb still exits 1 -- falsifier: the error chain test in the same file, run with the mint stubbed to refuse"
+      - id: "AC3"
+        statement: "AC3: the golden chain event test reads a group through a minted token and returns a WORKING reading in memory and over the HTTP fake -- falsifier: the golden test fails when the minted token is not sent in the Authorization header"
+      - id: "AC4"
+        statement: "AC4: integrated, read in the running runtime on h053: onex-runner-group-exposure-hourly.service exits 0 on its next two hourly runs, its reading row names verdict WORKING or NOT WORKING with no source-unreadable outcome, and the board's runner-groups panel names every runner -- falsifier: systemctl --user status on h053 shows Result=exit-code or the reading row reads source-unreadable"
+evidence_requirements:
+  - kind: "tests"
+    description: "The exposure effect's golden chain, error chain, token mint, reading writer and overlay tests."
+    command: "uv run pytest tests/nodes/node_runner_group_exposure_effect -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn23583-token-mint"
+    description: "The token mint tests pass at the head; with the source files of origin/dev put back they fail on import (the failing control)."
+    source: "manual"
+    binds_ac: ["AC1", "AC2", "AC3", "AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_runner_group_exposure_effect -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn23583-integration-proof"
+    description: "Run the exposure effect's tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. It binds no acceptance criterion: the runtime reading (AC4) is read on h053 after the unit is reinstalled."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-23583 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_runner_group_exposure_effect -q --no-cov"
+        cwd: "."

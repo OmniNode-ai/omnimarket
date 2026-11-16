@@ -22,6 +22,7 @@ from typing import Final, cast
 
 from pydantic import JsonValue, TypeAdapter, ValidationError
 
+from omnimarket.models.github_landing.model_transport_error import GitHubTransportError
 from omnimarket.models.model_gateway_node_skew import GatewayReadError, failure_error
 from omnimarket.models.model_github_gateway_io import (
     GithubGatewayResult,
@@ -35,7 +36,6 @@ from omnimarket.nodes.node_github_repo_gateway_effect.token_resolver import (
 from omnimarket.nodes.node_github_repo_gateway_effect.transport import (
     RealGitHubReadTransport,
 )
-from omnimarket.nodes.node_merge_sweep_compute.protocols import GitHubTransportError
 
 #: The declared bus lane the deployed gateway serves; a host may name another.
 GATEWAY_BUS_LANE_ENV: Final[str] = "ONEX_GITHUB_GATEWAY_BUS_LANE"

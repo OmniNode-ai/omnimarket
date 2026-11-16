@@ -1,0 +1,47 @@
+name: node_projection_host_disk
+version: "1.0.0"
+description: >
+  Materializes the host disk watermark effect's reading events into
+  host_disk_class (one row per host and class, ordered by read_at) and
+  host_disk_volume (one row per host and volume, ordered by read_at).
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: write_db
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pyyaml>=6.0"
+tags:
+  - projection
+  - disk
+  - host-disk
+  - reducer
+ownership:
+  host_disk_class:
+    ddl_owner: omnimarket.nodes.node_projection_host_disk
+    table_role: projection_read_model
+    create_migration: "migrations/0000_create_host_disk.sql"
+    duplicate_migration_policy: forbid_cross_repo_create_table
+    non_owner_repos:
+      - omnibase_infra
+    rationale: >
+      omnibase_infra APPLIES the migration through its forward-migration
+      runner and does not own the read model. The table is an omnimarket
+      projection written only by this node.
+  host_disk_volume:
+    ddl_owner: omnimarket.nodes.node_projection_host_disk
+    table_role: projection_read_model
+    create_migration: "migrations/0000_create_host_disk.sql"
+    duplicate_migration_policy: forbid_cross_repo_create_table
+    non_owner_repos:
+      - omnibase_infra
+    rationale: >
+      omnibase_infra APPLIES the migration through its forward-migration
+      runner and does not own the read model. The table is an omnimarket
+      projection written only by this node.
+pack: "data"
+display_name: "Projection: Host Disk"
+node_role: "effect"

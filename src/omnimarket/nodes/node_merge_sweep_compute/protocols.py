@@ -12,14 +12,6 @@ from __future__ import annotations
 from typing import Any, Protocol, runtime_checkable
 
 
-class GitHubTransportError(Exception):
-    """Raised when a GitHub API call fails due to a transport or auth error.
-
-    Distinct from an empty result (repo has no open PRs), so callers can
-    abort rather than silently treating an outage as an empty list.
-    """
-
-
 @runtime_checkable
 class GitHubPrFetchProtocol(Protocol):
     """Fetch open PRs with rich status fields from GitHub."""

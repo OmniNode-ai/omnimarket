@@ -1,0 +1,90 @@
+schema_version: 1.0.0
+ticket_id: OMN-23629
+title: Each coding trial can be sent with no extra context, with one worked example, or with the full context package
+summary: Adds node_code_eval_context_arm_compute, a pure selector over the context pack orchestrator for the three arms of the code eval (task alone, task plus one exemplar, task plus the full pack), and the exemplar-only profile delegation_payload_exemplar. Its arm names, profiles and budget are values of an overlay.
+is_seam_ticket: true
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23629-arm-selector
+  statement: For any coding trial the eval can ask for each of the three context arms and get exactly what was asked for, or a typed statement that the exemplar was not available, and the exemplar is never the task's own answer.
+  acceptance:
+  - id: AC1
+    statement: "AC1: task_alone gives no pack command, task_plus_exemplar gives a command naming the exemplar-only profile, task_plus_pack gives one naming delegation_payload_local, and an arm name not in the overlay is refused -- falsifier: uv run pytest tests/nodes/node_code_eval_context_arm_compute/test_arm_select.py -q"
+  - id: AC2
+    statement: "AC2: failing control: a pack answer whose exemplar tier is unavailable does not satisfy task_plus_exemplar, and the injected break \"accept any pack answer with status ok\" turns the test red -- falsifier: uv run pytest tests/nodes/node_code_eval_context_arm_compute/test_arm_satisfied.py -q"
+  - id: AC3
+    statement: "AC3: every pack command carries tier_revisions at the task's base commit, and an exemplar whose commit is the task's own merge commit is refused -- falsifier: uv run pytest tests/nodes/node_code_eval_context_arm_compute/test_no_answer_leak.py -q"
+  - id: AC4
+    statement: "AC4: golden chain and error chain with the pack orchestrator on the in-memory bus (a pack failure yields a typed not-satisfied decision, never an empty pack passed on) -- falsifier: uv run pytest tests/nodes/node_code_eval_context_arm_compute/test_chains.py -q"
+  - id: AC5
+    statement: "AC5: integrated: on the dev lane the three arms are built for one omnimarket compute task at its base commit, the exemplar arm's pack holds one registry exemplar of the compute archetype, and the full pack lists its included tiers and token counts -- falsifier: the three built answers' tier lists and hashes read from the pack receipts on the dev lane"
+evidence_requirements:
+- kind: tests
+  description: The node's select, satisfied, no-leak and chain tests, with the named injected breaks.
+  command: uv run --frozen pytest tests/nodes/node_code_eval_context_arm_compute -q --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23629-ac1-select
+  description: The three arms select what they name and an arm outside the overlay is refused. The check reads red at the merge base, where the node is absent.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_code_eval_context_arm_compute/test_arm_select.py -q --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn23629-ac2-satisfied
+  description: An unavailable exemplar tier does not satisfy an exemplar-asking arm; the injected break that accepts any ok pack answer turns the control red.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_code_eval_context_arm_compute/test_arm_satisfied.py -q --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn23629-ac3-no-leak
+  description: Every pack command carries tier_revisions at the base commit's time; an exemplar that is the task's own merge commit, or later than the base, is refused; the injected break turns the control red.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_code_eval_context_arm_compute/test_no_answer_leak.py -q --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn23629-ac4-chains
+  description: Golden chain and error chain with the real pack orchestrator and the selector on the in-memory bus.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_code_eval_context_arm_compute/test_chains.py -q --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn23629-deploy-probe
+  description: Hosted structural probe that needs no lab route or broker. GitHub serves the node contract and the exemplar-only profile at the checked-out HEAD; both are absent at the merge base.
+  source: manual
+  checks:
+  - check_type: command
+    check_value: >-
+      bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_code_eval_context_arm_compute/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "name: node_code_eval_context_arm_compute" > /dev/null && gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/pack/profiles/delegation_payload_exemplar.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "exemplar" > /dev/null'
+- id: dod-omn23629-ac5-integration-hosted
+  description: Hosted proxy for the integrated criterion. The golden chains build the exemplar arm and the full-pack arm through the real pack orchestrator at the task's base commit and the selector judges them. The three arms read on the dev lane (tier lists and hashes from the pack receipts) wait for the merge and the dev redeploy through the deploy agent, and the pack-fix ticket OMN-23644 must be merged first.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_code_eval_context_arm_compute/test_golden_chain_code_eval_context_arm.py -q --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn23629-ac5-integration-proof
+  description: Runs the node's chain tests with the real pack orchestrator on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23629 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_code_eval_context_arm_compute -q -n 0 --no-cov -p no:randomly
+    cwd: .

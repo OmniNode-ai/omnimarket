@@ -27,6 +27,8 @@ from pydantic import (
     model_validator,
 )
 
+from omnimarket.models.goal_scope_admission import ModelGoalScopeAdmissionRequest
+
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
 
 CHECKS_READ = "read"
@@ -162,6 +164,11 @@ class ModelMergeSweepReadRequest(BaseModel):
     merges: list[ModelSweepMerge] = Field(default_factory=list)
     ledger_lines: list[str] = Field(default_factory=list)
     ticks: list[dict[str, Any]] | None = None
+    goal_scope: ModelGoalScopeAdmissionRequest | None = None
+    """The goal's admission facts (OMN-23851). When present, the one goal-scope rule
+    (node_goal_scope_admission_compute) decides which open PRs are the goal's: one it does not admit
+    is named under ``goal_not_admitted`` and never read, and one it could not read is named under
+    ``unread`` and never read or admitted. Absent, no goal filter applies."""
 
     @field_validator("fleet", "non_product_repos")
     @classmethod
@@ -212,6 +219,10 @@ class ModelMergeSweepReadResult(BaseModel):
     open_prs: int
     scope: list[str] = Field(default_factory=list)
     out_of_scope_prs: list[str] = Field(default_factory=list)
+    goal_admitted: dict[str, str] = Field(default_factory=dict)
+    """Each open PR the goal-scope rule admitted, with its verdict (``ticket:<chain>`` or ``project:<name>``)."""
+    goal_not_admitted: dict[str, str] = Field(default_factory=dict)
+    """Each open PR the goal-scope rule left out, with its reason; named, never read."""
     unread: list[ModelMergeSweepUnread]
 
 

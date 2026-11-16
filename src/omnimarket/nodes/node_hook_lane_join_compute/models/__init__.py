@@ -3,6 +3,7 @@
 """Models of the hook-event lane join node (OMN-19998)."""
 
 from .model_hook_lane_join import (
+    ModelHookAgentUnmatched,
     ModelHookHostCount,
     ModelHookLaneJoin,
     ModelHookLaneJoinAgent,
@@ -13,6 +14,7 @@ from .model_hook_lane_join import (
 )
 
 __all__ = [
+    "ModelHookAgentUnmatched",
     "ModelHookHostCount",
     "ModelHookLaneJoin",
     "ModelHookLaneJoinAgent",

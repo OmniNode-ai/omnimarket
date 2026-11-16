@@ -61,6 +61,7 @@ from .retired_repositories import (
     load_retirement_policy,
     retired_repository_findings,
 )
+from .venv_build_lock_facts import venv_build_lock_fact
 
 
 def _parse_guard_readback(stdout: str) -> tuple[str, str, int, tuple[str, ...]]:
@@ -507,6 +508,13 @@ class _ReconcilePass:
             with suppress(subprocess.TimeoutExpired):
                 self.child.communicate(timeout=5)
 
+    def receipt_path(self) -> str:
+        if self.request.receipt:
+            return self.request.receipt
+        # A check run must not overwrite the last repair receipt the wrapper reads.
+        suffix = ".check" if self.request.mode == "check" else ""
+        return str(self.root / f".onex-workspace-reconcile{suffix}.json")
+
     def evaluate(
         self, facts: tuple[ModelSurfaceFact, ...]
     ) -> ModelHostReconcileDecisions:
@@ -516,8 +524,7 @@ class _ReconcilePass:
                 workspace_root=str(self.root),
                 scripts_dir=str(self.scripts),
                 rerun_command=f"python -m omnimarket.nodes.node_host_reconcile_effect --omni-home {self.root}",
-                receipt_path=self.request.receipt
-                or str(self.root / ".onex-workspace-reconcile.json"),
+                receipt_path=self.receipt_path(),
                 facts=facts,
             )
         )
@@ -873,6 +880,16 @@ class _ReconcilePass:
                     else head_now
                 )
                 self.movement("venv:omnimarket", before_commit, observed, target)
+        if sp is not None:
+            lock_fact = venv_build_lock_fact(
+                venv, sp, self.root / "omnibase_infra/uv.lock"
+            )
+            if lock_fact is None:
+                self.say(
+                    f"venv:build-lock: no .built-from marker in {venv}; the lock check was skipped"
+                )
+            else:
+                self.facts.append(lock_fact)
         gate = self.root / "omnibase_infra/.venv"
         gate_sp = self.site_packages(gate)
         if gate_sp:
@@ -1064,7 +1081,7 @@ class _ReconcilePass:
             + "\n  ]\n}\n"
         )
 
-        path = self.request.receipt or str(self.root / ".onex-workspace-reconcile.json")
+        path = self.receipt_path()
         if self.command(
             ["tee", path], owner=True, input_text=text, discard_stdout=True
         ).returncode:

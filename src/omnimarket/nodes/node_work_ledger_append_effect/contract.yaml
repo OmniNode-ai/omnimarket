@@ -30,7 +30,7 @@ lifecycle: experimental
 node_type: "EFFECT_GENERIC"
 runtime_profiles: [effects]
 contract_version: {major: 0, minor: 5, patch: 0}
-node_version: "0.5.0"
+node_version: "0.6.0"
 description: >
   Attributes rows to the broker principal of the producing connection, attested
   by per-principal topic WRITE ACLs declared in omnibase_infra
@@ -89,6 +89,17 @@ writer_overlay:
   default_role: "developer"
   roles: ["machine"]
   refresh_seconds: 60
+# OMN-24330: a service login such as the dev runtime's own has no person login or device, so it
+# cannot be a row of the developer principal overlay; its writers are declared in the node's own
+# deployment overlay instead.
+service_writers:
+  overlay_id: "node_work_ledger_append_effect"
+  roots_env: "ONEX_SKILL_OVERLAY_ROOTS"
+  # After those roots, the overlays clone that sits beside the workspace config root (the serve unit
+  # declares only the config root, so a host with the clone there needs no new unit setting).
+  config_root_env: "ONEX_WORKSPACE_CONFIG_ROOT"
+  config_root_relative: "../overlays/overlays"
+  schema_version: "service_writers.v1"
 # OMN-20275: the serve host watches that its consumers hold partition assignments. When they do not for
 # `unhealthy_probes_before_degraded` probes in a row the host reports degraded, raises one alarm for the
 # episode and drops and retakes every subscription, waiting `backoff_initial_seconds` growing by
@@ -122,6 +133,11 @@ join_j5:
   identity_unresolved_failure_code: "upstream_identity_unresolved"
   append_not_accepted_failure_code: "ledger_append_not_accepted"
   projected_row_missing_failure_code: "projected_row_missing"
+  projection_read_failed_failure_code: "projection_read_failed"
+  # OMN-23591: every chain this join starts ends. A run that raises after its start closes the chain with the first code; a
+  # run still open at its overlay's run_deadline_seconds closes it with the second, inside the publish step's own bound.
+  interrupted_failure_code: "ledger_join_interrupted"
+  deadline_exceeded_failure_code: "ledger_join_deadline_exceeded"
 # OMN-23086: the J5 runner is bound here so the contract owns it; it runs through runtime_join_j5 (the publish cycle's
 # join_j5 step), not handler_routing, because its collaborators are chosen by the overlay.
 cli_handlers:

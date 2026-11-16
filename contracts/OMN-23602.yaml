@@ -1,0 +1,51 @@
+schema_version: 1.0.0
+ticket_id: OMN-23602
+title: Delegation scenarios R2, R3 and R5 find their keys under the names they already have
+summary: Scenarios R2, R3 and R5 read their keys and addresses from variables no one had created (ONEX_SCENARIO_R2_KEY and the R2 settings, ONEX_R3_OPENROUTER_PROBE_KEY, ONEX_SCENARIO_R5_OPENROUTER_PROBE_KEY) while the same values already live under other names in the host environment file (OPENROUTER_API_KEY, LLM_GLM_API_KEY, LLM_GLM_URL, LLM_GLM_MODEL_NAME, LLM_CODER_URL, LLM_CODER_FAST_URL and their model names) and, for the GLM key, in the secret store. Each node now carries a settings overlay that names those existing names, and a shared handler fills the run's variables from the process environment, then the host environment file (only the names asked for), then the store.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn23602-existing-names
+  statement: Each scenario's keys and addresses are found under existing names declared in its overlay; nothing is set by hand and no value is printed.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a scenario run whose settings overlay names an existing secret finds the key under that name from the environment, then the host environment file, then the secret store, and never prints it -- falsifier: env -u PYTHONPATH uv run pytest tests/nodes/node_delegation_scenario_r3_effect/test_settings_fill.py -q'
+  - id: AC2
+    statement: 'AC2: with the key absent under its existing name the run is red naming the missing secret, never skipped -- falsifier: env -u PYTHONPATH uv run pytest tests/nodes/node_delegation_scenario_r3_effect/test_settings_fill.py tests/nodes/node_delegation_scenario_r3_effect/test_scenario_settings_overlay_seam.py -q -k "control or without_the_existing_name or found_nowhere"'
+evidence_requirements:
+- kind: tests
+  description: The fill tests, the contract and overlay seam tests, and the R2 tick tests at the pushed head. At origin/dev the new tests fail (the shared handler and the runner's settings_home parameter do not exist).
+  command: env -u PYTHONPATH uv run pytest tests/nodes/node_delegation_scenario_r3_effect/test_settings_fill.py tests/nodes/node_delegation_scenario_r3_effect/test_scenario_settings_overlay_seam.py tests/nodes/node_delegation_scenario_r2_effect/test_scenario_r2_tick.py -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23602-ac1-fill
+  description: The fill tests pass at the pushed head.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_r3_effect/test_settings_fill.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23602-ac2-absent
+  description: The absent-name controls pass at the pushed head, on the shared handler and on the built R3 and R5 runners.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_delegation_scenario_r3_effect/test_settings_fill.py tests/nodes/node_delegation_scenario_r3_effect/test_scenario_settings_overlay_seam.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23602-integration-proof
+  description: The scenario units run from the branch on the lab machine. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check; the integrated reading of the units is taken on the lab host after the merge and recorded on the ticket.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23602 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_delegation_scenario_r3_effect/test_settings_fill.py tests/nodes/node_delegation_scenario_r3_effect/test_scenario_settings_overlay_seam.py tests/nodes/node_delegation_scenario_r2_effect/test_scenario_r2_tick.py -q --no-cov'
+    cwd: .

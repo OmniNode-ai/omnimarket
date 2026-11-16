@@ -14,6 +14,8 @@ network or environment. The rules (plan section 12, Gates):
   Stale is a failure, not a warning.
 * A source that could not be read makes the reading UNKNOWN (outcome ``source-unreadable``).
   A piece with no producer today reads UNKNOWN with its reason, never blank.
+* A source whose newest fresh row matches its unknown_when makes the reading UNKNOWN unless
+  another source fails (OMN-23655).
 * The row key is piece, window start, order hash, overlay hash and revision. The content hash
   covers what the reading says and not when it was run, so a replay of the same inputs is equal.
 """
@@ -46,6 +48,7 @@ from omnimarket.models.model_reading import (
 )
 
 _KEY_LENGTH = 24
+_UNKNOWN_REASON = "source-unknown:"
 
 
 def _sha(text: str) -> str:
@@ -111,6 +114,8 @@ def _judge(
         age = int((window_end - newest.stamp).total_seconds())
         if age > source.max_age_seconds:
             return f"stale-source:{source.source_id}:age-{age}s-over-{source.max_age_seconds}s"
+        if source.reads_unknown(newest):
+            return f"{_UNKNOWN_REASON}{source.source_id}"
         if not source.passes(newest):
             return f"source-fail:{source.source_id}"
         return None
@@ -123,10 +128,12 @@ def _judge(
 def _judge_landing(
     requirements: ModelLandingRequirements,
     snapshot: ModelLandingSnapshot,
-    canary_rows: list[ModelLedgerEvidenceRow],
-    window_end: datetime,
 ) -> list[str]:
-    """The landing goal's hourly requirements against one watcher snapshot; the reasons it fails, none when it holds."""
+    """The landing goal's hourly requirements against one snapshot of real landing; the reasons it fails, none when it holds.
+
+    A head that waited over the limit fails whatever else holds; with the queue at the threshold the goal's
+    merges must have happened. A quiet queue with fresh state holds: nothing eligible is unmerged.
+    """
     if snapshot.age_seconds > requirements.snapshot_max_age_seconds:
         # The age moves with the probe time, so it never goes in the reason: a later probe of the
         # same window over the same snapshot must give the same content (OMN-23077).
@@ -142,16 +149,14 @@ def _judge_landing(
         if head.waiting_seconds > requirements.head_max_age_seconds
     ]
     waiting = len(snapshot.heads)
-    if waiting >= requirements.waiting_threshold:
-        if snapshot.merges_in_window < requirements.goal_merges_per_window:
-            failures.append(
-                f"goal-not-met:waiting-{waiting}:merges-{snapshot.merges_in_window}"
-                f"-of-{requirements.goal_merges_per_window}"
-            )
-    else:
-        canary = _judge(requirements.canary, canary_rows, window_end)
-        if canary is not None:
-            failures.append(canary)
+    if (
+        waiting >= requirements.waiting_threshold
+        and snapshot.merges_in_window < requirements.goal_merges_per_window
+    ):
+        failures.append(
+            f"goal-not-met:waiting-{waiting}:merges-{snapshot.merges_in_window}"
+            f"-of-{requirements.goal_merges_per_window}"
+        )
     return failures
 
 
@@ -262,7 +267,7 @@ class HandlerReadingCompute:
                 conflicts,
                 manifest,
             )
-        failures = [
+        judged = [
             reason
             for source in spec.sources
             if (
@@ -272,19 +277,22 @@ class HandlerReadingCompute:
             )
             is not None
         ]
+        unknowns = [reason for reason in judged if reason.startswith(_UNKNOWN_REASON)]
+        failures = [
+            reason for reason in judged if not reason.startswith(_UNKNOWN_REASON)
+        ]
         if spec.landing is not None and request.landing is not None:
-            failures += _judge_landing(
-                spec.landing,
-                request.landing,
-                gathered[spec.landing.canary.source_id].rows,
-                request.window_end,
-            )
+            failures += _judge_landing(spec.landing, request.landing)
         if failures:
             return result(
                 EnumReadingVerdict.NOT_WORKING,
                 EnumReadingOutcome.READ,
-                failures,
+                failures + unknowns,
                 manifest,
+            )
+        if unknowns:
+            return result(
+                EnumReadingVerdict.UNKNOWN, EnumReadingOutcome.READ, unknowns, manifest
             )
         return result(
             EnumReadingVerdict.WORKING, EnumReadingOutcome.READ, ["ok"], manifest

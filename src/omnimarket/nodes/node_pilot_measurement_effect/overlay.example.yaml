@@ -1,0 +1,75 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Copy to <root>/node_pilot_measurement_effect/overlay.yaml and set ONEX_SKILL_OVERLAY_ROOTS to
+# that root. Every value here is synthetic; supply your deployment's facts. No key has a default
+# except bar, bar_hash, frozen_at and schedule_hosts: a pilot that froze no bar, no hash or no
+# time is declared by leaving the key out, and the manifest check then refuses it.
+#
+#   pilots          every pilot the run reads: its frozen bar (criteria, the hash of the bar as it
+#                   was fixed, when it was frozen), its start, the variable holding its
+#                   measured-result file, and how long a result stays fresh
+#   manifest_check  the pilot manifest check the run uses: the hash algorithm, whether the bar must
+#                   be frozen before the start, whether a metric missing from a result fails the bar
+#   ledger_append   the command in command_env appends rows; host_env holds the host name
+#   publish         the rows' lane, src cell and actor, how long a row stays fresh, and the verdict a
+#                   pilot that fails its frozen bar reads
+#   emission        the floor piece and node of this read (piece 16), and the variable naming the
+#                   emission journal; each run emits one chain under the command's correlation id
+#   injected_fault  the fault injected on purpose that must turn the reading NOT WORKING
+#   schedule_hosts  the hosts that install the hourly timer, each with its venv and the environment its
+#                   installed unit carries (the result file paths, the append command, the host name,
+#                   the emission journal)
+pilots:
+- pilot: example-pilot-refactor
+  bar:
+  - metric: example_success_rate
+    comparator: ge
+    threshold: 0.9
+  - metric: example_tokens_per_ticket
+    comparator: le
+    threshold: 45000.0
+  # The real sha256 compute_bar_hash gives for the two criteria above.
+  bar_hash: f6b3a3ba3cc00d7d645d15700f89711faf4c7ba9e2d2283f9442b5efd11c5d16
+  frozen_at: '2026-01-05T09:00:00+00:00'
+  started_at: '2026-01-05T09:30:00+00:00'
+  result_file_env: EXAMPLE_PILOT_REFACTOR_RESULTS
+  max_result_age_seconds: 900
+- pilot: example-pilot-handoff
+  bar:
+  - metric: example_handoffs_per_ticket
+    comparator: le
+    threshold: 1.5
+  # The real sha256 compute_bar_hash gives for the criterion above.
+  bar_hash: 719e2820fbf85e7feedf69deef3ba05e79d1a0444c117e4ac0ced44672211b11
+  frozen_at: '2026-01-05T09:00:00+00:00'
+  started_at: '2026-01-05T09:30:00+00:00'
+  result_file_env: EXAMPLE_PILOT_HANDOFF_RESULTS
+  max_result_age_seconds: 900
+manifest_check:
+  hash_algorithm: sha256
+  require_frozen_before_start: true
+  missing_metric_fails_bar: true
+ledger_append:
+  command_env: EXAMPLE_LEDGER_APPEND_COMMAND
+  host_env: EXAMPLE_HOST_NAME
+  timeout_seconds: 60
+publish:
+  lane: pilot-measurement
+  actor: node:node_pilot_measurement_effect
+  source: pilot-measurement
+  publish_max_age_seconds: 7200
+  rejected_reading: NOT_WORKING
+emission:
+  piece: 16
+  node: node_pilot_measurement_effect:read
+  journal_env: EXAMPLE_EMISSION_JOURNAL
+injected_fault: A pilot whose bar hash does not match its frozen bar (the hash_mismatch case)
+schedule_hosts:
+- name: example-lab-host
+  venv: example/.venv
+  environment:
+    EXAMPLE_PILOT_REFACTOR_RESULTS: /var/lib/example/pilot-refactor-results.json
+    EXAMPLE_PILOT_HANDOFF_RESULTS: /var/lib/example/pilot-handoff-results.json
+    EXAMPLE_LEDGER_APPEND_COMMAND: /usr/local/bin/example-append --lane pilot-measurement
+    EXAMPLE_HOST_NAME: example-lab-host
+    EXAMPLE_EMISSION_JOURNAL: /var/lib/example/emission.jsonl

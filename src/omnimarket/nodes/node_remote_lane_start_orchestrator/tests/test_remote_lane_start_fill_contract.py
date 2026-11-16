@@ -80,11 +80,18 @@ def test_fill_contract_facts(tmp_path: Path) -> None:
         "ledger_append_argv": [sys.executable, str(writer)],
         "ledger_write_via": "local",
         "ledger_writer_principal": PRINCIPAL,
+        # This test proves the fill's facts, not the provisioning (test_remote_lane_start_provisioning does).
+        "provisioning": {"steps": []},
     }
     overlay_path = tmp_path / "overlay.yaml"
     overlay_path.write_text(yaml.safe_dump(overlay), encoding="utf-8")
     brief = tmp_path / "brief.md"
     brief.write_text("print the host name and stop\n", encoding="utf-8")
+    # The leader reads the lab host table at each start (OMN-22847); this one holds the host the pool names, in service.
+    table = tmp_path / "lab-hosts.yaml"
+    table.write_text(
+        yaml.safe_dump({"hosts": [{"name": host, "target": host}]}), encoding="utf-8"
+    )
 
     leader = subprocess.Popen(
         [
@@ -113,6 +120,7 @@ def test_fill_contract_facts(tmp_path: Path) -> None:
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        env={**os.environ, "ONEX_LAB_RUN_HOSTS": str(table)},
     )
     out, err = leader.communicate(timeout=120)
     assert leader.returncode == 0, out + err

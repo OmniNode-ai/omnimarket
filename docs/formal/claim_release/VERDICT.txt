@@ -1,0 +1,91 @@
+Design-review verdict: PR-claim release at lane end (ClaimRelease model)
+=======================================================================
+
+Verdict: PASS with conditions. The claim release of the closeout (the stop node after an
+observed exit, and the lane closeout node) may be built against this model under the
+conditions below. The model does not by itself prove the rule for the whole system: its base
+design assumes heartbeats that the host reading says are never written, and it leaves out
+two release paths that match on run id alone.
+
+Reviewer: an independent design-review subagent (Claude Opus, read-only), given the model,
+the configs, the TLC outputs, the registry, stop and closeout handlers and the measured host
+facts, and not given the author's conclusion. Review date 2026-11-11. Author: lane
+c0-model-4220 (ticket OMN-23737, child OMN-23768). Receipt: formal results in
+docs/formal/claim_release/results/SUMMARY.txt (TLC 2.19 on h053).
+
+Question: is it safe to release a lane's PR claims when the lane ends, with more than one
+writer of one claim file (the lane, the closeout, the reaper)?
+
+Checked (TLC, results/SUMMARY.txt)
+----------------------------------
+Model.cfg                      PASS: NeverReleaseLiveHolder, ReleasedOnlyAfterExitSeen,
+                               ClosesOwnOnly, DeletesWhatItInspected, NoStrandedClaim hold
+mut_no_exit_check              planted release of a live lane's claim (RequireExit=FALSE)
+                               violates NeverReleaseLiveHolder
+mut_no_exit_evidence           RequireExit=FALSE violates ReleasedOnlyAfterExitSeen
+mut_lane_name_match            ExactIdentity=FALSE violates ClosesOwnOnly
+mut_delete_without_compare     CompareBeforeDelete=FALSE violates DeletesWhatItInspected
+mut_no_live_heartbeat          LiveHeartbeats=FALSE violates NeverReleaseLiveHolder
+mut_closeout_never_runs        CloseoutRuns=FALSE violates NoStrandedClaim (liveness)
+wit_closeout_releases, wit_expiry_reaps_ended, wit_replacement_holds_after_closeout
+                               each reach their state (a closeout release, an expiry of an
+                               ended holder's claim, a replacement holding the PR after the
+                               predecessor's closeout)
+
+Findings of the review
+----------------------
+1. Condition: release paths outside the model. release() with no session skips the exact
+   owner check and deletes an expired claim on run id alone, and lanes of one session share a
+   run id; cleanup_stale_own_claims matches on run id only and unlinks with no snapshot
+   compare; heartbeat() matches on run id only and rewrites in place (harmless today because
+   nothing calls it). _delete_snapshot renames the file aside before it compares, so a third
+   acquirer can take the PR in that gap (a note: the model's Delete is atomic).
+2. Condition: the model treats every exit observation as true (Observe needs the lane
+   ended). In the code the stop node treats any status outside NOT_FINAL_STATUSES as final,
+   and engine_ended on the lane closeout is a flag the caller sets. A relaunch under the same
+   lane name, claim run id and session would have the same identity as the old one.
+3. Note: DeletesWhatItInspected and ReleasedOnlyAfterExitSeen hold by construction in the
+   base design and fail only in their mutants; the two RequireExit mutants are one mutation
+   read by two properties. NoStrandedClaim is not vacuous (mut_closeout_never_runs, exit 13)
+   but holds only under fairness of the closeout, which the 167 selectable ended claims on
+   h053 show is not run today.
+4. Condition: LiveHeartbeats=TRUE is false in the field (0 of 184 claims on h053 ever have a
+   heartbeat), so the real system matches mut_no_live_heartbeat. Its only protection today is
+   that a claim cannot outlive its lane: the remote lane's 90 minute time box is under the
+   2 hour claim age that expiry needs. That bound fails for a lane with no time box and for a
+   stop that leaves a surviving engine.
+5. Condition: the 17 unselectable claims on h053 (13 whose file name is not
+   filesystem_key(pr_key), 4 with no session) are a build issue, not a modelling gap: a
+   claim file of the lane's own that cannot be keyed makes the closeout fail (and in the
+   stop path the refusal comes after the kill, with no TERMINAL written); the sweep's glob
+   also matches the dot-named in-flight files of acquire.
+
+Conditions the build keeps
+--------------------------
+C1  Before expiry is relied on: write heartbeats at an interval well under the 30 minute
+    lapse through a heartbeat() that checks the exact identity and compares inode and
+    contents before it renames; or add a time box to the model, rerun with
+    LiveHeartbeats=FALSE and have the lander refuse to acquire past the box minus a margin.
+    A lane without a time box does not write claims until one of these is in place.
+C2  Release only on a positive final signal (final is true, or a status from an explicit
+    allowlist) or on the observed gone process tree; engine_ended comes from that
+    observation, never from the caller.
+C3  No lane calls release() without a session or cleanup_stale_own_claims; if either stays
+    it is added to the model as a fourth writer and checked.
+C4  Every engine launch has its own session id, so no identity repeats.
+C5  The closeout runs on every lane end (exit, crash, reboot), not only on an operator stop.
+C6  The sweep skips dot-named files and files that vanish mid-read, refuses only on errors
+    in the lane's own files, and a stop whose claim release fails still writes its TERMINAL
+    naming the retained claims.
+C7  The 13 mismatched-name and 4 sessionless claims get a one-time cleanup (inactive ones
+    only, deleting only the inspected file), and acquire refuses to write such a file.
+C8  Measured by the author, not the reviewer: no producer in the omni plugin, the runner or
+    omnimarket/src writes claim_run_id into a lane receipt, and the stop node retains the
+    claims when the receipt has none. The receipt must carry the claim run id and the
+    session id before the exact release can fire (the receipts live on the launching host and
+    were not read: UNMEASURED).
+
+Unmodelled and unmeasured
+-------------------------
+Time (Age and Expire are abstract); the paths named in finding 1; a wrong exit observation;
+a live receipt; the closeout run against a host's claim directory.

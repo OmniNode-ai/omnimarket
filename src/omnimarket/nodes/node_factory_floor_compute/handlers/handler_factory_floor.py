@@ -30,8 +30,8 @@ from omnimarket.nodes.node_factory_floor_compute.handlers.floor_lanes import (
     build_cloud,
     build_lanes,
     build_machines,
+    lanes_naming_task,
     name_tokens,
-    names_task,
     pr_key,
 )
 from omnimarket.nodes.node_factory_floor_compute.handlers.floor_limits import (
@@ -92,12 +92,16 @@ class _Index:
     # Ledger positions by lane, and each lane's name as words: a lane named for a task (``one-rt-t10-...``) builds it.
     by_lane: dict[str, tuple[int, ...]]
     lane_words: dict[str, tuple[str, ...]]
+    # Lanes by each word of their name: a task row looks up the lanes that can name it, never a scan of every lane.
+    lanes_by_token: dict[str, tuple[str, ...]]
     # Every open or merged pull request, the merge list included, by key: a task row is built from these (OMN-21930).
     records: dict[str, PrRecord]
     # Integration-proof STATUS rows by pull request, ticket and task id.
     proof_by_pr: dict[str, tuple[int, ...]]
     proof_by_ticket: dict[str, tuple[int, ...]]
     proof_by_task: dict[str, tuple[int, ...]]
+    # Gate-state STATUS rows by subject: a gate reads its subject's rows, never a scan of the whole ledger (OMN-23081).
+    gate_rows: dict[str, tuple[ModelFloorLedgerRow, ...]]
     # The merged pull requests shown running on dev (``repo#number``); None when no reader read the records.
     running: frozenset[str] | None
     # When each pull request merged, where the watcher's merge record says.
@@ -130,14 +134,18 @@ def _task_map(
 ) -> dict[str, tuple[tuple[str, ...], tuple[str, ...], bool]]:
     """The task-to-ticket map STATUS rows for this plan: per task, its mapped tickets, pull requests and merged flag."""
     found: dict[str, tuple[tuple[str, ...], tuple[str, ...], bool]] = {}
-    for row in sorted(request.ledger, key=_row_key):
-        if (
-            row.kind != "STATUS"
-            or row.state != request.config.task_map_state
-            or not row.task
-            or (row.subject and row.subject not in plan.plan_path)
-        ):
-            continue
+    # Only the map rows are sorted: one sort of the whole ledger per plan was 2.8 s of the compute step (OMN-24116).
+    for row in sorted(
+        (
+            row
+            for row in request.ledger
+            if row.kind == "STATUS"
+            and row.state == request.config.task_map_state
+            and row.task
+            and not (row.subject and row.subject not in plan.plan_path)
+        ),
+        key=_row_key,
+    ):
         tickets, prs, merged = found.get(row.task, ((), (), False))
         found[row.task] = (
             tuple(dict.fromkeys(tickets + row.tickets)),
@@ -192,7 +200,14 @@ def _index(request: ModelFactoryFloorRequest) -> _Index:
     proof_by_pr: dict[str, list[int]] = {}
     proof_by_ticket: dict[str, list[int]] = {}
     proof_by_task: dict[str, list[int]] = {}
+    gate_rows: dict[str, list[ModelFloorLedgerRow]] = {}
     for position, row in enumerate(request.ledger):
+        if (
+            row.kind == "STATUS"
+            and row.state == request.config.gate_state
+            and row.subject
+        ):
+            gate_rows.setdefault(row.subject, []).append(row)
         if row.kind == "STATUS" and row.state == request.config.integration_state:
             for pr in row.prs:
                 proof_by_pr.setdefault(pr_key(pr), []).append(position)
@@ -216,6 +231,11 @@ def _index(request: ModelFactoryFloorRequest) -> _Index:
         newest[row.lane] = max(newest.get(row.lane, row.ts), row.ts)
         if row.kind == "TERMINAL":
             terminals.setdefault(row.lane, []).append(row.ts)
+    lane_words = {lane: name_tokens(lane) for lane in by_lane}
+    lanes_by_token: dict[str, list[str]] = {}
+    for lane, words in lane_words.items():
+        for token in dict.fromkeys(words):
+            lanes_by_token.setdefault(token, []).append(lane)
     return _Index(
         released_prs={key: frozenset(value) for key, value in released.items()},
         lane_newest=newest,
@@ -225,11 +245,13 @@ def _index(request: ModelFactoryFloorRequest) -> _Index:
         by_pr={key: tuple(value) for key, value in by_pr.items()},
         claim_tips=tips,
         by_lane={key: tuple(value) for key, value in by_lane.items()},
-        lane_words={lane: name_tokens(lane) for lane in by_lane},
+        lane_words=lane_words,
+        lanes_by_token={key: tuple(value) for key, value in lanes_by_token.items()},
         records=pr_records(request),
         proof_by_pr={key: tuple(value) for key, value in proof_by_pr.items()},
         proof_by_ticket={key: tuple(value) for key, value in proof_by_ticket.items()},
         proof_by_task={key: tuple(value) for key, value in proof_by_task.items()},
+        gate_rows={key: tuple(value) for key, value in gate_rows.items()},
         running=None
         if request.running_evidence is None
         else frozenset(
@@ -319,9 +341,10 @@ def _task_rows(
         # Another plan's lane says "t5" too, so a lane named for the task counts only when it carries a ticket of this plan.
         named = (
             position
-            for lane, positions in index.by_lane.items()
-            if names_task(task.id, index.lane_words[lane])
-            for position in positions
+            for lane in lanes_naming_task(
+                task.id, index.lanes_by_token, index.lane_words
+            )
+            for position in index.by_lane[lane]
             if _intersects(request.ledger[position].tickets, scope)
         )
         return tuple(
@@ -491,21 +514,14 @@ def _evidence(
 
 
 def _gate(
-    task: ModelFloorManifestTask, request: ModelFactoryFloorRequest
+    task: ModelFloorManifestTask, request: ModelFactoryFloorRequest, index: _Index
 ) -> tuple[ItemState, str] | None:
     subjects = {task.wave, task.id} - {""}
     template = request.config.gate_wave_subject_template
     if template and task.wave:
         subjects.add(template.format(wave=task.wave))
     row = max(
-        (
-            row
-            for row in request.ledger
-            if row.kind == "STATUS"
-            and row.state == request.config.gate_state
-            and row.subject
-            and row.subject in subjects
-        ),
+        (row for subject in subjects for row in index.gate_rows.get(subject, ())),
         key=_row_key,
         default=None,
     )
@@ -547,7 +563,7 @@ def _manifest_items(
         gate = task.kind == request.config.gate_kind
         evidence: tuple[ItemState, str, EvidenceKind] | None
         if gate:
-            verdict = _gate(task, request)
+            verdict = _gate(task, request, index)
             evidence = None if verdict is None else (verdict[0], verdict[1], "")
         else:
             evidence = _evidence(
@@ -581,7 +597,7 @@ def _manifest_items(
             for dep in task.depends_on
             if dep in by_id
             and by_id[dep].kind == request.config.gate_kind
-            and (verdict := _gate(by_id[dep], request)) is not None
+            and (verdict := _gate(by_id[dep], request, index)) is not None
             and verdict[0] == "stop"
         )
         if state == "done" and not gate and failed:
@@ -903,8 +919,12 @@ def _ledger_stops(
         ticket for item in items if item.state == "done" for ticket in item.tickets
     }
     stops: tuple[_Cause, ...] = ()
-    for row in sorted(request.ledger, key=_row_key):
-        if not _intersects(row.tickets, scope) or _resumed(row, index):
+    # Only the rows on the plan's tickets are sorted: one sort of the whole ledger per plan was 3.7 s of the compute step.
+    for row in sorted(
+        (row for row in request.ledger if _intersects(row.tickets, scope)),
+        key=_row_key,
+    ):
+        if _resumed(row, index):
             continue
         if row.prs and all(pr_key(pr) in merged for pr in row.prs):
             continue

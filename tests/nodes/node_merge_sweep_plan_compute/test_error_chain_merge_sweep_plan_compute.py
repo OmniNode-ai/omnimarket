@@ -168,3 +168,41 @@ def test_the_other_host_result_is_final() -> None:
             ModelMergeSweepRetryRequest(exit_code=code, host_retry_used=True)
         )
         assert decision.action == "accept"
+
+
+def test_a_plan_request_asking_for_enforce_is_refused() -> None:
+    with pytest.raises(ValidationError):
+        ModelMergeSweepPlanRequest.model_validate(
+            {"reading": {}, "landing_mode": "enforce"}
+        )
+    ModelMergeSweepPlanRequest.model_validate(
+        {"reading": {}, "landing_mode": "dry_run"}
+    )
+
+
+def test_a_command_without_its_facts_is_skipped_never_guessed() -> None:
+    plan = _plan(
+        {
+            "controller": {"stalled": False},
+            "product": {"under_floor": []},
+            "reds": [
+                {
+                    "repo": "omnimarket",
+                    "number": 30,
+                    "state": "OPEN",
+                    "repository": "OmniNode-ai/omnimarket",
+                    "head_sha": "a" * 40,
+                    "classes": [
+                        {
+                            "name": "a",
+                            "cls": "cancelled-latest",
+                            "remedy": "rerun-newest-once",
+                        },
+                    ],
+                }
+            ],
+        }
+    )
+    assert plan.landing_commands == []
+    assert plan.landing_skipped[0].why.startswith("unread")
+    assert [lane.kind for lane in plan.lanes] == ["fix"]

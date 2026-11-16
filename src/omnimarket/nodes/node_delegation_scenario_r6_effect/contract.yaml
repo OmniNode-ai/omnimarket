@@ -83,7 +83,7 @@ schedule:
   unit_name: onex-delegation-scenario-r6
   state_directory: .onex_state/delegation-scenario-r6
   timeout_seconds: 900
-  unit_environment: [ONEX_LEDGER_BUS_APPEND_COMMAND, ONEX_HOST_NAME, ONEX_BUS_EMIT_COMMAND]
+  unit_environment: [ONEX_LEDGER_BUS_APPEND_COMMAND, ONEX_HOST_NAME, ONEX_WORKSPACE_CONFIG_ROOT, ONEX_BUS_EMIT_COMMAND]
   cadence:
     on_calendar: "*-*-* 03:40:00"
     time_zone: UTC

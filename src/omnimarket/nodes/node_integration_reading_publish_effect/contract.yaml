@@ -1,0 +1,68 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Integration Reading Publish Effect (OMN-23899)
+#
+# One pass of the hourly integration check hands its readings (one ModelIntegrationReadingBatch on stdin). The runtime
+# module validates them, node_integration_projection_compute builds the projection (newest reading per repository and
+# number, counts, groups), and this effect publishes it as the integration floor projection, stamped with the time the
+# pass stood by its readings. The floor reads it through node_floor_projection_read_effect and never reads the pass's file.
+name: node_integration_reading_publish_effect
+contract_name: node_integration_reading_publish_effect
+node_name: node_integration_reading_publish_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Publishes the integration projection of one integration pass as a floor projection with the pass's own time.
+
+handler:
+  module: omnimarket.nodes.node_integration_reading_publish_effect.handlers.handler_integration_reading_publish
+  class: HandlerIntegrationReadingPublish
+  input_model: omnimarket.models.integration_reading.ModelIntegrationPublishCommand
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 30000
+  side_effects:
+    - publishes the integration projection on the integration snapshot topic
+    - appends a start and a success or a typed failure to the floor emission journal under the registry home
+
+input_model:
+  name: ModelIntegrationPublishCommand
+  module: omnimarket.models.integration_reading
+  description: The projection to publish and the projection id to publish it under.
+output_model:
+  name: ModelFloorProjectionPublishResult
+  module: omnimarket.models.floor_projection
+  description: Whether the projection was published, as of when, and how many rows it carried.
+
+runtime_dispatch:
+  external_trigger: python -m omnimarket.nodes.node_integration_reading_publish_effect --home <registry home>, with one ModelIntegrationReadingBatch on stdin, from the hourly integration pass.
+
+event_bus:
+  subscribe_topics: []
+  publish_topics:
+    # onex-topic-allow: a projection snapshot topic has the projection's own name form.
+    - onex.snapshot.projection.floor-integration.v1
+externally_consumed_topics:
+  # The floor reads it through node_floor_projection_read_effect.
+  # onex-topic-allow: a projection snapshot topic has the projection's own name form.
+  - onex.snapshot.projection.floor-integration.v1
+
+runtime:
+  home_env: OMNI_HOME
+  overlay: {overlay_id: node_integration_reading_publish_effect, file_env: ONEX_FLOOR_INTEGRATION_OVERLAY}
+  # onex-topic-allow: a projection snapshot topic has the projection's own name form.
+  topic: onex.snapshot.projection.floor-integration.v1
+  journal_relpath: .onex_state/floor-simple/emissions.jsonl
+  piece: 17
+  chain: node_integration_reading_publish_effect:publish_floor_integration
+
+metadata:
+  transport_type: kafka
+  ticket: OMN-23899

@@ -1,0 +1,116 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - the lane host pool snapshot writer (OMN-23664, parent OMN-23620)
+#
+# Writes the pool snapshot the lane start node (ProtocolLaneHostPool) and the floor fill (ProtocolFloorPool.free_slots) read: per
+# host the declared slots, running lanes, free slots, account labels usable and limited, and the away state, with the time it was read.
+name: "node_lane_host_pool_snapshot_effect"
+contract_name: "node_lane_host_pool_snapshot_effect"
+node_name: "node_lane_host_pool_snapshot_effect"
+lifecycle: experimental
+node_type: "EFFECT_GENERIC"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+description: >
+  Lane host pool snapshot writer. Reads the lab hosts' capacity advertisements, the lab host table, the open lane claims of
+  the ledger and each host's token pool, and builds one reading per host: the lane cap the host declares (its table row's cap, else
+  its cores over the overlay's cores per lane), the lanes running there, the free slots (zero for an away host, a host with no
+  fresh advertisement, a host the capacity judgement refuses, a host whose every account is limited, and a contributor host that is
+  not lane-ready), and the account labels usable and limited. It writes the reading as a ModelLaneHostPoolSnapshot file, writes
+  the record (the read time and the per host rows) beside it, and publishes the record on the overlay's topic. A source that
+  cannot be read ends in the typed failed event and replaces no earlier snapshot. Every bound is an overlay value.
+runtime_profiles:
+  - effects
+input_model:
+  name: "ModelPoolSnapshotRequest"
+  module: "omnimarket.nodes.node_lane_host_pool_snapshot_effect.models.model_pool_snapshot"
+  description: "Take the pool snapshot, writing it or only observing it."
+output_model:
+  name: "ModelPoolSnapshotResult"
+  module: "omnimarket.nodes.node_lane_host_pool_snapshot_effect.models.model_pool_snapshot"
+  description: "The record, or the typed failure."
+handler:
+  module: "omnimarket.nodes.node_lane_host_pool_snapshot_effect.handlers.handler_pool_snapshot"
+  class: "HandlerPoolSnapshot"
+  input_model: "omnimarket.nodes.node_lane_host_pool_snapshot_effect.models.model_pool_snapshot.ModelPoolSnapshotRequest"
+  output_model: "omnimarket.nodes.node_lane_host_pool_snapshot_effect.models.model_pool_snapshot.ModelPoolSnapshotResult"
+dependencies:
+  - name: ProtocolHostAdvertisementSource
+    dependency_type: protocol
+    description: "the hosts' capacity advertisements; in memory by default; the redpanda profile runs the overlay's command (onex lab-work hosts --json) or reads its file."
+    required: true
+  - name: ProtocolHostTableSource
+    dependency_type: protocol
+    description: "the lab host table rows (cap, availability, contributor and lane readiness); in memory by default; the redpanda profile resolves the lab_hosts overlay."
+    required: true
+  - name: ProtocolRunningLanesSource
+    dependency_type: protocol
+    description: "the lanes running per host; in memory by default; the redpanda profile counts the ledger's live CLAIM rows by host cell."
+    required: true
+  - name: ProtocolHostAccountsSource
+    dependency_type: protocol
+    description: "each host's token pool account labels, usable and limited; in memory by default; the redpanda profile runs the token pool status command locally or over ssh."
+    required: true
+  - name: ProtocolPoolSnapshotStore
+    dependency_type: protocol
+    description: "writes the snapshot file and the record beside it atomically; in memory by default; the redpanda profile writes the overlay's snapshot_path."
+    required: true
+  - name: ProtocolPoolSnapshotPublisher
+    dependency_type: protocol
+    description: "publishes the record or the failed event on the overlay's topics; the redpanda profile publishes on the overlay's bus_lane."
+    required: true
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_lane_host_pool_snapshot_effect.handlers.handler_pool_snapshot:HandlerPoolSnapshot"
+  handlers:
+    - operation: "snapshot_lane_host_pool"
+      handler:
+        name: "HandlerPoolSnapshot"
+        module: "omnimarket.nodes.node_lane_host_pool_snapshot_effect.handlers.handler_pool_snapshot"
+event_bus:
+  subscribe_topics:
+    - "onex.cmd.omnimarket.lane-host-pool-snapshot-requested.v1"
+  publish_topics:
+    - "onex.evt.omnimarket.lane-host-pool-snapshot-recorded.v1"
+    - "onex.evt.omnimarket.lane-host-pool-snapshot-failed.v1"
+terminal_event: "onex.evt.omnimarket.lane-host-pool-snapshot-recorded.v1"
+externally_consumed_topics:
+  - "onex.evt.omnimarket.lane-host-pool-snapshot-recorded.v1"
+  - "onex.evt.omnimarket.lane-host-pool-snapshot-failed.v1"
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.lane-host-pool-snapshot-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.lane-host-pool-snapshot-recorded.v1"
+    failure: "onex.evt.omnimarket.lane-host-pool-snapshot-failed.v1"
+  external_trigger: "A snapshot command once a minute; sources, store and publisher are injected. On a lab host a unit runs python -m omnimarket.nodes.node_lane_host_pool_snapshot_effect each minute (--observe prints the rows and writes nothing, --probe is the installer's start check)."
+descriptor:
+  node_archetype: effect
+  purity: side_effecting
+  runtime_profiles:
+    - effects
+  idempotent: true
+  timeout_ms: 50000
+overlay:
+  id: node_lane_host_pool_snapshot_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+replay:
+  deterministic: false
+metadata:
+  description: "The lane host pool snapshot writer: the lab hosts' slots, lanes, accounts and away state written for the lane start and the fill."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-11-11"
+  tags:
+    - effect
+    - lane-start
+    - floor-fill
+    - pool-snapshot
+  related_tickets:
+    - OMN-23664
+    - OMN-23620

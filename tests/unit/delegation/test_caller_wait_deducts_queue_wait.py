@@ -16,6 +16,7 @@ caller's wait for the same request.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
@@ -89,11 +90,25 @@ def _handler(
 
 
 def _spy_wait_for(monkeypatch: pytest.MonkeyPatch) -> list[float]:
-    """Record the timeout of every ``asyncio.wait_for`` the handler opens."""
+    """Record the timeout of every ``asyncio.wait_for`` the handler opens.
+
+    Only calls made by the task that installed the spy are recorded: a stray
+    ``wait_for`` from another task or thread (a projection coalescer flush left
+    running by an earlier test, say) must still run the real ``wait_for`` and
+    return its result, but must not land in the list, or the counts below read
+    one call too many.
+    """
     timeouts: list[float] = []
     real = asyncio.wait_for
+    owner = asyncio.current_task()
 
     async def spy(awaitable: Any, timeout: float | None) -> Any:
+        try:
+            caller = asyncio.current_task()
+        except RuntimeError:  # no running task: a foreign thread's call
+            caller = None
+        if caller is not owner:
+            return await real(awaitable, timeout)
         assert timeout is not None
         timeouts.append(timeout)
         return await real(awaitable, timeout)
@@ -192,3 +207,35 @@ async def test_caller_wait_covers_runtime_timeout(
         f"OMN-22223: the runtime waits {timeouts} s but the caller stops at "
         f"{caller_wait} s, so a terminal the runtime records is never seen"
     )
+
+
+@pytest.mark.asyncio
+async def test_the_wait_spy_records_only_the_handlers_own_wait(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A foreign task's ``wait_for`` calls run but are never recorded."""
+    port = _RecordingPort()
+    handler, _ = _handler(monkeypatch, port)
+    timeouts = _spy_wait_for(monkeypatch)
+
+    stop = asyncio.Event()
+
+    async def foreign_waiter() -> None:
+        """Loop on ``wait_for`` from a task the handler did not start."""
+        while not stop.is_set():
+            with contextlib.suppress(TimeoutError):
+                await asyncio.wait_for(asyncio.Event().wait(), timeout=0.01)
+
+    foreign = asyncio.create_task(foreign_waiter())
+    await asyncio.sleep(0.05)
+    try:
+        await handler.handle(_request(queue_wait_seconds=0))
+    finally:
+        stop.set()
+        await foreign
+
+    assert len(timeouts) == 1, (
+        f"the spy recorded {len(timeouts)} waits, but only the handler's own "
+        "wait may be recorded; foreign calls leak in from other tasks"
+    )
+    assert timeouts[0] == pytest.approx(CEILING + MARGIN, abs=2)

@@ -1,0 +1,125 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Parsing file ThroughputTick.tla
+Parsing file Naturals.tla
+Parsing file FiniteSets.tla
+Parsing file Sequences.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module ThroughputTick
+Error: Invariant StartedOnce is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ store = {}
+/\ sentBy = [t1 |-> 0, t2 |-> 0]
+/\ wsnap = {}
+/\ todo = [t1 |-> {}, t2 |-> {}]
+/\ lock = "none"
+/\ started = (k1 :> 0 @@ k2 :> 0)
+/\ attempts = (k1 :> 0 @@ k2 :> 0)
+/\ pc = [t1 |-> "init", t2 |-> "init", f1 |-> "init"]
+/\ loc = [t1 |-> {}, t2 |-> {}]
+
+State 2: <Decide line 97, col 5 to line 102, col 66 of module ThroughputTick>
+/\ store = {}
+/\ sentBy = [t1 |-> 0, t2 |-> 0]
+/\ wsnap = {}
+/\ todo = [t1 |-> {k1, k2}, t2 |-> {}]
+/\ lock = "none"
+/\ started = (k1 :> 0 @@ k2 :> 0)
+/\ attempts = (k1 :> 0 @@ k2 :> 0)
+/\ pc = [t1 |-> "decided", t2 |-> "init", f1 |-> "init"]
+/\ loc = [t1 |-> {}, t2 |-> {}]
+
+State 3: <Lock line 106, col 5 to line 116, col 71 of module ThroughputTick>
+/\ store = {}
+/\ sentBy = [t1 |-> 0, t2 |-> 0]
+/\ wsnap = {}
+/\ todo = [t1 |-> {k1, k2}, t2 |-> {}]
+/\ lock = "t1"
+/\ started = (k1 :> 0 @@ k2 :> 0)
+/\ attempts = (k1 :> 0 @@ k2 :> 0)
+/\ pc = [t1 |-> "locked", t2 |-> "init", f1 |-> "init"]
+/\ loc = [t1 |-> {}, t2 |-> {}]
+
+State 4: <Reread line 120, col 5 to line 128, col 66 of module ThroughputTick>
+/\ store = {}
+/\ sentBy = [t1 |-> 0, t2 |-> 0]
+/\ wsnap = {}
+/\ todo = [t1 |-> {k1, k2}, t2 |-> {}]
+/\ lock = "t1"
+/\ started = (k1 :> 0 @@ k2 :> 0)
+/\ attempts = (k1 :> 0 @@ k2 :> 0)
+/\ pc = [t1 |-> "loop", t2 |-> "init", f1 |-> "init"]
+/\ loc = [t1 |-> {}, t2 |-> {}]
+
+State 5: <Send line 132, col 5 to line 141, col 39 of module ThroughputTick>
+/\ store = {}
+/\ sentBy = [t1 |-> 1, t2 |-> 0]
+/\ wsnap = {}
+/\ todo = [t1 |-> {k2}, t2 |-> {}]
+/\ lock = "t1"
+/\ started = (k1 :> 1 @@ k2 :> 0)
+/\ attempts = (k1 :> 1 @@ k2 :> 0)
+/\ pc = [t1 |-> "sent", t2 |-> "init", f1 |-> "init"]
+/\ loc = [t1 |-> {k1}, t2 |-> {}]
+
+State 6: <Die line 159, col 5 to line 163, col 71 of module ThroughputTick>
+/\ store = {}
+/\ sentBy = [t1 |-> 1, t2 |-> 0]
+/\ wsnap = {}
+/\ todo = [t1 |-> {k2}, t2 |-> {}]
+/\ lock = "none"
+/\ started = (k1 :> 1 @@ k2 :> 0)
+/\ attempts = (k1 :> 1 @@ k2 :> 0)
+/\ pc = [t1 |-> "dead", t2 |-> "init", f1 |-> "init"]
+/\ loc = [t1 |-> {k1}, t2 |-> {}]
+
+State 7: <Decide line 97, col 5 to line 102, col 66 of module ThroughputTick>
+/\ store = {}
+/\ sentBy = [t1 |-> 1, t2 |-> 0]
+/\ wsnap = {}
+/\ todo = [t1 |-> {k2}, t2 |-> {k1, k2}]
+/\ lock = "none"
+/\ started = (k1 :> 1 @@ k2 :> 0)
+/\ attempts = (k1 :> 1 @@ k2 :> 0)
+/\ pc = [t1 |-> "dead", t2 |-> "decided", f1 |-> "init"]
+/\ loc = [t1 |-> {k1}, t2 |-> {}]
+
+State 8: <Lock line 106, col 5 to line 116, col 71 of module ThroughputTick>
+/\ store = {}
+/\ sentBy = [t1 |-> 1, t2 |-> 0]
+/\ wsnap = {}
+/\ todo = [t1 |-> {k2}, t2 |-> {k1, k2}]
+/\ lock = "t2"
+/\ started = (k1 :> 1 @@ k2 :> 0)
+/\ attempts = (k1 :> 1 @@ k2 :> 0)
+/\ pc = [t1 |-> "dead", t2 |-> "locked", f1 |-> "init"]
+/\ loc = [t1 |-> {k1}, t2 |-> {}]
+
+State 9: <Reread line 120, col 5 to line 128, col 66 of module ThroughputTick>
+/\ store = {}
+/\ sentBy = [t1 |-> 1, t2 |-> 0]
+/\ wsnap = {}
+/\ todo = [t1 |-> {k2}, t2 |-> {k1, k2}]
+/\ lock = "t2"
+/\ started = (k1 :> 1 @@ k2 :> 0)
+/\ attempts = (k1 :> 1 @@ k2 :> 0)
+/\ pc = [t1 |-> "dead", t2 |-> "loop", f1 |-> "init"]
+/\ loc = [t1 |-> {k1}, t2 |-> {}]
+
+State 10: <Send line 132, col 5 to line 141, col 39 of module ThroughputTick>
+/\ store = {}
+/\ sentBy = [t1 |-> 1, t2 |-> 1]
+/\ wsnap = {}
+/\ todo = [t1 |-> {k2}, t2 |-> {k2}]
+/\ lock = "t2"
+/\ started = (k1 :> 2 @@ k2 :> 0)
+/\ attempts = (k1 :> 2 @@ k2 :> 0)
+/\ pc = [t1 |-> "dead", t2 |-> "sent", f1 |-> "init"]
+/\ loc = [t1 |-> {k1}, t2 |-> {k1}]
+
+456 states generated, 284 distinct states found, 101 states left on queue.
+The depth of the complete state graph search is 10.
+The average outdegree of the complete state graph is 2 (minimum is 0, the maximum 4 and the 95th percentile is 3).
+exit=12

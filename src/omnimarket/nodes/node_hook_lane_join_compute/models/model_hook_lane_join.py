@@ -51,6 +51,10 @@ class ModelHookLaneJoinRequest(BaseModel):
         gt=0,
         description="How far either side of the lane's CLAIM its agent's first event may lie",
     )
+    expected_hosts: tuple[str, ...] = Field(
+        default=(),
+        description="Hosts that should report; one with no event in the window is counted at zero and named",
+    )
     unstamped_label: str = Field(default="unstamped", min_length=1)
 
 
@@ -69,6 +73,17 @@ class ModelHookLaneUnjoined(BaseModel):
     reason: str
 
 
+class ModelHookAgentUnmatched(BaseModel):
+    """An agent that fits no lane, counted and named instead of dropped."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    session_id: str
+    agent_id: str | None
+    description: str | None
+    reason: str
+
+
 class ModelHookHostCount(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -83,6 +98,12 @@ class ModelHookLaneJoinResult(BaseModel):
 
     joins: tuple[ModelHookLaneJoin, ...] = ()
     unjoined: tuple[ModelHookLaneUnjoined, ...] = ()
+    unmatched_agents: tuple[ModelHookAgentUnmatched, ...] = Field(
+        default=(), description="Every agent no lane fits, with the reason"
+    )
     hosts: tuple[ModelHookHostCount, ...] = Field(
         default=(), description="Most events first, then by name"
+    )
+    silent_hosts: tuple[str, ...] = Field(
+        default=(), description="Expected hosts with no event in the window, by name"
     )

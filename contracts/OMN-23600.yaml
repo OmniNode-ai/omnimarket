@@ -1,0 +1,72 @@
+schema_version: 1.0.0
+ticket_id: OMN-23600
+title: The landing workflow in the dev runtime reduces a pull request instead of refusing
+summary: 'node_pr_landing_orchestrator is built by the runtime with no arguments; since OMN-21372 (2026-10-24) its default reducer was an unwired port that raised PrLandingPortUnavailableError on the first leg that needed it. The reducer is now bound at the node container binding site, the same way the row store is. The dev runtime stays in dry_run and report_only: nothing acts on a pull request.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23600-default-reducer
+  statement: The landing orchestrator built with no arguments reduces a row through the real reducer handler.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a landing orchestrator built the way the runtime builds it (no arguments) reduces a pull request row instead of raising PrLandingPortUnavailableError -- falsifier: pytest tests/unit/nodes/node_pr_landing_orchestrator/test_pr_landing_default_reducer.py -q fails at the base commit and passes at the change'
+  - id: AC2
+    statement: 'AC2: the golden chain (prompt, read, head read, arm withheld in report-only) and the error chain (an explicitly unwired reducer still refuses with the typed error) both pass on the in-memory bus -- falsifier: pytest tests/unit/nodes/node_pr_landing_orchestrator/test_pr_landing_default_reducer.py -k chain -q'
+  - id: AC3
+    statement: 'AC3: the seam between the orchestrator and the reducer node is held by a test that fails when either side''s model changes shape -- falsifier: pytest tests/unit/nodes/node_pr_landing_orchestrator/test_pr_landing_default_reducer.py -k seam -q'
+  - id: AC4
+    statement: 'AC4 (integrated): ten minutes of dev runtime lines on h201 after the roll that carries the change hold zero PrLandingPortUnavailableError lines -- falsifier: docker logs omninode-runtime read through lab-run shows one such line'
+evidence_requirements:
+- kind: tests
+  description: The landing orchestrator unit tests at the pushed head.
+  command: uv run --frozen pytest tests/unit/nodes/node_pr_landing_orchestrator -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23600-ac1
+  description: "a handler built with no reducer reduces a pull request row; the test fails against the unfixed handler with PrLandingPortUnavailableError."
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_pr_landing_orchestrator/test_pr_landing_default_reducer.py -k default_built -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23600-ac2
+  description: "golden chain over the default binding and the error chain of an explicitly unwired reducer, on the in-memory bus."
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_pr_landing_orchestrator/test_pr_landing_default_reducer.py -k chain -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23600-ac3
+  description: "the seam between the orchestrator and the reducer node: bound handler type, handle signature models, the reducer contract's model names and the input field set."
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_pr_landing_orchestrator/test_pr_landing_default_reducer.py -k seam -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23600-ac4
+  description: "the hosted part of AC4: the default-built handler runs the chain on the in-memory bus. The running-runtime read waits for the dev runtime roll that carries the change."
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_pr_landing_orchestrator/test_pr_landing_default_reducer.py -k 'default_built or chain' -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23600-integration-proof
+  description: "The pushed head ran the landing orchestrator unit tests on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check; its hosted counterparts are the checks bound to AC1 to AC4."
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23600 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_pr_landing_orchestrator -q --no-cov -n 0 -p no:randomly
+    cwd: .

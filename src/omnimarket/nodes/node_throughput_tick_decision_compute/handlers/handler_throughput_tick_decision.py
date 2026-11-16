@@ -51,6 +51,11 @@ queue is a MISSING `repo-status:<repo>` line whose FIX names one cause lane or t
 verdict is a NOTE. A verdict event is due only when no unit is open for the repository or its verdict changed.
 
 OMN-21396: ledger experiment STATUS rows yield per-engine attempts, successes and escalations over a configurable 24h window.
+
+OMN-24478: the standing-rulings register the caller read through node_ruling_register_effect judges each row
+TRUE, FALSE or UNREAD; each FALSE or UNREAD row is a MISSING `ruling-not-running:<row>` line, a register that
+could not be read is one MISSING `ruling-not-running:register` line naming why, and no register at all leaves
+the check out of `checked`.
 """
 
 from __future__ import annotations
@@ -68,6 +73,11 @@ from omnimarket.models.lab_fill import ModelLabFillPrLandFacts, ModelLabFillPrLa
 from omnimarket.models.model_engine_experiment import (
     NO_ENGINE,
     SUCCESS_OUTCOME,
+)
+from omnimarket.models.model_ruling_register import (
+    LOOP_PREFIX,
+    EnumRulingVerdict,
+    ModelRulingRegisterResult,
 )
 from omnimarket.models.seam_reading import (
     EnumSeamCrossingState,
@@ -1716,6 +1726,14 @@ def _window_readings(facts: ModelSeamReadingsFacts) -> dict[str, ModelSeamReadin
     return latest
 
 
+def check_ruling_register(rep: Report, result: ModelRulingRegisterResult) -> None:
+    """Each standing ruling the register judged FALSE or UNREAD is MISSING; a TRUE row prints nothing (OMN-24478)."""
+    rep.checked.append("ruling-register")
+    for verdict in result.verdicts:
+        if verdict.verdict is not EnumRulingVerdict.TRUE:
+            rep.miss(verdict.loop, verdict.why, verdict.fix)
+
+
 def check_seam_readings(
     rep: Report, facts: ModelSeamReadingsFacts
 ) -> ModelSeamReadingsVerdict:
@@ -1823,6 +1841,18 @@ class HandlerThroughputTickDecision:
             if request.seam_readings is not None
             else None
         )
+        if request.ruling_register is not None:
+            check_ruling_register(rep, request.ruling_register)
+        elif request.ruling_register_unread:
+            # OMN-24478: a register the facts read could not read is MISSING, never
+            # silently skipped; `checked` still carries the check exactly once.
+            rep.checked.append("ruling-register")
+            reason = " ".join(request.ruling_register_unread.split())[:200]
+            rep.miss(
+                f"{LOOP_PREFIX}:register",
+                f"the standing-rulings register could not be read: {reason}",
+                "supply the node_ruling_register_compute overlay on this host's overlay roots",
+            )
         return ModelThroughputTickResult(
             lines=rep.lines,
             status_line=rep.status("THROUGHPUT", "STALL"),

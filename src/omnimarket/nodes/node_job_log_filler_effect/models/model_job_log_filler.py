@@ -53,12 +53,24 @@ class ModelJobLogFillerOverlay(BaseModel):
     #: the bus is a round trip the gateway answers one at a time (measured 2026-11-09: about 0.25 s each,
     #: 841 probes in about four minutes), so probing every open run on every tick does not fit a tick.
     reprobe_seconds: int = Field(ge=1)
+    #: Seconds a job whose log the gateway answered HTTP 404 is not read again; absent means no hold
+    #: (the earlier behaviour), so the overlay may land after the code.
+    not_found_hold_seconds: int | None = Field(default=None, ge=1)
     #: Wall-clock seconds after which a pass starts no further probe or read and returns what it holds (OMN-22518).
     #: A probe is a round trip the gateway answers one at a time (measured 2026-11-09 on h051: median 2.4 s with
     #: six readers, 886 runs to probe), so a pass that probes every run before it fills any never ended inside
     #: the unit's run limit. The budget plus ``reply_timeout_seconds`` (the longest read in flight when it ends)
     #: must stay under the unit's ``run_timeout_s``; the runs a pass leaves are taken, newest first, by the next.
     pass_budget_seconds: float = Field(default=240.0, gt=0)
+    #: Environment variable naming the state directory of this host (the unit sets it); the red-facts records live under it (OMN-23832).
+    red_facts_state_env: str = Field(min_length=1)
+    #: Directory under that state directory holding one record per red head and job.
+    red_facts_subdir: str = Field(min_length=1)
+    #: Bytes of a red job's log end read to build its record (the cache keeps the whole log).
+    red_facts_tail_bytes: int = Field(ge=1)
+    #: Most failure lines one record keeps (the last ones) and the characters each line keeps.
+    red_facts_max_lines: int = Field(ge=1)
+    red_facts_line_chars: int = Field(ge=1)
     profiles: dict[str, ModelJobLogFillerBusProfile] = Field(min_length=1)
     default_profile: str = Field(min_length=1)
 
@@ -93,6 +105,16 @@ class EnumJobLogFillOutcome(StrEnum):
     FILLED = "filled"
     ALREADY_CACHED = "already_cached"
     FAILED = "failed"
+    HELD_NOT_FOUND = "held_not_found"
+
+
+class ModelJobLogHold(BaseModel):
+    """When a pass last saw the gateway answer a job's log HTTP 404, and why it held the job."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    held_at: float
+    cause: str = Field(min_length=1, max_length=500)
 
 
 class ModelJobLogFillItem(BaseModel):
@@ -150,12 +172,25 @@ class ModelJobLogFillResult(BaseModel):
         ge=0,
         description="Runs left for the next pass by the read cap or the pass budget.",
     )
+    held_not_found: int = Field(
+        default=0,
+        ge=0,
+        description="Runs not read because an earlier read of their log answered HTTP 404 and the hold interval has not passed.",
+    )
     budget_exhausted: bool = Field(
         default=False,
         description="True when the pass budget ended the pass before every run was reached.",
     )
     stale_skipped: int = Field(
         ge=0, description="Pull requests whose CI record is not of their current head."
+    )
+    records_written: int = Field(
+        default=0, ge=0, description="Red-facts records this pass wrote (OMN-23832)."
+    )
+    records_failed: int = Field(
+        default=0,
+        ge=0,
+        description="Red jobs whose record could not be built or written; the fill itself still counts.",
     )
     items: tuple[ModelJobLogFillItem, ...] = ()
     error: str | None = Field(default=None, max_length=2000)
@@ -172,5 +207,6 @@ __all__ = [
     "ModelJobLogFillResult",
     "ModelJobLogFillerBusProfile",
     "ModelJobLogFillerOverlay",
+    "ModelJobLogHold",
     "ModelMergeRelevantRun",
 ]

@@ -13,7 +13,10 @@ from omnimarket.adapters.codex.runtime_client import (
     CodexRuntimeRequestAdapter,
     _contract_dispatch_route,
 )
+from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.nodes.node_delegation_rubric_check_compute.handlers.handler_delegation_route_check import (
+    ROUTE_CHECK_LOCAL_MODEL_SETTING,
+    ROUTE_CHECK_NODE,
     HandlerDelegationRouteCheck,
 )
 from omnimarket.nodes.node_delegation_rubric_check_compute.models.model_route_check_request import (
@@ -23,6 +26,21 @@ from omnimarket.nodes.node_delegation_rubric_check_compute.models.model_route_ch
 pytestmark = pytest.mark.unit
 REFERENCE = "cred_localinstall_gemini_" + "a" * 32
 OTHER_REFERENCE = "cred_localinstall_gemini_" + "b" * 32
+# The served id of the local rung is a deployment fact supplied by an overlay (OMN-19184);
+# the tests invent one, so no lab model id is spelled in this repository.
+LOCAL_SERVED_MODEL = "overlay-supplied-local-model"
+
+
+@pytest.fixture(autouse=True)
+def local_model_overlay(tmp_path, monkeypatch):
+    root = tmp_path / "overlay_root"
+    node_dir = root / ROUTE_CHECK_NODE
+    node_dir.mkdir(parents=True)
+    (node_dir / "overlay.yaml").write_text(
+        f"{ROUTE_CHECK_LOCAL_MODEL_SETTING}: {LOCAL_SERVED_MODEL}\n", encoding="utf-8"
+    )
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(root))
+    return root
 
 
 def receipt(route="L"):
@@ -30,7 +48,7 @@ def receipt(route="L"):
     pin = "local-coder" if local else "cloud-gemini-flash"
     backend = pin if local else "byok-gemini"
     terminal = {
-        "model_name": "Qwen3.8-27B" if local else "gemini-2.5-flash-lite",
+        "model_name": LOCAL_SERVED_MODEL if local else "gemini-2.5-flash-lite",
         "tenant_id": None if local else "walker-tenant",
         "secret_source": None if local else "store",
         "secret_ref": None if local else REFERENCE,
@@ -250,3 +268,28 @@ def test_rubric_operation_keeps_its_own_handler_and_model():
     assert explicit == legacy
     assert explicit.handler_class == "HandlerDelegationRubricCheck"
     assert explicit.input_model_name == "ModelRubricCheckRequest"
+
+
+def test_local_walk_reads_the_served_model_from_the_overlay(local_model_overlay):
+    result = HandlerDelegationRouteCheck().handle(request("local-pin-honoured", "L"))
+    assert result.outcome == "VALID"
+    (local_model_overlay / ROUTE_CHECK_NODE / "overlay.yaml").write_text(
+        f"{ROUTE_CHECK_LOCAL_MODEL_SETTING}: another-served-model\n", encoding="utf-8"
+    )
+    changed = HandlerDelegationRouteCheck().handle(request("local-pin-honoured", "L"))
+    assert changed.outcome == "INVALID_ROUTE"
+    assert any("model" in failure for failure in changed.failures)
+
+
+def test_local_walk_without_an_overlay_refuses_naming_the_field(monkeypatch, tmp_path):
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path / "empty_root"))
+    with pytest.raises(NodeOverlayError, match=ROUTE_CHECK_LOCAL_MODEL_SETTING):
+        HandlerDelegationRouteCheck().handle(request("local-pin-honoured", "L"))
+
+
+def test_cloud_walk_needs_no_local_model_overlay(monkeypatch, tmp_path):
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path / "empty_root"))
+    result = HandlerDelegationRouteCheck().handle(
+        request("customer-registration-matches", "C")
+    )
+    assert result.outcome == "VALID"

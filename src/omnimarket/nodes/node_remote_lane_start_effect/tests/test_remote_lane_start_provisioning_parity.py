@@ -42,7 +42,10 @@ class Recorder:
         self.argvs: list[list[str]] = []
 
     def run(
-        self, argv: Sequence[str], timeout_seconds: float
+        self,
+        argv: Sequence[str],
+        timeout_seconds: float,
+        stdin: bytes | None = None,
     ) -> ModelHostCommandResult:
         self.argvs.append(list(argv))
         return self.answer
@@ -357,8 +360,8 @@ def test_hold_run_dir_guard_maps_the_result() -> None:
 def test_the_other_provisioning_steps_still_answer_not_run_by_the_ssh_transport() -> (
     None
 ):
-    answered = transport(Recorder(ModelHostCommandResult(exit_code=0))).mirror_ledger(
-        step()
-    )
+    answered = transport(
+        Recorder(ModelHostCommandResult(exit_code=0))
+    ).retain_run_artifacts(step())
     assert answered.ok is False
     assert "not run by the ssh transport" in (answered.error or "")

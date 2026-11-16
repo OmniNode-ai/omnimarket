@@ -147,6 +147,7 @@ class HandlerWorkLedgerJoinJ5Run:
             correlation_id=cid,
             outcome=result.outcome,
             failure_code=result.failure_code,
+            detail=result.detail,
             ledger_seq=result.ledger_seq,
         )
 

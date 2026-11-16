@@ -31,6 +31,7 @@ class ModelJoinJ5RunItem(BaseModel):
     correlation_id: str
     outcome: EnumJoinJ5Outcome
     failure_code: str | None = None
+    detail: str = ""
     ledger_seq: int | None = Field(default=None, ge=1)
 
 

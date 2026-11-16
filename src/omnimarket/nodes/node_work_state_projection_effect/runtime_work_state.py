@@ -365,19 +365,22 @@ def build_request(
 
 
 def run(
-    env: Mapping[str, str], now: datetime, out: Path | None = None
+    env: Mapping[str, str],
+    now: datetime,
+    out: Path | None = None,
+    ledger_source: ProtocolLedgerRowSource | None = None,
 ) -> ModelWorkStateResult:
     rt = _runtime()
     home = Path(env[rt["home_env"]])
     rules = load_structured_overlay(
         NODE, ModelWorkStateRules, env, file_env=rt["overlay_file_env"]
     )
+    # A ledger source the caller built (the overlay's bus read route) is the only ledger read: the file route below is
+    # consulted only when none was given, never as a fallback after one failed.
+    ledger: ProtocolLedgerRowSource | None = ledger_source
     live = _env_path(env, rt["ledger"]["path_env"])
-    ledger = (
-        FileLedgerRowSource(live, live.parent / rt["ledger"]["archive_subdir"])
-        if live
-        else None
-    )
+    if ledger is None and live is not None:
+        ledger = FileLedgerRowSource(live, live.parent / rt["ledger"]["archive_subdir"])
     snapshots = (
         _env_path(env, rt["snapshots"]["dir_env"]) or home / rt["snapshots"]["relpath"]
     )

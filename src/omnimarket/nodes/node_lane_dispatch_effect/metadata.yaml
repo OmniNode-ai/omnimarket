@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lane_dispatch_effect
+version: 1.0.0
+description: Compile single or batch lane dispatch records through the existing brief checker and return per-lane placement outcomes.
+pack: operator_tooling
+node_role: effect
+display_name: Lane Dispatch Effect
+omnibase_core_compat: '>=0.47.31,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_lane_dispatch_effect: omnimarket.nodes.node_lane_dispatch_effect
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+  - omnibase_core>=0.47.31
+  - omnibase_infra>=0.1.0
+  - pydantic>=2.0
+  - pyyaml>=6.0
+license: MIT
+tags: [effect, dispatch, remote-lane, batch]

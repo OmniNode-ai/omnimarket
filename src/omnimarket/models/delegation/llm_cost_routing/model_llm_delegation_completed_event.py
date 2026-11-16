@@ -45,6 +45,9 @@ class ModelLlmDelegationCompletedEvent(BaseModel):
     actual_cost_usd: Decimal
     opus_equivalent_cost_usd: Decimal
     savings_usd: Decimal
+    # OMN-23756: the provider's own reported cost for the call (``usage.cost``),
+    # recorded beside the booked cost so the burn reading can compare them.
+    provider_reported_cost_usd: Decimal | None = None
 
     # Cost provenance
     usage_source: EnumUsageSource

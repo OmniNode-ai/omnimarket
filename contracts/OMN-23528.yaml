@@ -1,0 +1,84 @@
+schema_version: 1.0.0
+ticket_id: OMN-23528
+title: 'Lane start nodes: provision the lab host in the old runner''s order'
+summary: 'The lane start orchestrator (OMN-23528) issues the provisioning steps as host calls to the ssh transport effect in the order and with the failure policy the overlay carries, and the receipt shows each step''s result.'
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- protocols
+requirements:
+- id: req-child-lane-start-provisioning
+  statement: The start orchestrator composes the provisioning steps around the CLAIM, the engine and the closing row from an overlay plan, each step one host call, each failure typed.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the lane start orchestrator issues the provisioning steps as host-call intents to the ssh transport effect in the remote-lane runner''s order, taken from overlay values (step order, phase, fatal or not), never from code -- falsifier: uv run pytest test_remote_lane_start_provisioning.py, red when the overlay plan differs from the recorded runner order.'
+  - id: AC2
+    statement: 'AC2: a fatal step failing ends the start with a typed terminal and no engine start; a non-fatal step failing is noted in the receipt and the lane continues -- falsifier: uv run pytest test_remote_lane_start_provisioning.py error chain tests, red when the overlay flips a step''s fatal flag.'
+  - id: AC3
+    statement: 'AC3: the seam between the orchestrator''s host-call model and the transport protocol is tested in both directions, on the in-memory bus and on the real broker -- falsifier: uv run pytest test_remote_lane_host_call_seam.py, red when a method is added to or removed from the transport protocol without the host-call model following.'
+  - id: AC4
+    statement: 'AC4: retain_run_artifacts stays declared not run behind the omnibase_spi pin -- falsifier: uv run pytest test_remote_lane_start_retain_pin.py, red when the pin carries the retain model and the transport still skips the step.'
+  - id: AC5
+    statement: 'AC5: integrated: a shadow lane start on a lab host through the nodes (in-memory profile, no-op engine command) runs every step and the receipt shows each step''s result -- falsifier: the receipt file on that host listing the step results, read back in the lane''s STATUS row.'
+evidence_requirements:
+- kind: tests
+  description: The provisioning chain tests, the host-call seam test and the retain pin test.
+  command: uv run pytest src/omnimarket/nodes/node_remote_lane_start_orchestrator/tests/test_remote_lane_start_provisioning.py src/omnimarket/nodes/node_remote_lane_start_orchestrator/tests/test_remote_lane_host_call_seam.py src/omnimarket/nodes/node_remote_lane_start_effect/tests/test_remote_lane_start_retain_pin.py -q --no-cov --tb=line
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-OMN-23528-ac1
+  description: The overlay plan equals the runner's recorded order and policy; the golden chain issues the steps in that order.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_remote_lane_start_orchestrator/tests/test_remote_lane_start_provisioning.py -q --no-cov --tb=line -k "runners_order or golden"
+    cwd: .
+- id: dod-OMN-23528-ac2
+  description: A failing fatal step ends the start with a closing row and no engine; a failing other step is recorded and the lane goes on.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_remote_lane_start_orchestrator/tests/test_remote_lane_start_provisioning.py -q --no-cov --tb=line -k "error_chain or failing_control"
+    cwd: .
+- id: dod-OMN-23528-ac3
+  description: The host-call model and the transport protocol agree on every method, on the in-memory bus; the real-broker leg runs where a broker is named.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_remote_lane_start_orchestrator/tests/test_remote_lane_host_call_seam.py -q --no-cov --tb=line
+    cwd: .
+- id: dod-OMN-23528-ac4
+  description: retain_run_artifacts is declared not run while the pin lacks the model, and the guard turns red when the model arrives.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_remote_lane_start_effect/tests/test_remote_lane_start_retain_pin.py -q --no-cov --tb=line
+    cwd: .
+- id: dod-OMN-23528-integration-proof
+  description: The shadow lane start on a lab host ran the provisioning steps through the nodes and the receipt's step results were read back from the work ledger STATUS row that carries them.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: onex ledger query --query rows --kind STATUS --term 'OMN-23528 host readings' --since 2026-11-10T11:00:00Z | grep -q 'OMN-23528 host readings'
+    cwd: .
+- id: dod-OMN-23528-ac5
+  description: The hosted reading of AC5, the provisioning chain over the scripted transport with every step answered; the live lab-host shadow start is the integration-proof item.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_remote_lane_start_orchestrator/tests/test_remote_lane_start_provisioning.py -q --no-cov --tb=line -k golden
+    cwd: .

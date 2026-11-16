@@ -49,7 +49,7 @@ ENGINE_CALLS = frozenset(
 STAGE_OPS = frozenset({"stage_ledger_snapshot", "stage_file"})
 #: Steps the ssh transport now runs itself (OMN-23425): their parity with the runner is in
 #: test_remote_lane_start_provisioning_parity.py. resolve_registry_root stays here: with no candidates
-#: or marker configured it still answers "not run".
+#: or marker configured it still answers "not run"; so does write_runtime_config with no runtime config text.
 MOVED_OPS = frozenset(
     {
         "prepare_run_dirs",
@@ -58,6 +58,12 @@ MOVED_OPS = frozenset(
         "hold_run_dir_guard",
         "drain_guard_spool",
         "stop_lane_guard",
+        "stage_ledger_snapshot",
+        "stage_file",
+        "mirror_ledger",
+        "relay_reports",
+        "closeout_worktrees",
+        "ship_plugin_trees",
     }
 )
 PROVISIONING_OPS = tuple(
@@ -91,7 +97,9 @@ class _NoHostCommand:
     def __init__(self) -> None:
         self.argvs: list[Sequence[str]] = []
 
-    def run(self, argv: Sequence[str], timeout: float) -> ModelHostCommandResult:
+    def run(
+        self, argv: Sequence[str], timeout: float, stdin: bytes | None = None
+    ) -> ModelHostCommandResult:
         self.argvs.append(argv)
         raise AssertionError(
             "a provisioning step the ssh transport does not run issued a host command"

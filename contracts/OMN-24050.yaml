@@ -1,0 +1,95 @@
+schema_version: 1.0.0
+ticket_id: OMN-24050
+title: The factory board remembers repeated source answers by the state of their source
+summary: 'The factory board''s publish cycle asked GitHub and read the ledger again every five minutes for answers that had not changed: 57 to 69 s in the MVP launch reads, 53 s in the beta board and 35
+  s in the factory floor record (27.2 s measured on a lab host, 17.5 s of it the ledger window). This pull request adds the node node_source_read_cache_effect, a read cache over the Valkey client of omnibase_core
+  keyed by source id, parameter digest and the source''s revision (a cron slot, the default branch''s tip in the local clone, or an archive''s size and modification time), and uses it in the three steps;
+  with no overlay or an unreachable store a step reads its source as before. The overlay values (cache settings, ledger archive names, probe schedules) are a separate change in the overlays repository.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24050-source-read-cache
+  statement: The board's slow steps read a source only when the cache holds no answer for the source's current revision, and a cache that is absent or unreachable never stops a step.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a second board cycle with unchanged sources makes no GitHub run-list read for the MVP launch block (a workflow GitHub answers 404 for is remembered until the default branch moves) and
+      a new schedule slot makes a read -- falsifier: uv run pytest tests/nodes/node_floor_simple_effect/test_mvp_launch_reads_cache.py -q -n 0 --no-cov fails without the change'
+  - id: AC2
+    statement: 'AC2: the beta board''s probe reads are answered from the cache within a schedule slot and read again in the next -- falsifier: uv run pytest tests/nodes/node_beta_board_effect/test_probe_read_cache.py
+      -q -n 0 --no-cov fails without the change'
+  - id: AC3
+    statement: 'AC3: the factory floor record''s ledger window equals the combined read of the same files and a second cycle reads only the live ledger -- falsifier: uv run pytest tests/nodes/node_factory_floor_effect/test_ledger_window_by_archive.py
+      -q -n 0 --no-cov fails without the change'
+  - id: AC4
+    statement: 'AC4: the cache answers hit, miss, bypass or unavailable and a cache that cannot be reached never fails a step -- falsifier: uv run pytest tests/nodes/node_source_read_cache_effect -q -n
+      0 --no-cov fails without the change'
+  - id: AC5
+    statement: 'AC5: integrated: on the publishing Mac two cycles after install, the second cycle''s mvp_launch_reads and beta_board steps each finish in under 10 seconds and the source-cache receipt of
+      each reads zero source reads for unchanged sources -- falsifier: the second cycle''s step_seconds in last-run.json for either step at 10 s or more, or a receipt with source_reads above zero for an
+      unchanged source, fails this criterion'
+evidence_requirements:
+- kind: tests
+  description: The cache node, MVP reads, beta probes and ledger archive tests pass at the pushed head.
+  command: uv run pytest tests/nodes/node_source_read_cache_effect tests/nodes/node_floor_simple_effect/test_mvp_launch_reads_cache.py tests/nodes/node_beta_board_effect/test_probe_read_cache.py tests/nodes/node_factory_floor_effect/test_ledger_window_by_archive.py
+    -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24050-ac1
+  description: 'AC1: the golden test reads no source on a second cycle in the same slot, a new slot and a moved default branch are misses, and the named injected break turns the golden assertion red.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_floor_simple_effect/test_mvp_launch_reads_cache.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24050-ac2
+  description: 'AC2: the same for the beta board''s probe reads, with and without a cron key.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_beta_board_effect/test_probe_read_cache.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24050-ac3
+  description: 'AC3: the rows equal the combined archives read, a second cycle reads only the live ledger, and a changed archive is a miss.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_factory_floor_effect/test_ledger_window_by_archive.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24050-ac4
+  description: 'AC4: the handler, reader, factory and Valkey adapter tests pass, including the error chains for an unreachable store and an absent overlay.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_source_read_cache_effect -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24050-ac5
+  description: 'hosted proxy for AC5: the tests above pass; the two Mac cycles and the step receipts are read on the publishing Mac after install and named in the pull request.'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_source_read_cache_effect tests/nodes/node_floor_simple_effect/test_mvp_launch_reads_cache.py tests/nodes/node_beta_board_effect/test_probe_read_cache.py -q
+      -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24050-integration-proof
+  description: the cache node, MVP reads, beta probe and ledger archive test files run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24050 --kind test -- env PYTHONDONTWRITEBYTECODE=1
+      uv run --frozen pytest tests/nodes/node_source_read_cache_effect tests/nodes/node_floor_simple_effect/test_mvp_launch_reads_cache.py tests/nodes/node_beta_board_effect/test_probe_read_cache.py tests/nodes/node_factory_floor_effect/test_ledger_window_by_archive.py
+      -q --no-cov

@@ -89,40 +89,46 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--state-dir", required=True, type=Path)
     args = parser.parse_args(argv)
     faulthandler.dump_traceback_later(float(_deadline_s()), exit=True)
+    # A tick run in-process must not leave the process-ending timer armed.
     try:
-        overlay = load_structured_overlay(
-            NODE, ModelOverlayStoreLoadOverlay, os.environ
-        )
-    except NodeOverlayError as exc:
-        sys.stderr.write(f"{NODE}: {exc}\n")
-        return EXIT_REFUSED
-    if not (overlay.clone_relpath and overlay.clone_branch and overlay.overlay_ids):
-        sys.stderr.write(
-            f"{NODE}: the overlay names no clone_relpath, clone_branch and overlay_ids for the tick\n"
-        )
-        return EXIT_REFUSED
-    clone = args.registry_root / overlay.clone_relpath
-    state = clone_state(clone, overlay.clone_branch)
-    reason = stale_reason(state, overlay.clone_branch)
-    if reason is not None:
-        sys.stderr.write(f"{NODE}: nothing loaded: {reason}\n")
-        _record(args.state_dir, {"loaded": [], "refused": reason, **state})
-        return EXIT_STALE_CLONE
-    try:
-        results = asyncio.run(_run(overlay, clone, list(overlay.overlay_ids), None))
-    except (NodeOverlayError, ValueError) as exc:
-        sys.stderr.write(f"{NODE}: {type(exc).__name__}: {exc}\n")
-        _record(args.state_dir, {"loaded": [], "refused": str(exc), **state})
-        return EXIT_REFUSED
-    except Exception as exc:  # a broker that does not answer is a reading, not a crash
-        sys.stderr.write(f"{NODE}: bus: {type(exc).__name__}: {exc}\n")
-        _record(args.state_dir, {"loaded": [], "refused": f"bus: {exc}", **state})
-        return EXIT_BUS
-    loaded = [result.model_dump(mode="json") for result in results]
-    for row in loaded:
-        sys.stdout.write(json.dumps(row, sort_keys=True) + "\n")
-    _record(args.state_dir, {"loaded": loaded, "refused": "", **state})
-    return 0
+        try:
+            overlay = load_structured_overlay(
+                NODE, ModelOverlayStoreLoadOverlay, os.environ
+            )
+        except NodeOverlayError as exc:
+            sys.stderr.write(f"{NODE}: {exc}\n")
+            return EXIT_REFUSED
+        if not (overlay.clone_relpath and overlay.clone_branch and overlay.overlay_ids):
+            sys.stderr.write(
+                f"{NODE}: the overlay names no clone_relpath, clone_branch and overlay_ids for the tick\n"
+            )
+            return EXIT_REFUSED
+        clone = args.registry_root / overlay.clone_relpath
+        state = clone_state(clone, overlay.clone_branch)
+        reason = stale_reason(state, overlay.clone_branch)
+        if reason is not None:
+            sys.stderr.write(f"{NODE}: nothing loaded: {reason}\n")
+            _record(args.state_dir, {"loaded": [], "refused": reason, **state})
+            return EXIT_STALE_CLONE
+        try:
+            results = asyncio.run(_run(overlay, clone, list(overlay.overlay_ids), None))
+        except (NodeOverlayError, ValueError) as exc:
+            sys.stderr.write(f"{NODE}: {type(exc).__name__}: {exc}\n")
+            _record(args.state_dir, {"loaded": [], "refused": str(exc), **state})
+            return EXIT_REFUSED
+        except (
+            Exception
+        ) as exc:  # a broker that does not answer is a reading, not a crash
+            sys.stderr.write(f"{NODE}: bus: {type(exc).__name__}: {exc}\n")
+            _record(args.state_dir, {"loaded": [], "refused": f"bus: {exc}", **state})
+            return EXIT_BUS
+        loaded = [result.model_dump(mode="json") for result in results]
+        for row in loaded:
+            sys.stdout.write(json.dumps(row, sort_keys=True) + "\n")
+        _record(args.state_dir, {"loaded": loaded, "refused": "", **state})
+        return 0
+    finally:
+        faulthandler.cancel_dump_traceback_later()
 
 
 def _deadline_s() -> int:

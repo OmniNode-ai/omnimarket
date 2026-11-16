@@ -1,0 +1,96 @@
+schema_version: 1.0.0
+ticket_id: OMN-23732
+title: 'H0: a TLA+ model of the hourly check''s send decisions and dedupe, with a design-review verdict, before the orchestrator is built'
+summary: formal/throughput_tick is a TLA+ model of the hourly check (the throughput tick) that decides which lanes to send and records them in a store shared with other writers. Two checks and one foreign writer share one store and one flock; a check decides, locks, rereads, sends and records and may die between any two steps; the consumer starts one lane per key or one per call. The design configs check SendAttemptOnce and StartedOnce and pass; seven mutant configs (M1 to M7) and one config for the unlocked stores as the source has them (T1) each end in a TLC violation naming the invariant; three witness configs show the passing runs are not vacuous. MAPPING.txt maps the model's send keys to the keys the live tick writes. VERDICT.txt records the design verdict, the requirements H3 builds to and the reviewer's verdict. Formal-model files and one test, tests/formal/test_throughput_tick_model.py, which reads the checked-in TLC results; no node or script.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn23732-base-passes
+    statement: TLC exits 0 on the design configs and no send key is sent twice.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: the model checker passes the invariant that no send key is sent twice -- falsifier: TLC over the model''s config prints no violated invariant'
+  - id: req-omn23732-planted-second-send
+    statement: A planted second send for one key makes TLC report a violated invariant, and a design-review verdict is cited.
+    acceptance:
+      - id: AC2
+        statement: 'AC2: a planted second send for one key makes the checker report a violated invariant, and a design-review verdict is cited -- falsifier: the planted-mutant TLC run naming the invariant, and the verdict''s ledger row or review link'
+  - id: req-omn23732-keys-mapped
+    statement: The model's send keys map to the keys the running tick writes, read from one live tick.
+    acceptance:
+      - id: AC3
+        statement: 'AC3: integrated: done only when running and observed in the runtime: the model''s send keys map to the keys the running throughput tick writes today (lab-fill.sent.json and its lane-send records), the mapping read from one live tick -- falsifier: one live tick''s send records with the mapping table in the ticket'
+evidence_requirements:
+  - kind: manual
+    description: The checked-in TLC receipts name the design passes, the violations and the receipt path.
+    command: grep -c 'result=' formal/throughput_tick/results/SUMMARY.txt
+  - kind: tests
+    description: The checked-in TLC results, the configs and the verdict agree (AC1 to AC3).
+    command: uv run pytest tests/formal/test_throughput_tick_model.py -q -n 0 -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn23732-ac1
+    description: AC1 reads the checked-in TLC output of the two design configs (exit 0, no error found) and each config's own list of invariants.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: command
+        check_value: |
+          set -eu
+          cd formal/throughput_tick
+          for c in base1 base2; do
+            grep -q '^exit=0$' results/$c.out
+            grep -q 'Model checking completed. No error has been found.' results/$c.out
+            grep -q "^$c .*result=PASS" results/SUMMARY.txt
+            grep -q '^INVARIANT StartedOnce$' $c.cfg
+          done
+          grep -q '^INVARIANT SendAttemptOnce$' base1.cfg
+        cwd: .
+      - check_type: test_passes
+        check_value: uv run pytest tests/formal/test_throughput_tick_model.py -q -n 0 -p no:randomly --no-cov
+        cwd: .
+  - id: dod-omn23732-ac2
+    description: AC2 reads the checked-in TLC output of each mutant config, requires its violation to name the one invariant its config checks, and reads the verdict's reviewer and run ids.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: command
+        check_value: |
+          set -eu
+          cd formal/throughput_tick
+          for m in M1_no_lock M2_no_reread M3_writer_unlocked M4_lock_fail_open M6_crash_lock_only M7_unreadable_store_empty T1_unlocked_stores_today; do
+            grep -q '^Error: Invariant SendAttemptOnce is violated' results/$m.out
+            grep -q "^$m .*result=VIOLATED SendAttemptOnce" results/SUMMARY.txt
+          done
+          grep -q '^Error: Invariant StartedOnce is violated' results/M5_crash_no_dedupe.out
+          grep -q '^M5_crash_no_dedupe .*result=VIOLATED StartedOnce' results/SUMMARY.txt
+          grep -q 'Reviewer: GLM glm-5.3' VERDICT.txt
+          grep -q 'ACCEPT-WITH-CHANGES' VERDICT.txt
+          grep -q 'c0c24977-5bef-42e7-bbb7-c6b9ef4a8f03' VERDICT.txt
+        cwd: .
+      - check_type: test_passes
+        check_value: uv run pytest tests/formal/test_throughput_tick_model.py -q -n 0 -p no:randomly --no-cov
+        cwd: .
+  - id: dod-omn23732-ac3
+    description: AC3 reads MAPPING.txt for the model-to-live key table, the live lab-fill rows of the running tick and the stores it names.
+    source: manual
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: command
+        check_value: |
+          set -eu
+          cd formal/throughput_tick
+          for f in lab-fill.sent.json dispatch-replaced.json green-unlanded.json floor-escalation.json; do grep -q "$f" MAPPING.txt; done
+          grep -q 'fill-repair-running-vs-merged-plugin-h105-20261111T1202Z' MAPPING.txt
+          grep -q '^UNMEASURED' MAPPING.txt
+        cwd: .
+      - check_type: test_passes
+        check_value: uv run pytest tests/formal/test_throughput_tick_model.py -q -n 0 -p no:randomly --no-cov
+        cwd: .

@@ -156,3 +156,224 @@ RECORDED_REAP_SCRIPT = "\n".join(
 RECORDED_DRAIN_SCRIPT = "\n".join(
     [_GUARD_PATH_LINE, _GUARD_SOURCE_LINE, 'python3 -c "$G_SRC" spool-drain']
 )
+
+
+# The runner's stdin-carrying staging steps, recorded on 2026-11-10 for run "rlane-example-000001" with the registry
+# root /srv/example/registry: ``ledger_unpack_script`` (read-only snapshot, and the bus mode that keeps the live ledger
+# file owner-writable), ``put_file`` for the prompt file, and ``runtime_config_script``. The runner's target sits in
+# the host's sibling checkout of the settings repository; the recorded text names that directory ``checkout``, the
+# value the overlay declares as ``runtime_config_target``.
+RECORDED_LEDGER_UNPACK_SCRIPT = "\n".join(
+    [
+        'LR="$HOME/lab-run"; C="$LR/runs/rlane-example-000001.ctx"',
+        'mkdir -p "$C/ledger" || exit 70',
+        'tar -xzf - -C "$C/ledger" || exit 70',
+        'chmod a-w "$C/ledger/"*.md "$C/ledger/archive/"*.md 2>/dev/null',
+        'echo "LEDGER-SNAPSHOT $C/ledger"',
+    ]
+)
+RECORDED_LEDGER_UNPACK_BUS_SCRIPT = "\n".join(
+    [
+        'LR="$HOME/lab-run"; C="$LR/runs/rlane-example-000001.ctx"',
+        'mkdir -p "$C/ledger" || exit 70',
+        'tar -xzf - -C "$C/ledger" || exit 70',
+        'chmod a-w "$C/ledger/"*.md "$C/ledger/archive/"*.md 2>/dev/null',
+        'chmod u+w "$C/ledger/example-ledger.md" || exit 70',
+        'echo "LEDGER-SNAPSHOT $C/ledger"',
+    ]
+)
+RECORDED_PUT_FILE_SCRIPT = "\n".join(
+    [
+        "set -eu",
+        'T=$(mktemp "$HOME/lab-run/runs/rlane-example-000001.ctx/prompt.md.XXXXXX")',
+        "trap 'rm -f -- \"$T\"' EXIT",
+        'cat > "$T"',
+        'mv -f -- "$T" "$HOME/lab-run/runs/rlane-example-000001.ctx/prompt.md"',
+    ]
+)
+RECORDED_RUNTIME_CONFIG_SCRIPT = "\n".join(
+    [
+        "T=/srv/example/registry/../checkout/config/onex/runtime/runtime_config.yaml",
+        'if [ -f "$T" ]; then cat >/dev/null; echo "RUNTIME-CONFIG present $T"; exit 0; fi',
+        'mkdir -p "$(dirname "$T")" || exit 70',
+        'cat > "$T.tmp.$$" && mv "$T.tmp.$$" "$T" || exit 70',
+        'echo "RUNTIME-CONFIG installed $T"',
+    ]
+)
+
+
+# Recorded 2026-11-10 (OMN-23502) from the runner's ``ledger_mirror_script`` (run id ``rlane-example-000001``, ledger
+# ``example-ledger.md``), from the report relay's ``remote_script`` (lane ``lane-example``; the recording keeps the
+# lines from the report directory on, the registry-root head being the handler's own) and from the omni plugin's
+# ``closeout_script`` (the same run id, lane, root and ledger name, no kept trees). The closeout recording names its
+# tool repository ``example_tools`` and its ledger variable ``EXAMPLE_LEDGER_FILE`` where the plugin's text names the real ones: the
+# transport takes both from the overlay, so the test passes the synthetic ones.
+RECORDED_MIRROR_SCRIPT = "\n".join(
+    [
+        'LR="$HOME/lab-run"; C="$LR/runs/rlane-example-000001.ctx"; F="$C/ledger/example-ledger.md"',
+        'if [ -s "$F" ] && [ -n "$(tail -c 1 "$F")" ]; then echo >> "$F"; fi',
+        'if cat >> "$C/ledger/example-ledger.md"; then R=ok; else R=failed; fi',
+        'echo "LEDGER-MIRROR $R"',
+    ]
+)
+
+RECORDED_MIRROR_RELOCK_SCRIPT = "\n".join(
+    [
+        'LR="$HOME/lab-run"; C="$LR/runs/rlane-example-000001.ctx"; F="$C/ledger/example-ledger.md"',
+        'chmod u+w "$F" 2>/dev/null',
+        'if [ -s "$F" ] && [ -n "$(tail -c 1 "$F")" ]; then echo >> "$F"; fi',
+        'if cat >> "$C/ledger/example-ledger.md"; then R=ok; else R=failed; fi',
+        'chmod a-w "$F" 2>/dev/null',
+        'echo "LEDGER-MIRROR $R"',
+    ]
+)
+
+RECORDED_RELAY_REPORTS_SCRIPT = "\n".join(
+    [
+        'D="$H/.claude_scratch/reports"',
+        "names=()",
+        'for f in "$D"/lane-example-[0-9][0-9][0-9][0-9]-*.md; do',
+        '  if [ -f "$f" ] && [ ! -L "$f" ]; then names+=("${f##*/}"); fi',
+        "done",
+        "printf '\"'\"'RELAY-TAR\\n'\"'\"'",
+        'if [ "${#names[@]}" -gt 0 ]; then tar -cf - -C "$D" "${names[@]}"; fi',
+        "'",
+    ]
+)
+
+RECORDED_CLOSEOUT_SCRIPT = "\n".join(
+    [
+        'LR="$HOME/lab-run"; C="$LR/runs/rlane-example-000001.ctx"; OH=/srv/example/registry; D="$OH/omni_worktrees/"lane-example',
+        "rl_guard() {",
+        '  t="$1"; tag="$2"; base="$3"; url="$4"',
+        '  s=$(git -C "$t" status --porcelain 2>/dev/null) || { echo "keep status-unreadable"; return; }',
+        '  if [ -n "$s" ]; then echo "keep uncommitted-changes"; return; fi',
+        '  br=$(git -C "$t" symbolic-ref -q --short HEAD 2>/dev/null)',
+        '  if [ -n "$br" ]; then',
+        "    if git -C \"$t\" rev-parse -q --verify '@{u}' >/dev/null 2>&1; then",
+        '      n=$(git -C "$t" rev-list --count \'@{u}..HEAD\' 2>/dev/null) || { echo "keep upstream-unreadable"; return; }',
+        '      if [ "$n" = 0 ]; then echo ok; return; fi',
+        "      why=unpushed-commits",
+        "    else",
+        '      n=$(git -C "$t" rev-list --count HEAD --not --remotes 2>/dev/null) || { echo "keep remotes-unreadable"; return; }',
+        '      if [ "$n" = 0 ]; then echo ok; return; fi',
+        "      why=no-upstream",
+        "    fi",
+        '  elif [ -n "$base" ]; then',
+        '    n=$(git -C "$t" rev-list --count HEAD "^$base" 2>/dev/null) || { echo "keep base-unreadable"; return; }',
+        '    if [ "$n" = 0 ]; then echo ok; return; fi',
+        "    why=unpushed-commits",
+        "  else",
+        '    n=$(git -C "$t" rev-list --count HEAD --not --remotes 2>/dev/null) || { echo "keep remotes-unreadable"; return; }',
+        '    if [ "$n" = 0 ]; then echo ok; return; fi',
+        "    why=unpushed-commits",
+        "  fi",
+        '  dest="${url:-origin}"',
+        '  if GIT_TERMINAL_PROMPT=0 git -C "$t" push -q "$dest" "HEAD:refs/heads/wip/$tag" >/dev/null 2>&1; then',
+        '    echo "wip wip/$tag"',
+        "  else",
+        '    echo "keep $why-push-failed"',
+        "  fi",
+        "}",
+        "rlc_lane=lane-example; rlc_oh=/srv/example/registry",
+        "rlc_rm() {",
+        '  [ -d "$1" ] && [ ! -L "$1" ] || return 0',
+        '  rlc_kb=$(du -sk "$1" 2>/dev/null | cut -f1); rlc_kb=${rlc_kb:-0}',
+        '  if rm -rf -- "$1" 2>/dev/null && [ ! -e "$1" ]; then echo "LANE-CACHE-CLOSEOUT removed kb=$rlc_kb path=$1"',
+        '  else echo "LANE-CACHE-CLOSEOUT failed kb=$rlc_kb path=$1"; fi',
+        "}",
+        "rlc_named() {",
+        "  for rlc_s in pre-commit pre-commit-cache uv uv-cache; do",
+        '    case "$1" in "$rlc_lane-$rlc_s"|*"-$rlc_lane-$rlc_s"|"$rlc_s-$rlc_lane") return 0;; esac',
+        "  done",
+        "  return 1",
+        "}",
+        "rlc_kind() {",
+        '  case "$1" in pre-commit|pre-commit-cache|uv|uv-cache|.pre-commit|.uv-cache) return 0;; esac',
+        "  return 1",
+        "}",
+        "rlc_scratch() {",
+        '  rlc_d="$1/$rlc_lane"',
+        '  [ -d "$rlc_d" ] && [ ! -L "$rlc_d" ] || return 0',
+        '  for rlc_p in "$rlc_d"/* "$rlc_d"/.[!.]*; do',
+        '    [ -d "$rlc_p" ] || continue',
+        "    rlc_n=${rlc_p##*/}",
+        '    if rlc_kind "$rlc_n" || rlc_named "$rlc_n"; then rlc_rm "$rlc_p"; fi',
+        "  done",
+        "}",
+        "rlc_sweep() {",
+        '  [ -n "$rlc_lane" ] || return 0',
+        '  for rlc_root in "$HOME/.cache" "${XDG_CACHE_HOME:-}"; do',
+        '    [ -n "$rlc_root" ] && [ -d "$rlc_root" ] || continue',
+        '    for rlc_p in "$rlc_root"/*; do',
+        '      [ -d "$rlc_p" ] || continue',
+        '      if rlc_named "${rlc_p##*/}"; then rlc_rm "$rlc_p"; fi',
+        "    done",
+        "  done",
+        '  for rlc_root in "$rlc_oh/.claude_scratch" "$HOME/lab-run/scratch" /mnt/*/omninode/scratch; do rlc_scratch "$rlc_root"; done',
+        '  rlc_ifs=$IFS; IFS=:; for rlc_root in ${ONEX_LANE_CACHE_SCRATCH_ROOTS:-}; do IFS=$rlc_ifs; [ -n "$rlc_root" ] && rlc_scratch "$rlc_root"; IFS=:; done; IFS=$rlc_ifs',
+        "}",
+        "rlc_sweep",
+        'if [ ! -d "$D" ]; then echo "LANE-CLOSEOUT-NONE no $D"; exit 0; fi',
+        'TREES=$(find "$D" -mindepth 2 -maxdepth 3 -name .git 2>/dev/null |',
+        '  while IFS= read -r p; do dirname "$p"; done | LC_ALL=C sort |',
+        '  { listed=""; while IFS= read -r t; do',
+        '    nested=""',
+        "    while IFS= read -r parent; do",
+        '      [ -n "$parent" ] || continue',
+        '      case "$t" in ("$parent"/*) nested=1; break;; esac',
+        "    done <<EOF",
+        "$listed",
+        "EOF",
+        '    [ -n "$nested" ] && continue',
+        '    listed="$listed$t',
+        '"',
+        '    printf "%s\\n" "${t#"$D"/}"',
+        "  done; })",
+        'if [ -z "$TREES" ]; then echo "LANE-CLOSEOUT-NONE no trees under $D"; exit 0; fi',
+        'RH=$(cd "$OH" && pwd -P)',
+        'IH=""',
+        'for d in "${EXAMPLE_TOOLS_HOME:-}" "$(dirname "$OH")/example_tools" "$(dirname "$RH")/example_tools"; do',
+        '  if [ -n "$d" ] && [ -x "$d/.venv/bin/onex-lane-closeout" ]; then IH="$d"; break; fi',
+        "done",
+        'if [ -z "$IH" ]; then echo "LANE-CLOSEOUT-UNAVAILABLE $(hostname): no example_tools with onex-lane-closeout beside $OH; trees left: $(echo $TREES)"; exit 0; fi',
+        'E=$(mktemp "${TMPDIR:-/tmp}/onex-lane-closeout.XXXXXX") || exit 70',
+        "KEEP=''",
+        'printf "%s\\n" "$TREES" | while read -r n; do',
+        '  t="$D/$n"; k=0; wipnote=""',
+        '  case " $KEEP " in *" $t "*) echo "LANE-CLOSEOUT rc=0 tree=$t cell=worktree=kept:$t:salvage-failed note="; continue;; esac',
+        '  g=$(rl_guard "$t" lane-example-rlane-example-000001-"$(printf "%s" "$n" | tr "/" "-")" "" "")',
+        '  case "$g" in',
+        '    keep*) echo "LANE-CLOSEOUT rc=0 tree=$t cell=worktree=kept:$t:${g#keep } note="; continue;;',
+        '    wip*) wipnote="wip-pushed=${g#wip } ";;',
+        "  esac",
+        "  while :; do",
+        '    cell=$(env -u ONEX_WORKTREES_ROOT OMNI_HOME="$OH" EXAMPLE_TOOLS_HOME="$IH" EXAMPLE_LEDGER_FILE="$C/ledger/example-ledger.md" "$IH/.venv/bin/onex-lane-closeout" --lane lane-example --worktree "$t" 2>"$E" </dev/null); rc=$?',
+        '    if [ "$rc" = 3 ] && [ "$k" -lt 3 ]; then',
+        '      case "$cell" in *:process-inside*) k=$((k+1)); sleep 6; continue;; esac',
+        "    fi",
+        "    break",
+        "  done",
+        '  note="$wipnote$(tr "\\n" " " < "$E" | cut -c1-600)"',
+        '  case "$cell" in *:remove-failed)',
+        '    case "$g" in wip*)',
+        '      queued=$(python3 "$HOME/.local/share/onex-lane-guard/lane_reaper.py" --queue-closeout "$t" --closeout-lane lane-example --closeout-omni-home "$OH" --closeout-command "$IH/.venv/bin/onex-lane-closeout" --pushed-ref "${g#wip }" --failure-file "$E" --closeout-rc "$rc" 2>&1); qr=$?',
+        '      note="$note retry-queue-rc=$qr $(printf "%s" "$queued" | tr "\\n" " ")"',
+        "      ;; esac",
+        "    ;; esac",
+        '  echo "LANE-CLOSEOUT rc=$rc tree=$t cell=$cell note=$note"',
+        "done",
+        'rm -f "$E"',
+    ]
+)
+
+
+# Recorded 2026-11-10 (OMN-23502) from the omni plugin's ``plugin_ensure_script`` for one synthetic source: the lines
+# that install a tree into the plugin store (a temporary directory renamed into place, then the tree touched as its
+# last use). The runner fills the temporary directory from ``git archive``; the ssh transport fills it from the
+# archive on its stdin, so the extraction line is the only one that differs.
+RECORDED_PLUGIN_TREE_LINES = (
+    '  T="$D.tmp.$$"; rm -rf "$T"; mkdir -p "$T" || exit 70',
+    '  python3 -c "import os,sys; os.rename(sys.argv[1], sys.argv[2])" "$T" "$D" 2>/dev/null || rm -rf "$T"',
+    'touch "$D" 2>/dev/null || true',
+)

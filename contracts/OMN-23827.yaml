@@ -1,0 +1,53 @@
+schema_version: 1.0.0
+ticket_id: OMN-23827
+title: A checked model of the draft ticket create with retry
+summary: 'A TLA+ model of the ticket node draft create (make the issue, write the rendered contract, publish the written event, answer with one terminal, with a retry of the same draft and duplicate delivery) is recorded in formal/create_ticket_draft with the recorded TLC 2.19 results of 33 configs, a test that fails when the model or a config changes without a rerun, and the independent design-review verdict (PASS with conditions after one FAIL round).'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23827-model
+  statement: The draft ticket create has a checked model and a recorded design-review verdict before anything builds against it.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the model and its checker outputs for the design and every control are recorded and the design runs clean at the bound -- falsifier: uv run pytest tests/formal/test_create_ticket_draft_model.py -q'
+  - id: AC2
+    statement: 'AC2: a design-review verdict from a reviewer other than the author is recorded with its conditions -- falsifier: grep -n "Verdict: PASS" formal/create_ticket_draft/VERDICT.txt'
+  - id: AC3
+    statement: 'AC3: integrated: the verdict is cited on the draft create build ticket, read there -- falsifier: onex ticket read OMN-23760 shows the verdict citation'
+evidence_requirements:
+- kind: tests
+  description: The focused test of this change passes at the pushed head.
+  command: uv run --frozen pytest tests/formal/test_create_ticket_draft_model.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23827-ac1
+  description: 'The recorded TLC results bind to the model and each config by sha256; the design configs pass and each mutant, hazard and witness reads its named result.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/formal/test_create_ticket_draft_model.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23827-ac2
+  description: 'The verdict file carries the Verdict line, the model digest and every mutant result.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/formal/test_create_ticket_draft_model.py -q --no-cov -n 0 -p no:randomly -k verdict
+    cwd: .
+- id: dod-omn23827-ac3
+  description: 'The verdict citation on the build ticket is read there after the pull request exists; the docs name the receipt.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/formal/test_create_ticket_draft_model.py -q --no-cov -n 0 -p no:randomly -k docs
+    cwd: .

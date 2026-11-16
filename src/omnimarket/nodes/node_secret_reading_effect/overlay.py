@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from collections.abc import Mapping
 from typing import Literal
 
@@ -25,6 +26,8 @@ from omnimarket.models.secret_store.model_secret_store_overlay import (
 from omnimarket.nodes.node_reading_writer_effect.overlay import ModelLedgerAppendRoute
 
 NODE_NAME = "node_secret_reading_effect"
+#: The unit names the overlay document it reads by id; unset, the node reads its own name's document.
+OVERLAY_ID_ENV = "ONEX_SECRET_READING_OVERLAY_ID"
 
 
 class ModelSecretReadingPublish(BaseModel):
@@ -114,9 +117,14 @@ class ModelSecretReadingOverlay(BaseModel):
     #: drill true). When set, schedule install adds the contract's daily drill unit, so the
     #: error event stays fresh. ``~`` and environment variables are expanded.
     drill_overlay_root: str | None = None
+    #: The id of the drill's overlay document, read from the SAME overlay root as this document
+    #: (the overlays clone), so the drill needs no second hand-placed root.
+    drill_overlay_id: str | None = None
 
     @model_validator(mode="after")
     def _shape(self) -> ModelSecretReadingOverlay:
+        if self.drill_overlay_root is not None and self.drill_overlay_id is not None:
+            raise ValueError("the drill names both an overlay root and an overlay id")
         names = [consumer.consumer for consumer in self.consumers]
         if len(names) != len(set(names)):
             raise ValueError("a consumer is declared twice")
@@ -144,12 +152,21 @@ class ModelSecretReadingOverlay(BaseModel):
         return hashlib.sha256(text.encode("utf-8")).hexdigest()[:24]
 
 
+def overlay_id(environ: Mapping[str, str] | None = None) -> str:
+    """The overlay document id this process reads: the unit's pinned id, else the node's own name."""
+    env = os.environ if environ is None else environ
+    return env.get(OVERLAY_ID_ENV, "").strip() or NODE_NAME
+
+
 def load_overlay(environ: Mapping[str, str] | None = None) -> ModelSecretReadingOverlay:
-    return load_structured_overlay(NODE_NAME, ModelSecretReadingOverlay, environ)
+    return load_structured_overlay(
+        overlay_id(environ), ModelSecretReadingOverlay, environ
+    )
 
 
 __all__ = [
     "NODE_NAME",
+    "OVERLAY_ID_ENV",
     "ModelExposureSettings",
     "ModelOpenExposure",
     "ModelPlantedDummy",
@@ -158,4 +175,5 @@ __all__ = [
     "ModelSecretReadingScheduleHost",
     "ModelSecretReadingStore",
     "load_overlay",
+    "overlay_id",
 ]

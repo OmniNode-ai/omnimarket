@@ -1,0 +1,63 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-23604"
+title: "The installer's start check uses a declared harmless probe, and the landing jobs honour it"
+summary: "node_host_installer_registry_units lets a unit declare probe_argv in its contract and runs exactly that argv as the start check (the help request when none is declared); the landing snapshot, watcher-facts and tick orchestrator mains honour --probe with no pass, no overlay load, no bus read and no write, and --help prints help instead of running a pass."
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "public_api"
+requirements:
+  - id: "req-omn23604-start-probe"
+    statement: |-
+      The installer's start check of a landing unit runs the unit's declared probe, which its main answers with no side effect; a failing or malformed probe is refused.
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the host installer registry node's contract lets a unit declare the argv of its start probe, and the installer's start check runs exactly that argv for the unit (the existing help request for a unit that declares none) -- falsifier: the new installer test that records the start check's argv for a landing unit, run at the merge base"
+      - id: "AC2"
+        statement: "AC2: the landing snapshot, watcher-facts and tick orchestrator mains honour the declared probe without loading an overlay, reading the bus or writing a file, and a help request on them prints help and does no pass -- falsifier: the new tests that call each main with the probe and with the help request against a runner that records any real pass, run at the merge base"
+      - id: "AC3"
+        statement: "AC3: a unit whose probe fails is refused at install with the probe argv named, and a malformed probe declaration is refused -- falsifier: the new error-chain installer tests, run at the merge base"
+      - id: "AC4"
+        statement: "AC4: integrated: the landing-snapshot-cutover unit's start check passes on a lab host with no overlay root in the calling shell, and the probe is seen to write nothing there -- falsifier: the installer's dry-run and start-check receipt on that host, and the empty state directory"
+evidence_requirements:
+  - kind: "tests"
+    description: "The start-probe tests, the landing mains' probe tests and the installer's existing readers."
+    command: "uv run pytest tests/nodes/node_host_installer_registry_units/test_start_probe.py tests/nodes/node_host_installer_registry_units/test_landing_mains_probe.py tests/nodes/node_host_installer_registry_units/test_start_check_environment.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn23604-probe-declared"
+    description: "The installer runs the declared probe argv for a landing unit and the help request for a unit declaring none (golden); a failing probe names its argv and a malformed declaration is refused before any check (error). At the merge base no unit declares a probe, so these fail there."
+    source: "manual"
+    binds_ac: ["AC1", "AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_host_installer_registry_units/test_start_probe.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn23604-mains-probe"
+    description: "Each landing main answers --probe with one status line and --help with help, with its overlay loader and its pass replaced by recorders that fail the test if called (golden); an unknown argument is refused before any pass (error); a bare-shell subprocess run exits 0 and writes nothing. At the merge base the mains ignore their arguments, so these fail there."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_host_installer_registry_units/test_landing_mains_probe.py -q --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn23604-integration-hosted"
+    description: "Integrated, hosted proxy for AC4: every probe the contract declares runs against its real module from a bare shell, exits 0 with the status line and writes nothing, and the cutover unit's start check passes with no overlay root in the calling shell. Neither holds at the merge base, so the control fails there. The live read on a lab host is the unbound local item below, because the hosted must-fail control can never run a local_done_gate item."
+    source: "manual"
+    binds_ac: ["AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_host_installer_registry_units/test_start_probe.py -q --no-cov -k seam"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn23604-integration-proof"
+    description: "The installer's dry run and start check for the landing-snapshot-cutover unit from this branch on a lab host with no overlay root in the calling shell, recorded in the pull request's Lab comment. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound item; the hosted proxy above binds AC4."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-23604 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_start_probe.py -q --no-cov"
+        cwd: "."
