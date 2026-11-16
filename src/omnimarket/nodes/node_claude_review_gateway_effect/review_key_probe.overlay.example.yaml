@@ -1,0 +1,7 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Deployment-owned example, never loaded as a default. The scheduled review key credit probe (registry unit
+# review-key-credit-probe) reads <root>/review_key_credit_probe/overlay.yaml under ONEX_SKILL_OVERLAY_ROOTS.
+tenant_id: example-tenant
+model: claude-sonnet-5-5
+host: example-host

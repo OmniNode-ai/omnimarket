@@ -1,0 +1,39 @@
+schema_version: 1.0.0
+ticket_id: OMN-24656
+title: The review gateway's key-state topics have dev broker ACL rows and the key-credit probe's schedule is declared in omnimarket
+summary: The key-credit probe of the review gateway (onex models review-gateway-key-probe) had no scheduled home outside the frozen internal repository. This change declares its launchd unit, review-key-credit-probe, in the host installer's registry units beside the Claude token pool rotation tick it is shaped on, with a tick module that runs the probe command from the node's own overlay and writes the unit's heartbeat. The broker ACL rows for the gateway's two key-state topics are declared in the deployment overlays, in a separate pull request.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24656-schedule
+  statement: The key-credit probe's schedule is a declared unit of this repository, shaped like an existing scheduled tick, with a test that loads it.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: the key-credit probe''s schedule declaration lives in omnimarket, matching a scheduled-node exemplar, with a test that loads it -- falsifier: uv run pytest on the new schedule test file in omnimarket fails before the declaration is added and passes after'
+evidence_requirements:
+- kind: tests
+  description: The schedule test file at the pushed head.
+  command: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect/test_review_key_credit_probe_schedule_omn24656.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24656-ac2-schedule-test
+  description: 'AC2: the schedule declaration, the unit it renders, one tick of its module and its overlay model. The test file does not pass at the merge base: the unit, the tick module and the overlay model are absent there.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect/test_review_key_credit_probe_schedule_omn24656.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24656-integration-proof
+  description: 'Integration proof run on a lab host at the pushed head: the schedule test file runs through lab-work.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24656 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_claude_review_gateway_effect/test_review_key_credit_probe_schedule_omn24656.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
