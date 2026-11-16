@@ -12,6 +12,7 @@ tests read the declaration, the unit it renders, and one tick of the module the 
 from __future__ import annotations
 
 import json
+import plistlib
 import subprocess
 import sys
 from pathlib import Path
@@ -59,12 +60,50 @@ def brew_python(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
+# What the scheduled command reads beyond the ledger path: the lab host table that names this machine's host row, and
+# the ledger writer command it appends a credit flip with. Neither has a default in the command, so an unset one
+# refuses every tick (the ledger writer's refusal comes after the keys are read, so each tick spends a token).
+LAB_HOSTS_VARIABLE = "ONEX_LAB_RUN_HOSTS"
+LEDGER_COMMAND_VARIABLE = "ONEX_LEDGER_COMMAND"
+
+
 def _ledger_variable() -> str:
     """The environment variable the unit sets from the installing request's ledger path."""
     unit = load_units()[UNIT]
     (variable,) = unit["environment_inputs"]
-    assert unit["required_environment_inputs"] == [variable]
+    assert variable in unit["required_environment_inputs"]
     return str(variable)
+
+
+def _rendered_environment(tmp_path: Path) -> dict[str, str]:
+    """The environment the rendered unit carries, read from the plist the installer renders for a dry run.
+
+    The two variables the installer cannot know (the lab host table, an overlay root) are the request's path overrides,
+    as an operator supplies them at install; the table names ``host-1`` so the overlay's host row resolves.
+    """
+    unit = load_units()[UNIT]
+    branch = tmp_path / "branch"
+    revision = make_checkout(branch, entry=unit["entry_file"])
+    table = tmp_path / "lab_hosts.yaml"
+    table.write_text(yaml.safe_dump({"hosts": [{"name": "host-1"}]}), encoding="utf-8")
+    result = HandlerRegistryUnits(Recorder()).handle(
+        request(
+            tmp_path,
+            unit=UNIT,
+            mode="dry-run",
+            project_path=str(branch),
+            expected_revision=revision,
+            path_overrides={
+                "ONEX_SKILL_OVERLAY_ROOTS": str(tmp_path / "overlays"),
+                LAB_HOSTS_VARIABLE: str(table),
+            },
+            ledger_path=str(tmp_path / "ledger.md"),
+        )
+    )
+    assert result.status == "success", result.stderr
+    loaded = plistlib.loads(result.rendered.encode("utf-8"))
+    environment: dict[str, str] = loaded["EnvironmentVariables"]
+    return environment
 
 
 # --- the schedule is declared -----------------------------------------------------------------
@@ -84,7 +123,12 @@ def test_the_schedule_is_declared_as_a_launchd_tick_with_a_bounded_run() -> None
     ).replace("/", ".")
     assert unit["module"].startswith(f"omnimarket.nodes.{NODE}.")
     assert unit["probe_argv"] == ["--probe"]
-    assert unit["environment_path_overrides"] == ["ONEX_SKILL_OVERLAY_ROOTS"]
+    overrides = unit["environment_path_overrides"]
+    assert overrides == [
+        "ONEX_SKILL_OVERLAY_ROOTS",
+        LAB_HOSTS_VARIABLE,
+        LEDGER_COMMAND_VARIABLE,
+    ]
 
 
 def test_the_unit_holds_none_of_the_nodes_settings_and_no_credential() -> None:
@@ -134,6 +178,54 @@ def test_the_rendered_unit_runs_the_tick_module_on_the_declared_interval(
     assert str(tmp_path / "ledger.md") in result.rendered
 
 
+def test_the_rendered_unit_carries_the_lab_host_table_and_the_ledger_command(
+    tmp_path: Path,
+) -> None:
+    environment = _rendered_environment(tmp_path)
+    assert environment[LAB_HOSTS_VARIABLE] == str(tmp_path / "lab_hosts.yaml")
+    # The ledger writer is the host's onex-ledger command line, declared as the parity receipt unit declares it.
+    parity = load_units()["work-ledger-parity-receipt"]["environment"]
+    assert (
+        load_units()[UNIT]["environment"][LEDGER_COMMAND_VARIABLE]
+        == parity[LEDGER_COMMAND_VARIABLE]
+    )
+    assert environment[LEDGER_COMMAND_VARIABLE] == str(
+        tmp_path / "home" / ".local" / "bin" / "onex-ledger"
+    )
+    assert environment[_ledger_variable()] == str(tmp_path / "ledger.md")
+
+
+def test_an_install_without_the_lab_host_table_is_refused(tmp_path: Path) -> None:
+    unit = load_units()[UNIT]
+    assert LAB_HOSTS_VARIABLE in unit["required_environment_inputs"]
+    handler = HandlerRegistryUnits(Recorder())
+    with pytest.raises(ValueError, match=f"{LAB_HOSTS_VARIABLE} is unset"):
+        handler.environment(
+            request(
+                tmp_path,
+                unit=UNIT,
+                mode="install",
+                ledger_path=str(tmp_path / "ledger.md"),
+                path_overrides={"ONEX_SKILL_OVERLAY_ROOTS": str(tmp_path / "o")},
+            ),
+            unit,
+        )
+    named = handler.environment(
+        request(
+            tmp_path,
+            unit=UNIT,
+            mode="install",
+            ledger_path=str(tmp_path / "ledger.md"),
+            path_overrides={
+                "ONEX_SKILL_OVERLAY_ROOTS": str(tmp_path / "o"),
+                LAB_HOSTS_VARIABLE: str(tmp_path / "lab_hosts.yaml"),
+            },
+        ),
+        unit,
+    )
+    assert named[LAB_HOSTS_VARIABLE] == str(tmp_path / "lab_hosts.yaml")
+
+
 # --- the command the unit schedules -----------------------------------------------------------
 
 
@@ -154,6 +246,69 @@ def test_the_scheduled_probe_command_exists_with_the_options_the_tick_passes() -
         assert flag in options, flag
     # The ledger option reads the variable the unit's environment names for the installing request's ledger.
     assert options["--ledger"].envvar == _ledger_variable()
+
+
+def _tick_argv(tmp_path: Path, host: str | None) -> list[str]:
+    overlay = ModelReviewKeyProbeOverlay(
+        tenant_id="tenant-1", model="model-1", host=host
+    )
+    return tick.probe_argv(overlay, tmp_path / "state")
+
+
+def _run_real_probe(
+    tmp_path: Path, environment: dict[str, str], host: str | None = "host-1"
+) -> subprocess.CompletedProcess[str]:
+    """The real command, with the argv a tick builds, under only the given environment and an empty key store."""
+    (tmp_path / "home").mkdir(exist_ok=True)
+    return subprocess.run(
+        _tick_argv(tmp_path, host),
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+        cwd=tmp_path,
+    )
+
+
+_HOST_ROW_REFUSALS = (
+    "no lab host table on this machine",
+    "needs this machine's lab host row",
+)
+_LEDGER_REFUSAL = "ONEX_LEDGER_COMMAND"
+
+
+def test_the_real_probe_command_gets_past_both_refusals_under_the_rendered_unit_environment(
+    tmp_path: Path,
+) -> None:
+    """The command the unit schedules, run with a tick's argv under the unit's own environment and an empty key store.
+
+    An empty store has no key to read, so the run ends on its own "no key gave a reading" refusal, after the host row
+    resolved and the ledger writer was found. Neither variable has a default, so each missing one is its own refusal.
+    """
+    environment = _rendered_environment(tmp_path)
+    done = _run_real_probe(tmp_path, environment)
+    for refusal in (*_HOST_ROW_REFUSALS, _LEDGER_REFUSAL):
+        assert refusal not in done.stderr, done.stderr
+    assert "no key gave a reading" in done.stderr, done.stderr
+
+
+@pytest.mark.parametrize(
+    ("missing", "refusal"),
+    [
+        (LAB_HOSTS_VARIABLE, "no lab host table on this machine"),
+        (LEDGER_COMMAND_VARIABLE, _LEDGER_REFUSAL),
+    ],
+)
+def test_the_real_probe_command_refuses_when_the_unit_lacks_either_variable(
+    tmp_path: Path, missing: str, refusal: str
+) -> None:
+    """Positive control: take either variable out of the rendered environment and the command refuses, so the test above bites."""
+    environment = _rendered_environment(tmp_path)
+    del environment[missing]
+    done = _run_real_probe(tmp_path, environment)
+    assert done.returncode == 1
+    assert refusal in done.stderr, done.stderr
 
 
 # --- one tick ---------------------------------------------------------------------------------
@@ -291,6 +446,41 @@ def test_a_timed_out_probe_exits_124_and_writes_a_heartbeat(
     assert evidence["result"] == {"timed_out_after_s": tick.PROBE_TIMEOUT_SECONDS}
 
 
+def test_a_timed_out_probes_captured_output_reaches_the_tick_streams_before_the_heartbeat(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    state = _configured(tmp_path, monkeypatch)
+    hung = subprocess.TimeoutExpired(
+        ["onex"],
+        tick.PROBE_TIMEOUT_SECONDS,
+        output=b"review-key-probe: key-a ok\n",
+        stderr=b"Error: waiting on the provider\n",
+    )
+    assert tick.main(["--state-dir", str(state)], run=_Raises(hung)) == 124
+    seen = capsys.readouterr()
+    assert "review-key-probe: key-a ok" in seen.out
+    assert "waiting on the provider" in seen.err
+    # The partial output is written through before the tick's own notice and its heartbeat.
+    assert seen.err.index("waiting on the provider") < seen.err.index("TIMED OUT")
+    assert _heartbeat(state)["exit_code"] == 124
+
+
+def test_a_timed_out_probe_with_text_output_or_none_still_exits_124(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    state = _configured(tmp_path, monkeypatch)
+    as_text = subprocess.TimeoutExpired(
+        ["onex"], 1, output="partial out\n", stderr="partial err\n"
+    )
+    assert tick.main(["--state-dir", str(state)], run=_Raises(as_text)) == 124
+    seen = capsys.readouterr()
+    assert "partial out" in seen.out
+    assert "partial err" in seen.err
+    silent = subprocess.TimeoutExpired(["onex"], 1)
+    assert tick.main(["--state-dir", str(state)], run=_Raises(silent)) == 124
+    assert "TIMED OUT" in capsys.readouterr().err
+
+
 def test_a_probe_that_cannot_start_exits_1_and_says_why(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -379,10 +569,21 @@ def test_a_bare_run_without_a_state_dir_refuses_the_pass(
     _configured(tmp_path, monkeypatch)
     monkeypatch.chdir(tmp_path)
     runner = _Runner()
-    assert tick.main([], run=runner) == 2
+    assert tick.main([], run=runner) == tick.REFUSED
     assert runner.argv == []
     assert "--state-dir" in capsys.readouterr().err
     assert not (tmp_path / "keys").exists()
+
+
+def test_the_refusal_exit_is_not_argparses_usage_error_exit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Launchd's last exit status tells a refused pass from a malformed command line."""
+    _configured(tmp_path, monkeypatch)
+    with pytest.raises(SystemExit) as usage:
+        tick.main(["--no-such-argument"], run=_Runner())
+    assert usage.value.code == 2
+    assert tick.REFUSED not in (0, 1, 2, tick.INDETERMINATE, tick.TIMED_OUT)
 
 
 def test_the_probe_command_resolves_beside_the_running_interpreter(

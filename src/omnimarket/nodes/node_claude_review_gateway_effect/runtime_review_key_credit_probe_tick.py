@@ -6,9 +6,10 @@ The unit passes ``--omni-home`` and ``--state-dir``. The tick reads the probe's 
 (``<root>/review_key_credit_probe/overlay.yaml``: tenant, model, host row), runs ``onex models
 review-gateway-key-probe`` once beside the running interpreter, and writes ``last-run.json`` into the state
 directory: exit 0 when the probe ran, 1 when it failed, 124 when it ran past its bound, 3 when the overlay is
-missing or invalid (nothing is probed), and 2 when the run carries no ``--state-dir`` (nothing is probed).
+missing or invalid (nothing is probed), and 4 when the run carries no ``--state-dir`` (nothing is probed). 4 is
+not 2, argparse's usage-error exit, so launchd's last exit status tells a refused pass from a malformed command line.
 The probe's own stdout and stderr pass through to the tick's streams, so a failing probe's reason lands in the
-unit's logs. The probe command takes the destination of a credit flip from the unit's environment.
+unit's logs, a probe that ran past its bound included (its partial output is written before the tick's notice). The probe command takes the destination of a credit flip from the unit's environment.
 ``--probe`` checks the module without a pass, a bus read or a write.
 """
 
@@ -37,7 +38,8 @@ NODE_NAME = "node_claude_review_gateway_effect"
 OVERLAY_ID = "review_key_credit_probe"
 # Under the unit's run_timeout_s, so a hung probe ends here with its own record and not at the unit's wrapper.
 PROBE_TIMEOUT_SECONDS = 540
-REFUSED = 2
+# Not 2: argparse exits 2 on a usage error, and a refused pass must read differently in launchd's last exit status.
+REFUSED = 4
 INDETERMINATE = 3
 TIMED_OUT = 124
 FLIP_COUNT_LINE = re.compile(r"^review-key-probe: \d+ flip\(s\) written$")
@@ -48,6 +50,15 @@ Runner = Callable[[list[str], int], subprocess.CompletedProcess[str]]
 def run_command(argv: list[str], timeout: int) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         argv, capture_output=True, text=True, timeout=timeout, check=False
+    )
+
+
+def passed_through(captured: str | bytes | None) -> str:
+    """A timed-out child's partial stream: ``TimeoutExpired`` carries bytes even for a text-mode run."""
+    if captured is None:
+        return ""
+    return (
+        captured.decode("utf-8", "replace") if isinstance(captured, bytes) else captured
     )
 
 
@@ -107,7 +118,9 @@ def main(argv: list[str] | None = None, run: Runner = run_command) -> int:
         return INDETERMINATE
     try:
         done = run(probe_argv(overlay, state_dir), PROBE_TIMEOUT_SECONDS)
-    except subprocess.TimeoutExpired:
+    except subprocess.TimeoutExpired as exc:
+        sys.stdout.write(passed_through(exc.stdout))
+        sys.stderr.write(passed_through(exc.stderr))
         sys.stderr.write(f"TIMED OUT: the probe ran past {PROBE_TIMEOUT_SECONDS} s\n")
         write_tick_heartbeat(
             state_dir,

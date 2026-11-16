@@ -1705,16 +1705,27 @@ units:
       requires: clean git checkout that carries entry_file
     environment_path_overrides:
       - ONEX_SKILL_OVERLAY_ROOTS
+      # The scheduled command reads both of these and has no default for either: the host row comes only from the lab
+      # host table this names (a run without it refuses with no lab host table), and the ledger writer only from the
+      # command line below (a run without it refuses after the keys are read, so each tick would spend a token per key).
+      - ONEX_LAB_RUN_HOSTS
+      - ONEX_LEDGER_COMMAND
     environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
     environment:
       ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
       OMNIBASE_PATH: "{registry_root}"
       ONEX_STATE_DIR: "{registry_root}/.onex_state"
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+      # The lab host table is the host's own file; the installing request names it as a path override, and an install
+      # without it is refused (required_environment_inputs below). The command reads the table's path directly, so it
+      # needs no roots variable (the pool read's ONEX_LAB_HOST_TABLE_ROOTS is not read by this command).
+      ONEX_LAB_RUN_HOSTS: ""
+      # The host's proven onex-ledger command line, as the work-ledger parity receipt unit declares it.
+      ONEX_LEDGER_COMMAND: "{home}/.local/bin/onex-ledger"
     # The ledger the probe appends a flip to is the one the installing request names (as the host drift owner unit's is).
     environment_inputs:
       ONEX_LEDGER_PATH: ledger_path
-    required_environment_inputs: [ONEX_LEDGER_PATH]
+    required_environment_inputs: [ONEX_LEDGER_PATH, ONEX_LAB_RUN_HOSTS]
     evidence_file: .local/state/omni/review-key-credit-probe/last-run.json
     state_directory: .onex_state/review-key-credit-probe
     log_directory: .local/state/omni/review-key-credit-probe
