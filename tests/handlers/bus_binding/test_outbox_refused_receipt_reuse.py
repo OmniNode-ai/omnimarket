@@ -15,6 +15,7 @@ import json
 import logging
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 from uuid import UUID
 
 import pytest
@@ -501,13 +502,13 @@ async def test_outbox_reuse_through_the_wired_caller_raises_no_occurrence(
     emitted: list[object] = []
     real_emit = recovery.create_handler_exception_emit
 
-    def counting_emit() -> object:
-        handle = real_emit().handle
+    def counting_emit() -> Any:
+        inner = real_emit()
 
         class _Counting:
-            def handle(self, request: object) -> object:
+            def handle(self, request: Any) -> Any:
                 emitted.append(request)
-                return handle(request)  # type: ignore[arg-type]
+                return inner.handle(request)
 
         return _Counting()
 
