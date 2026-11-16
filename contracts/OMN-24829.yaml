@@ -57,11 +57,14 @@ dod_evidence:
         check_value: gh pr view 5737 --repo OmniNode-ai/omnimarket --json comments | uv run --frozen python -c 'import json,subprocess,sys; sys.path.insert(0,"tests/ci"); import test_omn23518_spi_lock_floor as t; c=[x["body"] for x in json.load(sys.stdin)["comments"]]; h=subprocess.check_output(["git","rev-parse","HEAD"],text=True).strip(); assert t.lab_comment_head_is_full(c,h), (h,[x[:60] for x in c if x.startswith("Lab:")])'
         cwd: .
   - id: dod-omn24829-ac3-status-rows-named
-    description: AC3. The criterion names both causes and this contract carries one ledger check per named check. A criterion cannot be bound to the ledger read itself, because the ledger is not on the hosted runner and a bound local_done_gate item is refused; this bound check fails when a named check loses its row check or the two checks collapse into one.
+    description: 'AC3. The criterion names both causes and this contract carries one ledger check per named check. A criterion cannot be bound to the ledger read itself, because the ledger is not on the hosted runner and a bound local_done_gate item is refused; this bound check fails when a named check loses its row check or the two checks collapse into one. The pyproject floor check is the other half of the criterion: the cause only exists because this pull request raises the floor to 0.23.15 in both places, so it fails at the merge base, where the floors read 0.23.3, as the repo-evidence control requires.'
     source: manual
     binds_ac:
       - AC3
     checks:
+      - check_type: command
+        check_value: test "$(grep -c 'omnibase-spi>=0.23.15,<0.24.0' pyproject.toml)" = 2
+        cwd: .
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly -k "omn24829_contract and not ancestry"
         cwd: .

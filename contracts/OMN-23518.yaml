@@ -32,11 +32,14 @@ dod_evidence:
         check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly
         cwd: .
   - id: dod-omn23518-omnimarket-ac2-import
-    description: AC2. The installed omnibase-spi is the locked version and provides the three lane process names the fill orchestrator imports; the test fails when the installed version differs from the lock.
+    description: 'AC2. The installed omnibase-spi is the locked version and provides the three lane process names the fill orchestrator imports; the test fails when the installed version differs from the lock. The floors test is carried as a second check because the repo-evidence control at the merge base requires every bound check to fail there; it fails at the merge base, where both floors read 0.23.3. The criterion''s own check is the other one.'
     source: manual
     binds_ac:
       - AC2
     checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly -k pyproject_floors_agree
+        cwd: .
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/ci/test_omn23518_spi_lock_floor.py -q --no-cov -n 0 -p no:randomly -k lane_process
         cwd: .
