@@ -29,9 +29,10 @@ import importlib.util
 import pathlib
 import re
 import sys
+from typing import Any
 
 
-def _load_scan_module() -> object:
+def _load_scan_module() -> Any:
     """Load the stdlib-only scan helper by file path.
 
     Importing it as ``omnimarket.handlers.<name>`` would run the handlers package
@@ -54,12 +55,12 @@ def _load_scan_module() -> object:
     return module
 
 
-_scan = _load_scan_module()
-repo_relative = _scan.repo_relative  # type: ignore[attr-defined]
-load_baseline = _scan.load_baseline  # type: ignore[attr-defined]
-find_dead_handlers = _scan.find_dead_handlers  # type: ignore[attr-defined]
-find_stale_baseline_entries = _scan.find_stale_baseline_entries  # type: ignore[attr-defined]
-scan_unimported_handlers = _scan.scan_unimported_handlers  # type: ignore[attr-defined]
+_scan: Any = _load_scan_module()
+repo_relative = _scan.repo_relative
+load_baseline = _scan.load_baseline
+find_dead_handlers = _scan.find_dead_handlers
+find_stale_baseline_entries = _scan.find_stale_baseline_entries
+scan_unimported_handlers = _scan.scan_unimported_handlers
 
 # The transport hook uses this existing import gate's CLI, so both import checks
 # share one implementation file. The core validator
