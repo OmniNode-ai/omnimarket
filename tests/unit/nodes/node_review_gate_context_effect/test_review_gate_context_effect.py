@@ -321,3 +321,23 @@ def test_injected_break_poster_posts_wrong_state() -> None:
     assert result.outcome is EnumReviewContextPostOutcome.FAILED_READBACK
     assert result.calls == 3
     assert sink.events[1].failure_code == "review_context_readback_mismatch"
+
+
+def test_effect_contract_declares_terminal_events() -> None:
+    from pathlib import Path
+
+    import yaml
+
+    contract = (
+        Path(__file__).resolve().parents[4]
+        / "src/omnimarket/nodes/node_review_gate_context_effect/contract.yaml"
+    )
+    raw = yaml.safe_load(contract.read_text())
+    assert (
+        raw["terminal_event"]
+        == "onex.evt.omnimarket.review-gate-context-post-completed.v1"
+    )
+    assert (
+        raw["topics"]["failed"]
+        == "onex.evt.omnimarket.review-gate-context-post-failed.v1"
+    )

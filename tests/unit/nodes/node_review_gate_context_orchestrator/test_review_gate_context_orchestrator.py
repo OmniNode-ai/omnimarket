@@ -239,3 +239,23 @@ def test_a_clean_pull_request_cannot_pass_a_head_another_pull_request_fails() ->
     alone = Rig(InMemoryOpenPullRequests((subject("repo-a", 1),)), _clean_for_first())
     alone.handler.handle(SWEEP)
     assert {p["state"] for p in alone.runs.posted} == {"success"}
+
+
+def test_orchestrator_contract_declares_terminal_events() -> None:
+    from pathlib import Path
+
+    import yaml
+
+    contract = (
+        Path(__file__).resolve().parents[4]
+        / "src/omnimarket/nodes/node_review_gate_context_orchestrator/contract.yaml"
+    )
+    raw = yaml.safe_load(contract.read_text())
+    assert (
+        raw["terminal_event"]
+        == "onex.evt.omnimarket.review-gate-context-sweep-completed.v1"
+    )
+    assert (
+        raw["topics"]["failed"]
+        == "onex.evt.omnimarket.review-gate-context-sweep-failed.v1"
+    )
