@@ -1,0 +1,77 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+"""The ``arch_graph_bolt`` overlay: the architecture graph Bolt URI of each host (OMN-24687).
+
+``node_architecture_graph_query_effect`` and ``node_architecture_graph_populate_effect``
+read the overlay file ``<overlay root>/arch_graph_bolt/overlay.yaml`` when
+``ARCH_GRAPH_BOLT_URI`` is unset, and take the row whose ``host`` matches the local host
+name. This model is what the overlay home validates the document through, so it imports
+pydantic alone. It checks the shape of the document and that every address is a Bolt URI;
+which hosts appear and where the service runs is the operator's choice, so no host name and
+no address lives here.
+"""
+
+from __future__ import annotations
+
+from typing import Annotated, Literal
+
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    model_validator,
+)
+
+SCHEMA_VERSION = "arch_graph_bolt.v1"
+
+NonBlank = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+
+_BOLT_SCHEMES = ("bolt://", "bolt+s://", "bolt+ssc://")
+
+
+def _bolt_scheme(value: str) -> str:
+    if value.startswith(_BOLT_SCHEMES) and len(value.split("://", 1)[1]) > 0:
+        return value
+    raise ValueError(f"must be a Bolt URI starting with one of {_BOLT_SCHEMES}")
+
+
+BoltUri = Annotated[NonBlank, AfterValidator(_bolt_scheme)]
+
+
+class ModelArchGraphBoltHostBinding(BaseModel):
+    """The Bolt URI one host's architecture graph nodes connect to."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    host: NonBlank
+    bolt_uri: BoltUri
+
+
+class ModelArchGraphBoltOverlay(BaseModel):
+    """``arch_graph_bolt``: the Bolt URI of each host, by host name."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    schema_version: Literal["arch_graph_bolt.v1"]
+    bindings: tuple[ModelArchGraphBoltHostBinding, ...] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _unique_host_names(self) -> ModelArchGraphBoltOverlay:
+        seen: set[str] = set()
+        for row in self.bindings:
+            key = row.host.casefold()
+            if key in seen:
+                raise ValueError(
+                    f"two rows name the same host {row.host!r} ignoring case"
+                )
+            seen.add(key)
+        return self
+
+
+__all__ = [
+    "SCHEMA_VERSION",
+    "ModelArchGraphBoltHostBinding",
+    "ModelArchGraphBoltOverlay",
+]
