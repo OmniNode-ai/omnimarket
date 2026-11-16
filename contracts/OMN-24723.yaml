@@ -133,6 +133,8 @@ dod_evidence:
       missing inputs, skipped tests and unavailable runtime dependencies fail closed.
       The initial draft may precede this proof under the approved delivery amendment;
       ready/landing may not. The test output retains HOOK_INTEGRATION_PROOF.
+      After that test validates the loopback URL and proves the answer/fallback,
+      require a successful HTTP read of the same live model server's catalogue.
       This Mac execution is not a governed lab bus-runner receipt.
     source: manual
     execution_scope: local_done_gate
@@ -147,4 +149,6 @@ dod_evidence:
           pytest "${ONEX_HOOK_PROOF_PYTHON:?name the installed branch Python}" -m pytest
           src/omnimarket/nodes/node_hook_delegate_effect/tests/test_hook_live.py
           -p tests.refuse_skips --refuse-skips -q -s --no-cov -n 0 -p no:randomly
+          && curl --fail --silent --show-error --max-time 10
+          "${ONEX_HOOK_PROOF_LOCAL_URL%/}/v1/models" >/dev/null
         cwd: .
